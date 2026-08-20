@@ -56,19 +56,37 @@
 </header>
         <main class="cp-main">
                 <h1 class="cp-head cp-catalog-head">Motion</h1>
-        <p class="cp-sub">Every recorded interaction and animation this catalog publishes, side by
-        side — so a transition that is shaped differently from its neighbours is visible without
-        opening each component in turn. 4 recordings across 3 components.</p>
+        <p class="cp-sub">Every recorded interaction and animation this catalog publishes, grouped
+        by component and set side by side — so a transition that is shaped differently from its
+        neighbours is visible without opening each component in turn.
+        5 recordings across 4 components.</p>
         <div class="cp-motion-toolbar">
           <button type="button" id="cp-motion-all" class="cp-action-chip cp-motion-all"
             aria-pressed="false" aria-controls="cp-motion-index">Play all</button>
+          <span class="cp-motion-theme">
+            <span class="cp-motion-theme-label">Theme</span>
+            <span class="cp-theme" role="group" aria-label="Recording theme">
+              <button type="button" class="cp-theme-btn" data-motion-theme="light"
+                aria-pressed="true">Light</button>
+              <button type="button" class="cp-theme-btn" data-motion-theme="dark"
+                aria-pressed="false">Dark</button>
+            </span>
+          </span>
           <span class="cp-motion-hint">Nothing plays until you ask it to. Press a card to run one
           recording, or open a component to scrub it frame by frame.</span>
         </div>
         <div class="cp-motion-index" id="cp-motion-index">
         <section class="cp-motion-section">
 <h2 class="cp-section-head">Components</h2>
-<div class="cp-motion-cards">
+<div class="cp-motion-components">
+        <article class="cp-motion-component">
+          <div class="cp-motion-component-about">
+            <h3 class="cp-motion-component-head">
+              <a class="cp-motion-component-name" href="/p/switch-on__ideal__default__light?session=compose-m3&amp;mode=motion">Switch · On</a>
+              <span class="cp-motion-component-count">2 recordings</span>
+            </h3>
+          </div>
+          <div class="cp-motion-cards">
 <figure class="cp-motion-card">
   <button type="button" class="cp-motion-card-stage" aria-pressed="false"
     data-motion-src="/motion/switch-on__ideal__default__light.apng?session=compose-m3"
@@ -79,8 +97,7 @@
     <span class="cp-motion-card-cue" aria-hidden="true">▶</span>
   </button>
   <figcaption class="cp-motion-card-meta">
-  <a class="cp-motion-card-name" href="/p/switch-on__ideal__default__light?session=compose-m3&amp;mode=motion&amp;motion=switch-on__ideal__default__light">Switch · On</a>
-  <span class="cp-motion-card-title">Toggle on</span>
+  <a class="cp-motion-card-title" href="/p/switch-on__ideal__default__light?session=compose-m3&amp;mode=motion&amp;motion=switch-on__ideal__default__light">Toggle on</a>
   <span class="cp-motion-card-kind">Interaction</span>
   <span class="cp-motion-card-detail">Toggle on. The thumb travels the full width of the track and the container recolours to the checked state as it lands.</span>
   </figcaption>
@@ -95,12 +112,21 @@
     <span class="cp-motion-card-cue" aria-hidden="true">▶</span>
   </button>
   <figcaption class="cp-motion-card-meta">
-  <a class="cp-motion-card-name" href="/p/switch-on__ideal__default__light?session=compose-m3&amp;mode=motion&amp;motion=switch-on__ideal__default__light__anim">Switch · On</a>
-  <span class="cp-motion-card-title">Thumb settle</span>
+  <a class="cp-motion-card-title" href="/p/switch-on__ideal__default__light?session=compose-m3&amp;mode=motion&amp;motion=switch-on__ideal__default__light__anim">Thumb settle</a>
   <span class="cp-motion-card-kind">Animation</span>
   <span class="cp-motion-card-detail">Thumb settle. Released mid-travel, the thumb overshoots and settles back through the theme&#39;s spatial spring rather than snapping to the stop.</span>
   </figcaption>
 </figure>
+          </div>
+        </article>
+        <article class="cp-motion-component">
+          <div class="cp-motion-component-about">
+            <h3 class="cp-motion-component-head">
+              <a class="cp-motion-component-name" href="/p/card-filled__ideal__default__light?session=compose-m3&amp;mode=motion">Card · Filled</a>
+            </h3>
+            <p class="cp-motion-component-note">Press and hold the card. The container lifts to its pressed elevation and the ripple expands from the contact point.</p>
+          </div>
+          <div class="cp-motion-cards">
 <figure class="cp-motion-card">
   <button type="button" class="cp-motion-card-stage" aria-pressed="false"
     data-motion-src="/motion/card-filled__press.apng?session=compose-m3"
@@ -111,17 +137,56 @@
     <span class="cp-motion-card-cue" aria-hidden="true">▶</span>
   </button>
   <figcaption class="cp-motion-card-meta">
-  <a class="cp-motion-card-name" href="/p/card-filled__ideal__default__light?session=compose-m3&amp;mode=motion&amp;motion=card-filled__press">Card · Filled</a>
-  <span class="cp-motion-card-title">Press and hold the card</span>
+  <a class="cp-motion-card-title" href="/p/card-filled__ideal__default__light?session=compose-m3&amp;mode=motion&amp;motion=card-filled__press">Press and hold the card</a>
   <span class="cp-motion-card-kind">Interaction</span>
-  <span class="cp-motion-card-detail">Press and hold the card. The container lifts to its pressed elevation and the ripple expands from the contact point.</span>
   </figcaption>
 </figure>
+          </div>
+        </article>
+        <article class="cp-motion-component">
+          <div class="cp-motion-component-about">
+            <h3 class="cp-motion-component-head">
+              <a class="cp-motion-component-name" href="/p/iconbutton-filled__ideal__default__light?session=compose-m3&amp;mode=motion">Icon Button · Filled</a>
+            </h3>
+            <p class="cp-motion-component-note">Press and hold. Expressive animates the container into its pressed shape and holds it there for the duration of the press; Baseline leaves it static.</p>
+          </div>
+          <div class="cp-motion-cards">
+<figure class="cp-motion-card">
+  <button type="button" class="cp-motion-card-stage" aria-pressed="false"
+    data-motion-src="/motion/iconbutton-filled__ideal__default__light.apng?session=compose-m3"
+    data-motion-poster="/render/iconbutton-filled__ideal__default__light.png?session=compose-m3"
+    data-motion-src-light="/motion/iconbutton-filled__ideal__default__light.apng?session=compose-m3"
+    data-motion-poster-light="/render/iconbutton-filled__ideal__default__light.png?session=compose-m3"
+    data-motion-href-light="/p/iconbutton-filled__ideal__default__light?session=compose-m3&amp;mode=motion&amp;motion=iconbutton-filled__ideal__default__light"
+    data-motion-label-light="Play the Press and hold recording of Icon Button · Filled (Light)"
+    data-motion-src-dark="/motion/iconbutton-filled__ideal__default__dark.apng?session=compose-m3"
+    data-motion-poster-dark="/render/iconbutton-filled__ideal__default__dark.png?session=compose-m3"
+    data-motion-href-dark="/p/iconbutton-filled__ideal__default__dark?session=compose-m3&amp;mode=motion&amp;motion=iconbutton-filled__ideal__default__dark"
+    data-motion-label-dark="Play the Press and hold recording of Icon Button · Filled (Dark)"
+    title="Play the Press and hold recording of Icon Button · Filled (Light)" aria-label="Play the Press and hold recording of Icon Button · Filled (Light)">
+    <img class="cp-motion-card-img" loading="lazy" alt=""
+      src="/render/iconbutton-filled__ideal__default__light.png?session=compose-m3">
+    <span class="cp-motion-card-cue" aria-hidden="true">▶</span>
+  </button>
+  <figcaption class="cp-motion-card-meta">
+  <a class="cp-motion-card-title" href="/p/iconbutton-filled__ideal__default__light?session=compose-m3&amp;mode=motion&amp;motion=iconbutton-filled__ideal__default__light">Press and hold</a>
+  <span class="cp-motion-card-kind">Interaction</span>
+  </figcaption>
+</figure>
+          </div>
+        </article>
 </div>
 </section>
 <section class="cp-motion-section">
 <h2 class="cp-section-head">Screens</h2>
-<div class="cp-motion-cards">
+<div class="cp-motion-components">
+        <article class="cp-motion-component">
+          <div class="cp-motion-component-about">
+            <h3 class="cp-motion-component-head">
+              <a class="cp-motion-component-name" href="/p/profile__screen?session=compose-m3&amp;mode=motion">Profile screen</a>
+            </h3>
+          </div>
+          <div class="cp-motion-cards">
 <figure class="cp-motion-card">
   <button type="button" class="cp-motion-card-stage" aria-pressed="false"
     data-motion-src="/motion/profile__scroll.apng?session=compose-m3"
@@ -132,15 +197,16 @@
     <span class="cp-motion-card-cue" aria-hidden="true">▶</span>
   </button>
   <figcaption class="cp-motion-card-meta">
-  <a class="cp-motion-card-name" href="/p/profile__screen?session=compose-m3&amp;mode=motion&amp;motion=profile__scroll">Profile screen</a>
-  <span class="cp-motion-card-title">Interaction</span>
+  <a class="cp-motion-card-title" href="/p/profile__screen?session=compose-m3&amp;mode=motion&amp;motion=profile__scroll">Interaction</a>
   <span class="cp-motion-card-kind">Interaction</span>
   </figcaption>
 </figure>
+          </div>
+        </article>
 </div>
 </section>
         </div>
-        <script>(function(){var stages=[].slice.call(document.querySelectorAll(".cp-motion-card-stage"));if(!stages.length)return;function set(b,on){var img=b.querySelector(".cp-motion-card-img");if(!img)return;var src=on?b.getAttribute("data-motion-src"):b.getAttribute("data-motion-poster");if(!src)return;b.setAttribute("aria-pressed",on?"true":"false");if(img.getAttribute("src")!==src||on)img.setAttribute("src",src);}stages.forEach(function(b){b.addEventListener("click",function(){set(b,b.getAttribute("aria-pressed")!=="true");sync();});});var all=document.getElementById("cp-motion-all");function playing(){return stages.filter(function(b){return b.getAttribute("aria-pressed")==="true";}).length;}function sync(){if(!all)return;var on=playing()===stages.length;all.setAttribute("aria-pressed",on?"true":"false");all.textContent=playing()?"Stop all":"Play all";}if(all)all.addEventListener("click",function(){var on=playing()!==stages.length;stages.forEach(function(b){set(b,on);});sync();});})();</script>
+        <script>(function(){var stages=[].slice.call(document.querySelectorAll(".cp-motion-card-stage"));if(!stages.length)return;function attr(el,name){return el.getAttribute(name)||"";}function set(b,on){var img=b.querySelector(".cp-motion-card-img");if(!img)return;var src=attr(b,on?"data-motion-src":"data-motion-poster");if(!src)return;b.setAttribute("aria-pressed",on?"true":"false");if(img.getAttribute("src")!==src||on)img.setAttribute("src",src);}stages.forEach(function(b){b.addEventListener("click",function(){set(b,b.getAttribute("aria-pressed")!=="true");sync();});});var all=document.getElementById("cp-motion-all");function playing(){return stages.filter(function(b){return b.getAttribute("aria-pressed")==="true";}).length;}function sync(){if(!all)return;var on=playing()===stages.length;all.setAttribute("aria-pressed",on?"true":"false");all.textContent=playing()?"Stop all":"Play all";}if(all)all.addEventListener("click",function(){var on=playing()!==stages.length;stages.forEach(function(b){set(b,on);});sync();});var themeBtns=[].slice.call(document.querySelectorAll("[data-motion-theme]"));function applyTheme(theme){stages.forEach(function(b){var src=attr(b,"data-motion-src-"+theme);if(!src)return;b.setAttribute("data-motion-src",src);b.setAttribute("data-motion-poster",attr(b,"data-motion-poster-"+theme));var label=attr(b,"data-motion-label-"+theme);if(label){b.setAttribute("title",label);b.setAttribute("aria-label",label);}var href=attr(b,"data-motion-href-"+theme),link=b.parentNode&&b.parentNode.querySelector(".cp-motion-card-title");if(link&&href)link.setAttribute("href",href);set(b,b.getAttribute("aria-pressed")==="true");});themeBtns.forEach(function(t){t.setAttribute("aria-pressed",attr(t,"data-motion-theme")===theme?"true":"false");});}themeBtns.forEach(function(t){t.addEventListener("click",function(){var theme=attr(t,"data-motion-theme");applyTheme(theme);try{var key=document.documentElement.getAttribute("data-cp-theme-key");if(key)localStorage.setItem(key,theme);}catch(e){}if(window.cpUrlState)window.cpUrlState.push({theme:theme});if(window.cpPageTheme)window.cpPageTheme.follow(theme);});});if(themeBtns.length){var opening="";try{var fromUrl=new URLSearchParams(location.search).get("theme");var key=document.documentElement.getAttribute("data-cp-theme-key");var remembered=key?localStorage.getItem(key):"";opening=fromUrl||remembered||"";}catch(e){}if(opening==="light"||opening==="dark")applyTheme(opening);}})();</script>
         </main>
         <footer class="cp-site-footer">
           <div class="cp-site-footer-links">

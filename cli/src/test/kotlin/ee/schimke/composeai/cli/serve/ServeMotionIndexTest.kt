@@ -10,9 +10,10 @@ import kotlin.test.assertTrue
  * entry point.
  *
  * The page is markup-only — swapping an `<img src>` is its whole behaviour — so these assertions
- * are about the two things that decide whether it works at all: that a card points at the right
- * *two* URLs (its still and its recording), and that pressing it is the only thing that starts
- * anything. The committed fixture in [ServeWebFixtureTest] carries the pixels.
+ * are about the three things that decide whether it works at all: that a card points at the right
+ * *two* URLs (its still and its recording), that pressing it is the only thing that starts
+ * anything, and that a recording published on a dozen renders of one component appears once. The
+ * committed fixture in [ServeWebFixtureTest] carries the pixels.
  */
 class ServeMotionIndexTest {
 
@@ -50,6 +51,47 @@ class ServeMotionIndexTest {
     )
 
   private val still = preview("badge__default", "Badge", section = "Components", order = 2)
+
+  /**
+   * One component's two gestures, each recorded once per theme, and the renders that publish them.
+   *
+   * This is the production shape, not a contrived one: a catalog hangs a component's manifest
+   * entries off its default render, its states, its props variants and both themes, so a card per
+   * render × capture printed `compose-m3`'s five gestures 320 times.
+   */
+  private val fabCaptures =
+    listOf("light", "dark").flatMap { theme ->
+      listOf(
+        ServeMotion(
+          id = "fab__ideal__default__$theme",
+          kind = "interaction",
+          caption = "Press and hold. The container expands into its pressed shape.",
+        ),
+        ServeMotion(
+          id = "fab__ideal__default__${theme}__lift",
+          kind = "animation",
+          caption = "Release. The container settles back through the spatial spring.",
+        ),
+      )
+    }
+
+  private fun fabRender(state: String, theme: String) =
+    preview(
+      "fab__ideal__${state}__$theme",
+      "FAB",
+      section = "Components",
+      order = 3,
+      motion = fabCaptures,
+    )
+
+  /** Every render of the FAB: two states across two themes, all publishing the same four takes. */
+  private val fabRenders =
+    listOf(
+      fabRender("default", "light"),
+      fabRender("default", "dark"),
+      fabRender("disabled", "light"),
+      fabRender("disabled", "dark"),
+    )
 
   private fun page(previews: List<ServePreview> = listOf(card, still)) =
     ServeWeb.motionIndexPage(
@@ -99,7 +141,7 @@ class ServeMotionIndexTest {
     assertEquals(
       2,
       Regex("class=\"cp-motion-card-stage\"").findAll(html).count(),
-      "one card per capture, not per component — two recordings are two things to compare",
+      "a component's recordings each get a card — two recordings are two things to compare",
     )
     // `?motion=<id>` is what the viewer reads to open its picker on the shared recording rather
     // than on the component's first one. `&amp;` because these are attribute values, not URLs in
@@ -211,5 +253,134 @@ class ServeMotionIndexTest {
     // A capture whose annotation declared no caption falls back to its kind rather than to a
     // blank label — the same honesty [MotionCaptureLabels] applies in the viewer's picker.
     assertTrue(html.contains(">Interaction<"), "an uncaptioned capture is still named")
+  }
+
+  @Test
+  fun `every render of a component folds onto one block, and a take is published once`() {
+    val html = page(listOf(card) + fabRenders)
+    assertEquals(
+      1,
+      Regex("class=\"cp-motion-component-name\"[^>]*>FAB<").findAll(html).count(),
+      "four renders of one component are one block on the page, not four",
+    )
+    assertEquals(
+      4,
+      Regex("class=\"cp-motion-card-stage\"").findAll(html).count(),
+      "…holding the FAB's two gestures and the Card's two, rather than a card per render",
+    )
+    assertTrue(
+      html.contains("4 recordings across 2 components"),
+      "and the summary counts recordings and components, not renders times captures",
+    )
+  }
+
+  @Test
+  fun `a gesture recorded in both themes is one card the Theme control swaps`() {
+    val html = page(fabRenders)
+    assertEquals(
+      2,
+      Regex("class=\"cp-motion-card-stage\"").findAll(html).count(),
+      "two gestures are two cards — the light and dark TAKE of one gesture is not two recordings",
+    )
+    // The card opens on the light take (a light-first system) and carries the dark one beside it.
+    assertTrue(
+      Regex("data-motion-src=\"[^\"]*fab__ideal__default__light\\.apng").containsMatchIn(html),
+      "the card ships pointing at the take in the system's own theme lane",
+    )
+    assertTrue(
+      html.contains(
+        "data-motion-src-dark=\"/compose-m3/motion/fab__ideal__default__dark.apng?token=t\""
+      ),
+      "…and carries the other take for the control to swap to",
+    )
+    // Everything about a card moves together, or a reader who switched to dark is left with a
+    // light thumbnail over a dark recording and a link back to the light render's viewer page.
+    assertTrue(
+      html.contains(
+        "data-motion-poster-dark=\"/compose-m3/render/fab__ideal__default__dark.png?token=t\""
+      ),
+      "the still the card returns to is the dark render's",
+    )
+    assertTrue(
+      html.contains(
+        "data-motion-href-dark=\"/compose-m3/p/fab__ideal__default__dark?token=t" +
+          "&amp;mode=motion&amp;motion=fab__ideal__default__dark\""
+      ),
+      "and the deep link is the dark take's",
+    )
+    assertTrue(
+      html.contains("data-motion-theme=\"light\"") && html.contains("data-motion-theme=\"dark\""),
+      "the control itself is offered",
+    )
+  }
+
+  @Test
+  fun `a catalog that records one theme is offered no theme control`() {
+    // `card`'s captures carry no theme token, so there is nothing to swap between. A pair of
+    // buttons where one does nothing is worse than no buttons.
+    val html = page(listOf(card))
+    // `data-motion-theme=` rather than the bare attribute name: the page's inline script NAMES the
+    // attribute it reads, so a substring check would match the machinery on every page.
+    assertFalse(html.contains("data-motion-theme="), "no control")
+    assertFalse(html.contains("data-motion-src-light="), "and no half of a swap on the cards")
+  }
+
+  @Test
+  fun `a caption every recording of a component shares is printed once, above its cards`() {
+    val single =
+      preview(
+        "chip__ideal__default__light",
+        "Chip",
+        section = "Components",
+        order = 4,
+        motion =
+          listOf("light", "dark").map { theme ->
+            ServeMotion(
+              id = "chip__ideal__default__$theme",
+              kind = "interaction",
+              caption = "Press and hold. The container expands into its pressed shape.",
+            )
+          },
+      )
+    val html = page(listOf(single))
+    val caption = "Press and hold. The container expands into its pressed shape."
+    assertEquals(
+      1,
+      Regex(Regex.escape(caption)).findAll(html).count(),
+      "a sentence about the COMPONENT is said once, not under its card as well",
+    )
+    assertTrue(
+      html.contains("class=\"cp-motion-component-note\""),
+      "…as the component's note rather than as card detail",
+    )
+    assertFalse(html.contains("cp-motion-card-detail"), "so the card does not repeat it")
+  }
+
+  @Test
+  fun `a folded card keeps the still and the link of the render that recorded it`() {
+    val html = page(fabRenders)
+    // The fold picks ONE render to speak for each take, and picking the wrong one is visible: it
+    // would open the light recording on the disabled render's still.
+    assertTrue(
+      Regex(
+          "data-motion-src=\"[^\"]*fab__ideal__default__light\\.apng[^>]*" +
+            "data-motion-poster=\"[^\"]*fab__ideal__default__light\\.png"
+        )
+        .containsMatchIn(html),
+      "the light take sits on the light default render's still",
+    )
+    assertTrue(
+      html.contains(
+        "/compose-m3/p/fab__ideal__default__light?token=t&amp;mode=motion" +
+          "&amp;motion=fab__ideal__default__light"
+      ),
+      "…and deep-links to that render, on that take",
+    )
+    // The component's own name is the way in to the component rather than to a recording: it opens
+    // the lead render — the default state, in the system's own theme lane — on the Motion lane.
+    assertTrue(
+      html.contains("/compose-m3/p/fab__ideal__default__light?token=t&amp;mode=motion\">FAB<"),
+      "and the component's name opens its lead render on no recording in particular",
+    )
   }
 }

@@ -54,6 +54,12 @@ internal object MotionCaptureLabels {
    * recordings of one component very often open with the same instruction and differ only in the
    * detail — so the number distinguishes them in the menu and the detail line says what actually
    * differs.
+   *
+   * A number is the fallback, not the first answer: where a colliding set is a component's light
+   * and dark recordings — which is what a catalog that records each gesture once per theme
+   * publishes, and what the whole `compose-m3` catalog publishes — the capture ids already say
+   * which is which, and "(Light)" / "(Dark)" is a label a reader can act on where "1" / "2" is not.
+   * See [themeSuffixes] for when that applies.
    */
   fun of(captures: List<ServeMotion>): List<MotionCaptureLabel> {
     val base = captures.map { capture ->
@@ -63,15 +69,57 @@ internal object MotionCaptureLabels {
       )
     }
     val totals = base.groupingBy { it.title }.eachCount()
+    // A colliding group whose captures are one component's light and dark recordings is the common
+    // case by a distance — a catalog records a gesture once per theme and writes the caption once —
+    // and there "1" and "2" name nothing a reader can act on. The ids do say which is which, so
+    // they get to.
+    val themed = themeSuffixes(captures, base, totals)
     val seen = mutableMapOf<String, Int>()
-    return base.map { label ->
-      if (totals[label.title] == 1) label
-      else {
-        val n = (seen[label.title] ?: 0) + 1
-        seen[label.title] = n
-        label.copy(title = "${label.title} $n")
+    return base.mapIndexed { i, label ->
+      when {
+        totals[label.title] == 1 -> label
+        themed != null -> label.copy(title = "${label.title} (${themed[i]})")
+        else -> {
+          val n = (seen[label.title] ?: 0) + 1
+          seen[label.title] = n
+          label.copy(title = "${label.title} $n")
+        }
       }
     }
+  }
+
+  /**
+   * A theme word per capture, or null when the ids cannot name the whole set apart.
+   *
+   * All or nothing on purpose: labelling half a colliding group by theme and numbering the rest
+   * would produce "Press and hold (Light)" beside "Press and hold 2", which is worse than either
+   * scheme on its own. So a group qualifies only when every one of its captures carries a theme
+   * token and no two of them carry the same one — anything else falls back to numbering.
+   */
+  private fun themeSuffixes(
+    captures: List<ServeMotion>,
+    base: List<MotionCaptureLabel>,
+    totals: Map<String, Int>,
+  ): List<String>? {
+    val themes = captures.map { themeToken(it.id) }
+    for ((title, count) in totals) {
+      if (count == 1) continue
+      val group = base.indices.filter { base[it].title == title }.map { themes[it] }
+      if (group.any { it == null } || group.distinct().size != group.size) return null
+    }
+    return themes.map { it?.replaceFirstChar { c -> c.uppercaseChar() } ?: "" }
+  }
+
+  /**
+   * The theme a capture id names, if it names one: the *last* standalone `light` / `dark` segment
+   * after the id's head. Same rule (and same reason) as the grid's theme pairing — a capture id is
+   * a flattened preview id, so it can carry a `light`/`dark` **state** segment earlier that is not
+   * the theme, and the head itself (`theme-meshcore-light`) is one segment and never a token.
+   */
+  private fun themeToken(id: String): String? {
+    val parts = id.split("__")
+    val idx = parts.indices.lastOrNull { it >= 1 && (parts[it] == "light" || parts[it] == "dark") }
+    return idx?.let { parts[it] }
   }
 
   /**

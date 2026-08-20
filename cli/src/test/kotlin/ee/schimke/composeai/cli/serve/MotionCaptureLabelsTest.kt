@@ -11,8 +11,8 @@ import kotlin.test.assertTrue
  * cut lands in the right place. Each case below is a caption shape a real catalog writes.
  */
 class MotionCaptureLabelsTest {
-  private fun capture(caption: String? = null, kind: String? = null) =
-    ServeMotion(id = "x", kind = kind, caption = caption)
+  private fun capture(caption: String? = null, kind: String? = null, id: String = "x") =
+    ServeMotion(id = id, kind = kind, caption = caption)
 
   private fun titleOf(caption: String) =
     MotionCaptureLabels.of(listOf(capture(caption))).single().title
@@ -123,5 +123,65 @@ class MotionCaptureLabelsTest {
       MotionCaptureLabels.of(listOf(capture("Toggle on.\n  The thumb\n  travels."))).single()
     assertEquals("Toggle on", label.title)
     assertEquals("Toggle on. The thumb travels.", label.detail)
+  }
+
+  @Test
+  fun `a colliding pair that is one gesture per theme is named by theme, not numbered`() {
+    // What a catalog recording each gesture once per theme publishes — the whole `compose-m3`
+    // catalog, in fact. "1" and "2" name nothing a reader can act on; the ids know which is which.
+    val labels =
+      MotionCaptureLabels.of(
+        listOf(
+          capture("Press and hold. Expressive travels.", id = "iconbutton__ideal__default__light"),
+          capture("Press and hold. Expressive travels.", id = "iconbutton__ideal__default__dark"),
+        )
+      )
+    assertEquals(
+      listOf("Press and hold (Light)", "Press and hold (Dark)"),
+      labels.map { it.title },
+    )
+  }
+
+  @Test
+  fun `ids that cannot name the whole set apart fall back to numbering`() {
+    // One themed id and one without: half a group labelled by theme and half numbered would read
+    // "Press and hold (Light)" beside "Press and hold 2", which is worse than either scheme alone.
+    assertEquals(
+      listOf("Toggle repeatedly 1", "Toggle repeatedly 2"),
+      MotionCaptureLabels.of(
+          listOf(
+            capture("Toggle repeatedly. One.", id = "switch-on__ideal__default__light"),
+            capture("Toggle repeatedly. Two.", id = "switch-on__anim"),
+          )
+        )
+        .map { it.title },
+    )
+    // …and two recordings in the SAME theme, which the token cannot tell apart at all.
+    assertEquals(
+      listOf("Toggle repeatedly 1", "Toggle repeatedly 2"),
+      MotionCaptureLabels.of(
+          listOf(
+            capture("Toggle repeatedly. One.", id = "switch-on__ideal__default__light"),
+            capture("Toggle repeatedly. Two.", id = "switch-on__ideal__default__light__anim"),
+          )
+        )
+        .map { it.title },
+    )
+  }
+
+  @Test
+  fun `a theme word in the component's own name is not a theme token`() {
+    // `theme-meshcore-light` is ONE segment — a component slug, not a `__light` variant — so a pair
+    // of captures under it has no theme to be named by and is numbered.
+    assertEquals(
+      listOf("Scroll 1", "Scroll 2"),
+      MotionCaptureLabels.of(
+          listOf(
+            capture("Scroll. One.", id = "theme-meshcore-light"),
+            capture("Scroll. Two.", id = "theme-meshcore-dark"),
+          )
+        )
+        .map { it.title },
+    )
   }
 }

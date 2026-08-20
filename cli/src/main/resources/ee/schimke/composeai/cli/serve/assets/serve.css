@@ -3425,9 +3425,11 @@ cp-page-zoom button:focus-visible {
   gap: 1rem;
 }
 /* ---- The motion browser (`/motion`) --------------------------------------------------------
-   One card per published capture. A card opens on its component's baked still and swaps to the
-   recording only when its stage button is pressed, so the page never autoplays and there is no
-   `prefers-reduced-motion` suppression to get wrong — see `ServeWeb.motionIndexPage`. */
+   One block per component, one card per distinct recording inside it — a capture is published on
+   every render of a component, so listing it per render printed the same thumbnail dozens of times
+   over. A card opens on its component's baked still and swaps to the recording only when its stage
+   button is pressed, so the page never autoplays and there is no `prefers-reduced-motion`
+   suppression to get wrong — see `ServeWeb.motionIndexPage`. */
 .cp-motion-toolbar {
   display: flex;
   align-items: baseline;
@@ -3440,14 +3442,61 @@ cp-page-zoom button:focus-visible {
   background: var(--md-sys-color-secondary-container, var(--cp-surface));
   border-color: var(--cp-border-strong);
 }
-.cp-motion-hint { color: var(--cp-fg-muted); font-size: 0.8rem; flex: 1 1 18rem; }
-.cp-motion-section + .cp-motion-section { margin-top: 1.8rem; }
-.cp-motion-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 1.1rem;
+/* The Theme control: one axis for the whole page, because a light and a dark take of one gesture
+   are the same recording — see `ServeWeb.motionIndexPage`'s fold. Reuses the segmented pair the
+   comparison views use so the catalog has one shape for "pick a theme", not three. */
+.cp-motion-theme { display: inline-flex; align-items: center; gap: 0.5rem; }
+.cp-motion-theme-label {
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--cp-fg-muted);
 }
-.cp-motion-card { margin: 0; display: flex; flex-direction: column; gap: 0.45rem; }
+.cp-motion-hint { color: var(--cp-fg-muted); font-size: 0.8rem; flex: 1 1 16rem; }
+.cp-motion-section + .cp-motion-section { margin-top: 2.2rem; }
+/* Components stack; a component's own recordings sit side by side, which is the comparison that
+   made this page worth having. The gap between components is the larger of the two so the blocks
+   read as blocks rather than as one long run of cards. */
+.cp-motion-components { display: flex; flex-direction: column; gap: 1.8rem; }
+.cp-motion-component { display: flex; flex-direction: column; gap: 0.5rem; }
+.cp-motion-component-about { display: flex; flex-direction: column; gap: 0.35rem; }
+/* Wide enough for two columns: who the component is on the left, what it records on the right, so
+   a catalog is one row per component rather than one screen-height per component. Most components
+   publish a single recording, and a full-width block around one 220px card is mostly empty page. */
+@media (min-width: 900px) {
+  .cp-motion-component { flex-direction: row; align-items: flex-start; gap: 1.8rem; }
+  .cp-motion-component-about { flex: 0 0 19rem; padding-top: 0.1rem; }
+  .cp-motion-cards { flex: 1 1 auto; }
+}
+.cp-motion-component-head {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.7rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.cp-motion-component-name { color: inherit; }
+.cp-motion-component-count {
+  font-size: 0.68rem;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--cp-fg-muted);
+}
+/* The caption every recording of this component shares, said once instead of under each card. */
+.cp-motion-component-note {
+  margin: 0;
+  max-width: 60ch;
+  color: var(--cp-fg-muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+/* Flex rather than an auto-fill grid: a component with ONE recording would otherwise stretch its
+   single card across the whole lane, and a 900px-wide thumbnail of a switch is not a thumbnail. */
+.cp-motion-cards { display: flex; flex-wrap: wrap; gap: 1.1rem; }
+.cp-motion-card { margin: 0; flex: 0 1 220px; display: flex; flex-direction: column; gap: 0.45rem; }
 /* The stage is the button. Making the picture itself the control is what lets a reader press the
    thing they are looking at, and keeps one tab stop per card rather than two. */
 .cp-motion-card-stage {
@@ -3491,8 +3540,8 @@ cp-page-zoom button:focus-visible {
 .cp-motion-card-stage[aria-pressed="true"] .cp-motion-card-cue { display: none; }
 .cp-motion-card-stage[aria-pressed="true"] { border-color: var(--md-sys-color-primary, #6750a4); }
 .cp-motion-card-meta { display: flex; flex-direction: column; gap: 0.15rem; }
-.cp-motion-card-name { font-weight: 600; font-size: 0.9rem; color: inherit; }
-.cp-motion-card-title { font-size: 0.82rem; }
+/* The card's own label is now its primary line — the component's name lives above the cards. */
+.cp-motion-card-title { font-weight: 600; font-size: 0.85rem; color: inherit; }
 .cp-motion-card-kind {
   align-self: flex-start;
   font-size: 0.68rem;

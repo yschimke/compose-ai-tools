@@ -8432,15 +8432,28 @@ $rows
    * per-card control is a button rather than a hover, so it works on a touch screen and from a
    * keyboard, and its pressed state says which cards are running.
    *
-   * ### One card per capture, not per component
+   * ### Grouped by component, one card per distinct recording
    *
-   * A component with two recordings has two things to compare and they are frequently the point —
-   * "Baseline swaps the shape, Expressive travels between them" is one component and two captures.
-   * Folding them onto one card would hide exactly the comparison the page exists for. The captures
-   * of one component are labelled by [MotionCaptureLabels] — the same split the viewer's picker
-   * uses, so a recording is called the same thing in both places — and each card deep-links to
-   * `?mode=motion&motion=<id>`, which opens the viewer already on that recording rather than on the
-   * component's first one.
+   * A capture is declared on a component but published on every *render* of it: the catalog's
+   * `variants.json` hangs the same recording off the default, the disabled state, the focus ring,
+   * the RTL variant and every breakpoint. Listed one card per render × capture, `compose-m3`'s five
+   * moving components filled this page with 320 cards pointing at ten files — the same two APNGs
+   * seventy times over under Icon Button Filled, a screen and a half of identical thumbnails before
+   * the next component. That is the opposite of the comparison the page exists for.
+   *
+   * So the page groups by [componentKey] — the same identity the grid folds its state / theme /
+   * props / size axes onto — and inside a component keeps one card per *distinct* capture id. What
+   * is folded is the repetition, not the captures: a component with two recordings still shows two
+   * cards, because "Baseline swaps the shape, Expressive travels between them" is one component and
+   * two things to compare, and folding those onto one card would hide the very comparison this page
+   * is for. The component is named once, above its cards; each card deep-links to
+   * `?mode=motion&motion=<id>` on the render that publishes it, so the viewer opens on that
+   * recording rather than on the component's first one.
+   *
+   * Captures are labelled by [MotionCaptureLabels] — the same split the viewer's picker uses, so a
+   * recording is called the same thing in both places — and a caption every recording of one
+   * component shares is printed once under the component name rather than under each card, for the
+   * same reason the name itself is: two cards repeating one sentence say it no better than one.
    */
   fun motionIndexPage(
     moduleLabel: String,
@@ -8470,7 +8483,97 @@ $rows
       previews
         .filter { it.motion.isNotEmpty() }
         .sortedWith(compareBy({ it.catalogOrder ?: Int.MAX_VALUE }, { it.id }))
-    val captureCount = withMotion.sumOf { it.motion.size }
+
+    /** One capture, and the render that publishes it — its still, its label and its deep link. */
+    class Take(val owner: ServePreview, val capture: ServeMotion)
+
+    /**
+     * One recording of a component: the gesture, with its per-theme takes on ONE card.
+     *
+     * A catalog records a gesture once per theme and writes the caption once, so a light and a dark
+     * take are not two things to compare — they are one recording, photographed twice. [takes] is
+     * keyed by theme (`light` / `dark`) for the toolbar's Theme control to swap between in place,
+     * exactly as the landing grid swaps a component's baked light and dark stills; a recording with
+     * no theme in its id has a single unkeyed take and the control leaves it alone.
+     */
+    class Recording(val lead: Take, val takes: Map<String, Take>)
+
+    /**
+     * One component's block on this page: what to call it, and every recording it publishes once.
+     */
+    class MotionComponent(val lead: ServePreview, val recordings: List<Recording>)
+
+    val leadTheme = if (isDarkFirstSystem(basePath, sessionId)) "dark" else "light"
+
+    /**
+     * Which of a component's renders speaks for a capture — because after the fold ONE of them
+     * supplies the card's still and its deep link, and the wrong one puts a dark thumbnail on a
+     * light recording.
+     *
+     * A capture id is a flattened preview id, so the render that recorded it usually IS in the list
+     * under exactly that name; failing that, the render in the capture's own theme lane is the one
+     * whose still the recording opens from. Only when neither matches does authored order decide,
+     * which is the case for a hand-named capture (`card-filled__press`) that belongs to the whole
+     * component rather than to one of its renders.
+     */
+    fun owner(renders: List<ServePreview>, capture: ServeMotion): ServePreview =
+      renders.firstOrNull { it.id == capture.id }
+        ?: cardTheme(capture.id)?.let { theme ->
+          renders.firstOrNull { (it.theme ?: cardTheme(it.id)) == theme }
+        }
+        ?: renders.first()
+
+    /**
+     * The takes of one component, folded into recordings: grouped by the capture id with its theme
+     * token removed ([baseKey], the same key that pairs the grid's light and dark cards).
+     *
+     * Folding is all-or-nothing per group, for the reason [MotionCaptureLabels] numbers rather than
+     * half-names a set: a group folds only when every take in it names a theme and no two name the
+     * same one. Anything else — a hand-named capture that happens to share a stem, two takes in one
+     * theme — stays a card each, which is the behaviour every catalog had before the Theme control
+     * existed.
+     */
+    fun fold(takes: List<Take>): List<Recording> =
+      takes
+        .groupBy { baseKey(it.capture.id) }
+        .values
+        .flatMap { group ->
+          val themes = group.map { cardTheme(it.capture.id) }
+          if (themes.any { it == null } || themes.distinct().size != themes.size)
+            group.map { Recording(it, emptyMap()) }
+          else {
+            val byTheme = group.associateBy { cardTheme(it.capture.id)!! }
+            listOf(Recording(byTheme[leadTheme] ?: group.first(), byTheme))
+          }
+        }
+
+    // The fold. Every render of a component carries the same manifest entries, so the distinct
+    // capture ids ARE the component's takes, however many renders republish them.
+    val components =
+      withMotion
+        .groupBy { componentKey(it) }
+        .map { (_, renders) ->
+          // The component's own card leads: its default state and default props, in authored
+          // order, which is the render the grid draws and the one its name should open.
+          val ranked =
+            renders.sortedWith(
+              compareBy(
+                { isNonDefaultState(it) },
+                { hasNonDefaultProps(it) },
+                // …and in the system's own theme lane, so a light-first catalog is not led by its
+                // dark renders purely because `dark` sorts before `light`.
+                { (it.theme ?: cardTheme(it.id)) != leadTheme },
+                { it.catalogOrder ?: Int.MAX_VALUE },
+              )
+            )
+          val captures = LinkedHashMap<String, ServeMotion>()
+          ranked.forEach { render -> render.motion.forEach { captures.putIfAbsent(it.id, it) } }
+          MotionComponent(ranked.first(), fold(captures.values.map { Take(owner(ranked, it), it) }))
+        }
+    val captureCount = components.sumOf { it.recordings.size }
+    // Only offered where something can actually be swapped. A catalog that records one theme gets
+    // no control, rather than a pair of buttons one of which does nothing.
+    val themed = components.any { component -> component.recordings.any { it.takes.size > 1 } }
 
     /**
      * The viewer, opened on this exact recording — see [ServeMotion] and the viewer's `?motion=`.
@@ -8483,11 +8586,43 @@ $rows
       return "$basePath/p/${WebEscaping.urlEncodeSegment(preview.id)}?" + parts.joinToString("&")
     }
 
-    fun cardHtml(preview: ServePreview, capture: ServeMotion, label: MotionCaptureLabel): String {
-      val poster = "$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.png$q"
-      val motionSrc =
-        "$basePath/motion/${WebEscaping.urlEncodeSegment(capture.id)}${capture.extension}$q"
-      val name = WebEscaping.htmlEscape(preview.label)
+    /** The component itself in the viewer, on its Motion lane but on no recording in particular. */
+    fun componentHref(preview: ServePreview): String {
+      val parts = listOf(query, "mode=motion").filter { it.isNotEmpty() }
+      return "$basePath/p/${WebEscaping.urlEncodeSegment(preview.id)}?" + parts.joinToString("&")
+    }
+
+    /**
+     * One card: one recording, opening on the still of the render that took it.
+     *
+     * [detailHoisted] says the component printed this caption above the cards already — see
+     * [componentHtml] — so repeating it here would be the same sentence twice on one screen. The
+     * per-theme `data-motion-*-light` / `-dark` attributes are what the Theme control swaps
+     * between: the recording, the still it returns to, the accessible name and the deep link all
+     * move together, because a card left pointing at the light take's viewer page after the reader
+     * switched to dark sends them somewhere they did not ask to go.
+     */
+    fun cardHtml(
+      component: MotionComponent,
+      recording: Recording,
+      label: MotionCaptureLabel,
+      detailHoisted: Boolean,
+    ): String {
+      val lead = recording.lead
+      val capture = lead.capture
+      fun posterOf(take: Take) =
+        "$basePath/render/${WebEscaping.urlEncodeSegment(take.owner.id)}.png$q"
+      fun srcOf(take: Take) =
+        "$basePath/motion/${WebEscaping.urlEncodeSegment(take.capture.id)}" +
+          "${take.capture.extension}$q"
+      // The component is named above the cards, so the button says which of ITS recordings this is
+      // — and, where the same gesture was recorded in both themes, which take is on the stage.
+      fun playLabel(theme: String) =
+        "Play the ${label.title} recording of ${previewDisplayName(component.lead)}" +
+          if (recording.takes.size > 1 && theme.isNotEmpty())
+            " (${theme.replaceFirstChar { it.uppercaseChar() }})"
+          else ""
+      val leadTakeTheme = recording.takes.entries.firstOrNull { it.value === lead }?.key ?: ""
       // The kind is what the annotation recorded, and it is a real distinction to a reader: a
       // scripted gesture proves the component's own input plumbing drives the transition, a
       // self-running animation proves only that the animation exists.
@@ -8501,24 +8636,35 @@ $rows
       // none — the title is then the kind, and a second line repeating it would say nothing.
       val detail =
         label.detail
-          .takeIf { it.isNotBlank() && it != label.title }
+          .takeIf { !detailHoisted && it.isNotBlank() && it != label.title }
           ?.let {
             "\n          <span class=\"cp-motion-card-detail\">${WebEscaping.htmlEscape(it)}</span>"
           } ?: ""
-      val play = WebEscaping.htmlEscape("Play the ${label.title} recording of ${preview.label}")
+      val perTheme =
+        recording.takes
+          .takeIf { it.size > 1 }
+          ?.entries
+          ?.joinToString("") { (theme, take) ->
+            "\n            data-motion-src-$theme=\"${WebEscaping.htmlEscape(srcOf(take))}\"" +
+              "\n            data-motion-poster-$theme=" +
+              "\"${WebEscaping.htmlEscape(posterOf(take))}\"" +
+              "\n            data-motion-href-$theme=" +
+              "\"${WebEscaping.htmlEscape(viewerHref(take.owner, take.capture))}\"" +
+              "\n            data-motion-label-$theme=\"${WebEscaping.htmlEscape(playLabel(theme))}\""
+          } ?: ""
+      val play = WebEscaping.htmlEscape(playLabel(leadTakeTheme))
       return """
         <figure class="cp-motion-card">
           <button type="button" class="cp-motion-card-stage" aria-pressed="false"
-            data-motion-src="${WebEscaping.htmlEscape(motionSrc)}"
-            data-motion-poster="${WebEscaping.htmlEscape(poster)}"
+            data-motion-src="${WebEscaping.htmlEscape(srcOf(lead))}"
+            data-motion-poster="${WebEscaping.htmlEscape(posterOf(lead))}"$perTheme
             title="$play" aria-label="$play">
             <img class="cp-motion-card-img" loading="lazy" alt=""
-              src="${WebEscaping.htmlEscape(poster)}">
+              src="${WebEscaping.htmlEscape(posterOf(lead))}">
             <span class="cp-motion-card-cue" aria-hidden="true">▶</span>
           </button>
           <figcaption class="cp-motion-card-meta">
-          <a class="cp-motion-card-name" href="${WebEscaping.htmlEscape(viewerHref(preview, capture))}">$name</a>
-          <span class="cp-motion-card-title">${WebEscaping.htmlEscape(label.title)}</span>
+          <a class="cp-motion-card-title" href="${WebEscaping.htmlEscape(viewerHref(lead.owner, capture))}">${WebEscaping.htmlEscape(label.title)}</a>
           <span class="cp-motion-card-kind">$kind</span>$detail
           </figcaption>
         </figure>
@@ -8528,28 +8674,89 @@ $rows
 
     // Grouped by the landing's own top-level section, so a reader who knows where a component lives
     // in the catalog finds its recording in the same place here. A catalog with no sections (a
-    // plain bundle, an uploaded module) renders one unlabelled run of cards, exactly as its grid
-    // does.
-    val sections = withMotion.groupBy { it.section }
+    // plain bundle, an uploaded module) renders one unlabelled run of components, exactly as its
+    // grid does — and its component names take the heading level the sections would have used, so
+    // the outline never skips one.
+    val sections = components.groupBy { it.lead.section }
+    val sectioned = sections.keys.any { !it.isNullOrBlank() }
+    val componentTag = if (sectioned) "h3" else "h2"
+
+    fun componentHtml(component: MotionComponent): String {
+      val labels = MotionCaptureLabels.of(component.recordings.map { it.lead.capture })
+      // A caption that describes every recording of this component describes the COMPONENT, not one
+      // card, so it is printed once, above them — where there is a whole row to spend on it rather
+      // than a 220px column, and where two cards cannot repeat it at each other. That covers the
+      // ordinary single-recording component too: a paragraph set under one narrow card is a column
+      // of six-word lines.
+      val shared =
+        labels
+          .map { it.detail }
+          .distinct()
+          .singleOrNull()
+          ?.takeIf { it.isNotBlank() && it != labels.first().title }
+      val note =
+        shared?.let {
+          "\n            <p class=\"cp-motion-component-note\">${WebEscaping.htmlEscape(it)}</p>"
+        } ?: ""
+      // Only worth saying when there is more than one: "1 recording" above a single card is a count
+      // of the thing the reader is already looking at.
+      val count =
+        component.recordings.size
+          .takeIf { it > 1 }
+          ?.let {
+            "\n              <span class=\"cp-motion-component-count\">$it recordings</span>"
+          } ?: ""
+      val cards =
+        component.recordings
+          .mapIndexed { i, recording -> cardHtml(component, recording, labels[i], shared != null) }
+          .joinToString("\n")
+      // Who the component is on the left, what it records on the right — one row per component on a
+      // wide screen, stacked on a narrow one. A component with a single recording is the common
+      // case, and left as a full-width block it spent a whole screen height on one 220px card.
+      return """
+        <article class="cp-motion-component">
+          <div class="cp-motion-component-about">
+            <$componentTag class="cp-motion-component-head">
+              <a class="cp-motion-component-name" href="${WebEscaping.htmlEscape(componentHref(component.lead))}">${WebEscaping.htmlEscape(previewDisplayName(component.lead))}</a>$count
+            </$componentTag>$note
+          </div>
+          <div class="cp-motion-cards">
+$cards
+          </div>
+        </article>
+      """
+        .trimIndent()
+    }
+
     val body =
       sections.entries.joinToString("\n") { (section, group) ->
-        val cards =
-          group.joinToString("\n") { preview ->
-            val labels = MotionCaptureLabels.of(preview.motion)
-            preview.motion
-              .mapIndexed { i, capture -> cardHtml(preview, capture, labels[i]) }
-              .joinToString("\n")
-          }
+        val blocks = group.joinToString("\n") { componentHtml(it) }
         val head =
           section
             ?.takeIf { it.isNotBlank() }
             ?.let { "<h2 class=\"cp-section-head\">${WebEscaping.htmlEscape(it)}</h2>\n" } ?: ""
-        "<section class=\"cp-motion-section\">\n$head<div class=\"cp-motion-cards\">\n$cards\n</div>\n</section>"
+        "<section class=\"cp-motion-section\">\n$head<div class=\"cp-motion-components\">\n$blocks\n</div>\n</section>"
       }
 
-    val componentCount = withMotion.size
+    val componentCount = components.size
     val componentWord = if (componentCount == 1) "component" else "components"
     val captureWord = if (captureCount == 1) "recording" else "recordings"
+    // One axis, page-wide, in the same segmented shape the comparison views use: the light and the
+    // dark take of a gesture are the same recording, so this swaps every card between them rather
+    // than doubling the page. Server-rendered on the system's own lane; the script re-points it at
+    // the theme this catalog is already remembered on.
+    val themeControl =
+      if (!themed) ""
+      else
+        "\n          <span class=\"cp-motion-theme\">" +
+          "\n            <span class=\"cp-motion-theme-label\">Theme</span>" +
+          "\n            <span class=\"cp-theme\" role=\"group\" aria-label=\"Recording theme\">" +
+          "\n              <button type=\"button\" class=\"cp-theme-btn\" data-motion-theme=\"light\"" +
+          "\n                aria-pressed=\"${leadTheme == "light"}\">Light</button>" +
+          "\n              <button type=\"button\" class=\"cp-theme-btn\" data-motion-theme=\"dark\"" +
+          "\n                aria-pressed=\"${leadTheme == "dark"}\">Dark</button>" +
+          "\n            </span>" +
+          "\n          </span>"
     return document(
       title = "$heading — motion",
       unfurlTitle = "$heading motion",
@@ -8565,12 +8772,13 @@ $rows
       body =
         """
         <h1 class="cp-head cp-catalog-head">Motion${compactTrustBadge(trust)}</h1>
-        <p class="cp-sub">Every recorded interaction and animation this catalog publishes, side by
-        side — so a transition that is shaped differently from its neighbours is visible without
-        opening each component in turn. $captureCount $captureWord across $componentCount $componentWord.</p>
+        <p class="cp-sub">Every recorded interaction and animation this catalog publishes, grouped
+        by component and set side by side — so a transition that is shaped differently from its
+        neighbours is visible without opening each component in turn.
+        $captureCount $captureWord across $componentCount $componentWord.</p>
         <div class="cp-motion-toolbar">
           <button type="button" id="cp-motion-all" class="cp-action-chip cp-motion-all"
-            aria-pressed="false" aria-controls="cp-motion-index">Play all</button>
+            aria-pressed="false" aria-controls="cp-motion-index">Play all</button>$themeControl
           <span class="cp-motion-hint">Nothing plays until you ask it to. Press a card to run one
           recording, or open a component to scrub it frame by frame.</span>
         </div>
@@ -8584,12 +8792,12 @@ $rows
   }
 
   /**
-   * The motion browser's whole behaviour: swap a card between its still and its recording.
+   * The motion browser's whole behaviour: swap a card between its still and its recording, and swap
+   * every card between its light and its dark take.
    *
-   * Inline rather than an asset because it is the only page that has it and it is a dozen lines —
-   * the built bundles under `cli/serve-web/` exist for the surfaces with real state machines (the
-   * viewer, the comparison scorer), and adding a per-page file to that build to hold one `src`
-   * assignment would cost a round-trip on every visit to buy nothing.
+   * Inline rather than an asset because it is the only page that has it — the built bundles under
+   * `cli/serve-web/` exist for the surfaces with real state machines (the viewer, the comparison
+   * scorer), and adding a per-page file to that build would cost a round-trip on every visit.
    *
    * Swapping `src` is deliberately the entire mechanism. An `<img>` playing an APNG or a GIF cannot
    * be paused, sought, or rate-controlled from script — that is what the viewer's canvas player is
@@ -8597,9 +8805,17 @@ $rows
    * start over from frame one each time its `src` is set, which is exactly the two things a
    * browsing grid needs. Restoring the poster is what stops a recording, because a still that is no
    * longer decoding costs nothing while thirty of them are on screen.
+   *
+   * The Theme control re-points the card's `data-motion-*` pair (and its name and its link) at the
+   * other take and re-applies whatever the card was doing, so switching theme mid-playback keeps
+   * playing rather than silently stopping. It writes the choice where the rest of the catalog reads
+   * it — the `?theme=` param, this catalog's `localStorage` key, and `cpPageTheme` for the chrome —
+   * so a reader who picks Dark here finds the grid and the viewer already dark, and a reload opens
+   * where they left off. That is also why the page can be SERVER-rendered on the system's own lane
+   * and corrected on load: the choice lives outside this page.
    */
   private const val MOTION_INDEX_SCRIPT =
-    """(function(){var stages=[].slice.call(document.querySelectorAll(".cp-motion-card-stage"));if(!stages.length)return;function set(b,on){var img=b.querySelector(".cp-motion-card-img");if(!img)return;var src=on?b.getAttribute("data-motion-src"):b.getAttribute("data-motion-poster");if(!src)return;b.setAttribute("aria-pressed",on?"true":"false");if(img.getAttribute("src")!==src||on)img.setAttribute("src",src);}stages.forEach(function(b){b.addEventListener("click",function(){set(b,b.getAttribute("aria-pressed")!=="true");sync();});});var all=document.getElementById("cp-motion-all");function playing(){return stages.filter(function(b){return b.getAttribute("aria-pressed")==="true";}).length;}function sync(){if(!all)return;var on=playing()===stages.length;all.setAttribute("aria-pressed",on?"true":"false");all.textContent=playing()?"Stop all":"Play all";}if(all)all.addEventListener("click",function(){var on=playing()!==stages.length;stages.forEach(function(b){set(b,on);});sync();});})();"""
+    """(function(){var stages=[].slice.call(document.querySelectorAll(".cp-motion-card-stage"));if(!stages.length)return;function attr(el,name){return el.getAttribute(name)||"";}function set(b,on){var img=b.querySelector(".cp-motion-card-img");if(!img)return;var src=attr(b,on?"data-motion-src":"data-motion-poster");if(!src)return;b.setAttribute("aria-pressed",on?"true":"false");if(img.getAttribute("src")!==src||on)img.setAttribute("src",src);}stages.forEach(function(b){b.addEventListener("click",function(){set(b,b.getAttribute("aria-pressed")!=="true");sync();});});var all=document.getElementById("cp-motion-all");function playing(){return stages.filter(function(b){return b.getAttribute("aria-pressed")==="true";}).length;}function sync(){if(!all)return;var on=playing()===stages.length;all.setAttribute("aria-pressed",on?"true":"false");all.textContent=playing()?"Stop all":"Play all";}if(all)all.addEventListener("click",function(){var on=playing()!==stages.length;stages.forEach(function(b){set(b,on);});sync();});var themeBtns=[].slice.call(document.querySelectorAll("[data-motion-theme]"));function applyTheme(theme){stages.forEach(function(b){var src=attr(b,"data-motion-src-"+theme);if(!src)return;b.setAttribute("data-motion-src",src);b.setAttribute("data-motion-poster",attr(b,"data-motion-poster-"+theme));var label=attr(b,"data-motion-label-"+theme);if(label){b.setAttribute("title",label);b.setAttribute("aria-label",label);}var href=attr(b,"data-motion-href-"+theme),link=b.parentNode&&b.parentNode.querySelector(".cp-motion-card-title");if(link&&href)link.setAttribute("href",href);set(b,b.getAttribute("aria-pressed")==="true");});themeBtns.forEach(function(t){t.setAttribute("aria-pressed",attr(t,"data-motion-theme")===theme?"true":"false");});}themeBtns.forEach(function(t){t.addEventListener("click",function(){var theme=attr(t,"data-motion-theme");applyTheme(theme);try{var key=document.documentElement.getAttribute("data-cp-theme-key");if(key)localStorage.setItem(key,theme);}catch(e){}if(window.cpUrlState)window.cpUrlState.push({theme:theme});if(window.cpPageTheme)window.cpPageTheme.follow(theme);});});if(themeBtns.length){var opening="";try{var fromUrl=new URLSearchParams(location.search).get("theme");var key=document.documentElement.getAttribute("data-cp-theme-key");var remembered=key?localStorage.getItem(key):"";opening=fromUrl||remembered||"";}catch(e){}if(opening==="light"||opening==="dark")applyTheme(opening);}})();"""
 
   /**
    * One **design page**: the sheet itself as inlined SVG, an outline over every component node on

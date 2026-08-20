@@ -2122,6 +2122,40 @@ class ServeWebFixtureTest {
     // page's only structure, and a component whose recordings differ only in their caption's tail
     // is exactly the case [MotionCaptureLabels] splits — one card per capture, distinguished in
     // the title, explained underneath.
+    //
+    // The Switch and the Icon Button each publish their captures on SEVERAL renders, which is the
+    // production shape: a catalog hangs the same manifest entry off a component's default, its
+    // states and both themes, and listed per render that turned `compose-m3` into 320 cards over
+    // ten files. The fold is only visible in a baseline that carries the duplicate renders, so
+    // these do — and the Icon Button's two recordings share one caption, so its block is also the
+    // one that hoists that sentence above the cards instead of printing it under each.
+    val switchCaptures =
+      listOf(
+        ServeMotion(
+          id = "switch-on__ideal__default__light",
+          kind = "interaction",
+          caption =
+            "Toggle on. The thumb travels the full width of the track and the container " +
+              "recolours to the checked state as it lands.",
+        ),
+        ServeMotion(
+          id = "switch-on__ideal__default__light__anim",
+          kind = "animation",
+          caption =
+            "Thumb settle. Released mid-travel, the thumb overshoots and settles back " +
+              "through the theme's spatial spring rather than snapping to the stop.",
+        ),
+      )
+    val iconButtonCaptures =
+      listOf("light", "dark").map { theme ->
+        ServeMotion(
+          id = "iconbutton-filled__ideal__default__$theme",
+          kind = "interaction",
+          caption =
+            "Press and hold. Expressive animates the container into its pressed shape and " +
+              "holds it there for the duration of the press; Baseline leaves it static.",
+        )
+      }
     val motionPreviews =
       listOf(
         ServePreview(
@@ -2129,23 +2163,17 @@ class ServeWebFixtureTest {
           "Switch · On",
           section = "Components",
           catalogOrder = 1,
-          motion =
-            listOf(
-              ServeMotion(
-                id = "switch-on__ideal__default__light",
-                kind = "interaction",
-                caption =
-                  "Toggle on. The thumb travels the full width of the track and the container " +
-                    "recolours to the checked state as it lands.",
-              ),
-              ServeMotion(
-                id = "switch-on__ideal__default__light__anim",
-                kind = "animation",
-                caption =
-                  "Thumb settle. Released mid-travel, the thumb overshoots and settles back " +
-                    "through the theme's spatial spring rather than snapping to the stop.",
-              ),
-            ),
+          motion = switchCaptures,
+        ),
+        // The same two recordings again, on the switch's disabled render. One Switch block on the
+        // page, not two.
+        ServePreview(
+          "switch-on__ideal__disabled__light",
+          "Switch · On",
+          section = "Components",
+          catalogOrder = 1,
+          state = "disabled",
+          motion = switchCaptures,
         ),
         ServePreview(
           "card-filled__ideal__default__light",
@@ -2163,13 +2191,29 @@ class ServeWebFixtureTest {
               )
             ),
         ),
+        ServePreview(
+          "iconbutton-filled__ideal__default__light",
+          "Icon Button · Filled",
+          section = "Components",
+          catalogOrder = 3,
+          theme = "light",
+          motion = iconButtonCaptures,
+        ),
+        ServePreview(
+          "iconbutton-filled__ideal__default__dark",
+          "Icon Button · Filled",
+          section = "Components",
+          catalogOrder = 3,
+          theme = "dark",
+          motion = iconButtonCaptures,
+        ),
         // A capture with NO caption, which the annotation defaults produce and which the page has
         // to name honestly rather than leaving blank — the same fallback the viewer's picker uses.
         ServePreview(
           "profile__screen",
           "Profile screen",
           section = "Screens",
-          catalogOrder = 3,
+          catalogOrder = 4,
           motion = listOf(ServeMotion(id = "profile__scroll", kind = "interaction")),
         ),
         // …and a still-only component, which must NOT appear: the page is a list of recordings.
@@ -2177,7 +2221,7 @@ class ServeWebFixtureTest {
           "badge__ideal__default__light",
           "Badge",
           section = "Components",
-          catalogOrder = 4,
+          catalogOrder = 5,
         ),
       )
     val motionIndex =
