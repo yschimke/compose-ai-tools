@@ -113,9 +113,14 @@ package ee.schimke.composeai.preview
  *
  * A declaration is **authoritative** downstream: a resolver that honours it stops guessing for that
  * knob, so a misspelt axis resolves to nothing rather than falling back to a translation that would
- * make the typo indistinguishable from a correct declaration. It applies to a cell seeding exactly
- * ONE knob — with several there is nothing to say which of them the axis names, and the design-map
- * projection reports the declaration rather than picking one.
+ * make the typo indistinguishable from a correct declaration. The pair applies to a cell seeding
+ * exactly ONE knob — with several there is nothing to say which of them the axis names, and the
+ * design-map projection reports the declaration rather than picking one.
+ *
+ * A cell that turns several knobs at once declares the kit's whole assignment with [kitProps]
+ * instead. Kits couple their axes — turning `Icon` on can drag `Icon size` and `Alignment` with it
+ * — so the cell that lands on a node the kit actually drew is often a multi-knob one, and it is
+ * [kitProps] that lets it say so. See there.
  */
 @Repeatable
 @Retention(AnnotationRetention.BINARY)
@@ -154,6 +159,48 @@ annotation class OverrideVariant(
   val kitAxis: String = "",
   /** Design-kit value this cell maps to; empty keeps downstream value matching. */
   val kitValue: String = "",
+  /**
+   * The design kit's **whole** assignment for this cell, one `"Axis=Value"` per entry — for a cell
+   * that turns more than one knob, which [kitAxis] / [kitValue] cannot describe.
+   *
+   * ```
+   * @OverrideVariant(
+   *   name = "icon-large",
+   *   booleans = ["icon=true"],
+   *   strings = ["iconSize=lrg-32", "alignment=left"],
+   *   kitProps = ["Icon=Yes", "Icon size=Lrg 32", "Alignment=Left"],
+   * )
+   * ```
+   *
+   * ## Why a cell needs this
+   *
+   * A kit's axes are often **coupled**: the Wear kit's `Button` set has no `Icon=Yes, Icon
+   * size=n/a, Alignment=Center` node, because turning `Icon` on drags `Icon size` and `Alignment`
+   * with it. A cell that names one axis therefore resolves to nothing — it asks for a node between
+   * the cells the kit actually drew — and a cell that seeds the three knobs it takes to land on a
+   * real node has, with [kitAxis] alone, no way to say which of them the axis names. It is reported
+   * and dropped rather than guessed at, since guessing pins the wrong axis and resolves to a
+   * confidently wrong node.
+   *
+   * ## What it declares
+   *
+   * The **kit's** vector, not the code's. Each entry is matched exactly (up to case and
+   * punctuation) against the set's own property names and values, so a name the kit does not
+   * publish resolves to nothing rather than to something adjacent — the same authoritative posture
+   * [kitAxis] already has, for the same reason. Values with `=` in them keep everything after the
+   * first `=`, so `"Style=Variant (Highlighted)"` needs no escaping.
+   *
+   * This says nothing about how the render was produced. The knob seeds above still decide the
+   * pixels; `kitProps` decides only what the render is compared *against*. Keeping the two separate
+   * is deliberate: it is what lets a catalog draw a one-line button by default and still compare
+   * that component against the kit's two-line cell, rather than editing the default until the diff
+   * goes green.
+   *
+   * Mutually exclusive with [kitAxis] / [kitValue] on one annotation — two spellings of one fact,
+   * with no rule for which wins, is exactly the ambiguity this removes. Declaring both is a
+   * discovery warning and the cell keeps `kitProps`.
+   */
+  val kitProps: Array<String> = [],
 )
 
 /** Harness-driven state for an addressable [OverrideVariant]. */
