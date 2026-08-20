@@ -644,11 +644,52 @@ class GitHubOAuthVerifier(private val client: OkHttpClient = OkHttpClient()) {
     repository: String,
     allowedUsers: Set<String> = emptySet(),
   ): Result<GitHubOAuthUser> = runCatching {
-    val login = fetchLogin(token)
+    // Null when `/user` refuses the credential, which is the normal answer for a GitHub **App
+    // installation** token rather than a sign of a bad one — see [verifyInstallationToken].
+    val login = runCatching { fetchLogin(token) }.getOrNull()
+    if (login == null) return@runCatching verifyInstallationToken(token, repository, allowedUsers)
     if (allowedUsers.isNotEmpty() && login.lowercase() !in allowedUsers) {
       error("GitHub user $login is not allowed")
     }
     GitHubOAuthUser(login, repositoryAccess = fetchRepositoryAccess(token, repository, login))
+  }
+
+  /**
+   * The other kind of credential a CI caller actually holds: a **GitHub App installation token** —
+   * what `${'$'}{{ github.token }}` / `GITHUB_TOKEN` is inside every GitHub Actions job.
+   *
+   * There is no user behind one, so `GET /user` answers `403 Resource not accessible by
+   * integration` and the user path above can't decide anything about it. What it *can* do is read
+   * the repositories its installation covers, and `GET /repos/{owner}/{repo}` reports the
+   * installation's own `permissions` — which is the grant that matters here: a workflow token
+   * carrying `contents: write` on the gating repo was deliberately given that by the repo's own
+   * configuration.
+   *
+   * Two deliberate narrowings against the user path:
+   * - **Write, always**, public or private. The private-repo "any real grant counts" reasoning is
+   *   about a *person* somebody let in; a machine credential scoped by a workflow file is not that,
+   *   and a read-only workflow token (what a fork's pull_request run gets) must not be able to post
+   *   to the host.
+   * - **Refused outright when the operator narrowed sign-in** with `--github-auth-users`. That list
+   *   names people; an installation token is nobody on it, and silently admitting one would widen a
+   *   gate whose whole point is to be narrow.
+   *
+   * The identity returned is [INSTALLATION_LOGIN] rather than a name, because there isn't one: an
+   * installation token cannot read `GET /app` (that needs the app's JWT). The audit trail says
+   * "some app installation with write on this repo", which is exactly what was verified.
+   */
+  private fun verifyInstallationToken(
+    token: String,
+    repository: String,
+    allowedUsers: Set<String>,
+  ): GitHubOAuthUser {
+    if (allowedUsers.isNotEmpty()) {
+      error("this host admits only named GitHub users, and that is not a user credential")
+    }
+    val permissions =
+      repositoryView(token, repository)?.permissions
+        ?: error("credential is not a GitHub user, and cannot read $repository as an installation")
+    return GitHubOAuthUser(INSTALLATION_LOGIN, repositoryAccess = permissions.write())
   }
 
   private fun exchangeCode(
@@ -787,6 +828,13 @@ class GitHubOAuthVerifier(private val client: OkHttpClient = OkHttpClient()) {
      * costs nothing and survives GitHub widening the legacy field.
      */
     private val WRITE_PERMISSIONS = setOf("admin", "maintain", "write")
+
+    /**
+     * The identity a verified **installation** token is attributed to. Not a login — no user is
+     * behind one — and shaped so it can never collide with a real GitHub login, which cannot
+     * contain a bracket.
+     */
+    const val INSTALLATION_LOGIN = "[app-installation]"
   }
 }
 

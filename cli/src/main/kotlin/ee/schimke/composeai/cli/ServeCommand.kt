@@ -721,7 +721,8 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
 
   /** Uploads per minute per GitHub account (`--image-rate-limit`); `0` disables the budget. */
   private val imageRateLimit: Int =
-    args.flagValue("--image-rate-limit")?.toIntOrNull() ?: DEFAULT_IMAGE_RATE_LIMIT
+    args.flagValue("--image-rate-limit")?.toIntOrNull()?.takeIf { it >= 0 }
+      ?: DEFAULT_IMAGE_RATE_LIMIT
 
   /**
    * The parsed `--catalogs-file`, or the empty config when none is set / it can't be read. A
@@ -1634,6 +1635,10 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         !imageLaneConfigured &&
         adminToken == null
     ) {
+      // An `--accept-images` that couldn't be configured is why we may be here at all, and the
+      // generic line below would tell the operator that flag wasn't set — which they know is false.
+      // Name the missing argument first, before the message that reads as if nothing was asked for.
+      if (acceptImages) System.err.println(IMAGE_LANE_NO_REPO)
       System.err.println(
         "serve: nothing to serve — no --bundle / --bundles / --catalogs registered a session, and " +
           "none of --accept-bundles / --accept-docs / --accept-images / --admin-token is set."
@@ -1783,10 +1788,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     if (!acceptImages) return null
     val repository = imageUploadRepository
     if (repository.isNullOrBlank()) {
-      System.err.println(
-        "serve: --accept-images needs a repository to check uploader access against. Pass " +
-          "--image-upload-repo <owner/repo> (or configure --github-auth-repo). Image lane disabled."
-      )
+      System.err.println(IMAGE_LANE_NO_REPO)
       return null
     }
     System.err.println(
@@ -4613,6 +4615,17 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
      * runaway loop is paced rather than allowed to churn the store. 0 turns the budget off.
      */
     const val DEFAULT_IMAGE_RATE_LIMIT = 60
+
+    /**
+     * Why the image lane didn't start. One constant because two places say it: [openImageLane] when
+     * the rest of the server is coming up anyway, and the nothing-to-serve exit, whose own message
+     * would otherwise be the only thing an operator of a pure image host ever sees — and it reads
+     * as "you didn't ask for a lane" when what happened is "the lane you asked for needs one more
+     * argument".
+     */
+    const val IMAGE_LANE_NO_REPO =
+      "serve: --accept-images needs a repository to check uploader access against. Pass " +
+        "--image-upload-repo <owner/repo> (or configure --github-auth-repo). Image lane disabled."
 
     /**
      * Uploads one account may have in flight at once. One: each upload is a memory write that
