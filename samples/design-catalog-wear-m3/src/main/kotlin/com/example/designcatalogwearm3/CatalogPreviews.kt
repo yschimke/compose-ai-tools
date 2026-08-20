@@ -525,22 +525,23 @@ fun TextMaxLinesTruncated() = WearSticker {
 // `MutableInteractionSource`. Seeding one is what it used to do, and the capture
 // it produced was pixel-identical to the resting `FilledButton` — the reason is
 // the renderer, not the emission: Wear M3's only press affordance is
-// `material-ripple`, which on Android is a platform `RippleDrawable` animated on
-// the Choreographer rather than Compose's `mainClock`, and `RobolectricRenderTest`
-// idles the main looper so that drawable settles ONLY for a `focus.pressed`
-// capture. A hand-seeded press never gets that settle, so it never reaches the
-// PNG. `@FocusedPreview(pressed = true)` takes the path that does, and is also
-// what a real Wear press looks like: focus arrives first over rotary / D-pad,
-// then the press lands on the focused component.
+// `material-ripple`, which on Android is a platform `RippleDrawable` rather than
+// a Compose animation, and `RobolectricRenderTest` settles that drawable ONLY for
+// a `focus.pressed` capture. A hand-seeded press never gets that settle, so it
+// never reaches the PNG. `@FocusedPreview(pressed = true)` takes the path that
+// does, and is also what a real Wear press looks like: focus arrives first over
+// rotary / D-pad, then the press lands on the focused component.
 //
-// That settle had to be resized to make this specimen trustworthy — see
-// `PRESS_SETTLE_MS` in `RobolectricRenderTest`. It used to reuse the Compose-side
-// `FocusController.SETTLE_MS` (250ms), which under-settles the ripple in
-// proportion to how long the Robolectric sandbox has already been running, so
-// this capture rendered a full press when it happened to be early in its shard
-// and no press at all behind the whole catalog. `WearFocusedPressPixelTest` pins
+// Making that settle actually settle is what made this specimen trustworthy — see
+// `settlePressedRipple` in `RobolectricRenderTest`. From Android 12 the platform
+// ripple animates through `RenderNodeAnimator`, i.e. on a RenderThread Robolectric
+// does not have, so it never advanced here at all and the published pixels came
+// down to how many previews had rendered ahead of this one in the same JVM: a full
+// press early in a shard, no press at all behind the whole catalog. The renderer
+// now forces the ripple's software path and steps it on the looper clock, so the
+// same container fill renders at any shard count. `WearFocusedPressPixelTest` pins
 // the result — the pressed capture must differ from BOTH the focused and the
-// resting one — and it now holds at any shard count.
+// resting one.
 //
 // The function names `ButtonPressed` / `ButtonFocused` and the `@CatalogVariant`
 // ids are the join into `catalog.spec.json` — do not rename either.

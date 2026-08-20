@@ -560,20 +560,38 @@ as a hairline; driven, it draws the full ring.
 
 **A pressed capture has to be *settled*, not just dispatched.** Material's press
 affordance is `material-ripple`, which on Android is a platform `RippleDrawable`
-animated on the Choreographer rather than on Compose's `mainClock` — so the
-renderer's paused-clock advance does nothing for it, and `RobolectricRenderTest`
-idles the main looper separately for a `focus.pressed` capture. That window is
-`PRESS_SETTLE_MS`, sized to the ripple's *settled* pixels rather than to its
-nominal ~75ms enter animation, and deliberately not shared with
-`FocusController.SETTLE_MS`. The reason is that the ripple's progress per unit of
-idled looper time falls off the longer a Robolectric sandbox has been reused, so
-a window sized to the animation only settles the first previews of a shard:
-`:samples:design-catalog-wear-m3`'s `ButtonPressed` measured #C2B5DB with 3
-preview rows ahead of it, #D5C8EC with 11, and #D4C8EC behind the full 59-row
-catalog — that last one pixel-identical to the focus-only capture, i.e. a
-"pressed" specimen showing no press. Since `composePreview.shards` auto-sizes off
-a `previews.json` that a cold CI checkout does not have, an under-sized window
-also makes the published pixels differ between jobs rendering the same commit.
+rather than a Compose animation — so the renderer's paused-clock advance does
+nothing for it, and `RobolectricRenderTest` settles it separately, in
+`settlePressedRipple`, for a `focus.pressed` capture.
+
+Settling it needs more than time. From Android 12 a `RippleDrawable` defaults to
+`STYLE_PATTERNED`, whose enter animation runs through
+`RippleAnimationSession.enterHardware` → `RenderNodeAnimator` — the native
+RenderThread, which Robolectric does not have. On this host that animation
+therefore never advances at all, however long anything waits:
+`:samples:design-catalog-wear-m3`'s `ButtonPressed` measured #D4C8EC (pixel-identical
+to the focus-only capture) across 5000ms of idled looper time, 810ms of real
+`Thread.sleep`, 500ms of Compose `mainClock`, and four extra hardware captures
+500ms apart. So `settlePressedRipple` first forces the drawable onto the software
+path (`RippleDrawable.setForceSoftware(true)`, reached reflectively), which runs
+ordinary `ValueAnimator`s off the main looper, then steps it: draw each
+`RippleHostView` offscreen — the session's animators start lazily from `draw()` —
+and idle one frame, repeated over `PRESS_SETTLE_MS`.
+
+**The point of this is reproducibility.** With the hardware path, whether a
+pressed sticker showed a press came down to how many previews had rendered ahead
+of it in the same JVM: `ButtonPressed` measured #C2B5DB with 3 preview rows ahead
+of it, #D5C8EC with 11, and #D4C8EC behind the full 50-row catalog at
+`shards = 1`. Since `composePreview.shards` auto-sizes off a `previews.json` that
+a cold CI checkout does not have, that made the same commit publish different
+pixels from different jobs. On the software path the same #C5B8DE renders at
+400ms, 1600ms and 5000ms of settle, rendered on its own and behind the whole
+catalog. `PressedRippleSoftwarePathTest` in `:renderer-android` pins the hidden
+platform method the workaround leans on, so a `compileSdk` or Robolectric bump
+that removes it fails loudly instead of quietly restoring the coin-flip. The
+cost is a fidelity one and it is small: a real device draws the patterned (AGSL)
+ripple and this publishes the software one, a few units per channel apart — and
+the alternative on this host is no ripple at all.
 
 This is why a hand-seeded `PressInteraction` is not an alternative to the
 annotation on Android: it produces no settle at all, so it renders as no press.

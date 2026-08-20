@@ -1728,21 +1728,14 @@ abstract class RobolectricRenderTestBase(
               rule.mainClock.advanceTimeBy(FocusController.SETTLE_MS)
               currentTime += FocusController.SETTLE_MS
 
-              // Material's ripple / pressed state layer is a platform `RippleDrawable`
-              // animated on the Android looper / `Choreographer`, not Compose's
-              // `mainClock` — so the advance above never progresses it. Idle the main
-              // looper by the same window so the platform animation settles (the pressed
-              // ripple reaches full expansion) before `captureRoboImage`. Gated to
-              // pressed focus captures so ordinary renders keep their existing
-              // deterministic timing; the Android clock and Compose's `mainClock` are
-              // independent, so this advances only platform animations.
-              //
-              // This used to idle for [FocusController.SETTLE_MS], which is a Compose-side
-              // window and silently under-settles the ripple in proportion to how long the
-              // sandbox has been running — see [PRESS_SETTLE_MS] for the measurements and
-              // for why that made a pressed specimen depend on its shard layout.
+              // Material's ripple / pressed state layer is a platform `RippleDrawable`, not a
+              // Compose animation — so the advance above never progresses it, and on this host
+              // its default (patterned) animation never progresses at all. [settlePressedRipple]
+              // moves it onto the software path and steps it on the looper clock; gated to
+              // pressed focus captures so ordinary renders keep their existing deterministic
+              // timing.
               if (focus.pressed) {
-                settlePressedRipple()
+                settlePressedRipple(rule)
               }
             }
 
@@ -2811,32 +2804,25 @@ private fun settlePostScrollAnimations(rule: AndroidComposeTestRule<*, *>) {
  * / chained animations.
  */
 /**
- * Virtual looper time a pressed capture idles so the platform `RippleDrawable` behind Material's
- * pressed state reaches its end state, in milliseconds.
+ * Virtual looper time a pressed capture spends settling Material's platform ripple, in
+ * milliseconds.
  *
- * Deliberately not shared with [FocusController.SETTLE_MS], which is the window for the
- * *Compose-side* settle. The two drive different clocks and want different sizes: the ripple's
- * effective progress per unit of idled looper time falls off the longer the Robolectric sandbox has
- * been reused, so a window sized to the animation's nominal ~75ms only settles the first previews
- * of a shard. Measured on `:samples:design-catalog-wear-m3`'s `ButtonPressed` at `shards = 1`, the
- * 250ms window faded the pressed container from #C2B5DB (3 preview rows ahead of it)
- * through #D5C8EC (11 rows) to #D4C8EC behind the full 59-row catalog — the last of those
- * pixel-identical to the focus-only capture. This is sized to the *settled* pixels instead:
- * `ButtonPressed` renders the same #C2B5DB behind the whole catalog as it does rendered on its own,
- * which is what makes a pressed specimen independent of shard layout.
+ * Deliberately not shared with [FocusController.SETTLE_MS]: that one is the Compose-side settle,
+ * spent on the paused `mainClock`, while this is spent on the Android looper because the ripple is
+ * a platform `RippleDrawable` with its own animators.
  *
- * **Known cost, deliberately accepted.** [settlePressedRipple] idles the looper across the whole
- * window, so any main-looper work a pressed preview scheduled inside it — a `postDelayed`, a
- * platform widget's own timer — runs before the capture rather than at its own time. Two things
- * bound it: the settle is gated to pressed captures, which in this repo is a handful of catalog
- * specimens, and the window is no larger than it has to be. Both cheaper alternatives were tried
- * against the full catalog at `shards = 1` and neither settles the ripple: 1s instead of 5s
- * renders #D4C8EC, and so does stopping early once `ShadowLooper.getNextScheduledTaskTime()`
- * reports nothing due within a frame. A cleaner fix is to end the settle on the ripple's own state
- * — poll `Animatable.isRunning()` on the `RippleHostView`s under the composition — which needs a
- * way to reach those drawables from here that does not exist yet.
+ * Sized off the settled pixels, with [forceSoftwareRipple] in place:
+ * `:samples:design-catalog-wear-m3`'s `ButtonPressed` renders the same `#C5B8DE` container fill at
+ * 400ms, 1600ms and 5000ms of settle, rendered on its own and behind the whole 50-row catalog at
+ * `shards = 1`. 1000ms sits comfortably past where it converges and still costs only ~62 offscreen
+ * draws, on the handful of catalog specimens that ask for a press.
+ *
+ * **The window is not what makes a pressed specimen reproducible — the software path is.** This
+ * constant used to be 5000ms, and idling it was measured to be a complete no-op: 4ms of real time,
+ * not one scheduled callback run, and a `RippleDrawable` byte-identical before and after. See
+ * [settlePressedRipple] for what the pixels actually depended on.
  */
-private const val PRESS_SETTLE_MS = 5_000L
+private const val PRESS_SETTLE_MS = 1_000L
 
 /**
  * Slice size for the [PRESS_SETTLE_MS] settle, in milliseconds. ~1 Choreographer frame at 60Hz.
@@ -2848,19 +2834,159 @@ private const val PRESS_SETTLE_MS = 5_000L
 private const val PRESS_SETTLE_FRAME_MS = 16L
 
 /**
- * Advance the platform (non-Compose) animation clock far enough for a pressed capture's ripple to
- * reach its end state.
+ * Fully-qualified name of the `View` Compose parks Material's platform ripple in.
  *
- * Material's pressed state layer is a platform `RippleDrawable` animated on the Android looper /
- * `Choreographer`, not on Compose's `mainClock` — so the paused-clock advances around the call
- * sites never progress it, and it needs its own settle. Shared by the static per-PNG focus capture
- * and the `@FocusedPreview(gif = true)` per-step capture so a pressed GIF frame cannot drift from a
- * pressed PNG; both gate the call on the step actually being pressed.
+ * Compose-internal, so it is matched by name rather than by type — `:renderer-android` compiles
+ * against the `compose-bom-compat` floor and must not take a dependency on `material-ripple`'s
+ * internals to render a consumer that happens to use them. [settlePressedRipple] degrades to a
+ * warning when the name stops resolving.
  */
-private fun settlePressedRipple() {
+private const val RIPPLE_HOST_VIEW_CLASS = "androidx.compose.material.ripple.RippleHostView"
+
+/** Name of the `RippleDrawable` field on [RIPPLE_HOST_VIEW_CLASS]. */
+private const val RIPPLE_HOST_VIEW_DRAWABLE_FIELD = "ripple"
+
+/**
+ * Drive a pressed capture's platform ripple to its end state on a clock this render controls.
+ *
+ * Material's press affordance is `material-ripple`, which on Android is a platform `RippleDrawable`
+ * — not a Compose animation — so neither the paused `mainClock` advances around the call sites nor
+ * anything else the render loop does moves it. It needs its own settle, and the settle has to be
+ * one that works under Robolectric:
+ *
+ * - **Force the software path.** From Android 12 a `RippleDrawable` defaults to `STYLE_PATTERNED`,
+ *   whose enter animation runs through `RippleAnimationSession.enterHardware` →
+ *   `RenderNodeAnimator`, i.e. on the native RenderThread. Robolectric has no RenderThread, so
+ *   those animators never advance and the wave is drawn at progress zero however long anything
+ *   waits — measured across 5000ms of idled looper time, 810ms of real `Thread.sleep`, 500ms of
+ *   Compose `mainClock`, and four extra hardware captures 500ms apart: `#D4C8EC` every time, which
+ *   is pixel-identical to the focus-only capture. `RippleDrawable.setForceSoftware(true)` moves it
+ *   onto `enterSoftware` → ordinary `ValueAnimator`s, which run off the main looper — a clock
+ *   `ShadowLooper.idleFor` does advance.
+ * - **Draw it, then idle.** The session's animators are started lazily from `draw()`, so the loop
+ *   below draws each `RippleHostView` offscreen and then idles one frame, which is what a real
+ *   frame loop does in the same order. Without the draw there is nothing for the idle to run;
+ *   without the idle the draw only ever records progress zero.
+ *
+ * That combination is what makes the specimen **reproducible**, which is the property it never had.
+ * The hardware path left the published `pressed` sticker depending on how many previews had
+ * rendered ahead of it in the same JVM (`#C2B5DB` with 3 rows ahead, `#D5C8EC` with 11, `#D4C8EC`
+ * behind the full catalog), so the same commit published different pixels from CI jobs that only
+ * differed in shard layout — and `composePreview.shards` auto-sizes off a `previews.json` a cold
+ * checkout does not have, so that difference was routine. With the software path the same `#C5B8DE`
+ * renders at every window and every shard layout.
+ *
+ * Shared by the static per-PNG focus capture and the `@FocusedPreview(gif = true)` per-step capture
+ * so a pressed GIF frame cannot drift from a pressed PNG; both gate the call on the step actually
+ * being pressed.
+ *
+ * **Fidelity note.** A real device draws the patterned (AGSL) ripple, and this publishes the
+ * software one. That is a difference of a few units per channel against the patterned captures this
+ * lane used to produce by luck (`#C5B8DE` vs `#C2B5DB`), and the alternative on this host is not
+ * the patterned ripple but no ripple at all. `PressedRippleSoftwarePathTest` pins the hidden API
+ * this leans on so a Robolectric or `compileSdk` bump that removes it fails loudly instead of
+ * quietly restoring the coin-flip.
+ */
+private fun settlePressedRipple(rule: AndroidComposeTestRule<*, ComponentActivity>) {
   val looper = org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
   val step = java.time.Duration.ofMillis(PRESS_SETTLE_FRAME_MS)
-  repeat((PRESS_SETTLE_MS / PRESS_SETTLE_FRAME_MS).toInt()) { looper.idleFor(step) }
+  val frames = (PRESS_SETTLE_MS / PRESS_SETTLE_FRAME_MS).toInt()
+  val hosts = rippleHostViews(rule)
+  if (hosts.isEmpty()) {
+    // No platform ripple on this preview (a Compose-drawn indication, or a component with none at
+    // all). Keep idling the looper so any other press-driven looper work still comes due.
+    repeat(frames) { looper.idleFor(step) }
+    return
+  }
+  hosts.forEach(::forceSoftwareRipple)
+  val scratch = ScratchCanvas()
+  try {
+    repeat(frames) {
+      hosts.forEach(scratch::draw)
+      looper.idleFor(step)
+    }
+  } finally {
+    scratch.recycle()
+  }
+}
+
+/** Every [RIPPLE_HOST_VIEW_CLASS] under the activity's decor view, in traversal order. */
+private fun rippleHostViews(
+  rule: AndroidComposeTestRule<*, ComponentActivity>
+): List<android.view.View> {
+  val found = mutableListOf<android.view.View>()
+  fun walk(view: android.view.View) {
+    if (view.javaClass.name == RIPPLE_HOST_VIEW_CLASS) found += view
+    if (view is android.view.ViewGroup) {
+      for (i in 0 until view.childCount) walk(view.getChildAt(i))
+    }
+  }
+  runCatching { walk(rule.activity.window.decorView) }
+    .onFailure { System.err.println("pressed settle: could not walk for ripple hosts: $it") }
+  return found
+}
+
+/**
+ * Moves [host]'s `RippleDrawable` onto the software animation path.
+ *
+ * `setForceSoftware` is a hidden platform method and the field holding the drawable is
+ * Compose-internal, so both are reached reflectively — see [settlePressedRipple] for why this is
+ * load-bearing rather than an optimisation, and `PressedRippleSoftwarePathTest` for the guard that
+ * fails when the platform side of it stops existing.
+ */
+private fun forceSoftwareRipple(host: android.view.View) {
+  runCatching {
+    val drawable =
+      host.javaClass
+        .getDeclaredField(RIPPLE_HOST_VIEW_DRAWABLE_FIELD)
+        .apply { isAccessible = true }
+        .get(host) as? android.graphics.drawable.RippleDrawable ?: return
+    val rippleDrawableClass = android.graphics.drawable.RippleDrawable::class.java
+    rippleDrawableClass
+      .getDeclaredMethod("setForceSoftware", Boolean::class.javaPrimitiveType)
+      .apply { isAccessible = true }
+      .invoke(drawable, true)
+  }
+    .onFailure {
+      System.err.println(
+        "pressed settle: could not force the software ripple path ($it) — the pressed capture " +
+          "may publish an unsettled ripple. See settlePressedRipple."
+      )
+    }
+}
+
+/**
+ * A reusable offscreen `Canvas` for stepping a `RippleHostView`'s own draw.
+ *
+ * One bitmap for the whole settle rather than one per frame: the loop draws ~62 times per pressed
+ * capture and the host views are component-sized, but allocating a fresh bitmap each frame would
+ * churn for nothing. The bitmap is grown on demand and recycled at the end of the settle.
+ */
+private class ScratchCanvas {
+  private var bitmap: android.graphics.Bitmap? = null
+
+  fun draw(view: android.view.View) {
+    val width = view.width
+    val height = view.height
+    if (width <= 0 || height <= 0) return
+    val target =
+      bitmap?.takeIf { it.width >= width && it.height >= height }
+        ?: android.graphics.Bitmap.createBitmap(
+            maxOf(width, bitmap?.width ?: 0),
+            maxOf(height, bitmap?.height ?: 0),
+            android.graphics.Bitmap.Config.ARGB_8888,
+          )
+          .also {
+            bitmap?.recycle()
+            bitmap = it
+          }
+    runCatching { view.draw(android.graphics.Canvas(target)) }
+  }
+
+  fun recycle() {
+    bitmap?.recycle()
+    bitmap = null
+  }
 }
 
 private const val POST_SCROLL_SETTLE_MS = 1000L
@@ -3704,15 +3830,12 @@ private fun handleFocusGifCapture(
       rule.mainClock.advanceTimeBy(FocusController.SETTLE_MS)
       rule.mainClock.advanceTimeBy(focusGif.frameDelayMs.toLong())
       // Same platform-ripple settling as the static per-PNG focus block, through the
-      // same helper: a pressed step's Material state layer is a platform
-      // `RippleDrawable` animated on the Android looper, not Compose's `mainClock`, so
-      // the advances above never progress it. Gated per-step so non-pressed frames keep
-      // their deterministic timing. Shared rather than spelled out twice so a pressed GIF
-      // frame cannot settle differently from a pressed PNG — it used to idle for
-      // [FocusController.SETTLE_MS] here, which meant pressed GIF steps stayed
-      // shard-dependent for as long as that window was the one in use.
+      // same helper: a pressed step's Material state layer is a platform `RippleDrawable`, which
+      // the advances above never progress. Gated per-step so non-pressed frames keep their
+      // deterministic timing. Shared rather than spelled out twice so a pressed GIF frame cannot
+      // settle differently from a pressed PNG.
       if (step.pressed) {
-        settlePressedRipple()
+        settlePressedRipple(rule)
       }
       val frameFile = File(framesDir, "frame_$i.png")
       captureDecodableFrame(frameFile, role = "focus GIF") { f ->
