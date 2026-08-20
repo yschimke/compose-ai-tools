@@ -244,26 +244,26 @@
     "serve-design-page-design-lane.dark.png": {
       "fixture": "serve-design-page-design-lane",
       "theme": "dark",
-      "sha256": "7cba043025cee07db63cf295c399bf368abc635ac63762ded0bbf2cd5941e13f",
-      "size": 62807
+      "sha256": "e6ddee50c578361f59e37ef45c7a3ba487009af06202d9a1135497337d8dbc8b",
+      "size": 63282
     },
     "serve-design-page-design-lane.light.png": {
       "fixture": "serve-design-page-design-lane",
       "theme": "light",
-      "sha256": "c65499f4b2663518b8480067d1466e6778f156e8d66cb4ef01baf2ddf14f300b",
-      "size": 61932
+      "sha256": "fb4f930f6588793e9dd5bd712f173fd5af742163d95e88d7098a3de5a6933658",
+      "size": 62357
     },
     "serve-design-page-diff-lane.dark.png": {
       "fixture": "serve-design-page-diff-lane",
       "theme": "dark",
-      "sha256": "6029b1103cf7c9b91e5690bda83d0acdb58272c76af88067e9d081a901ff1593",
-      "size": 67741
+      "sha256": "a2adf8e8beaff4e934b5e25cabdc906a9d8809162823c415b38a7e253d8c59c6",
+      "size": 67865
     },
     "serve-design-page-diff-lane.light.png": {
       "fixture": "serve-design-page-diff-lane",
       "theme": "light",
-      "sha256": "40962e30f1c2d78416d061c42e63840bd5bd7fce8db4a9cab974c60af2e763cf",
-      "size": 66873
+      "sha256": "44b7091775f2356c446a2d57104f8073bf1d4173d7c5576a7a223afe14989be8",
+      "size": 66959
     },
     "serve-design-page-hover.dark.png": {
       "fixture": "serve-design-page-hover",
@@ -916,14 +916,14 @@
     "serve-landing-tree-depth-component-open.dark.png": {
       "fixture": "serve-landing-tree-depth-component-open",
       "theme": "dark",
-      "sha256": "3522e332a2d5e86d57ebba3d3ec08c15762fb1d5a00b0fe2aaf97af9dfbf3a68",
-      "size": 83077
+      "sha256": "4aa53d49857bdf2d119a982ff4e5e17d037bbcdcd90a96448f53280bd0173a75",
+      "size": 77857
     },
     "serve-landing-tree-depth-component-open.light.png": {
       "fixture": "serve-landing-tree-depth-component-open",
       "theme": "light",
-      "sha256": "bcde9d7f8bff9d47fcb418387462a824c97386bdf3f8dac1c93cee9dd47eb55a",
-      "size": 75627
+      "sha256": "89271828bd435ebe7944da3aa32e662319723aa8eb8eb3580f6226db05ced580",
+      "size": 81974
     },
     "serve-landing-tree-depth.dark.png": {
       "fixture": "serve-landing-tree-depth",
