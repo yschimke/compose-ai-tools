@@ -153,6 +153,66 @@ class PreviewDataTest {
   }
 
   @Test
+  fun `a whole kit assignment round-trips through the preview manifest`() {
+    // The coupled-axis case: the Wear kit's `Button` set has no
+    // `Icon=Yes, Icon size=n/a, Alignment=Center` node, so the cell that lands on a real one turns
+    // three knobs — and one kitAxis has no way to say which of them it names.
+    val preview =
+      PreviewInfo(
+        id = "test.Button_VARIANT_icon-large",
+        functionName = "FilledButton",
+        className = "test.ButtonsKt",
+        catalog = CatalogEntry(role = CatalogRole.COMPONENT, componentId = "Button/Filled"),
+        overrides =
+          OverrideVariantSpec(
+            name = "icon-large",
+            seeds =
+              listOf(
+                OverrideSeed(key = "icon", kind = OverrideSeedKind.BOOLEAN, raw = "true"),
+                OverrideSeed(key = "iconSize", kind = OverrideSeedKind.STRING, raw = "lrg-32"),
+                OverrideSeed(key = "alignment", kind = OverrideSeedKind.STRING, raw = "left"),
+              ),
+            kitProps =
+              listOf(
+                CatalogVariantProp("Icon", "Yes"),
+                CatalogVariantProp("Icon size", "Lrg 32"),
+                CatalogVariantProp("Alignment", "Left"),
+              ),
+          ),
+      )
+    val manifest = PreviewManifest(module = "app", variant = "debug", previews = listOf(preview))
+
+    val decoded = json.decodeFromString<PreviewManifest>(json.encodeToString(manifest))
+
+    assertThat(decoded.previews.single().overrides?.kitProps?.map { it.key to it.value })
+      .containsExactly("Icon" to "Yes", "Icon size" to "Lrg 32", "Alignment" to "Left")
+    // The knob seeds stay: they say how the render was produced, which is the renderer's business.
+    // `kitProps` says only what it is compared against.
+    assertThat(decoded.previews.single().overrides?.seeds).hasSize(3)
+  }
+
+  @Test
+  fun `a cell that declares no kit assignment carries an empty one`() {
+    val preview =
+      PreviewInfo(
+        id = "test.Switch_VARIANT_off",
+        functionName = "SwitchOn",
+        className = "test.CatalogKt",
+        overrides =
+          OverrideVariantSpec(
+            name = "off",
+            seeds =
+              listOf(OverrideSeed(key = "checked", kind = OverrideSeedKind.BOOLEAN, raw = "false")),
+          ),
+      )
+    val manifest = PreviewManifest(module = "app", variant = "debug", previews = listOf(preview))
+
+    val decoded = json.decodeFromString<PreviewManifest>(json.encodeToString(manifest))
+
+    assertThat(decoded.previews.single().overrides?.kitProps).isEmpty()
+  }
+
+  @Test
   fun `motionPreview round-trips through preview manifest and defaults to null`() {
     // The design-artifacts export reads this off `previews.json` to decide which function's
     // recordings publish on a component. A rename or a dropped field here does not fail anything —

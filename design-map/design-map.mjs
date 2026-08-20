@@ -311,6 +311,32 @@ function foldSeeds(catalog) {
 function cellSeeds(overrides, catalog) {
   if (!overrides) return { seeds: [], unattached: [] };
 
+  // A cell that declares the kit's WHOLE assignment compares against that assignment, and the knob
+  // seeds do not enter resolution at all.
+  //
+  // Not a merge, and the reason is that a resolver has to place EVERY seed it is given: one extra
+  // knob seed that aliases to nothing kills the whole cell, so carrying both vectors would make a
+  // fully-declared cell fail for the sake of information the declaration already supersedes. The
+  // knobs still say how the render was produced — that is the renderer's business and it is
+  // recorded on the preview — while `kitProps` says what it is compared against. Keeping those two
+  // apart is what lets a catalog hold a better default than the kit and still compare honestly.
+  //
+  // Each entry is emitted as its own seed carrying both halves of the declaration, which is the
+  // shape a resolver already reads per seed. The `key` is the kit's own axis name rather than a
+  // knob key: there is no knob to name here, and inventing one would be a third spelling of a fact
+  // that already has two.
+  if (overrides.kitProps?.length) {
+    return {
+      seeds: overrides.kitProps.map((p) => ({
+        key: p.key,
+        raw: p.value,
+        kitAxis: p.key,
+        kitValue: p.value,
+      })),
+      unattached: [],
+    };
+  }
+
   const seeds = overrides.props?.length
     ? overrides.props.map((p) => ({ key: p.key, raw: p.value }))
     : (overrides.seeds ?? []).map((s) => ({ key: s.key, raw: s.raw }));
