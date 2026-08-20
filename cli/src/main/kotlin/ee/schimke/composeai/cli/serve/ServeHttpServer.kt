@@ -98,7 +98,8 @@ import kotlinx.serialization.json.Json
 class ServeHttpServer(
   private val host: String,
   requestedPort: Int,
-  private val token: String,
+  /** The operator's own browse token (`--token`). Read through [serverToken]. */
+  token: String,
   private val sessions: ServeSessionRegistry,
   private val defaultSessionId: String,
   /** When non-null, enables `POST /bundles/{name}` for clients to contribute bundles at runtime. */
@@ -290,6 +291,24 @@ class ServeHttpServer(
    * (playground + live WebSocket sessions) require a signed-in GitHub account.
    */
   private val githubAuth: ServeGithubAuth? = null,
+  /**
+   * When non-null, enables **agent access grants**: `POST /agent-access/request` opens a request,
+   * `GET /agent-access/{id}` is the human approval page, and `POST /agent-access/poll` hands the
+   * minted bearer to the agent that asked. Supplied by `--agent-grants`. See
+   * [docs/design/AGENT_ACCESS_GRANTS.md](../../../../../../../../docs/design/AGENT_ACCESS_GRANTS.md).
+   *
+   * A grant satisfies the same three gates a human does — [rejectBadToken],
+   * [rejectMissingGithubAuth], [rejectMissingGithubRepoAccess] — so enabling this adds one new way
+   * to answer the existing questions and no new surface behind them.
+   */
+  private val agentGrants: ServeAgentGrantStore? = null,
+  /**
+   * Per-caller budget on the two **ungated** grant routes (`request` and `poll`), keyed by client
+   * address. Ungated is the point — an agent with no credential must be able to ask — so this is
+   * the only thing standing between the route and an anonymous caller filling the request map. Null
+   * ⇒ unlimited, which is right for a single-user local host.
+   */
+  private val agentGrantLimiter: ServeRateLimiter? = null,
   /**
    * Observability for the playground lane on `/status.json` — which posture admitted it, whether
    * the configured jail actually contains anything on this host, and whether each mode's classpath
@@ -559,9 +578,7 @@ class ServeHttpServer(
             // token through its links — so on a token-gated box the styled page would have handed
             // the secret to any unauthenticated request for a made-up path, which is every scanner.
             // An unauthorized caller gets the same bare 404 the token gate itself answers with.
-            val provided =
-              current.request.queryParameters["token"] ?: current.request.headers[TOKEN_HEADER]
-            if (!isAuthorized(token, provided, isPublic)) {
+            if (!current.isAuthorizedCall()) {
               current.respondText("not found", status = HttpStatusCode.NotFound)
               finish()
               return@intercept
@@ -571,7 +588,7 @@ class ServeHttpServer(
             current.respondText(
               ServeWeb.notFoundPage(
                 "That page was not found on this site.",
-                token,
+                current.linkToken(),
                 isPublic,
                 version = BUNDLE_VERSION,
                 siteName = skin.first,
@@ -682,6 +699,29 @@ class ServeHttpServer(
           // to the auth object, so the site config keeps one home.
           get(ServeGithubAuth.START_PATH) { with(auth) { handleStart(sites.hosts) } }
           get(ServeGithubAuth.CALLBACK_PATH) { with(auth) { handleCallback(sites.hosts) } }
+        }
+
+        // The agent-grant lane (`--agent-grants`): an agent with no credential asks for one, a
+        // human approves it in a browser, and the agent collects a short-lived bearer. See
+        // [docs/design/AGENT_ACCESS_GRANTS.md](../../../../../../../../docs/design/AGENT_ACCESS_GRANTS.md).
+        //
+        // `request` and `poll` are deliberately **ungated** — an agent that could already
+        // authenticate would have no reason to be here — so both are per-address rate limited and
+        // neither grants anything on its own: `request` only parks an entry a human must act on,
+        // and `poll` answers only to the device secret it minted. The approval routes are the
+        // opposite: they require a real operator identity and are the one place a grant is born.
+        //
+        // Constant first segments, so they outscore the `/{system}` catch-all.
+        agentGrants?.let { store ->
+          post(ServeAgentGrants.REQUEST_PATH) { handleAgentGrantRequest(store) }
+          post(ServeAgentGrants.POLL_PATH) { handleAgentGrantPoll(store) }
+          post(ServeAgentGrants.REVOKE_PATH) { handleAgentGrantRevoke(store) }
+          get(ServeAgentGrants.WHOAMI_PATH) { handleAgentGrantWhoami(store) }
+          get("${ServeAgentGrants.BASE_PATH}/{requestId}") { handleAgentGrantPage(store) }
+          post("${ServeAgentGrants.BASE_PATH}/{requestId}") { handleAgentGrantDecision(store) }
+          post("${ServeAgentGrants.BASE_PATH}/{grantId}/revoke") {
+            handleAgentGrantRevokeFromStatus(store)
+          }
         }
 
         // `/status` — the operator/observer view of this running host: published catalogs + their
@@ -1265,7 +1305,7 @@ class ServeHttpServer(
       if (basePath.isEmpty() && siteSystem() == null && webSessionId != null) {
         add("session=${WebEscaping.urlEncodeSegment(webSessionId)}")
       }
-      if (!isPublic) add("token=${WebEscaping.urlEncodeSegment(token)}")
+      if (!isPublic) add("token=${WebEscaping.urlEncodeSegment(linkToken())}")
     }
       .joinToString("&")
     val result =
@@ -1689,7 +1729,7 @@ class ServeHttpServer(
     call.respondText(
       ServeWeb.notFoundPage(
         message,
-        token,
+        linkToken(),
         isPublic,
         unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
         version = BUNDLE_VERSION,
@@ -1712,7 +1752,7 @@ class ServeHttpServer(
     markGeneration("static-page", pageCacheControl())
     call.respondText(
       ServeWeb.docUploadPage(
-        token = token,
+        token = linkToken(),
         isPublic = isPublic,
         ttlSeconds = store.ttlSeconds,
         urlUploadAllowed = store.urlFetchAllowed,
@@ -1826,7 +1866,7 @@ class ServeHttpServer(
     markGeneration("static-page", pageCacheControl())
     call.respondText(
       ServeWeb.playgroundPage(
-        token = token,
+        token = linkToken(),
         isPublic = isPublic,
         catalogs = siteScopedCatalogChoices(service),
         catalogSelectorEnabled = service.catalogSelectorEnabled,
@@ -1866,7 +1906,7 @@ class ServeHttpServer(
     markGeneration("static-page", DYNAMIC_RESOURCE_CACHE_CONTROL)
     call.respondText(
       ServeWeb.playgroundDisabledPage(
-        token = token,
+        token = linkToken(),
         isPublic = isPublic,
         unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
         version = BUNDLE_VERSION,
@@ -1906,7 +1946,7 @@ class ServeHttpServer(
         // `/{session}/ws/{preview}` lane streams it and enforces the live-seat budget. Carry the
         // token so the token-gated viewer + WS accept the follow-on requests.
         val suffix =
-          if (isPublic) "" else "?token=" + java.net.URLEncoder.encode(token, Charsets.UTF_8)
+          if (isPublic) "" else "?token=" + java.net.URLEncoder.encode(linkToken(), Charsets.UTF_8)
         call.respondRedirect("/${outcome.sessionId}/p/${outcome.previewId}$suffix")
       }
     }
@@ -2152,7 +2192,7 @@ class ServeHttpServer(
           width = size?.width,
           height = size?.height,
         ),
-        token = token,
+        token = linkToken(),
         isPublic = isPublic,
         unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
         version = BUNDLE_VERSION,
@@ -2604,7 +2644,7 @@ class ServeHttpServer(
         ServeWeb.landingPage(
           renderHost.label,
           renderHost.previews,
-          token,
+          linkToken(),
           webSessionId,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           isPublic = isPublic,
@@ -2890,7 +2930,7 @@ class ServeHttpServer(
         ServeWeb.comparisonPage(
           moduleLabel = renderHost.label,
           previews = renderHost.previews,
-          token = token,
+          token = linkToken(),
           sessionId = webSessionId,
           basePath = basePath,
           isPublic = isPublic,
@@ -2973,7 +3013,7 @@ class ServeHttpServer(
         ServeWeb.parityPage(
           moduleLabel = renderHost.label,
           dashboard = dashboard,
-          token = token,
+          token = linkToken(),
           sessionId = webSessionId,
           basePath = basePath,
           isPublic = isPublic,
@@ -3155,7 +3195,7 @@ class ServeHttpServer(
         ServeWeb.motionIndexPage(
           moduleLabel = renderHost.label,
           previews = previews,
-          token = token,
+          token = linkToken(),
           sessionId = webSessionId,
           basePath = basePath,
           isPublic = isPublic,
@@ -3189,7 +3229,7 @@ class ServeHttpServer(
         ServeWeb.designPagesIndexPage(
           moduleLabel = renderHost.label,
           pages = pages,
-          token = token,
+          token = linkToken(),
           sessionId = webSessionId,
           basePath = basePath,
           isPublic = isPublic,
@@ -3253,7 +3293,7 @@ class ServeHttpServer(
           // Resolved against what this session actually publishes, so a node mapped to a preview
           // the catalog dropped renders as a plain outline instead of a broken image.
           renderablePreviewIds = renderHost.previews.mapTo(HashSet()) { it.id },
-          token = token,
+          token = linkToken(),
           sessionId = webSessionId,
           basePath = basePath,
           isPublic = isPublic,
@@ -3361,7 +3401,7 @@ class ServeHttpServer(
           preview = preview,
           reference = reference,
           references = references,
-          token = token,
+          token = linkToken(),
           sessionId = webSessionId,
           basePath = basePath,
           isPublic = isPublic,
@@ -3744,7 +3784,7 @@ class ServeHttpServer(
     // generic sample, which is precisely the dead affordance this link is supposed to never be.
     if (catalogBundleHost(host)?.catalogSource == null) return null
     val from = WebEscaping.urlEncodeSegment(system) + "/" + WebEscaping.urlEncodeSegment(previewId)
-    val token = if (isPublic) "" else "&token=" + WebEscaping.urlEncodeSegment(token)
+    val token = if (isPublic) "" else "&token=" + WebEscaping.urlEncodeSegment(linkToken())
     return "/playground?from=$from$token"
   }
 
@@ -3771,7 +3811,7 @@ class ServeHttpServer(
     if (!playgroundReachable()) return null
     if (playgroundService == null) return null
     if (!playgroundService.compilesCatalog(system)) return null
-    val token = if (isPublic) "" else "&token=" + WebEscaping.urlEncodeSegment(token)
+    val token = if (isPublic) "" else "&token=" + WebEscaping.urlEncodeSegment(linkToken())
     return "/playground?catalog=${WebEscaping.urlEncodeSegment(system)}$token"
   }
 
@@ -3873,7 +3913,7 @@ class ServeHttpServer(
     call.respondText(
       ServeWeb.homeIndexPage(
         systems,
-        token,
+        linkToken(),
         isPublic = isPublic,
         componentBrowser = componentBrowserMode(),
         version = BUNDLE_VERSION,
@@ -4106,8 +4146,11 @@ class ServeHttpServer(
     } else {
       call.respondText(
         ServeWeb.statusPage(
-          data.toView(),
-          token,
+          data.toView(
+            agentGrants = agentGrantStatusRows(),
+            agentGrantRequests = agentGrantRequestRows(),
+          ),
+          linkToken(),
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
           version = BUNDLE_VERSION,
           siteName = skin.first,
@@ -4276,7 +4319,7 @@ class ServeHttpServer(
               if (isPublic) ""
               else
                 (if (overrideSuffix.isEmpty()) "?" else "&") +
-                  "token=${WebEscaping.urlEncodeSegment(token)}"
+                  "token=${WebEscaping.urlEncodeSegment(linkToken())}"
             "$basePath/render/${WebEscaping.urlEncodeSegment(it)}.png$overrideSuffix$gate"
           },
         login = githubAuth?.currentLogin(call),
@@ -4296,7 +4339,7 @@ class ServeHttpServer(
         siteName = skin.first,
         themeCss = skin.second,
         themeStorageKey = skin.third,
-        navSuffix = if (isPublic) "" else "?token=${WebEscaping.urlEncodeSegment(token)}",
+        navSuffix = if (isPublic) "" else "?token=${WebEscaping.urlEncodeSegment(linkToken())}",
       ),
       ContentType.Text.Html,
     )
@@ -5053,6 +5096,27 @@ class ServeHttpServer(
             // has actually rendered so a quiet server doesn't advertise a block of zeros.
             running.mapNotNull { it.renderStats }.filter { it.renders + it.cacheHits + it.busy > 0 }
           ),
+        agentAccess =
+          agentGrants?.let { store ->
+            val now = System.currentTimeMillis()
+            val live = store.activeGrants()
+            AgentAccessDto(
+              activeGrants = live.size,
+              pendingRequests = store.pendingRequests().size,
+              maxScope = store.maxScope.wire,
+              maxTtlSeconds = store.maxGrantTtlSeconds,
+              grants =
+                live.map { grant ->
+                  AgentGrantDto(
+                    fingerprint = grant.fingerprint,
+                    scopes = grant.scopes.map { it.wire },
+                    approvedBy = grant.approvedBy,
+                    expiresInSeconds = grant.secondsUntilExpiry(now),
+                    label = grant.label,
+                  )
+                },
+            )
+          },
         playground =
           playgroundHealth?.invoke()?.let { h ->
             PlaygroundDto(
@@ -5124,7 +5188,15 @@ class ServeHttpServer(
       )
     }
 
-    fun toView(): ServeWeb.StatusView {
+    /**
+     * [agentGrants] / [agentGrantRequests] are passed in rather than collected here: whether a row
+     * gets a revoke button depends on who is *reading the page*, which is a routing-layer fact this
+     * snapshot has no business knowing.
+     */
+    fun toView(
+      agentGrants: List<ServeWeb.StatusAgentGrant> = emptyList(),
+      agentGrantRequests: List<ServeWeb.StatusAgentRequest> = emptyList(),
+    ): ServeWeb.StatusView {
       val seatsText =
         if (liveSeats.unbounded) "unbounded"
         else "${liveSeats.availablePermits()} free / ${liveSeats.totalPermits}"
@@ -5249,6 +5321,8 @@ class ServeHttpServer(
           ),
         )
       return ServeWeb.StatusView(
+        agentGrants = agentGrants,
+        agentGrantRequests = agentGrantRequests,
         version = BUNDLE_VERSION,
         public = isPublic,
         nowMillis = nowMillis,
@@ -5543,7 +5617,7 @@ class ServeHttpServer(
       call.respondText("not found", status = HttpStatusCode.NotFound)
       return
     }
-    val suffix = if (isPublic) "" else "?token=" + WebEscaping.urlEncodeSegment(token)
+    val suffix = if (isPublic) "" else "?token=" + WebEscaping.urlEncodeSegment(linkToken())
     val components =
       listedCatalogs().flatMap { system ->
         sessions.peekHost(system)?.let { rememberCatalogMeta(system, it) }
@@ -6032,7 +6106,7 @@ class ServeHttpServer(
           call.respondText(
             ServeWeb.unavailablePreviewRevisionPage(
               previewId = previewId,
-              token = token,
+              token = linkToken(),
               sessionId = webSessionId,
               basePath = basePath,
               isPublic = isPublic,
@@ -6060,7 +6134,7 @@ class ServeHttpServer(
       val wasmSrc =
         if (!wasmCatalogs.containsKey(sessionId)) null
         else if (!isPublic && sessionId in privateWasmCatalogs)
-          ServeUrls.privateWasmAppSrc(sessionId, preview.id, token)
+          ServeUrls.privateWasmAppSrc(sessionId, preview.id, linkToken())
         else ServeUrls.wasmAppSrc(sessionId, preview.id)
       // Grant the Wasm iframe its real origin only for a TRUSTED catalog's app — an unverified
       // catalog's `/wasm/` app stays opaque-origin sandboxed so it can't reach the parent viewer.
@@ -6175,7 +6249,7 @@ class ServeHttpServer(
       call.respondText(
         ServeWeb.viewerPage(
           preview,
-          token,
+          linkToken(),
           webSessionId,
           canApplyOverrides = renderHost.canApplyOverrides,
           // Per-preview: a catalog-live host can only re-render an override on a daemon-twinned
@@ -7582,12 +7656,16 @@ class ServeHttpServer(
    * post-handshake (can't 404 after upgrade) — a bad token closes immediately.
    */
   private suspend fun DefaultWebSocketServerSession.serveStreamLane() {
-    val provided = call.request.queryParameters["token"] ?: call.request.headers[TOKEN_HEADER]
-    if (!isAuthorized(token, provided, isPublic)) {
+    if (!call.isAuthorizedCall()) {
       close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "unauthorized"))
       return
     }
-    if (githubAuth?.isAuthenticated(call) == false) {
+    // Same rule as [rejectMissingGithubAuth], stated here because a socket can't be redirected to a
+    // sign-in: a signed-in visitor, or an agent grant that reaches `live`.
+    if (
+      githubAuth?.isAuthenticated(call) == false &&
+        agentGrantFor(call)?.allows(ServeAgentGrantScope.LIVE) != true
+    ) {
       close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "github auth required"))
       return
     }
@@ -7732,20 +7810,96 @@ class ServeHttpServer(
   /**
    * Token gate: respond 404 (not 401 — don't confirm the server to a scanner) and return true when
    * the request's `?token=` / `X-Compose-Preview-Token` doesn't match. Constant-time compare.
+   *
+   * A live **agent grant** ([ServeAgentGrantStore]) presented in the same place is the other way to
+   * pass, at [ServeAgentGrantScope.PREVIEW] — the lowest rung, which every grant carries. That is
+   * the whole integration: an agent presents its bearer exactly where the operator token goes, and
+   * no route learns anything new.
    */
   private suspend fun RoutingContext.rejectBadToken(): Boolean {
-    val provided = call.request.queryParameters["token"] ?: call.request.headers[TOKEN_HEADER]
-    if (isAuthorized(token, provided, isPublic)) return false
+    if (callIsAuthorized()) return false
     call.respondText("not found", status = HttpStatusCode.NotFound)
     return true
+  }
+
+  /**
+   * Whether this call may see the server at all — the operator token, a public box, or a live agent
+   * grant. Split out of [rejectBadToken] because the site-404 interceptor asks the same question
+   * before routing, and two copies of an authorisation rule is one copy too many.
+   */
+  private fun RoutingContext.callIsAuthorized(): Boolean = call.isAuthorizedCall()
+
+  private fun ApplicationCall.isAuthorizedCall(): Boolean {
+    val provided = request.queryParameters["token"] ?: request.headers[TOKEN_HEADER]
+    if (isAuthorized(serverToken, provided, isPublic)) return true
+    return agentGrantFor(this)?.allows(ServeAgentGrantScope.PREVIEW) == true
+  }
+
+  /**
+   * The operator's own browse token, under a name that makes its two legitimate uses obvious: an
+   * authorisation compare, or a deliberate decision to put the operator's own credential into a
+   * page. The second is almost never what a handler wants — see [linkToken], which is why this is
+   * spelled differently from the constructor parameter rather than shadowing it.
+   */
+  private val serverToken: String = token
+
+  /**
+   * The credential to thread into the links, form actions and asset `src`s of a page this request
+   * is about to be answered with.
+   *
+   * This exists because of a hole the agent-grant lane would otherwise open. On a token-gated
+   * server every generated link carries `?token=<the operator's own token>` — that is simply how
+   * the UI stays navigable. So the moment a grant could load *any* HTML page, it would read the
+   * operator's permanent, unscoped, unrevocable credential straight out of the markup: an agent
+   * handed twenty minutes of `preview` would walk away with the keys to the box, which is precisely
+   * the trade this whole feature exists to abolish.
+   *
+   * The fix is to stop treating "the server's token" and "the token this page's links should carry"
+   * as the same thing. A caller presenting a live grant gets pages wired with **their own** grant
+   * token — which passes every gate they are entitled to pass, so the UI is fully navigable — and
+   * everyone else gets [serverToken] exactly as before. A `--public` server puts no token in its
+   * links at all, so none of this applies there.
+   *
+   * See also [isAuthorizedAccessParam], the one place a credential arrives in a *path* segment
+   * rather than a query string, which has to accept the same two answers.
+   */
+  private fun RoutingContext.linkToken(): String = call.linkToken()
+
+  private fun ApplicationCall.linkToken(): String = agentGrantFor(this)?.token ?: serverToken
+
+  /**
+   * Whether a credential arriving as a **path** segment (`/wasm-private/{access}/…`) is one this
+   * server accepts. The operator's token, or a live grant that reaches
+   * [ServeAgentGrantScope.PREVIEW] — the same two answers [linkToken] can produce, because the page
+   * that builds these URLs embeds whichever one its reader presented.
+   */
+  private fun isAuthorizedAccessParam(value: String?): Boolean =
+    ServeUrls.tokensMatch(serverToken, value) ||
+      agentGrants?.grantForToken(value)?.allows(ServeAgentGrantScope.PREVIEW) == true
+
+  /**
+   * The live grant this call presents, or null. Reads the same two places the operator token is
+   * read from, plus `Authorization: Bearer` — an agent's HTTP client reaches for that header
+   * without being told to, and refusing it would be a papercut with no security value: the bearer
+   * is checked identically wherever it arrives.
+   */
+  private fun agentGrantFor(call: ApplicationCall): ServeAgentGrantStore.Grant? {
+    val store = agentGrants ?: return null
+    val bearer =
+      call.request.headers[HttpHeaders.Authorization]
+        ?.takeIf { it.startsWith(BEARER_PREFIX, ignoreCase = true) }
+        ?.substring(BEARER_PREFIX.length)
+        ?.trim()
+    val presented =
+      call.request.headers[TOKEN_HEADER] ?: bearer ?: call.request.queryParameters["token"]
+    return store.grantForToken(presented)
   }
 
   private suspend fun RoutingContext.handleWasmAsset(privateRoute: Boolean) {
     val system = call.parameters["system"]
     val privateSystem = system in privateWasmCatalogs
     if (
-      (privateRoute &&
-        (!privateSystem || !ServeUrls.tokensMatch(token, call.parameters["access"]))) ||
+      (privateRoute && (!privateSystem || !isAuthorizedAccessParam(call.parameters["access"]))) ||
         (!privateRoute && privateSystem && !isPublic)
     ) {
       call.respondText("not found", status = HttpStatusCode.NotFound)
@@ -7781,9 +7935,524 @@ class ServeHttpServer(
     call.respondBytes(bytes, wasmContentType(file.name))
   }
 
+  // ------------------------------------------------------------ agent grants
+
+  /**
+   * The live-grant rows for `/status`, with a revoke seal **only** when this reader is an operator.
+   *
+   * A grant-bearing agent that fetches `/status` sees the table (it passes the token gate, so it
+   * would see the page regardless) but gets no seals, so it cannot revoke anything — including its
+   * neighbours. Nothing here ever carries a token: [ServeAgentGrantStore.Grant.fingerprint] is the
+   * only form of one this page knows.
+   */
+  private fun RoutingContext.agentGrantStatusRows(): List<ServeWeb.StatusAgentGrant> {
+    val store = agentGrants ?: return emptyList()
+    val approver = agentGrantApprover(store)
+    val now = System.currentTimeMillis()
+    return store.activeGrants().map { grant ->
+      ServeWeb.StatusAgentGrant(
+        id = grant.id,
+        fingerprint = grant.fingerprint,
+        scopes = grant.scopes.joinToString(", ") { it.wire },
+        label = grant.label,
+        approvedBy = grant.approvedBy,
+        expiresInText = ServeAgentGrants.formatDuration(grant.secondsUntilExpiry(now)),
+        revokeCsrf =
+          approver?.let {
+            agentGrantCsrf.seal(grant.id, it.name, ServeAgentGrants.Csrf.ACTION_DENY)
+          } ?: "",
+      )
+    }
+  }
+
+  /**
+   * Requests still waiting on a human — shown **only to an operator**, because this table is a list
+   * of decisions to make and a "Review →" link straight into the approval page.
+   *
+   * It also solves the token-gated box's awkward moment: the agent's printed link has no `?token=`,
+   * so an operator can instead reach the request from the `/status` they already have open with the
+   * token in the URL, verification code and all.
+   */
+  private fun RoutingContext.agentGrantRequestRows(): List<ServeWeb.StatusAgentRequest> {
+    val store = agentGrants ?: return emptyList()
+    agentGrantApprover(store) ?: return emptyList()
+    val now = System.currentTimeMillis()
+    return store.pendingRequests().map { request ->
+      ServeWeb.StatusAgentRequest(
+        id = request.id,
+        userCode = request.userCode,
+        label = request.label,
+        client = request.client,
+        requestedScope = request.requestedScope.wire,
+        expiresInText = ServeAgentGrants.formatDuration(request.secondsUntilExpiry(now)),
+      )
+    }
+  }
+
+  /**
+   * `POST /agent-access/request` — an agent, holding nothing, asks for access.
+   *
+   * Ungated by design and therefore the most exposed route on the box, so what it can actually do
+   * is kept deliberately small: it parks one bounded entry in a bounded map and returns two random
+   * strings. It reads no session, touches no daemon, and confers nothing — a human still has to act
+   * before any credential exists.
+   */
+  /**
+   * The per-process seal on the approval form. Constructed here rather than injected because it has
+   * no configuration and no lifetime beyond this server: a restart drops every grant request, so
+   * seals minted before it have nothing left to protect.
+   */
+  private val agentGrantCsrf = ServeAgentGrants.Csrf()
+
+  private suspend fun RoutingContext.handleAgentGrantRequest(store: ServeAgentGrantStore) {
+    val permit = acquireAgentGrantPermit() ?: return
+    try {
+      val body =
+        withContext(Dispatchers.IO) {
+          call.receiveStream().use { readCapped(it, MAX_AGENT_GRANT_BYTES) }
+        }
+      if (body == null) {
+        call.respondText("request too large", status = HttpStatusCode.PayloadTooLarge)
+        return
+      }
+      // An empty body is the honest minimum ask — `curl -X POST .../request` should work — so it
+      // means "the defaults", not "malformed".
+      val text = body.decodeToString().trim()
+      val parsed =
+        if (text.isEmpty()) ServeAgentGrants.OpenRequest()
+        else
+          try {
+            JSON.decodeFromString(ServeAgentGrants.OpenRequest.serializer(), text)
+          } catch (e: Exception) {
+            call.respondText("invalid request: ${e.message}", status = HttpStatusCode.BadRequest)
+            return
+          }
+      val scope = ServeAgentGrantScope.parse(parsed.scope) ?: ServeAgentGrantScope.DEFAULT_REQUEST
+      val ttl =
+        parsed.ttlSeconds.takeIf { it > 0 } ?: ServeAgentGrantStore.DEFAULT_GRANT_TTL_SECONDS
+      val request =
+        store.openRequest(
+          label = parsed.label,
+          // The address, not a name the caller chose: the approval page's "who is asking" must be
+          // something the asker cannot write. The label right above it is theirs to write, and is
+          // presented as such.
+          client = call.request.origin.remoteHost,
+          requestedScope = scope,
+          requestedTtlSeconds = ttl,
+        )
+      if (request == null) {
+        call.response.headers.append(HttpHeaders.RetryAfter, "60")
+        call.respondText(
+          "too many pending access requests on this server; try again shortly",
+          status = HttpStatusCode.TooManyRequests,
+        )
+        return
+      }
+      val origin = externalOrigin()
+      call.respondText(
+        JSON.encodeToString(
+          ServeAgentGrants.OpenResponse.serializer(),
+          ServeAgentGrants.OpenResponse(
+            requestId = request.id,
+            deviceSecret = request.deviceSecret,
+            userCode = request.userCode,
+            approveUrl = origin + ServeAgentGrants.approvalPath(request.id),
+            pollUrl = origin + ServeAgentGrants.POLL_PATH,
+            expiresInSeconds = request.secondsUntilExpiry(System.currentTimeMillis()),
+            pollIntervalSeconds = ServeAgentGrantStore.POLL_INTERVAL_SECONDS,
+            requestedScope = request.requestedScope.wire,
+            requestedTtlSeconds = request.requestedTtlSeconds,
+            maxScope = store.maxScope.wire,
+            maxTtlSeconds = store.maxGrantTtlSeconds,
+          ),
+        ),
+        ContentType.Application.Json,
+      )
+    } finally {
+      permit.release()
+    }
+  }
+
+  /**
+   * `POST /agent-access/poll` — the agent collects the outcome, proving possession of the device
+   * secret it was issued.
+   *
+   * Every negative answer is a 200 with a status field rather than an HTTP error, because "not yet"
+   * is the expected case and a poller should not have to distinguish a pending grant from a broken
+   * server by status code. An unknown id and a wrong secret give the same answer, deliberately.
+   */
+  private suspend fun RoutingContext.handleAgentGrantPoll(store: ServeAgentGrantStore) {
+    val permit = acquireAgentGrantPermit() ?: return
+    try {
+      val body =
+        withContext(Dispatchers.IO) {
+          call.receiveStream().use { readCapped(it, MAX_AGENT_GRANT_BYTES) }
+        }
+      val parsed =
+        try {
+          JSON.decodeFromString(
+            ServeAgentGrants.PollRequest.serializer(),
+            body?.decodeToString()?.trim().orEmpty().ifEmpty { "{}" },
+          )
+        } catch (e: Exception) {
+          call.respondText("invalid poll: ${e.message}", status = HttpStatusCode.BadRequest)
+          return
+        }
+      val response =
+        when (val outcome = store.poll(parsed.requestId, parsed.deviceSecret)) {
+          is ServeAgentGrantStore.Poll.Pending ->
+            ServeAgentGrants.PollResponse(
+              status = ServeAgentGrants.PollResponse.PENDING,
+              retryAfterSeconds = ServeAgentGrantStore.POLL_INTERVAL_SECONDS,
+              expiresInSeconds = outcome.secondsUntilExpiry,
+              message = "waiting for a human to approve this request",
+            )
+          is ServeAgentGrantStore.Poll.Approved ->
+            ServeAgentGrants.PollResponse(
+              status = ServeAgentGrants.PollResponse.APPROVED,
+              token = outcome.grant.token,
+              tokenHeader = TOKEN_HEADER,
+              scopes = outcome.grant.scopes.map { it.wire },
+              expiresInSeconds = outcome.grant.secondsUntilExpiry(System.currentTimeMillis()),
+              approvedBy = outcome.grant.approvedBy,
+              message = "approved by ${outcome.grant.approvedBy}",
+            )
+          is ServeAgentGrantStore.Poll.Denied ->
+            ServeAgentGrants.PollResponse(
+              status = ServeAgentGrants.PollResponse.DENIED,
+              approvedBy = outcome.by,
+              message = "the request was declined",
+            )
+          ServeAgentGrantStore.Poll.Expired ->
+            ServeAgentGrants.PollResponse(
+              status = ServeAgentGrants.PollResponse.EXPIRED,
+              message = "the request expired before it was approved",
+            )
+          ServeAgentGrantStore.Poll.Unknown ->
+            ServeAgentGrants.PollResponse(
+              status = ServeAgentGrants.PollResponse.UNKNOWN,
+              message = "no such access request",
+            )
+        }
+      call.respondText(
+        JSON.encodeToString(ServeAgentGrants.PollResponse.serializer(), response),
+        ContentType.Application.Json,
+      )
+    } finally {
+      permit.release()
+    }
+  }
+
+  /**
+   * `GET /agent-access/whoami` — what the presented bearer is, without echoing it.
+   *
+   * Exists so an agent can answer "do I still have access, and for how long?" without provoking a
+   * 404 from a real lane and guessing at what it meant. A caller with no (or a dead) grant gets a
+   * 200 with `active: false`, because that is an answer rather than an error.
+   */
+  private suspend fun RoutingContext.handleAgentGrantWhoami(store: ServeAgentGrantStore) {
+    val grant = agentGrantFor(call)
+    val response =
+      if (grant == null) ServeAgentGrants.WhoamiResponse(active = false)
+      else
+        ServeAgentGrants.WhoamiResponse(
+          active = true,
+          scopes = grant.scopes.map { it.wire },
+          expiresInSeconds = grant.secondsUntilExpiry(System.currentTimeMillis()),
+          approvedBy = grant.approvedBy,
+          label = grant.label,
+          fingerprint = grant.fingerprint,
+        )
+    call.respondText(
+      JSON.encodeToString(ServeAgentGrants.WhoamiResponse.serializer(), response),
+      ContentType.Application.Json,
+    )
+  }
+
+  /** `POST /agent-access/revoke` — an agent hands its own access back early. */
+  private suspend fun RoutingContext.handleAgentGrantRevoke(store: ServeAgentGrantStore) {
+    val grant = agentGrantFor(call)
+    val revoked = grant != null && store.revoke(grant.id, "the agent itself")
+    call.respondText(
+      JSON.encodeToString(
+        ServeAgentGrants.RevokeResponse.serializer(),
+        ServeAgentGrants.RevokeResponse(
+          revoked = revoked,
+          message = if (revoked) "access revoked" else "no live grant was presented",
+        ),
+      ),
+      ContentType.Application.Json,
+    )
+  }
+
+  /**
+   * `POST /agent-access/{grantId}/revoke` — the `/status` page's revoke button. Requires an
+   * operator identity, exactly like approving does; a grant may not revoke another grant.
+   */
+  private suspend fun RoutingContext.handleAgentGrantRevokeFromStatus(store: ServeAgentGrantStore) {
+    val approver = agentGrantApprover(store)
+    if (approver == null) {
+      call.respondText("not found", status = HttpStatusCode.NotFound)
+      return
+    }
+    val grantId = call.parameters["grantId"].orEmpty()
+    val csrf = call.receiveFormField("csrf")
+    if (!agentGrantCsrf.verify(grantId, approver.name, ServeAgentGrants.Csrf.ACTION_DENY, csrf)) {
+      call.respondText("not found", status = HttpStatusCode.NotFound)
+      return
+    }
+    store.revoke(grantId, approver.name)
+    call.respondRedirect("/status" + agentGrantTokenQuery())
+  }
+
+  /**
+   * `GET /agent-access/{requestId}` — the approval page.
+   *
+   * Ordered authenticate-then-resolve: an anonymous caller learns nothing about whether the id is
+   * real, which matters because this URL is going to be pasted into places that log it.
+   */
+  private suspend fun RoutingContext.handleAgentGrantPage(store: ServeAgentGrantStore) {
+    val approver = agentGrantApprover(store)
+    if (approver == null) {
+      respondAgentGrantSignIn()
+      return
+    }
+    val request = store.request(call.parameters["requestId"])
+    if (request == null || request.state != ServeAgentGrantStore.Request.State.PENDING) {
+      respondAgentGrantNotice(
+        heading = "Nothing to approve",
+        message =
+          "That access request is not waiting for a decision — it expired, or it has already " +
+            "been approved or declined. Ask the agent to request access again.",
+        status = HttpStatusCode.NotFound,
+      )
+      return
+    }
+    val selectable =
+      ServeAgentGrants.selectableScopes(request.requestedScope, approver, store.maxScope)
+    val withheld = ServeAgentGrantScope.upTo(request.requestedScope).filterNot { it in selectable }
+    val skin = call.siteSkin()
+    markGeneration("static-page", "no-store")
+    call.respondText(
+      ServeWeb.agentGrantApprovalPage(
+        requestId = request.id,
+        userCode = request.userCode,
+        label = request.label,
+        client = request.client,
+        requestedScope = request.requestedScope,
+        requestedTtlSeconds = request.requestedTtlSeconds,
+        expiresInSeconds = request.secondsUntilExpiry(System.currentTimeMillis()),
+        approver = approver.name,
+        selectableScopes = selectable,
+        maxTtlSeconds = minOf(store.maxGrantTtlSeconds, request.requestedTtlSeconds),
+        approveCsrf =
+          agentGrantCsrf.seal(request.id, approver.name, ServeAgentGrants.Csrf.ACTION_APPROVE),
+        denyCsrf =
+          agentGrantCsrf.seal(request.id, approver.name, ServeAgentGrants.Csrf.ACTION_DENY),
+        formAction = ServeAgentGrants.approvalPath(request.id) + agentGrantTokenQuery(),
+        navSuffix = agentGrantTokenQuery(),
+        version = BUNDLE_VERSION,
+        siteName = skin.first,
+        themeCss = skin.second,
+        withheldScopes = withheld,
+        withheldReason = "you do not hold it yourself on this server, so you cannot pass it on",
+      ),
+      ContentType.Text.Html,
+    )
+  }
+
+  /**
+   * `POST /agent-access/{requestId}` — the decision.
+   *
+   * Three locks, and the comment is here because each one alone has a hole. `SameSite=Lax` stops a
+   * cross-site form post from carrying the session cookie, but says nothing about a token-gated box
+   * where the credential rides in the URL. The `?token=` stops a stranger, but not a page the
+   * operator was tricked into opening from a bookmark that has it. The CSRF seal binds the POST to
+   * this request, this approver, and this action, and is the one that does not depend on anything
+   * outside this process.
+   */
+  private suspend fun RoutingContext.handleAgentGrantDecision(store: ServeAgentGrantStore) {
+    val approver = agentGrantApprover(store)
+    if (approver == null) {
+      respondAgentGrantSignIn()
+      return
+    }
+    val requestId = call.parameters["requestId"].orEmpty()
+    val form = call.receiveFormParameters()
+    val action = form["action"]?.firstOrNull().orEmpty()
+    val deny = action == ServeAgentGrants.Csrf.ACTION_DENY
+    val seal = if (deny) form["denyCsrf"]?.firstOrNull() else form["csrf"]?.firstOrNull()
+    val expected =
+      if (deny) ServeAgentGrants.Csrf.ACTION_DENY else ServeAgentGrants.Csrf.ACTION_APPROVE
+    if (!agentGrantCsrf.verify(requestId, approver.name, expected, seal)) {
+      respondAgentGrantNotice(
+        heading = "That form went stale",
+        message =
+          "This approval form was not issued to you, or the server restarted since it was drawn. " +
+            "Open the link again and re-check the verification code.",
+        status = HttpStatusCode.Forbidden,
+      )
+      return
+    }
+    if (deny) {
+      store.deny(requestId, approver.name)
+      respondAgentGrantNotice(
+        heading = "Access declined",
+        message = "Nothing was granted. The agent has been told its request was declined.",
+      )
+      return
+    }
+    // The approver's ticks, capped again here rather than trusted: the form is client-side state
+    // and the store clamps to the request and this box's ceiling regardless, but refusing to *ask*
+    // for something outside the approver's own ceiling keeps the audit line honest about what was
+    // actually chosen.
+    val ticked =
+      form["scope"].orEmpty().mapNotNull { ServeAgentGrantScope.parse(it) }.maxOrNull()
+        ?: ServeAgentGrantScope.PREVIEW
+    val chosen = minOf(ticked, approver.ceiling)
+    val ttl =
+      form["ttl"]?.firstOrNull()?.let { ServeAgentGrants.parseDurationSeconds(it) }
+        ?: ServeAgentGrantStore.DEFAULT_GRANT_TTL_SECONDS
+    val grant = store.approve(requestId, approver.name, chosen, ttl)
+    if (grant == null) {
+      respondAgentGrantNotice(
+        heading = "Nothing to approve",
+        message =
+          "That access request is no longer waiting for a decision — it expired, or it was " +
+            "already resolved.",
+        status = HttpStatusCode.NotFound,
+      )
+      return
+    }
+    respondAgentGrantNotice(
+      heading = "Access granted",
+      message =
+        "The agent can now use this server for " +
+          ServeAgentGrants.formatDuration(grant.secondsUntilExpiry(System.currentTimeMillis())) +
+          ". You can end it early from the server status page at any time.",
+      detail =
+        "Scopes: ${grant.scopes.joinToString(", ") { it.wire }} · grant ${grant.fingerprint}",
+    )
+  }
+
+  /**
+   * Who is approving, or null when this call carries no operator identity.
+   *
+   * An **agent grant is never an approver**, and that falls out of the two checks rather than
+   * needing its own: a GitHub session lives in a cookie an agent has no way to hold, and the
+   * operator branch compares against `--token` specifically, which no minted bearer can equal.
+   */
+  private fun RoutingContext.agentGrantApprover(
+    store: ServeAgentGrantStore
+  ): ServeAgentGrants.Approver? {
+    val auth = githubAuth
+    if (auth != null) {
+      val login = auth.currentLogin(call) ?: return null
+      return ServeAgentGrants.Approver.github(login, auth.hasRepositoryAccess(call), store.maxScope)
+    }
+    val provided = call.request.queryParameters["token"] ?: call.request.headers[TOKEN_HEADER]
+    if (!ServeUrls.tokensMatch(serverToken, provided)) return null
+    return ServeAgentGrants.Approver.operator(store.maxScope)
+  }
+
+  /**
+   * What to tell someone who reached an approval route without an operator identity: the GitHub
+   * sign-in when there is one to offer, and otherwise the plain truth about the token — the person
+   * on the other end of this link is the operator, so telling them how to present the credential
+   * they already have is help, not disclosure.
+   */
+  private suspend fun RoutingContext.respondAgentGrantSignIn() {
+    githubAuth?.let { auth ->
+      call.respondRedirect(auth.loginPath(call))
+      return
+    }
+    respondAgentGrantNotice(
+      heading = "Sign in to approve",
+      message =
+        "Only this server's operator can approve an access request. Open this same link from a " +
+          "browser that carries the server's access token — append ?token=… to the URL — and the " +
+          "approval page will appear.",
+      status = HttpStatusCode.Unauthorized,
+    )
+  }
+
+  private suspend fun RoutingContext.respondAgentGrantNotice(
+    heading: String,
+    message: String,
+    detail: String = "",
+    status: HttpStatusCode = HttpStatusCode.OK,
+  ) {
+    val skin = call.siteSkin()
+    markGeneration("static-page", "no-store")
+    call.respondText(
+      ServeWeb.agentGrantNoticePage(
+        heading = heading,
+        message = message,
+        detail = detail,
+        navSuffix = agentGrantTokenQuery(),
+        version = BUNDLE_VERSION,
+        siteName = skin.first,
+        themeCss = skin.second,
+      ),
+      ContentType.Text.Html,
+      status,
+    )
+  }
+
+  /**
+   * The `?token=…` an approval page's own links and form must carry forward on a token-gated box,
+   * echoing back exactly what this request presented rather than the configured value — so a page
+   * reached without one never mints one into its markup.
+   */
+  private fun RoutingContext.agentGrantTokenQuery(): String {
+    if (isPublic) return ""
+    val provided = call.request.queryParameters["token"] ?: return ""
+    if (!ServeUrls.tokensMatch(serverToken, provided)) return ""
+    return "?token=" + WebEscaping.urlEncodeSegment(provided)
+  }
+
+  /**
+   * Charge an ungated grant route against its caller's address budget. Address, not identity: these
+   * are the two routes reached *before* the caller has one.
+   */
+  private suspend fun RoutingContext.acquireAgentGrantPermit():
+    ServeRateLimiter.Decision.Admitted? {
+    val limiter = agentGrantLimiter ?: return ServeRateLimiter.Decision.Admitted {}
+    return when (val decision = limiter.tryAcquire(clientAddressKey())) {
+      is ServeRateLimiter.Decision.Admitted -> decision
+      is ServeRateLimiter.Decision.Throttled -> {
+        call.response.headers.append(HttpHeaders.RetryAfter, decision.retryAfterSeconds.toString())
+        call.respondText(
+          "Too many requests — ${decision.reason}.",
+          status = HttpStatusCode.TooManyRequests,
+        )
+        null
+      }
+    }
+  }
+
+  /**
+   * Read one `application/x-www-form-urlencoded` field. Parsed here rather than through Ktor's
+   * content negotiation because these forms are three fields drawn by this server for this server,
+   * and the body cap is the point: a form post is not a place an unauthenticated caller should be
+   * able to hand this process a megabyte.
+   */
+  private suspend fun ApplicationCall.receiveFormField(name: String): String? =
+    receiveFormParameters()[name]?.firstOrNull()
+
+  private suspend fun ApplicationCall.receiveFormParameters(): Map<String, List<String>> {
+    val body =
+      withContext(Dispatchers.IO) { receiveStream().use { readCapped(it, MAX_AGENT_GRANT_BYTES) } }
+        ?: return emptyMap()
+    return parseFormBody(body.decodeToString())
+  }
+
   private suspend fun RoutingContext.rejectMissingGithubAuth(api: Boolean = false): Boolean {
     val auth = githubAuth ?: return false
     if (auth.isAuthenticated(call)) return false
+    // A `live` grant is the agent's equivalent of being signed in: a human with a GitHub session
+    // approved it, by name, minutes ago. See [ServeAgentGrantScope.LIVE].
+    if (agentGrantFor(call)?.allows(ServeAgentGrantScope.LIVE) == true) return false
     if (api) {
       call.respondText("GitHub sign-in required.", status = HttpStatusCode.Unauthorized)
     } else {
@@ -7795,6 +8464,9 @@ class ServeHttpServer(
   private suspend fun RoutingContext.rejectMissingGithubRepoAccess(api: Boolean = false): Boolean {
     val auth = githubAuth ?: return false
     if (auth.hasRepositoryAccess(call)) return false
+    // `playground` is never in a default grant and can only be approved by someone who holds
+    // repository access themselves — so reaching here means a human with this exact right said yes.
+    if (agentGrantFor(call)?.allows(ServeAgentGrantScope.PLAYGROUND) == true) return false
     val message =
       "Playground requires access to ${auth.accessRepository()}. Live preview is available to any " +
         "signed-in GitHub user."
@@ -7804,7 +8476,7 @@ class ServeHttpServer(
       call.respondText(
         ServeWeb.notFoundPage(
           message,
-          token,
+          linkToken(),
           isPublic,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
           version = BUNDLE_VERSION,
@@ -7863,6 +8535,40 @@ class ServeHttpServer(
       linkedMapOf(".apng" to "image/apng", ".gif" to "image/gif")
 
     const val TOKEN_HEADER: String = "X-Compose-Preview-Token"
+
+    /** `Authorization: Bearer <grant>` — the other place an agent's HTTP client puts a token. */
+    private const val BEARER_PREFIX: String = "Bearer "
+
+    /**
+     * Body cap for the agent-grant routes. Two of them are ungated, and every legitimate body here
+     * is a JSON object with three short fields or a three-field form — so the cap is set at what
+     * those need with room to spare, and anything larger is a caller doing something else.
+     */
+    private const val MAX_AGENT_GRANT_BYTES = 8L * 1024
+
+    /**
+     * `application/x-www-form-urlencoded` → name → values, `+` decoded as a space.
+     *
+     * Hand-rolled rather than routed through Ktor's `receiveParameters` for one reason: the body is
+     * already read under [readCapped], and re-reading it through content negotiation would mean
+     * buffering an uncapped body first. A malformed pair is skipped rather than failing the parse —
+     * the fields that matter are then simply absent, and every caller here treats absent as
+     * invalid.
+     */
+    internal fun parseFormBody(body: String): Map<String, List<String>> {
+      val out = LinkedHashMap<String, MutableList<String>>()
+      for (pair in body.split('&')) {
+        if (pair.isEmpty()) continue
+        val index = pair.indexOf('=')
+        val rawName = if (index < 0) pair else pair.substring(0, index)
+        val rawValue = if (index < 0) "" else pair.substring(index + 1)
+        val name = runCatching { URLDecoder.decode(rawName, StandardCharsets.UTF_8) }.getOrNull()
+        val value = runCatching { URLDecoder.decode(rawValue, StandardCharsets.UTF_8) }.getOrNull()
+        if (name.isNullOrEmpty() || value == null) continue
+        out.getOrPut(name) { mutableListOf() }.add(value)
+      }
+      return out
+    }
 
     /** Header carrying the `--admin-token` for the `/admin/catalogs` routes. */
     const val ADMIN_TOKEN_HEADER: String = "X-Compose-Preview-Admin-Token"
@@ -8333,6 +9039,36 @@ private data class StatusResponse(
    * invisible without shell access to the box.
    */
   val playground: PlaygroundDto? = null,
+  /**
+   * Agent access grants, or null when the lane isn't enabled. Additive on
+   * `compose-preview-serve/status/v1`, like [renderStats] and [playground].
+   *
+   * Counts and fingerprints only. A monitor should be able to alert on "an agent grant is live on
+   * the production box" without the alerting pipeline becoming somewhere a credential is stored.
+   */
+  val agentAccess: AgentAccessDto? = null,
+)
+
+@Serializable
+private data class AgentAccessDto(
+  /** Live grants right now. */
+  val activeGrants: Int,
+  /** Requests waiting for a human. */
+  val pendingRequests: Int,
+  /** The operator's ceiling — the most privileged scope this box will ever grant. */
+  val maxScope: String,
+  val maxTtlSeconds: Long,
+  /** One entry per live grant: fingerprint, scopes, approver, seconds left. Never a token. */
+  val grants: List<AgentGrantDto> = emptyList(),
+)
+
+@Serializable
+private data class AgentGrantDto(
+  val fingerprint: String,
+  val scopes: List<String>,
+  val approvedBy: String,
+  val expiresInSeconds: Long,
+  val label: String,
 )
 
 @Serializable

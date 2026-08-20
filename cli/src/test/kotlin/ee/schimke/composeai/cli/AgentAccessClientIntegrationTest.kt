@@ -1,0 +1,132 @@
+package ee.schimke.composeai.cli
+
+import ee.schimke.composeai.cli.serve.ServeAgentGrantScope
+import ee.schimke.composeai.cli.serve.ServeAgentGrantStore
+import ee.schimke.composeai.cli.serve.ServeBundleHost
+import ee.schimke.composeai.cli.serve.ServeHttpServer
+import ee.schimke.composeai.cli.serve.ServeSessionRegistry
+import java.io.File
+import java.nio.file.Files
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+/**
+ * The CLI's grant client against a **real** `ServeHttpServer`, so the two halves of the wire
+ * protocol are checked against each other rather than each against its own idea of the other.
+ *
+ * They are deliberately separate declarations — the CLI ships and versions independently of any
+ * host it talks to, so its request/response types are its own with every field defaulted. That
+ * independence is exactly what lets them drift silently, which is what this test exists to stop.
+ */
+class AgentAccessClientIntegrationTest {
+
+  private val registry = ServeSessionRegistry(open = { null })
+
+  private val grants =
+    ServeAgentGrantStore(maxScope = ServeAgentGrantScope.PLAYGROUND, maxGrantTtlSeconds = 3600)
+
+  private val server: ServeHttpServer by lazy {
+    val dir = Files.createTempDirectory("client-grants").toFile().also { it.deleteOnExit() }
+    File(dir, "index.html").writeText("<html></html>")
+    File(dir, "previews").mkdirs()
+    registry.register("demo", host = ServeBundleHost(dir, label = "demo"), pinned = true)
+    ServeHttpServer(
+        host = "127.0.0.1",
+        requestedPort = 0,
+        token = "operator-secret",
+        sessions = registry,
+        defaultSessionId = "demo",
+        isPublic = false,
+        agentGrants = grants,
+      )
+      .also { it.start() }
+  }
+
+  private fun client() = AgentAccessClient("http://127.0.0.1:${server.port}")
+
+  private fun <T> ok(result: AgentAccessClient.Result<T>): T =
+    when (result) {
+      is AgentAccessClient.Result.Ok -> result.value
+      is AgentAccessClient.Result.Err -> error("expected success, got: ${result.reason}")
+    }
+
+  @AfterTest
+  fun tearDown() {
+    server.stop()
+    registry.close()
+  }
+
+  @Test
+  fun `the client's request and the server's response agree`() {
+    val opened = ok(client().open(label = "fix #1", scope = "live", ttlSeconds = 1800))
+    assertTrue(opened.requestId.isNotEmpty())
+    assertTrue(opened.deviceSecret.isNotEmpty())
+    assertEquals(9, opened.userCode.length)
+    assertEquals("live", opened.requestedScope)
+    assertEquals(1800, opened.requestedTtlSeconds)
+    assertEquals("playground", opened.maxScope)
+    assertTrue(opened.approveUrl.startsWith("http://127.0.0.1:${server.port}/agent-access/"))
+    assertTrue(opened.pollUrl.endsWith("/agent-access/poll"))
+    assertTrue(opened.pollIntervalSeconds > 0)
+    // The label the human will read is the one the client sent.
+    assertEquals("fix #1", grants.request(opened.requestId)?.label)
+  }
+
+  @Test
+  fun `poll transitions pending to approved and yields a usable token`() {
+    val c = client()
+    val opened = ok(c.open(label = "fix #2", scope = "live", ttlSeconds = 900))
+    assertEquals("pending", ok(c.poll(opened.requestId, opened.deviceSecret)).status)
+
+    // The human's half, driven directly — the browser flow itself is covered by the routing test.
+    grants.approve(opened.requestId, "@yuri", ServeAgentGrantScope.LIVE, 900)
+
+    val approved = ok(c.poll(opened.requestId, opened.deviceSecret))
+    assertEquals("approved", approved.status)
+    assertEquals("@yuri", approved.approvedBy)
+    assertEquals(listOf("preview", "live"), approved.scopes)
+    assertEquals(ServeHttpServer.TOKEN_HEADER, approved.tokenHeader)
+    val token = approved.token!!
+
+    val who = ok(c.whoami(token))
+    assertTrue(who.active)
+    assertEquals("fix #2", who.label)
+    assertEquals(12, who.fingerprint!!.length)
+
+    assertTrue(ok(c.revoke(token)).revoked)
+    assertFalse(ok(c.whoami(token)).active)
+  }
+
+  @Test
+  fun `a denied request reads as denied on the client`() {
+    val c = client()
+    val opened = ok(c.open(label = "", scope = "", ttlSeconds = 600))
+    grants.deny(opened.requestId, "@yuri")
+    assertEquals("denied", ok(c.poll(opened.requestId, opened.deviceSecret)).status)
+  }
+
+  @Test
+  fun `a wrong device secret reads as unknown and carries no token`() {
+    val c = client()
+    val opened = ok(c.open(label = "", scope = "preview", ttlSeconds = 600))
+    grants.approve(opened.requestId, "@yuri", ServeAgentGrantScope.PREVIEW, 600)
+    val polled = ok(c.poll(opened.requestId, "not-the-secret"))
+    assertEquals("unknown", polled.status)
+    assertEquals(null, polled.token)
+  }
+
+  @Test
+  fun `plaintext to a non-loopback host is refused before anything is sent`() {
+    val e = assertFailsWith<IllegalArgumentException> { AgentAccessClient("http://preview.coo.ee") }
+    assertTrue(e.message!!.contains("plaintext"))
+  }
+
+  @Test
+  fun `a URL carrying credentials is refused`() {
+    assertFailsWith<IllegalArgumentException> { AgentAccessClient("https://u:p@preview.coo.ee") }
+  }
+}

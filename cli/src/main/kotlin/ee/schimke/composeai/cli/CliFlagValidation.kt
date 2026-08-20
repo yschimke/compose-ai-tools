@@ -131,6 +131,11 @@ internal object CliFlagValidation {
             "--accept-docs",
             "--accept-docs-from",
             "--accept-images",
+            "--agent-grants",
+            "--agent-grant-scopes",
+            "--agent-grant-max-ttl",
+            "--agent-grant-max-active",
+            "--agent-grant-rate-limit",
             "--image-upload-repo",
             "--image-ttl",
             "--image-rate-limit",
@@ -283,6 +288,8 @@ internal object CliFlagValidation {
       "update" to setOf("--dry-run"),
       "init-script" to setOf("--path", "--print"),
       "pin" to setOf("--cli", "--json", "--remove", "--unset"),
+      "auth" to
+        setOf("--server", "--scope", "--ttl", "--label", "--no-wait", "--json", "--help", "-h"),
       "version" to emptySet(),
       "help" to setOf("--all"),
     )

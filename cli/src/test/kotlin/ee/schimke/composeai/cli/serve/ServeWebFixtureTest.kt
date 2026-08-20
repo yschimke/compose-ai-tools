@@ -2871,6 +2871,42 @@ class ServeWebFixtureTest {
 
     // The styled 404 a browser gets when it follows a dead link to a catalog or preview page —
     // the site's own chrome with a "back to design systems" link, not a bare text/plain dead-end.
+    // The agent access-grant CONSENT page (GET /agent-access/{id}). The one page on this server
+    // whose job is to make a human suspicious of the link that brought them here, so the fixture
+    // pins the parts that do that work: the verification code as the page's loudest element, the
+    // agent-supplied purpose (escaped — the fixture's label carries markup on purpose), and one
+    // scope the approver is shown but may not grant.
+    val agentAccess =
+      ServeWeb.agentGrantApprovalPage(
+        requestId = "9c2Qk1pTf0Xb7hLm4nRzQA",
+        userCode = "KX7M-9QD4",
+        label = "fix wear-m3-catalog#68 <the focus ring>",
+        client = "203.0.113.42",
+        requestedScope = ServeAgentGrantScope.PLAYGROUND,
+        requestedTtlSeconds = 7200,
+        expiresInSeconds = 540,
+        approver = "@yschimke",
+        selectableScopes = listOf(ServeAgentGrantScope.PREVIEW, ServeAgentGrantScope.LIVE),
+        maxTtlSeconds = 8 * 3600,
+        approveCsrf = "fixed-approve-seal",
+        denyCsrf = "fixed-deny-seal",
+        formAction = "/agent-access/9c2Qk1pTf0Xb7hLm4nRzQA",
+        version = version,
+        withheldScopes = listOf(ServeAgentGrantScope.PLAYGROUND),
+        withheldReason = "you do not hold it yourself on this server, so you cannot pass it on",
+      )
+
+    // What the approver lands on afterwards.
+    val agentAccessGranted =
+      ServeWeb.agentGrantNoticePage(
+        heading = "Access granted",
+        message =
+          "The agent can now use this server for 2h. You can end it early from the server status " +
+            "page at any time.",
+        detail = "Scopes: preview, live · grant 4f2ab91c73de",
+        version = version,
+      )
+
     val notFound =
       ServeWeb.notFoundPage(
         "That preview does not exist in this catalog.",
@@ -3314,6 +3350,8 @@ class ServeWebFixtureTest {
         "serve-component-browser-remote-compose.html" to componentBrowserRemoteCompose,
         "serve-viewer-nav-collapsed.html" to viewerNavCollapsed,
         "serve-notfound.html" to notFound,
+        "serve-agent-access.html" to agentAccess,
+        "serve-agent-access-granted.html" to agentAccessGranted,
         "serve-docs-upload.html" to docUpload,
         "serve-playground.html" to playground,
         "serve-playground-uncompilable.html" to playgroundUncompilable,
@@ -3941,6 +3979,28 @@ class ServeWebFixtureTest {
         serveStatus.contains("compose-ai-tools <code>0.16.54</code>") &&
         serveStatus.contains("design-parity <code>0.1.25</code>"),
       "catalog status links its delivery branch and shows friendly build provenance",
+    )
+    // The consent page's whole job is the code and the honesty around it.
+    assertTrue(
+      agentAccess.contains("KX7M-9QD4") && agentAccess.contains("Verification code"),
+      "the approval page shows the code the agent printed, labelled",
+    )
+    assertTrue(
+      agentAccess.contains("fix wear-m3-catalog#68 &lt;the focus ring&gt;"),
+      "the agent's label is escaped — it is attacker-controlled text on a page a human trusts",
+    )
+    assertTrue(
+      agentAccess.contains("Not offered: playground"),
+      "a scope the approver may not pass on is named rather than silently dropped",
+    )
+    assertTrue(
+      agentAccess.contains("method=\"post\"") &&
+        agentAccess.contains("name=\"csrf\" value=\"fixed-approve-seal\""),
+      "approval is a sealed POST, never a link a prefetcher could follow",
+    )
+    assertFalse(
+      agentAccess.contains("cpat_"),
+      "no token is ever rendered on the consent page",
     )
     // The variant landing folds the component's props-axis renders out: eight renders yield ONE
     // (default) swap card, and no RTL / locale / fontscale variant is emitted as its own card.

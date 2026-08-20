@@ -3787,3 +3787,70 @@ cp-page-zoom button:focus-visible {
   .cp-browser-siblings { grid-template-columns: 1fr; }
   .cp-browser-sibling-next { grid-column: 1; }
 }
+
+/* ---------------------------------------------------------------------------
+   Agent access grants (`/agent-access/{id}`) — the page a human opens because
+   an agent asked them for temporary access. See
+   docs/design/AGENT_ACCESS_GRANTS.md.
+
+   Styled deliberately unlike the rest of the chrome: this is a consent screen,
+   and the one failure mode that matters is a reader skimming past the
+   verification code. So the code gets the page's only outlined callout and the
+   largest type on it, and the approve button is the only accent-filled control
+   in the flow.
+   --------------------------------------------------------------------------- */
+.cp-grant-code { display: grid; gap: 6px; margin: 24px 0; padding: 16px 18px;
+  border: 2px solid var(--cp-accent); border-radius: 12px;
+  background: var(--cp-surface); }
+.cp-grant-code-label { font-size: 12px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--cp-fg-muted); }
+.cp-grant-code-value { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 30px; font-weight: 600; letter-spacing: .12em; color: var(--cp-fg); }
+.cp-grant-code-hint { max-width: 52ch; color: var(--cp-fg-muted); font-size: 13px;
+  line-height: 1.5; }
+
+.cp-grant-facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px;
+  margin: 20px 0; font-size: 14px; }
+.cp-grant-facts dt { color: var(--cp-fg-muted); }
+.cp-grant-facts dd { margin: 0; color: var(--cp-fg); overflow-wrap: anywhere; }
+
+.cp-grant-form { margin: 24px 0 8px; }
+.cp-grant-fieldset { margin: 0 0 16px; padding: 12px 16px 14px; border: 1px solid var(--cp-border);
+  border-radius: 10px; }
+.cp-grant-fieldset legend { padding: 0 6px; color: var(--cp-fg-muted); font-size: 13px; }
+.cp-grant-scope { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px;
+  align-items: baseline; padding: 8px 0; }
+.cp-grant-scope + .cp-grant-scope { border-top: 1px solid var(--cp-border); }
+.cp-grant-scope input { grid-row: 1 / span 2; align-self: center; }
+.cp-grant-scope-name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px; color: var(--cp-fg); }
+.cp-grant-scope-what { grid-column: 2; color: var(--cp-fg-muted); font-size: 13px;
+  line-height: 1.5; }
+.cp-grant-withheld { margin: -8px 0 16px; color: var(--cp-fg-muted); font-size: 13px; }
+
+.cp-grant-ttl { display: flex; gap: 10px; align-items: center; margin-bottom: 20px;
+  font-size: 14px; color: var(--cp-fg-muted); }
+.cp-grant-ttl select { padding: 6px 10px; border: 1px solid var(--cp-border); border-radius: 8px;
+  background: var(--cp-surface); color: var(--cp-fg); font: inherit; }
+
+.cp-grant-actions { display: flex; gap: 12px; }
+.cp-grant-approve, .cp-grant-deny { min-height: 40px; padding: 8px 22px; border-radius: 20px;
+  font: inherit; font-weight: 500; cursor: pointer; }
+.cp-grant-approve { border: none; background: var(--cp-accent); color: var(--cp-on-accent); }
+.cp-grant-deny { border: 1px solid var(--cp-border-strong); background: transparent;
+  color: var(--cp-fg); }
+.cp-grant-approve:focus-visible, .cp-grant-deny:focus-visible {
+  outline: 2px solid var(--cp-accent-ring); outline-offset: 2px; }
+
+.cp-grant-fineprint, .cp-grant-detail { max-width: 62ch; color: var(--cp-fg-muted);
+  font-size: 13px; line-height: 1.6; }
+
+/* The live-grant table on /status. Fingerprints only — a token is never rendered. */
+.cp-grant-table { width: 100%; border-collapse: collapse; margin: 8px 0 4px; font-size: 13px; }
+.cp-grant-table th { text-align: left; padding: 6px 10px 6px 0; color: var(--cp-fg-muted);
+  font-weight: 500; border-bottom: 1px solid var(--cp-border); }
+.cp-grant-table td { padding: 7px 10px 7px 0; border-bottom: 1px solid var(--cp-border);
+  color: var(--cp-fg); vertical-align: baseline; }
+.cp-grant-table code { font-size: 12px; color: var(--cp-fg-muted); }
+.cp-grant-revoke { padding: 4px 12px; border: 1px solid var(--cp-border-strong); border-radius: 14px;
+  background: transparent; color: var(--cp-fg); font: inherit; font-size: 12px; cursor: pointer; }

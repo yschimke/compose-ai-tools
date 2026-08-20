@@ -32,6 +32,7 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "update" to { a -> UpdateCommand(a).run() },
     "init-script" to { a -> InitScriptCommand(a).run() },
     "pin" to { a -> PinCommand(a).run() },
+    "auth" to { a -> AuthCommand(a).run() },
     "version" to { _ -> println("compose-preview $BUNDLE_VERSION") },
     "help" to { a -> printUsage(full = "--all" in a) },
   )
@@ -129,7 +130,7 @@ private fun printUsage(full: Boolean = false) {
       inspect   a11y · diff-semantics · devices · extensions · history · profile
       capture   render-matrix · record · bundle
       share     serve · share-preview
-      setup     update · init-script · pin
+      setup     update · init-script · pin · auth
     Run `compose-preview <group>` to list a group, or `help --all` for every command + flag.
 
     Common options: --module <name>, --filter <pattern>, --id <exact>,
@@ -216,6 +217,11 @@ private fun printFullUsage() {
                        GitHub actions. `pin` reports; `pin <version>` / `pin --cli` writes
                        `composePreview.version` into gradle.properties; `pin --remove` clears
                        it.
+      auth             Ask a human to grant this agent temporary access to a preview server:
+                       `auth request --server <url>` prints a link plus a verification code, waits
+                       for the approval, and stores the short-lived token it gets back. Also
+                       `auth status`, `auth token`, `auth revoke`. Use this instead of asking for
+                       the server's own --token, which is permanent and unscoped.
       version          Print the installed bundle version and exit
       help             Show this help message
 
