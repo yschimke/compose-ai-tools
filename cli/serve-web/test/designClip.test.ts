@@ -31,19 +31,17 @@ interface Node {
     ctm?: Matrix;
     attrs?: Record<string, string>;
     children?: Node[];
-    parent?: Node;
 }
 
 const IDENTITY: Matrix = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
 
-/** Wires parents and indexes ids, then answers the module's reads off the literal above. */
+/** Indexes ids, then answers the module's reads off the literal above. */
 function fake(root: Node): { geo: Geometry; byId: Map<string, Node> } {
     const byId = new Map<string, Node>();
-    const walk = (node: Node, parent?: Node) => {
-        node.parent = parent;
+    const walk = (node: Node) => {
         const id = node.attrs?.id;
         if (id) byId.set(id, node);
-        for (const child of node.children ?? []) walk(child, node);
+        for (const child of node.children ?? []) walk(child);
     };
     walk(root);
     const geo: Geometry = {
@@ -60,9 +58,6 @@ function fake(root: Node): { geo: Geometry; byId: Map<string, Node> } {
         children: (element) =>
             ((element as unknown as Node).children ??
                 []) as unknown as Element[],
-        parent: (element) =>
-            ((element as unknown as Node).parent ??
-                null) as unknown as Element | null,
         tag: (element) => (element as unknown as Node).tag,
         attribute: (element, name) =>
             (element as unknown as Node).attrs?.[name] ?? null,
@@ -195,6 +190,34 @@ describe("clipRegion", () => {
         );
     });
 
+    it("composes the <clipPath>'s OWN transform, which the referencing element's CTM lacks", () => {
+        const { geo, byId } = fake({
+            tag: "svg",
+            children: [
+                {
+                    tag: "g",
+                    attrs: { id: "user", "clip-path": "url(#clip)" },
+                    ctm: IDENTITY,
+                },
+                {
+                    tag: "clipPath",
+                    attrs: { id: "clip" },
+                    local: { a: 1, b: 0, c: 0, d: 1, e: 100, f: 50 },
+                    children: [
+                        {
+                            tag: "rect",
+                            bbox: { x: 0, y: 0, width: 20, height: 20 },
+                        },
+                    ],
+                },
+            ],
+        });
+        assert.deepEqual(
+            clipRegion(byId.get("user") as unknown as Element, geo),
+            box(100, 50, 20, 20),
+        );
+    });
+
     it("declines a clip in object-bounding-box units rather than guessing", () => {
         const { geo, byId } = fake({
             tag: "svg",
@@ -274,7 +297,11 @@ describe("paintedRect", () => {
         );
     });
 
-    it("crops by an ANCESTOR's clip as well as by its own", () => {
+    it("leaves an ANCESTOR's clip alone: the box is what the node paints, not what shows", () => {
+        // A card that crops a component is not a fact about the component's size, and this box is
+        // what the render is fitted to — `fitInk` scales, so cropping here would squeeze the whole
+        // render into the visible sliver and publish a shrunken component. Cropping the render to
+        // its container is a different feature.
         const { geo, byId } = fake({
             tag: "svg",
             children: [
@@ -304,7 +331,55 @@ describe("paintedRect", () => {
         });
         assert.deepEqual(
             paintedRect(byId.get("node") as unknown as Element, geo),
-            box(80, 0, 40, 40),
+            box(80, 0, 100, 40),
+        );
+    });
+
+    it("bounds a walk through a nested <svg> by that svg's viewport", () => {
+        // Reading an element's own rect used to bound the answer for free, because a non-root
+        // `<svg>` clips to its viewport. Walking its children does not, so a clip inside a nested
+        // svg would otherwise trade one over-measure for another.
+        const { geo, byId } = fake({
+            tag: "svg",
+            children: [
+                {
+                    tag: "g",
+                    attrs: { id: "node" },
+                    children: [
+                        {
+                            tag: "svg",
+                            rect: box(0, 0, 60, 60),
+                            children: [
+                                {
+                                    tag: "g",
+                                    attrs: { "clip-path": "url(#inner)" },
+                                    ctm: IDENTITY,
+                                    children: [
+                                        {
+                                            tag: "path",
+                                            rect: box(0, 0, 400, 400),
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+                {
+                    tag: "clipPath",
+                    attrs: { id: "inner" },
+                    children: [
+                        {
+                            tag: "rect",
+                            bbox: { x: 0, y: 0, width: 200, height: 200 },
+                        },
+                    ],
+                },
+            ],
+        });
+        assert.deepEqual(
+            paintedRect(byId.get("node") as unknown as Element, geo),
+            box(0, 0, 60, 60),
         );
     });
 

@@ -8,10 +8,10 @@
 // user units for a 52×52 button — so the slot the render was fitted into was ~7.7x too big, and our
 // circle landed on the page as a grey blob the size of a whole section (issue #4323).
 //
-// So the box is walked rather than read: children unioned, each element's own clip intersected in,
-// and every ancestor's clip intersected in on the way up. Everything is in SCREEN coordinates, the
-// same space `getBoundingClientRect()` answers in, so the result drops straight into the placement
-// that already existed.
+// So the box is walked rather than read: children unioned, and each element's own clip intersected
+// in. Everything is in SCREEN coordinates, the same space `getBoundingClientRect()` answers in, so
+// the result drops straight into the placement that already existed. Clips ABOVE the node are
+// deliberately not applied — see `paintedRect`.
 //
 // DEGRADES TO THE RAW RECT. Every step that cannot be computed — a clip this doesn't understand
 // (`objectBoundingBox` units, a clip on the clip), a browser with no `getScreenCTM`, a shape with no
@@ -52,8 +52,6 @@ export interface Geometry {
     clipPath(element: Element): Element | null;
     /** Child elements, in document order. */
     children(element: Element): Element[];
-    /** Parent element, or null at the root of the walk. */
-    parent(element: Element): Element | null;
     /** The element's tag, lowercased. */
     tag(element: Element): string;
     /** An attribute value, or null. */
@@ -164,8 +162,13 @@ export function clipRegion(element: Element, geo: Geometry): Box | null {
     if (!clip) return null;
     const units = geo.attribute(clip, "clipPathUnits");
     if (units && units !== "userSpaceOnUse") return null;
-    const toScreen = geo.screenMatrix(element);
-    if (!toScreen) return null;
+    const fromUserSpace = geo.screenMatrix(element);
+    if (!fromUserSpace) return null;
+    // The `<clipPath>`'s OWN transform, composed in first. It is not the referencing element's, so
+    // `getScreenCTM()` on that element does not carry it, and a translated clip measured without it
+    // lands somewhere else on the sheet — an intersection with the wrong region, or with none.
+    const own = geo.localMatrix(clip);
+    const toScreen = own ? multiply(fromUserSpace, own) : fromUserSpace;
     let region: Box | null = null;
     for (const child of geo.children(clip)) {
         if (NON_PAINTING.has(geo.tag(child))) continue;
@@ -220,6 +223,18 @@ function paintedBox(
         box = geo.rect(element);
     }
     if (!box) return null;
+    // A nested `<svg>` establishes a viewport, and content outside it is not painted. Reading the
+    // element's own rect used to bound the answer for free; walking its children does not, so the
+    // viewport is intersected back in — otherwise a clip somewhere inside a nested `<svg>` would
+    // trade one over-measure for another.
+    if (geo.tag(element) === "svg" && children.length > 0) {
+        const viewport = geo.rect(element);
+        if (viewport) {
+            const inside = intersect(box, viewport);
+            if (!inside) return null;
+            box = inside;
+        }
+    }
     const clip = clipRegion(element, geo);
     return clip ? intersect(box, clip) : box;
 }
@@ -227,26 +242,20 @@ function paintedBox(
 /**
  * The box the design actually paints for `element`, in screen coordinates.
  *
+ * ITS OWN CLIPS ONLY — the ones inside the node. An ancestor's clip is deliberately NOT applied,
+ * even though the pixels it hides are genuinely not on screen: this box is what the render is
+ * FITTED to, and `fitInk` scales rather than crops. A component half outside the card it sits in
+ * would come back as its visible sliver, and the swap would answer by squeezing the whole render
+ * into that sliver — a shrunken component where the design shows a cropped one, which is a worse
+ * lie than the crop. Cropping to an ancestor is a different feature (the render would have to be
+ * clipped, not scaled) and it is not this one.
+ *
  * Null when nothing is painted — every child clipped away, or an element with no measurable
  * geometry. Callers treat that the same way they treat a zero-area box: the node is missing as far
  * as the sheet is concerned.
  */
 export function paintedRect(element: Element, geo: Geometry): Box | null {
-    let box = paintedBox(element, geo, MAX_DEPTH);
-    if (!box) return null;
-    // The ancestors' clips crop it too — a node half-outside the card it sits in is painted as the
-    // half that shows, and its slot should be that half.
-    for (
-        let parent = geo.parent(element), guard = 0;
-        parent && guard < MAX_DEPTH;
-        parent = geo.parent(parent), guard++
-    ) {
-        const clip = clipRegion(parent, geo);
-        if (!clip) continue;
-        box = intersect(box, clip);
-        if (!box) return null;
-    }
-    return box;
+    return paintedBox(element, geo, MAX_DEPTH);
 }
 
 /** Reads straight off the document. Every read is guarded: an engine missing one degrades, not throws. */
@@ -308,15 +317,6 @@ export const domGeometry: Geometry = {
     },
     children(element) {
         return Array.from(element.children ?? []);
-    },
-    parent(element) {
-        const parent = element.parentElement;
-        // Stop at the `<svg>`: above it the clips are HTML's, and the stage's own overflow is
-        // already what bounds the drawing.
-        if (!parent) return null;
-        return parent.namespaceURI === "http://www.w3.org/2000/svg"
-            ? parent
-            : null;
     },
     tag(element) {
         return element.tagName.toLowerCase();
