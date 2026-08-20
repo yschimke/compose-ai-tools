@@ -249,8 +249,33 @@ class AgentAccessStoreTest {
   }
 
   @Test
-  fun `the remembered-request pile is bounded`() {
-    for (i in 1..20) {
+  fun `the pile refuses a new request rather than evicting a live one`() {
+    // The cap used to drop the OLDEST live record to make room. Its approval link stays valid on
+    // the server, so a human could approve a request whose only device secret had just been
+    // deleted here. Refusing tells the caller; evicting loses a credential silently.
+    fun add(i: Int) =
+      store()
+        .savePending(
+          AgentAccessStore.Pending(
+            origin = "https://h$i.example",
+            requestId = "r$i",
+            deviceSecret = "s$i",
+            expiresAtMillis = now + 600_000,
+          )
+        )
+    for (i in 1..AgentAccessStore.MAX_PENDING) assertTrue(add(i), "request $i should fit")
+    assertFalse(add(99), "the pile is full of live requests — refuse, do not evict")
+    assertEquals(AgentAccessStore.MAX_PENDING, store().allPending().size)
+    // …and every original secret is still there.
+    assertEquals(
+      (1..AgentAccessStore.MAX_PENDING).map { "r$it" }.toSet(),
+      store().allPending().map { it.requestId }.toSet(),
+    )
+  }
+
+  @Test
+  fun `a dead request is swept so the pile keeps accepting`() {
+    for (i in 1..AgentAccessStore.MAX_PENDING) {
       store()
         .savePending(
           AgentAccessStore.Pending(
@@ -261,7 +286,20 @@ class AgentAccessStoreTest {
           )
         )
     }
-    assertTrue(store().allPending().size <= AgentAccessStore.MAX_PENDING)
+    now += (AgentAccessStore.POLL_RETENTION_SECONDS + 60) * 1000
+    assertTrue(
+      store()
+        .savePending(
+          AgentAccessStore.Pending(
+            origin = "https://fresh.example",
+            requestId = "fresh",
+            deviceSecret = "s",
+            expiresAtMillis = now + 600_000,
+          )
+        ),
+      "records past every deadline are free to sweep",
+    )
+    assertEquals(listOf("fresh"), store().allPending().map { it.requestId })
   }
 
   @Test

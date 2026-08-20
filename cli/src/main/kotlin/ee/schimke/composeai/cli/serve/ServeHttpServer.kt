@@ -1979,7 +1979,17 @@ class ServeHttpServer(
    * who they are and once after — must not land both charges in the same bucket. It would halve the
    * budget an operator configured, and at `--image-rate-limit 1` refuse every request.
    */
-  private fun RoutingContext.clientAddressKey(): String {
+  private fun RoutingContext.clientAddressKey(): String = "ip:" + clientAddress()
+
+  /**
+   * The caller's address under this server's forwarding policy — the trusted final
+   * `X-Forwarded-For` hop when `--trust-forwarded-for` is set, else the socket peer.
+   *
+   * Extracted from [clientAddressKey] so the rate limiter and anything that *displays* an address
+   * cannot answer the question differently. They did: the grant approval page rendered the raw
+   * peer, which behind a proxy is the proxy, on every request.
+   */
+  private fun RoutingContext.clientAddress(): String {
     val forwarded =
       if (!trustForwardedFor) null
       else
@@ -1987,7 +1997,7 @@ class ServeHttpServer(
           ?.split(',')
           ?.map { it.trim() }
           ?.lastOrNull { it.isNotEmpty() }
-    return "ip:" + (forwarded ?: call.request.origin.remoteHost)
+    return forwarded ?: call.request.origin.remoteHost
   }
 
   /**
@@ -8107,7 +8117,11 @@ class ServeHttpServer(
           // The address, not a name the caller chose: the approval page's "who is asking" must be
           // something the asker cannot write. The label right above it is theirs to write, and is
           // presented as such.
-          client = call.request.origin.remoteHost,
+          // The SAME trusted-forwarding policy the rate limiter uses, not the raw socket peer.
+          // Behind a reverse proxy the peer is the proxy, so "Asked from" showed Caddy's address
+          // for every request on the one deployment where the line matters — a signal the approver
+          // is meant to weigh, reading identically for the agent that asked and for anyone else.
+          client = clientAddress(),
           requestedScope = scope,
           requestedTtlSeconds = ttl,
         )

@@ -205,6 +205,9 @@ internal class AuthCommand(
     // a full disk: the device secret — the one thing that can re-poll for this token — was deleted,
     // and the human-readable path never prints the token itself, so a failed save stranded a live
     // grant with nothing left to redeem it.
+    // The waiting path replaces this origin's entry too, and had no superseded handling at all —
+    // the previous round only taught the `--no-wait` collector to do this.
+    handOverSuperseded(store, client, client.origin, outcome.token.orEmpty())
     val saved =
       store.save(
         AgentAccessStore.Entry(
@@ -418,6 +421,38 @@ internal class AuthCommand(
   }
 
   /**
+   * Hand back the grant that saving [replacement] is about to make unreachable.
+   *
+   * The store keeps one entry per origin, so a second approved grant for the same server evicts the
+   * first — which stays **live on the server** with nothing left able to present or revoke it. So
+   * it is revoked here, before it is dropped.
+   *
+   * The revoke result is *read*, not merely attempted: [AgentAccessClient.revoke] reports HTTP and
+   * network failures as `Result.Err` rather than throwing, so wrapping it in `runCatching` (as the
+   * first version of this did) treated every such failure as a success and orphaned the credential
+   * anyway. When it genuinely cannot be handed back, say so and name its fingerprint, because at
+   * that point the only thing that can still end it is a human on `/status`.
+   */
+  private fun handOverSuperseded(
+    store: AgentAccessStore,
+    client: AgentAccessClient,
+    origin: String,
+    replacement: String,
+  ) {
+    val superseded =
+      store.entryFor(origin)?.takeIf { it.token != replacement && it.token.isNotEmpty() } ?: return
+    when (val result = client.revoke(superseded.token)) {
+      is AgentAccessClient.Result.Ok -> Unit
+      is AgentAccessClient.Result.Err ->
+        System.err.println(
+          "WARNING: replaced an older grant for $origin but could NOT revoke it " +
+            "(${result.reason}). It stays live on that server until it expires — revoke " +
+            "${superseded.fingerprint} from $origin/status if you want it gone now."
+        )
+    }
+  }
+
+  /**
    * Poll every remembered request once and promote the approved ones into grants. Silent about a
    * request still pending — [status] prints those itself, with the link, so the human can still be
    * pointed at it.
@@ -439,14 +474,7 @@ internal class AuthCommand(
           // Save first, drop the pending record only if that worked — the same order as the
           // waiting path, for the same reason: this record holds the only secret that can re-poll
           // for the token, and nothing here prints the token itself.
-          // Saving replaces this origin's entry, so a token already there is about to become
-          // unreachable — and it is still live on the server. Hand it back rather than orphaning
-          // it: two `--no-wait` requests for one host can both be approved, and the loser would
-          // otherwise sit there spending the operator's trust until it expired.
-          store
-            .entryFor(pending.origin)
-            ?.takeIf { it.token != token }
-            ?.let { superseded -> runCatching { client.revoke(superseded.token) } }
+          handOverSuperseded(store, client, pending.origin, token)
           val stored =
             store.save(
               AgentAccessStore.Entry(
