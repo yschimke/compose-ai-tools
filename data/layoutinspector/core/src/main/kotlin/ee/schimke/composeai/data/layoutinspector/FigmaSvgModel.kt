@@ -310,6 +310,20 @@ data class FigmaSvgLayer(
    * that was never resolved.
    */
   val shapePathData: String? = null,
+  /**
+   * In-plane rotation of this layer's own drawing, degrees clockwise about its box centre, from the
+   * captured [LayoutInspectorTransform.rotationDegrees]. `0.0` for every ordinary layer.
+   *
+   * The layer's box is its **un-rotated** rect — a rotated node's captured `bounds` is the
+   * axis-aligned bounding box of the turned rect, which is bigger than the node on both axes and
+   * carries no shape of its own — so the renderer draws the box and turns it, rather than trying to
+   * describe a turned pill as an axis-aligned one.
+   *
+   * It applies to the layer's own shape/raster/vector/text and **not** to its children: every
+   * descendant of a rotated node is measured through the same layer chain, so each carries the
+   * rotation (and its own true centre) itself. Nesting the turn would apply it twice.
+   */
+  val rotationDegrees: Double = 0.0,
   val text: FigmaSvgText? = null,
   /** Set when this layer is an opaque component rendered as an `<image>`. */
   val raster: FigmaSvgRaster? = null,
@@ -989,6 +1003,15 @@ data class FigmaSvgModel(
        * what makes it — and not the immediate parent's box — the bound a raster crop can't exceed.
        */
       clipBounds: LayoutInspectorBounds? = null,
+      /**
+       * True when an ancestor is rotated. Everything under a turned layer inherits its problem:
+       * `boundsIn(root)` takes an axis-aligned extent at every step, so a descendant's captured
+       * rect is a bounding box too — the `AlertDialog` confirm button's check icon reports 112x112
+       * for a 56x56 glyph. Its own measured extent is still exact, so the same re-centring applies
+       * even though the node itself may be drawn upright (this one is: the icon's own axes measure
+       * un-turned, and the render draws it upright inside the turned pill).
+       */
+      inRotatedSubtree: Boolean = false,
     ): FigmaSvgLayer {
       // Recover a usable rect for a node whose captured `bounds` collapsed to a zero-area box. The
       // Android/Wear layout inspector reports (0,0,0,0) for a node whose `LayoutCoordinates` were
@@ -1011,7 +1034,19 @@ data class FigmaSvgModel(
       // whose fill is smaller than its clip on the un-overflowing axis doesn't spread across
       // margins the render leaves blank.
       val renderedClipBox = maskBox?.let { intersectBounds(paintedExtent(), it) ?: it }
-      val bounds = renderedClipBox ?: recoverBounds(parentBounds)
+      // A rotated node is the one case where the captured rect is a *bounding box* rather than the
+      // rect the node drew: `boundsIn(root)` maps the turned rect and takes its axis-aligned
+      // extent, so a 126x108 pill at -45 degrees reports 166x166 — bigger on both axes, and square
+      // where the node is not. Placing by it drew Wear's `AlertDialog` confirm button as a 166px
+      // circle over a render 120px across. Take the node's own measured extent instead, centred on
+      // that box (rotation about any point leaves the rect's centre at the bounding box's centre),
+      // and let the renderer turn it back.
+      val turned = transform?.takeIf { it.rotated }
+      val bounds =
+        (renderedClipBox ?: recoverBounds(parentBounds)).let { box ->
+          if (turned == null && !inRotatedSubtree) box
+          else unrotatedBox(box, size, transform ?: LayoutInspectorTransform())
+        }
       // Everything below this node — the mask, the inherited clip, the box children place
       // against — is the container the render clipped in, not this node's narrower paint.
       val containerBounds = maskBox ?: bounds
@@ -1456,7 +1491,10 @@ data class FigmaSvgModel(
       val measuredPaintBox =
         tokens
           ?.paintBox
-          ?.takeIf { mayExpand }
+          // Inside a rotated subtree `paintBox` is a coordinator *bounding* box, exactly like
+          // `bounds` above — so it would hand back the axis-aligned extent the re-centring just
+          // removed.
+          ?.takeIf { mayExpand && turned == null && !inRotatedSubtree }
           ?.let { box -> maskBox?.let { intersectBounds(box, it) } ?: box }
       // Center the grown shape on the placed bounds, then pull the whole rectangle back inside the
       // parent's placed bounds. Clamping only the grown *width/height* (above) isn't enough to keep
@@ -1510,7 +1548,7 @@ data class FigmaSvgModel(
           if (tokens?.clipsContent == true)
             intersectOrNull(containerBounds, clipBounds) ?: containerBounds
           else clipBounds
-        it.toLayer(ctx, containerBounds, childClip)
+        it.toLayer(ctx, containerBounds, childClip, inRotatedSubtree || turned != null)
       }
       // The ancestor half of the #2853 double-draw rule. That rule drops a node's *own* raster when
       // the node's text stays live; the mirror case is a node whose text is live while a
@@ -1559,6 +1597,7 @@ data class FigmaSvgModel(
         // box, so the renderer maps it onto whatever box this layer ends up with — including the
         // draw-time scale and the grow/inset heuristics applied above (issue #2615).
         shapePathData = tokens?.shapePath?.takeIf { corners == null && !circle },
+        rotationDegrees = turned?.rotationDegrees?.toDouble() ?: 0.0,
         // The captured typography is in *measured* sp/px, so a scaled node's glyphs are drawn
         // smaller than the capture says — scale the metrics with the box or the text overflows the
         // shrunken card it sits in (issue #2615).
@@ -1848,6 +1887,30 @@ data class FigmaSvgModel(
      *   parent-sized rect/image. When neither dimension can be recovered, the raw `bounds` are
      *   kept.
      */
+    /**
+     * [box] — the axis-aligned bounding box of a rotated node — replaced by the node's own
+     * un-rotated rect: its measured [LayoutInspectorNode.size] at the transform's scale, centred on
+     * the same point. Falls back to [box] when the node reports no usable size, which is the
+     * pre-existing behaviour rather than a guess.
+     */
+    private fun unrotatedBox(
+      box: LayoutInspectorBounds,
+      size: LayoutInspectorSize,
+      transform: LayoutInspectorTransform,
+    ): LayoutInspectorBounds {
+      val w = (size.width * abs(transform.scaleX)).roundToInt()
+      val h = (size.height * abs(transform.scaleY)).roundToInt()
+      if (w <= 0 || h <= 0) return box
+      val cx = (box.left + box.right) / 2.0
+      val cy = (box.top + box.bottom) / 2.0
+      return LayoutInspectorBounds(
+        left = (cx - w / 2.0).roundToInt(),
+        top = (cy - h / 2.0).roundToInt(),
+        right = (cx + w / 2.0).roundToInt(),
+        bottom = (cy + h / 2.0).roundToInt(),
+      )
+    }
+
     private fun LayoutInspectorNode.recoverBounds(
       parentBounds: LayoutInspectorBounds?
     ): LayoutInspectorBounds {

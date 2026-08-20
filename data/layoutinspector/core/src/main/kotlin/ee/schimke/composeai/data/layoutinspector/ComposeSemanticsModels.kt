@@ -136,7 +136,12 @@ object LayoutInspectorProduct {
   // element exposes no replayable `onDraw` lambda (Material 3's wavy progress indicators). The
   // hybrid figma-svg export uses the signal to crop an otherwise-unrepresentable leaf from the
   // rendered frame. Additive — older entries decode it as false.
-  const val SCHEMA_VERSION: Int = 16
+  // v17: a node's `transform` may carry `rotationDegrees` — the in-plane rotation measured through
+  // the same root-mapped axes its scale is. It is the one case where `bounds` is a *bounding box*
+  // rather than the drawn rect (Wear's `AlertDialog` confirm button: a 126x108 pill turned -45
+  // degrees reports 166x166), so a consumer that places by `bounds` alone draws the node too big
+  // and un-turned. Additive — older entries decode with `rotationDegrees = 0f`.
+  const val SCHEMA_VERSION: Int = 17
   const val FILE: String = "layout-inspector.json"
 }
 
@@ -642,13 +647,38 @@ data class ComposeSemanticsInsets(
  * to its unscaled size (issue #2615).
  */
 @Serializable
-data class LayoutInspectorTransform(val scaleX: Float = 1f, val scaleY: Float = 1f) {
+data class LayoutInspectorTransform(
+  val scaleX: Float = 1f,
+  val scaleY: Float = 1f,
+  /**
+   * In-plane rotation of the node's local x-axis in root space, degrees clockwise (SVG's own sense,
+   * y down). `0` for the overwhelmingly common un-rotated node.
+   *
+   * A rotated node is the one case where [LayoutInspectorNode.bounds] is *not* the rect the node
+   * drew: `boundsIn(root)` returns the axis-aligned bounding box of the rotated rect, which is
+   * larger than the node on both axes and has no shape of its own. Wear's `AlertDialog` confirm
+   * button is the case that surfaced it — a 126x108 pill turned -45 degrees reports a 166x166 box,
+   * and the export drew a 166px circle over a render 120px across. A consumer needs this to know to
+   * take the node's own measured extent instead, and to turn the shape back.
+   */
+  val rotationDegrees: Float = 0f,
+) {
   /** True when either axis is scaled enough to matter (beyond float/rounding noise). */
   val scaled: Boolean
     get() = abs(scaleX - 1f) > EPSILON || abs(scaleY - 1f) > EPSILON
 
+  /** True when the node is turned far enough off-axis for its `bounds` to be a bounding box. */
+  val rotated: Boolean
+    get() = abs(rotationDegrees) > ROTATION_EPSILON_DEGREES
+
   companion object {
     const val EPSILON: Float = 0.001f
+
+    /**
+     * Below this the "rotation" is sub-pixel placement noise on any realistic box, and honouring it
+     * would re-centre a node the render drew exactly on its bounds.
+     */
+    const val ROTATION_EPSILON_DEGREES: Float = 0.5f
   }
 }
 

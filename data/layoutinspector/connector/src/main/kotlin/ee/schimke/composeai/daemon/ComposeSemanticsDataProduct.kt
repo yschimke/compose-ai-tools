@@ -1341,11 +1341,16 @@ internal object ComposeLayoutInspector {
         LayoutInspectorTransform(
           scaleX = signedAxisScale(xAxis, w, horizontal = true),
           scaleY = signedAxisScale(yAxis, h, horizontal = false),
+          // The same two mapped axes already give the in-plane rotation: the angle the node's
+          // local x-axis makes in root space. Degrees clockwise, matching SVG's y-down sense, so a
+          // consumer can hand it straight to `rotate(…)`.
+          rotationDegrees =
+            Math.toDegrees(kotlin.math.atan2(xAxis.y.toDouble(), xAxis.x.toDouble())).toFloat(),
         )
       } catch (_: Throwable) {
         return null
       }
-    return transform.takeIf { it.scaled }
+    return transform.takeIf { it.scaled || it.rotated }
   }
 
   private fun ModifierInfo.toWireModifier(

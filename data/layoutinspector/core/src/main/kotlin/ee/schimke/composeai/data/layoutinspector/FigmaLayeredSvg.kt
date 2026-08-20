@@ -430,12 +430,21 @@ object FigmaLayeredSvg {
     indent: String,
     curveSeq: IntArray,
   ) {
+    // A turned layer turns its text along with the rest of its own drawing. Wrapped rather than
+    // attributed because one layer can emit several runs (a straight `<text>` plus curved ones)
+    // and they all belong to the same turn.
+    val turn =
+      if (layer.text == null && layer.curvedTexts.isEmpty()) ""
+      else rotateTransform(layer).trimEnd()
+    val inner = if (turn.isEmpty()) indent else "$indent  "
+    if (turn.isNotEmpty()) sb.append(indent).append("""<g transform="$turn">""").append('\n')
     if (layer.text != null) {
-      sb.append(indent).append(text(layer, options, familyOverrides)).append('\n')
+      sb.append(inner).append(text(layer, options, familyOverrides)).append('\n')
     }
     layer.curvedTexts.forEach { ct ->
-      sb.append(indent).append(curvedText(ct, "c${curveSeq[0]++}")).append('\n')
+      sb.append(inner).append(curvedText(ct, "c${curveSeq[0]++}")).append('\n')
     }
+    if (turn.isNotEmpty()) sb.append(indent).append("</g>").append('\n')
   }
 
   private inline fun appendOpacityGroup(
@@ -684,7 +693,7 @@ object FigmaLayeredSvg {
 
   private fun image(layer: FigmaSvgLayer, raster: FigmaSvgRaster): String =
     """<image href="${escapeAttr(raster.href)}" x="${layer.left}" y="${layer.top}" """ +
-      """width="${layer.width}" height="${layer.height}"/>"""
+      """width="${layer.width}" height="${layer.height}"${rotateAttr(layer)}/>"""
 
   private fun backgroundImage(bg: FigmaSvgBackgroundRaster, clipId: String?): String =
     """<image href="${escapeAttr(bg.href)}" x="${bg.left}" y="${bg.top}" """ +
@@ -814,7 +823,7 @@ object FigmaLayeredSvg {
       .append('\n')
     sb
       .append(
-        """$indent  <g transform="translate(${fmt(translateX)} ${fmt(translateY)}) scale(${fmt(emittedScaleX)} ${fmt(emittedScaleY)})"${opacityAttr(layer.contentOpacity)}>"""
+        """$indent  <g transform="${rotateTransform(layer)}translate(${fmt(translateX)} ${fmt(translateY)}) scale(${fmt(emittedScaleX)} ${fmt(emittedScaleY)})"${opacityAttr(layer.contentOpacity)}>"""
       )
       .append('\n')
     if (iconId != null) {
@@ -867,6 +876,34 @@ object FigmaLayeredSvg {
     return """$kind="#$rgb"$opAttr"""
   }
 
+  /**
+   * ` transform="rotate(θ cx cy)"` for a layer whose own drawing is turned, else `""`.
+   *
+   * The turn is about the layer's box centre because that is the point the captured rotation was
+   * measured around: the box is the node's un-rotated rect re-centred on its bounding box, and a
+   * rotation maps a rect's centre onto its bounding box's centre. It goes on the layer's own drawn
+   * elements and never on a group that contains its children — every descendant of a rotated node
+   * measures the same rotation for itself, so nesting the turn would apply it twice.
+   */
+  private fun rotateAttr(layer: FigmaSvgLayer): String {
+    if (layer.rotationDegrees == 0.0) return ""
+    val cx = (layer.left + layer.right) / 2.0
+    val cy = (layer.top + layer.bottom) / 2.0
+    return """ transform="rotate(${fmt(layer.rotationDegrees)} ${fmt(cx)} ${fmt(cy)})""""
+  }
+
+  /**
+   * `rotate(θ cx cy) ` for a turned layer, else `""` — the same turn [rotateAttr] emits, as a bare
+   * transform-list prefix for an element that already carries a `transform` of its own. It comes
+   * first so the fit that follows stays in the layer's own un-rotated space.
+   */
+  private fun rotateTransform(layer: FigmaSvgLayer): String {
+    if (layer.rotationDegrees == 0.0) return ""
+    val cx = (layer.left + layer.right) / 2.0
+    val cy = (layer.top + layer.bottom) / 2.0
+    return "rotate(${fmt(layer.rotationDegrees)} ${fmt(cx)} ${fmt(cy)}) "
+  }
+
   private fun shape(layer0: FigmaSvgLayer, gradientSeq: Map<FigmaSvgLayer, Int>): String {
     // Compose's `Modifier.border` draws the stroke *inside* the layout bounds; SVG centers a stroke
     // on the path, so a bare rect at the bounds paints half the stroke outside the edge (the
@@ -912,25 +949,26 @@ object FigmaLayeredSvg {
         }
         ?: ""
     val radii = effectiveRadii(layer)
+    val turn = rotateAttr(layer)
     return if (radii == null) {
       // A shape we could not reduce to corners still has its sampled outline — draw *that* rather
       // than a sharp rect, which would assert geometry we never established over the correctly
       // shaped pixels underneath (issue #3254).
       val outline = layer.shapePathData?.let { unitPathToBox(it, layer) }
-      if (outline != null) """<path d="$outline" $fillAttr$strokeAttr/>"""
+      if (outline != null) """<path d="$outline" $fillAttr$strokeAttr$turn/>"""
       else
         """<rect x="${layer.left}" y="${layer.top}" width="${layer.width}" height="${layer.height}" """ +
-          """$fillAttr$strokeAttr/>"""
+          """$fillAttr$strokeAttr$turn/>"""
     } else if (layer.cut) {
       // A cut/chamfered corner can't be expressed as a `<rect rx>` — always a path with straight
       // corner segments, uniform or not.
-      """<path d="${cornerRectPath(layer, radii, cut = true)}" $fillAttr$strokeAttr/>"""
+      """<path d="${cornerRectPath(layer, radii, cut = true)}" $fillAttr$strokeAttr$turn/>"""
     } else if (radii.distinct().size == 1) {
       val r = fmt(radii[0])
       """<rect x="${layer.left}" y="${layer.top}" width="${layer.width}" height="${layer.height}" """ +
-        """rx="$r" ry="$r" $fillAttr$strokeAttr/>"""
+        """rx="$r" ry="$r" $fillAttr$strokeAttr$turn/>"""
     } else {
-      """<path d="${cornerRectPath(layer, radii, cut = false)}" $fillAttr$strokeAttr/>"""
+      """<path d="${cornerRectPath(layer, radii, cut = false)}" $fillAttr$strokeAttr$turn/>"""
     }
   }
 
@@ -1087,20 +1125,23 @@ object FigmaLayeredSvg {
    * The `<clipPath>` def for a `Modifier.clip` layer, its shape matching the drawn box + corners.
    */
   private fun clipPathDef(layer: FigmaSvgLayer, id: String): String =
+    // A turned layer masks with its turned outline: the clip is the same shape as the fill, so it
+    // carries the same `rotate(...)`.
     """<clipPath id="$id">${clipShapeElement(layer)}</clipPath>"""
 
   /** The bare shape element (`<rect>`/rounded `<rect>`/`<path>`) inside a clipPath, no paint. */
   private fun clipShapeElement(layer: FigmaSvgLayer): String {
     val radii = effectiveRadii(layer)
+    val turn = rotateAttr(layer)
     return when {
       radii == null ->
-        """<rect x="${layer.left}" y="${layer.top}" width="${layer.width}" height="${layer.height}"/>"""
-      layer.cut -> """<path d="${cornerRectPath(layer, radii, cut = true)}"/>"""
+        """<rect x="${layer.left}" y="${layer.top}" width="${layer.width}" height="${layer.height}"$turn/>"""
+      layer.cut -> """<path d="${cornerRectPath(layer, radii, cut = true)}"$turn/>"""
       radii.distinct().size == 1 -> {
         val r = fmt(radii[0])
-        """<rect x="${layer.left}" y="${layer.top}" width="${layer.width}" height="${layer.height}" rx="$r" ry="$r"/>"""
+        """<rect x="${layer.left}" y="${layer.top}" width="${layer.width}" height="${layer.height}" rx="$r" ry="$r"$turn/>"""
       }
-      else -> """<path d="${cornerRectPath(layer, radii, cut = false)}"/>"""
+      else -> """<path d="${cornerRectPath(layer, radii, cut = false)}"$turn/>"""
     }
   }
 
