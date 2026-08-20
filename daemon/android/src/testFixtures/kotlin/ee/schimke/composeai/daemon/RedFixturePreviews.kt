@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -755,6 +756,11 @@ const val POST_DELAYED_SQUARE_DELAY_MS: Long = 100L
  * on, and it is driven by the composition's `MonotonicFrameClock` — which under a held session is
  * the paused `mainClock` the render loop advances. Full-bounds so a frame either moved or it did
  * not; no input, no state, nothing else that could change a pixel.
+ *
+ * **`LinearEasing`, so the colour is a readable clock.** With the default easing the red channel is
+ * some curve of the phase, and a test can only ask whether the frame changed. Linear makes red
+ * exactly `phase × 255`, so a test can decode how many milliseconds of animation a render actually
+ * applied — which is what separates "the clock ticked" from "it ticked by the right amount".
  */
 @Composable
 fun InfiniteSweepSquare() {
@@ -765,13 +771,26 @@ fun InfiniteSweepSquare() {
       targetValue = 1f,
       animationSpec =
         infiniteRepeatable(
-          animation = tween(durationMillis = 1000),
+          animation = tween(durationMillis = SWEEP_PERIOD_MS, easing = LinearEasing),
           repeatMode = RepeatMode.Restart,
         ),
       label = "t",
     )
   Box(modifier = Modifier.fillMaxSize().background(Color(t, 0f, 1f - t, 1f)))
 }
+
+/**
+ * [InfiniteSweepSquare]'s cycle length. Deliberately **longer than
+ * `AndroidInteractiveSession.MAX_AUTO_ADVANCE_MS`** (1000 ms) and not a multiple of it.
+ *
+ * A held render's auto-advance is capped at that value, so a fixture whose period *equalled* the
+ * cap would land the next frame exactly one full cycle on — the same colour it started from — any
+ * time a single render took longer than the cap. On a loaded CI worker that is reachable, and it
+ * would fail a "consecutive frames differ" assertion for a clock that behaved exactly as designed.
+ * At 1500 ms the largest advance the daemon can apply moves the phase two thirds of a cycle, which
+ * cannot alias back to its own starting colour.
+ */
+const val SWEEP_PERIOD_MS: Int = 1500
 
 @Composable
 fun ClickableToggleSquare() {
