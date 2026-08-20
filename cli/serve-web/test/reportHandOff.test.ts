@@ -164,6 +164,27 @@ describe("handing a capture to the clipboard as the issue is opened", () => {
         assert.equal(note(), "");
     });
 
+    it("hands off from a form the page rebuilt after the bundle loaded", async () => {
+        // `installCapture` runs once per page, but `.cp-report-form` is emitted by whichever
+        // surface bundle drew the preview and the comparison wall replaces its own as the wall
+        // re-renders. A snapshot taken at install time wires a form that is no longer in the
+        // document, and the failure is exactly the silent one this whole change removes.
+        stubBrowser([capture("shot-1", "Whole view")]);
+        reportPage();
+        installCapture();
+        const shots = document.querySelector(".cp-shots")!;
+        document.querySelector(".cp-report-bug-form")!.remove();
+        shots.insertAdjacentHTML(
+            "beforebegin",
+            `<form class="cp-report-bug-form" method="get" target="_blank"
+               action="https://github.com/acme/tools/issues/new"></form>`,
+        );
+        submitReport();
+        await settled();
+        assert.equal(written.length, 1);
+        assert.match(note(), /on the clipboard/);
+    });
+
     it("hands off from a preview's own report form too", async () => {
         // The per-preview affordance files against the CATALOG's repo rather than the server's, but
         // the screenshot problem is identical and so is the route out of it.

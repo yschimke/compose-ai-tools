@@ -80,11 +80,29 @@ const REPORT_FORMS = ".cp-report-bug-form, .cp-report-form";
  * The NEWEST capture, because a clipboard holds one image and the newest is the one the pile's own
  * eviction rule already treats as the most wanted. When there are others the note says so, since
  * their Copy buttons are the only way to reach them and this page is where they still exist.
+ *
+ * Delegated from the document, for the same reason `chrome/reportLauncher.ts` delegates its own
+ * dismissal: [installCapture] runs once per page, and `.cp-report-form` is not necessarily the one
+ * that will be submitted. It is emitted by whichever surface bundle drew the preview, and the
+ * comparison wall replaces its own as the wall re-renders — so a snapshot taken at install time
+ * wires a form that is no longer in the document, and the failure is the silent one this whole
+ * change exists to remove: the issue opens, the paste produces whatever was last copied, and
+ * nothing anywhere says the hand-off did not happen.
  */
 function wireHandOff(): void {
-    document
-        .querySelectorAll<HTMLFormElement>(REPORT_FORMS)
-        .forEach((form) => form.addEventListener("submit", handOff));
+    // Guarded on its OWN attribute rather than riding [installCapture]'s. Both bundles that reach
+    // this file can load it — the launcher fetches it when its panel opens, `/report-bug` on load —
+    // and a delegated listener cannot be de-duplicated by the element it is attached to the way a
+    // per-form one could. Two of these would copy twice and write the note twice for one submit.
+    const root = document.documentElement;
+    if (root.hasAttribute("data-cp-handoff-wired")) return;
+    root.setAttribute("data-cp-handoff-wired", "1");
+    document.addEventListener("submit", (event) => {
+        const form = event.target;
+        if (form instanceof HTMLElement && form.matches(REPORT_FORMS)) {
+            handOff();
+        }
+    });
 }
 
 function handOff(): void {
