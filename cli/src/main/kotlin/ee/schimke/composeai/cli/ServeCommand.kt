@@ -848,9 +848,10 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
       preferred != null && (preferred.isDirectory || preferred.mkdirs()) && preferred.canWrite()
     ) {
       System.err.println(
-        "serve: catalog blob cache at $preferred (durable, cap ${maxBytes / (1024 * 1024)} MB)"
+        "serve: catalog blob cache at $preferred (cap ${maxBytes / (1024 * 1024)} MB) — " +
+          "it survives a restart only if that path is a mounted volume"
       )
-      CatalogBlobPool(preferred, maxBytes = maxBytes, durable = true)
+      CatalogBlobPool(preferred, maxBytes = maxBytes, persistenceConfigured = true)
     } else {
       if (preferred != null) {
         System.err.println("serve: catalog blob cache $preferred is not writable; using a temp dir")
@@ -863,10 +864,11 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         "serve: catalog blob cache is a temp dir — it will not survive a restart. " +
           "Set --catalog-cache-dir (SERVE_CATALOG_CACHE_DIR) to a mounted volume to keep it."
       )
-      // Not durable, and `/status.json` says so: a temp pool fills and serves within-process hits
+      // Not configured, and `/status.json` says so: a temp pool fills and serves within-process
+      // hits
       // exactly like a real one, so without the flag a box that never configured a directory looks
       // identical to a box whose cache is working.
-      CatalogBlobPool(temp, maxBytes = maxBytes, durable = false)
+      CatalogBlobPool(temp, maxBytes = maxBytes, persistenceConfigured = false)
     }
   }
 

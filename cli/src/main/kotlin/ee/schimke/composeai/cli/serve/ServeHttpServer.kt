@@ -1004,7 +1004,11 @@ class ServeHttpServer(
             val after = withContext(Dispatchers.IO) { catalogCacheClear!!.invoke() }
             call.response.headers.append(HttpHeaders.CacheControl, "no-store")
             call.respondText(
-              Json.encodeToString(CatalogBlobPoolSnapshot.serializer(), after),
+              // JSON, not the bare companion: that one leaves `encodeDefaults` off, which silently
+              // drops exactly the fields whose default value is the alarming one — an operator
+              // clearing a temp-backed pool would get a response with no `persistenceConfigured`
+              // in it at all. Same encoder as `/status.json` so the two agree in shape.
+              JSON.encodeToString(CatalogBlobPoolSnapshot.serializer(), after),
               ContentType.Application.Json,
             )
           }
@@ -8199,6 +8203,12 @@ private data class StatusResponse(
   /**
    * The catalog blob cache ([CatalogBlobPoolSnapshot]), or null on a server that publishes no
    * catalogs.
+   *
+   * Read `persistenceConfigured` and `adopted` first — but read them for what they are. The first
+   * says only that an operator named a directory, which is not proof the storage outlives the
+   * container: `--catalog-cache-dir /var/cache/x` inside an image with no volume there is
+   * configured and just as ephemeral. `adopted` is the evidence — blobs found at open, so non-zero
+   * after a restart is the pool actually having survived one.
    *
    * `hits` here is the **aggregate** across all three lanes the pool serves — small assets, the
    * executable bundles, and the content-addressed resource pool — while `branchFetch.cached` counts

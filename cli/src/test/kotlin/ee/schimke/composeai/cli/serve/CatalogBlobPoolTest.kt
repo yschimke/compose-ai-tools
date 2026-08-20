@@ -364,20 +364,23 @@ class CatalogBlobPoolTest {
   }
 
   @Test
-  fun `a pool reports whether it is durable and what it adopted`() {
-    // The two numbers that separate a working cache from a decoration. Everything else looks the
-    // same either way: a temp pool fills, serves within-process hits and reports climbing writes,
-    // right up until the container is recreated and none of it is there.
+  fun `a pool reports whether persistence was configured and what it adopted`() {
+    // `persistenceConfigured` reports a decision; `adopted` is the evidence. Everything else looks
+    // the same either way: a temp pool fills, serves within-process hits and reports climbing
+    // writes, right up until the container is recreated and none of it is there.
     val root = root()
-    val first = CatalogBlobPool(root, durable = true)
-    assertFalse(CatalogBlobPool(root()).snapshot().durable, "a temp-dir pool says so")
-    assertTrue(first.snapshot().durable)
+    val first = CatalogBlobPool(root, persistenceConfigured = true)
+    assertFalse(
+      CatalogBlobPool(root()).snapshot().persistenceConfigured,
+      "a temp-dir pool says so",
+    )
+    assertTrue(first.snapshot().persistenceConfigured)
     assertEquals(0, first.snapshot().adopted, "nothing was here before this process")
 
     first.write("https://raw.githubusercontent.com/o/r/$COMMIT/images/a.png", "png".toByteArray())
 
     // A restart over the same volume: what it finds is what survived.
-    val reopened = CatalogBlobPool(root, durable = true)
+    val reopened = CatalogBlobPool(root, persistenceConfigured = true)
     assertEquals(1, reopened.snapshot().adopted, "the blob the previous process left")
     assertEquals(0, first.snapshot().adopted, "adopted is fixed at open, not a running total")
   }
