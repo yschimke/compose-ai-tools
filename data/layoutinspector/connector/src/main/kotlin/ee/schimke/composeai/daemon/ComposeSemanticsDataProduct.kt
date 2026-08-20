@@ -1241,7 +1241,7 @@ internal object ComposeLayoutInspector {
     val vectorGraphic =
       VectorGraphicExtractor.extract(this)
         ?: if (children.isEmpty())
-          DrawCaptureExtractor.extract(modifiers, captureW, captureH, density)
+          DrawCaptureExtractor.extract(modifiers, captureW, captureH, density, fontScale)
         else null
     // Whatever the two vector captures above couldn't read, re-drawn in isolation as pixels
     // (issue #2937). Tier 3, deliberately last: an `ImageVector` or a recorded draw is editable
@@ -1256,7 +1256,7 @@ internal object ComposeLayoutInspector {
     // render on pixels the export must then discard.
     val drawRaster =
       if (vectorGraphic == null && curvedTexts.isEmpty()) {
-        DrawRasterCapture.capture(modifiers, density) { info ->
+        DrawRasterCapture.capture(modifiers, density, fontScale) { info ->
           info.coordinates.boundsIn(rootCoords)
         }
       } else null

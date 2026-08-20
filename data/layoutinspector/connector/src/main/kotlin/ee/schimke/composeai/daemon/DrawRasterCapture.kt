@@ -69,6 +69,7 @@ internal object DrawRasterCapture {
   fun capture(
     modifiers: List<ModifierInfo>,
     density: Float,
+    fontScale: Float = 1f,
     boundsOf: (ModifierInfo) -> LayoutInspectorBounds?,
   ): LayoutInspectorDrawRaster? {
     val draws = modifiers.mapNotNull { info ->
@@ -88,6 +89,7 @@ internal object DrawRasterCapture {
         DrawCaptureExtractor.CacheDrawParams(
           Size(localWidth.toFloat(), localHeight.toFloat()),
           density,
+          fontScale,
         )
       val lambda =
         DrawCaptureExtractor.drawLambda(info.modifier, cacheParams) ?: return@mapNotNull null
@@ -116,8 +118,8 @@ internal object DrawRasterCapture {
     if (width <= 0 || height <= 0 || width.toLong() * height > MAX_PIXELS) return null
 
     val pixels =
-      runCatching { render(draws, left, top, scaleX, scaleY, width, height, density) }.getOrNull()
-        ?: return null
+      runCatching { render(draws, left, top, scaleX, scaleY, width, height, density, fontScale) }
+        .getOrNull() ?: return null
     if (pixels.none { (it ushr 24) != 0 }) return null
     val png = runCatching { encodePng(pixels, width, height) }.getOrNull() ?: return null
     return LayoutInspectorDrawRaster(
@@ -167,6 +169,7 @@ internal object DrawRasterCapture {
     width: Int,
     height: Int,
     density: Float,
+    fontScale: Float,
   ): IntArray {
     val target = ImageBitmap(width, height)
     val canvas = Canvas(target)
@@ -175,7 +178,7 @@ internal object DrawRasterCapture {
     // valid or the backend throws mid-draw and the whole capture is lost.
     val scratch = Canvas(ImageBitmap(1, 1))
     val scope = CanvasDrawScope()
-    val densityScope = Density(density)
+    val densityScope = Density(density, fontScale)
     for (draw in draws) {
       // Offsets are root-space distances, so they divide back into the bitmap's local space too.
       val dx = (draw.bounds.left - left) / scaleX

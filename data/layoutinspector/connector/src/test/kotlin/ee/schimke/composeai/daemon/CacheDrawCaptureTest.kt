@@ -5,7 +5,10 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.drawscope.Stroke
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -34,7 +37,11 @@ class CacheDrawCaptureTest {
   private fun capture(modifier: Modifier, width: Int = 96, height: Int = 96) =
     DrawCaptureExtractor.drawLambda(
         modifier,
-        DrawCaptureExtractor.CacheDrawParams(Size(width.toFloat(), height.toFloat()), density = 2f),
+        DrawCaptureExtractor.CacheDrawParams(
+          Size(width.toFloat(), height.toFloat()),
+          density = 2f,
+          fontScale = 1f,
+        ),
       )
       ?.let { DrawCaptureExtractor.captureDraw(it, width = width, height = height, density = 2f) }
 
@@ -73,6 +80,51 @@ class CacheDrawCaptureTest {
     assertEquals(8f, g.paths[0].strokeWidth)
     // The paths *are* the modifier's output, so the export must not raster the node over them.
     assertEquals(true, g.fromDrawCapture)
+    // The full-turn track is two arcs. One `A` whose end point rounds back onto its start paints
+    // nothing in SVG, which would have made a complete track invisible.
+    assertEquals(
+      "the 360° track must be split so it actually paints: ${g.paths[0].pathData}",
+      2,
+      g.paths[0].pathData.count { it == 'A' },
+    )
+  }
+
+  @Test
+  fun blendModeAndColorFilter_fallBackToRaster() {
+    // Neither has a flat SVG paint equivalent, so exporting the primitive's own colour would draw
+    // a different shape than the render — the capture aborts and the node keeps its raster.
+    assertNull(
+      capture(
+        Modifier.drawWithCache {
+          onDrawWithContent { drawCircle(Color.Red, radius = 10f, blendMode = BlendMode.Clear) }
+        }
+      )
+    )
+    assertNull(
+      capture(
+        Modifier.drawBehind {
+          drawRect(Color.Red, size = Size(10f, 10f), colorFilter = ColorFilter.tint(Color.Blue))
+        }
+      )
+    )
+  }
+
+  @Test
+  fun aChainWithOneUnrecordableDraw_fallsBackToRaster() {
+    // The captured vector replaces the node's raster wholesale, so a chain that also carries a
+    // draw the recorder can't read must not export the half it understood (the arc) and drop the
+    // rest (the gradient wash).
+    val modifiers =
+      listOf(
+        Modifier.drawBehind { drawCircle(Color.Red, radius = 10f) },
+        Modifier.drawBehind {
+          drawRect(Brush.horizontalGradient(listOf(Color.Red, Color.Blue)), size = Size(10f, 10f))
+        },
+      )
+    val cache = DrawCaptureExtractor.CacheDrawParams(Size(96f, 96f), density = 2f, fontScale = 1f)
+    val lambdas = modifiers.map { DrawCaptureExtractor.drawLambda(it, cache)!! }
+    assertNotNull(DrawCaptureExtractor.captureDraw(lambdas[0], 96, 96, 2f))
+    assertNull(DrawCaptureExtractor.captureDraws(lambdas, 96, 96, 2f, 1f))
   }
 
   @Test

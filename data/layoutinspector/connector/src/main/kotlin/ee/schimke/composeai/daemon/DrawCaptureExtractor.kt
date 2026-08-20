@@ -6,6 +6,7 @@ import androidx.compose.ui.draw.DrawResult
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.Color
@@ -69,23 +70,37 @@ internal object DrawCaptureExtractor {
    * computed once per size/density and closed over by the block it returns — so unlike `drawBehind`
    * / `drawWithContent` its lambda can't be replayed without them.
    */
-  internal class CacheDrawParams(val size: Size, val density: Float)
+  internal class CacheDrawParams(val size: Size, val density: Float, val fontScale: Float)
 
+  /**
+   * Every draw the node's chain paints, as one graphic — or null if **any** of them can't be
+   * recorded.
+   *
+   * All-or-nothing on purpose. The graphic this returns replaces the node's raster in the export,
+   * so keeping one recordable draw out of a chain that also carries an unrepresentable one (a
+   * gradient wash, a native-canvas blit) would publish the half we understood and silently drop the
+   * rest. A chain the recorder can't fully read keeps its faithful raster instead.
+   *
+   * `Modifier.placeholder`'s own draw is excluded, the same exclusion [DrawRasterCapture] and the
+   * export's `hasCustomDraw` make: it is not the node's art, and the export emits the placeholder
+   * block as its own layer.
+   */
   fun extract(
     modifiers: List<ModifierInfo>,
     width: Int,
     height: Int,
     density: Float,
+    fontScale: Float = 1f,
   ): LayoutInspectorVectorGraphic? {
     if (width <= 0 || height <= 0) return null
-    val cache = CacheDrawParams(Size(width.toFloat(), height.toFloat()), density)
-    for (info in modifiers) {
-      val onDraw = drawLambda(info.modifier, cache) ?: continue
-      captureDraw(onDraw, width, height, density)?.let {
-        return it
-      }
-    }
-    return null
+    val cache = CacheDrawParams(Size(width.toFloat(), height.toFloat()), density, fontScale)
+    val draws =
+      modifiers
+        .filter { !ModifierTokenResolver.isPlaceholderElement(it.modifier) }
+        .filter { isDrawModifier(it.modifier) }
+        .map { drawLambda(it.modifier, cache) ?: return null }
+    if (draws.isEmpty()) return null
+    return captureDraws(draws, width, height, density, fontScale)
   }
 
   /**
@@ -98,9 +113,19 @@ internal object DrawCaptureExtractor {
     width: Int,
     height: Int,
     density: Float,
+    fontScale: Float = 1f,
+  ): LayoutInspectorVectorGraphic? = captureDraws(listOf(onDraw), width, height, density, fontScale)
+
+  /** [captureDraw] over a whole chain: one recording, the draws replayed in paint order. */
+  internal fun captureDraws(
+    draws: List<DrawScope.() -> Unit>,
+    width: Int,
+    height: Int,
+    density: Float,
+    fontScale: Float,
   ): LayoutInspectorVectorGraphic? {
-    val rec = RecordingDrawScope(width.toFloat(), height.toFloat(), density)
-    val ok = runCatching { rec.onDraw() }.isSuccess
+    val rec = RecordingDrawScope(width.toFloat(), height.toFloat(), density, fontScale)
+    val ok = runCatching { draws.forEach { rec.it() } }.isSuccess
     if (!ok || rec.paths.isEmpty()) return null
     return LayoutInspectorVectorGraphic(
       viewportWidth = width.toFloat(),
@@ -210,7 +235,7 @@ internal object DrawCaptureExtractor {
     override val size: Size
       get() = params.size
 
-    override val density: Density = Density(params.density)
+    override val density: Density = Density(params.density, params.fontScale)
 
     override val layoutDirection: LayoutDirection = LayoutDirection.Ltr
   }
@@ -227,9 +252,9 @@ internal object DrawCaptureExtractor {
     private val w: Float,
     private val h: Float,
     override val density: Float,
+    override val fontScale: Float,
   ) : ContentDrawScope {
     val paths = mutableListOf<LayoutInspectorVectorPath>()
-    override val fontScale: Float = 1f
     override val layoutDirection: LayoutDirection = LayoutDirection.Ltr
 
     // The receiver has to be a `ContentDrawScope`: a `drawWithContent` lambda — and the block a
@@ -291,7 +316,26 @@ internal object DrawCaptureExtractor {
       if (effect != null) throw UnsupportedOperationException("dashed stroke not captured")
     }
 
-    private fun add(d: String, color: Color, style: DrawStyle, alpha: Float) {
+    // A `ColorFilter` or a non-`SrcOver` `BlendMode` changes what the primitive puts on screen, and
+    // a flat SVG paint has no equivalent: a `BlendMode.Clear` erases, a tint recolours. Emitting
+    // the primitive's own colour anyway would export a *different* shape from the one rendered, so
+    // these abort the whole capture and the node keeps its faithful raster.
+    private fun assertPlainPaint(colorFilter: ColorFilter?, blendMode: BlendMode) {
+      if (colorFilter != null) throw UnsupportedOperationException("color filter not captured")
+      if (blendMode != DrawScope.DefaultBlendMode) {
+        throw UnsupportedOperationException("blend mode not captured")
+      }
+    }
+
+    private fun add(
+      d: String,
+      color: Color,
+      style: DrawStyle,
+      alpha: Float,
+      colorFilter: ColorFilter?,
+      blendMode: BlendMode,
+    ) {
+      assertPlainPaint(colorFilter, blendMode)
       val hex = argb(color)
       if (style is Stroke) {
         assertNoPathEffect(style.pathEffect)
@@ -361,8 +405,21 @@ internal object DrawCaptureExtractor {
       val sweep = sweepDeg.coerceIn(-359.999f, 359.999f)
       val (sx, sy) = pt(startDeg)
       val (ex, ey) = pt(startDeg + sweep)
-      val largeArc = if (kotlin.math.abs(sweep) > 180f) 1 else 0
       val sweepFlag = if (sweep >= 0f) 1 else 0
+      // A full turn has to be two arcs. One `A` command whose end point equals its start paints
+      // nothing at all in SVG, and after the coordinates are rounded that is exactly what a
+      // 360° sweep produces — a complete progress track would come out invisible. Anything short
+      // of a full turn keeps distinct endpoints and stays a single arc.
+      if (kotlin.math.abs(sweep) >= 359.99f) {
+        val (mx, my) = pt(startDeg + sweep / 2f)
+        return buildString {
+          append("M${fmt(sx)},${fmt(sy)} ")
+          append("A${fmt(rx)},${fmt(ry)} 0 0 $sweepFlag ${fmt(mx)},${fmt(my)} ")
+          append("A${fmt(rx)},${fmt(ry)} 0 0 $sweepFlag ${fmt(ex)},${fmt(ey)}")
+          if (useCenter) append(" L${fmt(cx)},${fmt(cy)} Z")
+        }
+      }
+      val largeArc = if (kotlin.math.abs(sweep) > 180f) 1 else 0
       return buildString {
         append("M${fmt(sx)},${fmt(sy)} ")
         append("A${fmt(rx)},${fmt(ry)} 0 $largeArc $sweepFlag ${fmt(ex)},${fmt(ey)}")
@@ -396,8 +453,8 @@ internal object DrawCaptureExtractor {
       alpha: Float,
       style: DrawStyle,
       colorFilter: ColorFilter?,
-      blendMode: androidx.compose.ui.graphics.BlendMode,
-    ) = add(rectPath(topLeft, size), color, style, alpha)
+      blendMode: BlendMode,
+    ) = add(rectPath(topLeft, size), color, style, alpha, colorFilter, blendMode)
 
     override fun drawRect(
       brush: Brush,
@@ -406,9 +463,9 @@ internal object DrawCaptureExtractor {
       alpha: Float,
       style: DrawStyle,
       colorFilter: ColorFilter?,
-      blendMode: androidx.compose.ui.graphics.BlendMode,
+      blendMode: BlendMode,
     ) {
-      add(rectPath(topLeft, size), solidColor(brush), style, alpha)
+      add(rectPath(topLeft, size), solidColor(brush), style, alpha, colorFilter, blendMode)
     }
 
     override fun drawRoundRect(
@@ -419,8 +476,8 @@ internal object DrawCaptureExtractor {
       style: DrawStyle,
       alpha: Float,
       colorFilter: ColorFilter?,
-      blendMode: androidx.compose.ui.graphics.BlendMode,
-    ) = add(roundRectPath(topLeft, size, cornerRadius), color, style, alpha)
+      blendMode: BlendMode,
+    ) = add(roundRectPath(topLeft, size, cornerRadius), color, style, alpha, colorFilter, blendMode)
 
     override fun drawRoundRect(
       brush: Brush,
@@ -430,9 +487,16 @@ internal object DrawCaptureExtractor {
       alpha: Float,
       style: DrawStyle,
       colorFilter: ColorFilter?,
-      blendMode: androidx.compose.ui.graphics.BlendMode,
+      blendMode: BlendMode,
     ) {
-      add(roundRectPath(topLeft, size, cornerRadius), solidColor(brush), style, alpha)
+      add(
+        roundRectPath(topLeft, size, cornerRadius),
+        solidColor(brush),
+        style,
+        alpha,
+        colorFilter,
+        blendMode,
+      )
     }
 
     override fun drawCircle(
@@ -442,8 +506,16 @@ internal object DrawCaptureExtractor {
       alpha: Float,
       style: DrawStyle,
       colorFilter: ColorFilter?,
-      blendMode: androidx.compose.ui.graphics.BlendMode,
-    ) = add(ellipsePath(center.x, center.y, radius, radius), color, style, alpha)
+      blendMode: BlendMode,
+    ) =
+      add(
+        ellipsePath(center.x, center.y, radius, radius),
+        color,
+        style,
+        alpha,
+        colorFilter,
+        blendMode,
+      )
 
     override fun drawCircle(
       brush: Brush,
@@ -452,9 +524,16 @@ internal object DrawCaptureExtractor {
       alpha: Float,
       style: DrawStyle,
       colorFilter: ColorFilter?,
-      blendMode: androidx.compose.ui.graphics.BlendMode,
+      blendMode: BlendMode,
     ) {
-      add(ellipsePath(center.x, center.y, radius, radius), solidColor(brush), style, alpha)
+      add(
+        ellipsePath(center.x, center.y, radius, radius),
+        solidColor(brush),
+        style,
+        alpha,
+        colorFilter,
+        blendMode,
+      )
     }
 
     override fun drawOval(
@@ -464,7 +543,7 @@ internal object DrawCaptureExtractor {
       alpha: Float,
       style: DrawStyle,
       colorFilter: ColorFilter?,
-      blendMode: androidx.compose.ui.graphics.BlendMode,
+      blendMode: BlendMode,
     ) =
       add(
         ellipsePath(
@@ -476,6 +555,8 @@ internal object DrawCaptureExtractor {
         color,
         style,
         alpha,
+        colorFilter,
+        blendMode,
       )
 
     override fun drawOval(
@@ -485,7 +566,7 @@ internal object DrawCaptureExtractor {
       alpha: Float,
       style: DrawStyle,
       colorFilter: ColorFilter?,
-      blendMode: androidx.compose.ui.graphics.BlendMode,
+      blendMode: BlendMode,
     ) {
       add(
         ellipsePath(
@@ -497,6 +578,8 @@ internal object DrawCaptureExtractor {
         solidColor(brush),
         style,
         alpha,
+        colorFilter,
+        blendMode,
       )
     }
 
@@ -510,8 +593,16 @@ internal object DrawCaptureExtractor {
       alpha: Float,
       style: DrawStyle,
       colorFilter: ColorFilter?,
-      blendMode: androidx.compose.ui.graphics.BlendMode,
-    ) = add(arcPath(topLeft, size, startAngle, sweepAngle, useCenter), color, style, alpha)
+      blendMode: BlendMode,
+    ) =
+      add(
+        arcPath(topLeft, size, startAngle, sweepAngle, useCenter),
+        color,
+        style,
+        alpha,
+        colorFilter,
+        blendMode,
+      )
 
     override fun drawArc(
       brush: Brush,
@@ -523,13 +614,15 @@ internal object DrawCaptureExtractor {
       alpha: Float,
       style: DrawStyle,
       colorFilter: ColorFilter?,
-      blendMode: androidx.compose.ui.graphics.BlendMode,
+      blendMode: BlendMode,
     ) {
       add(
         arcPath(topLeft, size, startAngle, sweepAngle, useCenter),
         solidColor(brush),
         style,
         alpha,
+        colorFilter,
+        blendMode,
       )
     }
 
@@ -542,8 +635,9 @@ internal object DrawCaptureExtractor {
       pathEffect: PathEffect?,
       alpha: Float,
       colorFilter: ColorFilter?,
-      blendMode: androidx.compose.ui.graphics.BlendMode,
+      blendMode: BlendMode,
     ) {
+      assertPlainPaint(colorFilter, blendMode)
       assertNoPathEffect(pathEffect)
       val d = "M${fmt(start.x)},${fmt(start.y)} L${fmt(end.x)},${fmt(end.y)}"
       paths.add(
@@ -566,9 +660,10 @@ internal object DrawCaptureExtractor {
       pathEffect: PathEffect?,
       alpha: Float,
       colorFilter: ColorFilter?,
-      blendMode: androidx.compose.ui.graphics.BlendMode,
+      blendMode: BlendMode,
     ) {
       val color = solidColor(brush)
+      assertPlainPaint(colorFilter, blendMode)
       assertNoPathEffect(pathEffect)
       val d = "M${fmt(start.x)},${fmt(start.y)} L${fmt(end.x)},${fmt(end.y)}"
       paths.add(
@@ -588,10 +683,10 @@ internal object DrawCaptureExtractor {
       alpha: Float,
       style: DrawStyle,
       colorFilter: ColorFilter?,
-      blendMode: androidx.compose.ui.graphics.BlendMode,
+      blendMode: BlendMode,
     ) {
       val d = sampledPath(path)
-      if (d.isNotEmpty()) add(d, color, style, alpha)
+      if (d.isNotEmpty()) add(d, color, style, alpha, colorFilter, blendMode)
     }
 
     override fun drawPath(
@@ -600,11 +695,11 @@ internal object DrawCaptureExtractor {
       alpha: Float,
       style: DrawStyle,
       colorFilter: ColorFilter?,
-      blendMode: androidx.compose.ui.graphics.BlendMode,
+      blendMode: BlendMode,
     ) {
       val color = solidColor(brush)
       val d = sampledPath(path)
-      if (d.isNotEmpty()) add(d, color, style, alpha)
+      if (d.isNotEmpty()) add(d, color, style, alpha, colorFilter, blendMode)
     }
 
     // --- Unsupported: bitmaps and point clouds can't be vectorised → throw → raster fallback. ---
@@ -614,7 +709,7 @@ internal object DrawCaptureExtractor {
       alpha: Float,
       style: DrawStyle,
       colorFilter: ColorFilter?,
-      blendMode: androidx.compose.ui.graphics.BlendMode,
+      blendMode: BlendMode,
     ): Unit = throw UnsupportedOperationException("drawImage not captured")
 
     override fun drawImage(
@@ -626,7 +721,7 @@ internal object DrawCaptureExtractor {
       alpha: Float,
       style: DrawStyle,
       colorFilter: ColorFilter?,
-      blendMode: androidx.compose.ui.graphics.BlendMode,
+      blendMode: BlendMode,
       filterQuality: FilterQuality,
     ): Unit = throw UnsupportedOperationException("drawImage not captured")
 
@@ -640,7 +735,7 @@ internal object DrawCaptureExtractor {
       alpha: Float,
       style: DrawStyle,
       colorFilter: ColorFilter?,
-      blendMode: androidx.compose.ui.graphics.BlendMode,
+      blendMode: BlendMode,
     ): Unit = throw UnsupportedOperationException("drawImage not captured")
 
     override fun drawPoints(
@@ -652,7 +747,7 @@ internal object DrawCaptureExtractor {
       pathEffect: PathEffect?,
       alpha: Float,
       colorFilter: ColorFilter?,
-      blendMode: androidx.compose.ui.graphics.BlendMode,
+      blendMode: BlendMode,
     ): Unit = throw UnsupportedOperationException("drawPoints not captured")
 
     override fun drawPoints(
@@ -664,7 +759,7 @@ internal object DrawCaptureExtractor {
       pathEffect: PathEffect?,
       alpha: Float,
       colorFilter: ColorFilter?,
-      blendMode: androidx.compose.ui.graphics.BlendMode,
+      blendMode: BlendMode,
     ): Unit = throw UnsupportedOperationException("drawPoints not captured")
   }
 }
