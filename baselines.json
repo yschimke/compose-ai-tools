@@ -916,14 +916,14 @@
     "serve-landing-tree-depth-component-open.dark.png": {
       "fixture": "serve-landing-tree-depth-component-open",
       "theme": "dark",
-      "sha256": "3522e332a2d5e86d57ebba3d3ec08c15762fb1d5a00b0fe2aaf97af9dfbf3a68",
-      "size": 83077
+      "sha256": "4aa53d49857bdf2d119a982ff4e5e17d037bbcdcd90a96448f53280bd0173a75",
+      "size": 77857
     },
     "serve-landing-tree-depth-component-open.light.png": {
       "fixture": "serve-landing-tree-depth-component-open",
       "theme": "light",
-      "sha256": "795e855b3acb66522597fb94c7e96abdb7a54f4fed9935ce08d9b14fe9a18279",
-      "size": 75308
+      "sha256": "93dd603a5ded36c9393940ff10e62125db7913fd751dc6e4c3693fb9677c6558",
+      "size": 82014
     },
     "serve-landing-tree-depth.dark.png": {
       "fixture": "serve-landing-tree-depth",
@@ -1180,26 +1180,26 @@
     "serve-report-bug-site.dark.png": {
       "fixture": "serve-report-bug-site",
       "theme": "dark",
-      "sha256": "ceaa0914c00650600e9b29d78bf0d1604f3445c884131be2093f0d27373b343e",
-      "size": 187832
+      "sha256": "e8779313138c5db2ede0638d4108ff983793be92204eb57d2d7afa674715b079",
+      "size": 206425
     },
     "serve-report-bug-site.light.png": {
       "fixture": "serve-report-bug-site",
       "theme": "light",
-      "sha256": "8b24d7cbd17e07a1ece9f751d1f0e86db7a96e95a59d31fc38aaa41d5da5c8eb",
-      "size": 183834
+      "sha256": "30c03f822a6b5ddc6698fc19676f354ee3bb05476bb344c886fcad1b98896231",
+      "size": 202391
     },
     "serve-report-bug.dark.png": {
       "fixture": "serve-report-bug",
       "theme": "dark",
-      "sha256": "dec2f41cd8e44179967bdea7b16f0883c80bb90f181203a8416b1a2a89353994",
-      "size": 228059
+      "sha256": "7faadcc904b4083041dead4d00d6fbedab1d596669679923cad9d011e55b94d7",
+      "size": 246688
     },
     "serve-report-bug.light.png": {
       "fixture": "serve-report-bug",
       "theme": "light",
-      "sha256": "7c2757302a117d6fd0123d52c4c01ed434bb0a6b2741f4c08c1c701e27aeb8b5",
-      "size": 223142
+      "sha256": "0ecb69f4da324919854ef23095c0ad3aa3f7691b015eb9b01b39d512e8d64cc6",
+      "size": 241548
     },
     "serve-social-card.dark.png": {
       "fixture": "serve-social-card",
