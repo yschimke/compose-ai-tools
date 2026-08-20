@@ -177,10 +177,22 @@ class DesignPagesCoverageTest {
   fun `the kit's own base parts are not components we owe`() {
     val subject =
       page(
-        node("1:1", "Base / SelectionControl / Switch", 2, PageNodeLink.UNLINKED,
-          type = "COMPONENT_SET", inventory = false),
-        node("1:2", "Selected=Yes", 3, PageNodeLink.UNLINKED, type = "COMPONENT",
-          inventory = false),
+        node(
+          "1:1",
+          "Base / SelectionControl / Switch",
+          2,
+          PageNodeLink.UNLINKED,
+          type = "COMPONENT_SET",
+          inventory = false,
+        ),
+        node(
+          "1:2",
+          "Selected=Yes",
+          3,
+          PageNodeLink.UNLINKED,
+          type = "COMPONENT",
+          inventory = false,
+        ),
         node("1:3", "Toggle+Selection-Buttons", 2, PageNodeLink.UNLINKED, type = "COMPONENT_SET"),
         node("1:4", "Type=Switch", 3, PageNodeLink.MANIFEST, type = "COMPONENT"),
         node("1:5", "Type=Custom - Task", 3, PageNodeLink.UNLINKED, type = "COMPONENT"),
@@ -223,8 +235,7 @@ class DesignPagesCoverageTest {
   /** A manifest published before either field existed counts exactly what it counted before. */
   @Test
   fun `both flags default to counted`() {
-    val subject =
-      page(node("1:1", "Shape=Circle", 3, PageNodeLink.MANIFEST, type = "COMPONENT"))
+    val subject = page(node("1:1", "Shape=Circle", 3, PageNodeLink.MANIFEST, type = "COMPONENT"))
 
     assertEquals(1, subject.coverageTotal)
     assertEquals(true, subject.inventory)
