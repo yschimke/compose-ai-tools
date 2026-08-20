@@ -254,6 +254,12 @@ class JsonRpcServer(
   private val interactiveBurstIntervalMs: Long = INTERACTIVE_BURST_INTERVAL_MS,
   private val interactiveBurstMs: Long = INTERACTIVE_BURST_MS,
   /**
+   * The idle backoff, injectable so tests can drive the curve in milliseconds rather than the tens
+   * of seconds the shipped values need. See [interactiveIdleCadenceMs].
+   */
+  private val interactiveIdleMaxIntervalMs: Long = INTERACTIVE_IDLE_MAX_INTERVAL_MS,
+  private val interactiveQuiescentAfter: Int = INTERACTIVE_QUIESCENT_AFTER,
+  /**
    * Stage-2 in-process compile. When non-null, `compileSources` requests dispatch through this
    * service; on `Ok` we swap the user classloader the same way `fileChanged({kind:source})` does.
    * When null (fake-mode harness scenarios, integration tests that don't opt in, daemons whose
@@ -498,6 +504,17 @@ class JsonRpcServer(
    * component that does not animate costs renders but almost no wire.
    */
   private val interactiveBurstUntilMs = ConcurrentHashMap<String, Long>()
+
+  /**
+   * Consecutive renders of a preview that came back byte-identical — the quiescence signal
+   * [interactiveIdleCadenceMs] backs the live frame loop off on.
+   *
+   * Keyed by previewId, alongside [lastFrameHashes] and updated from the same comparison, because
+   * that is where the hash is already computed and because two streams watching one preview are
+   * watching the same composition settle. Reset by any changed frame, by any input (via
+   * [startInteractiveBurst]), and when a stream starts.
+   */
+  private val interactiveIdleRun = ConcurrentHashMap<String, Int>()
 
   /**
    * Per-stream wake channel for the frame loop, so an input that starts a burst does not wait out
@@ -1339,6 +1356,10 @@ class JsonRpcServer(
     val frameHash = hashFrameBytes(result.pngPath)
     val isUnchanged =
       frameHash != null && lastFrameHashes[previewId] == frameHash && firstRenderFinishedSeen.get()
+    // Feed the idle backoff's quiescence signal from the comparison that already happened. Tracked
+    // for every render, not just interactive ones: an unchanged render is an unchanged render.
+    if (isUnchanged) interactiveIdleRun.merge(previewId, 1, Int::plus)
+    else interactiveIdleRun.remove(previewId)
     val outboundFinished = if (isUnchanged) finished.copy(unchanged = true) else finished
     sendNotification("renderFinished", encode(RenderFinishedParams.serializer(), outboundFinished))
     // Live-frame streaming (`composestream/1`). The streaming layer is a *consumer* of the
@@ -2630,6 +2651,9 @@ class JsonRpcServer(
     // Per-preview wipe (not per-stream): two streams targeting the same preview both want a
     // fresh first frame, and the dedup state is shared by design.
     lastFrameHashes.remove(params.previewId)
+    // …and the idle run with it, so a fresh stream opens at the base cadence rather than inheriting
+    // the backoff a previous viewer of this preview left behind.
+    interactiveIdleRun.remove(params.previewId)
     if (session != null) {
       interactiveSessions[streamId] = session
       startInteractiveFrameLoop(streamId, params.previewId, session)
@@ -2887,6 +2911,9 @@ class JsonRpcServer(
     // line 1910 — without it, a stream that re-attaches to an already-rendered preview would
     // see an `unchanged` heartbeat as its first frame.
     lastFrameHashes.remove(params.previewId)
+    // …and the idle run with it, so a fresh stream opens at the base cadence rather than inheriting
+    // the backoff a previous viewer of this preview left behind.
+    interactiveIdleRun.remove(params.previewId)
     sendResponse(
       req.id,
       encode(
@@ -3011,16 +3038,52 @@ class JsonRpcServer(
 
   /**
    * How long the frame loop for [streamId] should wait before its next render — the burst cadence
-   * while an input is still settling, the idle cadence otherwise. See [interactiveBurstUntilMs].
+   * while an input is still settling, then the idle cadence, then progressively slower while
+   * nothing on the preview is moving. See [interactiveBurstUntilMs] and [interactiveIdleRun].
    */
   private fun interactiveFrameCadenceMs(streamId: String): Long {
-    val until = interactiveBurstUntilMs[streamId] ?: return interactiveFrameIntervalMs
-    if (System.currentTimeMillis() >= until) {
+    val until = interactiveBurstUntilMs[streamId]
+    if (until != null) {
+      if (System.currentTimeMillis() < until) {
+        return minOf(interactiveBurstIntervalMs, interactiveFrameIntervalMs)
+      }
       // Expired: drop the entry so the map does not accumulate one per stream that ever saw input.
       interactiveBurstUntilMs.remove(streamId, until)
-      return interactiveFrameIntervalMs
     }
-    return minOf(interactiveBurstIntervalMs, interactiveFrameIntervalMs)
+    return interactiveIdleCadenceMs(interactiveTargets[streamId]?.previewId)
+  }
+
+  /**
+   * The idle cadence for [previewId] — [interactiveFrameIntervalMs], doubling for every further
+   * byte-identical frame past [interactiveQuiescentAfter], capped at
+   * [interactiveIdleMaxIntervalMs].
+   *
+   * A held session that nobody is touching still has to be *polled*: nothing tells the daemon that
+   * an animation has started, so the only way to find out is to render and compare. That is why the
+   * loop cannot simply stop. But polling a resting preview four times a second, for as long as its
+   * socket stays open, is most of what a live viewer costs on a public server — and because every
+   * render refreshes the held session's `lastUsedAtMs`, it also meant the idle lease could never
+   * reclaim the sandbox from a viewer who had wandered off. An idle viewer now settles to roughly
+   * one render every two seconds instead of four a second.
+   *
+   * The quiescence signal is free: the daemon already SHA-256s every frame for
+   * `renderFinished.unchanged`, and [interactiveIdleRun] counts the run length off that same
+   * comparison. Nothing here delays a *response* — an input calls [startInteractiveBurst], which
+   * clears the run and wakes the parked loop, so a click during a two-second idle wait is answered
+   * at the burst cadence rather than waiting it out.
+   *
+   * [interactiveQuiescentAfter] frames of grace before backing off at all, because one unchanged
+   * frame is ordinary inside an animation — a tween's flat leading edge, a `delay()` that has not
+   * elapsed — and reacting to a single one would stutter the cadence for the rest of the motion.
+   */
+  internal fun interactiveIdleCadenceMs(previewId: String?): Long {
+    if (interactiveFrameIntervalMs <= 0L) return interactiveFrameIntervalMs
+    val run = previewId?.let { interactiveIdleRun[it] } ?: 0
+    if (run < interactiveQuiescentAfter) return interactiveFrameIntervalMs
+    // Double per quiescent frame past the grace window. The shift is bounded well below Long
+    // overflow by the coerce, which the cap below would enforce anyway.
+    val steps = (run - interactiveQuiescentAfter + 1).coerceAtMost(16)
+    return (interactiveFrameIntervalMs shl steps).coerceAtMost(interactiveIdleMaxIntervalMs)
   }
 
   /**
@@ -3030,6 +3093,9 @@ class JsonRpcServer(
    * visible, so the animation only reaches the client if the frames after it are sampled too.
    */
   private fun startInteractiveBurst(streamId: String) {
+    // Whatever the burst does, an input is the one reliable signal that this preview is no longer
+    // resting — so clear the idle run first, unconditionally.
+    interactiveTargets[streamId]?.previewId?.let(interactiveIdleRun::remove)
     if (interactiveFrameIntervalMs <= 0L || interactiveBurstMs <= 0L) return
     interactiveBurstUntilMs[streamId] = System.currentTimeMillis() + interactiveBurstMs
     interactiveFrameWakes[streamId]?.offer(Unit)
@@ -4008,6 +4074,7 @@ class JsonRpcServer(
     interactiveFrameLoops.clear()
     interactiveFrameWakes.clear()
     interactiveBurstUntilMs.clear()
+    interactiveIdleRun.clear()
     frameLoops.forEach { it.interrupt() }
     // v2 phase 3 — drop any pending coalesced inputs and in-flight claims. The render workers
     // they refer to may still be running; they observe the cleared sessions map on their post-
@@ -4315,6 +4382,27 @@ class JsonRpcServer(
      * next tap.
      */
     const val INTERACTIVE_BURST_MS: Long = 600L
+
+    /**
+     * Ceiling on the idle backoff — how rarely a resting live preview is re-rendered.
+     *
+     * Two seconds takes an idle viewer from four renders a second to roughly one every two, which
+     * on a public server is most of what an unattended live session costs. It is also short enough
+     * that the preview is never meaningfully stale: an input wakes the loop immediately rather than
+     * waiting this out, so the only thing a longer gap delays is an animation that started with
+     * nobody touching it.
+     */
+    const val INTERACTIVE_IDLE_MAX_INTERVAL_MS: Long = 2_000L
+
+    /**
+     * Byte-identical frames tolerated before the idle backoff starts.
+     *
+     * One unchanged frame mid-animation is ordinary — a tween's flat leading edge, a `delay()` that
+     * has not elapsed — and treating it as quiescence would stutter the cadence for the rest of the
+     * motion. Three at the idle cadence is ~750ms of nothing moving, which is well past the burst
+     * window any input opens.
+     */
+    const val INTERACTIVE_QUIESCENT_AFTER: Int = 3
 
     /** RECORDING.md — minimum legal `recording/start.fps`. */
     const val MIN_RECORDING_FPS: Int = 1
