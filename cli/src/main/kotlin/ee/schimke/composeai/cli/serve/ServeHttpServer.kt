@@ -2157,22 +2157,23 @@ class ServeHttpServer(
     auth: ServeImageUploadAuth,
   ) {
     if (rejectBadToken()) return
-    val login = authorizeImageUpload(auth) ?: return
+    // **Before** the identity check, keyed by address: verifying a token is a synchronous call to
+    // GitHub, so an unauthenticated caller spraying unique invalid tokens would otherwise spend one
+    // of this host's outbound requests and one of its threads per guess — and neither the
+    // fingerprint cache (every value is new) nor the per-login budget below (never reached) bounds
+    // that. This is the only budget an anonymous caller is ever charged against.
+    val verifyPermit = acquireImagePermit(rateLimitKey()) ?: return
+    val login =
+      try {
+        authorizeImageUpload(auth)
+      } finally {
+        // Released as soon as the GitHub round-trip is done rather than at the end of the request:
+        // it exists to bound *verification*, and the accepted upload below has its own budget.
+        verifyPermit.release()
+      } ?: return
     // Per-caller budget, keyed by the *verified* login rather than by client address: the address
     // of an agent in CI is shared or ephemeral, and the identity is the thing we actually know.
-    val permit =
-      when (val decision = imageUploadLimiter?.tryAcquire(login)) {
-        is ServeRateLimiter.Decision.Throttled -> {
-          call.response.headers.append(
-            HttpHeaders.RetryAfter,
-            decision.retryAfterSeconds.toString(),
-          )
-          call.respondText(decision.reason, status = HttpStatusCode.TooManyRequests)
-          return
-        }
-        is ServeRateLimiter.Decision.Admitted -> decision
-        null -> null
-      }
+    val permit = acquireImagePermit("gh:$login") ?: return
     try {
       val name = call.request.queryParameters["name"]
       // Cap the body as it streams in — receiving it whole first would let a client OOM the server
@@ -2232,7 +2233,28 @@ class ServeHttpServer(
           call.respondText(result.reason, status = HttpStatusCode.BadRequest)
       }
     } finally {
-      permit?.release()
+      permit.release()
+    }
+  }
+
+  /**
+   * Charge one unit of image-lane work to [key], answering `429` + `Retry-After` and returning null
+   * when the caller is over budget. A non-null result MUST be released.
+   *
+   * Returns a no-op permit when the operator disabled the budget, so a call site never has to
+   * distinguish "admitted" from "unmetered".
+   */
+  private suspend fun RoutingContext.acquireImagePermit(
+    key: String
+  ): ServeRateLimiter.Decision.Admitted? {
+    val limiter = imageUploadLimiter ?: return ServeRateLimiter.Decision.Admitted {}
+    return when (val decision = limiter.tryAcquire(key)) {
+      is ServeRateLimiter.Decision.Admitted -> decision
+      is ServeRateLimiter.Decision.Throttled -> {
+        call.response.headers.append(HttpHeaders.RetryAfter, decision.retryAfterSeconds.toString())
+        call.respondText(decision.reason, status = HttpStatusCode.TooManyRequests)
+        null
+      }
     }
   }
 

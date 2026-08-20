@@ -40,6 +40,9 @@ class ServeImageRoutingTest {
     override fun identify(bearerToken: String?): ServeImageUploadAuth.Identity {
       val token =
         bearerToken?.takeIf { it.isNotBlank() } ?: return ServeImageUploadAuth.Identity.Missing
+      // Stands in for the GitHub round-trip the real gate makes: what the pre-auth budget exists
+      // to bound is how often this runs at all.
+      verifications.incrementAndGet()
       collaborators[token]?.let {
         return ServeImageUploadAuth.Identity.Ok(it)
       }
@@ -55,6 +58,9 @@ class ServeImageRoutingTest {
     companion object {
       const val TOKEN = "gho_collaborator"
       const val OUTSIDER_TOKEN = "gho_outsider"
+
+      /** How many credentials have been verified, across every instance. */
+      val verifications = java.util.concurrent.atomic.AtomicInteger()
     }
   }
 
@@ -105,6 +111,26 @@ class ServeImageRoutingTest {
       .also { it.start() }
   }
 
+  /**
+   * A fourth host for the spray test, with a budget of its own. The pre-auth budget is keyed by
+   * address, so two tests sharing one limiter would be sharing one bucket — and would pass or fail
+   * on the order they happened to run in.
+   */
+  private val sprayServer: ServeHttpServer by lazy {
+    ServeHttpServer(
+        host = "127.0.0.1",
+        requestedPort = 0,
+        token = "unused-in-public",
+        sessions = ServeSessionRegistry(open = { null }),
+        defaultSessionId = "none",
+        isPublic = true,
+        imageStore = ServeImageStore(ttlSeconds = 60, clock = { now }),
+        imageUploadAuth = FakeAuth(),
+        imageUploadLimiter = ServeRateLimiter(permitsPerWindow = 1, windowSeconds = 60),
+      )
+      .also { it.start() }
+  }
+
   private val client = OkHttpClient()
 
   @AfterTest
@@ -112,6 +138,7 @@ class ServeImageRoutingTest {
     runCatching { server.stop() }
     runCatching { plainServer.stop() }
     runCatching { meteredServer.stop() }
+    runCatching { sprayServer.stop() }
     runCatching { registry.close() }
   }
 
@@ -223,6 +250,25 @@ class ServeImageRoutingTest {
       assertEquals(429, response.code)
       assertNotNull(response.header("Retry-After"))
     }
+  }
+
+  @Test
+  fun `an unauthenticated token spray is throttled before it reaches github`() {
+    // The budget an anonymous caller is charged against is taken BEFORE the identity check, keyed
+    // by address — otherwise each unique bad token buys a synchronous GitHub round-trip on this
+    // host's outbound connection, which neither the fingerprint cache nor the per-login budget can
+    // bound.
+    val attempted = FakeAuth.verifications.get()
+    upload(bearer = "gho_spray_1", port = sprayServer.port).use { assertEquals(401, it.code) }
+    upload(bearer = "gho_spray_2", port = sprayServer.port).use { response ->
+      assertEquals(429, response.code)
+      assertNotNull(response.header("Retry-After"))
+    }
+    assertEquals(
+      1,
+      FakeAuth.verifications.get() - attempted,
+      "the second spray attempt must not have reached the verifier",
+    )
   }
 
   @Test

@@ -2499,14 +2499,24 @@ curl -sS -H "Authorization: Bearer $(gh auth token)" \
   bar is the same one the playground applies ([`GitHubOAuthVerifier`](../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeGithubAuth.kt)):
   write access on a public repo, any real grant on a private one. No access, no upload — `403`.
 - It is a **bearer token, not the OAuth cookie**, because the whole audience is headless: a CI job or
-  a cloud coding session holding a `GITHUB_TOKEN`, not a browser that can round-trip a redirect. That
-  also means the lane needs no OAuth app — a box with no `--github-auth-*` config at all can run it,
+  a cloud coding session holding a token, not a browser that can round-trip a redirect. That also
+  means the lane needs no OAuth app — a box with no `--github-auth-*` config at all can run it,
   given a repository to check against. Without a repository it **refuses to start**, loudly: a gate
   with nothing to check is not a gate.
+- **Both kinds of token a headless caller actually has** are accepted. A *user* token (`gh auth
+  token`, a PAT) is verified as that user. A *GitHub App installation* token — what
+  `${{ github.token }}` is inside every Actions job — has no user behind it, so `GET /user` refuses
+  it; it is verified instead on the installation's own **write** permission on the gating repo and
+  attributed to `[app-installation]`. Two narrowings there: write is required whether the repo is
+  public or private (a fork's read-only workflow token must not be able to post), and an
+  installation token is refused outright when `--github-auth-users` narrows sign-in, since that list
+  names people.
 - The token is used for two GitHub reads and dropped. It is never stored, logged, or echoed back; the
   verification cache is keyed by its SHA-256.
-- Per-account budget, default 60 uploads/minute (`--image-rate-limit`, `0` disables). It bounds both
-  the obvious abuse and the GitHub API calls an uncached upload costs.
+- Two budgets, both from `--image-rate-limit` (default 60/minute, `0` disables). The first is
+  charged **before** verification and keyed by client address — verifying costs a synchronous call
+  to GitHub, so a spray of unique invalid tokens must not buy one outbound request per guess. The
+  second is charged per verified account, which is what bounds a real caller across addresses.
 
 **Who may read: anyone with the link, deliberately.** This is the one asymmetry in the lane and it is
 load-bearing. GitHub renders an embedded image by fetching it through its own proxy, **anonymously**

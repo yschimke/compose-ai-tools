@@ -10,6 +10,15 @@ import java.util.concurrent.ConcurrentHashMap
  * anonymous — not even on a `--public` box, where every *browsing* surface is open. A caller must
  * present a GitHub credential that GitHub itself says has real access to the operator's repository.
  *
+ * ## What counts as a credential
+ *
+ * Both kinds a headless caller actually holds:
+ * - A **user token** — `gh auth token`, a PAT — verified as that user, against the same repo-access
+ *   rule the playground applies.
+ * - A **GitHub App installation token**, which is what `${'$'}{{ github.token }}` is inside a
+ *   GitHub Actions job. There is no user behind one, so it is verified on the installation's own
+ *   write permission on the gating repo and attributed to [GitHubOAuthVerifier.INSTALLATION_LOGIN].
+ *
  * ## Why a bearer token and not the OAuth session
  *
  * [ServeGithubAuth] already gates the playground on a signed-in GitHub account, and reusing it here
