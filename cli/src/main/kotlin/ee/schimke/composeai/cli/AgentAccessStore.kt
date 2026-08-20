@@ -27,6 +27,17 @@ import kotlinx.serialization.json.Json
  * Expired entries are dropped on read rather than swept on a schedule: this is a CLI, it runs and
  * exits, and a stale row costs nothing until someone asks about it.
  */
+/**
+ * No safe place to keep credentials could be determined. Carries the remedy, because the only thing
+ * the user can do about it is name a location.
+ */
+internal class NoCredentialHomeException :
+  IllegalStateException(
+    "no user config directory could be determined (XDG_CONFIG_HOME, HOME and user.home are all " +
+      "unset), and credentials will not be written to the working directory. Set " +
+      "COMPOSE_PREVIEW_AGENT_ACCESS_FILE to a path you control."
+  )
+
 internal open class AgentAccessStore(
   private val file: File = defaultFile(),
   private val clock: () -> Long = System::currentTimeMillis,
@@ -342,10 +353,23 @@ internal open class AgentAccessStore(
 
     /**
      * `$COMPOSE_PREVIEW_AGENT_ACCESS_FILE`, else `$XDG_CONFIG_HOME/compose-preview/…`, else
-     * `~/.config/compose-preview/…`. The override exists for CI and for tests; the XDG path is
-     * where a user would look for it.
+     * `$HOME/.config/…`, else the JVM's `user.home`. The override exists for CI and for tests; the
+     * XDG path is where a user would look for it.
+     *
+     * Throws [NoCredentialHomeException] when none of those yields a location, rather than falling
+     * back to the working directory — see the body.
      */
-    fun defaultFile(env: (String) -> String? = System::getenv): File {
+    fun defaultFile(
+      /**
+       * Injected so a test can simulate a JVM with no `user.home`, which it otherwise always has.
+       *
+       * Deliberately **before** [env] rather than appended: several call sites pass the environment
+       * as a trailing lambda, and a new last parameter silently rebinds those to this one instead —
+       * they still compile, and they quietly test the wrong thing.
+       */
+      prop: (String) -> String? = System::getProperty,
+      env: (String) -> String? = System::getenv,
+    ): File {
       env("COMPOSE_PREVIEW_AGENT_ACCESS_FILE")
         ?.takeIf { it.isNotBlank() }
         ?.let {
@@ -353,7 +377,18 @@ internal open class AgentAccessStore(
         }
       val configHome =
         env("XDG_CONFIG_HOME")?.takeIf { it.isNotBlank() }
-          ?: (env("HOME")?.takeIf { it.isNotBlank() }?.let { "$it/.config" } ?: ".")
+          ?: env("HOME")?.takeIf { it.isNotBlank() }?.let { "$it/.config" }
+          // The JVM's own view of the user's home, which on Linux comes from the passwd entry
+          // rather than the environment — so it survives the minimal `env -i` service context that
+          // has neither variable set.
+          ?: prop("user.home")?.takeIf { it.isNotBlank() && it != "?" }?.let { "$it/.config" }
+          // …and if there is genuinely nowhere, REFUSE. The old fallback was `.`, which wrote
+          // bearer tokens and device secrets into whatever directory the command happened to run
+          // in — for an agent that is a checkout, so the credentials land somewhere that gets
+          // archived by CI or committed by the next `git add -A`. Worse, the target directory
+          // would then be attacker-influenced by anything that can add a `compose-preview/` path
+          // to the tree. Better to store nothing and say so.
+          ?: throw NoCredentialHomeException()
       return File("$configHome/compose-preview/agent-access.json")
     }
 

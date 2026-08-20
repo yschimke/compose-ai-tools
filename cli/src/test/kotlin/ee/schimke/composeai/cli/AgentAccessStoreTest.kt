@@ -4,6 +4,7 @@ import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -231,6 +232,29 @@ class AgentAccessStoreTest {
     val kept = store().pendingFor("https://preview.coo.ee")
     assertNotNull(kept, "the device secret must survive the approval window")
     assertTrue(kept.windowClosed(now), "…while still reporting the window as closed")
+  }
+
+  @Test
+  fun `credentials are never written to the working directory`() {
+    // The old fallback was `.`, so on a minimal service environment with neither XDG_CONFIG_HOME
+    // nor HOME an agent wrote bearer tokens into whatever directory it ran in — for an agent that
+    // is a checkout, which gets archived by CI or swept up by the next `git add -A`.
+    val err =
+      assertFailsWith<NoCredentialHomeException> {
+        AgentAccessStore.defaultFile(prop = { null }, env = { null })
+      }
+    assertTrue(err.message!!.contains("COMPOSE_PREVIEW_AGENT_ACCESS_FILE"), "names the remedy")
+  }
+
+  @Test
+  fun `the explicit override still wins with no home at all`() {
+    val chosen =
+      AgentAccessStore.defaultFile(
+        env = { name ->
+          if (name == "COMPOSE_PREVIEW_AGENT_ACCESS_FILE") "/tmp/x/creds.json" else null
+        }
+      )
+    assertEquals(File("/tmp/x/creds.json"), chosen)
   }
 
   @Test
