@@ -166,6 +166,88 @@ class ServeWebBreakpointFoldTest {
   }
 
   @Test
+  fun `a lane whose only render is at a non-primary size keeps it`() {
+    // The theme × size product is not always full. Here the component is drawn light at its first
+    // declared breakpoint and dark ONLY at another one — so folding every non-primary size would
+    // take the dark render off the grid, out of the drawer, and out of the palette, while the size
+    // switcher (which holds the theme lane fixed) could never offer it from the light page. Each
+    // lane resolves its own primary, so both renders survive.
+    val sparse =
+      listOf(
+        ServePreview(
+          id = "sparsedialog__ideal__default__192dp__light",
+          label = "sparsedialog__ideal__default__192dp__light",
+          componentId = "SparseDialog",
+          state = "default",
+          size = "192dp",
+          theme = "light",
+          section = "Containment",
+          catalogOrder = 0,
+        ),
+        ServePreview(
+          id = "sparsedialog__ideal__default__240dp__dark",
+          label = "sparsedialog__ideal__default__240dp__dark",
+          componentId = "SparseDialog",
+          state = "default",
+          size = "240dp",
+          theme = "dark",
+          section = "Containment",
+          catalogOrder = 1,
+        ),
+      )
+
+    val html = ServeWeb.landingPage("sparse", sparse, token = "t", basePath = "/sparse")
+    assertTrue(
+      html.contains("sparsedialog__ideal__default__192dp__light"),
+      "the light lane's only render is on the grid",
+    )
+    assertTrue(
+      html.contains("sparsedialog__ideal__default__240dp__dark"),
+      "the dark lane's only render is not folded away with nothing to reach it from",
+    )
+
+    assertEquals(
+      listOf(
+        "sparsedialog__ideal__default__192dp__light",
+        "sparsedialog__ideal__default__240dp__dark",
+      ),
+      ServeWeb.componentSearchEntries(sparse).map { it.previewId },
+      "the palette keeps a representative for each lane",
+    )
+  }
+
+  @Test
+  fun `a full theme by size product still folds to one card`() {
+    // The guard above must not weaken the ordinary case: both lanes resolve the SAME primary, so
+    // every other breakpoint folds exactly as it did before.
+    val full = sizes.flatMapIndexed { i, size ->
+      listOf("light", "dark").map { theme ->
+        ServePreview(
+          id = "fulldialog__ideal__default__${size}__$theme",
+          label = "fulldialog__ideal__default__${size}__$theme",
+          componentId = "FullDialog",
+          state = "default",
+          size = size,
+          theme = theme,
+          section = "Containment",
+          catalogOrder = i,
+        )
+      }
+    }
+
+    val html = ServeWeb.landingPage("full", full, token = "t", basePath = "/full")
+
+    assertEquals(
+      1,
+      Regex("class=\"cp-card\"").findAll(html).count(),
+      "one card, with its light/dark pair swapped in place",
+    )
+    for (size in sizes.drop(1)) {
+      assertFalse(html.contains("fulldialog__ideal__default__${size}__"), "$size is folded out")
+    }
+  }
+
+  @Test
   fun `a catalog that declares no sizes keeps a card per render`() {
     // The same fan-out as above with the metadata a pre-breakpoint export never wrote. Folding on
     // the id alone would make these renders unreachable — there would be no switcher to reach them

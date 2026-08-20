@@ -1469,20 +1469,29 @@ ${captureControlsHtml().prependIndent("          ")}
    * rows in wear-m3-catalog, all of them called things like "Alert Dialog"
    * ([wear-m3-catalog#41](https://github.com/yschimke/wear-m3-catalog/issues/41)).
    *
-   * [primary] is the component's primary size from [primarySizeByComponent]. A preview with no
-   * declared size, or whose component resolved none, is never folded — an older catalog (or a plain
-   * bundle) whose size lives only in the id keeps a card per size, because there is no metadata to
-   * build a switcher from and folding would make those renders unreachable.
+   * [primary] is the component's primary size from [primarySizeByComponent], looked up in [p]'s own
+   * theme lane. A preview with no declared size, or whose component resolved none *in that lane*,
+   * is never folded — an older catalog (or a plain bundle) whose size lives only in the id keeps a
+   * card per size, because there is no metadata to build a switcher from and folding would make
+   * those renders unreachable.
    */
-  private fun isNonPrimarySize(p: ServePreview, primary: Map<String, String>): Boolean {
+  private fun isNonPrimarySize(
+    p: ServePreview,
+    primary: Map<Pair<String, String>, String>,
+    darkFirst: Boolean,
+  ): Boolean {
     val size = p.size?.takeIf { it.isNotBlank() } ?: return false
-    val componentPrimary = primary[componentKey(p)] ?: return false
+    val componentPrimary = primary[sizeFoldKey(p, darkFirst)] ?: return false
     return size != componentPrimary
   }
 
+  /** A component's identity *within one theme lane* — the key the size fold is resolved against. */
+  private fun sizeFoldKey(p: ServePreview, darkFirst: Boolean): Pair<String, String> =
+    componentKey(p) to themeLane(p, darkFirst)
+
   /**
    * Each component's **primary** breakpoint — the size its one card is drawn at — keyed by
-   * [componentKey].
+   * [componentKey] **and theme lane**.
    *
    * The catalog's own order decides it: the first size a component publishes, read in authored
    * order ([ServePreview.catalogOrder], falling back to list order for a catalog that records
@@ -1490,16 +1499,27 @@ ${captureControlsHtml().prependIndent("          ")}
    * declares them, so this is the first *declared* breakpoint — the one a catalog leads with, and
    * for a design catalog the one its design references are mapped against.
    *
+   * Per **lane**, because the size switcher a folded render is reached from is itself lane-scoped
+   * ([componentRenderRows] holds `themeLane` fixed, so a light page never offers a dark size). A
+   * catalog whose theme × size product is sparse — the primary size drawn only light while some
+   * other breakpoint carries the component's only dark render — would otherwise have that dark
+   * render folded away with nothing left to reach it from. Keying per lane keeps one representative
+   * in each lane that has renders at all. A full product resolves the same primary in both lanes,
+   * so the usual catalog folds exactly as before.
+   *
    * Only the component's DEFAULT renders are consulted: a component may publish a state or props
    * variant at some sizes and not others, and letting those vote could pick a primary that the
    * default render never rendered at, folding the whole component's card out of the grid.
    */
-  private fun primarySizeByComponent(previews: List<ServePreview>): Map<String, String> {
-    val primary = LinkedHashMap<String, String>()
+  private fun primarySizeByComponent(
+    previews: List<ServePreview>,
+    darkFirst: Boolean,
+  ): Map<Pair<String, String>, String> {
+    val primary = LinkedHashMap<Pair<String, String>, String>()
     previews
       .filter { it.size != null && !isNonDefaultState(it) && !hasNonDefaultProps(it) }
       .sortedBy { it.catalogOrder ?: Int.MAX_VALUE }
-      .forEach { primary.putIfAbsent(componentKey(it), it.size!!) }
+      .forEach { primary.putIfAbsent(sizeFoldKey(it, darkFirst), it.size!!) }
     return primary
   }
 
@@ -4391,12 +4411,14 @@ ${captureControlsHtml().prependIndent("          ")}
     previews: List<ServePreview>,
     darkFirst: Boolean = false,
   ): List<ComponentSearchEntry> {
-    val primarySizes = primarySizeByComponent(previews)
+    val primarySizes = primarySizeByComponent(previews, darkFirst)
     val cards =
       groupPreviews(
         previews.filterNot {
           it.renderFailure == null &&
-            (isNonDefaultState(it) || hasNonDefaultProps(it) || isNonPrimarySize(it, primarySizes))
+            (isNonDefaultState(it) ||
+              hasNonDefaultProps(it) ||
+              isNonPrimarySize(it, primarySizes, darkFirst))
         }
       )
     val duplicateLabels =
@@ -7148,7 +7170,7 @@ ${captureControlsHtml().prependIndent("          ")}
     // card per state, per variant or per screen size; the folded renders stay reachable through the
     // viewer's state + variant + size switchers. Plain bundle screens (no state, no props, no
     // declared size) pass straight through.
-    val primarySizes = primarySizeByComponent(previews)
+    val primarySizes = primarySizeByComponent(previews, darkFirst)
     val groups =
       groupPreviews(
         previews.filterNot {
@@ -7156,7 +7178,7 @@ ${captureControlsHtml().prependIndent("          ")}
             (it.renderFailure == null &&
               (isNonDefaultState(it) ||
                 hasNonDefaultProps(it) ||
-                isNonPrimarySize(it, primarySizes)))
+                isNonPrimarySize(it, primarySizes, darkFirst)))
         }
       )
     val cardAnchors = mintCardAnchors(groups)
@@ -7815,11 +7837,13 @@ ${captureControlsHtml().prependIndent("          ")}
     // row for each is four rows saying "no reference" under one name; but a kit that DOES publish a
     // second size (Wear's `Picker`, at its `Larger Screen (BP)` cell) maps a reference to it, and
     // that row is the whole point of the page.
-    val comparablePrimarySizes = primarySizeByComponent(previews)
+    val comparableDarkFirst = isDarkFirstSystem(basePath, sessionId, declaredSurface)
+    val comparablePrimarySizes = primarySizeByComponent(previews, comparableDarkFirst)
     val comparablePreviews = previews.filterNot { preview ->
       (isNonDefaultState(preview) ||
         hasNonDefaultProps(preview) ||
-        isNonPrimarySize(preview, comparablePrimarySizes)) && referencesFor(preview.id).isEmpty()
+        isNonPrimarySize(preview, comparablePrimarySizes, comparableDarkFirst)) &&
+        referencesFor(preview.id).isEmpty()
     }
     val cards = groupPreviews(comparablePreviews)
     val hasSvg = comparablePreviews.any { hasSvgFor(it.id) }
@@ -11346,7 +11370,8 @@ $cards
     // second place, with the two axes torn apart into rows that never named their relationship.
     // Empty for a component with no second render, exactly as the chip rows were.
     val axesTree = componentSubtreeHtml(preview, siblings, basePath, q, viewerDarkFirst)
-    val navDrawer = navDrawerHtml(preview, siblings, basePath, q, viewerTheme, axesTree)
+    val navDrawer =
+      navDrawerHtml(preview, siblings, basePath, q, viewerTheme, axesTree, viewerDarkFirst)
     val navToggle =
       if (navDrawer.isEmpty()) ""
       else
@@ -11710,6 +11735,10 @@ $cards
      */
     theme: String?,
     axesTree: String = "",
+    /**
+     * The catalog's primary lane, so the size fold resolves per lane exactly as the grid's does.
+     */
+    darkFirst: Boolean = false,
   ): String {
     // Collapse to ONE entry per component — the same folding the landing grid does — so the nav
     // reads as a list of components, not of every baked state/theme/props/size permutation
@@ -11721,14 +11750,14 @@ $cards
     // the viewer's own state/variant/size switchers reach that component's other axes.
     // `aria-current` pins the component being viewed, even when the current preview is a folded
     // (non-default) variant that has no card of its own.
-    val navPrimarySizes = primarySizeByComponent(siblings)
+    val navPrimarySizes = primarySizeByComponent(siblings, darkFirst)
     val representatives =
       groupPreviews(
           siblings.filterNot {
             it.renderFailure == null &&
               (isNonDefaultState(it) ||
                 hasNonDefaultProps(it) ||
-                isNonPrimarySize(it, navPrimarySizes))
+                isNonPrimarySize(it, navPrimarySizes, darkFirst))
           }
         )
         .map {
