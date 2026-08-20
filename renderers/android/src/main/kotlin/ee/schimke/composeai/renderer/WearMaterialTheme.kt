@@ -30,8 +30,14 @@ import androidx.compose.ui.text.TextStyle
  * Every lookup is best-effort: a module without wear-compose on its classpath (or a future release
  * that renames these members) yields null, and the caller falls back rather than failing the
  * render.
+ *
+ * Public because the **daemon** reads the same theme for `compose/theme`: a Wear app has no
+ * `androidx.compose.material3` at all, so the Material 3 capture that names a text node's type role
+ * skips it entirely and every Wear typography annotation came out with no role named (issue #4327).
+ * This is the reflective read that already existed for the theme-catalog specimens; the daemon
+ * reuses it rather than growing a second one.
  */
-internal object WearMaterialTheme {
+object WearMaterialTheme {
 
   private const val MATERIAL_THEME = "androidx.wear.compose.material3.MaterialTheme"
 
@@ -41,6 +47,13 @@ internal object WearMaterialTheme {
 
   /** The Wear `Typography` currently in composition, as an opaque handle, or null. */
   @Composable fun typographyOrNull(loader: ClassLoader?): Any? = readTheme(loader, "getTypography")
+
+  /**
+   * The Wear `Shapes` currently in composition, as an opaque handle, or null. Read for the same
+   * reason as the two above, and reported alongside them so a Wear render's `compose/theme` payload
+   * carries the whole Material triad rather than two thirds of it.
+   */
+  @Composable fun shapesOrNull(loader: ClassLoader?): Any? = readTheme(loader, "getShapes")
 
   /**
    * Invoke `MaterialTheme.<getter>(composer, 0)` reflectively. The `0` is the composable calling

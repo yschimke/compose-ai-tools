@@ -67,6 +67,7 @@ import ee.schimke.composeai.renderer.FontFallbackException
 import ee.schimke.composeai.renderer.FontResolutionDiagnostics
 import ee.schimke.composeai.renderer.PixelSystemFontAliases
 import ee.schimke.composeai.renderer.RenderWarningsSidecar
+import ee.schimke.composeai.renderer.WearMaterialTheme
 import ee.schimke.composeai.renderer.WearScrollSvgAssembler
 import ee.schimke.composeai.renderer.settleCaptureTargetMs
 import ee.schimke.composeai.renderer.uiautomator.UiAutomatorDataProducts
@@ -254,6 +255,7 @@ class RenderEngine(
     val trace = PerfettoTraceDataProducer.recorder(spec.outputBaseName, backend = "android")
     val slotTableCapture = PreviewSlotTableCapture()
     val themeFallbackCapture = MaterialThemeFallbackCapture()
+    val wearThemeCapture = WearThemeCapture()
     // Material 3 is `compileOnly` here on purpose (mitigation #1 in
     // `docs/RENDERER_COMPATIBILITY.md`) — the consumer's own copy is what a preview composes
     // against. A consumer that never uses it does not have one: a Wear app themes with
@@ -266,6 +268,11 @@ class RenderEngine(
     // always taken this shape (`WearMaterialTheme` reads Wear's theme reflectively, and the
     // Material 3 reads sit behind theme-catalog render modes) — this brings the daemon in line.
     val hasMaterial3 = material3OnClasspath(classLoader)
+    // The other half of that probe: a Wear app themes with `androidx.wear.compose.material3`, whose
+    // `MaterialTheme` the Material 3 capture above cannot see at all. Probed the same way, and for
+    // the same reason — a mobile app has no wear-compose, and composing the reflective read for one
+    // would only cost a lookup that can never answer.
+    val hasWearMaterial3 = wearMaterial3OnClasspath(classLoader)
     // Opt-in (serve / bundle-daemon set it) — see [PLACEHOLDER_MISSING_RESOURCES_PROP]. Off for the
     // pack semantics daemon so a missing resource fails loudly instead of baking a placeholder.
     val placeholderMissingResources =
@@ -474,6 +481,9 @@ class RenderEngine(
                       themeFallbackCapture.capture(typography, shapes)
                       themeFallbackCapture.capture(payload)
                     }
+                  }
+                  if (hasWearMaterial3) {
+                    CaptureWearMaterialTheme(classLoader) { wearThemeCapture.capture(it) }
                   }
                   val content: @Composable () -> Unit = {
                     ComposeDataExtensionPipeline.Apply(
@@ -1160,7 +1170,13 @@ class RenderEngine(
         .build()
     // `themePayloadFromPreviewContext` reads Material 3 objects out of the slot tables, so it is
     // only callable when the consumer has Material 3 at all — same guard as the capture above.
-    val baseThemePayload =
+    //
+    // A Wear app has none, and used to fall out here with no theme reported at all: every Wear
+    // preview's typography annotation then named no Material role, because role attribution has
+    // nothing to match against without `resolvedTokens.typography` (issue #4327). Wear's own
+    // theme is captured alongside, through the reflective read the theme-catalog specimens already
+    // use, and stands in when Material 3 reports nothing.
+    val material3ThemePayload =
       if (!hasMaterial3) null
       else
         themePayloadFromPreviewContext(
@@ -1168,6 +1184,7 @@ class RenderEngine(
           fallbackTypography = themeFallbackCapture.typography,
           fallbackShapes = themeFallbackCapture.shapes,
         ) ?: themeFallbackCapture.payload
+    val baseThemePayload = material3ThemePayload ?: wearThemeCapture.payload
     // Attribute consumers (#1847) against the facts captured while the scene was alive, keyed by
     // SemanticsNode id (matching `compose/semantics`) against the reported tokens.
     val materialThemePayload = baseThemePayload?.let { payload ->
@@ -2694,6 +2711,49 @@ internal fun material3OnClasspath(loader: ClassLoader): Boolean = runCatching {
   Class.forName("androidx.compose.material3.MaterialTheme", false, loader)
 }
   .isSuccess
+
+/**
+ * Whether `androidx.wear.compose.material3` is on [loader] — i.e. whether the consumer about to be
+ * composed themes with Wear Material 3.
+ *
+ * The Wear counterpart of [material3OnClasspath], and probed for the same reasons: uninitialised
+ * (`false` to `Class.forName`) so the answer costs no static initialiser, and answered `false`
+ * rather than assumed so a mobile app never composes a read that can only return null.
+ */
+internal fun wearMaterial3OnClasspath(loader: ClassLoader): Boolean = runCatching {
+  Class.forName("androidx.wear.compose.material3.MaterialTheme", false, loader)
+}
+  .isSuccess
+
+/**
+ * Capture the Wear Material 3 theme currently in composition as a `compose/theme` payload.
+ *
+ * The Wear sibling of [CaptureMaterialTheme]. Everything about it is reflective — the read itself
+ * ([WearMaterialTheme], which resolves the theme through the *provider's* own classloader so it
+ * sees the theme the app installed rather than a different `CompositionLocal` instance) and the
+ * token extraction ([themePayloadFromDuckTypedTheme], which must not name a Material 3 type on a
+ * classpath that has none). Without it a Wear render reported no theme at all, and its typography
+ * annotations named no Material role (issue #4327).
+ *
+ * Best-effort throughout: a read that resolves nothing simply reports no theme, exactly as before.
+ */
+@Composable
+private fun CaptureWearMaterialTheme(loader: ClassLoader?, onCaptured: (ThemePayload) -> Unit) {
+  val colorScheme = WearMaterialTheme.colorSchemeOrNull(loader)
+  val typography = WearMaterialTheme.typographyOrNull(loader)
+  val shapes = WearMaterialTheme.shapesOrNull(loader)
+  SideEffect { themePayloadFromDuckTypedTheme(colorScheme, typography, shapes)?.let(onCaptured) }
+}
+
+/** Holds whatever [CaptureWearMaterialTheme] read, for use once the render completes. */
+internal class WearThemeCapture {
+  var payload: ThemePayload? = null
+    private set
+
+  fun capture(payload: ThemePayload) {
+    this.payload = payload
+  }
+}
 
 @Composable
 private fun CaptureMaterialTheme(
