@@ -167,6 +167,13 @@
         "@types/vscode"
       ],
       "enabled": false
+    },
+    {
+      "description": "Gradle wrapper: hold at 9.7.0. Under 9.7.1 a second build invocation in one session leaves `:samples:cmp`'s Kotlin output with zero .class files, so `composePreviewDiscover` writes an assets-only manifest and `composePreviewRender` then fails with 'matched no previews' — the `interactive-e-g` shard of VS Code Extension E2E went red the moment 9.7.1 landed (#4318) and stayed red across unrelated commits. Measured with three dispatched five-shard runs: 9.7.1 fails, both pins reverted passes, and wrapper-only-reverted ALSO passes — which is why `org.gradle:gradle-tooling-api` is deliberately NOT pinned here (it is on 9.7.1 and innocent; the refresh path shells out to gradlew rather than driving the tooling API). This cap is temporary and #4364 tracks removing it — close that issue by deleting this rule, and dispatch the e2e on the branch before merging, since a push run can be cancelled by the next merge and prove nothing.",
+      "matchManagers": [
+        "gradle-wrapper"
+      ],
+      "allowedVersions": "<=9.7.0"
     }
   ]
 }
