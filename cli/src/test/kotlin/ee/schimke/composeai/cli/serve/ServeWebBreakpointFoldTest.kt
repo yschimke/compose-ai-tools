@@ -125,6 +125,47 @@ class ServeWebBreakpointFoldTest {
   }
 
   @Test
+  fun `the viewer's component drawer names each component once`() {
+    val html =
+      ServeWeb.viewerPage(alertDialog.first(), token = "t", basePath = "/wear", siblings = catalog)
+    val drawer = html.substringAfter("<ul class=\"cp-nav-list\"").substringBefore("</ul>")
+
+    val rows =
+      Regex("class=\"cp-nav-name\">([^<]*)<").findAll(drawer).map { it.groupValues[1] }.toList()
+    assertEquals(
+      listOf("Open On Phone Dialog"),
+      rows,
+      "the drawer lists each OTHER component once, not once per breakpoint",
+    )
+    assertTrue(
+      drawer.contains("/wear/p/openonphonedialog__ideal__default__192dp"),
+      "the entry links the component's first declared breakpoint",
+    )
+    for (size in sizes.drop(1)) {
+      assertFalse(
+        drawer.contains("openonphonedialog__ideal__default__$size"),
+        "$size is folded out of the drawer",
+      )
+    }
+  }
+
+  @Test
+  fun `the command palette offers each component once`() {
+    val entries = ServeWeb.componentSearchEntries(catalog)
+
+    assertEquals(
+      listOf("Alert Dialog", "Open On Phone Dialog"),
+      entries.map { it.label },
+      "the palette offers a component once, not once per breakpoint",
+    )
+    assertEquals(
+      listOf("alertdialog__ideal__default__192dp", "openonphonedialog__ideal__default__192dp"),
+      entries.map { it.previewId },
+      "each entry points at the component's first declared breakpoint",
+    )
+  }
+
+  @Test
   fun `a catalog that declares no sizes keeps a card per render`() {
     // The same fan-out as above with the metadata a pre-breakpoint export never wrote. Folding on
     // the id alone would make these renders unreachable — there would be no switcher to reach them

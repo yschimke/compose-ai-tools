@@ -198,7 +198,12 @@ data class ServeSites(private val byHost: Map<String, String>) {
      * missing entry lets a site *claim* that prefix and swallow the route — `pg` did exactly that,
      * breaking playground redemption — and, because the site interceptor uses this as its allowlist
      * of "not a session", a missing entry also 404s that route on every site host.
-     * `ServeTopLevelSiteTest` walks the whole list against a live server to keep the two honest.
+     *
+     * Two tests keep it honest, because neither can do it alone. `ServeSitesReservedRoutesTest`
+     * reads [ServeHttpServer]'s routing block and fails on a registered segment that is missing
+     * from this list — the omission itself, which no test driving the list could ever see.
+     * `ServeTopLevelSiteTest` drives real routes against a live server on a site host, which is the
+     * only way to catch an entry that is listed here and still broken.
      */
     internal val RESERVED_SYSTEMS =
       setOf(
@@ -207,6 +212,12 @@ data class ServeSites(private val byHost: Map<String, String>) {
         "version",
         "status",
         "status.json",
+        // Registered from `ServeBugReport.PATH`, and missed for the same reason `rc-fonts` nearly
+        // was: the path is built from a constant, so a text search for `get("/report-bug` finds
+        // nothing. Every site host answered its own styled 404 for the one link its footer offers
+        // on every page — the affordance was unreachable on exactly the deployments (m3, wear)
+        // where a visitor is most likely to press it (issue #4319).
+        "report-bug",
         "robots.txt",
         "sitemap.xml",
         "favicon.svg",
@@ -214,6 +225,10 @@ data class ServeSites(private val byHost: Map<String, String>) {
         "apple-touch-icon.png",
         "assets",
         "wasm",
+        // `GET /wasm-private/<access>/<system>/…` — the token-in-path twin of `/wasm/…` for
+        // auto-discovered local apps. A site host is normally public, but the segment is a route
+        // either way and a catalog may not claim it.
+        "wasm-private",
         "rc-player",
         "rc-player-wasm",
         // Registered dynamically from `ServeRcFonts.URL_BASE` — the vendored Remote Compose
@@ -251,6 +266,10 @@ data class ServeSites(private val byHost: Map<String, String>) {
         "parity",
         "parity.json",
         "refresh",
+        // `GET /feed.xml` — the catalog change feed, registered only when a feed is configured.
+        // Reserved unconditionally: what a site host may name itself cannot depend on a flag the
+        // operator can turn on later.
+        "feed.xml",
         "index.json",
         "iframe.html",
       )

@@ -94,6 +94,36 @@ package ee.schimke.composeai.preview
  * To document a *subset* of the breakpoints a function renders, or to override any of this, use a
  * `catalog.spec.json` entry's `select` — the spec always wins over the annotation.
  *
+ * ### Motion authored elsewhere: [motionPreview]
+ *
+ * A component's animated captures are read off its own `@Preview` function by default: put an
+ * [AnimatedPreview] or [InteractionPreview] beside the `@CatalogComponent` and the recording
+ * publishes on that component's card. That default stops working in two situations, both of which
+ * push the recording onto a function of its own:
+ *
+ * - the component carries `@OverrideVariant` cells. A motion annotation rides **every** cell, and
+ *   the animated path does not apply a cell's knobs — so one recording publishes N byte-identical
+ *   times, once per variant name;
+ * - the recording needs a pinned canvas (`widthDp` + `heightDp`, since every frame of a GIF must
+ *   share one size) while the component's own sticker wraps and is cropped to its content.
+ *
+ * [motionPreview] names the separate function, and the component keeps its own static sticker:
+ * ```kotlin
+ * @Preview(widthDp = 200, heightDp = 120) annotation class MotionCanvas
+ *
+ * @MotionCanvas @AnimatedPreview @Composable fun SwitchTransitionMotion() = Sticker { … }
+ *
+ * @CatalogComponent(id = "Toggles/Switch", motionPreview = "SwitchTransitionMotion")
+ * @Composable fun SwitchButtonSticker() = Sticker { … }
+ * ```
+ *
+ * The named function is an **exact** `@Preview` function name in the same module, and it needs no
+ * `@CatalogComponent` of its own — it adds no card and no kit-taxonomy node, it only supplies the
+ * bytes. Without this (or its `catalog.spec.json` twin, `motionPreview` on a spec component), a
+ * recording that belongs to no component publishes nowhere at all: the export collects motion per
+ * component, so an unclaimed `@AnimatedPreview` renders and is then dropped. The export warns when
+ * it finds one.
+ *
  * Discovered by FQN off the annotated **function** — hence `@Target(FUNCTION)` plus `BINARY`
  * retention, so the annotation survives into the compiled `.class` files the plugin scans with
  * ClassGraph (the same policy as [ColorCatalog] / [ThemeCatalog], never a `SOURCE`-only KSP scan).
@@ -120,6 +150,12 @@ annotation class CatalogComponent(
   val referenceContentsOnly: Boolean = true,
   /** Default design-kit variant property for this component's override-variant cells. */
   val kitAxis: String = "",
+  /**
+   * Exact `@Preview` function name supplying this component's animated/interaction capture, when
+   * the recording must live on a function of its own. Empty ⇒ read motion off this component's own
+   * `@Preview`, as before.
+   */
+  val motionPreview: String = "",
 )
 
 /**

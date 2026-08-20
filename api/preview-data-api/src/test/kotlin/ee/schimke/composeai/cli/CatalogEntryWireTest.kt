@@ -69,6 +69,47 @@ class CatalogEntryWireTest {
   }
 
   @Test
+  fun `a component's motionPreview survives manifest decoding`() {
+    // Which function's recordings publish on this component. Motion is collected PER COMPONENT, so
+    // a reader that dropped this field would not report an error — it would silently un-claim the
+    // capture, and the catalog would publish with an empty `motion/`. That is not hypothetical:
+    // it is exactly how wear-m3-catalog lost all five of its recordings on every green run.
+    val manifest =
+      Json.decodeFromString<PreviewManifest>(
+        """
+        {
+          "module": ":sample",
+          "variant": "debug",
+          "previews": [{
+            "id": "test.SwitchButtonSticker",
+            "functionName": "SwitchButtonSticker",
+            "className": "test.CatalogKt",
+            "catalog": {
+              "role": "COMPONENT",
+              "componentId": "Toggles/Switch",
+              "motionPreview": "SwitchTransitionMotion"
+            }
+          }, {
+            "id": "test.FilledButton",
+            "functionName": "FilledButton",
+            "className": "test.CatalogKt",
+            "catalog": {
+              "role": "COMPONENT",
+              "componentId": "Button/Filled"
+            }
+          }]
+        }
+        """
+          .trimIndent()
+      )
+
+    val (claimed, plain) = manifest.previews.map { it.catalog }
+    assertEquals("SwitchTransitionMotion", claimed?.motionPreview)
+    // Absent ⇒ null, which is what tells the export to read motion off the component's own preview.
+    assertEquals(null, plain?.motionPreview)
+  }
+
+  @Test
   fun `catalog breakpoints survive manifest decoding`() {
     // `perBreakpoint` drives a FAN-OUT: the design-artifacts export mints one catalog component per
     // breakpoint the function rendered at, so a reader that dropped the field would report one

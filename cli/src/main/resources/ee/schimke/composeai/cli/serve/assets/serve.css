@@ -1680,6 +1680,19 @@ cp-history-menu { display: contents; }
 .cp-live-hint { opacity: 0; transition: opacity 0.15s ease; }
 .cp-card-livable:hover .cp-live-hint, .cp-card-livable:focus-visible .cp-live-hint { opacity: 1; }
 .cp-card.cp-card-live .cp-live-hint { display: none; }
+/* The same badge on the single-preview stage, where the gesture is a plain click rather than a
+   long press. The grid keeps its hint invisible until a card is hovered because a grid of 80 cards
+   would otherwise grow 80 permanent badges; there is exactly ONE stage here, so the hint is always
+   faintly present and merely brightens on hover / keyboard focus — a visitor who never goes near
+   the toolbar still learns the preview can be made interactive, which is the whole point of it.
+   Hidden until `updateLiveToggle()` sets `data-live-invite`, so it appears only while there is a
+   live lane to enter and a static frame on the stage to enter it FROM. */
+.cp-stage-live-hint { display: none; bottom: 12px; opacity: 0.62; }
+.cp-viewer[data-live-invite="true"] .cp-stage-live-hint { display: block; }
+.cp-viewer[data-live-invite="true"] .cp-stage:hover .cp-stage-live-hint,
+.cp-viewer[data-live-invite="true"] .cp-stage:focus-within .cp-stage-live-hint { opacity: 1; }
+/* The snapshot is a control while the invitation stands, so it says so under the pointer. */
+.cp-viewer[data-live-invite="true"] #cp-img { cursor: pointer; }
 .cp-live-chip { background: var(--cp-accent); }
 .cp-live-note { color: var(--cp-fg-muted); }
 .cp-live-error {

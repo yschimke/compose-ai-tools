@@ -43,6 +43,60 @@ test("inventoryFromPreviews builds one component per COMPONENT entry, keyed on f
   ]);
 });
 
+test("inventoryFromPreviews carries motionPreview, and omits it when unset", () => {
+  // The wiring for motion authored on its own function. Motion is collected per component, so a
+  // recording nothing names publishes nowhere — this field is how a component claims one without
+  // the annotation having to sit on the sticker (where an @OverrideVariant fan-out would duplicate
+  // it, and where the sticker's cropped canvas is the wrong size for a GIF).
+  const { groups } = inventoryFromPreviews([
+    component("SwitchButtonSticker", {
+      componentId: "Toggles/Switch",
+      group: "Toggles",
+      motionPreview: "SwitchTransitionMotion",
+    }),
+    component("FilledButton", { componentId: "Button/Filled", group: "Toggles" }),
+  ]);
+  assert.deepEqual(groups[0].components, [
+    {
+      componentId: "Toggles/Switch",
+      preview: "SwitchButtonSticker",
+      motionPreview: "SwitchTransitionMotion",
+    },
+    { componentId: "Button/Filled", preview: "FilledButton" },
+  ]);
+});
+
+test("a spec motionPreview wins over the annotation's, like every other spec field", () => {
+  const annotation = [
+    {
+      name: "Toggles",
+      components: [
+        {
+          componentId: "Toggles/Switch",
+          preview: "SwitchButtonSticker",
+          motionPreview: "SwitchTransitionMotion",
+        },
+      ],
+    },
+  ];
+  const spec = [
+    {
+      name: "Toggles",
+      components: [
+        {
+          componentId: "Toggles/Switch",
+          preview: "SwitchButtonSticker",
+          motionPreview: "SwitchSettleMotion",
+        },
+      ],
+    },
+  ];
+
+  const merged = mergeCatalogGroups(annotation, spec);
+
+  assert.equal(merged[0].components[0].motionPreview, "SwitchSettleMotion");
+});
+
 test("inventoryFromPreviews carries both seed-kit handles, and omits an absent referenceSet", () => {
   // `reference` is the one node parity diffs against; `referenceSet` is the family a screen's
   // sibling variant matches through. Both must reach the exported inventory, and a component

@@ -1191,6 +1191,7 @@ object PreviewDiscovery {
       referenceContentsOnly = annBoolean(component, "referenceContentsOnly", default = true),
       parallel = annStringOrNull(component, "parallel"),
       kitAxis = annStringOrNull(component, "kitAxis"),
+      motionPreview = annStringOrNull(component, "motionPreview"),
       perBreakpoint = annBoolean(component, "perBreakpoint"),
     )
   }
@@ -1516,8 +1517,9 @@ object PreviewDiscovery {
       """(?m)^[\t ]*@(?!file:)(?:[A-Za-z_][A-Za-z0-9_.]*\.)?(?!(?:PreviewParameter|PreviewParameterProvider)\b)(?:[A-Za-z_][A-Za-z0-9_]*)?Preview[A-Za-z0-9_]*(?=[\t (\r\n])"""
     )
 
-  private fun File.declaresPreviewAnnotation(): Boolean =
-    runCatching { PREVIEW_SOURCE_ANNOTATION.containsMatchIn(readText()) }.getOrDefault(false)
+  private fun File.declaresPreviewAnnotation(): Boolean = runCatching {
+    PREVIEW_SOURCE_ANNOTATION.containsMatchIn(readText())
+  }.getOrDefault(false)
 
   private fun File.isTestSourceSetFile(): Boolean {
     val marker = "/src/"
@@ -2171,29 +2173,29 @@ object PreviewDiscovery {
           // the variant from writing an undriven still into a filename that claims an interaction.
           .filter { it.interaction == null }
           .map { capture ->
-          val tagged = capture.copy(renderOutput = insertRenderTag(capture.renderOutput, tag))
-          when (spec.interaction) {
-            OverrideVariantInteraction.Focused ->
-              tagged.copy(
-                focus = FocusCapture(tabIndex = spec.interactionIndex),
-                focusGif = null,
-                hover = null,
-              )
-            OverrideVariantInteraction.Pressed ->
-              tagged.copy(
-                focus = FocusCapture(tabIndex = spec.interactionIndex, pressed = true),
-                focusGif = null,
-                hover = null,
-              )
-            OverrideVariantInteraction.Hovered ->
-              tagged.copy(
-                focus = null,
-                focusGif = null,
-                hover = HoverCapture(targetIndex = spec.interactionIndex),
-              )
-            null -> tagged
-          }
-        },
+            val tagged = capture.copy(renderOutput = insertRenderTag(capture.renderOutput, tag))
+            when (spec.interaction) {
+              OverrideVariantInteraction.Focused ->
+                tagged.copy(
+                  focus = FocusCapture(tabIndex = spec.interactionIndex),
+                  focusGif = null,
+                  hover = null,
+                )
+              OverrideVariantInteraction.Pressed ->
+                tagged.copy(
+                  focus = FocusCapture(tabIndex = spec.interactionIndex, pressed = true),
+                  focusGif = null,
+                  hover = null,
+                )
+              OverrideVariantInteraction.Hovered ->
+                tagged.copy(
+                  focus = null,
+                  focusGif = null,
+                  hover = HoverCapture(targetIndex = spec.interactionIndex),
+                )
+              null -> tagged
+            }
+          },
       dataProducts = emptyList(),
     )
   }
@@ -2965,12 +2967,12 @@ object PreviewDiscovery {
         (effectiveAnimation != null && effectiveFocusGif != null)
 
     // `@InteractionPreview` writes `renders/<id>.apng` by default, which collides with nothing —
-    // but a consumer that asks for `format = Gif` lands on the same `<id>.gif` an `@AnimatedPreview`
+    // but a consumer that asks for `format = Gif` lands on the same `<id>.gif` an
+    // `@AnimatedPreview`
     // or `@FocusedPreview(gif = true)` on the same function already owns. Suffix it whenever
     // anything else on the function could claim that name, on the same "disambiguate rather than
     // silently overwrite" rule as `gifSharesFn`.
-    val interactionSharesFn =
-      gifSharesFn || effectiveAnimation != null || effectiveFocusGif != null
+    val interactionSharesFn = gifSharesFn || effectiveAnimation != null || effectiveFocusGif != null
 
     // One interaction capture per annotated function, dimension-flat — it doesn't cross with the
     // scroll / time / focus fan-out, mirroring `@AnimatedPreview`'s single-output pattern. Built
@@ -2987,8 +2989,7 @@ object PreviewDiscovery {
             // an `@InteractionPreview` that owns the function outright leaves nothing else to find.
             permissions = effectivePermissions,
             glimmerEnvironment = effectiveGlimmerEnvironment,
-            renderOutput =
-              "renders/${previewId}${suffix}.${effectiveInteraction.format.extension}",
+            renderOutput = "renders/${previewId}${suffix}.${effectiveInteraction.format.extension}",
             cost = INTERACTION_COST,
           )
         )
@@ -3206,7 +3207,8 @@ object PreviewDiscovery {
                 gestureHint = effectiveGestureHint,
                 permissions = effectivePermissions,
                 glimmerEnvironment = effectiveGlimmerEnvironment,
-                // A scroll drive runs its own post-scroll settle, and a `@RoboComposePreviewOptions`
+                // A scroll drive runs its own post-scroll settle, and a
+                // `@RoboComposePreviewOptions`
                 // timing is an exact snapshot of a chosen coordinate — settling either would move a
                 // capture off the frame it was asked for. So the settle rides only on the plain
                 // still, which is the capture the reveal actually spoils.
@@ -3519,9 +3521,9 @@ object PreviewDiscovery {
     val pv = ann.parameterValues
     val stateName =
       (pv.getValue("state") as? AnnotationEnumValue)?.valueName ?: AmbientCaptureState.Ambient.name
-    val state =
-      runCatching { AmbientCaptureState.valueOf(stateName) }
-        .getOrDefault(AmbientCaptureState.Ambient)
+    val state = runCatching {
+      AmbientCaptureState.valueOf(stateName)
+    }.getOrDefault(AmbientCaptureState.Ambient)
     val burnIn = (pv.getValue("burnInProtectionRequired") as? Boolean) ?: false
     val lowBit = (pv.getValue("deviceHasLowBitAmbient") as? Boolean) ?: false
     return AmbientCapture(
@@ -3535,8 +3537,7 @@ object PreviewDiscovery {
   private fun extractGlimmerEnvironmentSpec(
     annotations: List<AnnotationInfo>
   ): GlimmerEnvironmentCapture? {
-    val ann =
-      annotations.firstOrNull { it.name == GLIMMER_ENVIRONMENT_PREVIEW_FQN } ?: return null
+    val ann = annotations.firstOrNull { it.name == GLIMMER_ENVIRONMENT_PREVIEW_FQN } ?: return null
     val environmentName =
       (ann.parameterValues.getValue("environment") as? AnnotationEnumValue)?.valueName
         ?: return null
@@ -3544,8 +3545,8 @@ object PreviewDiscovery {
   }
 
   /**
-   * Reads `@SettledPreview(afterMs, maxMs)` into a [SettleCapture], or `null` when the annotation is
-   * absent.
+   * Reads `@SettledPreview(afterMs, maxMs)` into a [SettleCapture], or `null` when the annotation
+   * is absent.
    *
    * Both knobs are clamped here rather than in the renderers: discovery is the single place the
    * manifest is written, so a nonsense value can't reach two backends and be clamped differently in
@@ -3736,9 +3737,9 @@ object PreviewDiscovery {
     val orderName =
       (pv.getValue("resizeOrder") as? AnnotationEnumValue)?.valueName
         ?: LauncherWidgetCaptureResizeOrder.WidthFirst.name
-    val order =
-      runCatching { LauncherWidgetCaptureResizeOrder.valueOf(orderName) }
-        .getOrDefault(LauncherWidgetCaptureResizeOrder.WidthFirst)
+    val order = runCatching {
+      LauncherWidgetCaptureResizeOrder.valueOf(orderName)
+    }.getOrDefault(LauncherWidgetCaptureResizeOrder.WidthFirst)
     val frameDelay = (pv.getValue("frameDelayMs") as? Int)?.coerceAtLeast(0) ?: 600
     val launcherMode = (pv.getValue("launcherMode") as? Boolean) ?: false
     return LauncherWidgetResizeSpec(
@@ -3769,9 +3770,9 @@ object PreviewDiscovery {
     val orderName =
       (pv.getValue("resizeOrder") as? AnnotationEnumValue)?.valueName
         ?: LauncherWidgetCaptureResizeOrder.WidthFirst.name
-    val order =
-      runCatching { LauncherWidgetCaptureResizeOrder.valueOf(orderName) }
-        .getOrDefault(LauncherWidgetCaptureResizeOrder.WidthFirst)
+    val order = runCatching {
+      LauncherWidgetCaptureResizeOrder.valueOf(orderName)
+    }.getOrDefault(LauncherWidgetCaptureResizeOrder.WidthFirst)
     val launcherMode = (pv.getValue("launcherMode") as? Boolean) ?: false
     return LauncherWidgetCapture(
       width = width,
@@ -4309,8 +4310,7 @@ object PreviewDiscovery {
       includeInA11y =
         method.annotationInfo
           .firstOrNull { it.name == PREVIEW_HELPER_FQN }
-          ?.let { annBoolean(it, "includeInA11y", default = true) }
-          ?: true,
+          ?.let { annBoolean(it, "includeInA11y", default = true) } ?: true,
     )
   }
 
