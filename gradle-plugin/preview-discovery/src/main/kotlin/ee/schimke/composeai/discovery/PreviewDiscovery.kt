@@ -1209,12 +1209,23 @@ object PreviewDiscovery {
   /** Reads a `String[]` annotation parameter (ClassGraph yields an `Object[]`) as a list. */
   private fun annStringArray(ann: AnnotationInfo, param: String): List<String> {
     val raw = runCatching { ann.parameterValues.getValue(param) }.getOrNull() ?: return emptyList()
-    return when (raw) {
+    return stringArrayValue(raw)
+  }
+
+  /**
+   * The strings in an annotation array parameter's already-read value.
+   *
+   * Split out of [annStringArray] because the `@OverrideVariant` walk holds the parameter list
+   * rather than the `AnnotationInfo` — it reads several arrays off one annotation — and two
+   * spellings of "what counts as a string array here" would drift on exactly the shape ClassGraph
+   * hands back for an empty one.
+   */
+  private fun stringArrayValue(raw: Any?): List<String> =
+    when (raw) {
       is Array<*> -> raw.filterIsInstance<String>()
       is Iterable<*> -> raw.filterIsInstance<String>()
       else -> emptyList()
     }
-  }
 
   /** Splits a `@CatalogVariant.props` `"key=value"` pair; `null` when malformed (no key). */
   private fun parseCatalogProp(raw: String): CatalogVariantProp? {
@@ -2264,14 +2275,36 @@ object PreviewDiscovery {
           ?.let { runCatching { OverrideVariantInteraction.valueOf(it) }.getOrNull() }
       if (seeds.isEmpty() && interaction == null) continue
       val interactionIndex = ((pv.getValue("interactionIndex") as? Int) ?: 0).coerceAtLeast(0)
+      val kitAxis = (pv.getValue("kitAxis") as? String)?.takeIf { it.isNotBlank() }
+      val kitValue = (pv.getValue("kitValue") as? String)?.takeIf { it.isNotBlank() }
+      // `"Axis=Value"`, same split as `@CatalogVariant(props = …)` — first `=` wins, so a kit value
+      // that contains one (`Style=Variant (Highlighted)`) needs no escaping.
+      // `runCatching`, unlike its sibling reads above: a catalog compiled against a
+      // preview-annotations older than this field has no `kitProps` parameter at all, and
+      // `getValue` throws for one that is absent rather than returning its default. Discovery must
+      // keep working against an older annotations jar — that is the ordinary state of a consumer
+      // repo between releases.
+      val kitProps =
+        stringArrayValue(runCatching { pv.getValue("kitProps") }.getOrNull())
+          .mapNotNull(::parseCatalogProp)
+      // Two spellings of one fact with no rule for which wins is the ambiguity `kitProps` exists to
+      // remove, so it is not resolved silently: the plural form is kept (it is the only one that
+      // can describe a multi-knob cell at all) and the singular is reported as ignored.
+      if (kitProps.isNotEmpty() && (kitAxis != null || kitValue != null)) {
+        warnings.add(
+          "composePreview: '$owner' variant '$name' declares both kitProps and kitAxis/kitValue — " +
+            "keeping kitProps and ignoring the singular pair. Declare one or the other."
+        )
+      }
       val spec =
         OverrideVariantSpec(
           name = name,
           seeds = seeds,
           interaction = interaction,
           interactionIndex = interactionIndex,
-          kitAxis = (pv.getValue("kitAxis") as? String)?.takeIf { it.isNotBlank() },
-          kitValue = (pv.getValue("kitValue") as? String)?.takeIf { it.isNotBlank() },
+          kitAxis = kitAxis.takeIf { kitProps.isEmpty() },
+          kitValue = kitValue.takeIf { kitProps.isEmpty() },
+          kitProps = kitProps,
         )
       val existing = specs.putIfAbsent(name, spec)
       // Only a *conflicting* duplicate is worth a warning. The same annotation reached twice — once

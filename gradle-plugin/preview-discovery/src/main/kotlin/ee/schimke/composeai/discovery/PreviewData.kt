@@ -1134,6 +1134,16 @@ data class OverrideVariantSpec(
   val kitAxis: String? = null,
   /** Explicit design-kit value for this cell; null keeps downstream value matching. */
   val kitValue: String? = null,
+  /**
+   * The design kit's **whole** assignment for this cell, for a cell that turns more than one knob —
+   * `@OverrideVariant.kitProps`, already split into pairs.
+   *
+   * Empty for every cell that declares none, which is the [kitAxis] / [kitValue] form and every
+   * cell written before the field existed. Non-empty **replaces** the seed vector downstream: a
+   * declaring cell is compared against the assignment it names, not against whatever its knob keys
+   * happen to alias to. See the annotation for why the two are kept apart.
+   */
+  val kitProps: List<CatalogVariantProp> = emptyList(),
 )
 
 @Serializable

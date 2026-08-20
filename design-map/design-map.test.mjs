@@ -439,6 +439,60 @@ test("variantSeeds carries a cell's declared kit axis and value onto its seed", 
   );
 });
 
+test("kitProps declares a whole kit assignment for a cell that turns several knobs", () => {
+  // The Wear kit's `Button` set has no `Icon=Yes, Icon size=n/a, Alignment=Center` node — turning
+  // Icon on drags the other two with it — so the cell that lands on a real node seeds three knobs,
+  // and a single kitAxis has no way to say which one it names.
+  assert.deepEqual(
+    variantSeeds(
+      overrideVariant("Button/Filled", "icon-large", {
+        seeds: [
+          { key: "icon", raw: "true" },
+          { key: "iconSize", raw: "lrg-32" },
+          { key: "alignment", raw: "left" },
+        ],
+        kitProps: [
+          { key: "Icon", value: "Yes" },
+          { key: "Icon size", value: "Lrg 32" },
+          { key: "Alignment", value: "Left" },
+        ],
+      }),
+    ),
+    [
+      { key: "Icon", raw: "Yes", kitAxis: "Icon", kitValue: "Yes" },
+      { key: "Icon size", raw: "Lrg 32", kitAxis: "Icon size", kitValue: "Lrg 32" },
+      { key: "Alignment", raw: "Left", kitAxis: "Alignment", kitValue: "Left" },
+    ],
+  );
+});
+
+test("kitProps REPLACES the knob seeds rather than joining them", () => {
+  // Load-bearing, not tidiness: a resolver has to place every seed it is given, so one knob seed
+  // that aliases to nothing would kill a cell whose declaration is complete and correct.
+  const seeds = variantSeeds(
+    overrideVariant("Button/Filled", "left", {
+      seeds: [{ key: "alignment", raw: "left" }],
+      kitProps: [{ key: "Alignment", value: "Left" }],
+    }),
+  );
+  assert.deepEqual(seeds, [
+    { key: "Alignment", raw: "Left", kitAxis: "Alignment", kitValue: "Left" },
+  ]);
+  assert.equal(
+    seeds.some((s) => s.key === "alignment"),
+    false,
+  );
+});
+
+test("a cell with no kitProps is untouched — every variant written before the field", () => {
+  assert.deepEqual(
+    variantSeeds(
+      overrideVariant("Switch", "off", { seeds: [{ key: "checked", raw: "false" }] }),
+    ),
+    [{ key: "checked", raw: "false" }],
+  );
+});
+
 test("variantSeeds carries a CatalogVariant's declaration onto its prop", () => {
   assert.deepEqual(
     variantSeeds(
