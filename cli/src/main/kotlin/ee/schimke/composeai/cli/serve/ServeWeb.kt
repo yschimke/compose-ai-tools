@@ -10605,13 +10605,6 @@ $cards
           "<option value=\"${lane.value}\"$disabledAttr>" +
             "${WebEscaping.htmlEscape(text)}</option>"
         }
-    // The chip's opening label: the lane it opens on whenever something else on the row can put a
-    // different lane on the stage (the renderer combo, or the design-spec chip), and the plain
-    // "Live preview" invitation when this chip is the only lane control there is — with nothing to
-    // disambiguate against, the invitation reads better than "Snapshot".
-    val primaryLaneLabel =
-      if (laneSelectHtml.isEmpty() && specChipHtml.isEmpty()) "Live preview"
-      else lanes.firstOrNull { it.value == defaultLane }?.label ?: "Live preview"
     // The step from "look at one player" to "look at them all": the format-comparison page, focused
     // on this preview and opened on its Remote Compose lane. A subtle text link rather than another
     // chip — it navigates away, so it deliberately stays out of the picker's affordance set.
@@ -10755,6 +10748,22 @@ $cards
     // dot and the pressed flag; this string is what the server-rendered markup opens on, and it
     // matches what that function computes for the initial (static, not-yet-interactive) state —
     // including the honest wording for a session with no live lane to enter at all.
+    // The chip's opening label: the lane it opens on whenever something else on the row can put a
+    // different lane on the stage (the renderer combo, or the design-spec chip). With no such
+    // control the chip is the only lane affordance on the row and there is nothing to disambiguate
+    // against, so it names the STATE the stage is in instead — and which word does that depends on
+    // whether the chip is about to carry a verb:
+    //
+    //   - a lane to enter → "Snapshot", so the chip reads "Snapshot ▸ Live": a state and the switch
+    //     out of it. The old wording put the destination in the label, which read "Live preview ▸
+    //     Live" the moment the verb arrived — the chip naming the same lane twice.
+    //   - nothing to enter → "Live preview", the plain (disabled) invitation. There is no verb to
+    //     pair with here, and "Snapshot" alone beside a dead dot says nothing about what the chip
+    //     is for.
+    val primaryLaneLabel =
+      if (laneSelectHtml.isEmpty() && specChipHtml.isEmpty())
+        if (liveToggleDis.isEmpty()) "Snapshot" else "Live preview"
+      else lanes.firstOrNull { it.value == defaultLane }?.label ?: "Live preview"
     val liveToggleTitleAttr =
       " title=\"" +
         WebEscaping.htmlEscape(

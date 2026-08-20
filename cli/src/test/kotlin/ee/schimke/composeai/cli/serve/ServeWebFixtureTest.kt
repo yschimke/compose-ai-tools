@@ -5064,7 +5064,7 @@ class ServeWebFixtureTest {
     assertTrue(
       openLive.contains(
         "id=\"cp-live-toggle\" class=\"cp-live-toggle\" aria-pressed=\"false\" " +
-          "data-default-lane-label=\"Live preview\" " +
+          "data-default-lane-label=\"Snapshot\" " +
           "title=\"Static snapshot — click for the live, interactive preview\">"
       ),
       "live preview remains an ordinary toggle when no GitHub sign-in prompt is required",
@@ -5224,15 +5224,30 @@ class ServeWebFixtureTest {
     )
 
     // Case A — daemon lane but no wasm app: one lane, so no combo at all — the chip carries the
-    // whole row and keeps the plain "Live preview" invitation.
+    // whole row, and with nothing to disambiguate against it names the STATE the stage is in and
+    // lets its verb name the switch out of it.
     val daemonOnly = ServeWeb.viewerPage(card, token, canApplyOverrides = true)
     assertFalse(
       daemonOnly.contains("id=\"cp-lane-select\""),
       "a single-lane session grows no combo box",
     )
     assertTrue(
+      daemonOnly.contains("<span id=\"cp-live-toggle-label\">Snapshot</span>") &&
+        daemonOnly.contains(">▸ Live</span>"),
+      "the chip reads \"Snapshot ▸ Live\": a state, and the switch out of it",
+    )
+    // The label must not carry the destination too. It did before the verb existed — and the pair
+    // then read "Live preview ▸ Live", one chip naming the same lane twice.
+    assertFalse(
       daemonOnly.contains("<span id=\"cp-live-toggle-label\">Live preview</span>"),
-      "with nothing to disambiguate, the chip keeps the plain invitation",
+      "the destination is the verb's job, and only the verb's",
+    )
+    // With no lane to enter there is no verb to pair with, so the label keeps the plain (disabled)
+    // invitation — "Snapshot" alone beside a dead dot would say nothing about what the chip is for.
+    val noLaneAtAll = ServeWeb.viewerPage(card, token, canApplyOverrides = false)
+    assertTrue(
+      noLaneAtAll.contains("<span id=\"cp-live-toggle-label\">Live preview</span>"),
+      "a chip with nothing to switch to still says what it is about",
     )
   }
 

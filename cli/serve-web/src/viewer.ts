@@ -3545,8 +3545,9 @@ function currentLaneValue() {
 // What the chip calls the current lane. "Live" while the daemon stream is up (that lane IS the
 // live form of whichever renderer is picked, and the picked one is a click away again); other-
 // wise the matching option's own label, so the chip and the combo can never name a lane two
-// different things. With no combo at all the chip is the only control on the row, and the
-// generic invitation reads better than "Snapshot".
+// different things. With no combo at all the chip is the only control on the row and names the
+// state the stage is in ("Snapshot"), leaving its verb to name the switch out of it — see
+// ServeWeb's `primaryLaneLabel`, which is where that word is chosen.
 // The renderer the chip returns to when the current lane isn't one of the combo's own — today
 // that means the design spec, which is a chip of its own. Server-rendered from the same
 // `primaryLaneLabel` the chip opens on, so a preview with no combo to read has a name too.
