@@ -676,6 +676,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-reference-compare-annotated/dark](renders/serve-reference-compare-annotated.dark.png) |
 | `light` | ![serve-reference-compare-annotated/light](renders/serve-reference-compare-annotated.light.png) |
 
+## serve-reference-compare-dark-first
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-reference-compare-dark-first/dark](renders/serve-reference-compare-dark-first.dark.png) |
+| `light` | ![serve-reference-compare-dark-first/light](renders/serve-reference-compare-dark-first.light.png) |
+
 ## serve-reference-compare-pinned
 
 | Theme | Capture |
