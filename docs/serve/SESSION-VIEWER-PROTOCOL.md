@@ -66,11 +66,34 @@ keep the connection open.
 | `requestFrame` | — | Re-render and push a frame at the current overrides. |
 | `switch` | `previewId` (string), `overrides` (object, optional) | Move the connection to another preview on the same module without reconnecting. |
 | `input` | `kind` + optional `pixelX`/`pixelY`/`pointerId`/`scrollDeltaY`/`keyCode`, all **top-level** (see below) | Forward one pointer/key/rotary event. |
+| `visibility` | `visible` (bool, required), `fps` (int, optional) | Whether anyone is still looking at this lane. Throttles the stream while they are not. |
 
 `setOverrides`, `requestFrame`, and `switch` are handled by the serve lane today.
 `input` is dispatched into a **live (daemon-streamed)** composition; the
 snapshot-render fallback lane ignores it (it can't accept input). `kind` matches
 the daemon's `InteractiveInputKind`.
+
+#### `visibility` message
+
+```json
+{ "type": "visibility", "visible": false, "fps": 1 }
+```
+
+A client sends this when its tab is backgrounded (`document.visibilitychange`)
+or when the element showing the stream leaves the viewport, and again when either
+comes back. On the live lane it becomes the daemon's `stream/visibility`, which
+throttles **both** what the stream emits and what the daemon renders for it —
+see [STREAMING.md](../daemon/STREAMING.md#streamvisibility-notification). The
+held session stays warm, so returning repaints immediately from the keyframe the
+daemon flags on resume; nothing is torn down and nothing reconnects.
+
+- `visible` (required) — a JSON boolean. A message without a usable one is
+  reported back as an unknown message rather than guessed at.
+- `fps` (optional) — the throttled rate while hidden. Omitted, or non-positive,
+  leaves the daemon on its default of 1 fps. Ignored when `visible` is true.
+
+The snapshot fallback lane accepts the message and does nothing: it renders only
+when asked, so there is nothing to throttle.
 
 #### `input` message
 

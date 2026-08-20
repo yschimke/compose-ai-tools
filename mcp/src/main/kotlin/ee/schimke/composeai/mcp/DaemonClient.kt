@@ -46,6 +46,7 @@ import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamStartParams
 import ee.schimke.composeai.daemon.protocol.StreamStartResult
 import ee.schimke.composeai.daemon.protocol.StreamStopParams
+import ee.schimke.composeai.daemon.protocol.StreamVisibilityParams
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.IOException
@@ -523,6 +524,21 @@ class DaemonClient(
     sendNotification(
       "stream/stop",
       json.encodeToJsonElement(StreamStopParams.serializer(), StreamStopParams(frameStreamId)),
+    )
+
+  /**
+   * Drives `stream/visibility` (notification — no response). Tells the daemon the client stopped
+   * looking at this stream (hidden tab, card scrolled out of view) so it throttles both the emit
+   * rate and — since the daemon's frame loop reads the same gate — the render rate behind it. [fps]
+   * overrides the throttled rate; the daemon's default is 1 fps.
+   */
+  fun streamVisibility(frameStreamId: String, visible: Boolean, fps: Int? = null) =
+    sendNotification(
+      "stream/visibility",
+      json.encodeToJsonElement(
+        StreamVisibilityParams.serializer(),
+        StreamVisibilityParams(frameStreamId = frameStreamId, visible = visible, fps = fps),
+      ),
     )
 
   /**

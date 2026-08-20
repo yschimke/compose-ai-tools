@@ -14,9 +14,11 @@ import kotlinx.serialization.json.put
  * tier-2 streaming spike. Pure (no ktor / IO), so the wire format is unit-tested directly and the
  * WebSocket route stays a thin adapter.
  *
- * Client → server: `setOverrides` (replace the display overrides and re-render) and `requestFrame`
- * (re-render at the current overrides). Server → client: `frame` (a rendered PNG, base64, with its
- * pixel size and a monotonic `seq`) and `error`.
+ * Client → server: `setOverrides` (replace the display overrides and re-render), `requestFrame`
+ * (re-render at the current overrides), `switch` (re-point the socket at another preview), `input`
+ * (dispatch a pointer/key event into a live composition) and `visibility` (throttle the stream
+ * while nobody is looking at it). Server → client: `frame` (a rendered PNG, base64, with its pixel
+ * size and a monotonic `seq`) and `error`.
  *
  * This deliberately mirrors the daemon's native streaming protocol (`stream/start` + `streamFrame`,
  * `docs/daemon/STREAMING.md`): base64 frame payloads + a `codec` tag + a monotonic sequence, so the
@@ -61,6 +63,15 @@ object ServeStreamProtocol {
       val pointerType: String?,
     ) : ClientMessage
 
+    /**
+     * Whether the client is still looking at this lane — a hidden tab, or a grid card scrolled out
+     * of the viewport. Throttles the daemon's stream (both what it emits and what it renders)
+     * without tearing the held session down, so coming back repaints from a keyframe rather than
+     * reconnecting. [fps] optionally names the throttled rate; absent means the daemon's default (1
+     * fps). Ignored by the snapshot fallback lane, which renders only when asked.
+     */
+    data class Visibility(val visible: Boolean, val fps: Int?) : ClientMessage
+
     /** Unrecognised message; [reason] is echoed back as an error rather than crashing the lane. */
     data class Unsupported(val reason: String) : ClientMessage
   }
@@ -95,6 +106,20 @@ object ServeStreamProtocol {
             }
           if (previewId.isNullOrBlank()) ClientMessage.Unsupported("switch missing previewId")
           else ClientMessage.Switch(previewId, overrides?.toMap())
+        }
+        "visibility" -> {
+          val visible = (obj["visible"] as? JsonPrimitive)?.contentOrNull?.toBooleanStrictOrNull()
+          // No usable `visible` is not a throttle request of either polarity, so it can't be
+          // guessed at: reporting it back beats silently pinning the lane visible (a hidden tab
+          // that keeps rendering) or hidden (a visible one stuck at 1 fps).
+          if (visible == null) ClientMessage.Unsupported("visibility missing boolean visible")
+          else
+            ClientMessage.Visibility(
+              visible = visible,
+              // A non-positive fps would mean "never emit"; drop it and let the daemon apply its
+              // own throttled default instead.
+              fps = (obj["fps"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull()?.takeIf { it > 0 },
+            )
         }
         "input" ->
           ClientMessage.Input(

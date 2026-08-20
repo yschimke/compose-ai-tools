@@ -94,7 +94,20 @@ held session via `InteractiveSession.close()`.
 Idempotent and silent on unknown stream ids — the client may race a
 visibility flip with a `stream/stop`. When `visible` flips back from
 `false` to `true`, the *next* emitted frame is flagged `keyframe: true`
-so the client has an explicit "paint me now" anchor.
+so the client has an explicit "paint me now" anchor, and the daemon wakes
+the stream's frame loop immediately rather than letting the throttled
+wait it is parked in elapse first.
+
+**The throttle is on the render, not just the emit.** The daemon's live
+frame loop takes its cadence from `FrameStreamRegistry.emitMinIntervalMs`
+for the stream — the same number the emit gate applies — so a hidden
+stream *renders* once a second instead of rendering four times a second
+into a gate that drops three of them. That distinction is the whole
+point of sending the notification: on the Android backend every tick is a
+Robolectric capture, so gating emission alone leaves a backgrounded tab
+costing very nearly what a watched one does. The `maxFps` cap rides the
+same floor, on the same grounds. A session with no frame stream
+(`interactive/start`) has no emit gate and keeps its cadence unchanged.
 
 ### `streamFrame` (notification, daemon → client)
 
@@ -197,6 +210,30 @@ could still be decoding when a lighter N+1 resolved, and the late N then
 painted *over* N+1 and stayed — until the next frame, or forever if the
 stream had gone quiescent.
 
+The visibility signal crosses the same translation. A browser sends
+`{type:"visibility", visible, fps?}` on its `/ws/{previewId}` socket —
+the viewer on `document.visibilitychange`, a `<cp-catalog-live>` card on
+an `IntersectionObserver` as it scrolls out of the grid — and
+`ServeLiveSession` turns it into `stream/visibility` on the held stream.
+Two things only the serve side has to decide:
+
+- **One shared daemon stream serves every watcher of the same preview +
+  overrides + codec + fps** (`ServeBroadcastHub`), so the hub throttles
+  on the *aggregate*: visible while **any** watcher is, and when none
+  are, at the slowest rate they asked for. Throttling on the first
+  hidden watcher would starve the tab still watching the same preview
+  beside it.
+- **A socket outlives its daemon streams**, so `ServeLiveSession`
+  remembers the last visibility the client reported and re-states it on
+  every stream a `setOverrides` or `switch` opens — daemon streams start
+  visible, so a hidden socket would otherwise silently return to full
+  rate.
+
+The snapshot fallback lane (`ServeStreamSession`) accepts the message and
+does nothing with it: it renders only when asked, so there is nothing to
+throttle, and answering each tab switch with an error would paint the
+viewer's error banner over a working lane.
+
 **`seq` on the serve wire is the socket's, not the daemon's.** One socket
 outlives several daemon streams: every `setOverrides` restarts the held
 session and every `switch` opens a replacement, each numbering from zero.
@@ -242,6 +279,12 @@ canvas painter; there is no opt-in setting and no fallback.
   throttle, keyframe-on-resume, final-on-stop.
 - `:daemon:core` `StreamRpcIntegrationTest` — end-to-end RPC over piped
   streams; mirrors `InteractiveRpcIntegrationTest`.
+- `:daemon:core` `InteractiveVisibilityCadenceTest` — the frame loop's
+  cadence floored by the stream's emit gate (visibility + `maxFps`).
+- `cli` `ServeBroadcastHubTest` — aggregate visibility across the
+  watchers sharing one upstream stream.
+- `cli/serve-web` `catalogLiveElement.test.ts` — the card's scroll-out /
+  backgrounded-tab throttle and its teardown.
 - `vscode-extension` `streamClient.test.ts` — newest-wins queue,
   multi-stream demux, sink isolation, late-bind buffering.
 - `vscode-extension` `liveCommand.test.ts` — pins the LIVE-button →

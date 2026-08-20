@@ -36,6 +36,7 @@ import {
     socketUrl,
     startsHold,
     themeProviderOf,
+    visibilityMessage,
     type CardEntry,
     type LiveConfig,
 } from "../live/session.js";
@@ -56,6 +57,12 @@ interface Session {
     frames: FrameQueue;
     paintedSeq: number;
     painting: boolean;
+    /** Whether the card is currently within the viewport (an observer-less browser: always). */
+    onScreen: boolean;
+    /** The last visibility reported to the server, so a scroll only sends when it changes. */
+    visible: boolean;
+    /** Listeners and observers that live exactly as long as this session. */
+    cleanups: Array<() => void>;
 }
 
 interface Press {
@@ -165,10 +172,57 @@ export class CatalogLive extends LitElement {
 
     // ---- the session ---------------------------------------------------------
 
+    /**
+     * Keep the server told whether anyone is actually looking at this card.
+     *
+     * Two ways to stop looking without ending the session: scroll the card out of the grid's
+     * viewport, or send the whole tab to the background. Either one used to leave a full-rate
+     * render loop running in the daemon for a picture on nobody's screen — the stream throttles
+     * instead, and stays warm, so scrolling back repaints from the daemon's resume keyframe rather
+     * than reconnecting from cold.
+     *
+     * A browser without `IntersectionObserver` keeps the card permanently on-screen and rides the
+     * tab signal alone; nothing here is load-bearing for correctness.
+     */
+    private watchVisibility(session: Session): void {
+        const report = (): void => {
+            const visible = session.onScreen && !document.hidden;
+            if (visible === session.visible) return;
+            session.visible = visible;
+            const socket = session.socket;
+            if (this.active !== session || !socket || socket.readyState !== 1)
+                return;
+            socket.send(visibilityMessage(visible));
+        };
+
+        const onTabVisibility = (): void => report();
+        document.addEventListener("visibilitychange", onTabVisibility);
+        session.cleanups.push(() =>
+            document.removeEventListener("visibilitychange", onTabVisibility),
+        );
+
+        if (typeof IntersectionObserver !== "function") return;
+        const observer = new IntersectionObserver(
+            (entries) => {
+                const last = entries[entries.length - 1];
+                if (!last) return;
+                session.onScreen = last.isIntersecting;
+                report();
+            },
+            // A sliver of the card counts as looking at it: the throttle is for cards that have
+            // left, not for ones halfway up the fold.
+            { threshold: 0 },
+        );
+        observer.observe(session.card);
+        session.cleanups.push(() => observer.disconnect());
+    }
+
     private stopLive(reason: string | null): void {
         const session = this.active;
         if (!session) return;
         this.active = null;
+        for (const off of session.cleanups) off();
+        session.cleanups = [];
         if (session.socket) {
             session.socket.onmessage = null;
             session.socket.onclose = null;
@@ -264,6 +318,9 @@ export class CatalogLive extends LitElement {
             frames: new FrameQueue(),
             paintedSeq: -1,
             painting: false,
+            onScreen: true,
+            visible: true,
+            cleanups: [],
         };
         this.active = session;
         this.runFrameLoop(session);
@@ -283,8 +340,16 @@ export class CatalogLive extends LitElement {
             return;
         }
         session.socket = socket;
+        this.watchVisibility(session);
 
         let gotFrame = false;
+        socket.onopen = () => {
+            // A session can be started and then hidden before the socket finishes connecting (a
+            // hold, then straight to another tab). The server starts every stream visible, so the
+            // state has to be (re)stated once there is somewhere to state it to.
+            if (this.active === session && !session.visible)
+                socket.send(visibilityMessage(false));
+        };
         socket.onmessage = (event: MessageEvent) => {
             if (this.active !== session) return;
             let message: {

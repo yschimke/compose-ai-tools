@@ -7,6 +7,7 @@ import {
     socketUrl,
     startsHold,
     themeProviderOf,
+    visibilityMessage,
 } from "../src/live/session.js";
 
 describe("previewIdOf", () => {
@@ -143,5 +144,31 @@ describe("startsHold", () => {
     it("is not a right-click or a middle-click", () => {
         assert.equal(startsHold({ button: 1 }), false);
         assert.equal(startsHold({ button: 2 }), false);
+    });
+});
+
+describe("visibilityMessage", () => {
+    it("says which way the lane flipped", () => {
+        assert.deepEqual(JSON.parse(visibilityMessage(false)), {
+            type: "visibility",
+            visible: false,
+        });
+        assert.deepEqual(JSON.parse(visibilityMessage(true)), {
+            type: "visibility",
+            visible: true,
+        });
+    });
+
+    it("carries a throttled fps only when there is one to carry", () => {
+        // No fps means the server's own default (1 fps); a non-positive one would mean "never".
+        assert.deepEqual(JSON.parse(visibilityMessage(false, 2)), {
+            type: "visibility",
+            visible: false,
+            fps: 2,
+        });
+        assert.equal("fps" in JSON.parse(visibilityMessage(false, 0)), false);
+        // An fps alongside `visible: true` is meaningless — the server ignores it either way, so
+        // it does not go on the wire.
+        assert.equal("fps" in JSON.parse(visibilityMessage(true, 2)), false);
     });
 });

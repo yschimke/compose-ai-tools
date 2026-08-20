@@ -20,6 +20,7 @@ import {
     shouldPaintDecodedFrame,
     type ServeFrame,
 } from "./live/framePainter.js";
+import { visibilityMessage } from "./live/session.js";
 import * as rules from "./viewer/rules.js";
 import { type ApiDocLink, usableApiDocs } from "./viewer/apiDocs.js";
 
@@ -1479,6 +1480,10 @@ function openStream() {
     ws = sock;
     startFrameLoop();
     sock.onopen = function () {
+        // A tab hidden during the connecting window has never told the server so — every stream
+        // starts visible daemon-side — and no `visibilitychange` is coming until it is looked at
+        // again. State it once the socket can carry it.
+        if (document.hidden) sock.send(visibilityMessage(false));
         // The connect URL seeds only query()'s fields — the display axes, the overlays, and changed
         // knobs — so every knob, and anything toggled during the connecting window, isn't in it.
         // Replay the full live override map once the socket is ready so the daemon reflects the
@@ -1531,6 +1536,15 @@ function openStream() {
         }
     };
 }
+// A backgrounded tab is still a held daemon session rendering four frames a second into a canvas
+// nobody can see. Tell the server, and it throttles the render loop (not just the emit) down to a
+// keyframe a second; coming back repaints immediately from the keyframe it flags on resume, so the
+// stream is never torn down and never blanks.
+document.addEventListener("visibilitychange", function () {
+    var socket = ws;
+    if (!socket || socket.readyState !== 1) return;
+    socket.send(visibilityMessage(!document.hidden));
+});
 function closeStream() {
     root.setAttribute("data-mode", "snapshot");
     // Drop any frame still queued or mid-decode, and reset both watermarks: a reconnect starts a

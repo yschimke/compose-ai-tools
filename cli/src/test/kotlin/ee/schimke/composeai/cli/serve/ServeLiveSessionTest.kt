@@ -502,6 +502,50 @@ class ServeLiveSessionTest {
   }
 
   @Test
+  fun `a visibility message reaches the daemon stream`() {
+    val session = FakeRenderSession(newRenderRoot(), streaming = true)
+    host(session).use { h ->
+      val live =
+        assertNotNull(
+          ServeLiveSession.tryStart(h, previewId, emptyMap(), send = {}, system = "compose-m3")
+        )
+      val fsid = assertNotNull(session.lastFrameStreamId)
+
+      live.onClientMessage("""{"type":"visibility","visible":false}""")
+      live.onClientMessage("""{"type":"visibility","visible":true}""")
+
+      assertEquals(
+        listOf<Triple<String, Boolean, Int?>>(Triple(fsid, false, null), Triple(fsid, true, null)),
+        session.streamVisibilities.toList(),
+      )
+    }
+  }
+
+  @Test
+  fun `a hidden socket re-states its visibility on the stream an override change opens`() {
+    val session = FakeRenderSession(newRenderRoot(), streaming = true)
+    host(session).use { h ->
+      val live =
+        assertNotNull(
+          ServeLiveSession.tryStart(h, previewId, emptyMap(), send = {}, system = "compose-m3")
+        )
+      live.onClientMessage("""{"type":"visibility","visible":false,"fps":2}""")
+
+      // A knob change while the tab is hidden restarts the held stream — and the daemon starts
+      // every stream visible, so without re-stating it the lane silently returns to full rate
+      // against a client that never said it was looking again.
+      live.onClientMessage(SET_DARK_OVERRIDES)
+      val restarted = assertNotNull(session.lastFrameStreamId)
+
+      assertEquals(
+        Triple(restarted, false, 2),
+        session.streamVisibilities.last(),
+        "the restarted stream should be told it is hidden too",
+      )
+    }
+  }
+
+  @Test
   fun `closing the live session stops the stream`() {
     val session = FakeRenderSession(newRenderRoot(), streaming = true)
     host(session).use { h ->
