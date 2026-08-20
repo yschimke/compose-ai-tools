@@ -5187,6 +5187,27 @@ class ServeWebFixtureTest {
       ),
       "…and its tooltip states the real bar instead of naming that repo",
     )
+    // …unless the operator narrowed sign-in itself. `--github-auth-users` makes the verifier refuse
+    // every login outside the list, so "any GitHub account" would walk those visitors through OAuth
+    // to a 403. The repo check never restricted sign-in this way; the allowlist does.
+    val allowlisted =
+      ServeWeb.viewerPage(
+        card,
+        token,
+        canApplyOverrides = true,
+        liveAuthPrompt =
+          ServeWeb.LiveAuthPrompt(
+            loginHref = "/auth/github/start?return=%2Fp%2FCardPreview",
+            restrictedToAllowedUsers = true,
+          ),
+      )
+    assertTrue(
+      allowlisted.contains(
+        "title=\"Sign in with GitHub to enable Live preview. " +
+          "This server allows named GitHub users only.\""
+      ),
+      "an allowlisted server does not promise that any account works",
+    )
     // Must NOT be the toggle: `updateLiveToggle()` drives that element through `.disabled` and
     // `aria-pressed`, neither of which means anything on a link.
     assertFalse(

@@ -28,8 +28,16 @@ object ServeWeb {
    * chip used to name `--github-auth-repo` in its tooltip, which read as "you need access to that
    * repo for Live" — the opposite of the rule, and enough to make an outside contributor give up
    * before clicking (wear-m3-catalog#68).
+   *
+   * [restrictedToAllowedUsers] is the one thing that can narrow it: with `--github-auth-users` set,
+   * [GitHubOAuthVerifier] refuses every login outside the list, so "any GitHub account works" would
+   * walk those visitors through OAuth to a 403. Same distinction the front door's control already
+   * draws — the allowlist restricts *sign-in itself*, which the repo check never did.
    */
-  data class LiveAuthPrompt(val loginHref: String)
+  data class LiveAuthPrompt(
+    val loginHref: String,
+    val restrictedToAllowedUsers: Boolean = false,
+  )
 
   /** Front-door GitHub auth state, shown when the public server protects code-running surfaces. */
   data class GitHubAuthStatus(
@@ -11255,7 +11263,10 @@ $cards
     val liveSignInLink = liveAuthPrompt?.let {
       "<a id=\"cp-live-signin\" class=\"cp-live-toggle cp-live-signin\" " +
         "href=\"${WebEscaping.htmlEscape(it.loginHref)}\" " +
-        "title=\"Sign in with GitHub to enable Live preview. Any GitHub account works.\">\n" +
+        "title=\"Sign in with GitHub to enable Live preview. " +
+        (if (it.restrictedToAllowedUsers) "This server allows named GitHub users only."
+        else "Any GitHub account works.") +
+        "\">\n" +
         "            <span class=\"cp-live-dot\" aria-hidden=\"true\"></span>\n" +
         "            <span>Live preview — sign in</span>\n" +
         "          </a>"

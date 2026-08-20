@@ -1533,14 +1533,29 @@ class ServeHttpServer(
 
   private fun RoutingContext.componentBrowserMode(): Boolean = call.componentBrowserMode()
 
+  /**
+   * The header's GitHub control, or null where there is nothing honest to offer.
+   *
+   * Withheld when the sign-in cannot come back to *this* origin ([oauthCanRoundTrip]) — a host
+   * outside the cookie domain, or host-only cookies against a pinned callback. Following the link
+   * there writes the CSRF state where the callback can never read it, so the visitor lands back
+   * signed out; the card and viewer affordances have always been withheld on that predicate, and a
+   * header button is the same dead end one page up. It only started mattering for the landing
+   * because that page did not render this control at all before.
+   *
+   * A signed-in identity cannot be hidden by this in practice: cookies that reached this host are
+   * cookies the callback could have written.
+   */
   private fun RoutingContext.githubAuthStatus(): ServeWeb.GitHubAuthStatus? =
-    githubAuth?.let { auth ->
-      ServeWeb.GitHubAuthStatus(
-        loginHref = auth.loginPath(call),
-        login = auth.currentLogin(call),
-        restrictedToAllowedUsers = auth.isRestrictedToAllowedUsers(),
-      )
-    }
+    githubAuth
+      ?.takeIf { oauthCanRoundTrip() }
+      ?.let { auth ->
+        ServeWeb.GitHubAuthStatus(
+          loginHref = auth.loginPath(call),
+          login = auth.currentLogin(call),
+          restrictedToAllowedUsers = auth.isRestrictedToAllowedUsers(),
+        )
+      }
 
   /** The two wire values of the Catalog / Dev switch; null for absent, empty, or anything else. */
   private fun interfaceMode(value: String?): Boolean? =
@@ -6099,7 +6114,12 @@ class ServeHttpServer(
           ?.takeIf { renderHost.hasLiveStream }
           ?.takeUnless { it.isAuthenticated(call) }
           ?.takeIf { oauthCanRoundTrip() }
-          ?.let { ServeWeb.LiveAuthPrompt(loginHref = it.loginPath(call)) }
+          ?.let {
+            ServeWeb.LiveAuthPrompt(
+              loginHref = it.loginPath(call),
+              restrictedToAllowedUsers = it.isRestrictedToAllowedUsers(),
+            )
+          }
       // Project mode's timeline, computed from the local repo rather than fetched from a delivery
       // branch. Gated on the session having no delivery provenance — exactly the condition that
       // leaves `historyManifestUrl` null — because a catalog served from a delivery branch already
