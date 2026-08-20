@@ -1407,9 +1407,29 @@ ${captureControlsHtml().prependIndent("          ")}
         showBackground = preview.showBackground,
         backgroundColor = preview.backgroundColor,
         night = PreviewBackground.isNight(preview.uiMode),
+        // The variant this render IS, which the catalog's stage cannot speak for: a *dark* variant
+        // inside a light-first catalog needs a dark ground exactly as much as a dark-first
+        // catalog's does. Omitting it opened a dark row's focused comparison on a light stage while
+        // the wall and the viewer both showed it dark.
+        variantSurface = variantSurfaceOf(preview),
       ),
       if (darkFirst) PreviewBackdrop.CatalogSurface.DARK else PreviewBackdrop.CatalogSurface.LIGHT,
     )
+
+  /**
+   * The light/dark variant a preview **is**, from the catalog's baked `theme` token, else its night
+   * `uiMode`. Null when the render is unthemed and says nothing — the catalog's stage answers then.
+   *
+   * Same two signals, in the same order, that [previewTheme] reads; they are kept in step
+   * deliberately so the stage a comparison uses and the theme the viewer reports cannot diverge.
+   */
+  private fun variantSurfaceOf(preview: ServePreview): PreviewBackdrop.CatalogSurface? =
+    PreviewBackdrop.CatalogSurface.parse(preview.theme)
+      ?: when (preview.uiMode and UI_MODE_NIGHT_MASK) {
+        UI_MODE_NIGHT_YES -> PreviewBackdrop.CatalogSurface.DARK
+        UI_MODE_NIGHT_NO -> PreviewBackdrop.CatalogSurface.LIGHT
+        else -> null
+      }
 
   /**
    * The preview's baked theme, preferring explicit catalog metadata, then its discovery-time

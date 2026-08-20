@@ -67,6 +67,40 @@ class PreviewBackdropTest {
   }
 
   @Test
+  fun `a dark variant inside a light-first catalog keeps a dark ground`() {
+    // The catalog's stage speaks for the system, not for a variant that contradicts it: a dark
+    // variant's light-on-transparent artwork needs a dark ground wherever it lives.
+    val backdrop =
+      PreviewBackdrop.resolve(
+        variantSurface = PreviewBackdrop.CatalogSurface.DARK,
+        catalogSurface = PreviewBackdrop.CatalogSurface.LIGHT,
+      )
+    assertEquals(PreviewBackdrop.Source.PREVIEW_VARIANT, backdrop.source)
+    assertTrue(backdrop.isDark)
+  }
+
+  @Test
+  fun `a stated ground still outranks the variant`() {
+    val backdrop =
+      PreviewBackdrop.resolve(
+        backgroundColor = 0xFFFFFFFFL,
+        variantSurface = PreviewBackdrop.CatalogSurface.DARK,
+      )
+    assertEquals(PreviewBackdrop.Source.PREVIEW_BACKGROUND_COLOR, backdrop.source)
+    assertFalse(backdrop.isDark)
+  }
+
+  @Test
+  fun `an unthemed preview still falls through to the catalog stage`() {
+    val backdrop =
+      PreviewBackdrop.resolve(
+        variantSurface = null,
+        catalogSurface = PreviewBackdrop.CatalogSurface.DARK,
+      )
+    assertEquals(PreviewBackdrop.Source.CATALOG_SURFACE, backdrop.source)
+  }
+
+  @Test
   fun `nothing to say yields no colour rather than an invented one`() {
     val backdrop = PreviewBackdrop.resolve()
     assertNull(backdrop.color)

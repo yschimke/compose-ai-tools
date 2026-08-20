@@ -72,6 +72,18 @@ public object PreviewBackdrop {
     /** The Material 3 `surface` the render composed on, when it declared no `background`. */
     THEME_SURFACE("material3.surface"),
 
+    /**
+     * The light/dark **variant this render is**, from the catalog's own metadata or the preview's
+     * night `uiMode`.
+     *
+     * Weaker than a stated colour but stronger than the catalog's stage, and the distinction is the
+     * point: "this catalog is light-first" says nothing about a *dark* variant inside it, whose
+     * light-on-transparent artwork needs a dark ground exactly as much as a dark-first catalog's
+     * does. Without this rung a dark row on the compare wall opened its focused comparison on a
+     * light stage.
+     */
+    PREVIEW_VARIANT("preview.variant"),
+
     /** The catalog's declared stage (`catalog.json`'s `display.surface`). */
     CATALOG_SURFACE("catalog.surface"),
 
@@ -131,6 +143,9 @@ public object PreviewBackdrop {
    * @param themeSurface the captured `surface`, consulted when the theme declared no
    *   [themeBackground]. Both are carried rather than pre-collapsed by the caller so
    *   [Backdrop.source] can say which one answered.
+   * @param variantSurface the light/dark variant this render **is**, when the catalog says so (its
+   *   baked `theme` token) or the preview's `uiMode` carries the night bit. Distinct from
+   *   [catalogSurface]: it speaks for this preview, not for the system.
    * @param catalogSurface the catalog's declared stage, when the caller knows which catalog this
    *   preview belongs to.
    * @param fallback whether to answer [Source.M3_LIGHT_FALLBACK] rather than [Source.NONE] when
@@ -142,6 +157,7 @@ public object PreviewBackdrop {
     night: Boolean = false,
     themeBackground: String? = null,
     themeSurface: String? = null,
+    variantSurface: CatalogSurface? = null,
     catalogSurface: CatalogSurface? = null,
     fallback: Boolean = false,
   ): Backdrop =
@@ -160,20 +176,21 @@ public object PreviewBackdrop {
         Backdrop(themeBackground.uppercase(), Source.THEME_BACKGROUND)
       themeSurface != null && !isTransparent(themeSurface) ->
         Backdrop(themeSurface.uppercase(), Source.THEME_SURFACE)
-      catalogSurface != null ->
-        Backdrop(
-          hexArgb(
-            if (catalogSurface == CatalogSurface.DARK) PreviewBackground.NIGHT_ARGB
-            else PreviewBackground.DAY_ARGB
-          ),
-          Source.CATALOG_SURFACE,
-        )
+      variantSurface != null -> Backdrop(sheetFor(variantSurface), Source.PREVIEW_VARIANT)
+      catalogSurface != null -> Backdrop(sheetFor(catalogSurface), Source.CATALOG_SURFACE)
       fallback -> Backdrop(M3_LIGHT_BACKGROUND, Source.M3_LIGHT_FALLBACK)
       else -> Backdrop(null, Source.NONE)
     }
 
   /** Material 3's light `background` role — the [Source.M3_LIGHT_FALLBACK] colour. */
   public const val M3_LIGHT_BACKGROUND: String = "#FFFFFBFE"
+
+  /** The sheet a light/dark surface word resolves to — the same pair [PreviewBackground] paints. */
+  private fun sheetFor(surface: CatalogSurface): String =
+    hexArgb(
+      if (surface == CatalogSurface.DARK) PreviewBackground.NIGHT_ARGB
+      else PreviewBackground.DAY_ARGB
+    )
 
   /**
    * A backdrop already resolved upstream, re-resolved against a [catalogSurface] the upstream
@@ -210,6 +227,7 @@ public object PreviewBackdrop {
       Source.PREVIEW_SHOW_BACKGROUND,
       Source.THEME_BACKGROUND,
       Source.THEME_SURFACE,
+      Source.PREVIEW_VARIANT,
       Source.CATALOG_SURFACE,
     )
 

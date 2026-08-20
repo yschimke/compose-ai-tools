@@ -33,6 +33,7 @@ class ServeWebBackdropTest {
     showBackground: Boolean = false,
     backgroundColor: Long = 0L,
     uiMode: Int = 0,
+    theme: String? = null,
   ) =
     ServePreview(
       id = id,
@@ -40,6 +41,7 @@ class ServeWebBackdropTest {
       showBackground = showBackground,
       backgroundColor = backgroundColor,
       uiMode = uiMode,
+      theme = theme,
     )
 
   private fun page(preview: ServePreview, declaredSurface: String?): String =
@@ -91,6 +93,29 @@ class ServeWebBackdropTest {
     val html = page(preview(showBackground = true, uiMode = 0x20), declaredSurface = "light")
     assertTrue(html.contains("data-bg-theme=\"dark\""), html)
     assertTrue(html.contains("--cp-stage-backdrop: #1C1B1F"), html)
+  }
+
+  @Test
+  fun `a dark variant in a light-first catalog opens on a dark stage`() {
+    // Stepping from a dark row on the compare wall into its focused view must not flip the ground:
+    // the wall and the viewer both show that render dark, and this page used to answer light
+    // because it consulted the catalog's stage and not the variant.
+    val html = page(preview(theme = "dark"), declaredSurface = "light")
+    assertTrue(html.contains("data-bg-theme=\"dark\""), html)
+    assertTrue(html.contains("--cp-stage-backdrop: #1C1B1F"), html)
+  }
+
+  @Test
+  fun `a night uiMode stands in for an absent variant token`() {
+    val html = page(preview(uiMode = 0x20), declaredSurface = "light")
+    assertTrue(html.contains("data-bg-theme=\"dark\""), html)
+  }
+
+  @Test
+  fun `a stated ground still wins over the variant it contradicts`() {
+    val html =
+      page(preview(theme = "dark", backgroundColor = 0xFFFFFFFFL), declaredSurface = "dark")
+    assertTrue(html.contains("data-bg-theme=\"light\""), html)
   }
 
   @Test
