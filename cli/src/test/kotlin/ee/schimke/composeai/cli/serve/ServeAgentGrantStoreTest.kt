@@ -210,6 +210,23 @@ class ServeAgentGrantStoreTest {
   }
 
   @Test
+  fun `the pending cap holds under concurrent anonymous callers`() {
+    // The check and the insert used to be a check-then-act on a map an anonymous caller drives, so
+    // a burst could push it well past the cap — the bound this ungated route relies on for memory.
+    val store = store(maxPendingRequests = 8)
+    val threads =
+      (1..32).map { i ->
+        Thread { store.openRequest("burst-$i", "ip-$i", ServeAgentGrantScope.PREVIEW, 600) }
+      }
+    threads.forEach { it.start() }
+    threads.forEach { it.join() }
+    assertTrue(
+      store.pendingRequests().size <= 8,
+      "the cap was exceeded: ${store.pendingRequests().size}",
+    )
+  }
+
+  @Test
   fun `a resolved request makes room for a new one`() {
     val store = store(maxPendingRequests = 2)
     val first = store.openRequest("a", "ip", ServeAgentGrantScope.PREVIEW, 600)!!

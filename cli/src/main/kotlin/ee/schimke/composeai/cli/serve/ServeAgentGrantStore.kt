@@ -159,6 +159,23 @@ class ServeAgentGrantStore(
     client: String,
     requestedScope: ServeAgentGrantScope,
     requestedTtlSeconds: Long,
+  ): Request? =
+    synchronized(this) { openRequestLocked(label, client, requestedScope, requestedTtlSeconds) }
+
+  /**
+   * The cap has to be checked and the entry inserted under **one** lock.
+   *
+   * Unsynchronised, the size check and the insert are a check-then-act on a map an *anonymous*
+   * caller drives: a burst from several addresses all read `size < max` and then all insert, so the
+   * bound this route relies on for its memory is whatever concurrency the attacker can muster. The
+   * same lock already guards [approve] and [deny], and nothing here blocks — it is a map write and
+   * a comparison.
+   */
+  private fun openRequestLocked(
+    label: String,
+    client: String,
+    requestedScope: ServeAgentGrantScope,
+    requestedTtlSeconds: Long,
   ): Request? {
     val now = clock()
     purge(now)

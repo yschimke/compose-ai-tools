@@ -2842,6 +2842,9 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.handlePresence(sessionInPath: Boolean) {
     if (rejectBadToken()) return
+    // `keepLiveWarm()` below starts or retains a daemon — the definition of `live`, however small
+    // each individual ping looks.
+    if (rejectGrantBelowScope(ServeAgentGrantScope.LIVE, api = true)) return
     withLeasedSession(
       selectedSessionId(sessionInPath),
       onMissing = { call.respond(HttpStatusCode.NoContent) },
@@ -5678,6 +5681,8 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.handleStorybookIframe(sessionInPath: Boolean) {
     if (rejectBadToken()) return
+    // Renders unconditionally — there is no baked lane here at all, so every request is live work.
+    if (rejectGrantBelowScope(ServeAgentGrantScope.LIVE, api = true)) return
     // Renders a story unconditionally — there is no baked lane here. A chrome-less frame for
     // screenshot tools is never an unfurl target (and is robots-disallowed), so a bodyless probe
     // gets nothing but the render bill.
@@ -7916,9 +7921,17 @@ class ServeHttpServer(
         ?.takeIf { it.startsWith(BEARER_PREFIX, ignoreCase = true) }
         ?.substring(BEARER_PREFIX.length)
         ?.trim()
-    val presented =
-      call.request.headers[TOKEN_HEADER] ?: bearer ?: call.request.queryParameters["token"]
-    return store.grantForToken(presented)
+    // Each source is resolved **independently** rather than by precedence. A single `?:` chain
+    // meant an unrelated `Authorization: Bearer` shadowed a real grant sitting in `?token=` — which
+    // is exactly the shape `share-preview --mechanism serve` sends: the host credential in the
+    // query, a GitHub token in the bearer for the upload's own gate. First source that resolves to
+    // a live grant wins; one carrying something else simply does not answer.
+    return sequenceOf(
+        call.request.headers[TOKEN_HEADER],
+        bearer,
+        call.request.queryParameters["token"],
+      )
+      .firstNotNullOfOrNull { store.grantForToken(it) }
   }
 
   /**
@@ -8348,11 +8361,24 @@ class ServeHttpServer(
       return
     }
     if (deny) {
-      store.deny(requestId, approver.name)
-      respondAgentGrantNotice(
-        heading = "Access declined",
-        message = "Nothing was granted. The agent has been told its request was declined.",
-      )
+      // The return value matters: two operators can hold the page at once, and if one approved
+      // first this denial does nothing. Saying "nothing was granted" there would hand the second
+      // operator an explicit assurance that is false while the bearer is live.
+      if (store.deny(requestId, approver.name)) {
+        respondAgentGrantNotice(
+          heading = "Access declined",
+          message = "Nothing was granted. The agent has been told its request was declined.",
+        )
+      } else {
+        respondAgentGrantNotice(
+          heading = "Already decided",
+          message =
+            "This request was resolved before your decision arrived — most likely approved by " +
+              "someone else holding the same page. Nothing was declined. If a grant is live and " +
+              "you want it stopped, revoke it from the server status page.",
+          status = HttpStatusCode.Conflict,
+        )
+      }
       return
     }
     // The approver's ticks, capped again here rather than trusted: the form is client-side state
@@ -8424,16 +8450,27 @@ class ServeHttpServer(
    * they already have is help, not disclosure.
    */
   private suspend fun RoutingContext.respondAgentGrantSignIn() {
-    githubAuth?.let { auth ->
-      call.respondRedirect(auth.loginPath(call))
-      return
+    // A private box wants BOTH the browse token and an identity. Sending a visitor to OAuth when
+    // the *token* is what is missing produces a loop: the callback returns to the same tokenless
+    // URL, which asks for OAuth again, forever. So a missing front door is answered with
+    // instructions, and only a genuinely-missing session is answered with a sign-in.
+    val provided = call.request.queryParameters["token"] ?: call.request.headers[TOKEN_HEADER]
+    val hasFrontDoor = isPublic || ServeUrls.tokensMatch(serverToken, provided)
+    if (hasFrontDoor) {
+      githubAuth?.let { auth ->
+        call.respondRedirect(auth.loginPath(call))
+        return
+      }
     }
     respondAgentGrantNotice(
       heading = "Sign in to approve",
       message =
         "Only this server's operator can approve an access request. Open this same link from a " +
           "browser that carries the server's access token — append ?token=… to the URL — and the " +
-          "approval page will appear.",
+          "approval page will appear" +
+          (if (githubAuth != null) ", after signing in with GitHub." else ".") +
+          " The server status page lists every waiting request with a link that already carries " +
+          "the token.",
       status = HttpStatusCode.Unauthorized,
     )
   }

@@ -430,6 +430,51 @@ class ServeAgentGrantRoutingTest {
   }
 
   @Test
+  fun `a preview grant is refused every route that puts the daemon to work`() {
+    val preview = grantedToken(scope = "preview")
+    // Presence pings keep a daemon warm; the storybook frame has no baked lane at all.
+    assertEquals(403, post("/api/presence", "{}", token = preview).first)
+    assertEquals(403, get("/iframe.html?id=Anything", token = preview).first)
+  }
+
+  @Test
+  fun `a grant in the query is not shadowed by an unrelated bearer`() {
+    // `share-preview --mechanism serve` sends the host credential in `?token=` and a GitHub token
+    // in `Authorization: Bearer`. Reading the sources by precedence made the GitHub token hide the
+    // grant, so the browse gate 404'd a caller that was properly authorised.
+    val token = grantedToken()
+    val request =
+      Request.Builder()
+        .url(url("/status.json?token=$token"))
+        .header("Authorization", "Bearer gho_an_unrelated_github_token")
+        .build()
+    client.newCall(request).execute().use { assertEquals(200, it.code) }
+  }
+
+  @Test
+  fun `denying a request someone else already approved says so`() {
+    val (_, opened) = post("/agent-access/request", "{}")
+    val requestId = str(opened, "requestId")
+    val (_, page) = get("/agent-access/$requestId?token=$operatorToken")
+    // A second operator holds the same page; the first approves.
+    post(
+      "/agent-access/$requestId?token=$operatorToken",
+      "action=approve&csrf=${field(page, "csrf")}&scope=preview&ttl=600",
+      contentType = "application/x-www-form-urlencoded",
+    )
+    // The second clicks Deny. Telling them "nothing was granted" would be a false assurance.
+    val (code, body) =
+      post(
+        "/agent-access/$requestId?token=$operatorToken",
+        "action=deny&denyCsrf=${field(page, "denyCsrf")}",
+        contentType = "application/x-www-form-urlencoded",
+      )
+    assertEquals(409, code)
+    assertTrue(body.contains("Already decided"))
+    assertFalse(body.contains("Nothing was granted"))
+  }
+
+  @Test
   fun `a live grant may commission a render`() {
     val live = grantedToken(scope = "live")
     assertTrue(get("/render/Anything.png?uiMode=dark", token = live).first != 403)

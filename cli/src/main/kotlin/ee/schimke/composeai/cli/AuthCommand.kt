@@ -41,6 +41,13 @@ internal class AuthCommand(
   private val json: Boolean = "--json" in args
 
   fun run() {
+    // Before anything else: `auth --help` and `auth request --help` used to fall through to
+    // `request()`, so asking for usage on a machine with $COMPOSE_PREVIEW_SERVER set opened a real
+    // server-side request and sat there waiting for a human to approve it.
+    if ("--help" in args || "-h" in args) {
+      printUsage()
+      return
+    }
     when (val sub = subcommand()) {
       "request",
       "login",
@@ -480,19 +487,27 @@ internal class AuthCommand(
     // and keeping a token the user has asked us to drop is the worse of the two mistakes; the grant
     // expires on its own regardless.
     val outcome = client.revoke(entry.token)
-    store.forget(server)
+    // Reported separately from the server's answer, because they fail separately — and a bearer
+    // that is still readable by the next process is not "forgotten" however the remote call went.
+    val dropped = store.forget(server)
+    val locally =
+      if (dropped) "forgotten locally"
+      else
+        "NOT forgotten locally — the credential file could not be rewritten (see the warning " +
+          "above), so it is still on disk"
     when (outcome) {
       is AgentAccessClient.Result.Ok ->
         println(
-          if (outcome.value.revoked) "Revoked on $server and forgotten locally."
-          else "The server had no live grant for this token; forgotten locally."
+          if (outcome.value.revoked) "Revoked on $server and $locally."
+          else "The server had no live grant for this token; $locally."
         )
       is AgentAccessClient.Result.Err ->
         println(
-          "Forgotten locally, but the server could not be told (${outcome.reason}). The grant " +
-            "expires on its own; revoke it from ${server}/status to end it now."
+          "The server could not be told (${outcome.reason}) and the grant is $locally. It expires " +
+            "on its own; revoke it from ${server}/status to end it now."
         )
     }
+    if (!dropped) exitProcess(1)
   }
 
   private fun forget() {
