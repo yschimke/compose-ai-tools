@@ -60,8 +60,15 @@ class PseudolocaleOverrideExtension(private val mode: Pseudolocale) :
  * `RobolectricRenderTest.applyPreviewQualifiers` (plugin path), both of which call into
  * `Pseudolocale.fromTag(...)` to substitute the base locale before the qualifier string reaches
  * `RuntimeEnvironment.setQualifiers`.
+ *
+ * [AlwaysOnPreviewOverrideExtension] for the reason its desktop twin carries the marker: a registry
+ * that owns this planner would otherwise gate it behind an `extensions/enable` call `serve` never
+ * makes. `RobolectricHost` builds its planner list ungated today, so the marker changes nothing
+ * here — it keeps the two platforms from diverging the day this one is registered through
+ * `ExtensionRegistry`. The empty-bag path plans nothing (`Pseudolocale.fromTag(null)` is null).
  */
-class PseudolocalePreviewOverrideExtension : DataExtension<PreviewOverrides> {
+class PseudolocalePreviewOverrideExtension :
+  DataExtension<PreviewOverrides>, AlwaysOnPreviewOverrideExtension {
   override val id: DataExtensionId = PseudolocaleOverrideExtension.ID
 
   override fun plan(request: PreviewOverrides): PlannedDataExtension? =
