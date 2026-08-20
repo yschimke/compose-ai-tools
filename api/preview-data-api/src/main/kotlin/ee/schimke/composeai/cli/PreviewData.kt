@@ -212,6 +212,13 @@ data class CatalogEntry(
   val kitAxis: String? = null,
   /** VARIANT: the design-kit value this variant maps to, when the kit spells it differently. */
   val kitValue: String? = null,
+  /**
+   * COMPONENT: `@CatalogComponent.motionPreview` — the exact `@Preview` function name supplying
+   * this component's animated/interaction captures, when the recording lives on a function of its
+   * own rather than beside the sticker. A reader that dropped the field would see a component with
+   * no motion where the published catalog has a recording.
+   */
+  val motionPreview: String? = null,
 ) {
   /**
    * Binary-compatible constructor retained for consumers compiled before [kitValue] was added. A
@@ -251,6 +258,43 @@ data class CatalogEntry(
     perBreakpoint = perBreakpoint,
     kitAxis = kitAxis,
     kitValue = null,
+    motionPreview = null,
+  )
+
+  /** As above, for consumers compiled after [kitValue] but before [motionPreview]. */
+  constructor(
+    role: CatalogRole,
+    componentId: String,
+    group: String? = null,
+    section: String? = null,
+    caption: String? = null,
+    reference: String? = null,
+    referenceSet: String? = null,
+    noReference: String? = null,
+    referenceContentsOnly: Boolean = true,
+    parallel: String? = null,
+    state: String? = null,
+    props: List<CatalogVariantProp> = emptyList(),
+    perBreakpoint: Boolean = false,
+    kitAxis: String? = null,
+    kitValue: String? = null,
+  ) : this(
+    role = role,
+    componentId = componentId,
+    group = group,
+    section = section,
+    caption = caption,
+    reference = reference,
+    referenceSet = referenceSet,
+    noReference = noReference,
+    referenceContentsOnly = referenceContentsOnly,
+    parallel = parallel,
+    state = state,
+    props = props,
+    perBreakpoint = perBreakpoint,
+    kitAxis = kitAxis,
+    kitValue = kitValue,
+    motionPreview = null,
   )
 }
 

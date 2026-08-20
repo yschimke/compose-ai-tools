@@ -153,6 +153,32 @@ class PreviewDataTest {
   }
 
   @Test
+  fun `motionPreview round-trips through preview manifest and defaults to null`() {
+    // The design-artifacts export reads this off `previews.json` to decide which function's
+    // recordings publish on a component. A rename or a dropped field here does not fail anything —
+    // it silently un-claims the capture, which is the exact failure the field exists to end.
+    assertThat(CatalogEntry(role = CatalogRole.COMPONENT, componentId = "x").motionPreview).isNull()
+
+    val preview =
+      PreviewInfo(
+        id = "test.SwitchButtonSticker",
+        functionName = "SwitchButtonSticker",
+        className = "test.CatalogKt",
+        catalog =
+          CatalogEntry(
+            role = CatalogRole.COMPONENT,
+            componentId = "Toggles/Switch",
+            motionPreview = "SwitchTransitionMotion",
+          ),
+      )
+    val manifest = PreviewManifest(module = "app", variant = "debug", previews = listOf(preview))
+
+    val decoded = json.decodeFromString<PreviewManifest>(json.encodeToString(manifest))
+
+    assertThat(decoded.previews.single().catalog?.motionPreview).isEqualTo("SwitchTransitionMotion")
+  }
+
+  @Test
   fun `gestureHint capture round-trips and defaults to null`() {
     // The renderer's `RenderPreviewCapture.gestureHint` mirror reads this shape out of
     // `previews.json`; a rename here would silently drop the `@GestureHintPreview` override.

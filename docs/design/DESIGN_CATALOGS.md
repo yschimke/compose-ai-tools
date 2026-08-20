@@ -143,6 +143,25 @@ Neither end state's still can show the travel between them, which is the whole r
 the capture exists; and a motion capture that fails now reports itself beside its own
 output rather than deleting that still.
 
+**Motion is collected per component**, and that is the one thing to get right when
+authoring it. `motionPreviewFor` reads a component's own `@Preview` by default, so an
+`@AnimatedPreview` / `@InteractionPreview` sitting beside the `@CatalogComponent` needs
+no wiring at all. A recording on a function **no component claims** publishes nowhere:
+it renders, the join has nothing to fold it onto, and the catalog ships with no Motion
+section. Two situations push a recording onto its own function and into exactly that
+trap — a component with `@OverrideVariant` cells (a motion annotation rides every cell
+and the animated path ignores their knobs, so one recording publishes N byte-identical
+times), and a capture needing a pinned canvas (`widthDp` + `heightDp`, since every
+frame must share one size) that the wrapped, cropped sticker cannot use. Name the
+separate function from the component instead — `@CatalogComponent(motionPreview =
+"SwitchTransitionMotion")`, or a `catalog.spec.json` component's `motionPreview`, which
+wins over the annotation like every other spec field. The named function needs no
+`@CatalogComponent` of its own: it adds no card and no kit node, it only supplies the
+bytes. The export **warns** when it finds a declared capture no component claims —
+`motion: N @Preview function(s) declare captures that no catalog component claims` —
+because the silent version of this cost `wear-m3-catalog` all five of its recordings on
+every green run from the day they were authored.
+
 The preview server offers them on the component page as a **Motion** chip beside the
 still, never as the default frame. That is a deliberate reading of what a capture is
 for: most readers open a component page to look at the component, and an APNG begins
