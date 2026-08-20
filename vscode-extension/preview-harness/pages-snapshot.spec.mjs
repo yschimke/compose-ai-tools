@@ -371,6 +371,10 @@ const STYLED_FIXTURES = new Set([
   // across from the reported page. Captured bare, the panel is an ordinary paragraph and the
   // capture list does not exist at all, so neither would move a baseline.
   "serve-report-bug",
+  // The same page on a top-level site (issue #4319), where that routing panel is the part that
+  // changed: one catalog per hostname means the tracker can be named and linked rather than
+  // described, and the panel is the only thing on the page carrying it.
+  "serve-report-bug-site",
 ]);
 const SERVE_ASSETS = [
   ["serve.css", "text/css"],
