@@ -425,6 +425,40 @@ is still rendering, so a slow host simply renders as fast as it can, and
 pixel-identical into `unchanged` heartbeats — a burst over a component
 that does not animate costs renders, not wire.
 
+## 9.7.2 The idle cadence backs off while nothing moves
+
+The other end of the same loop. A resting preview cannot simply stop
+being rendered: nothing tells the daemon that an animation has started,
+so the only way to notice is to render and compare. But polling it at
+`INTERACTIVE_FRAME_INTERVAL_MS` for as long as its socket stays open is
+most of what an unattended live viewer costs on a public server — and
+because every render refreshes the held session's `lastUsedAtMs`, it also
+meant the idle lease could never reclaim the sandbox from a visitor who
+had wandered off. The session outlived the attention.
+
+So the idle cadence is not flat. Past `INTERACTIVE_QUIESCENT_AFTER` (3)
+consecutive byte-identical frames it doubles per frame, capped at
+`INTERACTIVE_IDLE_MAX_INTERVAL_MS` (2s): 250 → 500 → 1000 → 2000. An
+idle viewer settles to roughly one render every two seconds instead of
+four a second.
+
+The quiescence signal costs nothing. The daemon already SHA-256s every
+frame to set `renderFinished.unchanged`; `interactiveIdleRun` counts the
+run length off that same comparison, keyed by previewId alongside
+`lastFrameHashes` so two streams watching one preview share the
+observation.
+
+Three frames of grace before backing off at all, because one unchanged
+frame is ordinary *inside* an animation — a tween's flat leading edge, a
+`delay()` that has not elapsed — and reacting to a single one would
+stutter the cadence for the rest of the motion.
+
+**Nothing here delays a response.** `startInteractiveBurst` clears the
+run and wakes the parked loop, so a click arriving two seconds deep into
+a backoff is answered at the burst cadence, not after the wait. The only
+thing a longer gap can delay is an animation that starts with nobody
+touching the preview.
+
 ## 9.8 The `localeTag` scope is a process-wide reader/writer gate
 
 Applying `localeTag` means moving the **process-global** JVM default
