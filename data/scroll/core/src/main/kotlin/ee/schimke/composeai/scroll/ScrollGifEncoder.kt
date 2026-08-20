@@ -18,7 +18,7 @@ import javax.imageio.stream.FileImageOutputStream
  * driven through the metadata tree that `ImageWriter` exposes:
  *
  * - `GraphicControlExtension` per frame carries the `delayTime` (hundredths of a second) and a
- *   `disposalMethod=none` so consecutive frames composite atop each other without flicker.
+ *   disposal method chosen from whether the frames carry alpha — see [disposalMethodFor].
  * - One `ApplicationExtensions / NETSCAPE2.0` record on the first frame signals infinite looping
  *   (`loopCount=0`). Without it most viewers play once and stop.
  *
@@ -55,6 +55,8 @@ object ScrollGifEncoder {
     val writer =
       ImageIO.getImageWritersByFormatName("gif").asSequence().firstOrNull() ?: return null
 
+    val disposal = disposalMethodFor(frames)
+
     outputFile.parentFile?.mkdirs()
     FileImageOutputStream(outputFile).use { stream ->
       writer.output = stream
@@ -62,14 +64,19 @@ object ScrollGifEncoder {
       val first = frames.first()
       val imageType = ImageTypeSpecifier.createFromRenderedImage(first)
       val meta = writer.getDefaultImageMetadata(imageType, param)
-      configureFrameMetadata(meta, toCentiseconds(frameDelaysMs[0]), loopForever = true)
+      configureFrameMetadata(meta, toCentiseconds(frameDelaysMs[0]), disposal, loopForever = true)
 
       writer.prepareWriteSequence(null)
       writer.writeToSequence(IIOImage(first, null, meta), param)
 
       for (i in 1 until frames.size) {
         val frameMeta = writer.getDefaultImageMetadata(imageType, param)
-        configureFrameMetadata(frameMeta, toCentiseconds(frameDelaysMs[i]), loopForever = false)
+        configureFrameMetadata(
+          frameMeta,
+          toCentiseconds(frameDelaysMs[i]),
+          disposal,
+          loopForever = false,
+        )
         writer.writeToSequence(IIOImage(frames[i], null, frameMeta), param)
       }
       writer.endWriteSequence()
@@ -86,6 +93,35 @@ object ScrollGifEncoder {
     (delayMs.coerceAtLeast(MIN_FRAME_DELAY_MS) / 10).coerceAtLeast(2)
 
   /**
+   * The disposal method the whole sequence is written with, decided by whether [frames] carry an
+   * alpha channel.
+   *
+   * **`none` is only correct for opaque frames, and picking it for translucent ones smears the
+   * recording.** `none` means "leave this frame on the canvas"; the next frame is then composited
+   * over it, and wherever that next frame is TRANSPARENT the previous one shows through. Opaque
+   * frames paint over every pixel, so nothing shows through and `none` is the cheap, flicker-free
+   * choice — which is the scroll case this encoder was written for.
+   *
+   * A motion capture of a component sticker is the other case, and it is now the common one:
+   * `@Preview(showBackground = false)` renders on transparency by design, so everything outside the
+   * component's silhouette is see-through. With `none`, every silhouette the animation has ever
+   * drawn stays on the canvas — a morphing shape accumulates its own outlines and a travelling
+   * indicator leaves a trail. Measured on `wear-m3-catalog`'s media transport recording (a
+   * scalloped play/pause button morphing against a circle): 47,609 opaque pixels on the first frame
+   * and 50,780 by the last, a smear that grows monotonically because nothing ever clears.
+   *
+   * `restoreToBackgroundColor` clears each frame's area before the next is drawn, so a translucent
+   * frame stands alone. The same recording holds flat at ~47,600 opaque pixels across all 61.
+   *
+   * Note the flag this cannot control: `transparentColorFlag` is requested `FALSE` below and the
+   * `ImageIO` GIF writer sets it anyway when the incoming raster has alpha — it has to, to have an
+   * index to put those pixels in. That is why the bug existed at all, and why the fix is disposal
+   * rather than transparency.
+   */
+  private fun disposalMethodFor(frames: List<BufferedImage>): String =
+    if (frames.any { it.colorModel.hasAlpha() }) "restoreToBackgroundColor" else "none"
+
+  /**
    * Writes the per-frame `GraphicControlExtension` (delay + disposal) and, on the first frame only,
    * the `ApplicationExtensions / NETSCAPE2.0` sub-block that switches on infinite looping.
    *
@@ -95,13 +131,14 @@ object ScrollGifEncoder {
   private fun configureFrameMetadata(
     meta: IIOMetadata,
     delayCentiseconds: Int,
+    disposalMethod: String,
     loopForever: Boolean,
   ) {
     val format = meta.nativeMetadataFormatName
     val root = meta.getAsTree(format) as IIOMetadataNode
 
     val gce = getOrCreateChild(root, "GraphicControlExtension")
-    gce.setAttribute("disposalMethod", "none")
+    gce.setAttribute("disposalMethod", disposalMethod)
     gce.setAttribute("userInputFlag", "FALSE")
     gce.setAttribute("transparentColorFlag", "FALSE")
     gce.setAttribute("delayTime", delayCentiseconds.toString())
