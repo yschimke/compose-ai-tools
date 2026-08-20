@@ -2745,7 +2745,17 @@ auto-update path rolls the **image**, never the compose. A server can therefore 
 of this feature and still be running the cache in `/tmp`.
 
 `corrupt` above zero says a volume is losing bytes, since every blob is named by its own digest and
-re-verified on read. `blobs`/`bytes` against `maxBytes` says whether the sweeper is keeping up —
+re-verified on read.
+
+**`mismatched` should be zero forever.** Content-addressing makes corruption impossible to serve —
+a blob is verified against its own name on every read — but it cannot see a wrong *mapping*: a key
+filed against the wrong content sha passes every check, because the blob under that sha hashes to it
+perfectly well. After each pinned load the server re-reads a three-asset sample from the branch and
+compares it against what the pool would serve; `audited` counts those checks and `mismatched` counts
+disagreements. A non-zero `mismatched` means something the design treats as impossible has happened,
+so it is worth an alert rather than a dashboard. The audit is a report, never a gate: it runs behind
+the request path, and its only effect on a mismatch is to drop the entry so the next read
+re-fetches. `blobs`/`bytes` against `maxBytes` says whether the sweeper is keeping up —
 both are published by the last sweep rather than censused per request, so they lag a write by at
 most one sweep interval; `/status.json` is polled, and an occupancy walk there would grow with
 exactly the thing the cache exists to grow.

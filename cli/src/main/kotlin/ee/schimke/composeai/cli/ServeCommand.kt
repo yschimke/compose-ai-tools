@@ -849,7 +849,8 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     ) {
       System.err.println(
         "serve: catalog blob cache at $preferred (cap ${maxBytes / (1024 * 1024)} MB) — " +
-          "it survives a restart only if that path is a mounted volume"
+          "it survives only if that path outlives the process; in a container that means a " +
+          "mounted volume, since the writable layer goes with the container"
       )
       CatalogBlobPool(preferred, maxBytes = maxBytes, persistenceConfigured = true)
     } else {

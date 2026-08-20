@@ -765,6 +765,17 @@ class ServeCatalogStore(
     // turns on at the next host build instead of being lost until someone republishes.
     scheduleFigmaSvgFetch(system, generation, slugs, variantSvgPaths, base, dir)
 
+    // Sampled integrity audit of what the blob cache holds for this catalog. Only for a pinned
+    // load: an un-pinned one caches nothing, so there is nothing to check. Runs on the same
+    // single-threaded post-publish lane as the vector fill, for the same reason — it must never
+    // outweigh the request path.
+    if (pinned) {
+      val sample = bakedPathById.values.take(AUDIT_SAMPLE_ASSETS).map { base + it }
+      if (sample.isNotEmpty()) {
+        figmaExecutor.execute { runCatching { auditCachedAssets(sample, safe) } }
+      }
+    }
+
     // The catalog's OWN palette, so its pages are framed in its own colours (see [ServeThemeCss]).
     // A few kB of JSON off the same branch as the images, and best-effort throughout: a missing /
     // unfetchable / unparseable token file just leaves the pages on the built-in chrome.
@@ -2623,6 +2634,15 @@ class ServeCatalogStore(
      * couple of others, so "the branch can serve pixels" is proven without one missing file being
      * able to fail the catalog. Everything else arrives on first use.
      */
+    /**
+     * How many of a catalog's cached assets the post-publish audit re-reads from the branch.
+     *
+     * Small on purpose. This is checking for something the design says cannot happen, so its job is
+     * to be running at all rather than to be exhaustive; a wide sample would spend real bandwidth
+     * on every load to raise the odds of catching a fault that should never occur.
+     */
+    private const val AUDIT_SAMPLE_ASSETS = 3
+
     private const val PUBLISH_SAMPLE_IMAGES = 3
 
     /**
@@ -2812,16 +2832,44 @@ class ServeCatalogStore(
    * fetcher, which is how the two paths would drift.
    */
   private fun cachedBranchRead(url: String): BranchFetch {
-    val read = {
-      if (fetch != null) fetch.invoke(url)?.let { BranchFetch.Ok(it) } ?: BranchFetch.NotFound
-      else branchRead(url, MAX_FETCH_BYTES)
-    }
-    if (!ServeCatalogRevision.isCommitPinned(url)) return read()
+    if (!ServeCatalogRevision.isCommitPinned(url)) return directBranchRead(url)
     blobs.read(url)?.let {
       branchFetchStats.recordCached()
       return BranchFetch.Ok(it)
     }
-    return read().also { if (it is BranchFetch.Ok) blobs.write(url, it.bytes) }
+    return directBranchRead(url).also { if (it is BranchFetch.Ok) blobs.write(url, it.bytes) }
+  }
+
+  /**
+   * The transport with no cache in front of it — [cachedBranchRead] minus the pool.
+   *
+   * Named and shared rather than inlined, because the audit ([auditCachedAssets]) needs exactly
+   * this: bytes from the branch for a URL the pool almost certainly holds. Reaching for the
+   * ordinary read there would compare the cache against itself and pass every time.
+   */
+  private fun directBranchRead(url: String): BranchFetch =
+    if (fetch != null) fetch.invoke(url)?.let { BranchFetch.Ok(it) } ?: BranchFetch.NotFound
+    else branchRead(url, MAX_FETCH_BYTES)
+
+  /**
+   * Re-read a small sample of this catalog's cached assets from the branch and check them against
+   * what the pool would serve — see [CatalogBlobPool.audit] for the failure this exists to notice.
+   *
+   * Sampled and post-publish: a handful of requests per load, off the request path, and never a
+   * gate. The sample is taken from the front of the catalog's own baked paths rather than at
+   * random, so the same few entries are re-checked on every load of a given revision — which is
+   * what makes a mis-filing show up repeatedly instead of once in a thousand loads.
+   */
+  private fun auditCachedAssets(urls: List<String>, system: String) {
+    for (url in urls) {
+      val fresh = runCatching { directBranchRead(url) }.getOrNull()?.bytesOrNull ?: continue
+      if (blobs.audit(url, fresh) == CatalogBlobPool.AuditResult.MISMATCHED) {
+        System.err.println(
+          "serve: $system cached bytes for $url did not match the branch — entry dropped. " +
+            "This should be impossible; check /status.json catalogCache.mismatched."
+        )
+      }
+    }
   }
 
   /**
