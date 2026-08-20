@@ -4370,6 +4370,18 @@ ${captureControlsHtml().prependIndent("          ")}
     val group: HomeGroup? = null,
     /** Aggregate visits to this catalog/app landing page. */
     val views: Long = 0,
+    /**
+     * The design tool this catalog is specified by ("Figma", …), when it publishes design
+     * references at all — read off those references' provider exactly as the catalog landing reads
+     * it ([designToolLabel]). Non-null is also the *gate*: it is set only for a catalog whose
+     * `compare?format=reference` route has something behind it, so the card's compare action can
+     * never deep-link a format the comparison page does not offer.
+     *
+     * Null — the common case — renders no compare action, which is every catalog that publishes no
+     * design references, and every catalog on a server that has not had that catalog resident since
+     * it started (the front door reads a suspended catalog's snapshot rather than resuming it).
+     */
+    val designToolLabel: String? = null,
   )
 
   /**
@@ -4520,8 +4532,53 @@ ${captureControlsHtml().prependIndent("          ")}
   ): String {
     val headerAction = if (componentBrowser) "" else githubAuthControl(githubAuth)
     // Public routes are open — no token param on the cards; a token-gated box keeps it.
-    val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
-    fun card(s: HomeSystem): String {
+    val tokenParam = if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token)
+    val suffix = querySuffix(tokenParam)
+    /**
+     * The card's **compare to Figma** action: a chip under the tile, deep-linking that catalog's
+     * comparison page straight to its `reference` format.
+     *
+     * It is on the front door because the comparison is a destination people arrive *for*, and
+     * until now the only route to it was the chip row on a catalog's own landing page — so "compare
+     * this system against its Figma" cost a visit to the catalog first, and was invisible from `/`
+     * (compose-ai-tools#4324). The label names the design tool the catalog is actually specified
+     * by, for the same reason the landing chip does: "compare to Figma" says what you get where
+     * "compare reference" would name the format slug.
+     *
+     * A sibling of the tile anchor, not a child of it: the tile is one big link, and a link inside
+     * a link is not a thing HTML has. That is what the `.cp-sys-cell` wrapper is for — it is the
+     * grid item, so the tile keeps stretching to a shared height across a row and the chip sits
+     * under it.
+     *
+     * Suppressed in the component-browser ("Catalog") interface mode, which hides the format
+     * comparisons on the catalog landing too — the mode is for browsing components, not for
+     * auditing them against a design file.
+     *
+     * The row is emitted **empty** for a catalog that has no action, when a catalog in the same
+     * SECTION does. The cell's second row is what the tile is sized against, so a card whose
+     * neighbour carries a chip and which had no row at all grew taller by exactly that chip — the
+     * ragged grid the cell layout exists to prevent. Per section rather than per page because that
+     * is the scope the raggedness lives in: each section is its own `.cp-grid`, so a publisher
+     * whose catalogs all lack references would otherwise carry a strip of empty rows reserved for a
+     * chip nothing in that grid can ever show.
+     */
+    fun reservesActionRow(list: List<HomeSystem>): Boolean =
+      !componentBrowser && list.any { !it.designToolLabel.isNullOrBlank() }
+    fun compareAction(s: HomeSystem, sysSeg: String, reserveRow: Boolean): String {
+      if (!reserveRow) return ""
+      val chip =
+        s.designToolLabel
+          ?.takeIf { it.isNotBlank() }
+          ?.let { tool ->
+            val query =
+              listOf("format=reference", tokenParam).filter { it.isNotEmpty() }.joinToString("&")
+            val href = WebEscaping.htmlEscape("/$sysSeg/compare?$query")
+            val label = WebEscaping.htmlEscape("compare to $tool")
+            "<a class=\"cp-action-chip\" href=\"$href\">$label</a>"
+          } ?: ""
+      return "\n        <p class=\"cp-sys-actions\">$chip</p>"
+    }
+    fun card(s: HomeSystem, reserveActionRow: Boolean): String {
       val sysSeg = WebEscaping.urlEncodeSegment(s.system)
       val title = WebEscaping.htmlEscape(s.title)
       val sysId = WebEscaping.htmlEscape(s.system)
@@ -4561,11 +4618,11 @@ ${captureControlsHtml().prependIndent("          ")}
               "\n            <div class=\"cp-browser-provenance\">${WebEscaping.htmlEscape(it)}</div>"
             } ?: ""
       val technicalId =
-        if (componentBrowser) "" else "\n          <div class=\"cp-id\">$sysId</div>"
+        if (componentBrowser) "" else "\n            <div class=\"cp-id\">$sysId</div>"
       val totals =
         if (componentBrowser) ""
         else
-          "\n          <div class=\"cp-sys-foot\">${counted(s.previewCount, "preview(s)")}" +
+          "\n            <div class=\"cp-sys-foot\">${counted(s.previewCount, "preview(s)")}" +
             (if (s.views > 0) " · ${formatViews(s.views)}" else "") +
             "</div>"
       // A dark-first (Wear) system backs its hero on the dark stage — same `data-bg-theme` hook the
@@ -4575,12 +4632,14 @@ ${captureControlsHtml().prependIndent("          ")}
       val searchAttr =
         " data-browser-search=\"${WebEscaping.htmlEscape("${s.title} ${s.system} ${s.subtitle.orEmpty()} ${s.sourceRepo.orEmpty()}").lowercase()}\""
       return """
-      <a class="cp-card cp-sys"$bg href="/$sysSeg/$suffix" aria-label="$title"$searchAttr>
-        <div class="cp-imgwrap">$img</div>
-        <div class="cp-meta">
-          <div class="cp-sys-title">$title${homeTrustBadge(s.trust)}</div>$technicalId$desc$provenance$totals
-        </div>
-      </a>
+      <div class="cp-sys-cell"$searchAttr>
+        <a class="cp-card cp-sys"$bg href="/$sysSeg/$suffix" aria-label="$title">
+          <div class="cp-imgwrap">$img</div>
+          <div class="cp-meta">
+            <div class="cp-sys-title">$title${homeTrustBadge(s.trust)}</div>$technicalId$desc$provenance$totals
+          </div>
+        </a>${compareAction(s, sysSeg, reserveActionRow)}
+      </div>
       """
         .trimIndent()
     }
@@ -4589,13 +4648,14 @@ ${captureControlsHtml().prependIndent("          ")}
     fun section(heading: String, list: List<HomeSystem>, noun: String, gridId: String): String {
       val head = WebEscaping.htmlEscape(heading)
       val count = WebEscaping.htmlEscape(counted(list.size, noun))
+      val reserveActionRow = reservesActionRow(list)
       return """
       <div class="cp-section-title">
         <h1 class="cp-head">$head</h1>
         ${if (componentBrowser) "" else "<span class=\"cp-section-count\">$count</span>"}
       </div>
       <div class="cp-grid cp-syslist" id="$gridId">
-      ${list.joinToString("\n") { card(it) }}
+      ${list.joinToString("\n") { card(it, reserveActionRow) }}
       </div>
       """
         .trimIndent()
@@ -4615,7 +4675,7 @@ ${captureControlsHtml().prependIndent("          ")}
         """
           .trimIndent() +
           """
-          <script>(function(){var q=document.getElementById("cp-browser-catalog-search"),e=document.getElementById("cp-browser-catalog-empty");if(!q)return;q.addEventListener("input",function(){var n=q.value.trim().toLowerCase(),shown=0;document.querySelectorAll(".cp-sys").forEach(function(c){var hit=!n||(c.getAttribute("data-browser-search")||"").indexOf(n)>=0;c.hidden=!hit;if(hit)shown++;});document.querySelectorAll(".cp-section-title").forEach(function(h){var g=h.nextElementSibling;h.hidden=!!g&&!Array.prototype.some.call(g.children,function(c){return !c.hidden;});});if(e)e.hidden=shown!==0;});})();</script>
+          <script>(function(){var q=document.getElementById("cp-browser-catalog-search"),e=document.getElementById("cp-browser-catalog-empty");if(!q)return;q.addEventListener("input",function(){var n=q.value.trim().toLowerCase(),shown=0;document.querySelectorAll(".cp-sys-cell").forEach(function(c){var hit=!n||(c.getAttribute("data-browser-search")||"").indexOf(n)>=0;c.hidden=!hit;if(hit)shown++;});document.querySelectorAll(".cp-section-title").forEach(function(h){var g=h.nextElementSibling;h.hidden=!!g&&!Array.prototype.some.call(g.children,function(c){return !c.hidden;});});if(e)e.hidden=shown!==0;});})();</script>
           """
             .trimIndent()
     val body =

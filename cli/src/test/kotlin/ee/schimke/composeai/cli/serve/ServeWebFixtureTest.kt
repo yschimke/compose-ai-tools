@@ -815,6 +815,12 @@ class ServeWebFixtureTest {
               width = 168,
               height = 68,
             ),
+          // Publishes Figma-backed design references, so its card carries the "compare to Figma"
+          // action. Set on two of the three design systems deliberately: the golden then holds a
+          // row where one card has the action and its neighbour does not, which is the case the
+          // `.cp-sys-cell` grid template exists for — the tiles still have to line their artwork
+          // and their footers up.
+          designToolLabel = "Figma",
         ),
         ServeWeb.HomeSystem(
           group = designSystemsGroup,
@@ -833,6 +839,7 @@ class ServeWebFixtureTest {
             ),
           // Wear is dark-first: the hero backs on the dark stage, not the default white.
           darkStage = true,
+          designToolLabel = "Figma",
         ),
         ServeWeb.HomeSystem(
           group = designSystemsGroup,
