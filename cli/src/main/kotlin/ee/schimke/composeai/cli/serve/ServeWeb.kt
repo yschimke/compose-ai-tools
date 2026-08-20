@@ -20,8 +20,16 @@ import kotlinx.serialization.json.JsonPrimitive
  */
 object ServeWeb {
 
-  /** Sign-in affordance for a GitHub-protected live stream lane. */
-  data class LiveAuthPrompt(val loginHref: String, val repository: String)
+  /**
+   * Sign-in affordance for a GitHub-protected live stream lane.
+   *
+   * Deliberately carries no repository: the live stream gates on *being signed in*, nothing more
+   * ([ServeHttpServer.rejectMissingGithubRepoAccess] is the playground's gate, not this one). The
+   * chip used to name `--github-auth-repo` in its tooltip, which read as "you need access to that
+   * repo for Live" — the opposite of the rule, and enough to make an outside contributor give up
+   * before clicking (wear-m3-catalog#68).
+   */
+  data class LiveAuthPrompt(val loginHref: String)
 
   /** Front-door GitHub auth state, shown when the public server protects code-running surfaces. */
   data class GitHubAuthStatus(
@@ -7364,6 +7372,20 @@ ${captureControlsHtml().prependIndent("          ")}
     /** Validated catalog-published issues, matched onto each component card. */
     parityIssues: List<ParityIssue> = emptyList(),
     componentBrowser: Boolean = false,
+    /**
+     * GitHub session state, rendered as the header's sign-in control.
+     *
+     * A catalog landing is where a visitor arrives, and on a **top-level site** ([ServeSites]) it
+     * is the whole front door — there is no home index above it carrying the control, so before
+     * this the only sign-in affordance on a host like `wear.preview.coo.ee` was a press-and-hold on
+     * a card (which follows the login) or a chip on a preview page. Someone who wanted a live
+     * session had to be told to go and sign in on a *different hostname* first
+     * (wear-m3-catalog#68).
+     *
+     * Null, and in Catalog mode, renders nothing — same as every other page. Catalog mode drops the
+     * live lane entirely (hover-live included), so a sign-in offered there would unlock nothing.
+     */
+    githubAuth: GitHubAuthStatus? = null,
   ): String {
     @Suppress("NAME_SHADOWING") val designPages = if (componentBrowser) emptyList() else designPages
     @Suppress("NAME_SHADOWING")
@@ -7979,6 +8001,7 @@ ${captureControlsHtml().prependIndent("          ")}
       siteName = heading,
       themeStorageKey = themeStorageKey(sessionId, basePath),
       declaredThemes = declaredThemeChips,
+      headerAction = if (componentBrowser) "" else githubAuthControl(githubAuth),
       body =
         """
         $titleRow
@@ -11232,9 +11255,7 @@ $cards
     val liveSignInLink = liveAuthPrompt?.let {
       "<a id=\"cp-live-signin\" class=\"cp-live-toggle cp-live-signin\" " +
         "href=\"${WebEscaping.htmlEscape(it.loginHref)}\" " +
-        "data-github-repo=\"${WebEscaping.htmlEscape(it.repository)}\" " +
-        "title=\"Sign in with GitHub (${WebEscaping.htmlEscape(it.repository)}) " +
-        "to enable Live preview\">\n" +
+        "title=\"Sign in with GitHub to enable Live preview. Any GitHub account works.\">\n" +
         "            <span class=\"cp-live-dot\" aria-hidden=\"true\"></span>\n" +
         "            <span>Live preview — sign in</span>\n" +
         "          </a>"

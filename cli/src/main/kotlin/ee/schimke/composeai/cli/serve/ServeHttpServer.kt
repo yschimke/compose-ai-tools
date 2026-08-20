@@ -2700,6 +2700,11 @@ class ServeHttpServer(
           // A top-level site's pages carry their session in the ORIGIN, so same-session links
           // drop the `?session=` the rooted legacy form would add. See [ServeSites].
           sessionInOrigin = siteSystem() != null,
+          // The header's sign-in control. `liveSignInHref` above already sends a long-press at
+          // the login, but that gesture is undiscoverable: on a site host this landing IS the
+          // front door, so without a visible control the only way to find the sign-in was
+          // another hostname's index (wear-m3-catalog#68).
+          githubAuth = githubAuthStatus(),
         ),
         ContentType.Text.Html,
       )
@@ -6094,12 +6099,7 @@ class ServeHttpServer(
           ?.takeIf { renderHost.hasLiveStream }
           ?.takeUnless { it.isAuthenticated(call) }
           ?.takeIf { oauthCanRoundTrip() }
-          ?.let {
-            ServeWeb.LiveAuthPrompt(
-              loginHref = it.loginPath(call),
-              repository = it.accessRepository(),
-            )
-          }
+          ?.let { ServeWeb.LiveAuthPrompt(loginHref = it.loginPath(call)) }
       // Project mode's timeline, computed from the local repo rather than fetched from a delivery
       // branch. Gated on the session having no delivery provenance — exactly the condition that
       // leaves `historyManifestUrl` null — because a catalog served from a delivery branch already
