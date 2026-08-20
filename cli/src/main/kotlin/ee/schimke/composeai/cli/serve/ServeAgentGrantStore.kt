@@ -184,12 +184,18 @@ class ServeAgentGrantStore(
     val now = clock()
     purge(now)
     if (requests.size >= maxPendingRequests) {
-      // Shed only what is genuinely finished with: a denial, or an approval whose token has been
-      // collected. An approved-but-uncollected request still owes its owner a credential, and a
-      // pending one still owes a human a decision — dropping either loses work someone is waiting
-      // on, which is worse than refusing this new ask.
+      // Shed only what is genuinely finished with: a denial, or an approval whose GRANT is gone
+      // (expired or revoked). A pending request still owes a human a decision, and an approved one
+      // still owes its owner a credential — dropping either loses work someone is waiting on, which
+      // is worse than refusing this new ask.
+      //
+      // Deliberately NOT keyed on `collected`. That flag means a poll *built* a response, not that
+      // the agent received one; a response lost in flight has to be retriable. `purge` learned this
+      // and this path did not, so a full map plus one dropped packet still stranded a live grant —
+      // and filling the map is something an anonymous caller can attempt. Same rule, both places.
       requests.entries.removeIf { (_, r) ->
-        r.state == Request.State.DENIED || (r.state == Request.State.APPROVED && r.collected)
+        r.state == Request.State.DENIED ||
+          (r.state == Request.State.APPROVED && grantIsGone(r, now))
       }
       if (requests.size >= maxPendingRequests) return null
     }
@@ -495,17 +501,37 @@ class ServeAgentGrantStore(
      * request. Neither is theoretical: the log line is emitted at approval time, on the operator's
      * console, from text the requester chose.
      *
-     * Every C0/C1 control (and DEL) becomes a space, runs collapse, and the result is trimmed and
-     * capped. The HTML page escapes this same value again on its own account — this is not a
-     * substitute for that, it is the half that protects the terminal rather than the browser.
+     * Every C0/C1 control (and DEL), plus every Unicode **format** character — see
+     * [isInvisibleFormat], which is what stops a bidi override from rewriting what the approval
+     * page appears to say — becomes a space; runs collapse, and the result is trimmed and capped.
+     * The HTML page escapes this same value again on its own account: escaping is not a substitute
+     * for this, because the characters that matter here survive it untouched.
      */
     fun sanitizeLabel(raw: String): String =
       raw
-        .map { if (it.isISOControl() || it == '\u007f') ' ' else it }
+        .map { if (it.isISOControl() || it == '\u007f' || it.isInvisibleFormat()) ' ' else it }
         .joinToString("")
         .replace(Regex("\\s+"), " ")
         .trim()
         .take(MAX_LABEL_CHARS)
+
+    /**
+     * Unicode's **format** category (Cf): the characters that render as nothing but change how
+     * everything around them is laid out.
+     *
+     * Stripping C0/C1 was not enough, and the gap mattered most on the one page whose entire job is
+     * honest display. A requester chooses their own label, and `U+202E RIGHT-TO-LEFT OVERRIDE`
+     * survives both an `isISOControl` filter and HTML escaping — so a label could visually reverse
+     * the text after it and rewrite what the approval page appears to say, including the scope and
+     * lifetime the human is agreeing to. The same trick reorders the audit line in the operator's
+     * console. The isolates (`U+2066`–`U+2069`) and the zero-width joiners do the same job more
+     * quietly.
+     *
+     * Cf is exactly that set — overrides, embeddings, isolates, marks, zero-widths, the BOM — and
+     * nothing a purpose string legitimately needs, so the whole category goes.
+     */
+    private fun Char.isInvisibleFormat(): Boolean =
+      Character.getType(this) == Character.FORMAT.toInt()
 
     /** The bearer's prefix — greppable, and unmistakable for the operator's `--token`. */
     const val TOKEN_PREFIX = "cpat_"

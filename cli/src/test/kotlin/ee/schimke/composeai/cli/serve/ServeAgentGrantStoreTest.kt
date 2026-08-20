@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli.serve
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -360,6 +361,41 @@ class ServeAgentGrantStoreTest {
   }
 
   @Test
+  fun `a label cannot reorder what the approval page says`() {
+    // U+202E RIGHT-TO-LEFT OVERRIDE survives an isISOControl filter AND HTML escaping, so a
+    // requester could reverse the rendering of everything after their label — on the one page whose
+    // whole job is to state accurately what is being agreed to, and in the operator's audit line.
+    val nasty = "fix \u202Ednarg lla tnarg\u202C \u2066issue\u2069 \u200Bnow\uFEFF"
+    val clean = ServeAgentGrantStore.sanitizeLabel(nasty)
+    for (c in clean) {
+      assertNotEquals(
+        Character.FORMAT.toInt(),
+        Character.getType(c),
+        "a format character survived: U+%04X".format(c.code),
+      )
+    }
+    assertTrue(clean.startsWith("fix "), "the readable text survives: '$clean'")
+  }
+
+  @Test
+  fun `overflow never sheds an approval whose grant is still live`() {
+    // `collected` means a poll BUILT a response, not that the agent got one. Shedding on it meant a
+    // full map plus one dropped packet stranded a live grant — and filling the map is something an
+    // anonymous caller can attempt.
+    val store = store(maxPendingRequests = 2)
+    val mine = store.ask(ttl = 3600)
+    store.approve(mine.id, "@yuri", ServeAgentGrantScope.LIVE, 3600)
+    assertTrue(store.poll(mine.id, mine.deviceSecret) is ServeAgentGrantStore.Poll.Approved)
+    // …that response is lost. Now an anonymous caller tries to fill the map. `openRequest` rather
+    // than the `!!` helper: being REFUSED is the correct outcome here, not an error.
+    repeat(4) { store.openRequest("spam", "10.9.9.9", ServeAgentGrantScope.PREVIEW, 600) }
+    assertTrue(
+      store.poll(mine.id, mine.deviceSecret) is ServeAgentGrantStore.Poll.Approved,
+      "a live grant was shed to admit an anonymous request",
+    )
+  }
+
+  @Test
   fun `a lost token response can be collected again`() {
     // `collected` marks that a poll BUILT a response, not that the agent received one. Treating it
     // as a deletion trigger meant a response lost in flight left the retry told `unknown` while the
@@ -396,13 +432,25 @@ class ServeAgentGrantStoreTest {
   }
 
   @Test
-  fun `a collected request is shed to make room`() {
+  fun `a finished request is shed to make room`() {
+    // This used to assert that a *collected* request was shed. That was wrong for the same reason
+    // the purge was: `collected` means a poll built a response, not that the agent received one, so
+    // shedding on it stranded a live grant whenever a response was lost. What may be shed is a
+    // request that is genuinely finished with — here, one whose grant has since expired.
     val store = store(maxPendingRequests = 2)
-    val collected = store.ask()
-    store.approve(collected.id, "@yuri", ServeAgentGrantScope.LIVE, 600)
-    assertTrue(
-      store.poll(collected.id, collected.deviceSecret) is ServeAgentGrantStore.Poll.Approved
-    )
+    val done = store.ask(ttl = 60)
+    store.approve(done.id, "@yuri", ServeAgentGrantScope.LIVE, 60)
+    assertTrue(store.poll(done.id, done.deviceSecret) is ServeAgentGrantStore.Poll.Approved)
+    now += 61_000 // its grant is gone, so the record owes nobody anything
+    store.openRequest("b", "ip", ServeAgentGrantScope.PREVIEW, 600)
+    assertNotNull(store.openRequest("c", "ip", ServeAgentGrantScope.PREVIEW, 600))
+  }
+
+  @Test
+  fun `a denial is shed to make room`() {
+    val store = store(maxPendingRequests = 2)
+    val denied = store.ask()
+    assertTrue(store.deny(denied.id, "@yuri"))
     store.openRequest("b", "ip", ServeAgentGrantScope.PREVIEW, 600)
     assertNotNull(store.openRequest("c", "ip", ServeAgentGrantScope.PREVIEW, 600))
   }
