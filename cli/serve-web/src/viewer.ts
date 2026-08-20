@@ -4484,6 +4484,16 @@ function hydrateFromUrl(popped: boolean) {
         if (!key) return;
         var value = q.get("knob." + key);
         if (value === null) value = el.getAttribute("data-knob-initial") || "";
+        // A knob may ride the wire with its legacy `<kind>:` tag (`?knob.count=int:3`), while the
+        // control holds the bare value — the same split the RC knobs below have always handled.
+        // Strip it only when it matches the DECLARED kind, which is exactly when the server strips
+        // it (`ServeOverrides.knobControlValue`): a declared string knob may legitimately hold text
+        // beginning `int:`, and eating that prefix would silently rewrite the value.
+        else {
+            var declaredKind = el.getAttribute("data-knob-kind") || "";
+            if (declaredKind && value.indexOf(declaredKind + ":") === 0)
+                value = value.substring(declaredKind.length + 1);
+        }
         if (el instanceof HTMLInputElement && el.type === "checkbox")
             el.checked = value === "true" || value === "1";
         else {

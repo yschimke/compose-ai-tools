@@ -190,6 +190,29 @@ object ServeOverrides {
   private val KNOWN_KINDS: Set<String> = setOf("string", "int", "float", "bool", "color")
 
   /**
+   * The bare value a `knob.<key>=<raw>` param holds, with a legacy `<kind>:` prefix stripped when
+   * [parse] would strip it — i.e. when the prefix is a known kind AND matches the knob's
+   * [declaredKind].
+   *
+   * For the viewer's *controls*, which hold the bare value while the wire may carry the tag. A
+   * `?knob.count=int:3` seeded verbatim puts `int:3` in a number input, which the browser sanitizes
+   * to empty; `?knob.enabled=bool:true` reads as unchecked, since the checkbox tests the whole
+   * string. Either way the control ends up disagreeing with the render the same URL produced, and
+   * the next query built from that control drops or inverts the value.
+   *
+   * The prefix rule is deliberately NOT re-spelled at the call site: a declared *string* knob may
+   * legitimately hold text beginning `int:` / `color:` (the type-free viewer submits it verbatim),
+   * so what may be stripped is exactly what [parse] treats as a type tag, and the two must agree
+   * for the control and the pixels to.
+   */
+  fun knobControlValue(raw: String, declaredKind: String?): String {
+    val sep = raw.indexOf(':')
+    if (sep <= 0) return raw
+    val prefix = raw.substring(0, sep).takeIf { it in KNOWN_KINDS } ?: return raw
+    return if (declaredKind == null || prefix == declaredKind) raw.substring(sep + 1) else raw
+  }
+
+  /**
    * The `<kind>` tags an `rc.<name>=<kind>:<value>` seed may carry. Superset of [KNOWN_KINDS] with
    * `dp` — Remote Compose distinguishes a density-independent measure ([RemoteNamedValue.DpValue])
    * from a raw float, matching the connector's `setUserLocalFloat` (dp) vs `setUserLocalFloat`

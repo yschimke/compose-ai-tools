@@ -119,6 +119,60 @@ class ServeWebKnobSeedTest {
     assertTrue(row.contains("""data-knob-initial="false""""), row)
   }
 
+  /**
+   * A deep link may spell the value with its legacy `<kind>:` wire tag. The control holds the BARE
+   * value, so the tag is stripped exactly where `ServeOverrides.parse` strips it.
+   *
+   * Seeded verbatim, `?knob.enabled=bool:true` reads as unchecked (the checkbox tests the whole
+   * string) and `?knob.count=int:3` puts `int:3` in a number input, which the browser sanitizes to
+   * empty — either way the control disagrees with the render the same URL produced, and the next
+   * query built from that control drops or inverts the value.
+   */
+  @Test
+  fun `a legacy kind prefix is stripped before the control is seeded`() {
+    val row =
+      knobRow(
+        viewer(
+          declaration("enabled", default = false, current = false),
+          requestOverrides = mapOf("knob.enabled" to "bool:true"),
+        ),
+        "enabled",
+      )
+    assertTrue(row.contains(" checked"), row)
+  }
+
+  /**
+   * …but only when it matches the DECLARED kind. A string knob may legitimately hold text beginning
+   * `int:` — the type-free viewer submits it verbatim — and eating that prefix would silently
+   * rewrite the value, which is the same rule `ServeOverrides.parse` applies on the way in.
+   */
+  @Test
+  fun `a mismatched kind prefix is left in a string knob's value`() {
+    val preview =
+      ServePreview(
+        id = "button-filled",
+        label = "Filled",
+        overrides =
+          listOf(
+            PreviewOverrideDeclaration(
+              key = "label",
+              type = "string",
+              label = "label",
+              default = PreviewOverrideValue.StringValue(""),
+            )
+          ),
+      )
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/compose-m3",
+        siblings = listOf(preview),
+        requestOverrides = mapOf("knob.label" to "int:3"),
+      )
+    assertTrue(knobRow(html, "label").contains("""value="int:3""""), knobRow(html, "label"))
+  }
+
   /** A knob the request doesn't name is untouched — a plain visit renders exactly as before. */
   @Test
   fun `an unnamed knob keeps its declared value`() {

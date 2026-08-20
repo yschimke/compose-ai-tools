@@ -13043,7 +13043,13 @@ ${ServeSiteIcon.linkTags().prependIndent("        ")}
         // `hydrateFromUrl` corrects this client-side on load; seeding it here is what stops the
         // first paint from disagreeing, and what keeps the markup honest for anything reading it
         // without running the viewer's JS.
-        val shown = requestOverrides[ServeOverrides.KNOB_PREFIX + rawWireKey] ?: declared
+        // …with any legacy `<kind>:` wire tag stripped exactly where the parser strips it, so
+        // `?knob.count=int:3` puts `3` in the number input rather than `int:3` — which the browser
+        // sanitizes to empty, leaving the control blank beside a render that used the value.
+        val shown =
+          requestOverrides[ServeOverrides.KNOB_PREFIX + rawWireKey]?.let {
+            ServeOverrides.knobControlValue(it, kind)
+          } ?: declared
         val value = WebEscaping.htmlEscape(shown)
         // `data-knob-initial` stays the DECLARED value even when the request seeds another, and
         // that gap is load-bearing rather than an oversight: the viewer omits a knob still equal to
