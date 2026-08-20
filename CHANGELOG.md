@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.26.0](https://github.com/yschimke/compose-ai-tools/compare/v1.25.0...v1.26.0) (2026-08-20)
+
+
+### Features
+
+* **cli:** add share-preview --mechanism serve ([#4374](https://github.com/yschimke/compose-ai-tools/issues/4374)) ([734f2e4](https://github.com/yschimke/compose-ai-tools/commit/734f2e46fe766a8020aa35c333fff91b40717a43))
+* **cli:** let a project name its preview server ([#4379](https://github.com/yschimke/compose-ai-tools/issues/4379)) ([beb443a](https://github.com/yschimke/compose-ai-tools/commit/beb443a6a1a1f3f84567334b5fa55b9586755afd))
+* **cli:** scope preview-server confirmations, and name this repo's host ([#4386](https://github.com/yschimke/compose-ai-tools/issues/4386)) ([b096923](https://github.com/yschimke/compose-ai-tools/commit/b09692375806f0bfc69993b389c971a5b6bc38cd))
+* **serve:** open the design-spec lane on the triptych ([#4380](https://github.com/yschimke/compose-ai-tools/issues/4380)) ([4bfe476](https://github.com/yschimke/compose-ai-tools/commit/4bfe476cbb4b4e887e233cb9aec654a63945a636))
+* **serve:** resolve one per-preview backdrop instead of guessing eight ([#4375](https://github.com/yschimke/compose-ai-tools/issues/4375)) ([3c72369](https://github.com/yschimke/compose-ai-tools/commit/3c72369975fd2886e35f95a67d94b8af07876091))
+
+
+### Bug Fixes
+
+* **backdrop:** a transparent explicit colour is not a showBackground sheet ([#4387](https://github.com/yschimke/compose-ai-tools/issues/4387)) ([c7949a8](https://github.com/yschimke/compose-ai-tools/commit/c7949a836b09a08a6aad509578fecef7bf9b64b2))
+* **daemon:** apply pseudolocales on the live render lanes ([#4382](https://github.com/yschimke/compose-ai-tools/issues/4382)) ([ea9b4bf](https://github.com/yschimke/compose-ai-tools/commit/ea9b4bff5e3fbca2c6a9ff82f92ffc9ad8efe8af))
+* **figma-svg:** vectorise drawWithCache chrome instead of rastering it ([#4381](https://github.com/yschimke/compose-ai-tools/issues/4381)) ([ad82108](https://github.com/yschimke/compose-ai-tools/commit/ad82108144112046d1d5621467dc519c46680986))
+* **motion:** stop translucent GIF captures smearing their own frames ([#4383](https://github.com/yschimke/compose-ai-tools/issues/4383)) ([fea46f4](https://github.com/yschimke/compose-ai-tools/commit/fea46f4734eec261ef1f96eeb3f9d48a17116250))
+* **preview-diff:** add a contrast pass, so a small real change isn't noise ([#4377](https://github.com/yschimke/compose-ai-tools/issues/4377)) ([c70934e](https://github.com/yschimke/compose-ai-tools/commit/c70934e114161b45eb0620bc5e5407c49f6d3ae6))
+* **pseudolocale:** let a pseudolocale render clean up its own string cache ([#4385](https://github.com/yschimke/compose-ai-tools/issues/4385)) ([be93c90](https://github.com/yschimke/compose-ai-tools/commit/be93c90f9015361a7935fb3f49fb7be22eb81b22))
+* **pseudolocale:** stop the wrap leaking out, and stop it swallowing the fallback ([#4384](https://github.com/yschimke/compose-ai-tools/issues/4384)) ([ab7b7e0](https://github.com/yschimke/compose-ai-tools/commit/ab7b7e0f61719c77fcb2aed637d840437cefae26))
+* **serve:** send stream/visibility, and let it throttle the render rather than only the emit ([#4378](https://github.com/yschimke/compose-ai-tools/issues/4378)) ([125b8f1](https://github.com/yschimke/compose-ai-tools/commit/125b8f133d7d8dbec921c148ea3f6da4bda990e7))
+* **serve:** stop the image lane's two budgets sharing a bucket ([#4370](https://github.com/yschimke/compose-ai-tools/issues/4370)) ([bd97167](https://github.com/yschimke/compose-ai-tools/commit/bd9716793c0d9a3ac5cb59c0398fdb44f1fdf43b))
+
 ## [1.25.0](https://github.com/yschimke/compose-ai-tools/compare/v1.24.0...v1.25.0) (2026-08-20)
 
 
