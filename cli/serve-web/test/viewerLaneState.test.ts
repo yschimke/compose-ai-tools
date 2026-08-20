@@ -12,6 +12,7 @@ import {
     currentLaneValue,
     laneChip,
     laneLabelText,
+    liveInviteAvailable,
     liveTransportAvailable,
     restoreStaticPlayer,
     serverPlayerParam,
@@ -280,5 +281,58 @@ describe("laneChip", () => {
             pressed: false,
             disabled: false,
         });
+    });
+});
+
+describe("liveInviteAvailable", () => {
+    it("offers the lane only from a static render of this preview", () => {
+        assert.equal(
+            liveInviteAvailable({
+                interactive: false,
+                transport: true,
+                mode: "png",
+            }),
+            true,
+        );
+    });
+
+    it("withdraws the offer once an interactive lane is already painting", () => {
+        // Otherwise the stage would keep inviting a visitor into the lane they are standing in,
+        // and the hint would sit over a live canvas as a permanent badge.
+        assert.equal(
+            liveInviteAvailable({
+                interactive: true,
+                transport: true,
+                mode: "live",
+            }),
+            false,
+        );
+    });
+
+    it("withdraws it when there is no live lane to enter", () => {
+        assert.equal(
+            liveInviteAvailable({
+                interactive: false,
+                transport: false,
+                mode: "png",
+            }),
+            false,
+        );
+    });
+
+    it("withdraws it on the fixed-frame lanes", () => {
+        // The spec, the usage source and a recorded motion clip are not this preview's render.
+        // Clicking through from one of them would discard what the visitor asked to look at.
+        for (const mode of ["spec", "source", "motion"]) {
+            assert.equal(
+                liveInviteAvailable({
+                    interactive: false,
+                    transport: true,
+                    mode,
+                }),
+                false,
+                mode,
+            );
+        }
     });
 });

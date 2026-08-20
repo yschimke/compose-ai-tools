@@ -93,6 +93,7 @@
       <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false" data-default-lane-label="Snapshot" title="Static snapshot — click for the live, interactive preview">
             <span class="cp-live-dot" aria-hidden="true"></span>
             <span id="cp-live-toggle-label">Snapshot</span>
+            <span class="cp-live-toggle-verb" id="cp-live-toggle-verb" aria-hidden="true">▸ Live</span>
           </button>
 <select id="cp-lane-select" class="cp-lane-select" aria-label="Switch renderer" title="Draw this preview with a different renderer" data-default="png" data-rc-default=""><option value="" selected>Switch renderer…</option><option value="png">Snapshot</option><option value="wasm">In browser (Wasm)</option></select>
 <cp-bg-toggle label="Show the transparent checkerboard behind the preview"></cp-bg-toggle>
@@ -107,7 +108,7 @@
 
       <div class="cp-viewer" data-preview-id="com.example.CardPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="true" data-can-render-overrides="false" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-fold-scope="compose-m3" data-wasm-src="/wasm/compose-m3/?id=card-filled">
 
-        <div class="cp-stage"><cp-backend-badge class="cp-backend" id="cp-backend" role="status" aria-live="polite"></cp-backend-badge><img id="cp-img" alt="Card"><canvas id="cp-canvas" hidden></canvas><iframe id="cp-wasm" hidden sandbox="allow-scripts allow-same-origin" title="Card (Wasm)"></iframe><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+        <div class="cp-stage"><cp-backend-badge class="cp-backend" id="cp-backend" role="status" aria-live="polite"></cp-backend-badge><img id="cp-img" alt="Card"><canvas id="cp-canvas" hidden></canvas><iframe id="cp-wasm" hidden sandbox="allow-scripts allow-same-origin" title="Card (Wasm)"></iframe><span class="cp-live-hint cp-stage-live-hint" id="cp-stage-live-hint" aria-hidden="true">click for live</span><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
 
         <div class="cp-controls" id="cp-controls">
           <!-- No "Appearance" group. Its only ever-visible control was a Background select

@@ -90,9 +90,10 @@
       </div>
 
       <div class="cp-preview-primary" aria-label="Preview renderer">
-      <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false" data-default-lane-label="Live preview" title="Static snapshot — click for the live, interactive preview">
+      <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false" data-default-lane-label="Snapshot" title="Static snapshot — click for the live, interactive preview">
             <span class="cp-live-dot" aria-hidden="true"></span>
-            <span id="cp-live-toggle-label">Live preview</span>
+            <span id="cp-live-toggle-label">Snapshot</span>
+            <span class="cp-live-toggle-verb" id="cp-live-toggle-verb" aria-hidden="true">▸ Live</span>
           </button>
 <cp-bg-toggle label="Show the transparent checkerboard behind the preview"></cp-bg-toggle>
 <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
@@ -105,7 +106,7 @@
 
       <div class="cp-viewer" data-preview-id="com.example.FocusRingPreview" data-mode="snapshot" data-modes="snapshot" data-static-snapshot="false" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-fold-scope="compose-m3">
 
-        <div class="cp-stage"><cp-backend-badge class="cp-backend" id="cp-backend" role="status" aria-live="polite"></cp-backend-badge><img id="cp-img" alt="Focus ring"><canvas id="cp-canvas" hidden></canvas><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+        <div class="cp-stage"><cp-backend-badge class="cp-backend" id="cp-backend" role="status" aria-live="polite"></cp-backend-badge><img id="cp-img" alt="Focus ring"><canvas id="cp-canvas" hidden></canvas><span class="cp-live-hint cp-stage-live-hint" id="cp-stage-live-hint" aria-hidden="true">click for live</span><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
 
         <div class="cp-controls" id="cp-controls">
           <!-- No "Appearance" group. Its only ever-visible control was a Background select

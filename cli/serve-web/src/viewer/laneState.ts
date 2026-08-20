@@ -141,6 +141,26 @@ export function laneLabelText(options: {
     return options.laneOptions.get(options.wanted) || options.defaultLabel;
 }
 
+/**
+ * Whether the viewer should be OFFERING the live lane right now.
+ *
+ * One predicate behind three affordances — the chip's "▸ Live" verb, the hint badge on the stage,
+ * and the click handler on the snapshot itself — so they cannot disagree about whether a click on
+ * the picture does anything. A hint over a stage whose click is inert is worse than no hint.
+ *
+ * `mode` is the viewer's own mode value, and `"png"` is the only one that qualifies: the fixed-frame
+ * lanes (the imported spec, the usage source, a recorded motion clip) put something on the stage
+ * that is not this preview's render, and clicking through from one of those to a live session would
+ * silently discard what the visitor asked to look at.
+ */
+export function liveInviteAvailable(options: {
+    interactive: boolean;
+    transport: boolean;
+    mode: string;
+}): boolean {
+    return !options.interactive && options.transport && options.mode === "png";
+}
+
 export interface ChipState {
     pressed: boolean;
     disabled: boolean;
