@@ -1528,6 +1528,16 @@ the missing ground rather than the component.
 publishes each reference on that ground. Empty is the default and changes nothing, which is right
 wherever the kit's own cells already carry a background.
 
+**It reaches an external caller only when the driver pin moves.** The emitter reads argv by name, so
+a driver that predates a flag ignores it and the run goes green having done nothing — and an
+external caller executes the release-pinned commit in
+[`design-artifacts-driver-pin.txt`](../.github/design-artifacts-driver-pin.txt), not `main`.
+wear-m3-catalog set the input the same day the flag merged, and its publish step ran the 1.21.0
+driver: green run, unchanged references, no `backdrop …` line in the log. The step now checks the
+emitter it is about to run and warns when the two disagree, rather than leaving the silence to be
+read as success. compose-ai-tools' own catalogs run the driver from the commit under test, so a flag
+merged to `main` applies to them at once.
+
 The colour is **declared** and the shape is **recognised**. Only the catalog knows what its previews
 asked for, and a colour read off the sticker would be read off the very image the reference is about
 to be compared with — so the caller names it (`reference-backdrop: '#000000'` for a dark-first Wear
