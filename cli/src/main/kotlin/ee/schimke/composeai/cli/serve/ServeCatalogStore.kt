@@ -420,14 +420,22 @@ class ServeCatalogStore(
     // per render — so they name a componentId and nothing else. This lets those rows borrow the
     // caption of the component they belong to instead of being the only cards that can't say what
     // they are.
-    val captionByComponentId: Map<String?, String?> =
-      catalog.components
-        .mapNotNull { c ->
-          val id = c.componentId?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-          val caption = c.caption?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-          id to caption
-        }
-        .toMap()
+    // A WHOLLY deferred component never reaches `components[]` at all, and the export writes its
+    // caption onto the deferred record instead — so the lookup reads both, components first. That
+    // also covers its deferred *variant* records, which carry no caption of their own and are
+    // meant to inherit the entry's.
+    val captionByComponentId: Map<String?, String?> = buildMap {
+      catalog.deferred.forEach { d ->
+        val id = d.componentId?.takeIf { it.isNotBlank() } ?: return@forEach
+        val caption = d.caption?.takeIf { it.isNotBlank() } ?: return@forEach
+        putIfAbsent(id, caption)
+      }
+      catalog.components.forEach { c ->
+        val id = c.componentId?.takeIf { it.isNotBlank() } ?: return@forEach
+        val caption = c.caption?.takeIf { it.isNotBlank() } ?: return@forEach
+        put(id, caption)
+      }
+    }
     val plannedImages =
       catalog.components.flatMap { component ->
         // The component's section/group tag every one of its previews (a component maps to one
@@ -602,7 +610,9 @@ class ServeCatalogStore(
           // A live-only record carries no caption of its own — the export writes one per COMPONENT
           // — so take the caption of the component it belongs to. Without this a component whose
           // only render is live is the one card on the sheet that cannot say what it is.
-          caption = captionByComponentId[record.componentId?.takeIf { it.isNotBlank() }],
+          caption =
+            record.caption?.takeIf { it.isNotBlank() }
+              ?: captionByComponentId[record.componentId?.takeIf { it.isNotBlank() }],
         )
     }
 
@@ -2201,6 +2211,14 @@ class ServeCatalogStore(
     val componentId: String? = null,
     val section: String? = null,
     val group: String? = null,
+    /**
+     * The authored caption, written straight onto the record for a **wholly** deferred component:
+     * such a component short-circuits before it is ever added to `components[]`
+     * (`generate-design-catalog.mjs`), so this is the only copy of it in the manifest. Its deferred
+     * *variant* records carry none — they inherit the entry's, which is why the caption lookup
+     * folds these records in.
+     */
+    val caption: String? = null,
     val state: String? = null,
     val theme: String? = null,
     val props: JsonObject? = null,
