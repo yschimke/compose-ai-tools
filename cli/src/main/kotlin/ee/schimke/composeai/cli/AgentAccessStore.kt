@@ -63,10 +63,26 @@ internal open class AgentAccessStore(
     val userCode: String = "",
     val approveUrl: String = "",
     val label: String = "",
+    /**
+     * The **approval window** — how long the human has to decide. Drives what `status` displays.
+     */
     val expiresAtMillis: Long = 0,
+    /**
+     * How long this record is worth *polling*, which is deliberately longer than the window above.
+     *
+     * The server retains an approved-but-uncollected request until its grant expires, precisely so
+     * that a decision made in the last seconds still reaches its agent. Dropping the device secret
+     * on the window's own deadline put the two halves out of step: the token was still there for
+     * the asking and the only thing that could ask had thrown itself away. Defaults to
+     * [expiresAtMillis] so a record written by an older CLI behaves exactly as it used to.
+     */
+    val retainUntilMillis: Long = expiresAtMillis,
   ) {
     fun secondsUntilExpiry(nowMillis: Long): Long =
       ((expiresAtMillis - nowMillis) / 1000).coerceAtLeast(0)
+
+    /** True once the human's window has closed — still worth one more poll, but not a wait. */
+    fun windowClosed(nowMillis: Long): Boolean = expiresAtMillis <= nowMillis
   }
 
   @Serializable
@@ -90,10 +106,13 @@ internal open class AgentAccessStore(
 
   fun tokenFor(origin: String): String? = entryFor(origin)?.token
 
-  /** Every un-collected request whose own deadline hasn't passed. */
+  /**
+   * Every un-collected request still worth polling — bounded by [Pending.retainUntilMillis], not by
+   * the human's approval window.
+   */
   fun allPending(): List<Pending> {
     val now = clock()
-    return read().pending.filter { it.expiresAtMillis > now }
+    return read().pending.filter { maxOf(it.retainUntilMillis, it.expiresAtMillis) > now }
   }
 
   /** The most recently opened un-collected request for [origin], or null. */
@@ -118,9 +137,17 @@ internal open class AgentAccessStore(
       val current = read()
       val kept =
         current.pending
-          .filter { it.expiresAtMillis > now && it.requestId != pending.requestId }
+          .filter {
+            maxOf(it.retainUntilMillis, it.expiresAtMillis) > now &&
+              it.requestId != pending.requestId
+          }
           .takeLast(MAX_PENDING - 1)
-      write(current.copy(pending = kept + pending.copy(origin = key)))
+      val retained =
+        pending.copy(
+          origin = key,
+          retainUntilMillis = maxOf(pending.retainUntilMillis, now + POLL_RETENTION_SECONDS * 1000),
+        )
+      write(current.copy(pending = kept + retained))
     }
   }
 
@@ -270,6 +297,13 @@ internal open class AgentAccessStore(
      * one, low enough that a runaway script cannot fill the file.
      */
     const val MAX_PENDING = 8
+
+    /**
+     * How long a remembered request stays worth polling after it was opened — the server's own hard
+     * ceiling on a grant's life ([ServeAgentGrantStore.HARD_MAX_GRANT_TTL_SECONDS]). Past it, any
+     * grant the request could have produced is expired anyway, so the record owes nobody.
+     */
+    const val POLL_RETENTION_SECONDS = 24 * 60 * 60L
 
     private val JSON = Json {
       ignoreUnknownKeys = true

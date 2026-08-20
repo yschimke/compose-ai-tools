@@ -233,8 +233,12 @@ class ServeAgentGrantStore(
     scope: ServeAgentGrantScope,
     ttlSeconds: Long,
   ): Grant? {
-    val request = request(id) ?: return null
     synchronized(this) {
+      // Lookup, expiry validation and the state transition all inside the lock. Split across it,
+      // a concurrent `purge()` — every poll and every `/status` runs one — could remove the entry
+      // between the two, after which this minted a grant and marked a *detached* object approved:
+      // the page said success and the agent's next poll found no map entry at all.
+      val request = request(id) ?: return null
       when (request.state) {
         Request.State.APPROVED -> return request.grantId?.let { grants[it] }
         Request.State.DENIED -> return null
@@ -269,8 +273,9 @@ class ServeAgentGrantStore(
 
   /** Deny [id]. Idempotent; a no-op on an already-approved request (the token is already out). */
   fun deny(id: String, deniedBy: String): Boolean {
-    val request = request(id) ?: return false
     synchronized(this) {
+      // Same reason as [approve]: the lookup belongs inside the lock that purging takes.
+      val request = request(id) ?: return false
       if (request.state != Request.State.PENDING) return false
       request.state = Request.State.DENIED
       request.resolvedBy = deniedBy
@@ -383,7 +388,10 @@ class ServeAgentGrantStore(
   }
 
   /** Drop every expired request and grant; returns how many went in total. */
-  fun purge(nowMillis: Long = clock()): Int {
+  fun purge(nowMillis: Long = clock()): Int = synchronized(this) { purgeLocked(nowMillis) }
+
+  /** Reentrant body of [purge]; the lock is what makes it safe against [approve] and [deny]. */
+  private fun purgeLocked(nowMillis: Long): Int {
     var dropped = 0
     requests.entries.removeIf { (_, r) ->
       // An approved request outlives its own deadline until its token has actually been fetched.

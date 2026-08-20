@@ -311,6 +311,32 @@ class ServeAgentGrantStoreTest {
   }
 
   @Test
+  fun `approving concurrently with a purge never mints an orphaned grant`() {
+    // The lookup used to sit outside the lock that purging takes, so a purge landing between the
+    // two could delete the entry while approve minted a grant and marked a detached object
+    // approved: the page said success, the agent's poll found nothing.
+    repeat(40) {
+      val store = store()
+      val request = store.ask(ttl = 600)
+      val results = java.util.concurrent.ConcurrentLinkedQueue<ServeAgentGrantStore.Grant?>()
+      val approver = Thread {
+        results += store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, 600)
+      }
+      val purger = Thread { repeat(20) { store.purge() } }
+      approver.start()
+      purger.start()
+      approver.join()
+      purger.join()
+      val grant = results.poll()
+      if (grant != null) {
+        // If it says it minted one, the agent must be able to collect it.
+        val polled = store.poll(request.id, request.deviceSecret)
+        assertTrue(polled is ServeAgentGrantStore.Poll.Approved, "orphaned grant: got $polled")
+      }
+    }
+  }
+
+  @Test
   fun `a pending request still dies on its own deadline`() {
     // The other half: nobody may approve a request whose window has closed.
     val store = store()

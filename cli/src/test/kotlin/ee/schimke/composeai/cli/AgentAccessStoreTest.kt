@@ -214,6 +214,41 @@ class AgentAccessStoreTest {
   }
 
   @Test
+  fun `a remembered request outlives its approval window so a late approval still lands`() {
+    // The server retains an approved-but-uncollected request until its grant expires, precisely so
+    // a decision made in the last seconds reaches its agent. Dropping the device secret on the
+    // window's own deadline put the two halves out of step.
+    store()
+      .savePending(
+        AgentAccessStore.Pending(
+          origin = "https://preview.coo.ee",
+          requestId = "late",
+          deviceSecret = "s",
+          expiresAtMillis = now + 600_000,
+        )
+      )
+    now += 601_000
+    val kept = store().pendingFor("https://preview.coo.ee")
+    assertNotNull(kept, "the device secret must survive the approval window")
+    assertTrue(kept.windowClosed(now), "…while still reporting the window as closed")
+  }
+
+  @Test
+  fun `a remembered request is finally dropped once no grant could still exist`() {
+    store()
+      .savePending(
+        AgentAccessStore.Pending(
+          origin = "https://preview.coo.ee",
+          requestId = "ancient",
+          deviceSecret = "s",
+          expiresAtMillis = now + 600_000,
+        )
+      )
+    now += (AgentAccessStore.POLL_RETENTION_SECONDS + 60) * 1000
+    assertNull(store().pendingFor("https://preview.coo.ee"))
+  }
+
+  @Test
   fun `the remembered-request pile is bounded`() {
     for (i in 1..20) {
       store()
@@ -230,7 +265,12 @@ class AgentAccessStoreTest {
   }
 
   @Test
-  fun `a remembered request expires with its own deadline`() {
+  fun `the approval window closes on its deadline even though the record is kept`() {
+    // This used to assert the record was *gone* at the deadline. It is deliberately kept now — the
+    // server holds an approved-but-uncollected request until its grant expires, so throwing the
+    // device secret away here stranded exactly the approvals that arrived just in time. What the
+    // deadline still governs is what a human is told: the window is closed, and `auth status` says
+    // so rather than counting down from zero.
     store()
       .savePending(
         AgentAccessStore.Pending(
@@ -241,7 +281,10 @@ class AgentAccessStoreTest {
         )
       )
     now += 61_000
-    assertTrue(store().allPending().isEmpty())
+    val kept = store().pendingFor("https://a.example")
+    assertNotNull(kept)
+    assertTrue(kept.windowClosed(now))
+    assertEquals(0, kept.secondsUntilExpiry(now))
   }
 
   @Test

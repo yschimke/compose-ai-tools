@@ -55,8 +55,16 @@ internal class AgentAccessClient(
   sealed interface Result<out T> {
     data class Ok<T>(val value: T) : Result<T>
 
-    /** [reason] is safe to print: it names the host and the status, never a secret. */
-    data class Err(val reason: String) : Result<Nothing>
+    /**
+     * [reason] is safe to print: it names the host and the status, never a secret.
+     *
+     * [retryAfterSeconds] carries the server's own `Retry-After` when it sent one. A poller that
+     * turned that into display text and then retried on its original cadence was arguing with a
+     * server that had just told it exactly when to come back — and on a host whose
+     * `--agent-grant-rate-limit` is below the polling rate it would exhaust its error budget before
+     * a single token refilled.
+     */
+    data class Err(val reason: String, val retryAfterSeconds: Long? = null) : Result<Nothing>
   }
 
   /** `POST /agent-access/request`. */
@@ -126,10 +134,12 @@ internal class AgentAccessClient(
         }
         val text = response.body?.string().orEmpty()
         if (!response.isSuccessful) {
-          val retry = response.header("Retry-After")?.let { " (retry after ${it}s)" }.orEmpty()
+          val retryAfter = response.header("Retry-After")?.trim()?.toLongOrNull()?.takeIf { it > 0 }
+          val retry = retryAfter?.let { " (retry after ${it}s)" }.orEmpty()
           return Result.Err(
             "$origin answered ${response.code}$retry" +
-              text.trim().takeIf { it.isNotEmpty() }?.let { ": ${it.take(300)}" }.orEmpty()
+              text.trim().takeIf { it.isNotEmpty() }?.let { ": ${it.take(300)}" }.orEmpty(),
+            retryAfterSeconds = retryAfter,
           )
         }
         Result.Ok(JSON.decodeFromString(serializer, text))

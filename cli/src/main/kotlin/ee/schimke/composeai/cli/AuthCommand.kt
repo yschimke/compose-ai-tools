@@ -287,6 +287,15 @@ internal class AuthCommand(
           }
         }
         is AgentAccessClient.Result.Err -> {
+          // A server that answered with `Retry-After` is not failing — it is scheduling us. Honour
+          // it, and don't spend an error on being told to wait: on a host whose
+          // `--agent-grant-rate-limit` is below this cadence, counting throttles as failures burned
+          // the whole budget before one token refilled.
+          val backoff = r.retryAfterSeconds
+          if (backoff != null) {
+            Thread.sleep(backoff.coerceIn(1, 60) * 1000)
+            continue
+          }
           // A transient network blip in the middle of a ten-minute wait should not throw away a
           // request a human may be about to approve, so retry a few times before giving up. The
           // count resets on any success, so it measures a run of failures rather than a total.
@@ -390,6 +399,14 @@ internal class AuthCommand(
       )
     }
     for (p in waiting) {
+      if (p.windowClosed(now)) {
+        // Kept and still polled: the server holds an approved-but-uncollected request until its
+        // grant expires, so a decision made in the last seconds of the window still lands here.
+        println(
+          "${p.origin} — approval window closed; still checking whether it was approved in time"
+        )
+        continue
+      }
       println(
         "${p.origin} — waiting for approval (${ServeAgentGrants.formatDuration(
           p.secondsUntilExpiry(now)
@@ -422,6 +439,14 @@ internal class AuthCommand(
           // Save first, drop the pending record only if that worked — the same order as the
           // waiting path, for the same reason: this record holds the only secret that can re-poll
           // for the token, and nothing here prints the token itself.
+          // Saving replaces this origin's entry, so a token already there is about to become
+          // unreachable — and it is still live on the server. Hand it back rather than orphaning
+          // it: two `--no-wait` requests for one host can both be approved, and the loser would
+          // otherwise sit there spending the operator's trust until it expired.
+          store
+            .entryFor(pending.origin)
+            ?.takeIf { it.token != token }
+            ?.let { superseded -> runCatching { client.revoke(superseded.token) } }
           val stored =
             store.save(
               AgentAccessStore.Entry(
@@ -480,8 +505,18 @@ internal class AuthCommand(
   private fun revoke() {
     val server = namedServer() ?: soleServer() ?: fail(NO_SERVER_MESSAGE)
     // A remembered-but-uncollected request is also access this machine asked for; revoking should
-    // leave nothing behind, including the thing that could still turn into a credential.
-    val hadPending = store.forgetPending(server)
+    // leave nothing behind, including the thing that could still turn into a credential. Asked
+    // before it is removed, because `forgetPending` returning false means *either* "there was none"
+    // *or* "the file could not be rewritten" — and reporting the second as the first told the user
+    // there was nothing to revoke while the device secret sat on disk, still collectable.
+    val hadPending = store.pendingFor(server) != null
+    val droppedPending = store.forgetPending(server)
+    if (hadPending && !droppedPending) {
+      fail(
+        "could not rewrite the credential file (see the warning above) — $server's pending access " +
+          "request is still on disk and a later `auth status` could still collect it."
+      )
+    }
     val entry = store.entryFor(server)
     if (entry == null) {
       println(
