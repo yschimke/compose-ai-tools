@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.22.0](https://github.com/yschimke/compose-ai-tools/compare/v1.21.0...v1.22.0) (2026-08-20)
+
+
+### Features
+
+* **deploy:** serve wear-m3-catalog on wear.preview.coo.ee ([#4296](https://github.com/yschimke/compose-ai-tools/issues/4296)) ([89244b2](https://github.com/yschimke/compose-ai-tools/commit/89244b2579c3240fc9cd0915da8e3d5a791e9c9b))
+* **design-artifacts:** publish a design reference on the ground its sticker stands on ([#4297](https://github.com/yschimke/compose-ai-tools/issues/4297)) ([c3273b8](https://github.com/yschimke/compose-ai-tools/commit/c3273b825a9e25ce2e38977d6f864f4af3a05f7a))
+* **serve:** browse a catalog's motion captures on one page ([#4276](https://github.com/yschimke/compose-ai-tools/issues/4276)) ([8c63796](https://github.com/yschimke/compose-ai-tools/commit/8c637961f5ee46dc63500457bc5163ca27eb3a5d))
+* **serve:** keep fetched catalog bytes across reloads and restarts ([#4303](https://github.com/yschimke/compose-ai-tools/issues/4303)) ([d484c8d](https://github.com/yschimke/compose-ai-tools/commit/d484c8d2f51826d99c8a58f1ef994665914b869c))
+* **serve:** publish a top-level site without a restart ([#4301](https://github.com/yschimke/compose-ai-tools/issues/4301)) ([2a1b2ff](https://github.com/yschimke/compose-ai-tools/commit/2a1b2ffaf080ad7ce6868eb21f11c178a5af0bbd))
+
+
+### Bug Fixes
+
+* **daemon:** run looper-scheduled work in a held interactive session ([#4293](https://github.com/yschimke/compose-ai-tools/issues/4293)) ([9eb73cd](https://github.com/yschimke/compose-ai-tools/commit/9eb73cd9bb0ac558ef5145b4cef9829181e497de))
+* **deploy:** restate caddy's CMD so the container starts at all ([#4305](https://github.com/yschimke/compose-ai-tools/issues/4305)) ([16ae58e](https://github.com/yschimke/compose-ai-tools/commit/16ae58e6beb1d3ddbeb87e64ec28dc37eadfd849))
+* **design-artifacts:** pool the split classpath for wear-m3 and remote-m3 ([#4275](https://github.com/yschimke/compose-ai-tools/issues/4275)) ([452a748](https://github.com/yschimke/compose-ai-tools/commit/452a748bf488b3f843a79b7c93cac1a99f2a5854))
+* **design-artifacts:** say when a pinned driver ignores reference-backdrop ([#4302](https://github.com/yschimke/compose-ai-tools/issues/4302)) ([c750649](https://github.com/yschimke/compose-ai-tools/commit/c7506495c7f2b871f9ee537046e95b6bfc68170c))
+* **figma-svg:** take every wear-m3-catalog SVG row above 99% ([#4304](https://github.com/yschimke/compose-ai-tools/issues/4304)) ([9076e61](https://github.com/yschimke/compose-ai-tools/commit/9076e619e6df80c226ce0a9585098be01c7ccb6b))
+* **preview:** diff a PR against the baseline for its own base, not the branch tip ([#4277](https://github.com/yschimke/compose-ai-tools/issues/4277)) ([25456da](https://github.com/yschimke/compose-ai-tools/commit/25456daf165ea38ff956291ca5718358a8cf43b6))
+* **serve:** fold a component's breakpoints onto one card ([#4279](https://github.com/yschimke/compose-ai-tools/issues/4279)) ([1a32f6c](https://github.com/yschimke/compose-ai-tools/commit/1a32f6ca6657609149af737582fdec1ff25fc45f))
+* **serve:** let the comparison wall be reported against its own catalog ([#4295](https://github.com/yschimke/compose-ai-tools/issues/4295)) ([623edfe](https://github.com/yschimke/compose-ai-tools/commit/623edfe5ce9f1164a31b08746c4bfc64bd1d646e))
+* **serve:** make the Theme dropdown's rows readable on a dark page ([#4300](https://github.com/yschimke/compose-ai-tools/issues/4300)) ([39bf40e](https://github.com/yschimke/compose-ai-tools/commit/39bf40e1f0a38a0d7249cef7e68cbfcdb0030e6e))
+* **serve:** paint live frames newest-wins ([#4298](https://github.com/yschimke/compose-ai-tools/issues/4298)) ([ae376d3](https://github.com/yschimke/compose-ai-tools/commit/ae376d300f0f1c73ba871fc836d17030f06f3019))
+* **serve:** regenerate the motion-browser fixture against current main ([#4292](https://github.com/yschimke/compose-ai-tools/issues/4292)) ([cd3fa06](https://github.com/yschimke/compose-ai-tools/commit/cd3fa0687f3847ab2f8bfb4b4f1357c9c34f9c8c))
+* **serve:** release a session lease and a live stream from a cancellable finally ([#4299](https://github.com/yschimke/compose-ai-tools/issues/4299)) ([b5d7dc5](https://github.com/yschimke/compose-ai-tools/commit/b5d7dc5b966b1b7f669918d61376e57c17588b5b))
+* **serve:** score a comparison over its drawn content, not the whole canvas ([#4294](https://github.com/yschimke/compose-ai-tools/issues/4294)) ([6426fb0](https://github.com/yschimke/compose-ai-tools/commit/6426fb0af90cd8dea3b61201449d7d582e94d6cd))
+* **serve:** stop a shut idle gate from parking theme optimisation forever ([#4288](https://github.com/yschimke/compose-ai-tools/issues/4288)) ([cd68db7](https://github.com/yschimke/compose-ai-tools/commit/cd68db7b6454cf5d69cb178196e91fe69528c907))
+
 ## [1.21.0](https://github.com/yschimke/compose-ai-tools/compare/v1.20.0...v1.21.0) (2026-08-19)
 
 
