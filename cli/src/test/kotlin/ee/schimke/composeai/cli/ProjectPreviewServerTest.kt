@@ -98,7 +98,14 @@ class ProjectPreviewServerTest {
     // GitHub token to whoever wrote that line.
     writeProperties("$SERVE_URL_PROPERTY=https://attacker.example\n")
     val resolved = resolveProjectServeUrl(root, env = { null }, fileSystem = fs)!!
-    val trust = confirmProjectServeHost(resolved, env = { null }, userHome = null, fileSystem = fs)
+    val trust =
+      confirmProjectServeHost(
+        resolved,
+        projectRoot = root,
+        env = { null },
+        userHome = null,
+        fileSystem = fs,
+      )
     val needs = trust as ServeUrlTrust.NeedsConfirmation
     assertTrue(needs.how.contains("attacker.example"), needs.how)
     assertTrue(needs.how.contains(SERVE_HOSTS_ENV), needs.how)
@@ -112,7 +119,13 @@ class ProjectPreviewServerTest {
       if (name == SERVE_HOSTS_ENV) "shots.example, preview.coo.ee" else null
     }
     assertTrue(
-      confirmProjectServeHost(resolved, env, userHome = null, fileSystem = fs)
+      confirmProjectServeHost(
+        resolved,
+        projectRoot = root,
+        env = env,
+        userHome = null,
+        fileSystem = fs,
+      )
         is ServeUrlTrust.Trusted
     )
   }
@@ -123,7 +136,13 @@ class ProjectPreviewServerTest {
     val resolved = resolveProjectServeUrl(root, env = { null }, fileSystem = fs)!!
     val env = { name: String -> if (name == SERVE_HOSTS_ENV) "preview.coo.ee" else null }
     assertTrue(
-      confirmProjectServeHost(resolved, env, userHome = null, fileSystem = fs)
+      confirmProjectServeHost(
+        resolved,
+        projectRoot = root,
+        env = env,
+        userHome = null,
+        fileSystem = fs,
+      )
         is ServeUrlTrust.NeedsConfirmation
     )
   }
@@ -138,7 +157,13 @@ class ProjectPreviewServerTest {
 
     val resolved = resolveProjectServeUrl(root, env = { null }, fileSystem = fs)!!
     assertTrue(
-      confirmProjectServeHost(resolved, env = { null }, userHome = userHome, fileSystem = fs)
+      confirmProjectServeHost(
+        resolved,
+        projectRoot = root,
+        env = { null },
+        userHome = userHome,
+        fileSystem = fs,
+      )
         is ServeUrlTrust.Trusted
     )
   }
@@ -155,16 +180,89 @@ class ProjectPreviewServerTest {
         fileSystem = fs,
       )!!
     assertTrue(
-      confirmProjectServeHost(flag, env = { null }, userHome = null, fileSystem = fs)
+      confirmProjectServeHost(
+        flag,
+        projectRoot = root,
+        env = { null },
+        userHome = null,
+        fileSystem = fs,
+      )
         is ServeUrlTrust.Trusted
     )
 
     val fromEnv =
       resolveProjectServeUrl(root, env = { "https://anywhere.example" }, fileSystem = fs)!!
     assertTrue(
-      confirmProjectServeHost(fromEnv, env = { null }, userHome = null, fileSystem = fs)
+      confirmProjectServeHost(
+        fromEnv,
+        projectRoot = root,
+        env = { null },
+        userHome = null,
+        fileSystem = fs,
+      )
         is ServeUrlTrust.Trusted
     )
+  }
+
+  @Test
+  fun `a gradle user home inside the checkout cannot confirm its own host`() {
+    // `GRADLE_USER_HOME=$PWD/.gradle` is a real CI cache layout. Under it a branch that commits
+    // both files would be confirming itself, which is the whole thing the gate prevents.
+    writeProperties("$SERVE_URL_PROPERTY=https://attacker.example\n")
+    val inCheckout = "/project/.gradle/gradle.properties".toPath()
+    fs.createDirectories(inCheckout.parent!!)
+    fs.write(inCheckout) { writeUtf8("$SERVE_URL_PROPERTY=https://attacker.example\n") }
+
+    val resolved = resolveProjectServeUrl(root, env = { null }, fileSystem = fs)!!
+    val env = { name: String -> if (name == "GRADLE_USER_HOME") "/project/.gradle" else null }
+    assertTrue(
+      confirmProjectServeHost(
+        resolved,
+        projectRoot = root,
+        env = env,
+        userHome = null,
+        fileSystem = fs,
+      )
+        is ServeUrlTrust.NeedsConfirmation,
+      "a confirmation file inside the checkout is not a confirmation",
+    )
+  }
+
+  @Test
+  fun `a gradle user home outside the checkout still confirms`() {
+    writeProperties("$SERVE_URL_PROPERTY=https://preview.coo.ee\n")
+    val outside = "/opt/ci-cache/gradle/gradle.properties".toPath()
+    fs.createDirectories(outside.parent!!)
+    fs.write(outside) { writeUtf8("$SERVE_URL_PROPERTY=https://preview.coo.ee\n") }
+
+    val resolved = resolveProjectServeUrl(root, env = { null }, fileSystem = fs)!!
+    val env = { name: String -> if (name == "GRADLE_USER_HOME") "/opt/ci-cache/gradle" else null }
+    assertTrue(
+      confirmProjectServeHost(
+        resolved,
+        projectRoot = root,
+        env = env,
+        userHome = null,
+        fileSystem = fs,
+      )
+        is ServeUrlTrust.Trusted
+    )
+  }
+
+  @Test
+  fun `a refusal never echoes credentials that were in the url`() {
+    writeProperties("$SERVE_URL_PROPERTY=https://user:hunter2@attacker.example\n")
+    val resolved = resolveProjectServeUrl(root, env = { null }, fileSystem = fs)!!
+    val needs =
+      confirmProjectServeHost(
+        resolved,
+        projectRoot = root,
+        env = { null },
+        userHome = null,
+        fileSystem = fs,
+      )
+        as ServeUrlTrust.NeedsConfirmation
+    assertTrue("hunter2" !in needs.how, needs.how)
   }
 
   @Test

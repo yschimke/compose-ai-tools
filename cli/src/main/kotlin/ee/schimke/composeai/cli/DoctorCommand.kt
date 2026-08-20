@@ -648,13 +648,17 @@ class DoctorCommand(
           id = "project.preview-server",
           category = "project",
           status = "error",
-          message = "preview server URL is unusable: ${configured.url}",
+          // Redacted: a URL is refused *because* it carries credentials, and this message is where
+          // that URL would otherwise reach a terminal, a CI log and --json output.
+          message =
+            "preview server URL is unusable: ${ServeImageUploader.redactedUrl(configured.url)}",
           detail = "Source: ${configured.source.display}. $refusal",
         )
       )
       return
     }
-    val trust = confirmProjectServeHost(configured, fileSystem = fileSystem)
+    val trust =
+      confirmProjectServeHost(configured, projectRoot = projectDir, fileSystem = fileSystem)
     if (trust is ServeUrlTrust.NeedsConfirmation) {
       addCheck(
         DoctorCheck(
@@ -665,7 +669,8 @@ class DoctorCommand(
           // upload they may be expecting.
           status = "warning",
           message =
-            "this project names ${configured.url}, unconfirmed — share-preview won't use it",
+            "this project names ${ServeImageUploader.redactedUrl(configured.url)}, unconfirmed " +
+              "— share-preview won't use it",
           detail = trust.how,
         )
       )
@@ -676,7 +681,7 @@ class DoctorCommand(
         id = "project.preview-server",
         category = "project",
         status = "ok",
-        message = "share-preview uploads to ${configured.url}",
+        message = "share-preview uploads to ${ServeImageUploader.redactedUrl(configured.url)}",
         detail =
           "Source: ${configured.source.display}. This is what `share-preview` uses unless " +
             "--mechanism says otherwise. An uploaded image is readable by anyone holding its " +

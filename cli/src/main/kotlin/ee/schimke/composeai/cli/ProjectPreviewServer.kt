@@ -101,13 +101,16 @@ internal const val SERVE_HOSTS_ENV = "COMPOSE_PREVIEW_SERVE_HOSTS"
  *   image or agent sandbox says "these hosts are ours" once, for every repo it will ever check out;
  * - `$COMPOSE_PREVIEW_SERVE_URL` naming the same host;
  * - the **user-level** `gradle.properties` (`$GRADLE_USER_HOME` or `~/.gradle`) naming the same
- *   host — a developer's own machine config, which no checkout can write.
+ *   host — a developer's own machine config, which no checkout can write. Unless it can:
+ *   `GRADLE_USER_HOME=$PWD/.gradle` is a real CI cache layout, so a gradle home resolving inside
+ *   the project root is ignored rather than believed.
  *
  * Comparison is on the **host** alone, exactly, so `preview.coo.ee.evil.example` does not pass as
  * `preview.coo.ee`. Port and path are not compared: whoever operates a host operates its ports.
  */
 internal fun confirmProjectServeHost(
   resolved: ResolvedServeUrl,
+  projectRoot: File? = null,
   env: (String) -> String? = System::getenv,
   userHome: String? = System.getProperty("user.home"),
   fileSystem: FileSystem = SystemFileSystem,
@@ -119,7 +122,9 @@ internal fun confirmProjectServeHost(
       entry.trim().lowercase().takeIf { it.isNotEmpty() }?.let(::add)
     }
     env(SERVE_URL_ENV)?.let { hostOf(it)?.let(::add) }
-    userGradlePropertiesServeUrl(env, userHome, fileSystem)?.let { hostOf(it)?.let(::add) }
+    userGradlePropertiesServeUrl(env, userHome, projectRoot, fileSystem)?.let {
+      hostOf(it)?.let(::add)
+    }
   }
   return if (host in allowed) ServeUrlTrust.Trusted(resolved) else needsConfirmation(resolved)
 }
@@ -133,7 +138,7 @@ private fun needsConfirmation(resolved: ResolvedServeUrl): ServeUrlTrust.NeedsCo
       "would let a pull request redirect your GitHub token. Confirm the host once, from outside " +
       "the repo:" +
       "\n  export $SERVE_HOSTS_ENV=$host        (this machine / CI image trusts that host)" +
-      "\n  or pass --serve-url ${resolved.url}  (just this run)",
+      "\n  or pass --serve-url ${ServeImageUploader.redactedUrl(resolved.url)}  (just this run)",
   )
 }
 
@@ -144,12 +149,35 @@ private fun needsConfirmation(resolved: ResolvedServeUrl): ServeUrlTrust.NeedsCo
 private fun userGradlePropertiesServeUrl(
   env: (String) -> String?,
   userHome: String?,
+  projectRoot: File?,
   fileSystem: FileSystem,
 ): String? {
   val gradleHome =
     env("GRADLE_USER_HOME")?.let(::File) ?: userHome?.let { File(it, ".gradle") } ?: return null
+  // `GRADLE_USER_HOME=$PWD/.gradle` is a real CI cache layout, and under it a branch that commits
+  // both `gradle.properties` and `.gradle/gradle.properties` would be confirming itself — the
+  // checkout supplying its own trust, which is the one thing this mechanism exists to prevent.
+  // Compared canonically, so a symlink out of the tree and back in cannot launder it.
+  if (projectRoot != null && gradleHome.isInside(projectRoot)) return null
   return readGradleProperty(gradleHome, SERVE_URL_PROPERTY, fileSystem)?.normalizedUrl()
 }
+
+/** Whether this path is [parent] or sits beneath it, with symlinks resolved on both sides. */
+private fun File.isInside(parent: File): Boolean {
+  val here = canonicalOrAbsolute().path
+  val root = parent.canonicalOrAbsolute().path
+  return here == root || here.startsWith(root + File.separator)
+}
+
+/**
+ * The canonical path, falling back to the absolute one. Canonicalisation touches the filesystem and
+ * can fail (a missing directory, a permission error); "couldn't canonicalise" must not become
+ * "isn't inside the checkout", so the fallback still catches the plain `$PWD/.gradle` case.
+ */
+private fun File.canonicalOrAbsolute(): File = runCatching {
+  canonicalFile
+}
+  .getOrElse { absoluteFile }
 
 /** Lowercased host of [url], or null when it isn't a URL with one. */
 internal fun hostOf(url: String): String? = runCatching {

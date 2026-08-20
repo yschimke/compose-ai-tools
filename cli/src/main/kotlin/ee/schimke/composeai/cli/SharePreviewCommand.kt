@@ -96,7 +96,9 @@ class SharePreviewCommand(
    * that reviewing somebody's branch and running the ordinary `share-preview` sends them a
    * repository-scoped GitHub token.
    */
-  private val serveTrust: ServeUrlTrust? = resolvedServeUrl?.let { confirmProjectServeHost(it) }
+  private val serveTrust: ServeUrlTrust? = resolvedServeUrl?.let {
+    confirmProjectServeHost(it, projectRoot = findGradleProjectRoot())
+  }
 
   private val serveUrl: String?
     get() = (serveTrust as? ServeUrlTrust.Trusted)?.resolved?.url
