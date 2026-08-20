@@ -195,6 +195,15 @@ class RenderEngine(
     // previews per JVM, so the flag is a whole-session property here rather than a per-request one;
     // re-applying it per render is idempotent and costs a `getProperty`. Unset (default) is silent.
     LinkBufferComposer.applyAndDescribe(classLoader)?.let(System.err::println)
+    // Drop pseudolocalised string items a previous render left in CMP's process-wide cache before
+    // this one composes — a no-op unless this render is leaving pseudolocale mode. **First
+    // statement in `render`, ahead of the special-mode dispatches below**: `scroll-long` /
+    // `scroll-gif` / `figma-svg-long` / Lottie all return before `setUp`, and each composes the
+    // user's preview in this same JVM, so a guard placed after them would leave a stitched PNG or
+    // GIF rendering accented text at no locale at all (#4384 review). [enterPreviewLocale] runs
+    // the same guard for every path that does compose through a locale scope, held frames
+    // included; both are the one idempotent state machine.
+    guardPseudolocaleStringCache(spec.localeTag)
     // Issue #1604 — scroll-scenario dispatch. When the dispatcher's `data/fetch` re-render path
     // queues `mode=scroll-long` / `scroll-gif` (because the `ScrollDataProductRegistry` advertised
     // the kind as `requiresRerender = true` and the artefact was missing), leave the single-frame
@@ -363,9 +372,6 @@ class RenderEngine(
     val previousContext = Thread.currentThread().contextClassLoader
     Thread.currentThread().contextClassLoader = classLoader
 
-    // Drop any pseudolocalised string items a previous render left in CMP's process-wide cache
-    // before this one composes; a no-op unless this render is leaving pseudolocale mode.
-    guardPseudolocaleStringCache(spec.localeTag)
     val localeProviders = localeProviders(spec.localeTag)
     val themeFallbackCapture =
       if (previewContextCapture?.shouldCapture(spec.previewId, spec.renderMode) == true) {
@@ -1941,10 +1947,12 @@ class RenderEngine(
     }
 
     /**
-     * Whether the *previous* render in this JVM composed under a pseudolocale, so
+     * Whether anything has composed under a pseudolocale since the last clear, so
      * [guardPseudolocaleStringCache] knows when the process-wide CMP string cache is holding
-     * transformed values. One daemon renders sequentially, and the flag is only ever read and
-     * written on the render path, so a plain `@Volatile` boolean is enough.
+     * transformed values. Any composition arms it, not just the start of a render — a held
+     * interactive scene keeps composing new strings between one-shot renders, and those refill the
+     * same cache. Renders are serialised by the locale gate and this is only touched on that path,
+     * so a plain `@Volatile` boolean is enough.
      */
     @Volatile private var lastRenderWasPseudolocale: Boolean = false
 
@@ -1963,6 +1971,10 @@ class RenderEngine(
      * composable's entry clear covers a mode switch between `en-XA` and `ar-XB` — and nothing at
      * all in the ordinary case where no pseudolocale render has happened yet, so a daemon that
      * never renders one keeps its warm cache.
+     *
+     * Called from two places, both idempotent: the first statement of [render] (which covers the
+     * scroll / Lottie / long-SVG modes that return before any locale scope is entered) and
+     * [enterPreviewLocale] (which covers every composition, held frames included).
      */
     internal fun guardPseudolocaleStringCache(localeTag: String?): Boolean {
       val isPseudolocale =
@@ -2065,6 +2077,14 @@ class RenderEngine(
      * wait would deadlock against the executor thread that needs it.
      */
     internal fun enterPreviewLocale(localeTag: String?): PreviewLocaleScope {
+      // Every composition — a one-shot render, a held session's per-frame recomposition, a scroll
+      // drive — enters through here, which makes it the seam where "did anything pseudolocalised
+      // compose since the last clear?" is actually true. Arming only at the start of `render`
+      // missed a held `en-XA` scene: an ordinary render in between cleared the flag, then the next
+      // interaction composed a string the cache had never seen and refilled it with transformed
+      // text under a flag that now said otherwise, so the render after that skipped its clear
+      // (#4384 review).
+      guardPseudolocaleStringCache(localeTag)
       val effectiveTag = effectiveLocaleTag(localeTag)
       if (effectiveTag == null) {
         localeGate.readLock().lock()

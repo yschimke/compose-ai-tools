@@ -78,6 +78,45 @@ class RenderEngineLocaleTest {
     )
   }
 
+  /**
+   * A held pseudolocale scene keeps composing between one-shot renders (#4384 review). Arming the
+   * flag only when a render *starts* left this hole: an ordinary render clears and disarms, then an
+   * interaction on the still-open `en-XA` session composes a string the cache has never seen and
+   * refills it with transformed text — under a flag that now says no pseudolocale is in play — so
+   * the next ordinary render skips its clear and reads accented text.
+   *
+   * [RenderEngine.enterPreviewLocale] is the seam every composition passes through (one-shot
+   * render, held frame, scroll drive), so arming there makes the flag mean "something
+   * pseudolocalised has composed since the last clear", which is the property the guard needs.
+   */
+  @Test
+  fun aHeldPseudolocaleFrameReArmsTheCacheGuardAfterAnOrdinaryRenderCleared() {
+    // Settle to a known state: whatever ran before, one ordinary pass leaves the flag disarmed.
+    RenderEngine.guardPseudolocaleStringCache(null)
+
+    // A held `en-XA` scene composes a frame, then an ordinary render clears and disarms.
+    RenderEngine.enterPreviewLocale("en-XA").close()
+    assertTrue(
+      "the ordinary render after a held pseudolocale frame must clear",
+      RenderEngine.guardPseudolocaleStringCache(null),
+    )
+
+    // The session is still open: a later interaction composes again, refilling the cache…
+    RenderEngine.enterPreviewLocale("ar-XB").close()
+    // …so the next ordinary render has to clear again. Before the fix this returned false.
+    assertTrue(
+      "a held scene that composed again must re-arm the guard",
+      RenderEngine.guardPseudolocaleStringCache(null),
+    )
+
+    // An ordinary held frame is not a pseudolocale one, so it must not arm anything.
+    RenderEngine.enterPreviewLocale(null).close()
+    assertFalse(
+      "an unlocalized composition must leave the cache alone",
+      RenderEngine.guardPseudolocaleStringCache(null),
+    )
+  }
+
   @Test
   fun overrideAndRestoreRoundTripsTheJvmDefaultLocale() {
     val original = Locale.getDefault()
