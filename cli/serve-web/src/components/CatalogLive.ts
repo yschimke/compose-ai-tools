@@ -25,6 +25,7 @@ import { whenParsed } from "../dom/whenParsed.js";
 import {
     FrameQueue,
     frameBlob,
+    pumpFrames,
     shouldPaintDecodedFrame,
     type ServeFrame,
 } from "../live/framePainter.js";
@@ -326,16 +327,15 @@ export class CatalogLive extends LitElement {
     private runFrameLoop(session: Session): void {
         if (session.painting) return;
         session.painting = true;
-        const tick = (): void => {
-            if (this.active !== session) {
+        pumpFrames({
+            alive: () => {
+                if (this.active === session) return true;
                 session.painting = false;
-                return;
-            }
-            const frame = session.frames.dispatch();
-            if (frame) this.decodeAndPaint(session, frame);
-            requestAnimationFrame(tick);
-        };
-        requestAnimationFrame(tick);
+                return false;
+            },
+            next: () => session.frames.dispatch(),
+            paint: (frame) => this.decodeAndPaint(session, frame),
+        });
     }
 
     private decodeAndPaint(session: Session, frame: ServeFrame): void {

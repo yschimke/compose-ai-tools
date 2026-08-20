@@ -16,6 +16,7 @@ import type { RcPlayer, RemoteContext } from "./rc/player.js";
 import {
     FrameQueue,
     frameBlob,
+    pumpFrames,
     shouldPaintDecodedFrame,
     type ServeFrame,
 } from "./live/framePainter.js";
@@ -1212,6 +1213,7 @@ document.querySelectorAll<HTMLElement>(".cp-copyimg").forEach(function (btn) {
 var frameQueue = new FrameQueue();
 var paintedSeq = -1;
 var frameLoopRunning = false;
+var frameLoopGeneration = 0;
 
 /**
  * Begin painting for a freshly-opened socket. Called once per connection, so it resets the
@@ -1223,13 +1225,22 @@ function startFrameLoop() {
     paintedSeq = -1;
     if (frameLoopRunning) return;
     frameLoopRunning = true;
-    var tick = function () {
-        if (!frameLoopRunning) return;
-        var frame = frameQueue.dispatch();
-        if (frame) decodeAndPaint(frame);
-        requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
+    // Each start owns a generation, so a stop immediately followed by a start cannot leave two
+    // pumps racing: the previous chain's next tick sees a generation that is no longer current and
+    // retires. Without it, `stopFrameLoop` + `startFrameLoop` inside one animation frame would let
+    // the already-scheduled tick observe the flag back at true and keep pumping alongside the new
+    // one — two chains draining one queue, each stealing frames from the other.
+    frameLoopGeneration++;
+    var generation = frameLoopGeneration;
+    pumpFrames({
+        alive: function () {
+            return frameLoopRunning && generation === frameLoopGeneration;
+        },
+        next: function () {
+            return frameQueue.dispatch();
+        },
+        paint: decodeAndPaint,
+    });
 }
 
 function stopFrameLoop() {

@@ -268,6 +268,29 @@ class CatalogBlobPoolTest {
   }
 
   @Test
+  fun `re-keying bytes that are already held refreshes them against the sweeper`() {
+    // The republish case, and the common one: a regenerated catalog carries mostly byte-identical
+    // assets at a NEW commit, so every unchanged asset's fresh URL dedupes onto the blob already
+    // here. Without a stamp that blob keeps the time it was FIRST written, and the next sweep
+    // evicts precisely the assets that are current.
+    val now = AtomicLong(1_000_000L)
+    val pool = CatalogBlobPool(root(), maxBytes = 0, graceMillis = 60_000, clock = { now.get() })
+    val bytes = "an unchanged asset".toByteArray()
+    val old = "https://raw.githubusercontent.com/o/r/${"a".repeat(40)}/images/button.png"
+    val fresh = "https://raw.githubusercontent.com/o/r/${"b".repeat(40)}/images/button.png"
+    pool.write(old, bytes)
+
+    // Long enough that the blob's original stamp is outside the grace window…
+    now.addAndGet(120_000)
+    // …then the same bytes are admitted under the new revision's URL.
+    pool.write(fresh, bytes)
+    val snapshot = pool.sweep()
+
+    assertEquals(0, snapshot.evicted, "a blob just re-admitted under a new key is not stale")
+    assertContentEquals(bytes, assertNotNull(pool.read(fresh)))
+  }
+
+  @Test
   fun `sweep reclaims oldest-first down to the cap`() {
     val now = AtomicLong(1_000_000L)
     val pool = CatalogBlobPool(root(), maxBytes = 200, graceMillis = 0, clock = { now.get() })

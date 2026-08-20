@@ -80,6 +80,52 @@ export function shouldPaintDecodedFrame(
 }
 
 /**
+ * Drain one frame per animation frame, for as long as [alive] says this stream is the live one.
+ *
+ * Both lanes ran this loop inline, and both re-armed the animation frame *after* painting with
+ * nothing around the paint. That made a single throw terminal: `frameBlob` throws on a payload
+ * `atob` will not decode, the tick unwound before its `requestAnimationFrame`, and the chain was
+ * simply never scheduled again — while the socket stayed open, frames kept arriving, and the badge
+ * kept saying Live. Worse, the "am I already running?" flag both callers guard on was still set, so
+ * nothing could restart the loop for the life of the page: the stage sat on the last frame it
+ * managed to paint until a reload. That is issue #4313 — a live indeterminate progress indicator
+ * frozen mid-sweep about a second into the stream.
+ *
+ * The `finally` is the whole fix: a tick that throws loses its own frame and nothing else. The pump
+ * exits on exactly one condition — [alive] going false — which is what the callers' stop paths
+ * already set, so the flag and the chain can no longer disagree about whether painting is running.
+ *
+ * [schedule] is injectable so the loop is testable without a browser; it defaults to
+ * `requestAnimationFrame`. [onError] is for the caller's own diagnostics — the pump itself treats a
+ * failed paint as a dropped frame, because the next frame repaints the stage anyway.
+ */
+export function pumpFrames(opts: {
+    alive: () => boolean;
+    next: () => ServeFrame | null;
+    paint: (frame: ServeFrame) => void;
+    schedule?: (cb: () => void) => void;
+    onError?: (error: unknown) => void;
+}): void {
+    const schedule =
+        opts.schedule ??
+        function (cb: () => void) {
+            requestAnimationFrame(cb);
+        };
+    const tick = function () {
+        if (!opts.alive()) return;
+        try {
+            const frame = opts.next();
+            if (frame) opts.paint(frame);
+        } catch (error) {
+            opts.onError?.(error);
+        } finally {
+            schedule(tick);
+        }
+    };
+    schedule(tick);
+}
+
+/**
  * A frame's bytes as a `Blob`, for `createImageBitmap`.
  *
  * `createImageBitmap` rather than an `Image` + `data:` URL because it decodes off the main thread
@@ -88,11 +134,21 @@ export function shouldPaintDecodedFrame(
  *
  * A frame with no payload is an `unchanged` heartbeat and has nothing to decode; callers get null
  * and skip the paint entirely rather than decoding an empty buffer.
+ *
+ * A payload `atob` refuses (truncated or otherwise not base64) is treated the same way — null, one
+ * dropped frame — rather than thrown at the caller. [pumpFrames] survives the throw either way; the
+ * point of catching it here is that "this frame is unpaintable" is this function's own answer to
+ * give, and it is the shape every caller already handles.
  */
 export function frameBlob(frame: ServeFrame): Blob | null {
     const b64 = frame.dataBase64;
     if (!b64) return null;
-    const binary = atob(b64);
+    let binary: string;
+    try {
+        binary = atob(b64);
+    } catch {
+        return null;
+    }
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
     return new Blob([bytes], { type: `image/${frame.codec || "png"}` });

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
     FrameQueue,
     frameBlob,
+    pumpFrames,
     shouldPaintDecodedFrame,
     type ServeFrame,
 } from "../src/live/framePainter.js";
@@ -100,11 +101,88 @@ describe("frameBlob", () => {
         assert.equal(frameBlob({ seq: 1, dataBase64: "" }), null);
     });
 
+    it("returns null for a payload atob refuses, rather than throwing", () => {
+        // The throw this replaces killed the whole paint loop, not just its frame (issue #4313).
+        assert.equal(
+            frameBlob({ seq: 1, dataBase64: "!!!not-base64!!!" }),
+            null,
+        );
+    });
+
     it("decodes base64 to the original bytes", async () => {
         const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]);
         const b64 = Buffer.from(bytes).toString("base64");
         const blob = frameBlob({ seq: 1, dataBase64: b64 });
         assert.ok(blob);
         assert.deepEqual(new Uint8Array(await blob.arrayBuffer()), bytes);
+    });
+});
+
+describe("pumpFrames", () => {
+    /** Runs the pump's scheduled ticks by hand, so a "frame" is a call rather than a wait. */
+    function harness(frames: Array<ServeFrame | null>) {
+        const scheduled: Array<() => void> = [];
+        const painted: number[] = [];
+        const errors: unknown[] = [];
+        let alive = true;
+        const pending = frames.slice();
+        return {
+            painted,
+            errors,
+            stop: () => {
+                alive = false;
+            },
+            /** Run one animation frame; returns false once the pump has retired. */
+            step(): boolean {
+                const next = scheduled.shift();
+                if (!next) return false;
+                next();
+                return true;
+            },
+            start(paint: (frame: ServeFrame) => void) {
+                pumpFrames({
+                    alive: () => alive,
+                    next: () => pending.shift() ?? null,
+                    paint: (frame) => {
+                        painted.push(frame.seq);
+                        paint(frame);
+                    },
+                    schedule: (cb) => {
+                        scheduled.push(cb);
+                    },
+                    onError: (e) => errors.push(e),
+                });
+            },
+        };
+    }
+
+    it("keeps pumping after a paint throws", () => {
+        // Issue #4313: `frameBlob` throwing on a payload `atob` refused unwound the tick before it
+        // re-armed, and the lane never painted again — socket open, frames arriving, stage frozen.
+        const h = harness([frame(1), frame(2), frame(3)]);
+        h.start((f) => {
+            if (f.seq === 2) throw new Error("undecodable frame");
+        });
+        for (let i = 0; i < 4; i++) h.step();
+        assert.deepEqual(h.painted, [1, 2, 3]);
+        assert.equal(h.errors.length, 1);
+    });
+
+    it("retires only when the caller says it is no longer live", () => {
+        const h = harness([frame(1), frame(2)]);
+        h.start(() => {});
+        assert.equal(h.step(), true);
+        h.stop();
+        assert.equal(h.step(), true); // the tick that observes the stop…
+        assert.equal(h.step(), false); // …and re-arms nothing after it
+        assert.deepEqual(h.painted, [1]);
+    });
+
+    it("skips the paint on an empty queue without retiring", () => {
+        const h = harness([null, frame(7)]);
+        h.start(() => {});
+        h.step();
+        h.step();
+        assert.deepEqual(h.painted, [7]);
     });
 });

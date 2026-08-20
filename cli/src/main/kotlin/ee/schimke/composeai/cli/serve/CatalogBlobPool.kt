@@ -226,7 +226,16 @@ class CatalogBlobPool(
     misses.increment()
     val sha = sha256Hex(bytes)
     val blob = File(contentDir, sha)
-    if (!blob.isFile && store(bytes, sha) == null) return
+    if (blob.isFile) {
+      // Already held under some other key — the overwhelmingly common case on a republish, where a
+      // regenerated catalog carries mostly byte-identical assets at a NEW commit, so every
+      // unchanged asset's fresh URL dedupes onto the blob that is already here. Stamping it is
+      // what makes that a refresh rather than a silent ageing: without it the blob keeps the time
+      // it was first written, and the next sweep can evict precisely the assets that are current.
+      stamp(blob)
+    } else if (store(bytes, sha) == null) {
+      return
+    }
     writeAtomically(File(keysDir, sha256Hex(key.toByteArray())), sha.toByteArray())
   }
 
