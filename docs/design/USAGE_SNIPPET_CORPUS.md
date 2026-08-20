@@ -186,7 +186,7 @@ rather than guessing. And the pages are **not** framable, so this is a list of l
 docs tab the issue asked about; the links sit under the code that names them.
 
 The measurement is the same shape as this document's: run against 244 live snippets from every
-catalog on the public host, it produced 220 distinct pages and no 404s. `ApiDocLinksTest` pins the
+catalog on the public host, it produced 227 distinct pages and no 404s. `ApiDocLinksTest` pins the
 call-site shapes that got it there — each one a page shape that was wrong before it was added.
 
 ## Running it in CI
