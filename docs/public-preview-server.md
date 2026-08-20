@@ -2637,6 +2637,19 @@ tier; they are not two views of one number, and reading them as one would make a
 look inconsistent. What says the feature is working is either of them climbing while
 `branchFetch.attempted` flattens across a restart.
 
+Read **`durable`** and **`adopted`** first, because they are the two that separate a working cache
+from a decoration. Everything else on this row looks the same either way: a temp-dir pool fills,
+serves within-process hits and reports climbing writes, right up until the container is recreated
+and none of it is there. `durable: false` on a deployed box means the bytes are being paid for and
+thrown away — set `SERVE_CATALOG_CACHE_DIR` to a mounted volume. `adopted` is what was already on
+disk when the process opened the pool, so `0` after a roll that should have found a warm volume is
+the failure, and it is invisible in every other field.
+
+That distinction is not hypothetical. The image's compose file defaults `SERVE_CATALOG_CACHE_DIR` to
+the `/catalog-cache` volume, but an already-deployed box keeps its own copy of that file: the
+auto-update path rolls the **image**, never the compose. A server can therefore take every release
+of this feature and still be running the cache in `/tmp`.
+
 `corrupt` above zero says a volume is losing bytes, since every blob is named by its own digest and
 re-verified on read. `blobs`/`bytes` against `maxBytes` says whether the sweeper is keeping up —
 both are published by the last sweep rather than censused per request, so they lag a write by at
