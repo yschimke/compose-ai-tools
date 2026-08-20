@@ -1845,11 +1845,12 @@ data class FigmaSvgModel(
      * - the **root** frame is never dropped (it anchors the canvas); only its descendants collapse.
      * - a grouping node with **2+ children** is kept — it genuinely groups siblings, so it's real
      *   structure, not a redundant nesting level.
-     * - a node that **clips its children** is kept, because it is not pass-through: the "removing
-     *   it moves nothing" argument above holds only for a `<g>` that carries no clip. Wear's
-     *   `Slider` is the case that proves it — its container is a `clip(RoundedCornerShape(26.dp))`
-     *   wrapper around the single node that fills it, so collapsing the wrapper threw the pill away
-     *   and exported a sharp-cornered bar.
+     * - a node whose clip would actually **mask** something is kept, because that one is not
+     *   pass-through: the "removing it moves nothing" argument above holds only for a `<g>` that
+     *   carries no *effective* clip. Wear's `Slider` is the case that proves it — its container is
+     *   a `clip(RoundedCornerShape(26.dp))` wrapper around the single node that fills it, so
+     *   collapsing the wrapper threw the pill away and exported a sharp-cornered bar. A clip that
+     *   removes no pixels still collapses, so the common case gains no nesting.
      */
     private fun collapsePassthroughGroups(root: FigmaSvgLayer): FigmaSvgLayer =
       root.copy(children = root.children.map { it.collapseSubtree() })
@@ -1863,11 +1864,35 @@ data class FigmaSvgModel(
     }
 
     /**
-     * A layer that neither paints ([FigmaSvgLayer.paints]), casts a shadow, nor masks its children
-     * — pure nesting, and safe to drop.
+     * A layer that neither paints ([FigmaSvgLayer.paints]), casts a shadow, nor masks anything —
+     * pure nesting, and safe to drop.
      */
     private val FigmaSvgLayer.isPassthroughGroup: Boolean
-      get() = !paints && elevationPx == 0.0 && !clipChildren
+      get() = !paints && elevationPx == 0.0 && !masksAnything
+
+    /**
+     * True when this layer's `Modifier.clip` would actually remove pixels, so dropping the layer
+     * would drop the mask with it.
+     *
+     * Deliberately the *conservative* half of the renderer's own test
+     * (`FigmaLayeredSvg.clipsAnyDescendant`): a **shaped** clip trims the corners of any child that
+     * merely fills the box, so it always counts, while a rectangular one only trims a child that
+     * overflows. Over-keeping costs a bare `<g>`; under-keeping loses geometry the render applied,
+     * so the shaped case errs toward keeping. The renderer still decides whether to emit a
+     * `<clipPath>`, so a kept-but-inert wrapper adds no clip attribute — only the nesting level.
+     */
+    private val FigmaSvgLayer.masksAnything: Boolean
+      get() {
+        if (!clipChildren) return false
+        if (cornerRadiiPx != null || circle || cut || shapePathData != null) return true
+        fun overflows(l: FigmaSvgLayer): Boolean =
+          l.left < left ||
+            l.top < top ||
+            l.right > right ||
+            l.bottom > bottom ||
+            l.children.any(::overflows)
+        return children.any(::overflows)
+      }
 
     /**
      * The node's captured [LayoutInspectorNode.bounds], or — only for the exact all-zero
