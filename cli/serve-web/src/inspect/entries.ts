@@ -1,8 +1,8 @@
 // What the inspection layers draw, decided before any DOM exists.
 //
-// Three sources feed one list of boxes: the accessibility hierarchy (what a screen reader sees),
-// and two kinds of design annotation (typography, theme). Turning them into entries is where all
-// the judgement is, and almost none of it is visible in a screenshot — a rectangle drawn over a
+// Two sources feed one list of boxes: the accessibility hierarchy (what a screen reader sees), and
+// three kinds of design annotation (typography, theme, layout). Turning them into entries is where
+// all the judgement is, and almost none of it is visible in a screenshot — a rectangle drawn over a
 // component looks equally right whether it is the correct node, a duplicate of its parent, or a
 // finding that was silently dropped.
 //
@@ -325,7 +325,29 @@ export function typographyDetail(annotation: Annotation): string {
     return [spec.token, face || undefined, size].filter(Boolean).join(" · ");
 }
 
-/** Typography / theme entries, straight off the shared design-annotation payload. */
+/**
+ * The annotation's whole structured payload, as `key value` pairs — the theme and layout layers'
+ * tooltip (#4328).
+ *
+ * The compact row can only carry the handful of tokens that fit on one line, and before this the
+ * rest of `detail` was parsed and then thrown away: a render whose capture resolved a shadow, an
+ * effective alpha, a gradient's stops or a per-edge padding showed none of them anywhere in the
+ * viewer. Values are already formatted server-side (`"16.0dp"`, `"#FF6750A4"`), so this only has to
+ * order and join them; `box` is skipped because the row's own wording already says which rectangle
+ * is being described.
+ */
+export function annotationTooltip(annotation: Annotation): string {
+    const detail = annotation.detail ?? {};
+    return Object.entries(detail)
+        .filter(
+            ([key, value]) =>
+                key !== "box" && value !== undefined && value !== null,
+        )
+        .map(([key, value]) => `${key} ${String(value)}`)
+        .join(" · ");
+}
+
+/** Typography / theme / layout entries, straight off the shared design-annotation payload. */
 export function annotationEntries(
     payload: AnnotationPayload | null,
     kind: string,
@@ -342,6 +364,15 @@ export function annotationEntries(
                     : a.role
                       ? (a.label ?? "")
                       : "";
+            const tooltip =
+                kind === "typography"
+                    ? [
+                          a.label,
+                          typography?.axes ? `axes ${typography.axes}` : "",
+                      ]
+                          .filter(Boolean)
+                          .join(" · ")
+                    : annotationTooltip(a);
             return {
                 kind,
                 bounds: a.bounds,
@@ -349,15 +380,7 @@ export function annotationEntries(
                 detail: summary,
                 level: "info" as const,
                 color: null,
-                tooltip:
-                    kind === "typography"
-                        ? [
-                              a.label,
-                              typography?.axes ? `axes ${typography.axes}` : "",
-                          ]
-                              .filter(Boolean)
-                              .join(" · ")
-                        : undefined,
+                tooltip: tooltip || undefined,
             };
         });
 }

@@ -38,6 +38,13 @@ data class AnnotationManifest(
 /** Which spec layer an annotation belongs to; the compare page toggles them independently. */
 object AnnotationKind {
   const val TYPOGRAPHY = "typography"
+
+  /**
+   * Box geometry and the tokens that shaped it — size, padding, arrangement gap, `defaultMinSize`.
+   * Authored by a producer for the reference side of the compare page, and since issue #4328 also
+   * derived live from a render's own semantics tree by [ServeDesignAnnotations], so the viewer's
+   * inspection layers can show the code side of the same redline.
+   */
   const val LAYOUT = "layout"
 
   /**
@@ -60,7 +67,7 @@ object AnnotationKind {
  */
 @Serializable
 data class DesignAnnotation(
-  /** [AnnotationKind.TYPOGRAPHY] or [AnnotationKind.LAYOUT]. Unknown kinds are dropped on load. */
+  /** One of [AnnotationKind.KNOWN]. Unknown kinds are dropped on load. */
   val kind: String,
   val bounds: AnnotationBounds,
   /**

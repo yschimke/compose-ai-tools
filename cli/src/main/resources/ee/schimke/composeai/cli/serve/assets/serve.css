@@ -2481,7 +2481,7 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
 .cp-annotation-toggle { display: inline-flex; align-items: center; gap: 6px; }
 /* ---------------------------------------------------------------------------
    Viewer inspection layers (see inspect.js): accessibility focus map, resolved
-   typography, resolved theme attributes. The layer is absolutely positioned over
+   typography, resolved theme attributes, layout boxes. The layer is absolutely positioned over
    the stage's <img> and sized in JS from that image's rendered box, because every
    source reports bounds in the render's own pixel space.
    --------------------------------------------------------------------------- */
@@ -2493,6 +2493,10 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
 .cp-inspect-box[data-cp-kind="typography"] { border-style: dashed;
   --cp-inspect-color: rgba(37, 99, 235, 0.9); }
 .cp-inspect-box[data-cp-kind="theme"] { --cp-inspect-color: rgba(214, 51, 108, 0.9); }
+/* The layout layer draws every slot box, so it nests far more densely than the others: a dotted,
+   fill-less rectangle reads as structure behind the styled boxes instead of covering them. */
+.cp-inspect-box[data-cp-kind="layout"] { border-style: dotted; background: none;
+  --cp-inspect-color: rgba(13, 148, 136, 0.9); }
 .cp-inspect-box[data-level="warning"] { --cp-inspect-color: rgba(217, 119, 6, 0.95); }
 .cp-inspect-box[data-level="error"] { --cp-inspect-color: rgba(220, 38, 38, 0.95); }
 .cp-inspect-box-active { border-width: 2px;
@@ -2521,6 +2525,7 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
 .cp-inspect-entry[data-cp-kind="typography"] { padding-right: 0;
   --cp-inspect-color: rgba(37, 99, 235, 0.9); }
 .cp-inspect-entry[data-cp-kind="theme"] { --cp-inspect-color: rgba(214, 51, 108, 0.9); }
+.cp-inspect-entry[data-cp-kind="layout"] { --cp-inspect-color: rgba(13, 148, 136, 0.9); }
 .cp-inspect-entry[data-level="warning"] { --cp-inspect-color: rgba(217, 119, 6, 0.95); }
 .cp-inspect-entry[data-level="error"] { --cp-inspect-color: rgba(220, 38, 38, 0.95); }
 .cp-inspect-entry-active { background: var(--md-sys-color-surface-container-high); }
