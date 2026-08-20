@@ -146,6 +146,21 @@ private fun String.normalizedPin(): String? = trim().removePrefix("v").takeIf { 
 internal fun readGradlePropertiesPin(
   projectRoot: File,
   fileSystem: FileSystem = SystemFileSystem,
+): String? = readGradleProperty(projectRoot, VERSION_PIN_PROPERTY, fileSystem)?.normalizedPin()
+
+/**
+ * One `composePreview.*` value out of [projectRoot]`/gradle.properties`, trimmed, or null when the
+ * file, the parse, or the key is missing. The raw value — a caller that needs it normalised (the
+ * version pin strips a leading `v`) does that itself, since no other property wants it.
+ *
+ * Extracted from [readGradlePropertiesPin] when the preview-server URL became the second thing read
+ * this way ([resolveProjectServeUrl]): both want the same failure-tolerant read of the same file,
+ * and two copies would be two places to get properties-file escaping wrong.
+ */
+internal fun readGradleProperty(
+  projectRoot: File,
+  key: String,
+  fileSystem: FileSystem = SystemFileSystem,
 ): String? {
   val file = File(projectRoot, "gradle.properties")
   val text =
@@ -155,7 +170,7 @@ internal fun readGradlePropertiesPin(
     .getOrElse {
       return null
     }
-  return props.getProperty(VERSION_PIN_PROPERTY)?.normalizedPin()
+  return props.getProperty(key)?.trim()?.takeIf { it.isNotEmpty() }
 }
 
 /**
