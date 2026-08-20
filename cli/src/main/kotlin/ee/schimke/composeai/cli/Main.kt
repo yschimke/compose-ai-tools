@@ -59,7 +59,18 @@ fun main(args: Array<String>) {
             "(ignored)"
         )
       }
-      COMMANDS.getValue(route.command).invoke(route.args)
+      try {
+        COMMANDS.getValue(route.command).invoke(route.args)
+      } catch (e: NoCredentialHomeException) {
+        // Handled here rather than in each caller. `AuthCommand` is not the only thing that opens
+        // the grant store — `share-preview --mechanism serve` reaches for it whenever no explicit
+        // token was given — so catching it there alone turned a deliberate refusal, whose whole
+        // point is a message naming the remedy, into an uncaught stack trace on the second
+        // consumer. One boundary means the next consumer inherits the right behaviour instead of
+        // reintroducing the bug.
+        System.err.println("compose-preview: ${e.message}")
+        exitProcess(1)
+      }
     }
     is CliRouter.Route.GroupUsage -> {
       printGroupUsage(route.group)

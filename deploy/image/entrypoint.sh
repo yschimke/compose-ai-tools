@@ -380,8 +380,18 @@ fi
 # answer explicitly (`SERVE_AGENT_GRANTS=0` to opt out with auth configured, `=1` to insist without
 # it and get the server's own refusal, which is the honest failure).
 if [[ -z "${SERVE_AGENT_GRANTS:-}" ]]; then
+  # There are exactly TWO ways to be an approver, and the server names both: a signed-in GitHub
+  # visitor, or the holder of `--token` on a box that is not `--public`. Keying only on the first
+  # left the lane switched off on every private token-gated deployment — a configuration
+  # `buildAgentGrantStore` explicitly supports, and whose own refusal message recommends ("drop
+  # --public (the --token holder then approves)").
   if [[ -n "${SERVE_GITHUB_AUTH_CLIENT_ID:-}" && -n "${SERVE_GITHUB_AUTH_CLIENT_SECRET:-}" &&
     -n "${SERVE_GITHUB_AUTH_COOKIE_SECRET:-}" ]]; then
+    SERVE_AGENT_GRANTS=1
+  elif [[ "${SERVE_PUBLIC:-}" != "1" && "${SERVE_PUBLIC:-}" != "true" &&
+    -n "${SERVE_TOKEN:-}" ]]; then
+    # Token-gated: the operator token IS the approver identity. Mirrors the posture test above,
+    # which treats anything but 1/true as private and requires SERVE_TOKEN.
     SERVE_AGENT_GRANTS=1
   else
     SERVE_AGENT_GRANTS=0

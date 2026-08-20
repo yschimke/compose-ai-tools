@@ -31,7 +31,14 @@ expect() {
   local want="$1" desc="$2"
   shift 2
   local got
-  got="$(env "$@" bash -c "set -euo pipefail; ${gate}; echo \"\${SERVE_AGENT_GRANTS}\"")"
+  # `env -i` — an EMPTY environment, not merely the assignments layered on top of this shell's.
+  # A runner or operator shell that already exports SERVE_GITHUB_AUTH_* would otherwise leak those
+  # into the "no auth" and "partial auth" cases, which would then be exercising full auth and
+  # passing for the wrong reason. Reproduce the old behaviour with:
+  #   SERVE_GITHUB_AUTH_CLIENT_ID=x SERVE_GITHUB_AUTH_CLIENT_SECRET=x \
+  #     SERVE_GITHUB_AUTH_COOKIE_SECRET=x ./deploy/image/test-agent-grants-default.sh
+  # PATH is restored because bash needs it; nothing else is.
+  got="$(env -i PATH="${PATH}" "$@" bash -c "set -euo pipefail; ${gate}; echo \"\${SERVE_AGENT_GRANTS:-}\"")"
   if [[ "${got}" != "${want}" ]]; then
     echo "FAIL: ${desc}: expected SERVE_AGENT_GRANTS=${want}, got '${got}'" >&2
     exit 1
@@ -51,6 +58,12 @@ expect 0 "unset + no GitHub auth => off"
 expect 0 "unset + partial GitHub auth (no cookie secret) => off" \
   SERVE_GITHUB_AUTH_CLIENT_ID=id SERVE_GITHUB_AUTH_CLIENT_SECRET=secret
 expect 0 "unset + only a client id => off" SERVE_GITHUB_AUTH_CLIENT_ID=id
+
+# The other way to be an approver: a token-gated box, where the operator token is the identity.
+expect 1 "unset + private with a token => on" SERVE_PUBLIC=0 SERVE_TOKEN=t
+expect 1 "unset + private (SERVE_PUBLIC absent) with a token => on" SERVE_TOKEN=t
+expect 0 "unset + public with a token but no auth => off" SERVE_PUBLIC=1 SERVE_TOKEN=t
+expect 0 "unset + private with no token => off" SERVE_PUBLIC=0
 
 # An explicit answer always wins, in both directions — including "insist without an approver",
 # which is meant to reach the server's own refusal rather than being silently downgraded here.
