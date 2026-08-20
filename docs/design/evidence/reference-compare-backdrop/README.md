@@ -58,3 +58,39 @@ here: its content is dark either way, so it looks identical whether the stage re
 through. It is registered in
 [`pages-snapshot.spec.mjs`](../../../vscode-extension/preview-harness/pages-snapshot.spec.mjs), so
 every later change to this page is diffed on both.
+
+## What this costs each kind of surface
+
+The page fixtures above use the harness's placeholder art, which shows the mechanism but understates
+the damage. These are **real catalog renders**, unmodified, each shown on the checkerboard, on the
+fixed white the scorer still uses, and on its resolved backdrop:
+
+![Five real catalog renders on three different grounds](backdrop-surfaces.png)
+
+Read the middle column. Every one of these is a committed `@Preview` from
+`samples/design-catalog-wear-m3` / `samples/design-catalog-m3`, and the numbers under each heading
+are measured off the PNG's own alpha channel:
+
+| Surface | Opaque | Ink luminance | On white |
+| --- | --- | --- | --- |
+| Wear `FilledButton` | 51% | 217 | washed out |
+| Wear `OutlinedButtonSticker` | 5% | 188 | outline barely visible, label almost gone |
+| Wear `TextMaxLinesTruncated` | 8% | 255 | **a blank panel** |
+| Wear `TimeTextScaffoldTemplate` | 78% | 35 | fine — it paints its own ground |
+| Mobile `AppScaffoldTemplate` | 100% | 246 | fine — fully opaque |
+
+The last two rows are the useful control: a full screen paints every pixel it needs, so its stage is
+invisible either way and nothing about this change moves it. The damage is concentrated exactly
+where a design catalog does its real work — small, mostly-alpha component stickers whose ink is
+light because the system is dark-first. `TextMaxLinesTruncated` is the extreme: 8% opaque, pure
+white glyphs, so a white ground renders it *perfectly* invisible while every automated check
+reports a successfully compared image.
+
+Regenerate with:
+
+```sh
+./gradlew :samples:design-catalog-wear-m3:composePreviewRenderAll \
+          :samples:design-catalog-m3:composePreviewRenderAll
+python3 docs/design/evidence/reference-compare-backdrop/build-surface-evidence.py /tmp/evidence.html
+# then screenshot /tmp/evidence.html at width 1180, deviceScaleFactor 2
+```

@@ -7536,8 +7536,14 @@ ${captureControlsHtml().prependIndent("          ")}
           """
           .trimIndent()
       }
-      // data-bg-theme is the thumbnail's background (explicit token, else the dark-first default).
-      val bgAttr = bgTheme(p.id, darkFirst)?.let { " data-bg-theme=\"$it\"" } ?: ""
+      // data-bg-theme is the thumbnail's background: what the preview declares for itself first,
+      // then the explicit id token, then the dark-first default. Without the first rung the grid
+      // and the reference page answered differently for the same preview — a card showing a
+      // deliberately white specimen on this catalog's dark plate, and the comparison of that same
+      // specimen on white.
+      val bgAttr =
+        (declaredBackdropTheme(p) ?: bgTheme(p.id, darkFirst))?.let { " data-bg-theme=\"$it\"" }
+          ?: ""
       return """
           <a class="cp-card"$anchor$bgAttr href="$basePath/p/$idSeg$q" aria-label="$label">
             <div class="cp-imgwrap">
