@@ -105,24 +105,71 @@ function wireHandOff(): void {
     });
 }
 
+/**
+ * Which page the report being submitted is ABOUT — not necessarily the one it is submitted from.
+ *
+ * On a preview's own form the two are the same page. On `/report-bug` they are not: that page is
+ * the report, and the page it reports is the `?from=` the footer form carried here. Reading it back
+ * is what lets [handOff] tell a capture taken for this report from one still lying in the pile.
+ *
+ * `from` is a path this server wrote and this page received; it is parsed for its pathname rather
+ * than string-compared, so a carried query cannot make it miss.
+ */
+function reportedPage(): string | null {
+    const from = new URLSearchParams(location.search).get("from");
+    if (!from) return location.pathname;
+    try {
+        return new URL(from, location.href).pathname;
+    } catch {
+        return null;
+    }
+}
+
 function handOff(): void {
     const captures = readCaptures(sessionStore());
-    const latest = captures[captures.length - 1];
+    if (!captures.length) return;
+    // The newest capture OF THE PAGE BEING REPORTED. `sessionStorage` lasts as long as the tab, so
+    // a reporter who files one report with a screenshot and a second one later, from elsewhere,
+    // without taking another still has the first picture in the pile — and handing that one over
+    // while telling them to paste it attaches a screenshot of an unrelated page to the new issue.
+    // Silence is the right answer there: they did not take a picture for this report, the pile is
+    // still on screen with its Copy buttons, and the issue's own Screenshot section still asks.
+    const page = reportedPage();
+    const mine = captures.filter((c) => !!c.page && c.page === page);
+    const latest = mine[mine.length - 1];
     if (!latest) return;
     const rest =
-        captures.length > 1
-            ? ` The other ${captures.length - 1} are still here — press Copy on one to send it too.`
+        mine.length > 1
+            ? ` The other ${mine.length - 1} are still here — press Copy on one to send it too.`
             : "";
     copyPng(blobFromDataUrl(latest.dataUrl)).then(
         () =>
             note(
                 `Your capture is on the clipboard — paste it into the issue's Screenshot section.${rest}`,
             ),
-        () =>
+        () => {
             note(
                 "The clipboard refused the capture. Press Copy on it here, then paste it into the issue's Screenshot section.",
-            ),
+            );
+            // …and make sure that sentence is somewhere it can be read. On a preview page the note's
+            // only home is the capture block inside the launcher panel, which the capture flow
+            // closed to take the shot and the submit just closed again — so the one message that
+            // needs attention was being written into a drawer. A success needs no such rescue: the
+            // clipboard holds what it should and there is nothing to act on.
+            reveal();
+        },
     );
+}
+
+/** Open every disclosure standing between a status note and the reporter. */
+function reveal(): void {
+    document.querySelectorAll<HTMLElement>(".cp-shot-note").forEach((el) => {
+        let box = el.closest("details");
+        while (box) {
+            box.open = true;
+            box = box.parentElement?.closest("details") ?? null;
+        }
+    });
 }
 
 /** Every list on the page, refreshed from the store. */
@@ -333,6 +380,10 @@ async function run(mode: Mode): Promise<void> {
         width: canvas.width,
         height: canvas.height,
         markdown,
+        // Stamped here, on the page it is a picture of, because nowhere later can recover it — and
+        // it is what lets the hand-off on `/report-bug` tell this report's screenshot from one the
+        // tab has simply been carrying around. See [Capture.page].
+        page: location.pathname,
     };
     const kept = addCapture(store, capture);
     render();
