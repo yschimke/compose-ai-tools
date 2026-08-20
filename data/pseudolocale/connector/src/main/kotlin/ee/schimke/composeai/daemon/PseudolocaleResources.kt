@@ -3,6 +3,7 @@ package ee.schimke.composeai.daemon
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.res.Resources
+import android.graphics.drawable.Drawable
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import ee.schimke.composeai.data.pseudolocale.Pseudolocale
@@ -25,6 +26,16 @@ import ee.schimke.composeai.data.pseudolocale.Pseudolocalizer
  * naturally — the template is pseudolocalised once, then `String.format` substitutes args into it.
  * Placeholders like `%1$s` survive the transform unchanged, see `Pseudolocalizer`.
  *
+ * **Every accessor delegates to the wrapped [base] instance, never to `super`.** The base class is
+ * constructed over the same `AssetManager` / `DisplayMetrics` / `Configuration`, so `super`
+ * resolves the same table and looks equivalent — but only for a [base] that *is* the raw table. The
+ * live daemon stacks resource wrappers (`PlaceholderFallbackResources` for a detached bundle whose
+ * packed table is absent or stale, the `resources/used` recorder), and `super` steps straight over
+ * whatever this instance was installed on top of. That turned a missing resource inside a
+ * pseudolocale render into the hard `NotFoundException` abort the fallback exists to prevent, so a
+ * preview that rendered fine at `en` failed at `en-XA`. `PlaceholderFallbackResources` documents
+ * the same rule from the other side; the two must keep composing in either order.
+ *
  * **Span preservation.** `Resources.getText(int)` returns `CharSequence`, which is a `Spanned`
  * (`SpannedString`) when the resource is styled — `<b>`, `<i>`, `<a>`, custom `<annotation>` tags
  * all surface as `Object`-typed spans on a single underlying string. A naive
@@ -35,18 +46,44 @@ import ee.schimke.composeai.data.pseudolocale.Pseudolocalizer
  * take the cheaper `transform` fast path with no `SpannableStringBuilder` allocation.
  */
 @Suppress("DEPRECATION")
-internal class PseudolocaleResources(base: Resources, private val mode: Pseudolocale) :
+internal class PseudolocaleResources(private val base: Resources, private val mode: Pseudolocale) :
   Resources(base.assets, base.displayMetrics, base.configuration) {
 
-  override fun getText(id: Int): CharSequence = pseudolocalise(super.getText(id))
+  override fun getText(id: Int): CharSequence = pseudolocalise(base.getText(id))
 
   override fun getText(id: Int, def: CharSequence): CharSequence {
-    val raw = super.getText(id, def)
+    val raw = base.getText(id, def)
     return if (raw === def) def else pseudolocalise(raw)
   }
 
   override fun getQuantityText(id: Int, quantity: Int): CharSequence =
-    pseudolocalise(super.getQuantityText(id, quantity))
+    pseudolocalise(base.getQuantityText(id, quantity))
+
+  // Value resources pass through untouched — there is nothing to pseudolocalise about a colour or
+  // a dimension — but they are still forwarded to [base] rather than left to `super`, for the
+  // reason spelled out in the class KDoc: `super` resolves against the raw table and would step
+  // over whatever wrapper we were installed on top of. `PlaceholderFallbackResources` is that
+  // wrapper on the live daemon, so leaving these to `super` turned a missing drawable into a hard
+  // `NotFoundException` render abort in exactly the pseudolocale renders this class serves.
+  override fun getColor(id: Int): Int = base.getColor(id)
+
+  override fun getColor(id: Int, theme: Theme?): Int = base.getColor(id, theme)
+
+  override fun getDimension(id: Int): Float = base.getDimension(id)
+
+  override fun getDimensionPixelOffset(id: Int): Int = base.getDimensionPixelOffset(id)
+
+  override fun getDimensionPixelSize(id: Int): Int = base.getDimensionPixelSize(id)
+
+  override fun getDrawable(id: Int): Drawable = base.getDrawable(id)
+
+  override fun getDrawable(id: Int, theme: Theme?): Drawable = base.getDrawable(id, theme)
+
+  override fun getDrawableForDensity(id: Int, density: Int): Drawable? =
+    base.getDrawableForDensity(id, density)
+
+  override fun getDrawableForDensity(id: Int, density: Int, theme: Theme?): Drawable? =
+    base.getDrawableForDensity(id, density, theme)
 
   private fun pseudolocalise(raw: CharSequence): CharSequence {
     if (raw !is Spanned) return Pseudolocalizer.transform(raw.toString(), mode)

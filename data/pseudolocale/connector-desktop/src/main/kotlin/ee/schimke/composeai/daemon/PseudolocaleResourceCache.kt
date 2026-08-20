@@ -27,11 +27,19 @@ package ee.schimke.composeai.daemon
  * JVM between modes"). We never crash a render over a reflective miss; we just degrade to the
  * documented behaviour.
  *
+ * **Both edges of a pseudolocale render need this**, which is why the shim is public rather than
+ * internal to this module. The around-composable clears on *entry*, so a pseudo render never reads
+ * plain strings a previous render cached. The reverse leak is just as real: a pseudo render leaves
+ * the cache holding *transformed* values, and the next ordinary render is served those without ever
+ * consulting its own reader — a preview browsed right after an `?localeTag=en-XA` one would show
+ * accented text at no locale at all. `RenderEngine.guardPseudolocaleStringCache` closes that edge
+ * from the renderer, which is the only place that sees both renders.
+ *
  * **Not a long-term solution.** Tracked at compose-ai-tools#1360 finding #3 — the right fix is for
  * CMP to expose a per-renderer cache scope, at which point this whole shim goes away. Until then,
  * this reflective workaround eliminates the silent no-op the issue calls out.
  */
-internal object PseudolocaleResourceCache {
+object PseudolocaleResourceCache {
 
   /**
    * Class name of the Kotlin top-level file that holds the cache. Held as a literal string so the

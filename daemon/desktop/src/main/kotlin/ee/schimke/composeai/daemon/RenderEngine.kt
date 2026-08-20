@@ -363,6 +363,9 @@ class RenderEngine(
     val previousContext = Thread.currentThread().contextClassLoader
     Thread.currentThread().contextClassLoader = classLoader
 
+    // Drop any pseudolocalised string items a previous render left in CMP's process-wide cache
+    // before this one composes; a no-op unless this render is leaving pseudolocale mode.
+    guardPseudolocaleStringCache(spec.localeTag)
     val localeProviders = localeProviders(spec.localeTag)
     val themeFallbackCapture =
       if (previewContextCapture?.shouldCapture(spec.previewId, spec.renderMode) == true) {
@@ -1935,6 +1938,42 @@ class RenderEngine(
           as ProvidableCompositionLocal<LocaleList>
       }
         .getOrNull()
+    }
+
+    /**
+     * Whether the *previous* render in this JVM composed under a pseudolocale, so
+     * [guardPseudolocaleStringCache] knows when the process-wide CMP string cache is holding
+     * transformed values. One daemon renders sequentially, and the flag is only ever read and
+     * written on the render path, so a plain `@Volatile` boolean is enough.
+     */
+    @Volatile private var lastRenderWasPseudolocale: Boolean = false
+
+    /**
+     * Clear Compose Resources' process-wide `stringItemsCache` when a render *leaves* pseudolocale
+     * mode. Returns true when it cleared, for the tests that pin the state machine.
+     *
+     * CMP caches a string item under `path/offset-size` with the value the **first** reader
+     * returned, so a cached value outlives the reader that produced it. `PseudolocaleOverride
+     * ExtensionDesktop` already clears on entry (a pseudo render must not be served plain strings
+     * cached earlier); this is the other edge: after a pseudo render the cache holds *transformed*
+     * values, and the next ordinary render would be handed accented / bidi text for a locale it
+     * never asked for. Only the renderer sees both renders, so the flag lives here.
+     *
+     * Deliberately does nothing while pseudolocale renders repeat back to back — the around
+     * composable's entry clear covers a mode switch between `en-XA` and `ar-XB` — and nothing at
+     * all in the ordinary case where no pseudolocale render has happened yet, so a daemon that
+     * never renders one keeps its warm cache.
+     */
+    internal fun guardPseudolocaleStringCache(localeTag: String?): Boolean {
+      val isPseudolocale =
+        ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(localeTag) != null
+      if (isPseudolocale) {
+        lastRenderWasPseudolocale = true
+        return false
+      }
+      if (!lastRenderWasPseudolocale) return false
+      lastRenderWasPseudolocale = false
+      return PseudolocaleResourceCache.clearStringResourcesCacheBestEffort()
     }
 
     /**

@@ -2,6 +2,7 @@ package ee.schimke.composeai.daemon
 
 import java.util.Locale
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -36,6 +37,45 @@ class RenderEngineLocaleTest {
     assertNull(RenderEngine.effectiveLocaleTag(null))
     assertNull(RenderEngine.effectiveLocaleTag(""))
     assertNull(RenderEngine.effectiveLocaleTag("   "))
+  }
+
+  /**
+   * The other edge of the pseudolocale string cache (#4371 review). CMP's process-wide
+   * `stringItemsCache` stores whatever the *first* reader returned for a key, so after a pseudo
+   * render it holds accented / bidi text; the next ordinary render would be served that text for a
+   * locale it never asked for, without its own reader ever running. The around-composable only
+   * clears on entry, so the renderer closes the exit — but only when a render actually leaves
+   * pseudolocale mode, so a daemon that never renders one keeps its warm cache.
+   *
+   * Asserts the state machine rather than the reflective clear itself (that has its own coverage in
+   * `PseudolocaleResourceCacheTest`), and tolerates a `false` return from a CMP version drift where
+   * the reflective shim can't find the cache — the transition, not the shim, is what this pins.
+   */
+  @Test
+  fun pseudolocaleStringCacheIsClearedOnTheWayOutOfPseudolocaleMode() {
+    // Baseline: no pseudolocale render has happened, so an ordinary render clears nothing.
+    RenderEngine.guardPseudolocaleStringCache(null)
+    assertFalse(
+      "an ordinary render with no pseudolocale history must not touch the cache",
+      RenderEngine.guardPseudolocaleStringCache("de"),
+    )
+
+    // Entering, and staying in, pseudolocale mode is the around-composable's job, not this one's.
+    assertFalse(RenderEngine.guardPseudolocaleStringCache("en-XA"))
+    assertFalse(
+      "a pseudolocale-to-pseudolocale switch is the entry clear's job",
+      RenderEngine.guardPseudolocaleStringCache("ar-XB"),
+    )
+
+    // Leaving it is: the first ordinary render afterwards clears, and only that one.
+    assertTrue(
+      "the render after a pseudolocale one must drop the transformed string items",
+      RenderEngine.guardPseudolocaleStringCache(null),
+    )
+    assertFalse(
+      "and the cache must then be left alone until the next pseudolocale render",
+      RenderEngine.guardPseudolocaleStringCache(null),
+    )
   }
 
   @Test
