@@ -1798,6 +1798,16 @@ ${captureControlsHtml().prependIndent("          ")}
   private const val OTHER_SECTION = "Other"
 
   /**
+   * The **All** row's `data-tab`: the whole catalog, every section's panel showing at once, and
+   * what a sectioned catalog lands on.
+   *
+   * A reserved slug rather than a section's own, so [buildSections] hands a catalog that really
+   * does name a section "All" the slug `all-2` and the two never collide over `#cp-tab-all` /
+   * `?tab=all`.
+   */
+  private const val ALL_TAB = "all"
+
+  /**
    * The catalog section whose cards ARE theme specimens — a colour-role/type sheet that exists to
    * show one specific theme.
    */
@@ -1891,7 +1901,9 @@ ${captureControlsHtml().prependIndent("          ")}
       acc.minOrder = minOf(acc.minOrder, ord(card))
       acc.groups.getOrPut(card.default.group) { LandingGroup(card.default.group) }.cards.add(card)
     }
-    val usedSlugs = HashSet<String>()
+    // `all` belongs to the All row, so a section actually named "All" takes `all-2` — the same
+    // de-duplication two same-slug section names already get.
+    val usedSlugs = hashSetOf(ALL_TAB)
     return bySection.entries
       .sortedBy { it.value.minOrder }
       .map { (name, acc) ->
@@ -1948,6 +1960,15 @@ ${captureControlsHtml().prependIndent("          ")}
    * full outline over the full stack of panels, and every row is a working in-page anchor.
    *
    * Sections whose groups are all unnamed render as leaves — there is nothing to list under them.
+   *
+   * The tree leads with an **All** row ([ALL_TAB]) whenever there is more than one section, and it
+   * is what the page lands on. A sectioned catalog used to open on its first section with the rest
+   * of itself hidden, so the default view of a catalog was a fraction of it and the filter below
+   * only searched the whole thing once you had typed into it. All is the browsing state the front
+   * door should have: every panel showing, one scroll through the lot, and a filter that spans the
+   * catalog because nothing is narrowing it. Picking a section still narrows to it; All is a row
+   * you can come back to. Under All every section is expanded, since the tree beside a grid showing
+   * everything is the outline of everything.
    */
   private fun catalogTreeHtml(
     sections: List<LandingSection>,
@@ -1955,10 +1976,28 @@ ${captureControlsHtml().prependIndent("          ")}
     /** The design-pages branch ([pagesBranchHtml]), appended after the sections. Empty ⇒ none. */
     pagesBranch: String = "",
   ): String = buildString {
+    // With more than one section there is a whole catalog to browse, so the tree leads with it.
+    // One section IS the whole catalog, and a row saying so twice is not a choice.
+    val hasAll = sections.size > 1
     append("<nav class=\"cp-tree\" id=\"cp-tabs\" aria-label=\"Catalog sections\">\n")
     append("<ul class=\"cp-tree-list\" role=\"tree\" aria-label=\"Catalog sections\">\n")
+    if (hasAll) {
+      // The whole grid, not a panel: `#cp-grid` is what the All row controls and what its no-JS
+      // href jumps to — every section's panel is inside it, and it is the one id that is still
+      // there when the sections themselves are collapsed away by a filter.
+      append("<li class=\"cp-tree-node\" role=\"none\">\n")
+      append("  <a class=\"cp-tab\" role=\"treeitem\" id=\"cp-tab-$ALL_TAB\"")
+      append(" href=\"#cp-grid\" data-tab=\"$ALL_TAB\"")
+      append(" aria-controls=\"cp-grid\" aria-selected=\"true\">")
+      append("All<span class=\"cp-tab-count\">${sections.sumOf { it.count }}</span></a>\n")
+      append("</li>\n")
+    }
     sections.forEachIndexed { i, sec ->
-      val selected = if (i == 0) "true" else "false"
+      // Nothing is selected under All — it is the row above that is. A section is still EXPANDED,
+      // because All shows every panel at once and the tree standing beside that has to be the
+      // outline of what is actually on screen.
+      val selected = if (!hasAll && i == 0) "true" else "false"
+      val expanded = if (hasAll) "true" else selected
       val named = sec.groups.filter { it.name != null }
       append("<li class=\"cp-tree-node\" role=\"none\">\n")
       val childrenId = "cp-tree-children-${sec.slug}"
@@ -1970,7 +2009,7 @@ ${captureControlsHtml().prependIndent("          ")}
       // `role="none"`. Without this the `role="group"` would hang off the tree rather than off the
       // section whose `aria-expanded` governs it, so a screen reader could not report the group
       // rows as that section's children.
-      if (named.isNotEmpty()) append(" aria-expanded=\"$selected\" aria-owns=\"$childrenId\"")
+      if (named.isNotEmpty()) append(" aria-expanded=\"$expanded\" aria-owns=\"$childrenId\"")
       // No `tabindex` in the served markup, deliberately. The roving tab stop is a tree-widget
       // behaviour and the tree is only a widget once its script runs — baking `-1` into every row
       // but the first would leave a no-JS client (where the arrow keys never bind) unable to reach
@@ -2890,6 +2929,12 @@ ${captureControlsHtml().prependIndent("          ")}
      * catalog without design pages, which then emits this script byte-for-byte as before.
      */
     hasPanes: Boolean = false,
+    /**
+     * Whether the tree leads with the **All** row ([ALL_TAB]) — every sectioned catalog with more
+     * than one section. False leaves out every mention of `all`, so a single-section catalog emits
+     * the script it always did.
+     */
+    hasAllTab: Boolean = false,
   ): String {
     val hasDeclaredThemes = themeBaseJs.isNotEmpty()
     val themeLeaseUrlJs = WebEscaping.jsString(themeLeaseUrl)
@@ -3376,6 +3421,22 @@ ${captureControlsHtml().prependIndent("          ")}
           // The tree's own roving-tab-stop pass, published so `apply()` can call it from outside
           // the tree script's closure once the filter has changed which rows are on screen.
           "\n      var cpTreeStops = null;"
+    // All shows every section's panel at once, and two things follow from that. The tree beside it
+    // opens every branch, because it is now the outline of the whole grid rather than of one
+    // panel. And the per-section <h2>s come back: `cp-js` hides them because the selected row
+    // names the one section on screen, which stops being true the moment several are — the same
+    // reason a live search, which also spans sections, brings them back.
+    val allTabState =
+      if (!hasAllTab) ""
+      else
+        "\n        var showingAll = current === \"$ALL_TAB\";" +
+          "\n        document.documentElement.classList.toggle(" +
+          "\n          \"cp-multi-section\"," +
+          "\n          showingAll || searching" +
+          "\n        );"
+    val allExpandExpr = if (hasAllTab) " || showingAll" else ""
+    // Under All a card is in the current tab whatever section it sits in — that is what All means.
+    val allTabCardClause = if (hasAllTab) " || current === \"$ALL_TAB\"" else ""
     val tabDecls =
       if (hasTabs)
         "\n      var tabBtns = document.querySelectorAll(\".cp-tab\");" +
@@ -3401,13 +3462,17 @@ ${captureControlsHtml().prependIndent("          ")}
           // the matches sit under must not be the rows you cannot see.
           "\n      function reflectTabs() {" +
           "\n        var searching = !!(input && input.value.trim());" +
+          allTabState +
           "\n        var stop = null;" +
           "\n        var firstShown = null;" +
           "\n        tabBtns.forEach(function (t) {" +
           "\n          var on = t.getAttribute(\"data-tab\") === current;" +
           "\n          t.setAttribute(\"aria-selected\", on ? \"true\" : \"false\");" +
           "\n          if (t.hasAttribute(\"aria-expanded\"))" +
-          "\n            t.setAttribute(\"aria-expanded\", on || searching ? \"true\" : \"false\");" +
+          "\n            t.setAttribute(" +
+          "\n              \"aria-expanded\"," +
+          "\n              on || searching$allExpandExpr ? \"true\" : \"false\"" +
+          "\n            );" +
           "\n          var node = t.closest(\".cp-tree-node\");" +
           "\n          var shown = !(node && node.hidden);" +
           // The stop belongs to the selected row only while that row is on screen, so a filtered-
@@ -3430,7 +3495,9 @@ ${captureControlsHtml().prependIndent("          ")}
     val tabOkLine =
       if (hasTabs)
         "\n          var sec = c.closest(\".cp-section\");" +
-          "\n          var tabOk = q !== \"\" || !sec || sec.getAttribute(\"data-section\") === current;"
+          "\n          var tabOk = q !== \"\" || !sec" +
+          allTabCardClause +
+          " || sec.getAttribute(\"data-section\") === current;"
       else ""
     val hiddenExpr = if (hasTabs) "!(searchOk && tabOk)" else "!searchOk"
     val shownCond = if (hasTabs) "searchOk && tabOk" else "searchOk"
@@ -3585,7 +3652,7 @@ ${captureControlsHtml().prependIndent("          ")}
     val treeWiring =
       if (!hasTree) ""
       else
-        catalogTreeScript(tabStorageKey, hasTabs).lines().joinToString("") {
+        catalogTreeScript(tabStorageKey, hasTabs, hasAllTab).lines().joinToString("") {
           if (it.isEmpty()) "\n" else "\n      $it"
         }
     // Back / Forward: re-read the whole selection off the URL and re-apply it in place — no
@@ -3676,18 +3743,37 @@ ${captureControlsHtml().prependIndent("          ")}
    *   says where you *are* and not merely where you last clicked. Additive: with no
    *   `IntersectionObserver` the marking simply follows clicks.
    */
-  private fun catalogTreeScript(tabStorageKey: String, hasTabs: Boolean): String {
+  private fun catalogTreeScript(
+    tabStorageKey: String,
+    hasTabs: Boolean,
+    /** Whether the tree leads with the **All** row ([ALL_TAB]) — see [catalogFilterScript]. */
+    hasAllTab: Boolean = false,
+  ): String {
     // Section switching only exists for a catalog that HAS sections. An outline tree (a
     // section-less catalog) hides nothing and remembers nothing — every row is purely a jump — so
     // the pieces that talk to `current` / `selectTab` are spliced out rather than guarded at
     // runtime, and its script never mentions a tab.
-    val selectOwningTab =
-      if (hasTabs) "\n        selectTab(row.getAttribute(\"data-tab\"));" else ""
+    val selectOwningTab = if (hasTabs) "\n        selectOwningTab(row);" else ""
     val tabRows = if (hasTabs) ".cp-tab, " else ""
     // The rows a `#cp-panel-<slug>` fragment could name, and the three operations that only mean
     // something when sections exist. An outline tree gets inert stand-ins rather than `if
     // (hasTabs)`
     // scattered through the body.
+    // A `#cp-group-…` fragment scrolls; it does not decide which slice of the catalog you are
+    // looking at. Under All it would otherwise undo the very thing that made the link — the click
+    // that wrote the fragment deliberately stayed in All, and a reload of the URL it wrote has to
+    // land on the same page. Off All it still selects the fragment's own section, which is the only
+    // way its target is on screen at all.
+    val keepAll = if (hasAllTab) "\n          if (current === \"$ALL_TAB\") return;" else ""
+    // Same rule on Back/Forward, but the marking still happens: the entry is a scroll position
+    // within All, so the row it names is the one to mark.
+    val keepAllPop =
+      if (!hasAllTab) ""
+      else
+        "\n            if (current === \"$ALL_TAB\") {" +
+          "\n              if (popped.row) markGroup(popped.row);" +
+          "\n              return;" +
+          "\n            }"
     val tabHelpers =
       if (hasTabs)
         """
@@ -3701,8 +3787,14 @@ ${captureControlsHtml().prependIndent("          ")}
           apply();
         }
         function selectCollapsedTab(row) { selectTab(row.getAttribute("data-tab")); }
+        // Jumping to a group from ALL stays in All: the row you clicked says where to scroll, not
+        // which slice of the catalog to throw away. From a section it still switches, because a
+        // group row can name a section other than the one showing.
+        function selectOwningTab(row) {$keepAll
+          selectTab(row.getAttribute("data-tab"));
+        }
         function applyLandingTab(landing) {
-          if (!landing.tab || landing.tab === current) return;
+          if (!landing.tab || landing.tab === current) return;$keepAll
           current = landing.tab;
           initialTab = current;
           reflectTabs();
@@ -3735,7 +3827,7 @@ ${captureControlsHtml().prependIndent("          ")}
         if (window.cpUrlState) {
           window.cpUrlState.onPop(function () {
             var popped = hashTarget();
-            if (!popped || popped.tab === current) return;
+            if (!popped || popped.tab === current) return;$keepAllPop
             current = popped.tab;
             reflectTabs();
             apply();
@@ -7191,6 +7283,9 @@ ${captureControlsHtml().prependIndent("          ")}
     // scan, so compose-m3's 84 tiles read as grouped clusters instead of one undivided wall.
     val sections = buildSections(groups)
     val hasTabs = sections.isNotEmpty()
+    // The tree's All row, and the landing selection ([catalogTreeHtml]). One section is already
+    // the whole catalog, so it gets no row and its script never mentions `all`.
+    val hasAllTab = sections.size > 1
     val synthGroups = if (hasTabs) null else synthesizeGroups(groups)
     // Any `.cp-subgroup` dividers present (authored tabs OR synthesized flat groups) → the filter
     // script must collapse an emptied sub-group on search, independent of the tab machinery.
@@ -7364,6 +7459,7 @@ ${captureControlsHtml().prependIndent("          ")}
           themeLeaseUrl,
           presenceUrl,
           hasPanes,
+          hasAllTab,
         )}</script>"
       else ""
     // The long-press live lane, in the SAME document order as the cards above (and as

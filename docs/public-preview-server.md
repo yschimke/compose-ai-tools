@@ -221,10 +221,26 @@ a section's groups existed solely as headings, so the only way to learn what a s
 was to open it and scroll. The tree publishes both levels at once, and a group row is a destination
 — it selects the section and scrolls to that group's cards.
 
+The tree leads with an **All** row, and that is what a catalog opens on. A sectioned catalog used
+to land on its first section with the rest of itself hidden — nine previews in the header, two on
+the screen — so the default view of a catalog was a fraction of it, and the filter beside it only
+reached the whole thing once you had typed into it. Under All every panel shows, the whole
+inventory is one scroll, and the filter spans every section because nothing is narrowing it.
+Picking a section still narrows to it, and All is a row you come back to; a catalog with a single
+section gets no row, because that section already is the whole catalog. It travels like any other
+selection — `?tab=all`, remembered per catalog, restored when you come back from a preview.
+
 A section is expanded exactly when it is selected, which is the same statement the grid beside it
-makes. The exception is a live **search**, which spans every section: every branch that still holds
-a match opens, and a group row disappears with the cluster the filter emptied, so a row never
-survives the destination it points at.
+makes. Two states span the catalog instead, and both open every branch: **All**, because the tree
+standing beside a grid showing everything has to be the outline of everything; and a live
+**search**, where every branch that still holds a match opens and a group row disappears with the
+cluster the filter emptied, so a row never survives the destination it points at. Whenever several
+sections are on screen at once the grid's per-section headings come back — with one section
+showing, the selected row names it and the heading is redundant; with the panels stacked, the
+heading is the only thing saying where one section ends and the next begins.
+
+Jumping to a group from All stays in All: the row you clicked says where to scroll, not which
+slice of the catalog to throw away.
 
 Below a group the tree keeps going: one row per **component**, and under a component the
 **variants** the grid folds out from under it. A component row scrolls to that component's card; a
@@ -259,11 +275,13 @@ A component opened onto its variants, and the outline tree a section-less catalo
 
 ![The outline tree over a section-less catalog](images/serve-catalog-tree-outline.png)
 
+The landing state — All selected, every section open beside a grid that shows the lot:
+
 ![Catalog navigation tree — meshcore-mobile (light)](images/serve-catalog-tree-light.png)
 
 ![Catalog navigation tree — meshcore-mobile (dark)](images/serve-catalog-tree-dark.png)
 
-Opening another branch, and the search that spans them all:
+Narrowing to one section, and the search that spans them all:
 
 ![The Components branch open, its Device group marked](images/serve-catalog-tree-section-open.png)
 
