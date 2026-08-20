@@ -1508,11 +1508,50 @@ const FIXTURE_STATES = [
         );
         return (
           imgs.length > 0 &&
-          imgs.every((i) => i.complete && i.naturalWidth > 0 && /\.apng/.test(i.getAttribute("src") || ""))
+          imgs.every(
+            (i) =>
+              i.complete &&
+              i.naturalWidth > 0 &&
+              /\.apng/.test(i.getAttribute("src") || ""),
+          )
         );
       });
       // The pointer is a means here, not the subject: left on the button it bakes a hover ring
       // into a baseline about the cards.
+      await page.mouse.move(0, 0);
+    },
+  },
+  {
+    // The MOTION BROWSER on its DARK takes.
+    //
+    // A gesture recorded once per theme is ONE card here, and the toolbar's Theme control swaps
+    // every such card between the two takes in place — the recording, the still it returns to, the
+    // accessible name and the deep link all at once. None of that is in the committed HTML, which
+    // is the light lane by construction, so without this shot the whole control could stop working
+    // and no baseline would move. The Icon Button is the fixture's themed component; the Switch,
+    // the Card and the Profile screen record one theme each and must be left exactly as they were.
+    fixture: "serve-motion-index",
+    suffix: "motion-index-dark-take",
+    apply: async (page) => {
+      // States run in order against the SAME page, and the one above left every card playing —
+      // over a stub that is the same file for all of them, so a themed swap would be invisible.
+      // Stopping first puts the posters back, which is where the swap is legible: the Icon
+      // Button's card comes back on the DARK render's still while its neighbours do not move.
+      await page.click("#cp-motion-all");
+      await page.click('[data-motion-theme="dark"]');
+      // The swapped card has to have LOADED its dark still before the shot, or the capture catches
+      // the moment between the `src` assignment and the decode and bakes a broken image in.
+      await page.waitForFunction(() => {
+        const img = document.querySelector(
+          ".cp-motion-card-stage[data-motion-src-dark] .cp-motion-card-img",
+        );
+        return (
+          !!img &&
+          img.complete &&
+          img.naturalWidth > 0 &&
+          /__dark\.png/.test(img.getAttribute("src") || "")
+        );
+      });
       await page.mouse.move(0, 0);
     },
   },
@@ -3180,7 +3219,9 @@ test("contract · the report launcher offers a catalog only where one can be fil
   await openLauncher();
   await expect(page.locator(".cp-fab-catalog")).toBeHidden();
   // …and the server half is still offered, so the panel is never a dead end.
-  await expect(page.locator(".cp-fab-panel .cp-report-bug button")).toBeVisible();
+  await expect(
+    page.locator(".cp-fab-panel .cp-report-bug button"),
+  ).toBeVisible();
 
   // The comparison wall does carry one, and it says what it is about and where it goes.
   await page.goto("/preview-harness/fixtures/pages/serve-format-compare.html");
