@@ -1469,20 +1469,40 @@ ${captureControlsHtml().prependIndent("          ")}
    * rows in wear-m3-catalog, all of them called things like "Alert Dialog"
    * ([wear-m3-catalog#41](https://github.com/yschimke/wear-m3-catalog/issues/41)).
    *
-   * [primary] is the component's primary size from [primarySizeByComponent]. A preview with no
-   * declared size, or whose component resolved none, is never folded — an older catalog (or a plain
-   * bundle) whose size lives only in the id keeps a card per size, because there is no metadata to
-   * build a switcher from and folding would make those renders unreachable.
+   * [primary] is the component's primary size from [primarySizeByComponent], looked up in [p]'s own
+   * theme lane. A preview with no declared size, or whose component resolved none *in that lane*,
+   * is never folded — an older catalog (or a plain bundle) whose size lives only in the id keeps a
+   * card per size, because there is no metadata to build a switcher from and folding would make
+   * those renders unreachable.
    */
-  private fun isNonPrimarySize(p: ServePreview, primary: Map<String, String>): Boolean {
+  private fun isNonPrimarySize(
+    p: ServePreview,
+    primary: Map<Pair<String, String>, String>,
+    darkFirst: Boolean,
+  ): Boolean {
     val size = p.size?.takeIf { it.isNotBlank() } ?: return false
-    val componentPrimary = primary[componentKey(p)] ?: return false
+    val componentPrimary = primary[sizeFoldKey(p, darkFirst)] ?: return false
     return size != componentPrimary
   }
 
   /**
+   * A component's identity *within one theme lane* — the key the size fold is resolved against.
+   *
+   * The lane comes from [ServePreview.theme] alone, NOT from [themeLane]: that one falls back to
+   * scanning the flattened id for a `light`/`dark` segment, and `breakpoints[].size` is an
+   * arbitrary catalog-chosen string, so a catalog that names a breakpoint `light` would have its
+   * *size* token read as a baked theme. Two sizes would then resolve as two lanes, both survive the
+   * fold, and [groupPreviews] would pair them as a light/dark swap — a Theme control that silently
+   * changes device size. A catalog that bakes its themes into ids without declaring the metadata
+   * simply resolves one lane here and folds as it did before the lane split, which is the safe
+   * direction: this key only ever decides how much to KEEP.
+   */
+  private fun sizeFoldKey(p: ServePreview, darkFirst: Boolean): Pair<String, String> =
+    componentKey(p) to (p.theme?.takeIf { it.isNotBlank() } ?: if (darkFirst) "dark" else "light")
+
+  /**
    * Each component's **primary** breakpoint — the size its one card is drawn at — keyed by
-   * [componentKey].
+   * [componentKey] **and theme lane**.
    *
    * The catalog's own order decides it: the first size a component publishes, read in authored
    * order ([ServePreview.catalogOrder], falling back to list order for a catalog that records
@@ -1490,16 +1510,51 @@ ${captureControlsHtml().prependIndent("          ")}
    * declares them, so this is the first *declared* breakpoint — the one a catalog leads with, and
    * for a design catalog the one its design references are mapped against.
    *
+   * Per **lane**, because the size switcher a folded render is reached from is itself lane-scoped
+   * ([componentRenderRows] holds `themeLane` fixed, so a light page never offers a dark size). A
+   * catalog whose theme × size product is sparse — the primary size drawn only light while some
+   * other breakpoint carries the component's only dark render — would otherwise have that dark
+   * render folded away with nothing left to reach it from. Keying per lane keeps one representative
+   * in each lane that has renders at all.
+   *
+   * The component-wide primary is resolved FIRST and wins in every lane that has it; a lane falls
+   * back to its own first-declared size only when it genuinely lacks that size. Resolving each lane
+   * independently would let two lanes pick different primaries whenever they enumerate their
+   * breakpoints in a different order — light leading with `192dp` while dark leads with `240dp`,
+   * which separate per-theme preview functions can easily produce. The two survivors then carry
+   * different size tokens, so [baseKey] cannot pair them, and a FULL product would publish two
+   * cards where the whole point is one. Lane-local primaries are the exception for sparse lanes,
+   * not the rule.
+   *
    * Only the component's DEFAULT renders are consulted: a component may publish a state or props
    * variant at some sizes and not others, and letting those vote could pick a primary that the
    * default render never rendered at, folding the whole component's card out of the grid.
    */
-  private fun primarySizeByComponent(previews: List<ServePreview>): Map<String, String> {
-    val primary = LinkedHashMap<String, String>()
-    previews
-      .filter { it.size != null && !isNonDefaultState(it) && !hasNonDefaultProps(it) }
-      .sortedBy { it.catalogOrder ?: Int.MAX_VALUE }
-      .forEach { primary.putIfAbsent(componentKey(it), it.size!!) }
+  private fun primarySizeByComponent(
+    previews: List<ServePreview>,
+    darkFirst: Boolean,
+  ): Map<Pair<String, String>, String> {
+    val defaults =
+      previews
+        .filter { it.size != null && !isNonDefaultState(it) && !hasNonDefaultProps(it) }
+        .sortedBy { it.catalogOrder ?: Int.MAX_VALUE }
+    // The component's primary across every lane — the size the one card is drawn at when it can be.
+    val componentPrimary = LinkedHashMap<String, String>()
+    defaults.forEach { componentPrimary.putIfAbsent(componentKey(it), it.size!!) }
+    // Which sizes each lane actually published, so a lane can be asked whether it has that primary.
+    val sizesByLane = LinkedHashMap<Pair<String, String>, MutableSet<String>>()
+    defaults.forEach {
+      sizesByLane.getOrPut(sizeFoldKey(it, darkFirst)) { LinkedHashSet() }.add(it.size!!)
+    }
+    val primary = LinkedHashMap<Pair<String, String>, String>()
+    defaults.forEach {
+      val key = sizeFoldKey(it, darkFirst)
+      val shared = componentPrimary[componentKey(it)]
+      primary.putIfAbsent(
+        key,
+        if (shared != null && shared in sizesByLane.getValue(key)) shared else it.size!!,
+      )
+    }
     return primary
   }
 
@@ -4403,12 +4458,14 @@ ${captureControlsHtml().prependIndent("          ")}
     previews: List<ServePreview>,
     darkFirst: Boolean = false,
   ): List<ComponentSearchEntry> {
-    val primarySizes = primarySizeByComponent(previews)
+    val primarySizes = primarySizeByComponent(previews, darkFirst)
     val cards =
       groupPreviews(
         previews.filterNot {
           it.renderFailure == null &&
-            (isNonDefaultState(it) || hasNonDefaultProps(it) || isNonPrimarySize(it, primarySizes))
+            (isNonDefaultState(it) ||
+              hasNonDefaultProps(it) ||
+              isNonPrimarySize(it, primarySizes, darkFirst))
         }
       )
     val duplicateLabels =
@@ -4420,9 +4477,19 @@ ${captureControlsHtml().prependIndent("          ")}
     return cards.map { card ->
       val preview = card.rendered(darkFirst)
       val baseLabel = previewDisplayName(preview)
+      // The catalog's OWN size name first (`192dp`, `smallRound`, `wide`), then the flattened-id
+      // token vocabulary. [previewSizeVariantLabel] only knows a fixed set of tokens, so a catalog
+      // naming its breakpoints anything else — which is every Wear catalog, whose sizes are `192dp`
+      // … `240dp` — hit the `?: baseLabel` fallback and published two palette rows spelled
+      // identically. The declared `size` is exactly what tells them apart, and it is the same
+      // string
+      // the grid's own size rows are labelled with.
       val label =
         if (baseLabel !in duplicateLabels) baseLabel
-        else previewSizeVariantLabel(preview.id)?.let { "$baseLabel · $it" } ?: baseLabel
+        else
+          (preview.size?.takeIf { it.isNotBlank() } ?: previewSizeVariantLabel(preview.id))?.let {
+            "$baseLabel · $it"
+          } ?: baseLabel
       ComponentSearchEntry(
         previewId = preview.id,
         label = label,
@@ -7212,7 +7279,7 @@ ${captureControlsHtml().prependIndent("          ")}
     // card per state, per variant or per screen size; the folded renders stay reachable through the
     // viewer's state + variant + size switchers. Plain bundle screens (no state, no props, no
     // declared size) pass straight through.
-    val primarySizes = primarySizeByComponent(previews)
+    val primarySizes = primarySizeByComponent(previews, darkFirst)
     val groups =
       groupPreviews(
         previews.filterNot {
@@ -7220,7 +7287,7 @@ ${captureControlsHtml().prependIndent("          ")}
             (it.renderFailure == null &&
               (isNonDefaultState(it) ||
                 hasNonDefaultProps(it) ||
-                isNonPrimarySize(it, primarySizes)))
+                isNonPrimarySize(it, primarySizes, darkFirst)))
         }
       )
     val cardAnchors = mintCardAnchors(groups)
@@ -7879,11 +7946,13 @@ ${captureControlsHtml().prependIndent("          ")}
     // row for each is four rows saying "no reference" under one name; but a kit that DOES publish a
     // second size (Wear's `Picker`, at its `Larger Screen (BP)` cell) maps a reference to it, and
     // that row is the whole point of the page.
-    val comparablePrimarySizes = primarySizeByComponent(previews)
+    val comparableDarkFirst = isDarkFirstSystem(basePath, sessionId, declaredSurface)
+    val comparablePrimarySizes = primarySizeByComponent(previews, comparableDarkFirst)
     val comparablePreviews = previews.filterNot { preview ->
       (isNonDefaultState(preview) ||
         hasNonDefaultProps(preview) ||
-        isNonPrimarySize(preview, comparablePrimarySizes)) && referencesFor(preview.id).isEmpty()
+        isNonPrimarySize(preview, comparablePrimarySizes, comparableDarkFirst)) &&
+        referencesFor(preview.id).isEmpty()
     }
     val cards = groupPreviews(comparablePreviews)
     val hasSvg = comparablePreviews.any { hasSvgFor(it.id) }
@@ -11410,7 +11479,8 @@ $cards
     // second place, with the two axes torn apart into rows that never named their relationship.
     // Empty for a component with no second render, exactly as the chip rows were.
     val axesTree = componentSubtreeHtml(preview, siblings, basePath, q, viewerDarkFirst)
-    val navDrawer = navDrawerHtml(preview, siblings, basePath, q, viewerTheme, axesTree)
+    val navDrawer =
+      navDrawerHtml(preview, siblings, basePath, q, viewerTheme, axesTree, viewerDarkFirst)
     val navToggle =
       if (navDrawer.isEmpty()) ""
       else
@@ -11774,6 +11844,10 @@ $cards
      */
     theme: String?,
     axesTree: String = "",
+    /**
+     * The catalog's primary lane, so the size fold resolves per lane exactly as the grid's does.
+     */
+    darkFirst: Boolean = false,
   ): String {
     // Collapse to ONE entry per component — the same folding the landing grid does — so the nav
     // reads as a list of components, not of every baked state/theme/props/size permutation
@@ -11785,14 +11859,14 @@ $cards
     // the viewer's own state/variant/size switchers reach that component's other axes.
     // `aria-current` pins the component being viewed, even when the current preview is a folded
     // (non-default) variant that has no card of its own.
-    val navPrimarySizes = primarySizeByComponent(siblings)
+    val navPrimarySizes = primarySizeByComponent(siblings, darkFirst)
     val representatives =
       groupPreviews(
           siblings.filterNot {
             it.renderFailure == null &&
               (isNonDefaultState(it) ||
                 hasNonDefaultProps(it) ||
-                isNonPrimarySize(it, navPrimarySizes))
+                isNonPrimarySize(it, navPrimarySizes, darkFirst))
           }
         )
         .map {
@@ -11801,6 +11875,21 @@ $cards
             "light" -> it.light ?: it.default
             else -> it.default
           }
+        }
+        // ONE row per component, decided AFTER the lane pick. A sparse theme × size product leaves
+        // two survivors for one component (its light render at one breakpoint, its dark at another)
+        // whose ids differ by size, so [groupPreviews] cannot pair them into a single card and the
+        // drawer would name that component twice — once on a link that walks out of the theme being
+        // viewed. Prefer the survivor already in the viewer's [theme]; a component with nothing in
+        // that lane keeps its first survivor rather than vanishing from the list.
+        .let { picked ->
+          val byComponent = LinkedHashMap<String, ServePreview>()
+          picked.forEach { p ->
+            val existing = byComponent[componentKey(p)]
+            if (existing == null || (theme != null && existing.theme != theme && p.theme == theme))
+              byComponent[componentKey(p)] = p
+          }
+          byComponent.values.toList()
         }
         .sortedBy { if (componentKey(it) == componentKey(preview)) 0 else 1 }
     // Nothing to navigate to when the collapsed list is empty or holds only the current component.
