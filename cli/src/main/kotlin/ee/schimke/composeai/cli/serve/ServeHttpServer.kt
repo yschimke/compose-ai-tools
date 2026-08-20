@@ -1510,11 +1510,11 @@ class ServeHttpServer(
       // entry and throws straight back out. Cancellation is exactly when this matters — a visitor
       // navigating away, a crawler abandoning a fetch, a socket dropped mid-render all cancel the
       // request coroutine here — and a skipped release leaves the lease count permanently
-      // elevated. That is far worse than one resident daemon: `ServeSessionRegistry.idleMillis()`
-      // answers *busy* (`null`, not a number) while ANY session holds a lease, so a single leaked
-      // lease pins the whole server as busy for the life of the process, which silently stands the
-      // theme optimizer down — the deployed box sat at `turnsGranted 0` across 23 catalogs with no
-      // traffic to explain it.
+      // elevated. That is far worse than one resident daemon: a leaked lease keeps its session
+      // resident for the life of the process, so its daemon is never suspended and the
+      // `--exit-when-idle` watchdog (`connectionIdleMillis`) never fires. Since #4312 it no longer
+      // also pins the theme optimizer's clock — a lease stops counting as busy once its holder goes
+      // quiet — but that relaxation is a floor under the damage, not a licence to leak one.
       //
       // Safe to call inline: `Lease.close` is a non-suspending, idempotent compare-and-set.
       // This helper backs the page and asset lanes — the routes an aborted browse actually hits —
@@ -3878,6 +3878,28 @@ class ServeHttpServer(
         publicRender = isPublic,
       )
     val skin = siteSkin()
+    // Which catalog's tracker a *pixel* bug belongs in, so the page can name and link it instead of
+    // telling the reporter to go and find the link on a preview. Always answerable on a top-level
+    // site — the hostname is the catalog — and answerable for any `/{system}/…` page too. Skipped
+    // when the only repo on offer is [ServeIssueReport.FALLBACK_REPO], which is this server's own:
+    // a paragraph pointing at the tracker the form already files against says nothing.
+    val catalogTarget = system?.let { id ->
+      val provenance = bundle?.provenance ?: seen?.provenance
+      val repo = ServeIssueReport.repoFor(bundle?.catalogSource, provenance)
+      if (repo == ServeBugReport.REPO) null
+      else
+        ServeWeb.BugReportCatalog(
+          system = id,
+          title =
+            bundle?.title?.takeIf { it.isNotBlank() }
+              ?: catalogMetaSeen[id]?.title?.takeIf { it.isNotBlank() }
+              ?: host?.label?.takeIf { it.isNotBlank() }
+              ?: id,
+          repo = repo,
+          issuesUrl = ServeIssueReport.action(repo),
+          site = siteSystem() != null,
+        )
+    }
     val report =
       ServeWeb.BugReport(
         action = ServeBugReport.action(),
@@ -3897,6 +3919,7 @@ class ServeHttpServer(
             "$basePath/render/${WebEscaping.urlEncodeSegment(it)}.png$overrideSuffix$gate"
           },
         login = githubAuth?.currentLogin(call),
+        catalog = catalogTarget,
       )
     markGeneration("static-page", "no-store")
     call.respondText(
@@ -4449,11 +4472,22 @@ class ServeHttpServer(
       if (onlySystem == null) themeOptimizerStats?.invoke() else null
 
     /**
-     * Sessions holding an open lease — the reason the server-wide idle clock can read *busy* on a
-     * box serving nothing. Scoped like `knownSessions`: a top-level site names only its own.
+     * Sessions holding an open lease — what keeps a session resident. Scoped like `knownSessions`:
+     * a top-level site names only its own.
      */
     val leasedSessions: List<String> =
       sessions.leasedSessions().let { held ->
+        if (onlySystem == null) held else held.filter { it == onlySystem }
+      }
+
+    /**
+     * The subset of [leasedSessions] whose holder has been active recently — the ones actually
+     * making the server-wide idle clock read *busy* (#4312). Published beside the full list because
+     * the difference is the diagnosis: leases held with none of them busy is an idle tab keeping a
+     * daemon warm, which is fine; a busy one is someone genuinely being served.
+     */
+    val busyLeasedSessions: List<String> =
+      sessions.busyLeasedSessions().let { held ->
         if (onlySystem == null) held else held.filter { it == onlySystem }
       }
     val openRenderBreakerCount: Int = running.count { it.renderStats?.breaker?.open == true }
@@ -4492,8 +4526,11 @@ class ServeHttpServer(
             val why =
               when (admission.idleBlockedBy) {
                 ServeBackgroundWork.IDLE_BLOCKED_BY_SESSION_LEASE ->
-                  if (leasedSessions.isEmpty()) "session lease held"
-                  else "session lease held by ${leasedSessions.joinToString(", ")}"
+                  // The *busy* holders, not every leaseholder: since #4312 an idle tab's lease
+                  // keeps its session resident without shutting this gate, so naming it here would
+                  // blame the one connection that is not the reason.
+                  if (busyLeasedSessions.isEmpty()) "session lease held"
+                  else "session lease held by ${busyLeasedSessions.joinToString(", ")}"
                 ServeBackgroundWork.IDLE_BLOCKED_BY_CATALOG_LOAD -> "catalogs loading"
                 else -> "server busy"
               }
@@ -4537,6 +4574,7 @@ class ServeHttpServer(
             liveSeatRefusals = liveSeats.refusalCount(),
             liveSeatRefusalsUnverified = liveSeats.unverifiedRefusalCount(),
             leasedSessions = leasedSessions,
+            busyLeasedSessions = busyLeasedSessions,
           ),
         config =
           ConfigDto(
@@ -7148,7 +7186,11 @@ class ServeHttpServer(
       // Lease (not just acquire) the tenant for the socket's whole life: a fallback-lane socket
       // opens
       // no stream, so without a lease the reaper could close its host mid-connection.
-      val lease = withContext(Dispatchers.IO) { sessions.lease(sessionId) }
+      //
+      // `connection = true`: this is the one hold that outlives any unit of work, so it is the one
+      // that has to earn its "busy" from activity rather than from being open (#4312). Every other
+      // caller takes the default request-scoped lease, which counts as busy until it is released.
+      val lease = withContext(Dispatchers.IO) { sessions.lease(sessionId, connection = true) }
       if (lease == null) {
         close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "no such session"))
         return
@@ -7205,6 +7247,10 @@ class ServeHttpServer(
             for (frame in incoming) {
               if (frame is Frame.Text) {
                 val text = frame.readText()
+                // The lease keeps the session resident for the socket's whole life; THIS is what
+                // says someone is using it (#4312). Without it an open-but-untouched tab reads as
+                // "being served" forever and holds the theme optimizer's quiet gate shut.
+                lease.touch()
                 withContext(Dispatchers.IO) { live.onClientMessage(text) }
               }
             }
@@ -7234,6 +7280,7 @@ class ServeHttpServer(
           for (frame in incoming) {
             if (frame is Frame.Text) {
               val text = frame.readText()
+              lease.touch() // see the live lane above
               withContext(Dispatchers.IO) { session.onClientMessage(text) }
             }
           }
@@ -7974,12 +8021,18 @@ private data class DaemonSummaryDto(
   /**
    * Sessions holding an open lease — see [ServeSessionRegistry.leasedSessions].
    *
-   * Non-empty means the server-wide idle clock reads *busy* whatever the render counters say, which
-   * is the state that silently stands the theme optimizer down. Normally this is short-lived (a
-   * WebSocket, an in-flight asset fetch); an entry that persists across polls on a box serving no
-   * traffic is a leaked lease.
+   * Non-empty means those sessions are held resident: their daemons will not be suspended and the
+   * `--exit-when-idle` watchdog will not fire. Normally short-lived (a WebSocket, an in-flight
+   * asset fetch); an entry that persists across polls on a box serving no traffic is either an open
+   * browser tab or a leaked lease, and [busyLeasedSessions] tells those two apart.
    */
   val leasedSessions: List<String> = emptyList(),
+  /**
+   * The holders among [leasedSessions] that have been active recently — see
+   * [ServeSessionRegistry.busyLeasedSessions]. Non-empty is what makes the server-wide idle clock
+   * read *busy*, which is the state that stands the theme optimizer down.
+   */
+  val busyLeasedSessions: List<String> = emptyList(),
 )
 
 @Serializable

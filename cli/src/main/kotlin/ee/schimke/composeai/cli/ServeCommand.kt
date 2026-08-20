@@ -2937,7 +2937,10 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     }
     exec.scheduleWithFixedDelay(
       {
-        val idle = registry.idleMillis()
+        // The STRICT clock, not the one the theme optimizer reads: an open socket keeps the process
+        // up however quiet its holder has gone. Standing a background pass down under an idle tab
+        // costs that tab one render when it comes back; exiting under it drops their connection.
+        val idle = registry.connectionIdleMillis()
         if (idle != null && idle >= timeoutMillis) {
           System.err.println(
             "serve: idle ${idle / 1000}s (--exit-when-idle=${idleExitSeconds}s) — shutting down."

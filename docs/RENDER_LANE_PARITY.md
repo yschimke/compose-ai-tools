@@ -31,7 +31,7 @@ lane's intrinsic buffer size and the on-screen rect of the element showing it.
 | --- | --- | --- |
 | Snapshot PNG (baked, from the delivery branch) | ✅ | ✅ |
 | On-demand `/render/<id>.png` (daemon, static) | ✅ desktop | ✅ Android |
-| Live stream (`#cp-live-toggle`, daemon-pushed frames) | ✅ desktop | ✅ Android |
+| Live stream (`#cp-live-toggle`, or a click on the stage, daemon-pushed frames) | ✅ desktop | ✅ Android |
 | In-browser Wasm (`#cp-lane-select` → `wasm`) | ✅ `:samples:cmp-wasm-catalog` | ❌ (Wear Compose is Android-only) |
 | SVG export (`#cp-svg-toggle`, `compose/figma-svg`) | ✅ | ✅ |
 

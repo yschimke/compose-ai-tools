@@ -32,7 +32,13 @@ class ServeTopLevelSiteTest {
       .also { ImageIO.write(BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB), "png", it) }
       .toByteArray()
 
-  private fun bundle(label: String, previewIds: List<String>, title: String): ServeBundleHost {
+  private fun bundle(
+    label: String,
+    previewIds: List<String>,
+    title: String,
+    /** The catalog's Kotlin source, when the test needs a tracker distinct from the server's. */
+    source: ServeWeb.CatalogSource? = null,
+  ): ServeBundleHost {
     val dir = Files.createTempDirectory("site-$label").toFile().also { it.deleteOnExit() }
     File(dir, "index.html").writeText("<html></html>")
     File(dir, "previews").apply { mkdirs() }
@@ -47,6 +53,7 @@ class ServeTopLevelSiteTest {
           branch = "design-artifacts/$label",
           generatedAt = Instant.parse("2026-05-01T00:00:00Z").toString(),
         ),
+      catalogSource = source,
       declaredBaked = previewIds,
     )
   }
@@ -420,6 +427,11 @@ class ServeTopLevelSiteTest {
         "/p/button-filled" to "<!doctype html>",
         "/render/button-filled.png" to "",
         "/assets/serve/serve.css" to "",
+        // Issue #4319: the one link the site footer offers on EVERY page. Its path is built from
+        // `ServeBugReport.PATH`, so it was absent from the allowlist and the interceptor answered
+        // the site's own styled 404 — for the affordance a visitor reaches when something else is
+        // already broken.
+        "/report-bug" to "Report a bug in the preview server",
       )
     for ((path, marker) in routes) {
       val (code, body, location) = get(path, host = siteHost)
@@ -428,6 +440,59 @@ class ServeTopLevelSiteTest {
         assertTrue(body.contains(marker), "'$path' answered something else: ${body.take(200)}")
       }
     }
+  }
+
+  @Test
+  fun `the report page on a site host sends pixel bugs to that catalog's tracker`() {
+    // The other half of issue #4319. A site host publishes exactly ONE catalog, so "go back to the
+    // preview and use its report link" — sound advice from a multi-catalog front door — is advice
+    // the server can follow on the reporter's behalf here: it knows the catalog, and the page they
+    // came from (`/pages/buttons`, an index) may have no preview to go back to at all.
+    registry.register(
+      "compose-m3",
+      host =
+        bundle(
+          "compose-m3",
+          listOf("button-filled"),
+          "Compose Material 3",
+          source = ServeWeb.CatalogSource("yschimke/m3-catalog", "main", "catalog"),
+        ),
+      pinned = true,
+    )
+    server =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused",
+          sessions = registry,
+          defaultSessionId = "",
+          isPublic = true,
+          catalogSessions = listOf("compose-m3"),
+          sites = ServeSiteRegistry.of(listOf(siteHost to "compose-m3")),
+        )
+        .also { it.start() }
+
+    val (code, body, _) = get("/report-bug?from=%2Fpages%2Fbuttons", host = siteHost)
+    assertEquals(200, code)
+    assertTrue(
+      body.contains("<strong>Compose Material 3</strong> catalog and nothing else"),
+      "the site's own catalog is named: $body",
+    )
+    assertTrue(
+      body.contains("href=\"https://github.com/yschimke/m3-catalog/issues/new\""),
+      "a pixel bug is one click from the catalog's tracker: $body",
+    )
+    // The form itself is unchanged: a SERVER bug still goes to the repo that ships the server.
+    assertTrue(
+      body.contains("action=\"https://github.com/yschimke/compose-ai-tools/issues/new\""),
+      body,
+    )
+
+    // On the main host's front door there is no catalog to name, so the generic advice stands.
+    val (mainCode, mainBody, _) = get("/report-bug")
+    assertEquals(200, mainCode)
+    assertTrue(mainBody.contains("Go back to the"), mainBody)
+    assertFalse(mainBody.contains("yschimke/m3-catalog"), mainBody)
   }
 
   @Test

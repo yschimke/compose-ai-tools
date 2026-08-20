@@ -152,6 +152,37 @@ See
 [`skills/compose-preview/references/capture-modes.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/capture-modes.md)
 for the full set of capture-mode annotations.
 
+### Publishing it in a design catalog
+
+A design catalog collects motion **per component**, off the component's own
+`@Preview` — so the pairing above needs no extra wiring. Two things push the
+recording onto a function of its own, and there it needs claiming or it
+publishes nowhere:
+
+- the component carries `@OverrideVariant` cells. The motion annotation rides
+  every cell and the animated path ignores their knobs, so one recording
+  publishes N byte-identical times, once per variant name;
+- the recording needs a pinned canvas (`widthDp` + `heightDp` — every frame of a
+  GIF must share one size) while the component's sticker wraps and is cropped.
+
+Name the separate function from the component:
+
+```kotlin
+@Preview(widthDp = 200, heightDp = 120) annotation class MotionCanvas
+
+@MotionCanvas @AnimatedPreview @Composable fun SwitchTransitionMotion() = Sticker { … }
+
+@CatalogComponent(id = "Toggles/Switch", motionPreview = "SwitchTransitionMotion")
+@Composable
+fun SwitchButtonSticker() = Sticker { … }
+```
+
+A `catalog.spec.json` component's `motionPreview` does the same and wins over the
+annotation. The named function needs no `@CatalogComponent` of its own — it adds
+no card and no design-kit node, it only supplies the bytes. An authored recording
+that **no** component claims renders and is then dropped at the join; the export
+warns when it finds one.
+
 ## Companion products
 
 - [Scroll captures](../scroll) — `render/scroll/gif` for motion driven by scrolling rather than by a pointer or the component itself.

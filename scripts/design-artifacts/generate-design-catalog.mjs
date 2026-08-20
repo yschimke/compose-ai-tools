@@ -48,6 +48,7 @@ import { foldVariants, variantLabel } from "./catalog-variants.mjs";
 import { foldMotion, motionArtifactsFor, motionPreviewFor } from "./catalog-motion.mjs";
 import { publishMotionArtifacts } from "./catalog-motion-publish.mjs";
 import { checkMotionCarried } from "./motion-carried.mjs";
+import { unclaimedMotionPreviews, unclaimedMotionWarning } from "./unclaimed-motion.mjs";
 import {
   DEFERRED,
   deferralPlan,
@@ -1622,6 +1623,17 @@ if (values["publish-live-bundle"]) {
           `@design-parity/catalog-export pin (needs >= 0.1.52).`,
       );
     }
+    // The other half of the same silence, one step earlier in the chain. `checkMotionCarried` guards
+    // captures the join RESOLVED; this guards captures it never got to resolve, because the
+    // recording sits on a function no component claims. Both were invisible for the same reason —
+    // a count of zero looks identical to "this catalog has no motion" — and the second is what cost
+    // wear-m3-catalog all five of its recordings on every green run since they were authored.
+    // A warning, not a gate: an uncatalogued recording is a wiring gap, not a corrupt render.
+    const unclaimedWarning = unclaimedMotionWarning(
+      spec.system,
+      unclaimedMotionPreviews([bundle, ...additionalBundles], spec.groups),
+    );
+    if (unclaimedWarning) console.warn(unclaimedWarning);
   }
 
   // Publish the motion axis' bytes onto the branch, under `motion/`, and repoint each declaration

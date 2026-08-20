@@ -94,6 +94,7 @@
       <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false" data-default-lane-label="CMP Android" title="Static snapshot — click for the live, interactive preview">
             <span class="cp-live-dot" aria-hidden="true"></span>
             <span id="cp-live-toggle-label">CMP Android</span>
+            <span class="cp-live-toggle-verb" id="cp-live-toggle-verb" aria-hidden="true">▸ Live</span>
           </button>
 <select id="cp-lane-select" class="cp-lane-select" aria-label="Switch renderer" title="Draw this preview with a different renderer" data-default="rc:cmp-android" data-rc-default="cmp-android"><option value="" selected>Switch renderer…</option><option value="rc:js">JS</option><option value="rc:cmp-wasm">CMP Wasm</option><option value="rc:java">Java</option><option value="rc:cmp-android">CMP Android</option><option value="rc:cmp-jvm" disabled>CMP JVM (unavailable)</option></select>
 <a class="cp-format-link cp-compare-players" href="/remote-m3/compare?format=rc&preview=appcard__ideal__default__compact&token=demo-token-fixture" title="See every Remote Compose player's render of this screen side by side">compare players →</a>
@@ -113,7 +114,7 @@
 
       <div class="cp-viewer" data-preview-id="appcard__ideal__default__compact" data-mode="snapshot" data-modes="snapshot" data-static-snapshot="true" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-fold-scope="remote-m3" data-has-rc-doc="1">
 
-        <div class="cp-stage"><cp-backend-badge class="cp-backend" id="cp-backend" role="status" aria-live="polite"></cp-backend-badge><img id="cp-img" alt="App Card"><canvas id="cp-canvas" hidden></canvas><canvas id="cp-rc-canvas" hidden></canvas><iframe id="cp-rc-wasm" hidden sandbox="allow-scripts allow-same-origin" title="App Card (Remote Compose CMP Wasm)"></iframe><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+        <div class="cp-stage"><cp-backend-badge class="cp-backend" id="cp-backend" role="status" aria-live="polite"></cp-backend-badge><img id="cp-img" alt="App Card"><canvas id="cp-canvas" hidden></canvas><canvas id="cp-rc-canvas" hidden></canvas><iframe id="cp-rc-wasm" hidden sandbox="allow-scripts allow-same-origin" title="App Card (Remote Compose CMP Wasm)"></iframe><span class="cp-live-hint cp-stage-live-hint" id="cp-stage-live-hint" aria-hidden="true">click for live</span><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
 
         <div class="cp-controls" id="cp-controls">
           <!-- No "Appearance" group. Its only ever-visible control was a Background select

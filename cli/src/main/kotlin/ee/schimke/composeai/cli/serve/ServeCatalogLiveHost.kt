@@ -1021,11 +1021,18 @@ class ServeCatalogLiveHost(
    * interruption, grant one anyway.
    *
    * **A gate that can close permanently is indistinguishable from the feature being off**, and this
-   * one can: the quiet window is measured from `ServeSessionRegistry.idleMillis()`, which answers
-   * *busy* outright — not a large number, but `null` — while any session holds an open lease. One
-   * long-lived WebSocket, or one lease leaked by a request cancelled mid-flight, and no amount of
-   * waiting will ever satisfy the window. The deployed server sat in exactly that state for its
+   * one could: the quiet window is measured from `ServeSessionRegistry.idleMillis()`, which used to
+   * answer *busy* outright — not a large number, but `null` — while any session held an open lease.
+   * One long-lived WebSocket, or one lease leaked by a request cancelled mid-flight, and no amount
+   * of waiting would ever satisfy the window. The deployed server sat in exactly that state for its
    * whole uptime: 23 catalogs, `turnsGranted 0`, 1 of 17,914 entries cached.
+   *
+   * That clock has since been relaxed (#4312): a lease stops suppressing it once its holder has
+   * been quiet, so the ordinary idle-tab case now opens the gate on its own and this ceiling should
+   * fire far less often. It stays because it is a backstop against the *class* of failure, not
+   * against that one instance — a leaked lease still counts as busy for its quiet window, and any
+   * future clock input can jam the same way. `turnsForced` climbing on a box with no visitors is
+   * the signal that something is jamming it again.
    *
    * The grant is deliberately small and self-limiting — one preview, then back to the gate (see
    * [optimizerTurnForced]) — so a genuinely busy box pays one preview per ceiling period per
