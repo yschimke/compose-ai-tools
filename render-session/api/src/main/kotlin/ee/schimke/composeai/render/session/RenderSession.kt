@@ -247,6 +247,15 @@ interface RenderSession : AutoCloseable {
     throw UnsupportedOperationException("streaming not supported")
 
   /**
+   * Tell the renderer whether anyone is currently looking at a held stream (daemon
+   * `stream/visibility`, fire-and-forget). A hidden stream keeps its held session warm but drops to
+   * [fps] (daemon default: 1) for both emission *and* rendering, and the first frame after it flips
+   * back to visible is flagged as a keyframe. Default throws.
+   */
+  fun streamVisibility(frameStreamId: String, visible: Boolean, fps: Int? = null): Unit =
+    throw UnsupportedOperationException("streaming not supported")
+
+  /**
    * Dispatch an input event into a held stream's live composition (daemon `interactive/input`,
    * fire-and-forget); the resulting frame arrives as a `streamFrame`. Default throws.
    */

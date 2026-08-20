@@ -28,6 +28,15 @@ private constructor(
   @Volatile private var handle: StreamHandle? = null
 
   /**
+   * The last visibility the client reported, re-applied to every stream this socket opens after it.
+   * Streams start visible daemon-side, so a hidden socket that restarts its stream (an override
+   * change, a `switch`) has to say so again or it silently returns to full rate.
+   */
+  @Volatile private var visible: Boolean = true
+
+  @Volatile private var visibilityFps: Int? = null
+
+  /**
    * Monotonic frame counter for the life of this socket. See [onFrame] for why it isn't the
    * daemon's.
    */
@@ -57,6 +66,14 @@ private constructor(
       }
       is ServeStreamProtocol.ClientMessage.Input -> dispatchInput(message)
       is ServeStreamProtocol.ClientMessage.Switch -> switchTo(message)
+      is ServeStreamProtocol.ClientMessage.Visibility -> {
+        // Remembered, because every later stream this socket opens has to start where the client
+        // left it: a `setOverrides` or `switch` while the tab is hidden would otherwise come back
+        // at full rate against a client that never said it was looking again.
+        visible = message.visible
+        visibilityFps = message.fps
+        handle?.visibility(message.visible, message.fps)
+      }
       // Frames are pushed by the daemon; an explicit refresh is a no-op on the live lane.
       ServeStreamProtocol.ClientMessage.RequestFrame -> Unit
       is ServeStreamProtocol.ClientMessage.Unsupported ->
@@ -91,11 +108,18 @@ private constructor(
   private fun restart(parsed: PreviewOverrides) {
     handle?.close()
     handle =
-      renderHost.subscribeStream(previewId, parsed, codec, maxFps, onFrame = ::onFrame)
+      renderHost.subscribeStream(previewId, parsed, codec, maxFps, onFrame = ::onFrame)?.also {
+        applyVisibility(it)
+      }
         ?: run {
           send(ServeStreamProtocol.errorMessage("live stream ended"))
           null
         }
+  }
+
+  /** Carry the client's last-reported visibility onto a freshly-opened stream. */
+  private fun applyVisibility(handle: StreamHandle) {
+    if (!visible) handle.visibility(false, visibilityFps)
   }
 
   /**
@@ -122,6 +146,7 @@ private constructor(
     }
     handle?.close()
     handle = next
+    applyVisibility(next)
     previewId = message.previewId
     overrides = nextOverrides
   }

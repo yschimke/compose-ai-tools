@@ -59,6 +59,17 @@ interface StreamHandle : AutoCloseable {
     /** `"mouse"` / `"touch"` / `"pen"`; absent means touch (issue #3491). */
     pointerType: String? = null,
   )
+
+  /**
+   * Tell the daemon whether this watcher is still looking at the stream (tab visible, card in
+   * viewport). A hidden watcher keeps its held session warm but the daemon drops to [fps] (default
+   * 1) for both the emit gate *and* the render loop behind it, and repaints from a keyframe as soon
+   *    as visibility comes back.
+   *
+   * Default no-op so a handle from a backend without the notification (an older daemon, a test
+   * double) degrades to "always visible" rather than failing the socket.
+   */
+  fun visibility(visible: Boolean, fps: Int? = null) = Unit
 }
 
 /** One servable preview: its id, a human label, and which delivery modes it supports. */
@@ -1709,6 +1720,14 @@ internal constructor(
             pointerType,
           )
         }
+      }
+
+      override fun visibility(visible: Boolean, fps: Int?) {
+        if (handleClosed.get()) return
+        // Fire-and-forget, and optional: a daemon that predates `stream/visibility` (or a backend
+        // that doesn't implement it at all) throws UnsupportedOperationException here, which must
+        // not take down a lane that is otherwise streaming fine.
+        runCatching { session.streamVisibility(frameStreamId, visible, fps) }
       }
 
       override fun close() {

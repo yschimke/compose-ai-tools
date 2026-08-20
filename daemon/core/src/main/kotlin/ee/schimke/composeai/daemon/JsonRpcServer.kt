@@ -538,7 +538,11 @@ class JsonRpcServer(
    * `interactive/input` notifications drive frame production. The streaming layer is a *consumer*
    * of `renderFinished` — it does not gate the existing renderFinished notification.
    */
-  private val streamRegistry = FrameStreamRegistry()
+  /**
+   * Internal rather than private so the cadence tests can register a stream and flip its visibility
+   * without a socket — [interactiveFrameCadenceMs] reads its emit gate.
+   */
+  internal val streamRegistry = FrameStreamRegistry()
 
   /**
    * Held interactive sessions allocated specifically through `stream/start`. Distinct from
@@ -2964,11 +2968,22 @@ class JsonRpcServer(
   private fun handleStreamVisibility(
     params: ee.schimke.composeai.daemon.protocol.StreamVisibilityParams
   ) {
-    streamRegistry.setVisibility(
-      frameStreamId = params.frameStreamId,
-      visible = params.visible,
-      fps = params.fps,
-    )
+    val resumed =
+      streamRegistry.setVisibility(
+        frameStreamId = params.frameStreamId,
+        visible = params.visible,
+        fps = params.fps,
+      )
+    if (resumed) {
+      // Coming back into view is exactly as much a "this preview is no longer resting" signal as an
+      // input is, so treat it like one: clear the idle backoff and wake the parked loop. Without
+      // the
+      // wake, a tab restored during a throttled 1 fps wait (or an idle wait that had backed off to
+      // seconds) would keep showing the pre-hide picture until that wait elapsed — the keyframe the
+      // registry flags on resume can only be emitted by a render that has actually happened.
+      interactiveTargets[params.frameStreamId]?.previewId?.let(interactiveIdleRun::remove)
+      interactiveFrameWakes[params.frameStreamId]?.offer(Unit)
+    }
   }
 
   private fun handleInteractiveStop(
@@ -3039,9 +3054,25 @@ class JsonRpcServer(
   /**
    * How long the frame loop for [streamId] should wait before its next render — the burst cadence
    * while an input is still settling, then the idle cadence, then progressively slower while
-   * nothing on the preview is moving. See [interactiveBurstUntilMs] and [interactiveIdleRun].
+   * nothing on the preview is moving, and never faster than the stream's own emit gate. See
+   * [interactiveBurstUntilMs], [interactiveIdleRun] and [FrameStreamRegistry.emitMinIntervalMs].
+   *
+   * The emit floor is what makes `stream/visibility` worth sending. The registry has always gated
+   * *emission* on visibility, but a loop rendering four times a second into that gate pays the full
+   * cost of every dropped frame — a Robolectric capture per tick for a tab nobody is looking at.
+   * Reading the same number here turns the throttle into one on the work itself: a hidden stream
+   * renders at its throttled fps (1 fps by convention) instead of at the interactive cadence. The
+   * `maxFps` cap rides along for free, since rendering faster than a stream can emit is waste on
+   * exactly the same grounds.
+   *
+   * Only streams the registry knows about are floored, so an `interactive/start` session — which
+   * has no frame stream and therefore no emit gate — keeps the cadence it had.
    */
-  private fun interactiveFrameCadenceMs(streamId: String): Long {
+  internal fun interactiveFrameCadenceMs(streamId: String): Long =
+    maxOf(interactiveRenderCadenceMs(streamId), streamRegistry.emitMinIntervalMs(streamId))
+
+  /** [interactiveFrameCadenceMs] without the emit floor: the burst / idle cadence on its own. */
+  private fun interactiveRenderCadenceMs(streamId: String): Long {
     val until = interactiveBurstUntilMs[streamId]
     if (until != null) {
       if (System.currentTimeMillis() < until) {

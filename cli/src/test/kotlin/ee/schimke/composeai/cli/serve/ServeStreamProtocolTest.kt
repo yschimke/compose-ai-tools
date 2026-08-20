@@ -129,6 +129,42 @@ class ServeStreamProtocolTest {
   }
 
   @Test
+  fun `parses visibility with and without an explicit fps`() {
+    val hidden = ServeStreamProtocol.parseClient("""{"type":"visibility","visible":false}""")
+    assertTrue(hidden is ServeStreamProtocol.ClientMessage.Visibility, "got $hidden")
+    assertEquals(false, hidden.visible)
+    assertEquals(null, hidden.fps, "no fps means the daemon's own throttled default")
+
+    val throttled =
+      ServeStreamProtocol.parseClient("""{"type":"visibility","visible":false,"fps":2}""")
+    assertTrue(throttled is ServeStreamProtocol.ClientMessage.Visibility, "got $throttled")
+    assertEquals(2, throttled.fps)
+
+    val back = ServeStreamProtocol.parseClient("""{"type":"visibility","visible":true}""")
+    assertTrue(back is ServeStreamProtocol.ClientMessage.Visibility, "got $back")
+    assertEquals(true, back.visible)
+  }
+
+  @Test
+  fun `visibility without a usable boolean is unsupported, and a zero fps is dropped`() {
+    // Neither polarity can be guessed at: pinning it visible keeps a hidden tab rendering, pinning
+    // it hidden strands a visible one at 1 fps.
+    assertTrue(
+      ServeStreamProtocol.parseClient("""{"type":"visibility"}""")
+        is ServeStreamProtocol.ClientMessage.Unsupported
+    )
+    assertTrue(
+      ServeStreamProtocol.parseClient("""{"type":"visibility","visible":"maybe"}""")
+        is ServeStreamProtocol.ClientMessage.Unsupported
+    )
+
+    // fps=0 would mean "never emit"; fall back to the daemon's default instead.
+    val zero = ServeStreamProtocol.parseClient("""{"type":"visibility","visible":false,"fps":0}""")
+    assertTrue(zero is ServeStreamProtocol.ClientMessage.Visibility, "got $zero")
+    assertEquals(null, zero.fps)
+  }
+
+  @Test
   fun `frame message carries seq, size, codec and base64 payload`() {
     val png = byteArrayOf(1, 2, 3, 4, 5)
     val obj = Json.parseToJsonElement(ServeStreamProtocol.frameMessage(7, 320, 640, png)).jsonObject

@@ -16,6 +16,11 @@ import kotlin.test.assertTrue
 
 class ServeBroadcastHubTest {
 
+  /** The `visibility` calls a throttle / un-throttle should produce, typed for `assertEquals`. */
+  private fun hidden(fps: Int?): List<Pair<Boolean, Int?>> = listOf(false to fps)
+
+  private fun shown(): List<Pair<Boolean, Int?>> = listOf(true to null)
+
   private fun frame(seq: Long, payload: String?): StreamFrameParams =
     StreamFrameParams(
       frameStreamId = "fs",
@@ -31,6 +36,7 @@ class ServeBroadcastHubTest {
   private class FakeUpstream {
     lateinit var emit: (StreamFrameParams) -> Unit
     val inputs = CopyOnWriteArrayList<InteractiveInputKind>()
+    val visibilities = CopyOnWriteArrayList<Pair<Boolean, Int?>>()
     val closed = AtomicBoolean(false)
     val handle =
       object : StreamHandle {
@@ -45,6 +51,10 @@ class ServeBroadcastHubTest {
           pointerType: String?,
         ) {
           inputs.add(kind)
+        }
+
+        override fun visibility(visible: Boolean, fps: Int?) {
+          visibilities.add(visible to fps)
         }
 
         override fun close() {
@@ -156,6 +166,60 @@ class ServeBroadcastHubTest {
 
     h.input(InteractiveInputKind.CLICK, pixelX = 1, pixelY = 2)
     assertEquals(listOf(InteractiveInputKind.CLICK), opener.opens[0].inputs)
+  }
+
+  @Test
+  fun `the shared stream is only throttled once every watcher has hidden it`() {
+    val opener = FakeOpener()
+    val hub = ServeBroadcastHub(opener)
+    val h1 = assertNotNull(hub.subscribe("p", PreviewOverrides()) {})
+    val h2 = assertNotNull(hub.subscribe("p", PreviewOverrides()) {})
+    val up = opener.opens[0]
+
+    h1.visibility(false, null)
+    assertTrue(
+      up.visibilities.isEmpty(),
+      "one watcher hiding must not throttle the tab still watching beside it",
+    )
+
+    h2.visibility(false, 2)
+    assertEquals(hidden(null), up.visibilities.toList(), "the slowest requested rate wins")
+
+    h1.visibility(true, null)
+    assertEquals(hidden(null) + shown(), up.visibilities.toList())
+  }
+
+  @Test
+  fun `the last visible watcher leaving throttles the shared stream`() {
+    val opener = FakeOpener()
+    val hub = ServeBroadcastHub(opener)
+    val leaver = assertNotNull(hub.subscribe("p", PreviewOverrides()) {})
+    val stayer = assertNotNull(hub.subscribe("p", PreviewOverrides()) {})
+    val up = opener.opens[0]
+
+    stayer.visibility(false, 3)
+    // Closing the only watcher that was still looking leaves a stream nobody sees; the upstream
+    // survives (the hidden watcher holds it) and must pick the throttle up.
+    leaver.close()
+
+    assertEquals(hidden(3), up.visibilities.toList())
+    assertFalse(up.closed.get())
+  }
+
+  @Test
+  fun `a new watcher un-throttles a stream every existing watcher had hidden`() {
+    val opener = FakeOpener()
+    val hub = ServeBroadcastHub(opener)
+    assertNotNull(hub.subscribe("p", PreviewOverrides()) {}).visibility(false, null)
+    val up = opener.opens[0]
+    assertEquals(hidden(null), up.visibilities.toList())
+
+    assertNotNull(hub.subscribe("p", PreviewOverrides()) {})
+    assertEquals(
+      hidden(null) + shown(),
+      up.visibilities.toList(),
+      "someone just joined, so the shared stream is being looked at again",
+    )
   }
 
   @Test

@@ -35,8 +35,15 @@ internal class FrameStreamRegistry(
     val previewId: String,
     val codec: StreamCodec,
     val maxFps: Int?,
-    var visible: Boolean = true,
-    var visibilityFps: Int? = null,
+    // Volatile, unlike the rest of this state: the visibility pair is written by the reader thread
+    // handling `stream/visibility` and read by each stream's interactive frame-loop thread through
+    // [emitMinIntervalMs]. The ConcurrentHashMap publishes the State object safely, but not writes
+    // made to it afterwards — and a stream going hidden touches nothing else that would establish
+    // the ordering (the wake queue is only offered on resume). Without this a frame loop is free to
+    // keep reading the pre-hide cadence and keep rendering at full rate, which is the exact thing
+    // this notification exists to stop. Everything else here is written and read on one thread.
+    @Volatile var visible: Boolean = true,
+    @Volatile var visibilityFps: Int? = null,
     var lastEmittedAtMs: Long = Long.MIN_VALUE,
     var lastHash: String? = null,
     var seq: Long = 0L,
@@ -78,15 +85,37 @@ internal class FrameStreamRegistry(
    * client may race a visibility flip with a `stream/stop` and we don't want to error out. When
    * [visible] flips back to true the next emitted frame is marked as a keyframe so the client has
    * an explicit "paint me now" anchor (replaces the old "scroll-back-blank-then-fade").
+   *
+   * Returns true when this call flipped a hidden stream back to visible, so the caller can wake
+   * whatever it parked while the stream was throttled (the daemon's interactive frame loop reads
+   * [emitMinIntervalMs] for its cadence, and a resume that only took effect at the *next* tick
+   * would keep a card blank for up to the throttled interval after it scrolled back into view).
    */
-  fun setVisibility(frameStreamId: String, visible: Boolean, fps: Int?) {
-    val s = states[frameStreamId] ?: return
+  fun setVisibility(frameStreamId: String, visible: Boolean, fps: Int?): Boolean {
+    val s = states[frameStreamId] ?: return false
     val wasVisible = s.visible
     s.visible = visible
     s.visibilityFps = if (!visible) (fps ?: 1).coerceAtLeast(1) else null
     if (visible && !wasVisible) {
       s.keyframePending = true
+      return true
     }
+    return false
+  }
+
+  /**
+   * The minimum interval the emit gate would apply to [frameStreamId] right now — driven by its
+   * `stream/start` `maxFps` and any `stream/visibility` throttle. `0` when uncapped, or when the
+   * stream is unknown.
+   *
+   * Public so the *render* side can honour the same number the *emit* side does. Gating emission
+   * alone leaves the daemon rendering (and, on the Android backend, re-capturing through
+   * Robolectric) at full rate for a stream whose frames are being dropped a layer later — which is
+   * most of what a backgrounded tab costs. See `JsonRpcServer.interactiveFrameCadenceMs`.
+   */
+  fun emitMinIntervalMs(frameStreamId: String): Long {
+    val s = states[frameStreamId] ?: return 0L
+    return effectiveMinIntervalMs(s)
   }
 
   /** Returns the snapshot view (used by tests). */
