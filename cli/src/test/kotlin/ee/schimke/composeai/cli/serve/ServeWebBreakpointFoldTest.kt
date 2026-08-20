@@ -214,6 +214,180 @@ class ServeWebBreakpointFoldTest {
       ServeWeb.componentSearchEntries(sparse).map { it.previewId },
       "the palette keeps a representative for each lane",
     )
+    // …and names them apart. Both rows would otherwise read "Sparse Dialog": the id-token
+    // vocabulary has no entry for `192dp`, so the qualifier fell through to the bare label and the
+    // palette offered two destinations spelled identically.
+    assertEquals(
+      listOf("Sparse Dialog · 192dp", "Sparse Dialog · 240dp"),
+      ServeWeb.componentSearchEntries(sparse).map { it.label },
+      "a retained lane entry is qualified by the catalog's own size name",
+    )
+  }
+
+  @Test
+  fun `the drawer names a sparse component once, in the theme being viewed`() {
+    // Two survivors of ONE component (light at 192dp, dark at 240dp) carry different size tokens,
+    // so `groupPreviews` cannot pair them into a single card. Without a dedupe after the lane pick
+    // the drawer names the component twice, and one of the two links walks out of the theme on
+    // screen — the opposite of what the drawer promises.
+    val sparse =
+      listOf(
+        ServePreview(
+          id = "sparsedialog__ideal__default__192dp__light",
+          label = "sparsedialog__ideal__default__192dp__light",
+          componentId = "SparseDialog",
+          state = "default",
+          size = "192dp",
+          theme = "light",
+          section = "Containment",
+          catalogOrder = 0,
+        ),
+        ServePreview(
+          id = "sparsedialog__ideal__default__240dp__dark",
+          label = "sparsedialog__ideal__default__240dp__dark",
+          componentId = "SparseDialog",
+          state = "default",
+          size = "240dp",
+          theme = "dark",
+          section = "Containment",
+          catalogOrder = 1,
+        ),
+        ServePreview(
+          id = "timetext__ideal__default__192dp__dark",
+          label = "timetext__ideal__default__192dp__dark",
+          componentId = "TimeText",
+          state = "default",
+          size = "192dp",
+          theme = "dark",
+          section = "Text",
+          catalogOrder = 2,
+        ),
+      )
+
+    val html =
+      ServeWeb.viewerPage(
+        sparse.last(),
+        token = "t",
+        basePath = "/sparse",
+        siblings = sparse,
+      )
+    val drawer = html.substringAfter("<ul class=\"cp-nav-list\"").substringBefore("</ul>")
+    val rows =
+      Regex("class=\"cp-nav-name\">([^<]*)<").findAll(drawer).map { it.groupValues[1] }.toList()
+
+    assertEquals(
+      1,
+      rows.count { it == "Sparse Dialog" },
+      "the sparse component gets ONE drawer row, not one per surviving lane",
+    )
+    assertTrue(
+      drawer.contains("/sparse/p/sparsedialog__ideal__default__240dp__dark"),
+      "and it is the row in the dark theme the viewer is showing",
+    )
+    assertFalse(
+      drawer.contains("sparsedialog__ideal__default__192dp__light"),
+      "not the light render, which would walk the reader out of the current theme",
+    )
+  }
+
+  @Test
+  fun `lanes that disagree on breakpoint order still fold to one card`() {
+    // A full theme × size product whose lanes enumerate their breakpoints in a DIFFERENT order —
+    // what two per-theme preview functions produce. Resolving each lane's primary independently
+    // would pick 192dp for light and 240dp for dark; the survivors' ids would then differ by size,
+    // `baseKey` could not pair them, and a full product would publish two cards. The component-wide
+    // primary wins in every lane that has it.
+    val interleaved =
+      listOf(
+        ServePreview(
+          id = "orderdialog__ideal__default__192dp__light",
+          label = "orderdialog__ideal__default__192dp__light",
+          componentId = "OrderDialog",
+          state = "default",
+          size = "192dp",
+          theme = "light",
+          section = "Containment",
+          catalogOrder = 0,
+        ),
+        ServePreview(
+          id = "orderdialog__ideal__default__240dp__dark",
+          label = "orderdialog__ideal__default__240dp__dark",
+          componentId = "OrderDialog",
+          state = "default",
+          size = "240dp",
+          theme = "dark",
+          section = "Containment",
+          catalogOrder = 1,
+        ),
+        ServePreview(
+          id = "orderdialog__ideal__default__240dp__light",
+          label = "orderdialog__ideal__default__240dp__light",
+          componentId = "OrderDialog",
+          state = "default",
+          size = "240dp",
+          theme = "light",
+          section = "Containment",
+          catalogOrder = 2,
+        ),
+        ServePreview(
+          id = "orderdialog__ideal__default__192dp__dark",
+          label = "orderdialog__ideal__default__192dp__dark",
+          componentId = "OrderDialog",
+          state = "default",
+          size = "192dp",
+          theme = "dark",
+          section = "Containment",
+          catalogOrder = 3,
+        ),
+      )
+
+    val html = ServeWeb.landingPage("order", interleaved, token = "t", basePath = "/order")
+
+    assertEquals(
+      1,
+      Regex("class=\"cp-card\"").findAll(html).count(),
+      "both lanes fold onto the component-wide primary, so it is one card",
+    )
+    for (id in
+      listOf(
+        "orderdialog__ideal__default__240dp__light",
+        "orderdialog__ideal__default__240dp__dark",
+      )) {
+      assertFalse(html.contains(id), "$id is the non-primary breakpoint and folds")
+    }
+  }
+
+  @Test
+  fun `a breakpoint named light or dark is not mistaken for a theme`() {
+    // `breakpoints[].size` is an arbitrary catalog-chosen string, so a size can be spelled `light`.
+    // Inferring the fold's lane from the flattened id would read that SIZE as a baked theme, keep
+    // both sizes as separate lane primaries, and let `groupPreviews` pair them into a light/dark
+    // swap card — a Theme control that changes device size. The lane comes from declared metadata
+    // only, so this catalog has one lane and folds to one card.
+    val oddlyNamed =
+      listOf("light", "dark").mapIndexed { i, size ->
+        ServePreview(
+          id = "moodboard__ideal__default__$size",
+          label = "moodboard__ideal__default__$size",
+          componentId = "Moodboard",
+          state = "default",
+          size = size,
+          section = "Containment",
+          catalogOrder = i,
+        )
+      }
+
+    val html = ServeWeb.landingPage("odd", oddlyNamed, token = "t", basePath = "/odd")
+
+    assertEquals(
+      1,
+      Regex("class=\"cp-card\"").findAll(html).count(),
+      "one card — the second size is a breakpoint, not a theme to swap to",
+    )
+    assertTrue(
+      html.contains("moodboard__ideal__default__light"),
+      "drawn at its first declared size",
+    )
   }
 
   @Test
