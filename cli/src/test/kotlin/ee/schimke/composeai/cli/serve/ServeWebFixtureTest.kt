@@ -1916,11 +1916,22 @@ class ServeWebFixtureTest {
     // moved no baseline. The two cards and their slots are also painted, for the same reason:
     // drilling resolves against the browser's hit test, so a level with nothing drawn in it can
     // only ever be found by the fallback bbox scan, which is not the path a reader takes.
+    //
+    // ONE NODE IS CLIPPED (`1:2`), and that is load-bearing too. A Figma export keeps an oversized
+    // shape inside a component with a `clip-path` — the Wear kit does it for a placeholder's
+    // shimmer sweep — and `getBoundingClientRect()` ignores clipping, so the node measured as the
+    // sweep and the render fitted into that slot painted a grey blob across the page (issue #4323).
+    // The sweep here is twice the square it is clipped to, so a regression to the unclipped
+    // measurement publishes a render at twice its size in every design-page capture, rather than
+    // nowhere at all.
     val designPageSvg =
       checkNotNull(
         SvgSanitizer.sanitize(
           """
           <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800" fill="none">
+            <defs>
+              <clipPath id="clipShimmer"><rect x="230" y="345" width="180" height="180" rx="36"/></clipPath>
+            </defs>
             <rect width="1200" height="800" fill="#F7F2FA"/>
             <g data-node-id="1:0"><rect x="40" y="90" width="1140" height="690" fill="none"/></g>
             <g data-node-id="1:9"><rect x="40" y="20" width="560" height="50" rx="16" fill="#EADDFF"/></g>
@@ -1933,7 +1944,12 @@ class ServeWebFixtureTest {
               </g>
               <g data-node-id="1:31">
                 <rect x="90" y="335" width="460" height="200" rx="12" fill="#F3EDF7"/>
-                <g data-node-id="1:2"><rect x="230" y="345" width="180" height="180" rx="36" fill="#6750A4"/></g>
+                <g data-node-id="1:2">
+                  <g clip-path="url(#clipShimmer)">
+                    <rect x="230" y="345" width="180" height="180" rx="36" fill="#6750A4"/>
+                    <path d="M470 300L560 390L280 670L190 580Z" fill="#EADDFF" fill-opacity="0.35"/>
+                  </g>
+                </g>
               </g>
               <g data-node-id="1:32">
                 <rect x="90" y="555" width="460" height="200" rx="12" fill="#F3EDF7"/>

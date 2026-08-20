@@ -812,9 +812,11 @@ const FIXTURE_STATES = [
         const spot = document.querySelector(
           '.cp-page-node[data-cp-node="1:2"]',
         );
-        const node = Array.from(
-          document.querySelectorAll("svg [data-node-id]"),
-        ).find((el) => el.getAttribute("data-node-id") === "1:2");
+        // The node's DRAWN shape, not the `<g data-node-id>` around it: `1:2` is the
+        // fixture's clipped node, whose group rect is the sweep the clip hides rather than
+        // the square on screen (issue #4323). The claim here is that the overlay travels
+        // with the sheet, so the shape a reader sees is the right thing to check against.
+        const node = document.querySelector('svg [data-node-id="1:2"] rect');
         const a = spot.getBoundingClientRect();
         const b = node.getBoundingClientRect();
         return Math.abs(a.left - b.left) + Math.abs(a.top - b.top);
@@ -2764,16 +2766,32 @@ for (const fixture of listPageFixtures()) {
                 svg.querySelectorAll("[data-node-id]"),
               ).find((el) => el.getAttribute("data-node-id") === id);
               if (!node) return null;
-              const slot = node.getBoundingClientRect();
+              // The SLOT the component placed the render in, which is the box under test —
+              // not `node.getBoundingClientRect()`, which is the measurement the component
+              // must NOT use: it ignores `clip-path`, so on a node whose export clips an
+              // oversized shape (the fixture's `1:2`) it answers with the hidden shape and
+              // this whole block would be checking the fit against the bug (issue #4323).
+              // Whether the slot itself is right is asserted just below, per node.
+              const slot = img.parentElement.getBoundingClientRect();
               const drawn = img.getBoundingClientRect();
               // The placeholder's ink box, as a fraction of its canvas — the stub is
               // committed, so these are fixed: a 200×112 component in 240×240.
               const inkW = (drawn.width * 202) / 240;
               const inkH = (drawn.height * 114) / 240;
+              const raw = node.getBoundingClientRect();
               return {
                 id,
                 filled: Math.max(inkW / slot.width, inkH / slot.height),
                 aspect: inkW / inkH,
+                // Unclipped nodes must still land exactly on the shape the design drew, so
+                // the raw rect stays the reference for every node that has no clip in it.
+                clipped: !!node.querySelector("[clip-path]"),
+                offBy: Math.max(
+                  Math.abs(raw.left - slot.left),
+                  Math.abs(raw.top - slot.top),
+                  Math.abs(raw.width - slot.width),
+                  Math.abs(raw.height - slot.height),
+                ),
               };
             })
             .filter(Boolean);
@@ -2786,7 +2804,41 @@ for (const fixture of listPageFixtures()) {
           // Never stretched: the stub's own 202:114 stays 202:114 in the slot.
           expect(fit.aspect).toBeGreaterThan(202 / 114 - 0.05);
           expect(fit.aspect).toBeLessThan(202 / 114 + 0.05);
+          // …and the slot IS the design's node, for a node with nothing clipped in it.
+          if (!fit.clipped) expect(fit.offBy).toBeLessThan(1);
         }
+        // THE CLIPPED NODE. Its export holds a sweep twice the size of the component and
+        // keeps it in with a `clip-path`, so its unclipped rect is the sweep and its slot
+        // must be the square — the difference that painted a render as a page-sized blob on
+        // the live catalog's Buttons page (issue #4323). Measured against the drawn square
+        // itself, which the export carries as a real element, rather than against numbers
+        // copied out of the fixture.
+        const clip = await page.evaluate(() => {
+          const stage = document.querySelector(".cp-page-stage");
+          const slot = stage
+            .querySelector('.cp-page-node[data-cp-node="1:2"]')
+            .getBoundingClientRect();
+          const shape = stage
+            .querySelector('svg [data-node-id="1:2"] rect')
+            .getBoundingClientRect();
+          const raw = stage
+            .querySelector('svg [data-node-id="1:2"]')
+            .getBoundingClientRect();
+          return {
+            offBy: Math.max(
+              Math.abs(shape.left - slot.left),
+              Math.abs(shape.top - slot.top),
+              Math.abs(shape.width - slot.width),
+              Math.abs(shape.height - slot.height),
+            ),
+            // The fixture only proves anything while the sweep really is bigger than the
+            // shape: an export edit that shrank it would leave this passing on a page with
+            // no clipped node on it at all.
+            spread: raw.width / shape.width,
+          };
+        });
+        expect(clip.spread).toBeGreaterThan(1.5);
+        expect(clip.offBy).toBeLessThan(1);
       }
 
       await page.screenshot({
