@@ -154,44 +154,80 @@ exactly what it resolves today.
 The 556 unmodelled cells need a knob before they need a cell, and the top of that list says what
 kind of work it is:
 
-| Slot | Cells it unlocks | What it is in Compose |
-| --- | --- | --- |
-| `Alignment` / `Icon` / `Icon size` on `Button` | 40 | `icon` slot + `ButtonDefaults` icon size + content alignment |
-| `Type = Custom - Task` on `Toggle+Selection-Buttons` | 8 | the `toggleControl` slot |
-| Secondary label | across `Button`, `Toggle+Selection-Buttons`, `Card` | `secondaryLabel` parameter |
-| `Segments` / `Type = Top Gap \| Bottom Gap` on the progress indicators | 264 | real API surface, its own investigation |
+| Slot | Cells it unlocks | What it is in Compose | Status |
+| --- | --- | --- | --- |
+| `Alignment` / `Icon` / `Icon size` on `Button` | 40 | `icon` slot + `ButtonDefaults` icon size + content alignment | open |
+| `Segments` / `Type = Top Gap \| Bottom Gap` on the progress indicators | 264 | real API surface, its own investigation | open |
+| `Type = Custom - Task` on `Toggle+Selection-Buttons` | 8 | the `toggleControl` slot | **deliberately refused** — see below |
+| Secondary label | 4, on `Button-ImageBackground` only | `secondaryLabel` parameter | **already done** |
 
-Adding a `secondaryLabel` knob raises the question the sheet makes obvious: **the kit draws two
-lines and we draw one, and one line is the better default.** That is not a conflict, because a
-cell and a default are different renders of the same composable:
+> **Correction.** An earlier revision of this table claimed a secondary-label slot "across `Button`,
+> `Toggle+Selection-Buttons`, `Card`". That is wrong, and the mistake is worth keeping visible
+> because it is the exact class of error this document exists to remove — a slot inferred from what
+> the sheet *draws* rather than read from what the kit *states*.
+>
+> Across the whole Wear kit, **exactly one set declares a `Secondary label` variant property:
+> `Button-ImageBackground`** — and `ImageBackgroundButton` already implements it, as a cell, with
+> the seeded-knob pattern below. `Button` declares `Style / Icon / Icon size / Alignment /
+> Disabled`; `Toggle+Selection-Buttons` declares `Type / Selected / Split (2 tap targets) /
+> Disabled`; `Card` declares `Style / Layout type / Content type / Interactive`. None of them has a
+> secondary-label axis.
+>
+> The kit does *draw* two lines in some `Toggle+Selection-Buttons` cells and one line in others,
+> without a property separating them — a specimen sheet varying its own content, not a component
+> property. So a `secondaryLabel` knob on those components would render something real and resolve
+> to **nothing**: there is no kit node for a cell the kit never stated. It would close no red.
+> Adding one is a *comparison aid*, and should be argued for on that basis rather than as coverage.
+
+Where a slot IS stated, the pattern is a seeded knob, and `ImageBackgroundButton` is the worked
+example already in the tree:
 
 ```kotlin
-@CatalogComponent(id = "Button/Filled", …)
-@OverrideVariant(name = "secondary", strings = ["secondaryLabel=Secondary"],
-                 kitProps = ["Label 2=Yes"])
+@CatalogComponent(id = "Button/ImageBackground", …)
+@OverrideVariant(
+  name = "secondary-label",
+  booleans = ["secondary=true"],
+  kitAxis = "Secondary label",
+  kitValue = "Yes",
+)
 @Composable
-fun FilledButton() = Sticker {
+fun ImageBackgroundButton() = Sticker {
   Button(
-    label = { Text(kitCopy("label", KitCopy.PRIMARY_LABEL)) },
-    secondaryLabel = previewOverrideString("secondaryLabel", "")
-      .takeIf(String::isNotEmpty)?.let { { Text(it) } },
+    label = { Text(c.label) },
+    secondaryLabel =
+      if (previewOverrideBoolean("secondary", false)) {
+        { Text(kitCopy("secondaryLabel", KitCopy.SECONDARY_LABEL)) }
+      } else null,
     …
   )
 }
 ```
 
-The base capture is unchanged — one line, the catalog's own recommendation, still what the browse
-grid and the README show. The kit's two-line cell is compared against the cell that seeds the
-secondary label. **Comparison happens against the cell that matches the kit; the default stays what
-we would tell someone to write.** Writing that down matters because the alternative — changing the
-default to make the diff go green — is the failure mode this whole surface exists to catch, and it
-is one edit away at all times.
+The base capture stays one line — the catalog's own recommendation, and what the browse grid and
+the README show. The kit's two-line cell is compared against the cell that seeds the secondary
+label. **Comparison happens against the cell that matches the kit; the default stays what we would
+tell someone to write.** Writing that down matters because the alternative — changing the default
+to make the diff go green — is the failure mode this whole surface exists to catch, and it is one
+edit away at all times. (`LoadingButton` is the case where the two agree: `Button-Loading`'s base
+cell has two lines, so the sticker fills the slot unconditionally and says so in a comment.)
 
 Where the catalog deliberately draws something the kit does not, `noReference` /
 `--allow-stated-absence` already carries the reason. The inverse — the kit draws a cell we
 deliberately will not — wants the same treatment rather than a permanent red outline: a stated,
-reasoned absence, reported apart from a gap. (`Custom - Task` already has such a reason written in
-`SelectionButtons.kt`; it just has nowhere structured to live.)
+reasoned absence, reported apart from a gap.
+
+`Type = Custom - Task` is that case, and the reason is already written, in `SelectionButtons.kt`:
+
+> `Custom - Task` is the kit showing that the control slot is swappable rather than a fourth
+> component, and Compose expresses it as the `toggleControl` slot on the same functions. It stays
+> out of the inventory until a sticker can draw it without inventing a control the kit does not
+> publish.
+
+That is a decision, not a gap, and this document should not have listed it as work. Implementing it
+means choosing a glyph the kit never published and then comparing our invention against the kit's —
+a diff whose result means nothing. The eight cells stay red until either the kit publishes the
+control or step 8 gives the refusal somewhere structured to live, at which point they stop being
+counted as missing rather than starting to be drawn.
 
 ---
 
@@ -284,11 +320,17 @@ Each step is a PR against an existing surface; each is useful on its own.
 | 4 | Sidecar carries them; resolver matches a full assignment (§2c) | `@yschimke/compose-design-map`, `@design-parity/kit-index` |
 | 5 | Adopt `@PreviewAxis` on `Toggle+Selection-Buttons`' three siblings — 12 → 24 of 32 (§2b, §5) | `wear-m3-catalog` |
 | 6 | Variant table on the comparison page, scored client-side (§6) | `ServeWeb`, `format-compare.js` |
-| 7 | `secondaryLabel` and `toggleControl` knobs, cells declared against them (§3) | `wear-m3-catalog` |
+| 7 | ~~`secondaryLabel` and `toggleControl` knobs~~ — **withdrawn**, see §3's correction: the one set that states a secondary-label axis already has it, and `Custom - Task` is a stated refusal | — |
 | 8 | Stated, reasoned refusal of a kit cell, reported apart from a gap (§3) | map schema + page view |
+| 9 | `Alignment` / `Icon` / `Icon size` knobs on the five `Button` styles — 40 cells, and the largest real slot gap on the sheet (§3) | `wear-m3-catalog` |
 
-Steps 1, 2 and 5 are independent of the upstream packages and can land first; 5 shows the
-mechanism working end to end on one set before the annotation work generalises it.
+Steps 1 and 2 have **landed** ([#4335](https://github.com/yschimke/compose-ai-tools/pull/4335) with
+[wear-m3-catalog#47](https://github.com/yschimke/wear-m3-catalog/pull/47), and
+[#4351](https://github.com/yschimke/compose-ai-tools/pull/4351)); step 1 shipped in v1.23.0.
+
+Of what is left, only **9** is independent of the upstream packages — 5 needs 3 and 4 to resolve,
+and 6 is worth having only once there are cells to put in the table. 5 remains the best first use
+of the annotation work, because it shows the mechanism end to end on one set before it generalises.
 
 ## 8. What this does not settle
 
