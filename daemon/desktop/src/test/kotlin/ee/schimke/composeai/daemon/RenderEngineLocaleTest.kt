@@ -2,7 +2,6 @@ package ee.schimke.composeai.daemon
 
 import java.util.Locale
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -40,80 +39,80 @@ class RenderEngineLocaleTest {
   }
 
   /**
-   * The other edge of the pseudolocale string cache (#4371 review). CMP's process-wide
-   * `stringItemsCache` stores whatever the *first* reader returned for a key, so after a pseudo
-   * render it holds accented / bidi text; the next ordinary render would be served that text for a
-   * locale it never asked for, without its own reader ever running. The around-composable only
-   * clears on entry, so the renderer closes the exit — but only when a render actually leaves
-   * pseudolocale mode, so a daemon that never renders one keeps its warm cache.
+   * The other edge of the pseudolocale string cache (#4371, and the #4384 / #4385 reviews). CMP's
+   * process-wide `stringItemsCache` stores whatever the *first* reader returned for a key, so after
+   * a pseudo composition it holds accented / bidi text; anything composing afterwards would be
+   * served that text for a locale it never asked for, its own reader never consulted. The
+   * around-composable only clears on entry, so the exit is the renderer's to close — and it closes
+   * it while the locale gate is still held exclusively, so nothing else can be composing when it
+   * happens.
    *
-   * Asserts the state machine rather than the reflective clear itself (that has its own coverage in
-   * `PseudolocaleResourceCacheTest`), and tolerates a `false` return from a CMP version drift where
-   * the reflective shim can't find the cache — the transition, not the shim, is what this pins.
+   * Asserts *which scopes clear* rather than the reflective clear itself, which has its own
+   * coverage in `PseudolocaleResourceCacheTest`.
    */
   @Test
-  fun pseudolocaleStringCacheIsClearedOnTheWayOutOfPseudolocaleMode() {
-    // Baseline: no pseudolocale render has happened, so an ordinary render clears nothing.
-    RenderEngine.guardPseudolocaleStringCache(null)
-    assertFalse(
-      "an ordinary render with no pseudolocale history must not touch the cache",
-      RenderEngine.guardPseudolocaleStringCache("de"),
-    )
+  fun aPseudolocaleScopeClearsTheStringCacheOnItsWayOut() {
+    val before = RenderEngine.pseudolocaleCacheClears
 
-    // Entering, and staying in, pseudolocale mode is the around-composable's job, not this one's.
-    assertFalse(RenderEngine.guardPseudolocaleStringCache("en-XA"))
-    assertFalse(
-      "a pseudolocale-to-pseudolocale switch is the entry clear's job",
-      RenderEngine.guardPseudolocaleStringCache("ar-XB"),
+    // Both pseudolocales clean up after themselves…
+    RenderEngine.enterPreviewLocale("en-XA").close()
+    assertEquals(
+      "an accent scope must drop its transformed string items before releasing the gate",
+      before + 1,
+      RenderEngine.pseudolocaleCacheClears,
     )
+    RenderEngine.enterPreviewLocale("ar-XB").close()
+    assertEquals(before + 2, RenderEngine.pseudolocaleCacheClears)
 
-    // Leaving it is: the first ordinary render afterwards clears, and only that one.
-    assertTrue(
-      "the render after a pseudolocale one must drop the transformed string items",
-      RenderEngine.guardPseudolocaleStringCache(null),
-    )
-    assertFalse(
-      "and the cache must then be left alone until the next pseudolocale render",
-      RenderEngine.guardPseudolocaleStringCache(null),
+    // …and nothing else touches the shared cache: an ordinary render keeps it warm, and so does a
+    // real locale, whose cached strings are the truthful contents for that locale.
+    RenderEngine.enterPreviewLocale(null).close()
+    RenderEngine.enterPreviewLocale("de").close()
+    assertEquals(
+      "only a pseudolocale scope may clear the shared cache",
+      before + 2,
+      RenderEngine.pseudolocaleCacheClears,
     )
   }
 
   /**
-   * A held pseudolocale scene keeps composing between one-shot renders (#4384 review). Arming the
-   * flag only when a render *starts* left this hole: an ordinary render clears and disarms, then an
-   * interaction on the still-open `en-XA` session composes a string the cache has never seen and
-   * refills it with transformed text — under a flag that now says no pseudolocale is in play — so
-   * the next ordinary render skips its clear and reads accented text.
-   *
-   * [RenderEngine.enterPreviewLocale] is the seam every composition passes through (one-shot
-   * render, held frame, scroll drive), so arming there makes the flag mean "something
-   * pseudolocalised has composed since the last clear", which is the property the guard needs.
+   * The property that makes the flagless design correct where three flag-based ones raced: the
+   * clear lands on `close`, i.e. before the gate is released, so the next scope — whatever thread
+   * it belongs to — cannot observe transformed items.
    */
   @Test
-  fun aHeldPseudolocaleFrameReArmsTheCacheGuardAfterAnOrdinaryRenderCleared() {
-    // Settle to a known state: whatever ran before, one ordinary pass leaves the flag disarmed.
-    RenderEngine.guardPseudolocaleStringCache(null)
-
-    // A held `en-XA` scene composes a frame, then an ordinary render clears and disarms.
-    RenderEngine.enterPreviewLocale("en-XA").close()
-    assertTrue(
-      "the ordinary render after a held pseudolocale frame must clear",
-      RenderEngine.guardPseudolocaleStringCache(null),
-    )
-
-    // The session is still open: a later interaction composes again, refilling the cache…
-    RenderEngine.enterPreviewLocale("ar-XB").close()
-    // …so the next ordinary render has to clear again. Before the fix this returned false.
-    assertTrue(
-      "a held scene that composed again must re-arm the guard",
-      RenderEngine.guardPseudolocaleStringCache(null),
-    )
-
-    // An ordinary held frame is not a pseudolocale one, so it must not arm anything.
+  fun theClearLandsOnCloseNotLazilyAfterwards() {
+    val scope = RenderEngine.enterPreviewLocale("en-XA")
+    val duringScope = RenderEngine.pseudolocaleCacheClears
+    scope.close()
+    assertEquals(duringScope + 1, RenderEngine.pseudolocaleCacheClears)
     RenderEngine.enterPreviewLocale(null).close()
-    assertFalse(
-      "an unlocalized composition must leave the cache alone",
-      RenderEngine.guardPseudolocaleStringCache(null),
+    assertEquals(
+      "a scope entered afterwards has nothing of its own to clean up",
+      duringScope + 1,
+      RenderEngine.pseudolocaleCacheClears,
+    )
+  }
+
+  /**
+   * A held pseudolocale scene keeps composing between one-shot renders (#4384 review), on its own
+   * executor. The flag-based designs had to describe that scene from the outside and kept losing
+   * the race; clearing on scope exit makes it a non-question — every frame the session composes
+   * cleans up after itself, under the gate, before anything else can enter.
+   */
+  @Test
+  fun everyHeldPseudolocaleFrameCleansUpAfterItself() {
+    val before = RenderEngine.pseudolocaleCacheClears
+    // Frames of an open `en-XA` session with an ordinary render interleaved — the sequence that
+    // used to leave the cache dirty under a flag that read false.
+    RenderEngine.enterPreviewLocale("en-XA").close()
+    RenderEngine.enterPreviewLocale(null).close()
+    RenderEngine.enterPreviewLocale("en-XA").close()
+    RenderEngine.enterPreviewLocale("en-XA").close()
+    assertEquals(
+      "each pseudolocale frame clears; the ordinary render in between has nothing to do",
+      before + 3,
+      RenderEngine.pseudolocaleCacheClears,
     )
   }
 
