@@ -97,7 +97,10 @@ class SharePreviewCommand(
    * repository-scoped GitHub token.
    */
   private val serveTrust: ServeUrlTrust? = resolvedServeUrl?.let {
-    confirmProjectServeHost(it, projectRoot = findGradleProjectRoot())
+    val root = findGradleProjectRoot()
+    // The repo identity comes from `.git/config`, which no pull request can edit — so a
+    // repo-scoped confirmation can be matched against something the checkout doesn't control.
+    confirmProjectServeHost(it, projectRoot = root, originRepo = gitOriginRepo(root))
   }
 
   private val serveUrl: String?
@@ -967,14 +970,25 @@ class SharePreviewCommand(
      * - `http://x@127.0.0.1:38695/git/owner/repo` → `https://raw.githubusercontent.com/owner/repo`
      * - `git@gitlab.com:owner/repo.git` → null
      */
-    internal fun githubRawUrlBase(remoteUrl: String): String? {
+    internal fun githubRawUrlBase(remoteUrl: String): String? =
+      githubOwnerRepo(remoteUrl)?.let { "https://raw.githubusercontent.com/$it" }
+
+    /**
+     * `owner/repo` for a GitHub remote, in every spelling this CLI meets one: https, ssh, `git@`,
+     * and the loopback git proxy a hosted session rewrites `origin` to ([LOOPBACK_GIT_PROXY]). Null
+     * for anything that isn't recognisably a GitHub repo.
+     *
+     * Extracted from [githubRawUrlBase] when a second caller needed the identity rather than the
+     * raw-URL base: [resolveProjectServeUrl]'s trust check scopes a confirmation to the repository
+     * the checkout belongs to, and "which repo is this" must have one answer.
+     *
+     * Read from `.git/config`, which is **not** part of a checkout's committed content — a pull
+     * request cannot change it. That is what makes it usable as an identity at all.
+     */
+    internal fun githubOwnerRepo(remoteUrl: String): String? {
       LOOPBACK_GIT_PROXY.find(remoteUrl)?.let { match ->
         val ownerRepo = match.groupValues[1].removeSuffix(".git").trim('/')
-        return if (ownerRepo.count { it == '/' } == 1 && ownerRepo.isNotBlank()) {
-          "https://raw.githubusercontent.com/$ownerRepo"
-        } else {
-          null
-        }
+        return ownerRepo.takeIf { it.count { c -> c == '/' } == 1 && it.isNotBlank() }
       }
       val ownerRepo =
         when {
@@ -990,7 +1004,7 @@ class SharePreviewCommand(
           .removeSuffix(".git")
           .trimEnd('/')
       if (ownerRepo.count { it == '/' } != 1 || ownerRepo.isBlank()) return null
-      return "https://raw.githubusercontent.com/$ownerRepo"
+      return ownerRepo
     }
 
     /** The URL `gh gist create` prints on stdout; the first `https://gist.github.com/...` token. */
