@@ -24,8 +24,10 @@ package ee.schimke.composeai.data.layoutinspector
 object SemanticsRefs {
   const val ROOT_REF: String = "r"
 
+  // Copies field by field rather than by `copy()` so a new payload field is a compile-time
+  // decision here, not a silent drop — ref assignment sits on the write path of every capture.
   fun assign(payload: ComposeSemanticsPayload): ComposeSemanticsPayload =
-    ComposeSemanticsPayload(root = assign(payload.root))
+    ComposeSemanticsPayload(root = assign(payload.root), density = payload.density)
 
   fun assign(root: ComposeSemanticsNode): ComposeSemanticsNode = assignNode(root, ROOT_REF)
 

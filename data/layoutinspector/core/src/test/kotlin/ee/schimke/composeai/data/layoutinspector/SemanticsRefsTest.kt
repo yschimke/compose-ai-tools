@@ -85,4 +85,14 @@ class SemanticsRefsTest {
     val root = node(children = listOf(node(testTag = "nav/home tab")))
     assertEquals("r/tag:nav_home_tab", SemanticsRefs.assign(root).children.single().ref)
   }
+
+  @Test
+  fun payloadDensitySurvivesRefAssignment() {
+    // Ref assignment rebuilds the payload field by field, so a payload-level field it forgets is
+    // dropped in silence — no type error, no failing decode, just an absent key downstream. The
+    // density is the only thing that tells a consumer the node's px bounds and its dp tokens are
+    // not in the same unit.
+    val payload = ComposeSemanticsPayload(root = node(), density = 2f)
+    assertEquals(2f, SemanticsRefs.assign(payload).density)
+  }
 }
