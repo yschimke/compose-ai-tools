@@ -81,14 +81,21 @@ Backed on Android by the daemon's `RootForTest` carried on
 `build/compose-previews/data/<id>/layout-inspector.json` and
 `compose-semantics.json`.
 
-The `compose-preview serve` viewer projects the same tree into two
+The `compose-preview serve` viewer projects the same tree into three
 inspection layers over the rendered frame — **Overlays → Inspect →
 Typography** (per text node: resolved size / line height / face / weight,
-from `ComposeSemanticsNode.typography`) and **Theme attributes** (per
-container: resolved fill, border, corner radius and shape, from
-`ComposeSemanticsNode.tokens`). Both are served by `/render/<id>.annotations`
-as `DesignAnnotation`s, the same shape the design-comparison page draws its
-producer-authored spec layers from.
+from `ComposeSemanticsNode.typography`), **Theme attributes** (per
+container: resolved fill or gradient, border, corner radius, shape, shadow
+elevation, effective alpha and clip, from `ComposeSemanticsNode.tokens`,
+anchored to the node's captured `paintBox` when it has one) and **Layout
+boxes** (per slot: the box's own size and origin, its per-edge padding, the
+arrangement gap and any `defaultMinSize` floor). The compact legend row
+carries what fits on one line; the row's tooltip carries the whole resolved
+token map. All three are served by `/render/<id>.annotations` as
+`DesignAnnotation`s, the same shape the design-comparison page draws its
+producer-authored spec layers from — so the Layout layer is the code-side
+counterpart of the reference-side layout redline, and quotes the same tokens
+as the published layout wireframe.
 
 ## Companion products
 

@@ -9,6 +9,8 @@ import ee.schimke.composeai.daemon.protocol.StreamFrameParams
 import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
+import ee.schimke.composeai.data.layoutinspector.LayoutInspectorPayload
+import ee.schimke.composeai.data.layoutinspector.LayoutInspectorProduct
 import ee.schimke.composeai.data.layoutinspector.PreviewSlots
 import ee.schimke.composeai.data.layoutinspector.PreviewSlotsPayload
 import ee.schimke.composeai.data.theme.Material3ThemeProduct
@@ -603,6 +605,7 @@ internal constructor(
           SCROLL_EXTENSION_ID,
           A11Y_EXTENSION_ID,
           ComposeSemanticsProduct.KIND,
+          LayoutInspectorProduct.KIND,
           THEME_EXTENSION_ID,
         )
       )
@@ -617,6 +620,7 @@ internal constructor(
               SCROLL_EXTENSION_ID,
               A11Y_EXTENSION_ID,
               ComposeSemanticsProduct.KIND,
+              LayoutInspectorProduct.KIND,
               THEME_EXTENSION_ID,
             )
         )
@@ -1350,6 +1354,11 @@ internal constructor(
       }
 
       cache.remove(key)
+      // The container layers read the layout tree when the daemon has it: `layout/inspector` walks
+      // every `LayoutNode`, so a `Column` that declares padding and an arrangement gap but no
+      // semantics still reaches the overlay. A daemon too old to know the kind leaves it in
+      // `unknown` and the layers fall back to the semantics tree's mirrored tokens.
+      val captureLayout = LayoutInspectorProduct.KIND !in extensionEnableResult.unknown
       val captureTheme = THEME_EXTENSION_ID !in extensionEnableResult.unknown
       if (captureTheme) {
         runCatching { session.subscribeData(previewId, Material3ThemeProduct.KIND) }
@@ -1372,11 +1381,12 @@ internal constructor(
             return@withLock AnnotationsOutcome.Failed(reason)
           } ?: return@withLock AnnotationsOutcome.Failed("render produced no semantics")
         val theme = if (captureTheme) fetchTheme(previewId, overrides) else null
+        val layout = if (captureLayout) fetchLayout(previewId) else null
 
         val json =
           ServeAnnotationsPayload.encode(
             previewId,
-            ServeDesignAnnotations.annotations(payload, theme),
+            ServeDesignAnnotations.annotations(payload, theme, layout),
             ServeSemanticsTags.index(payload),
           )
         annotationsCache.put(key, json)
@@ -1404,6 +1414,28 @@ internal constructor(
     val text = fileSystem.read(path) { readUtf8() }
     return dataJson.decodeFromString(ComposeSemanticsPayload.serializer(), text)
   }
+
+  /**
+   * Fetch and decode the freshly written `layout/inspector` tree for [previewId], the twin of
+   * [fetchSemantics]; null when the product is absent or unreadable, which drops the container
+   * layers back to the semantics tree rather than failing the request. Callers hold [renderLock].
+   */
+  private fun fetchLayout(previewId: String): LayoutInspectorPayload? = runCatching {
+    val result = session.fetchData(previewId, LayoutInspectorProduct.KIND)
+    result.payload?.let {
+      return@runCatching dataJson.decodeFromJsonElement(
+        LayoutInspectorPayload.serializer(),
+        it,
+      )
+    }
+    val path = result.path?.toPath()?.takeIf { fileSystem.exists(it) } ?: return@runCatching null
+    dataJson.decodeFromString(
+      LayoutInspectorPayload.serializer(),
+      fileSystem.read(path) { readUtf8() },
+    )
+  }
+    .onFailure { onLog("layout/inspector fetch failed: ${it.message}") }
+    .getOrNull()
 
   /** The theme captured by the same subscribed render as [fetchSemantics], when available. */
   private fun fetchTheme(previewId: String, overrides: PreviewOverrides): ThemePayload? =

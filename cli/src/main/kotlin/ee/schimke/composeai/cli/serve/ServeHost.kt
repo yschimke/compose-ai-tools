@@ -624,9 +624,9 @@ interface ServeHost : AutoCloseable {
   fun renderA11y(previewId: String, overrides: PreviewOverrides): A11yOutcome = A11yOutcome.NotFound
 
   /**
-   * Whether this host can derive the viewer's typography + theme inspection layers from a render's
-   * `compose/semantics` tree ([renderAnnotations]). Tracks [canApplyOverrides]: capturing a
-   * semantics tree needs a daemon, exactly like [renderSlots].
+   * Whether this host can derive the viewer's typography, theme and layout inspection layers from a
+   * render's `compose/semantics` tree ([renderAnnotations]). Tracks [canApplyOverrides]: capturing
+   * a semantics tree needs a daemon, exactly like [renderSlots].
    */
   val hasDesignAnnotations: Boolean
     get() = canApplyOverrides
@@ -634,8 +634,8 @@ interface ServeHost : AutoCloseable {
   /**
    * Per-preview annotation availability, the twin of [hasA11yOverlayFor]: a composite host may
    * front a whole catalog while only part of it has a daemon twin to capture semantics from, and
-   * offering the Typography / Theme layers on a preview whose fetch can only 404 is exactly the
-   * dead control [hasDesignAnnotations] exists to avoid.
+   * offering the Typography / Theme / Layout layers on a preview whose fetch can only 404 is
+   * exactly the dead control [hasDesignAnnotations] exists to avoid.
    */
   fun hasDesignAnnotationsFor(previewId: String): Boolean = hasDesignAnnotations
 

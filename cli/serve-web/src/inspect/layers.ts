@@ -1,10 +1,10 @@
-// The three inspection layers, what each is fetched from, and how they are addressed.
+// The four inspection layers, what each is fetched from, and how they are addressed.
 
 /** A layer: its checkbox value, its legend heading, and the endpoint suffix it reads. */
 export interface LayerSpec {
     kind: string;
     label: string;
-    /** `a11y` and `annotations` — the TWO endpoints behind three layers. */
+    /** `a11y` and `annotations` — the TWO endpoints behind four layers. */
     source: string;
 }
 
@@ -12,14 +12,15 @@ export const LAYERS: LayerSpec[] = [
     { kind: "a11y", label: "Accessibility", source: "a11y" },
     { kind: "typography", label: "Typography", source: "annotations" },
     { kind: "theme", label: "Theme", source: "annotations" },
+    { kind: "layout", label: "Layout", source: "annotations" },
 ];
 
 /**
  * The endpoints a set of layers needs, deduplicated.
  *
- * Typography and Theme come from ONE payload, so ticking both must not fetch it twice — and on an
- * override-bearing frame that second fetch is a second daemon render, which can come back
- * describing different pixels than the first.
+ * Typography, Theme and Layout come from ONE payload, so ticking several must not fetch it once
+ * each — and on an override-bearing frame every extra fetch is another daemon render, which can
+ * come back describing different pixels than the first.
  */
 export function sourcesFor(kinds: string[]): string[] {
     const out: string[] = [];

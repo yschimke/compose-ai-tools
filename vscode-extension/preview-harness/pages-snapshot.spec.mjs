@@ -220,14 +220,69 @@ const ANNOTATIONS_PAYLOAD = {
     {
       kind: "theme",
       bounds: { x: 20, y: 132, width: 160, height: 104 },
-      label: "fill #FF6750A4 · radius 18.0dp",
+      label: "fill #FF6750A4 · radius 18.0dp · elevation 1.0dp",
       role: "Card",
+      detail: {
+        background: "#FF6750A4",
+        cornerRadius: "18.0dp",
+        elevation: "1.0dp",
+        padding: "top 16.0dp, end 16.0dp, bottom 16.0dp, start 16.0dp",
+        box: "paint",
+      },
     },
     {
       kind: "theme",
       bounds: { x: 20, y: 258, width: 160, height: 64 },
       label: "fill #FFFFFBFE · radius 18.0dp · border 1.0dp #FF79747E",
       role: "OutlinedCard",
+      detail: {
+        background: "#FFFFFBFE",
+        borderColor: "#FF79747E",
+        borderWidth: "1.0dp",
+        cornerRadius: "18.0dp",
+        clipsContent: "true",
+        box: "placement",
+      },
+    },
+    {
+      kind: "layout",
+      bounds: { x: 12, y: 20, width: 176, height: 312 },
+      label: "176×312px · pad 12.0dp · gap 8.0dp",
+      detail: {
+        width: "176px",
+        height: "312px",
+        x: "12px",
+        y: "20px",
+        padding: "top 12.0dp, end 12.0dp, bottom 12.0dp, start 12.0dp",
+        gap: "8.0dp",
+      },
+    },
+    {
+      kind: "layout",
+      bounds: { x: 20, y: 132, width: 160, height: 104 },
+      label: "160×104px · pad 16.0dp",
+      role: "Card",
+      detail: {
+        width: "160px",
+        height: "104px",
+        x: "20px",
+        y: "132px",
+        padding: "top 16.0dp, end 16.0dp, bottom 16.0dp, start 16.0dp",
+      },
+    },
+    {
+      kind: "layout",
+      bounds: { x: 20, y: 258, width: 160, height: 64 },
+      label: "160×64px · min 160.0dp×48.0dp",
+      role: "OutlinedCard",
+      detail: {
+        width: "160px",
+        height: "64px",
+        x: "20px",
+        y: "258px",
+        minWidth: "160.0dp",
+        minHeight: "48.0dp",
+      },
     },
   ],
 };
@@ -1290,8 +1345,9 @@ const FIXTURE_STATES = [
   },
   {
     // Every inspection layer on at once: the accessibility focus map, the resolved typography,
-    // and the resolved theme attributes, drawn as numbered boxes over the stage with the legend
-    // beside it. This is the state the feature exists for and the committed HTML cannot hold it
+    // the resolved theme attributes, and the layout boxes, drawn as numbered boxes over the
+    // stage with the legend beside it. This is the state the feature exists for and the
+    // committed HTML cannot hold it
     // — the boxes only exist once `<cp-inspect-layers>` has fetched the (stubbed) products — so
     // without this shot a change to the overlay or legend would move no baseline at all.
     fixture: "serve-viewer-inspect",
@@ -1304,9 +1360,22 @@ const FIXTURE_STATES = [
       await page.check("#cp-inspect-a11y");
       await page.check("#cp-inspect-typography");
       await page.check("#cp-inspect-theme");
+      await page.check("#cp-inspect-layout");
       await page.waitForFunction(
         () => document.querySelectorAll(".cp-inspect-box").length > 0,
       );
+      // The layout layer draws every slot box, so it has to read as structure BEHIND the styled
+      // ones rather than covering them — a filled rectangle per nesting level would bury the
+      // theme boxes it overlaps (#4328).
+      await expect(
+        page.locator('.cp-inspect-box[data-cp-kind="layout"]'),
+      ).toHaveCount(3);
+      const layoutFills = await page
+        .locator('.cp-inspect-box[data-cp-kind="layout"]')
+        .evaluateAll((boxes) =>
+          boxes.map((box) => getComputedStyle(box).borderStyle),
+        );
+      expect(layoutFills).toEqual(["dotted", "dotted", "dotted"]);
       // Typography stays on the compact one-line summary introduced by #3677.
       await expect(
         page.locator(

@@ -506,4 +506,70 @@ describe("annotationEntries", () => {
     it("says nothing at all about a payload that never arrived", () => {
         assert.deepEqual(annotationEntries(null, "typography"), []);
     });
+
+    it("keeps every resolved theme token, not just the ones the row fits", () => {
+        // The compact row can only carry a handful of tokens; before #4328 the rest of `detail` was
+        // parsed and then dropped, so a shadow, an alpha or a per-edge padding the capture had
+        // resolved appeared nowhere in the viewer.
+        const entries = annotationEntries(
+            {
+                annotations: [
+                    {
+                        kind: "theme",
+                        bounds: { x: 0, y: 0, width: 10, height: 10 },
+                        role: "Button",
+                        label: "fill #FF6750A4 · radius 20.0dp",
+                        detail: {
+                            background: "#FF6750A4",
+                            cornerRadius: "20.0dp",
+                            elevation: "6.0dp",
+                            padding: "top 8.0dp, end 16.0dp",
+                            box: "paint",
+                        },
+                    },
+                ],
+            },
+            "theme",
+        );
+
+        assert.equal(entries[0].title, "Button");
+        assert.equal(entries[0].detail, "fill #FF6750A4 · radius 20.0dp");
+        assert.equal(
+            entries[0].tooltip,
+            "background #FF6750A4 · cornerRadius 20.0dp · elevation 6.0dp · " +
+                "padding top 8.0dp, end 16.0dp · box paint",
+            "the label never says which rectangle it measured; only this does",
+        );
+    });
+
+    it("gives the layout layer the same treatment", () => {
+        const entries = annotationEntries(
+            {
+                annotations: [
+                    {
+                        kind: "layout",
+                        bounds: { x: 4, y: 4, width: 120, height: 48 },
+                        label: "120×48px · pad 16.0dp · gap 8.0dp",
+                        detail: {
+                            width: "120px",
+                            height: "48px",
+                            gap: "8.0dp",
+                        },
+                    },
+                ],
+            },
+            "layout",
+        );
+
+        assert.equal(entries[0].title, "120×48px · pad 16.0dp · gap 8.0dp");
+        assert.equal(
+            entries[0].tooltip,
+            "width 120px · height 48px · gap 8.0dp",
+        );
+    });
+
+    it("leaves the tooltip off an annotation carrying no detail", () => {
+        const entries = annotationEntries(shared, "theme");
+        assert.equal(entries[0].tooltip, undefined);
+    });
 });

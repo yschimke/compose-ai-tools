@@ -9891,18 +9891,18 @@ $cards
      */
     hasA11yOverlay: Boolean = false,
     /**
-     * Whether this session can derive the **Typography** and **Theme attributes** inspection layers
-     * from a render's `compose/semantics` tree ([ServeHost.hasDesignAnnotations]). Same box +
-     * legend surface as the accessibility layer, and the same reason for the gate: a static bundle
-     * has no daemon to capture the tree.
+     * Whether this session can derive the **Typography**, **Theme attributes** and **Layout boxes**
+     * inspection layers from a render's `compose/semantics` tree
+     * ([ServeHost.hasDesignAnnotations]). Same box + legend surface as the accessibility layer, and
+     * the same reason for the gate: a static bundle has no daemon to capture the tree.
      */
     hasDesignAnnotations: Boolean = false,
     /**
      * Whether the catalog **published** typography annotations over this preview's baked frame
      * ([ServeHost.hasPublishedTypographyFor]) — the other lane behind the same Typography layer,
      * and the only one a static bundle has. Offers the checkbox where [hasDesignAnnotations] is
-     * false but `.annotations` still answers; the Theme attributes row stays gated on the semantics
-     * lane, which is the only thing that produces it.
+     * false but `.annotations` still answers; the Theme attributes and Layout boxes rows stay gated
+     * on the semantics lane, which is the only thing that produces them.
      */
     hasPublishedTypography: Boolean = false,
     trust: String? = null,
@@ -11264,7 +11264,7 @@ $cards
     // other stops on the screen.
     //
     // Each row is offered only when its host can actually produce the data (an a11y-capable daemon
-    // for the first, a semantics-capturing one for the other two) — never as a dead control.
+    // for the first, a semantics-capturing one for the rest) — never as a dead control.
     // Published reference typography is self-contained, so static bundle viewers can inspect the
     // Figma lane even though they cannot apply overrides or ask a daemon for render annotations.
     val hasTypographyInspection =
@@ -11288,6 +11288,10 @@ $cards
         append(
           "<label class=\"cp-live-row\"><input class=\"cp-inspect\" id=\"cp-inspect-theme\" " +
             "data-cp-inspect=\"theme\" type=\"checkbox\"> Theme attributes</label>\n"
+        )
+        append(
+          "<label class=\"cp-live-row\"><input class=\"cp-inspect\" id=\"cp-inspect-layout\" " +
+            "data-cp-inspect=\"layout\" type=\"checkbox\"> Layout boxes</label>\n"
         )
       }
     }

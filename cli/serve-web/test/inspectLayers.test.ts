@@ -13,10 +13,13 @@ import {
 } from "../src/inspect/layers.js";
 
 describe("sourcesFor", () => {
-    it("fetches one payload for the two layers that share it", () => {
-        // Typography and Theme come from the same endpoint. On an override-bearing frame a second
-        // fetch is a second daemon render, which can come back describing different pixels.
-        assert.deepEqual(sourcesFor(["typography", "theme"]), ["annotations"]);
+    it("fetches one payload for the three layers that share it", () => {
+        // Typography, Theme and Layout come from the same endpoint. On an override-bearing frame
+        // every extra fetch is another daemon render, which can come back describing different
+        // pixels.
+        assert.deepEqual(sourcesFor(["typography", "theme", "layout"]), [
+            "annotations",
+        ]);
     });
 
     it("fetches both endpoints when both are wanted", () => {
@@ -45,8 +48,13 @@ describe("activeLayers", () => {
     it("names each layer for its legend heading", () => {
         assert.deepEqual(
             LAYERS.map((l) => l.label),
-            ["Accessibility", "Typography", "Theme"],
+            ["Accessibility", "Typography", "Theme", "Layout"],
         );
+    });
+
+    it("deep-links the layout layer like any other", () => {
+        assert.deepEqual(kindsFromParam("layout,theme"), ["theme", "layout"]);
+        assert.equal(inspectParam(["theme", "layout"]), "theme,layout");
     });
 });
 
