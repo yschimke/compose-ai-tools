@@ -1,5 +1,10 @@
 package ee.schimke.composeai.daemon
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -742,6 +747,31 @@ fun PostDelayedSquare() {
 
 /** Looper delay [PostDelayedSquare] flips on. Well under one held render's auto-advance cap. */
 const val POST_DELAYED_SQUARE_DELAY_MS: Long = 100L
+
+/**
+ * An endlessly-running Compose animation, for asking whether a held live session advances one.
+ *
+ * `rememberInfiniteTransition` is what Wear/Material indeterminate progress indicators are built
+ * on, and it is driven by the composition's `MonotonicFrameClock` — which under a held session is
+ * the paused `mainClock` the render loop advances. Full-bounds so a frame either moved or it did
+ * not; no input, no state, nothing else that could change a pixel.
+ */
+@Composable
+fun InfiniteSweepSquare() {
+  val transition = rememberInfiniteTransition(label = "sweep")
+  val t by
+    transition.animateFloat(
+      initialValue = 0f,
+      targetValue = 1f,
+      animationSpec =
+        infiniteRepeatable(
+          animation = tween(durationMillis = 1000),
+          repeatMode = RepeatMode.Restart,
+        ),
+      label = "t",
+    )
+  Box(modifier = Modifier.fillMaxSize().background(Color(t, 0f, 1f - t, 1f)))
+}
 
 @Composable
 fun ClickableToggleSquare() {
