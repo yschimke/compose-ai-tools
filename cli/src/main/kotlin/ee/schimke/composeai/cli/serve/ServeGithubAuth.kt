@@ -626,6 +626,31 @@ class GitHubOAuthVerifier(private val client: OkHttpClient = OkHttpClient()) {
     )
   }
 
+  /**
+   * The same identity + access decision as [verify], for a caller who **already holds a GitHub
+   * token** — no OAuth code to exchange, and so no client id/secret needed at all.
+   *
+   * This is the headless half of the same gate: a browser earns its session through [verify]'s
+   * redirect flow, while an agent presents the token it was issued (`GITHUB_TOKEN`, `gh auth
+   * token`) and is measured against exactly the same bar — [allowedUsers] when the operator
+   * narrowed sign-in, then [fetchRepositoryAccess]'s public-vs-private rule. Keeping both on one
+   * code path is the point: a second, subtly different notion of "has access" is how a gate ends up
+   * admitting people one of its doors was meant to refuse.
+   *
+   * The token is used for the two reads and dropped; nothing here retains or logs it.
+   */
+  fun verifyAccessToken(
+    token: String,
+    repository: String,
+    allowedUsers: Set<String> = emptySet(),
+  ): Result<GitHubOAuthUser> = runCatching {
+    val login = fetchLogin(token)
+    if (allowedUsers.isNotEmpty() && login.lowercase() !in allowedUsers) {
+      error("GitHub user $login is not allowed")
+    }
+    GitHubOAuthUser(login, repositoryAccess = fetchRepositoryAccess(token, repository, login))
+  }
+
   private fun exchangeCode(
     code: String,
     redirectUri: String,

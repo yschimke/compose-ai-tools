@@ -6170,6 +6170,10 @@ ${captureControlsHtml().prependIndent("          ")}
   /** `3600` → `1h`; used for the upload page's TTL sentence and the permalink's expiry pill. */
   fun humanDuration(seconds: Long): String =
     when {
+      // Days matter since a share can outlive one: the image lane's default link is a week, and
+      // "168h" is a number a reader has to do arithmetic on to understand.
+      seconds >= 86_400 ->
+        "${seconds / 86_400}d" + ((seconds % 86_400) / 3600).let { if (it > 0) " ${it}h" else "" }
       seconds >= 3600 ->
         "${seconds / 3600}h" + ((seconds % 3600) / 60).let { if (it > 0) " ${it}m" else "" }
       seconds >= 60 -> "${seconds / 60}m"

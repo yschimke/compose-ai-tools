@@ -244,6 +244,11 @@ data class ServeSites(private val byHost: Map<String, String>) {
         "bundle.zip",
         "docs",
         "d",
+        // `POST /images` + `GET /i/<id>.png` — the image lane. Reserved unconditionally like every
+        // other opt-in lane's segments: what a site host may name itself cannot depend on a flag
+        // the operator can turn on later.
+        "images",
+        "i",
         "playground",
         // `GET /pg/<token>` — Stage-2 playground redemption.
         "pg",

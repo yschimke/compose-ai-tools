@@ -215,6 +215,15 @@ services:
       SERVE_ACCEPT_DOCS: "${SERVE_ACCEPT_DOCS:-}"
       SERVE_ACCEPT_DOCS_FROM: "${SERVE_ACCEPT_DOCS_FROM:-}"
       SERVE_DOC_TTL: "${SERVE_DOC_TTL:-}"
+      # Image lane (POST /images, GET /i/<id>.png) — an agent preparing a PR uploads a rendered
+      # preview and embeds the returned URL in the PR body. Unlike the document lane above,
+      # uploading is never anonymous: it needs a GitHub token with access to
+      # SERVE_IMAGE_UPLOAD_REPO (which falls back to SERVE_GITHUB_AUTH_REPO), and the lane refuses
+      # to start without one. Off unless asked for.
+      SERVE_ACCEPT_IMAGES: "${SERVE_ACCEPT_IMAGES:-}"
+      SERVE_IMAGE_UPLOAD_REPO: "${SERVE_IMAGE_UPLOAD_REPO:-}"
+      SERVE_IMAGE_TTL: "${SERVE_IMAGE_TTL:-}"
+      SERVE_IMAGE_RATE_LIMIT: "${SERVE_IMAGE_RATE_LIMIT:-}"
       # Extra Maven repositories the live-daemon classpath resolver may fetch from, beyond Central +
       # Google. Empty inherits the entrypoint's baked default (jitpack, apollo-snapshots, a8c-libs),
       # which is what the published catalogs need; `none` sends only Central + Google.

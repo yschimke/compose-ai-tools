@@ -351,6 +351,20 @@ if [[ "${SERVE_ACCEPT_DOCS:-}" == "1" || "${SERVE_ACCEPT_DOCS:-}" == "true" ]]; 
     args+=(--accept-docs-from "${SERVE_ACCEPT_DOCS_FROM}")
 fi
 
+# Image lane: accept a rendered preview PNG from an authenticated GitHub collaborator and serve it
+# back at an embeddable /i/<id>.png (POST /images). Unlike the document lane above this is never
+# anonymous — an uploader must present a GitHub token with access to SERVE_IMAGE_UPLOAD_REPO (which
+# falls back to SERVE_GITHUB_AUTH_REPO), and the lane refuses to start without one. Reading stays
+# open, because GitHub's image proxy fetches a PR body's images anonymously. Off unless asked for.
+if [[ "${SERVE_ACCEPT_IMAGES:-}" == "1" || "${SERVE_ACCEPT_IMAGES:-}" == "true" ]]; then
+  args+=(--accept-images)
+  [[ -n "${SERVE_IMAGE_UPLOAD_REPO:-}" ]] &&
+    args+=(--image-upload-repo "${SERVE_IMAGE_UPLOAD_REPO}")
+  [[ -n "${SERVE_IMAGE_TTL:-}" ]] && args+=(--image-ttl "${SERVE_IMAGE_TTL}")
+  [[ -n "${SERVE_IMAGE_RATE_LIMIT:-}" ]] &&
+    args+=(--image-rate-limit "${SERVE_IMAGE_RATE_LIMIT}")
+fi
+
 # Extra Maven repositories the live-daemon classpath resolver may fetch from, beyond Maven Central +
 # Google Maven. A served catalog whose module pulls deps from a non-default repo (e.g.
 # meshcore-mobile's jitpack.io deps like usb-serial-for-android) otherwise has those coordinates

@@ -1,7 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
 import java.security.SecureRandom
-import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -224,15 +223,9 @@ class ServeDocStore(
     const val DEFAULT_MAX_TOTAL_BYTES = 64L * 1024 * 1024
 
     /** 128 bits of [SecureRandom], base64url — the permalink id IS the capability. */
-    private val random = SecureRandom()
-
-    fun randomId(): String {
-      val bytes = ByteArray(16)
-      random.nextBytes(bytes)
-      return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
-    }
+    fun randomId(): String = ServeCapabilityId.mint()
 
     /** True when [id] could be one of ours — cheap shape check before a map lookup. */
-    fun isWellFormedId(id: String): Boolean = id.matches(Regex("[A-Za-z0-9_-]{16,64}"))
+    fun isWellFormedId(id: String): Boolean = ServeCapabilityId.isWellFormed(id)
   }
 }
