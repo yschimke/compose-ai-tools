@@ -820,6 +820,7 @@ class ServeWebFixtureTest {
           // row where one card has the action and its neighbour does not, which is the case the
           // `.cp-sys-cell` grid template exists for — the tiles still have to line their artwork
           // and their footers up.
+          hasReferenceComparison = true,
           designToolLabel = "Figma",
         ),
         ServeWeb.HomeSystem(
@@ -839,6 +840,7 @@ class ServeWebFixtureTest {
             ),
           // Wear is dark-first: the hero backs on the dark stage, not the default white.
           darkStage = true,
+          hasReferenceComparison = true,
           designToolLabel = "Figma",
         ),
         ServeWeb.HomeSystem(
@@ -874,6 +876,12 @@ class ServeWebFixtureTest {
             "branch:yschimke/homeassistant-remotecompose@design-artifacts/homeassistant-remotecompose",
           sourceRepo = "yschimke/homeassistant-remotecompose",
           heroPreviewId = null,
+          // Publishes design references whose provider names no design tool — checked-in PNGs. The
+          // route works, so the card still offers the comparison; it just takes the neutral
+          // wording. Captured here because gating the action on the vendor label rather than on
+          // availability silently dropped it from every catalog in this shape (#4349), and a
+          // golden is what stops that coming back.
+          hasReferenceComparison = true,
         ),
         // A Wear app (Confetti): dark-first stage, and its hero is a conference SCREEN — the most
         // representative view of the app — rather than a single component.

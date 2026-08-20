@@ -621,7 +621,7 @@ class ServeWebTest {
    */
   @Test
   fun `a front-door card offers the comparison, named after the tool the catalog names`() {
-    fun system(id: String, tool: String?) =
+    fun system(id: String, compares: Boolean, tool: String?) =
       ServeWeb.HomeSystem(
         system = id,
         title = id,
@@ -629,15 +629,20 @@ class ServeWebTest {
         previewCount = 1,
         trust = null,
         heroPreviewId = null,
+        hasReferenceComparison = compares,
         designToolLabel = tool,
       )
 
     val html =
       ServeWeb.homeIndexPage(
         listOf(
-          system("compose-m3", "Figma"),
-          system("penpot-kit", "Penpot"),
-          system("plain", null),
+          system("compose-m3", compares = true, tool = "Figma"),
+          system("penpot-kit", compares = true, tool = "Penpot"),
+          // Publishes references whose provider names no design tool — a checked-in `png`, an
+          // `svg`, an unmapped token. The route works, so the action stays and takes the neutral
+          // wording; gating it on the vendor label instead dropped it entirely (#4349).
+          system("png-kit", compares = true, tool = null),
+          system("plain", compares = false, tool = null),
         ),
         token = "unused",
         isPublic = true,
@@ -645,20 +650,24 @@ class ServeWebTest {
 
     assertTrue(
       html.contains(
-        "<a class=\"cp-action-chip\" href=\"/compose-m3/compare?format=reference\">" +
-          "compare to Figma</a>"
+        "<a class=\"cp-action-chip\" href=\"/compose-m3/compare?format=reference\" " +
+          "aria-label=\"compose-m3: compare to Figma\">compare to Figma</a>"
       ),
       html,
     )
     // The label follows the catalog's own design tool rather than being hardcoded to Figma.
     assertTrue(html.contains(">compare to Penpot</a>"), html)
+    // …and falls back to the landing page's own neutral wording when there is no tool to name,
+    // rather than the action disappearing.
+    assertTrue(html.contains("/png-kit/compare?format=reference"), html)
+    assertTrue(html.contains(">compare to design references</a>"), html)
     // A catalog that publishes no design references has nothing behind `format=reference`, so it
     // gets no action rather than a chip that deep-links a format the comparison page won't offer.
     assertFalse(html.contains("/plain/compare"), html)
     // It does still get the (empty) row, because a neighbour in its section has one: the cell's
     // second row is what the tile is sized against, so a card without it grows taller than the
     // ones beside it.
-    assertEquals(3, Regex("<p class=\"cp-sys-actions\">").findAll(html).count(), html)
+    assertEquals(4, Regex("<p class=\"cp-sys-actions\">").findAll(html).count(), html)
     assertTrue(html.contains("<p class=\"cp-sys-actions\"></p>"), html)
   }
 
@@ -669,7 +678,7 @@ class ServeWebTest {
    */
   @Test
   fun `a section where nothing compares reserves no action row`() {
-    fun system(id: String, repo: String, tool: String?) =
+    fun system(id: String, repo: String, compares: Boolean) =
       ServeWeb.HomeSystem(
         system = id,
         title = id,
@@ -678,14 +687,15 @@ class ServeWebTest {
         trust = null,
         sourceRepo = repo,
         heroPreviewId = null,
-        designToolLabel = tool,
+        hasReferenceComparison = compares,
+        designToolLabel = "Figma".takeIf { compares },
       )
 
     val html =
       ServeWeb.homeIndexPage(
         listOf(
-          system("compose-m3", "yschimke/compose-ai-tools", "Figma"),
-          system("confetti-wear", "joreilly/confetti", null),
+          system("compose-m3", "yschimke/compose-ai-tools", compares = true),
+          system("confetti-wear", "joreilly/confetti", compares = false),
         ),
         token = "unused",
         isPublic = true,
@@ -718,6 +728,54 @@ class ServeWebTest {
     assertFalse(html.contains("cp-sys-actions"), html)
   }
 
+  /**
+   * A front door lists many catalogs, and several may name the same tool — so several sibling links
+   * are announced identically as "compare to Figma". The tile that gives each one its context is a
+   * SIBLING, so nothing labels the chip by it: a screen-reader link list or a voice command has
+   * nothing to tell them apart unless the accessible name carries the catalog.
+   */
+  @Test
+  fun `front-door comparison links are told apart by catalog, keeping their visible text`() {
+    fun system(id: String, title: String) =
+      ServeWeb.HomeSystem(
+        system = id,
+        title = title,
+        subtitle = null,
+        previewCount = 1,
+        trust = null,
+        heroPreviewId = null,
+        hasReferenceComparison = true,
+        designToolLabel = "Figma",
+      )
+
+    val html =
+      ServeWeb.homeIndexPage(
+        listOf(system("compose-m3", "Compose Material 3"), system("wear-m3", "Wear Material 3")),
+        token = "unused",
+        isPublic = true,
+      )
+
+    val names =
+      Regex("aria-label=\"([^\"]*compare to[^\"]*)\"")
+        .findAll(html)
+        .map { it.groupValues[1] }
+        .toList()
+    assertEquals(
+      listOf("Compose Material 3: compare to Figma", "Wear Material 3: compare to Figma"),
+      names,
+      html,
+    )
+    // WCAG 2.5.3 Label in Name: the visible string survives INTACT inside the accessible name, so
+    // "click compare to Figma" still matches. A name like "compare Wear Material 3 to Figma" would
+    // read fine and break that.
+    names.forEach { assertTrue(it.contains("compare to Figma"), it) }
+    // The chip itself stays short — the catalog's name is in the accessible name, not on screen.
+    assertTrue(
+      html.contains("aria-label=\"Wear Material 3: compare to Figma\">compare to Figma</a>"),
+      html,
+    )
+  }
+
   /** The token has to ride the compare link too, or a gated box 403s the destination. */
   @Test
   fun `the front door's comparison link carries the token on a gated box`() {
@@ -729,6 +787,7 @@ class ServeWebTest {
         previewCount = 1,
         trust = null,
         heroPreviewId = null,
+        hasReferenceComparison = true,
         designToolLabel = "Figma",
       )
 
@@ -750,6 +809,7 @@ class ServeWebTest {
         previewCount = 1,
         trust = null,
         heroPreviewId = null,
+        hasReferenceComparison = true,
         designToolLabel = "Figma",
       )
 
@@ -779,6 +839,7 @@ class ServeWebTest {
             previewCount = 1,
             trust = null,
             heroPreviewId = null,
+            hasReferenceComparison = true,
             designToolLabel = "Figma",
           )
         ),
