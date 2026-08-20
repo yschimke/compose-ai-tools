@@ -49,8 +49,16 @@ interface ServeImageUploadAuth {
   fun identify(bearerToken: String?): Identity
 
   sealed interface Identity {
-    /** Verified: [login] has access to [repository]. */
-    data class Ok(val login: String) : Identity
+    /**
+     * Verified: [login] has access to [repository].
+     *
+     * [budgetKey] is who to charge for the upload, which is **not** always [login]. Every verified
+     * installation token shares one placeholder login (there is no user behind one), so keying a
+     * budget on that would put every GitHub App with write access to the gating repo in a single
+     * bucket — one app's batch would 429 another's. The key is therefore the credential's own
+     * fingerprint for those, and the login for a real user.
+     */
+    data class Ok(val login: String, val budgetKey: String = "gh:$login") : Identity
 
     /** No credential presented at all — answered `401`, with how to present one. */
     data object Missing : Identity
@@ -82,7 +90,13 @@ class GithubTokenUploadAuth(
   override val repository: String,
   /** When non-empty, only these logins may upload, whatever GitHub says about repo access. */
   private val allowedUsers: Set<String> = emptySet(),
-  private val verifier: GitHubOAuthVerifier = GitHubOAuthVerifier(),
+  /**
+   * The GitHub round-trip, as a function so a test can stand in for it: identity + repo access for
+   * a presented credential. Defaults to the real [GitHubOAuthVerifier], whose rule the playground
+   * already shares.
+   */
+  private val verifier: (String, String, Set<String>) -> Result<GitHubOAuthUser> =
+    GitHubOAuthVerifier()::verifyAccessToken,
   private val clock: () -> Long = System::currentTimeMillis,
 ) : ServeImageUploadAuth {
 
@@ -107,7 +121,7 @@ class GithubTokenUploadAuth(
       cache.entries.removeIf { it.value.expiresAtMillis <= now }
       if (cache.size >= MAX_CACHED_TOKENS) cache.clear()
     }
-    val identity = verify(token)
+    val identity = verify(token, key)
     val ttl =
       if (identity is ServeImageUploadAuth.Identity.Ok) POSITIVE_TTL_SECONDS
       else NEGATIVE_TTL_SECONDS
@@ -115,9 +129,9 @@ class GithubTokenUploadAuth(
     return identity
   }
 
-  private fun verify(token: String): ServeImageUploadAuth.Identity {
+  private fun verify(token: String, fingerprint: String): ServeImageUploadAuth.Identity {
     val user =
-      verifier.verifyAccessToken(token, repository, allowedUsers).getOrElse { error ->
+      verifier(token, repository, allowedUsers).getOrElse { error ->
         // The message is GitHub's or ours about GitHub — a status code, a "not allowed" — and never
         // contains the credential, which is the only thing that must not travel back out.
         return ServeImageUploadAuth.Identity.Refused(
@@ -133,7 +147,13 @@ class GithubTokenUploadAuth(
             "Uploading preview images is limited to that repository's collaborators.",
       )
     }
-    return ServeImageUploadAuth.Identity.Ok(user.login)
+    // An installation has no login to charge, so it is charged as the credential it presented.
+    // A GitHub Actions token rotates hourly, so its bucket rotates with it — which is the right
+    // granularity anyway: one workflow run, one budget.
+    val budgetKey =
+      if (user.login == GitHubOAuthVerifier.INSTALLATION_LOGIN) "app:${fingerprint.take(16)}"
+      else "gh:${user.login}"
+    return ServeImageUploadAuth.Identity.Ok(user.login, budgetKey)
   }
 
   /** SHA-256, hex — a stable cache key that is not the credential it stands for. */

@@ -1901,6 +1901,18 @@ class ServeHttpServer(
       ?.let {
         return "gh:$it"
       }
+    return clientAddressKey()
+  }
+
+  /**
+   * Who to charge **by address**, ignoring any signed-in identity — the key for work that happens
+   * before this request has an identity to charge, or that is deliberately metered per address.
+   *
+   * Separate from [rateLimitKey] because a lane that charges a caller twice — once before it knows
+   * who they are and once after — must not land both charges in the same bucket. It would halve the
+   * budget an operator configured, and at `--image-rate-limit 1` refuse every request.
+   */
+  private fun RoutingContext.clientAddressKey(): String {
     val forwarded =
       if (!trustForwardedFor) null
       else
@@ -2162,8 +2174,11 @@ class ServeHttpServer(
     // of this host's outbound requests and one of its threads per guess — and neither the
     // fingerprint cache (every value is new) nor the per-login budget below (never reached) bounds
     // that. This is the only budget an anonymous caller is ever charged against.
-    val verifyPermit = acquireImagePermit(rateLimitKey()) ?: return
-    val login =
+    // Address-only, never [rateLimitKey]: that one prefers a signed-in cookie login, which on a
+    // GitHub-auth host can be the same string the post-verification charge below uses — the two
+    // budgets would then share one bucket and halve what the operator configured.
+    val verifyPermit = acquireImagePermit(clientAddressKey()) ?: return
+    val identity =
       try {
         authorizeImageUpload(auth)
       } finally {
@@ -2171,9 +2186,11 @@ class ServeHttpServer(
         // it exists to bound *verification*, and the accepted upload below has its own budget.
         verifyPermit.release()
       } ?: return
-    // Per-caller budget, keyed by the *verified* login rather than by client address: the address
-    // of an agent in CI is shared or ephemeral, and the identity is the thing we actually know.
-    val permit = acquireImagePermit("gh:$login") ?: return
+    // Per-caller budget, charged to the *verified* identity rather than to the client address: the
+    // address of an agent in CI is shared or ephemeral, and the identity is the thing we actually
+    // know. The key comes from the gate, not from the login — see [Identity.Ok.budgetKey].
+    val permit = acquireImagePermit(identity.budgetKey) ?: return
+    val login = identity.login
     try {
       val name = call.request.queryParameters["name"]
       // Cap the body as it streams in — receiving it whole first would let a client OOM the server
@@ -2259,15 +2276,17 @@ class ServeHttpServer(
   }
 
   /**
-   * The verified GitHub login behind this upload, or null once the refusal has been written. Split
-   * out so the route reads as "who is this, then do the work" and the two refusal shapes (no
-   * credential vs. not good enough) stay in one place.
+   * The verified identity behind this upload, or null once the refusal has been written. Split out
+   * so the route reads as "who is this, then do the work" and the two refusal shapes (no credential
+   * vs. not good enough) stay in one place.
    */
-  private suspend fun RoutingContext.authorizeImageUpload(auth: ServeImageUploadAuth): String? {
+  private suspend fun RoutingContext.authorizeImageUpload(
+    auth: ServeImageUploadAuth
+  ): ServeImageUploadAuth.Identity.Ok? {
     val header = call.request.headers[HttpHeaders.Authorization]
     val bearer = header?.takeIf { it.startsWith("Bearer ", ignoreCase = true) }?.substring(7)
     return when (val identity = auth.identify(bearer)) {
-      is ServeImageUploadAuth.Identity.Ok -> identity.login
+      is ServeImageUploadAuth.Identity.Ok -> identity
       is ServeImageUploadAuth.Identity.Missing -> {
         call.response.headers.append(
           HttpHeaders.WWWAuthenticate,
