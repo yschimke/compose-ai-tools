@@ -1,6 +1,7 @@
 package ee.schimke.composeai.renderer
 
 import android.graphics.Typeface
+import ee.schimke.composeai.data.fonts.SystemFontFamilies
 import ee.schimke.composeai.fonts.google.GoogleFontCache
 import ee.schimke.composeai.fonts.google.GoogleFontKey
 import ee.schimke.composeai.fonts.google.GoogleFontSource
@@ -58,30 +59,21 @@ object PixelSystemFontAliases {
 
   /**
    * Ordered pairs of (system-font slug, Google Fonts display name). Seeded from Pixel 8/9
-   * `/system/etc/fonts.xml` snapshots — every entry below has been verified against the public
+   * `/system/etc/fonts.xml` snapshots — every entry has been verified against the public
    * fonts.google.com catalog, so the CSS2 download path resolves a real TTF.
    *
-   * Restrict to families that:
-   * - ship in Pixel's bundled fonts.xml, AND
-   * - exist on fonts.google.com under the mapped name.
+   * The table itself lives in [SystemFontFamilies] because the `compose/semantics` producer needs
+   * the identical mapping to *report* the face a `DeviceFontFamilyName` node resolved. Two copies
+   * would let the renderer draw Roboto Flex while the inspector called the same node `roboto-flex`
+   * — the design comparison then reports a typeface change that never happened. Add new families
+   * there.
    *
    * `roboto-flex` and `google-sans-flex` are variable families on both sides (the CSS2 range query
    * returns a single axis-covering TTF). The remainder are static families whose closest-weight
    * sub-font is picked by [pickClosestTruetypeUrl].
    */
-  internal val ALIASES: Map<String, String> =
-    linkedMapOf(
-      "roboto" to "Roboto",
-      "roboto-flex" to "Roboto Flex",
-      "google-sans-flex" to "Google Sans Flex",
-      "noto-sans" to "Noto Sans",
-      "noto-serif" to "Noto Serif",
-      "noto-sans-mono" to "Noto Sans Mono",
-      "cutive-mono" to "Cutive Mono",
-      "coming-soon" to "Coming Soon",
-      "dancing-script" to "Dancing Script",
-      "carrois-gothic-sc" to "Carrois Gothic SC",
-    )
+  internal val ALIASES: Map<String, String>
+    get() = SystemFontFamilies.DISPLAY_NAMES
 
   /**
    * Resolve [slug] to the canonical Google Fonts display name. Returns `null` when the slug isn't
@@ -106,6 +98,11 @@ object PixelSystemFontAliases {
    */
   fun seedSystemFonts(warn: (String) -> Unit = { System.err.println(it) }): List<String> {
     val seeded = seedSystemFontMap()
+    // Tell the reporting side what actually resolved. A slug that didn't renders as the platform's
+    // fallback, and the `compose/semantics` producer must name *that* rather than the family the
+    // code asked for — otherwise the typography inspector reports a face nothing drew, hiding the
+    // very drift the warning below is about.
+    SystemFontFamilies.recordSeeding(attempted = ALIASES.keys, seeded = seeded)
     val missing = ALIASES.keys - seeded.toSet()
     if (missing.isNotEmpty() && unseededWarned.compareAndSet(false, true)) {
       warn(

@@ -408,14 +408,7 @@ private object MaterialThemeTokenReader {
           "outlineVariant" to source.outlineVariant.hexArgb(),
           "scrim" to source.scrim.hexArgb(),
         )
-      else ->
-        TokenObjectAccess.colorProperties(source).mapValues { (_, value) ->
-          when (value) {
-            is Color -> value.hexArgb()
-            is Long -> Color(value.toULong()).hexArgb()
-            else -> error("Unsupported color token value ${value::class.java.name}")
-          }
-        }
+      else -> DuckTypedThemeTokens.colorScheme(source)
     }
 
   fun typography(source: Any?): Map<String, TypographyToken> =
@@ -439,8 +432,7 @@ private object MaterialThemeTokenReader {
           "labelMedium" to source.labelMedium.token(),
           "labelSmall" to source.labelSmall.token(),
         )
-      else ->
-        TokenObjectAccess.textStyleProperties(source).mapValues { (_, value) -> value.token() }
+      else -> DuckTypedThemeTokens.typography(source)
     }
 
   fun shapes(source: Any?): Map<String, String> =
@@ -454,11 +446,16 @@ private object MaterialThemeTokenReader {
           "large" to source.large.toString(),
           "extraLarge" to source.extraLarge.toString(),
         )
-      else -> TokenObjectAccess.shapeProperties(source).mapValues { (_, value) -> value.toString() }
+      else -> DuckTypedThemeTokens.shapes(source)
     }
 }
 
-private object TokenObjectAccess {
+/**
+ * Structural (getter-shaped) reads of a theme object. `internal` rather than file-private because
+ * [DuckTypedThemeTokens] is the one place these are turned into token maps — see the runtime reason
+ * in `ThemeTokenReading.kt` for why that path must stay free of Material 3 references.
+ */
+internal object TokenObjectAccess {
   fun colorProperties(source: Any): Map<String, Any> =
     linkedMapOf<String, Any>().also { tokens ->
       for (method in source.javaClass.readableNoArgMethods()) {
