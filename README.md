@@ -697,6 +697,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-report-bug/dark](renders/serve-report-bug.dark.png) |
 | `light` | ![serve-report-bug/light](renders/serve-report-bug.light.png) |
 
+## serve-report-bug-site
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-report-bug-site/dark](renders/serve-report-bug-site.dark.png) |
+| `light` | ![serve-report-bug-site/light](renders/serve-report-bug-site.light.png) |
+
 ## serve-social-card
 
 | Theme | Capture |

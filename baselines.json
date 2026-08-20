@@ -916,14 +916,14 @@
     "serve-landing-tree-depth-component-open.dark.png": {
       "fixture": "serve-landing-tree-depth-component-open",
       "theme": "dark",
-      "sha256": "7d3699942882b549e2c55c1eafc0f00d94ef5c69df3554b78717b4f9adeeace4",
-      "size": 79334
+      "sha256": "3522e332a2d5e86d57ebba3d3ec08c15762fb1d5a00b0fe2aaf97af9dfbf3a68",
+      "size": 83077
     },
     "serve-landing-tree-depth-component-open.light.png": {
       "fixture": "serve-landing-tree-depth-component-open",
       "theme": "light",
-      "sha256": "89271828bd435ebe7944da3aa32e662319723aa8eb8eb3580f6226db05ced580",
-      "size": 81974
+      "sha256": "795e855b3acb66522597fb94c7e96abdb7a54f4fed9935ce08d9b14fe9a18279",
+      "size": 75308
     },
     "serve-landing-tree-depth.dark.png": {
       "fixture": "serve-landing-tree-depth",
@@ -1176,6 +1176,18 @@
       "theme": "light",
       "sha256": "7c093ab7ebf84268a36515e0513ce70a0078b5f39e4e29980c2e31774e7d4302",
       "size": 96396
+    },
+    "serve-report-bug-site.dark.png": {
+      "fixture": "serve-report-bug-site",
+      "theme": "dark",
+      "sha256": "ceaa0914c00650600e9b29d78bf0d1604f3445c884131be2093f0d27373b343e",
+      "size": 187832
+    },
+    "serve-report-bug-site.light.png": {
+      "fixture": "serve-report-bug-site",
+      "theme": "light",
+      "sha256": "8b24d7cbd17e07a1ece9f751d1f0e86db7a96e95a59d31fc38aaa41d5da5c8eb",
+      "size": 183834
     },
     "serve-report-bug.dark.png": {
       "fixture": "serve-report-bug",
