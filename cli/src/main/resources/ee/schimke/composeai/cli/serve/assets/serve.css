@@ -1469,10 +1469,15 @@ cp-parity-scores { display: contents; }
   .cp-card:hover, .cp-card:focus-visible { transform: none; }
   .cp-card:hover .cp-imgwrap img, .cp-card:focus-visible .cp-imgwrap img { transform: none; }
   /* Restated at the front door's own specificity, or the bigger break-out zoom above would
-     outrank the blanket rule and animate for a visitor who asked for less motion. */
+     outrank the blanket rule and animate for a visitor who asked for less motion. The card LIFT
+     needs the same treatment for the same reason the lift rule itself did: the blanket reset above
+     is keyed on `:focus-visible`, which the card `<div>` can never match, so a keyboard user who
+     asked for less motion still got the tile moving under them — the one case the reset exists to
+     prevent, reached by the one input method that cannot opt out of it. */
   .cp-card.cp-sys:hover .cp-imgwrap img,
   .cp-card.cp-sys:focus-within:not(:has(.cp-action-chip:focus-visible)) .cp-imgwrap img {
     transform: none; }
+  .cp-card.cp-sys:focus-within:not(:has(.cp-action-chip:focus-visible)) { transform: none; }
 }
 .cp-card--render-failed { border: 1px solid color-mix(in srgb, var(--md-sys-color-error) 55%, transparent); }
 .cp-card--render-failed > summary { list-style: none; cursor: pointer; }

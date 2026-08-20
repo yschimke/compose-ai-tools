@@ -5865,6 +5865,15 @@ class ServeWebFixtureTest {
       "keyboard focus on the tile link gets the full card treatment, not just the outline",
     )
     assertTrue(
+      assetText("serve.css")
+        .contains(
+          ".cp-card.cp-sys:focus-within:not(:has(.cp-action-chip:focus-visible)) " +
+            "{ transform: none; }"
+        ),
+      "…and reduced motion still cancels the lift for it — the blanket reset is keyed on " +
+        ":focus-visible, which the card div can never match",
+    )
+    assertTrue(
       landing.contains("class=\"cp-site-header\"") && landing.contains("id=\"cp-status-link\""),
       "all pages carry the shared site navigation",
     )
