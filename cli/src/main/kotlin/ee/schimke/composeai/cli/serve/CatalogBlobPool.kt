@@ -23,21 +23,21 @@ data class CatalogBlobPoolSnapshot(
   /** Blobs dropped because their bytes did not hash back to their name. */
   val corrupt: Long,
   /**
-   * Whether this pool's directory outlives the process (`--catalog-cache-dir`), or is the temp-dir
-   * fallback that is discarded with the container.
+   * Whether an operator configured a directory (`--catalog-cache-dir`), rather than this being the
+   * temp-dir fallback discarded with the container.
    *
-   * The field that separates a cache from a decoration. Everything else here looks the same either
-   * way — a temp pool fills, serves within-process hits, and reports climbing writes — right up
-   * until the container is recreated and none of it is there. `false` on a deployed box means the
-   * bytes are being paid for and thrown away.
+   * `false` on a deployed box means the bytes are certainly being paid for and thrown away. `true`
+   * means only that the decision was made: a configured path inside an image with no volume mounted
+   * there is just as ephemeral, and nothing here can tell those apart. [adopted] is the evidence
+   * that the storage actually persisted.
    */
-  val durable: Boolean = false,
+  val persistenceConfigured: Boolean = false,
   /**
    * Blobs already on disk when this process opened the pool.
    *
    * The only direct evidence that anything survived the last restart, and therefore the number to
-   * read after a roll: `0` on a [durable] pool that should have found a warm volume is the failure,
-   * and it is invisible in every other field.
+   * read after a roll: `0` on a pool with [persistenceConfigured] that should have found a warm
+   * volume is the failure, and it is invisible in every other field.
    */
   val adopted: Int = 0,
   val lastFailure: String? = null,
@@ -109,14 +109,15 @@ class CatalogBlobPool(
   /** How recently a blob must have been touched to be spared by [sweep]. See **Concurrency**. */
   private val graceMillis: Long = DEFAULT_SWEEP_GRACE_MILLIS,
   /**
-   * Whether [root] outlives this process — an operator-configured directory rather than the
-   * temp-dir fallback.
+   * Whether an operator named a directory for [root], rather than this being the temp-dir fallback.
    *
-   * Reported rather than inferred, because the two are indistinguishable from the inside: a pool in
-   * `/tmp` fills, serves within-process hits and reports healthy-looking counters right up until
-   * the container is recreated and every byte of it is gone. Only the caller knows which it built.
+   * Deliberately **not** called durable. Nothing here can establish that the storage outlives the
+   * container — `--catalog-cache-dir /var/cache/x` in an image with no volume mounted there is
+   * configured and just as ephemeral, and no portable test tells a bind mount from a writable
+   * layer. So this reports the decision that was made, and [adopted] reports what actually
+   * survived. Claiming the stronger thing would be the false reassurance it exists to remove.
    */
-  private val durable: Boolean = false,
+  private val persistenceConfigured: Boolean = false,
   private val clock: () -> Long = System::currentTimeMillis,
 ) {
   private val hits = AtomicLong()
@@ -159,7 +160,7 @@ class CatalogBlobPool(
    * anything survived the last restart.
    *
    * One census at construction, which is also what seeds the published occupancy so `/status.json`
-   * is right from the first poll rather than from the first sweep. `0` on a durable pool after a
+   * is right from the first poll rather than from the first sweep. `0` on a configured pool after a
    * roll that should have found a warm volume is the failure this number exists to make visible;
    * without it a cache that is quietly starting over every time looks exactly like one that is
    * working, since both report climbing writes.
@@ -374,7 +375,7 @@ class CatalogBlobPool(
       blobs = knownBlobs.get(),
       bytes = knownBytes.get(),
       maxBytes = maxBytes,
-      durable = durable,
+      persistenceConfigured = persistenceConfigured,
       adopted = adopted,
       hits = hits.get(),
       misses = misses.get(),

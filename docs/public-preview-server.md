@@ -2637,13 +2637,19 @@ tier; they are not two views of one number, and reading them as one would make a
 look inconsistent. What says the feature is working is either of them climbing while
 `branchFetch.attempted` flattens across a restart.
 
-Read **`durable`** and **`adopted`** first, because they are the two that separate a working cache
-from a decoration. Everything else on this row looks the same either way: a temp-dir pool fills,
+Read **`persistenceConfigured`** and **`adopted`** first, and read them for what they are.
+Everything else on this row looks the same whether the cache works or not: a temp-dir pool fills,
 serves within-process hits and reports climbing writes, right up until the container is recreated
-and none of it is there. `durable: false` on a deployed box means the bytes are being paid for and
-thrown away — set `SERVE_CATALOG_CACHE_DIR` to a mounted volume. `adopted` is what was already on
-disk when the process opened the pool, so `0` after a roll that should have found a warm volume is
-the failure, and it is invisible in every other field.
+and none of it is there.
+
+`persistenceConfigured: false` means the bytes are certainly being paid for and thrown away — set
+`SERVE_CATALOG_CACHE_DIR` to a mounted volume. `true` means only that a directory was configured; it
+is **not** proof the storage persists, because a configured path inside an image with no volume
+mounted there is just as ephemeral and nothing in the server can tell those apart.
+
+`adopted` is the evidence: blobs already on disk when the process opened the pool. Non-zero after a
+restart is the cache actually having survived one, and `0` after a roll that should have found a warm
+volume is the failure — invisible in every other field.
 
 That distinction is not hypothetical. The image's compose file defaults `SERVE_CATALOG_CACHE_DIR` to
 the `/catalog-cache` volume, but an already-deployed box keeps its own copy of that file: the
