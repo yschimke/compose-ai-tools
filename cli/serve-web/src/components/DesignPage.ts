@@ -24,6 +24,7 @@ import { LitElement } from "lit";
 import { customElement } from "lit/decorators.js";
 import { compareApi, type CompareApi } from "../compare/api.js";
 import { whenParsed } from "../dom/whenParsed.js";
+import { domGeometry, paintedRect } from "../design/clip.js";
 import {
     cropFor,
     idMatches,
@@ -65,6 +66,23 @@ const rectOf = (element: Element): Box => {
         height: rect.height,
     };
 };
+
+/**
+ * A DESIGN NODE's box, which is not the same question as an element's box.
+ *
+ * `getBoundingClientRect()` ignores `clip-path`, so a node whose export keeps an oversized shape
+ * inside it by clipping — a placeholder's shimmer sweep is the case that found this — measures as
+ * the sweep rather than as the component, and the render fitted into that slot lands on the page as
+ * a blob several times the size of the thing it stands for (issue #4323). `paintedRect` walks the
+ * clips; it degrades to exactly this rect when there are none to walk.
+ *
+ * A node clipped away to nothing comes back as a zero-area box rather than as its unclipped rect,
+ * which is what the caller already spells "missing as far as the sheet is concerned".
+ */
+const EMPTY_BOX: Box = { left: 0, top: 0, width: 0, height: 0 };
+
+const nodeBoxOf = (element: SVGElement): Box =>
+    paintedRect(element, domGeometry) ?? EMPTY_BOX;
 
 @customElement("cp-design-page")
 export class DesignPage extends LitElement {
@@ -221,7 +239,7 @@ export class DesignPage extends LitElement {
     private measure(): void {
         const layer = rectOf(this.zoomLayer);
         for (const entry of this.nodes) {
-            const node = rectOf(entry.target);
+            const node = nodeBoxOf(entry.target);
             const slot = slotIn(layer, node);
             if (!slot) {
                 // A zero-area node is missing as far as the sheet is concerned; a zero-area LAYER
@@ -293,7 +311,7 @@ export class DesignPage extends LitElement {
             // Just this slot. The node's box hasn't moved — only what we now know about the image
             // has — and re-running the whole measure per arriving render is dozens of layout reads
             // for one placement.
-            const node = rectOf(entry.target);
+            const node = nodeBoxOf(entry.target);
             if (node.width > 0 && node.height > 0)
                 this.placeRender(entry, node);
         };
@@ -491,7 +509,7 @@ export class DesignPage extends LitElement {
     ): Promise<HTMLCanvasElement | null> {
         const sheet = await this.rasteriseSheet();
         if (!sheet) return null;
-        const crop = cropFor(sheet, rectOf(this.svg), rectOf(target));
+        const crop = cropFor(sheet, rectOf(this.svg), nodeBoxOf(target));
         if (!crop) return null;
         const canvas = document.createElement("canvas");
         canvas.width = Math.max(1, Math.round(crop.width));

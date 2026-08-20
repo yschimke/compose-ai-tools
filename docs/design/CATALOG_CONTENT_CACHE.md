@@ -262,7 +262,7 @@ Each ships independently and is provable on its own.
 | **1 — landed** | `--catalog-cache-dir` + `--catalog-cache-max-bytes`; `.res-cache` and the executable bundles + splits moved into a content-addressed [`CatalogBlobPool`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/CatalogBlobPool.kt) | The largest byte win (100 MB-class bundles), and it survives *reloads* as well as restarts | Low — the sha verification already existed; only the path changed |
 | **2 — landed** | Asset cache for commit-pinned reads, behind `fetchCatalogAsset`; `cached` counter on `branchFetch` | Manifests, lazy PNGs, motion, references, and the `?at=` lane stop re-fetching | Low — one funnel, one admission rule |
 | **3** | Generation snapshots + `current` pointer; adopt-then-converge boot; seed the refresher's head | The restart win: catalogs serve before any network | Medium — the adoption checks are where the care goes |
-| **4** | `?flush=1`, `DELETE /admin/catalog-cache[/<system>]`, `catalogCache` status block | Operability, and the ability to tell a working cache from write amplification | Low |
+| **4 — landed** | `DELETE /admin/catalog-cache`, `POST /<system>/refresh?force=1`, `catalogCache` status block | Operability, and the ability to tell a working cache from write amplification | Low |
 | **5** | Background audit: adopted-commit reachability from the Atom feed, plus a sampled byte comparison | Catches disk corruption and rewritten history | Low — reports, never gates |
 
 Phases 1–2 are worth doing regardless of whether 3 lands: they are pure subtraction from the fetch
@@ -307,6 +307,28 @@ the open question rather than settling it: the remaining boot cost is resolving 
 (one `git ls-remote` per catalog) and re-assembling each per-system staging directory from bytes
 that are already local. Generation snapshots would remove the second; nothing removes the first,
 because that is the freshness check itself. Measure before building.
+
+### What phase 4 shipped, and the affordance it dropped
+
+The plan promised `?flush=1` and `DELETE /admin/catalog-cache[/<system>]`. Both spellings turned out
+to overstate what is expressible, and shipping them as written would have been a lie in the API:
+
+- **There is no per-system delete.** Blobs are named by their own digest and shared between systems
+  deliberately — a font fetched for one catalog is the same file the next one reads — so no blob has
+  an owning catalog to delete it by. The only way to offer `/<system>` would be to partition the
+  pool by system, giving up the deduplication that is one of its two reasons to exist. The clear is
+  whole-pool and says so.
+- **`?flush=1` became `?force=1`.** A per-catalog *flush* would mean "ignore the cache for this
+  load", which needs a bypass threaded down to every read in the load, and it would buy very little:
+  the cache is commit-addressed and every blob re-verifies against its own digest on read, so
+  "cached bytes are wrong" is structurally prevented rather than merely unlikely. What an operator
+  actually lacks is a way to say *read it again anyway*, because the refresh short-circuits on an
+  unchanged branch head. That is `?force=1`, it reuses the head-forgetting that trust revocation
+  already needed, and composing it after a whole-pool clear gives the full re-fetch.
+
+The rename matters more than it looks: `flush` on a route that does not evict anything would read as
+a cache control and behave as a poll, and the next person to reach for it would be reaching for the
+wrong thing.
 
 ## What this deliberately does not do
 

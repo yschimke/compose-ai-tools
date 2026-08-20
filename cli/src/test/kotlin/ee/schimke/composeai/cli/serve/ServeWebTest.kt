@@ -614,6 +614,186 @@ class ServeWebTest {
     assertTrue(html.contains("<meta name=\"twitter:title\" content=\"Design systems\">"), html)
   }
 
+  /**
+   * The comparison used to be reachable only from a catalog's own landing page, so "compare this
+   * system against its Figma" cost a visit to the catalog first and was invisible from `/`
+   * (compose-ai-tools#4324).
+   */
+  @Test
+  fun `a front-door card offers the comparison, named after the tool the catalog names`() {
+    fun system(id: String, tool: String?) =
+      ServeWeb.HomeSystem(
+        system = id,
+        title = id,
+        subtitle = null,
+        previewCount = 1,
+        trust = null,
+        heroPreviewId = null,
+        designToolLabel = tool,
+      )
+
+    val html =
+      ServeWeb.homeIndexPage(
+        listOf(
+          system("compose-m3", "Figma"),
+          system("penpot-kit", "Penpot"),
+          system("plain", null),
+        ),
+        token = "unused",
+        isPublic = true,
+      )
+
+    assertTrue(
+      html.contains(
+        "<a class=\"cp-action-chip\" href=\"/compose-m3/compare?format=reference\">" +
+          "compare to Figma</a>"
+      ),
+      html,
+    )
+    // The label follows the catalog's own design tool rather than being hardcoded to Figma.
+    assertTrue(html.contains(">compare to Penpot</a>"), html)
+    // A catalog that publishes no design references has nothing behind `format=reference`, so it
+    // gets no action rather than a chip that deep-links a format the comparison page won't offer.
+    assertFalse(html.contains("/plain/compare"), html)
+    // It does still get the (empty) row, because a neighbour in its section has one: the cell's
+    // second row is what the tile is sized against, so a card without it grows taller than the
+    // ones beside it.
+    assertEquals(3, Regex("<p class=\"cp-sys-actions\">").findAll(html).count(), html)
+    assertTrue(html.contains("<p class=\"cp-sys-actions\"></p>"), html)
+  }
+
+  /**
+   * …and the reservation is per SECTION, because that is the scope the raggedness lives in — each
+   * section is its own grid. A publisher whose catalogs all lack references otherwise carried a
+   * strip of empty rows reserved for a chip nothing in that grid can show.
+   */
+  @Test
+  fun `a section where nothing compares reserves no action row`() {
+    fun system(id: String, repo: String, tool: String?) =
+      ServeWeb.HomeSystem(
+        system = id,
+        title = id,
+        subtitle = null,
+        previewCount = 1,
+        trust = null,
+        sourceRepo = repo,
+        heroPreviewId = null,
+        designToolLabel = tool,
+      )
+
+    val html =
+      ServeWeb.homeIndexPage(
+        listOf(
+          system("compose-m3", "yschimke/compose-ai-tools", "Figma"),
+          system("confetti-wear", "joreilly/confetti", null),
+        ),
+        token = "unused",
+        isPublic = true,
+      )
+
+    // One row, in the section that has the chip — not one per card across both sections.
+    assertEquals(1, Regex("<p class=\"cp-sys-actions\">").findAll(html).count(), html)
+    assertFalse(html.contains("<p class=\"cp-sys-actions\"></p>"), html)
+  }
+
+  /** …and a front door where nothing compares carries no empty rows at all. */
+  @Test
+  fun `the front door reserves no action row when no catalog compares`() {
+    val html =
+      ServeWeb.homeIndexPage(
+        listOf(
+          ServeWeb.HomeSystem(
+            system = "plain",
+            title = "Plain",
+            subtitle = null,
+            previewCount = 1,
+            trust = null,
+            heroPreviewId = null,
+          )
+        ),
+        token = "unused",
+        isPublic = true,
+      )
+
+    assertFalse(html.contains("cp-sys-actions"), html)
+  }
+
+  /** The token has to ride the compare link too, or a gated box 403s the destination. */
+  @Test
+  fun `the front door's comparison link carries the token on a gated box`() {
+    val system =
+      ServeWeb.HomeSystem(
+        system = "compose-m3",
+        title = "Material 3",
+        subtitle = null,
+        previewCount = 1,
+        trust = null,
+        heroPreviewId = null,
+        designToolLabel = "Figma",
+      )
+
+    val gated = ServeWeb.homeIndexPage(listOf(system), token = "a token", isPublic = false)
+    assertTrue(gated.contains("/compose-m3/compare?format=reference&amp;token=a%20token"), gated)
+  }
+
+  /**
+   * Catalog mode strips the format comparisons from a catalog's landing page — it is for browsing
+   * components, not for auditing them against a design file — so the front door has to agree.
+   */
+  @Test
+  fun `catalog mode offers no comparison on the front door`() {
+    val system =
+      ServeWeb.HomeSystem(
+        system = "compose-m3",
+        title = "Material 3",
+        subtitle = null,
+        previewCount = 1,
+        trust = null,
+        heroPreviewId = null,
+        designToolLabel = "Figma",
+      )
+
+    val browser =
+      ServeWeb.homeIndexPage(
+        listOf(system),
+        token = "unused",
+        isPublic = true,
+        componentBrowser = true,
+      )
+    assertFalse(browser.contains("compare to Figma"), browser)
+  }
+
+  /**
+   * The tile stays ONE link and the action is its sibling: a link inside a link is not a thing HTML
+   * has, and the browser would reparent it out of the card if we tried.
+   */
+  @Test
+  fun `the front door's comparison link is a sibling of the card, not nested inside it`() {
+    val html =
+      ServeWeb.homeIndexPage(
+        listOf(
+          ServeWeb.HomeSystem(
+            system = "compose-m3",
+            title = "Material 3",
+            subtitle = null,
+            previewCount = 1,
+            trust = null,
+            heroPreviewId = null,
+            designToolLabel = "Figma",
+          )
+        ),
+        token = "unused",
+        isPublic = true,
+      )
+
+    val card = html.substringAfter("<a class=\"cp-card cp-sys\"").substringBefore("</a>")
+    assertFalse(card.contains("cp-action-chip"), card)
+    // The search filter hides the CELL, so the chip goes with the card it belongs to rather than
+    // being left behind by a search that filtered its catalog out.
+    assertTrue(html.contains("<div class=\"cp-sys-cell\" data-browser-search="), html)
+    assertTrue(html.contains("document.querySelectorAll(\".cp-sys-cell\")"), html)
+  }
+
   @Test
   fun `the front door advertises lazy global component search only when catalogs exist`() {
     val system =

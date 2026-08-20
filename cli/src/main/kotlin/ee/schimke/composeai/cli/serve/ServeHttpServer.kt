@@ -164,7 +164,7 @@ class ServeHttpServer(
    */
   private val catalogLoads: CatalogLoadTracker? = null,
   /** Immediate catalog branch check exposed by `POST /{system}/refresh`. */
-  private val catalogRefresh: ((String) -> CatalogRefreshResult)? = null,
+  private val catalogRefresh: ((system: String, force: Boolean) -> CatalogRefreshResult)? = null,
   /** Demand-activated, expiring background RSS generator for published catalog history. */
   private val catalogFeed: ServeCatalogChangeFeed? = null,
   portRange: Int = DEFAULT_PORT_RANGE,
@@ -286,6 +286,17 @@ class ServeHttpServer(
   private val themeOptimizerStats: (() -> ThemeOptimizerAdmissionSnapshot?)? = null,
   /** Disk tier for warmed theme renders, for `/status.json`. Null when persistence is off. */
   private val themeCacheStats: (() -> ThemeCacheStoreSnapshot?)? = null,
+  /**
+   * The catalog blob cache's occupancy and read outcomes for `/status.json`, read from the pool
+   * that owns them. Null on a server with no catalogs, whose pool is not merely empty but unused.
+   */
+  private val catalogCacheStats: (() -> CatalogBlobPoolSnapshot?)? = null,
+  /**
+   * Drop everything the catalog blob cache holds, for `DELETE /admin/catalog-cache`. Separate from
+   * [catalogCacheStats] for the reason the optimizer's pause is separate from its counters: reading
+   * occupancy is safe on any server, and discarding it is an operator action that wants the token.
+   */
+  private val catalogCacheClear: (() -> CatalogBlobPoolSnapshot)? = null,
   /**
    * The shared background-work handle, for the admin pause/resume routes. Separate from
    * [themeOptimizerStats] because reading counters is safe on any server while standing the
@@ -939,6 +950,24 @@ class ServeHttpServer(
             )
           }
         }
+
+        // Discard the catalog blob cache. Whole-pool and not per catalog — blobs are named by
+        // their own digest and deliberately shared between systems, so none has an owning catalog
+        // to delete it by (see [CatalogBlobPool.clear]). Everything dropped is re-fetchable, so the
+        // cost of using this unnecessarily is bandwidth. Responds with what the pool holds
+        // afterwards, which is the same shape `/status.json` reports, so an operator can see it
+        // took.
+        if (catalogCacheClear != null) {
+          delete("/admin/catalog-cache") {
+            if (rejectBadAdminToken()) return@delete
+            val after = withContext(Dispatchers.IO) { catalogCacheClear.invoke() }
+            call.response.headers.append(HttpHeaders.CacheControl, "no-store")
+            call.respondText(
+              Json.encodeToString(CatalogBlobPoolSnapshot.serializer(), after),
+              ContentType.Application.Json,
+            )
+          }
+        }
         if (adminEnabled) {
           val admin = catalogAdmin!!
           get("/admin/catalogs") {
@@ -1358,9 +1387,15 @@ class ServeHttpServer(
       )
       return
     }
+    // `?force=1` re-fetches even when the branch has not moved. The ordinary check short-circuits
+    // on an unchanged head, which is what makes polling cheap and is right almost always — but it
+    // also means there is otherwise no way to say "read it again anyway", which is exactly what an
+    // operator wants after clearing the blob cache, or when they simply want the published bytes
+    // re-read rather than reasoned about.
+    val force = call.request.queryParameters["force"] == "1"
     val result =
       try {
-        withContext(Dispatchers.IO) { refresh(system) }
+        withContext(Dispatchers.IO) { refresh(system, force) }
       } finally {
         catalogRefreshesInFlight.remove(system)
       }
@@ -4334,6 +4369,18 @@ class ServeHttpServer(
     val provenance: ServeWeb.CatalogProvenance?,
     val themeOptimization: ThemeOptimizationSnapshot?,
     val renderCache: CatalogRenderCacheSnapshot?,
+    /**
+     * The design tool this catalog's references name ("Figma", …), or null when it publishes none —
+     * which is also what tells the front door whether to offer that catalog a "compare to <tool>"
+     * action ([ServeWeb.HomeSystem.designToolLabel]).
+     *
+     * Remembered here, rather than looked up when the home page renders, for the same reason the
+     * hero and the trust badge are: `peekHost` never resumes a suspended catalog, so a live lookup
+     * would drop the action off every card whose daemon happened to be idle — the usual state on a
+     * quiet server, not an edge case. Design references come from the delivery branch, so a
+     * suspension cannot invalidate the answer.
+     */
+    val designToolLabel: String?,
   )
 
   init {
@@ -4423,6 +4470,17 @@ class ServeHttpServer(
         provenance = bundle?.provenance,
         themeOptimization = host.themeOptimizationSnapshot(),
         renderCache = host.catalogRenderCacheSnapshot(),
+        // The same read the catalog landing names its own compare chip from, so the front door's
+        // action and the landing's cannot disagree about what this catalog compares against. The
+        // parity feed's Figma lane is deliberately NOT a fallback here (it is on the landing, for
+        // the "design parity" label): the front-door action deep-links `compare?format=reference`,
+        // which only published references put anything behind.
+        designToolLabel =
+          host.previews.firstNotNullOfOrNull { preview ->
+            host.designReferencesFor(preview.id).firstNotNullOfOrNull {
+              ServeWeb.designToolLabel(it.source.provider)
+            }
+          },
       )
   }
 
@@ -4641,6 +4699,9 @@ class ServeHttpServer(
         // the branch counters are.
         themeOptimizer = optimizerAdmission,
         themeCache = if (onlySystem == null) themeCacheStats?.invoke() else null,
+        // Whole-box like themeCache, and for the same reason: the pool is shared across every
+        // catalog, so a site host scoped to one of them has nothing of its own to report here.
+        catalogCache = if (onlySystem == null) catalogCacheStats?.invoke() else null,
         renderStats =
           RenderPerfSnapshot.aggregate(
             // A fresh daemon reports an all-zero snapshot; keep the roll-up null until something
@@ -5031,6 +5092,9 @@ class ServeHttpServer(
             )
           },
         darkStage = meta.darkStage,
+        // Non-null ⇒ this catalog publishes design references, so its card offers the compare
+        // action and names the tool it compares against.
+        designToolLabel = meta.designToolLabel,
       )
     }
   }
@@ -7854,6 +7918,17 @@ private data class StatusResponse(
    * is starting over, which is what m3-catalog did 7-10 times a day before this existed.
    */
   val themeCache: ThemeCacheStoreSnapshot? = null,
+  /**
+   * The catalog blob cache ([CatalogBlobPoolSnapshot]), or null on a server that publishes no
+   * catalogs.
+   *
+   * The pair to watch is `cached` on `branchFetch` against this row's `hits`: they count the same
+   * event from the two ends, and both climbing while `branchFetch.attempted` flattens across a
+   * restart is the whole feature working. `blobs`/`bytes` against `maxBytes` says whether the
+   * sweeper is keeping up; `corrupt` above zero says a volume is losing bytes, since every blob is
+   * named by its own digest and re-verified on read.
+   */
+  val catalogCache: CatalogBlobPoolSnapshot? = null,
   /**
    * Server-wide render-latency roll-up across the running live daemons (see
    * [RenderPerfSnapshot.aggregate] — counts sum, `firstRenderMs` is the worst first render,

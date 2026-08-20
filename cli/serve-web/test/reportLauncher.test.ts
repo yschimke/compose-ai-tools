@@ -104,6 +104,82 @@ describe("the report launcher's catalog half", () => {
     });
 });
 
+describe("putting a report panel away once it has been used", () => {
+    beforeEach(resetDom);
+
+    function submit(selector: string): void {
+        document
+            .querySelector<HTMLFormElement>(selector)!
+            .dispatchEvent(
+                new Event("submit", { bubbles: true, cancelable: true }),
+            );
+    }
+
+    it("closes the preview's report box when the issue form is submitted", () => {
+        // Both forms are `target="_blank"`, so nothing ever navigates the page that raised the
+        // panel and it just stays — hanging over the render it is a report about (issue #4333).
+        page(REPORT);
+        installReportLauncher();
+        const report = document.getElementById(
+            "cp-report",
+        ) as HTMLDetailsElement;
+        report.open = true;
+        submit(".cp-report-form");
+        assert.equal(report.open, false);
+    });
+
+    it("closes the launcher panel when the server half is submitted", () => {
+        page();
+        installReportLauncher();
+        const menu = document.querySelector(
+            ".cp-fab-menu",
+        ) as HTMLDetailsElement;
+        menu.open = true;
+        submit(".cp-report-bug");
+        assert.equal(menu.open, false);
+    });
+
+    it("leaves the typed summary alone", () => {
+        // Submitting is not necessarily the end of the gesture: a refused sign-in, a blocked popup
+        // or a second thought all land the reporter back here wanting the words they wrote.
+        page(REPORT);
+        installReportLauncher();
+        const summary = document.querySelector<HTMLInputElement>(
+            ".cp-report-summary-input",
+        )!;
+        summary.value = "the ring is missing";
+        submit(".cp-report-form");
+        assert.equal(summary.value, "the ring is missing");
+    });
+
+    it("closes a panel added to the page after the launcher was installed", () => {
+        // `#cp-report` is emitted by whichever surface bundle drew the preview, and the comparison
+        // wall rebuilds its own as the wall re-renders — so per-form binding at install time would
+        // cover the launcher and miss the affordance it points at.
+        page();
+        installReportLauncher();
+        document.body.insertAdjacentHTML("beforeend", REPORT);
+        const report = document.getElementById(
+            "cp-report",
+        ) as HTMLDetailsElement;
+        report.open = true;
+        submit(".cp-report-form");
+        assert.equal(report.open, false);
+    });
+
+    it("leaves a disclosure alone whose form is not a report", () => {
+        page(
+            `<details id="other" open><form class="cp-knobs"></form></details>`,
+        );
+        installReportLauncher();
+        submit(".cp-knobs");
+        assert.equal(
+            (document.getElementById("other") as HTMLDetailsElement).open,
+            true,
+        );
+    });
+});
+
 describe("fetching the capture bundle", () => {
     beforeEach(resetDom);
 

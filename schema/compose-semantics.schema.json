@@ -5,7 +5,7 @@
   "description": "Payload for the `compose/semantics` data product: the Compose semantics tree projected for a render. Kotlin source of truth: ComposeSemanticsPayload / ComposeSemanticsNode in :data-layoutinspector-core. Each node carries a stable `ref` (see #1784).",
   "x-composeai": {
     "kind": "compose/semantics",
-    "schemaVersion": 13,
+    "schemaVersion": 14,
     "kotlinType": "ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload",
     "kotlinConst": "ComposeSemanticsProduct.SCHEMA_VERSION",
     "fixture": "vscode-extension/preview-harness/fixtures/inspection-tree.json"
@@ -110,7 +110,11 @@
       "type": "object",
       "required": ["root"],
       "properties": {
-        "root": { "$ref": "#/definitions/ComposeSemanticsNode" }
+        "root": { "$ref": "#/definitions/ComposeSemanticsNode" },
+        "density": {
+          "type": ["number", "null"],
+          "description": "Render pixels per dp for this capture — the factor between a node's px `boundsInRoot` and its dp `tokens`. Null means the producer did not state one; read that as unknown, not as 1."
+        }
       }
     }
   },

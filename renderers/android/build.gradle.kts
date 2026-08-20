@@ -43,6 +43,9 @@ dependencies {
   // Google Fonts CSS-API + TTF cache, shared with the Remote Compose typeface resolver so both
   // lanes resolve a family to the same file rather than to two drifting copies of the downloader.
   api(project(":data-fonts-google"))
+  // `SystemFontFamilies` — the Pixel system-font slug → display-name table `PixelSystemFontAliases`
+  // seeds from, shared with the `compose/semantics` producer so both name the same face the same.
+  implementation(project(":data-fonts-core"))
   // Google Fonts CSS/TTF fetch in GoogleFontInterceptor (replaces java.net.HttpURLConnection).
   implementation(libs.okhttp)
   // D2.2 — `AccessibilityChecker`, `AccessibilityOverlay`, and the
@@ -198,6 +201,10 @@ dependencies {
   // strings.xml catalog (values/ + values-fr/) to assert the produced JSON resolves the
   // rendered string back to its R.string.* and surfaces the supported-locale set.
   testImplementation(project(":data-strings-connector"))
+  // WearThemeTokenCaptureTest renders a real Wear Material 3 button and asserts the theme lane
+  // reads Wear's own type ramp out of the slot tables — the Material-3-free path the daemon takes
+  // for a Wear app, which has no `androidx.compose.material3` to read at all.
+  testImplementation(project(":data-theme-connector"))
 
   // Compose / Activity / Compose-UI-test libs are `compileOnly` on purpose:
   // they must match what the CONSUMER module declares, because AGP's

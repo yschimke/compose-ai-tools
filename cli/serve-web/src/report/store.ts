@@ -29,6 +29,22 @@ export interface Capture {
     height: number;
     /** Markdown the selection also produced — a picked table, rendered as one. Absent otherwise. */
     markdown?: string;
+    /**
+     * `location.pathname` of the page this was a picture of.
+     *
+     * The pile outlives the report it was taken for — it is `sessionStorage`, so it lasts as long as
+     * the tab — and the automatic hand-off has to be able to tell "the screenshot for THIS report"
+     * from "a screenshot that happens to still be here". Without that, a second report filed later
+     * in the same tab, from somewhere else, would silently put the first report's picture on the
+     * clipboard and then instruct the reporter to paste it: a screenshot of an unrelated page,
+     * attached with every appearance of being deliberate.
+     *
+     * The path alone, not the query. Two reports about the same preview at different knob settings
+     * are the same subject and a capture of one is honest evidence for the other; two reports about
+     * different pages are not. Absent on a capture written by a build older than this field, which
+     * is treated as "cannot vouch for it" — the Copy button still sends it, the hand-off does not.
+     */
+    page?: string;
 }
 
 /** The `sessionStorage` key. Namespaced like every other key this server sets. */
@@ -93,7 +109,8 @@ function isCapture(value: unknown): value is Capture {
         c.dataUrl.startsWith("data:image/png;base64,") &&
         typeof c.width === "number" &&
         typeof c.height === "number" &&
-        (c.markdown === undefined || typeof c.markdown === "string")
+        (c.markdown === undefined || typeof c.markdown === "string") &&
+        (c.page === undefined || typeof c.page === "string")
     );
 }
 

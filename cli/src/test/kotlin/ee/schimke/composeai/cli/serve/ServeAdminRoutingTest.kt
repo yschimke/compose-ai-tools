@@ -10,6 +10,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -30,6 +31,10 @@ import okio.fakefilesystem.FakeFileSystem
 class ServeAdminRoutingTest {
 
   private val adminToken = "admin-secret"
+
+  /** A real pool, so the cache-clearing route is exercised against actual blobs on disk. */
+  private val blobPool =
+    CatalogBlobPool(Files.createTempDirectory("admin-blobs").toFile().also { it.deleteOnExit() })
   private val fs = FakeFileSystem()
   private val configPath = "/config/catalogs.json".toPath()
   private val configFile = ServeCatalogsConfigFile(configPath, fs)
@@ -133,6 +138,8 @@ class ServeAdminRoutingTest {
         sites = siteRegistry,
         siteAdmin = siteAdmin,
         themeOptimizerAdmin = optimizerWork,
+        catalogCacheStats = { blobPool.snapshot() },
+        catalogCacheClear = { blobPool.clear() },
         adminToken = adminToken,
         wasmCatalogs = wasmCatalogs,
       )
@@ -185,6 +192,32 @@ class ServeAdminRoutingTest {
     assertEquals(404, send("/admin/catalogs", token = "wrong").first)
     assertEquals(404, send("/admin/catalogs", method = "POST", body = "{}", token = null).first)
     assertEquals(200, send("/admin/catalogs").first)
+  }
+
+  @Test
+  fun `clearing the catalog cache drops its blobs and reports what is left`() {
+    val url = "https://raw.githubusercontent.com/o/r/${"a".repeat(40)}/images/button.png"
+    blobPool.write(url, "some cached bytes".toByteArray())
+    assertEquals(1, blobPool.snapshot().blobs)
+
+    val (code, body) = send("/admin/catalog-cache", method = "DELETE")
+
+    assertEquals(200, code)
+    assertTrue(body.contains("\"blobs\":0"), body)
+    assertEquals(0, blobPool.snapshot().blobs)
+    assertNull(blobPool.read(url), "the bytes are gone, not merely unreferenced")
+  }
+
+  @Test
+  fun `clearing the catalog cache needs the admin token like every other admin route`() {
+    blobPool.write(
+      "https://raw.githubusercontent.com/o/r/${"b".repeat(40)}/images/button.png",
+      "kept".toByteArray(),
+    )
+
+    assertEquals(404, send("/admin/catalog-cache", method = "DELETE", token = null).first)
+    assertEquals(404, send("/admin/catalog-cache", method = "DELETE", token = "wrong").first)
+    assertEquals(1, blobPool.snapshot().blobs, "a refused request must not have cleared anything")
   }
 
   @Test

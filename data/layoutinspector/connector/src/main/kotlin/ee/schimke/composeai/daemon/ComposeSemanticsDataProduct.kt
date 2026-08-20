@@ -31,6 +31,7 @@ import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.daemon.protocol.RecordingProbeNode
+import ee.schimke.composeai.data.fonts.SystemFontFamilies
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorCurvedText
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorProduct
@@ -123,6 +124,39 @@ private fun reflectedString(font: Any, name: String): String? = runCatching {
 
 private val GOOGLE_FONT_IDENTITY = Regex("""GoogleFont\("([^"]+)"""")
 
+private val DEVICE_FONT_FAMILY_NAME = Regex("""familyName="([^"]+)"""")
+
+/**
+ * The **system-font family** a `Font(DeviceFontFamilyName("roboto-flex"))` face names, as its
+ * canonical display name (`"Roboto Flex"`), or null for any other kind of [font].
+ *
+ * This is the third way a Compose `Font` can identify its face, and the only one with no getter at
+ * all: Compose's `DeviceFontFamilyNameFont` is a private class that exposes neither a resource id
+ * (`getResId`, the `ResourceFont` route) nor a font-file identity (`getIdentity`, the desktop
+ * route) — it holds a private `familyName` and prints it in `toString()`. Without this, every text
+ * node in a family declared that way reported **no typeface at all**: `fontFamilyLabel` fell
+ * through to null, and the inspector's typography layer drew a style line with the size and weight
+ * but nothing naming the face (issue #4327). That is not a rare shape — it is how Wear Compose
+ * Material 3's own type ramp declares Roboto Flex, so it covered every Wear preview's text.
+ *
+ * The declared field is read first and `toString()` is the fallback, mirroring
+ * [googleFontFamilyName]: a `getMethods()`/`getDeclaredField` lookup can fail on an obfuscated or
+ * repackaged Compose, while the printed form has held steady.
+ *
+ * The slug is reported through [SystemFontFamilies], which is the same table the renderer seeds the
+ * system font map from — so the face the render actually drew and the face the inspector names are
+ * the same name, not `Roboto Flex` beside `roboto-flex`. An unmapped slug passes through as itself
+ * rather than being guessed at.
+ */
+internal fun deviceFontFamilyName(font: Any): String? {
+  val declared = declaredString(font, "familyName")
+  if (declared != null) return SystemFontFamilies.label(declared)
+  val printed = runCatching { font.toString() }.getOrDefault("")
+  val name =
+    DEVICE_FONT_FAMILY_NAME.find(printed)?.groupValues?.getOrNull(1)?.takeIf { it.isNotBlank() }
+  return name?.let(SystemFontFamilies::label)
+}
+
 /**
  * The GoogleFont display name embedded in a desktop face's `identity` — a vendored downloadable
  * face is built as `Font(identity = "Font(GoogleFont(\"Orbitron\", …), …)", data = …)`, so on the
@@ -151,7 +185,7 @@ object ComposeSemanticsDataProducer {
     previewId: String,
     root: SemanticsNode,
     fileSystem: FileSystem = SystemFileSystem,
-    density: Float = 1f,
+    density: Float? = null,
   ) {
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
     val payload = buildPayload(root, density)
@@ -165,12 +199,17 @@ object ComposeSemanticsDataProducer {
    * producer (and any other derived view) reuses the exact same projection — label precedence,
    * bounds formatting, merge-mode mapping — rather than re-walking the tree with different rules.
    *
-   * [density] is the render density (dp = px / density). It is only needed to express a
-   * percent-based corner radius (`CircleShape`) as dp; the default of `1f` leaves px-equals-dp
-   * captures (and the token text/colour fields, which carry dp directly) unchanged (issue #1908).
+   * [density] is the render density (dp = px / density). It expresses a percent-based corner radius
+   * (`CircleShape`) as dp, and — since schema v14 — is recorded on the payload so a consumer can
+   * put the node's px [ComposeSemanticsNode.boundsInRoot] in the same unit as its dp
+   * [ComposeSemanticsNode.tokens]. Null means the caller didn't state one: the projection falls
+   * back to `1f` (px-equals-dp, as before issue #1908) but the payload says nothing rather than
+   * asserting a factor it doesn't know.
    */
-  fun buildPayload(root: SemanticsNode, density: Float = 1f): ComposeSemanticsPayload =
-    SemanticsRefs.assign(ComposeSemanticsPayload(root = root.toWireNode(density)))
+  fun buildPayload(root: SemanticsNode, density: Float? = null): ComposeSemanticsPayload =
+    SemanticsRefs.assign(
+      ComposeSemanticsPayload(root = root.toWireNode(density ?: 1f), density = density)
+    )
 
   private val probeNodesSerializer = ListSerializer(RecordingProbeNode.serializer())
 
@@ -572,9 +611,9 @@ object ComposeSemanticsDataProducer {
    * Resolved typeface identity for the [family] drawn at [weight]/[style] (issue #1934). A
    * [GenericFontFamily] reports its declared name (`"sans-serif"`, `"monospace"`); a
    * [FontListFontFamily] — which carries no family display name — reports the resolved face's
-   * stable [identity][fontIdentity] (the matched [Font]'s `identity` / `res/font/<id>`), the only
-   * stable per-face handle Compose exposes. Null when the range inherits its family (no explicit
-   * `fontFamily`).
+   * stable [identity][fontIdentity] (the matched [Font]'s `identity` / `res/font/<id>` /
+   * [device family name][deviceFontFamilyName]), the only stable per-face handle Compose exposes.
+   * Null when the range inherits its family (no explicit `fontFamily`).
    */
   internal fun fontFamilyLabel(
     family: FontFamily?,
@@ -672,12 +711,16 @@ object ComposeSemanticsDataProducer {
       .getOrNull() == 1
 
   /**
-   * Stable identity for a resolved [Font]: the platform font's `identity` (a file path / declared
-   * name on desktop), falling back to `res/font/<id>` for an Android `ResourceFont`. Both getters
-   * live on platform-specific subtypes, so they are read reflectively. Null when neither resolves.
+   * Stable identity for a resolved [Font]: a downloadable face's Google-Fonts name, then the
+   * [system family][deviceFontFamilyName] a `DeviceFontFamilyName` face names, then the platform
+   * font's `identity` (a file path / declared name on desktop), falling back to `res/font/<id>` for
+   * an Android `ResourceFont`. Every one of those getters lives on a platform-specific subtype (and
+   * the device-family one on a *private* class), so they are read reflectively. Null when none
+   * resolves.
    */
   private fun fontIdentity(font: Font): String? =
     googleFontFamilyName(font)
+      ?: deviceFontFamilyName(font)
       ?: runCatching {
         font.javaClass.methods
           .firstOrNull { it.name == "getIdentity" && it.parameterCount == 0 }
