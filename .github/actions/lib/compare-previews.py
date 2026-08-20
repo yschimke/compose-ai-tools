@@ -100,6 +100,31 @@ _PERCEPTUAL_PIXEL_TOLERANCE = 16
 _RESOURCE_PIXEL_FRACTION = 0.005
 _RESOURCE_PIXEL_CAP = 256
 
+# A second, *high-contrast* pass, because the budgets above are a count and the
+# thing they are absorbing is a colour delta.
+#
+# Every flake this file guards against is low-contrast — issue #190's AA corners
+# are "ΔE ≤ 7", and the adaptive-icon tile-chip jitter is a boundary shimmer. A
+# real geometry change is not: a glyph edge moving against its container is the
+# highest-contrast pair in the render. Raising pixelmatch's per-pixel threshold
+# separates them outright. Measured on the four real fixture pairs in
+# `fixtures/`:
+#
+#                                  t=0.1   t=0.25
+#   icon 24→26dp (real, wear-m3)     16       16
+#   icon 24→32dp (real, wear-m3)     64       64
+#   adaptive-icon jitter (noise)     62        0
+#   issue-190 AA corners (noise)      0        0
+#
+# So the count budget stays exactly as it was — it is what catches a *subtle,
+# widespread* change, a container tint or a disabled-alpha shift, where no single
+# pixel clears the higher bar — and this adds the case it structurally cannot
+# see: a *small, high-contrast* one. wear-m3-catalog's icon buttons drew a 24dp
+# glyph where the kit draws 26dp, in five components at every size, and the diff
+# bot reported "unchanged" because 16 is not greater than 16.
+_HIGH_CONTRAST_THRESHOLD = 0.25
+_HIGH_CONTRAST_PIXEL_TOLERANCE = 4
+
 
 def _perceptually_changed(
     prior_png: Path, current_png: Path, *, size_aware: bool = False
@@ -143,7 +168,7 @@ def _perceptually_changed(
                 # added / removed), never rounding noise.
                 return True
             if prior_frames <= 1:
-                return pixelmatch(prior, current, threshold=0.1, includeAA=False) > limit
+                return _over_budget(prior, current, limit)
             # Animated GIF: `Image.open` only exposes the first frame, so a
             # frame-0-identical / tail-frame-jittering GIF (the transparent
             # Lottie spin case, whose anti-aliased edge the 1-bit GIF alpha
@@ -154,13 +179,30 @@ def _perceptually_changed(
             for pf, cf in zip(
                 ImageSequence.Iterator(prior), ImageSequence.Iterator(current)
             ):
-                if pixelmatch(
-                    pf.convert("RGBA"), cf.convert("RGBA"), threshold=0.1, includeAA=False
-                ) > limit:
+                if _over_budget(pf.convert("RGBA"), cf.convert("RGBA"), limit):
                     return True
             return False
     except Exception:
         return True
+
+
+def _over_budget(prior, current, limit: int) -> bool:
+    """Whether one image pair differs by more than rounding noise.
+
+    Two passes, because "how many pixels" and "how different is a pixel" catch
+    different things. The permissive pass (pixelmatch's default 0.1) with the
+    caller's count budget catches a subtle change spread over many pixels; the
+    high-contrast pass with a tiny budget catches a small change no count budget
+    would notice. Noise clears neither — see the constants above.
+    """
+    from pixelmatch.contrib.PIL import pixelmatch
+
+    if pixelmatch(prior, current, threshold=0.1, includeAA=False) > limit:
+        return True
+    return (
+        pixelmatch(prior, current, threshold=_HIGH_CONTRAST_THRESHOLD, includeAA=False)
+        > _HIGH_CONTRAST_PIXEL_TOLERANCE
+    )
 
 
 def _is_changed(

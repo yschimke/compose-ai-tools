@@ -66,6 +66,13 @@ class ServeStreamSession(
       }
       ServeStreamProtocol.ClientMessage.RequestFrame -> renderCurrent()
       is ServeStreamProtocol.ClientMessage.Switch -> switchTo(message)
+      is ServeStreamProtocol.ClientMessage.Visibility ->
+        // Nothing to throttle: this lane renders only when the client asks for a frame, so a
+        // hidden tab already costs nothing. Accepted silently rather than reported like `input`
+        // is — the client sends one of these on every tab switch and card scroll, and answering
+        // each with an error would paint the viewer's error banner over a lane that is working
+        // exactly as intended.
+        Unit
       is ServeStreamProtocol.ClientMessage.Input ->
         // The snapshot fallback can't dispatch input into a live composition — only the daemon
         // stream lane ([ServeLiveSession]) can. Report it — with the original reason the live lane

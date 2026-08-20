@@ -57,6 +57,61 @@ class SharePreviewMechanismTest {
   }
 
   @Test
+  fun `a configured serve host wins the auto choice`() {
+    // Unlike `gh` and a git remote — ambient facts about the machine — a serve URL is something
+    // the caller set on purpose, so it outranks both.
+    val r =
+      SharePreviewCommand.resolveMechanism(
+        Mode.REPORT,
+        forced = null,
+        gistAvailable = { true },
+        branchAvailable = { true },
+        serveAvailable = { true },
+      )
+    assertEquals(Mechanism.SERVE, (r as MechanismResult.Ok).mechanism)
+  }
+
+  @Test
+  fun `serve takes a directory, which a gist cannot`() {
+    val r =
+      SharePreviewCommand.resolveMechanism(
+        Mode.BULK,
+        forced = null,
+        gistAvailable = { true },
+        branchAvailable = { false },
+        serveAvailable = { true },
+      )
+    assertEquals(Mechanism.SERVE, (r as MechanismResult.Ok).mechanism)
+  }
+
+  @Test
+  fun `forcing serve without a host says which flag is missing`() {
+    val r =
+      SharePreviewCommand.resolveMechanism(
+        Mode.REPORT,
+        forced = Mechanism.SERVE,
+        gistAvailable = { true },
+        branchAvailable = { true },
+        serveAvailable = { false },
+      )
+    val message = (r as MechanismResult.Err).message
+    assertTrue(message.contains("--serve-url"), message)
+  }
+
+  @Test
+  fun `without a serve host the older mechanisms are unchanged`() {
+    val r =
+      SharePreviewCommand.resolveMechanism(
+        Mode.REPORT,
+        forced = null,
+        gistAvailable = { true },
+        branchAvailable = { true },
+        serveAvailable = { false },
+      )
+    assertEquals(Mechanism.GIST, (r as MechanismResult.Ok).mechanism)
+  }
+
+  @Test
   fun `auto falls back to branch when gh is unavailable`() {
     val r =
       SharePreviewCommand.resolveMechanism(

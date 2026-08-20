@@ -60,6 +60,27 @@ export function socketUrl(
 }
 
 /**
+ * The `visibility` message a lane sends when it stops (or resumes) being looked at — a hidden tab,
+ * or a card scrolled out of the grid's viewport.
+ *
+ * Worth sending because the server does more with it than stop *emitting*: the daemon's frame loop
+ * reads the same throttle, so a hidden stream stops being rendered at four frames a second as well.
+ * The held session stays warm either way, so coming back repaints from the keyframe the daemon
+ * flags on resume instead of reconnecting from cold.
+ *
+ * [fps] names the throttled rate; omitted (or non-positive, which would mean "never") leaves the
+ * server on its own default of 1 fps.
+ */
+export function visibilityMessage(visible: boolean, fps?: number): string {
+    const body: { type: string; visible: boolean; fps?: number } = {
+        type: "visibility",
+        visible,
+    };
+    if (!visible && typeof fps === "number" && fps > 0) body.fps = fps;
+    return JSON.stringify(body);
+}
+
+/**
  * Why a live lane closed, in words a visitor can act on.
  *
  * Deliberately the VIEWER's wording, `viewer.js`'s `liveCloseReason` — the grid and the viewer must

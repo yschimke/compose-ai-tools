@@ -26,6 +26,7 @@ class FakeSocket {
     onmessage: ((event: { data: string }) => void) | null = null;
     onclose: ((event: { code?: number; reason?: string }) => void) | null =
         null;
+    onopen: (() => void) | null = null;
     constructor(public url: string) {
         FakeSocket.opened.push(this);
     }
@@ -98,6 +99,46 @@ const held = () => new Promise((resolve) => setTimeout(resolve, HOLD_MS + 10));
 
 const chip = () => document.querySelector(".cp-live-chip");
 const errorBox = () => document.querySelector(".cp-live-error");
+
+/**
+ * A stand-in `IntersectionObserver` — happy-dom has none, and the card's scroll-out throttle is
+ * driven entirely by it. Returns a handle that fires the observer as a scroll would.
+ */
+function stubObserver(): {
+    scroll(intersecting: boolean): void;
+    observed: number;
+} {
+    const handle = { observed: 0, scroll: (_: boolean) => {} };
+    class FakeObserver {
+        constructor(
+            private cb: (entries: { isIntersecting: boolean }[]) => void,
+        ) {
+            handle.scroll = (intersecting: boolean) =>
+                this.cb([{ isIntersecting: intersecting }]);
+        }
+        observe(): void {
+            handle.observed += 1;
+        }
+        disconnect(): void {}
+    }
+    (globalThis as Record<string, unknown>).IntersectionObserver = FakeObserver;
+    return handle as { scroll(intersecting: boolean): void; observed: number };
+}
+
+/** Force `document.hidden` and fire the event the browser fires with it. */
+function setTabHidden(hidden: boolean): void {
+    Object.defineProperty(document, "hidden", {
+        configurable: true,
+        get: () => hidden,
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+}
+
+/** The `visibility` messages a lane has sent, in order. */
+const visibilitySent = (socket: FakeSocket) =>
+    socket.sent
+        .map((text) => JSON.parse(text))
+        .filter((message) => message.type === "visibility");
 
 describe("<cp-catalog-live>", () => {
     afterEach(() => {
@@ -241,6 +282,88 @@ describe("<cp-catalog-live>", () => {
             errorBox()?.textContent,
             "Sign in with GitHub to start a live session.",
         );
+    });
+
+    it("throttles the stream when the card scrolls out of view, and back on return", async () => {
+        // The card keeps its session — the point of the message is that the daemon stops RENDERING
+        // at full rate for a picture that has left the screen, while the held session stays warm so
+        // scrolling back repaints from its resume keyframe instead of reconnecting.
+        const sockets = stubSockets();
+        const observer = stubObserver();
+        await mount();
+        cardAt(0).dispatchEvent(pointer("pointerdown"));
+        await held();
+        assert.equal(observer.observed, 1, "the live card is watched");
+
+        observer.scroll(false);
+        assert.deepEqual(visibilitySent(sockets.last()), [
+            { type: "visibility", visible: false },
+        ]);
+
+        observer.scroll(true);
+        assert.deepEqual(visibilitySent(sockets.last()), [
+            { type: "visibility", visible: false },
+            { type: "visibility", visible: true },
+        ]);
+        assert.equal(sockets.last().closed, false, "the session is kept warm");
+    });
+
+    it("says nothing while the card simply stays on screen", async () => {
+        // A grid scrolls constantly and the observer fires with it; only a change is news.
+        const sockets = stubSockets();
+        const observer = stubObserver();
+        await mount();
+        cardAt(0).dispatchEvent(pointer("pointerdown"));
+        await held();
+        observer.scroll(true);
+        observer.scroll(true);
+        assert.deepEqual(visibilitySent(sockets.last()), []);
+    });
+
+    it("throttles a backgrounded tab too, and stops when the session does", async () => {
+        const sockets = stubSockets();
+        stubObserver();
+        await mount();
+        cardAt(0).dispatchEvent(pointer("pointerdown"));
+        await held();
+        const socket = sockets.last();
+
+        setTabHidden(true);
+        assert.deepEqual(visibilitySent(socket), [
+            { type: "visibility", visible: false },
+        ]);
+
+        // Ending the session unhooks the listener: a later tab switch is not this socket's news.
+        cardAt(0).dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+        );
+        setTabHidden(false);
+        assert.equal(visibilitySent(socket).length, 1);
+    });
+
+    it("states an already-hidden tab as soon as the socket opens", async () => {
+        // No event is coming: the tab was hidden before the session started, and without an
+        // `IntersectionObserver` there is no initial callback either. Sampling `document.hidden`
+        // when the watch starts is the only thing that stops the lane sitting at full rate until
+        // the next tab switch.
+        delete (globalThis as Record<string, unknown>).IntersectionObserver;
+        const sockets = stubSockets();
+        await mount();
+        setTabHidden(true);
+        cardAt(0).dispatchEvent(pointer("pointerdown"));
+        await held();
+
+        const socket = sockets.last();
+        assert.deepEqual(
+            visibilitySent(socket),
+            [],
+            "nothing before the socket opens",
+        );
+        socket.onopen?.();
+        assert.deepEqual(visibilitySent(socket), [
+            { type: "visibility", visible: false },
+        ]);
+        setTabHidden(false);
     });
 
     it("stays inert on a grid the server gave no live config", async () => {
