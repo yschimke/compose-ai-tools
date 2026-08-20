@@ -155,7 +155,18 @@ internal open class AgentAccessStore(
       val retained =
         pending.copy(
           origin = key,
-          retainUntilMillis = maxOf(pending.retainUntilMillis, now + POLL_RETENTION_SECONDS * 1000),
+          // Counted from the END of the approval window, not from now. The two sides measure from
+          // different instants: this record is created when the request is opened, while the server
+          // starts the grant's TTL when it is *approved*. So a request approved in the last seconds
+          // of its window with the maximum TTL yields a grant that outlives a creation-anchored
+          // deadline by the whole window — and `allPending()` would stop handing over the device
+          // secret while the token was still there for the asking. Anchoring here covers every
+          // approval the window permits, by construction.
+          retainUntilMillis =
+            maxOf(
+              pending.retainUntilMillis,
+              maxOf(pending.expiresAtMillis, now) + POLL_RETENTION_SECONDS * 1000,
+            ),
         )
       write(current.copy(pending = kept + retained))
     }
@@ -255,7 +266,12 @@ internal open class AgentAccessStore(
   private fun write(wire: Wire): Boolean {
     return try {
       file.parentFile?.mkdirs()
-      val temp = File.createTempFile(file.name, ".tmp", file.parentFile)
+      // `createTempFile` demands a prefix of at least three characters, and the store's path is
+      // overridable for CI and tests — so a perfectly reasonable
+      // `COMPOSE_PREVIEW_AGENT_ACCESS_FILE`
+      // of `/tmp/a` made every credential write throw. Padded rather than passed through: the name
+      // is a scratch prefix on a file that is renamed away, so it need only be legal.
+      val temp = File.createTempFile(file.name.padEnd(3, '-'), ".tmp", file.parentFile)
       try {
         temp.writeText(JSON.encodeToString(Wire.serializer(), wire))
         restrictPermissions(temp)
@@ -309,9 +325,12 @@ internal open class AgentAccessStore(
     const val MAX_PENDING = 8
 
     /**
-     * How long a remembered request stays worth polling after it was opened — the server's own hard
-     * ceiling on a grant's life ([ServeAgentGrantStore.HARD_MAX_GRANT_TTL_SECONDS]). Past it, any
-     * grant the request could have produced is expired anyway, so the record owes nobody.
+     * How long a remembered request stays worth polling **past the close of its approval window** —
+     * the server's own hard ceiling on a grant's life
+     * ([ServeAgentGrantStore.HARD_MAX_GRANT_TTL_SECONDS]). Measured from the window's end rather
+     * than from the request's creation, because the server starts a grant's TTL at approval: past
+     * window-end plus this, no grant the request could have produced can still be alive, so the
+     * record owes nobody.
      */
     const val POLL_RETENTION_SECONDS = 24 * 60 * 60L
 

@@ -234,6 +234,51 @@ class AgentAccessStoreTest {
   }
 
   @Test
+  fun `a two-character credential filename still writes`() {
+    // The path is overridable for CI and tests, and `createTempFile` demands a three-character
+    // prefix — so `/tmp/a` made every write throw rather than merely being unusual.
+    val short = File(dir, "a")
+    val store = AgentAccessStore(file = short, clock = { now })
+    assertTrue(
+      store.save(
+        AgentAccessStore.Entry(
+          origin = "https://preview.coo.ee",
+          token = "cpat_short",
+          expiresAtMillis = now + 60_000,
+        )
+      )
+    )
+    assertEquals(
+      "cpat_short",
+      AgentAccessStore(file = short, clock = { now }).entryFor("https://preview.coo.ee")?.token,
+    )
+  }
+
+  @Test
+  fun `retention covers a grant approved at the very end of the window`() {
+    // The two sides measure from different instants: this record is created when the request is
+    // opened, the server starts the grant's TTL when it is approved. Anchored to creation, a
+    // last-second approval with the maximum TTL produced a grant that outlived the client's
+    // willingness to poll for it — by the whole approval window.
+    val windowMillis = 600_000L
+    store()
+      .savePending(
+        AgentAccessStore.Pending(
+          origin = "https://preview.coo.ee",
+          requestId = "late",
+          deviceSecret = "s",
+          expiresAtMillis = now + windowMillis,
+        )
+      )
+    // Approved at the last instant of the window, granted the server's hard maximum.
+    now += windowMillis + AgentAccessStore.POLL_RETENTION_SECONDS * 1000 - 1000
+    assertNotNull(
+      store().pendingFor("https://preview.coo.ee"),
+      "the device secret must outlive any grant the window could have produced",
+    )
+  }
+
+  @Test
   fun `a remembered request is finally dropped once no grant could still exist`() {
     store()
       .savePending(
@@ -244,7 +289,9 @@ class AgentAccessStoreTest {
           expiresAtMillis = now + 600_000,
         )
       )
-    now += (AgentAccessStore.POLL_RETENTION_SECONDS + 60) * 1000
+    // Past the window's end PLUS the retention span — retention is anchored to window-end now,
+    // because that is what covers a grant approved at the last possible moment.
+    now += 600_000 + (AgentAccessStore.POLL_RETENTION_SECONDS + 60) * 1000
     assertNull(store().pendingFor("https://preview.coo.ee"))
   }
 
@@ -286,7 +333,7 @@ class AgentAccessStoreTest {
           )
         )
     }
-    now += (AgentAccessStore.POLL_RETENTION_SECONDS + 60) * 1000
+    now += 600_000 + (AgentAccessStore.POLL_RETENTION_SECONDS + 60) * 1000
     assertTrue(
       store()
         .savePending(
