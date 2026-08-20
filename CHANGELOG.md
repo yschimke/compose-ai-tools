@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.24.0](https://github.com/yschimke/compose-ai-tools/compare/v1.23.0...v1.24.0) (2026-08-20)
+
+
+### Features
+
+* **compose/semantics:** state the render density on the payload ([#4341](https://github.com/yschimke/compose-ai-tools/issues/4341)) ([9fe8993](https://github.com/yschimke/compose-ai-tools/commit/9fe89931a2708021cc682c89ecbcee0747546530))
+* **design-pages:** mark a node we reached apart from one we built ([#4351](https://github.com/yschimke/compose-ai-tools/issues/4351)) ([cb678b4](https://github.com/yschimke/compose-ai-tools/commit/cb678b40e5c05016285c02880cd6c7cd8a457c03))
+* **serve:** give the viewer full layout boxes and the whole theme token set ([#4347](https://github.com/yschimke/compose-ai-tools/issues/4347)) ([0a7c6e4](https://github.com/yschimke/compose-ai-tools/commit/0a7c6e46b7b6dc4a35193fbe7ff2d025872b9e99))
+* **serve:** link the Source panel's snippet to its KDoc pages ([#4348](https://github.com/yschimke/compose-ai-tools/issues/4348)) ([74981fe](https://github.com/yschimke/compose-ai-tools/commit/74981fe463f835cda53ced64079ae75858df1fff))
+* **serve:** make the catalog blob cache clearable and legible ([#4339](https://github.com/yschimke/compose-ai-tools/issues/4339)) ([31a4f0b](https://github.com/yschimke/compose-ai-tools/commit/31a4f0b200070a414fcfd19eaa83f9d9b05de1ac))
+* **serve:** offer the design comparison from the front door ([#4349](https://github.com/yschimke/compose-ai-tools/issues/4349)) ([23438be](https://github.com/yschimke/compose-ai-tools/commit/23438be63906ba5810c72b68d284152209333ec3))
+
+
+### Bug Fixes
+
+* **inspect:** name the typeface and Material role on Wear typography ([#4342](https://github.com/yschimke/compose-ai-tools/issues/4342)) ([89f93ea](https://github.com/yschimke/compose-ai-tools/commit/89f93eafe9ae170a88cd8519e4791fea71a1df6c))
+* **serve:** close the admin holes and the census cost in the cache surface ([#4352](https://github.com/yschimke/compose-ai-tools/issues/4352)) ([834e23b](https://github.com/yschimke/compose-ai-tools/commit/834e23beb1879273aa0c17e7370bd7c35f5bc2d5))
+* **serve:** correct five page-shape holes in the KDoc link resolver ([#4350](https://github.com/yschimke/compose-ai-tools/issues/4350)) ([8c97b37](https://github.com/yschimke/compose-ai-tools/commit/8c97b373f818ca41bf8b823ddc78dfdd903957a6))
+* **serve:** fold breakpoints in the component drawer and palette ([#4336](https://github.com/yschimke/compose-ai-tools/issues/4336)) ([228885c](https://github.com/yschimke/compose-ai-tools/commit/228885c7ec26e29186e699916c551adc96a94e9f))
+* **serve:** hand the capture to the clipboard, and put the report box away ([#4345](https://github.com/yschimke/compose-ai-tools/issues/4345)) ([07fad35](https://github.com/yschimke/compose-ai-tools/commit/07fad35b42d0de5a4e5ac944261d364fc40a21d9))
+* **serve:** keep a design node's box to its own clips, and compose the clip's transform ([#4343](https://github.com/yschimke/compose-ai-tools/issues/4343)) ([fdbf505](https://github.com/yschimke/compose-ai-tools/commit/fdbf5056cb7a29bb746d2a3f2e8d6a0bf85d96f3))
+* **serve:** keep a request-scoped lease busy for its whole life ([#4337](https://github.com/yschimke/compose-ai-tools/issues/4337)) ([06701fc](https://github.com/yschimke/compose-ai-tools/commit/06701fceac38dd37119979ad705e18eb8ac6e2cc))
+* **serve:** keep the front door's compare action for provider-neutral references ([#4354](https://github.com/yschimke/compose-ai-tools/issues/4354)) ([4dc7f8a](https://github.com/yschimke/compose-ai-tools/commit/4dc7f8ad6fb931906bd556a1ea7f75895e871d03))
+* **serve:** measure a design node's clipped box, not the shape its clip hides ([#4338](https://github.com/yschimke/compose-ai-tools/issues/4338)) ([670a8bd](https://github.com/yschimke/compose-ai-tools/commit/670a8bd0473f976d3b5bcc4356e6bf5f02a1ebac))
+* **serve:** resolve the breakpoint fold per theme lane ([#4346](https://github.com/yschimke/compose-ai-tools/issues/4346)) ([f65178f](https://github.com/yschimke/compose-ai-tools/commit/f65178f59a051dd221889fc612776f00c98faf22))
+
 ## [1.23.0](https://github.com/yschimke/compose-ai-tools/compare/v1.22.0...v1.23.0) (2026-08-20)
 
 
