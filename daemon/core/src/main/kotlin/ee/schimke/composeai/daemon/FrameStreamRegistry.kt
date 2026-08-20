@@ -35,8 +35,15 @@ internal class FrameStreamRegistry(
     val previewId: String,
     val codec: StreamCodec,
     val maxFps: Int?,
-    var visible: Boolean = true,
-    var visibilityFps: Int? = null,
+    // Volatile, unlike the rest of this state: the visibility pair is written by the reader thread
+    // handling `stream/visibility` and read by each stream's interactive frame-loop thread through
+    // [emitMinIntervalMs]. The ConcurrentHashMap publishes the State object safely, but not writes
+    // made to it afterwards — and a stream going hidden touches nothing else that would establish
+    // the ordering (the wake queue is only offered on resume). Without this a frame loop is free to
+    // keep reading the pre-hide cadence and keep rendering at full rate, which is the exact thing
+    // this notification exists to stop. Everything else here is written and read on one thread.
+    @Volatile var visible: Boolean = true,
+    @Volatile var visibilityFps: Int? = null,
     var lastEmittedAtMs: Long = Long.MIN_VALUE,
     var lastHash: String? = null,
     var seq: Long = 0L,

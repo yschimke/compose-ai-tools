@@ -59,8 +59,8 @@ interface Session {
     painting: boolean;
     /** Whether the card is currently within the viewport (an observer-less browser: always). */
     onScreen: boolean;
-    /** The last visibility reported to the server, so a scroll only sends when it changes. */
-    visible: boolean;
+    /** The visibility the SERVER believes, so a scroll only sends when it changes. */
+    reportedVisible: boolean;
     /** Listeners and observers that live exactly as long as this session. */
     cleanups: Array<() => void>;
 }
@@ -184,14 +184,18 @@ export class CatalogLive extends LitElement {
      * A browser without `IntersectionObserver` keeps the card permanently on-screen and rides the
      * tab signal alone; nothing here is load-bearing for correctness.
      */
-    private watchVisibility(session: Session): void {
+    private watchVisibility(session: Session): () => void {
         const report = (): void => {
             const visible = session.onScreen && !document.hidden;
-            if (visible === session.visible) return;
-            session.visible = visible;
             const socket = session.socket;
             if (this.active !== session || !socket || socket.readyState !== 1)
                 return;
+            // Against what the SERVER believes, not against the last computed state: while the
+            // socket was connecting there was nowhere to send, so a state sampled then is still
+            // news once it opens. A grid scrolls constantly, so the dedup matters — but it has to
+            // dedup on what actually went out.
+            if (visible === session.reportedVisible) return;
+            session.reportedVisible = visible;
             socket.send(visibilityMessage(visible));
         };
 
@@ -201,7 +205,7 @@ export class CatalogLive extends LitElement {
             document.removeEventListener("visibilitychange", onTabVisibility),
         );
 
-        if (typeof IntersectionObserver !== "function") return;
+        if (typeof IntersectionObserver !== "function") return report;
         const observer = new IntersectionObserver(
             (entries) => {
                 const last = entries[entries.length - 1];
@@ -215,6 +219,7 @@ export class CatalogLive extends LitElement {
         );
         observer.observe(session.card);
         session.cleanups.push(() => observer.disconnect());
+        return report;
     }
 
     private stopLive(reason: string | null): void {
@@ -319,7 +324,7 @@ export class CatalogLive extends LitElement {
             paintedSeq: -1,
             painting: false,
             onScreen: true,
-            visible: true,
+            reportedVisible: true,
             cleanups: [],
         };
         this.active = session;
@@ -340,15 +345,16 @@ export class CatalogLive extends LitElement {
             return;
         }
         session.socket = socket;
-        this.watchVisibility(session);
+        const reportVisibility = this.watchVisibility(session);
 
         let gotFrame = false;
         socket.onopen = () => {
-            // A session can be started and then hidden before the socket finishes connecting (a
-            // hold, then straight to another tab). The server starts every stream visible, so the
-            // state has to be (re)stated once there is somewhere to state it to.
-            if (this.active === session && !session.visible)
-                socket.send(visibilityMessage(false));
+            // Nothing could be sent while the socket was connecting, and the state it should have
+            // sent is not always followed by an event that would resend it: a card held in a tab
+            // that is already hidden gets no `visibilitychange`, and off-screen-at-start gets no
+            // second `IntersectionObserver` callback. The server starts every stream visible, so
+            // the current state has to be stated once there is somewhere to state it to.
+            reportVisibility();
         };
         socket.onmessage = (event: MessageEvent) => {
             if (this.active !== session) return;

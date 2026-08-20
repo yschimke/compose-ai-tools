@@ -26,6 +26,7 @@ class FakeSocket {
     onmessage: ((event: { data: string }) => void) | null = null;
     onclose: ((event: { code?: number; reason?: string }) => void) | null =
         null;
+    onopen: (() => void) | null = null;
     constructor(public url: string) {
         FakeSocket.opened.push(this);
     }
@@ -338,6 +339,31 @@ describe("<cp-catalog-live>", () => {
         );
         setTabHidden(false);
         assert.equal(visibilitySent(socket).length, 1);
+    });
+
+    it("states an already-hidden tab as soon as the socket opens", async () => {
+        // No event is coming: the tab was hidden before the session started, and without an
+        // `IntersectionObserver` there is no initial callback either. Sampling `document.hidden`
+        // when the watch starts is the only thing that stops the lane sitting at full rate until
+        // the next tab switch.
+        delete (globalThis as Record<string, unknown>).IntersectionObserver;
+        const sockets = stubSockets();
+        await mount();
+        setTabHidden(true);
+        cardAt(0).dispatchEvent(pointer("pointerdown"));
+        await held();
+
+        const socket = sockets.last();
+        assert.deepEqual(
+            visibilitySent(socket),
+            [],
+            "nothing before the socket opens",
+        );
+        socket.onopen?.();
+        assert.deepEqual(visibilitySent(socket), [
+            { type: "visibility", visible: false },
+        ]);
+        setTabHidden(false);
     });
 
     it("stays inert on a grid the server gave no live config", async () => {
