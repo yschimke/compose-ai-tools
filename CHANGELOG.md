@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.23.0](https://github.com/yschimke/compose-ai-tools/compare/v1.22.0...v1.23.0) (2026-08-20)
+
+
+### Features
+
+* **catalog:** let a component claim motion authored on its own @Preview ([#4329](https://github.com/yschimke/compose-ai-tools/issues/4329)) ([d6f4651](https://github.com/yschimke/compose-ai-tools/commit/d6f46510ae22fed19cc407588e1645e8fda4fe65))
+* **serve:** answer commit-pinned catalog asset reads from the blob pool ([#4316](https://github.com/yschimke/compose-ai-tools/issues/4316)) ([2a800c2](https://github.com/yschimke/compose-ai-tools/commit/2a800c2c9ae9c3f2ea89735a25f35bfc399d7a24))
+* **serve:** collapse the motion browser by component and by theme ([#4317](https://github.com/yschimke/compose-ai-tools/issues/4317)) ([d10441c](https://github.com/yschimke/compose-ai-tools/commit/d10441cd4685c72163e1a0d344f8a3d4b626fb26))
+* **serve:** invite the live lane from the preview itself ([#4332](https://github.com/yschimke/compose-ai-tools/issues/4332)) ([f8a8fd3](https://github.com/yschimke/compose-ai-tools/commit/f8a8fd39e2b3719fbf1c0114f908ca2a3e13127d))
+* **serve:** open a sectioned catalog on All ([#4311](https://github.com/yschimke/compose-ai-tools/issues/4311)) ([6dd5a1b](https://github.com/yschimke/compose-ai-tools/commit/6dd5a1bd414e0b63700a776bb202cd4bbe152763))
+
+
+### Bug Fixes
+
+* **deps:** update dependency org.gradle:gradle-tooling-api to v9.7.1 ([#4320](https://github.com/yschimke/compose-ai-tools/issues/4320)) ([233927f](https://github.com/yschimke/compose-ai-tools/commit/233927f08af3d2868c911628d0f72af51e5925e8))
+* **design-pages:** stop counting the kit's own internals as missing components ([#4335](https://github.com/yschimke/compose-ai-tools/issues/4335)) ([f137a2f](https://github.com/yschimke/compose-ai-tools/commit/f137a2f64f225a98a558720fa1184203237b1eb5))
+* **renderer:** settle a pressed capture's ripple on a clock Robolectric has ([#4315](https://github.com/yschimke/compose-ai-tools/issues/4315)) ([0a5ee80](https://github.com/yschimke/compose-ai-tools/commit/0a5ee8061ebb452841ee657b3dde45253be50dcc))
+* **serve:** keep the catalog blob cache's ceiling true once requests fill it ([#4322](https://github.com/yschimke/compose-ai-tools/issues/4322)) ([f7e9591](https://github.com/yschimke/compose-ai-tools/commit/f7e959163e6d6413c08f871135e7a7f957ee390e))
+* **serve:** keep the live frame pump alive when a frame will not decode ([#4321](https://github.com/yschimke/compose-ai-tools/issues/4321)) ([f7c4468](https://github.com/yschimke/compose-ai-tools/commit/f7c4468024c0d102adcbcf2f16674e5f76d2c1d5))
+* **serve:** reach /report-bug on a top-level site, and route pixel bugs by name ([#4330](https://github.com/yschimke/compose-ai-tools/issues/4330)) ([d7fc426](https://github.com/yschimke/compose-ai-tools/commit/d7fc426e2e5d2911a3e4c90348df2b641d82c24d))
+* **serve:** stop an idle browser tab pinning the server's idle clock ([#4326](https://github.com/yschimke/compose-ai-tools/issues/4326)) ([4843415](https://github.com/yschimke/compose-ai-tools/commit/4843415ca2f9231ba99ead77630d17ca8f9b6e91))
+
+
+### Performance Improvements
+
+* **daemon:** back the live frame loop off while nothing is moving ([#4307](https://github.com/yschimke/compose-ai-tools/issues/4307)) ([b4b704a](https://github.com/yschimke/compose-ai-tools/commit/b4b704af6bd546a6c3fbe1a92bdec238c66982e3))
+
 ## [1.22.0](https://github.com/yschimke/compose-ai-tools/compare/v1.21.0...v1.22.0) (2026-08-20)
 
 
