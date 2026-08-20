@@ -162,14 +162,22 @@ public object PreviewBackdrop {
     fallback: Boolean = false,
   ): Backdrop =
     when {
-      // Nonzero AND actually opaque enough to sit behind something. `0` is the annotation's own
-      // "unset", but a nonzero-yet-fully-transparent value like `0x00FFFFFF` is not a ground
-      // either — publishing it would hand a consumer `#FFFFFF00` to composite onto, which paints
-      // nothing while claiming the preview answered, so a dark catalog's transparent artwork would
-      // lose its stage. Same rule the captured-theme rungs below apply, for the same reason.
+      // An explicit colour SETTLES the annotation's two background knobs, exactly as it does in
+      // `PreviewBackground.resolveArgb`: the renderer fills with it and never consults
+      // `showBackground`. So it settles this too, in one of two ways.
+      //
+      // Opaque enough to sit behind something — a real ground, and the highest evidence there is.
       backgroundColor != 0L && !isTransparentArgb(backgroundColor) ->
         Backdrop(hexArgb(backgroundColor.toInt()), Source.PREVIEW_BACKGROUND_COLOR)
-      showBackground ->
+      // Stated but fully transparent (`0x00FFFFFF`): the render's pixels ARE transparent, so there
+      // is no ground here — and crucially no `showBackground` sheet either, because the renderer
+      // never painted one. Falling to that rung would publish a white sheet over transparent
+      // pixels and, being marked preview-explicit, would pin a dark-first catalog's render to
+      // white for good. Skip to the rungs that can still answer honestly.
+      //
+      // `0` is the annotation's own "unset" and is NOT this case — it leaves `showBackground` to
+      // speak, which is the ordinary path.
+      backgroundColor == 0L && showBackground ->
         Backdrop(
           hexArgb(if (night) PreviewBackground.NIGHT_ARGB else PreviewBackground.DAY_ARGB),
           Source.PREVIEW_SHOW_BACKGROUND,

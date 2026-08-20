@@ -80,6 +80,21 @@ class PreviewBackdropTest {
   }
 
   @Test
+  fun `a transparent explicit colour does not revive the showBackground sheet`() {
+    // The renderer fills with the explicit colour and never consults `showBackground`, so the
+    // pixels are transparent. Publishing the white sheet here would describe a render that never
+    // happened — and mark it preview-explicit, pinning a dark catalog to white permanently.
+    val backdrop =
+      PreviewBackdrop.resolve(
+        showBackground = true,
+        backgroundColor = 0x00FFFFFFL,
+        catalogSurface = PreviewBackdrop.CatalogSurface.DARK,
+      )
+    assertEquals(PreviewBackdrop.Source.CATALOG_SURFACE, backdrop.source)
+    assertTrue(backdrop.isDark)
+  }
+
+  @Test
   fun `a barely-opaque explicit colour still counts`() {
     // Only *fully* transparent falls through — a low-alpha wash is still the author stating one.
     val backdrop = PreviewBackdrop.resolve(backgroundColor = 0x01FFFFFFL)
