@@ -138,6 +138,29 @@ check "the caddy command line is passed through" \
   "ARGS=[run --config /etc/caddy/Caddyfile --adapter caddyfile]" \
   "$(entry_of '{"catalogs":[]}' | sed -n 2p)"
 
+# An entrypoint that is handed nothing must still start Caddy. `exec caddy` with no arguments
+# prints usage and exits; a caddy container that exits releases ports 80/443, so EVERY hostname on
+# the box goes dark, not just the sites. This is the shape of the outage the missing CMD caused.
+check "no arguments still starts Caddy with the standard config" \
+  "ARGS=[run --config /etc/caddy/Caddyfile --adapter caddyfile]" \
+  "$(printf '%s' '{"catalogs":[]}' > "${work}/catalogs.json"
+     PATH="${work}/bin:${PATH}" CATALOGS_FILE="${work}/catalogs.json" SITE_DOMAINS="" \
+       sh "${entrypoint}" 2>/dev/null | sed -n 2p)"
+
+# …and the image must not rely on that fallback: Docker RESETS an inherited CMD to empty when a
+# Dockerfile declares ENTRYPOINT, so caddy:2's own command line does not survive our ENTRYPOINT
+# line. Shipping the pair without a CMD is what took the box offline; this pins that they stay
+# together.
+dockerfile="${here}/caddy.Dockerfile"
+if grep -q '^ENTRYPOINT' "${dockerfile}"; then
+  if grep -q '^CMD' "${dockerfile}"; then
+    pass=$((pass + 1))
+  else
+    fail=$((fail + 1))
+    echo "FAIL: caddy.Dockerfile declares ENTRYPOINT without a CMD — Docker resets the inherited one to empty, so Caddy would start with no arguments and exit." >&2
+  fi
+fi
+
 # --- the real deployment config ----------------------------------------------------------------
 # The committed file is the one input that must never surprise this. Its hostnames are what the box
 # routes, so a scan that disagrees with the file is a site that silently doesn't come up.

@@ -42,4 +42,14 @@ else
   echo "caddy: no top-level site hostnames (none in ${CATALOGS_FILE}, none in SITE_DOMAINS)" >&2
 fi
 
+# Belt and braces for the failure that took the box down: if the arguments are missing — a
+# Dockerfile that declares ENTRYPOINT without restating CMD, a compose file that sets `entrypoint:`
+# and forgets `command:` — `exec caddy` with none prints usage and exits, and a caddy container that
+# exits takes ports 80/443 with it. Every hostname on the box goes dark, not just the sites. Default
+# to what caddy:2 would have run rather than letting a config slip become an outage.
+if [ "$#" -eq 0 ]; then
+  echo "caddy: no arguments given (dropped CMD?) — defaulting to the standard config" >&2
+  set -- run --config /etc/caddy/Caddyfile --adapter caddyfile
+fi
+
 exec caddy "$@"
