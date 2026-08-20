@@ -3109,6 +3109,76 @@ class ServeWebFixtureTest {
           ),
         version = version,
       )
+    // The same page as reached from a top-level SITE (issue #4319) — `wear.preview.coo.ee`, where
+    // the hostname is one catalog and the reporter arrived from a design page with no preview on
+    // it. Captured as its own golden because the paragraph that routes a *pixel* bug is different
+    // here: it names the catalog and links its tracker instead of saying "go back to the preview",
+    // and there is no render thumbnail to soften a page that is otherwise all prose.
+    val bugReportSitePageContext =
+      ServeBugReport.Page(
+        path = "/pages/buttons",
+        url = "https://wear.preview.coo.ee/pages/buttons",
+        system = "wear-m3",
+        catalog = "yschimke/wear-m3-catalog@design-artifacts/wear-m3",
+        catalogToolVersion = "0.16.54",
+        trust = "branch:yschimke/wear-m3-catalog@design-artifacts/wear-m3",
+        renderLane = "baked snapshots",
+        publicRender = true,
+      )
+    val bugReportSite =
+      ServeWeb.bugReportPage(
+        report =
+          ServeWeb.BugReport(
+            action = ServeBugReport.action(),
+            body = ServeBugReport.body(bugReportServer, bugReportSitePageContext),
+            bodyTemplate =
+              ServeBugReport.body(
+                bugReportServer,
+                bugReportSitePageContext,
+                clientPlaceholder = true,
+              ),
+            repo = ServeBugReport.REPO,
+            login = "yschimke",
+            catalog =
+              ServeWeb.BugReportCatalog(
+                system = "wear-m3",
+                title = "Wear Material 3",
+                repo = "yschimke/wear-m3-catalog",
+                issuesUrl = "https://github.com/yschimke/wear-m3-catalog/issues/new",
+                site = true,
+              ),
+          ),
+        sections =
+          listOf(
+            ServeWeb.BugReportSection(
+              "Server",
+              listOf(
+                "compose-preview" to version,
+                "Mode" to "public (open)",
+                "Uptime" to "3d 4h",
+                "Server JVM" to "17.0.11 (Eclipse Adoptium)",
+                "Server OS" to "Linux 6.8.0-generic (amd64)",
+              ),
+            ),
+            ServeWeb.BugReportSection(
+              "Page",
+              listOf(
+                "Page" to "/pages/buttons",
+                "Design system" to "wear-m3",
+                "Catalog" to "yschimke/wear-m3-catalog@design-artifacts/wear-m3",
+                "Catalog rendered by" to "compose-ai-tools 0.16.54",
+                "Trust" to "branch:yschimke/wear-m3-catalog@design-artifacts/wear-m3",
+                "Render lane" to "baked snapshots",
+              ),
+            ),
+            ServeWeb.BugReportSection(
+              "Browser",
+              listOf("User agent, viewport, pixel ratio, colour scheme" to "added by your browser"),
+            ),
+          ),
+        version = version,
+        siteName = "Wear Material 3",
+      )
 
     // The page goldens, named once: the same list backs both the `UPDATE_SERVE_WEB_FIXTURES=true`
     // regeneration below and the sync assertion further down, so a fixture can never be written
@@ -3169,6 +3239,7 @@ class ServeWebFixtureTest {
         "serve-viewer-cross-product.html" to viewerCrossProduct,
         "serve-status.html" to serveStatus,
         "serve-report-bug.html" to bugReport,
+        "serve-report-bug-site.html" to bugReportSite,
         "serve-landing-variants.html" to landingVariants,
         "serve-landing-tree-depth.html" to landingTreeDepth,
         "serve-viewer-variants.html" to viewerVariants,

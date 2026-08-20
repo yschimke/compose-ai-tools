@@ -6461,6 +6461,37 @@ ${captureControlsHtml().prependIndent("          ")}
     val renderUrl: String? = null,
     /** Present only when the visitor has a GitHub session on this server. */
     val login: String? = null,
+    /**
+     * The catalog the reported page belonged to, when it belonged to one. See [BugReportCatalog].
+     */
+    val catalog: BugReportCatalog? = null,
+  )
+
+  /**
+   * The catalog the reporter was looking at, so [bugReportPage] can send a *catalog* bug to the
+   * right tracker by name instead of telling the reporter to go and find the link themselves.
+   *
+   * The page's second paragraph has always said "wrong pixels are the catalog's bug, not this
+   * server's — go back to the preview and use its report link". That is good advice from the front
+   * door of a multi-catalog host, where the server genuinely cannot know which catalog is meant. It
+   * is poor advice on a **top-level site** ([ServeSites]), which publishes exactly one catalog and
+   * is the shape most visitors meet: `wear.preview.coo.ee` is the Wear catalog and nothing else,
+   * the page they came from may be a design page or an index with no preview to go back to, and the
+   * repository that owns the pixels is a lookup the server can do for them.
+   */
+  data class BugReportCatalog(
+    /** Served system id, e.g. `wear-m3`. */
+    val system: String,
+    /** The catalog's own display title, e.g. "Wear Material 3" — [system] when it declares none. */
+    val title: String,
+    /**
+     * `owner/repo` the catalog's pixels belong to, from its source else its delivery provenance.
+     */
+    val repo: String,
+    /** The new-issue form for [repo]. */
+    val issuesUrl: String,
+    /** True when the reporter was on this catalog's own hostname, so the whole site is it. */
+    val site: Boolean,
   )
 
   /**
@@ -6541,17 +6572,56 @@ ${captureControlsHtml().prependIndent("          ")}
             "      <img class=\"cp-report-shot\" src=\"${esc(it)}\" alt=\"the render this " +
             "report is about\" loading=\"lazy\">"
         } ?: ""
+    // Where a *catalog* bug belongs. Named and linked when the server knows the catalog — always,
+    // on a top-level site — and left as the generic "go back to the preview" advice when it does
+    // not. See [BugReportCatalog] for why the generic wording is wrong on a one-catalog hostname.
+    val catalog = report.catalog
+    val elsewhere =
+      (when {
+          catalog == null ->
+            """
+          <p class="cp-sub cp-report-elsewhere">Wrong <em>pixels</em> rather than a wrong page? A button
+            in the wrong colour, a state that is missing, a spec that does not match — that is the
+            <strong>catalog&rsquo;s</strong> bug, not this server&rsquo;s. Go back to the preview and use
+            its &ldquo;report a catalog issue&rdquo; link, which files against the repository whose
+            Kotlin declares that preview. A catalog bug filed here reaches people who cannot fix it.</p>
+          """
+          catalog.site ->
+            """
+          <p class="cp-sub cp-report-elsewhere">This site is the
+            <strong>${esc(catalog.title)}</strong> catalog and nothing else, so most of what you can
+            see here is drawn from it rather than by this server. Wrong <em>pixels</em> — a button
+            in the wrong colour, a state that is missing, a spec that does not match — are that
+            catalog&rsquo;s bug, and belong in
+            <a href="${esc(catalog.issuesUrl)}" rel="noopener">${esc(catalog.repo)}</a>. Filed here
+            they reach people who cannot fix them. A preview&rsquo;s own &ldquo;report a catalog
+            issue&rdquo; link is better still where you have one: it carries the preview, your
+            overrides and the render with it.</p>
+          """
+          else ->
+            """
+          <p class="cp-sub cp-report-elsewhere">The page you came from belongs to the
+            <strong>${esc(catalog.title)}</strong> catalog. Wrong <em>pixels</em> — a button in the
+            wrong colour, a state that is missing, a spec that does not match — are that
+            catalog&rsquo;s bug, not this server&rsquo;s, and belong in
+            <a href="${esc(catalog.issuesUrl)}" rel="noopener">${esc(catalog.repo)}</a>; a
+            preview&rsquo;s own &ldquo;report a catalog issue&rdquo; link files there too and
+            carries the preview, your overrides and the render with it. A catalog bug filed here
+            reaches people who cannot fix it.</p>
+          """
+        })
+        // Re-indented to the template's own level: the outer `trimIndent()` runs on the string
+        // AFTER substitution, so a block pasted in at column 0 would make the common indent 0 and
+        // leave every other line of the page's markup indented.
+        .trimIndent()
+        .replace("\n", "\n      ")
     val body =
       """
       <h1 class="cp-head">Report a bug in the preview server</h1>
       <p class="cp-sub">This files against <a href="https://github.com/${esc(report.repo)}"
         >${esc(report.repo)}</a>, the repository that ships <code>compose-preview serve</code>$who
         — the page you were on, its controls, and the render lanes behind them.</p>
-      <p class="cp-sub cp-report-elsewhere">Wrong <em>pixels</em> rather than a wrong page? A button
-        in the wrong colour, a state that is missing, a spec that does not match — that is the
-        <strong>catalog&rsquo;s</strong> bug, not this server&rsquo;s. Go back to the preview and use
-        its &ldquo;report a catalog issue&rdquo; link, which files against the repository whose
-        Kotlin declares that preview. A catalog bug filed here reaches people who cannot fix it.</p>
+      $elsewhere
 
       <form class="cp-report-bug-form" method="get" target="_blank" rel="noopener"
         action="${esc(report.action)}">
