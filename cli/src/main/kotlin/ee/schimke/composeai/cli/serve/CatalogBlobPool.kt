@@ -240,6 +240,28 @@ class CatalogBlobPool(
   }
 
   /**
+   * Drop **everything** this pool holds, returning what is left (normally nothing).
+   *
+   * The operator's "I do not trust this; fetch it again" button. Whole-pool rather than per
+   * catalog, and that is not a shortcut: blobs are named by their own digest and shared across
+   * systems on purpose — a font fetched for one catalog is the same file the next one reads — so no
+   * blob has an owning system to delete it by. Partitioning by system to make a narrower button
+   * possible would give up the deduplication, which is worth more than the button.
+   *
+   * Safe at any moment for the same reason [sweep] is: everything here is re-fetchable, and a
+   * reader already holding an open file keeps reading it. The cost of being wrong about needing
+   * this is bandwidth, not correctness.
+   */
+  fun clear(): CatalogBlobPoolSnapshot {
+    for (dir in listOf(contentDir, keysDir)) {
+      for (file in dir.listFiles()?.filter { it.isFile }.orEmpty()) {
+        if (runCatching { file.delete() }.getOrDefault(false)) evicted.increment()
+      }
+    }
+    return snapshot()
+  }
+
+  /**
    * Reclaim blobs until the pool is under [maxBytes], oldest-touched first, sparing anything
    * younger than [graceMillis]; then drop pointers whose blob is gone.
    *
