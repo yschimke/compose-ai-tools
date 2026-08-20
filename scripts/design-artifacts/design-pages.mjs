@@ -247,6 +247,16 @@ export function planDesignPages({ manifest, spec, catalog }) {
         // Literal `true` only, in the same spirit as `confidence` above — this decodes into a
         // Kotlin Boolean, and a truthy string is a parse failure for the whole manifest.
         ...(node?.container === true ? { container: true } : {}),
+        // The kit's own base parts — `Base / SelectionControl / Switch`, `Base / Loading Icon` —
+        // which no catalog owes an implementation and which `kit-sets.json` already excludes from
+        // the kit walk. Stated by the importer, which has the real tree and therefore knows which
+        // set a bare `Selected=Yes, Disabled=No` variant came out of; this flat list does not, so
+        // nothing is inferred here.
+        //
+        // Literal `false` only, and emitted only then: the consumer defaults it to `true`, so a
+        // manifest published before the field existed counts exactly what it counted before, and a
+        // truthy string would fail the parse for every page.
+        ...(node?.inventory === false ? { inventory: false } : {}),
       });
     }
     if (unresolved > 0) {
@@ -264,6 +274,10 @@ export function planDesignPages({ manifest, spec, catalog }) {
       frame: { width: page.frame.width, height: page.frame.height },
       image: { uri: pageImageName(id), format: "svg" },
       nodes,
+      // A sheet that is not a component inventory — the kit's 499-node icon page. Same literal
+      // `false` rule as the node field: absent means `true`, which is what every page published
+      // before this field existed means.
+      ...(page?.inventory === false ? { inventory: false } : {}),
     });
   }
 

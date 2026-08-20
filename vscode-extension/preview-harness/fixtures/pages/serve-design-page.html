@@ -82,6 +82,9 @@
             <div class="cp-page-stage" style="--cp-page-aspect:1.5000">
               <div class="cp-page-canvas" data-cp-page-canvas>
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" height="800" viewBox="0 0 1200 800" width="1200">
+  <defs>
+    <clipPath id="clipShimmer"><rect height="180" rx="36" width="180" x="230" y="345"/></clipPath>
+  </defs>
   <rect fill="#F7F2FA" height="800" width="1200"/>
   <g data-node-id="1:0"><rect fill="none" height="690" width="1140" x="40" y="90"/></g>
   <g data-node-id="1:9"><rect fill="#EADDFF" height="50" rx="16" width="560" x="40" y="20"/></g>
@@ -94,7 +97,12 @@
     </g>
     <g data-node-id="1:31">
       <rect fill="#F3EDF7" height="200" rx="12" width="460" x="90" y="335"/>
-      <g data-node-id="1:2"><rect fill="#6750A4" height="180" rx="36" width="180" x="230" y="345"/></g>
+      <g data-node-id="1:2">
+        <g clip-path="url(#clipShimmer)">
+          <rect fill="#6750A4" height="180" rx="36" width="180" x="230" y="345"/>
+          <path d="M470 300L560 390L280 670L190 580Z" fill="#EADDFF" fill-opacity="0.35"/>
+        </g>
+      </g>
     </g>
     <g data-node-id="1:32">
       <rect fill="#F3EDF7" height="200" rx="12" width="460" x="90" y="555"/>

@@ -3500,6 +3500,14 @@ Array.prototype.forEach.call(
 // typing. The corner backend badge flips its icon/accent to match (see backendBadgeScript).
 const liveToggle = may<HTMLButtonElement>("cp-live-toggle");
 const liveToggleLabel = may<HTMLElement>("cp-live-toggle-label");
+// The chip's second half: the label names the lane it is ON, this names the lane a click goes TO.
+// See ServeWeb's `liveToggleVerb` for why the naming job is split in two rather than folded into
+// one string. Present only on a preview with a live lane to enter.
+const liveToggleVerb = may<HTMLElement>("cp-live-toggle-verb");
+// The invitation ON the stage — the affordance the toolbar chip cannot be, because a visitor
+// looking at the picture is not looking at the toolbar. Present only when there is a lane to enter;
+// `updateLiveToggle()` decides when it actually shows.
+const stageLiveHint = may<HTMLElement>("cp-stage-live-hint");
 // Present only when GitHub auth is the one thing blocking the daemon lane (see ServeWeb's
 // liveSignInLink). Deliberately not `#cp-live-toggle` — it's a link, so the toggle's
 // `.disabled` / `aria-pressed` handling must not touch it — which is why it's looked up
@@ -3548,8 +3556,9 @@ function currentLaneValue() {
 // What the chip calls the current lane. "Live" while the daemon stream is up (that lane IS the
 // live form of whichever renderer is picked, and the picked one is a click away again); other-
 // wise the matching option's own label, so the chip and the combo can never name a lane two
-// different things. With no combo at all the chip is the only control on the row, and the
-// generic invitation reads better than "Snapshot".
+// different things. With no combo at all the chip is the only control on the row and names the
+// state the stage is in ("Snapshot"), leaving its verb to name the switch out of it — see
+// ServeWeb's `primaryLaneLabel`, which is where that word is chosen.
 // The renderer the chip returns to when the current lane isn't one of the combo's own — today
 // that means the design spec, which is a chip of its own. Server-rendered from the same
 // `primaryLaneLabel` the chip opens on, so a preview with no combo to read has a name too.
@@ -3572,6 +3581,16 @@ function laneLabelText() {
         laneOptions: options,
         wanted: currentLaneValue(),
         defaultLabel: defaultLaneLabel(),
+    });
+}
+// Whether a click on the stage enters the live lane right now. The chip's verb, the hint badge and
+// the stage's own click handler all ask this one question, so an invitation is never shown over a
+// stage that would ignore it — and never withheld from a stage that would take it.
+function liveInvited() {
+    return rules.liveInviteAvailable({
+        interactive: anyInteractive(),
+        transport: liveTransportAvailable(),
+        mode: currentMode(),
     });
 }
 function updateLiveToggle() {
@@ -3641,6 +3660,25 @@ function updateLiveToggle() {
               ? "Static snapshot — click for the live, interactive preview"
               : "Static snapshot — this session has no live lane to switch to";
     }
+    // The chip's verb, from the same state as its tooltip — it points at the lane a click LEAVES
+    // for, so it has to invert with the chip rather than sit on the label the server rendered.
+    // Blank (and out of the layout) whenever there is nowhere to go: a chip disabled for want of a
+    // live lane must not keep advertising one.
+    if (liveToggleVerb) {
+        var verb = interactive
+            ? "▸ Snapshot"
+            : liveTransportAvailable()
+              ? "▸ Live"
+              : "";
+        liveToggleVerb.textContent = verb;
+        liveToggleVerb.hidden = !verb;
+    }
+    // …and the stage's invitation, from the one predicate the stage's own click handler obeys. The
+    // attribute sits on the viewer root because the hint and the snapshot's `cursor: pointer` are
+    // two elements the same fact has to reach.
+    var invited = liveInvited();
+    if (root) root.setAttribute("data-live-invite", invited ? "true" : "false");
+    if (stageLiveHint) stageLiveHint.hidden = !invited;
     if (modeHint) {
         modeHint.textContent = sourceActive()
             ? "usage source — not a render"
@@ -3672,6 +3710,56 @@ if (liveToggle) {
             var m = bestLiveMode();
             if (m) setMode(m);
         }
+    });
+}
+// The stage itself is the second way into the live lane — and the discoverable one. A visitor
+// reading a preview is looking at the picture, not at the toolbar, so the picture is where the
+// affordance has to be; the hint badge above says so and this is what makes the promise true.
+//
+// SINGLE click, not double. The grid spends the long-press gesture on this because a card is a
+// link and a tap has to keep navigating; nothing competes for a click on the viewer's stage, and
+// VS Code's focus mode (docs/daemon/INTERACTIVE.md § 3) already enters live on a single click. A
+// double-click requirement would be exactly as undiscoverable as the toolbar-only chip this
+// replaces.
+//
+// There is no keyboard path here on purpose: the chip is a real button in the tab order and does
+// the same thing, so making the image focusable would add a second stop announcing the same
+// control. Leaving live is the chip's job too — once the daemon is streaming, the canvas is on
+// top of this image and owns every pointer event.
+{
+    // Where the pointer went down, so a DRAG doesn't become an entry. Zoom/pan and text selection
+    // both end in a `click` on the image, and a gesture that meant "drag" must not be read as
+    // "switch lanes" — the same slop discipline the grid's long press uses.
+    var stageInvitePress: { x: number; y: number } | null = null;
+    img.addEventListener("pointerdown", function (event) {
+        stageInvitePress = event.isPrimary
+            ? { x: event.clientX, y: event.clientY }
+            : null;
+    });
+    img.addEventListener("click", function (event) {
+        var press = stageInvitePress;
+        stageInvitePress = null;
+        // Modified and non-primary clicks belong to the browser (open in new tab, context menu,
+        // extend selection) — an unmodified left click is the gesture being offered.
+        if (
+            event.button !== 0 ||
+            event.ctrlKey ||
+            event.metaKey ||
+            event.shiftKey ||
+            event.altKey
+        )
+            return;
+        if (
+            press &&
+            Math.max(
+                Math.abs(event.clientX - press.x),
+                Math.abs(event.clientY - press.y),
+            ) > 6
+        )
+            return;
+        if (!liveInvited()) return;
+        var mode = bestLiveMode();
+        if (mode) setMode(mode);
     });
 }
 // The design-spec chip: in and straight back out of the spec lane, no menu in between. Leaving

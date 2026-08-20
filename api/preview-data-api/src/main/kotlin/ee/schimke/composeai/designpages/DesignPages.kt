@@ -141,6 +141,27 @@ public data class PageNode(
    * attach meaning to the grouping type they understand; see [isContainer].
    */
   val type: String? = null,
+  /**
+   * Whether this node is part of the design system's **published inventory** — something a catalog
+   * could be expected to implement.
+   *
+   * `false` is for the kit's own internals: the base parts each published set is assembled from
+   * (`Base / SelectionControl / Switch`, `Base / Loading Icon`), which a consumer of the kit never
+   * places and no catalog owes an implementation. They are the same kind of thing as [isPrivate],
+   * reached by a different convention — the Material 3 Expressive Wear kit states them by a `Base
+   * /` name prefix rather than by Figma's leading dot — and `kit-sets.json` in the catalog repos
+   * already excludes both from the kit walk. Counting them made a Buttons sheet report 24 missing
+   * components that nothing could ever clear.
+   *
+   * **Stated by the producer, never inferred here**, for the same reason [container] is: the flat
+   * node list has no ancestors, so a consumer cannot tell which set a `Selected=Yes, Disabled=No`
+   * variant came out of. The importer walks the real tree and knows; see the note on [coverageGaps]
+   * about why the depth-ordering shortcut is unsound in exactly the direction that hides a gap.
+   *
+   * Defaults to `true`, so every manifest published before this field existed keeps counting
+   * exactly what it counted before.
+   */
+  val inventory: Boolean = true,
 ) {
   /**
    * A component the design file marks as **private** — Figma's leading-dot convention, used for the
@@ -205,15 +226,15 @@ public data class PageNode(
   /**
    * A concrete, public component that the page should count and highlight.
    *
-   * Three kinds of node are not one, and on a real specimen sheet they are most of it: the sheet's
-   * private furniture ([isPrivate]), the variant sets ([isContainer]), and the placements no
-   * mapping claims ([isPlacement]). Everything the page draws a mark for — the outline, the hit
-   * area, the audit row, the coverage tally — starts here, so a node excluded here is not merely
-   * uncounted: it stops being something the reader can point at, which is the right outcome for all
-   * three.
+   * Four kinds of node are not one, and on a real specimen sheet they are most of it: the sheet's
+   * private furniture ([isPrivate]), the kit's own base parts ([inventory] `= false`), the variant
+   * sets ([isContainer]), and the placements no mapping claims ([isPlacement]). Everything the page
+   * draws a mark for — the outline, the hit area, the audit row, the coverage tally — starts here,
+   * so a node excluded here is not merely uncounted: it stops being something the reader can point
+   * at, which is the right outcome for all four.
    */
   public val isComponent: Boolean
-    get() = !isPrivate && !isContainer && !(isPlacement && isUnlinked)
+    get() = inventory && !isPrivate && !isContainer && !(isPlacement && isUnlinked)
 
   /** Whether this node can be drawn by us, i.e. it names a preview we could ask for. */
   public val isRenderable: Boolean
@@ -273,10 +294,34 @@ public data class DesignPage(
   val image: PageImage,
   /** In the design file's own order, so a re-import diffs cleanly. */
   val nodes: List<PageNode> = emptyList(),
+  /**
+   * Whether this sheet is a **component inventory** — a page whose contents a catalog is measured
+   * against.
+   *
+   * `false` is the kit's icon page: 499 `COMPONENT` nodes that are an icon set, not a component
+   * inventory, and that no Compose catalog implements one-by-one. Counting them reported 499
+   * missing components — a third of the whole kit's apparent gap — and drowned every real one.
+   * `kit-sets.json` already excludes that page by name from the kit walk; this is the same
+   * exclusion, stated where the page view can read it.
+   *
+   * The page is still imported, still drawn, and still browsable — this changes what the page
+   * *claims*, not what it shows. [coverageTotal] is 0 for such a page and the view says what it is
+   * instead of scoring it.
+   *
+   * Page-level rather than a `false` on all 499 nodes because it is a fact about the sheet, and
+   * because 499 stamped nodes is a fact repeated 499 times that a re-import can get half-right.
+   */
+  val inventory: Boolean = true,
 ) {
-  /** Nodes with code behind them. */
+  /**
+   * Nodes with code behind them — the numerator of the page's coverage.
+   *
+   * Empty for a page that is not an [inventory], together with [coverageGaps] and [coverageTotal]:
+   * these three are the one fraction, and a consumer that read a numerator against a zero
+   * denominator would print `12 of 0`. Use [nodes] for an honest node query.
+   */
   public val linked: List<PageNode>
-    get() = nodes.filter { it.isComponent && !it.isUnlinked }
+    get() = if (!inventory) emptyList() else nodes.filter { it.isComponent && !it.isUnlinked }
 
   /** Nodes with no code behind them. Not the same as [coverageGaps] — see there. */
   public val unlinked: List<PageNode>
@@ -305,14 +350,18 @@ public data class DesignPage(
    * over-counting a container is visible and harmless; a gap that quietly disappears is neither.
    */
   public val coverageGaps: List<PageNode>
-    get() = nodes.filter { it.isComponent && it.isUnlinked }
+    get() = if (!inventory) emptyList() else nodes.filter { it.isComponent && it.isUnlinked }
 
   /**
    * How many components on this page a catalog could implement — the denominator behind "N of M
    * implemented", and deliberately not `nodes.size`.
+   *
+   * Zero for a page that is not an [inventory], which is how a consumer tells "this sheet is fully
+   * implemented" from "this sheet is not the kind of thing you implement": the first has a
+   * numerator, and the second has no fraction to state at all.
    */
   public val coverageTotal: Int
-    get() = linked.size + coverageGaps.size
+    get() = if (!inventory) 0 else linked.size + coverageGaps.size
 }
 
 /** A committed design-page import. */

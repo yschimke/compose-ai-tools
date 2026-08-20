@@ -3878,6 +3878,28 @@ class ServeHttpServer(
         publicRender = isPublic,
       )
     val skin = siteSkin()
+    // Which catalog's tracker a *pixel* bug belongs in, so the page can name and link it instead of
+    // telling the reporter to go and find the link on a preview. Always answerable on a top-level
+    // site — the hostname is the catalog — and answerable for any `/{system}/…` page too. Skipped
+    // when the only repo on offer is [ServeIssueReport.FALLBACK_REPO], which is this server's own:
+    // a paragraph pointing at the tracker the form already files against says nothing.
+    val catalogTarget = system?.let { id ->
+      val provenance = bundle?.provenance ?: seen?.provenance
+      val repo = ServeIssueReport.repoFor(bundle?.catalogSource, provenance)
+      if (repo == ServeBugReport.REPO) null
+      else
+        ServeWeb.BugReportCatalog(
+          system = id,
+          title =
+            bundle?.title?.takeIf { it.isNotBlank() }
+              ?: catalogMetaSeen[id]?.title?.takeIf { it.isNotBlank() }
+              ?: host?.label?.takeIf { it.isNotBlank() }
+              ?: id,
+          repo = repo,
+          issuesUrl = ServeIssueReport.action(repo),
+          site = siteSystem() != null,
+        )
+    }
     val report =
       ServeWeb.BugReport(
         action = ServeBugReport.action(),
@@ -3897,6 +3919,7 @@ class ServeHttpServer(
             "$basePath/render/${WebEscaping.urlEncodeSegment(it)}.png$overrideSuffix$gate"
           },
         login = githubAuth?.currentLogin(call),
+        catalog = catalogTarget,
       )
     markGeneration("static-page", "no-store")
     call.respondText(
@@ -7163,7 +7186,11 @@ class ServeHttpServer(
       // Lease (not just acquire) the tenant for the socket's whole life: a fallback-lane socket
       // opens
       // no stream, so without a lease the reaper could close its host mid-connection.
-      val lease = withContext(Dispatchers.IO) { sessions.lease(sessionId) }
+      //
+      // `connection = true`: this is the one hold that outlives any unit of work, so it is the one
+      // that has to earn its "busy" from activity rather than from being open (#4312). Every other
+      // caller takes the default request-scoped lease, which counts as busy until it is released.
+      val lease = withContext(Dispatchers.IO) { sessions.lease(sessionId, connection = true) }
       if (lease == null) {
         close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "no such session"))
         return

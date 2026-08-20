@@ -4380,18 +4380,23 @@ ${captureControlsHtml().prependIndent("          ")}
   data class ComponentSearchEntry(val previewId: String, val label: String, val keywords: String)
 
   /**
-   * Project a catalog's previews to the same component cards its landing page exposes. Theme, state
-   * and props renders collapse to their component's default card; genuine size variants stay
-   * separate and receive the same disambiguating suffix as the visible grid.
+   * Project a catalog's previews to the same component cards its landing page exposes. Theme,
+   * state, props AND breakpoint renders collapse to their component's default card, so the palette
+   * offers a component once rather than once per declared screen size — the same fold the grid and
+   * the viewer's component drawer apply (#4279). A render whose size the export never tagged can't
+   * be folded (there'd be no switcher to reach it from); those stay separate and keep the
+   * disambiguating size suffix below.
    */
   fun componentSearchEntries(
     previews: List<ServePreview>,
     darkFirst: Boolean = false,
   ): List<ComponentSearchEntry> {
+    val primarySizes = primarySizeByComponent(previews)
     val cards =
       groupPreviews(
         previews.filterNot {
-          it.renderFailure == null && (isNonDefaultState(it) || hasNonDefaultProps(it))
+          it.renderFailure == null &&
+            (isNonDefaultState(it) || hasNonDefaultProps(it) || isNonPrimarySize(it, primarySizes))
         }
       )
     val duplicateLabels =
@@ -6461,6 +6466,37 @@ ${captureControlsHtml().prependIndent("          ")}
     val renderUrl: String? = null,
     /** Present only when the visitor has a GitHub session on this server. */
     val login: String? = null,
+    /**
+     * The catalog the reported page belonged to, when it belonged to one. See [BugReportCatalog].
+     */
+    val catalog: BugReportCatalog? = null,
+  )
+
+  /**
+   * The catalog the reporter was looking at, so [bugReportPage] can send a *catalog* bug to the
+   * right tracker by name instead of telling the reporter to go and find the link themselves.
+   *
+   * The page's second paragraph has always said "wrong pixels are the catalog's bug, not this
+   * server's — go back to the preview and use its report link". That is good advice from the front
+   * door of a multi-catalog host, where the server genuinely cannot know which catalog is meant. It
+   * is poor advice on a **top-level site** ([ServeSites]), which publishes exactly one catalog and
+   * is the shape most visitors meet: `wear.preview.coo.ee` is the Wear catalog and nothing else,
+   * the page they came from may be a design page or an index with no preview to go back to, and the
+   * repository that owns the pixels is a lookup the server can do for them.
+   */
+  data class BugReportCatalog(
+    /** Served system id, e.g. `wear-m3`. */
+    val system: String,
+    /** The catalog's own display title, e.g. "Wear Material 3" — [system] when it declares none. */
+    val title: String,
+    /**
+     * `owner/repo` the catalog's pixels belong to, from its source else its delivery provenance.
+     */
+    val repo: String,
+    /** The new-issue form for [repo]. */
+    val issuesUrl: String,
+    /** True when the reporter was on this catalog's own hostname, so the whole site is it. */
+    val site: Boolean,
   )
 
   /**
@@ -6542,17 +6578,56 @@ ${captureControlsHtml().prependIndent("          ")}
             "      <img class=\"cp-report-shot\" src=\"${esc(it)}\" alt=\"the render this " +
             "report is about\" loading=\"lazy\">"
         } ?: ""
+    // Where a *catalog* bug belongs. Named and linked when the server knows the catalog — always,
+    // on a top-level site — and left as the generic "go back to the preview" advice when it does
+    // not. See [BugReportCatalog] for why the generic wording is wrong on a one-catalog hostname.
+    val catalog = report.catalog
+    val elsewhere =
+      (when {
+          catalog == null ->
+            """
+          <p class="cp-sub cp-report-elsewhere">Wrong <em>pixels</em> rather than a wrong page? A button
+            in the wrong colour, a state that is missing, a spec that does not match — that is the
+            <strong>catalog&rsquo;s</strong> bug, not this server&rsquo;s. Go back to the preview and use
+            its &ldquo;report a catalog issue&rdquo; link, which files against the repository whose
+            Kotlin declares that preview. A catalog bug filed here reaches people who cannot fix it.</p>
+          """
+          catalog.site ->
+            """
+          <p class="cp-sub cp-report-elsewhere">This site is the
+            <strong>${esc(catalog.title)}</strong> catalog and nothing else, so most of what you can
+            see here is drawn from it rather than by this server. Wrong <em>pixels</em> — a button
+            in the wrong colour, a state that is missing, a spec that does not match — are that
+            catalog&rsquo;s bug, and belong in
+            <a href="${esc(catalog.issuesUrl)}" rel="noopener">${esc(catalog.repo)}</a>. Filed here
+            they reach people who cannot fix them. A preview&rsquo;s own &ldquo;report a catalog
+            issue&rdquo; link is better still where you have one: it carries the preview, your
+            overrides and the render with it.</p>
+          """
+          else ->
+            """
+          <p class="cp-sub cp-report-elsewhere">The page you came from belongs to the
+            <strong>${esc(catalog.title)}</strong> catalog. Wrong <em>pixels</em> — a button in the
+            wrong colour, a state that is missing, a spec that does not match — are that
+            catalog&rsquo;s bug, not this server&rsquo;s, and belong in
+            <a href="${esc(catalog.issuesUrl)}" rel="noopener">${esc(catalog.repo)}</a>; a
+            preview&rsquo;s own &ldquo;report a catalog issue&rdquo; link files there too and
+            carries the preview, your overrides and the render with it. A catalog bug filed here
+            reaches people who cannot fix it.</p>
+          """
+        })
+        // Re-indented to the template's own level: the outer `trimIndent()` runs on the string
+        // AFTER substitution, so a block pasted in at column 0 would make the common indent 0 and
+        // leave every other line of the page's markup indented.
+        .trimIndent()
+        .replace("\n", "\n      ")
     val body =
       """
       <h1 class="cp-head">Report a bug in the preview server</h1>
       <p class="cp-sub">This files against <a href="https://github.com/${esc(report.repo)}"
         >${esc(report.repo)}</a>, the repository that ships <code>compose-preview serve</code>$who
         — the page you were on, its controls, and the render lanes behind them.</p>
-      <p class="cp-sub cp-report-elsewhere">Wrong <em>pixels</em> rather than a wrong page? A button
-        in the wrong colour, a state that is missing, a spec that does not match — that is the
-        <strong>catalog&rsquo;s</strong> bug, not this server&rsquo;s. Go back to the preview and use
-        its &ldquo;report a catalog issue&rdquo; link, which files against the repository whose
-        Kotlin declares that preview. A catalog bug filed here reaches people who cannot fix it.</p>
+      $elsewhere
 
       <form class="cp-report-bug-form" method="get" target="_blank" rel="noopener"
         action="${esc(report.action)}">
@@ -8375,11 +8450,17 @@ $rows
         // sheet: a private component and a variant-set container are furniture, and counting them
         // reports a complete family as one short. See `DesignPage.coverageGaps`.
         val linked = page.linked.size
+        // A sheet that is not a component inventory — the kit's icon page — has no fraction to
+        // state, and stating `0 of 499` was the loudest wrong number on this index. Say what the
+        // sheet is instead; the card still opens it.
+        val count =
+          if (!page.inventory) "${page.nodes.size} nodes · not a component inventory"
+          else "$linked of ${page.coverageTotal} components implemented"
         """
         <a class="cp-page-card" href="$basePath/pages/$id$q">
           <img loading="lazy" alt="" src="$basePath/pages/$id.svg$q">
           <strong>${WebEscaping.htmlEscape(page.name)}</strong>
-          <span class="cp-page-count">$linked of ${page.coverageTotal} components implemented</span>
+          <span class="cp-page-count">${WebEscaping.htmlEscape(count)}</span>
         </a>
         """
           .trimIndent()
@@ -9020,6 +9101,10 @@ $cards
     // a private component and a variant-set container are furniture, and counting them reports a
     // complete family as one short. See `DesignPage.coverageGaps`.
     val total = page.coverageTotal
+    // See the pages index: a non-inventory sheet says what it is rather than scoring itself.
+    val coverageText =
+      if (!page.inventory) "${page.nodes.size} nodes · not a component inventory"
+      else "$linked of $total components implemented"
     val figmaLink =
       ServeFigmaSpec.url(fileKey, page.nodeId)
         ?.let {
@@ -9039,7 +9124,9 @@ $cards
     return document(
       title = "${page.name} — page",
       unfurlTitle = "$heading — ${page.name}",
-      unfurlDescription = "$linked of $total components on this page are implemented",
+      unfurlDescription =
+        if (!page.inventory) "${page.nodes.size} nodes on this page; not a component inventory"
+        else "$linked of $total components on this page are implemented",
       unfurl = unfurl,
       version = version,
       navSuffix = navSuffix,
@@ -9051,7 +9138,7 @@ $cards
         """
         <div id="cp-design-page">
           <h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(page.name)}${compactTrustBadge(trust)}</h1>
-          <p class="cp-sub">$linked of $total components implemented$figmaLink</p>
+          <p class="cp-sub">${WebEscaping.htmlEscape(coverageText)}$figmaLink</p>
           <div class="cp-page-controls">
             <div class="cp-page-lane" role="radiogroup" aria-label="What the sheet shows">
               <label><input type="radio" name="cp-page-lane" value="code" data-cp-page-lane checked>
@@ -10609,13 +10696,6 @@ $cards
           "<option value=\"${lane.value}\"$disabledAttr>" +
             "${WebEscaping.htmlEscape(text)}</option>"
         }
-    // The chip's opening label: the lane it opens on whenever something else on the row can put a
-    // different lane on the stage (the renderer combo, or the design-spec chip), and the plain
-    // "Live preview" invitation when this chip is the only lane control there is — with nothing to
-    // disambiguate against, the invitation reads better than "Snapshot".
-    val primaryLaneLabel =
-      if (laneSelectHtml.isEmpty() && specChipHtml.isEmpty()) "Live preview"
-      else lanes.firstOrNull { it.value == defaultLane }?.label ?: "Live preview"
     // The step from "look at one player" to "look at them all": the format-comparison page, focused
     // on this preview and opened on its Remote Compose lane. A subtle text link rather than another
     // chip — it navigates away, so it deliberately stays out of the picker's affordance set.
@@ -10759,6 +10839,22 @@ $cards
     // dot and the pressed flag; this string is what the server-rendered markup opens on, and it
     // matches what that function computes for the initial (static, not-yet-interactive) state —
     // including the honest wording for a session with no live lane to enter at all.
+    // The chip's opening label: the lane it opens on whenever something else on the row can put a
+    // different lane on the stage (the renderer combo, or the design-spec chip). With no such
+    // control the chip is the only lane affordance on the row and there is nothing to disambiguate
+    // against, so it names the STATE the stage is in instead — and which word does that depends on
+    // whether the chip is about to carry a verb:
+    //
+    //   - a lane to enter → "Snapshot", so the chip reads "Snapshot ▸ Live": a state and the switch
+    //     out of it. The old wording put the destination in the label, which read "Live preview ▸
+    //     Live" the moment the verb arrived — the chip naming the same lane twice.
+    //   - nothing to enter → "Live preview", the plain (disabled) invitation. There is no verb to
+    //     pair with here, and "Snapshot" alone beside a dead dot says nothing about what the chip
+    //     is for.
+    val primaryLaneLabel =
+      if (laneSelectHtml.isEmpty() && specChipHtml.isEmpty())
+        if (liveToggleDis.isEmpty()) "Snapshot" else "Live preview"
+      else lanes.firstOrNull { it.value == defaultLane }?.label ?: "Live preview"
     val liveToggleTitleAttr =
       " title=\"" +
         WebEscaping.htmlEscape(
@@ -10768,6 +10864,25 @@ $cards
             else "Static snapshot — this session has no live lane to switch to"
         ) +
         "\""
+    // The chip has to read as a SWITCH, not a caption. Its label NAMES the lane on the stage
+    // ("Java", "Live preview") — a noun, sitting beside a status dot, which is the grammar of a
+    // readout rather than of a control, and that is why a visitor never learns it is clickable.
+    // The verb supplies the missing half by naming the DESTINATION instead ("Java ▸ Live"), so the
+    // chip states where a click goes without the label having to stop naming where it already is.
+    //
+    // `aria-hidden`, deliberately: the accessible name stays the lane's own name, and the
+    // `aria-pressed` flag plus the tooltip already carry the switch semantics. Without it the
+    // button announces "Java ▸ Live, toggle button, not pressed" — the arrow read aloud as a name.
+    //
+    // Empty when there is no lane to enter: a disabled chip must not promise a destination it
+    // cannot reach. `updateLiveToggle()` re-derives this on every transition from the same state
+    // that decides the dot, the tooltip and the stage hint — so the two halves of the chip can
+    // never disagree about which way the switch is pointing.
+    val liveToggleVerb =
+      if (liveToggleDis.isEmpty())
+        "            <span class=\"cp-live-toggle-verb\" id=\"cp-live-toggle-verb\" " +
+          "aria-hidden=\"true\">▸ Live</span>\n"
+      else ""
     val liveToggleButton =
       "<button type=\"button\" id=\"cp-live-toggle\" class=\"cp-live-toggle\" " +
         "aria-pressed=\"false\" " +
@@ -10780,6 +10895,7 @@ $cards
         "            <span class=\"cp-live-dot\" aria-hidden=\"true\"></span>\n" +
         "            <span id=\"cp-live-toggle-label\">" +
         "${WebEscaping.htmlEscape(primaryLaneLabel)}</span>\n" +
+        liveToggleVerb +
         "          </button>"
     // When sign-in is the ONLY thing between the visitor and the daemon lane, offer the sign-in
     // itself rather than a dead control.
@@ -10854,6 +10970,25 @@ $cards
               ") need the live server, not a published catalog. " +
               "<a href=\"$LOCAL_SERVER_DOCS\">Enable a local preview server.</a></div>"
         }
+    // The stage's own invitation into the live lane.
+    //
+    // Until this, the only route in was the chip in the toolbar: nothing on the preview itself said
+    // the picture could be made interactive, and an affordance a visitor has to hover a toolbar to
+    // discover is one most of them never find. The grid solved exactly this for its cards with
+    // `.cp-live-hint` (`CatalogLive.ts`); that vocabulary never reached the single-preview page, so
+    // this reuses the same badge — same shape, same placement — and only the wording differs,
+    // because the gesture does. One click here, a long press there; a hint naming the wrong gesture
+    // would be worse than no hint.
+    //
+    // Rendered only when there is genuinely a lane to enter (the same condition the chip is enabled
+    // on) and never in the component browser, which carries no live toggle at all. It stays hidden
+    // until `updateLiveToggle()` reveals it, which is deliberate: the click it advertises is wired
+    // in `viewer.ts`, so a page whose script never ran must not offer a gesture nothing implements.
+    val stageLiveHint =
+      if (componentBrowser || liveToggleDis.isNotEmpty()) ""
+      else
+        "<span class=\"cp-live-hint cp-stage-live-hint\" id=\"cp-stage-live-hint\" " +
+          "aria-hidden=\"true\">click for live</span>"
     val backendLabel = WebEscaping.htmlEscape(snapshotBackend ?: "Snapshot")
     val liveLabel = WebEscaping.htmlEscape(liveBackend ?: "Live")
     // One Theme axis replaces the separate Day/Night + app-theme controls. The two defaults map to
@@ -11454,7 +11589,7 @@ $cards
       $historyInlineHtml
       <div class="cp-viewer"$bgThemeAttr$alwaysDarkAttr$irReplayAttr$replayThemesAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY" data-fold-scope="${foldStorageScope(sessionId, basePath)}"$wasmAttr$rcAttr$historyAttrs$pinnedAttr>
         $navDrawer
-        <div class="cp-stage"><cp-backend-badge class="cp-backend" id="cp-backend" role="status" aria-live="polite"></cp-backend-badge><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$motionImg$motionPlayer$sourcePanelHtml$specCompare$inspectLayerHtml<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+        <div class="cp-stage"><cp-backend-badge class="cp-backend" id="cp-backend" role="status" aria-live="polite"></cp-backend-badge><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$motionImg$motionPlayer$sourcePanelHtml$specCompare$inspectLayerHtml$stageLiveHint<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         $inspectLegendHtml
         <div class="cp-controls" id="cp-controls">
           <!-- No "Appearance" group. Its only ever-visible control was a Background select
@@ -11582,15 +11717,22 @@ $cards
   ): String {
     // Collapse to ONE entry per component — the same folding the landing grid does — so the nav
     // reads as a list of components, not of every baked state/theme/props/size permutation
-    // (`button-filled` once, not ~14 times). Each entry links to the component's render in the
-    // viewer's current [theme] (falling back to its default when it has no such variant); the
-    // viewer's own state/variant switchers reach that component's other axes. `aria-current` pins
-    // the component being viewed, even when the current preview is a folded (non-default) variant
-    // that has no card of its own.
+    // (`button-filled` once, not ~14 times). The SIZE axis folds here for the same reason it folds
+    // on the grid (#4279): a catalog documenting five breakpoints otherwise fills the drawer with
+    // five identically-named rows per full-screen component — "Alert Dialog" five times over, with
+    // nothing in the row to say which watch each one is. Each entry links to the component's render
+    // in the viewer's current [theme] (falling back to its default when it has no such variant);
+    // the viewer's own state/variant/size switchers reach that component's other axes.
+    // `aria-current` pins the component being viewed, even when the current preview is a folded
+    // (non-default) variant that has no card of its own.
+    val navPrimarySizes = primarySizeByComponent(siblings)
     val representatives =
       groupPreviews(
           siblings.filterNot {
-            it.renderFailure == null && (isNonDefaultState(it) || hasNonDefaultProps(it))
+            it.renderFailure == null &&
+              (isNonDefaultState(it) ||
+                hasNonDefaultProps(it) ||
+                isNonPrimarySize(it, navPrimarySizes))
           }
         )
         .map {

@@ -55,6 +55,7 @@ class ServeDesignPageRoutingTest {
       File(dir, "${ServeDesignPageStore.DIRECTORY}/${ServeDesignPageStore.INDEX_FILE}")
         .writeText(pages)
       File(dir, "${ServeDesignPageStore.DIRECTORY}/shape.svg").writeText(svg)
+      File(dir, "${ServeDesignPageStore.DIRECTORY}/icons.svg").writeText(svg)
     }
     return ServeBundleHost(dir, label = label)
   }
@@ -77,7 +78,17 @@ class ServeDesignPageRoutingTest {
          {"nodeId":"1:12","name":"Shape=Gem","depth":3,
           "ref":"figma:ocdacdEsnHipMJD3egzxKb/1:12","link":"unlinked"},
          {"nodeId":"1:9","name":".Header","depth":2,
-          "ref":"figma:ocdacdEsnHipMJD3egzxKb/1:9","link":"unlinked"}]}]}
+          "ref":"figma:ocdacdEsnHipMJD3egzxKb/1:9","link":"unlinked"},
+         {"nodeId":"1:20","name":"Base / Corner","depth":2,"inventory":false,
+          "ref":"figma:ocdacdEsnHipMJD3egzxKb/1:20","link":"unlinked"}]},
+      {"id":"icons","name":"Icons","nodeId":"58548:9000","inventory":false,
+       "frame":{"width":1200,"height":800},
+       "image":{"uri":"icons.svg","format":"svg"},
+       "nodes":[
+         {"nodeId":"2:1","name":"Icon=Alarm","depth":2,
+          "ref":"figma:ocdacdEsnHipMJD3egzxKb/2:1","link":"unlinked"},
+         {"nodeId":"2:2","name":"Icon=Bell","depth":2,
+          "ref":"figma:ocdacdEsnHipMJD3egzxKb/2:2","link":"unlinked"}]}]}
     """
       .trimIndent()
 
@@ -125,6 +136,28 @@ class ServeDesignPageRoutingTest {
     // missing when one was.
     assertTrue(body.contains("2 of 3 components implemented"), body)
     assertTrue(body.contains("/m3-catalog/pages/shape"))
+  }
+
+  /**
+   * The kit's own base parts and a sheet that is not a component inventory, over the wire.
+   *
+   * `Base / Corner` is a sixth node on the Shape sheet and the count does not move: a base part is
+   * what a published set is assembled from, not something a catalog owes. And the Icons sheet — 499
+   * nodes in the real kit — states what it is instead of reporting `0 of 499`, which was a third of
+   * the whole kit's apparent gap and drowned every real one.
+   */
+  @Test
+  fun `base parts and a non-inventory sheet make no coverage claim`() {
+    val (_, _, index) = get("/m3-catalog/pages")
+    assertTrue(index.contains("2 of 3 components implemented"), index)
+    assertFalse(index.contains("0 of 2 components implemented"), index)
+    assertTrue(index.contains("2 nodes · not a component inventory"), index)
+
+    val (code, _, page) = get("/m3-catalog/pages/icons")
+    assertEquals(200, code)
+    assertTrue(page.contains("2 nodes · not a component inventory"), page)
+    // Still drawn and still browsable — this changes what the sheet claims, not what it shows.
+    assertTrue(page.contains("data-node-id=\"1:1\""), page)
   }
 
   @Test

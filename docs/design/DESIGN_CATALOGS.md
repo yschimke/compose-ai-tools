@@ -875,6 +875,9 @@ host folds the non-primary ones onto that component's single card — the same t
 non-default `state` or props variant gets — with every other breakpoint one hop away in
 the viewer's component subtree. The card is drawn at the component's **first declared**
 breakpoint, which is also the size a design catalog's references are mapped against.
+*Wherever* is literal: the landing grid, the viewer's **Components** drawer, and the
+front door's component palette all fold the same three axes, so a component is named once
+in each of them rather than once per screen size in one list and once overall in another.
 
 That fold is what the `size` tag buys, and it is worth stating because its absence was
 visible: before the host read the tag, wear-m3-catalog's five kit sizes published five

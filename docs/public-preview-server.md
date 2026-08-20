@@ -806,13 +806,20 @@ open lease **and its holder is still doing something**.
 That last qualifier is the fix for #4312. A viewer WebSocket holds a lease for the socket's whole
 life, and the clock used to read any held lease as busy, so a single browser tab left open on a
 catalog pinned it at *busy* indefinitely whether or not anyone was looking — measured on the public
-box, eight consecutive minutes with a lease held, one active stream and zero renders. A lease now
-stops suppressing the clock once its holder has been quiet for 30s
-(`ServeSessionRegistry.DEFAULT_LEASE_BUSY_MILLIS`, deliberately below the gate's own 60s window),
-while still keeping the session resident so the reaper cannot close a live socket's host
-mid-connection. Activity means the lease being taken, a client message arriving on its socket, or
-any request for that session. Interrupting a pass costs a returning visitor at most one render
-(`OPTIMIZER_YIELD_MILLIS`), which is why the trade is one-sided.
+box, eight consecutive minutes with a lease held, one active stream and zero renders. Leases now
+come in two kinds:
+
+- A **connection** lease (the viewer WebSocket) keeps its session resident unconditionally — the
+  reaper must never close a live socket's host mid-connection — but stops suppressing the idle clock
+  once its holder has been quiet for 30s (`ServeSessionRegistry.DEFAULT_LEASE_BUSY_MILLIS`,
+  deliberately below the gate's own 60s window). Activity means the lease being taken, a client
+  message arriving on its socket, or any request for that session. Interrupting a pass costs a
+  returning visitor at most one render (`OPTIMIZER_YIELD_MILLIS`), which is why the trade is
+  one-sided.
+- A **request-scoped** lease (`withLeasedSession`, the default) counts as busy until it is released,
+  however long that takes. A cold `/render` is 30-70s and a `/bundle.zip` can be longer, and keeping
+  background work off exactly those is what the gate is for — ageing them out would report the box
+  as quiet while it is still rendering for someone.
 
 `--exit-when-idle` deliberately keeps the strict rule (`connectionIdleMillis()`): standing a
 background pass down under an idle tab costs that tab one render, while shutting the process down
