@@ -250,6 +250,26 @@ class ServeHttpServer(
    */
   private val docStore: ServeDocStore? = null,
   /**
+   * When non-null, enables the **image** lane: `POST /images` ingests a rendered preview PNG and
+   * `GET /i/{id}.png` serves it back at an embeddable URL. Supplied by `--accept-images`.
+   *
+   * Its sibling above is an anonymous drop-box; this one is not. Uploading requires a GitHub
+   * account with access to the operator's repository ([imageUploadAuth]), which `ServeCommand`
+   * refuses to start the lane without — so the pair is always wired together, and "the store exists
+   * but nothing gates it" is unrepresentable here rather than merely unlikely. Reads are open,
+   * because the whole purpose is a URL GitHub's image proxy can fetch on behalf of a PR body; the
+   * unguessable id is the access control. See [ServeImageStore].
+   */
+  private val imageStore: ServeImageStore? = null,
+  /** Who may upload to [imageStore]. Non-null exactly when that store is; see its KDoc. */
+  private val imageUploadAuth: ServeImageUploadAuth? = null,
+  /**
+   * Per-caller budget on `POST /images`, keyed by GitHub login. Bounds both the obvious abuse (one
+   * account filling the store) and the less obvious one (each uncached upload costs the host two
+   * GitHub API calls). Null ⇒ unlimited, which is right for a single-user local host.
+   */
+  private val imageUploadLimiter: ServeRateLimiter? = null,
+  /**
    * When non-null, enables the **playground** lane: `POST /api/{version}/compiler/run` compiles a
    * snippet against a catalog classpath and returns diagnostics + an expiring preview token.
    * Supplied by `--playground-bundle`. Because the lane exists to run **user-supplied code**, it is
@@ -793,6 +813,17 @@ class ServeHttpServer(
         // or Lottie — see [ServeDocFormats]) and hand back an expiring permalink that plays it in
         // the browser. Registered only when the operator opts in. Constant first segments, so they
         // outscore the `/{system}` catch-all in Ktor routing.
+        // The image lane (`--accept-images`): ingest a rendered preview PNG from an authenticated
+        // GitHub collaborator and serve it back at an embeddable URL, so an agent can put real
+        // before/after pixels in a PR body from a box with no `gh` and no push rights. Two routes
+        // and no page: the caller is a script, and a browse surface over other people's uploads is
+        // the one thing an unguessable-link store must not grow. Registered only when the operator
+        // opts in; constant first segments, so they outscore the `/{system}` catch-all.
+        if (imageStore != null && imageUploadAuth != null) {
+          post("/images") { handleImageUpload(imageStore, imageUploadAuth) }
+          get("/i/{id}") { handleImage(imageStore) }
+        }
+
         docStore?.let { store ->
           get("/docs") { handleDocUploadPage(store) }
           post("/docs") { handleDocUpload(store) }
@@ -2100,6 +2131,172 @@ class ServeHttpServer(
     // active (e.g. HTML) served from this origin.
     call.response.headers.append("X-Content-Type-Options", "nosniff")
     call.respondBytes(doc.bytes, ContentType.parse(doc.format.contentType))
+  }
+
+  // ---- The image lane (`--accept-images`) -----------------------------------------------------
+
+  /**
+   * `POST /images?name=<label>` (body = the image bytes): ingest a rendered preview and answer with
+   * the URL to embed.
+   *
+   * **Authenticated, always.** The caller presents `Authorization: Bearer <github-token>` and must
+   * come back as a collaborator on the gating repository ([ServeImageUploadAuth]) — on a `--public`
+   * host too, where every browsing surface is open. This is the one write surface on the server
+   * that hands out hosting under the operator's own name, so "anonymous" is not one of its
+   * postures.
+   *
+   * `?name=` is a display label only — never a path, never the format decision (the store
+   * content-sniffs).
+   */
+  private suspend fun RoutingContext.handleImageUpload(
+    store: ServeImageStore,
+    auth: ServeImageUploadAuth,
+  ) {
+    if (rejectBadToken()) return
+    val login = authorizeImageUpload(auth) ?: return
+    // Per-caller budget, keyed by the *verified* login rather than by client address: the address
+    // of an agent in CI is shared or ephemeral, and the identity is the thing we actually know.
+    val permit =
+      when (val decision = imageUploadLimiter?.tryAcquire(login)) {
+        is ServeRateLimiter.Decision.Throttled -> {
+          call.response.headers.append(
+            HttpHeaders.RetryAfter,
+            decision.retryAfterSeconds.toString(),
+          )
+          call.respondText(decision.reason, status = HttpStatusCode.TooManyRequests)
+          return
+        }
+        is ServeRateLimiter.Decision.Admitted -> decision
+        null -> null
+      }
+    try {
+      val name = call.request.queryParameters["name"]
+      // Cap the body as it streams in — receiving it whole first would let a client OOM the server
+      // regardless of the store's own cap.
+      val body =
+        withContext(Dispatchers.IO) { call.receiveStream().use { readCapped(it, MAX_IMAGE_BYTES) } }
+          ?: run {
+            call.respondText(
+              "image exceeds ${MAX_IMAGE_BYTES / (1024 * 1024)}MB",
+              status = HttpStatusCode.PayloadTooLarge,
+            )
+            return
+          }
+      // isSecurityChecked = true: the identity gate above cleared this caller. The store still
+      // defends in depth (format sniff, size + count caps, TTL).
+      when (
+        val result =
+          withContext(Dispatchers.IO) {
+            store.add(name, body, uploadedBy = login, isSecurityChecked = true)
+          }
+      ) {
+        is ServeImageStore.Result.Ok -> {
+          val image = result.image
+          // Absolute, because the caller is about to paste it somewhere this server will never see
+          // — a PR body renders on github.com, where a relative path means nothing. Built from the
+          // forwarded origin, so a host behind Caddy hands back its public https:// name.
+          val url = externalOrigin() + image.path
+          val size = image.dimensions
+          call.respondText(
+            JSON.encodeToString(
+              ImageAcceptedResponse.serializer(),
+              ImageAcceptedResponse(
+                id = image.id,
+                name = image.name,
+                format = image.format.label,
+                formatId = image.format.id,
+                bytes = image.sizeBytes,
+                width = size?.width,
+                height = size?.height,
+                path = image.path,
+                url = url,
+                // The line the caller actually wanted. Handing back the finished markdown is not a
+                // convenience: an agent that assembles it itself is one backtick away from the
+                // `![alt](`url`)` shape that renders as literal text and silently loses the
+                // evidence the upload existed to provide.
+                markdown = "![${image.name}]($url)",
+                uploadedBy = image.uploadedBy,
+                expiresIn = ServeWeb.humanDuration(store.remainingSeconds(image)),
+                expiresAtEpochSeconds = image.expiresAtMillis / 1000,
+              ),
+            ),
+            ContentType.Application.Json,
+            HttpStatusCode.Created,
+          )
+        }
+        is ServeImageStore.Result.Failed ->
+          call.respondText(result.reason, status = HttpStatusCode.BadRequest)
+      }
+    } finally {
+      permit?.release()
+    }
+  }
+
+  /**
+   * The verified GitHub login behind this upload, or null once the refusal has been written. Split
+   * out so the route reads as "who is this, then do the work" and the two refusal shapes (no
+   * credential vs. not good enough) stay in one place.
+   */
+  private suspend fun RoutingContext.authorizeImageUpload(auth: ServeImageUploadAuth): String? {
+    val header = call.request.headers[HttpHeaders.Authorization]
+    val bearer = header?.takeIf { it.startsWith("Bearer ", ignoreCase = true) }?.substring(7)
+    return when (val identity = auth.identify(bearer)) {
+      is ServeImageUploadAuth.Identity.Ok -> identity.login
+      is ServeImageUploadAuth.Identity.Missing -> {
+        call.response.headers.append(
+          HttpHeaders.WWWAuthenticate,
+          "Bearer realm=\"compose-preview\"",
+        )
+        call.respondText(
+          "Uploading preview images requires a GitHub token with access to ${auth.repository}. " +
+            "Send it as: Authorization: Bearer <token>  (e.g. \"\$(gh auth token)\").",
+          status = HttpStatusCode.Unauthorized,
+        )
+        null
+      }
+      is ServeImageUploadAuth.Identity.Refused -> {
+        call.respondText(
+          identity.reason,
+          status = HttpStatusCode.fromValue(identity.status),
+        )
+        null
+      }
+    }
+  }
+
+  /**
+   * `GET /i/{id}.png`: the image itself.
+   *
+   * **Deliberately ungated, even on a token-gated host**, and this is the one asymmetry in the lane
+   * worth stating plainly. The document lane appends the host token to the permalink it hands back,
+   * which is right for a link pasted into a chat — but this URL's destination is a *pull request
+   * body*, so the same trick would publish the server's browse token to everyone who can read the
+   * PR. And GitHub fetches embedded images through its own proxy, anonymously: a gated URL would
+   * never paint. So the 128-bit id carries the whole grant, exactly as it does for `/d/<id>`, and
+   * the token stays out of it.
+   */
+  private suspend fun RoutingContext.handleImage(store: ServeImageStore) {
+    val raw = call.parameters["id"] ?: ""
+    // `<id>.png` is one path segment. Split the suffix off and hand it to the store, which decides
+    // whether it is the right one for what it holds.
+    val dot = raw.lastIndexOf('.')
+    val id = if (dot > 0) raw.substring(0, dot) else raw
+    val extension = if (dot > 0) raw.substring(dot) else null
+    val image = if (ServeCapabilityId.isWellFormed(id)) store.get(id, extension) else null
+    if (image == null) {
+      call.respondText("not found", status = HttpStatusCode.NotFound)
+      return
+    }
+    // The id is content-addressed enough to be immutable *while it lives*: the bytes behind it
+    // never change, so a proxy may keep them — but only up to the link's own expiry, never past it.
+    markGeneration("image", "public, max-age=${store.remainingSeconds(image).coerceAtLeast(1)}")
+    // Client-supplied bytes: pin the declared type so no browser can sniff them into something
+    // active (e.g. HTML) served from this origin.
+    call.response.headers.append("X-Content-Type-Options", "nosniff")
+    call.respondBytes(
+      image.bytes,
+      ContentType.parse(ServeImageFormats.contentTypeOf(image.format, image.bytes)),
+    )
   }
 
   /** The live document this request addresses, or null when the id is malformed/expired/unknown. */
@@ -4638,8 +4835,11 @@ class ServeHttpServer(
       return "${if (open) "open" else "closed"} · idle ${idle / 1000}s · $needs"
     }
 
-    fun toResponse(): StatusResponse =
-      StatusResponse(
+    fun toResponse(): StatusResponse {
+      // One pass over the image store: it sweeps expired entries as it counts, so reading it twice
+      // is both wasted work and two answers that can disagree.
+      val imageOccupancy = imageStore?.occupancy()
+      return StatusResponse(
         version = BUNDLE_VERSION,
         public = isPublic,
         status = if (overallOk) "ok" else "degraded",
@@ -4683,6 +4883,11 @@ class ServeHttpServer(
             acceptBundles = acceptBundlesEnabled,
             acceptDocs = docStore != null,
             docTtlSeconds = docStore?.ttlSeconds ?: 0,
+            acceptImages = imageStore != null,
+            imageTtlSeconds = imageStore?.ttlSeconds ?: 0,
+            imageUploadRepository = imageUploadAuth?.repository,
+            imagesHeld = imageOccupancy?.count ?: 0,
+            imageBytesHeld = imageOccupancy?.totalBytes ?: 0,
             catalogRefreshSeconds = catalogRefreshSeconds,
             maxConcurrentRenders = renderSlots,
             liveSeats = liveSeats.totalPermits,
@@ -4817,6 +5022,7 @@ class ServeHttpServer(
             )
           },
       )
+    }
 
     fun toView(): ServeWeb.StatusView {
       val seatsText =
@@ -4932,6 +5138,14 @@ class ServeHttpServer(
             "Accept documents",
             if (docStore == null) "off"
             else "on (${ServeWeb.humanDuration(docStore.ttlSeconds)} links)",
+          ),
+          // Deliberately short: this column is narrow, and a value carrying the gating repository
+          // overruns its own label. Who may upload is on `/status.json`, in the startup log, and in
+          // the refusal an unauthenticated caller gets back.
+          ServeWeb.Stat(
+            "Accept images",
+            if (imageStore == null || imageUploadAuth == null) "off"
+            else "on (${ServeWeb.humanDuration(imageStore.ttlSeconds)} links)",
           ),
         )
       return ServeWeb.StatusView(
@@ -7721,6 +7935,12 @@ class ServeHttpServer(
     /** Max accepted upload-body size for `POST /docs` (matches the document store's own cap). */
     private val MAX_DOC_BYTES: Long = ServeDocStore.DEFAULT_MAX_DOC_BYTES.toLong()
 
+    /**
+     * Request-body ceiling on `POST /images`, enforced as the body streams in — the store's own
+     * per-image cap is the same number, but it only sees bytes that were already buffered.
+     */
+    private val MAX_IMAGE_BYTES: Long = ServeImageStore.DEFAULT_MAX_IMAGE_BYTES.toLong()
+
     /** Max accepted body size for `POST /api/{v}/compiler/run` — a snippet is small. */
     private val MAX_PLAYGROUND_BYTES: Long = 256L * 1024
 
@@ -8179,6 +8399,18 @@ private data class ConfigDto(
   val acceptDocs: Boolean = false,
   /** TTL of a document permalink in seconds; `0` when the document lane is off. */
   val docTtlSeconds: Long = 0,
+  /** Whether `POST /images` exists on this host at all (`--accept-images`). */
+  val acceptImages: Boolean = false,
+  /** TTL of an uploaded image link in seconds; `0` when the image lane is off. */
+  val imageTtlSeconds: Long = 0,
+  /**
+   * The repository an uploader must have access to. Non-null exactly when [acceptImages] is set —
+   * the lane cannot start without one, so this doubles as the answer to "gated on what?".
+   */
+  val imageUploadRepository: String? = null,
+  /** Live uploaded images, and what they occupy — the lane's whole footprint is heap. */
+  val imagesHeld: Int = 0,
+  val imageBytesHeld: Long = 0,
   /** Catalog auto-refresh interval; `0` ⇒ disabled. */
   val catalogRefreshSeconds: Long,
   val maxConcurrentRenders: Int,
@@ -8583,6 +8815,39 @@ private data class DocAcceptedResponse(
   /** Relative permalink (`/d/<id>`) — absolute-ise against the host you posted to. */
   val url: String,
   /** Human time left on the link, e.g. `1h`. */
+  val expiresIn: String,
+  val expiresAtEpochSeconds: Long,
+)
+
+/**
+ * What `POST /images` answers with. Two URL fields on purpose: [path] for a client that wants to
+ * address this host itself, and [url] — absolute, built from the forwarded origin — for the case
+ * the lane exists for, where the string is about to be pasted somewhere this server is a stranger.
+ */
+@Serializable
+private data class ImageAcceptedResponse(
+  val schema: String = "compose-preview-serve/image/v1",
+  /** The link id — the capability. */
+  val id: String,
+  /** The display label (the sanitised upload name), also the alt text in [markdown]. */
+  val name: String,
+  /** Human format name ([ServeImageFormat.label]). */
+  val format: String,
+  /** Wire format id ([ServeImageFormat.id]) for a programmatic client. */
+  val formatId: String,
+  val bytes: Int,
+  /** Intrinsic pixel size when the image's header declared one. */
+  val width: Int? = null,
+  val height: Int? = null,
+  /** Relative link (`/i/<id>.png`). */
+  val path: String,
+  /** Absolute link — what goes in a PR body. */
+  val url: String,
+  /** The finished embed line, ready to paste: `![name](url)`. */
+  val markdown: String,
+  /** The GitHub login this upload was attributed to. */
+  val uploadedBy: String,
+  /** Human time left on the link, e.g. `7d`. */
   val expiresIn: String,
   val expiresAtEpochSeconds: Long,
 )

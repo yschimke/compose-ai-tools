@@ -9,6 +9,7 @@ import ee.schimke.composeai.cli.serve.DaemonStartupLog
 import ee.schimke.composeai.cli.serve.FileOptimizerHostCoordinator
 import ee.schimke.composeai.cli.serve.GenerationInputs
 import ee.schimke.composeai.cli.serve.GitWorktrees
+import ee.schimke.composeai.cli.serve.GithubTokenUploadAuth
 import ee.schimke.composeai.cli.serve.GradleRevisionBuilder
 import ee.schimke.composeai.cli.serve.LinuxHostResourceSampler
 import ee.schimke.composeai.cli.serve.LiveSeatLimiter
@@ -55,6 +56,9 @@ import ee.schimke.composeai.cli.serve.ServeGithubAuth
 import ee.schimke.composeai.cli.serve.ServeGithubAuthConfig
 import ee.schimke.composeai.cli.serve.ServeHost
 import ee.schimke.composeai.cli.serve.ServeHttpServer
+import ee.schimke.composeai.cli.serve.ServeImageFormats
+import ee.schimke.composeai.cli.serve.ServeImageStore
+import ee.schimke.composeai.cli.serve.ServeImageUploadAuth
 import ee.schimke.composeai.cli.serve.ServeMdnsAdvertiser
 import ee.schimke.composeai.cli.serve.ServeModuleRef
 import ee.schimke.composeai.cli.serve.ServeParameterRows
@@ -679,6 +683,45 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
       ?.map { it.trim().lowercase() }
       ?.filter { it.isNotEmpty() }
       ?.toSet() ?: emptySet()
+
+  /**
+   * Image ingestion (`--accept-images`): enable `POST /images` so an **agent preparing a pull
+   * request** can hand the server a rendered preview PNG and get back `/i/<id>.png` — a URL it can
+   * embed in the PR body from a box with neither a GitHub CLI nor push rights to a capture branch.
+   * Off by default.
+   *
+   * Unlike `--accept-docs`, this lane is **never anonymous**: uploading requires a GitHub token
+   * whose owner has access to [imageUploadRepository], on a `--public` host as much as on a private
+   * one. Reading is open, because the point of the URL is that GitHub's image proxy can fetch it.
+   * The whole rationale is in [ServeImageStore].
+   */
+  private val acceptImages: Boolean = "--accept-images" in args
+
+  /** How long an uploaded image's link lives (`--image-ttl <seconds>`); default 7 days. */
+  private val imageTtlSeconds: Long =
+    args.flagValue("--image-ttl")?.toLongOrNull()?.takeIf { it > 0 }
+      ?: ServeImageStore.DEFAULT_TTL_SECONDS
+
+  /**
+   * The repository an uploader must have access to (`--image-upload-repo <owner/repo>`), falling
+   * back to the GitHub-auth gating repo when the operator already configured one. There is no
+   * default beyond that and the lane refuses to start without it: a gate whose repository was
+   * guessed is not a gate.
+   */
+  private val imageUploadRepository: String? =
+    args.flagValue("--image-upload-repo")?.takeIf { it.isNotBlank() } ?: githubAuthRepo
+
+  /**
+   * Whether the image lane will actually come up: opted in **and** given a repository to gate on. A
+   * `--accept-images` that [openImageLane] is going to refuse is not a lane, so it must not be what
+   * keeps an otherwise empty server from saying it has nothing to serve.
+   */
+  private val imageLaneConfigured: Boolean
+    get() = acceptImages && !imageUploadRepository.isNullOrBlank()
+
+  /** Uploads per minute per GitHub account (`--image-rate-limit`); `0` disables the budget. */
+  private val imageRateLimit: Int =
+    args.flagValue("--image-rate-limit")?.toIntOrNull() ?: DEFAULT_IMAGE_RATE_LIMIT
 
   /**
    * The parsed `--catalogs-file`, or the empty config when none is set / it can't be read. A
@@ -1571,17 +1614,19 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     // via
     // POST /bundles — so only bail when there's genuinely nothing to serve and no way to add any.
     // `--accept-docs` is the same case (a pure document drop-box has no sessions at all, ever), as
-    // is `--admin-token`: that server's catalogs arrive later via POST /admin/catalogs.
+    // is `--accept-images` (an image host renders nothing) and `--admin-token`: that server's
+    // catalogs arrive later via POST /admin/catalogs.
     if (
       defaultSessionId == null &&
         catalogRefs.isEmpty() &&
         !acceptBundles &&
         !acceptDocs &&
+        !imageLaneConfigured &&
         adminToken == null
     ) {
       System.err.println(
         "serve: nothing to serve — no --bundle / --bundles / --catalogs registered a session, and " +
-          "none of --accept-bundles / --accept-docs / --admin-token is set."
+          "none of --accept-bundles / --accept-docs / --accept-images / --admin-token is set."
       )
       // Guide the common "ran serve in my project expecting a build" case: Gradle discovery is now
       // opt-in, so point at --discover / --module rather than leaving them staring at a bare error.
@@ -1714,6 +1759,58 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     )
     return ServeDocStore(ttlSeconds = docTtlSeconds, allowedHosts = acceptDocsFrom)
   }
+
+  /**
+   * Build the `--accept-images` lane — the store and the identity gate in front of it — or null
+   * when the operator didn't opt in.
+   *
+   * **Fails closed on a missing repository.** The gate's whole content is "GitHub says this account
+   * has access to *that* repo", so without a repo there is nothing to check and the honest outcome
+   * is no lane, announced, rather than an open image host on someone's public box. Returns the pair
+   * so [ServeHttpServer] can only ever receive both.
+   */
+  private fun openImageLane(): ImageLane? {
+    if (!acceptImages) return null
+    val repository = imageUploadRepository
+    if (repository.isNullOrBlank()) {
+      System.err.println(
+        "serve: --accept-images needs a repository to check uploader access against. Pass " +
+          "--image-upload-repo <owner/repo> (or configure --github-auth-repo). Image lane disabled."
+      )
+      return null
+    }
+    System.err.println(
+      "serve: image uploads enabled (POST /images) — ${ServeImageFormats.knownSummary()}; " +
+        "links expire after ${imageTtlSeconds}s; uploaders must have access to $repository"
+    )
+    if (imageRateLimit <= 0) {
+      System.err.println(
+        "serve: WARNING image uploads are UNMETERED (--image-rate-limit 0). The store's size caps " +
+          "still bound memory, but one account can churn every held image out of it."
+      )
+    }
+    return ImageLane(
+      store = ServeImageStore(ttlSeconds = imageTtlSeconds),
+      auth = GithubTokenUploadAuth(repository = repository, allowedUsers = githubAuthUsers),
+      limiter =
+        if (imageRateLimit > 0) {
+          ServeRateLimiter(
+            permitsPerWindow = imageRateLimit,
+            windowSeconds = 60,
+            // An agent uploads a PR's worth of renders back to back; serialising them per account
+            // costs nothing (each is a memory write) and keeps one caller off every other's heels.
+            maxConcurrent = IMAGE_CALLER_CONCURRENCY,
+          )
+        } else null,
+    )
+  }
+
+  /** The image lane's three pieces, built and disabled together. */
+  private class ImageLane(
+    val store: ServeImageStore,
+    val auth: ServeImageUploadAuth,
+    val limiter: ServeRateLimiter?,
+  )
 
   /**
    * Build the `--playground-bundle` compile service, or null when not opted in. Resolves the CMP
@@ -2764,6 +2861,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     // Resolved once so the playground's remote-compose lane publishes into the SAME store the `/d/`
     // route serves from — otherwise a minted `/d/<id>` link wouldn't resolve.
     val docStore = openDocStore()
+    val imageLane = openImageLane()
     // Built BEFORE the playground lane: whether GitHub auth is configured is one of the two bases
     // the `--public` admission gate decides on (issue #3210), because it is what makes the routes'
     // repo-access check a real check instead of a no-op.
@@ -2818,6 +2916,9 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         trustAdmin = trustAdmin,
         adminToken = adminToken,
         docStore = docStore,
+        imageStore = imageLane?.store,
+        imageUploadAuth = imageLane?.auth,
+        imageUploadLimiter = imageLane?.limiter,
         playgroundService = playgroundLane?.compile,
         playgroundHealth = playgroundLane?.health,
         branchFetchStats = catalogStore?.let { store -> { store.branchFetchStats.snapshot() } },
@@ -4310,6 +4411,23 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         --accept-docs-from <host>[,<host>…]
                           SSRF allowlist for POST /docs?url=: hostnames the server may fetch a
                           document from. Omitted/empty = uploads only (fail closed).
+        --accept-images   Enable the IMAGE lane: POST /images ingests a rendered preview (PNG, GIF,
+                          WebP, JPEG) and answers with /i/<id>.png — a URL an agent can embed in a
+                          pull-request body. Uploading is NEVER anonymous: it needs
+                          "Authorization: Bearer <github-token>" from an account with access to
+                          --image-upload-repo, on a --public host too. Reading is open, because
+                          GitHub's image proxy fetches an embedded image anonymously; the 128-bit id
+                          is the access control. Off by default.
+        --image-upload-repo <owner/repo>
+                          Repository an uploader must have access to. Defaults to --github-auth-repo
+                          when that is set; without either, --accept-images refuses to start.
+        --image-ttl <seconds>
+                          How long a /i/<id> image link lives (default ${ServeImageStore.DEFAULT_TTL_SECONDS}s = 7 days). Held in
+                          memory and dropped when it expires; ${ServeImageStore.DEFAULT_MAX_IMAGES} images / ${ServeImageStore.DEFAULT_MAX_TOTAL_BYTES / (1024 * 1024)}MB max, the
+                          oldest evicted first.
+        --image-rate-limit <n>
+                          Uploads per minute per GitHub account (default ${DEFAULT_IMAGE_RATE_LIMIT}). 0 disables the
+                          budget.
         --trust-store <file>
                           Producer-trust allowlist (JSON: signing keys / branches / CI identities).
                           Uploaded bundles are verified against it and the verdict (signature /
@@ -4478,5 +4596,19 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
      * the limiter off entirely.
      */
     const val DEFAULT_PLAYGROUND_RATE_LIMIT = 10
+
+    /**
+     * Image uploads per minute per GitHub account. Sized for the actual caller — an agent pushing a
+     * PR's worth of before/after renders in one go — so the whole batch lands in a burst and a
+     * runaway loop is paced rather than allowed to churn the store. 0 turns the budget off.
+     */
+    const val DEFAULT_IMAGE_RATE_LIMIT = 60
+
+    /**
+     * Uploads one account may have in flight at once. One: each upload is a memory write that
+     * finishes in milliseconds, so serialising a single caller costs nothing and keeps a batch from
+     * occupying every request thread the host has.
+     */
+    const val IMAGE_CALLER_CONCURRENCY = 1
   }
 }

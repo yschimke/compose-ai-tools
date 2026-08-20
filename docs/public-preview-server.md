@@ -10,7 +10,12 @@
 2. **Shared documents** — with `--accept-docs`, anyone can drop a **generated document** (a Remote
    Compose `.rc`, a Lottie JSON) at `/docs` and get back an **expiring permalink** that plays it in
    the browser. See [Sharing a document](#sharing-a-document---accept-docs).
-3. **The design systems we publish** — `--catalogs remote-m3,m3-catalog,…` fetches each
+3. **Uploaded preview images** — with `--accept-images`, an agent that has rendered a
+   before/after pair can `POST /images` and get back an embeddable `/i/<id>.png` for its pull-request
+   body. Uploading requires a GitHub account with access to the operator's repository — this lane is
+   never anonymous, on a public host either. See
+   [Uploading a preview image](#uploading-a-preview-image---accept-images).
+4. **The design systems we publish** — `--catalogs remote-m3,m3-catalog,…` fetches each
    published `design-artifacts/<system>` catalog and serves it read-only at its canonical path
    `/<system>/` (the legacy `?session=<system>` form still works). Browsing that branch and opening a
    live, customisable render are then two ends of one workflow (the branch's README + `catalog.json`
@@ -2455,6 +2460,89 @@ Why this is safe to leave open on a public box, and where its limits are:
 
 On the deployed image set `SERVE_ACCEPT_DOCS=1` (plus optional `SERVE_DOC_TTL`,
 `SERVE_ACCEPT_DOCS_FROM`); it's off by default.
+
+## Uploading a preview image (`--accept-images`)
+
+An agent that just changed a composable has the pixels — a rendered PNG on local disk — and one
+problem left: [this repo's PR rule](../CLAUDE.md) says the before/after must be **embedded and
+viewable inline** in the pull-request body, and `![](file:///tmp/before.png)` is not a URL GitHub can
+fetch. `compose-preview share-preview` solves that with a gist or a pushed capture branch, both of
+which need credentials a hosted agent session often doesn't have (`gh`, or push rights on the repo).
+`--accept-images` is the third mechanism, and needs neither:
+
+```bash
+compose-preview serve --public --accept-images --image-upload-repo yschimke/compose-ai-tools --port 8080
+```
+
+```bash
+# On the agent's box: upload the render, get the line to paste.
+curl -sS -H "Authorization: Bearer $(gh auth token)" \
+  --data-binary @build/renders/android/ButtonPreview.png \
+  'https://preview.coo.ee/images?name=after.png'
+# {"schema":"compose-preview-serve/image/v1","id":"K3f…","format":"PNG","width":360,"height":128,
+#  "path":"/i/K3f….png","url":"https://preview.coo.ee/i/K3f….png",
+#  "markdown":"![after.png](https://preview.coo.ee/i/K3f….png)","uploadedBy":"yschimke",
+#  "expiresIn":"7d", …}
+```
+
+- **`POST /images?name=<label>`** — the image is the request body. Answers `201` with the JSON above;
+  `markdown` is the finished embed line, so a caller never has to assemble it (and never trips the
+  ``![alt](`url`)`` backtick trap that renders as literal text). `?name=` is a display label and the
+  alt text — never a path, never the format decision.
+- **`GET /i/<id>.png`** — the image itself, with `X-Content-Type-Options: nosniff` and a
+  `Cache-Control` that expires with the link.
+
+**Who may upload.** Not "anyone", on any host, ever — including a `--public` one:
+
+- The caller sends `Authorization: Bearer <github-token>`, and the server asks **GitHub** who that is
+  and whether they have access to `--image-upload-repo` (falling back to `--github-auth-repo`). The
+  bar is the same one the playground applies ([`GitHubOAuthVerifier`](../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeGithubAuth.kt)):
+  write access on a public repo, any real grant on a private one. No access, no upload — `403`.
+- It is a **bearer token, not the OAuth cookie**, because the whole audience is headless: a CI job or
+  a cloud coding session holding a `GITHUB_TOKEN`, not a browser that can round-trip a redirect. That
+  also means the lane needs no OAuth app — a box with no `--github-auth-*` config at all can run it,
+  given a repository to check against. Without a repository it **refuses to start**, loudly: a gate
+  with nothing to check is not a gate.
+- The token is used for two GitHub reads and dropped. It is never stored, logged, or echoed back; the
+  verification cache is keyed by its SHA-256.
+- Per-account budget, default 60 uploads/minute (`--image-rate-limit`, `0` disables). It bounds both
+  the obvious abuse and the GitHub API calls an uncached upload costs.
+
+**Who may read: anyone with the link, deliberately.** This is the one asymmetry in the lane and it is
+load-bearing. GitHub renders an embedded image by fetching it through its own proxy, **anonymously**
+— so an authenticated read would mean the PR body never paints, and the feature would not exist. The
+document lane's trick of appending the host token to the permalink is worse than useless here: the
+destination is a *pull request*, so that would publish the server's browse token to everyone who can
+read it. Instead the 128-bit `SecureRandom` id is the whole grant, exactly as it is for `/d/<id>` —
+nothing is listed, nothing is browseable, and there is no index of what the box holds.
+
+On `/status` the lane shows as one row in the Configuration block — `Accept images · on (7d links)`,
+beside the document lane's — and `/status.json` carries `acceptImages`, `imageTtlSeconds`,
+`imageUploadRepository`, and what the store is holding. Both states are captured in
+[docs/design/evidence/serve-image-lane](design/evidence/serve-image-lane/README.md).
+
+**Lifetime and bounds.** Links live 7 days by default (`--image-ttl`), in memory, dropped on expiry
+and on restart; 256 images / 128 MB max, oldest evicted first. GitHub's camo proxy caches an embedded
+image, so a body usually keeps painting after the source expires — but **that is a cache, not a
+guarantee**. Evidence that has to survive indefinitely belongs on a capture branch
+(`compose-preview share-preview`, SHA-pinned by design); this lane is for the box where that is not
+available.
+
+**Raster only** ([`ServeImageFormats`](../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeImageFormats.kt)) —
+content-sniffed, so an upload must *be* one of these and a mislabelled file is refused on shape:
+
+| Format | Sniffed by | Served as |
+|---|---|---|
+| **PNG** (`.png`) | the 8-byte signature + `IHDR` | `image/png`, or `image/apng` when an `acTL` chunk precedes `IDAT` |
+| **GIF** (`.gif`) | `GIF87a` / `GIF89a` | `image/gif` |
+| **WebP** (`.webp`) | `RIFF`…`WEBP` | `image/webp` |
+| **JPEG** (`.jpg`) | `FF D8 FF` | `image/jpeg` |
+
+SVG is deliberately absent: it is an image to a human and a scriptable document to a browser, so
+serving one would hand an uploader active content on this origin.
+
+On the deployed image set `SERVE_ACCEPT_IMAGES=1` (plus `SERVE_IMAGE_UPLOAD_REPO`, optional
+`SERVE_IMAGE_TTL` / `SERVE_IMAGE_RATE_LIMIT`); it's off by default.
 
 ## Deploying `preview.coo.ee`
 
