@@ -13,6 +13,7 @@ and cropped to the **Design Systems** section, the only part of the page that mo
 | --- | --- |
 | `home-index-light-{before,after}.png` | each card that publishes design references gained a `compare to <tool>` chip under it, deep-linking that catalog's `compare?format=reference` |
 | `home-index-dark-{before,after}.png` | the same rows in the dark palette |
+| `home-index-neutral-label-{light,dark}.png` | the `yschimke` section after #4349's follow-up: a catalog whose references name no design tool keeps the action and takes the neutral "compare to design references" wording, instead of losing it |
 
 Two of the three design systems in the fixture publish Figma-backed references and carry the chip;
 `remote-m3` publishes none and carries no chip. That mix is the point of the pair: the third tile

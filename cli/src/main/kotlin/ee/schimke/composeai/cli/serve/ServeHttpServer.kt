@@ -4370,15 +4370,20 @@ class ServeHttpServer(
     val themeOptimization: ThemeOptimizationSnapshot?,
     val renderCache: CatalogRenderCacheSnapshot?,
     /**
-     * The design tool this catalog's references name ("Figma", …), or null when it publishes none —
-     * which is also what tells the front door whether to offer that catalog a "compare to <tool>"
-     * action ([ServeWeb.HomeSystem.designToolLabel]).
+     * This catalog publishes design references, so the front door can offer it a compare action
+     * ([ServeWeb.HomeSystem.hasReferenceComparison]).
      *
      * Remembered here, rather than looked up when the home page renders, for the same reason the
      * hero and the trust badge are: `peekHost` never resumes a suspended catalog, so a live lookup
      * would drop the action off every card whose daemon happened to be idle — the usual state on a
      * quiet server, not an edge case. Design references come from the delivery branch, so a
      * suspension cannot invalidate the answer.
+     */
+    val hasReferenceComparison: Boolean,
+    /**
+     * The design tool those references name ("Figma", …), or null when they name none — a `png`, an
+     * `svg`, an unmapped provider. Only the action's **label**; whether there is an action at all
+     * is [hasReferenceComparison] above.
      */
     val designToolLabel: String?,
   )
@@ -4470,11 +4475,17 @@ class ServeHttpServer(
         provenance = bundle?.provenance,
         themeOptimization = host.themeOptimizationSnapshot(),
         renderCache = host.catalogRenderCacheSnapshot(),
-        // The same read the catalog landing names its own compare chip from, so the front door's
-        // action and the landing's cannot disagree about what this catalog compares against. The
-        // parity feed's Figma lane is deliberately NOT a fallback here (it is on the landing, for
-        // the "design parity" label): the front-door action deep-links `compare?format=reference`,
-        // which only published references put anything behind.
+        // The same two reads the catalog landing gates and names its own compare chip with, so the
+        // front door and the landing cannot disagree about whether a catalog compares — or about
+        // what it compares against. Kept apart for the reason they are apart there: references
+        // whose provider names no design tool (`png`, `svg`, an unmapped token) still have a
+        // working `compare?format=reference`, they just get the neutral label.
+        //
+        // Availability is the same condition `comparisonPage` turns the `reference` format on with,
+        // so the action can never deep-link a format that page does not offer. The parity feed's
+        // Figma lane is deliberately NOT a fallback for either (it is on the landing, for the
+        // "design parity" label): only published references put anything behind the route.
+        hasReferenceComparison = host.previews.any { host.designReferencesFor(it.id).isNotEmpty() },
         designToolLabel =
           host.previews.firstNotNullOfOrNull { preview ->
             host.designReferencesFor(preview.id).firstNotNullOfOrNull {
@@ -5092,8 +5103,8 @@ class ServeHttpServer(
             )
           },
         darkStage = meta.darkStage,
-        // Non-null ⇒ this catalog publishes design references, so its card offers the compare
-        // action and names the tool it compares against.
+        // Whether the card offers the compare action, and — separately — what it calls it.
+        hasReferenceComparison = meta.hasReferenceComparison,
         designToolLabel = meta.designToolLabel,
       )
     }

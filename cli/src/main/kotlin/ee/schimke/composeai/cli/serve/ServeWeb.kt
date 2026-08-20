@@ -4426,15 +4426,23 @@ ${captureControlsHtml().prependIndent("          ")}
     /** Aggregate visits to this catalog/app landing page. */
     val views: Long = 0,
     /**
-     * The design tool this catalog is specified by ("Figma", …), when it publishes design
-     * references at all — read off those references' provider exactly as the catalog landing reads
-     * it ([designToolLabel]). Non-null is also the *gate*: it is set only for a catalog whose
-     * `compare?format=reference` route has something behind it, so the card's compare action can
-     * never deep-link a format the comparison page does not offer.
+     * This catalog publishes design references, so its `compare?format=reference` route has
+     * something behind it and the card can offer the comparison. The **gate**, kept separate from
+     * the vendor label below for the same reason the catalog landing keeps them separate: a
+     * reference's `source.provider` may be `png`, `file`, `svg` or a token we do not map, which
+     * names no design tool but is still a perfectly good thing to compare against. Conflating the
+     * two dropped the action from every such catalog even though the route worked (#4349).
      *
-     * Null — the common case — renders no compare action, which is every catalog that publishes no
+     * False — the default — renders no compare action, which is every catalog that publishes no
      * design references, and every catalog on a server that has not had that catalog resident since
      * it started (the front door reads a suspended catalog's snapshot rather than resuming it).
+     */
+    val hasReferenceComparison: Boolean = false,
+    /**
+     * The design tool this catalog is specified by ("Figma", …), read off its references' provider
+     * exactly as the catalog landing reads it ([designToolLabel]). Purely the **label**: null keeps
+     * the neutral "compare to design references" wording rather than suppressing the action, and it
+     * is only ever consulted when [hasReferenceComparison] already said there is one.
      */
     val designToolLabel: String? = null,
   )
@@ -4610,7 +4618,18 @@ ${captureControlsHtml().prependIndent("          ")}
      * this system against its Figma" cost a visit to the catalog first, and was invisible from `/`
      * (compose-ai-tools#4324). The label names the design tool the catalog is actually specified
      * by, for the same reason the landing chip does: "compare to Figma" says what you get where
-     * "compare reference" would name the format slug.
+     * "compare reference" would name the format slug — and falls back to the landing's own neutral
+     * "compare to design references" for a catalog whose references name no tool (a checked-in
+     * `png`, an `svg`, an unmapped provider). Whether there is an action at all is
+     * [HomeSystem.hasReferenceComparison], never the label: those are two questions, and answering
+     * the first with the second dropped the action from every provider-neutral catalog (#4349).
+     *
+     * The accessible name carries the catalog's title ("Compose Material 3: compare to Figma")
+     * while the visible text stays short. Half a dozen cards on a front door otherwise expose half
+     * a dozen links announced identically as "compare to Figma", and a screen-reader link list or a
+     * voice command has nothing to tell them apart — the tile that gives each one its context is a
+     * *sibling*, so nothing labels the chip by it. The visible string is kept intact inside the
+     * accessible name (WCAG 2.5.3 Label in Name), so "click compare to Figma" still matches.
      *
      * A sibling of the tile anchor, not a child of it: the tile is one big link, and a link inside
      * a link is not a thing HTML has. That is what the `.cp-sys-cell` wrapper is for — it is the
@@ -4630,19 +4649,22 @@ ${captureControlsHtml().prependIndent("          ")}
      * chip nothing in that grid can ever show.
      */
     fun reservesActionRow(list: List<HomeSystem>): Boolean =
-      !componentBrowser && list.any { !it.designToolLabel.isNullOrBlank() }
+      !componentBrowser && list.any { it.hasReferenceComparison }
     fun compareAction(s: HomeSystem, sysSeg: String, reserveRow: Boolean): String {
       if (!reserveRow) return ""
       val chip =
-        s.designToolLabel
-          ?.takeIf { it.isNotBlank() }
-          ?.let { tool ->
-            val query =
-              listOf("format=reference", tokenParam).filter { it.isNotEmpty() }.joinToString("&")
-            val href = WebEscaping.htmlEscape("/$sysSeg/compare?$query")
-            val label = WebEscaping.htmlEscape("compare to $tool")
-            "<a class=\"cp-action-chip\" href=\"$href\">$label</a>"
-          } ?: ""
+        if (!s.hasReferenceComparison) ""
+        else {
+          val query =
+            listOf("format=reference", tokenParam).filter { it.isNotEmpty() }.joinToString("&")
+          val href = WebEscaping.htmlEscape("/$sysSeg/compare?$query")
+          val label =
+            s.designToolLabel?.takeIf { it.isNotBlank() }?.let { "compare to $it" }
+              ?: "compare to design references"
+          val described = WebEscaping.htmlEscape("${s.title}: $label")
+          "<a class=\"cp-action-chip\" href=\"$href\" aria-label=\"$described\">" +
+            "${WebEscaping.htmlEscape(label)}</a>"
+        }
       return "\n        <p class=\"cp-sys-actions\">$chip</p>"
     }
     fun card(s: HomeSystem, reserveActionRow: Boolean): String {
