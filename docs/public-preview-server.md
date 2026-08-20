@@ -149,6 +149,26 @@ live and playground stay snapshot-only, which is what every site host used to do
 to a site on a domain the cookie domain doesn't cover. A box with no pinned callback derives it from
 the request and never needed any of this.
 
+**…and the control that starts it is on the site's own header**, because a site host's `/` is a
+catalog landing, not the front-door index — there is no page above it to carry a sign-in. Until
+this it didn't render one, so the only affordances on a hostname like `wear.preview.coo.ee` were a
+press-and-hold on a grid card (which follows the login) and the chip on a preview page: an outside
+contributor filing [wear-m3-catalog#68](https://github.com/yschimke/wear-m3-catalog/issues/68) had
+to be told to go and sign in on a *different hostname* first. It sits in the same header slot as the
+front door's, and it appears on exactly the same terms as everything else on this page — offered
+when a sign-in can round-trip and Dev mode is on, withheld when it can't or in Catalog mode, which
+drops the live lane (hover-live included) and so has nothing behind a login. A catalog with **no**
+gated lane at all — a static bundle, or one whose live breaker has opened, with no playground
+compiling against it — withholds it for the same reason: a login that unlocks nothing is worse than
+no control. Where the playground is the *only* gated lane, the control says so and names
+`--github-auth-repo`, because there repository access genuinely is the bar; the front door and
+`/status` keep the Live wording, since they stand above any one catalog and cannot answer for its
+lanes:
+
+| Sign-in withheld — no cookie domain, or Catalog mode | Offered — the site can round-trip a login |
+| --- | --- |
+| ![A top-level site's header with no GitHub control](images/serve-site-header-no-signin.png) | ![The same header carrying "Sign in with GitHub"](images/serve-site-header-signin.png) |
+
 Choose the domain deliberately: every host under it is inside the session's reach, so name the
 narrowest one that covers your sites. A public suffix (`co.uk`) or a domain that doesn't cover the
 callback host is refused at startup rather than producing cookies the browser silently drops.
@@ -2702,6 +2722,13 @@ signed-in GitHub user to use live previews; playground still requires access to
 `SERVE_GITHUB_AUTH_REPO`. Set `SERVE_GITHUB_AUTH_USERS=alice,bob` to narrow sign-in to named logins
 for both surfaces. The allowlist only ever **restricts** — naming a login does not grant it
 playground access, which always comes from the repo check above.
+
+**The viewer's "Live preview — sign in" chip names no repository, deliberately.** The gating repo is
+the *playground's* bar; putting it in the Live chip's tooltip told a visitor they needed access to a
+repo they had never heard of, which is the opposite of the rule and reads as "not for you"
+([wear-m3-catalog#68](https://github.com/yschimke/wear-m3-catalog/issues/68), where an outside
+contributor read a signed-out Live lane as a broken preview). The playground's own refusal still
+names the repo, because there the access genuinely is the bar.
 
 ### Fetched catalog bytes outlive the container (`--catalog-cache-dir`)
 

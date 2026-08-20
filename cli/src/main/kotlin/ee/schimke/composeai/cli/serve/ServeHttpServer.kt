@@ -1533,14 +1533,41 @@ class ServeHttpServer(
 
   private fun RoutingContext.componentBrowserMode(): Boolean = call.componentBrowserMode()
 
-  private fun RoutingContext.githubAuthStatus(): ServeWeb.GitHubAuthStatus? =
-    githubAuth?.let { auth ->
-      ServeWeb.GitHubAuthStatus(
-        loginHref = auth.loginPath(call),
-        login = auth.currentLogin(call),
-        restrictedToAllowedUsers = auth.isRestrictedToAllowedUsers(),
-      )
-    }
+  /**
+   * The header's GitHub control, or null where there is nothing honest to offer.
+   *
+   * Withheld when the sign-in cannot come back to *this* origin ([oauthCanRoundTrip]) — a host
+   * outside the cookie domain, or host-only cookies against a pinned callback. Following the link
+   * there writes the CSRF state where the callback can never read it, so the visitor lands back
+   * signed out; the card and viewer affordances have always been withheld on that predicate, and a
+   * header button is the same dead end one page up. It only started mattering for the landing
+   * because that page did not render this control at all before.
+   *
+   * A signed-in identity cannot be hidden by this in practice: cookies that reached this host are
+   * cookies the callback could have written.
+   */
+  /**
+   * [lane] names what the sign-in unlocks on the page asking for the control, which is what its
+   * tooltip describes. Defaults to Live — the front door and `/status` stand above any one catalog
+   * and answer for the broad case. A catalog landing whose only gated lane is the playground passes
+   * [ServeWeb.GatedLane.PLAYGROUND], and only then is `--github-auth-repo` named: repository access
+   * is the playground's gate, and naming it beside Live is the confusion this change removes.
+   */
+  private fun RoutingContext.githubAuthStatus(
+    lane: ServeWeb.GatedLane = ServeWeb.GatedLane.LIVE
+  ): ServeWeb.GitHubAuthStatus? =
+    githubAuth
+      ?.takeIf { oauthCanRoundTrip() }
+      ?.let { auth ->
+        ServeWeb.GitHubAuthStatus(
+          loginHref = auth.loginPath(call),
+          login = auth.currentLogin(call),
+          restrictedToAllowedUsers = auth.isRestrictedToAllowedUsers(),
+          lane = lane,
+          accessRepository =
+            auth.accessRepository().takeIf { lane == ServeWeb.GatedLane.PLAYGROUND },
+        )
+      }
 
   /** The two wire values of the Catalog / Dev switch; null for absent, empty, or anything else. */
   private fun interfaceMode(value: String?): Boolean? =
@@ -2536,6 +2563,9 @@ class ServeHttpServer(
       // the whole life of that host, not one per request.
       val bundle = catalogBundleHost(renderHost)
       val heading = ServeWeb.catalogHeading(bundle?.title, renderHost.label)
+      // Hoisted out of the argument list because the header's sign-in control reads it too: a
+      // catalog with neither a live lane nor a reachable playground has nothing behind a login.
+      val catalogPlaygroundHref = playgroundLinkForCatalog(selectedSessionId)
       val card =
         if (requestCarriesOverrides() || bundle == null || heroId == null) null
         else
@@ -2632,7 +2662,7 @@ class ServeHttpServer(
           // "try in playground" — opens the editor with this design system preselected, so a
           // snippet compiles against the catalog you were just browsing. Omitted on a host with no
           // lane; the per-preview handoff is the viewer's `playgroundHref`.
-          playgroundHref = playgroundLinkForCatalog(selectedSessionId),
+          playgroundHref = catalogPlaygroundHref,
           // Crop each card's thumbnail to the component's figma-svg content box (cheap baked
           // reads),
           // so a Wear sticker shows the component, not the empty watch canvas around it.
@@ -2700,6 +2730,27 @@ class ServeHttpServer(
           // A top-level site's pages carry their session in the ORIGIN, so same-session links
           // drop the `?session=` the rooted legacy form would add. See [ServeSites].
           sessionInOrigin = siteSystem() != null,
+          // The header's sign-in control. `liveSignInHref` above already sends a long-press at
+          // the login, but that gesture is undiscoverable: on a site host this landing IS the
+          // front door, so without a visible control the only way to find the sign-in was
+          // another hostname's index (wear-m3-catalog#68).
+          //
+          // Only where a login unlocks something on THIS catalog: a live lane to stream, or a
+          // playground that compiles against it. A static bundle (or one whose live breaker has
+          // opened) with no playground has nothing behind the control, and inviting a sign-in that
+          // changes nothing is the dead affordance the viewer's chip already refuses to be. The
+          // front door keeps its unconditional control — it stands above every catalog, so it
+          // cannot answer for one, and any of them may offer a lane.
+          //
+          // The lane it speaks for is whichever this catalog actually has. With no live stream the
+          // playground is the only thing behind the login, and its gate is repository access — so
+          // the control says so instead of promising a Live lane this catalog cannot offer.
+          githubAuth =
+            when {
+              renderHost.hasLiveStream -> githubAuthStatus()
+              catalogPlaygroundHref != null -> githubAuthStatus(ServeWeb.GatedLane.PLAYGROUND)
+              else -> null
+            },
         ),
         ContentType.Text.Html,
       )
@@ -6097,7 +6148,7 @@ class ServeHttpServer(
           ?.let {
             ServeWeb.LiveAuthPrompt(
               loginHref = it.loginPath(call),
-              repository = it.accessRepository(),
+              restrictedToAllowedUsers = it.isRestrictedToAllowedUsers(),
             )
           }
       // Project mode's timeline, computed from the local repo rather than fetched from a delivery
