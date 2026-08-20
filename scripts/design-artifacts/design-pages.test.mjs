@@ -315,6 +315,35 @@ test("a truthy non-boolean container is dropped rather than republished", () => 
   assert.equal(node.container, undefined);
 });
 
+test("a node's inventory=false survives publishing; true is left implicit", () => {
+  // Same allowlist hazard as `container`: drop the field on the way to the delivery branch and the
+  // kit's own base parts come back as 24 components nobody implemented. `true` is the consumer's
+  // default, so emitting it would only make every manifest larger and every re-import noisier.
+  const base = { ...appBar, nodeId: "1:8", name: "Base / Loading Icon", inventory: false };
+  const kept = { ...appBar, nodeId: "1:9", name: "Button", inventory: true };
+  const plan = planDesignPages({ manifest: manifest([page([base, kept])]), spec, catalog });
+  const nodes = plan.manifest.pages[0].nodes;
+  assert.equal(nodes.find((n) => n.nodeId === "1:8").inventory, false);
+  assert.equal(nodes.find((n) => n.nodeId === "1:9").inventory, undefined);
+});
+
+test("a non-boolean inventory is dropped rather than republished", () => {
+  // It decodes into a Kotlin Boolean. Same reasoning as `container`: one bad string there fails the
+  // parse for the whole manifest and hides every page, which is worse than counting one base part.
+  const base = { ...appBar, nodeId: "1:8", name: "Base / Loading Icon", inventory: "no" };
+  const plan = planDesignPages({ manifest: manifest([page([base])]), spec, catalog });
+  assert.equal(plan.manifest.pages[0].nodes[0].inventory, undefined);
+});
+
+test("a page's inventory=false survives publishing; true is left implicit", () => {
+  const icons = page([appBar], { id: "icons", inventory: false });
+  const shapes = page([appBar], { id: "shapes", inventory: true });
+  const plan = planDesignPages({ manifest: manifest([icons, shapes]), spec, catalog });
+  const [published, other] = plan.manifest.pages;
+  assert.equal(published.inventory, false);
+  assert.equal(other.inventory, undefined);
+});
+
 test("an unsupported confidence is dropped, not republished", () => {
   // The consumer decodes this into a strict enum, so republishing an unknown value would fail the
   // parse for the WHOLE manifest — one bad string hiding every page the catalog publishes.

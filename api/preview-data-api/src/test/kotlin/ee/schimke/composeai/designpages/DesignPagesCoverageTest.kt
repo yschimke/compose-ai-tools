@@ -19,6 +19,7 @@ class DesignPagesCoverageTest {
     link: PageNodeLink,
     container: Boolean = false,
     type: String? = null,
+    inventory: Boolean = true,
   ) =
     PageNode(
       nodeId = id,
@@ -28,9 +29,10 @@ class DesignPagesCoverageTest {
       link = link,
       container = container,
       type = type,
+      inventory = inventory,
     )
 
-  private fun page(vararg nodes: PageNode) =
+  private fun page(vararg nodes: PageNode, inventory: Boolean = true) =
     DesignPage(
       id = "shape",
       name = "Shape",
@@ -38,6 +40,7 @@ class DesignPagesCoverageTest {
       frame = PageFrame(1200.0, 800.0),
       image = PageImage(uri = "shape.svg", format = PageImage.SVG),
       nodes = nodes.toList(),
+      inventory = inventory,
     )
 
   @Test
@@ -159,5 +162,72 @@ class DesignPagesCoverageTest {
     assertEquals(listOf("Snackbar"), subject.linked.map { it.name })
     assertEquals(emptyList(), subject.coverageGaps.map { it.name })
     assertEquals(1, subject.coverageTotal)
+  }
+
+  /**
+   * The kit's own base parts. `Base / SelectionControl / Switch` and friends are what a published
+   * set is assembled FROM, not something a catalog implements, and `kit-sets.json` already excludes
+   * them from the kit walk — but the Buttons sheet counted 24 of them and reported missing work no
+   * code could ever clear.
+   *
+   * Read off the node, like every other exclusion here, because the flat list has no ancestors: a
+   * bare `Selected=Yes, Disabled=No` variant does not say which set it came out of.
+   */
+  @Test
+  fun `the kit's own base parts are not components we owe`() {
+    val subject =
+      page(
+        node("1:1", "Base / SelectionControl / Switch", 2, PageNodeLink.UNLINKED,
+          type = "COMPONENT_SET", inventory = false),
+        node("1:2", "Selected=Yes", 3, PageNodeLink.UNLINKED, type = "COMPONENT",
+          inventory = false),
+        node("1:3", "Toggle+Selection-Buttons", 2, PageNodeLink.UNLINKED, type = "COMPONENT_SET"),
+        node("1:4", "Type=Switch", 3, PageNodeLink.MANIFEST, type = "COMPONENT"),
+        node("1:5", "Type=Custom - Task", 3, PageNodeLink.UNLINKED, type = "COMPONENT"),
+      )
+
+    assertEquals(listOf("Type=Custom - Task"), subject.coverageGaps.map { it.name })
+    assertEquals(listOf("Type=Switch"), subject.linked.map { it.name })
+    assertEquals(2, subject.coverageTotal)
+    // Uncounted AND unpointable, the same outcome a private component gets: a base part is not
+    // something a reader of this sheet has any use for selecting.
+    assertEquals(
+      listOf("Type=Switch", "Type=Custom - Task"),
+      subject.nodes.filter { it.isComponent }.map { it.name },
+    )
+  }
+
+  /**
+   * A whole sheet that is not a component inventory — the kit's icon page, 499 `COMPONENT` nodes
+   * that are an icon set. It reported `0 of 499` and was a third of the entire kit's apparent gap.
+   *
+   * The page is still imported and still browsable; what changes is that it makes no claim. The
+   * numerator goes with the denominator, so no consumer can print `12 of 0`.
+   */
+  @Test
+  fun `a sheet that is not a component inventory states no fraction`() {
+    val subject =
+      page(
+        node("1:1", "Icon=Alarm", 2, PageNodeLink.MANIFEST, type = "COMPONENT"),
+        node("1:2", "Icon=Bell", 2, PageNodeLink.UNLINKED, type = "COMPONENT"),
+        inventory = false,
+      )
+
+    assertEquals(0, subject.coverageTotal)
+    assertEquals(emptyList(), subject.linked.map { it.name })
+    assertEquals(emptyList(), subject.coverageGaps.map { it.name })
+    // `nodes` stays an honest query — the sheet still draws, and still says how much is on it.
+    assertEquals(2, subject.nodes.size)
+  }
+
+  /** A manifest published before either field existed counts exactly what it counted before. */
+  @Test
+  fun `both flags default to counted`() {
+    val subject =
+      page(node("1:1", "Shape=Circle", 3, PageNodeLink.MANIFEST, type = "COMPONENT"))
+
+    assertEquals(1, subject.coverageTotal)
+    assertEquals(true, subject.inventory)
+    assertEquals(true, subject.nodes.single().inventory)
   }
 }
