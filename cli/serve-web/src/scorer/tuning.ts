@@ -64,12 +64,28 @@ export const SCAFFOLD_SHEETS: ReadonlyArray<readonly [number, number, number]> =
 export const SHEET_TOLERANCE = 6;
 
 /**
- * The comparison backdrop, fixed on purpose.
+ * The grounds a comparison is scored on — **both** of them, every time.
  *
- * Site light/dark appearance must not change the score, and a transparent frame composited onto
- * anything else would be scored against a different ground than its partner.
+ * Fixed rather than themed, for the reason a single ground was fixed before: site appearance must
+ * not move a score, and two frames composited onto different colours differ by that colour
+ * everywhere. What has changed is the count, because one opaque ground is not a neutral choice. It
+ * *annihilates* ink that matches it, and the metric next door reads that as agreement rather than as
+ * missing evidence: `scorePlanes` finds no content and no disagreement in two blank planes and
+ * returns `100` by definition.
+ *
+ * That is not a corner case. Measured off `samples/design-catalog-wear-m3`, `TextMaxLinesTruncated`
+ * is 8% opaque with an ink luminance of 255 — pure white glyphs on transparency. Composited onto
+ * white it is a blank image, so it was being scored as a perfect match against whatever it was
+ * paired with, including a reference it looks nothing like. Black has the same flaw pointed the
+ * other way, and a theme-derived ground only makes the collision rarer, never impossible.
+ *
+ * Scoring on white AND black and keeping the worse result makes the failure structural rather than
+ * statistical: a pixel can only vanish on both grounds when its alpha is zero on both sides — that
+ * is, when it is genuinely absent from both images, which is the one case where "no evidence" is the
+ * honest answer. The cost is two passes over a plane capped at {@link MAX_SIDE}, so under 37k pixels
+ * either way.
  */
-export const COMPARISON_BACKDROP = "#ffffff";
+export const COMPARISON_GROUNDS: ReadonlyArray<string> = ["#ffffff", "#000000"];
 
 /** Below this per-channel delta a pixel has not moved — PNG round-tripping and resampling noise. */
 export const DIFF_CHANNEL_TOLERANCE = 3;

@@ -291,6 +291,37 @@ describe("scorePlanes", () => {
         assert.equal(await score(ABSENT, ABSENT), 100);
     });
 
+    it("answers 100 for two DIFFERENT frames that a ground flattened to blank", async () => {
+        // The hazard `COMPARISON_GROUNDS` exists to defuse, pinned here at the level where it is
+        // actually decided rather than described in a comment upstream.
+        //
+        // This function cannot tell "nothing was drawn" from "what was drawn is the same colour as
+        // the ground it was composited onto" — by the time a plane arrives, both look like a flat
+        // field. So a white-ink component and a white-ink reference that share nothing but their ink
+        // colour both flatten to blank on a white ground, and the honest-looking answer above
+        // becomes a confident lie: a perfect score for a pair that was never compared.
+        //
+        // Measured, not hypothetical: `TextMaxLinesTruncated` in `design-catalog-wear-m3` is 8%
+        // opaque with an ink luminance of 255. Composited onto white it IS this test.
+        //
+        // The fix cannot live here — a flat plane genuinely carries no evidence, and inventing some
+        // would be worse. It lives in `scoreOnEveryGround`, which scores the same pair again on
+        // black, where the same ink is fully present, and keeps the worse number.
+        const whiteInkOnWhite = new Array(6 * 6).fill(255);
+        const differentWhiteInkOnWhite = new Array(6 * 6).fill(255);
+        assert.equal(
+            await scorePlanes(
+                whiteInkOnWhite,
+                differentWhiteInkOnWhite,
+                6,
+                6,
+                noYield,
+            ),
+            100,
+            "two flattened planes are indistinguishable from two empty ones",
+        );
+    });
+
     it("is symmetric — swapping the two sides answers the same number", async () => {
         "";
         assert.equal(await score(MARK, SHIFTED), await score(SHIFTED, MARK));

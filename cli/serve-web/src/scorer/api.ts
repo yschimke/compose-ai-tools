@@ -21,7 +21,7 @@ import {
 } from "./frames.js";
 import { scorePlanes } from "./planes.js";
 import { translateOf } from "./svgTranslate.js";
-import { MAX_SIDE } from "./tuning.js";
+import { COMPARISON_GROUNDS, MAX_SIDE } from "./tuning.js";
 
 export interface Measurement {
     /** Structural match, 0–100. */
@@ -55,6 +55,44 @@ function comparisonSize(box: { width: number; height: number }) {
     };
 }
 
+/** Paints one side of a comparison onto whichever ground it is handed. */
+type Draw = (context: CanvasRenderingContext2D) => void;
+
+/**
+ * The structural match of two drawings, scored once per {@link COMPARISON_GROUNDS} and reported as
+ * the **worst** result.
+ *
+ * Every scorer here goes through this rather than compositing once, because a single opaque ground
+ * silently deletes ink that matches it and `scorePlanes` scores the resulting pair of blanks as
+ * `100`. Taking the minimum is what makes that unrecoverable-looking case recoverable: content
+ * annihilated on white survives on black and vice versa, so the ground that still *has* the evidence
+ * is the one that decides the number.
+ *
+ * The pessimism this introduces on an honest pair is small and symmetric — the two grounds disagree
+ * only by resampling noise on content that is visible on both — and it is the right direction to err
+ * in for a metric whose job is to find differences.
+ */
+async function scoreOnEveryGround(
+    drawReference: Draw,
+    drawCandidate: Draw,
+    width: number,
+    height: number,
+): Promise<number> {
+    let worst = 100;
+    for (const ground of COMPARISON_GROUNDS) {
+        worst = Math.min(
+            worst,
+            await scorePlanes(
+                grayFromDraw(drawReference, width, height, ground),
+                grayFromDraw(drawCandidate, width, height, ground),
+                width,
+                height,
+            ),
+        );
+    }
+    return worst;
+}
+
 /**
  * Score a baked PNG against an SVG of the SAME render.
  *
@@ -77,7 +115,9 @@ export async function scoreSvgUrls(
     const svg = await svgImage(text);
     const render = imageDimensions(png);
     const { scale, width, height } = comparisonSize(render);
-    const reference = grayFromDraw(
+    const translate = translateOf(text);
+    const svgSize = imageDimensions(svg);
+    return scoreOnEveryGround(
         (context) =>
             context.drawImage(
                 png,
@@ -86,12 +126,6 @@ export async function scoreSvgUrls(
                 render.width * scale,
                 render.height * scale,
             ),
-        width,
-        height,
-    );
-    const translate = translateOf(text);
-    const svgSize = imageDimensions(svg);
-    const candidate = grayFromDraw(
         (context) =>
             context.drawImage(
                 svg,
@@ -103,7 +137,6 @@ export async function scoreSvgUrls(
         width,
         height,
     );
-    return scorePlanes(reference, candidate, width, height);
 }
 
 /** Score a baked PNG against a canvas something else has already drawn — the RC lane's shape. */
@@ -123,9 +156,7 @@ export async function scoreCanvas(
                 render.width * scale,
                 render.height * scale,
             );
-    const reference = grayFromDraw(draw(png), width, height);
-    const candidate = grayFromDraw(draw(sourceCanvas), width, height);
-    return scorePlanes(reference, candidate, width, height);
+    return scoreOnEveryGround(draw(png), draw(sourceCanvas), width, height);
 }
 
 /**
@@ -163,26 +194,23 @@ export async function scoreImages(
 ): Promise<Measurement> {
     const boxes = normalisedBoxes(referenceImage, candidateImage);
     const { width, height } = comparisonSize(boxes.candidate);
-    const plane = (image: Frame, box: typeof boxes.candidate) =>
-        grayFromDraw(
-            (context) =>
-                context.drawImage(
-                    image,
-                    box.x,
-                    box.y,
-                    box.width,
-                    box.height,
-                    0,
-                    0,
-                    width,
-                    height,
-                ),
-            width,
-            height,
-        );
-    const percent = await scorePlanes(
-        plane(referenceImage, boxes.reference),
-        plane(candidateImage, boxes.candidate),
+    const paint =
+        (image: Frame, box: typeof boxes.candidate) =>
+        (context: CanvasRenderingContext2D) =>
+            context.drawImage(
+                image,
+                box.x,
+                box.y,
+                box.width,
+                box.height,
+                0,
+                0,
+                width,
+                height,
+            );
+    const percent = await scoreOnEveryGround(
+        paint(referenceImage, boxes.reference),
+        paint(candidateImage, boxes.candidate),
         width,
         height,
     );
