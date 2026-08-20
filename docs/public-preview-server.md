@@ -2528,7 +2528,11 @@ certificate too. So a host named by the project is used only once something **ou
 confirms it:
 
 ```bash
-export COMPOSE_PREVIEW_SERVE_HOSTS=preview.coo.ee   # this machine / CI image trusts that host
+# Narrow: that host, only while the checkout's origin is that repository.
+export COMPOSE_PREVIEW_SERVE_HOSTS=yschimke/compose-ai-tools=preview.coo.ee
+# Broad: that host, for every repository on this machine. Right for a CI image that only ever
+# builds its own repos; too wide for a laptop that clones strangers' code.
+export COMPOSE_PREVIEW_SERVE_HOSTS=preview.coo.ee
 ```
 
 or `$COMPOSE_PREVIEW_SERVE_URL` naming it, or your **user-level** `~/.gradle/gradle.properties`
@@ -2536,8 +2540,29 @@ or `$COMPOSE_PREVIEW_SERVE_URL` naming it, or your **user-level** `~/.gradle/gra
 back to gist/branch and says why; `doctor` reports it as a warning. Confirmation matches on the host
 exactly, so `preview.coo.ee.evil.example` is not `preview.coo.ee`.
 
+The scoped form closes a smaller gap than the gate itself: a bare host is a standing grant, so a
+branch of *any* repo could name a host you confirmed for a different one and cause an upload you
+didn't ask for. It cannot hand anyone your credential — the destination is still a host you trust —
+which is why the bare form stays supported rather than being removed.
+
 Only the **URL** is project configuration: no credential is ever read from a committed file — the
 GitHub token comes from the environment or a protected file, per run.
+
+### This repository
+
+`compose-ai-tools` names `preview.coo.ee` in its own `gradle.properties`, so `share-preview` uploads
+there once the host is confirmed. Confirm it where the confirmation belongs — **outside the
+checkout**, which for each context means:
+
+| Context | Where the confirmation goes |
+| --- | --- |
+| A developer's machine | shell profile, or `~/.gradle/gradle.properties` |
+| GitHub Actions | a repository or organisation **variable**, referenced from the workflow |
+| A cloud agent sandbox | the environment's own variables, set when the environment is created |
+
+Deliberately *not* a file in this repo — an exported variable in a checked-in script would be the
+checkout confirming itself, which is the thing the gate exists to prevent. Until one of the above is
+set, nothing changes: `share-preview` keeps making gists or capture-branch pushes, and says why once.
 
 Naming a host is therefore a deliberate act with a consequence worth stating: for everyone who has
 confirmed that host, it makes uploading the default path, and an uploaded image is readable by anyone

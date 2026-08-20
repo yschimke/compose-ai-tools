@@ -658,7 +658,14 @@ class DoctorCommand(
       return
     }
     val trust =
-      confirmProjectServeHost(configured, projectRoot = projectDir, fileSystem = fileSystem)
+      confirmProjectServeHost(
+        configured,
+        projectRoot = projectDir,
+        // Same identity `share-preview` will use, so the two cannot disagree about whether a
+        // repo-scoped confirmation applies.
+        originRepo = gitOriginRepo(projectDir),
+        fileSystem = fileSystem,
+      )
     if (trust is ServeUrlTrust.NeedsConfirmation) {
       addCheck(
         DoctorCheck(

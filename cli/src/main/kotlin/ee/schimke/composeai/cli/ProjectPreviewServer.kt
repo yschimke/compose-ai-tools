@@ -97,8 +97,10 @@ internal const val SERVE_HOSTS_ENV = "COMPOSE_PREVIEW_SERVE_HOSTS"
  * Anything outside the checkout is already an act of consent and passes straight through:
  * `--serve-url` (typed for this run) and `$COMPOSE_PREVIEW_SERVE_URL` (set by the environment that
  * built the sandbox). A `gradle.properties` value is confirmed by any of:
- * - `$COMPOSE_PREVIEW_SERVE_HOSTS` — a comma-separated host allowlist, which is how an org's CI
- *   image or agent sandbox says "these hosts are ours" once, for every repo it will ever check out;
+ * - `$COMPOSE_PREVIEW_SERVE_HOSTS` — a comma-separated allowlist, which is how an org's CI image or
+ *   agent sandbox says "these hosts are ours" once. Each entry is a bare `host` (any repository) or
+ *   the narrower `owner/repo=host`, which confirms only while the checkout's `origin` is that
+ *   repository — see [Confirmation] for when the difference matters;
  * - `$COMPOSE_PREVIEW_SERVE_URL` naming the same host;
  * - the **user-level** `gradle.properties` (`$GRADLE_USER_HOME` or `~/.gradle`) naming the same
  *   host — a developer's own machine config, which no checkout can write. Unless it can:
@@ -111,35 +113,102 @@ internal const val SERVE_HOSTS_ENV = "COMPOSE_PREVIEW_SERVE_HOSTS"
 internal fun confirmProjectServeHost(
   resolved: ResolvedServeUrl,
   projectRoot: File? = null,
+  /**
+   * `owner/repo` this checkout belongs to, from its `origin` remote — `.git/config`, which no pull
+   * request can edit. Null when it isn't a recognisable GitHub checkout, which simply means a
+   * repo-scoped confirmation cannot match.
+   */
+  originRepo: String? = null,
   env: (String) -> String? = System::getenv,
   userHome: String? = System.getProperty("user.home"),
   fileSystem: FileSystem = SystemFileSystem,
 ): ServeUrlTrust {
   if (resolved.isOutsideCheckout) return ServeUrlTrust.Trusted(resolved)
-  val host = hostOf(resolved.url) ?: return needsConfirmation(resolved)
-  val allowed = buildSet {
-    env(SERVE_HOSTS_ENV)?.split(',')?.forEach { entry ->
-      entry.trim().lowercase().takeIf { it.isNotEmpty() }?.let(::add)
-    }
-    env(SERVE_URL_ENV)?.let { hostOf(it)?.let(::add) }
+  val host = hostOf(resolved.url) ?: return needsConfirmation(resolved, originRepo)
+  val confirmed = buildList {
+    env(SERVE_HOSTS_ENV)?.split(',')?.forEach { entry -> parseConfirmation(entry)?.let(::add) }
+    // A URL rather than an allowlist entry, so it can only ever confirm its own host, for any
+    // repo — it is the host this environment was built to talk to.
+    env(SERVE_URL_ENV)?.let { hostOf(it)?.let { host -> add(Confirmation(host, null)) } }
     userGradlePropertiesServeUrl(env, userHome, projectRoot, fileSystem)?.let {
-      hostOf(it)?.let(::add)
+      hostOf(it)?.let { host -> add(Confirmation(host, null)) }
     }
   }
-  return if (host in allowed) ServeUrlTrust.Trusted(resolved) else needsConfirmation(resolved)
+    .any { it.confirms(host, originRepo) }
+  return if (confirmed) ServeUrlTrust.Trusted(resolved) else needsConfirmation(resolved, originRepo)
 }
 
-private fun needsConfirmation(resolved: ResolvedServeUrl): ServeUrlTrust.NeedsConfirmation {
+/**
+ * One entry from [SERVE_HOSTS_ENV]: a host, optionally scoped to the repository it may be used for.
+ *
+ * The scoped form (`owner/repo=host`) exists because a bare host is a standing grant on the whole
+ * machine — every checkout of every repository, forever. That is fine for a CI image that only ever
+ * builds its own repos, and too broad for a laptop that clones strangers' code: a branch of any
+ * repo could then name a host you confirmed for a different one, and cause an upload you never
+ * asked for. It does **not** hand anyone your credential — the host is still one you trust — which
+ * is why the bare form remains supported rather than removed.
+ */
+private data class Confirmation(val host: String, val repo: String?) {
+  fun confirms(host: String, originRepo: String?): Boolean {
+    if (this.host != host) return false
+    val scope = repo ?: return true
+    return originRepo != null && originRepo.equals(scope, ignoreCase = true)
+  }
+}
+
+/** `host` or `owner/repo=host`, trimmed and lowercased. Null for an entry that is neither. */
+private fun parseConfirmation(entry: String): Confirmation? {
+  val trimmed = entry.trim().lowercase().takeIf { it.isNotEmpty() } ?: return null
+  if ('=' !in trimmed) return Confirmation(trimmed, null)
+  val repo = trimmed.substringBefore('=').trim()
+  val host = trimmed.substringAfter('=').trim()
+  if (host.isEmpty() || repo.count { it == '/' } != 1) return null
+  return Confirmation(host, repo)
+}
+
+private fun needsConfirmation(
+  resolved: ResolvedServeUrl,
+  originRepo: String?,
+): ServeUrlTrust.NeedsConfirmation {
   val host = hostOf(resolved.url) ?: resolved.url
+  // The scoped form is offered first when we know which repo this is: it is the one a reader will
+  // copy, and the narrower grant should be the one that is easy to reach for.
+  val scoped = originRepo?.let { "$it=$host" } ?: host
   return ServeUrlTrust.NeedsConfirmation(
     resolved,
     "This project's $SERVE_URL_PROPERTY names $host, but nothing outside the checkout confirms " +
       "it — and gradle.properties is a file any branch can change, so acting on it unconfirmed " +
-      "would let a pull request redirect your GitHub token. Confirm the host once, from outside " +
-      "the repo:" +
-      "\n  export $SERVE_HOSTS_ENV=$host        (this machine / CI image trusts that host)" +
+      "would let a pull request redirect your GitHub token. Confirm it once, from outside the " +
+      "repo:" +
+      "\n  export $SERVE_HOSTS_ENV=$scoped" +
+      (if (originRepo != null) "   (that host, for this repository)" else "   (that host)") +
       "\n  or pass --serve-url ${ServeImageUploader.redactedUrl(resolved.url)}  (just this run)",
   )
+}
+
+/**
+ * `owner/repo` for [projectRoot]'s `origin` remote, or null when there isn't one this CLI
+ * recognises. Failure-tolerant in every direction: no git, no remote, a non-GitHub remote, or a
+ * timeout all mean "no repo identity", which costs a repo-scoped confirmation its match and never
+ * grants anything.
+ */
+internal fun gitOriginRepo(projectRoot: File?): String? {
+  val root = projectRoot ?: return null
+  val url =
+    runCatching {
+      val process =
+        ProcessBuilder("git", "-C", root.path, "remote", "get-url", "origin")
+          .redirectErrorStream(false)
+          .start()
+      val out = process.inputStream.bufferedReader().use { it.readText() }
+      if (!process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)) {
+        process.destroyForcibly()
+        return null
+      }
+      if (process.exitValue() != 0) null else out.trim().takeIf { it.isNotEmpty() }
+    }
+      .getOrNull() ?: return null
+  return SharePreviewCommand.githubOwnerRepo(url)
 }
 
 /**
