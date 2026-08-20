@@ -98,6 +98,11 @@ object PixelSystemFontAliases {
    */
   fun seedSystemFonts(warn: (String) -> Unit = { System.err.println(it) }): List<String> {
     val seeded = seedSystemFontMap()
+    // Tell the reporting side what actually resolved. A slug that didn't renders as the platform's
+    // fallback, and the `compose/semantics` producer must name *that* rather than the family the
+    // code asked for — otherwise the typography inspector reports a face nothing drew, hiding the
+    // very drift the warning below is about.
+    SystemFontFamilies.recordSeeding(attempted = ALIASES.keys, seeded = seeded)
     val missing = ALIASES.keys - seeded.toSet()
     if (missing.isNotEmpty() && unseededWarned.compareAndSet(false, true)) {
       warn(

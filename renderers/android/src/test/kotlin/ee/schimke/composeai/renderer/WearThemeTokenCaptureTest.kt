@@ -9,9 +9,11 @@ import androidx.wear.compose.material3.Text
 import ee.schimke.composeai.daemon.ComposeSemanticsDataProducer
 import ee.schimke.composeai.daemon.ThemeConsumerCapture
 import ee.schimke.composeai.daemon.themePayloadFromDuckTypedTheme
+import ee.schimke.composeai.data.fonts.SystemFontFamilies
 import ee.schimke.composeai.data.theme.ThemeConsumerAttribution
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -40,6 +42,20 @@ import org.robolectric.annotation.GraphicsMode
 class WearThemeTokenCaptureTest {
 
   @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
+
+  /**
+   * This test is about the device-family → display-name route, not about whether a download
+   * resolved. Seeding is process-global (an unseeded slug is deliberately reported as the raw slug,
+   * because the platform then draws Roboto instead), so state the precondition rather than
+   * inheriting whatever another test class in this JVM last recorded.
+   */
+  @Before
+  fun assumeSeeded() {
+    SystemFontFamilies.recordSeeding(
+      attempted = SystemFontFamilies.DISPLAY_NAMES.keys,
+      seeded = SystemFontFamilies.DISPLAY_NAMES.keys,
+    )
+  }
 
   private fun renderWearButton() {
     composeRule.setContent { MaterialTheme { Button(onClick = {}, label = { Text("Filled") }) } }

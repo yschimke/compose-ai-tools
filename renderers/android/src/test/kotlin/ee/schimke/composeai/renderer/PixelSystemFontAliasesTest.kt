@@ -1,6 +1,7 @@
 package ee.schimke.composeai.renderer
 
 import android.graphics.Typeface
+import ee.schimke.composeai.data.fonts.SystemFontFamilies
 import ee.schimke.composeai.fonts.google.GoogleFontKey
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -214,6 +215,15 @@ class PixelSystemFontAliasesTest {
 
     PixelSystemFontAliases.seedSystemFonts(warn = warnings::add)
     assertEquals("second call must not re-warn", 1, warnings.size)
+
+    // Seeding also records what resolved, so the semantics producer reports the fallback face
+    // rather than the one nothing drew — and that record is process-global. Put it back, or every
+    // later test class in this JVM inherits "nothing seeded" from a run that seeded nothing on
+    // purpose.
+    SystemFontFamilies.recordSeeding(
+      attempted = PixelSystemFontAliases.ALIASES.keys,
+      seeded = PixelSystemFontAliases.ALIASES.keys,
+    )
   }
 
   /**

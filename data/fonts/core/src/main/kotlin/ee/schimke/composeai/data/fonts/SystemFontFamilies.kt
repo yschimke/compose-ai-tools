@@ -50,6 +50,45 @@ object SystemFontFamilies {
   /** The canonical display name for [slug], or null when the table doesn't cover it. */
   fun displayName(slug: String): String? = DISPLAY_NAMES[slug.trim().lowercase()]
 
-  /** [displayName] for reporting, falling back to the slug itself rather than a guess. */
-  fun label(slug: String): String = displayName(slug) ?: slug.trim()
+  /**
+   * Slugs this process **tried and failed** to seed, so nothing drew the mapped face.
+   *
+   * Process-global because the two halves are a lane apart by construction: the renderer seeds (and
+   * is the only thing that knows whether a download resolved), the semantics producer reports.
+   * Empty on any lane that never seeds — the desktop renderer resolves families a different way, so
+   * an absent entry means "not this mechanism", not "failed".
+   */
+  private val unseeded = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+  /**
+   * Record the outcome of a seeding pass: [attempted] slugs of which [seeded] now resolve.
+   *
+   * Idempotent and re-entrant — a later pass that succeeds clears the earlier failure, so a warm
+   * cache on the second render stops reporting the fallback.
+   */
+  fun recordSeeding(attempted: Collection<String>, seeded: Collection<String>) {
+    val ok = seeded.map { it.trim().lowercase() }.toSet()
+    for (slug in attempted.map { it.trim().lowercase() }) {
+      if (slug in ok) unseeded.remove(slug) else unseeded.add(slug)
+    }
+  }
+
+  /** Whether [slug] was seeded, or was never a slug this process tried to seed. */
+  fun isDrawable(slug: String): Boolean = slug.trim().lowercase() !in unseeded
+
+  /**
+   * How [slug] should be **reported**: the display name of the face that was drawn, or the raw
+   * slug.
+   *
+   * The raw slug is not a lesser answer, it is a different fact. When seeding failed — a cold font
+   * cache, no egress, a family the CSS endpoint stopped serving — `Font(DeviceFontFamilyName(…))`
+   * falls back to whatever the platform had, which is Roboto rather than the mapped face. Reporting
+   * `Roboto Flex` there would name a typeface nothing drew, and hide the exact fallback drift the
+   * design comparison exists to expose. The slug says what the code asked for and stops short of
+   * claiming it was honoured.
+   */
+  fun label(slug: String): String {
+    val trimmed = slug.trim()
+    return if (isDrawable(trimmed)) displayName(trimmed) ?: trimmed else trimmed
+  }
 }

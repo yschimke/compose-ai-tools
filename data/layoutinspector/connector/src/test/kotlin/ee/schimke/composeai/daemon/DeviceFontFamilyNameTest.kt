@@ -1,5 +1,7 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.data.fonts.SystemFontFamilies
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -52,5 +54,31 @@ class DeviceFontFamilyNameTest {
   @Test
   fun `any other font shape names no device family`() {
     assertNull(deviceFontFamilyName(OtherFont()))
+  }
+
+  /**
+   * A family the renderer failed to seed was NOT drawn — the platform fell back to Roboto — so
+   * naming it `Roboto Flex` would report a typeface nothing rendered and hide that fallback from
+   * the very comparison meant to catch it.
+   */
+  @Test
+  fun `an unseeded family reports the slug, not the face it did not draw`() {
+    SystemFontFamilies.recordSeeding(attempted = listOf("roboto-flex"), seeded = emptyList())
+    assertEquals("roboto-flex", deviceFontFamilyName(FieldFont("roboto-flex")))
+
+    // A later pass with a warm cache clears it again.
+    SystemFontFamilies.recordSeeding(
+      attempted = listOf("roboto-flex"),
+      seeded = listOf("roboto-flex"),
+    )
+    assertEquals("Roboto Flex", deviceFontFamilyName(FieldFont("roboto-flex")))
+  }
+
+  @After
+  fun resetSeeding() {
+    SystemFontFamilies.recordSeeding(
+      attempted = SystemFontFamilies.DISPLAY_NAMES.keys,
+      seeded = SystemFontFamilies.DISPLAY_NAMES.keys,
+    )
   }
 }

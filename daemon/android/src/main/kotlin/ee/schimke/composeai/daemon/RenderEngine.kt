@@ -1175,7 +1175,7 @@ class RenderEngine(
     // preview's typography annotation then named no Material role, because role attribution has
     // nothing to match against without `resolvedTokens.typography` (issue #4327). Wear's own
     // theme is captured alongside, through the reflective read the theme-catalog specimens already
-    // use, and stands in when Material 3 reports nothing.
+    // use.
     val material3ThemePayload =
       if (!hasMaterial3) null
       else
@@ -1184,13 +1184,32 @@ class RenderEngine(
           fallbackTypography = themeFallbackCapture.typography,
           fallbackShapes = themeFallbackCapture.shapes,
         ) ?: themeFallbackCapture.payload
-    val baseThemePayload = material3ThemePayload ?: wearThemeCapture.payload
     // Attribute consumers (#1847) against the facts captured while the scene was alive, keyed by
     // SemanticsNode id (matching `compose/semantics`) against the reported tokens.
-    val materialThemePayload = baseThemePayload?.let { payload ->
-      val consumers = ThemeConsumerAttribution.attribute(capturedThemeFacts, payload.resolvedTokens)
-      if (consumers.isEmpty()) payload else payload.copy(consumers = consumers)
-    }
+    //
+    // With both libraries on the classpath — a repo whose module holds mobile and Wear previews
+    // alike — neither one's presence says which the preview themed with, and `CaptureMaterialTheme`
+    // answers with the mobile *defaults* whether or not anything read them. So don't decide it by
+    // classpath: run attribution against each captured theme and keep whichever actually explains
+    // the rendered nodes. Ties (and the everyday single-library case) keep Material 3 first, so a
+    // mobile render behaves exactly as before.
+    val materialThemePayload =
+      listOfNotNull(material3ThemePayload, wearThemeCapture.payload)
+        .map { payload ->
+          payload to ThemeConsumerAttribution.attribute(capturedThemeFacts, payload.resolvedTokens)
+        }
+        // Scored on the *type-scale* attributions, not the total: an uncustomised Wear scheme and
+        // an uncustomised Material 3 one share plenty of colour values (`#FFFFFFFF` is an `on*`
+        // role in both), so colours barely tell the two apart while the ramps differ in every
+        // metric. Nodes explained, not tokens named — an ambiguous colour emits several candidate
+        // roles and would otherwise outweigh a type role that pins one.
+        .maxByOrNull { (payload, consumers) ->
+          val typeRoles = payload.resolvedTokens.typography.keys
+          consumers.count { consumer -> consumer.tokens.any { it in typeRoles } }
+        }
+        ?.let { (payload, consumers) ->
+          if (consumers.isEmpty()) payload else payload.copy(consumers = consumers)
+        }
     val previewContextBuilder =
       PreviewContext.Builder(
           previewId = spec.previewId,
@@ -2736,6 +2755,15 @@ internal fun wearMaterial3OnClasspath(loader: ClassLoader): Boolean = runCatchin
  * annotations named no Material role (issue #4327).
  *
  * Best-effort throughout: a read that resolves nothing simply reports no theme, exactly as before.
+ *
+ * **Scope limit, shared with [CaptureMaterialTheme].** Both capture composables are siblings of the
+ * preview content, so what they read is the theme ambient *around* it — a preview that installs its
+ * own `MaterialTheme` in its body or through its `@PreviewWrapper` provider is themed below this
+ * point and reports the default ramp instead. That degrades safely rather than lying: attribution
+ * matches resolved values, so a node styled by a custom ramp matches no default role and is left
+ * unnamed, exactly as it was before this capture existed. Capturing beneath the provider means
+ * injecting into the preview's own composition, which is a change to how previews are invoked and
+ * belongs to both lanes at once, not to this one.
  */
 @Composable
 private fun CaptureWearMaterialTheme(loader: ClassLoader?, onCaptured: (ThemePayload) -> Unit) {
