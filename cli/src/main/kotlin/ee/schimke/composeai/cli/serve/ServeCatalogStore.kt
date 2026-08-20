@@ -10,7 +10,6 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
-import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -170,6 +169,17 @@ class ServeCatalogStore(
     { _, _, _, _ ->
       false
     },
+  /**
+   * Durable, content-addressed home for the heavy bytes this store fetches — the executable
+   * `liveBundle`, its per-preview splits, and the externalised resource pool. See
+   * [CatalogBlobPool].
+   *
+   * Defaults to a pool rooted under [root], which is exactly the behaviour that existed before it
+   * was configurable: shared across systems and reloads, discarded with the process. `serve
+   * --catalog-cache-dir` supplies a durable root instead, and that is the whole of the difference —
+   * nothing below asks which kind it was given.
+   */
+  private val blobs: CatalogBlobPool = CatalogBlobPool(File(root, BLOB_CACHE_DIR)),
 ) {
 
   /** A catalog's buildable source — where to check out + build to re-render it live. */
@@ -344,6 +354,10 @@ class ServeCatalogStore(
     val base =
       deliveryCommit?.let { "https://raw.githubusercontent.com/$repo/$it/" }
         ?: "https://raw.githubusercontent.com/$repo/$branch/"
+    // Whether [base] names one immutable tree, and therefore whether the heavy executable bundles
+    // this load fetches may be cached by URL. See [CatalogBlobPool] — an un-pinned base is the
+    // branch ref, which is a moving target and must not populate a cache keyed on it.
+    val pinned = deliveryCommit != null
 
     val catalogBytes =
       try {
@@ -882,7 +896,7 @@ class ServeCatalogStore(
               nonEmptyPrefixes.none(daemonId::startsWith)
             }
           }
-          val bundleFile = fetchLiveBundle(descriptor, base, dir, safe)
+          val bundleFile = fetchLiveBundle(descriptor, base, dir, safe, pinned)
           if (bundleFile == null) {
             prepared.clear()
             liveBundleFallback =
@@ -917,12 +931,12 @@ class ServeCatalogStore(
                 PerPreviewBundleAccess(
                   available = { daemonId ->
                     safeStems[daemonId]?.let { stem ->
-                      perPreviewBundleAvailable(stem, descriptor, base, dir)
+                      perPreviewBundleAvailable(stem, descriptor, base, dir, pinned)
                     } ?: false
                   },
                   fetch = { daemonId ->
                     safeStems[daemonId]?.let { stem ->
-                      fetchPerPreviewBundle(stem, descriptor, base, dir, safe, resources)
+                      fetchPerPreviewBundle(stem, descriptor, base, dir, safe, resources, pinned)
                     }
                   },
                 ),
@@ -961,7 +975,7 @@ class ServeCatalogStore(
     // A multi-module declaration is atomic: never silently start only its primary legacy bundle.
     val liveBundle = if (multiLiveBundle) null else catalog.liveBundle
     if (verdict is BundleVerifier.Verdict.Trusted && liveBundle != null) {
-      val bundleFile = fetchLiveBundle(liveBundle, base, dir, safe)
+      val bundleFile = fetchLiveBundle(liveBundle, base, dir, safe, pinned)
       if (bundleFile == null) {
         liveBundleFallback =
           ServeDegradation.liveBundleUnavailable(
@@ -1007,12 +1021,12 @@ class ServeCatalogStore(
               PerPreviewBundleAccess(
                 available = { daemonId ->
                   safeStems[daemonId]?.let { stem ->
-                    perPreviewBundleAvailable(stem, liveBundle, base, dir)
+                    perPreviewBundleAvailable(stem, liveBundle, base, dir, pinned)
                   } ?: false
                 },
                 fetch = { daemonId ->
                   safeStems[daemonId]?.let { stem ->
-                    fetchPerPreviewBundle(stem, liveBundle, base, dir, safe, res.dir)
+                    fetchPerPreviewBundle(stem, liveBundle, base, dir, safe, res.dir, pinned)
                   }
                 },
               )
@@ -1166,22 +1180,49 @@ class ServeCatalogStore(
   /**
    * Fetch a catalog's `liveBundle` (`{path, file}`) — the executable preview bundle
    * (`<system>-bundle.png`) `design-artifacts.yml` carries alongside the baked PNGs — from
-   * `<base><path>/<file>` into `<dir>/$LIVE_BUNDLE_DIR/<file>`. Fail-closed like [fetchWasmApp]: an
-   * invalid/escaping file entry or a fetch miss aborts and returns null, so the caller falls back
-   * to the Gradle `source` build (or, failing that, the static host). The file list is a single
-   * entry from the trusted catalog itself, not client input.
+   * `<base><path>/<file>`. Fail-closed like [fetchWasmApp]: an invalid/escaping file entry or a
+   * fetch miss aborts and returns null, so the caller falls back to the Gradle `source` build (or,
+   * failing that, the static host). The file list is a single entry from the trusted catalog
+   * itself, not client input.
+   *
+   * [pinned] says the load resolved a delivery commit, so [base] names one immutable tree. That is
+   * the whole of what decides whether the ~100 MB download may be cached: a pinned URL identifies
+   * exactly these bytes forever, so the bundle goes into the [blobs] pool and a reload — or, given
+   * `--catalog-cache-dir`, a restart — re-reads it instead of pulling it again. An un-pinned load
+   * (its revision feed could not be read, so [base] is the branch ref) addresses a moving target
+   * and stages into `<dir>/$LIVE_BUNDLE_DIR/<file>` exactly as this did before the pool existed.
    */
   private fun fetchLiveBundle(
     liveBundle: LiveBundle,
     base: String,
     dir: File,
     system: String,
+    pinned: Boolean,
   ): File? {
     val name = liveBundle.file.trim('/')
     if (name.isEmpty() || ".." in name.split("/")) {
       System.err.println("serve: $system liveBundle has an invalid file entry — skipping")
       return null
     }
+    val prefix = liveBundle.path.trim('/')
+    val url = if (prefix.isEmpty()) "$base$name" else "$base$prefix/$name"
+
+    if (pinned) {
+      val blob =
+        blobs.keyed(url) { dest ->
+          val bytes = runCatching { fetchExecutableBundle(url) }.getOrNull()
+          if (bytes == null) false
+          else {
+            dest.writeBytes(bytes)
+            true
+          }
+        }
+      if (blob == null) {
+        System.err.println("serve: $system liveBundle fetch failed ($url) — skipping")
+      }
+      return blob
+    }
+
     val bundleDir = File(dir, LIVE_BUNDLE_DIR)
     val bundleRoot = bundleDir.canonicalFile.toPath()
     val target = File(bundleDir, name)
@@ -1189,8 +1230,6 @@ class ServeCatalogStore(
       System.err.println("serve: $system liveBundle escaping entry '$name' — skipping")
       return null
     }
-    val prefix = liveBundle.path.trim('/')
-    val url = if (prefix.isEmpty()) "$base$name" else "$base$prefix/$name"
     val bytes = runCatching { fetchExecutableBundle(url) }.getOrNull()
     if (bytes == null) {
       System.err.println("serve: $system liveBundle fetch failed ($url) — skipping")
@@ -1310,8 +1349,14 @@ class ServeCatalogStore(
    * monolithic bundle into these (one re-renderable sticker per preview) beside it. Fail-closed
    * like [fetchLiveBundle]: an escaping [stem] or a fetch miss returns null and the caller simply
    * falls back to the monolithic daemon for that id (so a branch that ships no per-preview bundles
-   * still serves live from the monolith). Cached on disk: a second request for the same stem
-   * re-uses the already-fetched file rather than re-downloading.
+   * still serves live from the monolith).
+   *
+   * **What is cached is the HYDRATED bundle, not the thin download.** Hydration resolves the
+   * classpath entries the thin bundle declares *by sha256*, so its output is a deterministic
+   * function of this one URL — which means that when [pinned] holds, the finished bundle can be
+   * keyed on that URL in the [blobs] pool and a later reload (or restart, given
+   * `--catalog-cache-dir`) skips both the download and the repack. An un-pinned load keeps the
+   * per-system staging this used before the pool existed.
    *
    * [stem] is the route-safe filename `bundle split` wrote the bundle under (a sanitised bundle
    * preview descriptor id), pre-resolved by [uniquePerPreviewStems] so it's unambiguous — the URL
@@ -1324,7 +1369,16 @@ class ServeCatalogStore(
     dir: File,
     system: String,
     externalResourcesDir: File?,
+    pinned: Boolean,
   ): File? {
+    val url = perPreviewBundleUrl(stem, liveBundle, base)
+    val prefix = liveBundle.path.trim('/')
+    val hydrate = { dest: File ->
+      hydratePerPreviewBundle(url, dest, base, prefix, system, stem, externalResourcesDir)
+    }
+
+    if (pinned) return blobs.keyed(url) { dest -> hydrate(dest) }
+
     val previewsDir = File(File(dir, LIVE_BUNDLE_DIR), PER_PREVIEW_DIR)
     val previewsRoot = previewsDir.canonicalFile.toPath()
     val target = File(previewsDir, "$stem.png")
@@ -1337,24 +1391,42 @@ class ServeCatalogStore(
       if (isCompleteExecutableBundle(target)) return target
       target.delete()
     }
-    val prefix = liveBundle.path.trim('/')
-    val url = perPreviewBundleUrl(stem, liveBundle, base)
+    target.parentFile?.mkdirs()
+    return target.takeIf { hydrate(it) }
+  }
+
+  /**
+   * Download one per-preview split bundle and repack it into [dest] with its externalised classpath
+   * and resources folded back in, reporting whether [dest] now holds a usable bundle.
+   *
+   * Boolean rather than `File?` because it is written to be handed a destination the caller chose —
+   * the pool's scratch file on a pinned load, the staged per-system path otherwise — and the two
+   * must not drift into separate hydration paths.
+   */
+  private fun hydratePerPreviewBundle(
+    url: String,
+    dest: File,
+    base: String,
+    prefix: String,
+    system: String,
+    stem: String,
+    externalResourcesDir: File?,
+  ): Boolean {
     val bytes = runCatching { fetchExecutableBundle(url) }.getOrNull()
     if (bytes == null) {
       // Expected when the branch ships no per-preview bundle for this id (older catalog, view-only
       // tier); the caller falls back to the monolithic daemon. Quiet — not an error.
-      return null
+      return false
     }
-    target.parentFile?.mkdirs()
     val thin =
-      java.nio.file.Files.createTempFile(previewsDir.toPath(), "$stem.", ".shared.png").toFile()
+      java.nio.file.Files.createTempFile(dest.parentFile.toPath(), "$stem.", ".shared.png").toFile()
     val hydrated =
       try {
         thin.writeBytes(bytes)
         runCatching {
           BundleClasspathHydration.hydrate(
             source = thin,
-            output = target,
+            output = dest,
             resolveClasspath = { entry -> fetchExternalClasspathBlob(entry, base, prefix, system) },
             resolveResource = { entry ->
               readMaterializedExternalResource(entry, externalResourcesDir)
@@ -1370,11 +1442,12 @@ class ServeCatalogStore(
       } finally {
         thin.delete()
       }
-    if (hydrated != null && !isCompleteExecutableBundle(hydrated)) {
+    if (hydrated == null) return false
+    if (!isCompleteExecutableBundle(hydrated)) {
       hydrated.delete()
-      return null
+      return false
     }
-    return hydrated
+    return true
   }
 
   /** Check publication without downloading and hydrating the potentially 100 MB bundle. */
@@ -1383,11 +1456,15 @@ class ServeCatalogStore(
     liveBundle: LiveBundle,
     base: String,
     dir: File,
+    pinned: Boolean,
   ): Boolean {
+    val url = perPreviewBundleUrl(stem, liveBundle, base)
+    // Deliberately unverified — see [CatalogBlobPool.holds]. Hashing a multi-megabyte bundle to
+    // answer "does this lane exist" would cost more than the network probe it replaces.
+    if (pinned && blobs.holds(url)) return true
     val cached = File(File(File(dir, LIVE_BUNDLE_DIR), PER_PREVIEW_DIR), "$stem.png")
     if (cached.isFile && cached.length() > 0 && isCompleteExecutableBundle(cached)) return true
-    return runCatching { branchProbe(perPreviewBundleUrl(stem, liveBundle, base)) }
-      .getOrDefault(false)
+    return runCatching { branchProbe(url) }.getOrDefault(false)
   }
 
   private fun perPreviewBundleUrl(stem: String, liveBundle: LiveBundle, base: String): String {
@@ -1438,19 +1515,23 @@ class ServeCatalogStore(
       System.err.println("serve: $system external classpath declaration is invalid — skipping")
       return null
     }
-    val cached = File(File(root, RES_CACHE_DIR).apply { mkdirs() }, sha)
-    val cachedBytes = cached.takeIf { it.isFile && it.length() == entry.size }?.readBytes()
-    if (cachedBytes != null && sha256Hex(cachedBytes) == sha) return cachedBytes
-
     val prefix = bundlePathPrefix.trim('/')
     val url = if (prefix.isEmpty()) "$base$RES_POOL_DIR/$sha" else "$base$prefix/$RES_POOL_DIR/$sha"
-    val bytes = runCatching { fetchExecutableBundle(url) }.getOrNull() ?: return null
-    if (bytes.size.toLong() != entry.size || sha256Hex(bytes) != sha) {
-      System.err.println("serve: $system external classpath verification failed ($url)")
+    // Content-addressed: the pool returns a hit only once its bytes hash back to the digest the
+    // manifest declared, so a truncated or corrupt entry is refetched rather than put on a
+    // classpath. Being keyed by that digest rather than by a URL is also what makes it safe on an
+    // un-pinned load — there is no moving address involved.
+    val blob =
+      blobs.contentAddressed(sha, entry.size) {
+        runCatching { fetchExecutableBundle(url) }
+          .getOrNull()
+          ?.takeIf { it.size.toLong() == entry.size }
+      }
+    if (blob == null) {
+      System.err.println("serve: $system external classpath could not be fetched ($url)")
       return null
     }
-    cached.writeBytes(bytes)
-    return bytes
+    return runCatching { blob.readBytes() }.getOrNull()
   }
 
   /** Filesystem/route-safe stem for a per-preview id (mirrors `bundle split`'s sanitiser). */
@@ -1502,7 +1583,6 @@ class ServeCatalogStore(
         ?: emptyList()
     if (resources.isEmpty()) return ResRehydrate.Ready(null)
 
-    val cacheDir = File(root, RES_CACHE_DIR).apply { mkdirs() }
     val materialized = File(dir, RES_MATERIALIZED_DIR)
     val matRoot = materialized.canonicalFile.toPath()
     val prefix = bundlePathPrefix.trim('/')
@@ -1515,36 +1595,20 @@ class ServeCatalogStore(
         )
         return ResRehydrate.Unavailable
       }
-      // Content-addressed cache: fetch once, reuse across systems + reloads. The cache key IS the
-      // sha256, so a hit is only trusted after its bytes hash back to that key — a same-length but
-      // corrupt entry (partial write, disk fault) must be refetched, not silently put on the
-      // classpath. Verifying on read is cheap (fonts are small, reloads infrequent) and is the
-      // whole
-      // point of a content-addressed store.
-      val cached = File(cacheDir, sha)
-      val cacheValid =
-        cached.isFile &&
-          cached.length() == res.size &&
-          runCatching { sha256Hex(cached.readBytes()) == sha }.getOrDefault(false)
-      if (!cacheValid) {
-        cached.delete()
-        val url =
-          if (prefix.isEmpty()) "$base$RES_POOL_DIR/$sha" else "$base$prefix/$RES_POOL_DIR/$sha"
-        val bytes = runCatching { fetchCatalogAsset(url) }.getOrNull()
-        if (bytes == null) {
-          System.err.println(
-            "serve: $system external resource fetch failed ($url) — skipping live bundle"
-          )
-          return ResRehydrate.Unavailable
-        }
-        if (sha256Hex(bytes) != sha) {
-          System.err.println(
-            "serve: $system external resource sha256 mismatch ($url) — skipping live bundle"
-          )
-          return ResRehydrate.Unavailable
-        }
-        cached.parentFile?.mkdirs()
-        cached.writeBytes(bytes)
+      // Content-addressed cache: fetch once, reuse across systems, reloads and — given a durable
+      // `--catalog-cache-dir` — restarts. The cache key IS the sha256, so a hit is only trusted
+      // after its bytes hash back to that key: a same-length but corrupt entry (partial write,
+      // disk fault) is refetched, not silently put on the classpath.
+      val url =
+        if (prefix.isEmpty()) "$base$RES_POOL_DIR/$sha" else "$base$prefix/$RES_POOL_DIR/$sha"
+      val cached =
+        blobs.contentAddressed(sha, res.size) { runCatching { fetchCatalogAsset(url) }.getOrNull() }
+      if (cached == null) {
+        System.err.println(
+          "serve: $system external resource could not be fetched or verified ($url) — " +
+            "skipping live bundle"
+        )
+        return ResRehydrate.Unavailable
       }
       // Materialize at the recorded classpath path (path-contained — reject traversal/absolute).
       if (res.path.isBlank() || res.path.startsWith("/") || ".." in res.path.split("/")) {
@@ -2436,20 +2500,16 @@ class ServeCatalogStore(
     const val RES_POOL_DIR = "res"
 
     /**
-     * Shared, content-addressed on-disk cache for externalized resources, under the store root
-     * (`<root>/.res-cache/<sha>`). Shared across systems + reloads so a font fetched for one
-     * catalog is reused by the next.
+     * Default root for the [CatalogBlobPool] — under the store root, so a store given no durable
+     * pool behaves as it always did: shared across systems and reloads, discarded with the process.
+     * `serve --catalog-cache-dir` roots the pool on a volume instead.
      */
-    const val RES_CACHE_DIR = ".res-cache"
+    const val BLOB_CACHE_DIR = ".blobs"
 
     /**
      * Per-system subdir the rehydrated resources are materialized into at their classpath paths.
      */
     const val RES_MATERIALIZED_DIR = "bundle-res"
-
-    /** Lowercase-hex SHA-256 of [bytes] — the content-address a rehydrated resource is keyed by. */
-    private fun sha256Hex(bytes: ByteArray): String =
-      MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
     /**
      * The single-path-segment preview id for a catalog image path. The serve routes (`/p/{name}`,

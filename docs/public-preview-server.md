@@ -2463,6 +2463,65 @@ signed-in GitHub user to use live previews; playground still requires access to
 for both surfaces. The allowlist only ever **restricts** — naming a login does not grant it
 playground access, which always comes from the repo check above.
 
+### Fetched catalog bytes outlive the container (`--catalog-cache-dir`)
+
+`serve --catalogs` fetches each system's delivery branch into a directory the server creates with
+`createTempDirectory`, so everything a catalog pulled is discarded when the container is recreated —
+which on this image is what every rolled release performs. It is not only restarts: a catalog load
+deletes the live per-system directory before renaming its staging over it, so **each reload throws
+the previous generation away too**, including bytes the new revision never changed.
+
+For most of what a catalog fetches that costs little, because the baked PNGs are already lazy — a
+grid fills them through the ordinary request path. The exception is the executable tier: each live
+catalog's `liveBundle` runs to ~100 MB, its per-preview split bundles are fetched and repacked one
+per edited preview, and the externalised font/resource pool is fetched beside them. On a box
+publishing a couple of dozen catalogs that is the same download on every roll and every
+regeneration.
+
+`--catalog-cache-dir <dir>` puts those bytes in a content-addressed pool that outlives both events:
+
+```
+SERVE_CATALOG_CACHE_DIR=/catalog-cache   # the prebuilt image's default; `none` for a temp dir
+```
+
+**Unlike `--theme-cache-dir`, unset is not off.** A temp-directory pool is what this server has
+always had, so falling back to one costs nothing that was not already being paid; what a durable
+directory buys is that the bytes survive the container, and what `none` buys is the ability to say
+they should not. The image mounts a dedicated `preview_catalog_cache` volume for it, kept away from
+`preview_config` for the same reason the theme cache is.
+
+#### What makes reuse safe here
+
+A load does not read a branch. It resolves the delivery commit from the branch's Atom feed first and
+pins every subsequent URL to it (`raw.githubusercontent.com/<repo>/<commit>/…`), so those reads are
+**immutable by construction** — a cached answer can only ever be *the* answer. That is a stronger
+position than the theme cache, which caches derived pixels and therefore needs a fingerprint of
+everything that produced them plus a sample verification for whatever the fingerprint missed. Here
+there is nothing to approximate, so there is no fingerprint, no TTL and nothing to revalidate.
+
+Two rules carry it:
+
+- **Only commit-pinned reads are pooled.** A load whose revision feed could not be read falls back
+  to addressing the branch ref, which is a moving target; those reads stage exactly as they did
+  before the pool existed and populate nothing.
+- **Every blob is self-verifying.** A blob's file name *is* the sha256 of its bytes, so a read
+  hashes and compares before returning, and a truncated or corrupted entry is re-produced rather
+  than handed to a classloader. The externalised resources were already checked this way against
+  the digest their manifest declares; the pool extends the same rule to everything it holds.
+
+The pool is swept after the startup pass and after each later catalog publication — oldest-touched
+first, down to `--catalog-cache-max-bytes` (8 GB by default), sparing anything written in the last
+hour so the two replicas that overlap during a rolling update cannot reclaim each other's bytes.
+Sweeping on every publication and not only at boot is what stops a box that regenerates several
+times a day accumulating each superseded revision's bundles for the life of the process; a rate
+limit keeps a burst of publications to one census. Eviction is always safe: the worst a reclaimed
+blob costs is the fetch that produces it again.
+
+What this does **not** yet do is let a restart serve a catalog before it has talked to the branch —
+the manifests are still fetched and the per-system directory still re-assembled on the boot path.
+That is the next step, and whether it is worth the complexity is a question for what this one
+measures; see [the plan](design/CATALOG_CONTENT_CACHE.md).
+
 ### The catalog set is config, not image content
 
 **Which catalogs a box publishes lives in a `catalogs.json` outside the image**, on the mounted

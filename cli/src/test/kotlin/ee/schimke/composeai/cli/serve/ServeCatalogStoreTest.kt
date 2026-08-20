@@ -30,6 +30,16 @@ class ServeCatalogStoreTest {
   private fun tempRoot(): File =
     Files.createTempDirectory("catalog").toFile().also { it.deleteOnExit() }
 
+  /**
+   * Where a store rooted at [root] holds the blob whose sha256 is [sha] — the default
+   * [CatalogBlobPool] location, which is the store root plus its own subdirectory.
+   */
+  private fun blobFile(root: File, sha: String): File =
+    File(File(root, ServeCatalogStore.BLOB_CACHE_DIR), "${CatalogBlobPool.CONTENT_DIR}/$sha")
+
+  /** A plausible delivery-branch head, so a stubbed feed pins a load to one immutable tree. */
+  private val COMMIT = "0123456789abcdef0123456789abcdef01234567"
+
   private val registered = LinkedHashMap<String, ServeBundleHost>()
   private val registeredWasm = LinkedHashMap<String, File>()
 
@@ -1645,8 +1655,8 @@ class ServeCatalogStoreTest {
     val materializedFont = File(dir, "fonts/Roboto-Regular.ttf")
     assertTrue(materializedFont.isFile, "font materialized at its classpath path")
     assertEquals(font.toList(), materializedFont.readBytes().toList())
-    // It was cached content-addressed under the shared cache dir.
-    assertTrue(File(root, "${ServeCatalogStore.RES_CACHE_DIR}/$sha").isFile)
+    // It was cached content-addressed in the shared blob pool.
+    assertTrue(blobFile(root, sha).isFile)
   }
 
   @Test
@@ -1803,9 +1813,9 @@ class ServeCatalogStoreTest {
         branches = listOf(TrustedBranch("yschimke/compose-ai-tools", "design-artifacts/*"))
       )
     val root = tempRoot()
-    // Pre-seed the shared cache with a same-size but WRONG-content entry.
+    // Pre-seed the shared blob pool with a same-size but WRONG-content entry.
     val cacheFile =
-      File(root, "${ServeCatalogStore.RES_CACHE_DIR}/$sha").apply {
+      blobFile(root, sha).apply {
         parentFile.mkdirs()
         writeBytes(ByteArray(2048) { 0 })
       }
@@ -1837,6 +1847,138 @@ class ServeCatalogStoreTest {
     }
 
   /** Build a minimal desktop-bundle polyglot (PNG cover + zip) with the given bundle.json. */
+  // ------------------------------------------------------------------------------------------
+  // The blob pool: what a reload and a restart no longer have to re-download.
+  // ------------------------------------------------------------------------------------------
+
+  /** A one-entry commit feed, so a load resolves a delivery commit and pins its reads to it. */
+  private fun feed(commit: String): String =
+    """
+    <feed><entry>
+      <id>tag:github.com,2008:Grit::Commit/$commit</id>
+      <updated>2026-08-19T09:42:57Z</updated>
+    </entry></feed>
+    """
+      .trimIndent()
+
+  private val liveBundleCatalogJson =
+    """
+    {"schema":"design-parity-catalog/v1","system":"compose-m3",
+     "liveBundle":{"path":"bundle/","file":"compose-m3-bundle.png"},
+     "components":[{"componentId":"Button/Filled","images":[
+       {"path":"images/button-filled/ideal__default__dark.png","theme":"dark","previewId":"FilledButton_Dark"}]}]}
+    """
+      .trimIndent()
+
+  private val trustedBranch =
+    TrustStore(branches = listOf(TrustedBranch("yschimke/compose-ai-tools", "design-artifacts/*")))
+
+  private val liveBundleBytes: ByteArray by lazy {
+    polyglotBundle(
+      """{"schemaVersion":8,"backend":"desktop","previewIds":["FilledButton_Dark"],
+         "coverPreviewId":"FilledButton_Dark","classpath":[{"kind":"module","path":"classes/app.jar"}],
+         "modulePath":":app","producedBy":"test"}"""
+    )
+  }
+
+  /**
+   * A branch that resolves one commit and serves the catalog + its liveBundle, counting every read
+   * of the bundle itself. Reads are answered under both the pinned and the branch-name base so the
+   * same stub drives a pinned and an un-pinned load.
+   */
+  private fun liveBundleBranch(
+    commit: String,
+    bundleReads: java.util.concurrent.atomic.AtomicLong,
+    serveFeed: Boolean = true,
+  ): (String) -> ByteArray? = { url ->
+    when {
+      url ==
+        ServeCatalogRevision.commitsFeedUrl(
+          "yschimke/compose-ai-tools",
+          "design-artifacts/compose-m3",
+        ) -> if (serveFeed) feed(commit).encodeToByteArray() else null
+      url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> liveBundleCatalogJson.toByteArray()
+      url.endsWith("bundle/compose-m3-bundle.png") -> {
+        bundleReads.incrementAndGet()
+        liveBundleBytes
+      }
+      url.contains("bundle/previews/") -> null
+      url.endsWith(".png") -> png()
+      else -> null
+    }
+  }
+
+  @Test
+  fun `a pinned load caches the liveBundle so a reload does not download it again`() {
+    // The reload half of the problem: `load` deletes the per-system directory before swapping
+    // staging over it, so before the pool every regeneration re-pulled a ~100 MB bundle the new
+    // revision may not have changed. A commit-pinned URL names one immutable object, so the second
+    // load reads the pooled copy.
+    val reads = java.util.concurrent.atomic.AtomicLong()
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { trustedBranch },
+        fetch = liveBundleBranch(COMMIT, reads),
+        buildTrustedBundle = { _, _, _, _, _, _ -> true },
+      )
+
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+    assertEquals(1, reads.get())
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+
+    assertEquals(1, reads.get(), "a reload must read the pooled bundle, not the branch")
+  }
+
+  @Test
+  fun `a pool shared with a fresh store carries the liveBundle across a restart`() {
+    // The restart half: a rolled container is a new process over the same volume. Two stores with
+    // separate roots and one durable pool is exactly that arrangement.
+    val pool = CatalogBlobPool(tempRoot())
+    val reads = java.util.concurrent.atomic.AtomicLong()
+    fun store() =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { trustedBranch },
+        fetch = liveBundleBranch(COMMIT, reads),
+        buildTrustedBundle = { _, _, _, _, _, _ -> true },
+        blobs = pool,
+      )
+
+    assertTrue(store().load("compose-m3") is ServeCatalogStore.Result.Ok)
+    assertEquals(1, reads.get())
+    assertTrue(store().load("compose-m3") is ServeCatalogStore.Result.Ok)
+
+    assertEquals(1, reads.get(), "a restarted server must read the pooled bundle")
+    assertTrue(pool.snapshot().hits >= 1)
+  }
+
+  @Test
+  fun `an un-pinned load caches nothing`() {
+    // The rule the pool depends on: without a resolved delivery commit the base is the branch ref,
+    // which is a moving target. Caching under it would let a regenerated branch be answered with
+    // the bytes it published last week, so an un-pinned load stages exactly as it always did.
+    val pool = CatalogBlobPool(tempRoot())
+    val reads = java.util.concurrent.atomic.AtomicLong()
+    fun store() =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { trustedBranch },
+        fetch = liveBundleBranch(COMMIT, reads, serveFeed = false),
+        buildTrustedBundle = { _, _, _, _, _, _ -> true },
+        blobs = pool,
+      )
+
+    assertTrue(store().load("compose-m3") is ServeCatalogStore.Result.Ok)
+    assertTrue(store().load("compose-m3") is ServeCatalogStore.Result.Ok)
+
+    assertEquals(2, reads.get(), "each un-pinned load must re-read the branch")
+    assertEquals(0, pool.snapshot().blobs, "nothing addressed by a branch ref may be pooled")
+  }
+
   private fun polyglotBundle(
     manifest: String,
     extra: Map<String, ByteArray> = emptyMap(),

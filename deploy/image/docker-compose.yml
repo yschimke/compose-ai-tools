@@ -192,6 +192,19 @@ services:
       # first-release posture is opt-in.
       SERVE_THEME_CACHE_DIR: "${SERVE_THEME_CACHE_DIR:-none}"
       SERVE_THEME_CACHE_MAX_BYTES: "${SERVE_THEME_CACHE_MAX_BYTES:-}"
+      # The heavy bytes a catalog FETCHES (as opposed to the pixels it renders): each live
+      # catalog's executable liveBundle — ~100 MB — its per-preview split bundles, and the
+      # externalised font/resource pool. Held content-addressed, so a rolled replica reads them
+      # off this volume instead of re-downloading them from raw.githubusercontent.com, and a
+      # delivery-branch regeneration re-fetches only what actually moved.
+      #
+      # Defaulted ON here, unlike the theme cache above, because unset is not the same trade: the
+      # server has always kept these in a temp dir, so pointing them at a volume only changes how
+      # long they live. Nothing mutable is cached — only bytes addressed by a commit-pinned URL,
+      # which name one immutable object forever. Set SERVE_CATALOG_CACHE_DIR=none in .env to keep
+      # the temp-dir behaviour.
+      SERVE_CATALOG_CACHE_DIR: "${SERVE_CATALOG_CACHE_DIR:-/catalog-cache}"
+      SERVE_CATALOG_CACHE_MAX_BYTES: "${SERVE_CATALOG_CACHE_MAX_BYTES:-}"
       # Bundle-upload lane (POST a locally-built bundle and browse it here). Off unless asked for.
       SERVE_ACCEPT_BUNDLES: "${SERVE_ACCEPT_BUNDLES:-}"
       SERVE_ACCEPT_BUNDLES_FROM: "${SERVE_ACCEPT_BUNDLES_FROM:-}"
@@ -234,6 +247,12 @@ services:
       # cache. Mounted unconditionally so turning the cache on is a one-line .env change
       # (SERVE_THEME_CACHE_DIR=/theme-cache); while it stays `none` the volume is simply empty.
       - preview_theme_cache:/theme-cache
+      # Fetched catalog bytes, on a volume of their OWN for the same reason the theme cache got
+      # one: preview_config holds the catalog set and the trust store and must not be crowded out
+      # by an up-to-8-GB blob pool. Two replicas mount this at once during a rolling update, which
+      # the pool is built for — writes are content-addressed and its sweeper spares anything young
+      # enough to belong to the outgoing replica.
+      - preview_catalog_cache:/catalog-cache
     # To also pin your OWN producers, mount a trust store over the baked one and keep
     # SERVE_TRUST_STORE pointing at it:
     #   - ./producers.json:/trust/producers.json:ro
@@ -388,6 +407,8 @@ services:
 
 volumes:
   preview_theme_cache:
+  # The executable bundles, split bundles and externalised resources each live catalog fetches.
+  preview_catalog_cache:
   # Runtime download caches for `preview` (resolved live-bundle dep jars + fonts), kept across
   # image rolls so a freshly-rolled replica reuses them instead of re-downloading. See the
   # `preview` service's volumes block for why the baked android-all / ~/.m2 are excluded.
