@@ -2742,6 +2742,10 @@ caller-supplied code, so opting into it is a typed decision. The second cap is t
 rights: on a GitHub-gated box, granting `playground` requires access to `--github-auth-repo`
 yourself, so nobody can delegate a capability they don't hold.
 
+A route that *commissions* a render wants `live` even where it looks like a read:
+`/render/<id>.png` with an override query (or a `.svg` / `.slots` / `.a11y` suffix) and
+`/bundle.zip` all put the daemon to work. A bare replay of baked bytes stays `preview`.
+
 **The ingest lanes are outside all of this.** `POST /bundles/{name}` and `POST /docs` — the opt-in
 routes where a *client* contributes content to your box — accept the operator token and nothing
 else. A grant labelled "browse this server's catalogs" must not also be able to publish a document

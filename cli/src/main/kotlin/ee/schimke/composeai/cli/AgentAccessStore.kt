@@ -26,7 +26,7 @@ import kotlinx.serialization.json.Json
  * Expired entries are dropped on read rather than swept on a schedule: this is a CLI, it runs and
  * exits, and a stale row costs nothing until someone asks about it.
  */
-internal class AgentAccessStore(
+internal open class AgentAccessStore(
   private val file: File = defaultFile(),
   private val clock: () -> Long = System::currentTimeMillis,
   private val warn: (String) -> Unit = { System.err.println("compose-preview: $it") },
@@ -125,8 +125,13 @@ internal class AgentAccessStore(
 
   /**
    * Save (replacing any existing entry for the same origin). Returns false when the write failed.
+   *
+   * `open` for one reason: a test needs a *write* to fail while reads keep working, and a wedged
+   * filesystem cannot express that — a store that cannot write cannot hold the pending record the
+   * test is about either. The failure it stands in for (a full disk, a read-only config dir) is
+   * real, and what must happen next — the device secret survives — is worth pinning.
    */
-  fun save(entry: Entry): Boolean {
+  open fun save(entry: Entry): Boolean {
     val key = normalizeOrigin(entry.origin) ?: return false
     // Read-modify-write under the cross-process lock: two agents finishing `auth request` at the
     // same moment would otherwise both read the old list, and the later writer would silently drop

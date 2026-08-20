@@ -232,7 +232,7 @@ class ServeAgentGrantStore(
         )
       grants[grant.id] = grant
       byToken[grant.token] = grant.id
-      evictOverflow()
+      evictOverflow(keep = grant)
       request.state = Request.State.APPROVED
       request.grantId = grant.id
       request.resolvedBy = approvedBy
@@ -372,12 +372,19 @@ class ServeAgentGrantStore(
 
   /**
    * Hold the active-grant count at its cap by dropping the nearest-expiry first, so a burst sheds
-   * the grants closest to dying anyway rather than being refused. The freshly minted grant is
-   * always the furthest from expiry among equals, so it survives its own overflow check.
+   * the grants closest to dying anyway rather than being refused.
+   *
+   * [keep] is the grant that was just minted, and it is excluded outright rather than trusted to
+   * survive on its expiry. The earlier version reasoned that a new grant is always the furthest
+   * from expiry — which is false the moment an approver chooses a shorter lifetime than everything
+   * already live. A full map plus "give it fifteen minutes" evicted the grant it had just created:
+   * the page said *approved*, and the agent's next poll found its id gone and was told the request
+   * had expired.
    */
-  private fun evictOverflow() {
+  private fun evictOverflow(keep: Grant) {
     while (grants.size > maxActiveGrants) {
-      val oldest = grants.values.minByOrNull { it.expiresAtMillis } ?: return
+      val oldest =
+        grants.values.filter { it.id != keep.id }.minByOrNull { it.expiresAtMillis } ?: return
       grants.remove(oldest.id)?.let { byToken.remove(it.token) }
       audit("agent-grant: evicted ${oldest.fingerprint} (over the $maxActiveGrants active cap)")
     }

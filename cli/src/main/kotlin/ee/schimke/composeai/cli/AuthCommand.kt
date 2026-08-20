@@ -181,7 +181,10 @@ internal class AuthCommand(
     }
 
     val outcome = awaitApproval(client, opened)
-    store.forgetPending(client.origin)
+    // Save first, drop the pending record only if that worked. The other order lost credentials on
+    // a full disk: the device secret — the one thing that can re-poll for this token — was deleted,
+    // and the human-readable path never prints the token itself, so a failed save stranded a live
+    // grant with nothing left to redeem it.
     val saved =
       store.save(
         AgentAccessStore.Entry(
@@ -193,6 +196,7 @@ internal class AuthCommand(
           expiresAtMillis = System.currentTimeMillis() + (outcome.expiresInSeconds ?: 0) * 1000,
         )
       )
+    if (saved) store.forgetPending(client.origin)
     if (json) {
       printJson(
         GrantedJson.serializer(),
@@ -395,17 +399,22 @@ internal class AuthCommand(
         "approved" -> {
           val token = polled.token
           if (token.isNullOrEmpty()) continue
-          store.save(
-            AgentAccessStore.Entry(
-              origin = pending.origin,
-              token = token,
-              scopes = polled.scopes,
-              approvedBy = polled.approvedBy.orEmpty(),
-              label = pending.label,
-              expiresAtMillis = System.currentTimeMillis() + (polled.expiresInSeconds ?: 0) * 1000,
+          // Save first, drop the pending record only if that worked — the same order as the
+          // waiting path, for the same reason: this record holds the only secret that can re-poll
+          // for the token, and nothing here prints the token itself.
+          val stored =
+            store.save(
+              AgentAccessStore.Entry(
+                origin = pending.origin,
+                token = token,
+                scopes = polled.scopes,
+                approvedBy = polled.approvedBy.orEmpty(),
+                label = pending.label,
+                expiresAtMillis =
+                  System.currentTimeMillis() + (polled.expiresInSeconds ?: 0) * 1000,
+              )
             )
-          )
-          store.forgetPending(pending.origin)
+          if (stored) store.forgetPending(pending.origin)
         }
         // Terminal and not coming back — stop carrying it.
         "denied",
@@ -489,15 +498,36 @@ internal class AuthCommand(
   private fun forget() {
     val server = namedServer()
     if (server == null) {
-      store.clear()
-      println(
-        "Forgot every stored access grant. They remain live on their servers until they expire."
-      )
+      // The store reports a failed rewrite; saying "forgotten" over the top of one would be the
+      // same false claim `forget(origin)` was fixed for, one level up.
+      if (store.clear()) {
+        println(
+          "Forgot every stored access grant. They remain live on their servers until they expire."
+        )
+      } else {
+        fail(
+          "could not rewrite the credential file (see the warning above) — the stored grants are " +
+            "still on disk. Revoke them from each server's /status if you need them ended now."
+        )
+      }
       return
     }
+    val hadPendingHere = store.pendingFor(server) != null
+    val droppedPending = if (hadPendingHere) store.forgetPending(server) else false
+    val hadGrant = store.entryFor(server) != null
+    val droppedGrant = store.forget(server)
     println(
-      if (store.forget(server)) "Forgot the grant for $server (it remains live until it expires)."
-      else "No stored grant for $server."
+      when {
+        droppedGrant || droppedPending ->
+          "Forgot what this machine held for $server (anything live there remains so until it " +
+            "expires or you revoke it)."
+        hadGrant || hadPendingHere ->
+          fail(
+            "could not rewrite the credential file (see the warning above) — $server's " +
+              "credentials are still on disk."
+          )
+        else -> "Nothing stored for $server."
+      }
     )
   }
 

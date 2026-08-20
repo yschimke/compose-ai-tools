@@ -5843,6 +5843,10 @@ class ServeHttpServer(
     // Renders every preview in the catalog and packs a zip. Never probed for an unfurl, and the
     // most expensive thing a HEAD could otherwise trigger anonymously.
     if (rejectHeadProbe()) return
+    // …and by the same token the most expensive thing a grant could trigger, so it wants `live`.
+    // Not named in the review that caught the `/render` case, but it is the same rule and the
+    // larger bill: leaving the sibling hole open while closing the named one would be theatre.
+    if (rejectGrantBelowScope(ServeAgentGrantScope.LIVE, api = true)) return
     withLeasedSession(selectedSessionId(sessionInPath)) { renderHost ->
       // Render the whole module once (cache-backed) into the portable WebEmbed gallery and stream
       // it
@@ -6446,6 +6450,20 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.handleRender(sessionInPath: Boolean) {
     if (rejectBadToken() || rejectMalformedPin()) return
+    // An override or a daemon-only product turns this route from a replay into a **live render**,
+    // which is what `live` means and what a `preview` grant was not given. The two other gates
+    // learned this rule; this one is reached without them, so it has to state it itself.
+    //
+    // Deliberately keyed on the caller's own request — an override param, a non-PNG suffix — and
+    // not on whether the bytes happen to be baked. A bare `/render/<id>.png` for a preview this
+    // host has no baked copy of is the catalog serving its own content, at the same cost any
+    // anonymous visitor imposes on a public box; refusing that would break ordinary browsing every
+    // time a session was not resident, which is not what anyone approved or withheld.
+    if (
+      (requestCarriesOverrides() || wantsDaemonOnlyRenderProduct()) &&
+        rejectGrantBelowScope(ServeAgentGrantScope.LIVE, api = true)
+    )
+      return
     // A bare `/render/<id>.png` replays a baked file and IS what an unfurler probes for `og:image`,
     // so it must keep answering HEAD. Everything else on this route reaches a daemon or a bundle
     // host, and amplifying a bodyless probe into one is the same trade as `/bundle.zip` at smaller

@@ -50,6 +50,23 @@ class AgentAccessClientIntegrationTest {
 
   private fun client() = AgentAccessClient("http://127.0.0.1:${server.port}")
 
+  /**
+   * A store that reads and remembers normally but cannot save a *grant*. Stands in for a full disk
+   * or a read-only config dir at the moment the token comes back — the case where dropping the
+   * pending record would strand a live credential.
+   */
+  private class UnsaveableStore(file: File) : AgentAccessStore(file = file, warn = {}) {
+    override fun save(entry: Entry): Boolean = false
+  }
+
+  private fun unsaveableStore(): AgentAccessStore =
+    UnsaveableStore(
+      File(
+        Files.createTempDirectory("auth-store-ro").toFile().also { it.deleteOnExit() },
+        "agent-access.json",
+      )
+    )
+
   /** A credential store on a throwaway path, so a test never touches the caller's real one. */
   private fun tempStore(): AgentAccessStore =
     AgentAccessStore(
@@ -186,6 +203,36 @@ class AgentAccessClientIntegrationTest {
     grants.revokeToken(token, "@yuri")
     AuthCommand(listOf("status", "--server", c.origin), store).run()
     assertNull(store.tokenFor(c.origin), "a revoked grant should not still be reported as held")
+  }
+
+  @Test
+  fun `a failed save leaves the device secret in place to try again`() {
+    // Dropping the pending record before the grant is safely stored loses the only thing that can
+    // re-poll for the token — and the human-readable path never prints the token itself, so the
+    // grant would be live on the server with nothing left able to redeem it.
+    val c = client()
+    val opened = ok(c.open(label = "unwritable", scope = "live", ttlSeconds = 900))
+    val wedged = unsaveableStore()
+    wedged.savePending(
+      AgentAccessStore.Pending(
+        origin = c.origin,
+        requestId = opened.requestId,
+        deviceSecret = opened.deviceSecret,
+        expiresAtMillis = System.currentTimeMillis() + 600_000,
+      )
+    )
+    assertNotNull(wedged.pendingFor(c.origin))
+    grants.approve(opened.requestId, "@yuri", ServeAgentGrantScope.LIVE, 900)
+
+    // The store cannot write, so collection fails — and must not take the secret down with it.
+    AuthCommand(listOf("status", "--server", c.origin), wedged).run()
+    assertNull(wedged.tokenFor(c.origin))
+    assertNotNull(
+      wedged.pendingFor(c.origin),
+      "a failed save must leave the device secret in place",
+    )
+    // Proof the secret is still good: the server will hand the token over again.
+    assertEquals("approved", ok(c.poll(opened.requestId, opened.deviceSecret)).status)
   }
 
   @Test

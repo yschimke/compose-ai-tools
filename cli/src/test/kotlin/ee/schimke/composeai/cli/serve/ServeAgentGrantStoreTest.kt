@@ -185,6 +185,23 @@ class ServeAgentGrantStoreTest {
   }
 
   @Test
+  fun `a short-lived grant does not evict itself on a full map`() {
+    // The approver's choice of a *shorter* lifetime than everything already live used to make the
+    // new grant the nearest to expiry, so the cap evicted the grant it had just minted: the page
+    // said approved and the agent's next poll found nothing.
+    val store = store(maxActiveGrants = 2)
+    fun mint(ttl: Long): ServeAgentGrantStore.Grant {
+      val request = store.ask(ttl = ttl)
+      return store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, ttl)!!
+    }
+    mint(3600)
+    mint(1800)
+    val shortest = mint(900)
+    assertNotNull(store.grantForToken(shortest.token), "the new grant evicted itself")
+    assertEquals(2, store.activeGrants().size)
+  }
+
+  @Test
   fun `the pending-request cap refuses rather than growing without bound`() {
     val store = store(maxPendingRequests = 2)
     assertNotNull(store.openRequest("a", "ip", ServeAgentGrantScope.PREVIEW, 600))

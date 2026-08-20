@@ -417,6 +417,26 @@ class ServeAgentGrantRoutingTest {
   }
 
   @Test
+  fun `a preview grant may replay a render but not commission one`() {
+    val preview = grantedToken(scope = "preview")
+    // A bare replay is what `preview` means, and stays available.
+    assertTrue(get("/render/Anything.png", token = preview).first != 403)
+    // An override turns the same route into a live render — that is `live`, and was not approved.
+    assertEquals(403, get("/render/Anything.png?uiMode=dark", token = preview).first)
+    // …as does asking for a product only a daemon can produce.
+    assertEquals(403, get("/render/Anything.svg", token = preview).first)
+    // The whole-catalog zip renders every preview, so it wants `live` too.
+    assertEquals(403, get("/bundle.zip", token = preview).first)
+  }
+
+  @Test
+  fun `a live grant may commission a render`() {
+    val live = grantedToken(scope = "live")
+    assertTrue(get("/render/Anything.png?uiMode=dark", token = live).first != 403)
+    assertTrue(get("/bundle.zip", token = live).first != 403)
+  }
+
+  @Test
   fun `an approver on a private server must hold the browse token, not merely a session`() {
     // No GitHub auth here, so the operator branch is what runs — and it compares against `--token`
     // specifically. A caller with a grant, or with nothing, is not an approver.

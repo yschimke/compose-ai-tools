@@ -101,6 +101,12 @@ through the live and playground gates unread, because those gates had nothing el
 presented grant is now judged on its own scope on every deployment shape, and a grant that falls
 short gets a 403 naming the scope it lacks rather than a sign-in redirect it has no browser for.
 
+**A route that commissions a render wants `live`, even when it looks like a read.**
+`/render/{id}.png` replays baked bytes — until an override query or a non-PNG suffix turns it into
+an on-demand daemon render, and `/bundle.zip` renders the whole catalog. Those are the CPU cost
+`live` exists to describe, so they check the scope themselves; a bare replay stays `preview`,
+because refusing it would break ordinary browsing for a grant that was given exactly that.
+
 **The ingest lanes are outside the scope system entirely.** `POST /bundles/{name}` and `POST /docs`
 run through the same `rejectBadToken` as everything else, so a `preview` grant would have satisfied
 them — letting an agent granted "browse this server's catalogs" publish a document or replace a
@@ -152,8 +158,11 @@ internet mint itself credentials.
   re-asking.
 - **Revocation** from `/status` (one button per live grant), by the agent itself
   (`POST /agent-access/revoke`), and implicitly at expiry.
-- **Bounded** — `--agent-grant-max-active` (default 16) live grants, oldest-expiry evicted first;
-  requests likewise. The store is in memory, so a restart drops every grant. That is deliberate: the
+- **Bounded** — `--agent-grant-max-active` (default 16) live grants, nearest-expiry evicted first
+  *excluding the one just minted* (an approver choosing a short lifetime on a full box would
+  otherwise evict the grant the page had just reported as approved). Requests are bounded too, and
+  shed only once denied or collected — an approval nobody has polled for yet still owes its owner a
+  credential. The store is in memory, so a restart drops every grant. That is deliberate: the
   TTLs are short, and a credential that cannot survive a redeploy has a much smaller worst case than
   one that can.
 - **Never printed.** The token appears exactly once, in the poll response. `/status`, the server log,
