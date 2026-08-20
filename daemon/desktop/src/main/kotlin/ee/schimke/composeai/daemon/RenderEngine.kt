@@ -195,15 +195,6 @@ class RenderEngine(
     // previews per JVM, so the flag is a whole-session property here rather than a per-request one;
     // re-applying it per render is idempotent and costs a `getProperty`. Unset (default) is silent.
     LinkBufferComposer.applyAndDescribe(classLoader)?.let(System.err::println)
-    // Drop pseudolocalised string items a previous render left in CMP's process-wide cache before
-    // this one composes — a no-op unless this render is leaving pseudolocale mode. **First
-    // statement in `render`, ahead of the special-mode dispatches below**: `scroll-long` /
-    // `scroll-gif` / `figma-svg-long` / Lottie all return before `setUp`, and each composes the
-    // user's preview in this same JVM, so a guard placed after them would leave a stitched PNG or
-    // GIF rendering accented text at no locale at all (#4384 review). [enterPreviewLocale] runs
-    // the same guard for every path that does compose through a locale scope, held frames
-    // included; both are the one idempotent state machine.
-    guardPseudolocaleStringCache(spec.localeTag)
     // Issue #1604 — scroll-scenario dispatch. When the dispatcher's `data/fetch` re-render path
     // queues `mode=scroll-long` / `scroll-gif` (because the `ScrollDataProductRegistry` advertised
     // the kind as `requiresRerender = true` and the artefact was missing), leave the single-frame
@@ -211,8 +202,17 @@ class RenderEngine(
     // writes the stitched PNG (LONG) / animated GIF (GIF) to the same on-disk path the registry
     // (`ScrollDataProductRegistry.fileFor`) reads back, so the dispatcher's second fetch sees the
     // file and emits `Ok(path)`. Mirrors `:daemon:android`'s `RenderEngine.runScrollScenario`.
+    //
+    // Wrapped in [withPreviewLocale] like every other composing path, rather than dispatched
+    // outside the gate: this mode composes the user's preview in this JVM, so it needs both halves
+    // of what the gate provides — the JVM-default-`Locale` override a `localeTag` request asks
+    // for, and serialisation against a held session's frames, which is what lets the pseudolocale
+    // string-cache guard inside `enterPreviewLocale` describe the composition truthfully rather
+    // than racing it (#4384 / #4385 review). Same for the two modes below.
     if (spec.renderMode == SCROLL_LONG_RENDER_MODE || spec.renderMode == SCROLL_GIF_RENDER_MODE) {
-      return runScrollScenario(spec = spec, requestId = requestId, classLoader = classLoader)
+      return withPreviewLocale(spec.localeTag) {
+        runScrollScenario(spec = spec, requestId = requestId, classLoader = classLoader)
+      }
     }
     // Full-page figma-svg for a scrolling preview (`compose/figma-svg-long`). Renders at an
     // expanded
@@ -221,14 +221,18 @@ class RenderEngine(
     // /
     // GIF above. See docs/design/SCROLLING_SVG.md.
     if (spec.renderMode == FIGMA_SVG_LONG_RENDER_MODE) {
-      return runScrollSvgScenario(spec = spec, requestId = requestId, classLoader = classLoader)
+      return withPreviewLocale(spec.localeTag) {
+        runScrollSvgScenario(spec = spec, requestId = requestId, classLoader = classLoader)
+      }
     }
     // kind=LOTTIE animated capture — sweep the asset's intrinsic timeline into a looping GIF
     // instead of capturing one still frame. Routed here (before the reflection-based setUp) because
     // a Lottie asset has no class to resolve; the render body lives in `:renderer-desktop`'s
     // `renderLottieApng`, mirroring how `runScrollScenario` delegates to `renderScrollPreview`.
     if (spec.kind == "LOTTIE" && spec.renderMode == LOTTIE_GIF_RENDER_MODE) {
-      return runLottieGifScenario(spec = spec, requestId = requestId, classLoader = classLoader)
+      return withPreviewLocale(spec.localeTag) {
+        runLottieGifScenario(spec = spec, requestId = requestId, classLoader = classLoader)
+      }
     }
     val trace = PerfettoTraceDataProducer.recorder(spec.outputBaseName, backend = "desktop")
     val state =
@@ -1972,9 +1976,11 @@ class RenderEngine(
      * all in the ordinary case where no pseudolocale render has happened yet, so a daemon that
      * never renders one keeps its warm cache.
      *
-     * Called from two places, both idempotent: the first statement of [render] (which covers the
-     * scroll / Lottie / long-SVG modes that return before any locale scope is entered) and
-     * [enterPreviewLocale] (which covers every composition, held frames included).
+     * Called only from [enterPreviewLocale], under the locale gate and in both of its branches, so
+     * it is serialised against the compositions it describes. Every lane reaches it from there: the
+     * single-frame path through `setUp`, held frames through `renderOnce`, and the scroll /
+     * long-SVG / Lottie modes — which `render` now wraps in [withPreviewLocale] rather than letting
+     * them compose outside the gate entirely.
      */
     internal fun guardPseudolocaleStringCache(localeTag: String?): Boolean {
       val isPseudolocale =
@@ -2084,10 +2090,18 @@ class RenderEngine(
       // interaction composed a string the cache had never seen and refilled it with transformed
       // text under a flag that now said otherwise, so the render after that skipped its clear
       // (#4384 review).
-      guardPseudolocaleStringCache(localeTag)
+      //
+      // The guard runs **inside** the gate, in both branches, and that ordering is the fix for the
+      // follow-on race (#4385 review): held sessions compose on their own executors, so a
+      // pseudolocale frame that armed the flag *before* blocking on the write lock could have an
+      // ordinary frame clear and disarm it in the meantime, then compose and refill the cache
+      // under a flag reading false — leaving every later ordinary render skipping its clear.
+      // Under the gate, an arm cannot interleave with a clear: arming holds the write lock, and
+      // the concurrent readers a clear can share it with are all clearing the same empty cache.
       val effectiveTag = effectiveLocaleTag(localeTag)
       if (effectiveTag == null) {
         localeGate.readLock().lock()
+        guardPseudolocaleStringCache(localeTag)
         return PreviewLocaleScope { localeGate.readLock().unlock() }
       }
       // A read→write upgrade deadlocks on ReentrantReadWriteLock rather than failing. It can't
@@ -2098,6 +2112,7 @@ class RenderEngine(
           "localized render must not nest inside an unlocalized one"
       }
       localeGate.writeLock().lock()
+      guardPseudolocaleStringCache(localeTag)
       val previousDefaultLocale = overrideJvmDefaultLocale(effectiveTag)
       return PreviewLocaleScope {
         restoreJvmDefaultLocale(previousDefaultLocale)
