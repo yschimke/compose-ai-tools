@@ -223,6 +223,37 @@ fun PreviewOverrides?.withSizeBounds(source: PreviewOverrides?): PreviewOverride
 }
 
 /**
+ * Put a pseudolocale [localeTag] (`en-XA` / `ar-XB`) back onto an (optionally null) extension bag,
+ * so the renderer's `PreviewOverrideExtensions.plan(spec.overrides)` sees the tag the spec carries.
+ *
+ * **Why the renderer has to do this.** `localeTag` reaches a backend as a **typed wire token**
+ * (`…;localeTag=ar-XB;…`), which `RenderSpec.parseFromPayload` reads into `spec.localeTag`.
+ * `JsonRpcServer.encodeRenderPayload` deliberately nulls every tokenised field out of the base64
+ * `overrides=<bag>` it emits alongside, so nothing travels twice — and
+ * `PreviewOverridesEncodingCompletenessTest.tokenisedFieldsAreNotRestatedInTheBag` pins that. But
+ * `PseudolocalePreviewOverrideExtension` (Android) / `…Desktop` plan off the **bag**, so on every
+ * daemon lane the planner was handed `localeTag = null` and abstained: the qualifier / `LocaleList`
+ * half of the override applied, the around-composable that pseudolocalises `stringResource(...)`
+ * and flips `LocalLayoutDirection` for `ar-XB` never did. `?localeTag=ar-XB` on the preview server
+ * rendered plain LTR English and looked like the feature was off (#4371). The Gradle path never had
+ * the bug — `RobolectricRenderTest` plans from `params.locale` directly, which is why the baked
+ * catalog PNGs are right and only the live daemon lane was wrong.
+ *
+ * So the rehydration lives at the **renderer**, where `spec.localeTag` and `spec.overrides` meet:
+ * one seam covering every payload producer (the JSON-RPC encoder, both `PreviewManifestRouter`s
+ * forwarding a manifest-declared `@Preview(locale = "en-XA")`, the CLI), rather than an emission
+ * rule each of them has to remember. Idempotent, so the held-session lane — which already carries
+ * the tag through [MergedPreviewOverrides.toExtensionOverrides]'s pseudolocale exception — passes
+ * through unchanged.
+ *
+ * Only pseudolocales are folded back: a real locale (`de`, `ar`, `zh-Hant-TW`) has no bag-consuming
+ * planner, and restating it would put a tokenised field back in the bag for no reader.
+ */
+fun PreviewOverrides?.withPseudolocaleFrom(localeTag: String?): PreviewOverrides? =
+  if (!isPseudolocaleTag(localeTag)) this
+  else (this ?: PreviewOverrides()).copy(localeTag = localeTag)
+
+/**
  * Hard-coded duplicate of `Pseudolocale.fromTag(...) != null`. Inlined here so `:daemon:core` (the
  * protocol module) doesn't take a dependency on `:data-pseudolocale-core` just to gate the bag
  * projection in [MergedPreviewOverrides.toExtensionOverrides]. If new pseudolocale tags ever land,

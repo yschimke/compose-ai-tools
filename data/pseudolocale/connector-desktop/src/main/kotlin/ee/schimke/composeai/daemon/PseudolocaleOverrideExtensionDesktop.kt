@@ -93,8 +93,20 @@ class PseudolocaleOverrideExtensionDesktop(private val mode: Pseudolocale) :
  * Desktop planner mapping `renderNow.overrides.localeTag` in {`en-XA`, `ar-XB`} to a
  * [PseudolocaleOverrideExtensionDesktop]. Returns null for any other tag so non-pseudo locales pass
  * through the renderer's standard `LocaleList` path untouched.
+ *
+ * **Marked [AlwaysOnPreviewOverrideExtension] so the enable gate can't switch it off.**
+ * `DaemonMain` registers this planner under the `data/pseudolocale` extension id, and
+ * `ExtensionRegistry.activeOverrideExtensions` skips a planner whose owning extension was never
+ * publicly enabled. `serve` (preview.coo.ee) never calls `extensions/enable` — only the MCP
+ * supervisor does — so a `?localeTag=en-XA` render there planned nothing and came back
+ * un-pseudolocalised, the same shape as the named-override drop the marker was introduced for
+ * (#4210, #4371). The gate governs client-visible `data/fetch` products; this planner has none, it
+ * only wraps the composition for an override the caller explicitly asked for. Safe on the empty-bag
+ * path the marker also opts into: `Pseudolocale.fromTag(null)` is null, so a render with no
+ * overrides still plans nothing and stays byte-identical.
  */
-class PseudolocalePreviewOverrideExtensionDesktop : DataExtension<PreviewOverrides> {
+class PseudolocalePreviewOverrideExtensionDesktop :
+  DataExtension<PreviewOverrides>, AlwaysOnPreviewOverrideExtension {
   override val id: DataExtensionId = PseudolocaleOverrideExtensionDesktop.ID
 
   override fun plan(request: PreviewOverrides): PlannedDataExtension? =

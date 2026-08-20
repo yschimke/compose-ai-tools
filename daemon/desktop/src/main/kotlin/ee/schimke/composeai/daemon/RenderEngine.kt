@@ -573,7 +573,16 @@ class RenderEngine(
                   },
                 ) {
                   ComposeDataExtensionPipeline.Apply(
-                    extensions = previewOverrideExtensions.plan(spec.overrides),
+                    // `withPseudolocaleFrom` puts an `en-XA` / `ar-XB` tag back on the bag: it
+                    // arrives as the typed `localeTag=` wire token (so `spec.localeTag`), and the
+                    // encoder nulls tokenised fields out of the bag — leaving
+                    // `PseudolocalePreviewOverrideExtensionDesktop` planning off a null tag and
+                    // abstaining, so the RTL flip + `stringResource` pseudolocalisation never
+                    // installed on any daemon lane (#4371). See the helper's KDoc.
+                    extensions =
+                      previewOverrideExtensions.plan(
+                        spec.overrides.withPseudolocaleFrom(spec.localeTag)
+                      ),
                     previewId = spec.previewId,
                     renderMode = spec.renderMode,
                     sink = RecordingExtensionCompositionSink(),

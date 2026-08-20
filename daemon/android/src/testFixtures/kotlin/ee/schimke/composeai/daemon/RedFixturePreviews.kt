@@ -601,6 +601,26 @@ fun DarkAwareSquare() {
 }
 
 /**
+ * Resolves a framework string through `LocalContext.current.getString(...)` — the same
+ * `Resources.getText` chain `stringResource(...)` bottoms out in — and paints blue when what comes
+ * back is **not** the plain English literal, i.e. when `PseudolocaleOverrideExtension`'s wrapped
+ * `Resources` transformed it (`OK` → `[ÖĶ ··]` in accent mode, `‮OK‬` in bidi). Red means the
+ * lookup returned the untouched string, so the around-composable never installed.
+ *
+ * `android.R.string.ok` rather than an app resource: it needs no `values/` set on the fixture
+ * classpath and Robolectric resolves it for every configuration. Used by
+ * [OverrideIntegrationTest.pseudolocaleTagPseudolocalisesStringsOnThePayloadPath] — the probe for
+ * the half of a pseudolocale override the Robolectric qualifier path does *not* provide (that half
+ * only rewrites the locale to `en` and adds `ldrtl`).
+ */
+@Composable
+fun PseudolocaleStringSquare() {
+  val resolved = androidx.compose.ui.platform.LocalContext.current.getString(android.R.string.ok)
+  val bg = if (resolved == "OK") Color(0xFFEF5350) else Color(0xFF42A5F5)
+  Box(modifier = Modifier.fillMaxSize().background(bg))
+}
+
+/**
  * Reads `ContextCompat.checkSelfPermission(...)` for `android.permission.CAMERA` — the exact call
  * shape `samples/android`'s `PermissionGatedPreview` uses and the path the panel's permission UI
  * targets. Paints green when granted, red when denied. Used by `PermissionsOverrideIntegrationTest`

@@ -1007,6 +1007,30 @@ fun LocaleAwareSquare() {
 }
 
 /**
+ * Reads `LocalLayoutDirection.current` and encodes it as a solid fill — blue for `Rtl`, red for
+ * `Ltr`.
+ *
+ * The pixel probe for the **pseudolocale around-composable**, which is what
+ * `PseudolocaleOverrideExtensionDesktop` installs (RTL flip + a pseudolocalising
+ * `LocalResourceReader`). `ar-XB` folds to base locale `en` for the renderer's `LocaleList` /
+ * JVM-default-`Locale` half — `RenderEngine.effectiveLocaleTag("ar-XB") == "en"`, and `en` is LTR —
+ * so a red render means the planner never ran and a blue one means it did. That makes this the
+ * fixture that can tell the two halves of a pseudolocale override apart, which [LocaleAwareSquare]
+ * (a probe for the locale half) cannot.
+ *
+ * Used by [OverrideIntegrationTest.pseudolocaleTagReachesTheAroundComposableOnThePayloadPath].
+ */
+@Composable
+fun LayoutDirectionAwareSquare() {
+  val bg =
+    when (androidx.compose.ui.platform.LocalLayoutDirection.current) {
+      LayoutDirection.Rtl -> Color(0xFF42A5F5) // blue
+      LayoutDirection.Ltr -> Color(0xFFEF5350) // red
+    }
+  Box(modifier = Modifier.fillMaxSize().background(bg))
+}
+
+/**
  * A Material 3 [RangeSlider], whose two thumbs carry **Material's own** built-in strings as content
  * descriptions — `Strings.SliderRangeStart` / `SliderRangeEnd`, "Range start" / "Range end" in
  * English and "Bereichsstart" / "Bereichsende" in German, from the 75 locale bundles

@@ -110,6 +110,79 @@ class OverrideIntegrationTest {
     }
   }
 
+  /**
+   * **Regression guard for the pseudolocale drop on the daemon lane (#4371).**
+   *
+   * A pseudolocale override is two halves. The qualifier half — rewrite `ar-XB` to base locale `en`
+   * and add `ldrtl` — happens in `RenderEngine.applyPreviewQualifiers` off `spec.localeTag`. The
+   * other half, `PseudolocaleOverrideExtension`'s wrapped `Resources`, is planned from the
+   * **extension bag**; but `localeTag` travels as a typed wire token and
+   * `JsonRpcServer.encodeRenderPayload` nulls tokenised fields out of the bag, so the planner saw
+   * `localeTag = null` and abstained. The render came back correctly mirrored and qualified, with
+   * every string un-pseudolocalised — `?localeTag=ar-XB` on the preview server looked like plain
+   * English (the shape reported against `wear-m3-catalog`). The Gradle path plans from
+   * `params.locale`, which is why only the live daemon lane was wrong.
+   *
+   * [PseudolocaleStringSquare] paints blue exactly when `Resources.getText` came back transformed,
+   * so it probes the half the qualifier path cannot provide. Before the fix both pseudolocale
+   * renders were red.
+   */
+  @Test
+  fun pseudolocaleTagPseudolocalisesStringsOnThePayloadPath() {
+    val outputDir = tempFolder.newFolder("renders-pseudolocale")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "pseudolocale-string",
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "PseudolocaleStringSquare",
+              widthPx = 32,
+              heightPx = 32,
+              density = 1.0f,
+              outputBaseName = "pseudolocale-string",
+            )
+          )
+      )
+    val host = PreviewManifestRouter(manifest = manifest)
+    host.start()
+    try {
+      val plain = renderAndDecode(host, "previewId=pseudolocale-string", "pseudo-plain")
+      val plainRedPct = pixelMatchPct(plain, expectedRgb = 0xEF5350, perChannelTolerance = 8)
+      assertTrue(
+        "no override must resolve the plain string (red); got" +
+          " ${"%.2f".format(plainRedPct * 100)}% red",
+        plainRedPct >= 0.95,
+      )
+
+      for ((tag, label) in listOf("en-XA" to "accent", "ar-XB" to "bidi")) {
+        val rendered =
+          renderAndDecode(host, "previewId=pseudolocale-string;localeTag=$tag", "pseudo-$label")
+        val bluePct = pixelMatchPct(rendered, expectedRgb = 0x42A5F5, perChannelTolerance = 8)
+        assertTrue(
+          "localeTag=$tag must plan PseudolocaleOverrideExtension so Resources.getText comes back" +
+            " pseudolocalised; got ${"%.2f".format(bluePct * 100)}% blue — the pseudolocale bag" +
+            " drop is back (#4371)",
+          bluePct >= 0.95,
+        )
+      }
+
+      // …and the wrap must not outlive the render that asked for it.
+      val after = renderAndDecode(host, "previewId=pseudolocale-string", "pseudo-plain-after")
+      val afterRedPct = pixelMatchPct(after, expectedRgb = 0xEF5350, perChannelTolerance = 8)
+      assertTrue(
+        "an un-overridden render after a pseudolocale one must resolve the plain string again;" +
+          " got ${"%.2f".format(afterRedPct * 100)}% red",
+        afterRedPct >= 0.95,
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
   @Test
   fun deviceOverrideResolvesCatalogDimensions() {
     // PROTOCOL.md § 5 (`renderNow.overrides.device`) — `device=id:pixel_5` should resolve via
