@@ -8145,9 +8145,23 @@ ${captureControlsHtml().prependIndent("          ")}
           referenceAttrs("light", card.light) +
             referenceAttrs("dark", card.dark) +
             referenceAttrs("neutral", card.neutral)
+        // The ground each variant declares for ITSELF, where it declares one. Only the preview's
+        // own rungs — the catalog default is the wall's `data-default-theme` and applying it here
+        // too would make every row claim to have declared something. Without this the wall could
+        // only choose between "the variant is named dark" and "the catalog is dark-first", so a
+        // neutral pairing whose preview asks for a light ground inside a dark-first catalog had no
+        // way to say so and landed on the dark sheet.
+        val declaredBgAttrs =
+          listOf("light" to card.light, "dark" to card.dark, "neutral" to card.neutral)
+            .mapNotNull { (variant, preview) ->
+              preview
+                ?.let { declaredBackdropTheme(it) }
+                ?.let { " data-declared-bg-$variant=\"$it\"" }
+            }
+            .joinToString("")
         """
           <tr class="cp-compare-row" data-label="${WebEscaping.htmlEscape(label)}"
-            data-hay="${WebEscaping.htmlEscape(hay)}" data-preview-ids="${WebEscaping.htmlEscape(ids)}"$pngAttrs$svgAttrs$rcAttrs$referenceAttrs>
+            data-hay="${WebEscaping.htmlEscape(hay)}" data-preview-ids="${WebEscaping.htmlEscape(ids)}"$pngAttrs$svgAttrs$rcAttrs$referenceAttrs$declaredBgAttrs>
             <th scope="row"><a href="$viewer">${WebEscaping.htmlEscape(component)}${
             if (variant.isEmpty()) ""
             else "<span class=\"cp-compare-variant\">${WebEscaping.htmlEscape(variant)}</span>"

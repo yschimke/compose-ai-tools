@@ -47,20 +47,29 @@ export function variantFor(
 }
 
 /**
- * The background a row is drawn on.
+ * The background a row is drawn on — the wall's end of `PreviewBackdrop`'s precedence.
  *
- * A row whose pairing is genuinely light or dark says so and is taken at its word. Everything else
- * — a `neutral` pairing, or a row this format cannot show — has no theme *of its own*, and used to
- * be answered "light" unconditionally. That is wrong for a dark-first catalog, where a theme-neutral
- * component is still drawn for a black watch face: its white-on-transparent sticker landed on the
- * light sheet and read as nearly blank, in the table meant to compare it
- * (yschimke/wear-m3-catalog#56).
+ * Three rungs, in the same order the resolver uses:
  *
- * So an absent theme defers to [stage] — the catalog's declared stage, which the wall already
- * carries as `data-default-theme`. "Neutral" means neutral *between the catalog's themes*, not
- * "light".
+ * 1. [declared] — what this variant's preview says about its OWN ground
+ *    (`@Preview(backgroundColor)` / `showBackground`), emitted per variant as
+ *    `data-declared-bg-<variant>`. Highest, because it is the author stating it outright: a
+ *    component that asks for a light ground keeps it even inside a dark-first catalog.
+ * 2. the pairing's own theme, when it is genuinely `light` or `dark`.
+ * 3. [stage] — the catalog's declared stage, which the wall carries as `data-default-theme`.
+ *
+ * Rung 3 is what this used to answer `"light"` for unconditionally. That is wrong for a dark-first
+ * catalog, where a theme-neutral component is still drawn for a black watch face: its
+ * white-on-transparent sticker landed on the light sheet and read as nearly blank, in the table
+ * meant to compare it (yschimke/wear-m3-catalog#56). "Neutral" means neutral *between the catalog's
+ * themes*, not "light".
  */
-export function rowTheme(variant: string, stage?: string): "light" | "dark" {
+export function rowTheme(
+    variant: string,
+    stage?: string,
+    declared?: string | null,
+): "light" | "dark" {
+    if (declared === "dark" || declared === "light") return declared;
     if (variant === "dark" || variant === "light") return variant;
     return stage === "dark" ? "dark" : "light";
 }

@@ -327,7 +327,11 @@ export class CompareWall extends LitElement {
         row.hidden = false;
         row.setAttribute(
             "data-bg-theme",
-            rowTheme(variant, this.root.getAttribute("data-default-theme") ?? ""),
+            rowTheme(
+                variant,
+                this.root.getAttribute("data-default-theme") ?? "",
+                row.getAttribute(`data-declared-bg-${variant}`),
+            ),
         );
         png.src = pngUrl;
         png.alt = `${row.getAttribute("data-label")} rendered PNG`;

@@ -130,6 +130,21 @@ describe("rowTheme", () => {
         assert.equal(rowTheme("neutral", "dark"), "dark");
         assert.equal(rowTheme("", "dark"), "dark");
     });
+
+    it("lets a preview's own declared ground outrank both", () => {
+        // The per-preview half: a component that asks for a light ground keeps it even inside a
+        // dark-first catalog, and vice versa. Without this the catalog default swept up every
+        // neutral row regardless of what its preview declared.
+        assert.equal(rowTheme("neutral", "dark", "light"), "light");
+        assert.equal(rowTheme("neutral", "light", "dark"), "dark");
+        assert.equal(rowTheme("dark", "dark", "light"), "light");
+    });
+
+    it("ignores an absent or unusable declaration", () => {
+        assert.equal(rowTheme("neutral", "dark", null), "dark");
+        assert.equal(rowTheme("neutral", "dark", undefined), "dark");
+        assert.equal(rowTheme("neutral", "dark", ""), "dark");
+    });
 });
 
 describe("initialState", () => {
