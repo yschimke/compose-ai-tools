@@ -37,6 +37,9 @@ import ee.schimke.composeai.cli.serve.PlaygroundSandboxProbe
 import ee.schimke.composeai.cli.serve.PlaygroundSeedResolver
 import ee.schimke.composeai.cli.serve.PlaygroundTokenStore
 import ee.schimke.composeai.cli.serve.RenderOutcome
+import ee.schimke.composeai.cli.serve.ServeAgentGrantScope
+import ee.schimke.composeai.cli.serve.ServeAgentGrantStore
+import ee.schimke.composeai.cli.serve.ServeAgentGrants
 import ee.schimke.composeai.cli.serve.ServeBackgroundWork
 import ee.schimke.composeai.cli.serve.ServeBundle
 import ee.schimke.composeai.cli.serve.ServeBundleDaemon
@@ -683,6 +686,62 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
       ?.map { it.trim().lowercase() }
       ?.filter { it.isNotEmpty() }
       ?.toSet() ?: emptySet()
+
+  /**
+   * Agent access grants (`--agent-grants`): enable the device-grant flow at `/agent-access/…` so an
+   * agent with no credential can ask for temporary, scoped, revocable access, and a human approves
+   * it from a link the agent prints. See
+   * [docs/design/AGENT_ACCESS_GRANTS.md](../../../../../../../../docs/design/AGENT_ACCESS_GRANTS.md).
+   *
+   * Off by default and deliberately not derivable: the lane's whole purpose is to mint credentials,
+   * so an operator turns it on knowingly or not at all.
+   */
+  private val agentGrants: Boolean = "--agent-grants" in args
+
+  /**
+   * The most privileged scope a grant on this box may carry (`--agent-grant-scopes`), defaulting to
+   * `preview,live`. `playground` is excluded from the default because it runs caller-supplied
+   * Kotlin here; opting into it is a typed decision.
+   */
+  private val agentGrantMaxScope: ServeAgentGrantScope =
+    ServeAgentGrantScope.parseHighest(args.flagValue("--agent-grant-scopes"))
+      ?: ServeAgentGrantScope.DEFAULT_MAX
+
+  /**
+   * Longest grant this box will mint (`--agent-grant-max-ttl`, e.g. `2h`/`90m`/`3600`). Clamped to
+   * [ServeAgentGrantStore.HARD_MAX_GRANT_TTL_SECONDS] — beyond a day it is not temporary access any
+   * more, it is a credential nobody remembers issuing.
+   */
+  private val agentGrantMaxTtlSeconds: Long =
+    args
+      .flagValue("--agent-grant-max-ttl")
+      ?.let {
+        // A typo must not silently become the default. `--agent-grant-max-ttl 30m` mistyped is an
+        // operator asking for half an hour and getting eight — sixteen times the ceiling they
+        // meant, on the one setting that bounds how long a minted credential lives. The client's
+        // `--ttl` already fails loudly; so does this.
+        ServeAgentGrants.parseDurationSeconds(it)
+          ?: throw IllegalArgumentException(
+            "--agent-grant-max-ttl '$it' is not a duration — try 90m, 2h, or a number of seconds"
+          )
+      }
+      ?.coerceIn(60L, ServeAgentGrantStore.HARD_MAX_GRANT_TTL_SECONDS)
+      ?: ServeAgentGrantStore.DEFAULT_MAX_GRANT_TTL_SECONDS
+
+  /** How many grants may be live at once (`--agent-grant-max-active`). */
+  private val agentGrantMaxActive: Int =
+    args.flagValue("--agent-grant-max-active")?.toIntOrNull()?.takeIf { it > 0 }
+      ?: ServeAgentGrantStore.DEFAULT_MAX_ACTIVE_GRANTS
+
+  /**
+   * Per-address budget on the two ungated grant routes (`--agent-grant-rate-limit`, requests per
+   * minute; `0` disables). The default is generous enough for a polling agent — one poll every
+   * three seconds is 20/min — and small enough that an anonymous caller cannot churn the request
+   * map.
+   */
+  private val agentGrantRateLimit: Int =
+    args.flagValue("--agent-grant-rate-limit")?.toIntOrNull()?.takeIf { it >= 0 }
+      ?: DEFAULT_AGENT_GRANT_RATE_LIMIT
 
   /**
    * Image ingestion (`--accept-images`): enable `POST /images` so an **agent preparing a pull
@@ -2319,6 +2378,62 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     )
   }
 
+  /**
+   * The agent-grant store, or null when the lane is off or cannot safely come up.
+   *
+   * The refusal in the middle is the important part. Approving a grant has to be an act by an
+   * identifiable operator, and there are exactly two ways to be one here: a signed-in GitHub
+   * visitor or the holder of `--token`. A `--public` box with no GitHub auth has neither — every
+   * visitor is anonymous and equal, so "who approved this?" would have no answer and the approval
+   * page would be a button the internet could press. That configuration is refused loudly rather
+   * than started with a lane that hands out credentials to whoever asks.
+   */
+  private fun buildAgentGrantStore(githubAuth: ServeGithubAuth?): ServeAgentGrantStore? {
+    if (!agentGrants) return null
+    if (public && githubAuth == null) {
+      System.err.println(
+        "serve: --agent-grants refused — a --public server with no GitHub auth has no way to tell " +
+          "an operator from a visitor, so nobody could be said to have approved a grant. Add " +
+          "--github-auth-* (any signed-in user then approves), or drop --public (the --token " +
+          "holder then approves)."
+      )
+      throw IllegalArgumentException("--agent-grants needs an approver identity")
+    }
+    if (agentGrantMaxScope == ServeAgentGrantScope.PLAYGROUND) {
+      System.err.println(
+        "serve: WARNING --agent-grant-scopes allows 'playground' — an approved agent can compile " +
+          "and run Kotlin on this host."
+      )
+    }
+    return ServeAgentGrantStore(
+      maxGrantTtlSeconds = agentGrantMaxTtlSeconds,
+      maxScope = agentGrantMaxScope,
+      maxActiveGrants = agentGrantMaxActive,
+      // The audit trail. A grant is a credential this box minted on someone's say-so, so the say-so
+      // belongs in the operator's log where a mint, an eviction and a revoke are all visible — the
+      // token itself never is, only its fingerprint.
+      audit = { line -> System.err.println("serve: $line") },
+    )
+  }
+
+  private fun buildAgentGrantRateLimiter(): ServeRateLimiter? {
+    if (agentGrantRateLimit <= 0) {
+      System.err.println(
+        "serve: WARNING agent-grant routes are UNMETERED (--agent-grant-rate-limit 0). " +
+          "/agent-access/request is reachable without any credential."
+      )
+      return null
+    }
+    return ServeRateLimiter(
+      permitsPerWindow = agentGrantRateLimit,
+      windowSeconds = 60,
+      // Several in flight is normal and cheap here: an agent polls while its human reads the page.
+      // The rate bucket is what actually bounds this lane; concurrency just stops a single caller
+      // pinning threads.
+      maxConcurrent = AGENT_GRANT_CALLER_CONCURRENCY,
+    )
+  }
+
   /** The playground's Stage-1 compile lane + Stage-2 redeem lane, sharing one token store. */
   private class PlaygroundLane(
     val compile: PlaygroundCompileService,
@@ -2878,6 +2993,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     // the `--public` admission gate decides on (issue #3210), because it is what makes the routes'
     // repo-access check a real check instead of a no-op.
     val githubAuth = buildGithubAuth()
+    val agentGrantStore = buildAgentGrantStore(githubAuth)
     val playgroundLane =
       openPlaygroundService(docStore, registry, repoAccessGated = githubAuth != null)
     val catalogFeed =
@@ -2950,6 +3066,8 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         themeOptimizerAdmin = backgroundWork,
         playgroundRedeem = playgroundLane?.redeem,
         githubAuth = githubAuth,
+        agentGrants = agentGrantStore,
+        agentGrantLimiter = agentGrantStore?.let { buildAgentGrantRateLimiter() },
         playgroundRateLimiter = playgroundLane?.let { buildPlaygroundRateLimiter() },
         // Reads a served preview's Kotlin, for two consumers with different requirements:
         // `/playground?from=<system>/<previewId>` (needs a playground to open it in) and the
@@ -2992,6 +3110,14 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         "serve: GitHub auth enabled for live sessions and playground" +
           (githubAuthUsers.takeIf { it.isNotEmpty() }?.let { " (${it.size} allowed user(s))" }
             ?: "")
+      )
+    }
+    if (agentGrantStore != null) {
+      System.err.println(
+        "serve: agent access grants enabled at /agent-access — up to " +
+          "${ServeAgentGrants.formatDuration(agentGrantStore.maxGrantTtlSeconds)}, " +
+          "max scope ${agentGrantStore.maxScope.wire}, approved by " +
+          (if (githubAuth != null) "a signed-in GitHub user" else "the holder of --token")
       )
     }
 
@@ -4355,6 +4481,27 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         --github-auth-users <login>[,<login>…]
                           Optional sign-in allowlist. Empty means any signed-in GitHub user may use
                           live sessions; playground still requires access to --github-auth-repo.
+        --agent-grants    Let an agent ask for temporary access it can't otherwise get. The agent
+                          POSTs /agent-access/request and prints a link plus a verification code;
+                          you open the link, check the code matches, and approve. It then collects a
+                          short-lived bearer token scoped to what you ticked. Approving requires a
+                          signed-in GitHub user (with --github-auth-*) or the --token holder; a
+                          --public server with neither is refused. Revoke any time from /status.
+                          Off by default.
+        --agent-grant-scopes <list>
+                          Ceiling on what a grant may carry: preview, live, playground (cumulative;
+                          default preview,live). 'playground' lets an approved agent compile and run
+                          Kotlin on this host, and can only be approved by someone who has access to
+                          --github-auth-repo themselves.
+        --agent-grant-max-ttl <duration>
+                          Longest grant this server will mint, e.g. 90m / 2h / 3600 (default 8h,
+                          hard ceiling 24h). The approver picks the actual lifetime on the page.
+        --agent-grant-max-active <n>
+                          Live grants allowed at once (default ${ServeAgentGrantStore.DEFAULT_MAX_ACTIVE_GRANTS}); a new one evicts the
+                          nearest to expiry.
+        --agent-grant-rate-limit <n>
+                          Requests per minute per address on the two ungated grant routes (default
+                          $DEFAULT_AGENT_GRANT_RATE_LIMIT; 0 disables the budget entirely).
         --export <path>   Don't serve: render every preview once and write a portable bundle (a
                           self-contained web gallery + PNGs) to <path>. A '.zip' path writes a zip;
                           any other path writes a directory. The live server also offers this at
@@ -4594,6 +4741,19 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
      * — cheap enough to poll every watched catalog at this cadence indefinitely.
      */
     const val DEFAULT_CATALOG_REFRESH_SECONDS = 600L
+
+    /**
+     * Requests per minute per address on the two ungated `/agent-access/…` routes. A well-behaved
+     * agent polls every three seconds — 20/min — so this leaves room for the ask, a couple of
+     * retries and a `whoami`, while keeping an anonymous caller from churning the request map.
+     */
+    const val DEFAULT_AGENT_GRANT_RATE_LIMIT = 40
+
+    /**
+     * Grant-route requests one caller may hold at once. More than one is normal (an agent polls
+     * while its human reads the approval page); this only stops a single address pinning threads.
+     */
+    const val AGENT_GRANT_CALLER_CONCURRENCY = 4
     const val DEFAULT_CATALOG_FEED_IDLE_SECONDS = 7L * 24 * 60 * 60
 
     /**

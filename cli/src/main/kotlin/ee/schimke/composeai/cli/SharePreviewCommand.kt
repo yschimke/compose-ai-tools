@@ -106,11 +106,19 @@ class SharePreviewCommand(
   private val serveUrl: String?
     get() = (serveTrust as? ServeUrlTrust.Trusted)?.resolved?.url
 
-  /** The host's own browse token, for a serve box that isn't `--public`. */
-  private val serveHostToken: String? =
+  /**
+   * The host's own browse token, for a serve box that isn't `--public`.
+   *
+   * Falls back to an **agent access grant** for the same host ([AgentAccessStore]) when the caller
+   * named no token — so an agent that has been granted temporary access by a human simply works
+   * here, without the operator token ever being handed to it. Explicit beats ambient, as with
+   * [AgentGithubToken]: a named `--serve-token` is never silently overridden by a stored grant.
+   */
+  private val serveHostToken: String? by lazy {
     (args.flagValue("--serve-token") ?: System.getenv("COMPOSE_PREVIEW_SERVE_TOKEN"))
       ?.trim()
-      ?.takeIf { it.isNotEmpty() }
+      ?.takeIf { it.isNotEmpty() } ?: serveUrl?.let { AgentAccessStore().tokenFor(it) }
+  }
   private val githubTokenFile: String? = args.flagValue("--github-token-file")
   /**
    * Whether the caller reached for `--github-token`, which is not a flag here. Captured at

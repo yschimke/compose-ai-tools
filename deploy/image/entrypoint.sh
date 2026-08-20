@@ -365,6 +365,24 @@ if [[ "${SERVE_ACCEPT_IMAGES:-}" == "1" || "${SERVE_ACCEPT_IMAGES:-}" == "true" 
     args+=(--image-rate-limit "${SERVE_IMAGE_RATE_LIMIT}")
 fi
 
+# Agent access grants: an agent with no credential POSTs /agent-access/request, prints a link and a
+# verification code, and a human approves it in a browser — the agent then holds a short-lived,
+# scoped, revocable bearer instead of this box's operator token. Approving requires a signed-in
+# GitHub user here (SERVE_GITHUB_AUTH_* is what supplies the identity), so on the open profile the
+# lane refuses to start without it rather than letting anonymous visitors mint credentials.
+# Off unless asked for. See docs/design/AGENT_ACCESS_GRANTS.md.
+if [[ "${SERVE_AGENT_GRANTS:-}" == "1" || "${SERVE_AGENT_GRANTS:-}" == "true" ]]; then
+  args+=(--agent-grants)
+  [[ -n "${SERVE_AGENT_GRANT_SCOPES:-}" ]] &&
+    args+=(--agent-grant-scopes "${SERVE_AGENT_GRANT_SCOPES}")
+  [[ -n "${SERVE_AGENT_GRANT_MAX_TTL:-}" ]] &&
+    args+=(--agent-grant-max-ttl "${SERVE_AGENT_GRANT_MAX_TTL}")
+  [[ -n "${SERVE_AGENT_GRANT_MAX_ACTIVE:-}" ]] &&
+    args+=(--agent-grant-max-active "${SERVE_AGENT_GRANT_MAX_ACTIVE}")
+  [[ -n "${SERVE_AGENT_GRANT_RATE_LIMIT:-}" ]] &&
+    args+=(--agent-grant-rate-limit "${SERVE_AGENT_GRANT_RATE_LIMIT}")
+fi
+
 # Extra Maven repositories the live-daemon classpath resolver may fetch from, beyond Maven Central +
 # Google Maven. A served catalog whose module pulls deps from a non-default repo (e.g.
 # meshcore-mobile's jitpack.io deps like usb-serial-for-android) otherwise has those coordinates

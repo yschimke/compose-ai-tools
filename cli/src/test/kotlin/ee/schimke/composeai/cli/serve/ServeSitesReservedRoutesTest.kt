@@ -44,6 +44,11 @@ class ServeSitesReservedRoutesTest {
       "ServeSiteIcon.ICO_PATH" to ServeSiteIcon.ICO_PATH,
       "ServeSiteIcon.APPLE_TOUCH_PATH" to ServeSiteIcon.APPLE_TOUCH_PATH,
       "ServeRcFonts.URL_BASE" to ServeRcFonts.URL_BASE,
+      "ServeAgentGrants.BASE_PATH" to ServeAgentGrants.BASE_PATH,
+      "ServeAgentGrants.REQUEST_PATH" to ServeAgentGrants.REQUEST_PATH,
+      "ServeAgentGrants.POLL_PATH" to ServeAgentGrants.POLL_PATH,
+      "ServeAgentGrants.REVOKE_PATH" to ServeAgentGrants.REVOKE_PATH,
+      "ServeAgentGrants.WHOAMI_PATH" to ServeAgentGrants.WHOAMI_PATH,
     )
 
   private val source: String

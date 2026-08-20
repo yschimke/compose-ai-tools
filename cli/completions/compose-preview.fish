@@ -150,6 +150,8 @@ complete -c compose-preview -f -n __compose_preview_needs_command -a mcp \
     -d 'MCP server lifecycle (serve|install|doctor)'
 complete -c compose-preview -f -n __compose_preview_needs_command -a update \
     -d 'Re-run bootstrap installer to pull latest release'
+complete -c compose-preview -f -n __compose_preview_needs_command -a auth \
+    -d 'Ask a human to grant this agent temporary access to a preview server'
 complete -c compose-preview -f -n __compose_preview_needs_command -a version \
     -d 'Print installed bundle version'
 complete -c compose-preview -f -n __compose_preview_needs_command -a help \
@@ -345,6 +347,23 @@ complete -c compose-preview -r -n '__compose_preview_using_mcp_sub install' \
     -l antigravity-config -d 'Override Antigravity config path'
 complete -c compose-preview -f -n '__compose_preview_using_mcp_sub install' \
     -l verbose -s v -d 'Verbose Gradle output'
+
+# auth — the agent access-grant flow (docs/design/AGENT_ACCESS_GRANTS.md).
+for sub in request status token revoke forget
+    complete -c compose-preview -f -n '__compose_preview_using_command auth' -a $sub
+end
+complete -c compose-preview -x -n '__compose_preview_using_command auth' \
+    -l server -d 'Preview server URL (or $COMPOSE_PREVIEW_SERVER)'
+complete -c compose-preview -x -n '__compose_preview_using_command auth' \
+    -l scope -a 'preview live playground' -d 'Highest capability to ask for (cumulative)'
+complete -c compose-preview -x -n '__compose_preview_using_command auth' \
+    -l ttl -a '15m 1h 2h 4h 8h' -d 'How long to ask for; the approver picks the actual lifetime'
+complete -c compose-preview -x -n '__compose_preview_using_command auth' \
+    -l label -d 'What the access is for; shown on the approval page'
+complete -c compose-preview -f -n '__compose_preview_using_command auth' \
+    -l no-wait -d 'Print the link and exit instead of waiting for approval'
+complete -c compose-preview -f -n '__compose_preview_using_command auth' \
+    -l json -d 'Machine-readable output'
 
 # update.
 complete -c compose-preview -f -n '__compose_preview_using_command update' \

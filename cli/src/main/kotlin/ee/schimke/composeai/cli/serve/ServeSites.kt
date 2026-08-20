@@ -239,6 +239,12 @@ data class ServeSites(private val byHost: Map<String, String>) {
         "social",
         "admin",
         "auth",
+        // `/agent-access/…` — the agent access-grant flow (`--agent-grants`). Reserved
+        // unconditionally like every other opt-in lane's segments: what a site host may name
+        // itself cannot depend on a flag the operator can turn on later. It matters more here than
+        // most, because the route a *human* opens is the approval page, and a site that had
+        // claimed the prefix would 404 the link an agent just told someone to click.
+        "agent-access",
         "bundles",
         "bundle",
         "bundle.zip",

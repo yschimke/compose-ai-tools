@@ -5128,6 +5128,198 @@ ${captureControlsHtml().prependIndent("          ")}
   }
 
   /**
+   * `GET /agent-access/{requestId}` — the page a human opens because an agent asked them to, and
+   * the only place a grant is ever created. See
+   * [docs/design/AGENT_ACCESS_GRANTS.md](../../../../../../../../docs/design/AGENT_ACCESS_GRANTS.md).
+   *
+   * The page has one job beyond collecting a click: **make the decision legible**. An operator
+   * arrives here from a link they were handed, and everything they need in order to be suspicious
+   * of it has to be on the screen — the verification code to compare against their terminal, the
+   * label the agent supplied, where the request came from, and, in plain language, what each scope
+   * lets the agent do to this machine.
+   *
+   * Everything the agent supplied ([label], [client]) is attacker-controlled text and is escaped
+   * here without exception. [selectableScopes] has already been narrowed to what this approver may
+   * actually give, so the form cannot offer a capability the POST would then refuse.
+   */
+  fun agentGrantApprovalPage(
+    requestId: String,
+    userCode: String,
+    label: String,
+    client: String,
+    requestedScope: ServeAgentGrantScope,
+    requestedTtlSeconds: Long,
+    expiresInSeconds: Long,
+    approver: String,
+    selectableScopes: List<ServeAgentGrantScope>,
+    maxTtlSeconds: Long,
+    approveCsrf: String,
+    denyCsrf: String,
+    /**
+     * Form target — carries the access token on a token-gated box, so the POST stays authorized.
+     */
+    formAction: String,
+    navSuffix: String = "",
+    version: String? = null,
+    siteName: String = "",
+    themeCss: String = "",
+    /**
+     * Named only when the approver's own rights are what capped [selectableScopes] — so the page
+     * says "you can't grant this" rather than silently omitting a row the agent asked for.
+     */
+    withheldScopes: List<ServeAgentGrantScope> = emptyList(),
+    withheldReason: String = "",
+  ): String {
+    val esc = WebEscaping::htmlEscape
+    // **Radios, not checkboxes**, because the scopes are cumulative and independent boxes lie about
+    // that. With `playground` offered, an approver could untick `live` while leaving `playground`
+    // ticked — the page then said live access was withheld, and the grant included it anyway,
+    // because `playground` implies `live` and the handler takes the highest ticked rung. On the one
+    // page in this server whose entire job is to state accurately what is being agreed to, a
+    // control that can misdescribe the outcome is the wrong control. One choice: the highest rung,
+    // with everything it carries spelled out beneath it.
+    // The **highest offered** rung is the default, not the requested one. Those differ exactly when
+    // the approver's own rights capped the request — and there `requestedScope` matches no radio at
+    // all, so the form opened with nothing selected and (being `required`) could not be submitted.
+    // Defaulting to the top of what this approver may actually give is also the right answer on the
+    // merits: it is the agent's ask, clamped to what the person in front of the page can grant.
+    val defaultScope = selectableScopes.lastOrNull()
+    val scopeRows =
+      selectableScopes.joinToString("\n") { scope ->
+        val checked = if (scope == defaultScope) " checked" else ""
+        val includes =
+          ServeAgentGrantScope.upTo(scope).filter { it != scope }.joinToString(", ") { it.wire }
+        val alsoIncludes =
+          if (includes.isEmpty()) ""
+          else "<span class=\"cp-grant-scope-implies\">also includes ${esc(includes)}</span>"
+        """
+        <label class="cp-grant-scope">
+          <input type="radio" name="scope" value="${esc(scope.wire)}"$checked required>
+          <span class="cp-grant-scope-name">${esc(scope.wire)}</span>
+          <span class="cp-grant-scope-what">${esc(scope.humanDescription)}$alsoIncludes</span>
+        </label>
+        """
+          .trimIndent()
+      }
+    val withheld =
+      if (withheldScopes.isEmpty()) ""
+      else
+        """
+        <p class="cp-grant-withheld">Not offered: ${
+          esc(withheldScopes.joinToString(", ") { it.wire })
+        } — ${esc(withheldReason)}</p>
+        """
+          .trimIndent()
+    val ttlOptions =
+      ttlChoices(requestedTtlSeconds, maxTtlSeconds).joinToString("\n") { seconds ->
+        val selected = if (seconds == requestedTtlSeconds) " selected" else ""
+        "<option value=\"$seconds\"$selected>${esc(ServeAgentGrants.formatDuration(seconds))}</option>"
+      }
+    return document(
+      title = "Grant agent access — compose-preview",
+      unfurlDescription = "An agent is asking for temporary access to this preview server.",
+      version = version,
+      navSuffix = navSuffix,
+      siteName = siteName,
+      themeCss = themeCss,
+      body =
+        """
+        <h1 class="cp-head">Grant temporary access?</h1>
+        <p class="cp-sub">An agent has asked for temporary access to this preview server. Approving mints a
+        bearer token that expires on its own — nothing here changes this server's configuration, and you can
+        revoke it at any time from <a href="/status$navSuffix">/status</a>.</p>
+
+        <div class="cp-grant-code">
+          <span class="cp-grant-code-label">Verification code</span>
+          <code class="cp-grant-code-value">${esc(userCode)}</code>
+          <span class="cp-grant-code-hint">This must match the code the agent printed. If it does not,
+          you are looking at someone else's request — close this page.</span>
+        </div>
+
+        <dl class="cp-grant-facts">
+          <dt>Purpose</dt><dd>${if (label.isBlank()) "<em>none given</em>" else esc(label)}</dd>
+          <dt>Asked from</dt><dd>${esc(client)}</dd>
+          <dt>Approving as</dt><dd>${esc(approver)}</dd>
+          <dt>This request expires in</dt><dd>${esc(ServeAgentGrants.formatDuration(expiresInSeconds))}</dd>
+        </dl>
+
+        <form class="cp-grant-form" method="post" action="${esc(formAction)}">
+          <input type="hidden" name="csrf" value="${esc(approveCsrf)}">
+          <fieldset class="cp-grant-fieldset">
+            <legend>What the agent may do</legend>
+            $scopeRows
+          </fieldset>
+          $withheld
+          <label class="cp-grant-ttl">
+            <span>Access expires after</span>
+            <select name="ttl">
+              $ttlOptions
+            </select>
+          </label>
+          <div class="cp-grant-actions">
+            <button class="cp-grant-approve" type="submit" name="action" value="approve">Approve</button>
+            <button class="cp-grant-deny" type="submit" name="action" value="deny"
+              formnovalidate>Deny</button>
+          </div>
+          <input type="hidden" name="denyCsrf" value="${esc(denyCsrf)}">
+        </form>
+
+        <p class="cp-grant-fineprint">The token is delivered to the agent that opened this request, not to
+        whoever opens this link — so forwarding the link cannot leak it. Requested id
+        <code>${esc(requestId.take(8))}…</code>.</p>
+        """
+          .trimIndent(),
+    )
+  }
+
+  /**
+   * The short page an approve/deny/expire lands on. Deliberately terminal — there is no link back
+   * into the flow, because every path through it has already been decided and a "try again" button
+   * would only ever re-submit a request that no longer exists.
+   */
+  fun agentGrantNoticePage(
+    heading: String,
+    message: String,
+    navSuffix: String = "",
+    version: String? = null,
+    siteName: String = "",
+    themeCss: String = "",
+    /** Shown under the message when a grant was actually minted. */
+    detail: String = "",
+  ): String =
+    document(
+      title = "$heading — compose-preview",
+      unfurlDescription = message,
+      version = version,
+      navSuffix = navSuffix,
+      siteName = siteName,
+      themeCss = themeCss,
+      body =
+        """
+        <h1 class="cp-head">${WebEscaping.htmlEscape(heading)}</h1>
+        <p class="cp-sub">${WebEscaping.htmlEscape(message)}</p>
+        ${if (detail.isBlank()) "" else "<p class=\"cp-grant-detail\">${WebEscaping.htmlEscape(detail)}</p>"}
+        <a class="cp-back" href="/status$navSuffix">← Server status</a>
+        """
+          .trimIndent(),
+    )
+
+  /**
+   * The durations the approval page offers: a short ladder, plus whatever was actually requested,
+   * clipped to the box's ceiling and de-duplicated. Ladder-only would drop the agent's own ask when
+   * it happens to fall between rungs; request-only would make "give it ten minutes instead" a thing
+   * you cannot do without the agent re-asking.
+   */
+  internal fun ttlChoices(requestedSeconds: Long, maxSeconds: Long): List<Long> =
+    (LADDER + requestedSeconds)
+      .filter { it in 1..maxSeconds }
+      .distinct()
+      .sorted()
+      .ifEmpty { listOf(minOf(requestedSeconds.coerceAtLeast(1), maxSeconds)) }
+
+  private val LADDER = listOf(15 * 60L, 60 * 60L, 4 * 60 * 60L, 8 * 60 * 60L, 24 * 60 * 60L)
+
+  /**
    * The honest landing page for a preview URL pinned to a publish that did not contain that
    * preview.
    *
@@ -6433,6 +6625,35 @@ ${captureControlsHtml().prependIndent("          ")}
     val upForText: String,
   )
 
+  /**
+   * One live **agent access grant** on the [statusPage] — see
+   * [docs/design/AGENT_ACCESS_GRANTS.md](../../../../../../../../docs/design/AGENT_ACCESS_GRANTS.md).
+   *
+   * Carries a [fingerprint] and never a token. This table's whole reason to exist is that a human
+   * can see what they have let in and end it; showing the credential would make the page itself a
+   * place a credential leaks from.
+   */
+  data class StatusAgentGrant(
+    val id: String,
+    val fingerprint: String,
+    val scopes: String,
+    val label: String,
+    val approvedBy: String,
+    val expiresInText: String,
+    /** The seal the revoke form must carry; empty when this viewer may not revoke. */
+    val revokeCsrf: String = "",
+  )
+
+  /** One access request still waiting for a human, on the [statusPage]. */
+  data class StatusAgentRequest(
+    val id: String,
+    val userCode: String,
+    val label: String,
+    val client: String,
+    val requestedScope: String,
+    val expiresInText: String,
+  )
+
   /** One recent daemon startup failure's row on the [statusPage]. */
   data class StatusFailure(val whenText: String, val session: String, val reason: String)
 
@@ -6466,7 +6687,83 @@ ${captureControlsHtml().prependIndent("          ")}
     val servers: List<StatusServer>,
     val failures: List<StatusFailure>,
     val renderFailures: List<StatusRenderFailure> = emptyList(),
+    /**
+     * Live agent grants and the requests waiting on a human. Empty on a server with the lane off,
+     * and the section is then omitted entirely rather than rendered empty — a table of nothing is
+     * noise on a page an operator scans for trouble.
+     */
+    val agentGrants: List<StatusAgentGrant> = emptyList(),
+    val agentGrantRequests: List<StatusAgentRequest> = emptyList(),
   )
+
+  /**
+   * The `/status` section for agent access grants: what is live, what is waiting, and a revoke
+   * button per row.
+   *
+   * Omitted entirely when the lane is off and nothing is live or pending — an operator scanning
+   * this page for trouble should not have to read two empty tables to learn that a feature they
+   * never enabled is still off.
+   */
+  private fun agentGrantSectionHtml(
+    view: StatusView,
+    suffix: String,
+    esc: (String) -> String,
+  ): String {
+    // Empty string, not an empty section: see the call site in [statusPage].
+    if (view.agentGrants.isEmpty() && view.agentGrantRequests.isEmpty()) return ""
+    val liveRows =
+      if (view.agentGrants.isEmpty())
+        "<tr><td colspan=\"6\" class=\"cp-empty\">No agent currently holds access.</td></tr>"
+      else
+        view.agentGrants.joinToString("\n") { grant ->
+          val revoke =
+            if (grant.revokeCsrf.isEmpty()) ""
+            else
+              "<form method=\"post\" action=\"/agent-access/${esc(grant.id)}/revoke$suffix\">" +
+                "<input type=\"hidden\" name=\"csrf\" value=\"${esc(grant.revokeCsrf)}\">" +
+                "<button class=\"cp-grant-revoke\" type=\"submit\">Revoke</button></form>"
+          "<tr><td><code>${esc(grant.fingerprint)}</code></td>" +
+            "<td>${esc(grant.scopes)}</td>" +
+            "<td>${if (grant.label.isBlank()) "—" else esc(grant.label)}</td>" +
+            "<td>${esc(grant.approvedBy)}</td>" +
+            "<td>${esc(grant.expiresInText)}</td>" +
+            "<td>$revoke</td></tr>"
+        }
+    val pending =
+      if (view.agentGrantRequests.isEmpty()) ""
+      else
+        """
+        <p class="cp-status-sec">Access requests waiting for you</p>
+        <div class="cp-status-scroll"><table class="cp-grant-table">
+          <thead><tr><th>Code</th><th>Purpose</th><th>From</th><th>Asking for</th><th>Expires in</th><th></th></tr></thead>
+          <tbody>
+          ${
+            view.agentGrantRequests.joinToString("\n") { request ->
+              "<tr><td><code>${esc(request.userCode)}</code></td>" +
+                "<td>${if (request.label.isBlank()) "—" else esc(request.label)}</td>" +
+                "<td>${esc(request.client)}</td>" +
+                "<td>${esc(request.requestedScope)}</td>" +
+                "<td>${esc(request.expiresInText)}</td>" +
+                "<td><a href=\"/agent-access/${esc(request.id)}$suffix\">Review →</a></td></tr>"
+            }
+          }
+          </tbody>
+        </table></div>
+        """
+          .trimIndent()
+    return "\n\n" +
+      """
+      <p class="cp-status-sec" id="agent-grants">Agent access</p>
+      <div class="cp-status-scroll"><table class="cp-grant-table">
+        <thead><tr><th>Grant</th><th>Scopes</th><th>Purpose</th><th>Approved by</th><th>Expires in</th><th></th></tr></thead>
+        <tbody>
+        $liveRows
+        </tbody>
+      </table></div>
+      $pending
+      """
+        .trimIndent()
+  }
 
   /**
    * A styled **server status** page (`GET /status`): what this `serve` host publishes and its trust
@@ -6684,6 +6981,8 @@ ${captureControlsHtml().prependIndent("          ")}
 
     val ver = " <span class=\"cp-about-ver\">v${esc(view.version)}</span>"
     val mode = if (view.public) "public (open)" else "token-gated"
+    val agentGrantSection = agentGrantSectionHtml(view, suffix, ::esc)
+
     val body =
       """
       <h1 class="cp-head">Server status$healthBadge</h1>
@@ -6735,7 +7034,12 @@ ${captureControlsHtml().prependIndent("          ")}
       <p class="cp-status-sec" id="recent-render-failures">Recent live render failures</p>
       $renderFailureSection
       """
-        .trimIndent()
+        .trimIndent() +
+        // Appended rather than interpolated into the template: a lane that is off must leave this
+        // page byte-for-byte what it was, and an empty interpolation inside the block still leaves
+        // its own line behind — which the committed HTML fixture would then report as a diff on
+        // every server that never enabled the feature.
+        agentGrantSection
 
     return document(
       // A site's status is that app's status, so its tab says so rather than naming the box.

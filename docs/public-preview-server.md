@@ -2664,6 +2664,138 @@ serving one would hand an uploader active content on this origin.
 On the deployed image set `SERVE_ACCEPT_IMAGES=1` (plus `SERVE_IMAGE_UPLOAD_REPO`, optional
 `SERVE_IMAGE_TTL` / `SERVE_IMAGE_RATE_LIMIT`); it's off by default.
 
+## Granting an agent temporary access (`--agent-grants`)
+
+An agent you have asked to fix something needs to *look* at this server, and it can satisfy neither
+gate: a private box wants `--token`, a public one wants a GitHub cookie from an interactive OAuth
+redirect. The usual workaround — paste the operator token into the agent's context — hands over the
+whole server, permanently, in a string that then lives in a transcript.
+
+`--agent-grants` replaces that with a link you approve:
+
+```bash
+compose-preview serve --public --agent-grants \
+  --github-auth-client-id … --github-auth-client-secret … \
+  --github-auth-cookie-secret … --github-auth-repo yschimke/compose-ai-tools
+```
+
+The agent asks, and prints what it got:
+
+```bash
+compose-preview auth request --server https://preview.coo.ee --scope live --ttl 2h \
+    --label "fix wear-m3-catalog#68"
+```
+
+```
+Ask a human with access to https://preview.coo.ee to open this and approve:
+
+  https://preview.coo.ee/agent-access/9c2Qk1pTf0Xb7hLm4nRzQA
+  verification code: KX7M-9QD4
+
+  They will be asked to grant: live · 2h · "fix wear-m3-catalog#68"
+  The code above must match what they see on that page.
+
+Waiting for approval (this request expires in 10m)…
+```
+
+You open the link, sign in if you aren't, and get a consent page: the verification code in large
+type, what the agent said it was for, where it asked from, a checkbox per scope with plain-language
+descriptions, and a lifetime you choose. Approve, and the agent's poll returns a bearer token it
+uses exactly where the operator token would go — `?token=`, `X-Compose-Preview-Token`, or
+`Authorization: Bearer`. Nothing else on the server changes shape.
+
+![The approval page — the verification code as the loudest element, the agent's stated purpose and origin, a checkbox per scope with plain-language descriptions, a lifetime selector, and Approve/Deny](images/serve-agent-access.png)
+
+The scope the approver may not pass on is *named* rather than quietly omitted ("Not offered:
+playground — you do not hold it yourself on this server"), so a request that came back smaller than
+it was asked for is explainable rather than mysterious. The page wears the server's own chrome in
+both schemes:
+
+![The same page in dark mode](images/serve-agent-access-dark.png)
+
+Approving lands here, and this is the only place the grant's lifetime and fingerprint are stated
+together — the token itself is never on screen:
+
+![Access granted — the lifetime, the scopes, the grant fingerprint, and a link to the status page](images/serve-agent-access-granted.png)
+
+**The link is not the credential.** It carries only a request id; the token is delivered to whoever
+proves possession of a device secret the agent never printed. So forwarding the link, pasting it in
+Slack, or having it logged by a proxy leaks nothing usable — the worst an interceptor can do is
+approve a request whose token still goes to the agent that asked. That is also why approval is a
+POST from the page and never a GET: an unfurler fetching the URL to build a preview card must not be
+able to grant access by looking at it.
+
+**The code is the anti-phishing control.** Someone who can get a message in front of you could send
+*their* approval link dressed as the agent's; they cannot make your agent's terminal print their
+code. Check that the two match — that is the whole job the code has.
+
+**Scopes are cumulative, and capped twice.**
+
+| Scope | What the agent may do |
+|---|---|
+| `preview` | Browse the catalogs, fetch rendered previews, read `/status` |
+| `live` | Open live sessions — starts a render daemon on the box |
+| `playground` | Compile and run Kotlin here |
+
+`--agent-grant-scopes` is the operator's ceiling and defaults to `preview,live`; `playground` runs
+caller-supplied code, so opting into it is a typed decision. The second cap is the approver's own
+rights: on a GitHub-gated box, granting `playground` requires access to `--github-auth-repo`
+yourself, so nobody can delegate a capability they don't hold.
+
+A route that *commissions* a render wants `live` even where it looks like a read:
+`/render/<id>.png` with an override query (or a `.svg` / `.slots` / `.a11y` suffix) and
+`/bundle.zip` all put the daemon to work. A bare replay of baked bytes stays `preview`.
+
+**The ingest lanes are outside all of this.** `POST /bundles/{name}` and `POST /docs` — the opt-in
+routes where a *client* contributes content to your box — accept the operator token and nothing
+else. A grant labelled "browse this server's catalogs" must not also be able to publish a document
+or replace a named runtime bundle, and no wording on the consent page would have made that
+agreeable.
+
+**Everything expires, and you can end it sooner.** A request dies in 10 minutes; a grant lives for
+what you chose, up to `--agent-grant-max-ttl` (default 8h, hard ceiling 24h). `/status` lists live
+grants by fingerprint with a Revoke button beside each, plus any requests still waiting for you —
+which is also the pleasant way to approve on a token-gated box, where the agent's printed link has no
+`?token=` but your `/status` tab does. The store is in memory, so a redeploy ends every grant.
+
+**Nothing ever prints a token.** `/status`, `/status.json`, the server log and every error message
+carry a 12-character SHA-256 fingerprint instead. The audit line names the approver, the label, the
+scopes, the lifetime and that fingerprint, on mint and on revoke.
+
+The other `auth` verbs:
+
+```bash
+compose-preview auth status                      # grants, each checked against its server
+compose-preview auth token                       # just the bearer, for scripting
+compose-preview auth revoke                      # end it now, server-side and locally
+compose-preview auth request --no-wait           # print the link and exit; status collects it later
+```
+
+`--no-wait` remembers the request, so once the human approves, the next `auth status` (or
+`auth token`) picks the token up — the agent never has to hold a process open or ask twice.
+`auth status` also *verifies*: it asks each server whether the grant it has on file is still live,
+so one you revoked from `/status` is reported as gone rather than confidently listed until its local
+expiry. A server it can't reach reads `unverified` rather than being thrown away.
+
+`--json` emits JSON Lines, one compact document per line — a waiting `auth request --json` gives you
+the request (with the device secret, if you'd rather drive the poll yourself) and then the grant.
+
+Once a grant is stored, `share-preview --mechanism serve` against the same host picks it up without
+`--serve-token`. A `--public` server with no GitHub auth cannot enable this at all: everyone there is
+anonymous, so nobody could be said to have approved anything, and the flag is refused at startup
+rather than becoming a button the internet can press.
+
+On a **private** box that also runs GitHub auth, approving needs both: the server's `--token` *and*
+a signed-in account. A session alone is not enough — otherwise any account your (by default empty)
+`--github-auth-users` allowlist accepts could open a request and approve it themselves, minting a
+grant into a server whose browse token they never had. In practice this is the `/status` route: the
+page you already have open carries the token, and each waiting request has a **Review →** link.
+
+On the deployed image set `SERVE_AGENT_GRANTS=1` (optional `SERVE_AGENT_GRANT_SCOPES`,
+`SERVE_AGENT_GRANT_MAX_TTL`, `SERVE_AGENT_GRANT_MAX_ACTIVE`, `SERVE_AGENT_GRANT_RATE_LIMIT`); it's
+off by default. The design, and why each control is where it is, is in
+[docs/design/AGENT_ACCESS_GRANTS.md](design/AGENT_ACCESS_GRANTS.md).
+
 ## Deploying `preview.coo.ee`
 
 Both container profiles take this config from env (the entrypoint maps `SERVE_PUBLIC`,
@@ -3422,6 +3554,11 @@ indexed here); otherwise the served module's preview grid · `GET /p/{id}?sessio
 `GET /docs` document drop zone · `POST /docs` document ingest (returns an expiring `/d/<id>`) ·
 `GET /d/{id}` document permalink · `GET /d/{id}/raw` document bytes ·
 `GET /doc-player/{format}/bundle.js` the format's browser player (ungated static asset) ·
+`POST /agent-access/request` open an access request (ungated, rate-limited — an agent with no
+credential is the caller) · `GET /agent-access/{id}` the human approval page (operator identity
+required) · `POST /agent-access/{id}` approve/deny · `POST /agent-access/poll` collect the minted
+bearer, against the device secret · `GET /agent-access/whoami` describe the presented grant ·
+`POST /agent-access/revoke` hand it back ·
 `GET /wasm/{system}/…` in-browser CMP app (ungated static assets) · `GET /status` server status
 (HTML, or JSON with `?format=json`) · `GET /status.json` server status JSON · `GET /healthz`
 liveness · `GET /readyz` readiness (green only once a preview actually renders — the docker-rollout
