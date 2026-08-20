@@ -10428,6 +10428,19 @@ $cards
      */
     canRenderOverrides: Boolean = canApplyOverrides,
     /**
+     * The override params THIS REQUEST carried (`knob.<key>`, `rc.<name>`), already filtered to the
+     * render lane's own keys and normalised the way the page's links are (`requestOverrideParams`).
+     *
+     * Seeds the declared-knob controls, so a deep link opens with its values already on them. The
+     * page's snapshot `<img>` has always carried the query; the CONTROLS did not, and everything
+     * downstream reads the controls — the live socket's `setOverrides`, the export links, the next
+     * `/render`. `hydrateFromUrl` re-applies the same params client-side on load, so this is the
+     * server half of a restore the viewer already performs, not a second source of truth.
+     *
+     * Empty for a plain visit, which is exactly the previous behaviour.
+     */
+    requestOverrides: Map<String, String> = emptyMap(),
+    /**
      * Whether the session can export a `compose/figma-svg` for its previews (a daemon-backed host
      * or a catalog that carried baked vectors). Drives whether the copyable-links panel offers an
      * SVG download URL alongside the PNG one. Defaults to false (a plain bundle has no SVG lane).
@@ -12335,8 +12348,8 @@ $cards
           </details>
           $overlaysHtml
           $featureControlsHtml
-          ${overrideKnobsHtml(preview, canApplyOverrides || canRenderOverrides, wasmSrc != null)}
-          ${if (componentBrowser) "" else remoteComposeKnobsHtml(preview, canApplyOverrides || canRenderOverrides || hasRcWasm)}
+          ${overrideKnobsHtml(preview, canApplyOverrides || canRenderOverrides, wasmSrc != null, requestOverrides)}
+          ${if (componentBrowser) "" else remoteComposeKnobsHtml(preview, canApplyOverrides || canRenderOverrides || hasRcWasm, requestOverrides)}
           <div class="cp-status" id="cp-status"></div>
         </div>
       </div>
@@ -12991,10 +13004,14 @@ ${ServeSiteIcon.linkTags().prependIndent("        ")}
     }
   }
 
+  /** A knob's boolean text as the viewer writes it: `true` only for `true` / `1`. */
+  private fun boolText(raw: String): String = if (raw == "true" || raw == "1") "true" else "false"
+
   private fun overrideKnobsHtml(
     preview: ServePreview,
     canApplyOverrides: Boolean,
     wasmAvailable: Boolean = false,
+    requestOverrides: Map<String, String> = emptyMap(),
   ): String {
     if (preview.overrides.isEmpty()) return ""
     // Editable when the server can re-render (canApplyOverrides) OR an in-browser app can honour
@@ -13010,31 +13027,47 @@ ${ServeSiteIcon.linkTags().prependIndent("        ")}
         val name = if (d.index == null) d.key else "${d.key} #${d.index}"
         val label = WebEscaping.htmlEscape(name)
         // Daemon map key: base key, plus `[index]` for an indexed (per-item) knob.
-        val wireKey = WebEscaping.htmlEscape(if (d.index == null) d.key else "${d.key}[${d.index}]")
+        val rawWireKey = if (d.index == null) d.key else "${d.key}[${d.index}]"
+        val wireKey = WebEscaping.htmlEscape(rawWireKey)
         val kind = knobKind(d.type)
-        val value = WebEscaping.htmlEscape(overrideValueText(d.current ?: d.default))
-        // `data-knob-initial` is the value the control opens on (the author default / seeded
-        // current). The viewer omits a knob still equal to it, so the first render carries no
-        // `knob.*` and the published catalog serves the instant baked PNG rather than waking the
-        // daemon for a fresh (slower, subtly different) re-render.
+        // What the preview DECLARES: the author default, or the `@OverrideVariant` seed on a
+        // synthetic variant. Both `data-*` attributes below are read off this, never off the
+        // request.
+        val declared = overrideValueText(d.current ?: d.default)
+        // …and what THIS REQUEST asks for, which is not the same question. A deep link names values
+        // the declaration doesn't — `?knob.secondary=true`, a copied "Direct links — overrides
+        // applied" URL, the viewer link in a bug report — and the control has to OPEN on those or
+        // the page disagrees with its own address: the snapshot `<img>` carries the query, so it
+        // shows the override while everything that reads the CONTROLS instead (the live socket's
+        // `setOverrides`, the export links, the next `/render`) sends the declared value.
+        // `hydrateFromUrl` corrects this client-side on load; seeding it here is what stops the
+        // first paint from disagreeing, and what keeps the markup honest for anything reading it
+        // without running the viewer's JS.
+        val shown = requestOverrides[ServeOverrides.KNOB_PREFIX + rawWireKey] ?: declared
+        val value = WebEscaping.htmlEscape(shown)
+        // `data-knob-initial` stays the DECLARED value even when the request seeds another, and
+        // that gap is load-bearing rather than an oversight: the viewer omits a knob still equal to
+        // it, so a plain visit carries no `knob.*` and the published catalog serves the instant
+        // baked PNG rather than waking the daemon for a fresh (slower, subtly different) re-render
+        // — while a deep-linked knob DIFFERS from it and therefore rides into every render the page
+        // asks for. Pointing this at the request would swallow exactly the override the visitor
+        // came for.
         val bool = kind == "bool"
-        val initial =
-          if (bool) (if (value == "true" || value == "1") "true" else "false") else value
+        val initial = if (bool) boolText(declared) else WebEscaping.htmlEscape(declared)
         // …and `data-knob-default` is the AUTHOR default, which for a seeded variant is not the
         // same thing. A `@OverrideVariant` preview opens on `current` (`enabled=false`) while its
         // author default is `true`, and the Wasm tier — unlike the PNG lane — has no baked artifact
         // carrying that seed: it mounts the live component and has to be told. So the Wasm patch
         // compares against this rather than against `initial`, or a variant would mount as its
         // primary (see `wasmOverridePatch`).
-        val authorDefault = WebEscaping.htmlEscape(overrideValueText(d.default))
+        val authorDefault = overrideValueText(d.default)
         val defaultAttr =
-          if (bool) (if (authorDefault == "true" || authorDefault == "1") "true" else "false")
-          else authorDefault
+          if (bool) boolText(authorDefault) else WebEscaping.htmlEscape(authorDefault)
         val attrs =
           "class=\"cp-knob\" data-knob-key=\"$wireKey\" data-knob-kind=\"$kind\" " +
             "data-knob-initial=\"$initial\" data-knob-default=\"$defaultAttr\""
         if (bool) {
-          val checked = if (value == "true" || value == "1") " checked" else ""
+          val checked = if (boolText(shown) == "true") " checked" else ""
           "<label class=\"cp-live-row\"><input type=\"checkbox\" $attrs$checked$dis> $label</label>"
         } else if (d.optionsExhaustive && d.options.isNotEmpty()) {
           // A CLOSED value set (`previewOverrideChoice`): every value is on screen and nothing else
@@ -13047,7 +13080,7 @@ ${ServeSiteIcon.linkTags().prependIndent("        ")}
           """
           <label>${label}
             <select $attrs$dis>
-          ${selectOptionsHtml(d.options, overrideValueText(d.current ?: d.default))}
+          ${selectOptionsHtml(d.options, shown)}
             </select>
           </label>
           """
@@ -13136,7 +13169,11 @@ ${ServeSiteIcon.linkTags().prependIndent("        ")}
    * `data-rc-kind` / `data-rc-initial`; the viewer JS collects them into typed values and routes
    * edits through the active player.
    */
-  private fun remoteComposeKnobsHtml(preview: ServePreview, canApplyOverrides: Boolean): String {
+  private fun remoteComposeKnobsHtml(
+    preview: ServePreview,
+    canApplyOverrides: Boolean,
+    requestOverrides: Map<String, String> = emptyMap(),
+  ): String {
     if (preview.remoteComposeKnobs.isEmpty()) return ""
     // A static bundle without either a server renderer or CMP/Wasm keeps these informational.
     val dis = if (canApplyOverrides) "" else " disabled"
@@ -13145,14 +13182,22 @@ ${ServeSiteIcon.linkTags().prependIndent("        ")}
         val label = WebEscaping.htmlEscape(d.name)
         val wireName = WebEscaping.htmlEscape(d.name)
         val kind = rcKnobKind(d.default)
-        val value = WebEscaping.htmlEscape(rcKnobValueText(d.default))
-        // `data-rc-initial` is the value the control opens on (the author default). The viewer
-        // omits
-        // a knob still equal to it, so the first render carries no `rc.*` and a published catalog
-        // serves the instant baked snapshot rather than waking the daemon for a fresh re-render.
+        val declared = rcKnobValueText(d.default)
+        // The request's value for this knob, seeded onto the control exactly as `overrideKnobsHtml`
+        // seeds a declared one and for the same reason. RC params carry their kind on the wire
+        // (`rc.<name>=<kind>:<value>`) while the control holds the bare value, so a matching prefix
+        // is stripped — mirroring `hydrateFromUrl`, which strips the same one client-side.
+        val shown =
+          requestOverrides[ServeOverrides.RC_NAMED_PREFIX + d.name]?.removePrefix("$kind:")
+            ?: declared
+        val value = WebEscaping.htmlEscape(shown)
+        // `data-rc-initial` is the AUTHOR default, not what the control opens on when a deep link
+        // seeds it — same load-bearing gap as `data-knob-initial`: the viewer omits a knob still
+        // equal to it, so a plain visit carries no `rc.*` and a published catalog serves the
+        // instant baked snapshot, while a deep-linked value differs and rides into the render.
         val attrs =
           "class=\"cp-rc-knob\" data-rc-name=\"$wireName\" data-rc-kind=\"$kind\" " +
-            "data-rc-initial=\"$value\""
+            "data-rc-initial=\"${WebEscaping.htmlEscape(declared)}\""
         if (kind == "bool") {
           val checked = if (value == "true") " checked" else ""
           "<label class=\"cp-live-row\"><input type=\"checkbox\" $attrs$checked$dis> $label</label>"

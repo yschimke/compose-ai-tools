@@ -6284,6 +6284,10 @@ class ServeHttpServer(
           // preview, so an unaliased (Android-only) variant reports false and its override controls
           // (knobs, App theme) render disabled/informational rather than enabled-but-dead.
           canRenderOverrides = renderHost.canRenderOverridesFor(preview.id),
+          // The knob values THIS request asked for, so the controls open on them rather than on the
+          // preview's declaration. Same map the issue report and the render links are built from,
+          // so a deep link, the reported render and the on-page controls cannot disagree.
+          requestOverrides = requestOverrideParams(sessionId),
           // Per-preview: a catalog advertises SVG globally as soon as it carries a `figma/` dir,
           // but
           // a preview whose slug has no baked `figma/<slug>.svg` still 404s the `.svg` lane, so
