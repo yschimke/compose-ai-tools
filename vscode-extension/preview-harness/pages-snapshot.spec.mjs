@@ -1838,12 +1838,13 @@ const FIXTURE_STATES = [
     },
   },
   {
-    // The design-spec lane with the spec actually on the stage. The committed HTML always
-    // opens on the render — the imported reference is only fetched once the lane is entered —
-    // so this is the only way the lane's *end state* is diffed: the lit Figma chip, the
-    // "imported design spec — not a render" hint, the ◇ badge, and the reference filling the
-    // stage where the render was. Entered through `#cp-spec-chip`, the lane's own top-level
-    // control (it used to be an `<option>` in the renderer combo). The raster comes from the
+    // The design-spec lane as ENTERING it actually looks. The committed HTML always opens on
+    // the render — the imported reference is only fetched once the lane is entered — so this is
+    // the only way the lane's arrival state is diffed: the lit Figma chip, the "imported design
+    // spec — not a render" hint, the ◇ badge, and, since #4376, the triptych the lane now opens
+    // on in place of the reference alone (`spec-typography` below is where the reference fills
+    // the stage by itself). Entered through `#cp-spec-chip`, the lane's own top-level control
+    // (it used to be an `<option>` in the renderer combo). The raster comes from the
     // harness's existing `**/reference/**` stub, so no design tool is contacted here either.
     fixture: "serve-viewer-path",
     suffix: "spec-lane",
@@ -1862,7 +1863,8 @@ const FIXTURE_STATES = [
     },
   },
   {
-    // Typography follows the Figma raster when that is the surface on stage.
+    // Typography follows the Figma raster when that is the surface on stage — which since #4376
+    // means pressing Spec first, because the lane no longer opens on the reference alone.
     fixture: "serve-viewer-path",
     suffix: "spec-typography",
     apply: async (page) => {

@@ -524,6 +524,19 @@ object ServeWeb {
    */
   private const val THEME_CHIPS_INLINE = 4
 
+  /**
+   * Which of the design-spec lane's four views the page is served pressed, and therefore the one
+   * `?specView=` leaves unsaid.
+   *
+   * Triptych since #4376 — the lane is entered to ask how the render and the imported reference
+   * compare, and spec / diff / render side by side answers that on arrival where the plain
+   * reference (the lane's original view, still one click away) only asked the eye to hold one frame
+   * while looking at the other. The browser side keeps the same constant in
+   * `serve-web/src/spec/views.ts`; they are the same decision rendered twice, so move both together
+   * or the served page opens pressing a button the script immediately unpresses.
+   */
+  internal const val SPEC_DEFAULT_VIEW = "triptych"
+
   // android.content.res.Configuration values, kept local so the CLI has no Android dependency.
   private const val UI_MODE_NIGHT_MASK = 0x30
   private const val UI_MODE_NIGHT_NO = 0x10
@@ -10429,8 +10442,9 @@ $cards
     // other. That finds a wholesale colour change and misses the 4dp of padding that is the actual
     // bug. The focused `/compare/<id>` page has always had the real instruments, but reaching it
     // means leaving the viewer, and with it the overrides, knobs and theme that produced the render
-    // worth comparing. So the instruments come to the lane. `spec` is first and is the default, so
-    // a visitor who ignores this row sees exactly what the lane always showed.
+    // worth comparing. So the instruments come to the lane. `triptych` is the default (#4376): the
+    // lane is entered to ask how the two compare, and side-by-side answers that on arrival, while
+    // `spec` — the reference alone, the way the lane used to open — is one click away.
     val specViews =
       listOf(
         "spec" to ("Spec" to "The imported design reference on its own"),
@@ -10454,7 +10468,7 @@ $cards
           specViews.joinToString("") { (value, text) ->
             val (viewLabel, viewTip) = text
             "<button type=\"button\" class=\"cp-spec-view\" data-cp-spec-view=\"$value\" " +
-              "aria-pressed=\"${value == "spec"}\" " +
+              "aria-pressed=\"${value == SPEC_DEFAULT_VIEW}\" " +
               "title=\"${WebEscaping.htmlEscape(viewTip)}\">${WebEscaping.htmlEscape(viewLabel)}</button>"
           }
         "<span class=\"cp-spec-lane\" id=\"cp-spec-lane\" " +
@@ -10897,7 +10911,8 @@ $cards
           "<figure class=\"cp-spec-panel\" data-cp-spec-panel=\"$kind\">" +
             "<canvas id=\"$id\" aria-label=\"${WebEscaping.htmlEscape(description)}\"></canvas>" +
             "<figcaption>${WebEscaping.htmlEscape(caption)}</figcaption></figure>"
-        "<div class=\"cp-spec-compare\" id=\"cp-spec-compare\" hidden data-view=\"spec\" " +
+        "<div class=\"cp-spec-compare\" id=\"cp-spec-compare\" hidden " +
+          "data-view=\"$SPEC_DEFAULT_VIEW\" " +
           "data-reference=\"${WebEscaping.htmlEscape(specRasterUrl)}\">" +
           panel("reference", "cp-spec-reference", "Spec", "Imported design spec") +
           panel("diff", "cp-spec-diff", "Diff", "Pixels where the render and the spec disagree") +

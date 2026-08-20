@@ -383,10 +383,17 @@ internal object ServeBugReport {
     val lane = LANES[params["mode"]?.lowercase()]
     // The spec lane's four views are one lane with four presentations, and the difference between
     // them is exactly what a spec-lane bug is usually about — so the view qualifies the lane rather
-    // than replacing it. `spec` itself is the lane's default and adds nothing.
+    // than replacing it. A spec-lane URL that names NO view is not silent about which one was up:
+    // it is the lane's default ([ServeWeb.SPEC_DEFAULT_VIEW]), which the viewer leaves out of the
+    // query precisely because it needs no parameter. So resolve it rather than dropping the row's
+    // most useful half — before #4376 that default was the plain reference and naming it added
+    // nothing; now it is the triptych, and "design spec" alone would leave a triager guessing.
     val spec =
       if (params["mode"]?.lowercase() != "spec") null
-      else params["specView"]?.lowercase()?.takeIf { it in SPEC_VIEWS && it != "spec" }
+      else
+        SPEC_VIEW_LABELS[
+          params["specView"]?.lowercase()?.takeIf { it in SPEC_VIEW_LABELS }
+            ?: ServeWeb.SPEC_DEFAULT_VIEW]
     val laneLabel = lane?.let { if (spec == null) it else "$it ($spec)" }
     return when {
       laneLabel != null && explode -> "$laneLabel, exploded layers"
@@ -429,8 +436,18 @@ internal object ServeBugReport {
       "live" to "live daemon lane",
     )
 
-  /** The spec lane's presentations — mirrors `spec/views.ts`, whose `spec` is the default. */
-  private val SPEC_VIEWS = setOf("spec", "diff", "triptych", "slider")
+  /**
+   * The spec lane's presentations, as a report names them — mirrors `spec/views.ts`, whose default
+   * is `triptych`. Only `spec` is renamed: "design spec (spec)" reads as a stutter or a typo where
+   * what it means is the imported reference on the stage by itself.
+   */
+  private val SPEC_VIEW_LABELS =
+    mapOf(
+      "spec" to "reference only",
+      "diff" to "diff",
+      "triptych" to "triptych",
+      "slider" to "slider",
+    )
 
   /** Truthy `?exploded=` spellings — mirrors `explodeParamOn` in `viewer/renderQuery.ts`. */
   private val EXPLODE_ON = setOf("", "1", "true", "on", "yes")

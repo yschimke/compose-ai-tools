@@ -22,6 +22,7 @@ import {
 } from "./live/framePainter.js";
 import { visibilityMessage } from "./live/session.js";
 import * as rules from "./viewer/rules.js";
+import { viewParam } from "./spec/views.js";
 import { type ApiDocLink, usableApiDocs } from "./viewer/apiDocs.js";
 
 // Typed handles onto the server-rendered markup this file drives.
@@ -3827,12 +3828,13 @@ if (specChip) {
     specChip.addEventListener("click", function () {
         if (specActive()) setMode("png");
         else if (specAvailable()) {
-            // Straight into Diff, not onto the spec-on-the-stage view the lane used to open on. The
-            // chip now STATES the divergence ("Figma 96.3%"), and a number like that raises exactly one
-            // question — where? Opening on the spec alone answers a question nobody asked and leaves
-            // the delta another click away. A visitor who wants the spec by itself has the view group
-            // right there, and a URL that already names a view still wins (see cpSpecCompare.prefer).
-            if (window.cpSpecCompare) window.cpSpecCompare.prefer("diff");
+            // No entry view is requested here any more (#4376). The chip used to ask for Diff,
+            // because the chip STATES the divergence ("Figma 96.3%") and a number like that raises
+            // exactly one question — where? — which the spec-on-the-stage view the lane opened on
+            // answered another click away. The lane's own default is Triptych now, which answers it
+            // on arrival AND keeps the two frames the diff was taken from beside it, so the chip
+            // has nothing left to override: see DEFAULT_VIEW in `spec/views.ts`. A URL that names a
+            // view still wins over that default, exactly as it won over the chip's request.
             setMode("spec");
         }
     });
@@ -4333,9 +4335,12 @@ function syncUrl() {
     // `sync` drops any owned param the values don't supply — spec-compare.js pushes it the moment
     // it is picked, and this is what stops the next knob edit from clearing it again. Only while
     // the lane is actually up: `?specView=` on a page showing a render describes nothing.
-    var specView = window.cpSpecCompare ? window.cpSpecCompare.view() : "";
-    if (mode === "spec" && specView && specView !== "spec")
-        values.specView = specView;
+    // `viewParam` — not a literal — decides what may go unsaid, so the omitted view is whichever
+    // one the lane opens on rather than whichever one it opened on in 2025 (#4376).
+    var specView = window.cpSpecCompare
+        ? viewParam(window.cpSpecCompare.view())
+        : "";
+    if (mode === "spec" && specView) values.specView = specView;
     // Which recording is playing, on the same terms: only while the lane is up (`?motion=` beside a
     // render describes nothing), and only past the first, which is what the lane opens on anyway.
     // Without it a multi-capture preview's shared link always restored the FIRST capture, so the

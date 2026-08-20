@@ -1295,9 +1295,9 @@ beside it:
 
 | View | What it shows |
 | --- | --- |
-| **Spec** | The imported reference alone — the lane's original behaviour, and still the default. |
+| **Spec** | The imported reference alone — the lane's original behaviour, one click away. |
 | **Diff** | The magenta delta map: where, exactly, the two disagree. |
-| **Triptych** | Spec, diff and render side by side — the shape the focused comparison page is built around. |
+| **Triptych** | Spec, diff and render side by side — the shape the focused comparison page is built around, and **the view the lane opens on**. |
 | **Slider** | One frame, wiped between spec and render, with a draggable seam — the alignment instrument. |
 
 ![Triptych: spec, diff and render side by side](images/serve-viewer-spec-triptych.png)
@@ -1320,8 +1320,12 @@ render (an override-bearing render is `no-store`, so re-fetching would re-render
 daemon's shared override state) and the score describes exactly the frame the visitor was looking
 at.
 
-The chosen view rides the URL as `?specView=diff|triptych|slider` alongside `?mode=spec`, so
-`…/p/<id>?mode=spec&specView=slider` is shareable and Back returns to the view you came from.
+Entering the lane is someone asking how the render and the reference compare, so the lane opens on
+the **triptych** rather than on the reference alone — the question is answered on arrival instead of
+a click later. The chosen view rides the URL as `?specView=spec|diff|slider` alongside `?mode=spec`,
+so `…/p/<id>?mode=spec&specView=slider` is shareable and Back returns to the view you came from. The
+triptych is the value the URL leaves unsaid, so a link that names no view opens on it; a link to the
+plain reference carries `?specView=spec`.
 `spec diff →` beside the group still steps out to the focused page when the annotation layers or the
 opacity overlay are what you want.
 
