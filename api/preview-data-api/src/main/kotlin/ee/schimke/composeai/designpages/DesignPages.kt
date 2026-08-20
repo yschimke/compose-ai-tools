@@ -169,14 +169,14 @@ public data class PageNode(
    * The distinction the page needs and [link] cannot make: `link` says *how* the join was found
    * (Code Connect, `design-map.json`, a name match), and a cell is found the same ways anything
    * else is. What differs is what is behind it. A component someone sat down and wrote is not the
-   * same claim as a kit variant reached by turning `checked` off on a neighbour — and once a
-   * sheet is fully covered the two are indistinguishable on a page painted one colour, which is
-   * exactly when the difference is most worth seeing.
+   * same claim as a kit variant reached by turning `checked` off on a neighbour — and once a sheet
+   * is fully covered the two are indistinguishable on a page painted one colour, which is exactly
+   * when the difference is most worth seeing.
    *
-   * Deliberately NOT a fifth [PageNodeLink]. Cell-ness is orthogonal to link method — a cell can
-   * be reached by Code Connect too — so folding them into one enum would lose the method in order
-   * to record the cell, and a consumer asking "how do we know this maps?" would get "it's a
-   * variant" back.
+   * Deliberately NOT a fifth [PageNodeLink]. Cell-ness is orthogonal to link method — a cell can be
+   * reached by Code Connect too — so folding them into one enum would lose the method in order to
+   * record the cell, and a consumer asking "how do we know this maps?" would get "it's a variant"
+   * back.
    *
    * Read off the **declared** preview id, which carries discovery's `_VARIANT_<name>` suffix, and
    * stated by the producer for the usual reason: the serve preview id a consumer sees is derived
