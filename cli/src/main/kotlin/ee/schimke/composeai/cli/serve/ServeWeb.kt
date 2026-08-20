@@ -11720,6 +11720,17 @@ $cards
       if (!componentBrowser) ""
       else if (browserVariantLabel.isBlank()) ""
       else "<p class=\"cp-browser-variant\">" + WebEscaping.htmlEscape(browserVariantLabel) + "</p>"
+    // The component's authored one-line description, under its name. The catalog has always
+    // written this (`@CatalogComponent(caption = …)`) and the browse surface has never shown it,
+    // so every sheet named its components and left what they were FOR in the source: a reader who
+    // does not already know what "Button Loading" is had nowhere on the page to find out. One
+    // sentence, above the fold, in the design system's own words. Blank for a catalog that authors
+    // none and for a plain uploaded bundle, which is most of them — so nothing shifts there.
+    val captionHtml =
+      preview.caption
+        ?.takeIf { it.isNotBlank() }
+        ?.let { "<p class=\"cp-preview-caption\">${WebEscaping.htmlEscape(it)}</p>" }
+        .orEmpty()
     // Title, trust badge, id and the view tally on ONE baseline-aligned row. They are all
     // *identity* — three separate blocks said so three times, at the cost of ~90px above the fold.
     val body =
@@ -11728,7 +11739,7 @@ $cards
         <h1 class="cp-head cp-preview-title">$label${compactTrustBadge(trust)}</h1>
         ${if (componentBrowser) "" else "<code class=\"cp-preview-id\" title=\"$idText\">$idText</code>"}
         ${if (componentBrowser) "" else viewerViewCountHtml(engagement.views)}$headTogglesHtml
-      </div>${if (browserVariant.isBlank()) "" else "\n      $browserVariant"}
+      </div>${if (captionHtml.isBlank()) "" else "\n      $captionHtml"}${if (browserVariant.isBlank()) "" else "\n      $browserVariant"}
       $revisionBanner${degradeBanner(degradations)}$issueRows
       <div class="cp-preview-primary" aria-label="Preview renderer">
       $primaryControls${if (pinnedControlsNote.isBlank()) "" else "\n        $pinnedControlsNote"}
@@ -11928,12 +11939,17 @@ $cards
         // one we're viewing (styled as active, and it stays visible even under a filter miss so the
         // list never looks empty-of-self).
         val current = if (componentKey(p) == currentKey) " aria-current=\"page\"" else ""
+        // The row's tooltip is the component's caption when it has one, and its preview id
+        // otherwise. The id was the only thing here, which tells a reader who is already lost
+        // exactly what they already knew — the name in slug form. The caption is the sentence that
+        // answers "what IS this", which is the question a list of forty component names provokes.
+        val tip = p.caption?.takeIf { it.isNotBlank() } ?: p.id
         // A small thumbnail render to the left of the name — the same baked PNG the landing cards
         // use, so the nav reads like a mini gallery. `alt=""` since the name label beside it
         // already
         // names the component (decorative image).
         "<li><a class=\"cp-nav-item\" href=\"$basePath/p/$segItem$q\"$current " +
-          "title=\"$idItem\" data-search=\"$labelItem $idItem\">" +
+          "title=\"${WebEscaping.htmlEscape(tip)}\" data-search=\"$labelItem $idItem\">" +
           "<img class=\"cp-nav-thumb\" loading=\"lazy\" alt=\"\" src=\"$basePath/render/$segItem.png$q\">" +
           "<span class=\"cp-nav-name\">$labelItem</span></a></li>"
       }

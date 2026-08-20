@@ -422,6 +422,43 @@ class ServeWebBreakpointFoldTest {
   }
 
   @Test
+  fun `the viewer prints the component's caption, and the drawer offers it on hover`() {
+    val captioned = catalog.map {
+      if (it.componentId == "AlertDialog") it.copy(caption = "A decision the app needs.") else it
+    }
+    val html =
+      ServeWeb.viewerPage(
+        captioned.first { it.id == "openonphonedialog__ideal__default__192dp" },
+        token = "t",
+        basePath = "/wear",
+        siblings = captioned,
+      )
+
+    // Its own caption is absent — OpenOnPhoneDialog authors none — so the line is simply not there
+    // rather than an empty paragraph reserving space.
+    assertFalse(html.contains("cp-preview-caption"), "a captionless component prints no caption")
+    // …and the captioned sibling offers its caption as the drawer row's tooltip, where the id used
+    // to be the only thing on offer.
+    val drawer = html.substringAfter("<ul class=\"cp-nav-list\"").substringBefore("</ul>")
+    assertTrue(
+      drawer.contains("title=\"A decision the app needs.\""),
+      "the drawer row's tooltip is the component's caption",
+    )
+
+    val onCaptioned =
+      ServeWeb.viewerPage(
+        captioned.first { it.id == "alertdialog__ideal__default__192dp" },
+        token = "t",
+        basePath = "/wear",
+        siblings = captioned,
+      )
+    assertTrue(
+      onCaptioned.contains("<p class=\"cp-preview-caption\">A decision the app needs.</p>"),
+      "the viewer prints the caption under the component's name",
+    )
+  }
+
+  @Test
   fun `a catalog that declares no sizes keeps a card per render`() {
     // The same fan-out as above with the metadata a pre-breakpoint export never wrote. Folding on
     // the id alone would make these renders unreachable — there would be no switcher to reach them
