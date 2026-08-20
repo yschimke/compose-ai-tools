@@ -157,7 +157,13 @@ contributor filing [wear-m3-catalog#68](https://github.com/yschimke/wear-m3-cata
 to be told to go and sign in on a *different hostname* first. It sits in the same header slot as the
 front door's, and it appears on exactly the same terms as everything else on this page — offered
 when a sign-in can round-trip and Dev mode is on, withheld when it can't or in Catalog mode, which
-drops the live lane (hover-live included) and so has nothing behind a login:
+drops the live lane (hover-live included) and so has nothing behind a login. A catalog with **no**
+gated lane at all — a static bundle, or one whose live breaker has opened, with no playground
+compiling against it — withholds it for the same reason: a login that unlocks nothing is worse than
+no control. Where the playground is the *only* gated lane, the control says so and names
+`--github-auth-repo`, because there repository access genuinely is the bar; the front door and
+`/status` keep the Live wording, since they stand above any one catalog and cannot answer for its
+lanes:
 
 | Sign-in withheld — no cookie domain, or Catalog mode | Offered — the site can round-trip a login |
 | --- | --- |

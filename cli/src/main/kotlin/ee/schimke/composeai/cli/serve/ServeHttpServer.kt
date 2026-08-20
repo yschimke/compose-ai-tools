@@ -1546,7 +1546,16 @@ class ServeHttpServer(
    * A signed-in identity cannot be hidden by this in practice: cookies that reached this host are
    * cookies the callback could have written.
    */
-  private fun RoutingContext.githubAuthStatus(): ServeWeb.GitHubAuthStatus? =
+  /**
+   * [lane] names what the sign-in unlocks on the page asking for the control, which is what its
+   * tooltip describes. Defaults to Live — the front door and `/status` stand above any one catalog
+   * and answer for the broad case. A catalog landing whose only gated lane is the playground passes
+   * [ServeWeb.GatedLane.PLAYGROUND], and only then is `--github-auth-repo` named: repository access
+   * is the playground's gate, and naming it beside Live is the confusion this change removes.
+   */
+  private fun RoutingContext.githubAuthStatus(
+    lane: ServeWeb.GatedLane = ServeWeb.GatedLane.LIVE
+  ): ServeWeb.GitHubAuthStatus? =
     githubAuth
       ?.takeIf { oauthCanRoundTrip() }
       ?.let { auth ->
@@ -1554,6 +1563,9 @@ class ServeHttpServer(
           loginHref = auth.loginPath(call),
           login = auth.currentLogin(call),
           restrictedToAllowedUsers = auth.isRestrictedToAllowedUsers(),
+          lane = lane,
+          accessRepository =
+            auth.accessRepository().takeIf { lane == ServeWeb.GatedLane.PLAYGROUND },
         )
       }
 
@@ -2729,9 +2741,15 @@ class ServeHttpServer(
           // changes nothing is the dead affordance the viewer's chip already refuses to be. The
           // front door keeps its unconditional control — it stands above every catalog, so it
           // cannot answer for one, and any of them may offer a lane.
+          //
+          // The lane it speaks for is whichever this catalog actually has. With no live stream the
+          // playground is the only thing behind the login, and its gate is repository access — so
+          // the control says so instead of promising a Live lane this catalog cannot offer.
           githubAuth =
-            githubAuthStatus()?.takeIf {
-              renderHost.hasLiveStream || catalogPlaygroundHref != null
+            when {
+              renderHost.hasLiveStream -> githubAuthStatus()
+              catalogPlaygroundHref != null -> githubAuthStatus(ServeWeb.GatedLane.PLAYGROUND)
+              else -> null
             },
         ),
         ContentType.Text.Html,

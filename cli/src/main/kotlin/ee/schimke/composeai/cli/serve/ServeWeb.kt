@@ -44,7 +44,31 @@ object ServeWeb {
     val loginHref: String,
     val login: String? = null,
     val restrictedToAllowedUsers: Boolean = false,
+    /**
+     * What the sign-in unlocks on the page carrying this control, which is what its tooltip has to
+     * describe. The two lanes have genuinely different gates — live streams open to any signed-in
+     * visitor, the playground additionally wants access to [accessRepository] — so a control shown
+     * on a catalog whose *only* gated lane is the playground must not promise Live.
+     *
+     * [LIVE] is the default because it is what the front door and `/status` carry: those pages
+     * stand above any one catalog, so they describe the capability the sign-in most broadly unlocks
+     * rather than answering for a particular catalog's lanes.
+     */
+    val lane: GatedLane = GatedLane.LIVE,
+    /**
+     * `--github-auth-repo`, named only when [lane] is [GatedLane.PLAYGROUND] — the one case where
+     * repository access is genuinely part of what the visitor needs. Deliberately absent from the
+     * Live wording: naming it there is the confusion this whole change exists to remove
+     * (wear-m3-catalog#68).
+     */
+    val accessRepository: String? = null,
   )
+
+  /** The capability a header sign-in control speaks for. See [GitHubAuthStatus.lane]. */
+  enum class GatedLane {
+    LIVE,
+    PLAYGROUND,
+  }
 
   /**
    * Absolute URLs advertised to link unfurlers for a browser-facing page. [imageUrl] is the thing
@@ -604,16 +628,27 @@ object ServeWeb {
   /** GitHub session action shown in the home-page header when OAuth is configured. */
   private fun githubAuthControl(status: GitHubAuthStatus?): String {
     status ?: return ""
-    val restricted =
-      if (status.restrictedToAllowedUsers)
-        " title=\"Live preview access is limited to configured GitHub users\""
-      else " title=\"Live previews require a GitHub sign-in\""
+    // What this sign-in buys, in the visitor's terms. The allowlist narrows *who may sign in at
+    // all*, so it reshapes either sentence; the repo is named only on the playground, whose gate
+    // it actually is.
+    val repo =
+      status.accessRepository?.let { " with access to ${WebEscaping.htmlEscape(it)}" } ?: ""
+    val tooltip =
+      when {
+        status.lane == GatedLane.PLAYGROUND && status.restrictedToAllowedUsers ->
+          "Playground access is limited to configured GitHub users$repo"
+        status.lane == GatedLane.PLAYGROUND -> "The playground requires a GitHub sign-in$repo"
+        status.restrictedToAllowedUsers ->
+          "Live preview access is limited to configured GitHub users"
+        else -> "Live previews require a GitHub sign-in"
+      }
+    val tooltipAttr = " title=\"$tooltip\""
     val login = status.login?.takeIf { it.isNotBlank() }
     return if (login == null) {
       "<a class=\"cp-gh-auth\" href=\"${WebEscaping.htmlEscape(status.loginHref)}\"" +
-        "$restricted>$GITHUB_ICON Sign in with GitHub</a>"
+        "$tooltipAttr>$GITHUB_ICON Sign in with GitHub</a>"
     } else {
-      "<span class=\"cp-gh-auth cp-gh-auth--signed\"$restricted>$GITHUB_ICON " +
+      "<span class=\"cp-gh-auth cp-gh-auth--signed\"$tooltipAttr>$GITHUB_ICON " +
         "Signed in as ${WebEscaping.htmlEscape(login)}</span>"
     }
   }

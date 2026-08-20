@@ -6202,6 +6202,71 @@ class ServeWebFixtureTest {
   }
 
   @Test
+  fun `the login control names the lane the sign-in actually unlocks`() {
+    val auth = ServeWeb.GitHubAuthStatus(loginHref = "/auth/github/start?return=%2F")
+    // Live is the broad case — the front door's wording, and a catalog that streams. It names no
+    // repository, because being signed in IS the whole gate (wear-m3-catalog#68).
+    val live =
+      ServeWeb.landingPage(moduleLabel, previews, token, isPublic = true, githubAuth = auth)
+    assertTrue(
+      live.contains("title=\"Live previews require a GitHub sign-in\""),
+      "the live lane's gate is the sign-in itself",
+    )
+    assertFalse(
+      live.substringAfter("cp-gh-auth").substringBefore("</a>").contains("access to"),
+      "…so the live wording names no repository",
+    )
+
+    // A catalog with no live lane but a reachable playground: the control is still worth showing,
+    // but repository access is that lane's real gate, so promising Live would be false twice over.
+    val playground =
+      ServeWeb.landingPage(
+        moduleLabel,
+        previews,
+        token,
+        isPublic = true,
+        githubAuth =
+          auth.copy(
+            lane = ServeWeb.GatedLane.PLAYGROUND,
+            accessRepository = "yschimke/compose-ai-tools",
+          ),
+      )
+    assertTrue(
+      playground.contains(
+        "title=\"The playground requires a GitHub sign-in with access to " +
+          "yschimke/compose-ai-tools\""
+      ),
+      "a playground-only catalog names the playground and its repository gate",
+    )
+    assertFalse(
+      playground.contains("Live previews require"),
+      "…and never promises a Live lane the catalog does not have",
+    )
+
+    // The allowlist reshapes either sentence: it narrows who may sign in at all, which neither
+    // lane's own gate does.
+    assertTrue(
+      ServeWeb.landingPage(
+          moduleLabel,
+          previews,
+          token,
+          isPublic = true,
+          githubAuth =
+            auth.copy(
+              lane = ServeWeb.GatedLane.PLAYGROUND,
+              accessRepository = "yschimke/compose-ai-tools",
+              restrictedToAllowedUsers = true,
+            ),
+        )
+        .contains(
+          "title=\"Playground access is limited to configured GitHub users with access to " +
+            "yschimke/compose-ai-tools\""
+        ),
+      "an allowlisted box says so on the playground wording too",
+    )
+  }
+
+  @Test
   fun `path-mounted pages keep links on the path and drop the session query param`() {
     // Served under /meshcore-mobile/: card, render and zip links carry the /meshcore-mobile prefix
     // and are token-only (the path, not &session=, carries the session).
