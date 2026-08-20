@@ -581,7 +581,7 @@ class ServeSessionRegistryTest {
         clock = clock::get,
       )
       .use { reg ->
-        val lease = assertNotNull(reg.lease("a"))
+        val lease = assertNotNull(reg.lease("a", connection = true))
 
         clock.set(29_999)
         assertNull(reg.idleMillis(), "still busy inside the window — a visitor may be mid-browse")
@@ -610,6 +610,65 @@ class ServeSessionRegistryTest {
   }
 
   /**
+   * The ageing rule is for *connection* holds only.
+   *
+   * `withLeasedSession` wraps ordinary HTTP work in a lease too, and that work is not always short
+   * — a cold `/render` is 30-70s and a `/bundle.zip` longer. Ageing one of those out would report
+   * the box as quiet while it is still rendering, and let background work start against exactly the
+   * foreground request the quiet gate exists to protect.
+   */
+  @Test
+  fun `a request-scoped lease stays busy however long the request runs`() {
+    val clock = AtomicLong(0)
+    ServeSessionRegistry(
+        open = Opener(),
+        factory = CountingFactory(),
+        reaperIntervalMillis = 0,
+        leaseBusyMillis = 30_000,
+        clock = clock::get,
+      )
+      .use { reg ->
+        val lease = assertNotNull(reg.lease("a")) // the default: a request-scoped hold
+
+        clock.set(10 * 60_000) // ten minutes into a cold render, and it never touched
+        assertNull(reg.idleMillis(), "a request in flight is busy until it is done, not for 30s")
+        assertEquals(listOf("a"), reg.busyLeasedSessions())
+
+        lease.close()
+        clock.set(10 * 60_000 + 5_000)
+        assertEquals(5_000L, reg.idleMillis(), "and the clock starts from its release")
+      }
+  }
+
+  /**
+   * A connection lease going quiet must not un-busy a request that is running alongside it — the
+   * two counts are tracked separately, not collapsed into one.
+   */
+  @Test
+  fun `a quiet connection lease does not mask a concurrent request lease`() {
+    val clock = AtomicLong(0)
+    ServeSessionRegistry(
+        open = Opener(),
+        factory = CountingFactory(),
+        reaperIntervalMillis = 0,
+        leaseBusyMillis = 30_000,
+        clock = clock::get,
+      )
+      .use { reg ->
+        val socket = assertNotNull(reg.lease("a", connection = true))
+        val request = assertNotNull(reg.lease("a"))
+
+        clock.set(120_000)
+        assertNull(reg.idleMillis(), "the request is still in flight")
+
+        request.close()
+        clock.set(180_000)
+        assertEquals(60_000L, reg.idleMillis(), "once it lands, the quiet socket does not hold on")
+        socket.close()
+      }
+  }
+
+  /**
    * `touch` is called from the socket's message loop, which outlives the lease's `finally` on a
    * cancelled request. Touching a released lease must not resurrect it as busy.
    */
@@ -624,7 +683,7 @@ class ServeSessionRegistryTest {
         clock = clock::get,
       )
       .use { reg ->
-        val lease = assertNotNull(reg.lease("a"))
+        val lease = assertNotNull(reg.lease("a", connection = true))
         lease.close()
         clock.set(60_000)
         lease.touch()
