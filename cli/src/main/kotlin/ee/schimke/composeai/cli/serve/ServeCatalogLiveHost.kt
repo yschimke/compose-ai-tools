@@ -1757,6 +1757,14 @@ class ServeCatalogLiveHost(
         // bundle (no `fixedTheme` in its `previews.json`) must not be able to clear that.
         fixedTheme = p.fixedTheme || twin.fixedTheme,
         uiMode = twin.uiMode,
+        // …and the rest of the backdrop evidence with it. A published catalog's baked staging
+        // directory carries no root `previews.json`, so the baked side's `showBackground` /
+        // `backgroundColor` are always the annotation defaults; the daemon twin is the only place
+        // those values exist on this path. Copying `uiMode` alone would leave the main
+        // catalog-serving lane resolving every preview's ground from the catalog stage — the
+        // per-preview half of `PreviewBackdrop` silently inert exactly where it matters most.
+        showBackground = twin.showBackground,
+        backgroundColor = twin.backgroundColor,
       )
     }
   }

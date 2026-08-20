@@ -1897,6 +1897,33 @@ class ServeWebFixtureTest {
             repo = "yschimke/compose-ai-tools",
           ),
       )
+    // The same page for a DARK-FIRST catalog, which is a materially different picture rather than a
+    // recolour of the one above — and the case yschimke/wear-m3-catalog#56 was raised against.
+    //
+    // A dark-first system renders its stickers transparent on purpose (`showBackground = false`, so
+    // one drops onto any Figma canvas), so the panels' ground is the *only* thing making its
+    // white-on-transparent content visible. That made this page's missing stage invisible to every
+    // existing fixture: the light-first twin above looks identical whether the stage resolves or
+    // falls through, because its content is dark either way. Without this fixture the regression
+    // could come back and no committed screenshot would move.
+    val referenceComparisonDarkFirst =
+      ServeWeb.referenceComparisonPage(
+        moduleLabel = "wear-m3",
+        preview = themedPreviews.first(),
+        reference = comparisonReferences.first(),
+        references = comparisonReferences,
+        token = token,
+        sessionId = "wear-m3",
+        // The catalog declaring its own stage, exactly as `catalog.json`'s `display.surface` does —
+        // not the system-name heuristic, so the fixture pins the declared path.
+        declaredSurface = "dark",
+        isPublic = true,
+        version = version,
+      )
+    assertTrue(
+      referenceComparisonDarkFirst.contains("data-bg-theme=\"dark\""),
+      "the dark-first comparison fixture must actually carry the dark stage",
+    )
     // The unpinned twin, on the viewer: the revision list folded away, which is all an ordinary
     // page view of a catalog with a publish history shows.
     val viewerRevisions =
@@ -3255,6 +3282,7 @@ class ServeWebFixtureTest {
         "serve-rc-lanes.html" to rcLanesComparison,
         "serve-reference-compare.html" to referenceComparison,
         "serve-reference-compare-pinned.html" to referenceComparisonPinned,
+        "serve-reference-compare-dark-first.html" to referenceComparisonDarkFirst,
         "serve-viewer-revisions.html" to viewerRevisions,
         "serve-viewer-revisions-open.html" to viewerRevisionsOpen,
         "serve-viewer-pinned-lanes.html" to viewerPinnedLanes,

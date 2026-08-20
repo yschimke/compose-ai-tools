@@ -111,11 +111,39 @@ describe("variantFor", () => {
 });
 
 describe("rowTheme", () => {
-    it("puts only a genuinely dark pairing on the dark sheet", () => {
+    it("takes a genuinely themed pairing at its word, whatever the stage", () => {
         assert.equal(rowTheme("dark"), "dark");
         assert.equal(rowTheme("light"), "light");
+        assert.equal(rowTheme("dark", "light"), "dark");
+        assert.equal(rowTheme("light", "dark"), "light");
+    });
+
+    it("defaults an unthemed pairing to light, as before", () => {
         assert.equal(rowTheme("neutral"), "light");
         assert.equal(rowTheme(""), "light");
+        assert.equal(rowTheme("neutral", "light"), "light");
+    });
+
+    it("puts an unthemed pairing on a dark-first catalog's own stage", () => {
+        // wear-m3-catalog#56: a theme-neutral component in a dark-first system is still drawn for a
+        // black watch face, so answering "light" here left its sticker nearly blank in the table.
+        assert.equal(rowTheme("neutral", "dark"), "dark");
+        assert.equal(rowTheme("", "dark"), "dark");
+    });
+
+    it("lets a preview's own declared ground outrank both", () => {
+        // The per-preview half: a component that asks for a light ground keeps it even inside a
+        // dark-first catalog, and vice versa. Without this the catalog default swept up every
+        // neutral row regardless of what its preview declared.
+        assert.equal(rowTheme("neutral", "dark", "light"), "light");
+        assert.equal(rowTheme("neutral", "light", "dark"), "dark");
+        assert.equal(rowTheme("dark", "dark", "light"), "light");
+    });
+
+    it("ignores an absent or unusable declaration", () => {
+        assert.equal(rowTheme("neutral", "dark", null), "dark");
+        assert.equal(rowTheme("neutral", "dark", undefined), "dark");
+        assert.equal(rowTheme("neutral", "dark", ""), "dark");
     });
 });
 

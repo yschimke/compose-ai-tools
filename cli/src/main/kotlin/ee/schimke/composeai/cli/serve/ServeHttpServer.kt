@@ -3315,6 +3315,10 @@ class ServeHttpServer(
           basePath = basePath,
           isPublic = isPublic,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
+          // …and it must not drop the catalog's stage either: a dark-first system's sticker is
+          // drawn for a dark ground, so comparing it on the default one hid the very pixels the
+          // page was opened to inspect (yschimke/wear-m3-catalog#56).
+          declaredSurface = catalogBundleHost(renderHost)?.stageSurface,
           // Stepping from the themed comparison table into its focused Reference/Diff/Actual view
           // must not drop back to the built-in chrome mid-journey.
           themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),

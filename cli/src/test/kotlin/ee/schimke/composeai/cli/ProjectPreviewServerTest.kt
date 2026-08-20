@@ -250,6 +250,109 @@ class ProjectPreviewServerTest {
   }
 
   @Test
+  fun `a repo-scoped confirmation only applies to its own repository`() {
+    // A bare host entry is a standing grant for every checkout on the machine. The scoped form
+    // narrows it, so a branch of some other repo can't ride a confirmation granted for this one.
+    writeProperties("$SERVE_URL_PROPERTY=https://preview.coo.ee\n")
+    val resolved = resolveProjectServeUrl(root, env = { null }, fileSystem = fs)!!
+    val env = { name: String ->
+      if (name == SERVE_HOSTS_ENV) "yschimke/compose-ai-tools=preview.coo.ee" else null
+    }
+
+    assertTrue(
+      confirmProjectServeHost(
+        resolved,
+        projectRoot = root,
+        originRepo = "yschimke/compose-ai-tools",
+        env = env,
+        userHome = null,
+        fileSystem = fs,
+      )
+        is ServeUrlTrust.Trusted,
+      "the repository it was granted for",
+    )
+    assertTrue(
+      confirmProjectServeHost(
+        resolved,
+        projectRoot = root,
+        originRepo = "stranger/some-app",
+        env = env,
+        userHome = null,
+        fileSystem = fs,
+      )
+        is ServeUrlTrust.NeedsConfirmation,
+      "a different repository must not inherit it",
+    )
+    assertTrue(
+      confirmProjectServeHost(
+        resolved,
+        projectRoot = root,
+        originRepo = null,
+        env = env,
+        userHome = null,
+        fileSystem = fs,
+      )
+        is ServeUrlTrust.NeedsConfirmation,
+      "an unidentifiable checkout cannot match a scoped grant",
+    )
+  }
+
+  @Test
+  fun `a bare host entry still confirms any repository`() {
+    writeProperties("$SERVE_URL_PROPERTY=https://preview.coo.ee\n")
+    val resolved = resolveProjectServeUrl(root, env = { null }, fileSystem = fs)!!
+    val env = { name: String -> if (name == SERVE_HOSTS_ENV) "preview.coo.ee" else null }
+    assertTrue(
+      confirmProjectServeHost(
+        resolved,
+        projectRoot = root,
+        originRepo = "anyone/anything",
+        env = env,
+        userHome = null,
+        fileSystem = fs,
+      )
+        is ServeUrlTrust.Trusted
+    )
+  }
+
+  @Test
+  fun `the refusal offers the narrower grant when it knows the repository`() {
+    writeProperties("$SERVE_URL_PROPERTY=https://preview.coo.ee\n")
+    val resolved = resolveProjectServeUrl(root, env = { null }, fileSystem = fs)!!
+    val needs =
+      confirmProjectServeHost(
+        resolved,
+        projectRoot = root,
+        originRepo = "yschimke/compose-ai-tools",
+        env = { null },
+        userHome = null,
+        fileSystem = fs,
+      )
+        as ServeUrlTrust.NeedsConfirmation
+    assertTrue(needs.how.contains("yschimke/compose-ai-tools=preview.coo.ee"), needs.how)
+  }
+
+  @Test
+  fun `a malformed allowlist entry grants nothing`() {
+    writeProperties("$SERVE_URL_PROPERTY=https://preview.coo.ee\n")
+    val resolved = resolveProjectServeUrl(root, env = { null }, fileSystem = fs)!!
+    for (entry in listOf("=preview.coo.ee", "not/a/repo=preview.coo.ee", "owner/repo=", "  ")) {
+      assertTrue(
+        confirmProjectServeHost(
+          resolved,
+          projectRoot = root,
+          originRepo = "owner/repo",
+          env = { if (it == SERVE_HOSTS_ENV) entry else null },
+          userHome = null,
+          fileSystem = fs,
+        )
+          is ServeUrlTrust.NeedsConfirmation,
+        "entry '$entry' must not confirm anything",
+      )
+    }
+  }
+
+  @Test
   fun `a refusal never echoes credentials that were in the url`() {
     writeProperties("$SERVE_URL_PROPERTY=https://user:hunter2@attacker.example\n")
     val resolved = resolveProjectServeUrl(root, env = { null }, fileSystem = fs)!!
