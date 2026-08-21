@@ -93,7 +93,16 @@ internal object CliFlagValidation {
           "--until",
         ),
       "history-manifest" to
-        setOf("--baselines", "--branch", "--help", "-h", "--output", "--quiet", "--repo"),
+        setOf(
+          "--baselines",
+          "--branch",
+          "--help",
+          "-h",
+          "--layout",
+          "--output",
+          "--quiet",
+          "--repo",
+        ),
       // Extra flags are forwarded to ReportCommand after the profile file is expanded.
       "profile" to reportFlags,
       "doctor" to

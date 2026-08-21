@@ -134,13 +134,32 @@ export function renderUrlAt(
     }
     const commit = version.commit;
     if (!/^[0-9a-fA-F]{7,40}$/.test(commit || "")) return null;
-    if (!path || !path.startsWith("renders/") || path.includes(".."))
-        return null;
+    if (!path || !isRenderDir(path) || path.includes("..")) return null;
     return (
         "https://raw.githubusercontent.com/" +
         `${source.repoPath}/${commit}/` +
         path.split("/").map(encodeURIComponent).join("/")
     );
+}
+
+/**
+ * The delivery-branch directories a manifest may name a render in.
+ *
+ * Two, because there are two kinds of delivery branch: a **baseline** branch
+ * (`compose-preview/main`) writes `renders/<module>/<basename>`, while a **design catalog** branch
+ * (`design-artifacts/<system>`) writes `images/<slug>/<variant>.png`. A manifest built over the
+ * second was previously addressable by nothing at all — every entry failed this check and the menu
+ * silently drew no timeline.
+ *
+ * Deliberately still a closed list rather than "any relative path". The path comes out of a fetched
+ * manifest and is pasted into a raw.githubusercontent URL, so what it may name is part of this
+ * file's job: an entry outside the two directories a publisher actually writes is a malformed
+ * manifest, not a layout we have yet to hear about.
+ */
+const RENDER_DIRS = ["renders/", "images/"];
+
+function isRenderDir(path: string): boolean {
+    return RENDER_DIRS.some((dir) => path.startsWith(dir));
 }
 
 /** `2026-08-15` from an ISO timestamp, or `""` when it is not one. */

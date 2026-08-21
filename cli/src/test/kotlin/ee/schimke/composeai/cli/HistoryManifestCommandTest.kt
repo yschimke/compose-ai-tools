@@ -47,6 +47,29 @@ class HistoryManifestCommandTest {
     return dir
   }
 
+  /**
+   * A throwaway repo shaped like a **design catalog** delivery branch:
+   * `images/<slug>/<variant>.png` and, deliberately, no `baselines.json` at all — that is the
+   * layout's defining property.
+   */
+  private fun catalogRepo(vararg commits: Pair<String, String>): File {
+    val dir = createTempDirectory("history-manifest-images").toFile()
+    fun git(vararg args: String) {
+      val p = ProcessBuilder(listOf("git") + args).directory(dir).redirectErrorStream(true).start()
+      check(p.waitFor() == 0) { "git ${args.joinToString(" ")} failed" }
+    }
+    git("init", "--quiet", "--initial-branch", "main")
+    git("config", "user.email", "test@example.com")
+    git("config", "user.name", "Test")
+    File(dir, "images/media-playerscreen").mkdirs()
+    commits.forEach { (subject, bytes) ->
+      File(dir, "images/media-playerscreen/ideal__default__192dp.png").writeText(bytes)
+      git("add", "-A")
+      git("commit", "--quiet", "-m", subject)
+    }
+    return dir
+  }
+
   private fun run(repo: File, vararg extra: String): Pair<List<String>, List<String>> {
     val out = mutableListOf<String>()
     val err = mutableListOf<String>()
@@ -310,5 +333,94 @@ class HistoryManifestCommandTest {
 
     assertTrue(out.isEmpty(), "expected no stdout, got: $out")
     assertTrue(output.isFile)
+  }
+
+  @Test
+  fun `the images layout keys previews by the id the routes serve them under`() {
+    // A design catalog branch ships no baselines.json, and needs none: the viewer addresses this
+    // preview as `media-playerscreen__ideal__default__192dp`, which is exactly its path flattened.
+    // A manifest keyed any other way is one the menu silently finds nothing in.
+    val repo =
+      catalogRepo(
+        "chore(design-artifacts): regenerate wear-m3-catalog catalog (2026-08-20, 67374d43)" to
+          "v1",
+        "chore(design-artifacts): regenerate wear-m3-catalog catalog (2026-08-20, fda4c66e)" to
+          "v2",
+      )
+    val output = File(repo, "history.json")
+
+    val (out, err) = run(repo, "--layout", "images", "--output", output.path)
+
+    assertTrue(err.isEmpty(), "unexpected stderr: $err")
+    val manifest = assertNotNull(PreviewHistoryManifest.decode(output.readText()))
+    val entry = manifest.previews.getValue("media-playerscreen__ideal__default__192dp")
+    assertEquals("images/media-playerscreen/ideal__default__192dp.png", entry.path)
+    // Two publishes, two distinct renders — the run-collapse still applies unchanged.
+    assertEquals(2, entry.versions.size)
+    assertEquals("fda4c66e", entry.versions.first().sourceSha)
+    assertContains(out.joinToString("\n"), "1 previews")
+  }
+
+  @Test
+  fun `the images layout collapses publishes that did not move a pixel`() {
+    // The whole point of the timeline: identical bytes republished are one version, not two.
+    val repo = catalogRepo("regenerate (2026-08-20, aaaaaaaa)" to "same")
+    // A second commit touching something else entirely leaves the render alone.
+    File(repo, "README.md").writeText("x")
+    ProcessBuilder("git", "add", "-A").directory(repo).start().waitFor()
+    ProcessBuilder("git", "commit", "--quiet", "-m", "regenerate (2026-08-20, bbbbbbbb)")
+      .directory(repo)
+      .start()
+      .waitFor()
+    val output = File(repo, "history.json")
+
+    run(repo, "--layout", "images", "--output", output.path)
+
+    val manifest = assertNotNull(PreviewHistoryManifest.decode(output.readText()))
+    assertEquals(
+      1,
+      manifest.previews.getValue("media-playerscreen__ideal__default__192dp").versions.size,
+    )
+  }
+
+  @Test
+  fun `the images layout asks for no baselines file`() {
+    // Reading a sidecar this layout does not have would be inventing a requirement — and the
+    // renders layout's hard failure on a missing baselines.json would then make the whole lane
+    // unusable on a design catalog branch.
+    val repo = catalogRepo("regenerate (2026-08-20, aaaaaaaa)" to "v1")
+    assertFalse(File(repo, "baselines.json").exists())
+
+    val (_, err) = run(repo, "--layout", "images", "--output", File(repo, "history.json").path)
+
+    assertTrue(err.isEmpty(), "unexpected stderr: $err")
+  }
+
+  @Test
+  fun `an unknown layout is refused rather than silently treated as the default`() {
+    val repo = catalogRepo("regenerate (2026-08-20, aaaaaaaa)" to "v1")
+
+    val failure =
+      assertIs<CommandExit>(
+        runCatching { run(repo, "--layout", "renders-ish", "--output", "out.json") }
+          .exceptionOrNull()
+      )
+
+    assertEquals(1, failure.code)
+  }
+
+  @Test
+  fun `the renders layout is still the default`() {
+    // Every existing caller — the apply action, anyone regenerating by hand — passes no --layout.
+    val repo = deliveryRepo("Update preview baselines from 27ea28c1" to "v1")
+    val output = File(repo, "history.json")
+
+    run(repo, "--output", output.path)
+
+    val manifest = assertNotNull(PreviewHistoryManifest.decode(output.readText()))
+    assertEquals(
+      "renders/samples:wear/Foo_Large_Round.png",
+      manifest.previews.values.single().path,
+    )
   }
 }

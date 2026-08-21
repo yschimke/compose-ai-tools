@@ -1271,98 +1271,14 @@ runs:
         # a branch that has no history.json yet. Since an unchanged render set correctly skips its
         # push, the manifest could then never be created: the first publish would wait for a render
         # to change, which is exactly the deadlock the branch was sitting in. Running every baseline
-        # run costs a metadata-only fetch (~1s) and the second push's SKIP_IF_UNCHANGED no-ops when
-        # the regenerated manifest matches what is already published.
-        if [ ! -f "$stage/baselines.json" ]; then
-          echo "history manifest: no staged baselines.json, skipping."
-          exit 0
-        fi
-
-        # The CLI may be absent (`cli-version: none`) or predate this subcommand — `cli-version:
-        # auto`, the default, installs the release matching the consumer's pinned plugin, which
-        # will not know `history-manifest` until one ships. Probe for the capability instead of
-        # parsing versions, and skip rather than fail: the renders are already pushed by this
-        # point, so failing here would break an otherwise good baseline run. The branch keeps the
-        # manifest it already had (carried forward in compose.sh), just not refreshed this run.
-        if ! command -v compose-preview >/dev/null 2>&1; then
-          echo "::notice::history manifest: no compose-preview on PATH (cli-version: none?); skipping history.json."
-          exit 0
-        fi
-        if ! compose-preview inspect history-manifest --help >/dev/null 2>&1; then
-          echo "::notice::history manifest: installed CLI has no 'inspect history-manifest'; skipping history.json. Upgrade the CLI to publish render history."
-          exit 0
-        fi
-
-        # The staging repo was fetched --depth=1, and a shallow log would silently truncate every
-        # timeline. Fetch the branch's history into a scratch repo instead. --filter=blob:none is
-        # exact rather than merely cheap here: the extractor reads blob SHAs out of tree objects
-        # via `git log --raw` and never opens a render, so no PNG content is needed.
-        rm -rf _history_repo
-        git init -q _history_repo
-        # commit-tree refuses to run without a committer identity, and a freshly `git init`ed repo
-        # has none — the render push never hit this because push-branch.sh sets its own. Without it
-        # the manifest generates fine and then the commit dies with exit 128, so the branch still
-        # advances with renders and only history.json is silently lost.
-        git -C _history_repo config user.name "github-actions[bot]"
-        git -C _history_repo config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git -C _history_repo remote add origin \
-          "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git"
-        if ! git -C _history_repo fetch --quiet --filter=blob:none origin "$BASELINE_BRANCH"; then
-          echo "::warning::history manifest: could not fetch ${BASELINE_BRANCH}; skipping history.json this run."
-          exit 0
-        fi
-
-        # Join against the baselines.json being published, not the one on the branch, so the
-        # manifest and its keys are always the same snapshot.
-        compose-preview inspect history-manifest \
-          --repo _history_repo \
-          --branch FETCH_HEAD \
-          --baselines "$stage/baselines.json" \
-          --output "$stage/history.json"
-
-        # Second commit, following the render push rather than riding along with it: computed
-        # beforehand, the manifest could not describe the very publish it ships with, so the newest
-        # render would be missing from its own timeline. The extractor filters on the `renders`
-        # pathspec, so this commit is invisible to the next run's history and cannot pollute it.
-        #
-        # Built as a genuine delta — the tip's tree with one path replaced — NOT via
-        # push-branch.sh. That helper snapshots a directory into a fixed tree and re-parents it onto
-        # whatever the current tip is, so pushing a staging dir that was staged earlier silently
-        # reverts anything published in between: a concurrent baseline run's renders and
-        # baselines.json would be overwritten by this run's older copies. Touching only history.json
-        # makes that impossible regardless of how the runs interleave.
-        #
-        # read-tree/write-tree work in the blob:none clone because they only need tree objects and
-        # the one new blob; the renders' contents are never fetched.
-        MSG="Update preview history from ${GITHUB_SHA::8}"
-        cd _history_repo
-        attempt=1
-        while :; do
-          PARENT=$(git rev-parse FETCH_HEAD)
-          NEW_BLOB=$(git hash-object -w "$GITHUB_WORKSPACE/$stage/history.json")
-          OLD_BLOB=$(git rev-parse --quiet --verify "FETCH_HEAD:history.json" 2>/dev/null || true)
-          if [ "$NEW_BLOB" = "$OLD_BLOB" ]; then
-            echo "history manifest: history.json unchanged on ${BASELINE_BRANCH}; nothing to push."
-            break
-          fi
-          git read-tree "$PARENT"
-          git update-index --add --cacheinfo "100644,${NEW_BLOB},history.json"
-          TREE=$(git write-tree)
-          COMMIT=$(git commit-tree "$TREE" -p "$PARENT" -m "$MSG")
-          if git push --quiet origin "${COMMIT}:refs/heads/${BASELINE_BRANCH}" 2>&1; then
-            echo "history manifest: published ${COMMIT} to ${BASELINE_BRANCH}."
-            break
-          fi
-          if [ "$attempt" -ge 5 ]; then
-            echo "::warning::history manifest: lost the push race ${attempt}x; skipping history.json this run."
-            break
-          fi
-          echo "history manifest: lost the push race; retry ${attempt}/5."
-          attempt=$((attempt + 1))
-          sleep $((attempt * 2))
-          # Re-fetch so the retry re-parents onto (and re-reads) the new tip.
-          git fetch --quiet --filter=blob:none origin "$BASELINE_BRANCH" || true
-        done
+        # run costs a metadata-only fetch (~1s), and the helper no-ops when the regenerated manifest
+        # matches what is already published.
+        TARGET_BRANCH="$BASELINE_BRANCH" \
+        OUTPUT="$GITHUB_WORKSPACE/$stage/history.json" \
+        LAYOUT=renders \
+        BASELINES="$GITHUB_WORKSPACE/$stage/baselines.json" \
+        MSG="Update preview history from ${GITHUB_SHA::8}" \
+          bash "$ACTION_PATH/lib/push-history.sh"
 
     - name: Push resource baseline / PR renders
       if: steps.resolve.outputs.phase != 'render' && (steps.scope.outputs.mode != 'skip' && steps.resolve.outputs.resources == '1')

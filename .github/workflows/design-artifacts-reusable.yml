@@ -1851,3 +1851,36 @@ jobs:
           GIT_COMMITTER_NAME="$INPUT_COMMIT_USER_NAME" \
           GIT_COMMITTER_EMAIL="$INPUT_COMMIT_USER_EMAIL" \
             bash "$GITHUB_WORKSPACE/compose-ai-tools/.github/actions/apply/lib/push-branch.sh"
+
+      - name: Publish render history to design-artifacts/${{ inputs.system }}
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SYSTEM: ${{ inputs.system }}
+        run: |
+          set -euo pipefail
+          # `history.json` — the per-preview render timeline `<cp-history-menu>` reads. The viewer
+          # has fetched it from this branch all along; until now the branch never published one, so
+          # the menu 404'd and drew nothing on every design catalog.
+          #
+          # A SECOND commit, after the catalog push above, and that ordering is load-bearing: the
+          # manifest describes the branch's history, so one computed before the publish could not
+          # include the publish it ships with and the newest render would be missing from its own
+          # timeline. The extractor filters on the `images` pathspec, so this commit is invisible to
+          # the next run's history and cannot pollute it.
+          #
+          # Runs even when the catalog push skipped as unchanged. "No render changed" does not imply
+          # "the manifest is current" on a branch that has never had one — that reading is exactly
+          # what would keep a first publish waiting forever for a render to move.
+          SOURCE_SHA=$(git -C "$GITHUB_WORKSPACE" rev-parse --short=8 HEAD)
+
+          cd "$GITHUB_WORKSPACE"
+          TARGET_BRANCH="design-artifacts/${SYSTEM}" \
+          REPO="$GITHUB_REPOSITORY" \
+          GITHUB_TOKEN_INLINE="$GH_TOKEN" \
+          OUTPUT="$GITHUB_WORKSPACE/history.json" \
+          LAYOUT=images \
+          MSG="chore(design-artifacts): update ${SYSTEM} render history ($(date -u +%F), ${SOURCE_SHA})" \
+          GIT_COMMITTER_NAME="$INPUT_COMMIT_USER_NAME" \
+          GIT_COMMITTER_EMAIL="$INPUT_COMMIT_USER_EMAIL" \
+            bash "$GITHUB_WORKSPACE/compose-ai-tools/.github/actions/apply/lib/push-history.sh"
