@@ -57,6 +57,8 @@ class GradleRevisionBuilder(
           uiMode = it.params.uiMode,
           showBackground = it.params.showBackground,
           backgroundColor = it.params.backgroundColor,
+          deviceFrame =
+            ServeDeviceFrame.from(it.params.device, it.params.widthDp, it.params.heightDp),
           supportsFocus = focus,
           supportsGestures = gestures,
           fixedTheme = it.fixedTheme,

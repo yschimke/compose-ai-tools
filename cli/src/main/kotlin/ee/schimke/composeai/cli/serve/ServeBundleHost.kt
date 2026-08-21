@@ -494,6 +494,10 @@ class ServeBundleHost(
           uiMode = previewParamsById[id]?.uiMode ?: 0,
           showBackground = previewParamsById[id]?.showBackground == true,
           backgroundColor = previewParamsById[id]?.backgroundColor ?: 0L,
+          deviceFrame =
+            previewParamsById[id]?.let {
+              ServeDeviceFrame.from(it.device, it.widthDp, it.heightDp)
+            },
         )
       }
       .toList()

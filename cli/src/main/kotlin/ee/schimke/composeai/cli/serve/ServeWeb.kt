@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli.serve
 import ee.schimke.composeai.data.overrides.PreviewOverrideOption
 import ee.schimke.composeai.data.render.PreviewBackdrop
 import ee.schimke.composeai.data.render.PreviewBackground
+import ee.schimke.composeai.data.render.PreviewClip
 import ee.schimke.composeai.designpages.DesignPage
 import ee.schimke.composeai.designpages.PageNode
 import java.time.Instant
@@ -1495,6 +1496,81 @@ ${captureControlsHtml().prependIndent("          ")}
       if (darkFirst) PreviewBackdrop.CatalogSurface.DARK else PreviewBackdrop.CatalogSurface.LIGHT,
     )
   }
+
+  /**
+   * The device-frame clip for a preview, as a CSS `clip-path`, or null when the whole capture is
+   * screen.
+   *
+   * This is the shape half of the same "what is behind this preview?" question [backdropFor]
+   * answers with a colour, and the two are only correct together. A round Wear capture is a circle
+   * in a square PNG; painting its backdrop across the whole square draws the watch as a rectangle,
+   * and because a Wear catalog declares black backgrounds against black screens, the device edge
+   * did not merely look wrong — on this repo's own `PageIndicatorScaffoldTemplate` renders the
+   * stage was pixel-identical to the screen and the boundary was invisible.
+   *
+   * Sized to the DEVICE box rather than to the panel: the compare panels size their `<img>` with
+   * `width: auto; height: auto`, so the image element's box carries the render's own aspect and a
+   * circle stated against the device is exactly the circle in the pixels. Clipping the panel
+   * instead would clip the panel's rectangle, which is a different shape in a different place.
+   */
+  internal fun stageClipFor(
+    preview: ServePreview,
+    /**
+     * The render lane's overrides, when this page is showing one. The clip has to describe the
+     * frame that was actually RENDERED, not the one the preview was discovered with — the Actual
+     * panel takes these through `assetQuery`, so a comparison opened at `?device=id:wearos_square`
+     * shows a square render and a circle stated from the annotation would crop live screen off it.
+     * The inverse is just as wrong: overriding a phone preview onto a watch leaves a round render
+     * on a square stage. Same reason [backdropFor] takes `uiModeOverride`.
+     */
+    overrides: Map<String, String> = emptyMap(),
+  ): String? {
+    val frame = effectiveDeviceFrame(preview, overrides) ?: return null
+    val shape = PreviewClip.resolve(frame.isRound, frame.widthDp, frame.heightDp) ?: return null
+    return PreviewClip.cssClipPath(
+      shape,
+      frame.widthDp ?: return null,
+      frame.heightDp ?: return null,
+    )
+  }
+
+  /**
+   * The device frame this comparison actually rendered at, or null when it cannot be stated.
+   *
+   * An explicit `device=` override replaces the frame outright and is resolved from the device
+   * catalog exactly as discovery would have — including its shape, so switching a round preview to
+   * one of the Wear picker's square choices drops the clip rather than keeping a stale circle.
+   *
+   * A SIZE override suppresses the clip instead of adjusting it. `widthPx`/`heightPx` are pixels
+   * against a density this page does not carry, and `orientation` re-derives the frame through
+   * rules that live in the resolver; a clip guessed from any of them would be a circle in the wrong
+   * place, which is worse than the square stage this feature replaced — that at least never hid
+   * real pixels. Answering null puts such a render back on the un-clipped stage, honestly.
+   */
+  private fun effectiveDeviceFrame(
+    preview: ServePreview,
+    overrides: Map<String, String>,
+  ): ServeDeviceFrame? {
+    if (SIZE_OVERRIDE_KEYS.any { !overrides[it].isNullOrBlank() }) return null
+    val device = overrides["device"]?.takeIf { it.isNotBlank() } ?: return preview.deviceFrame
+    return ServeDeviceFrame.from(device, widthDp = null, heightDp = null)
+  }
+
+  /**
+   * Render overrides that change the frame's SHAPE by a route this page cannot re-derive. Kept as a
+   * list rather than folded into the check above so a new sizing knob in
+   * [ServeOverrides.SUPPORTED_KEYS] is one line to account for here.
+   */
+  private val SIZE_OVERRIDE_KEYS =
+    listOf(
+      "widthPx",
+      "heightPx",
+      "minWidthPx",
+      "minHeightPx",
+      "maxWidthPx",
+      "maxHeightPx",
+      "orientation",
+    )
 
   /**
    * The light/dark variant a preview **is**, from the catalog's baked `theme` token, else its night
@@ -8963,13 +9039,25 @@ $rows
         // or the pixels and their ground describe different renders.
         uiModeOverride = overrides["uiMode"],
       )
+    // The SHAPE of that ground. A round device's stage has to stop at the bezel, or the three
+    // panels agree with each other about a watch that is square.
+    val stageClip = stageClipFor(preview, overrides)
     val stageAttrs =
       backdrop.color?.let { color ->
         // The theme word drives the existing CSS; the exact colour rides along as a custom property
         // so a catalog whose stage is neither of the two literal plates still gets its own ground
         // rather than the nearest of them.
+        val clipProperty =
+          stageClip?.let { "; --cp-stage-clip: ${WebEscaping.htmlEscape(it)}" } ?: ""
+        // The marker attribute AS WELL as the property, because the clip is not the only thing the
+        // rules it gates do: they also take the ground off the panel and hand it to the image, so
+        // the corners the clip opens up show the page's checkerboard rather than the stage colour.
+        // CSS cannot branch on whether a custom property was set, so without a marker every
+        // rectangular preview would lose its panel ground to buy a clip it never uses.
+        val clipMarker = if (stageClip != null) " data-cp-stage-clip=\"1\"" else ""
         " data-bg-theme=\"${if (backdrop.isDark) "dark" else "light"}\"" +
-          " style=\"--cp-stage-backdrop: ${WebEscaping.htmlEscape(color.asCssColor())}\""
+          clipMarker +
+          " style=\"--cp-stage-backdrop: ${WebEscaping.htmlEscape(color.asCssColor())}$clipProperty\""
       } ?: ""
     // One toggle per kind, offered only when some panel actually carries that kind — a control that
     // reveals nothing is worse than no control. The payload rides inline rather than behind a fetch

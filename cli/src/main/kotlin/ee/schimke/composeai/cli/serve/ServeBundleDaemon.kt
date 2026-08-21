@@ -563,6 +563,8 @@ internal object ServeBundleDaemon {
         uiMode = it.params.uiMode,
         showBackground = it.params.showBackground,
         backgroundColor = it.params.backgroundColor,
+        deviceFrame =
+          ServeDeviceFrame.from(it.params.device, it.params.widthDp, it.params.heightDp),
         overrides = readOverrideSidecar(previewsDir, it.id, fileSystem),
         remoteComposeKnobs = readRemoteComposeSidecar(previewsDir, it.id, fileSystem),
         supportsFocus = focus,

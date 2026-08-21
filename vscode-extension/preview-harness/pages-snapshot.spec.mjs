@@ -81,6 +81,15 @@ const designRenderPlaceholder = resolve(
 // fixed final frame keeps the shot deterministic while still proving the thing under test: those
 // pixels are on the stage only because the lane fetched an animated file and played it.
 const motionPlaceholder = resolve(pagesDir, "_motion-placeholder.apng");
+// The round-device lane's stub, and the flat placeholder above cannot stand in for it: that one is
+// an opaque 200×420 rectangle, so a stage clipped to a circle and a stage not clipped at all would
+// differ by nothing a reader could name. This is what a Wear render actually is — a 240×240 canvas whose
+// corners are FULLY TRANSPARENT and whose face is near-black, the same near-black this repo's own
+// `PageIndicatorScaffoldTemplate` renders carry. That combination is the whole point: on a square
+// black stage the face and the corners composite to the same pixels and the device boundary is
+// invisible, which is the regression the clip exists to prevent and is only legible against a
+// capture that reproduces it.
+const roundRenderPlaceholder = resolve(pagesDir, "_render-placeholder-round.png");
 // Fixtures navigated with a query string, because the state they capture lives in the URL rather
 // than in the served markup. The exploded viewer is the deep-link case in full: `?exploded=1` is
 // what puts the page on the vector lane and presses the 3D chip, exactly as a shared link does.
@@ -113,6 +122,17 @@ const REFERENCE_PLACEHOLDER = `
   <rect x="20" y="132" width="160" height="104" rx="18" fill="#dfd2f5"/>
   <rect x="20" y="258" width="160" height="64" rx="18" fill="#ffffff"/>
   <circle cx="100" cy="378" r="18" fill="#7657b5"/>
+</svg>`;
+// The round-device fixture's REFERENCE side, matching its render stub: a square viewBox whose
+// corners are empty and whose face is a circle. Both sides have to be round or the comparison would
+// be pinning a mismatch rather than the stage's shape.
+const ROUND_REFERENCE_PLACEHOLDER = `
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240">
+  <circle cx="120" cy="120" r="120" fill="#08070a"/>
+  <rect x="96" y="24" width="48" height="11" rx="5" fill="#e6e1f0"/>
+  <rect x="38" y="72" width="164" height="38" rx="12" fill="#332e3c"/>
+  <rect x="38" y="120" width="164" height="38" rx="12" fill="#332e3c"/>
+  <rect x="62" y="173" width="116" height="34" rx="17" fill="#e9ddff"/>
 </svg>`;
 // A specimen sheet standing in for the exported design page, at the fixture's own 1200×800 user
 // units and with the same shapes in the same places — the index card crops to the top of it, so a
@@ -311,6 +331,12 @@ const STYLED_FIXTURES = new Set([
   // (yschimke/wear-m3-catalog#56). Its light-first twin cannot catch a regression here, because
   // dark content stays readable whichever stage it lands on.
   "serve-reference-compare-dark-first",
+  // …and the same page for a ROUND device, which the dark-first twin cannot speak for: its preview
+  // names no device, so it has no bezel to lose. The claim here is a SHAPE — the stage stopping at
+  // the watch's edge instead of filling the panel — and it is only visible with the stylesheet
+  // routed in, because the clip lives entirely in CSS. Captured bare, a square stage and a round
+  // one are the same screenshot.
+  "serve-reference-compare-round-device",
   "serve-viewer",
   "serve-parity",
   "serve-viewer-catalog-knobs",
@@ -2808,7 +2834,10 @@ for (const fixture of listPageFixtures()) {
         await page.route(lane, (route) => {
           if (lane.includes("reference")) {
             return route.fulfill({
-              body: REFERENCE_PLACEHOLDER,
+              body:
+                fixture === "serve-reference-compare-round-device"
+                  ? ROUND_REFERENCE_PLACEHOLDER
+                  : REFERENCE_PLACEHOLDER,
               contentType: "image/svg+xml",
             });
           }
@@ -2824,6 +2853,12 @@ for (const fixture of listPageFixtures()) {
           if (!svg && fixture === "serve-design-page") {
             return route.fulfill({
               path: designRenderPlaceholder,
+              contentType: "image/png",
+            });
+          }
+          if (!svg && fixture === "serve-reference-compare-round-device") {
+            return route.fulfill({
+              path: roundRenderPlaceholder,
               contentType: "image/png",
             });
           }

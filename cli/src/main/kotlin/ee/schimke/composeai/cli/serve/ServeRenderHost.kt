@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.daemon.devices.DeviceDimensions
+import ee.schimke.composeai.daemon.devices.frameDpOverriddenBy
 import ee.schimke.composeai.daemon.protocol.DataFetchParams
 import ee.schimke.composeai.daemon.protocol.ExtensionsEnableResult
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
@@ -267,7 +269,59 @@ data class ServePreview(
    * positionally, so a new field anywhere earlier silently rebinds their arguments.
    */
   val motion: List<ServeMotion> = emptyList(),
+  /**
+   * The device frame this preview renders into, when it names one — the raw material for the
+   * device-frame clip. Null for the ordinary case: a preview with no `device =` renders into a
+   * plain rectangle and every pixel of it is screen.
+   *
+   * Also last in the parameter list, for the reason [motion] is.
+   */
+  val deviceFrame: ServeDeviceFrame? = null,
 )
+
+/**
+ * What a preview's `@Preview(device = …)` resolves to, reduced to what a clip needs.
+ *
+ * Resolved once here rather than carried as the raw device string, because working out whether a
+ * device is round is a real lookup — a catalog id, a `spec:` term, a `parent=` that supplies the
+ * shape it doesn't restate — and every surface that re-derived it from a name would get the
+ * `parent=` case wrong.
+ */
+@Serializable
+data class ServeDeviceFrame(
+  val widthDp: Double? = null,
+  val heightDp: Double? = null,
+  val isRound: Boolean = false,
+) {
+  companion object {
+
+    /**
+     * The frame for a preview's `@Preview` params, or null when it names no device.
+     *
+     * Dimensions go through [frameDpOverriddenBy], which is the repo's one answer to "do the
+     * annotation's dp displace the device catalog?" — **both axes or neither**, because that is
+     * what the renderer that produced the PNG did, and Studio ignores a single-axis hint on a
+     * device frame too. Deciding it per axis here would put a 120×227 clip over a 227×227 render
+     * and crop live screen, and the helper exists precisely so the places making this call cannot
+     * drift apart on it.
+     *
+     * **Roundness always comes from the device string**, separately, and that split is not
+     * cosmetic: [DeviceDimensions.resolve] returns early with `isRound = false` the moment it is
+     * handed explicit dimensions, so asking it for both at once reports every sized Wear preview as
+     * square, which is exactly the whole set this feature is for.
+     */
+    fun from(device: String?, widthDp: Int?, heightDp: Int?): ServeDeviceFrame? {
+      val named = device?.takeIf { it.isNotBlank() } ?: return null
+      val resolved = DeviceDimensions.resolve(named)
+      val (w, h) = resolved.frameDpOverriddenBy(widthDp, heightDp)
+      return ServeDeviceFrame(
+        widthDp = w.toDouble(),
+        heightDp = h.toDouble(),
+        isRound = resolved.isRound,
+      )
+    }
+  }
+}
 
 /** Structured, catalog-published render failure. Additive to `design-parity-catalog/v1`. */
 @Serializable

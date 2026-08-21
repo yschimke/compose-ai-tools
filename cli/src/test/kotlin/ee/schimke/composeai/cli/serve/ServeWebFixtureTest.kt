@@ -1925,6 +1925,40 @@ class ServeWebFixtureTest {
       referenceComparisonDarkFirst.contains("data-bg-theme=\"dark\""),
       "the dark-first comparison fixture must actually carry the dark stage",
     )
+    // The same page for a ROUND device, which is the dark-first fixture's own blind spot. Giving
+    // this page a ground fixed invisible stickers and introduced a quieter version of the same
+    // fault: a Wear capture is a circle in a square PNG, so a ground painted across the panel draws
+    // the watch as a rectangle. It is not merely untidy — Wear previews declare
+    // `backgroundColor = 0xFF000000` against near-black screens, so on this repo's own
+    // `PageIndicatorScaffoldTemplate` renders the stage was pixel-identical to the screen and the
+    // device boundary disappeared. The dark-first fixture above cannot catch that: its preview
+    // names no device, so it has no bezel to lose.
+    val referenceComparisonRoundDevice =
+      ServeWeb.referenceComparisonPage(
+        moduleLabel = "wear-m3",
+        preview =
+          themedPreviews
+            .first()
+            .copy(
+              // Exactly what `samples/design-catalog-wear-m3` states — including the explicit dp
+              // alongside the device id, which is the combination that used to resolve as square.
+              deviceFrame = ServeDeviceFrame.from("id:wearos_large_round", 227, 227),
+              showBackground = true,
+              backgroundColor = 0xFF000000L,
+            ),
+        reference = comparisonReferences.first(),
+        references = comparisonReferences,
+        token = token,
+        sessionId = "wear-m3",
+        declaredSurface = "dark",
+        isPublic = true,
+        version = version,
+      )
+    assertTrue(
+      referenceComparisonRoundDevice.contains("data-cp-stage-clip=\"1\"") &&
+        referenceComparisonRoundDevice.contains("--cp-stage-clip: circle("),
+      "the round-device fixture must actually carry the clip",
+    )
     // The unpinned twin, on the viewer: the revision list folded away, which is all an ordinary
     // page view of a catalog with a publish history shows.
     val viewerRevisions =
@@ -3320,6 +3354,7 @@ class ServeWebFixtureTest {
         "serve-reference-compare.html" to referenceComparison,
         "serve-reference-compare-pinned.html" to referenceComparisonPinned,
         "serve-reference-compare-dark-first.html" to referenceComparisonDarkFirst,
+        "serve-reference-compare-round-device.html" to referenceComparisonRoundDevice,
         "serve-viewer-revisions.html" to viewerRevisions,
         "serve-viewer-revisions-open.html" to viewerRevisionsOpen,
         "serve-viewer-pinned-lanes.html" to viewerPinnedLanes,
