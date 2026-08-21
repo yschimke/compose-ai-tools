@@ -449,6 +449,13 @@ class ServeHttpServer(
   /** Wall-clock the server was constructed — the basis for the `/status` uptime figure. */
   private val startedAtMillis: Long = System.currentTimeMillis()
 
+  /**
+   * Frame counters for the live socket lane, reported on `/status.json` as `liveFrames`. Owned here
+   * rather than by a host because a socket outlives the streams it opens and can move between
+   * previews; the recorder follows the client, not the daemon. See [LiveFramePerfStats].
+   */
+  private val liveFrameStats = LiveFramePerfStats()
+
   private val renderSemaphore = Semaphore(renderSlots)
   private val unleasedThemeSemaphore = Semaphore(1)
   private val themeRenderLeases = ThemeRenderLeaseManager(renderSlots)
@@ -5046,6 +5053,19 @@ class ServeHttpServer(
 
     private fun backendOf(weight: Int): String = if (weight >= 2) "android" else "desktop"
 
+    /**
+     * One line of live-lane cadence for the human status page: the fps a viewer actually got, the
+     * median gap behind it, and what a frame costs on the wire. Heartbeats are named separately
+     * because they are the difference between a quiet lane and a stalled one.
+     */
+    private fun liveFrameText(stats: LiveFramePerfSnapshot): String = buildString {
+      append(stats.achievedFps?.let { "$it fps" } ?: "no frames yet")
+      stats.p50IntervalMs?.let { append(" · p50 ${it}ms") }
+      append(" · ${stats.frames} painted")
+      if (stats.heartbeats > 0) append(" · ${stats.heartbeats} unchanged")
+      stats.avgPayloadBytes?.let { append(" · ${humanBytes(it.toInt())}/frame") }
+    }
+
     private fun countLabel(count: Int, singular: String): String =
       "$count $singular${if (count == 1) "" else "s"}"
 
@@ -5178,6 +5198,7 @@ class ServeHttpServer(
               activeStreams = if (static) 0 else d.activeStreams,
               uptimeSeconds = d.startedAt?.let { ((nowMillis - it) / 1000).coerceAtLeast(0) },
               renderStats = d.renderStats,
+              liveFrames = liveFrameStats.snapshot(d.id),
               daemonPools = d.daemonPools,
             )
           },
@@ -5201,6 +5222,9 @@ class ServeHttpServer(
             // has actually rendered so a quiet server doesn't advertise a block of zeros.
             running.mapNotNull { it.renderStats }.filter { it.renders + it.cacheHits + it.busy > 0 }
           ),
+        // Scoped like everything else on a site host: a per-site monitor is told about its own
+        // live lane, never a neighbour's.
+        liveFrames = liveFrameStats.snapshot(onlySystem),
         // Omitted entirely on a site-scoped snapshot, like `branchFetch` above and for the same
         // reason: a site host answers for one app, and grants belong to the box.
         agentAccess =
@@ -5353,6 +5377,11 @@ class ServeHttpServer(
         )
         add(ServeWeb.Stat("Live daemons running", liveDaemons.size.toString()))
         add(ServeWeb.Stat("Active streams", activeStreams.toString()))
+        // What those streams are actually achieving. "Active streams: 3" says three sockets are
+        // open and nothing about whether they are painting at 15 fps or 0.5 (#4281).
+        liveFrameStats.snapshot(onlySystem)?.let {
+          add(ServeWeb.Stat("Live frames", liveFrameText(it)))
+        }
         // The optimizer's *input*, next to the counters that describe its output. Every per-catalog
         // row already says "theme optimization paused"; none of them says whether that is the box
         // choosing to be polite or a gate that will never open, and those need different fixes.
@@ -7898,6 +7927,7 @@ class ServeHttpServer(
               maxFps,
               send,
               system = sessionId,
+              frameStats = liveFrameStats,
             ) { reason ->
               if (liveUnavailableReason == null) liveUnavailableReason = reason
             }
@@ -9288,6 +9318,13 @@ private data class StatusResponse(
    */
   val renderStats: RenderPerfSnapshot? = null,
   /**
+   * Live-lane frame counters across every open stream socket ([LiveFramePerfSnapshot]) — achieved
+   * fps, the painted/heartbeat split, and payload bytes. Null until a live socket has opened.
+   * Additive on `compose-preview-serve/status/v1`, like [renderStats], and beside it deliberately:
+   * `renderStats` measures `/render` round-trips and cannot see streamed frames at all.
+   */
+  val liveFrames: LiveFramePerfSnapshot? = null,
+  /**
    * Playground lane health, or null when the lane isn't wired. Additive on
    * `compose-preview-serve/status/v1`, like [renderStats]. See [PlaygroundHealth] for why each
    * field is here — in short, the playground can be half-up in several ways that were previously
@@ -9586,6 +9623,11 @@ private data class RunningServerDto(
    * or for hosts without a measurable live lane.
    */
   val renderStats: RenderPerfSnapshot? = null,
+  /**
+   * This catalog's live-lane frame counters — the per-daemon companion to [activeStreams], which
+   * says how many sockets are open but nothing about what they are achieving. Null until one has.
+   */
+  val liveFrames: LiveFramePerfSnapshot? = null,
   /** Child daemon pools owned by this server, e.g. per-preview bundles for trusted catalogs. */
   val daemonPools: List<DaemonPoolSnapshot> = emptyList(),
 )

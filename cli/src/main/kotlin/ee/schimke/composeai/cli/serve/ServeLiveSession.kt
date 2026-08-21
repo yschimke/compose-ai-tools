@@ -24,6 +24,11 @@ private constructor(
   private val maxFps: Int?,
   private val send: (String) -> Unit,
   private val system: String,
+  /**
+   * Frame telemetry for `/status.json`, or null when nobody is collecting (tests, and the fallback
+   * lanes). One recorder for the socket's whole life — see [LiveFramePerfStats.Socket].
+   */
+  private val frameStats: LiveFramePerfStats.Socket? = null,
 ) {
   @Volatile private var handle: StreamHandle? = null
 
@@ -85,6 +90,7 @@ private constructor(
   fun close() {
     handle?.close()
     handle = null
+    frameStats?.close()
   }
 
   private fun dispatchInput(input: ServeStreamProtocol.ClientMessage.Input) {
@@ -149,6 +155,7 @@ private constructor(
     applyVisibility(next)
     previewId = message.previewId
     overrides = nextOverrides
+    frameStats?.watching(message.previewId)
   }
 
   /**
@@ -186,8 +193,16 @@ private constructor(
     renderHost.declaredThemes.map { it.providerFqn }.toSet()
 
   private fun onFrame(frame: StreamFrameParams) {
-    // `unchanged` heartbeats carry no payload — nothing to paint.
-    val payload = frame.payloadBase64 ?: return
+    // `unchanged` heartbeats carry no payload — nothing to paint. Counted before the return: the
+    // split between painted frames and heartbeats is what says whether a slow lane is the render
+    // loop or the idle backoff doing its job (#4281).
+    val payload =
+      frame.payloadBase64
+        ?: run {
+          frameStats?.recordHeartbeat()
+          return
+        }
+    frameStats?.recordFrame(payload.length)
     val codec = frame.codec?.name?.lowercase() ?: "png"
     // This connection's own sequence, NOT the daemon's `frame.seq`.
     //
@@ -243,6 +258,8 @@ private constructor(
       send: (String) -> Unit,
       /** Catalog id, for the per-system override policy. Required: there is no "no policy" case. */
       system: String,
+      /** Where this socket's frame telemetry lands; null when nothing is collecting it. */
+      frameStats: LiveFramePerfStats? = null,
       onUnavailable: ((String) -> Unit)? = null,
     ): ServeLiveSession? {
       val knobKinds =
@@ -271,8 +288,22 @@ private constructor(
           }
           is OverrideParse.Ok -> parsed.overrides
         }
+      // Opened *before* the subscribe because the broadcast hub replays its last painted frame
+      // into `onFrame` synchronously for a late joiner — a recorder created after the call would
+      // miss that frame. Closed again right below if the open fails, so a stream that never
+      // started is never counted as an open socket.
+      val recorder = frameStats?.openSocket(system, previewId)
       val session =
-        ServeLiveSession(renderHost, previewId, normalizedOverrides, codec, maxFps, send, system)
+        ServeLiveSession(
+          renderHost,
+          previewId,
+          normalizedOverrides,
+          codec,
+          maxFps,
+          send,
+          system,
+          recorder,
+        )
       session.handle =
         renderHost.subscribeStream(
           previewId,
@@ -281,7 +312,11 @@ private constructor(
           maxFps,
           onUnavailable = onUnavailable,
           onFrame = session::onFrame,
-        ) ?: return null
+        )
+          ?: run {
+            recorder?.close()
+            return null
+          }
       return session
     }
   }
