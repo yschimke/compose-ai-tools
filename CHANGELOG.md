@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.29.0](https://github.com/yschimke/compose-ai-tools/compare/v1.28.0...v1.29.0) (2026-08-21)
+
+
+### Features
+
+* **serve:** collapse a component's variants in the change feed, and link the changelog ([#4414](https://github.com/yschimke/compose-ai-tools/issues/4414)) ([97dcc56](https://github.com/yschimke/compose-ai-tools/commit/97dcc5618125d2e651009df7450ea0a014ab1ab0))
+* **serve:** mark which published revisions actually differ ([#4416](https://github.com/yschimke/compose-ai-tools/issues/4416)) ([27c7f15](https://github.com/yschimke/compose-ai-tools/commit/27c7f15b4070501717b111022e2686aed8784d9c))
+
+
+### Bug Fixes
+
+* **ci:** assert the Studio-parity gate compared something, independent of the flag ([#4417](https://github.com/yschimke/compose-ai-tools/issues/4417)) ([9151e1f](https://github.com/yschimke/compose-ai-tools/commit/9151e1f70ca86c523a5bf3dea75d436c0a8d5d0d))
+* **design-artifacts:** score the publish-time report on two grounds ([#4411](https://github.com/yschimke/compose-ai-tools/issues/4411)) ([1d6b813](https://github.com/yschimke/compose-ai-tools/commit/1d6b813789eb0e41b5ef7615f67722f154a6dc5f))
+* **samples:** stop the Studio-parity gate skipping itself green ([#4415](https://github.com/yschimke/compose-ai-tools/issues/4415)) ([17e619b](https://github.com/yschimke/compose-ai-tools/commit/17e619b0f64da5c14f8239d69ccf32d4b3944449))
+
 ## [1.28.0](https://github.com/yschimke/compose-ai-tools/compare/v1.27.0...v1.28.0) (2026-08-21)
 
 
