@@ -586,6 +586,13 @@ object ServeWeb {
   private const val UI_MODE_NIGHT_YES = 0x20
 
   /** Inline GitHub mark (Octicons, MIT). Rendered beside source and authentication links. */
+  /** Feed glyph for the footer's changelog entry — the shape a reader recognises as a feed. */
+  private const val RSS_ICON =
+    "<svg class=\"cp-gh\" viewBox=\"0 0 16 16\" aria-hidden=\"true\" fill=\"currentColor\">" +
+      "<circle cx=\"3\" cy=\"13\" r=\"2\"/>" +
+      "<path d=\"M1 8.5a6.5 6.5 0 016.5 6.5h-2A4.5 4.5 0 001 10.5v-2z\"/>" +
+      "<path d=\"M1 3a12 12 0 0112 12h-2A10 10 0 001 5V3z\"/></svg>"
+
   private const val GITHUB_ICON =
     "<svg class=\"cp-gh\" viewBox=\"0 0 16 16\" aria-hidden=\"true\" fill=\"currentColor\">" +
       "<path d=\"M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 " +
@@ -671,11 +678,18 @@ object ServeWeb {
    *
    * [bugReport] false drops the "report a bug" entry — passed by the report page itself, which is
    * where that entry leads.
+   *
+   * [changelogHref] adds the **Changelog** entry: the catalog's own `/feed.xml`, the published
+   * history of what changed in the design system this page belongs to. It leads the row because it
+   * is the only entry about the *content* — the rest are about the server. Empty wherever no such
+   * history exists (the front door, `/status`, a plain module, a server started with the feed lane
+   * off), so the link is never offered where it would 404.
    */
   private fun siteFooter(
     version: String?,
     note: String = "",
     bugReport: Boolean = true,
+    changelogHref: String = "",
   ): String {
     val ver =
       version
@@ -687,10 +701,18 @@ object ServeWeb {
     val noteBlock =
       note.takeIf { it.isNotBlank() }?.let { "${it.trimEnd().prependIndent("        ")}\n" } ?: ""
     val report = if (bugReport) "\n${reportBugFormHtml().prependIndent("          ")} ·" else ""
+    val changelog =
+      changelogHref
+        .takeIf { it.isNotBlank() }
+        ?.let {
+          "<a href=\"${WebEscaping.htmlEscape(it)}\" class=\"cp-changelog-link\"" +
+            " title=\"What changed in this design system, newest first (RSS)\">" +
+            "$RSS_ICON Changelog</a> ·\n          "
+        } ?: ""
     return """
       <footer class="cp-site-footer">
 $noteBlock        <div class="cp-site-footer-links">
-          <a href="https://github.com/$SOURCE_REPO">$GITHUB_ICON GitHub</a> ·$report
+          $changelog<a href="https://github.com/$SOURCE_REPO">$GITHUB_ICON GitHub</a> ·$report
           <a href="/version">/version</a>$ver
         </div>
       </footer>
@@ -7809,6 +7831,11 @@ ${captureControlsHtml().prependIndent("          ")}
      * live lane entirely (hover-live included), so a sign-in offered there would unlock nothing.
      */
     githubAuth: GitHubAuthStatus? = null,
+    /**
+     * The catalog change feed the footer offers as **Changelog** and the head declares as this
+     * page's RSS alternate. Empty when the server runs with the feed lane off. See [siteFooter].
+     */
+    changelogHref: String = "",
   ): String {
     @Suppress("NAME_SHADOWING") val designPages = if (componentBrowser) emptyList() else designPages
     @Suppress("NAME_SHADOWING")
@@ -8411,6 +8438,7 @@ ${captureControlsHtml().prependIndent("          ")}
         .takeIf { it.isNotBlank() }
         ?.let { "<div class=\"cp-catalog-tools\">\n$it</div>\n" } ?: ""
     return document(
+      changelogHref = changelogHref,
       title = "$heading — compose-preview",
       unfurlTitle = heading,
       unfurlDescription = catalogUnfurlDescription(previews.size, heading),
@@ -8512,6 +8540,11 @@ ${captureControlsHtml().prependIndent("          ")}
      * (the default) leaves every existing caller's URLs byte-identical.
      */
     sessionInOrigin: Boolean = false,
+    /**
+     * The catalog change feed the footer offers as **Changelog** and the head declares as this
+     * page's RSS alternate. Empty when the server runs with the feed lane off. See [siteFooter].
+     */
+    changelogHref: String = "",
   ): String {
     // The session id links may carry. Null on a rooted site (and for the default session): the
     // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
@@ -8739,6 +8772,7 @@ ${captureControlsHtml().prependIndent("          ")}
         (if (rcLanes != null) " data-rc-lanes=\"1\"" else "")
 
     return document(
+      changelogHref = changelogHref,
       title = "$heading — format comparison",
       unfurlTitle = "$heading format comparison",
       unfurlDescription = "Compare rendered PNG, SVG, and Remote Compose output for $heading",
@@ -9003,6 +9037,11 @@ $rows
     /** Prefilled parity report for this exact preview/reference comparison. */
     reportIssue: ReportIssue? = null,
     parityIssues: List<ParityIssue> = emptyList(),
+    /**
+     * The catalog change feed the footer offers as **Changelog** and the head declares as this
+     * page's RSS alternate. Empty when the server runs with the feed lane off. See [siteFooter].
+     */
+    changelogHref: String = "",
   ): String {
     // The session id links may carry. Null on a rooted site (and for the default session): the
     // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
@@ -9134,6 +9173,7 @@ $rows
       }
     val report = reportIssueHtml(reportIssue)
     return document(
+      changelogHref = changelogHref,
       title = "${reference.label} — design comparison",
       unfurlTitle = "$heading design comparison",
       unfurlDescription = "Reference, diff, and Compose output for ${preview.id}",
@@ -9201,6 +9241,11 @@ $rows
      * (the default) leaves every existing caller's URLs byte-identical.
      */
     sessionInOrigin: Boolean = false,
+    /**
+     * The catalog change feed the footer offers as **Changelog** and the head declares as this
+     * page's RSS alternate. Empty when the server runs with the feed lane off. See [siteFooter].
+     */
+    changelogHref: String = "",
   ): String {
     // The session id links may carry. Null on a rooted site (and for the default session): the
     // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
@@ -9233,6 +9278,7 @@ $rows
           .trimIndent()
       }
     return document(
+      changelogHref = changelogHref,
       title = "$heading — pages",
       unfurlTitle = "$heading pages",
       unfurlDescription = "Pages of the design file, with each component linked back to its code",
@@ -9321,6 +9367,11 @@ $rows
     displayTitle: String? = null,
     /** See [designPagesIndexPage]; a rooted site implies its session by the origin. */
     sessionInOrigin: Boolean = false,
+    /**
+     * The catalog change feed the footer offers as **Changelog** and the head declares as this
+     * page's RSS alternate. Empty when the server runs with the feed lane off. See [siteFooter].
+     */
+    changelogHref: String = "",
   ): String {
     val linkSessionId = if (sessionInOrigin) null else sessionId
     val query = linkQuery(token, linkSessionId, basePath, isPublic)
@@ -9610,6 +9661,7 @@ $cards
           "\n            </span>" +
           "\n          </span>"
     return document(
+      changelogHref = changelogHref,
       title = "$heading — motion",
       unfurlTitle = "$heading motion",
       unfurlDescription =
@@ -9744,6 +9796,11 @@ $cards
      * (the default) leaves every existing caller's URLs byte-identical.
      */
     sessionInOrigin: Boolean = false,
+    /**
+     * The catalog change feed the footer offers as **Changelog** and the head declares as this
+     * page's RSS alternate. Empty when the server runs with the feed lane off. See [siteFooter].
+     */
+    changelogHref: String = "",
   ): String {
     // The session id links may carry. Null on a rooted site (and for the default session): the
     // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
@@ -9893,6 +9950,7 @@ $cards
     val aspect = String.format(java.util.Locale.ROOT, "%.4f", page.frame.width / page.frame.height)
 
     return document(
+      changelogHref = changelogHref,
       title = "${page.name} — page",
       unfurlTitle = "$heading — ${page.name}",
       unfurlDescription =
@@ -10015,6 +10073,11 @@ $cards
      * (the default) leaves every existing caller's URLs byte-identical.
      */
     sessionInOrigin: Boolean = false,
+    /**
+     * The catalog change feed the footer offers as **Changelog** and the head declares as this
+     * page's RSS alternate. Empty when the server runs with the feed lane off. See [siteFooter].
+     */
+    changelogHref: String = "",
   ): String {
     // The session id links may carry. Null on a rooted site (and for the default session): the
     // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
@@ -10444,6 +10507,7 @@ $cards
           .trimIndent()
 
     return document(
+      changelogHref = changelogHref,
       title = "Design parity — $heading — compose-preview",
       unfurlTitle = "$heading — design parity",
       unfurlDescription =
@@ -10834,6 +10898,11 @@ $cards
     sessionInOrigin: Boolean = false,
     parityIssues: List<ParityIssue> = emptyList(),
     componentBrowser: Boolean = false,
+    /**
+     * The catalog change feed the footer offers as **Changelog** and the head declares as this
+     * page's RSS alternate. Empty when the server runs with the feed lane off. See [siteFooter].
+     */
+    changelogHref: String = "",
   ): String {
     @Suppress("NAME_SHADOWING")
     val designReference = designReference?.takeUnless { componentBrowser }
@@ -12498,6 +12567,7 @@ $cards
         .lineSequence()
         .joinToString("\n") { it.trimEnd() }
     return document(
+      changelogHref = changelogHref,
       title = "$displayName — compose-preview",
       body = body,
       unfurlTitle = displayName,
@@ -12703,6 +12773,12 @@ $cards
      * one.
      */
     bugReport: Boolean = true,
+    /**
+     * The catalog change feed this page's footer links as **Changelog**, and that the head declares
+     * as the page's RSS alternate so a reader's subscribe affordance finds it. Empty on every page
+     * that belongs to no published catalog. See [siteFooter].
+     */
+    changelogHref: String = "",
   ): String {
     val unfurlHtml =
       if (unfurl == null) ""
@@ -12756,13 +12832,23 @@ $cards
     val unfurlBlock = if (unfurlHtml.isEmpty()) "" else "\n${unfurlHtml.prependIndent("        ")}"
     val footerBlock =
       if (componentBrowser) ""
-      else "\n${siteFooter(version, footerNote, bugReport).prependIndent("        ")}"
+      else
+        "\n${siteFooter(version, footerNote, bugReport, changelogHref).prependIndent("        ")}"
     // The floating launcher rides the same two conditions as the footer entry it duplicates from a
     // fixed position: dropped in component-browser mode (which has no site chrome at all) and on
     // the report page itself, where it would be a button back to the page you are already on.
     val launcherBlock =
       if (componentBrowser || !bugReport) ""
       else "\n${reportLauncherHtml(assetHref("report-capture.js")).prependIndent("        ")}"
+    // Feed autodiscovery: the same document the footer's Changelog entry links, declared where a
+    // reader's "subscribe to this page" affordance looks for it.
+    val feedLink =
+      changelogHref
+        .takeIf { it.isNotBlank() }
+        ?.let {
+          "\n        <link rel=\"alternate\" type=\"application/rss+xml\"" +
+            " title=\"Catalog changes\" href=\"${WebEscaping.htmlEscape(it)}\">"
+        } ?: ""
     // Before `themeCss`, so a catalog palette still wins at equal specificity; the font block
     // declares faces only and collides with nothing in the chrome.
     val rcFontsBlock = if (rcFonts) "\n" + ServeRcFonts.linkTag().prependIndent("        ") else ""
@@ -12809,7 +12895,7 @@ $cards
         <meta name="viewport" content="width=device-width, initial-scale=1">$unfurlBlock
         <title>${WebEscaping.htmlEscape(title)}</title>
 ${ServeSiteIcon.linkTags().prependIndent("        ")}
-        <link rel="stylesheet" href="${assetHref("serve.css")}">$rcFontsBlock$themeBlock$interfaceModeBoot
+        <link rel="stylesheet" href="${assetHref("serve.css")}">$feedLink$rcFontsBlock$themeBlock$interfaceModeBoot
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>

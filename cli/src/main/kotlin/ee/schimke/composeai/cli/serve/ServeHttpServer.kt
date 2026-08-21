@@ -1305,16 +1305,7 @@ class ServeHttpServer(
         }
     val system = selectedSessionId(sessionInPath)
     val (webSessionId, basePath) = webSessionAndBase(sessionInPath)
-    // Feed readers cannot replay an Authorization-style header for URLs embedded in RSS. Preserve
-    // only the routing/authentication query values the server itself controls; never let arbitrary
-    // request parameters become durable feed state.
-    val linkQuery = buildList {
-      if (basePath.isEmpty() && siteSystem() == null && webSessionId != null) {
-        add("session=${WebEscaping.urlEncodeSegment(webSessionId)}")
-      }
-      if (!isPublic) add("token=${WebEscaping.urlEncodeSegment(linkToken())}")
-    }
-      .joinToString("&")
+    val linkQuery = feedLinkQuery(basePath, webSessionId)
     val result =
       withContext(Dispatchers.IO) { feed.request(system, externalOrigin() + basePath, linkQuery) }
         ?: run {
@@ -1327,6 +1318,40 @@ class ServeHttpServer(
       result.xml,
       ContentType.parse("application/rss+xml; charset=utf-8"),
     )
+  }
+
+  /**
+   * The routing/authentication values a feed URL carries.
+   *
+   * Feed readers cannot replay an Authorization-style header for URLs embedded in RSS, so the
+   * document's own links have to carry what the server controls — and only that: never let
+   * arbitrary request parameters become durable feed state.
+   */
+  private fun RoutingContext.feedLinkQuery(basePath: String, webSessionId: String?): String =
+    buildList {
+      if (basePath.isEmpty() && siteSystem() == null && webSessionId != null) {
+        add("session=${WebEscaping.urlEncodeSegment(webSessionId)}")
+      }
+      if (!isPublic) add("token=${WebEscaping.urlEncodeSegment(linkToken())}")
+    }
+    .joinToString("&")
+
+  /**
+   * The **Changelog** destination a catalog page's footer offers: this catalog's own `/feed.xml`.
+   *
+   * The feed is the published history of the design system the visitor is looking at, and until now
+   * the only way to find it was to know the URL. Empty — so the footer drops the entry rather than
+   * offering a 404 — on a server started with the feed lane off, and for a session the feed does
+   * not serve (a plain local module has no delivery branch to have a history on).
+   */
+  private fun RoutingContext.changelogHref(
+    system: String,
+    basePath: String,
+    webSessionId: String?,
+  ): String {
+    if (catalogFeed?.serves(system) != true) return ""
+    val query = feedLinkQuery(basePath, webSessionId)
+    return "$basePath/feed.xml" + query.takeIf { it.isNotBlank() }?.let { "?$it" }.orEmpty()
   }
 
   /**
@@ -2675,6 +2700,7 @@ class ServeHttpServer(
             siteSystem() == null &&
               (listedCatalogs().isNotEmpty() || unlistedCatalogs().isNotEmpty()),
           basePath = basePath,
+          changelogHref = changelogHref(selectedSessionId, basePath, webSessionId),
           // One action per comparable format, each gated on the same condition `comparisonPage`
           // turns that format on with — so "compare SVG" and "compare RC players" only appear when
           // there is something behind them.
@@ -2958,6 +2984,7 @@ class ServeHttpServer(
           token = linkToken(),
           sessionId = webSessionId,
           basePath = basePath,
+          changelogHref = changelogHref(sessionId, basePath, webSessionId),
           isPublic = isPublic,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           declaredSurface = catalogBundleHost(renderHost)?.stageSurface,
@@ -3041,6 +3068,7 @@ class ServeHttpServer(
           token = linkToken(),
           sessionId = webSessionId,
           basePath = basePath,
+          changelogHref = changelogHref(sessionId, basePath, webSessionId),
           isPublic = isPublic,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
@@ -3223,6 +3251,7 @@ class ServeHttpServer(
           token = linkToken(),
           sessionId = webSessionId,
           basePath = basePath,
+          changelogHref = changelogHref(sessionId, basePath, webSessionId),
           isPublic = isPublic,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
@@ -3257,6 +3286,7 @@ class ServeHttpServer(
           token = linkToken(),
           sessionId = webSessionId,
           basePath = basePath,
+          changelogHref = changelogHref(sessionId, basePath, webSessionId),
           isPublic = isPublic,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
@@ -3321,6 +3351,7 @@ class ServeHttpServer(
           token = linkToken(),
           sessionId = webSessionId,
           basePath = basePath,
+          changelogHref = changelogHref(sessionId, basePath, webSessionId),
           isPublic = isPublic,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
@@ -3429,6 +3460,7 @@ class ServeHttpServer(
           token = linkToken(),
           sessionId = webSessionId,
           basePath = basePath,
+          changelogHref = changelogHref(sessionId, basePath, webSessionId),
           isPublic = isPublic,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           // …and it must not drop the catalog's stage either: a dark-first system's sticker is
@@ -6462,6 +6494,7 @@ class ServeHttpServer(
           wasmSrc = wasmSrc,
           wasmSameOrigin = wasmSameOrigin,
           basePath = basePath,
+          changelogHref = changelogHref(sessionId, basePath, webSessionId),
           isPublic = isPublic,
           componentBrowser = componentBrowserMode(),
           declaredThemes = applicableThemes(renderHost, preview.id),

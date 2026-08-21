@@ -1131,6 +1131,10 @@ class ServeWebFixtureTest {
         hasReferenceComparison = true,
         hasParityView = true,
         designToolLabel = "Figma",
+        // The footer's Changelog entry — a published catalog has a change feed, so the path-mounted
+        // landing is where that entry is diffed. Its prefixed href is half the point: the site
+        // fixture below carries the rooted one.
+        changelogHref = "/meshcore-mobile/feed.xml",
       )
     // …and the SAME catalog as a **top-level site** ([ServeSites]): rooted on a hostname of its
     // own, so it presents as the only thing on the server. Captured beside `landingPath` because
@@ -1159,6 +1163,7 @@ class ServeWebFixtureTest {
         // — there is no home index above it. Captured here so the control is visually diffed on the
         // one shape that depends on it (wear-m3-catalog#68).
         githubAuth = ServeWeb.GitHubAuthStatus(loginHref = "/auth/github/start?return=%2F"),
+        changelogHref = "/feed.xml",
       )
     val viewerPath =
       ServeWeb.viewerPage(
@@ -1207,6 +1212,9 @@ class ServeWebFixtureTest {
                 ),
             ),
           ),
+        // The viewer carries the same footer entry as its landing — captured so the Changelog
+        // link is diffed on the page a visitor is most often on when they want to know what moved.
+        changelogHref = "/meshcore-mobile/feed.xml",
       )
     // The **default-value deep link** (#4218), captured because the bug it records is invisible
     // in the markup and lives entirely in what the page does with its own query string.

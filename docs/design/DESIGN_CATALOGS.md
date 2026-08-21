@@ -284,6 +284,21 @@ order, with deleted previews appended in their former order. The item records:
 - added, removed, or changed design references with immutable before/after reference images and
   their old/new published match score.
 
+One entry is one **component and change kind**, not one preview. A publication that moves a
+component moves every variant of it — `Media/PlayerScreen` is four states across five screen sizes,
+so one source fix produced twenty entries and forty images in a single item — so a group of more
+than one shows the first variant's images and names the rest as links, each pinned to that
+publication (`/p/<id>?at=<sha>`, and `/compare/<id>?reference=…&at=<sha>` for a design reference).
+Nothing is dropped: the count is in the entry's own line and every collapsed variant is still named.
+Past a couple of dozen links the tail becomes a count rather than a list. Images lead with **after**:
+the interesting half of a change is what it looks like now, and a reader that shows only the first
+image was showing the superseded render.
+
+Every catalog page's footer links this document as **Changelog** and its `<head>` declares it as the
+page's RSS alternate, so a visitor finds the history from the page it is about rather than having to
+know the URL. The entry is dropped for a session the feed does not serve — a locally served module
+has no delivery branch to have a history on — and on a server started with the lane off.
+
 Feed work is demand-activated. The first request returns the last cached document (or an empty,
 valid RSS document on a cold cache) and queues a background partial-clone history pass that omits
 PNG blobs. Each later request renews an interest lease without starting another fetch; the polling

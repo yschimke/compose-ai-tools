@@ -135,7 +135,124 @@ class ServeCatalogChangeFeedTest {
     assertTrue(xml.contains("After design reference"))
     assertTrue(xml.contains("feed.xml?token=s3cret"))
     assertTrue(xml.contains("token=s3cret"))
-    assertTrue(xml.indexOf("Before") < xml.indexOf("After"))
+    assertTrue(
+      xml.indexOf("alt=&quot;After&quot;") < xml.indexOf("alt=&quot;Before&quot;"),
+      "the current render leads; a reader showing one image must not show the superseded one",
+    )
+  }
+
+  @Test
+  fun `one component changing every variant collapses to a representative plus links`() {
+    val ids =
+      listOf("default", "ambient", "loading").flatMap { state ->
+        listOf("192dp", "240dp").map { size -> "media-playerscreen__ideal__${state}__$size" }
+      }
+    val batch =
+      CatalogFeedBatch(
+        before = oldRevision,
+        after = newRevision,
+        previews =
+          ids.mapIndexed { index, id ->
+            CatalogPreviewChange(
+              CatalogPreviewChangeKind.CHANGED,
+              id,
+              "Media/PlayerScreen",
+              "1".repeat(40),
+              "2".repeat(40),
+              order = index,
+            )
+          },
+        references = emptyList(),
+      )
+    val xml =
+      CatalogFeedXml.render(
+        "demo",
+        "https://preview.example/demo",
+        CatalogFeedHistory("Demo app", listOf(newRevision, oldRevision), listOf(batch)),
+      )
+
+    assertEquals(1, Regex("&lt;li&gt;").findAll(xml).count(), "one entry for the whole component")
+    assertTrue(xml.contains("6 previews visually changed"))
+    assertEquals(
+      2,
+      Regex("&lt;img alt=").findAll(xml).count(),
+      "only the representative variant carries images",
+    )
+    assertTrue(xml.contains("render/${ids.first()}.png?at=${newRevision.commit}"))
+    assertFalse(xml.contains("render/${ids[1]}.png"), "the other variants are links, not images")
+    for (id in ids.drop(1)) assertTrue(xml.contains("/p/$id?at=${newRevision.commit}"), id)
+    assertTrue(xml.contains("&gt;ambient__192dp&lt;/a&gt;"), "links drop the shared component head")
+  }
+
+  @Test
+  fun `collapsed groups cap their variant links`() {
+    val previews =
+      (1..CatalogFeedXml.MAX_GROUP_LINKS + 5).map {
+        CatalogPreviewChange(
+          CatalogPreviewChangeKind.ADDED,
+          "button__ideal__variant-%03d".format(it),
+          "Button",
+          afterBlob = "2".repeat(40),
+          order = it,
+        )
+      }
+    val xml =
+      CatalogFeedXml.render(
+        "demo",
+        "https://preview.example/demo",
+        CatalogFeedHistory(
+          "Demo app",
+          listOf(newRevision, oldRevision),
+          listOf(CatalogFeedBatch(oldRevision, newRevision, previews, emptyList())),
+        ),
+      )
+
+    // The representative is shown, CatalogFeedXml.MAX_GROUP_LINKS of the rest are linked, and the
+    // tail is counted.
+    assertTrue(xml.contains("${previews.size} previews added"))
+    assertEquals(CatalogFeedXml.MAX_GROUP_LINKS + 1, Regex("&lt;a href=").findAll(xml).count())
+    assertTrue(xml.contains(", and 4 more"))
+  }
+
+  @Test
+  fun `references collapse per label and link the rest with their scores`() {
+    val references =
+      listOf("default", "disabled", "split").map { variant ->
+        CatalogReferenceChange(
+          "checkboxbutton-$variant-spec",
+          "CheckboxButton — figma",
+          "checkboxbutton__ideal__$variant",
+          specChanged = true,
+          beforeMatch = null,
+          afterMatch = 70.0,
+          beforePresent = false,
+          afterPresent = true,
+        )
+      }
+    val xml =
+      CatalogFeedXml.render(
+        "demo",
+        "https://preview.example/demo",
+        CatalogFeedHistory(
+          "Demo app",
+          listOf(newRevision, oldRevision),
+          listOf(CatalogFeedBatch(oldRevision, newRevision, emptyList(), references)),
+        ),
+      )
+
+    assertEquals(1, Regex("&lt;li&gt;").findAll(xml).count())
+    assertTrue(xml.contains("3 references, spec changed"))
+    assertEquals(
+      1,
+      Regex("&lt;img alt=").findAll(xml).count(),
+      "only the representative reference carries an image",
+    )
+    assertTrue(
+      xml.contains(
+        "/compare/checkboxbutton__ideal__disabled?reference=checkboxbutton-disabled-spec"
+      )
+    )
+    assertTrue(xml.contains("(n/a → 70.00%)"), "each linked variant keeps its own score")
   }
 
   @Test
