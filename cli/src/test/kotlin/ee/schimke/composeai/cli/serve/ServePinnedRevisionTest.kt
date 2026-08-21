@@ -627,6 +627,138 @@ class ServePinnedRevisionTest {
     assertEquals(200, get("http://127.0.0.1:$port/$system/p/$previewId?at=$oldCommit").first)
   }
 
+  /** The path-scoped feed URL for this preview's render — what the runs lane reads. */
+  private val renderFeedUrl =
+    ServeCatalogRevision.pathCommitsFeedUrl(
+      repo,
+      branch,
+      "images/button-filled/ideal__default__dark.png",
+    )
+
+  /**
+   * That feed, overlaid on the default branch stub, naming [commits] as the publishes that touched
+   * the render.
+   */
+  private fun withRenderChanges(vararg commits: String): (String) -> ByteArray? = { url ->
+    if (url == renderFeedUrl) {
+      commits
+        .joinToString("\n") { "<entry><id>tag:github.com,2008:Grit::Commit/$it</id></entry>" }
+        .let { "<feed>$it</feed>".encodeToByteArray() }
+    } else fetch(url)
+  }
+
+  @Test
+  fun `the runs lane groups publishes that share their pixels`() {
+    // Both publishes touched the render, so each is its own run.
+    val port = startServer(withRenderChanges(newCommit, oldCommit)).port
+
+    val body = text("http://127.0.0.1:$port/$system/api/render-runs/$previewId")
+
+    assertTrue(body.contains("\"revisions\":2"), body)
+    assertTrue(body.contains("\"head\":\"$newCommit\""), body)
+    assertTrue(body.contains("\"head\":\"$oldCommit\""), body)
+  }
+
+  @Test
+  fun `a publish that moved no pixel joins the run above it`() {
+    // Only the OLDER publish changed the render, so the newer one republished identical bytes: one
+    // run covering both, headed by the newest. This is the case the whole feature exists for — the
+    // menu would otherwise offer two rows that open the same image.
+    val port = startServer(withRenderChanges(oldCommit)).port
+
+    val body = text("http://127.0.0.1:$port/$system/api/render-runs/$previewId")
+
+    assertTrue(body.contains("\"head\":\"$newCommit\""), body)
+    assertTrue(body.contains("\"commits\":2"), body)
+    assertFalse(body.contains("\"head\":\"$oldCommit\""), body)
+    // Closed by a real change rather than by the end of the window, so the count is exact.
+    assertFalse(body.contains("\"open\":true"), body)
+  }
+
+  @Test
+  fun `a run the window cuts off says so instead of claiming a count`() {
+    // The only publish that touched this render predates both rows in the window, so the run's
+    // length is a floor. Reporting it as an exact two would be a claim the branch never supported.
+    val ancient = "4444444444444444444444444444444444444444"
+    val port = startServer(withRenderChanges(ancient)).port
+
+    val body = text("http://127.0.0.1:$port/$system/api/render-runs/$previewId")
+
+    assertTrue(body.contains("\"commits\":2"), body)
+    assertTrue(body.contains("\"open\":true"), body)
+  }
+
+  @Test
+  fun `a feed that parses to nothing is a failure, not proof the render never changed`() {
+    // A 200 carrying an HTML error page, a redirect, or a reshaped feed all parse down to zero
+    // entries. A published render necessarily has at least the commit that added it, so zero never
+    // describes a real one — and reporting it as an empty change set would tell the viewer, with
+    // confidence, that every listed publish is pixel-identical.
+    for (body in listOf("<feed></feed>", "<html>404</html>", "")) {
+      val port = startServer { url ->
+        if (url == renderFeedUrl) body.encodeToByteArray() else fetch(url)
+      }
+        .port
+
+      assertEquals(
+        404,
+        get("http://127.0.0.1:$port/$system/api/render-runs/$previewId").first,
+        body,
+      )
+      server?.stop()
+    }
+  }
+
+  @Test
+  fun `a branch that cannot be asked 404s rather than claiming nothing changed`() {
+    // No path-scoped feed on the stub. An empty run list and "the branch did not answer" are
+    // opposite claims, and drawing the first when we mean the second would label a dozen genuinely
+    // different publishes as one unchanged stretch.
+    val port = start().port
+
+    assertEquals(
+      404,
+      get("http://127.0.0.1:$port/$system/api/render-runs/$previewId").first,
+    )
+    // An id this catalog never baked has no render path to ask about either.
+    assertEquals(404, get("http://127.0.0.1:$port/$system/api/render-runs/nope").first)
+  }
+
+  @Test
+  fun `a window we cannot bound draws no runs at all`() {
+    // A branch that ships no `preview-index.json`. `availableRevisions` fails open there — right
+    // for the menu, where an extra link that 404s beats hiding real history — so the window can
+    // reach back past the preview's own creation. The path feed's creation commit then reads as a
+    // boundary, and every row below it becomes a trailing run headed by a publish that has no
+    // render: marked, counted as another distinct look, and asked for a thumbnail that cannot
+    // exist. Without the inventory there is nothing to bound the window with, so say nothing.
+    val port = startServer { url ->
+      if (url.endsWith("/preview-index.json")) null
+      else withRenderChanges(newCommit, oldCommit)(url)
+    }
+      .port
+
+    assertEquals(
+      404,
+      get("http://127.0.0.1:$port/$system/api/render-runs/$previewId").first,
+    )
+  }
+
+  @Test
+  fun `the revision menu stamps every row with the sha the runs lane names`() {
+    val port = start().port
+
+    val page = text("http://127.0.0.1:$port/$system/p/$previewId")
+
+    // The join between the two halves. Without the stamp the client would have to parse `?at=` out
+    // of each href, which the *current* row deliberately does not carry — so the one row that is
+    // always a run head would be the one row that never got marked.
+    assertTrue(page.contains("data-revision=\"$newCommit\""), page)
+    assertTrue(page.contains("data-revision=\"$oldCommit\""), page)
+    assertTrue(page.contains("<cp-revision-runs "), page)
+    assertTrue(page.contains("/api/render-runs/$previewId"), page)
+  }
+
   private fun get(url: String): Pair<Int, ByteArray> =
     client.newCall(Request.Builder().url(url).build()).execute().use { response ->
       response.code to (response.body?.bytes() ?: ByteArray(0))

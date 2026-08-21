@@ -1207,6 +1207,10 @@ class ServeHttpServer(
 
         get("/api/previews") { handleApiPreviews(sessionInPath = false) }
         get("/{system}/api/previews") { handleApiPreviews(sessionInPath = true) }
+        // Which of a preview's published revisions actually differ. Fetched lazily by
+        // `<cp-revision-runs>` when the revision menu is opened, never during page render.
+        get("/api/render-runs/{name}") { handleRenderRuns(sessionInPath = false) }
+        get("/{system}/api/render-runs/{name}") { handleRenderRuns(sessionInPath = true) }
         get("/api/components") { handleGlobalComponents() }
         get("/api/daemons") { handleDaemonStatus(sessionInPath = false) }
         get("/{system}/api/daemons") { handleDaemonStatus(sessionInPath = true) }
@@ -5735,6 +5739,77 @@ class ServeHttpServer(
   }
 
   /**
+   * `GET /api/render-runs/{name}`: one preview's publishes, collapsed into runs of identical pixels
+   * ([ServeCatalogRevision.renderRuns]).
+   *
+   * Computed over [availableRevisions] — the very list the menu draws — rather than over the
+   * catalog's full history, so every `head` names a row the reader can actually see. Reading the
+   * two from different lists is how a marker ends up pointing at nothing.
+   *
+   * A branch that could not be asked is a `404`, not an empty list: no runs and "all twelve of
+   * these are identical" are opposite claims, and the viewer must draw nothing rather than the
+   * wrong one. Everything else here fails the same way — no delivery branch, an unknown preview, a
+   * catalog with no revisions at all — because in each case there is no run structure to state.
+   */
+  private suspend fun RoutingContext.handleRenderRuns(sessionInPath: Boolean) {
+    if (rejectBadToken()) return
+    val previewId = call.parameters["name"].orEmpty()
+    withLeasedSession(selectedSessionId(sessionInPath)) { renderHost ->
+      val host = catalogBundleHost(renderHost)
+      val revisions = host?.let { availableRevisions(it, previewId) }.orEmpty()
+      // Every publish below the tip has to be one the generation-time index CONFIRMS carried this
+      // preview. [availableRevisions] fails open for a branch that ships no `preview-index.json`,
+      // which is right for the menu — an extra link that 404s beats hiding real history — and wrong
+      // here: the window would then reach back past the preview's creation, where the path feed's
+      // creation commit reads as a boundary and every row below it becomes a trailing run headed by
+      // a publish that has no render at all. That row would be marked, counted as another distinct
+      // render, and asked for a thumbnail that cannot exist.
+      //
+      // Not a real cost for a current publisher: the index is rolled forward to cover exactly the
+      // window the menu lists ([ServeCatalogRevision.MAX_REVISIONS] minus the tip, whose inventory
+      // is `current` rather than a `revisions` entry). It is the legacy branches — the ones we
+      // cannot bound at all — that get no markers, which is the same answer this lane gives
+      // everywhere else it does not know.
+      val bounded =
+        host != null &&
+          revisions.drop(1).all { host.revisionContainsPreview(it.commit, previewId) == true }
+      // `renderChangeCommits` is the read that can fail; the rest is arithmetic over it.
+      //
+      // On [Dispatchers.IO] because a cold call goes to the delivery branch, and
+      // `withLeasedSession`
+      // — unlike its `…OrNull` sibling — runs its block on the request coroutine. That fetch
+      // carries
+      // the branch client's 10s connect / 30s read timeouts, so leaving it here would let a handful
+      // of cold menu opens hold Ktor request threads while GitHub is slow and stall unrelated
+      // traffic. Same rule the published-asset lanes already follow.
+      val changed = withContext(Dispatchers.IO) { host?.renderChangeCommits(previewId) }
+      if (changed == null || revisions.isEmpty() || !bounded) {
+        call.respondText("not found", status = HttpStatusCode.NotFound)
+        return@withLeasedSession
+      }
+      val sourceShas = revisions.associate { it.commit to it.sourceSha }
+      val dto =
+        RenderRunsResponse(
+          runs =
+            ServeCatalogRevision.renderRuns(revisions, changed).map { run ->
+              RenderRunDto(
+                head = run.head,
+                sourceSha = sourceShas[run.head],
+                commits = run.commits,
+                open = run.open,
+              )
+            },
+          revisions = revisions.size,
+        )
+      call.response.headers.append(HttpHeaders.CacheControl, DYNAMIC_RESOURCE_CACHE_CONTROL)
+      call.respondText(
+        JSON.encodeToString(RenderRunsResponse.serializer(), dto),
+        ContentType.Application.Json,
+      )
+    }
+  }
+
+  /**
    * `GET /api/previews` (query) and `GET /{system}/api/previews` (path): the session's preview
    * JSON.
    */
@@ -9862,6 +9937,35 @@ private data class PreviewDto(
   val liveOnly: Boolean = false,
   /** Number of viewer page opens for this preview since this server process started. */
   val views: Long = 0,
+)
+
+/**
+ * `GET /{system}/api/render-runs/{previewId}`: this preview's published revisions collapsed into
+ * stretches that share their pixels, so the viewer can mark which of them actually differ.
+ *
+ * Its own lane rather than a field on the viewer page for one reason: it costs a delivery-branch
+ * read, and the question is only asked when a reader opens the revision menu. Answering it during
+ * page render would put a network round trip in front of every preview page to decorate a control
+ * most visits never open.
+ */
+@Serializable
+private data class RenderRunsResponse(
+  val schema: String = "compose-preview-render-runs/v1",
+  /** Newest first, aligned with the revision menu's own order. */
+  val runs: List<RenderRunDto>,
+  /** Publishes considered — the same window the menu lists. */
+  val revisions: Int,
+)
+
+@Serializable
+private data class RenderRunDto(
+  /** Delivery sha of the newest publish in this run; the row the viewer marks. */
+  val head: String,
+  /** Source sha for that publish when its subject recorded one — what the menu row shows. */
+  val sourceSha: String? = null,
+  val commits: Int,
+  /** True when the run runs off the end of the window and may be longer than [commits]. */
+  val open: Boolean = false,
 )
 
 @Serializable

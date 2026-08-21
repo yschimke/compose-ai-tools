@@ -23,6 +23,7 @@ import "./components/ParityLanes.js";
 import "./components/ParityScores.js";
 import "./components/RcLanes.js";
 import "./components/ReferenceCompare.js";
+import "./components/RevisionRuns.js";
 import "./components/SpecCompare.js";
 import "./components/ViewerDrawers.js";
 // Not a component: a global the legacy scripts call. `window.cpRcFonts` makes the page's

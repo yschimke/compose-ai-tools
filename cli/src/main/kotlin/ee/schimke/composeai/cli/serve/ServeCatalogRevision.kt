@@ -196,6 +196,126 @@ object ServeCatalogRevision {
     "https://github.com/$repo/commits/$branch.atom"
 
   /**
+   * [commitsFeedUrl] narrowed to **one path** — the publishes in which those bytes actually
+   * changed, which is a very different list from the branch's.
+   *
+   * This is the whole substrate of the render-run markers. A delivery branch is regenerated on
+   * every catalog change, so most publishes rewrite nothing a given preview can see: the media
+   * player above went ten consecutive publishes without a pixel moving. Git already knows that — a
+   * path-scoped log reports only the commits that touched the file — so the collapse costs one feed
+   * read rather than downloading a dozen PNGs and hashing them.
+   *
+   * Crucially it is the **same** unmetered Atom surface [commitsFeedUrl] uses, and the same
+   * `Grit::Commit/<sha>` shape, so [parseCommitsFeed] reads it verbatim. The API spelling
+   * (`api.github.com/repos/<repo>/commits?path=…`) returns the identical answer and was rejected
+   * for the identical reason: it costs one of 60 unauthenticated calls an hour, and this lane is
+   * *per preview* rather than per catalog load, so it would exhaust the budget on a single page.
+   *
+   * [path] goes through [normalizePath] and is then re-encoded segment by segment, because unlike
+   * the branch — a name this server configures — it comes out of a published catalog manifest. A
+   * path that cannot be normalized yields no URL, so a garbled manifest cannot point the feed read
+   * at something else on the branch.
+   */
+  fun pathCommitsFeedUrl(repo: String, branch: String, path: String?): String? {
+    val r = repo.trim().trim('/').takeIf { REPO.matches(it) } ?: return null
+    val b = branch.trim().trim('/').takeIf { it.isNotEmpty() && !it.contains("..") } ?: return null
+    val p = normalizePath(path) ?: return null
+    val encoded = p.split('/').joinToString("/") { WebEscaping.urlEncodeSegment(it) }
+    return "https://github.com/$r/commits/$b/$encoded.atom"
+  }
+
+  /**
+   * How many path-scoped publishes to keep. The feed itself returns about twenty, and only those
+   * falling inside the page's [MAX_REVISIONS] window can mark anything — but parsing the whole
+   * response costs nothing and keeping the surplus means a run whose boundary sits just outside the
+   * window is still recognised as closed rather than reported as open.
+   */
+  const val MAX_PATH_REVISIONS: Int = 40
+
+  /**
+   * One stretch of consecutive publishes that all carry the **same** render bytes.
+   *
+   * The unit the viewer draws a thumbnail for: a run is one distinct look, so a menu showing one
+   * thumbnail per run answers "which of these twelve actually differ?" at a glance instead of
+   * making a reader open them one at a time.
+   */
+  data class RenderRun(
+    /**
+     * The **newest** publish carrying these bytes — the top row of the run as the menu lists it,
+     * newest first.
+     *
+     * Deliberately the newest rather than the publish that *introduced* the look. Both are honest
+     * answers and the manifest models both ([PreviewHistoryManifest.ManifestVersion.commit] versus
+     * `sinceCommit`), but a thumbnail is an anchor for the rows beneath it: at the head it reads
+     * "this look holds from here down", while at the introducing commit it would sit at the
+     * *bottom* of the stretch it describes and every row above it would look unlabelled.
+     */
+    val head: String,
+    /** Publishes in this run, within the window it was computed over. */
+    val commits: Int,
+    /**
+     * True when the run was cut off by the end of the window rather than by a real change — the
+     * bytes may well go back further. Without it a run closed by the window would claim a publish
+     * count it cannot support, which is the one thing a "these are identical" marker must not do.
+     */
+    val open: Boolean = false,
+  )
+
+  /**
+   * Collapse [revisions] (newest first) into [RenderRun]s, given the publishes in which the render
+   * changed ([pathCommitsFeedUrl]).
+   *
+   * The rule is one line and the off-by-one in it is the whole function: a commit in [changedAt] is
+   * where the bytes **became** what they are, so it *ends* the run it belongs to and the row after
+   * it begins the next. Reading the boundary as "starts a run" instead puts every thumbnail one row
+   * too low.
+   *
+   * [revisions] must be the same list the menu renders — already narrowed to the publishes that
+   * contain this preview — so that heads name rows a reader can actually see. A change point for a
+   * publish that was filtered out simply never matches, which is the correct outcome: the row it
+   * would have closed is not on screen either.
+   *
+   * ### Known limitation: a render removed and re-added
+   *
+   * [changedAt] says a publish **touched** the path, not that its bytes differ from the previous
+   * *visible* revision. Normally those coincide, because git is content-addressed: rewriting a file
+   * with identical bytes leaves the tree entry alone, so no commit reports it. The one case where
+   * they diverge is a preview dropped from a publish and restored later — git records both the
+   * deletion and the re-addition, the deletion's publish is filtered out of [revisions] as one that
+   * did not contain the preview, and the re-addition is read here as a boundary. If the restored
+   * PNG is byte-identical to the one before the gap, that stretch is reported as two runs and the
+   * menu draws two identical thumbnails with a rule between them.
+   *
+   * Left as-is deliberately. Closing it means comparing the actual bytes at such a boundary, which
+   * costs the two image reads this whole approach exists to avoid, for a case that needs a preview
+   * to leave the catalog and come back unchanged. The failure is also self-evident rather than
+   * misleading about provenance: each thumbnail really is that revision's render, and a reader sees
+   * two pictures that match. Only the "N distinct renders" count is overstated.
+   */
+  fun renderRuns(
+    revisions: List<Revision>,
+    changedAt: Set<String>,
+  ): List<RenderRun> {
+    if (revisions.isEmpty()) return emptyList()
+    val runs = mutableListOf<RenderRun>()
+    var head = 0
+    revisions.forEachIndexed { index, revision ->
+      val boundary = revision.commit in changedAt
+      val last = index == revisions.lastIndex
+      if (!boundary && !last) return@forEachIndexed
+      runs +=
+        RenderRun(
+          head = revisions[head].commit,
+          commits = index - head + 1,
+          // Closed by running out of rows rather than by a change: the look predates the window.
+          open = last && !boundary,
+        )
+      head = index + 1
+    }
+    return runs
+  }
+
+  /**
    * Parse [commitsFeedUrl]'s response into revisions, newest first.
    *
    * Deliberately a shape match rather than an XML parse. The two fields that matter are already

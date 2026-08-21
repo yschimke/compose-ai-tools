@@ -173,6 +173,16 @@ class ServeBundleHost(
   /** Preview inventories precomputed by the publisher, keyed by historic delivery commit. */
   private val revisionPreviewIds: Map<String, Set<String>>? = null,
   /**
+   * The publishes in which one render's bytes changed, by branch path — supplied by
+   * [ServeCatalogStore], null for a host with no delivery branch.
+   *
+   * Its own seam rather than a use of [fetchPinnedAsset] because it reads a different surface for a
+   * different question: that one fetches bytes at a commit, this one asks the branch's history when
+   * those bytes last moved. Returning null means "could not ask", which [renderChangeCommits] is
+   * careful to keep distinct from the empty set.
+   */
+  private val fetchRenderChanges: ((path: String) -> Set<String>?)? = null,
+  /**
    * Each design reference's path **on the delivery branch**, which is not the path the served
    * manifest carries: catalog import rewrites every raster to a server-owned `references/<id>.png`.
    * That rewrite is what contains the lane, and it is also why the branch path has to be handed
@@ -790,6 +800,90 @@ class ServeBundleHost(
   fun revisionContainsPreview(commit: String, previewId: String): Boolean? =
     ServeCatalogRevision.normalize(commit)?.let { revisionPreviewIds?.get(it)?.contains(previewId) }
 
+  /**
+   * The delivery-branch publishes in which [previewId]'s render actually changed, or null when the
+   * branch could not be asked.
+   *
+   * Null and the empty set are different answers and both are real: empty means the branch answered
+   * and named no change — every publish in the window carries identical pixels, which is the
+   * *interesting* case this feature exists to show — while null means the read failed and the
+   * viewer must draw no markers rather than claim everything is identical.
+   *
+   * Cached per preview and never invalidated within a load, which is exactly as fresh as the rest
+   * of the page: a load reads one commit ([ServeCatalogStore.load]), so the branch history behind
+   * it is fixed for the life of this host and a later publish arrives with the next load.
+   *
+   * Shares [pinnedPermits] with the pinned-asset lane rather than taking a pool of its own. They
+   * bound the same scarce thing — concurrent reads of the delivery branch — and this route is
+   * likewise reachable by an anonymous caller naming a preview per request, so leaving it unbounded
+   * would reopen precisely the hole that semaphore was added to close.
+   *
+   * Misses are serialized **per preview** on [fillLocks], the same way a cold baked-PNG fill is,
+   * and that is load-bearing rather than tidiness: the semaphore counts permits, it does not
+   * deduplicate, so without this a single preview whose menu is opened by four readers at once
+   * would take all four branch-read permits and issue four identical feed requests — starving the
+   * pinned-asset lane that shares them. Re-checking the cache under the permit is not enough on its
+   * own, because it only helps once the first fetch has already finished.
+   *
+   * Blocking, and called from [Dispatchers.IO][kotlinx.coroutines.Dispatchers.IO] rather than a
+   * request thread — see the route.
+   *
+   * ### Known limitation: the TIP path only
+   *
+   * The feed is read for [bakedBranchPaths]`[previewId]` — the path this preview has *now*. Ids are
+   * stable across publishes and the paths under them are not, which is why [pinnedRender] resolves
+   * through [branchPath] against the manifests at each commit instead. This lane does not: if a
+   * preview's published path changed inside the window, publishes that touched the *former* path
+   * are invisible here, and the revisions below the new path's first commit collapse into one run
+   * even when the old PNG changed several times — understating the count rather than overstating
+   * it.
+   *
+   * Not resolved per revision on purpose. Doing so costs a manifest read to learn the old path plus
+   * a second feed read to cover it, on a lane whose whole argument is that one cheap read replaces
+   * downloading and hashing a dozen PNGs — so it would roughly triple the cost of every cold menu
+   * open to correct a case that needs a publisher to move a stable id's path mid-window. If that
+   * turns out to happen in practice, the fix is to resolve the path at the window's oldest revision
+   * and union the two feeds; see the PR discussion.
+   */
+  fun renderChangeCommits(previewId: String): Set<String>? {
+    val fetch = fetchRenderChanges ?: return null
+    // The warm read stays OUTSIDE the lock, exactly as [bakedPngFile]'s does: an answer this host
+    // already has must never queue behind someone else's cold fetch.
+    renderChangeCache[previewId]?.let {
+      return it
+    }
+    val path = bakedBranchPaths[previewId] ?: return null
+    synchronized(fillLocks.computeIfAbsent("$RENDER_CHANGE_LOCK_PREFIX$previewId") { Any() }) {
+      // Re-checked under the lock: whoever we queued behind was fetching exactly this answer.
+      renderChangeCache[previewId]?.let {
+        return it
+      }
+      if (
+        !pinnedPermits.tryAcquire(PINNED_FETCH_WAIT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)
+      )
+        return null
+      val changes =
+        try {
+          runCatching { fetch(path) }.getOrNull()?.map(String::lowercase)?.toSet()
+        } finally {
+          pinnedPermits.release()
+        }
+      // Only a real answer is remembered. A failed read says nothing about the branch, and caching
+      // it would strand the markers off for the life of the host over one blip.
+      if (changes != null) {
+        synchronized(renderChangeCache) {
+          if (renderChangeCache.size >= MAX_RENDER_CHANGE_ENTRIES) {
+            renderChangeCache.keys.firstOrNull()?.let(renderChangeCache::remove)
+          }
+          renderChangeCache[previewId] = changes
+        }
+      }
+      return changes
+    }
+  }
+
+  private val renderChangeCache = java.util.concurrent.ConcurrentHashMap<String, Set<String>>()
+
   /** [referenceId]'s canonical reference raster as published at [commit]. See [pinnedRender]. */
   fun pinnedReference(commit: String, referenceId: String): PinnedOutcome =
     pinnedAsset(
@@ -1249,6 +1343,9 @@ class ServeBundleHost(
 
     /** Namespaces the motion fill locks apart from the baked ones, which share an id space. */
     private const val MOTION_LOCK_PREFIX = "motion:"
+
+    /** Namespaces the render-change locks in the shared [fillLocks] map. */
+    private const val RENDER_CHANGE_LOCK_PREFIX = "render-changes:"
     private const val RENDER_ERROR_SUFFIX = ".error.json"
     private const val RENDER_ERROR_SCHEMA = "compose-preview-error/v1"
     /** Suffix of the sibling a lazy fill writes before moving it into place atomically. */
@@ -1268,6 +1365,14 @@ class ServeBundleHost(
      * remember and a hit costs a whole PNG.
      */
     private const val MAX_PINNED_MISS_ENTRIES = 256
+
+    /**
+     * How many previews' render-change sets stay resident. Generous next to the pinned caches
+     * because an entry is a handful of shas rather than a PNG, and the access pattern is the
+     * opposite of a permalink's: a reader browsing a catalog opens the revision menu on preview
+     * after preview, and every repeat within a load is an answer that cannot have changed.
+     */
+    private const val MAX_RENDER_CHANGE_ENTRIES = 512
 
     /**
      * Concurrent branch reads the pinned lane may have in flight. Small: these are small files off

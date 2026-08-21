@@ -1241,6 +1241,26 @@ cp-parity-scores { display: contents; }
 .cp-revision-note { margin: 8px 12px 4px; max-width: 44ch; color: var(--cp-fg-muted);
   font-size: var(--md-sys-typescale-body-small-size);
   line-height: var(--md-sys-typescale-body-small-line); }
+/* Render runs (`<cp-revision-runs>`): a mini render on the newest publish of each stretch that
+   shares its pixels, so the menu answers "which of these actually differ?" without opening any of
+   them. Every rule below is scoped to `[data-runs="on"]` — the flag the element sets once its fetch
+   has landed — so a menu whose lane 404s (no delivery branch, an unreachable feed) keeps exactly
+   the layout it had before this feature existed. */
+.cp-revision-runs-summary { margin: 2px 12px 8px; color: var(--cp-fg-muted);
+  font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line); }
+.cp-revision-thumb { align-self: center; width: 28px; height: 28px; flex: 0 0 auto;
+  border-radius: var(--md-sys-shape-corner-extra-small); object-fit: contain;
+  background: var(--md-sys-color-surface-container-highest); }
+/* The rows under a head are indented by exactly the gutter its thumbnail occupies, so the dates
+   stay in one column and the indent reads as "same picture as the row above". */
+.cp-revision-list[data-runs="on"] .cp-revision:not([data-run-head]) { padding-left: 50px; }
+/* A hairline between runs — the boundary is BETWEEN two rows, so drawing it as a rule above each
+   head after the first says "the picture changes here" without having to pick which of the two
+   adjacent publishes owns the change. */
+.cp-revision-list[data-runs="on"] .cp-revision[data-run-head="1"] {
+  margin-top: 5px; border-top: 1px solid var(--cp-border); padding-top: 12px; }
+.cp-revision-span { font-size: 0.85em; opacity: 0.7; font-variant-numeric: tabular-nums; }
 /* Status page (GET /status): stat tiles, config grid, and the catalog/daemon/failure tables. */
 .cp-status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 10px; margin: 0 0 22px; width: 100%; max-width: 860px; }
