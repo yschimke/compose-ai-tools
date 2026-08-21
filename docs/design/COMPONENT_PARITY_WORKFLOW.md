@@ -221,6 +221,12 @@ already has a trust boundary with tests:
   the emitter red on a healthy repository, which is a good reason for a catalog never to adopt it.
   The one absent-locator case still worth a warning is an issue carrying an `area:` or `parity:`
   label: that is a parity report filed without its identity, and a human has to go add the block.
+  **"Absent" means no opening fence, not no complete fence.** A block whose closing ``` was deleted
+  matches the full-fence pattern zero times and is otherwise indistinguishable from an ordinary
+  issue — which would send a real, damaged report down the silent path and let the run go green
+  without it. The opener is matched separately and anchored to a line, so a body that merely names
+  the fence in prose still counts as absent, while an unterminated one — and a good block trailed by
+  a dangling opener — is reported.
 
 ### Where the regeneration workflow lives
 

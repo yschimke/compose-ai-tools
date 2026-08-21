@@ -82,3 +82,22 @@ test("an ordinary issue is skipped, not rejected", () => {
   assert.deepEqual(skips, [["Dependency Dashboard", false], ["Filed without its identity", true]]);
   assert.equal(parseLocator("nothing").error, NO_LOCATOR);
 });
+
+test("a locator that fails to close is broken, not absent", () => {
+  // The skip path exists for issues that are not parity reports. A fence whose closing ``` was
+  // deleted matches the full-fence regex zero times and would otherwise look exactly like one —
+  // sending a real, damaged report down the silent path and letting the run go green without it.
+  const errors = [];
+  const skips = [];
+  const truncated = shared.cases[0].block.replace(/\n```\n$/, "\n");
+  buildIssueIndex(
+    [{ html_url: "https://github.com/yschimke/m3-catalog/issues/40", title: "Glyph colour", body: truncated, state: "open" }],
+    { generatedAt: "2026-08-15T10:00:00Z", onError: (_, error) => errors.push(error), onSkip: () => skips.push(true) },
+  );
+  assert.deepEqual(errors, ["unterminated locator block"]);
+  assert.deepEqual(skips, [], "a broken locator must never be skipped");
+  // A body that merely names the fence in prose still carries no locator.
+  assert.equal(parseLocator("I pasted a compose-parity-locator/v1 block once.").error, NO_LOCATOR);
+  // And a good block followed by a dangling opener is ambiguous, not usable.
+  assert.equal(parseLocator(shared.cases[0].block + "\n```compose-parity-locator/v1\nrepository: a/b\n").error, "multiple locator blocks");
+});

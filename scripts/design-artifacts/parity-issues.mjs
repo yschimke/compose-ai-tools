@@ -5,6 +5,14 @@ export const LOCATOR_FENCE = "compose-parity-locator/v1";
 
 const REPO = /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/;
 const FENCE = /```compose-parity-locator\/v1\s*\n([\s\S]*?)\n```/g;
+/**
+ * Just the opening line of a fence, so a locator that FAILS to close can be told apart from one
+ * that was never there. [FENCE] needs both delimiters, so a body whose closing ``` was deleted
+ * matches zero times and looks identical to an ordinary issue — which would send a real,
+ * damaged parity report down the silent-skip path in [buildIssueIndex]. Anchored to a line so a
+ * body merely *mentioning* the fence name in prose is not mistaken for one.
+ */
+const FENCE_OPEN = /^```compose-parity-locator\/v1[^\S\n]*$/gm;
 const AREA = new Set(["spec", "component", "preview", "renderer", "comparison"]);
 const PARITY = new Set(["regression", "known-difference", "verification-needed"]);
 
@@ -62,8 +70,13 @@ export const NO_LOCATOR = "missing locator block";
 
 /** Parse exactly one visible locator fence. A malformed or duplicate block is an explicit error. */
 export function parseLocator(body) {
-  const matches = [...String(body ?? "").matchAll(FENCE)];
-  if (matches.length !== 1) return { ok: false, error: matches.length ? "multiple locator blocks" : NO_LOCATOR };
+  const text = String(body ?? "");
+  const matches = [...text.matchAll(FENCE)];
+  // Count openers too: one that never closed is invisible to [FENCE], and a body carrying a good
+  // block plus a dangling opener is ambiguous about which frame it describes.
+  const openers = [...text.matchAll(FENCE_OPEN)].length;
+  if (matches.length > 1 || openers > 1) return { ok: false, error: "multiple locator blocks" };
+  if (matches.length === 0) return { ok: false, error: openers ? "unterminated locator block" : NO_LOCATOR };
   const fields = Object.create(null);
   for (const line of matches[0][1].split(/\r?\n/)) {
     const colon = line.indexOf(":");
