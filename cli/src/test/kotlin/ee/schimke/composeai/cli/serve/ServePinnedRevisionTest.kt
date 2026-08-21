@@ -725,6 +725,26 @@ class ServePinnedRevisionTest {
   }
 
   @Test
+  fun `a window we cannot bound draws no runs at all`() {
+    // A branch that ships no `preview-index.json`. `availableRevisions` fails open there — right
+    // for the menu, where an extra link that 404s beats hiding real history — so the window can
+    // reach back past the preview's own creation. The path feed's creation commit then reads as a
+    // boundary, and every row below it becomes a trailing run headed by a publish that has no
+    // render: marked, counted as another distinct look, and asked for a thumbnail that cannot
+    // exist. Without the inventory there is nothing to bound the window with, so say nothing.
+    val port = startServer { url ->
+      if (url.endsWith("/preview-index.json")) null
+      else withRenderChanges(newCommit, oldCommit)(url)
+    }
+      .port
+
+    assertEquals(
+      404,
+      get("http://127.0.0.1:$port/$system/api/render-runs/$previewId").first,
+    )
+  }
+
+  @Test
   fun `the revision menu stamps every row with the sha the runs lane names`() {
     val port = start().port
 

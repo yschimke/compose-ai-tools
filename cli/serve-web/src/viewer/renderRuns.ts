@@ -49,16 +49,6 @@ export interface RunMarker {
 export interface RunsView {
     markers: Map<string, RunMarker>;
     summary: string;
-    /**
-     * Delivery sha of the newest publish the answer was computed over.
-     *
-     * Carried so the caller can check the answer describes the rows actually on the page. The runs
-     * lane is fetched lazily, so a catalog that refreshes between page render and menu open answers
-     * from a window whose newest publish the rendered list does not contain — and then a no-op
-     * publish makes the new head a row nobody can see, leaving the page's own newest row unmarked
-     * and indented while the summary counts a different set of publishes.
-     */
-    newestHead: string;
 }
 
 /**
@@ -132,12 +122,7 @@ export function runsViewOf(
     // Counted from the runs the server found, not the markers we could draw: a run whose head is
     // unaddressable is still a distinct render, and under-reporting the count to match what is on
     // screen would turn a drawing limitation into a claim about the catalog.
-    return {
-        markers,
-        summary: summaryOf(runs.length, revisions),
-        // From the payload rather than from `markers`, which drops any run it could not address.
-        newestHead: runs[0].head ?? "",
-    };
+    return { markers, summary: summaryOf(runs.length, revisions) };
 }
 
 /** "2 distinct renders across these 12 publishes", or the singular case said plainly. */

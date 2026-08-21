@@ -214,6 +214,41 @@ describe("<cp-revision-runs>", () => {
         );
     });
 
+    it("refuses a stale single-run answer, which makes the boldest claim of all", async () => {
+        // `runsViewOf` returns null for one run, so this branch skips the marker path entirely —
+        // and it is the branch that says "All N publishes render identically". A guard living only
+        // inside the marker path would leave the strongest possible falsehood unguarded.
+        stubFetch({
+            ok: true,
+            body: {
+                revisions: 13,
+                runs: [{ head: "f".repeat(40), commits: 13 }],
+            },
+        });
+        const details = await mount();
+        await open(details);
+        assert.equal(details.querySelector(".cp-revision-runs-summary"), null);
+    });
+
+    it("still summarises a single-run answer about the rows on this page", async () => {
+        // The counterpart to the test above: same shape, but the window matches, so the count is
+        // exactly what a reader opened the menu to find out.
+        stubFetch({
+            ok: true,
+            body: { revisions: 3, runs: [{ head: HEAD_A, commits: 3 }] },
+        });
+        const details = await mount();
+        await open(details);
+        assert.equal(
+            details.querySelector(".cp-revision-runs-summary")?.textContent,
+            "All 3 publishes render identically",
+        );
+        assert.equal(
+            details.querySelectorAll("img.cp-revision-thumb").length,
+            0,
+        );
+    });
+
     it("draws nothing when the server named no usable render URL", async () => {
         const fetches = stubFetch({ ok: true, body: PAYLOAD });
         const details = await mount({ renderUrl: "//evil.example/a.png" });

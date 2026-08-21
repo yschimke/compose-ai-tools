@@ -5757,6 +5757,22 @@ class ServeHttpServer(
     withLeasedSession(selectedSessionId(sessionInPath)) { renderHost ->
       val host = catalogBundleHost(renderHost)
       val revisions = host?.let { availableRevisions(it, previewId) }.orEmpty()
+      // Every publish below the tip has to be one the generation-time index CONFIRMS carried this
+      // preview. [availableRevisions] fails open for a branch that ships no `preview-index.json`,
+      // which is right for the menu — an extra link that 404s beats hiding real history — and wrong
+      // here: the window would then reach back past the preview's creation, where the path feed's
+      // creation commit reads as a boundary and every row below it becomes a trailing run headed by
+      // a publish that has no render at all. That row would be marked, counted as another distinct
+      // render, and asked for a thumbnail that cannot exist.
+      //
+      // Not a real cost for a current publisher: the index is rolled forward to cover exactly the
+      // window the menu lists ([ServeCatalogRevision.MAX_REVISIONS] minus the tip, whose inventory
+      // is `current` rather than a `revisions` entry). It is the legacy branches — the ones we
+      // cannot bound at all — that get no markers, which is the same answer this lane gives
+      // everywhere else it does not know.
+      val bounded =
+        host != null &&
+          revisions.drop(1).all { host.revisionContainsPreview(it.commit, previewId) == true }
       // `renderChangeCommits` is the read that can fail; the rest is arithmetic over it.
       //
       // On [Dispatchers.IO] because a cold call goes to the delivery branch, and
@@ -5767,7 +5783,7 @@ class ServeHttpServer(
       // of cold menu opens hold Ktor request threads while GitHub is slow and stall unrelated
       // traffic. Same rule the published-asset lanes already follow.
       val changed = withContext(Dispatchers.IO) { host?.renderChangeCommits(previewId) }
-      if (changed == null || revisions.isEmpty()) {
+      if (changed == null || revisions.isEmpty() || !bounded) {
         call.respondText("not found", status = HttpStatusCode.NotFound)
         return@withLeasedSession
       }
