@@ -4,6 +4,7 @@ import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -231,6 +232,75 @@ class AgentAccessStoreTest {
     val kept = store().pendingFor("https://preview.coo.ee")
     assertNotNull(kept, "the device secret must survive the approval window")
     assertTrue(kept.windowClosed(now), "…while still reporting the window as closed")
+  }
+
+  @Test
+  fun `credentials are never written to the working directory`() {
+    // The old fallback was `.`, so on a minimal service environment with neither XDG_CONFIG_HOME
+    // nor HOME an agent wrote bearer tokens into whatever directory it ran in — for an agent that
+    // is a checkout, which gets archived by CI or swept up by the next `git add -A`.
+    val err =
+      assertFailsWith<NoCredentialHomeException> {
+        AgentAccessStore.defaultFile(prop = { null }, env = { null })
+      }
+    assertTrue(err.message!!.contains("COMPOSE_PREVIEW_AGENT_ACCESS_FILE"), "names the remedy")
+  }
+
+  @Test
+  fun `no relative path is ever a home, whichever variable supplies it`() {
+    // This leak was reachable three times by three routes — the original `.` fallback, a relative
+    // `user.home`, then a relative `XDG_CONFIG_HOME`/`HOME` — because each fix was applied to the
+    // branch that was pointed at. One rule now covers every candidate, and this covers all of them
+    // so a fourth route cannot open quietly.
+    for (relative in listOf(".", "relative/path", "./x", "")) {
+      assertFailsWith<NoCredentialHomeException>("user.home=$relative") {
+        AgentAccessStore.defaultFile(prop = { relative }, env = { null })
+      }
+      assertFailsWith<NoCredentialHomeException>("XDG_CONFIG_HOME=$relative") {
+        AgentAccessStore.defaultFile(
+          prop = { null },
+          env = { n -> if (n == "XDG_CONFIG_HOME") relative else null },
+        )
+      }
+      assertFailsWith<NoCredentialHomeException>("HOME=$relative") {
+        AgentAccessStore.defaultFile(
+          prop = { null },
+          env = { n -> if (n == "HOME") relative else null },
+        )
+      }
+    }
+  }
+
+  @Test
+  fun `a relative variable falls through to an absolute one rather than winning`() {
+    // A relative XDG_CONFIG_HOME must not shadow a perfectly good HOME.
+    assertEquals(
+      File("/home/u/.config/compose-preview/agent-access.json"),
+      AgentAccessStore.defaultFile(
+        prop = { null },
+        env = { n -> mapOf("XDG_CONFIG_HOME" to ".", "HOME" to "/home/u")[n] },
+      ),
+    )
+  }
+
+  @Test
+  fun `an absolute platform home is used when the environment has neither variable`() {
+    // A minimal service context often has no HOME while the JVM still knows the passwd entry.
+    assertEquals(
+      File("/home/svc/.config/compose-preview/agent-access.json"),
+      AgentAccessStore.defaultFile(prop = { "/home/svc" }, env = { null }),
+    )
+  }
+
+  @Test
+  fun `the explicit override still wins with no home at all`() {
+    val chosen =
+      AgentAccessStore.defaultFile(
+        env = { name ->
+          if (name == "COMPOSE_PREVIEW_AGENT_ACCESS_FILE") "/tmp/x/creds.json" else null
+        }
+      )
+    assertEquals(File("/tmp/x/creds.json"), chosen)
   }
 
   @Test

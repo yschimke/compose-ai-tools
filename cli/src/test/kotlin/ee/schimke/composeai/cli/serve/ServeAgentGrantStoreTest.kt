@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli.serve
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -227,11 +228,19 @@ class ServeAgentGrantStoreTest {
   }
 
   @Test
-  fun `a resolved request makes room for a new one`() {
+  fun `a denial does not make room for a new one`() {
+    // Inverted deliberately. This used to assert that denying freed capacity, which is exactly the
+    // vector that made the map unbounded: an operator working through hostile requests would hand
+    // the sender a fresh slot with every click. A denial is kept (its owner must be able to learn
+    // it was denied) and charged to whoever caused it; only its own expiry frees the space.
     val store = store(maxPendingRequests = 2)
     val first = store.openRequest("a", "ip", ServeAgentGrantScope.PREVIEW, 600)!!
     store.openRequest("b", "ip", ServeAgentGrantScope.PREVIEW, 600)
     store.deny(first.id, "@yuri")
+    assertNull(store.openRequest("c", "ip", ServeAgentGrantScope.PREVIEW, 600))
+    // The denial is still readable by its owner while it holds that slot.
+    assertTrue(store.poll(first.id, first.deviceSecret) is ServeAgentGrantStore.Poll.Denied)
+    now += (store.requestTtlSeconds + 5) * 1000
     assertNotNull(store.openRequest("c", "ip", ServeAgentGrantScope.PREVIEW, 600))
   }
 
@@ -286,15 +295,19 @@ class ServeAgentGrantStoreTest {
 
   @Test
   fun `overflow never strands a token the agent has not collected yet`() {
+    // This used to assert the *mechanism* — that a new ask was refused rather than evicting the
+    // uncollected approval. The mechanism changed (an approval no longer spends the pending budget
+    // at all, so there is nothing to refuse), but the guarantee it was protecting has not, so the
+    // test now states that instead: fill the pending budget and the uncollected token still
+    // arrives.
     val store = store(maxPendingRequests = 2)
     val approved = store.ask()
     store.approve(approved.id, "@yuri", ServeAgentGrantScope.LIVE, 600)
-    store.openRequest("b", "ip", ServeAgentGrantScope.PREVIEW, 600)
-    // The map is full and the only resolved entry is an approval nobody has polled for yet, so the
-    // new ask is refused rather than deleting a live credential its owner can never fetch again.
-    assertNull(store.openRequest("c", "ip", ServeAgentGrantScope.PREVIEW, 600))
+    // Saturate the pending budget, then keep asking — every one of these is refused or admitted on
+    // its own merits, and none of them may cost the approval above its credential.
+    repeat(6) { store.openRequest("filler-$it", "10.9.9.9", ServeAgentGrantScope.PREVIEW, 600) }
     val polled = store.poll(approved.id, approved.deviceSecret)
-    assertTrue(polled is ServeAgentGrantStore.Poll.Approved)
+    assertTrue(polled is ServeAgentGrantStore.Poll.Approved, "got $polled")
   }
 
   @Test
@@ -360,6 +373,41 @@ class ServeAgentGrantStoreTest {
   }
 
   @Test
+  fun `a label cannot reorder what the approval page says`() {
+    // U+202E RIGHT-TO-LEFT OVERRIDE survives an isISOControl filter AND HTML escaping, so a
+    // requester could reverse the rendering of everything after their label — on the one page whose
+    // whole job is to state accurately what is being agreed to, and in the operator's audit line.
+    val nasty = "fix \u202Ednarg lla tnarg\u202C \u2066issue\u2069 \u200Bnow\uFEFF"
+    val clean = ServeAgentGrantStore.sanitizeLabel(nasty)
+    for (c in clean) {
+      assertNotEquals(
+        Character.FORMAT.toInt(),
+        Character.getType(c),
+        "a format character survived: U+%04X".format(c.code),
+      )
+    }
+    assertTrue(clean.startsWith("fix "), "the readable text survives: '$clean'")
+  }
+
+  @Test
+  fun `overflow never sheds an approval whose grant is still live`() {
+    // `collected` means a poll BUILT a response, not that the agent got one. Shedding on it meant a
+    // full map plus one dropped packet stranded a live grant — and filling the map is something an
+    // anonymous caller can attempt.
+    val store = store(maxPendingRequests = 2)
+    val mine = store.ask(ttl = 3600)
+    store.approve(mine.id, "@yuri", ServeAgentGrantScope.LIVE, 3600)
+    assertTrue(store.poll(mine.id, mine.deviceSecret) is ServeAgentGrantStore.Poll.Approved)
+    // …that response is lost. Now an anonymous caller tries to fill the map. `openRequest` rather
+    // than the `!!` helper: being REFUSED is the correct outcome here, not an error.
+    repeat(4) { store.openRequest("spam", "10.9.9.9", ServeAgentGrantScope.PREVIEW, 600) }
+    assertTrue(
+      store.poll(mine.id, mine.deviceSecret) is ServeAgentGrantStore.Poll.Approved,
+      "a live grant was shed to admit an anonymous request",
+    )
+  }
+
+  @Test
   fun `a lost token response can be collected again`() {
     // `collected` marks that a poll BUILT a response, not that the agent received one. Treating it
     // as a deletion trigger meant a response lost in flight left the retry told `unknown` while the
@@ -396,13 +444,93 @@ class ServeAgentGrantStoreTest {
   }
 
   @Test
-  fun `a collected request is shed to make room`() {
-    val store = store(maxPendingRequests = 2)
-    val collected = store.ask()
-    store.approve(collected.id, "@yuri", ServeAgentGrantScope.LIVE, 600)
-    assertTrue(
-      store.poll(collected.id, collected.deviceSecret) is ServeAgentGrantStore.Poll.Approved
+  fun `retained approvals do not consume the pending-request budget`() {
+    // Two populations, two reasons to be bounded. Pending requests are what an anonymous caller can
+    // create at will; a retained approval exists only while its grant does, and grants have their
+    // own cap. Counting both against one number made the caps fight: an operator asking for more
+    // concurrent grants than the request cap could never get them, with nothing to explain why.
+    val store = store(maxPendingRequests = 2, maxActiveGrants = 8)
+    // Fill the map with approvals whose grants are all live.
+    val approved =
+      (1..5).map { i ->
+        val r = store.ask(ttl = 3600)
+        store.approve(r.id, "@yuri", ServeAgentGrantScope.LIVE, 3600)
+        r
+      }
+    // …and a fresh request still gets in, because none of those is pending.
+    assertNotNull(
+      store.openRequest("new", "ip", ServeAgentGrantScope.PREVIEW, 600),
+      "retained approvals must not spend the pending budget",
     )
+    // Every one of those grants is still collectable.
+    for (r in approved) {
+      assertTrue(
+        store.poll(r.id, r.deviceSecret) is ServeAgentGrantStore.Poll.Approved,
+        "a live grant was shed to admit a new request",
+      )
+    }
+  }
+
+  @Test
+  fun `denying a batch does not hand the attacker a fresh batch`() {
+    // A denial stays in the map so the agent can learn it was denied rather than being told
+    // `unknown` — so if denials were not charged against the cap, an operator working through
+    // hostile requests would free capacity with every click: submit a batch, get it denied, submit
+    // another, forever, in an anonymously-controlled map that was supposed to be bounded.
+    val store = store(maxPendingRequests = 3)
+    val first =
+      (1..3).mapNotNull {
+        store.openRequest("spam-$it", "10.9.9.9", ServeAgentGrantScope.PREVIEW, 600)
+      }
+    assertEquals(3, first.size)
+    // The operator denies every one of them.
+    for (r in first) assertTrue(store.deny(r.id, "@yuri"))
+    // The attacker immediately tries again, and gets nowhere.
+    assertNull(
+      store.openRequest("spam-again", "10.9.9.9", ServeAgentGrantScope.PREVIEW, 600),
+      "a denied row must still be charged to whoever created it",
+    )
+    // …and the denials remain visible to their owners in the meantime.
+    assertTrue(store.poll(first[0].id, first[0].deviceSecret) is ServeAgentGrantStore.Poll.Denied)
+    // Only the passage of time frees the capacity.
+    now += (store.requestTtlSeconds + 5) * 1000
+    assertNotNull(store.openRequest("later", "10.9.9.9", ServeAgentGrantScope.PREVIEW, 600))
+  }
+
+  @Test
+  fun `a dead approval never blocks a legitimate caller`() {
+    // Rows nobody is owed anything for are reclaimed before the count, so they can never be what
+    // pushes someone over the cap.
+    val store = store(maxPendingRequests = 2)
+    val done = store.ask(ttl = 60)
+    store.approve(done.id, "@yuri", ServeAgentGrantScope.LIVE, 60)
+    now += 61_000 // the grant is gone; the row owes nobody anything
+    assertNotNull(store.openRequest("a", "ip", ServeAgentGrantScope.PREVIEW, 600))
+    assertNotNull(store.openRequest("b", "ip", ServeAgentGrantScope.PREVIEW, 600))
+  }
+
+  @Test
+  fun `the pending cap still bounds what an anonymous caller can create`() {
+    val store = store(maxPendingRequests = 2)
+    assertNotNull(store.openRequest("a", "ip", ServeAgentGrantScope.PREVIEW, 600))
+    assertNotNull(store.openRequest("b", "ip", ServeAgentGrantScope.PREVIEW, 600))
+    assertNull(
+      store.openRequest("c", "ip", ServeAgentGrantScope.PREVIEW, 600),
+      "a third pending request must be refused",
+    )
+  }
+
+  @Test
+  fun `a finished request is shed to make room`() {
+    // This used to assert that a *collected* request was shed. That was wrong for the same reason
+    // the purge was: `collected` means a poll built a response, not that the agent received one, so
+    // shedding on it stranded a live grant whenever a response was lost. What may be shed is a
+    // request that is genuinely finished with — here, one whose grant has since expired.
+    val store = store(maxPendingRequests = 2)
+    val done = store.ask(ttl = 60)
+    store.approve(done.id, "@yuri", ServeAgentGrantScope.LIVE, 60)
+    assertTrue(store.poll(done.id, done.deviceSecret) is ServeAgentGrantStore.Poll.Approved)
+    now += 61_000 // its grant is gone, so the record owes nobody anything
     store.openRequest("b", "ip", ServeAgentGrantScope.PREVIEW, 600)
     assertNotNull(store.openRequest("c", "ip", ServeAgentGrantScope.PREVIEW, 600))
   }

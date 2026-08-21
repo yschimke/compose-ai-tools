@@ -27,6 +27,17 @@ import kotlinx.serialization.json.Json
  * Expired entries are dropped on read rather than swept on a schedule: this is a CLI, it runs and
  * exits, and a stale row costs nothing until someone asks about it.
  */
+/**
+ * No safe place to keep credentials could be determined. Carries the remedy, because the only thing
+ * the user can do about it is name a location.
+ */
+internal class NoCredentialHomeException :
+  IllegalStateException(
+    "no user config directory could be determined (XDG_CONFIG_HOME, HOME and user.home are all " +
+      "unset), and credentials will not be written to the working directory. Set " +
+      "COMPOSE_PREVIEW_AGENT_ACCESS_FILE to a path you control."
+  )
+
 internal open class AgentAccessStore(
   private val file: File = defaultFile(),
   private val clock: () -> Long = System::currentTimeMillis,
@@ -342,20 +353,57 @@ internal open class AgentAccessStore(
 
     /**
      * `$COMPOSE_PREVIEW_AGENT_ACCESS_FILE`, else `$XDG_CONFIG_HOME/compose-preview/…`, else
-     * `~/.config/compose-preview/…`. The override exists for CI and for tests; the XDG path is
-     * where a user would look for it.
+     * `$HOME/.config/…`, else the JVM's `user.home` **when that is an absolute path**. The override
+     * exists for CI and for tests; the XDG path is where a user would look for it.
+     *
+     * Throws [NoCredentialHomeException] when none of those yields a location, rather than falling
+     * back to the working directory — see the body.
      */
-    fun defaultFile(env: (String) -> String? = System::getenv): File {
+    fun defaultFile(
+      /**
+       * Injected so a test can simulate a JVM with no `user.home`, which it otherwise always has.
+       *
+       * Deliberately **before** [env] rather than appended: several call sites pass the environment
+       * as a trailing lambda, and a new last parameter silently rebinds those to this one instead —
+       * they still compile, and they quietly test the wrong thing.
+       */
+      prop: (String) -> String? = System::getProperty,
+      env: (String) -> String? = System::getenv,
+    ): File {
       env("COMPOSE_PREVIEW_AGENT_ACCESS_FILE")
         ?.takeIf { it.isNotBlank() }
         ?.let {
           return File(it)
         }
+      // ONE rule, applied to every candidate: a home must be an absolute path.
+      //
+      // This leak has now been reachable three times by three different routes — the original `.`
+      // fallback, then a relative `user.home`, then a relative `XDG_CONFIG_HOME`/`HOME` — because
+      // each fix was applied to the branch that was pointed at rather than to the question. The
+      // question is the same every time: is this a real home, or does it resolve under whatever
+      // directory the command happens to be run from? For an agent that directory is a checkout,
+      // so the credentials land somewhere CI archives or the next `git add -A` commits, and the
+      // target becomes influenceable by anything that can add a `compose-preview/` path to the
+      // tree. Anything that fails the question is treated as absent.
       val configHome =
-        env("XDG_CONFIG_HOME")?.takeIf { it.isNotBlank() }
-          ?: (env("HOME")?.takeIf { it.isNotBlank() }?.let { "$it/.config" } ?: ".")
+        absoluteHome(env("XDG_CONFIG_HOME"))
+          ?: absoluteHome(env("HOME"))?.let { "$it/.config" }
+          // The JVM's own view of the user's home, which on Linux comes from the passwd entry
+          // rather than the environment — so it survives the minimal `env -i` service context that
+          // has neither variable set.
+          ?: absoluteHome(prop("user.home"))?.let { "$it/.config" }
+          // …and if there is genuinely nowhere, REFUSE rather than inventing one.
+          ?: throw NoCredentialHomeException()
       return File("$configHome/compose-preview/agent-access.json")
     }
+
+    /**
+     * [candidate] if it is a usable absolute path, else null — the single test every
+     * credential-home candidate goes through. `?` is JVM shorthand for "unknown", and a relative
+     * path is not a home however it was supplied.
+     */
+    private fun absoluteHome(candidate: String?): String? =
+      candidate?.trim()?.takeIf { it.isNotEmpty() && it != "?" && File(it).isAbsolute }
 
     /**
      * `scheme://host[:port]`, lowercased, default ports dropped, path and query discarded.

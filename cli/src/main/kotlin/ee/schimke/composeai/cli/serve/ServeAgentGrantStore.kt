@@ -155,8 +155,9 @@ class ServeAgentGrantStore(
   // ---------------------------------------------------------------- requests
 
   /**
-   * Open a request. Returns null when the box is already tracking [maxPendingRequests] live ones
-   * and none can be purged — a refusal, rather than growing a map an anonymous caller controls.
+   * Open a request. Returns null when the box is already tracking [maxPendingRequests] **pending**
+   * ones and none can be purged — a refusal, rather than growing a map an anonymous caller
+   * controls.
    */
   fun openRequest(
     label: String,
@@ -183,16 +184,31 @@ class ServeAgentGrantStore(
   ): Request? {
     val now = clock()
     purge(now)
-    if (requests.size >= maxPendingRequests) {
-      // Shed only what is genuinely finished with: a denial, or an approval whose token has been
-      // collected. An approved-but-uncollected request still owes its owner a credential, and a
-      // pending one still owes a human a decision — dropping either loses work someone is waiting
-      // on, which is worse than refusing this new ask.
-      requests.entries.removeIf { (_, r) ->
-        r.state == Request.State.DENIED || (r.state == Request.State.APPROVED && r.collected)
+    // The cap counts what an anonymous caller can CREATE: rows that are pending, plus rows they got
+    // denied. What it does not count is a retained approval, which exists only while its grant does
+    // and is therefore already bounded by [maxActiveGrants].
+    //
+    // Getting this split wrong has now failed in both directions, which is why it is spelled out.
+    // Counting every row against one number made the two caps fight: retention (correctly) stopped
+    // shedding live approvals, so an operator who set `--agent-grant-max-active` above this cap
+    // could never reach it. Counting only *pending* rows then leaked the other way — a denial sits
+    // in the map until its own deadline, so an attacker could submit a batch, have an operator deny
+    // it, and submit another, growing an anonymously-controlled map without bound while the pending
+    // count stayed comfortably under the cap.
+    //
+    // A denial has to be kept (the agent must be able to learn it was denied rather than being told
+    // `unknown`), so it is kept AND charged. That is the honest accounting: the attacker caused the
+    // row, the operator's decision does not hand them a free one, and the row still expires on its
+    // own deadline. Total map size is bounded by maxPendingRequests + maxActiveGrants.
+    //
+    // Rows nobody is owed anything for — an approval whose grant has expired or been revoked — are
+    // reclaimed FIRST, unconditionally, so they can never be what pushes a legitimate caller over.
+    requests.entries.removeIf { (_, r) -> r.state == Request.State.APPROVED && grantIsGone(r, now) }
+    val charged =
+      requests.values.count {
+        it.state == Request.State.PENDING || it.state == Request.State.DENIED
       }
-      if (requests.size >= maxPendingRequests) return null
-    }
+    if (charged >= maxPendingRequests) return null
     val request =
       Request(
         id = mintId(),
@@ -495,17 +511,37 @@ class ServeAgentGrantStore(
      * request. Neither is theoretical: the log line is emitted at approval time, on the operator's
      * console, from text the requester chose.
      *
-     * Every C0/C1 control (and DEL) becomes a space, runs collapse, and the result is trimmed and
-     * capped. The HTML page escapes this same value again on its own account — this is not a
-     * substitute for that, it is the half that protects the terminal rather than the browser.
+     * Every C0/C1 control (and DEL), plus every Unicode **format** character — see
+     * [isInvisibleFormat], which is what stops a bidi override from rewriting what the approval
+     * page appears to say — becomes a space; runs collapse, and the result is trimmed and capped.
+     * The HTML page escapes this same value again on its own account: escaping is not a substitute
+     * for this, because the characters that matter here survive it untouched.
      */
     fun sanitizeLabel(raw: String): String =
       raw
-        .map { if (it.isISOControl() || it == '\u007f') ' ' else it }
+        .map { if (it.isISOControl() || it == '\u007f' || it.isInvisibleFormat()) ' ' else it }
         .joinToString("")
         .replace(Regex("\\s+"), " ")
         .trim()
         .take(MAX_LABEL_CHARS)
+
+    /**
+     * Unicode's **format** category (Cf): the characters that render as nothing but change how
+     * everything around them is laid out.
+     *
+     * Stripping C0/C1 was not enough, and the gap mattered most on the one page whose entire job is
+     * honest display. A requester chooses their own label, and `U+202E RIGHT-TO-LEFT OVERRIDE`
+     * survives both an `isISOControl` filter and HTML escaping — so a label could visually reverse
+     * the text after it and rewrite what the approval page appears to say, including the scope and
+     * lifetime the human is agreeing to. The same trick reorders the audit line in the operator's
+     * console. The isolates (`U+2066`–`U+2069`) and the zero-width joiners do the same job more
+     * quietly.
+     *
+     * Cf is exactly that set — overrides, embeddings, isolates, marks, zero-widths, the BOM — and
+     * nothing a purpose string legitimately needs, so the whole category goes.
+     */
+    private fun Char.isInvisibleFormat(): Boolean =
+      Character.getType(this) == Character.FORMAT.toInt()
 
     /** The bearer's prefix — greppable, and unmistakable for the operator's `--token`. */
     const val TOKEN_PREFIX = "cpat_"

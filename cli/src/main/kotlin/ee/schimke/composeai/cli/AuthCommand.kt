@@ -35,8 +35,45 @@ internal class AuthCommand(
    * behaviour against a real server without reaching for the caller's actual credential file —
    * production always gets the default.
    */
-  private val store: AgentAccessStore = AgentAccessStore(),
+  injectedStore: AgentAccessStore? = null,
+  /**
+   * How the default store is opened when none was injected. A seam, because the one behaviour worth
+   * pinning here is what happens when this **throws** — `auth request --json` must still print the
+   * device secret rather than exiting, and a test cannot make a real machine forget where its home
+   * directory is.
+   */
+  private val openStore: () -> AgentAccessStore = { AgentAccessStore() },
 ) {
+
+  /**
+   * Opened lazily so a machine with nowhere safe to keep credentials fails with one clear sentence
+   * instead of a stack trace out of a constructor default — and only when a subcommand actually
+   * needs the store, so `auth --help` still works there.
+   */
+  private val store: AgentAccessStore by lazy {
+    optionalStore ?: fail(storeFailure ?: "no user config directory could be determined")
+  }
+
+  /**
+   * The store, or null when this machine has nowhere safe to keep credentials.
+   *
+   * Separate from [store] because **one path legitimately does not need it**: `auth request --json`
+   * prints the device secret, which is the whole point of that mode — the caller polls for itself.
+   * Failing there would open a request on the server and then exit before printing the secret that
+   * could redeem it, leaving the human with an approval link that mints a credential nobody can
+   * ever collect. Every other path needs somewhere to write and says so through [store].
+   */
+  private val optionalStore: AgentAccessStore? by lazy {
+    injectedStore
+      ?: try {
+        openStore()
+      } catch (e: NoCredentialHomeException) {
+        storeFailure = e.message
+        null
+      }
+  }
+
+  private var storeFailure: String? = null
 
   private val json: Boolean = "--json" in args
 
@@ -114,6 +151,21 @@ internal class AuthCommand(
         else fail("unrecognised --ttl '$ttlRaw' — try 45m, 2h, or a number of seconds", code = 64)
     val label = args.flagValue("--label")?.trim().orEmpty().ifEmpty { defaultLabel() }
 
+    // Establish that we can KEEP the result before asking the server for one.
+    //
+    // The abort for "nowhere to store credentials" used to fire after the request was opened, which
+    // left an uncollectable request sitting in the server's bounded pending map for its full ten
+    // minutes — and a caller retrying the way anyone would could exhaust the slots for everyone
+    // else. `--json` is exempt because it genuinely does not need a store: it prints the device
+    // secret, so its caller can poll for itself.
+    if (!json && optionalStore == null) {
+      fail(
+        storeFailure
+          ?: "no user config directory could be determined, and credentials will not be written " +
+            "to the working directory."
+      )
+    }
+
     val opened =
       when (val r = client.open(label = label, scope = scope, ttlSeconds = ttl)) {
         is AgentAccessClient.Result.Ok -> r.value
@@ -124,8 +176,10 @@ internal class AuthCommand(
     // device secret is the only thing that can redeem the approval, so a `--no-wait` that printed
     // "re-run auth status" without persisting it was telling the user to do something impossible —
     // and a wait interrupted by Ctrl-C would have thrown the request away just as completely.
+    // `optionalStore` rather than `store`: with `--json` the device secret is printed, so a machine
+    // with nowhere to write can still drive the flow. Handled below.
     val remembered =
-      store.savePending(
+      optionalStore?.savePending(
         AgentAccessStore.Pending(
           origin = client.origin,
           requestId = opened.requestId,
@@ -137,11 +191,11 @@ internal class AuthCommand(
         )
       )
 
-    // Nothing was persisted, so nothing later can redeem an approval — and the human-readable path
-    // never prints the token, by design. Waiting would mean asking a person to approve access that
-    // is guaranteed to be lost. `--json` is exempt: it prints the device secret, so its caller can
-    // poll for itself and needs no store at all.
-    if (!remembered && !json) {
+    // A store that EXISTS but could not be written to — checked after the fact, because unlike the
+    // missing-home case above it is not knowable until the write is attempted. Same conclusion:
+    // waiting would mean asking a person to approve access that is guaranteed to be lost, and the
+    // human-readable path never prints the token.
+    if (remembered != true && !json) {
       fail(
         "opened the request, but could not save it locally (see the warning above) — so nothing " +
           "could collect the token once it was approved. Fix the credential file's directory and " +
@@ -207,9 +261,9 @@ internal class AuthCommand(
     // grant with nothing left to redeem it.
     // The waiting path replaces this origin's entry too, and had no superseded handling at all —
     // the previous round only taught the `--no-wait` collector to do this.
-    handOverSuperseded(store, client, client.origin, outcome.token.orEmpty())
+    optionalStore?.let { handOverSuperseded(it, client, client.origin, outcome.token.orEmpty()) }
     val saved =
-      store.save(
+      optionalStore?.save(
         AgentAccessStore.Entry(
           origin = client.origin,
           token = outcome.token.orEmpty(),
@@ -219,7 +273,7 @@ internal class AuthCommand(
           expiresAtMillis = System.currentTimeMillis() + (outcome.expiresInSeconds ?: 0) * 1000,
         )
       )
-    if (saved) store.forgetPendingRequest(opened.requestId)
+    if (saved == true) optionalStore?.forgetPendingRequest(opened.requestId)
     if (json) {
       printJson(
         GrantedJson.serializer(),
@@ -228,7 +282,9 @@ internal class AuthCommand(
           scopes = outcome.scopes,
           approvedBy = outcome.approvedBy.orEmpty(),
           expiresInSeconds = outcome.expiresInSeconds ?: 0,
-          stored = saved,
+          stored = saved == true,
+          // See [GrantedJson.token]: handed back only when nothing else can retrieve it.
+          token = if (saved == true) null else outcome.token,
         ),
       )
       return
@@ -241,7 +297,7 @@ internal class AuthCommand(
         "."
     )
     println(
-      if (saved)
+      if (saved == true)
         "Saved for ${client.origin}. Other compose-preview commands against this server will use " +
           "it automatically; `compose-preview auth token` prints it for anything else."
       else
@@ -720,6 +776,16 @@ internal class AuthCommand(
     val approvedBy: String,
     val expiresInSeconds: Long,
     val stored: Boolean,
+    /**
+     * The bearer — present **only when it could not be stored**, and otherwise omitted.
+     *
+     * Normally this response deliberately withholds it: the grant is on disk and `auth token`
+     * prints it for anything that needs the string, so putting it here would spread a credential
+     * through logs for no gain. When there is nowhere to store it, that reasoning inverts — the
+     * caller waited for a grant that is live on the server, and withholding it means they waited
+     * for nothing while the credential stays minted until it expires.
+     */
+    val token: String? = null,
   )
 
   @Serializable

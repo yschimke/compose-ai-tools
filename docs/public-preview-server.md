@@ -2791,9 +2791,41 @@ a signed-in account. A session alone is not enough — otherwise any account you
 grant into a server whose browse token they never had. In practice this is the `/status` route: the
 page you already have open carries the token, and each waiting request has a **Review →** link.
 
-On the deployed image set `SERVE_AGENT_GRANTS=1` (optional `SERVE_AGENT_GRANT_SCOPES`,
-`SERVE_AGENT_GRANT_MAX_TTL`, `SERVE_AGENT_GRANT_MAX_ACTIVE`, `SERVE_AGENT_GRANT_RATE_LIMIT`); it's
-off by default. The design, and why each control is where it is, is in
+On the deployed image the lane **enables itself where it can work**: leave `SERVE_AGENT_GRANTS`
+unset and it comes on whenever this box has an approver — which, matching the server's own rule, is
+either of:
+
+- **`SERVE_GITHUB_AUTH_CLIENT_ID` / `_CLIENT_SECRET` / `_COOKIE_SECRET` all set**, or
+- **a token-gated box** — `SERVE_PUBLIC` not `1`, with `SERVE_TOKEN` set.
+
+Only a `--public` box with no GitHub auth has neither, and there the server refuses the lane
+outright rather than letting anonymous visitors mint credentials. Neither flat default was right —
+a hardcoded `1` would fail startup on exactly that configuration, and a hardcoded `0` shipped the
+feature switched off on the box it was built for.
+
+**What *approving* then requires is a separate question, and the two conditions stack rather than
+substituting for each other.** Reaching the approval page needs, in order:
+
+| Box | To approve you need |
+|---|---|
+| public + GitHub auth | a signed-in GitHub account |
+| private, no GitHub auth | the browse token (`SERVE_TOKEN`) |
+| **private + GitHub auth** | **both — the browse token *and* a signed-in account** |
+
+The last row is the one to be deliberate about. The server's own front door comes first and a GitHub
+session is not a substitute for it: without that rule, any account the (by default empty)
+`--github-auth-users` allowlist accepts could open a request and approve it into a server whose
+browse token they never had. In practice the token arrives for free — `/status` is where the waiting
+requests are listed, and the page you already have open carries it in its links.
+
+Set it explicitly to override in either direction: `SERVE_AGENT_GRANTS=0` opts out on a box that
+*does* have GitHub auth, and `=1` insists on a box that doesn't — which reaches the server's own
+refusal, deliberately, rather than being quietly downgraded to off. Optional knobs:
+`SERVE_AGENT_GRANT_SCOPES`, `SERVE_AGENT_GRANT_MAX_TTL`, `SERVE_AGENT_GRANT_MAX_ACTIVE`,
+`SERVE_AGENT_GRANT_RATE_LIMIT` — each rejects a malformed value at startup rather than silently
+falling back to its default. The derivation is pinned by
+[`deploy/image/test-agent-grants-default.sh`](../deploy/image/test-agent-grants-default.sh). The
+design, and why each control is where it is, is in
 [docs/design/AGENT_ACCESS_GRANTS.md](design/AGENT_ACCESS_GRANTS.md).
 
 ## Deploying `preview.coo.ee`

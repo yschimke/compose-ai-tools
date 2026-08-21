@@ -245,4 +245,38 @@ class AgentAccessClientIntegrationTest {
   fun `a URL carrying credentials is refused`() {
     assertFailsWith<IllegalArgumentException> { AgentAccessClient("https://u:p@preview.coo.ee") }
   }
+
+  @Test
+  fun `a json request still prints its secret with nowhere to store credentials`() {
+    // `--json` prints the device secret precisely so the caller can poll for itself. Failing on a
+    // missing credential store would open a request on the server and then exit BEFORE printing the
+    // one thing that could redeem it — leaving a human with an approval link that mints a
+    // credential nobody can ever collect. The storeless fallback the refusal message recommends has
+    // to actually work.
+    val out = java.io.ByteArrayOutputStream()
+    val original = System.out
+    try {
+      System.setOut(java.io.PrintStream(out, true))
+      AuthCommand(
+          listOf(
+            "request",
+            "--server",
+            client().origin,
+            "--json",
+            "--no-wait",
+            "--scope",
+            "preview",
+          ),
+          injectedStore = null,
+          openStore = { throw NoCredentialHomeException() },
+        )
+        .run()
+    } finally {
+      System.setOut(original)
+    }
+    val line = out.toString().trim().lines().last()
+    assertTrue(line.startsWith("{"), "expected a JSON line, got: $line")
+    assertTrue(line.contains("deviceSecret"), "the secret must be printed: $line")
+    assertTrue(line.contains("approveUrl"), "the approval link must be printed: $line")
+  }
 }

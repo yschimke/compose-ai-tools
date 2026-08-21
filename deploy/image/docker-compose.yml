@@ -221,6 +221,9 @@ services:
       # SERVE_IMAGE_UPLOAD_REPO (which falls back to SERVE_GITHUB_AUTH_REPO), and the lane refuses
       # to start without one. Off unless asked for.
       SERVE_ACCEPT_IMAGES: "${SERVE_ACCEPT_IMAGES:-}"
+      # Empty means "let the entrypoint decide": on when SERVE_GITHUB_AUTH_* gives it a human to
+      # approve against, off otherwise (the lane refuses to start with no approver, so a flat
+      # default of 1 would break every box without an OAuth app). `0` opts out explicitly.
       SERVE_AGENT_GRANTS: "${SERVE_AGENT_GRANTS:-}"
       SERVE_AGENT_GRANT_SCOPES: "${SERVE_AGENT_GRANT_SCOPES:-}"
       SERVE_AGENT_GRANT_MAX_TTL: "${SERVE_AGENT_GRANT_MAX_TTL:-}"
