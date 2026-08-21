@@ -4442,22 +4442,57 @@ class ServeHttpServer(
     sessionId: String,
     pinnedRevision: String?,
     wasmSrc: String?,
-  ): Map<String, String> {
-    if (pinnedRevision != null) return emptyMap()
+  ): OverrideSeeds {
     val params = requestOverrideParams(sessionId)
-    if (params.isEmpty() || !acceptsBakedFallback()) return params
+    fun seeds(seeded: Map<String, String>) = OverrideSeeds.of(params, seeded)
+    if (pinnedRevision != null) return seeds(emptyMap())
+    if (params.isEmpty() || !acceptsBakedFallback()) return seeds(params)
     val overrideCanReachThePixels =
       renderHost.canApplyOverrides ||
         renderHost.canRenderOverridesFor(preview.id) ||
         wasmSrc != null
-    if (!overrideCanReachThePixels) return emptyMap()
-    if (!isReplayedPreview(renderHost, preview.id)) return params
+    if (!overrideCanReachThePixels) return seeds(emptyMap())
+    if (!isReplayedPreview(renderHost, preview.id)) return seeds(params)
     val parsed =
       ServeOverrides.parse(params, ServeOverrides.declaredKnobKinds(preview)) as? OverrideParse.Ok
-        ?: return params
+        ?: return seeds(params)
     val dropped =
       CatalogLiveRouting.irReplayDroppedOverrideNames(preview.id, parsed.overrides).toSet()
-    return if (dropped.isEmpty()) params else params.filterKeys { it !in dropped }
+    return seeds(if (dropped.isEmpty()) params else params.filterKeys { it !in dropped })
+  }
+
+  /**
+   * A page's request overrides, split into the ones its controls may open on and the ones they may
+   * not.
+   *
+   * Both halves are needed and neither is derivable from the other downstream: the seeded map
+   * paints the markup, and the withheld set is what the page has to TELL the viewer, since
+   * `hydrateFromUrl` reads `location.search` itself and would otherwise restore what the server
+   * declined.
+   */
+  internal data class OverrideSeeds(
+    val seeded: Map<String, String>,
+    val withheld: Set<String>,
+  ) {
+    companion object {
+      /**
+       * [seeded] plus everything in [all] it left behind — narrowed to the per-axis prefixes the
+       * viewer's controls hold, since the display axes (`fontScale`, `device`, …) are hydrated by
+       * their own code paths and named by neither control.
+       */
+      fun of(all: Map<String, String>, seeded: Map<String, String>): OverrideSeeds =
+        OverrideSeeds(
+          seeded = seeded,
+          withheld =
+            all.keys
+              .filter { it !in seeded }
+              .filter {
+                it.startsWith(ServeOverrides.KNOB_PREFIX) ||
+                  it.startsWith(ServeOverrides.RC_NAMED_PREFIX)
+              }
+              .toSet(),
+        )
+    }
   }
 
   private fun RoutingContext.requestOverrideParams(sessionId: String): Map<String, String> =
@@ -6314,6 +6349,11 @@ class ServeHttpServer(
         projectHistory
           ?.takeIf { catalogBundleHost(renderHost)?.provenance == null }
           ?.let { history -> withContext(Dispatchers.IO) { history.timelineJsonFor(preview.id) } }
+      // The request's override params, split into what this page's controls may open on and what
+      // they must not — see [seedableOverrideParams]. Both halves reach the page: the seeds paint
+      // the markup, the rest is published so the viewer's own URL restore defers on them too.
+      val overrideSeeds =
+        seedableOverrideParams(renderHost, preview, sessionId, revisions.pinned, wasmSrc)
       // The publication-aware HEAD probe is network I/O; keep it off Ktor's request dispatcher.
       val executableBundleAvailable =
         withContext(Dispatchers.IO) { renderHost.canDownloadExecutableBundle(preview.id) }
@@ -6340,8 +6380,10 @@ class ServeHttpServer(
           // preview's declaration — unless this page's picture cannot be showing them, in which
           // case seeding is the very disagreement the parameter exists to remove, pointed the other
           // way. See `seedableOverrideParams`.
-          requestOverrides =
-            seedableOverrideParams(renderHost, preview, sessionId, revisions.pinned, wasmSrc),
+          requestOverrides = overrideSeeds.seeded,
+          // …and the axes it declined, so `hydrateFromUrl` defers on them instead of putting them
+          // straight back a frame after load.
+          unseededOverrides = overrideSeeds.withheld,
           // Per-preview: a catalog advertises SVG globally as soon as it carries a `figma/` dir,
           // but
           // a preview whose slug has no baked `figma/<slug>.svg` still 404s the `.svg` lane, so

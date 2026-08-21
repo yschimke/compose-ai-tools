@@ -10441,6 +10441,20 @@ $cards
      */
     requestOverrides: Map<String, String> = emptyMap(),
     /**
+     * The override axes this request named that the page **withheld** from its controls
+     * (`knob.<key>` / `rc.<name>`) — the complement of [requestOverrides] over what the URL asked
+     * for.
+     *
+     * Published on the root as `data-unseeded-overrides`, because the server's decision is only
+     * half of it: `hydrateFromUrl` restores every control from `location.search` on load and on
+     * Back/Forward, so without being told it would put the withheld value straight back and the
+     * markup's honesty would last one frame. The viewer reads this and defers to the declaration
+     * for exactly these keys (`viewer/overrideSeeds.ts`).
+     *
+     * Empty for the ordinary page, where everything the URL names is seedable.
+     */
+    unseededOverrides: Set<String> = emptySet(),
+    /**
      * Whether the session can export a `compose/figma-svg` for its previews (a daemon-backed host
      * or a catalog that carried baked vectors). Drives whether the copyable-links panel offers an
      * SVG download URL alongside the PNG one. Defaults to false (a plain bundle has no SVG lane).
@@ -12184,6 +12198,15 @@ $cards
     val revisionBanner = revisionBannerHtml(revisions, revisionHref)
     val pinnedAttr =
       revisions.pinned?.let { " data-pinned-at=\"${WebEscaping.htmlEscape(it)}\"" }.orEmpty()
+    // The axes the URL named and this page withheld, for `hydrateFromUrl` to defer on. Sorted so
+    // the markup is stable across requests; absent entirely on the ordinary page.
+    val unseededAttr =
+      unseededOverrides
+        .takeIf { it.isNotEmpty() }
+        ?.let {
+          " data-unseeded-overrides=\"${WebEscaping.htmlEscape(it.sorted().joinToString(","))}\""
+        }
+        .orEmpty()
     // `</script>` inside a JSON payload would end the element early, so the only sequence that can
     // break out is neutralised. The payload itself is server-built from the catalog's own manifest.
     val historyInlineHtml =
@@ -12303,7 +12326,7 @@ $cards
         </span>
       </div>
       $historyInlineHtml
-      <div class="cp-viewer"$bgThemeAttr$alwaysDarkAttr$irReplayAttr$replayThemesAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY" data-fold-scope="${foldStorageScope(sessionId, basePath)}"$wasmAttr$rcAttr$historyAttrs$pinnedAttr>
+      <div class="cp-viewer"$bgThemeAttr$alwaysDarkAttr$irReplayAttr$replayThemesAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY" data-fold-scope="${foldStorageScope(sessionId, basePath)}"$unseededAttr$wasmAttr$rcAttr$historyAttrs$pinnedAttr>
         $navDrawer
         <div class="cp-stage"><cp-backend-badge class="cp-backend" id="cp-backend" role="status" aria-live="polite"></cp-backend-badge><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$motionImg$motionPlayer$sourcePanelHtml$specCompare$inspectLayerHtml$stageLiveHint<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         $inspectLegendHtml

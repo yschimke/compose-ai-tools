@@ -24,6 +24,12 @@ import { visibilityMessage } from "./live/session.js";
 import * as rules from "./viewer/rules.js";
 import { viewParam } from "./spec/views.js";
 import { type ApiDocLink, usableApiDocs } from "./viewer/apiDocs.js";
+import {
+    isChecked,
+    knobHydratedValue,
+    rcHydratedValue,
+    unseededOverrides,
+} from "./viewer/overrideSeeds.js";
 
 // Typed handles onto the server-rendered markup this file drives.
 //
@@ -4479,29 +4485,21 @@ function hydrateFromUrl(popped: boolean) {
         setSizeInput("cp-maxH", q.get("maxHeightPx"));
         if (typeof syncSizeRows === "function") syncSizeRows();
     }
+    // The axes this page will not let the URL drive, because its image did not apply them. Read per
+    // pass rather than captured: Back/Forward can land on an entry with a different answer.
+    var unseeded = unseededOverrides(root);
     controls(".cp-knob").forEach(function (el) {
         var key = el.getAttribute("data-knob-key");
         if (!key) return;
-        var value = q.get("knob." + key);
-        if (value === null) value = el.getAttribute("data-knob-initial") || "";
-        // A knob may ride the wire with its legacy `<kind>:` tag (`?knob.count=int:3`), while the
-        // control holds the bare value — the same split the RC knobs below have always handled.
-        // Strip it only when it matches the DECLARED kind, which is exactly when the server strips
-        // it (`ServeOverrides.knobControlValue`): a declared string knob may legitimately hold text
-        // beginning `int:`, and eating that prefix would silently rewrite the value.
-        else {
-            var declaredKind = el.getAttribute("data-knob-kind") || "";
-            if (declaredKind && value.indexOf(declaredKind + ":") === 0)
-                value = value.substring(declaredKind.length + 1);
-            // `?knob.count=` on a non-string knob is skipped by the server's parser, so the render
-            // keeps the declaration — restore that rather than blanking the field beside it. An
-            // empty STRING is a real value (a cleared label) and stays.
-            if (value === "" && declaredKind && declaredKind !== "string")
-                value = el.getAttribute("data-knob-initial") || "";
-        }
+        var value = knobHydratedValue({
+            wireKey: key,
+            urlValue: q.get("knob." + key),
+            initial: el.getAttribute("data-knob-initial") || "",
+            declaredKind: el.getAttribute("data-knob-kind") || "",
+            unseeded: unseeded,
+        });
         if (el instanceof HTMLInputElement && el.type === "checkbox")
-            // `1` or `true` in any case — the parser's rule, and what the server rendered.
-            el.checked = value === "1" || value.toLowerCase() === "true";
+            el.checked = isChecked(value);
         else {
             adoptChoiceValue(el, value);
             el.value = value;
@@ -4510,15 +4508,15 @@ function hydrateFromUrl(popped: boolean) {
     controls(".cp-rc-knob").forEach(function (el) {
         var name = el.getAttribute("data-rc-name");
         if (!name) return;
-        var kind = el.getAttribute("data-rc-kind") || "";
-        var value = q.get("rc." + name);
-        if (value === null) value = el.getAttribute("data-rc-initial") || "";
-        else if (kind && value.indexOf(kind + ":") === 0)
-            value = value.substring(kind.length + 1);
+        var value = rcHydratedValue({
+            name: name,
+            urlValue: q.get("rc." + name),
+            initial: el.getAttribute("data-rc-initial") || "",
+            declaredKind: el.getAttribute("data-rc-kind") || "",
+            unseeded: unseeded,
+        });
         if (el instanceof HTMLInputElement && el.type === "checkbox")
-            // Same widened rule as the declared knobs above, for the same reason: the parser reads
-            // `bool:True` as true, so the box has to be ticked for it.
-            el.checked = value === "1" || value.toLowerCase() === "true";
+            el.checked = isChecked(value);
         else el.value = value;
     });
     // The theme select is seeded (from the URL first, then localStorage) by the sticky script
