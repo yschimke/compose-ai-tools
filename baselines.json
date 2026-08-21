@@ -1396,14 +1396,14 @@
     "serve-viewer-exploded-controls.dark.png": {
       "fixture": "serve-viewer-exploded-controls",
       "theme": "dark",
-      "sha256": "2bc91e912ce911c7980e7eb8e57894a1de1a3177de658b8fecb7c6b5a5669ca1",
-      "size": 113463
+      "sha256": "8958db4be5abac2784fb205034f29b7251e8cceaf11459c6beb4890ec0cd49d0",
+      "size": 117551
     },
     "serve-viewer-exploded-controls.light.png": {
       "fixture": "serve-viewer-exploded-controls",
       "theme": "light",
-      "sha256": "57b8358496cf367d836faed146beb49f8b3406718862b0011a86361b5b55adb0",
-      "size": 112779
+      "sha256": "9b08465f5c8c9c6bba75042040b207d66ef1e18a46a69ea17c6e41930c56bfdd",
+      "size": 112718
     },
     "serve-viewer-exploded.dark.png": {
       "fixture": "serve-viewer-exploded",
@@ -1740,6 +1740,18 @@
       "theme": "light",
       "sha256": "410caeb630070455888cf10c2f54a7a78b9ceb04e37b1faf9b287e7deef3c6a1",
       "size": 144731
+    },
+    "serve-viewer-revision-runs.dark.png": {
+      "fixture": "serve-viewer-revision-runs",
+      "theme": "dark",
+      "sha256": "faa6ac3edf4ee56cc4fd485d377486d4e58e7705b7fdca80d469c4046b468696",
+      "size": 97780
+    },
+    "serve-viewer-revision-runs.light.png": {
+      "fixture": "serve-viewer-revision-runs",
+      "theme": "light",
+      "sha256": "be36ba29c1b92720bfce9f8ebf4e4fe318a0503e9e0162b88200ec97368d324e",
+      "size": 95741
     },
     "serve-viewer-revisions-open.dark.png": {
       "fixture": "serve-viewer-revisions-open",

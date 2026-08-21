@@ -1026,6 +1026,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-viewer-report-open-mobile/dark](renders/serve-viewer-report-open-mobile.dark.png) |
 | `light` | ![serve-viewer-report-open-mobile/light](renders/serve-viewer-report-open-mobile.light.png) |
 
+## serve-viewer-revision-runs
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-revision-runs/dark](renders/serve-viewer-revision-runs.dark.png) |
+| `light` | ![serve-viewer-revision-runs/light](renders/serve-viewer-revision-runs.light.png) |
+
 ## serve-viewer-revisions
 
 | Theme | Capture |
