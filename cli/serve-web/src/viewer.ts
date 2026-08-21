@@ -27,6 +27,7 @@ import { type ApiDocLink, usableApiDocs } from "./viewer/apiDocs.js";
 import {
     isChecked,
     knobHydratedValue,
+    laneAppliesWithholding,
     rcHydratedValue,
     unseededOverrides,
 } from "./viewer/overrideSeeds.js";
@@ -4485,9 +4486,15 @@ function hydrateFromUrl(popped: boolean) {
         setSizeInput("cp-maxH", q.get("maxHeightPx"));
         if (typeof syncSizeRows === "function") syncSizeRows();
     }
-    // The axes this page will not let the URL drive, because its image did not apply them. Read per
-    // pass rather than captured: Back/Forward can land on an entry with a different answer.
-    var unseeded = unseededOverrides(root);
+    // The axes this page will not let the URL drive, because its image did not apply them — scoped
+    // to the lane this pass is restoring INTO. Withholding describes what the server sent, so it
+    // binds the server-rendered lanes and not the ones the browser draws: a Wasm or RC-canvas entry
+    // mounts the component and honours the control, and resetting it to the declaration there would
+    // discard the value that history entry recorded. Read per pass, not captured, because
+    // Back/Forward can land on an entry in a different lane.
+    var unseeded = laneAppliesWithholding(q.get("mode"))
+        ? unseededOverrides(root)
+        : new Set<string>();
     controls(".cp-knob").forEach(function (el) {
         var key = el.getAttribute("data-knob-key");
         if (!key) return;

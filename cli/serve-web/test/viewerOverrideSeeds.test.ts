@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import {
     isChecked,
     knobHydratedValue,
+    laneAppliesWithholding,
     rcHydratedValue,
     unseededOverrides,
 } from "../src/viewer/overrideSeeds.js";
@@ -198,6 +199,35 @@ describe("rcHydratedValue", () => {
 
     it("ignores a blank seed, which the parser skips wholesale", () => {
         assert.equal(rcHydratedValue({ ...int, urlValue: "" }), "5");
+    });
+});
+
+describe("laneAppliesWithholding", () => {
+    /**
+     * Withholding describes the image the SERVER sent, so it binds the lanes the server draws.
+     *
+     * The lanes the browser draws mount the component and honour the control directly, so the URL's
+     * value is the truthful one there. Applying the page-level set to them discards what a history
+     * entry recorded: enter Wasm, edit a knob, leave for the snapshot, press Back, and the restore
+     * would reset the knob to its declaration before reopening Wasm.
+     */
+    it("binds every server-rendered lane, including the default", () => {
+        for (const mode of [
+            "png",
+            "snapshot",
+            "live",
+            "svg",
+            "motion",
+            "spec",
+            "",
+            null,
+        ])
+            assert.equal(laneAppliesWithholding(mode), true, String(mode));
+    });
+
+    it("does not bind the lanes the browser draws", () => {
+        for (const mode of ["wasm", "rc", "rc-wasm"])
+            assert.equal(laneAppliesWithholding(mode), false, mode);
     });
 });
 
