@@ -88,6 +88,22 @@ tasks
 // cannot reach `systemProperty`.
 tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
   systemProperty("studioParity.required", screenshotTestEnabled)
+  // The gate's side-by-side composites are a real output of this task, so declare them as one.
+  //
+  // Undeclared, Gradle neither stores nor restores them, and `testDebugUnitTest` is cacheable: a
+  // FROM-CACHE run on a fresh CI runner therefore leaves `build/studio-parity` empty even though
+  // the parity test genuinely passed. The CI step that asserts the gate compared something then
+  // fails a build that was fine — observed on this PR's first run, which reported
+  // `testDebugUnitTest FROM-CACHE`, `BUILD SUCCESSFUL`, and no composites. Declared, they ride the
+  // cache entry with the test results, so a cache hit restores exactly what the cached run
+  // compared.
+  //
+  // `optional()` because the task legitimately produces none when the gate skips — no source set,
+  // so nothing of ours to compare.
+  outputs
+    .dir(layout.buildDirectory.dir("studio-parity"))
+    .withPropertyName("studioParityComposites")
+    .optional()
 }
 
 dependencies {

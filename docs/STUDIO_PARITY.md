@@ -58,6 +58,12 @@ Layoutlib reference and one of our renders were actually put next to each other.
 A single fixture that stops rendering was already a failure (`our renderer produced no PNG`). These
 two cover the wholesale case, which short-circuits the test before that check runs.
 
+For that count to mean anything the composites have to survive a cache hit: `testDebugUnitTest` is
+cacheable, and CI runs with the build cache on, so a `FROM-CACHE` run on a fresh runner would leave
+`build/studio-parity` empty for a parity test that genuinely passed. The directory is therefore
+declared as an output of the test task (`studioParityComposites`, `optional()`), so a cache hit
+restores exactly what the cached run compared.
+
 Verified rather than reasoned about: with the fixtures' PNGs moved aside and the flag on, the gate
 fails at the assertion; with the flag off, it still skips.
 
