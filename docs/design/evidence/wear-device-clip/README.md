@@ -32,7 +32,7 @@ so the device had no visible edge at all.
 The committed `serve-reference-compare-round-device` fixture, captured by the preview harness. The
 stub render reproduces the real case: transparent corners, a near-black face.
 
-![Reference-compare page for a round device, before and after](https://raw.githubusercontent.com/yschimke/compose-ai-tools/0bc6e0c7810f29d85e5ad90049651b9ef4a7b872/docs/design/evidence/wear-device-clip/reference-compare-round.png)
+![Reference-compare page for a round device, before and after](https://raw.githubusercontent.com/yschimke/compose-ai-tools/3a4f7099fb2ca1f3a5a5a70bc1c971a8cedac738/docs/design/evidence/wear-device-clip/reference-compare-round.png)
 
 ## Where the circle is stated
 
