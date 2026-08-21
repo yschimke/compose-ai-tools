@@ -41,7 +41,10 @@ class ServePinnedRevisionTest {
     """
     {"schema":"design-parity-catalog/v1","system":"compose-m3","components":[
       {"componentId":"Button/Filled","images":[
-        {"path":"images/button-filled/ideal__default__dark.png","theme":"dark"}]}]}
+        {"path":"images/button-filled/ideal__default__dark.png","theme":"dark",
+         "overrides":[{"key":"enabled","type":"bool","label":"enabled",
+           "default":{"kind":"bool","value":true},
+           "current":{"kind":"bool","value":true}}]}]}]}
     """
       .trimIndent()
 
@@ -210,6 +213,40 @@ class ServePinnedRevisionTest {
     // The way back to the live catalog is part of the banner: a pinned page a visitor cannot leave
     // is a dead end rather than a permalink.
     assertTrue(page.contains("view current"), page)
+  }
+
+  /** The knob row for [key], so an assertion reads one control rather than a whole page. */
+  private fun knobRow(page: String, key: String): String =
+    page.lineSequence().first { it.contains("""data-knob-key="$key"""") }
+
+  /**
+   * A deep link's knob values seed the viewer's controls — except where the image beside them is
+   * deliberately NOT the overridden render, which is both of this session's shapes.
+   *
+   * A pinned page answers with the historical baked artifact (`pinnedRenderQuerySuffix` strips
+   * every override from its URL), and a static catalog that accepted `?fallback=baked` answers with
+   * the published snapshot and names what it dropped. Seeding either would tick a box the pixels
+   * never saw — and on a session with no override lane the control is *disabled*, so the visitor
+   * cannot even correct it.
+   */
+  @Test
+  fun `a page whose image ignores the override does not seed its controls`() {
+    val port = start().port
+    val base = "http://127.0.0.1:$port/$system/p/$previewId"
+
+    // The declaration is `true` and each link asks for `false`, so an unseeded control stays
+    // ticked.
+    // Pinned: the picture is the older publish, whatever the link asks for.
+    assertTrue(
+      knobRow(text("$base?at=$oldCommit&knob.enabled=false"), "enabled").contains(" checked"),
+      "a pinned page seeded its controls from the request",
+    )
+
+    // Baked fallback on a catalog with no lane that could apply an override.
+    assertTrue(
+      knobRow(text("$base?knob.enabled=false&fallback=baked"), "enabled").contains(" checked"),
+      "an accepted baked fallback seeded its controls from the request",
+    )
   }
 
   @Test
