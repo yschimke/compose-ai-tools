@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import {
     isChecked,
     knobHydratedValue,
-    laneAppliesWithholding,
+    effectiveUnseeded,
     rcHydratedValue,
     unseededOverrides,
 } from "../src/viewer/overrideSeeds.js";
@@ -202,7 +202,9 @@ describe("rcHydratedValue", () => {
     });
 });
 
-describe("laneAppliesWithholding", () => {
+describe("effectiveUnseeded", () => {
+    const both = new Set(["knob.enabled", "rc.count"]);
+
     /**
      * Withholding describes the image the SERVER sent, so it binds the lanes the server draws.
      *
@@ -211,7 +213,7 @@ describe("laneAppliesWithholding", () => {
      * entry recorded: enter Wasm, edit a knob, leave for the snapshot, press Back, and the restore
      * would reset the knob to its declaration before reopening Wasm.
      */
-    it("binds every server-rendered lane, including the default", () => {
+    it("binds everything on a server-rendered lane, including the default", () => {
         for (const mode of [
             "png",
             "snapshot",
@@ -222,12 +224,45 @@ describe("laneAppliesWithholding", () => {
             "",
             null,
         ])
-            assert.equal(laneAppliesWithholding(mode), true, String(mode));
+            assert.deepEqual(
+                effectiveUnseeded(both, mode, true),
+                both,
+                String(mode),
+            );
     });
 
-    it("does not bind the lanes the browser draws", () => {
-        for (const mode of ["wasm", "rc", "rc-wasm"])
-            assert.equal(laneAppliesWithholding(mode), false, mode);
+    /**
+     * …and on an in-browser lane it still binds the half of the controls that lane cannot reach.
+     *
+     * `wasmOverridePatch()` forwards `.cp-knob` only; the RC canvas and the CMP-Wasm player forward
+     * `.cp-rc-knob` only, and `syncServerControls()` disables the other family. Exempting the whole
+     * set would hydrate a DISABLED control to a value the lane on screen never applies.
+     */
+    it("exempts only the family the browser lane forwards", () => {
+        assert.deepEqual(
+            effectiveUnseeded(both, "wasm", true),
+            new Set(["rc.count"]),
+        );
+        for (const mode of ["rc", "rc-wasm"])
+            assert.deepEqual(
+                effectiveUnseeded(both, mode, true),
+                new Set(["knob.enabled"]),
+                mode,
+            );
+    });
+
+    /**
+     * `?mode=` is a request, not a fact. A stale or hand-shared mode naming a lane this session does
+     * not offer leaves the snapshot displayed — the bookmarked-mode guard returns early on a missing
+     * or disabled radio — so the withholding has to stand.
+     */
+    it("keeps withholding when the requested lane cannot be entered", () => {
+        assert.deepEqual(effectiveUnseeded(both, "wasm", false), both);
+        assert.deepEqual(effectiveUnseeded(both, "rc", false), both);
+    });
+
+    it("leaves an empty set alone", () => {
+        assert.equal(effectiveUnseeded(new Set(), "wasm", true).size, 0);
     });
 });
 

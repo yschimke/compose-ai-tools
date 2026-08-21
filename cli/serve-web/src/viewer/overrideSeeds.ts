@@ -42,23 +42,47 @@ export function unseededOverrides(root: Element | null): Set<string> {
 }
 
 /**
- * The lanes the BROWSER draws: the Wasm app, the Remote Compose JS canvas, and the CMP-Wasm player.
+ * The lanes the BROWSER draws, and the ONE control family each of them forwards.
  *
- * Named here because withholding is a fact about the image the SERVER sent — a pinned revision's
- * historical bytes, a baked fallback, a replay that could not apply the axis. None of that binds a
- * lane that mounts the component in the browser and honours the control directly, so on those the
- * URL's value is the truthful one and hydration runs free.
+ * Withholding is a fact about the image the SERVER sent — a pinned revision's historical bytes, a
+ * baked fallback, a replay that could not apply the axis. It does not bind a lane that mounts the
+ * component in the browser and honours the control directly. But each such lane honours only half
+ * the controls: `wasmOverridePatch()` forwards `.cp-knob` and nothing else, while the RC canvas
+ * (`applyRcOverrides`) and the CMP-Wasm player (`rcWasmNamedValues`) forward `.cp-rc-knob` and
+ * nothing else — and `syncServerControls()` disables the family its lane cannot reach.
+ *
+ * So the exemption is per family, not per lane. `?mode=wasm&rc.x=…` on a withheld page must keep
+ * withholding `rc.x`, or a disabled control adopts a value the lane on screen never applies.
  */
-const IN_BROWSER_LANES = new Set(["wasm", "rc", "rc-wasm"]);
+const IN_BROWSER_LANE_FAMILY: Record<string, string> = {
+    wasm: "knob.",
+    rc: "rc.",
+    "rc-wasm": "rc.",
+};
 
 /**
- * Whether a page's withheld axes apply to [mode] — true for every server-rendered lane (the
- * snapshot, the daemon stream, SVG, a recording, an imported spec), false for [IN_BROWSER_LANES].
+ * The withheld axes that still bind, given the lane this restore is heading for.
  *
- * Absent / unknown reads as the snapshot, which is where a page without `?mode=` opens.
+ * Everything stays withheld on a server-rendered lane (the snapshot, the daemon stream, SVG, a
+ * recording, an imported spec) and on a page with no `?mode=`, which is where the snapshot opens.
+ *
+ * [laneEnterable] is the caller's answer to "will that lane actually draw this page?" — the mode
+ * param is a request, not a fact. A stale or hand-shared `?mode=wasm` on a page with no Wasm lane
+ * leaves the snapshot displayed (the bookmarked-mode guard returns early on a missing or disabled
+ * radio), so dropping the withholding for it would let a control adopt an override the snapshot
+ * never applied.
  */
-export function laneAppliesWithholding(mode: string | null): boolean {
-    return !IN_BROWSER_LANES.has(mode || "");
+export function effectiveUnseeded(
+    all: Set<string>,
+    mode: string | null,
+    laneEnterable: boolean,
+): Set<string> {
+    if (all.size === 0) return all;
+    const family = laneEnterable
+        ? IN_BROWSER_LANE_FAMILY[mode || ""]
+        : undefined;
+    if (family === undefined) return all;
+    return new Set([...all].filter((axis) => !axis.startsWith(family)));
 }
 
 /**
