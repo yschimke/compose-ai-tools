@@ -61,8 +61,25 @@ class ServeThemeReplayLaneTest {
     val replayedId = "$name-replayed"
     val liveId = "$name-live"
 
+    /**
+     * One declared bool knob per preview, so a page has a control to read. `true` by default, so a
+     * link asking for `false` is visible in the markup exactly when it was seeded.
+     */
+    private val enabledKnob =
+      listOf(
+        ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration(
+          key = "enabled",
+          type = "bool",
+          label = "enabled",
+          default = ee.schimke.composeai.data.overrides.PreviewOverrideValue.BooleanValue(true),
+        )
+      )
+
     override val previews =
-      listOf(ServePreview(replayedId, "Replayed"), ServePreview(liveId, "Live"))
+      listOf(
+        ServePreview(replayedId, "Replayed", overrides = enabledKnob),
+        ServePreview(liveId, "Live", overrides = enabledKnob),
+      )
     override val label = name
     override val canRenderOverrides = true
 
@@ -128,6 +145,38 @@ class ServeThemeReplayLaneTest {
       }
 
   private fun themeOption(theme: ServeTheme) = "\"theme:${theme.providerFqn}\""
+
+  /** The knob row for [key] on a fetched page, so an assertion reads one control. */
+  private fun knobRow(page: String, key: String): String =
+    page.lineSequence().first { it.contains("""data-knob-key="$key"""") }
+
+  /**
+   * A deep link seeds the viewer's controls only with the axes this page's image could be carrying,
+   * and on a replayed preview a `knob.*` is not one of them.
+   *
+   * `?fallback=baked` makes `respondDroppedOverrides` answer with pixels that ignored what it could
+   * not apply. A replayed preview has no composition for a named knob to reach — that is what
+   * `CatalogLiveRouting.irReplayDroppedOverrideNames` names — even though this host renders every
+   * other axis perfectly well, so a host-wide "can this session apply overrides?" reads `true` and
+   * would have seeded a control the pixels never saw.
+   *
+   * The recomposing twin is the control case: same host, same link, and there the render DOES apply
+   * it, so withholding the seed would be the same disagreement pointing the other way.
+   */
+  @Test
+  fun `a baked fallback seeds the axes its render kept, and withholds the ones replay drops`() {
+    val replayed = get("/mixed/p/${mixed.replayedId}?knob.enabled=false&fallback=baked")
+    assertTrue(
+      knobRow(replayed, "enabled").contains(" checked"),
+      "a replayed preview seeded a knob its render dropped",
+    )
+
+    val live = get("/mixed/p/${mixed.liveId}?knob.enabled=false&fallback=baked")
+    assertFalse(
+      knobRow(live, "enabled").contains(" checked"),
+      "a recomposing preview withheld a knob its render applied",
+    )
+  }
 
   // ---------------------------------------------------------------------------------------------
   // The socket lanes.

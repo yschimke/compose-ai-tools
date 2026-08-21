@@ -4417,29 +4417,47 @@ class ServeHttpServer(
    * pixels never had — the same contradiction, drawn the other way round, and worse for being on a
    * *disabled* control the visitor cannot correct.
    *
-   * Two such pages, both of which answer with bytes that ignored the override on purpose:
-   * - a **pinned revision** (`?at=<sha>`), whose image is the historical baked artifact —
-   *   `pinnedRenderQuerySuffix` strips every render override from its URL for exactly this reason;
-   * - an accepted **baked fallback** (`?fallback=baked`) on a preview with no lane that could have
-   *   applied one — `respondDroppedOverrides` returns the published snapshot and names what it
-   *   dropped. "No lane" is all three: neither serve-side render path, and no in-browser Wasm app
-   *   ([wasmSrc]) that would mount the component with the override itself.
+   * A **pinned revision** (`?at=<sha>`) drops every seed: its image is the historical baked
+   * artifact, and `pinnedRenderQuerySuffix` strips every render override from that URL for exactly
+   * this reason.
    *
-   * A daemon-backed page keeps its seeds: there the override reaches the renderer, so the control
-   * and the pixels agree by doing the ordinary thing.
+   * Otherwise only an accepted **baked fallback** (`?fallback=baked`) can answer with pixels that
+   * ignored an override — `respondDroppedOverrides` returns them and names what it dropped — and
+   * *which* seeds to withhold there is a question about **axes**, not about the host. Two ways an
+   * axis fails to reach the pixels, and a page can be in either:
+   * - the session has no lane that could apply one at all: neither serve-side render path, and no
+   *   in-browser Wasm app ([wasmSrc]) that would mount the component with the override itself;
+   * - the preview is **replayed** from a captured Remote Compose document rather than recomposed,
+   *   so a `knob.*` (and a string `rc.*`) has no composition to reach, even though the host renders
+   *   perfectly well. [CatalogLiveRouting.irReplayDroppedOverrideNames] is the authority on that
+   *   set, and asking it — rather than a host-wide capability — is what keeps this guard and the
+   *   render lane's own refusal ([droppedOverridesFor]) answering the same question.
+   *
+   * Everything the render can honour still seeds, including on those pages: withholding an axis the
+   * pixels DID apply would recreate the disagreement pointing the other way.
    */
   private fun RoutingContext.seedableOverrideParams(
     renderHost: ServeHost,
-    previewId: String,
+    preview: ServePreview,
     sessionId: String,
     pinnedRevision: String?,
     wasmSrc: String?,
   ): Map<String, String> {
     if (pinnedRevision != null) return emptyMap()
+    val params = requestOverrideParams(sessionId)
+    if (params.isEmpty() || !acceptsBakedFallback()) return params
     val overrideCanReachThePixels =
-      renderHost.canApplyOverrides || renderHost.canRenderOverridesFor(previewId) || wasmSrc != null
-    if (!overrideCanReachThePixels && acceptsBakedFallback()) return emptyMap()
-    return requestOverrideParams(sessionId)
+      renderHost.canApplyOverrides ||
+        renderHost.canRenderOverridesFor(preview.id) ||
+        wasmSrc != null
+    if (!overrideCanReachThePixels) return emptyMap()
+    if (!isReplayedPreview(renderHost, preview.id)) return params
+    val parsed =
+      ServeOverrides.parse(params, ServeOverrides.declaredKnobKinds(preview)) as? OverrideParse.Ok
+        ?: return params
+    val dropped =
+      CatalogLiveRouting.irReplayDroppedOverrideNames(preview.id, parsed.overrides).toSet()
+    return if (dropped.isEmpty()) params else params.filterKeys { it !in dropped }
   }
 
   private fun RoutingContext.requestOverrideParams(sessionId: String): Map<String, String> =
@@ -6323,13 +6341,7 @@ class ServeHttpServer(
           // case seeding is the very disagreement the parameter exists to remove, pointed the other
           // way. See `seedableOverrideParams`.
           requestOverrides =
-            seedableOverrideParams(
-              renderHost,
-              preview.id,
-              sessionId,
-              revisions.pinned,
-              wasmSrc,
-            ),
+            seedableOverrideParams(renderHost, preview, sessionId, revisions.pinned, wasmSrc),
           // Per-preview: a catalog advertises SVG globally as soon as it carries a `figma/` dir,
           // but
           // a preview whose slug has no baked `figma/<slug>.svg` still 404s the `.svg` lane, so
