@@ -399,9 +399,9 @@ pins source text is a screenshot of code.
 
 ## Capture determinism
 
-Two runs of the same tree must produce byte-identical PNGs. Two things enforce
-that, both added for issue #3837 after four `serve-*` captures were found
-differing between runs of unmodified code:
+Two runs of the same tree must produce byte-identical PNGs. Three things enforce
+that. The first two were added for issue #3837, after four `serve-*` captures
+were found differing between runs of unmodified code; the third for issue #4392:
 
 - **Rasterization** — `playwright.config.mjs` launches Chromium with
   `--disable-partial-raster --disable-skia-runtime-opts`. Without them, cached
@@ -412,6 +412,19 @@ differing between runs of unmodified code:
   near it. Deliberately NOT `--disable-lcd-text` / `--disable-gpu-rasterization`
   — they fix it too, but change glyph rasterization and move 12–20k pixels on
   every capture.
+- **Scroll animation** — the runner installs an init script (`pinScrollsInstant`)
+  that forces `behavior: "instant"` on every scroll API taking an options bag,
+  before the page's own scripts run. The catalog tree jumps to a clicked row's
+  destination with `scrollIntoView({ behavior: "smooth" })`, and that animation
+  outlives the `aria-expanded` wait the state ends on: the sticky header and the
+  sticky sidebar are then photographed mid-glide, so a full-page capture differs
+  run to run by nothing but three integer translations (issue #4392 —
+  `serve-landing-tree-depth-component-open` produced four distinct PNGs in five
+  runs of identical code). Waiting the animation out does NOT work: a smooth
+  scroll is eased, so its opening frames move less than a pixel and a
+  "same offset two frames running" test calls it finished before it has begun.
+  `settleScroll` still runs at the shutter as a guard for anything that scrolls
+  itself on a timer.
 - **Pointer position** — a `FIXTURE_STATES` entry can set `parkPointer: true`,
   which moves the mouse to (0, 0) before the shot. `page.click()` leaves the
   pointer where it clicked, so a state that expands something slides fresh rows
