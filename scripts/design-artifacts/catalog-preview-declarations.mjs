@@ -33,7 +33,7 @@ function sidecarDeclarations(bundle, previewId, suffix) {
  * sticker states no device and no background, and a `previewParams: {}` on every image would be
  * pure noise. Kotlin reads a missing record back as null and keeps its existing behaviour.
  */
-function presentationParams(params) {
+export function presentationParams(params) {
   if (!params) return null;
   const out = {};
   if (params.uiMode) out.uiMode = params.uiMode;

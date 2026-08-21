@@ -108,6 +108,26 @@ class ServeBakedCatalogPreviewParamsTest {
     assertTrue(previewOf(host, "timetext").deviceFrame?.isRound == true)
   }
 
+  @Test
+  fun `an entry whose only metadata is the ground and frame still reaches the host`() {
+    // The flat-catalog shape, and the one the manifest-emission guard originally dropped: no state,
+    // no theme, no section, no componentId, no knobs — just the `@Preview` params. Decoding them
+    // from `catalog.json` and then writing no manifest entry loses them just as completely as never
+    // reading them, and it fails silently.
+    val host =
+      bakedCatalog(
+        """
+        {"timetext":{"previewParams":{"showBackground":true,"backgroundColor":4278190080,
+                  "device":"id:wearos_small_round"}}}
+        """
+          .trimIndent()
+      )
+    val preview = previewOf(host, "timetext")
+    assertTrue(preview.showBackground)
+    assertEquals(0xFF000000L, preview.backgroundColor)
+    assertTrue(preview.deviceFrame?.isRound == true)
+  }
+
   private companion object {
     /** `PreviewBackdrop.Source.PREVIEW_BACKGROUND_COLOR`'s wire form. */
     const val PreviewBackdropSourceOfTest = "preview.backgroundColor"

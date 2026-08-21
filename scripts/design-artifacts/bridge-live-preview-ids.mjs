@@ -11,6 +11,7 @@
  */
 
 import { breakpointMatcher, catalogBreakpoints } from "./catalog-breakpoints.mjs";
+import { presentationParams } from "./catalog-preview-declarations.mjs";
 
 /**
  * Theme of a daemon preview id. The catalog's multipreview (`@CatalogModes` /
@@ -101,6 +102,9 @@ function variantIdentity(preview) {
       : null;
   return {
     id: preview.id,
+    // The ground and frame this preview states, carried on the identity so the density stamp below
+    // can fill them in for a catalog that has no live lane — see `stampPreviewDensities`.
+    previewParams: presentationParams(params),
     density:
       typeof params.density === "number" && Number.isFinite(params.density) && params.density > 0
         ? params.density
@@ -536,6 +540,19 @@ export function stampPreviewDensities(manifest, spec, bundles) {
       if (density !== undefined) {
         image.density = density;
         stamped++;
+      }
+      // The `@Preview` ground and device frame, for a catalog with NO live lane. The exact stamp in
+      // `applyCatalogPreviewDeclarations` keys off `image.previewId`, which only the live bridge
+      // sets, and the driver calls it only when a live bundle or a source module exists — so a
+      // purely static catalog published those images with no `previewParams` at all, and the
+      // read-only server it is served on fell back to the catalog stage and a square frame. That is
+      // precisely the path the record was added for.
+      //
+      // `??=`, so the exact match wins wherever the bridge ran: this resolution is the same
+      // function+variant scoring `density` already trusts, but an id match is still better evidence
+      // than a score.
+      if (candidate?.previewParams) {
+        image.previewParams ??= candidate.previewParams;
       }
     }
   }

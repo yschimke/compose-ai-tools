@@ -551,7 +551,12 @@ class ServeCatalogStore(
             image.remoteComposeKnobs.isNotEmpty() ||
             image.supportsFocus ||
             image.supportsGestures ||
-            image.fixedTheme
+            image.fixedTheme ||
+            // Without this an image whose ONLY metadata is its `@Preview` ground and frame gets no
+            // manifest entry at all, so the params are decoded from `catalog.json` and then
+            // dropped on the floor. That is the ordinary shape for a flat catalog: no state, no
+            // theme, no section, no knobs — exactly the previews this record was added for.
+            image.previewParams != null
         ) {
           variants[id] =
             VariantMeta(

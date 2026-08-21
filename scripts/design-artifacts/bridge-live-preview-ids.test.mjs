@@ -1397,3 +1397,78 @@ test("a Wear catalog that declares no breakpoints still resolves through the def
     ],
   );
 });
+
+test("a catalog with no live lane still gets the @Preview ground and device frame", () => {
+  // The gap this closes: `applyCatalogPreviewDeclarations` keys off `image.previewId`, which only
+  // the live bridge sets, and the driver calls it only when a live bundle or a source module
+  // exists. A purely static catalog therefore published its images with no `previewParams`, and the
+  // read-only server it is served on fell back to the catalog stage and a square device frame —
+  // exactly the path the record exists for. This resolution runs unconditionally.
+  const spec = {
+    system: "wear-m3",
+    groups: [{ components: [{ componentId: "Template/TimeText", preview: "TimeText" }] }],
+  };
+  const manifest = {
+    components: [
+      { componentId: "Template/TimeText", images: [{ state: "default", path: "tt.png" }] },
+    ],
+  };
+  const bundle = {
+    previews: [
+      {
+        id: "TimeText_Large_Round",
+        functionName: "TimeText",
+        params: {
+          density: 2,
+          device: "id:wearos_large_round",
+          widthDp: 227,
+          heightDp: 227,
+          showBackground: true,
+          backgroundColor: 4278190080,
+        },
+      },
+    ],
+  };
+
+  stampPreviewDensities(manifest, spec, [bundle]);
+  const image = manifest.components[0].images[0];
+  assert.equal(image.previewId, undefined, "no live bridge ran");
+  assert.deepEqual(image.previewParams, {
+    showBackground: true,
+    backgroundColor: 4278190080,
+    device: "id:wearos_large_round",
+    widthDp: 227,
+    heightDp: 227,
+  });
+});
+
+test("an exact previewId stamp is not overwritten by the scored fallback", () => {
+  // Where the live bridge DID run, `applyCatalogPreviewDeclarations` has already matched by id.
+  // This pass resolves by function+variant scoring — good enough for `density`, but an id match is
+  // better evidence, so it must only fill a gap and never replace one.
+  const spec = {
+    system: "wear-m3",
+    groups: [{ components: [{ componentId: "Template/TimeText", preview: "TimeText" }] }],
+  };
+  const exact = { device: "id:wearos_small_round", showBackground: true };
+  const manifest = {
+    components: [
+      {
+        componentId: "Template/TimeText",
+        images: [{ state: "default", path: "tt.png", previewParams: exact }],
+      },
+    ],
+  };
+  const bundle = {
+    previews: [
+      {
+        id: "TimeText",
+        functionName: "TimeText",
+        params: { density: 2, device: "id:wearos_large_round" },
+      },
+    ],
+  };
+
+  stampPreviewDensities(manifest, spec, [bundle]);
+  assert.deepEqual(manifest.components[0].images[0].previewParams, exact);
+});
