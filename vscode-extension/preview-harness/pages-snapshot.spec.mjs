@@ -611,6 +611,97 @@ async function filterTo(page, query) {
   await page.waitForFunction(() => document.activeElement?.id !== "cp-search");
 }
 
+/**
+ * Take the ANIMATION out of the page's own scrolling, before its scripts get to run.
+ *
+ * The catalog tree moves the page for you: every row that names an in-page destination ends its
+ * click handler with `target.scrollIntoView({ behavior: "smooth", block: "start" })`
+ * (`ServeWeb.kt`), and the same option appears in the keyboard navigation and the report launcher.
+ * That is a real animation — the click resolves, the `aria-expanded` wait the state ends on
+ * resolves, and the document is still gliding when the shutter opens.
+ *
+ * Nothing in such a capture looks broken, which is what makes it expensive: the sticky site header
+ * and the sticky sidebar (`.cp-catalog-menu` is `position: sticky` above 960px) are simply painted
+ * at whatever offset that frame caught, and a full-page screenshot bakes it in.
+ * `serve-landing-tree-depth-component-open` came back "changed" on three consecutive runs of a PR
+ * that touches nothing on that page (issue #4392), the two captures differing by three integer
+ * translations — 29px of header, 15px of sidebar, an unmoved grid — and by nothing else: the
+ * sidebar region was pixel-perfect once shifted. Locally the same state produced FOUR distinct
+ * PNGs in five runs of identical code, the shutter catching scrollY 19, 33 and 51 on three of
+ * them — a scroll still on its way to where it was headed.
+ *
+ * Waiting the animation out was tried first and is not enough: a smooth scroll is eased, so its
+ * opening frames move less than a pixel and any "same offset two frames running" test calls it
+ * finished before it has begun (all four PNGs above are from that version). So take the animation
+ * away instead — force `behavior: "instant"` on every scroll API that takes an options bag, which
+ * lands the page on exactly the offset the smooth scroll was heading for, synchronously, inside the
+ * click. Same destination, no frames in between to photograph.
+ *
+ * This is the scroll equivalent of the screenshot's own `animations: "disabled"`, and it is
+ * deliberately a capture-time shim rather than a change to the pages: what the visitor gets is a
+ * smooth scroll, and the harness has no pixels riding on how it gets there. The argument forms that
+ * carry no options bag — `scrollTo(x, y)`, `scrollIntoView(true)` — are already instant unless CSS
+ * asks otherwise, and no serve stylesheet sets `scroll-behavior: smooth`.
+ */
+async function pinScrollsInstant(page) {
+  await page.addInitScript(() => {
+    const instant = (args) => {
+      const [options] = args;
+      return options && typeof options === "object"
+        ? [{ ...options, behavior: "instant" }, ...args.slice(1)]
+        : args;
+    };
+    for (const [proto, names] of [
+      [Element.prototype, ["scrollIntoView", "scrollTo", "scrollBy", "scroll"]],
+      [Window.prototype, ["scrollTo", "scrollBy", "scroll"]],
+    ]) {
+      for (const name of names) {
+        const original = proto[name];
+        if (typeof original !== "function") continue;
+        proto[name] = function (...args) {
+          return original.apply(this, instant(args));
+        };
+      }
+    }
+  });
+}
+
+/**
+ * …and then check, at the shutter, that nothing is still moving.
+ *
+ * The shim above removes the scrolling this suite actually provokes; this is the guard that says so
+ * — offsets identical across two consecutive frames, for the document and for every element
+ * currently holding a scroll offset of its own (the sidebar above 960px is one, the mobile chip
+ * strips are others). With instant scrolls it passes on the first poll and costs a frame; if some
+ * future surface scrolls itself on a timer or a rAF loop, it waits for that instead of shooting
+ * through it.
+ *
+ * Bounded and tolerant, like the image-decode wait beside it: a page that never settles should cost
+ * one short timeout rather than the whole capture.
+ */
+async function settleScroll(page) {
+  await page
+    .waitForFunction(
+      () =>
+        new Promise((resolve) => {
+          const at = () => {
+            const parts = [window.scrollX, window.scrollY];
+            for (const el of document.querySelectorAll("*"))
+              if (el.scrollTop || el.scrollLeft)
+                parts.push(el.scrollTop, el.scrollLeft);
+            return parts.join(",");
+          };
+          const first = at();
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => resolve(at() === first)),
+          );
+        }),
+      null,
+      { timeout: 5_000 },
+    )
+    .catch(() => {});
+}
+
 const FIXTURE_STATES = [
   {
     // The report launcher OPEN, which is the only state in which it says anything. Closed it is a
@@ -2762,6 +2853,8 @@ for (const fixture of listPageFixtures()) {
         }),
       );
       await page.emulateMedia({ colorScheme: theme });
+      // Before the navigation, so the page's own scripts see the instant-scroll shim (#4392).
+      await pinScrollsInstant(page);
       await page.goto(
         `/preview-harness/fixtures/pages/${fixture}.html${FIXTURE_QUERY[fixture] || ""}`,
       );
@@ -2958,6 +3051,9 @@ for (const fixture of listPageFixtures()) {
         expect(clip.offBy).toBeLessThan(1);
       }
 
+      // A page that arrives on a fragment, or whose boot scrolled something into view, must be
+      // still before the shutter opens — see `settleScroll`.
+      await settleScroll(page);
       await page.screenshot({
         path: resolve(outDir, `${fixture}.${theme}.png`),
         fullPage: true,
@@ -3003,6 +3099,11 @@ for (const fixture of listPageFixtures()) {
         if (state.parkPointer) {
           await page.mouse.move(0, 0);
         }
+        // The state's own interaction may have set the page moving — a tree row's click scrolls
+        // its destination to the top, smoothly (issue #4392). Let that finish, or the sticky
+        // header and sidebar are photographed mid-glide and the capture differs run to run
+        // without anything on the page having changed.
+        await settleScroll(page);
         await page.screenshot({
           path: resolve(outDir, `${fixture}-${state.suffix}.${theme}.png`),
           fullPage: true,
@@ -3310,6 +3411,49 @@ test("contract · the spec lane compares the frame that was on the stage", async
   await settled();
   await expect.poll(() => requests.length).toBe(beforeLive + 1);
   expect(requests.at(-1).pathname.endsWith(".png")).toBe(true);
+});
+
+test("contract · a tree row's jump has landed before the shutter, not during it", async ({
+  page,
+}) => {
+  for (const [name, contentType] of SERVE_ASSETS) {
+    await page.route(`**/assets/serve/**/${name}`, (route) =>
+      route.fulfill({ path: resolve(serveAssetsDir, name), contentType }),
+    );
+  }
+  await page.route("**/render/**", (route) =>
+    route.fulfill({ path: renderPlaceholder, contentType: "image/png" }),
+  );
+  // The capture path's own shim, installed the way the runner installs it — before the
+  // navigation, so the page's inline tree script is already patched when it binds its clicks.
+  await pinScrollsInstant(page);
+  await page.goto(
+    "/preview-harness/fixtures/pages/serve-landing-tree-depth.html",
+  );
+
+  const row =
+    '.cp-tree-component[data-group="cp-card-button-filled__ideal__default__light"]';
+  await page.click(row);
+  await page.waitForFunction(
+    (sel) =>
+      document.querySelector(sel)?.getAttribute("aria-expanded") === "true",
+    row,
+  );
+
+  // The click really does move the page. Without this the assertions below would hold on a page
+  // that never scrolled at all — and the scroll IS the flake (issue #4392), so a version of this
+  // test that passes vacuously is worse than none.
+  const landed = await page.evaluate(() => window.scrollY);
+  expect(landed).toBeGreaterThan(0);
+
+  // …and the move is already OVER at the moment `serve-landing-tree-depth-component-open` shoots.
+  // Unpinned, this is mid-glide: the offset keeps climbing for a few hundred milliseconds, and
+  // the sticky header and sidebar are painted wherever it got to — three integer translations
+  // that the diff bot reports as a changed capture on PRs that touch nothing here.
+  await settleScroll(page);
+  expect(await page.evaluate(() => window.scrollY)).toBe(landed);
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() => window.scrollY)).toBe(landed);
 });
 
 test("contract · the sidebar filter follows the pane it is pointed at", async ({
