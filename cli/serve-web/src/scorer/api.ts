@@ -21,7 +21,7 @@ import {
 } from "./frames.js";
 import { scorePlanes } from "./planes.js";
 import { translateOf } from "./svgTranslate.js";
-import { MAX_SIDE } from "./tuning.js";
+import { COMPARISON_GROUNDS, MAX_SIDE } from "./tuning.js";
 
 export interface Measurement {
     /** Structural match, 0–100. */
@@ -55,6 +55,96 @@ function comparisonSize(box: { width: number; height: number }) {
     };
 }
 
+/** Paints one side of a comparison onto whichever ground it is handed. */
+type Draw = (context: CanvasRenderingContext2D) => void;
+
+/**
+ * The structural match of two drawings, scored once per {@link COMPARISON_GROUNDS} and reported as
+ * the **worst** result.
+ *
+ * Every scorer here goes through this rather than compositing once, because a single opaque ground
+ * silently deletes ink that matches it and `scorePlanes` scores the resulting pair of blanks as
+ * `100`. Taking the minimum is what makes that unrecoverable-looking case recoverable: content
+ * annihilated on white survives on black and vice versa, so the ground that still *has* the evidence
+ * is the one that decides the number.
+ *
+ * The pessimism this introduces on an honest pair is small and symmetric — the two grounds disagree
+ * only by resampling noise on content that is visible on both — and it is the right direction to err
+ * in for a metric whose job is to find differences.
+ */
+async function scoreOnEveryGround(
+    drawReference: Draw,
+    drawCandidate: Draw,
+    width: number,
+    height: number,
+): Promise<number> {
+    // EVERY plane is rasterised before the first await, not one ground at a time.
+    //
+    // `scorePlanes` yields to the event loop every eighth row, and a source is not always a still:
+    // `scoreCanvas`'s candidate is a live canvas owned by the Remote Compose player, which schedules
+    // its own animation frames. Scoring ground-by-ground would let it repaint between passes, so the
+    // two grounds would measure two different frames and the minimum of those is neither — a
+    // single-shot score that changes when nothing changed.
+    const planes = COMPARISON_GROUNDS.map((ground) => ({
+        reference: grayFromDraw(drawReference, width, height, ground),
+        candidate: grayFromDraw(drawCandidate, width, height, ground),
+    }));
+
+    let worst = 100;
+    for (const { reference, candidate } of groundsWorthScoring(planes)) {
+        worst = Math.min(
+            worst,
+            await scorePlanes(reference, candidate, width, height),
+        );
+    }
+    return worst;
+}
+
+/** One comparison, composited onto one ground. */
+export interface GroundPlanes {
+    reference: Float32Array;
+    candidate: Float32Array;
+}
+
+/**
+ * Which of the rasterised grounds actually deserve a score: all of them, or only the first.
+ *
+ * A second ground only means something when there is alpha for it to show through. An opaque image
+ * composites identically onto every ground, so its planes come back equal — which is also how this
+ * detects opacity, for free, without rasterising or decoding anything extra.
+ *
+ * The case it guards is a MIXED pair: an opaque reference against a render with a transparent
+ * surround. Nothing about the reference moves between grounds while all of the render's surround
+ * does, so the black pass would report a difference that is in the grounds rather than in the
+ * artwork, and `scoreOnEveryGround`'s minimum would take it as the answer. That is not hypothetical
+ * — a design-page reference is a crop of a rasterised sheet, opaque background and all.
+ *
+ * When BOTH sides are opaque the extra grounds are merely redundant and the minimum is a no-op, so
+ * dropping them costs nothing. When both carry alpha, scoring all of them is the whole point.
+ */
+export function groundsWorthScoring(
+    planes: ReadonlyArray<GroundPlanes>,
+): ReadonlyArray<GroundPlanes> {
+    const varies = (side: keyof GroundPlanes) =>
+        planes.some((plane) => !samePlane(plane[side], planes[0][side]));
+    return varies("reference") && varies("candidate") ? planes : [planes[0]];
+}
+
+/**
+ * Whether two luminance planes are the same picture.
+ *
+ * The tolerance is for a nearly-opaque pixel: alpha 254 lets a sliver of ground through and moves a
+ * luminance by well under one unit, which is not the alpha this is looking for. Anything that
+ * genuinely shows its ground moves by far more.
+ */
+function samePlane(a: Float32Array, b: Float32Array): boolean {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (Math.abs(a[i] - b[i]) > 1) return false;
+    }
+    return true;
+}
+
 /**
  * Score a baked PNG against an SVG of the SAME render.
  *
@@ -77,7 +167,9 @@ export async function scoreSvgUrls(
     const svg = await svgImage(text);
     const render = imageDimensions(png);
     const { scale, width, height } = comparisonSize(render);
-    const reference = grayFromDraw(
+    const translate = translateOf(text);
+    const svgSize = imageDimensions(svg);
+    return scoreOnEveryGround(
         (context) =>
             context.drawImage(
                 png,
@@ -86,12 +178,6 @@ export async function scoreSvgUrls(
                 render.width * scale,
                 render.height * scale,
             ),
-        width,
-        height,
-    );
-    const translate = translateOf(text);
-    const svgSize = imageDimensions(svg);
-    const candidate = grayFromDraw(
         (context) =>
             context.drawImage(
                 svg,
@@ -103,7 +189,6 @@ export async function scoreSvgUrls(
         width,
         height,
     );
-    return scorePlanes(reference, candidate, width, height);
 }
 
 /** Score a baked PNG against a canvas something else has already drawn — the RC lane's shape. */
@@ -123,9 +208,7 @@ export async function scoreCanvas(
                 render.width * scale,
                 render.height * scale,
             );
-    const reference = grayFromDraw(draw(png), width, height);
-    const candidate = grayFromDraw(draw(sourceCanvas), width, height);
-    return scorePlanes(reference, candidate, width, height);
+    return scoreOnEveryGround(draw(png), draw(sourceCanvas), width, height);
 }
 
 /**
@@ -163,26 +246,23 @@ export async function scoreImages(
 ): Promise<Measurement> {
     const boxes = normalisedBoxes(referenceImage, candidateImage);
     const { width, height } = comparisonSize(boxes.candidate);
-    const plane = (image: Frame, box: typeof boxes.candidate) =>
-        grayFromDraw(
-            (context) =>
-                context.drawImage(
-                    image,
-                    box.x,
-                    box.y,
-                    box.width,
-                    box.height,
-                    0,
-                    0,
-                    width,
-                    height,
-                ),
-            width,
-            height,
-        );
-    const percent = await scorePlanes(
-        plane(referenceImage, boxes.reference),
-        plane(candidateImage, boxes.candidate),
+    const paint =
+        (image: Frame, box: typeof boxes.candidate) =>
+        (context: CanvasRenderingContext2D) =>
+            context.drawImage(
+                image,
+                box.x,
+                box.y,
+                box.width,
+                box.height,
+                0,
+                0,
+                width,
+                height,
+            );
+    const percent = await scoreOnEveryGround(
+        paint(referenceImage, boxes.reference),
+        paint(candidateImage, boxes.candidate),
         width,
         height,
     );

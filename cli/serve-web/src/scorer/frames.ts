@@ -12,7 +12,7 @@ import {
     type NormalisedBoxes,
     type Size,
 } from "./contentBox.js";
-import { BOX_SAMPLE_SIDE, COMPARISON_BACKDROP } from "./tuning.js";
+import { BOX_SAMPLE_SIDE } from "./tuning.js";
 
 /** Anything decoded that a canvas can draw and that reports its own size. */
 export type Frame = CanvasImageSource & {
@@ -69,11 +69,18 @@ function readableContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
     }) as CanvasRenderingContext2D;
 }
 
-/** Whatever `draw` paints, on the fixed backdrop, as a luminance plane. */
+/**
+ * Whatever `draw` paints, on `ground`, as a luminance plane.
+ *
+ * The ground is a parameter rather than a constant because a score is taken on more than one of them
+ * — see {@link COMPARISON_GROUNDS}. Both sides of a given comparison must be handed the same one, or
+ * the pair differs by the ground everywhere.
+ */
 export function grayFromDraw(
     draw: (context: CanvasRenderingContext2D) => void,
     width: number,
     height: number,
+    ground: string,
 ): Float32Array {
     const canvas = document.createElement("canvas");
     canvas.width = width;
@@ -81,7 +88,7 @@ export function grayFromDraw(
     const context = readableContext(canvas);
     context.imageSmoothingEnabled = true;
     context.imageSmoothingQuality = "high";
-    context.fillStyle = COMPARISON_BACKDROP;
+    context.fillStyle = ground;
     context.fillRect(0, 0, width, height);
     draw(context);
     const rgba = context.getImageData(0, 0, width, height).data;

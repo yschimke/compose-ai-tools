@@ -519,6 +519,19 @@ export class DesignPage extends LitElement {
         // White, to match what the scorer composites OUR render onto. Without it a transparent
         // design node would be compared as black and every score would be wrong in the same
         // direction.
+        //
+        // This stays even though the scorer now composites on two grounds, because THIS crop is not
+        // an isolated node: `rasteriseSheet` rasterises a clone of the whole sheet, so the crop
+        // carries whatever the design drew behind and around the target — on a definition sheet, an
+        // opaque ground and its neighbouring cells. That furniture is opaque, so no ground moves it,
+        // while the render's surround is transparent and every ground does. Handing the crop over
+        // unflattened would make the black pass compare light sheet furniture against a black
+        // surround and charge the difference to the component, which `scoreOnEveryGround`'s
+        // minimum would then take as the answer.
+        //
+        // The scorer's own opacity gate catches this even without the fill — an opaque reference
+        // never earns a second ground — but normalising here keeps the two lanes agreeing about
+        // what the reference *is* rather than relying on that gate to notice.
         context.fillStyle = "#fff";
         context.fillRect(0, 0, canvas.width, canvas.height);
         context.drawImage(
