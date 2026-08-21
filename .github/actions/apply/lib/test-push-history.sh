@@ -104,4 +104,29 @@ case "$out" in
   *) echo "FAIL: renders layout did not skip on a missing baselines.json: $out" >&2; exit 1 ;;
 esac
 
+# 5. The commit carries the caller's identity as BOTH author and committer. `git commit-tree`
+#    resolves the two independently, so a step passing only one leaves the other to whatever the
+#    helper's `git config` happened to seed.
+STUB_MANIFEST='{"previews":{"identity":{}}}' \
+  GIT_AUTHOR_NAME='Design Bot' GIT_AUTHOR_EMAIL='design@example.com' \
+  GIT_COMMITTER_NAME='Design Bot' GIT_COMMITTER_EMAIL='design@example.com' \
+  run_helper STUB_MODE=full >/dev/null
+ident="$ROOT/ident"
+git clone -q --branch "$BRANCH" "$REMOTE" "$ident"
+test "$(git -C "$ident" log -1 --format='%an <%ae>')" = 'Design Bot <design@example.com>' || {
+  echo "FAIL: author identity not carried: $(git -C "$ident" log -1 --format='%an <%ae>')" >&2
+  exit 1; }
+test "$(git -C "$ident" log -1 --format='%cn <%ce>')" = 'Design Bot <design@example.com>' || {
+  echo "FAIL: committer identity not carried" >&2; exit 1; }
+
+# 6. The manifest is regenerated per attempt, not built once before the loop. A lost race means
+#    someone published in between, so re-parenting a stale blob would overwrite their history.json
+#    with one that omits their changes.
+grep -q 'if ! generate; then' "$HELPER" || {
+  echo "FAIL: generation is not inside the retry loop" >&2; exit 1; }
+gen_line=$(grep -n 'if ! generate; then' "$HELPER" | cut -d: -f1)
+loop_line=$(grep -n '^while :; do' "$HELPER" | cut -d: -f1)
+test "$gen_line" -gt "$loop_line" || {
+  echo "FAIL: generate() is called before the retry loop opens" >&2; exit 1; }
+
 echo "push-history.sh: all checks passed."

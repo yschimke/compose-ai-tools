@@ -36,6 +36,8 @@ LAYOUT="${LAYOUT:-renders}"
 BASELINES="${BASELINES:-}"
 WORK_DIR="${WORK_DIR:-_history_repo}"
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-5}"
+# `generate` resolves WORK_DIR relative to here, and the push loop cd's into it.
+START_DIR=$(pwd)
 
 if [ "$LAYOUT" = "renders" ] && [ ! -f "$BASELINES" ]; then
   echo "history manifest: no baselines.json at '${BASELINES}', skipping."
@@ -84,12 +86,11 @@ fi
 
 # Join against the baselines.json being published, not the one on the branch, so the manifest and
 # its keys are always the same snapshot. The images layout passes none and derives its keys.
-set -- --repo "$WORK_DIR" --branch FETCH_HEAD --layout "$LAYOUT" --output "$OUTPUT"
-[ -n "$BASELINES" ] && [ "$LAYOUT" = "renders" ] && set -- "$@" --baselines "$BASELINES"
-if ! compose-preview inspect history-manifest "$@"; then
-  echo "::warning::history manifest: generation failed for ${TARGET_BRANCH}; skipping history.json this run."
-  exit 0
-fi
+generate() {
+  set -- --repo "$WORK_DIR" --branch FETCH_HEAD --layout "$LAYOUT" --output "$OUTPUT"
+  [ -n "$BASELINES" ] && [ "$LAYOUT" = "renders" ] && set -- "$@" --baselines "$BASELINES"
+  compose-preview inspect history-manifest "$@"
+}
 
 # Second commit, following the render push rather than riding along with it: computed beforehand,
 # the manifest could not describe the very publish it ships with, so the newest render would be
@@ -104,9 +105,18 @@ fi
 #
 # read-tree/write-tree work in the blob:none clone because they only need tree objects and the one
 # new blob; the renders' contents are never fetched.
-cd "$WORK_DIR"
 attempt=1
 while :; do
+  # Generated INSIDE the loop, against whatever tip was just fetched. A lost race means someone
+  # else published between our fetch and our push, so a manifest built before the loop no longer
+  # describes the branch — re-parenting it would overwrite the winner's history.json with one that
+  # omits their image changes, leaving the timeline stale until some later publish happened to fix
+  # it. Regenerating costs one `git log --raw` over an already-fetched repo.
+  if ! generate; then
+    echo "::warning::history manifest: generation failed for ${TARGET_BRANCH}; skipping history.json this run."
+    exit 0
+  fi
+  cd "$WORK_DIR"
   PARENT=$(git rev-parse FETCH_HEAD)
   NEW_BLOB=$(git hash-object -w "$OUTPUT")
   OLD_BLOB=$(git rev-parse --quiet --verify "FETCH_HEAD:history.json" 2>/dev/null || true)
@@ -129,6 +139,7 @@ while :; do
   echo "history manifest: lost the push race; retry ${attempt}/${MAX_ATTEMPTS}."
   attempt=$((attempt + 1))
   sleep $((attempt * 2))
-  # Re-fetch so the retry re-parents onto (and re-reads) the new tip.
+  # Re-fetch so the retry re-parents onto — and regenerates against — the new tip.
   git fetch --quiet --filter=blob:none origin "$TARGET_BRANCH" || true
+  cd "$START_DIR"
 done

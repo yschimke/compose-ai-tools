@@ -128,7 +128,13 @@ class HistoryManifestCommand(
     // run appends another history commit forever. Pinning to the render tip makes a no-op run
     // regenerate a byte-identical file, which the push then skips. It also describes the manifest
     // better: this is the render state the timeline covers.
-    val generatedFrom = renderTip(repoDir, branch) ?: resolveSha(repoDir, branch) ?: branch
+    // Scoped to THIS layout's directory. Left on the `renders` default, a design catalog — which
+    // has no such tree — finds no render tip at all and falls through to the branch tip, which the
+    // history-only commit itself moves. The manifest would then differ from the published one on
+    // every single run and the publisher would append another history commit forever, which is the
+    // exact failure this anchor exists to prevent.
+    val generatedFrom =
+      renderTip(repoDir, branch, layout.dir) ?: resolveSha(repoDir, branch) ?: branch
 
     val timelines =
       try {

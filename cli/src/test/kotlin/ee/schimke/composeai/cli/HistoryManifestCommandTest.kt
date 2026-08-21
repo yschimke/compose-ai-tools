@@ -397,6 +397,30 @@ class HistoryManifestCommandTest {
   }
 
   @Test
+  fun `an images-layout history-only commit does not change the manifest`() {
+    // The images twin of the baseline case above, and the reason `renderTip` has to be scoped to
+    // the layout's own directory: a design catalog has no `renders/` tree, so a renders-scoped
+    // anchor finds nothing and falls through to the branch TIP — which the history-only commit
+    // itself moves. Every run would then regenerate a different manifest and the publisher would
+    // append another history commit forever.
+    val repo = catalogRepo("regenerate (2026-08-20, aaaaaaaa)" to "v1")
+    val first = File(repo, "history.json")
+    run(repo, "--layout", "images", "--output", first.path)
+    val firstText = first.readText()
+
+    ProcessBuilder("git", "add", "-A").directory(repo).start().waitFor()
+    ProcessBuilder("git", "commit", "--quiet", "-m", "update wear-m3-catalog render history")
+      .directory(repo)
+      .start()
+      .waitFor()
+
+    val second = File(repo, "regenerated.json")
+    run(repo, "--layout", "images", "--output", second.path)
+
+    assertEquals(firstText, second.readText())
+  }
+
+  @Test
   fun `an unknown layout is refused rather than silently treated as the default`() {
     val repo = catalogRepo("regenerate (2026-08-20, aaaaaaaa)" to "v1")
 
