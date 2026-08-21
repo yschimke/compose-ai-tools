@@ -24,6 +24,12 @@ import { visibilityMessage } from "./live/session.js";
 import * as rules from "./viewer/rules.js";
 import { viewParam } from "./spec/views.js";
 import { type ApiDocLink, usableApiDocs } from "./viewer/apiDocs.js";
+import {
+    isChecked,
+    knobHydratedValue,
+    rcHydratedValue,
+    unseededOverrides,
+} from "./viewer/overrideSeeds.js";
 
 // Typed handles onto the server-rendered markup this file drives.
 //
@@ -4479,13 +4485,21 @@ function hydrateFromUrl(popped: boolean) {
         setSizeInput("cp-maxH", q.get("maxHeightPx"));
         if (typeof syncSizeRows === "function") syncSizeRows();
     }
+    // The axes this page will not let the URL drive, because its image did not apply them. Read per
+    // pass rather than captured: Back/Forward can land on an entry with a different answer.
+    var unseeded = unseededOverrides(root);
     controls(".cp-knob").forEach(function (el) {
         var key = el.getAttribute("data-knob-key");
         if (!key) return;
-        var value = q.get("knob." + key);
-        if (value === null) value = el.getAttribute("data-knob-initial") || "";
+        var value = knobHydratedValue({
+            wireKey: key,
+            urlValue: q.get("knob." + key),
+            initial: el.getAttribute("data-knob-initial") || "",
+            declaredKind: el.getAttribute("data-knob-kind") || "",
+            unseeded: unseeded,
+        });
         if (el instanceof HTMLInputElement && el.type === "checkbox")
-            el.checked = value === "true" || value === "1";
+            el.checked = isChecked(value);
         else {
             adoptChoiceValue(el, value);
             el.value = value;
@@ -4494,13 +4508,15 @@ function hydrateFromUrl(popped: boolean) {
     controls(".cp-rc-knob").forEach(function (el) {
         var name = el.getAttribute("data-rc-name");
         if (!name) return;
-        var kind = el.getAttribute("data-rc-kind") || "";
-        var value = q.get("rc." + name);
-        if (value === null) value = el.getAttribute("data-rc-initial") || "";
-        else if (kind && value.indexOf(kind + ":") === 0)
-            value = value.substring(kind.length + 1);
+        var value = rcHydratedValue({
+            name: name,
+            urlValue: q.get("rc." + name),
+            initial: el.getAttribute("data-rc-initial") || "",
+            declaredKind: el.getAttribute("data-rc-kind") || "",
+            unseeded: unseeded,
+        });
         if (el instanceof HTMLInputElement && el.type === "checkbox")
-            el.checked = value === "true" || value === "1";
+            el.checked = isChecked(value);
         else el.value = value;
     });
     // The theme select is seeded (from the URL first, then localStorage) by the sticky script

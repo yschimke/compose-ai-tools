@@ -140,6 +140,15 @@ internal class FakeRenderSession(
   val streamStops = CopyOnWriteArrayList<String>()
   /** Every `stream/visibility` the lane sent: (frameStreamId, visible, fps). */
   val streamVisibilities = CopyOnWriteArrayList<Triple<String, Boolean, Int?>>()
+  /**
+   * The overrides the most recent `stream/start` carried — what the live lane actually asked the
+   * daemon to compose, as opposed to what the viewer typed. The snapshot lane's twin is already
+   * observable through [renderNow]'s PNG bytes; this is the streaming half.
+   */
+  @Volatile
+  var lastStreamOverrides: PreviewOverrides? = null
+    private set
+
   @Volatile
   var lastFrameStreamId: String? = null
     private set
@@ -505,6 +514,7 @@ internal class FakeRenderSession(
     lastFrameStreamId = fsid
     lastCodec = codec
     lastMaxFps = maxFps
+    lastStreamOverrides = overrides
     // Model a daemon that emits the initial keyframe before the RPC response returns.
     emitKeyframeOnStart?.let { emitStreamFrame(fsid, seq = 0, payloadBase64 = it) }
     return StreamStartResult(
