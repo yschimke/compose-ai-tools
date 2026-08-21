@@ -80,6 +80,13 @@ internal constructor(
     }
   }
 
+  /**
+   * Whether this feed has a document to serve for [system] — i.e. the session is a published
+   * catalog with a delivery branch, not a locally-served module. What decides whether a page may
+   * offer its Changelog entry at all.
+   */
+  fun serves(system: String): Boolean = entries().any { it.system == system }
+
   /** Renew interest in [system]'s feed and return the newest completed document immediately. */
   fun request(system: String, baseUrl: String, linkQuery: String = ""): Result? {
     val config = entries().firstOrNull { it.system == system } ?: return null
@@ -711,6 +718,12 @@ internal object CatalogFeedDiff {
 
 /** Pure RSS 2.0 projection of [CatalogFeedHistory]. */
 internal object CatalogFeedXml {
+  /** How many variants a collapsed group names before the rest become a count. */
+  internal const val MAX_GROUP_LINKS = 24
+
+  /** Preview ids join their component slug and axes with this; group names are cut on it. */
+  private const val SEPARATOR = "__"
+
   fun empty(system: String, baseUrl: String, linkQuery: String = ""): String =
     document(
       title = "$system catalog changes",
@@ -791,6 +804,18 @@ internal object CatalogFeedXml {
     }
   }
 
+  /**
+   * One `<li>` per **component and change kind**, not per preview.
+   *
+   * A publication that moves a component moves every variant of it — `Media/PlayerScreen` is 4
+   * states × 5 screen sizes, so a single source fix produced twenty list entries and forty images
+   * in one item, and readers rendered that as a wall. So a group with more than one member shows
+   * one representative's images and names the rest as links: the item still accounts for every
+   * change, and the reader can open any of them pinned to this publication.
+   *
+   * Images lead with **after**. The interesting half of a change is what it looks like now; a feed
+   * reader that only shows the first image was showing the superseded render.
+   */
   private fun description(
     baseUrl: String,
     linkQuery: String,
@@ -801,42 +826,54 @@ internal object CatalogFeedXml {
     append(".</p>")
     if (batch.previews.isNotEmpty()) {
       append("<h3>Previews</h3><ul>")
-      for (change in batch.previews) {
-        val oldUrl =
-          feedUrl(
-            baseUrl,
-            "/render/${WebEscaping.urlEncodeSegment(change.id)}.png",
-            withAt(batch.before.commit, linkQuery),
-          )
-        val newUrl =
-          feedUrl(
-            baseUrl,
-            "/render/${WebEscaping.urlEncodeSegment(change.id)}.png",
-            withAt(batch.after.commit, linkQuery),
-          )
-        val kindLabel =
-          when (change.kind) {
-            CatalogPreviewChangeKind.ADDED -> "added"
-            CatalogPreviewChangeKind.DELETED -> "deleted"
-            CatalogPreviewChangeKind.CHANGED -> "visually changed"
-            CatalogPreviewChangeKind.VISUAL_AND_METADATA -> "visually and metadata changed"
-            CatalogPreviewChangeKind.METADATA -> "metadata changed"
+      for ((key, group) in batch.previews.groupBy { it.label to it.kind }) {
+        val (label, kind) = key
+        val lead = group.first()
+        val kindLabel = kindLabel(kind)
+        val oldUrl = renderUrl(baseUrl, linkQuery, lead.id, batch.before.commit)
+        val newUrl = renderUrl(baseUrl, linkQuery, lead.id, batch.after.commit)
+        append("<li><strong>${html(label)}</strong>: ")
+        if (group.size == 1) append(kindLabel) else append("${group.size} previews $kindLabel")
+        val imaged =
+          when (kind) {
+            CatalogPreviewChangeKind.ADDED -> {
+              append("<br><img alt=\"After\" src=\"${html(newUrl)}\">")
+              true
+            }
+            CatalogPreviewChangeKind.DELETED -> {
+              append("<br><img alt=\"Before\" src=\"${html(oldUrl)}\">")
+              true
+            }
+            CatalogPreviewChangeKind.CHANGED,
+            CatalogPreviewChangeKind.VISUAL_AND_METADATA -> {
+              append(
+                "<br><img alt=\"After\" src=\"${html(newUrl)}\"> <img alt=\"Before\" src=\"${html(oldUrl)}\">"
+              )
+              true
+            }
+            CatalogPreviewChangeKind.METADATA -> false
           }
-        append("<li><strong>${html(change.label)}</strong>: $kindLabel")
-        when (change.kind) {
-          CatalogPreviewChangeKind.ADDED ->
-            append("<br><img alt=\"After\" src=\"${html(newUrl)}\">")
-          CatalogPreviewChangeKind.DELETED ->
-            append("<br><img alt=\"Before\" src=\"${html(oldUrl)}\">")
-          CatalogPreviewChangeKind.CHANGED ->
-            append(
-              "<br><img alt=\"Before\" src=\"${html(oldUrl)}\"> <img alt=\"After\" src=\"${html(newUrl)}\">"
-            )
-          CatalogPreviewChangeKind.VISUAL_AND_METADATA ->
-            append(
-              "<br><img alt=\"Before\" src=\"${html(oldUrl)}\"> <img alt=\"After\" src=\"${html(newUrl)}\">"
-            )
-          CatalogPreviewChangeKind.METADATA -> Unit
+        if (group.size > 1) {
+          // A deleted preview is absent from the after revision by definition, and a pinned viewer
+          // takes that revision as authoritative — it answers "not published in this revision"
+          // rather than falling back to the tip. So a deleted group's links are pinned to the
+          // revision that still has the pixels.
+          val linkCommit =
+            if (kind == CatalogPreviewChangeKind.DELETED) batch.before.commit
+            else batch.after.commit
+          val names = variantNames(group.map { it.id })
+          val links = group.mapIndexed { index, change ->
+            link(previewUrl(baseUrl, linkQuery, change.id, linkCommit), names[index])
+          }
+          append("<br><small>")
+          if (imaged) {
+            append("Shown: ${links.first()}. Also $kindLabel: ")
+            appendList(links.drop(1))
+          } else {
+            append("Previews: ")
+            appendList(links)
+          }
+          append("</small>")
         }
         append("</li>")
       }
@@ -844,44 +881,133 @@ internal object CatalogFeedXml {
     }
     if (batch.references.isNotEmpty()) {
       append("<h3>Design references</h3><ul>")
-      for (change in batch.references) {
-        append("<li><strong>${html(change.label)}</strong>")
-        if (change.specChanged) append(": spec changed") else append(": diff score changed")
-        if (change.beforeMatch != null || change.afterMatch != null) {
-          append("; match ${score(change.beforeMatch)} → ${score(change.afterMatch)}")
-          if (change.beforeMatch != null && change.afterMatch != null) {
-            val delta = change.afterMatch - change.beforeMatch
-            append(
-              " (${if (delta >= 0) "+" else ""}${"%.2f".format(java.util.Locale.ROOT, delta)} pp)"
-            )
+      // Keyed by the mapped preview's component as well as the label: a reference label is
+      // presentation text a producer may repeat across components ("Figma", "Default"), and
+      // collapsing two components under one entry would show one of them and silently speak for
+      // the other. The preview id's component slug is the identity that cannot collide.
+      for ((key, group) in
+        batch.references.groupBy { Triple(componentOf(it.previewId), it.label, it.specChanged) }) {
+        val (_, label, specChanged) = key
+        val lead = group.first()
+        append("<li><strong>${html(label)}</strong>: ")
+        if (group.size > 1) append("${group.size} references, ")
+        if (specChanged) append("spec changed") else append("diff score changed")
+        append(matchText(lead))
+        if (specChanged) {
+          val encodedId = WebEscaping.urlEncodeSegment(lead.id)
+          if (lead.afterPresent) {
+            val newUrl =
+              feedUrl(baseUrl, "/reference/$encodedId.png", withAt(batch.after.commit, linkQuery))
+            append("<br><img alt=\"After design reference\" src=\"${html(newUrl)}\">")
+          }
+          if (lead.beforePresent) {
+            val oldUrl =
+              feedUrl(baseUrl, "/reference/$encodedId.png", withAt(batch.before.commit, linkQuery))
+            val separator = if (lead.afterPresent) " " else "<br>"
+            append("$separator<img alt=\"Before design reference\" src=\"${html(oldUrl)}\">")
           }
         }
-        if (change.specChanged) {
-          val encodedId = WebEscaping.urlEncodeSegment(change.id)
-          if (change.beforePresent) {
-            val oldUrl =
-              feedUrl(
-                baseUrl,
-                "/reference/$encodedId.png",
-                withAt(batch.before.commit, linkQuery),
-              )
-            append("<br><img alt=\"Before design reference\" src=\"${html(oldUrl)}\">")
+        if (group.size > 1) {
+          val names = variantNames(group.map { it.previewId })
+          val links = group.mapIndexed { index, change ->
+            // A reference the publication REMOVED cannot be reached through the comparison page at
+            // all: that route resolves the reference from the catalog on disk, so a removed one has
+            // no page to pin. Its preview at the before revision is the closest thing that answers.
+            val href =
+              if (change.afterPresent)
+                compareUrl(baseUrl, linkQuery, change.previewId, change.id, batch.after.commit)
+              else previewUrl(baseUrl, linkQuery, change.previewId, batch.before.commit)
+            link(href, names[index]) + matchSuffix(change)
           }
-          if (change.afterPresent) {
-            val newUrl =
-              feedUrl(
-                baseUrl,
-                "/reference/$encodedId.png",
-                withAt(batch.after.commit, linkQuery),
-              )
-            append(" <img alt=\"After design reference\" src=\"${html(newUrl)}\">")
+          append("<br><small>")
+          if (specChanged && (lead.beforePresent || lead.afterPresent)) {
+            append("Shown: ${links.first()}. Also changed: ")
+            appendList(links.drop(1))
+          } else {
+            append("References: ")
+            appendList(links)
           }
+          append("</small>")
         }
         append("</li>")
       }
       append("</ul>")
     }
   }
+
+  /** `match a → b (+n pp)`, or empty when neither side published a score. */
+  private fun matchText(change: CatalogReferenceChange): String = buildString {
+    if (change.beforeMatch == null && change.afterMatch == null) return@buildString
+    append("; match ${score(change.beforeMatch)} → ${score(change.afterMatch)}")
+    if (change.beforeMatch != null && change.afterMatch != null) {
+      val delta = change.afterMatch - change.beforeMatch
+      append(" (${if (delta >= 0) "+" else ""}${"%.2f".format(java.util.Locale.ROOT, delta)} pp)")
+    }
+  }
+
+  /** The compact `(a → b)` form that trails a linked variant in a collapsed group. */
+  private fun matchSuffix(change: CatalogReferenceChange): String =
+    if (change.beforeMatch == null && change.afterMatch == null) ""
+    else " (${score(change.beforeMatch)} → ${score(change.afterMatch)})"
+
+  private fun StringBuilder.appendList(links: List<String>) {
+    append(links.take(MAX_GROUP_LINKS).joinToString(", "))
+    val hidden = links.size - MAX_GROUP_LINKS
+    if (hidden > 0) append(", and $hidden more")
+  }
+
+  private fun kindLabel(kind: CatalogPreviewChangeKind): String =
+    when (kind) {
+      CatalogPreviewChangeKind.ADDED -> "added"
+      CatalogPreviewChangeKind.DELETED -> "deleted"
+      CatalogPreviewChangeKind.CHANGED -> "visually changed"
+      CatalogPreviewChangeKind.VISUAL_AND_METADATA -> "visually and metadata changed"
+      CatalogPreviewChangeKind.METADATA -> "metadata changed"
+    }
+
+  /**
+   * What to call each member of a collapsed group.
+   *
+   * Every id in a group starts with the same component slug, so repeating it once per link buys
+   * nothing: `media-playerscreen__ideal__default__192dp, media-playerscreen__ideal__ambient__192dp,
+   * …` reads as `default__192dp, ambient__192dp, …` once the shared head is dropped. The cut is
+   * taken at a `__` boundary so a name never starts mid-word, and a group that shares no such
+   * boundary — or where dropping it would leave a name empty — keeps its full ids.
+   */
+  private fun variantNames(ids: List<String>): List<String> {
+    if (ids.size < 2) return ids
+    val shortest = ids.minOf { it.length }
+    var common = 0
+    while (common < shortest && ids.all { it[common] == ids[0][common] }) common++
+    val cut = ids[0].take(common).lastIndexOf(SEPARATOR)
+    if (cut < 0) return ids
+    val head = cut + SEPARATOR.length
+    return if (ids.any { it.length <= head }) ids else ids.map { it.substring(head) }
+  }
+
+  /** A preview id's component slug — the head an id shares with its every variant. */
+  private fun componentOf(previewId: String): String = previewId.substringBefore(SEPARATOR)
+
+  private fun link(url: String, text: String): String = "<a href=\"${html(url)}\">${html(text)}</a>"
+
+  private fun previewUrl(baseUrl: String, linkQuery: String, id: String, commit: String): String =
+    feedUrl(baseUrl, "/p/${WebEscaping.urlEncodeSegment(id)}", withAt(commit, linkQuery))
+
+  private fun renderUrl(baseUrl: String, linkQuery: String, id: String, commit: String): String =
+    feedUrl(baseUrl, "/render/${WebEscaping.urlEncodeSegment(id)}.png", withAt(commit, linkQuery))
+
+  private fun compareUrl(
+    baseUrl: String,
+    linkQuery: String,
+    previewId: String,
+    referenceId: String,
+    commit: String,
+  ): String =
+    feedUrl(
+      baseUrl,
+      "/compare/${WebEscaping.urlEncodeSegment(previewId)}",
+      "reference=${WebEscaping.urlEncodeSegment(referenceId)}&" + withAt(commit, linkQuery),
+    )
 
   private fun score(value: Double?): String =
     value?.let { "%.2f%%".format(java.util.Locale.ROOT, it) } ?: "n/a"

@@ -430,6 +430,11 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
    so a page can put its own block (the catalog-provenance disclosure) above it. */
 .cp-site-footer-links { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .cp-site-footer a { display: inline-flex; align-items: center; gap: 4px; }
+/* The Changelog entry leads the row and is the only one about the catalog rather than the server,
+   so it carries the accent the rest of the row does not — a visitor looking for "what changed"
+   should find it without reading the row. */
+.cp-changelog-link { color: var(--cp-accent); font-weight: 600; }
+.cp-changelog-link:hover { text-decoration: underline; }
 /* "report a bug" sits in the footer's links row and must read as one of them, but it is a GET form
    (see ServeWeb.reportBugFormHtml for why it cannot be an anchor) — so the form is unwrapped to a
    plain inline box and its submit button is stripped of button chrome, the same treatment the
