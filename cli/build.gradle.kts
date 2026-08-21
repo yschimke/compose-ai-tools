@@ -516,18 +516,18 @@ tasks.withType<Test>().configureEach {
     .files(usagePsiJars)
     .withPropertyName("libUsagePsiJars")
     .withNormalizer(ClasspathNormalizer::class)
-  // The shared wire fixtures under `scripts/design-artifacts/fixtures/`, which `ServeIssueReportTest`
-  // and `ServeParityIssuesStoreTest` read straight off disk rather than through the test classpath.
-  // Undeclared, Gradle cannot know that editing one changes what those tests assert — so the exact
-  // change they exist to catch, an edit to a wire contract shared with the JavaScript producer,
-  // could be served UP-TO-DATE or from the build cache without the assertions ever running. That
-  // would leave the fixture looking like enforcement while enforcing nothing.
+  // The shared wire fixtures under `scripts/design-artifacts/fixtures/`, which
+  // `ServeIssueReportTest` and `ServeParityIssuesStoreTest` read straight off disk rather than
+  // through the test classpath. Undeclared, Gradle cannot know that editing one changes what those
+  // tests assert — so the exact change they exist to catch, an edit to a wire contract shared with
+  // the JavaScript producer, could be served UP-TO-DATE or from the build cache without the
+  // assertions ever running. That would leave the fixture looking like enforcement while enforcing
+  // nothing.
   inputs
     .files(
-      layout.projectDirectory
-        .dir("../scripts/design-artifacts/fixtures")
-        .asFileTree
-        .matching { include("*.json") }
+      layout.projectDirectory.dir("../scripts/design-artifacts/fixtures").asFileTree.matching {
+        include("*.json")
+      }
     )
     .withPropertyName("sharedWireFixtures")
     .withPathSensitivity(PathSensitivity.RELATIVE)
