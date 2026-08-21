@@ -433,6 +433,7 @@ class ServeBundleHost(
       .sorted()
       .map { id ->
         val meta = variantMeta[id]
+        val previewParams = previewParamsById[id]?.asPreviewParamsMeta() ?: meta?.previewParams
         ServePreview(
           id = id,
           label = id,
@@ -491,13 +492,21 @@ class ServeBundleHost(
           sourceFile = sourceFilesById[id],
           sourceModule = meta?.sourceModule,
           bodyLine = bodyLinesById[id],
-          uiMode = previewParamsById[id]?.uiMode ?: 0,
-          showBackground = previewParamsById[id]?.showBackground == true,
-          backgroundColor = previewParamsById[id]?.backgroundColor ?: 0L,
+          // The `@Preview` ground and device frame, from whichever source this session actually
+          // has. An uploaded bundle carries a root `previews.json` and answers directly; a
+          // published CATALOG does not stage one, and its metadata rides on
+          // `previews/variants.json` instead. Without the second source every catalog preview
+          // arrived with the annotation defaults, so `PreviewBackdrop` fell back to the catalog's
+          // declared stage for all of them and the device clip never resolved — on the ordinary
+          // read-only path, which is how a published catalog is normally read.
+          //
+          // The bundle wins where both exist: it is this render's own manifest, while the catalog
+          // record was written by an export that may predate the bundle in front of us.
+          uiMode = previewParams?.uiMode ?: 0,
+          showBackground = previewParams?.showBackground == true,
+          backgroundColor = previewParams?.backgroundColor ?: 0L,
           deviceFrame =
-            previewParamsById[id]?.let {
-              ServeDeviceFrame.from(it.device, it.widthDp, it.heightDp)
-            },
+            previewParams?.let { ServeDeviceFrame.from(it.device, it.widthDp, it.heightDp) },
         )
       }
       .toList()
@@ -1311,6 +1320,25 @@ class ServeBundleHost(
     }
   }
 }
+
+/**
+ * A bundle manifest's `@Preview` params in the shape a catalog publishes them.
+ *
+ * The two sources describe the same annotation and are reduced to one type here rather than being
+ * read separately at the call site, so "which fields does a ground need?" is answered once. Only
+ * the fields a browse surface consults before opening a daemon cross over — the rest of
+ * `PreviewParams` (locale, font scale, density) belongs to the render, not to how it is presented.
+ */
+private fun ee.schimke.composeai.cli.PreviewParams.asPreviewParamsMeta():
+  ServeCatalogStore.PreviewParamsMeta =
+  ServeCatalogStore.PreviewParamsMeta(
+    uiMode = uiMode,
+    showBackground = showBackground,
+    backgroundColor = backgroundColor,
+    device = device,
+    widthDp = widthDp,
+    heightDp = heightDp,
+  )
 
 @Serializable
 private data class BundleRenderError(

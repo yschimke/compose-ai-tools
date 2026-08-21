@@ -140,3 +140,64 @@ test("ignores missing and malformed sidecars", () => {
 
   assert.deepEqual([...declarationsByPreviewId(bundle)], []);
 });
+
+test("lifts the ground and device frame a browse surface needs before opening anything", () => {
+  // A published catalog stages `previews/variants.json` and NOT a root `previews.json`, so these
+  // are unrecoverable downstream unless the export writes them. Without them the read-only serving
+  // path resolves every preview's ground from the catalog's declared stage and never resolves a
+  // device clip at all — a round Wear comparison is drawn on a square stage there and nowhere else.
+  const bundle = {
+    previews: [
+      {
+        id: "TimeText_Large_Round",
+        params: {
+          device: "id:wearos_large_round",
+          widthDp: 227,
+          heightDp: 227,
+          showBackground: true,
+          backgroundColor: 4278190080,
+          uiMode: 32,
+          // Produced-the-render params, deliberately NOT republished: they are already baked into
+          // the pixels and say nothing about how the image should be presented.
+          density: 2.0,
+          fontScale: 1.0,
+          locale: "en-GB",
+        },
+      },
+    ],
+    entries: {},
+  };
+
+  assert.deepEqual(declarationsByPreviewId(bundle).get("TimeText_Large_Round"), {
+    previewParams: {
+      uiMode: 32,
+      showBackground: true,
+      backgroundColor: 4278190080,
+      device: "id:wearos_large_round",
+      widthDp: 227,
+      heightDp: 227,
+    },
+  });
+});
+
+test("records nothing for a preview that states no ground and no device", () => {
+  // The ordinary component sticker. A `previewParams: {}` on every image would grow every catalog
+  // for no reader, and Kotlin reads a missing record back as null — its existing behaviour.
+  const bundle = {
+    previews: [{ id: "FilledButton", params: { density: 2.0, fontScale: 1.0 } }],
+    entries: {},
+  };
+  assert.equal(declarationsByPreviewId(bundle).get("FilledButton"), undefined);
+});
+
+test("drops dp that name no device, because nothing downstream can use them", () => {
+  // The frame resolver applies annotation dp against a NAMED device, both axes or neither. On their
+  // own they qualify nothing, so republishing them would be bytes a reader must then ignore.
+  const bundle = {
+    previews: [{ id: "Sized", params: { widthDp: 320, heightDp: 480, showBackground: true } }],
+    entries: {},
+  };
+  assert.deepEqual(declarationsByPreviewId(bundle).get("Sized"), {
+    previewParams: { showBackground: true },
+  });
+});
