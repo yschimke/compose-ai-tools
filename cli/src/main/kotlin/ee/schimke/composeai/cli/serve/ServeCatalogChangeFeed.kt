@@ -854,9 +854,16 @@ internal object CatalogFeedXml {
             CatalogPreviewChangeKind.METADATA -> false
           }
         if (group.size > 1) {
+          // A deleted preview is absent from the after revision by definition, and a pinned viewer
+          // takes that revision as authoritative — it answers "not published in this revision"
+          // rather than falling back to the tip. So a deleted group's links are pinned to the
+          // revision that still has the pixels.
+          val linkCommit =
+            if (kind == CatalogPreviewChangeKind.DELETED) batch.before.commit
+            else batch.after.commit
           val names = variantNames(group.map { it.id })
           val links = group.mapIndexed { index, change ->
-            link(previewUrl(baseUrl, linkQuery, change.id, batch.after.commit), names[index])
+            link(previewUrl(baseUrl, linkQuery, change.id, linkCommit), names[index])
           }
           append("<br><small>")
           if (imaged) {
@@ -874,8 +881,13 @@ internal object CatalogFeedXml {
     }
     if (batch.references.isNotEmpty()) {
       append("<h3>Design references</h3><ul>")
-      for ((key, group) in batch.references.groupBy { it.label to it.specChanged }) {
-        val (label, specChanged) = key
+      // Keyed by the mapped preview's component as well as the label: a reference label is
+      // presentation text a producer may repeat across components ("Figma", "Default"), and
+      // collapsing two components under one entry would show one of them and silently speak for
+      // the other. The preview id's component slug is the identity that cannot collide.
+      for ((key, group) in
+        batch.references.groupBy { Triple(componentOf(it.previewId), it.label, it.specChanged) }) {
+        val (_, label, specChanged) = key
         val lead = group.first()
         append("<li><strong>${html(label)}</strong>: ")
         if (group.size > 1) append("${group.size} references, ")
@@ -898,10 +910,14 @@ internal object CatalogFeedXml {
         if (group.size > 1) {
           val names = variantNames(group.map { it.previewId })
           val links = group.mapIndexed { index, change ->
-            link(
-              compareUrl(baseUrl, linkQuery, change.previewId, change.id, batch.after.commit),
-              names[index],
-            ) + matchSuffix(change)
+            // A reference the publication REMOVED cannot be reached through the comparison page at
+            // all: that route resolves the reference from the catalog on disk, so a removed one has
+            // no page to pin. Its preview at the before revision is the closest thing that answers.
+            val href =
+              if (change.afterPresent)
+                compareUrl(baseUrl, linkQuery, change.previewId, change.id, batch.after.commit)
+              else previewUrl(baseUrl, linkQuery, change.previewId, batch.before.commit)
+            link(href, names[index]) + matchSuffix(change)
           }
           append("<br><small>")
           if (specChanged && (lead.beforePresent || lead.afterPresent)) {
@@ -968,6 +984,9 @@ internal object CatalogFeedXml {
     val head = cut + SEPARATOR.length
     return if (ids.any { it.length <= head }) ids else ids.map { it.substring(head) }
   }
+
+  /** A preview id's component slug — the head an id shares with its every variant. */
+  private fun componentOf(previewId: String): String = previewId.substringBefore(SEPARATOR)
 
   private fun link(url: String, text: String): String = "<a href=\"${html(url)}\">${html(text)}</a>"
 

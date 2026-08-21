@@ -5441,6 +5441,14 @@ ${captureControlsHtml().prependIndent("          ")}
     themeCss: String = "",
     themeStorageKey: String = "",
     sessionInOrigin: Boolean = false,
+    /**
+     * The catalog change feed the footer offers as **Changelog** and the head declares as this
+     * page's RSS alternate. Empty when the server runs with the feed lane off. See [siteFooter].
+     *
+     * Offered here like on any other catalog page: this one is reached by pinning a preview to a
+     * publication that predates it, which is exactly the moment a visitor wants the history.
+     */
+    changelogHref: String = "",
   ): String {
     val linkSessionId = if (sessionInOrigin) null else sessionId
     val idSeg = WebEscaping.urlEncodeSegment(previewId)
@@ -5461,6 +5469,7 @@ ${captureControlsHtml().prependIndent("          ")}
       siteName = siteName,
       themeCss = themeCss,
       themeStorageKey = themeStorageKey,
+      changelogHref = changelogHref,
       body =
         """
         <h1 class="cp-head">Preview unavailable</h1>

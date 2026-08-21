@@ -6293,6 +6293,7 @@ class ServeHttpServer(
               themeCss = skin.second,
               themeStorageKey = skin.third,
               sessionInOrigin = siteSystem() != null,
+              changelogHref = changelogHref(sessionId, basePath, webSessionId),
             ),
             ContentType.Text.Html,
             HttpStatusCode.NotFound,

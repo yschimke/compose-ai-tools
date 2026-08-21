@@ -215,6 +215,113 @@ class ServeCatalogChangeFeedTest {
   }
 
   @Test
+  fun `a deleted group links the revision that still has the pixels`() {
+    val ids = listOf("card__ideal__default", "card__ideal__pressed", "card__ideal__disabled")
+    val xml =
+      CatalogFeedXml.render(
+        "demo",
+        "https://preview.example/demo",
+        CatalogFeedHistory(
+          "Demo app",
+          listOf(newRevision, oldRevision),
+          listOf(
+            CatalogFeedBatch(
+              oldRevision,
+              newRevision,
+              ids.mapIndexed { index, id ->
+                CatalogPreviewChange(
+                  CatalogPreviewChangeKind.DELETED,
+                  id,
+                  "Card",
+                  beforeBlob = "1".repeat(40),
+                  order = index,
+                )
+              },
+              emptyList(),
+            )
+          ),
+        ),
+      )
+
+    // Pinning a deleted id to the publication that removed it lands on "not published in this
+    // revision" — the pinned viewer takes that revision as authoritative.
+    for (id in ids) assertTrue(xml.contains("/p/$id?at=${oldRevision.commit}"), id)
+    assertFalse(xml.contains("/p/${ids[1]}?at=${newRevision.commit}"))
+  }
+
+  @Test
+  fun `references sharing a label across components stay separate entries`() {
+    val references =
+      listOf("checkboxbutton__ideal__default", "radiobutton__ideal__default").mapIndexed { i, id ->
+        CatalogReferenceChange(
+          id = "$id-spec",
+          // A label a producer repeats across components: presentation text, not identity.
+          label = "Figma",
+          previewId = id,
+          specChanged = true,
+          beforeMatch = null,
+          afterMatch = 80.0,
+          order = i,
+          beforePresent = false,
+        )
+      }
+    val xml =
+      CatalogFeedXml.render(
+        "demo",
+        "https://preview.example/demo",
+        CatalogFeedHistory(
+          "Demo app",
+          listOf(newRevision, oldRevision),
+          listOf(CatalogFeedBatch(oldRevision, newRevision, emptyList(), references)),
+        ),
+      )
+
+    assertEquals(
+      2,
+      Regex("&lt;li&gt;").findAll(xml).count(),
+      "one entry per component, not per label",
+    )
+    for (change in references) {
+      assertTrue(xml.contains("reference/${change.id}.png"), "${change.previewId} keeps its image")
+    }
+  }
+
+  @Test
+  fun `a removed reference links its preview instead of a comparison page it has left`() {
+    val references =
+      listOf("default", "disabled").mapIndexed { i, variant ->
+        CatalogReferenceChange(
+          id = "checkboxbutton-$variant-spec",
+          label = "CheckboxButton — figma",
+          previewId = "checkboxbutton__ideal__$variant",
+          specChanged = true,
+          beforeMatch = 80.0,
+          afterMatch = null,
+          order = i,
+          afterPresent = false,
+        )
+      }
+    val xml =
+      CatalogFeedXml.render(
+        "demo",
+        "https://preview.example/demo",
+        CatalogFeedHistory(
+          "Demo app",
+          listOf(newRevision, oldRevision),
+          listOf(CatalogFeedBatch(oldRevision, newRevision, emptyList(), references)),
+        ),
+      )
+
+    // `/compare/…` resolves the reference from the catalog on disk, so a removed one has no page to
+    // pin; the preview at the before revision is what still answers.
+    assertFalse(xml.contains("/compare/"), "no link into a page the reference has left")
+    assertTrue(
+      xml.contains("/p/checkboxbutton__ideal__disabled?at=${oldRevision.commit}"),
+      xml,
+    )
+  }
+
+  @Test
   fun `references collapse per label and link the rest with their scores`() {
     val references =
       listOf("default", "disabled", "split").map { variant ->
