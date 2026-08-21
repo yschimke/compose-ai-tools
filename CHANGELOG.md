@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.28.0](https://github.com/yschimke/compose-ai-tools/compare/v1.27.0...v1.28.0) (2026-08-21)
+
+
+### Features
+
+* **deploy:** turn on agent grants wherever there is someone to approve them ([#4395](https://github.com/yschimke/compose-ai-tools/issues/4395)) ([e394ada](https://github.com/yschimke/compose-ai-tools/commit/e394adae2bd958e9298feda6b9bee4f4b2275452))
+* **serve:** measure the live lane, and stop re-reading every frame ([#4408](https://github.com/yschimke/compose-ai-tools/issues/4408)) ([42cb2f3](https://github.com/yschimke/compose-ai-tools/commit/42cb2f38a195d4cbe09465d2daf2a4bf59f0a638))
+
+
+### Bug Fixes
+
+* **harness:** pin the serve captures' scrolling so the tree state stops drifting ([#4405](https://github.com/yschimke/compose-ai-tools/issues/4405)) ([917804c](https://github.com/yschimke/compose-ai-tools/commit/917804c2b23e8667bb909b5b366e0894066e3ac2))
+* **parity:** stop the issue-index producer refusing locators its own writer emits ([#4404](https://github.com/yschimke/compose-ai-tools/issues/4404)) ([c3bc285](https://github.com/yschimke/compose-ai-tools/commit/c3bc285571cf3d7366f3147f3888782a0d3210db))
+* **scorer:** score a comparison on two grounds so matching ink cannot vanish ([#4396](https://github.com/yschimke/compose-ai-tools/issues/4396)) ([5a6b3ab](https://github.com/yschimke/compose-ai-tools/commit/5a6b3ab0f718d0025c7f8099c05330633d453ce1))
+* **serve:** carry a preview's ground and device frame into published catalogs ([#4406](https://github.com/yschimke/compose-ai-tools/issues/4406)) ([8251145](https://github.com/yschimke/compose-ai-tools/commit/8251145794265aa225e98d11d76af76b9a5febb5))
+* **serve:** encode the withheld override axes as JSON, not a comma list ([#4403](https://github.com/yschimke/compose-ai-tools/issues/4403)) ([8d1c12f](https://github.com/yschimke/compose-ai-tools/commit/8d1c12f517e37c5a536391012ca994f0d7d3a171))
+* **serve:** scope withheld override axes to the lanes the server draws ([#4407](https://github.com/yschimke/compose-ai-tools/issues/4407)) ([d67b2eb](https://github.com/yschimke/compose-ai-tools/commit/d67b2eb75b4957232e7c563476e66ecdd31dd924))
+* **serve:** seed only the axes a baked-fallback render actually kept ([#4400](https://github.com/yschimke/compose-ai-tools/issues/4400)) ([c918b5b](https://github.com/yschimke/compose-ai-tools/commit/c918b5b58dbefab4e1b7a90d134e9b44e9508f38))
+* **serve:** seed the viewer's knob controls from the request's overrides ([#4398](https://github.com/yschimke/compose-ai-tools/issues/4398)) ([8cf0b38](https://github.com/yschimke/compose-ai-tools/commit/8cf0b38ed433b296998924fdd1cb7101ac5565fc))
+* **serve:** stop the comparison stage at a round device's bezel ([#4402](https://github.com/yschimke/compose-ai-tools/issues/4402)) ([108035f](https://github.com/yschimke/compose-ai-tools/commit/108035f22701698f180291926e71e54a4e762bcc))
+* **serve:** tell the viewer which override axes it must not restore ([#4401](https://github.com/yschimke/compose-ai-tools/issues/4401)) ([53f40b6](https://github.com/yschimke/compose-ai-tools/commit/53f40b62fb98239e69bccbf5c8311f727f197d96))
+* **serve:** withhold override axes by lane AND family, and only for a real lane ([#4409](https://github.com/yschimke/compose-ai-tools/issues/4409)) ([c3bdd4b](https://github.com/yschimke/compose-ai-tools/commit/c3bdd4b56b3858dd5241768dc8f3b74c11c91c93))
+
 ## [1.27.0](https://github.com/yschimke/compose-ai-tools/compare/v1.26.0...v1.27.0) (2026-08-20)
 
 
