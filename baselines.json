@@ -1000,14 +1000,14 @@
     "serve-motion-index-motion-index-playing.dark.png": {
       "fixture": "serve-motion-index-motion-index-playing",
       "theme": "dark",
-      "sha256": "7bdc67d028b8bacd2aa382c0d3648fb44c7c2534884b82c19e0637bd80d4bea5",
-      "size": 126225
+      "sha256": "3a79b35408e6b44fa709dcff44f8bb02338212a985b73515d931b7c5adb16d8c",
+      "size": 126198
     },
     "serve-motion-index-motion-index-playing.light.png": {
       "fixture": "serve-motion-index-motion-index-playing",
       "theme": "light",
-      "sha256": "0bd9a4fb7ec838fd21b347f6357e7d5c4b048f091c5b3d116a684513c54e17e3",
-      "size": 123917
+      "sha256": "5a4bbdc13c94ed90f539696ac7c02ce09ec5bc84f698d4e1a87a146644196c3f",
+      "size": 123914
     },
     "serve-motion-index.dark.png": {
       "fixture": "serve-motion-index",
@@ -1264,14 +1264,14 @@
     "serve-status.dark.png": {
       "fixture": "serve-status",
       "theme": "dark",
-      "sha256": "c55d99b95cb0505eae80b8dc2060c847c25b9aa15196dc43c26ad86cc753a0ee",
-      "size": 222619
+      "sha256": "04dec833efc795fd01bbe82ed5a69ca18f63cbcf0bcbbbc3eeef798e13ca2f3e",
+      "size": 232455
     },
     "serve-status.light.png": {
       "fixture": "serve-status",
       "theme": "light",
-      "sha256": "b2f4786c387f3832a355e7bc9c35a747c980f0aba8623af82d8dab850bf48a74",
-      "size": 217606
+      "sha256": "8c47050d0a7f528cf4520ea59aa5c33c3ce2eadc54acd7e9ffe98c6103ec946e",
+      "size": 227059
     },
     "serve-viewer-axes-folded-disclosures-open.dark.png": {
       "fixture": "serve-viewer-axes-folded-disclosures-open",
@@ -1402,8 +1402,8 @@
     "serve-viewer-exploded-controls.light.png": {
       "fixture": "serve-viewer-exploded-controls",
       "theme": "light",
-      "sha256": "8aa83bfb4e719d2bd6d956548652df41ed31424fe44316c0b851c5b706558e4a",
-      "size": 113053
+      "sha256": "9b08465f5c8c9c6bba75042040b207d66ef1e18a46a69ea17c6e41930c56bfdd",
+      "size": 112718
     },
     "serve-viewer-exploded.dark.png": {
       "fixture": "serve-viewer-exploded",
