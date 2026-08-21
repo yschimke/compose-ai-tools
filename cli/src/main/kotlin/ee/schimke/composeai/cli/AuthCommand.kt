@@ -268,6 +268,8 @@ internal class AuthCommand(
           approvedBy = outcome.approvedBy.orEmpty(),
           expiresInSeconds = outcome.expiresInSeconds ?: 0,
           stored = saved == true,
+          // See [GrantedJson.token]: handed back only when nothing else can retrieve it.
+          token = if (saved == true) null else outcome.token,
         ),
       )
       return
@@ -759,6 +761,16 @@ internal class AuthCommand(
     val approvedBy: String,
     val expiresInSeconds: Long,
     val stored: Boolean,
+    /**
+     * The bearer — present **only when it could not be stored**, and otherwise omitted.
+     *
+     * Normally this response deliberately withholds it: the grant is on disk and `auth token`
+     * prints it for anything that needs the string, so putting it here would spread a credential
+     * through logs for no gain. When there is nowhere to store it, that reasoning inverts — the
+     * caller waited for a grant that is live on the server, and withholding it means they waited
+     * for nothing while the credential stays minted until it expires.
+     */
+    val token: String? = null,
   )
 
   @Serializable

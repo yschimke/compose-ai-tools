@@ -247,6 +247,27 @@ class AgentAccessStoreTest {
   }
 
   @Test
+  fun `a relative user home is not a home`() {
+    // `-Duser.home=.` resolved to `./.config/…` — straight back under the working directory, the
+    // exact outcome the refusal exists to prevent, reached by a different route.
+    assertFailsWith<NoCredentialHomeException> {
+      AgentAccessStore.defaultFile(prop = { "." }, env = { null })
+    }
+    assertFailsWith<NoCredentialHomeException> {
+      AgentAccessStore.defaultFile(prop = { "relative/path" }, env = { null })
+    }
+  }
+
+  @Test
+  fun `an absolute platform home is used when the environment has neither variable`() {
+    // A minimal service context often has no HOME while the JVM still knows the passwd entry.
+    assertEquals(
+      File("/home/svc/.config/compose-preview/agent-access.json"),
+      AgentAccessStore.defaultFile(prop = { "/home/svc" }, env = { null }),
+    )
+  }
+
+  @Test
   fun `the explicit override still wins with no home at all`() {
     val chosen =
       AgentAccessStore.defaultFile(

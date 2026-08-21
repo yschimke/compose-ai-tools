@@ -353,8 +353,8 @@ internal open class AgentAccessStore(
 
     /**
      * `$COMPOSE_PREVIEW_AGENT_ACCESS_FILE`, else `$XDG_CONFIG_HOME/compose-preview/…`, else
-     * `$HOME/.config/…`, else the JVM's `user.home`. The override exists for CI and for tests; the
-     * XDG path is where a user would look for it.
+     * `$HOME/.config/…`, else the JVM's `user.home` **when that is an absolute path**. The override
+     * exists for CI and for tests; the XDG path is where a user would look for it.
      *
      * Throws [NoCredentialHomeException] when none of those yields a location, rather than falling
      * back to the working directory — see the body.
@@ -381,7 +381,12 @@ internal open class AgentAccessStore(
           // The JVM's own view of the user's home, which on Linux comes from the passwd entry
           // rather than the environment — so it survives the minimal `env -i` service context that
           // has neither variable set.
-          ?: prop("user.home")?.takeIf { it.isNotBlank() && it != "?" }?.let { "$it/.config" }
+          // Absolute only. `-Duser.home=.` resolves to `./.config/…` — straight back under the
+          // working directory, which is the exact outcome this whole path exists to prevent. A
+          // relative home is not a home; treat it as absent and let the refusal below fire.
+          ?: prop("user.home")
+            ?.takeIf { it.isNotBlank() && it != "?" && File(it).isAbsolute }
+            ?.let { "$it/.config" }
           // …and if there is genuinely nowhere, REFUSE. The old fallback was `.`, which wrote
           // bearer tokens and device secrets into whatever directory the command happened to run
           // in — for an agent that is a checkout, so the credentials land somewhere that gets
