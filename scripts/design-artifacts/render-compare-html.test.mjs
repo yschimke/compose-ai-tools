@@ -310,3 +310,30 @@ test("a superseded scoring pass bails before mutating the row", () => {
   assert.match(html, /await scoreRow\(tr, mySeq\)/);
   assert.match(html, /if \(seq !== runSeq\) return null/);
 });
+
+test("a row is scored on two grounds, worst result winning", () => {
+  // One opaque ground annihilates ink that matches it, and two planes flattened to the same
+  // uniform field are IDENTICAL — so SSIM answers 1.0 and the row reports a perfect match for a
+  // pair sharing nothing but the colour of its ink. A dark-first system draws light ink onto a
+  // transparent sticker, which is exactly that case. Same rule the serve scorer applies through
+  // COMPARISON_GROUNDS; this lane carries its own copy because it runs inside the report page.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /const GROUNDS = \["#ffffff", "#000000"\]/);
+  // The ground is a parameter, not a constant baked into the rasteriser.
+  assert.match(html, /function grayFromDraw\(draw, tw, th, ground\)/);
+  assert.match(html, /ctx\.fillStyle = ground/);
+  // Every ground rasterised before any is scored, then the minimum kept.
+  assert.match(html, /const planes = GROUNDS\.map\(/);
+  assert.match(html, /worst = Math\.min\(worst, Math\.max\(0, Math\.min\(100, ssim\(/);
+});
+
+test("the extra ground is gated on both sides actually showing one", () => {
+  // A MIXED pair — an opaque Figma export against a render with a transparent surround — moves on
+  // one side only, so the black pass would measure the grounds rather than the artwork and the
+  // minimum would take it. Equal planes are how opacity is detected, which is why every ground is
+  // rasterised up front rather than scored one at a time.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /function samePlane\(a, b\)/);
+  assert.match(html, /const varies = \(side\) =>/);
+  assert.match(html, /varies\("a"\) && varies\("b"\) \? planes : \[planes\[0\]\]/);
+});

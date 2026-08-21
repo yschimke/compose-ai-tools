@@ -100,9 +100,23 @@ Two passes instead of one, over a plane capped at `MAX_SIDE = 192` — so under 
 # ["#ffffff", "#000000"], taking the minimum across grounds.
 ```
 
-## Known limit
+## The publish-time report had it too, and now doesn't
 
-`scripts/design-artifacts/render-compare-html.mjs` carries its **own** inline copy of `grayFromDraw`,
-also compositing on `#ffffff`, for the publish-time PNG↔figma-svg report. It has the same flaw and is
-not fixed here — unifying the two scorer implementations is its own change. Until then that lane's
-numbers keep the old behaviour.
+`scripts/design-artifacts/render-compare-html.mjs` carries its **own** scorer for the publish-time
+PNG↔figma-svg report, and it is not a copy of this one — it is SSIM, computed inside the generated
+page. Different arithmetic, identical failure: two planes a white ground flattened are the same
+uniform field, so SSIM answers `1.0` and the row reports a perfect match.
+
+Measured by extracting that page's own `grayFromDraw` / `blur` / `ssim` and running them in
+Chromium over the same Wear renders:
+
+| Pair | Before | After |
+| --- | --- | --- |
+| `TextMaxLinesTruncated` vs `IconSticker` — both white ink | **100.0** | 53.1 |
+| `TextMaxLinesTruncated` vs `FilledButton` | 84.7 | 34.0 |
+| `FilledButton` vs itself — identity guard | 100.0 | 100.0 |
+
+Same headline as the serve lane, and the same reassurance: identity still scores 100, so taking the
+worse of two grounds adds no noise-driven pessimism. That lane now carries the grounds and the
+opacity gate too — its own copy, because it runs inside the report page rather than importing from
+`cli/serve-web`, but under the same rule.

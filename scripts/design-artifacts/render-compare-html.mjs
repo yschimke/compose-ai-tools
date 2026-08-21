@@ -286,27 +286,41 @@ const SCORER = String.raw`
     return m ? { tx: parseInt(m[1], 10), ty: parseInt(m[2], 10) } : { tx: 0, ty: 0 };
   }
 
-  // Draw into a tw×th canvas over white via the caller's draw(ctx) and return the
-  // grayscale (luma over white) plane as a Float32Array.
-  function grayFromDraw(draw, tw, th) {
+  // The grounds a comparison is scored on, worst result winning. One opaque ground is not a
+  // neutral choice: it ANNIHILATES ink that matches it, and two planes flattened to the same
+  // uniform field are identical — so SSIM answers 1.0 and the row reports a perfect match for a
+  // pair that shares nothing but the colour of its ink. A dark-first system draws light ink onto a
+  // transparent sticker, which is exactly that case. White and black together make it structural:
+  // a pixel can only vanish on both when its alpha is zero on both sides, which is the one case
+  // where "no evidence" is the honest answer. Same rule as the serve scorer's COMPARISON_GROUNDS.
+  const GROUNDS = ["#ffffff", "#000000"];
+
+  // Draw into a tw×th canvas over the given ground via the caller's draw(ctx), returning the
+  // grayscale plane as a Float32Array. The canvas is filled edge to edge before drawing, so every
+  // pixel read back is opaque and the luma is the composited colour outright.
+  function grayFromDraw(draw, tw, th, ground) {
     const c = document.createElement("canvas");
     c.width = tw; c.height = th;
     const ctx = c.getContext("2d", { willReadFrequently: true });
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = ground;
     ctx.fillRect(0, 0, tw, th);
     draw(ctx);
     const { data } = ctx.getImageData(0, 0, tw, th);
     const g = new Float32Array(tw * th);
     for (let i = 0; i < tw * th; i++) {
-      const a = data[i * 4 + 3] / 255;
-      const r = data[i * 4] * a + 255 * (1 - a);
-      const gr = data[i * 4 + 1] * a + 255 * (1 - a);
-      const b = data[i * 4 + 2] * a + 255 * (1 - a);
-      g[i] = 0.299 * r + 0.587 * gr + 0.114 * b;
+      g[i] = 0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2];
     }
     return g;
+  }
+
+  // Whether two planes are the same picture. The tolerance is for a nearly-opaque pixel: alpha 254
+  // lets a sliver of ground through and moves a luminance by well under one unit.
+  function samePlane(a, b) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (Math.abs(a[i] - b[i]) > 1) return false;
+    return true;
   }
 
   // Separable 3-tap [1,2,1]/4 blur — a light Gaussian that, together with the
@@ -451,7 +465,7 @@ const SCORER = String.raw`
       const tw = Math.max(1, Math.round(rw * scale));
       const th = Math.max(1, Math.round(rh * scale));
       // PNG: drawn 1:1 into the canvas (only the shared downscale applied).
-      const ga = blur(grayFromDraw((ctx) => ctx.drawImage(png, 0, 0, rw * scale, rh * scale), tw, th), tw, th);
+      const drawPng = (ctx) => ctx.drawImage(png, 0, 0, rw * scale, rh * scale);
       // SVG: drawn at its native px size but offset by (-tx, -ty) so its content origin
       // lands at (0,0) and the export's transparent padding is cropped — the same align
       // the daemon's FigmaSvgFidelity does before scoring. No independent scaling: SVG px
@@ -459,16 +473,26 @@ const SCORER = String.raw`
       // rather than being hidden by a fit-to-box rescale.
       const { tx, ty } = translateOf(rawSvg);
       const sw = svg.naturalWidth || svg.width, sh = svg.naturalHeight || svg.height;
-      const gb = blur(
-        grayFromDraw(
-          (ctx) => ctx.drawImage(svg, -tx * scale, -ty * scale, sw * scale, sh * scale),
-          tw,
-          th,
-        ),
-        tw,
-        th,
-      );
-      const pct = Math.max(0, Math.min(100, ssim(ga, gb, tw, th) * 100));
+      const drawSvg = (ctx) => ctx.drawImage(svg, -tx * scale, -ty * scale, sw * scale, sh * scale);
+      // Every ground rasterised BEFORE any is scored, then the worst kept. The gate below is why
+      // both are rasterised rather than scored one at a time: an opaque frame composites
+      // identically onto every ground, so equal planes are how opacity is detected, for free.
+      const planes = GROUNDS.map((ground) => ({
+        a: blur(grayFromDraw(drawPng, tw, th, ground), tw, th),
+        b: blur(grayFromDraw(drawSvg, tw, th, ground), tw, th),
+      }));
+      // A second ground only means something when there is alpha for it to show through. On a
+      // MIXED pair — an opaque Figma export against a render with a transparent surround — nothing
+      // about the export moves between grounds while all of the render's surround does, so the
+      // black pass would report a difference that lives in the grounds rather than in the artwork,
+      // and the minimum would take it.
+      const varies = (side) => planes.some((p) => !samePlane(p[side], planes[0][side]));
+      const scored = varies("a") && varies("b") ? planes : [planes[0]];
+      let worst = 100;
+      for (const p of scored) {
+        worst = Math.min(worst, Math.max(0, Math.min(100, ssim(p.a, p.b, tw, th) * 100)));
+      }
+      const pct = worst;
       // A newer control change may have started while this row was awaiting its fetch /
       // decode. Everything above only read; from here down mutates the row, so bail now
       // if superseded — otherwise a stale pass could overwrite the current one's image
