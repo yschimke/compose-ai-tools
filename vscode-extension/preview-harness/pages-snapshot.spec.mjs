@@ -462,6 +462,15 @@ const STYLED_FIXTURES = new Set([
   // changed: one catalog per hostname means the tracker can be named and linked rather than
   // described, and the panel is the only thing on the page carrying it.
   "serve-report-bug-site",
+  // The revision menu's render-run markers. Everything this fixture claims is drawn at runtime by
+  // `<cp-revision-runs>` and positioned by `serve.css` — the thumbnail on each run head, the indent
+  // under it, the rule between runs — so captured bare it is the same four dated rows as
+  // `serve-viewer-revisions-open` and the whole feature would move no baseline at all.
+  //
+  // Deliberately NOT adding the two `serve-viewer-revisions*` fixtures beside it: they capture the
+  // menu WITHOUT the markers, which is both their existing claim and the graceful-degradation state
+  // this feature has to preserve, and styling them would rewrite two unrelated baselines wholesale.
+  "serve-viewer-revision-runs",
 ]);
 const SERVE_ASSETS = [
   ["serve.css", "text/css"],

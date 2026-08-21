@@ -186,6 +186,93 @@ class ServeCatalogRevisionTest {
     assertNull(ServeCatalogRevision.treeUrl(null, "abc1234"))
   }
 
+  @Test
+  fun `a path-scoped feed URL names the branch and the render`() {
+    assertEquals(
+      "https://github.com/yschimke/wear-m3-catalog/commits/design-artifacts/wear-m3-catalog/" +
+        "images/media-playerscreen/ideal__default__192dp.png.atom",
+      ServeCatalogRevision.pathCommitsFeedUrl(
+        "yschimke/wear-m3-catalog",
+        "design-artifacts/wear-m3-catalog",
+        "images/media-playerscreen/ideal__default__192dp.png",
+      ),
+    )
+  }
+
+  @Test
+  fun `a path-scoped feed URL refuses what it cannot address`() {
+    val repo = "o/r"
+    val branch = "design-artifacts/x"
+    // Not a PNG, absolute, traversing, and a repo that isn't one — the same rules `assetUrl`
+    // applies, because the path arrives from the same untrusted place: a published manifest.
+    assertNull(ServeCatalogRevision.pathCommitsFeedUrl(repo, branch, "images/a/b.json"))
+    assertNull(ServeCatalogRevision.pathCommitsFeedUrl(repo, branch, "/images/a/b.png"))
+    assertNull(ServeCatalogRevision.pathCommitsFeedUrl(repo, branch, "images/../../x.png"))
+    assertNull(ServeCatalogRevision.pathCommitsFeedUrl(repo, branch, null))
+    assertNull(ServeCatalogRevision.pathCommitsFeedUrl("not-a-repo", branch, "a/b.png"))
+    assertNull(ServeCatalogRevision.pathCommitsFeedUrl(repo, "..", "a/b.png"))
+  }
+
+  /**
+   * The shape that prompted this feature: twelve publishes of
+   * `media-playerscreen__ideal__default__192dp`, of which exactly one moved a pixel.
+   */
+  @Test
+  fun `runs collapse consecutive publishes that share their bytes`() {
+    val revisions = revisions(12)
+    // The render changed at r1 (the footer buttons) and at r11 (where it was first published).
+    val runs = ServeCatalogRevision.renderRuns(revisions, setOf(sha(1), sha(11)))
+    assertEquals(
+      listOf(
+        ServeCatalogRevision.RenderRun(head = sha(0), commits = 2, open = false),
+        ServeCatalogRevision.RenderRun(head = sha(2), commits = 10, open = false),
+      ),
+      runs,
+    )
+  }
+
+  @Test
+  fun `a run the window cuts off is reported as open`() {
+    // Same list, but the older boundary has scrolled out of the twelve-publish window: the second
+    // run is at *least* ten publishes and must not claim to be exactly ten.
+    val runs = ServeCatalogRevision.renderRuns(revisions(12), setOf(sha(1)))
+    assertEquals(sha(2), runs[1].head)
+    assertEquals(10, runs[1].commits)
+    assertTrue(runs[1].open)
+    assertFalse(runs[0].open)
+  }
+
+  @Test
+  fun `a render nothing touched is one open run`() {
+    val runs = ServeCatalogRevision.renderRuns(revisions(12), emptySet())
+    assertEquals(1, runs.size)
+    assertEquals(sha(0), runs[0].head)
+    assertEquals(12, runs[0].commits)
+    assertTrue(runs[0].open)
+  }
+
+  @Test
+  fun `a render that changed every publish is all singletons`() {
+    val revisions = revisions(4)
+    val runs = ServeCatalogRevision.renderRuns(revisions, revisions.map { it.commit }.toSet())
+    assertEquals(listOf(sha(0), sha(1), sha(2), sha(3)), runs.map { it.head })
+    assertTrue(runs.all { it.commits == 1 && !it.open })
+  }
+
+  @Test
+  fun `no revisions means no runs`() {
+    assertEquals(
+      emptyList<ServeCatalogRevision.RenderRun>(),
+      ServeCatalogRevision.renderRuns(emptyList(), setOf(sha(0))),
+    )
+  }
+
+  /** `revisions(3)` = three publishes, newest first, with predictable shas. */
+  private fun revisions(count: Int): List<ServeCatalogRevision.Revision> =
+    (0 until count).map { ServeCatalogRevision.Revision(commit = sha(it), date = "2026-08-20") }
+
+  private fun sha(index: Int): String = index.toString().padStart(40, '0')
+
   /** Two entries as GitHub actually serves them, trimmed of the fields nothing here reads. */
   private val FEED =
     """

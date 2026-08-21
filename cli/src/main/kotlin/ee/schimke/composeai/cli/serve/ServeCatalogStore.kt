@@ -881,6 +881,11 @@ class ServeCatalogStore(
           referenceBranchPaths = referenceBranchPaths,
           revisions = revisions,
           revisionPreviewIds = revisionPreviewIds,
+          // Which publishes changed one render, read lazily off the branch's path-scoped feed. The
+          // branch (not the resolved head) is deliberate: this asks "when did these bytes move",
+          // which is a question about the branch's history rather than about one tree, and pinning
+          // it to the load's commit would hide every publish made since.
+          fetchRenderChanges = { path -> fetchRenderChanges(repo, branch, path) },
           // Same seam as `fetchBakedPng`: the host names a commit and a published path, the store
           // builds the URL and applies the fetch policy. Null repo ⇒ no pinned lane at all.
           fetchPinnedAsset = { commit, path ->
@@ -2839,6 +2844,32 @@ class ServeCatalogStore(
     }
     .getOrNull()
     .orEmpty()
+
+  /**
+   * The publishes in which **one render's bytes changed**, as delivery-branch shas.
+   *
+   * Same feed, same parser, one path narrower ([ServeCatalogRevision.pathCommitsFeedUrl]) — which
+   * is the entire trick behind the viewer's render-run markers. Git already collapses a branch to
+   * the commits that touched a file, so the alternative (fetch every published PNG for a preview
+   * and compare bytes) buys nothing and costs a dozen image reads per menu.
+   *
+   * Null, not empty, when the read fails. The distinction is load-bearing downstream: an empty set
+   * is the real answer "nothing ever changed this render, they are all identical", while null is
+   * "the branch did not tell us" — and drawing the first when we mean the second would label a
+   * dozen genuinely different publishes as one unchanged run.
+   */
+  private fun fetchRenderChanges(repo: String, branch: String, path: String): Set<String>? =
+    runCatching {
+      val url = ServeCatalogRevision.pathCommitsFeedUrl(repo, branch, path) ?: return null
+      val body =
+        if (fetch != null) fetch.invoke(url) else branchRead(url, MAX_FEED_FETCH_BYTES).bytesOrNull
+      body?.toString(Charsets.UTF_8)?.let { xml ->
+        ServeCatalogRevision.parseCommitsFeed(xml, ServeCatalogRevision.MAX_PATH_REVISIONS)
+          .map { it.commit }
+          .toSet()
+      }
+    }
+    .getOrNull()
 
   /**
    * Delivery-branch read counters for this store (`/status.json` → `branchFetch`).

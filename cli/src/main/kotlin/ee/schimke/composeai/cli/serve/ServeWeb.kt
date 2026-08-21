@@ -414,6 +414,21 @@ object ServeWeb {
   internal fun revisionsHtml(
     revisions: CatalogRevisions,
     includeBanner: Boolean = true,
+    /**
+     * Attributes for `<cp-revision-runs>`, or blank to leave the menu undecorated.
+     *
+     * Passed in rather than assembled here because the two URLs it carries — the runs lane and the
+     * preview's render — belong to a *preview*, and this function draws the catalog-wide control on
+     * pages that have no single preview behind them (a design reference, an unavailable-revision
+     * page). Blank on those is the correct answer, not a missing feature.
+     */
+    runsAttrs: String = "",
+    /**
+     * A `/api/render-runs` payload inlined into the page, so the preview-harness captures the
+     * markers offline. Blank on every served page — the element fetches there — and non-blank only
+     * in the fixture, which is the only reason this parameter exists.
+     */
+    runsInlineJson: String = "",
     hrefFor: (String?) -> String,
   ): String {
     if (revisions.isEmpty) return ""
@@ -437,7 +452,13 @@ object ServeWeb {
         // would index a dozen near-duplicates of every preview, and the version worth indexing is
         // the live one. The pages stay perfectly shareable — a link someone pastes is followed by
         // a person and unfurled by a fetcher, neither of which is a crawl.
-        "<a class=\"cp-revision\" rel=\"nofollow\" href=\"${WebEscaping.htmlEscape(href)}\"$mark>" +
+        // The delivery sha on the row itself, which is the only thing that identifies it to
+        // `<cp-revision-runs>`. Not derivable from the href: the current row deliberately carries
+        // no `?at=` pin, so a client parsing hrefs would fail to mark the one row that is always a
+        // run head.
+        val stamp = " data-revision=\"${WebEscaping.htmlEscape(revision.commit)}\""
+        "<a class=\"cp-revision\" rel=\"nofollow\" href=\"${WebEscaping.htmlEscape(href)}\"$mark" +
+          "$stamp>" +
           "<span class=\"cp-revision-date\">${WebEscaping.htmlEscape(date)}</span>" +
           "<code class=\"cp-revision-sha\">${WebEscaping.htmlEscape(label)}</code>$currentTag</a>"
       }
@@ -479,6 +500,17 @@ object ServeWeb {
           <span class="cp-revisions-caret" aria-hidden="true">▾</span>
         </summary>
         <div class="cp-revisions-menu">
+          ${if (runsAttrs.isBlank()) "" else "<cp-revision-runs$runsAttrs></cp-revision-runs>"}
+          ${
+        // `</script>` inside a JSON payload would end the element early, so the only sequence that
+        // can break out is neutralised — the same treatment `cp-history-data` gets, and for the
+        // same reason.
+        if (runsInlineJson.isBlank()) ""
+        else
+          "<script type=\"application/json\" id=\"cp-revision-runs-data\">" +
+            runsInlineJson.replace("</", "<\\/") +
+            "</script>"
+      }
           <nav class="cp-revision-list" aria-label="Published revisions">
             $rows
           </nav>
@@ -10874,6 +10906,12 @@ $cards
      */
     historyInlineJson: String? = null,
     /**
+     * A `/api/render-runs` payload inlined into the revision menu instead of fetched, for exactly
+     * the reason [historyInlineJson] exists: the run markers are drawn client-side from that lane,
+     * so a harness capture would look the same whether they work or the feature is gone.
+     */
+    revisionRunsInlineJson: String? = null,
+    /**
      * Project mode: the timeline was computed from the local repository ([ServeProjectHistory]), so
      * its entries link at this server's own `/history/render/<blob>.png` rather than at
      * raw.githubusercontent.com — a local checkout has no such URL. Also tells the viewer the strip
@@ -12360,7 +12398,22 @@ $cards
     val revisionHref: (String?) -> String = { pin ->
       withPin("$basePath/p/$idSeg${querySuffix(revisionBaseQuery)}", pin)
     }
-    val revisionMenu = revisionsHtml(revisions, includeBanner = false, hrefFor = revisionHref)
+    // What `<cp-revision-runs>` needs to mark which of those revisions actually differ: the lane
+    // that answers it, and the render URL to pin per run head. Deliberately built from the
+    // *unpinned* query (`q`, not `revisionBaseQuery`) — the element appends its own `at=<sha>` per
+    // thumbnail, and a page that is already pinned would otherwise hand it a URL carrying a second,
+    // contradictory pin.
+    val runsAttrs =
+      " data-runs-url=\"${WebEscaping.htmlEscape("$basePath/api/render-runs/$idSeg$q")}\"" +
+        " data-render-url=\"${WebEscaping.htmlEscape("$basePath/render/$idSeg.png$q")}\""
+    val revisionMenu =
+      revisionsHtml(
+        revisions,
+        includeBanner = false,
+        runsAttrs = runsAttrs,
+        runsInlineJson = revisionRunsInlineJson.orEmpty(),
+        hrefFor = revisionHref,
+      )
     val revisionBanner = revisionBannerHtml(revisions, revisionHref)
     val pinnedAttr =
       revisions.pinned?.let { " data-pinned-at=\"${WebEscaping.htmlEscape(it)}\"" }.orEmpty()

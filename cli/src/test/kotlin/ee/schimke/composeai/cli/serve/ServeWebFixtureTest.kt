@@ -1993,6 +1993,41 @@ class ServeWebFixtureTest {
       viewerRevisionsOpen == viewerRevisions,
       "the revision menu's <details> tag changed shape — update this fixture's open-state rewrite",
     )
+    // The same menu with `<cp-revision-runs>` answered: two distinct renders across the four
+    // publishes, so the first and third rows carry a thumbnail and the two under them are indented
+    // beneath the run they belong to.
+    //
+    // Registered as its own fixture because the markers are drawn CLIENT-SIDE from a lane the
+    // harness cannot reach, so without an inlined payload the open-menu capture above would be
+    // byte-identical whether the markers work or the feature is deleted. The four revisions split
+    // 2 + 2, which is the smallest arrangement that exercises every visual state the feature has: a
+    // first head (no rule above it), an indented follower, a second head (with the between-runs
+    // rule), and a `×N` badge. The second run is `open` so the "at least N" wording is captured
+    // too.
+    val viewerRevisionRuns =
+      ServeWeb.viewerPage(
+          previews.first { it.id.endsWith("ProfileScreenPreview") },
+          token,
+          revisions =
+            ServeWeb.CatalogRevisions(
+              revisions = catalogRevisions,
+              repo = "yschimke/compose-ai-tools",
+            ),
+          revisionRunsInlineJson =
+            """
+            {"schema":"compose-preview-render-runs/v1","revisions":4,"runs":[
+              {"head":"46440dd86c24b2da6054ccab587e59fba4b15c7e","sourceSha":"0b0c2063","commits":2},
+              {"head":"421350e5cae04212a193cc8137be1c337a9d5396","sourceSha":"7b573ecc","commits":2,
+               "open":true}]}
+            """
+              .trimIndent(),
+        )
+        .replace("<details class=\"cp-revisions\">", "<details class=\"cp-revisions\" open>")
+    assertTrue(
+      viewerRevisionRuns.contains("id=\"cp-revision-runs-data\"") &&
+        viewerRevisionRuns.contains("<cp-revision-runs "),
+      "the runs fixture must carry both the element and the payload it draws from",
+    )
     // The design page's inlined export. Run through the real [SvgSanitizer] rather than pasted in
     // whole, so the golden HTML is what the server would actually emit — including anything the
     // sanitizer strips.
@@ -3374,6 +3409,7 @@ class ServeWebFixtureTest {
         "serve-reference-compare-round-device.html" to referenceComparisonRoundDevice,
         "serve-viewer-revisions.html" to viewerRevisions,
         "serve-viewer-revisions-open.html" to viewerRevisionsOpen,
+        "serve-viewer-revision-runs.html" to viewerRevisionRuns,
         "serve-viewer-pinned-lanes.html" to viewerPinnedLanes,
         "serve-design-page.html" to designPageHtml,
         "serve-design-page-index.html" to designPageIndex,
