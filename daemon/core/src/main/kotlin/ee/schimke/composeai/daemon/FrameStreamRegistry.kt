@@ -135,8 +135,11 @@ internal class FrameStreamRegistry(
    * 3. keyframe-pending — if the stream just started or just flipped visible, mark the frame as a
    *    keyframe so the client refreshes its paint anchor.
    *
-   * Encoding: PNG bytes are read from [pngPath] only when the dedup branch fires "different" AND at
-   * least one stream wants the bytes. Two streams targeting the same preview share the read.
+   * Encoding: the caller passes [pngBytes] when it already holds the frame in memory (the server
+   * hashes every frame for dedup, so on the live path it always does) and the registry base64s
+   * those. [pngPath] is the fallback for callers that don't, and is read only when the dedup branch
+   * fires "different" AND at least one stream wants the bytes. Either way two streams targeting the
+   * same preview share one copy.
    */
   fun consumeForPreview(
     previewId: String,
@@ -144,12 +147,13 @@ internal class FrameStreamRegistry(
     pngHash: String?,
     widthPx: Int,
     heightPx: Int,
+    pngBytes: ByteArray? = null,
   ): List<StreamFrameParams> {
     val targets = states.values.filter { it.previewId == previewId }
     if (targets.isEmpty()) return emptyList()
     val now = clock()
     val out = mutableListOf<StreamFrameParams>()
-    var cachedBytes: ByteArray? = null
+    var cachedBytes: ByteArray? = pngBytes
     for (s in targets) {
       val minIntervalMs = effectiveMinIntervalMs(s)
       if (minIntervalMs > 0 && s.lastEmittedAtMs != Long.MIN_VALUE) {

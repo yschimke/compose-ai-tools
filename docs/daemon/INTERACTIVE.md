@@ -459,6 +459,28 @@ a backoff is answered at the burst cadence, not after the wait. The only
 thing a longer gap can delay is an animation that starts with nobody
 touching the preview.
 
+## 9.7.3 A frame is read from disk once
+
+Cadence decides how many frames the loop produces; this decides what each
+one costs after the capture. `emitRenderFinished` reads the captured PNG
+**once** and carries the bytes through everything downstream of it — the
+dedup hash, the frame's declared pixel size (`PngHeader`), and the base64
+`streamFrame` payload (`FrameStreamRegistry.consumeForPreview(pngBytes =
+…)`). Each of those used to open and read the same file for itself: three
+reads per frame, at whatever cadence the loop was running, on top of the
+capture's own write.
+
+The wrap-content crop on the Android backend is the fourth pass, and the
+one that cannot fold into the capture — `captureRoboImage` has already
+written the PNG by the time `WrappedFrameCrop` sees it. It now decides
+from the file's *header* whether a crop would change any pixel, so the
+common no-op case (a `fillMax*` composable measuring the whole window,
+every frame of it) costs a header parse instead of a full decode. A frame
+that genuinely needs cropping still pays the decode/re-encode round trip.
+
+Measured on the live lane through `/status.json`'s `liveFrames` — see
+[public-preview-server.md](../public-preview-server.md#live-lane-frame-counters).
+
 ## 9.8 The `localeTag` scope is a process-wide reader/writer gate
 
 Applying `localeTag` means moving the **process-global** JVM default

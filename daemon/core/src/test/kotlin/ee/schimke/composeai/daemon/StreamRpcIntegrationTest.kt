@@ -103,6 +103,45 @@ class StreamRpcIntegrationTest {
   }
 
   @Test(timeout = 30_000)
+  fun stream_frame_carries_the_frames_pixel_size() {
+    // #4281 — `widthPx` / `heightPx` were hard-coded to 0 at the `consumeForPreview` call site, so
+    // every live frame went out claiming to be 0 × 0 while the field sat on the wire looking
+    // meaningful. The size now comes off the IHDR of the bytes the server already hashed.
+    val tmp = Files.createTempDirectory("stream-rpc-test").toFile()
+    val pngFile = File(tmp, "preview-A.png").apply { writeBytes(sizedPngBytes(499, 226)) }
+    val host = StreamRpcFakeHost(pngFile)
+
+    val (_, serverThread, out, received, exitLatch) = bringUpServer(host)
+    resourcesToClose.add(AutoCloseable { runCatching { out.close() } })
+    handshake(out, received)
+
+    writeFrame(
+      out,
+      """{"jsonrpc":"2.0","id":10,"method":"stream/start","params":{"previewId":"preview-A"}}""",
+    )
+    val streamId =
+      pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 10 }!!["result"]!!
+        .jsonObject["frameStreamId"]!!
+        .jsonPrimitive
+        .contentOrNull!!
+
+    writeFrame(
+      out,
+      """{"jsonrpc":"2.0","method":"interactive/input","params":{
+              "frameStreamId":"$streamId","kind":"click","pixelX":1,"pixelY":1}}""",
+    )
+    val params =
+      pollUntil(received) { it["method"]?.jsonPrimitive?.contentOrNull == "streamFrame" }!![
+          "params"]!!
+        .jsonObject
+
+    assertEquals(499, params["widthPx"]?.jsonPrimitive?.intOrNull)
+    assertEquals(226, params["heightPx"]?.jsonPrimitive?.intOrNull)
+
+    teardownServer(out, received, serverThread, exitLatch)
+  }
+
+  @Test(timeout = 30_000)
   fun byte_identical_followup_emits_unchanged_heartbeat() {
     val tmp = Files.createTempDirectory("stream-rpc-test").toFile()
     val pngFile = File(tmp, "preview-A.png").apply { writeBytes(testPngBytes(seed = 0)) }
@@ -619,6 +658,23 @@ class StreamRpcIntegrationTest {
     assertNotNull("xr/start must respond", resp)
     assertNotNull("xr/start must error when XR is unavailable", resp!!["error"])
     teardownServer(out, received, serverThread, exitLatch)
+  }
+
+  /** A PNG header declaring [width] × [height], enough for the size probe (never decoded). */
+  private fun sizedPngBytes(width: Int, height: Int): ByteArray {
+    fun be(value: Int) =
+      byteArrayOf(
+        ((value ushr 24) and 0xFF).toByte(),
+        ((value ushr 16) and 0xFF).toByte(),
+        ((value ushr 8) and 0xFF).toByte(),
+        (value and 0xFF).toByte(),
+      )
+    return byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10) +
+      be(13) +
+      "IHDR".toByteArray(Charsets.US_ASCII) +
+      be(width) +
+      be(height) +
+      byteArrayOf(8, 6, 0, 0, 0)
   }
 
   private fun testPngBytes(seed: Int): ByteArray {
