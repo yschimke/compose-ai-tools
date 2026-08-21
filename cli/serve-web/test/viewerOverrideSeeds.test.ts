@@ -30,14 +30,31 @@ describe("unseededOverrides", () => {
     });
 
     it("reads the axes the server withheld", () => {
-        const set = unseededOverrides(root("knob.enabled,rc.count"));
+        const set = unseededOverrides(root('["knob.enabled","rc.count"]'));
         assert.ok(set.has("knob.enabled"));
         assert.ok(set.has("rc.count"));
         assert.equal(set.size, 2);
     });
 
-    it("ignores blanks, so a trailing comma cannot withhold a nameless axis", () => {
-        assert.equal(unseededOverrides(root("knob.a, ,")).size, 1);
+    /**
+     * A knob key is an author string and nothing forbids a comma in one. Comma-joining would split
+     * `knob.price,discount` into two names that match nothing, so the real axis would quietly stop
+     * being withheld and a pinned page would restore the value its render ignored.
+     */
+    it("keeps a key containing a comma in one piece", () => {
+        const set = unseededOverrides(root('["knob.price,discount"]'));
+        assert.ok(set.has("knob.price,discount"));
+        assert.equal(set.size, 1);
+    });
+
+    it("withholds nothing on malformed input rather than guessing", () => {
+        assert.equal(unseededOverrides(root("knob.enabled")).size, 0);
+        assert.equal(unseededOverrides(root("{")).size, 0);
+        assert.equal(unseededOverrides(root('{"knob.a":1}')).size, 0);
+    });
+
+    it("ignores non-string entries", () => {
+        assert.equal(unseededOverrides(root('["knob.a",3,null]')).size, 1);
     });
 });
 

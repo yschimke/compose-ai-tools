@@ -24,12 +24,21 @@ const KNOB_KINDS = new Set(["string", "int", "float", "bool", "color"]);
  */
 export function unseededOverrides(root: Element | null): Set<string> {
     const raw = root?.getAttribute("data-unseeded-overrides") || "";
-    return new Set(
-        raw
-            .split(",")
-            .map((s) => s.trim())
-            .filter((s) => s.length > 0),
-    );
+    if (raw === "") return new Set();
+    // A JSON array, not a delimited list: a knob key is an author string and nothing forbids a
+    // comma in one. Splitting `knob.price,discount` yields two names that match nothing, so the
+    // real axis would quietly stop being withheld — and the value the render ignored would come
+    // back. Malformed input withholds NOTHING rather than guessing, which is the same answer as an
+    // ordinary page and leaves the server's markup as the only thing that has to be right.
+    try {
+        const parsed: unknown = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return new Set();
+        return new Set(
+            parsed.filter((s): s is string => typeof s === "string"),
+        );
+    } catch {
+        return new Set();
+    }
 }
 
 /**
