@@ -2510,9 +2510,12 @@ curl -sS -H "Authorization: Bearer $(gh auth token)" \
 ```
 
 - **`POST /images?name=<label>`** — the image is the request body. Answers `201` with the JSON above;
-  `markdown` is the finished embed line, so a caller never has to assemble it (and never trips the
-  ``![alt](`url`)`` backtick trap that renders as literal text). `?name=` is a display label and the
-  alt text — never a path, never the format decision.
+  `markdown` is the finished embed line, so a caller never has to assemble it. That removes the
+  assembly mistakes, not the ``![alt](`url`)`` backtick form itself — those backticks are usually
+  injected in transit rather than authored, and the [`PR Body Syntax`](../.github/workflows/pr-body-syntax.yml)
+  workflow is what strips them from a PR description (see [AGENTS.md](AGENTS.md), which covers what
+  that net does and does not reach). `?name=` is a display label and the alt text — never a path,
+  never the format decision.
 - **`GET /i/<id>.png`** — the image itself, with `X-Content-Type-Options: nosniff` and a
   `Cache-Control` that expires with the link.
 
