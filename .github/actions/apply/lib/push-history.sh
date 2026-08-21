@@ -56,11 +56,20 @@ if ! compose-preview inspect history-manifest --help >/dev/null 2>&1; then
   echo "::notice::history manifest: installed CLI has no 'inspect history-manifest'; skipping history.json. Upgrade the CLI to publish render history."
   exit 0
 fi
-# `--layout` is newer than the subcommand itself, so an older CLI would take `images` as an
-# unrecognised flag and silently emit a `renders`-layout manifest — empty for a design catalog, and
-# published over a good one. Probe separately.
-if [ "$LAYOUT" != "renders" ] && \
-    ! compose-preview inspect history-manifest --help 2>/dev/null | grep -q -- "--layout"; then
+# `--layout` is newer than the subcommand itself, so probe for it separately and record the answer.
+# What that answer means depends on the layout asked for:
+#
+#   images  — the flag IS the request. An older CLI would take `images` as an unrecognised option,
+#             ignore it, and emit a `renders`-layout manifest instead: empty for a design catalog,
+#             and published over a good one. Skip.
+#   renders — the flag is the CLI's own default, so an older one produces the right manifest either
+#             way. Pass it only when supported, so a pinned CLI is not handed an option it will
+#             warn about (`unrecognised option '--layout' (ignored)`) on every baseline publish.
+LAYOUT_SUPPORTED=0
+if compose-preview inspect history-manifest --help 2>/dev/null | grep -q -- "--layout"; then
+  LAYOUT_SUPPORTED=1
+fi
+if [ "$LAYOUT" != "renders" ] && [ "$LAYOUT_SUPPORTED" != "1" ]; then
   echo "::notice::history manifest: installed CLI has no '--layout'; skipping history.json for the ${LAYOUT} layout."
   exit 0
 fi
@@ -87,7 +96,8 @@ fi
 # Join against the baselines.json being published, not the one on the branch, so the manifest and
 # its keys are always the same snapshot. The images layout passes none and derives its keys.
 generate() {
-  set -- --repo "$WORK_DIR" --branch FETCH_HEAD --layout "$LAYOUT" --output "$OUTPUT"
+  set -- --repo "$WORK_DIR" --branch FETCH_HEAD --output "$OUTPUT"
+  [ "$LAYOUT_SUPPORTED" = "1" ] && set -- "$@" --layout "$LAYOUT"
   [ -n "$BASELINES" ] && [ "$LAYOUT" = "renders" ] && set -- "$@" --baselines "$BASELINES"
   compose-preview inspect history-manifest "$@"
 }

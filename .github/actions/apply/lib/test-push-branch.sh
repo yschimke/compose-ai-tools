@@ -100,4 +100,51 @@ before=$(git --git-dir="$REMOTE" rev-parse refs/heads/design-artifacts/index)
 after=$(git --git-dir="$REMOTE" rev-parse refs/heads/design-artifacts/index)
 test "$before" = "$after"
 
+# A file the BRANCH owns but the staging directory does not generate — `history.json`, published as
+# its own commit by push-history.sh — survives a catalog publish only if it is carried forward.
+# Uncarried it is deleted, which also defeats SKIP_IF_UNCHANGED: the tree differs from the parent by
+# that deletion, so an otherwise-unchanged catalog appends a commit on every single run.
+carry_branch=design-artifacts/carry
+carry_publish() {
+  work="$1"; shift
+  ( cd "$work" && env TARGET_BRANCH="$carry_branch" REPO=local/test GITHUB_TOKEN_INLINE=test \
+      MSG=carry REMOTE_URL="$REMOTE" "$@" "$HELPER" )
+}
+stage="$ROOT/carry-stage"
+mkdir -p "$stage"
+printf 'render-v1\n' > "$stage/render.txt"
+carry_publish "$stage"
+
+# The history publisher adds a file no staging directory will ever contain.
+hist="$ROOT/carry-hist"
+git clone -q --branch "$carry_branch" "$REMOTE" "$hist"
+printf '{"previews":{}}\n' > "$hist/history.json"
+git -C "$hist" add -A
+git -C "$hist" -c user.email=t@example.com -c user.name=T commit -q -m 'history'
+git -C "$hist" push -q origin "HEAD:refs/heads/$carry_branch"
+carried_parent=$(git --git-dir="$REMOTE" rev-parse "refs/heads/$carry_branch")
+
+# Re-publishing the identical catalog must be a genuine no-op: nothing pushed, history.json intact.
+restage="$ROOT/carry-restage"
+mkdir -p "$restage"
+printf 'render-v1\n' > "$restage/render.txt"
+carry_publish "$restage" CARRY_FORWARD_PATHS='parity/issues.json history.json' SKIP_IF_UNCHANGED=1
+test "$(git --git-dir="$REMOTE" rev-parse "refs/heads/$carry_branch")" = "$carried_parent" || {
+  echo "FAIL: an unchanged catalog pushed a commit despite carrying history.json" >&2; exit 1; }
+git --git-dir="$REMOTE" cat-file -e "${carried_parent}:history.json" || {
+  echo "FAIL: history.json did not survive the catalog publish" >&2; exit 1; }
+
+# The negative control, on its own branch: without the carry the publish deletes it. This is the
+# regression the line above exists to prevent, so pin the mechanism rather than trusting the fix.
+control=design-artifacts/carry-control
+git --git-dir="$REMOTE" update-ref "refs/heads/$control" "$carried_parent"
+uncarried="$ROOT/carry-uncarried"
+mkdir -p "$uncarried"
+printf 'render-v1\n' > "$uncarried/render.txt"
+( cd "$uncarried" && env TARGET_BRANCH="$control" REPO=local/test GITHUB_TOKEN_INLINE=test \
+    MSG=uncarried REMOTE_URL="$REMOTE" SKIP_IF_UNCHANGED=1 "$HELPER" )
+if git --git-dir="$REMOTE" cat-file -e "refs/heads/${control}:history.json" 2>/dev/null; then
+  echo "FAIL: control expected the uncarried publish to drop history.json" >&2; exit 1
+fi
+
 echo "push-branch race tests passed"

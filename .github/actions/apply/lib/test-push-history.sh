@@ -34,6 +34,12 @@ case "${STUB_MODE:-full}" in
   missing-subcommand) [ "${3:-}" = "--help" ] && exit 1 ;;
   no-layout) [ "${3:-}" = "--help" ] && { echo "  --branch REF"; exit 0; } ;;
   failing) [ "${3:-}" = "--help" ] && { echo "  --layout NAME"; exit 0; } ; exit 3 ;;
+  # A release predating --layout: its help does not list the flag, and here it is made outright
+  # fatal so passing it to such a CLI can never look like success.
+  rejects-layout)
+    [ "${3:-}" = "--help" ] && { echo "  --branch REF"; exit 0; }
+    for a in "$@"; do [ "$a" = "--layout" ] && { echo "unknown option --layout" >&2; exit 64; }; done
+    ;;
   *) [ "${3:-}" = "--help" ] && { echo "  --layout NAME"; exit 0; } ;;
 esac
 # Write whatever the caller asked for, so the push path is exercised for real.
@@ -128,5 +134,21 @@ gen_line=$(grep -n 'if ! generate; then' "$HELPER" | cut -d: -f1)
 loop_line=$(grep -n '^while :; do' "$HELPER" | cut -d: -f1)
 test "$gen_line" -gt "$loop_line" || {
   echo "FAIL: generate() is called before the retry loop opens" >&2; exit 1; }
+
+# 7. The default `renders` layout still publishes against a CLI that predates `--layout`. The flag
+#    names that CLI's own default, so the manifest it produces is the right one — the helper must
+#    therefore withhold the flag rather than pass it and take the rejection as a reason to skip.
+printf '{"a":{"module":"m","renderBasename":"a.png"}}\n' > "$ROOT/baselines.json"
+before7=$(tip_commits)
+out=$( ( cd "$ROOT" && env PATH="$BIN:$PATH" \
+    TARGET_BRANCH="$BRANCH" REPO=local/test GITHUB_TOKEN_INLINE=test REMOTE_URL="$REMOTE" \
+    OUTPUT="$ROOT/history.json" LAYOUT=renders BASELINES="$ROOT/baselines.json" \
+    STUB_MODE=rejects-layout STUB_MANIFEST='{"previews":{"legacy-cli":{}}}' \
+    MSG='update history' WORK_DIR="$ROOT/scratch7" bash "$HELPER" ) 2>&1 )
+case "$out" in
+  *skipping*) echo "FAIL: renders layout skipped on a pre---layout CLI: $out" >&2; exit 1 ;;
+esac
+test "$(tip_commits)" -eq "$((before7 + 1))" || {
+  echo "FAIL: renders layout published nothing against a pre---layout CLI: $out" >&2; exit 1; }
 
 echo "push-history.sh: all checks passed."

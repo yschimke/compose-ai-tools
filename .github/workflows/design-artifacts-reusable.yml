@@ -1833,6 +1833,18 @@ jobs:
           # Snapshots dedupe by content, so unchanged renders cost nothing;
           # SKIP_IF_UNCHANGED drops the commit when the tree is byte-identical.
           #
+          # CARRY_FORWARD_PATHS lists the files the BRANCH owns and `out/` does
+          # not generate. The helper snapshots this directory wholesale, so a
+          # branch file missing from it is a file the push deletes. That costs
+          # twice over: the deletion makes the tree differ from the parent, so
+          # SKIP_IF_UNCHANGED can no longer skip an otherwise-unchanged catalog
+          # and every no-op run appends a commit; and whatever re-adds the file
+          # afterwards leaves it 404ing for the window in between. `history.json`
+          # is here for exactly that reason — the step below publishes it as its
+          # own commit, so it is never in `out/`. (`preview-index.json` is the
+          # same problem with a different answer: REVISION_PREVIEW_INDEX rolls it
+          # forward rather than merely preserving it.)
+          #
           # Identity goes through git's own GIT_AUTHOR_*/GIT_COMMITTER_* env vars
           # rather than a helper-specific input, because push-branch.sh comes from
           # the `driver-ref` checkout — which a caller may pin to a revision older
@@ -1844,7 +1856,7 @@ jobs:
           GITHUB_TOKEN_INLINE="$GH_TOKEN" \
           MSG="chore(design-artifacts): regenerate ${SYSTEM} catalog ($(date -u +%F), ${SOURCE_SHA})" \
           SKIP_IF_UNCHANGED=1 \
-          CARRY_FORWARD_PATHS='parity/issues.json' \
+          CARRY_FORWARD_PATHS='parity/issues.json history.json' \
           REVISION_PREVIEW_INDEX=1 \
           GIT_AUTHOR_NAME="$INPUT_COMMIT_USER_NAME" \
           GIT_AUTHOR_EMAIL="$INPUT_COMMIT_USER_EMAIL" \
