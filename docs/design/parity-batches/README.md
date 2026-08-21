@@ -53,6 +53,31 @@ Not a batch; context for what exists.
   projection; published-catalog `tags/index.json`), one host API `ServeHost.tagIndexForPreview`.
 - The theme annotation layer, reachable on the focused comparison, with visible legend ordinals.
 
+### …and not yet switched on
+
+Batches 01 and 02 are merged, and until a catalog *calls* them nothing they built is reachable:
+
+- `parity-issues-reusable.yml` had **no callers**. No catalog repo carried a workflow invoking it,
+  so `parity/issues.json` was never generated — the m3-catalog delivery branch's `parity/` directory
+  held `activity.json` alone. The reader and every UI surface were serving the empty path in
+  production while their tests passed.
+- **No issue carries a locator block**, so even with the workflow adopted the index would have been
+  empty. m3-catalog's dozen genuine known differences (#40, #41, #42, #85–#95, …) are labelled
+  `invalid` + `upstream` — a taxonomy that predates this epic and that the producer does not read.
+
+Two defects found while switching it on, both fixed: the producer refused three shapes the writer
+legitimately emits (see
+[the locator contract](../COMPONENT_PARITY_WORKFLOW.md#which-fields-may-be-blank-and-which-may-be-absent)),
+and it counted every ordinary issue's absent locator as a failure, so its exit code was non-zero on
+any healthy repository.
+
+What remains before the pilot reports anything: **backfill locator blocks and `area:` / `parity:`
+labels onto the real known differences**. Their ids have to come from the published catalog, not be
+guessed — a plausible wrong `previewId` produces an index that looks right and joins to nothing.
+Worth doing before batch 04 freezes an acceptance schema, because those dozen issues are the
+population the schema is for, and most of them are whole-component geometry and token differences
+rather than the single-element colour delta the design's worked example is built around.
+
 ## Conventions every batch inherits
 
 - **Fail-soft on anything read from a catalog.** A catalog is third-party data. Malformed, wrong

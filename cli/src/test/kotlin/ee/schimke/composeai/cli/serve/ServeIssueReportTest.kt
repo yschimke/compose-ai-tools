@@ -1,10 +1,16 @@
 package ee.schimke.composeai.cli.serve
 
+import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 class ServeIssueReportTest {
 
@@ -289,5 +295,45 @@ class ServeIssueReportTest {
       )
     val body = ServeIssueReport.body(tokenBearing)
     assertFalse(body.contains("token="), body)
+  }
+
+  @Test
+  fun `the writer emits the shared locator fixture byte for byte`() {
+    // The other half of `compose-parity-locator/v1`. This side asserts the bytes the writer puts in
+    // an issue body; scripts/design-artifacts/parity-issues.test.mjs asserts the producer parses
+    // those same bytes back. Without one file both read, each engine only ever tests itself — which
+    // is how the producer came to reject an omitted `revision`, an empty `variant`, and an override
+    // map ordered by code point, none of which the writer can be talked out of emitting.
+    val fixture =
+      Json.parseToJsonElement(
+          File("../scripts/design-artifacts/fixtures/parity-locators.json").readText()
+        )
+        .jsonObject
+    assertEquals(ServeIssueReport.LOCATOR_FENCE, fixture["schema"]?.jsonPrimitive?.contentOrNull)
+    val written =
+      fixture["cases"]!!.jsonArray.map { it.jsonObject }.filter { it.containsKey("writer") }
+    // A fixture that silently stopped carrying writer cases would pass every assertion below.
+    assertEquals(4, written.size, "the fixture must keep exercising the writer")
+    for (case in written) {
+      val name = case["name"]!!.jsonPrimitive.content
+      val writer = case["writer"]!!.jsonObject
+      val locator =
+        ServeIssueReport.Locator(
+          repository = writer["repository"]!!.jsonPrimitive.content,
+          system = writer["system"]!!.jsonPrimitive.content,
+          componentId = writer["componentId"]!!.jsonPrimitive.content,
+          previewId = writer["previewId"]!!.jsonPrimitive.content,
+          referenceId = writer["referenceId"]!!.jsonPrimitive.content,
+          variant = writer["variant"]!!.jsonPrimitive.content,
+          overrides =
+            writer["overrides"]!!.jsonObject.entries.associate {
+              it.key to it.value.jsonPrimitive.content
+            },
+          revision = writer["revision"]?.jsonPrimitive?.contentOrNull,
+        )
+      val block = case["block"]!!.jsonPrimitive.content
+      assertEquals(block, ServeIssueReport.locatorBlock(locator), name)
+      assertEquals(locator, ServeIssueReport.locatorFromBody(block), name)
+    }
   }
 }

@@ -162,6 +162,36 @@ so they cannot disagree.
 renderer,comparison}` and `parity:{regression,known-difference,verification-needed}`. No label per
 component — component identity lives in the locator block.
 
+### Which fields may be blank, and which may be absent
+
+Three rules that look like validator trivia and are not: each one is a shape the **writer**
+(`ServeIssueReport.locatorBlock`) can legitimately emit, and each was refused by the **producer**
+(`parseLocator`) — which drops the whole issue from the index, so the report the reporter filed is
+simply not there.
+
+- **`revision` is optional.** It comes from the session's delivery provenance, and a session that
+  has none — a developer's local `compose-preview serve` over a bundle directory, or a live daemon —
+  omits the line. That is the session a developer reports *from*. The index carries no revision
+  column either, so requiring it never bought anything.
+- **`variant` is always present and may be empty.** `ServeIssueReport.variantFor` returns `""` for a
+  preview id carrying no `__` axes. "No axes" is a fact about the preview, not a mangled body. Every
+  *other* field must be non-blank: an emptied `system` or `preview` means the block no longer names
+  one component, and that is a mangled body.
+- **`overrides` keys sort by Unicode code point, not by UTF-16 code unit.** The distinction is
+  invisible until a key is astral-plane: JavaScript's default `Array.prototype.sort` orders
+  surrogates (`D800`–`DFFF`) below `E000`–`FFFF`, so a canonical block written by
+  `ServeIssueReport.canonicalOverrides` came back re-serialised in a different order and was refused
+  as "not canonical" — a cross-engine disagreement manufactured by the validator itself, on a body
+  nobody had touched.
+
+**The fixture is the enforcement, not this list.**
+[`scripts/design-artifacts/fixtures/parity-locators.json`](../../scripts/design-artifacts/fixtures/parity-locators.json)
+carries each shape once and is read by *both* engines: `ServeIssueReportTest` asserts the writer
+emits those exact bytes, and `parity-issues.test.mjs` asserts the producer parses them back. Cases
+with no `writer` key are shapes no writer emits and the producer must keep refusing. Without one
+file both sides read, each engine only ever tests itself against itself — which is precisely how all
+three rules above came to be broken while every test in both languages passed.
+
 ---
 
 ## 3. The published issue index (`parity/issues.json`)
@@ -185,6 +215,21 @@ already has a trust boundary with tests:
 - **Failure posture** fail-soft. A missing file, a wrong schema token, a malformed record: drop that
   record or the whole index and serve the catalog normally. Issue badges are an enhancement; they
   must never cost a catalog its grid.
+- **An absent locator is not a failure.** A repository is mostly ordinary issues — a dependency
+  dashboard, a docs nit — and none of them carry a locator block. The producer skips those silently
+  and reserves its non-zero exit for a locator that is *present and broken*. Conflating the two made
+  the emitter red on a healthy repository, which is a good reason for a catalog never to adopt it.
+  The one absent-locator case still worth a warning is an issue carrying an `area:` or `parity:`
+  label: that is a parity report filed without its identity, and a human has to go add the block.
+  **"Absent" means no opening fence, not no complete fence.** A block whose closing ``` was deleted
+  matches the full-fence pattern zero times and is otherwise indistinguishable from an ordinary
+  issue — which would send a real, damaged report down the silent path and let the run go green
+  without it. The opener is matched separately and anchored to a line, so a body that merely names
+  the fence in prose still counts as absent, while an unterminated one — and a good block trailed by
+  a dangling opener — is reported. Both patterns tolerate the **one to three leading spaces**
+  CommonMark allows, because a block pasted inside a list item renders as an ordinary fence on
+  GitHub and a column-zero-only pattern would read a plainly visible locator as absent. Four spaces
+  is an indented code block, not a fence, so the marker is literal text and there is no locator.
 
 ### Where the regeneration workflow lives
 
