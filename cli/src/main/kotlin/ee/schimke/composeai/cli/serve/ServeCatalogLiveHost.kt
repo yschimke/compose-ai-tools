@@ -1765,6 +1765,12 @@ class ServeCatalogLiveHost(
         // per-preview half of `PreviewBackdrop` silently inert exactly where it matters most.
         showBackground = twin.showBackground,
         backgroundColor = twin.backgroundColor,
+        // The device frame arrives the same way and for the same reason — `@Preview(device = …)`
+        // lives in `previews.json`, which the baked staging directory does not carry — so without
+        // this the round-device clip is inert on precisely the lane that serves a published Wear
+        // catalog. Preferring the twin but falling back keeps a baked-only card (no daemon twin
+        // for it) on whatever it already had rather than clearing it to null.
+        deviceFrame = twin.deviceFrame ?: p.deviceFrame,
       )
     }
   }

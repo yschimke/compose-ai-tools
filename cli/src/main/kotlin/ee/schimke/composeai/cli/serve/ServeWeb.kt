@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli.serve
 import ee.schimke.composeai.data.overrides.PreviewOverrideOption
 import ee.schimke.composeai.data.render.PreviewBackdrop
 import ee.schimke.composeai.data.render.PreviewBackground
+import ee.schimke.composeai.data.render.PreviewClip
 import ee.schimke.composeai.designpages.DesignPage
 import ee.schimke.composeai.designpages.PageNode
 import java.time.Instant
@@ -1493,6 +1494,32 @@ ${captureControlsHtml().prependIndent("          ")}
         variantSurface = overriddenSurface ?: variantSurfaceOf(preview),
       ),
       if (darkFirst) PreviewBackdrop.CatalogSurface.DARK else PreviewBackdrop.CatalogSurface.LIGHT,
+    )
+  }
+
+  /**
+   * The device-frame clip for a preview, as a CSS `clip-path`, or null when the whole capture is
+   * screen.
+   *
+   * This is the shape half of the same "what is behind this preview?" question [backdropFor]
+   * answers with a colour, and the two are only correct together. A round Wear capture is a circle
+   * in a square PNG; painting its backdrop across the whole square draws the watch as a rectangle,
+   * and because a Wear catalog declares black backgrounds against black screens, the device edge
+   * did not merely look wrong — on this repo's own `PageIndicatorScaffoldTemplate` renders the
+   * stage was pixel-identical to the screen and the boundary was invisible.
+   *
+   * Sized to the DEVICE box rather than to the panel: the compare panels size their `<img>` with
+   * `width: auto; height: auto`, so the image element's box carries the render's own aspect and a
+   * circle stated against the device is exactly the circle in the pixels. Clipping the panel
+   * instead would clip the panel's rectangle, which is a different shape in a different place.
+   */
+  internal fun stageClipFor(preview: ServePreview): String? {
+    val frame = preview.deviceFrame ?: return null
+    val shape = PreviewClip.resolve(frame.isRound, frame.widthDp, frame.heightDp) ?: return null
+    return PreviewClip.cssClipPath(
+      shape,
+      frame.widthDp ?: return null,
+      frame.heightDp ?: return null,
     )
   }
 
@@ -8963,13 +8990,25 @@ $rows
         // or the pixels and their ground describe different renders.
         uiModeOverride = overrides["uiMode"],
       )
+    // The SHAPE of that ground. A round device's stage has to stop at the bezel, or the three
+    // panels agree with each other about a watch that is square.
+    val stageClip = stageClipFor(preview)
     val stageAttrs =
       backdrop.color?.let { color ->
         // The theme word drives the existing CSS; the exact colour rides along as a custom property
         // so a catalog whose stage is neither of the two literal plates still gets its own ground
         // rather than the nearest of them.
+        val clipProperty =
+          stageClip?.let { "; --cp-stage-clip: ${WebEscaping.htmlEscape(it)}" } ?: ""
+        // The marker attribute AS WELL as the property, because the clip is not the only thing the
+        // rules it gates do: they also take the ground off the panel and hand it to the image, so
+        // the corners the clip opens up show the page's checkerboard rather than the stage colour.
+        // CSS cannot branch on whether a custom property was set, so without a marker every
+        // rectangular preview would lose its panel ground to buy a clip it never uses.
+        val clipMarker = if (stageClip != null) " data-cp-stage-clip=\"1\"" else ""
         " data-bg-theme=\"${if (backdrop.isDark) "dark" else "light"}\"" +
-          " style=\"--cp-stage-backdrop: ${WebEscaping.htmlEscape(color.asCssColor())}\""
+          clipMarker +
+          " style=\"--cp-stage-backdrop: ${WebEscaping.htmlEscape(color.asCssColor())}$clipProperty\""
       } ?: ""
     // One toggle per kind, offered only when some panel actually carries that kind — a control that
     // reveals nothing is worse than no control. The payload rides inline rather than behind a fetch

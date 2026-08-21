@@ -12,6 +12,7 @@ import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.data.render.PreviewClip
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.PreviewDeviceContext
 import ee.schimke.composeai.data.render.PreviewDeviceSpec
@@ -97,20 +98,19 @@ class DeviceClipDataProductRegistry(previewIndex: PreviewIndex) : DataProductReg
 
   private fun payloadFor(previewId: String): JsonElement? {
     val device = contexts[previewId]?.device ?: return null
-    val widthDp = device.widthDp
-    val heightDp = device.heightDp
+    // Through the shared resolver rather than inlining the circle here: serve draws the same clip
+    // as CSS and the scorer masks with it, and three copies of "half the shorter side" is exactly
+    // how the backdrop used to disagree with itself across surfaces.
     val clip =
-      if (device.isRound && widthDp != null && heightDp != null) {
-        val diameter = minOf(widthDp, heightDp)
-        val radius = diameter / 2.0
-        buildJsonObject {
-          put("shape", "circle")
-          put("centerXDp", widthDp / 2.0)
-          put("centerYDp", heightDp / 2.0)
-          put("radiusDp", radius)
-        }
-      } else {
-        JsonNull
+      when (val shape = PreviewClip.resolve(device.isRound, device.widthDp, device.heightDp)) {
+        is PreviewClip.Shape.Circle ->
+          buildJsonObject {
+            put("shape", "circle")
+            put("centerXDp", shape.centerXDp)
+            put("centerYDp", shape.centerYDp)
+            put("radiusDp", shape.radiusDp)
+          }
+        null -> JsonNull
       }
     return buildJsonObject { put("clip", clip) }
   }
