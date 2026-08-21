@@ -424,9 +424,9 @@ class InteractiveRpcIntegrationTest {
 
 /**
  * Test-only [RenderHost] that returns a real on-disk PNG path on every render so the daemon's
- * `hashFrameBytes` path actually runs. Driven by a single [defaultPng] file when the manifest is
- * unset, or by a per-previewId map otherwise. The test mutates the file's bytes between renders to
- * drive the dedup-hit / dedup-miss branches.
+ * `readFrameBytes` dedup path actually runs. Driven by a single [defaultPng] file when the manifest
+ * is unset, or by a per-previewId map otherwise. The test mutates the file's bytes between renders
+ * to drive the dedup-hit / dedup-miss branches.
  */
 private class BytesAwareFakeHost(
   private val defaultPng: File,

@@ -134,6 +134,23 @@ Three flavours:
 - **Final.** `final: true`; `codec` and `payloadBase64` omitted; `seq`
   increments. Sent at most once per stream.
 
+`widthPx` / `heightPx` are the frame's own pixel size, read from the
+PNG's `IHDR` (`PngHeader`) — not the requested device size, and not the
+sandbox window: a wrap-content preview is cropped to its measured content
+before it reaches here, so the size travels with the frame. They are `0`
+only when the size genuinely cannot be determined (a stub host's
+placeholder bytes, a codec whose header the daemon does not parse). Until
+#4281 they were hard-coded to `0` on every frame while looking like a
+field a client could size a stage from.
+
+**One read per frame.** The server reads the captured PNG once, in
+`JsonRpcServer.emitRenderFinished`, and carries the bytes through the
+dedup hash, the size probe, and the base64 payload
+(`FrameStreamRegistry.consumeForPreview(pngBytes = …)`). Two streams
+watching one preview still share that single copy. Before #4283 the hash,
+the size, and the payload each re-read the same file — three reads a
+frame, at the interactive loop's cadence, on top of the capture's write.
+
 ## Binary header (`StreamFrameHeader`)
 
 JSON is the wire today; a future WebSocket data plane (or a `.cstream1`
@@ -289,7 +306,12 @@ canvas painter; there is no opt-in setting and no fallback.
   multi-stream demux, sink isolation, late-bind buffering.
 - `vscode-extension` `liveCommand.test.ts` — pins the LIVE-button →
   wire-command rule (every entry point posts the same shape).
+- `:daemon:core` `PngHeaderTest` — the frame-size probe, including the
+  cases that must report "unknown" rather than a fabricated size.
 - `cli` `ServeLiveSessionTest` — the socket's own monotonic `seq`,
-  including across a stream restart.
+  including across a stream restart, and the frame/heartbeat counters
+  behind `/status.json`'s `liveFrames`.
+- `cli` `LiveFramePerfStatsTest` — achieved fps from the inter-frame
+  intervals, per-catalog scoping, socket open/close accounting.
 - `cli/serve-web` `liveFramePainter.test.ts` — newest-wins queue, stale
   drop after dispatch, the post-decode watermark, heartbeat handling.

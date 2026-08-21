@@ -274,6 +274,63 @@ class ServeLiveSessionTest {
   }
 
   @Test
+  fun `frames and heartbeats are recorded for the status lane`() {
+    // #4281 — `/status.json` could say how many sockets were open and nothing about what they were
+    // achieving, because streamed frames never pass through the render host's own perf counters.
+    val session = FakeRenderSession(newRenderRoot(), streaming = true)
+    host(session).use { h ->
+      val stats = LiveFramePerfStats()
+      val live =
+        assertNotNull(
+          ServeLiveSession.tryStart(
+            h,
+            previewId,
+            emptyMap(),
+            send = {},
+            system = "compose-m3",
+            frameStats = stats,
+          )
+        )
+      val fsid = assertNotNull(session.lastFrameStreamId)
+      val payload = Base64.getEncoder().encodeToString(ByteArray(64))
+      session.emitStreamFrame(fsid, seq = 1, payloadBase64 = payload)
+      session.emitStreamFrame(fsid, seq = 2, payloadBase64 = null) // unchanged heartbeat
+      session.emitStreamFrame(fsid, seq = 3, payloadBase64 = payload)
+
+      val open = assertNotNull(stats.snapshot("compose-m3"))
+      assertEquals(2L, open.frames)
+      assertEquals(1L, open.heartbeats)
+      assertEquals(payload.length * 2L, open.payloadBytes)
+      assertEquals(1, open.openSockets)
+      assertEquals(previewId, open.streams.single().previewId)
+
+      live.close()
+      val closed = assertNotNull(stats.snapshot("compose-m3"))
+      assertEquals(0, closed.openSockets)
+      assertEquals(2L, closed.frames, "totals survive the socket that produced them")
+    }
+  }
+
+  @Test
+  fun `a socket that never opened a stream is not counted as live`() {
+    val session = FakeRenderSession(newRenderRoot()) // streaming = false
+    host(session).use { h ->
+      val stats = LiveFramePerfStats()
+      assertNull(
+        ServeLiveSession.tryStart(
+          h,
+          previewId,
+          emptyMap(),
+          send = {},
+          system = "compose-m3",
+          frameStats = stats,
+        )
+      )
+      assertEquals(0, assertNotNull(stats.snapshot("compose-m3")).openSockets)
+    }
+  }
+
+  @Test
   fun `input messages dispatch interactive input`() {
     val session = FakeRenderSession(newRenderRoot(), streaming = true)
     host(session).use { h ->

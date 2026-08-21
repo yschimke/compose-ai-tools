@@ -3631,13 +3631,16 @@ form — a stable schema built for a monitor or a **Home Assistant** REST sensor
   "catalogList": [ { "id": "compose-m3", "listed": true, "trust": "branch:…", "previews": 42,
     "live": true, "running": false, "metaStale": false, "path": "/compose-m3/" } ],
   "runningServers": [ { "id": "wear-m3", "label": "wear-m3", "backend": "android", "seatWeight": 2,
-    "activeStreams": 0, "uptimeSeconds": 120,
+    "activeStreams": 0, "uptimeSeconds": 120, "liveFrames": { "openSockets": 0, "frames": 1042,
+      "achievedFps": 4.0, "…": "see below" },
     "renderStats": { "renders": 12, "ok": 11, "failed": 1, "timedOut": 1, "busy": 0,
       "cacheHits": 34, "coldRenders": 1, "firstRenderMs": 31000,
       "minMs": 1400, "maxMs": 31000, "avgMs": 4100, "lastMs": 1900,
       "p50Ms": 1900, "p95Ms": 6200, "windowSize": 11 } } ],
   "recentDaemonFailures": [],
-  "renderStats": { "renders": 12, "ok": 11, "failed": 1, "…": "server-wide roll-up" } }
+  "renderStats": { "renders": 12, "ok": 11, "failed": 1, "…": "server-wide roll-up" },
+  "liveFrames": { "openSockets": 2, "frames": 1042, "heartbeats": 388, "achievedFps": 4.0,
+    "…": "live-stream frame counters, see below" } }
 ```
 
 A catalog row carries `metaStale: true` when its `trust` / `title` / `previews` / provenance are the
@@ -3654,6 +3657,43 @@ backoffs, timeouts) — and the top-level `renderStats` is the roll-up across da
 (`firstRenderMs` there is the *worst* first render, the cold-start headline the
 background-sandbox-boot work drives down). Both are additive on `status/v1` and null/absent until
 something has rendered.
+
+### Live-lane frame counters
+
+`renderStats` measures `/render` round-trips and **cannot see a live stream at all**: a streamed
+frame never goes through that path — it is pushed by the daemon as a `streamFrame` notification and
+fanned out to the sockets watching that preview. So a box could report three active streams and
+nothing about what any of them was achieving. `liveFrames` is that missing half, recorded where the
+frames actually reach a browser, per catalog on `runningServers[]` and as a box-wide roll-up at the
+top level:
+
+```json
+"liveFrames": { "openSockets": 2, "socketsOpened": 37, "frames": 1042, "heartbeats": 388,
+  "payloadBytes": 9264188, "avgPayloadBytes": 8891, "maxPayloadBytes": 20114,
+  "minIntervalMs": 16, "p50IntervalMs": 250, "p95IntervalMs": 2000, "maxIntervalMs": 2000,
+  "achievedFps": 4.0, "intervalWindow": 256, "lastFrameAtEpochMillis": 1754582400000,
+  "streams": [ { "system": "m3-catalog", "previewId": "button-filled", "frames": 61,
+    "heartbeats": 12, "payloadBytes": 405000, "openSeconds": 44, "lastIntervalMs": 16 } ] }
+```
+
+`achievedFps` is derived from `p50IntervalMs` — the cadence a viewer actually got, not the one the
+frame loop asks for: render time, the per-stream fps gate, a backgrounded tab's visibility throttle
+and the idle backoff all sit between the two. Read it against the other two numbers rather than
+alone:
+
+- **Heartbeats climbing while `frames` flattens** is the idle backoff working — the preview is at
+  rest, the daemon is deduping, and the wire is carrying almost nothing.
+- **A low `achievedFps` with few heartbeats** is the render loop itself being the constraint.
+- **`minIntervalMs` near 16 with a `maxIntervalMs` in the seconds** is the expected shape of an
+  interactive session: a burst after every input, a long tail while nothing moves.
+
+`payloadBytes` counts the base64 text as sent, which is what the socket carries (~4/3 of the PNG's
+size on disk). Percentiles come from a bounded ring of the last 256 inter-frame gaps per catalog, so
+a long-lived server reports recent cadence rather than an all-time blur; `streams` describes only
+the sockets open right now, while the counters above it survive the sockets that produced them.
+Additive on `status/v1`, null until a live socket has opened, and scoped like everything else on a
+[top-level site](#top-level-sites-one-catalog-on-a-hostname-of-its-own) — a per-site monitor is told
+about its own live lane and never a neighbour's.
 
 ### Render circuit breaker
 

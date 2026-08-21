@@ -1357,7 +1357,12 @@ class JsonRpcServer(
     // and let the client short-circuit the file-read + base64 + repaint hop. Track always (not
     // just under interactive mode): a save that doesn't move pixels is just as redundant as an
     // input that doesn't change state.
-    val frameHash = hashFrameBytes(result.pngPath)
+    // ONE read of the frame's PNG, carried in memory from here to the wire. The dedup hash below,
+    // the `streamFrame` payload's base64, and the frame's declared pixel size are all derived from
+    // these bytes; before #4283 each of those re-read the same file (three reads per live frame at
+    // the interactive loop's cadence, on top of the capture's write).
+    val frameBytes = readFrameBytes(result.pngPath)
+    val frameHash = frameBytes?.let(::sha256Hex)
     val isUnchanged =
       frameHash != null && lastFrameHashes[previewId] == frameHash && firstRenderFinishedSeen.get()
     // Feed the idle backoff's quiescence signal from the comparison that already happened. Tracked
@@ -1372,13 +1377,18 @@ class JsonRpcServer(
     // sequenced binary-bytes notifications instead. See docs/daemon/STREAMING.md for the
     // wire contract and the rationale for landing this on top of `interactive/*`.
     if (streamRegistry.hasStreamsFor(previewId)) {
+      // The frame's real pixel size, off the IHDR of the bytes we already hold. It used to be sent
+      // as `0 × 0` on every live frame — the field was on the wire and meaningless, so a client
+      // that believed it sized the stage to nothing.
+      val (widthPx, heightPx) = PngHeader.dimensions(frameBytes) ?: (0 to 0)
       val frames =
         streamRegistry.consumeForPreview(
           previewId = previewId,
           pngPath = result.pngPath,
           pngHash = frameHash,
-          widthPx = 0,
-          heightPx = 0,
+          widthPx = widthPx,
+          heightPx = heightPx,
+          pngBytes = frameBytes,
         )
       for (frame in frames) {
         sendNotification("streamFrame", encode(StreamFrameParams.serializer(), frame))
@@ -1402,7 +1412,12 @@ class JsonRpcServer(
     // BOTH the bytes and the semantics tree are unchanged — `recordHistoryForRender` returns null
     // on
     // that skip, so a truly-redundant frame still emits no `historyAdded` and adds no sidecar.
-    recordHistoryForRender(previewId = previewId, result = result, finished = finished)
+    recordHistoryForRender(
+      previewId = previewId,
+      result = result,
+      finished = finished,
+      pngBytes = frameBytes,
+    )
     inFlightRenders.remove(result.id)
     // Cleared only after the frame's history/data-product snapshot above, so the next same-preview
     // render can't overwrite per-preview artifacts before this frame's sidecar is recorded. The
@@ -1422,9 +1437,9 @@ class JsonRpcServer(
   }
 
   /**
-   * H1 — reads the render's PNG bytes off disk (when [RenderResult.pngPath] is non-null and the
-   * file exists), sha256s them, and writes a sidecar + index entry via [historyManager]. Emits
-   * `historyAdded` after the entry has been persisted.
+   * H1 — takes the render's PNG bytes ([pngBytes], read once by [emitRenderFinished]; re-read here
+   * only if that read didn't happen), sha256s them, and writes a sidecar + index entry via
+   * [historyManager]. Emits `historyAdded` after the entry has been persisted.
    *
    * Skips when:
    * - [historyManager] is null or disabled (the pre-H1 default for in-process tests).
@@ -1437,6 +1452,7 @@ class JsonRpcServer(
     previewId: String,
     result: RenderResult,
     finished: RenderFinishedParams,
+    pngBytes: ByteArray? = null,
   ) {
     val mgr = historyManager ?: return
     if (!mgr.isEnabled) return
@@ -1447,16 +1463,17 @@ class JsonRpcServer(
       // never actually lands on disk. Skip silently; this is the pre-H1 behaviour for stub hosts.
       return
     }
-    val pngBytes =
-      try {
-        fileSystem.read(pngFile) { readByteArray() }
-      } catch (t: Throwable) {
-        System.err.println(
-          "compose-ai-daemon: history: failed to read PNG bytes for $previewId at $pngPath " +
-            "(${t.javaClass.simpleName}: ${t.message}); skipping history entry"
-        )
-        return
-      }
+    val bytes =
+      pngBytes
+        ?: try {
+          fileSystem.read(pngFile) { readByteArray() }
+        } catch (t: Throwable) {
+          System.err.println(
+            "compose-ai-daemon: history: failed to read PNG bytes for $previewId at $pngPath " +
+              "(${t.javaClass.simpleName}: ${t.message}); skipping history entry"
+          )
+          return
+        }
     val previewMetadata =
       previewIndex.rowResolved(previewId)?.info?.let {
         PreviewMetadataSnapshot(
@@ -1490,7 +1507,7 @@ class JsonRpcServer(
       try {
         mgr.recordRender(
           previewId = previewId,
-          pngBytes = pngBytes,
+          pngBytes = bytes,
           trigger = "renderNow",
           triggerDetail = null,
           renderTookMs = finished.tookMs,
@@ -2055,13 +2072,16 @@ class JsonRpcServer(
    * behaviour.
    */
   /**
-   * SHA-256 hex of the bytes at [pngPath], or null when the file is unreadable / missing / a
-   * B1.5-era stub placeholder. Cheap on the typical preview size (sub-MB PNGs); the cost is
-   * dominated by the file read which is already in OS page cache because the daemon just wrote it.
-   * Returning null when the file isn't there is the right call — without bytes we can't dedup, so
-   * we treat it as "definitely changed" and emit normally.
+   * The rendered frame's bytes, or null when [pngPath] is absent / unreadable / a B1.5-era stub
+   * placeholder. Null means "no bytes", which every caller reads as "definitely changed": without
+   * bytes we can't dedup, so the frame is emitted normally.
+   *
+   * Read once per render and passed around, not re-read per consumer — see the call site in
+   * [emitRenderFinished]. The read itself is cheap on the typical preview size (sub-MB PNGs) and
+   * usually served from OS page cache because the daemon just wrote the file; doing it three times
+   * a frame was still three times as much of it as the frame needs.
    */
-  private fun hashFrameBytes(pngPath: String?): String? {
+  private fun readFrameBytes(pngPath: String?): ByteArray? {
     if (pngPath == null) return null
     val path =
       try {
@@ -2070,12 +2090,15 @@ class JsonRpcServer(
         return null
       }
     if (!fileSystem.exists(path)) return null
-    val bytes =
-      try {
-        fileSystem.read(path) { readByteArray() }
-      } catch (_: Throwable) {
-        return null
-      }
+    return try {
+      fileSystem.read(path) { readByteArray() }
+    } catch (_: Throwable) {
+      null
+    }
+  }
+
+  /** SHA-256 hex of [bytes] — the live lane's dedup key, and history's frame identity. */
+  private fun sha256Hex(bytes: ByteArray): String {
     val digest = java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
     return buildString(digest.size * 2) {
       for (b in digest) {

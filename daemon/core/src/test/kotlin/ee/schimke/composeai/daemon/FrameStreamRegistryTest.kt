@@ -24,6 +24,58 @@ class FrameStreamRegistryTest {
   private val readerThatAlwaysWorks: (String) -> ByteArray? = { constantBytes }
 
   @Test
+  fun in_memory_bytes_are_used_without_touching_the_file() {
+    // #4283 — the server already holds the frame (it hashes every one for dedup), so the registry
+    // base64s those bytes instead of re-reading the PNG it was just handed a hash of. A reader that
+    // fails the test if called pins that: before this, a live frame cost three reads of one file.
+    var reads = 0
+    val registry =
+      FrameStreamRegistry(
+        clock = { 0L },
+        pngBytesReader = {
+          reads++
+          null
+        },
+      )
+    registry.register("s1", "preview-A", StreamCodec.PNG, maxFps = null)
+
+    val frame =
+      registry
+        .consumeForPreview("preview-A", "/x.png", "hash-1", 320, 480, pngBytes = constantBytes)
+        .single()
+
+    assertEquals(0, reads)
+    assertEquals(StreamCodec.PNG, frame.codec)
+    assertEquals(
+      java.util.Base64.getEncoder().encodeToString(constantBytes),
+      frame.payloadBase64,
+    )
+    assertEquals(320, frame.widthPx)
+    assertEquals(480, frame.heightPx)
+  }
+
+  @Test
+  fun without_in_memory_bytes_the_file_is_still_read() {
+    // The path callers that don't hold the frame (and every pre-#4283 call site) still take.
+    var reads = 0
+    val registry =
+      FrameStreamRegistry(
+        clock = { 0L },
+        pngBytesReader = {
+          reads++
+          constantBytes
+        },
+      )
+    registry.register("s1", "preview-A", StreamCodec.PNG, maxFps = null)
+    registry.register("s2", "preview-A", StreamCodec.PNG, maxFps = null)
+
+    val frames = registry.consumeForPreview("preview-A", "/x.png", "hash-1", 1, 1)
+
+    assertEquals(2, frames.size)
+    assertEquals("two streams on one preview share a single read", 1, reads)
+  }
+
+  @Test
   fun negotiate_codec_downgrades_unsupported_to_png() {
     val registry =
       FrameStreamRegistry(

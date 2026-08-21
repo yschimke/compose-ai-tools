@@ -2992,6 +2992,15 @@ class ServeWebFixtureTest {
                 ),
                 ServeWeb.Stat("Live daemons running", "1"),
                 ServeWeb.Stat("Active streams", "2"),
+                // What those two streams are achieving, in the shape `liveFrameText` prints: the
+                // fps a viewer actually got, the median gap it came from, the painted/heartbeat
+                // split, and the per-frame wire cost. "Active streams: 2" is a population; this is
+                // the reading (#4281). Numbers taken from a real m3-catalog session so the row is
+                // as long as it gets in practice.
+                ServeWeb.Stat(
+                  "Live frames",
+                  "4.0 fps · p50 250ms · 1042 painted · 388 unchanged · 8 kB/frame",
+                ),
                 // Captured in the state that used to be invisible: a quiet gate held shut by a
                 // session lease, which stands the theme optimizer down indefinitely while every
                 // per-catalog row says only "paused". The fixture keeps the awkward case — the

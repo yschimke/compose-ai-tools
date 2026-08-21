@@ -611,7 +611,7 @@ class InteractiveSessionPlumbingTest {
  * Test [RenderHost] that owns an [InteractiveSession] per allocation. Each session records every
  * dispatch / render / close call into visible counters so the test can assert on the protocol-side
  * routing without exercising real Compose. The session reads PNG bytes off disk (per-preview map or
- * default) so the daemon's `hashFrameBytes` dedup path still runs end-to-end.
+ * default) so the daemon's `readFrameBytes` dedup path still runs end-to-end.
  */
 private class SessionAwareFakeHost(
   private val defaultPng: File,

@@ -34,6 +34,16 @@ internal object WrappedFrameCrop {
   ) {
     if (!wrapWidth && !wrapHeight) return
     if (!file.exists()) return
+    // Decide from the PNG header (a few dozen bytes) whether there is anything to crop, before
+    // paying for a decode. On a wrapped preview that already fills the window — `fillMax*` content,
+    // and every frame of it — the old shape decoded the whole image only to discover the crop was a
+    // no-op, once per live frame at the interactive loop's cadence (#4283).
+    val captured = headerSize(file)
+    if (
+      captured != null &&
+        !cropChanges(captured, wrapWidth, wrapHeight, measuredWidth, measuredHeight)
+    )
+      return
     val original = runCatching { javax.imageio.ImageIO.read(file) }.getOrNull() ?: return
     val cropW =
       if (wrapWidth && measuredWidth in 1 until original.width) measuredWidth else original.width
@@ -44,4 +54,40 @@ internal object WrappedFrameCrop {
     val cropped = original.getSubimage(0, 0, cropW, cropH)
     runCatching { javax.imageio.ImageIO.write(cropped, "PNG", file) }
   }
+
+  /** True when cropping a [captured]-sized frame to the measured size would change any pixel. */
+  private fun cropChanges(
+    captured: Pair<Int, Int>,
+    wrapWidth: Boolean,
+    wrapHeight: Boolean,
+    measuredWidth: Int,
+    measuredHeight: Int,
+  ): Boolean {
+    val (width, height) = captured
+    val narrows = wrapWidth && measuredWidth in 1 until width
+    val shortens = wrapHeight && measuredHeight in 1 until height
+    return narrows || shortens
+  }
+
+  /**
+   * The image's pixel size read from its header alone — `ImageReader.getWidth`/`getHeight` parse
+   * the IHDR without decoding any pixel data. Null when the file can't be read as an image, which
+   * sends the caller down the decode path so a malformed-header case behaves exactly as it did
+   * before this fast path existed.
+   */
+  private fun headerSize(file: File): Pair<Int, Int>? = runCatching {
+    val stream = javax.imageio.ImageIO.createImageInputStream(file) ?: return null
+    stream.use {
+      val readers = javax.imageio.ImageIO.getImageReaders(it)
+      if (!readers.hasNext()) return null
+      val reader = readers.next()
+      try {
+        reader.input = it
+        reader.getWidth(0) to reader.getHeight(0)
+      } finally {
+        reader.dispose()
+      }
+    }
+  }
+    .getOrNull()
 }
