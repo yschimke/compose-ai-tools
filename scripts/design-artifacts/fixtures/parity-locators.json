@@ -1,0 +1,152 @@
+{
+  "$comment": "Shared wire fixture for the compose-parity-locator/v1 block. Two engines read it: cli ServeIssueReportTest, which asserts ServeIssueReport.locatorBlock emits `block` byte for byte from `writer`, and scripts/design-artifacts/parity-issues.test.mjs, which asserts parseLocator(block) yields `parse`. Neither side can move the contract without failing the other's test. Cases with no `writer` are shapes no writer emits and the producer must refuse.",
+  "schema": "compose-parity-locator/v1",
+  "cases": [
+    {
+      "name": "full",
+      "why": "Every field a delivery-branch-backed comparison can name, with override values that exercise quoting and non-ASCII.",
+      "writer": {
+        "repository": "yschimke/m3-catalog",
+        "system": "m3-catalog",
+        "componentId": "IconButton/Tonal",
+        "previewId": "iconbutton-tonal__ideal__default__light",
+        "referenceId": "iconbutton-tonal-figma",
+        "variant": "ideal/default/light",
+        "overrides": {
+          "fontScale": "1.5",
+          "knob.label": "Send;now=x",
+          "knob.quote": "a=\"b\"",
+          "knob.text": "日本語"
+        },
+        "revision": "yschimke/m3-catalog@design-artifacts/m3-catalog"
+      },
+      "block": "```compose-parity-locator/v1\nrepository: yschimke/m3-catalog\nsystem: m3-catalog\ncomponent: IconButton/Tonal\npreview: iconbutton-tonal__ideal__default__light\nreference: iconbutton-tonal-figma\nvariant: ideal/default/light\noverrides: {\"fontScale\":\"1.5\",\"knob.label\":\"Send;now=x\",\"knob.quote\":\"a=\\\"b\\\"\",\"knob.text\":\"日本語\"}\nrevision: yschimke/m3-catalog@design-artifacts/m3-catalog\n```\n",
+      "parse": {
+        "ok": true,
+        "locator": {
+          "repository": "yschimke/m3-catalog",
+          "system": "m3-catalog",
+          "component": "IconButton/Tonal",
+          "previewId": "iconbutton-tonal__ideal__default__light",
+          "referenceId": "iconbutton-tonal-figma",
+          "variant": "ideal/default/light",
+          "overrides": {
+            "fontScale": "1.5",
+            "knob.label": "Send;now=x",
+            "knob.quote": "a=\"b\"",
+            "knob.text": "日本語"
+          },
+          "revision": "yschimke/m3-catalog@design-artifacts/m3-catalog"
+        }
+      }
+    },
+    {
+      "name": "no-revision",
+      "why": "A local `compose-preview serve` over a bundle directory has no delivery provenance, so the writer omits the line. This is the session a developer reports from.",
+      "writer": {
+        "repository": "yschimke/m3-catalog",
+        "system": "m3-catalog",
+        "componentId": "IconButton/Tonal",
+        "previewId": "iconbutton-tonal__ideal__default__light",
+        "referenceId": "iconbutton-tonal-figma",
+        "variant": "ideal/default/light",
+        "overrides": {},
+        "revision": null
+      },
+      "block": "```compose-parity-locator/v1\nrepository: yschimke/m3-catalog\nsystem: m3-catalog\ncomponent: IconButton/Tonal\npreview: iconbutton-tonal__ideal__default__light\nreference: iconbutton-tonal-figma\nvariant: ideal/default/light\noverrides: {}\n```\n",
+      "parse": {
+        "ok": true,
+        "locator": {
+          "repository": "yschimke/m3-catalog",
+          "system": "m3-catalog",
+          "component": "IconButton/Tonal",
+          "previewId": "iconbutton-tonal__ideal__default__light",
+          "referenceId": "iconbutton-tonal-figma",
+          "variant": "ideal/default/light",
+          "overrides": {},
+          "revision": null
+        }
+      }
+    },
+    {
+      "name": "empty-variant",
+      "why": "`ServeIssueReport.variantFor` returns \"\" for a preview id carrying no `__` axes. No axes is a fact about the preview, not a mangled body.",
+      "writer": {
+        "repository": "yschimke/m3-catalog",
+        "system": "m3-catalog",
+        "componentId": "IconButton",
+        "previewId": "IconButton",
+        "referenceId": "iconbutton-figma",
+        "variant": "",
+        "overrides": {},
+        "revision": "yschimke/m3-catalog@design-artifacts/m3-catalog"
+      },
+      "block": "```compose-parity-locator/v1\nrepository: yschimke/m3-catalog\nsystem: m3-catalog\ncomponent: IconButton\npreview: IconButton\nreference: iconbutton-figma\nvariant: \noverrides: {}\nrevision: yschimke/m3-catalog@design-artifacts/m3-catalog\n```\n",
+      "parse": {
+        "ok": true,
+        "locator": {
+          "repository": "yschimke/m3-catalog",
+          "system": "m3-catalog",
+          "component": "IconButton",
+          "previewId": "IconButton",
+          "referenceId": "iconbutton-figma",
+          "variant": "",
+          "overrides": {},
+          "revision": "yschimke/m3-catalog@design-artifacts/m3-catalog"
+        }
+      }
+    },
+    {
+      "name": "astral-override-keys",
+      "why": "U+FF01 sorts BELOW U+1F600 by code point and ABOVE it by UTF-16 code unit, so this block is canonical to the writer and non-canonical to a `.sort()` that compares code units.",
+      "writer": {
+        "repository": "yschimke/m3-catalog",
+        "system": "m3-catalog",
+        "componentId": "IconButton/Tonal",
+        "previewId": "iconbutton-tonal__ideal__default__light",
+        "referenceId": "iconbutton-tonal-figma",
+        "variant": "ideal/default/light",
+        "overrides": {
+          "！b": "1",
+          "😀a": "2"
+        },
+        "revision": null
+      },
+      "block": "```compose-parity-locator/v1\nrepository: yschimke/m3-catalog\nsystem: m3-catalog\ncomponent: IconButton/Tonal\npreview: iconbutton-tonal__ideal__default__light\nreference: iconbutton-tonal-figma\nvariant: ideal/default/light\noverrides: {\"！b\":\"1\",\"😀a\":\"2\"}\n```\n",
+      "parse": {
+        "ok": true,
+        "locator": {
+          "repository": "yschimke/m3-catalog",
+          "system": "m3-catalog",
+          "component": "IconButton/Tonal",
+          "previewId": "iconbutton-tonal__ideal__default__light",
+          "referenceId": "iconbutton-tonal-figma",
+          "variant": "ideal/default/light",
+          "overrides": {
+            "！b": "1",
+            "😀a": "2"
+          },
+          "revision": null
+        }
+      }
+    },
+    {
+      "name": "non-canonical-overrides",
+      "why": "Hand-reordered override keys. No writer emits this, and it must stay refused — the canonical form is what makes two bodies for the same variant compare equal.",
+      "block": "```compose-parity-locator/v1\nrepository: yschimke/m3-catalog\nsystem: m3-catalog\ncomponent: IconButton/Tonal\npreview: iconbutton-tonal__ideal__default__light\nreference: iconbutton-tonal-figma\nvariant: ideal/default/light\noverrides: {\"knob.label\":\"Send;now=x\",\"fontScale\":\"1.5\"}\n```\n",
+      "parse": {
+        "ok": false,
+        "error": "overrides are not canonical JSON"
+      }
+    },
+    {
+      "name": "blank-identity-field",
+      "why": "An emptied identity field is a mangled body: the locator no longer names one component.",
+      "block": "```compose-parity-locator/v1\nrepository: yschimke/m3-catalog\nsystem: \ncomponent: IconButton/Tonal\npreview: iconbutton-tonal__ideal__default__light\nreference: iconbutton-tonal-figma\nvariant: ideal/default/light\noverrides: {}\n```\n",
+      "parse": {
+        "ok": false,
+        "error": "empty locator field(s): system"
+      }
+    }
+  ]
+}
