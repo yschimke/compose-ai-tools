@@ -573,6 +573,11 @@ class ServeCatalogStore(
               sourceModule = planned.componentSourceModule,
               bodyLine = planned.componentBodyLine,
               caption = planned.componentCaption,
+              // The ground and the frame this render was captured with. Straight through from the
+              // catalog's own image record — the export lifted them off the bundle's
+              // `previews.json`, which is the only place they exist and which a published catalog
+              // does not stage.
+              previewParams = image.previewParams,
             )
         }
         count++
@@ -2408,6 +2413,12 @@ class ServeCatalogStore(
      * daemon is ever opened.
      */
     val fixedTheme: Boolean = false,
+    /**
+     * This render's `@Preview` ground and device frame, lifted from the bundle's `previews.json` at
+     * export time. See [PreviewParamsMeta] for why a published catalog cannot recover them
+     * otherwise.
+     */
+    val previewParams: PreviewParamsMeta? = null,
   )
 
   /**
@@ -2436,6 +2447,42 @@ class ServeCatalogStore(
     val kind: String? = null,
     val caption: String? = null,
     val extension: String = ".apng",
+  )
+
+  /**
+   * The `@Preview` parameters a browse surface needs BEFORE any daemon is opened — what ground the
+   * render sits on, and what device frame it was captured in.
+   *
+   * These live in a bundle's root `previews.json`, which a **published catalog does not stage**: it
+   * carries per-preview metadata on `previews/variants.json` instead. So on the ordinary read-only
+   * serving path — a published catalog with no trusted live daemon — every preview arrived with the
+   * annotation defaults, and `PreviewBackdrop` fell back to the catalog's declared stage for all of
+   * them. That is the per-preview half of the backdrop being silently inert exactly where a
+   * published catalog is read, and it took the device clip down with it once
+   * [ServeDeviceFrame][ee.schimke.composeai.cli.serve.ServeDeviceFrame] arrived: a round Wear
+   * comparison was drawn on a square stage there and nowhere else.
+   *
+   * Carried as ONE nested record rather than five loose fields so the two halves cannot be wired up
+   * separately and drift — the ground and the frame are the same question about the same render,
+   * asked of the same annotation.
+   *
+   * Every field defaults, so a catalog published before this existed reads back as `null` and keeps
+   * exactly its old behaviour rather than failing to parse.
+   */
+  @Serializable
+  data class PreviewParamsMeta(
+    /** `@Preview(uiMode = …)`, for the viewer's Day/Night default. */
+    val uiMode: Int = 0,
+    /** `@Preview(showBackground = …)`. */
+    val showBackground: Boolean = false,
+    /** `@Preview(backgroundColor = …)`; `0` is the annotation's own "unset". */
+    val backgroundColor: Long = 0L,
+    /** The raw `@Preview(device = …)` string; the shape is resolved from it, never from the dp. */
+    val device: String? = null,
+    /** `@Preview(widthDp = …)`, when the annotation states one. */
+    val widthDp: Int? = null,
+    /** `@Preview(heightDp = …)`, when the annotation states one. */
+    val heightDp: Int? = null,
   )
 
   @Serializable
@@ -2497,6 +2544,11 @@ class ServeCatalogStore(
     val bodyLine: Int? = null,
     /** Failure shown by the landing card instead of requesting a missing PNG. */
     val renderFailure: CatalogRenderFailure? = null,
+    /**
+     * This preview's `@Preview` ground and device frame, so the read-only catalog path can resolve
+     * a per-preview backdrop and device clip without a live daemon. See [PreviewParamsMeta].
+     */
+    val previewParams: PreviewParamsMeta? = null,
   )
 
   /**

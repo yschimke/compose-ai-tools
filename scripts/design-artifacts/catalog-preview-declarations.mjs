@@ -20,6 +20,36 @@ function sidecarDeclarations(bundle, previewId, suffix) {
   }
 }
 
+/**
+ * The subset of a preview's `@Preview` params that decides how it is PRESENTED — the ground behind
+ * it and the device frame around it — or null when it states none of them.
+ *
+ * Deliberately not the whole params record: locale, font scale and density describe how the render
+ * was produced and are already baked into the pixels, so republishing them would grow every
+ * catalog for no reader. These six are the ones a browse surface has to know *before* it opens
+ * anything, because they decide what it paints behind the image and what shape it clips it to.
+ *
+ * Omitting an all-defaults record keeps the catalog quiet for the ordinary preview: a component
+ * sticker states no device and no background, and a `previewParams: {}` on every image would be
+ * pure noise. Kotlin reads a missing record back as null and keeps its existing behaviour.
+ */
+function presentationParams(params) {
+  if (!params) return null;
+  const out = {};
+  if (params.uiMode) out.uiMode = params.uiMode;
+  if (params.showBackground === true) out.showBackground = true;
+  if (params.backgroundColor) out.backgroundColor = params.backgroundColor;
+  if (typeof params.device === "string" && params.device.trim() !== "") out.device = params.device;
+  // The dp ride along ONLY with a device, because that is the only thing they qualify: the frame
+  // resolver applies them both-axes-or-neither against a named device, and on their own they say
+  // nothing a consumer of this record can use.
+  if (out.device) {
+    if (Number.isFinite(params.widthDp)) out.widthDp = params.widthDp;
+    if (Number.isFinite(params.heightDp)) out.heightDp = params.heightDp;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 /** Metadata that must be visible on the browse surface before a preview daemon is opened. */
 export function declarationsByPreviewId(bundles) {
   const out = new Map();
@@ -36,12 +66,21 @@ export function declarationsByPreviewId(bundles) {
       // this card under a theme override, and it has to know that from catalog.json alone —
       // deciding it lazily would mean the specimen re-themes until its daemon happens to be opened.
       const fixedTheme = preview.fixedTheme === true;
+      // What ground this render sits on and what device frame it was captured in. These live ONLY
+      // in the bundle's root `previews.json`, which a published catalog does not stage — it carries
+      // per-preview metadata on `previews/variants.json` instead. Without lifting them here, every
+      // preview on the read-only serving path arrives with the annotation defaults, so the
+      // per-preview backdrop falls back to the catalog's declared stage for all of them and the
+      // device clip never resolves: a round Wear comparison is drawn on a square stage there and
+      // nowhere else.
+      const previewParams = presentationParams(preview.params);
       if (
         overrides.length > 0 ||
         remoteComposeKnobs.length > 0 ||
         supportsFocus ||
         supportsGestures ||
-        fixedTheme
+        fixedTheme ||
+        previewParams
       ) {
         out.set(preview.id, {
           ...(overrides.length > 0 ? { overrides } : {}),
@@ -49,6 +88,7 @@ export function declarationsByPreviewId(bundles) {
           ...(supportsFocus ? { supportsFocus: true } : {}),
           ...(supportsGestures ? { supportsGestures: true } : {}),
           ...(fixedTheme ? { fixedTheme: true } : {}),
+          ...(previewParams ? { previewParams } : {}),
         });
       }
     }
