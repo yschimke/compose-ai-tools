@@ -13004,8 +13004,18 @@ ${ServeSiteIcon.linkTags().prependIndent("        ")}
     }
   }
 
-  /** A knob's boolean text as the viewer writes it: `true` only for `true` / `1`. */
-  private fun boolText(raw: String): String = if (raw == "true" || raw == "1") "true" else "false"
+  /**
+   * A knob's boolean text, read the way [ServeOverrides.parse] reads one: `true` for `1` or `true`
+   * in any case.
+   *
+   * Case-insensitive because the parser is (`equals("true", ignoreCase = true)`), and the parser is
+   * what decides the pixels. `?knob.enabled=bool:TRUE` is an accepted deep link that renders true,
+   * so a control testing only the lowercase spelling would draw the box unticked beside it. The
+   * declaration's own text is always `true` / `false` — `Boolean.toString()` — so this widened rule
+   * changes nothing for a plain visit.
+   */
+  private fun boolText(raw: String): String =
+    if (raw == "1" || raw.equals("true", ignoreCase = true)) "true" else "false"
 
   private fun overrideKnobsHtml(
     preview: ServePreview,

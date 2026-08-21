@@ -263,6 +263,91 @@ class ServeWebKnobSeedTest {
     assertTrue(row.contains("""value="3""""), row)
   }
 
+  /**
+   * `bool:TRUE` ticks the box, because `parse` reads it with `ignoreCase = true` and the parser is
+   * what decides the pixels.
+   */
+  @Test
+  fun `a mixed-case bool seed is checked`() {
+    val row =
+      knobRow(
+        viewer(
+          declaration("enabled", default = false, current = false),
+          requestOverrides = mapOf("knob.enabled" to "bool:TRUE"),
+        ),
+        "enabled",
+      )
+    assertTrue(row.contains(" checked"), row)
+  }
+
+  /**
+   * An EMPTY non-string seed leaves the control on the declaration, because `parse` skips it.
+   *
+   * `?knob.count=` (or `int:`) has nothing to parse, so the render keeps the authored count.
+   * Assigning `""` to the number field would blank it beside pixels that used `5` — the same
+   * disagreement, produced by seeding rather than by not seeding.
+   */
+  @Test
+  fun `an empty non-string seed keeps the declaration`() {
+    val preview =
+      ServePreview(
+        id = "button-filled",
+        label = "Filled",
+        overrides =
+          listOf(
+            PreviewOverrideDeclaration(
+              key = "count",
+              type = "int",
+              label = "count",
+              default = PreviewOverrideValue.IntValue(5),
+            )
+          ),
+      )
+    fun rowFor(seed: String): String {
+      val html =
+        ServeWeb.viewerPage(
+          preview,
+          token = "t",
+          basePath = "/compose-m3",
+          siblings = listOf(preview),
+          requestOverrides = mapOf("knob.count" to seed),
+        )
+      return knobRow(html, "count")
+    }
+    assertTrue(rowFor("").contains("""value="5""""), rowFor(""))
+    assertTrue(rowFor("int:").contains("""value="5""""), rowFor("int:"))
+    // …while a real value still seeds, so this is a skip rather than a blanket refusal.
+    assertTrue(rowFor("3").contains("""value="3""""), rowFor("3"))
+  }
+
+  /** An empty STRING seed is a real value — a cleared label — and reaches the control. */
+  @Test
+  fun `an empty string seed clears the control`() {
+    val preview =
+      ServePreview(
+        id = "button-filled",
+        label = "Filled",
+        overrides =
+          listOf(
+            PreviewOverrideDeclaration(
+              key = "label",
+              type = "string",
+              label = "label",
+              default = PreviewOverrideValue.StringValue("Tap me"),
+            )
+          ),
+      )
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/compose-m3",
+        siblings = listOf(preview),
+        requestOverrides = mapOf("knob.label" to ""),
+      )
+    assertTrue(knobRow(html, "label").contains("""value="""""), knobRow(html, "label"))
+  }
+
   /** A knob the request doesn't name is untouched — a plain visit renders exactly as before. */
   @Test
   fun `an unnamed knob keeps its declared value`() {

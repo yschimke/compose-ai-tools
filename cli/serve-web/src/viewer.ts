@@ -4493,9 +4493,15 @@ function hydrateFromUrl(popped: boolean) {
             var declaredKind = el.getAttribute("data-knob-kind") || "";
             if (declaredKind && value.indexOf(declaredKind + ":") === 0)
                 value = value.substring(declaredKind.length + 1);
+            // `?knob.count=` on a non-string knob is skipped by the server's parser, so the render
+            // keeps the declaration — restore that rather than blanking the field beside it. An
+            // empty STRING is a real value (a cleared label) and stays.
+            if (value === "" && declaredKind && declaredKind !== "string")
+                value = el.getAttribute("data-knob-initial") || "";
         }
         if (el instanceof HTMLInputElement && el.type === "checkbox")
-            el.checked = value === "true" || value === "1";
+            // `1` or `true` in any case — the parser's rule, and what the server rendered.
+            el.checked = value === "1" || value.toLowerCase() === "true";
         else {
             adoptChoiceValue(el, value);
             el.value = value;
@@ -4510,7 +4516,9 @@ function hydrateFromUrl(popped: boolean) {
         else if (kind && value.indexOf(kind + ":") === 0)
             value = value.substring(kind.length + 1);
         if (el instanceof HTMLInputElement && el.type === "checkbox")
-            el.checked = value === "true" || value === "1";
+            // Same widened rule as the declared knobs above, for the same reason: the parser reads
+            // `bool:True` as true, so the box has to be ticked for it.
+            el.checked = value === "1" || value.toLowerCase() === "true";
         else el.value = value;
     });
     // The theme select is seeded (from the URL first, then localStorage) by the sticky script

@@ -205,11 +205,22 @@ object ServeOverrides {
    * so what may be stripped is exactly what [parse] treats as a type tag, and the two must agree
    * for the control and the pixels to.
    */
-  fun knobControlValue(raw: String, declaredKind: String?): String {
+  fun knobControlValue(raw: String, declaredKind: String?): String? {
     val sep = raw.indexOf(':')
-    if (sep <= 0) return raw
-    val prefix = raw.substring(0, sep).takeIf { it in KNOWN_KINDS } ?: return raw
-    return if (declaredKind == null || prefix == declaredKind) raw.substring(sep + 1) else raw
+    val prefix =
+      if (sep > 0) {
+        raw
+          .substring(0, sep)
+          .takeIf { it in KNOWN_KINDS }
+          ?.takeIf { declaredKind == null || it == declaredKind }
+      } else null
+    val value = if (prefix != null) raw.substring(sep + 1) else raw
+    val kind = prefix ?: declaredKind ?: "string"
+    // `knob.count=` / `knob.count=int:` — an EMPTY value on a non-string knob. [parse] skips it (it
+    // has nothing to parse), so the render keeps the declaration; blanking the number field beside
+    // those pixels would show a value the picture isn't. An empty STRING is a real value there and
+    // a real one here.
+    return value.takeUnless { it.isEmpty() && kind != "string" }
   }
 
   /**
@@ -229,6 +240,9 @@ object ServeOverrides {
    * a typed knob, a `float:` on an `int` — leaves the control showing what the render used.
    */
   fun rcControlValue(raw: String, declaredKind: String): String? {
+    // A blank `rc.<name>=` is skipped wholesale by [parse] — unlike a knob, not even a string RC
+    // seed accepts one — so the declaration stands and the control has to keep showing it.
+    if (raw.isBlank()) return null
     val sep = raw.indexOf(':')
     val wireKind = if (sep > 0) raw.substring(0, sep).takeIf { it in RC_KNOWN_KINDS } else null
     val value = if (wireKind != null) raw.substring(sep + 1) else raw
