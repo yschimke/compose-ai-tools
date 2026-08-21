@@ -184,32 +184,31 @@ class ServeAgentGrantStore(
   ): Request? {
     val now = clock()
     purge(now)
-    // The cap counts **pending** requests, not every row in the map.
+    // The cap counts what an anonymous caller can CREATE: rows that are pending, plus rows they got
+    // denied. What it does not count is a retained approval, which exists only while its grant does
+    // and is therefore already bounded by [maxActiveGrants].
     //
-    // These are two different populations with two different reasons to be bounded. Pending
-    // requests are what an anonymous caller can create at will, so they need a ceiling — that is
-    // what this number is for. A retained approval is not that: it exists only while its grant is
-    // alive, and grants are already bounded by [maxActiveGrants]. Counting both against one number
-    // made the two caps fight: retention (correctly) stopped shedding live approvals, so with
-    // `--agent-grant-max-active` above this cap, enough approvals could fill the map and every
-    // further request was refused — an operator who asked for 100 concurrent grants could never get
-    // past 32, with no way to tell why. Bounding each population by its own limit keeps total
-    // memory bounded (pending + active) and lets the configured numbers mean what they say.
-    val pending = requests.values.count { it.state == Request.State.PENDING }
-    if (pending >= maxPendingRequests) {
-      // Sweep what is genuinely finished with before refusing: a denial, or an approval whose grant
-      // is gone. Neither owes anyone anything. (A pending request still owes a human a decision and
-      // an approved-with-live-grant one still owes its owner a credential, so neither is touched —
-      // and note `collected` is deliberately not consulted: it means a poll *built* a response, not
-      // that the agent received one, and a lost response has to stay retriable.)
-      requests.entries.removeIf { (_, r) ->
-        r.state == Request.State.DENIED ||
-          (r.state == Request.State.APPROVED && grantIsGone(r, now))
+    // Getting this split wrong has now failed in both directions, which is why it is spelled out.
+    // Counting every row against one number made the two caps fight: retention (correctly) stopped
+    // shedding live approvals, so an operator who set `--agent-grant-max-active` above this cap
+    // could never reach it. Counting only *pending* rows then leaked the other way — a denial sits
+    // in the map until its own deadline, so an attacker could submit a batch, have an operator deny
+    // it, and submit another, growing an anonymously-controlled map without bound while the pending
+    // count stayed comfortably under the cap.
+    //
+    // A denial has to be kept (the agent must be able to learn it was denied rather than being told
+    // `unknown`), so it is kept AND charged. That is the honest accounting: the attacker caused the
+    // row, the operator's decision does not hand them a free one, and the row still expires on its
+    // own deadline. Total map size is bounded by maxPendingRequests + maxActiveGrants.
+    //
+    // Rows nobody is owed anything for — an approval whose grant has expired or been revoked — are
+    // reclaimed FIRST, unconditionally, so they can never be what pushes a legitimate caller over.
+    requests.entries.removeIf { (_, r) -> r.state == Request.State.APPROVED && grantIsGone(r, now) }
+    val charged =
+      requests.values.count {
+        it.state == Request.State.PENDING || it.state == Request.State.DENIED
       }
-      if (requests.values.count { it.state == Request.State.PENDING } >= maxPendingRequests) {
-        return null
-      }
-    }
+    if (charged >= maxPendingRequests) return null
     val request =
       Request(
         id = mintId(),

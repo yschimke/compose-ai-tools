@@ -228,11 +228,19 @@ class ServeAgentGrantStoreTest {
   }
 
   @Test
-  fun `a resolved request makes room for a new one`() {
+  fun `a denial does not make room for a new one`() {
+    // Inverted deliberately. This used to assert that denying freed capacity, which is exactly the
+    // vector that made the map unbounded: an operator working through hostile requests would hand
+    // the sender a fresh slot with every click. A denial is kept (its owner must be able to learn
+    // it was denied) and charged to whoever caused it; only its own expiry frees the space.
     val store = store(maxPendingRequests = 2)
     val first = store.openRequest("a", "ip", ServeAgentGrantScope.PREVIEW, 600)!!
     store.openRequest("b", "ip", ServeAgentGrantScope.PREVIEW, 600)
     store.deny(first.id, "@yuri")
+    assertNull(store.openRequest("c", "ip", ServeAgentGrantScope.PREVIEW, 600))
+    // The denial is still readable by its owner while it holds that slot.
+    assertTrue(store.poll(first.id, first.deviceSecret) is ServeAgentGrantStore.Poll.Denied)
+    now += (store.requestTtlSeconds + 5) * 1000
     assertNotNull(store.openRequest("c", "ip", ServeAgentGrantScope.PREVIEW, 600))
   }
 
@@ -464,6 +472,44 @@ class ServeAgentGrantStoreTest {
   }
 
   @Test
+  fun `denying a batch does not hand the attacker a fresh batch`() {
+    // A denial stays in the map so the agent can learn it was denied rather than being told
+    // `unknown` — so if denials were not charged against the cap, an operator working through
+    // hostile requests would free capacity with every click: submit a batch, get it denied, submit
+    // another, forever, in an anonymously-controlled map that was supposed to be bounded.
+    val store = store(maxPendingRequests = 3)
+    val first =
+      (1..3).mapNotNull {
+        store.openRequest("spam-$it", "10.9.9.9", ServeAgentGrantScope.PREVIEW, 600)
+      }
+    assertEquals(3, first.size)
+    // The operator denies every one of them.
+    for (r in first) assertTrue(store.deny(r.id, "@yuri"))
+    // The attacker immediately tries again, and gets nowhere.
+    assertNull(
+      store.openRequest("spam-again", "10.9.9.9", ServeAgentGrantScope.PREVIEW, 600),
+      "a denied row must still be charged to whoever created it",
+    )
+    // …and the denials remain visible to their owners in the meantime.
+    assertTrue(store.poll(first[0].id, first[0].deviceSecret) is ServeAgentGrantStore.Poll.Denied)
+    // Only the passage of time frees the capacity.
+    now += (store.requestTtlSeconds + 5) * 1000
+    assertNotNull(store.openRequest("later", "10.9.9.9", ServeAgentGrantScope.PREVIEW, 600))
+  }
+
+  @Test
+  fun `a dead approval never blocks a legitimate caller`() {
+    // Rows nobody is owed anything for are reclaimed before the count, so they can never be what
+    // pushes someone over the cap.
+    val store = store(maxPendingRequests = 2)
+    val done = store.ask(ttl = 60)
+    store.approve(done.id, "@yuri", ServeAgentGrantScope.LIVE, 60)
+    now += 61_000 // the grant is gone; the row owes nobody anything
+    assertNotNull(store.openRequest("a", "ip", ServeAgentGrantScope.PREVIEW, 600))
+    assertNotNull(store.openRequest("b", "ip", ServeAgentGrantScope.PREVIEW, 600))
+  }
+
+  @Test
   fun `the pending cap still bounds what an anonymous caller can create`() {
     val store = store(maxPendingRequests = 2)
     assertNotNull(store.openRequest("a", "ip", ServeAgentGrantScope.PREVIEW, 600))
@@ -485,15 +531,6 @@ class ServeAgentGrantStoreTest {
     store.approve(done.id, "@yuri", ServeAgentGrantScope.LIVE, 60)
     assertTrue(store.poll(done.id, done.deviceSecret) is ServeAgentGrantStore.Poll.Approved)
     now += 61_000 // its grant is gone, so the record owes nobody anything
-    store.openRequest("b", "ip", ServeAgentGrantScope.PREVIEW, 600)
-    assertNotNull(store.openRequest("c", "ip", ServeAgentGrantScope.PREVIEW, 600))
-  }
-
-  @Test
-  fun `a denial is shed to make room`() {
-    val store = store(maxPendingRequests = 2)
-    val denied = store.ask()
-    assertTrue(store.deny(denied.id, "@yuri"))
     store.openRequest("b", "ip", ServeAgentGrantScope.PREVIEW, 600)
     assertNotNull(store.openRequest("c", "ip", ServeAgentGrantScope.PREVIEW, 600))
   }
