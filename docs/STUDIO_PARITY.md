@@ -36,6 +36,23 @@ nothing without that marker and the task fails with "did not discover any tests"
 The `-P` flag is required in both cases: it materialises the `screenshotTest` source set. Without
 it the fixtures don't compile into the build and the test skips itself.
 
+## The gate cannot skip itself silently
+
+That skip is the one thing capable of retiring this gate without anyone noticing, so it is not left
+to inference. "Our renders are missing" reads identically whether the source set was never
+materialised (fine — nothing to compare) or the flag was dropped from CI and a render produced
+nothing (not fine — we have stopped checking against Studio). The Layoutlib references are
+committed, so their presence proves nothing either way.
+
+The build therefore states which case it is: `studioParity.required` is set from the same
+`screenshotTestEnabled` property that materialises the source set. With it true, absent renders are
+a **failure**; with it false, the test skips as before. A single fixture that stops rendering was
+already a failure (`our renderer produced no PNG`) — this covers the wholesale case, which is the
+one that short-circuits the test before that check runs.
+
+Verified both ways rather than reasoned about: with the fixtures' PNGs moved aside and the flag on,
+the gate fails at the assertion; with the flag off, it still skips.
+
 ## Why sizes are pinned instead of compared loosely
 
 Text rasterises differently in Layoutlib (native Skia + platform fonts) than under our Robolectric

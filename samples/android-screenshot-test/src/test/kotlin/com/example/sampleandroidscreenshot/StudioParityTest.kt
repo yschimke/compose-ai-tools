@@ -80,10 +80,25 @@ class StudioParityTest {
   fun `our renders match Android Studio's Layoutlib output, or diverge only in known ways`() {
     val references = collectReferences()
     val ours = collectOurRenders()
-    // The screenshotTest source set only exists under
-    // `-Pandroid.experimental.enableScreenshotTest=true`, so without it there is nothing of ours to
-    // compare and the gate is not applicable.
-    assumeTrue("no Studio-parity renders in $rendersDir", ours.keys.any { it.startsWith("Parity") })
+    // Whether this gate is APPLICABLE, or BROKEN. The two look identical from in here — our Parity
+    // renders are missing either way, and the Layoutlib references are committed so their presence
+    // proves nothing — so the build says which it is (`studioParity.required`, set from the same
+    // property that materialises the source set).
+    //
+    // Getting this wrong in the safe-looking direction is what makes it worth the plumbing: a
+    // bare `assumeTrue` retires the whole Studio-parity gate the moment the `-P` flag is dropped
+    // from CI or `composePreviewRenderAll` quietly renders none of these fixtures. The suite stays
+    // green, the checks stay ticked, and nothing is comparing us to Studio any more.
+    // Only the wholesale case needs deciding here. A fixture that individually stopped rendering is
+    // already a failure below ("our renderer produced no PNG"); it is ALL of them going missing
+    // that short-circuits the test, because that is indistinguishable from the source set never
+    // having existed.
+    val renderedOurs = ours.keys.any { it.startsWith("Parity") }
+    if (System.getProperty("studioParity.required") == "true") {
+      assertThat(renderedOurs).isTrue()
+    } else {
+      assumeTrue("no Studio-parity renders in $rendersDir", renderedOurs)
+    }
     assertThat(references.keys).isNotEmpty()
 
     reportDir.mkdirs()

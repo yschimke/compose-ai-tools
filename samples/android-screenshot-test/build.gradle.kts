@@ -71,6 +71,19 @@ tasks
   .matching { it.name == "testDebugUnitTest" }
   .configureEach { dependsOn("composePreviewRenderAll") }
 
+// Tell `StudioParityTest` whether its gate is SUPPOSED to run. Without this it can only see that
+// our Parity renders are missing, which is the correct state when the screenshotTest source set was
+// never materialised and a broken build when it was — indistinguishable from inside the test,
+// because the Layoutlib references are committed either way. Left to guess it assumed the benign
+// case and skipped green, so dropping the `-P` flag from CI (or a render that quietly produced
+// nothing) would have retired the Studio-parity gate without failing anything.
+//
+// `withType<Test>` rather than the `matching` block above, which configures a generic `Task` and so
+// cannot reach `systemProperty`.
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+  systemProperty("studioParity.required", screenshotTestEnabled)
+}
+
 dependencies {
   testImplementation(libs.junit)
   testImplementation(libs.truth)
