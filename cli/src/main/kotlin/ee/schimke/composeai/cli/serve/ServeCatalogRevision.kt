@@ -274,6 +274,23 @@ object ServeCatalogRevision {
    * contain this preview — so that heads name rows a reader can actually see. A change point for a
    * publish that was filtered out simply never matches, which is the correct outcome: the row it
    * would have closed is not on screen either.
+   *
+   * ### Known limitation: a render removed and re-added
+   *
+   * [changedAt] says a publish **touched** the path, not that its bytes differ from the previous
+   * *visible* revision. Normally those coincide, because git is content-addressed: rewriting a file
+   * with identical bytes leaves the tree entry alone, so no commit reports it. The one case where
+   * they diverge is a preview dropped from a publish and restored later — git records both the
+   * deletion and the re-addition, the deletion's publish is filtered out of [revisions] as one that
+   * did not contain the preview, and the re-addition is read here as a boundary. If the restored
+   * PNG is byte-identical to the one before the gap, that stretch is reported as two runs and the
+   * menu draws two identical thumbnails with a rule between them.
+   *
+   * Left as-is deliberately. Closing it means comparing the actual bytes at such a boundary, which
+   * costs the two image reads this whole approach exists to avoid, for a case that needs a preview
+   * to leave the catalog and come back unchanged. The failure is also self-evident rather than
+   * misleading about provenance: each thumbnail really is that revision's render, and a reader sees
+   * two pictures that match. Only the "N distinct renders" count is overstated.
    */
   fun renderRuns(
     revisions: List<Revision>,

@@ -70,8 +70,10 @@ export class RevisionRuns extends LitElement {
         if (!payload) return;
         const view = runsViewOf(payload, template);
         if (view) {
-            this.decorate(view);
-            this.summary = view.summary;
+            // Only claim anything once the answer is known to describe THESE rows — see
+            // `decorate`. A stale window says nothing true about the list on screen, summary
+            // included.
+            if (this.decorate(view)) this.summary = view.summary;
             return;
         }
         // No runs worth marking, but the count itself still answers "do they all differ?" — so say
@@ -128,13 +130,21 @@ export class RevisionRuns extends LitElement {
      * than by parsing `?at=` out of the href — the *current* row deliberately carries no pin, so
      * href-parsing would silently never mark the one row that is always a run head.
      */
-    private decorate(view: RunsView): void {
+    private decorate(view: RunsView): boolean {
         const list =
             this.closest("details")?.querySelector<HTMLElement>(
                 ".cp-revision-list",
             );
         const rows = list?.querySelectorAll<HTMLElement>("[data-revision]");
-        if (!list || !rows) return;
+        if (!list || !rows || !rows.length) return false;
+        // The answer has to be about the rows on this page. This menu is fetched lazily, so a
+        // catalog that republished since the page was rendered answers over a newer window: its
+        // newest publish is a row this list does not have, and marking what is left would leave
+        // the page's own newest row unmarked and indented under a run head nobody can see. The
+        // newest row is a run head by construction, so comparing those two shas is the whole
+        // check — when they disagree, draw nothing and leave the menu as it was.
+        if (rows[0].getAttribute("data-revision") !== view.newestHead)
+            return false;
         // Marks the list as decorated, which is what lets the stylesheet indent the rows that are
         // NOT run heads. Absence of `data-run-head` cannot carry that on its own: it is equally the
         // state of every row before the fetch lands, and of a menu whose fetch never succeeded.
@@ -169,6 +179,7 @@ export class RevisionRuns extends LitElement {
                 row.appendChild(span);
             }
         }
+        return true;
     }
 
     protected render(): TemplateResult | typeof nothing {

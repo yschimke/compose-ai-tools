@@ -817,35 +817,69 @@ class ServeBundleHost(
    * bound the same scarce thing — concurrent reads of the delivery branch — and this route is
    * likewise reachable by an anonymous caller naming a preview per request, so leaving it unbounded
    * would reopen precisely the hole that semaphore was added to close.
+   *
+   * Misses are serialized **per preview** on [fillLocks], the same way a cold baked-PNG fill is,
+   * and that is load-bearing rather than tidiness: the semaphore counts permits, it does not
+   * deduplicate, so without this a single preview whose menu is opened by four readers at once
+   * would take all four branch-read permits and issue four identical feed requests — starving the
+   * pinned-asset lane that shares them. Re-checking the cache under the permit is not enough on its
+   * own, because it only helps once the first fetch has already finished.
+   *
+   * Blocking, and called from [Dispatchers.IO][kotlinx.coroutines.Dispatchers.IO] rather than a
+   * request thread — see the route.
+   *
+   * ### Known limitation: the TIP path only
+   *
+   * The feed is read for [bakedBranchPaths]`[previewId]` — the path this preview has *now*. Ids are
+   * stable across publishes and the paths under them are not, which is why [pinnedRender] resolves
+   * through [branchPath] against the manifests at each commit instead. This lane does not: if a
+   * preview's published path changed inside the window, publishes that touched the *former* path
+   * are invisible here, and the revisions below the new path's first commit collapse into one run
+   * even when the old PNG changed several times — understating the count rather than overstating
+   * it.
+   *
+   * Not resolved per revision on purpose. Doing so costs a manifest read to learn the old path plus
+   * a second feed read to cover it, on a lane whose whole argument is that one cheap read replaces
+   * downloading and hashing a dozen PNGs — so it would roughly triple the cost of every cold menu
+   * open to correct a case that needs a publisher to move a stable id's path mid-window. If that
+   * turns out to happen in practice, the fix is to resolve the path at the window's oldest revision
+   * and union the two feeds; see the PR discussion.
    */
   fun renderChangeCommits(previewId: String): Set<String>? {
     val fetch = fetchRenderChanges ?: return null
+    // The warm read stays OUTSIDE the lock, exactly as [bakedPngFile]'s does: an answer this host
+    // already has must never queue behind someone else's cold fetch.
     renderChangeCache[previewId]?.let {
       return it
     }
     val path = bakedBranchPaths[previewId] ?: return null
-    if (!pinnedPermits.tryAcquire(PINNED_FETCH_WAIT_SECONDS, java.util.concurrent.TimeUnit.SECONDS))
-      return null
-    val changes =
-      try {
-        // Re-checked under the permit: a page whose menu is opened twice in quick succession would
-        // otherwise queue a second read for an answer the first is already fetching.
-        renderChangeCache[previewId]
-          ?: runCatching { fetch(path) }.getOrNull()?.map(String::lowercase)?.toSet()
-      } finally {
-        pinnedPermits.release()
+    synchronized(fillLocks.computeIfAbsent("$RENDER_CHANGE_LOCK_PREFIX$previewId") { Any() }) {
+      // Re-checked under the lock: whoever we queued behind was fetching exactly this answer.
+      renderChangeCache[previewId]?.let {
+        return it
       }
-    // Only a real answer is remembered. A failed read says nothing about the branch, and caching it
-    // would strand the markers off for the life of the host over one blip.
-    if (changes != null) {
-      synchronized(renderChangeCache) {
-        if (renderChangeCache.size >= MAX_RENDER_CHANGE_ENTRIES) {
-          renderChangeCache.keys.firstOrNull()?.let(renderChangeCache::remove)
+      if (
+        !pinnedPermits.tryAcquire(PINNED_FETCH_WAIT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)
+      )
+        return null
+      val changes =
+        try {
+          runCatching { fetch(path) }.getOrNull()?.map(String::lowercase)?.toSet()
+        } finally {
+          pinnedPermits.release()
         }
-        renderChangeCache[previewId] = changes
+      // Only a real answer is remembered. A failed read says nothing about the branch, and caching
+      // it would strand the markers off for the life of the host over one blip.
+      if (changes != null) {
+        synchronized(renderChangeCache) {
+          if (renderChangeCache.size >= MAX_RENDER_CHANGE_ENTRIES) {
+            renderChangeCache.keys.firstOrNull()?.let(renderChangeCache::remove)
+          }
+          renderChangeCache[previewId] = changes
+        }
       }
+      return changes
     }
-    return changes
   }
 
   private val renderChangeCache = java.util.concurrent.ConcurrentHashMap<String, Set<String>>()
@@ -1309,6 +1343,9 @@ class ServeBundleHost(
 
     /** Namespaces the motion fill locks apart from the baked ones, which share an id space. */
     private const val MOTION_LOCK_PREFIX = "motion:"
+
+    /** Namespaces the render-change locks in the shared [fillLocks] map. */
+    private const val RENDER_CHANGE_LOCK_PREFIX = "render-changes:"
     private const val RENDER_ERROR_SUFFIX = ".error.json"
     private const val RENDER_ERROR_SCHEMA = "compose-preview-error/v1"
     /** Suffix of the sibling a lazy fill writes before moving it into place atomically. */

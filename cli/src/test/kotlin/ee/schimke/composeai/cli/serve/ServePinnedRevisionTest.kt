@@ -627,19 +627,20 @@ class ServePinnedRevisionTest {
     assertEquals(200, get("http://127.0.0.1:$port/$system/p/$previewId?at=$oldCommit").first)
   }
 
+  /** The path-scoped feed URL for this preview's render — what the runs lane reads. */
+  private val renderFeedUrl =
+    ServeCatalogRevision.pathCommitsFeedUrl(
+      repo,
+      branch,
+      "images/button-filled/ideal__default__dark.png",
+    )
+
   /**
-   * The path-scoped feed for the render, overlaid on the default branch stub: these two publishes
-   * carry different bytes, so `newCommit` changed them and there is a boundary between the rows.
+   * That feed, overlaid on the default branch stub, naming [commits] as the publishes that touched
+   * the render.
    */
   private fun withRenderChanges(vararg commits: String): (String) -> ByteArray? = { url ->
-    if (
-      url ==
-        ServeCatalogRevision.pathCommitsFeedUrl(
-          repo,
-          branch,
-          "images/button-filled/ideal__default__dark.png",
-        )
-    ) {
+    if (url == renderFeedUrl) {
       commits
         .joinToString("\n") { "<entry><id>tag:github.com,2008:Grit::Commit/$it</id></entry>" }
         .let { "<feed>$it</feed>".encodeToByteArray() }
@@ -676,14 +677,36 @@ class ServePinnedRevisionTest {
 
   @Test
   fun `a run the window cuts off says so instead of claiming a count`() {
-    // Neither publish in the window changed the render: the look predates both, so its length is a
-    // floor. Reporting it as an exact two would be a claim the branch never supported.
-    val port = startServer(withRenderChanges()).port
+    // The only publish that touched this render predates both rows in the window, so the run's
+    // length is a floor. Reporting it as an exact two would be a claim the branch never supported.
+    val ancient = "4444444444444444444444444444444444444444"
+    val port = startServer(withRenderChanges(ancient)).port
 
     val body = text("http://127.0.0.1:$port/$system/api/render-runs/$previewId")
 
     assertTrue(body.contains("\"commits\":2"), body)
     assertTrue(body.contains("\"open\":true"), body)
+  }
+
+  @Test
+  fun `a feed that parses to nothing is a failure, not proof the render never changed`() {
+    // A 200 carrying an HTML error page, a redirect, or a reshaped feed all parse down to zero
+    // entries. A published render necessarily has at least the commit that added it, so zero never
+    // describes a real one — and reporting it as an empty change set would tell the viewer, with
+    // confidence, that every listed publish is pixel-identical.
+    for (body in listOf("<feed></feed>", "<html>404</html>", "")) {
+      val port = startServer { url ->
+        if (url == renderFeedUrl) body.encodeToByteArray() else fetch(url)
+      }
+        .port
+
+      assertEquals(
+        404,
+        get("http://127.0.0.1:$port/$system/api/render-runs/$previewId").first,
+        body,
+      )
+      server?.stop()
+    }
   }
 
   @Test

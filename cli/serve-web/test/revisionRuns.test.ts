@@ -184,6 +184,36 @@ describe("<cp-revision-runs>", () => {
         );
     });
 
+    it("draws nothing when the answer describes a newer window than the page", async () => {
+        // The menu is fetched lazily, so a catalog that republished since the page was rendered
+        // answers over a window whose newest publish this list does not contain. Marking what is
+        // left would leave the page's own newest row unmarked and indented under a head nobody can
+        // see, and the summary would count a different set of publishes.
+        stubFetch({
+            ok: true,
+            body: {
+                revisions: 4,
+                runs: [
+                    { head: "f".repeat(40), commits: 1 },
+                    { head: HEAD_A, commits: 2 },
+                ],
+            },
+        });
+        const details = await mount();
+        await open(details);
+        assert.equal(
+            details.querySelectorAll("img.cp-revision-thumb").length,
+            0,
+        );
+        assert.equal(details.querySelector(".cp-revision-runs-summary"), null);
+        assert.equal(
+            details
+                .querySelector(".cp-revision-list")
+                ?.getAttribute("data-runs"),
+            null,
+        );
+    });
+
     it("draws nothing when the server named no usable render URL", async () => {
         const fetches = stubFetch({ ok: true, body: PAYLOAD });
         const details = await mount({ renderUrl: "//evil.example/a.png" });

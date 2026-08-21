@@ -145,6 +145,24 @@ describe("runsViewOf", () => {
         assert.deepEqual([...view.markers.keys()], ["a".repeat(40)]);
     });
 
+    it("carries the newest head it was computed over", () => {
+        // The caller compares this against the page's newest row to reject a stale window.
+        assert.equal(runsViewOf(PAYLOAD, TEMPLATE)!.newestHead, "a".repeat(40));
+        // From the payload, not from the markers, so a first run that could not be addressed still
+        // reports the window it belongs to rather than the next one down.
+        const skipped = runsViewOf(
+            {
+                revisions: 3,
+                runs: [
+                    { head: "main", commits: 1 },
+                    { head: "b".repeat(40), commits: 2 },
+                ],
+            },
+            TEMPLATE,
+        )!;
+        assert.equal(skipped.newestHead, "main");
+    });
+
     it("draws nothing without a usable render URL or any runs", () => {
         assert.equal(runsViewOf(PAYLOAD, null), null);
         assert.equal(runsViewOf({ revisions: 12, runs: [] }, TEMPLATE), null);

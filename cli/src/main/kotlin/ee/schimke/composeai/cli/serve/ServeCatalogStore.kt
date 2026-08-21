@@ -2853,10 +2853,14 @@ class ServeCatalogStore(
    * the commits that touched a file, so the alternative (fetch every published PNG for a preview
    * and compare bytes) buys nothing and costs a dozen image reads per menu.
    *
-   * Null, not empty, when the read fails. The distinction is load-bearing downstream: an empty set
-   * is the real answer "nothing ever changed this render, they are all identical", while null is
-   * "the branch did not tell us" — and drawing the first when we mean the second would label a
-   * dozen genuinely different publishes as one unchanged run.
+   * Null, not empty, when the read fails — and **an empty parse counts as a failure**. The
+   * distinction is load-bearing downstream: null means "the branch did not tell us" and draws no
+   * markers, while an empty set would mean "no publish ever changed this render", which the runs
+   * endpoint reports as every listed publish being pixel-identical. A path that a catalog publishes
+   * necessarily has at least the commit that added it, so *zero* entries never describes a real
+   * render: it is what a 200 carrying an HTML error page, a redirect, or a reshaped feed parses
+   * down to. Treating that as "nothing changed" would state the confident wrong answer precisely
+   * when the branch had told us nothing at all.
    */
   private fun fetchRenderChanges(repo: String, branch: String, path: String): Set<String>? =
     runCatching {
@@ -2867,6 +2871,7 @@ class ServeCatalogStore(
         ServeCatalogRevision.parseCommitsFeed(xml, ServeCatalogRevision.MAX_PATH_REVISIONS)
           .map { it.commit }
           .toSet()
+          .takeIf { it.isNotEmpty() }
       }
     }
     .getOrNull()

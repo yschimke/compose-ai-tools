@@ -5758,7 +5758,15 @@ class ServeHttpServer(
       val host = catalogBundleHost(renderHost)
       val revisions = host?.let { availableRevisions(it, previewId) }.orEmpty()
       // `renderChangeCommits` is the read that can fail; the rest is arithmetic over it.
-      val changed = host?.renderChangeCommits(previewId)
+      //
+      // On [Dispatchers.IO] because a cold call goes to the delivery branch, and
+      // `withLeasedSession`
+      // — unlike its `…OrNull` sibling — runs its block on the request coroutine. That fetch
+      // carries
+      // the branch client's 10s connect / 30s read timeouts, so leaving it here would let a handful
+      // of cold menu opens hold Ktor request threads while GitHub is slow and stall unrelated
+      // traffic. Same rule the published-asset lanes already follow.
+      val changed = withContext(Dispatchers.IO) { host?.renderChangeCommits(previewId) }
       if (changed == null || revisions.isEmpty()) {
         call.respondText("not found", status = HttpStatusCode.NotFound)
         return@withLeasedSession
