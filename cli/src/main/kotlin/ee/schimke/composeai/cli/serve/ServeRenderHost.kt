@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
+import ee.schimke.composeai.daemon.devices.frameDpOverriddenBy
 import ee.schimke.composeai.daemon.protocol.DataFetchParams
 import ee.schimke.composeai.daemon.protocol.ExtensionsEnableResult
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
@@ -297,19 +298,25 @@ data class ServeDeviceFrame(
     /**
      * The frame for a preview's `@Preview` params, or null when it names no device.
      *
-     * Dimensions prefer the annotation's own `widthDp`/`heightDp` and fall back to the resolved
-     * device's, while **roundness always comes from the device string** — the same precedence the
-     * daemon's `render/deviceClip` product uses. That split is not cosmetic:
-     * [DeviceDimensions.resolve] returns early with `isRound = false` the moment it is handed
-     * explicit dimensions, so asking it for both at once reports every sized Wear preview as
+     * Dimensions go through [frameDpOverriddenBy], which is the repo's one answer to "do the
+     * annotation's dp displace the device catalog?" — **both axes or neither**, because that is
+     * what the renderer that produced the PNG did, and Studio ignores a single-axis hint on a
+     * device frame too. Deciding it per axis here would put a 120×227 clip over a 227×227 render
+     * and crop live screen, and the helper exists precisely so the places making this call cannot
+     * drift apart on it.
+     *
+     * **Roundness always comes from the device string**, separately, and that split is not
+     * cosmetic: [DeviceDimensions.resolve] returns early with `isRound = false` the moment it is
+     * handed explicit dimensions, so asking it for both at once reports every sized Wear preview as
      * square, which is exactly the whole set this feature is for.
      */
     fun from(device: String?, widthDp: Int?, heightDp: Int?): ServeDeviceFrame? {
       val named = device?.takeIf { it.isNotBlank() } ?: return null
       val resolved = DeviceDimensions.resolve(named)
+      val (w, h) = resolved.frameDpOverriddenBy(widthDp, heightDp)
       return ServeDeviceFrame(
-        widthDp = (widthDp ?: resolved.widthDp).toDouble(),
-        heightDp = (heightDp ?: resolved.heightDp).toDouble(),
+        widthDp = w.toDouble(),
+        heightDp = h.toDouble(),
         isRound = resolved.isRound,
       )
     }

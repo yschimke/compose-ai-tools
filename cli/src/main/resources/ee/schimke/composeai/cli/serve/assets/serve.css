@@ -2537,10 +2537,14 @@ html:not(.cp-bg-transparent) #cp-reference-compare[data-cp-stage-clip] .cp-compa
 html:not(.cp-bg-transparent) #cp-reference-compare[data-cp-stage-clip] .cp-compare-shot > canvas,
 html:not(.cp-bg-transparent) #cp-reference-compare[data-cp-stage-clip] .cp-reference-overlay img {
   background: var(--cp-stage-backdrop, #fff); clip-path: var(--cp-stage-clip, none); }
-/* The overlay stacks its two panels, so its own ground would show through the corners the clip
-   above just opened up. It hands the ground to the images and keeps none of its own. */
+/* The overlay stacks its two images, so the stage colour it paints for itself would show through
+   the corners the clip above just opened up. It takes the CHECKERBOARD rather than nothing: unlike
+   the three panels it is not inside a checkerboard-bearing parent, so `transparent` here would
+   expose the page surface — and on a dark page that is the near-black-on-near-black blend this
+   whole rule set exists to end, with the corners no longer reading as outside the device at all. */
 html:not(.cp-bg-transparent) #cp-reference-compare[data-cp-stage-clip] .cp-reference-overlay {
-  background: transparent; }
+  background: repeating-conic-gradient(var(--cp-surface-2) 0% 25%, var(--cp-surface) 0% 50%)
+    50% / 14px 14px; }
 .cp-reference-result { font-weight: 650; font-variant-numeric: tabular-nums; }
 /* Annotation layers. The layer is absolutely positioned over its panel's image and sized in JS from
    the image's rendered box, because annotation bounds arrive in the source frame's pixel space and

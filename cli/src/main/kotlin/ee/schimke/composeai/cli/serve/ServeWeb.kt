@@ -1513,8 +1513,19 @@ ${captureControlsHtml().prependIndent("          ")}
    * circle stated against the device is exactly the circle in the pixels. Clipping the panel
    * instead would clip the panel's rectangle, which is a different shape in a different place.
    */
-  internal fun stageClipFor(preview: ServePreview): String? {
-    val frame = preview.deviceFrame ?: return null
+  internal fun stageClipFor(
+    preview: ServePreview,
+    /**
+     * The render lane's overrides, when this page is showing one. The clip has to describe the
+     * frame that was actually RENDERED, not the one the preview was discovered with — the Actual
+     * panel takes these through `assetQuery`, so a comparison opened at `?device=id:wearos_square`
+     * shows a square render and a circle stated from the annotation would crop live screen off it.
+     * The inverse is just as wrong: overriding a phone preview onto a watch leaves a round render
+     * on a square stage. Same reason [backdropFor] takes `uiModeOverride`.
+     */
+    overrides: Map<String, String> = emptyMap(),
+  ): String? {
+    val frame = effectiveDeviceFrame(preview, overrides) ?: return null
     val shape = PreviewClip.resolve(frame.isRound, frame.widthDp, frame.heightDp) ?: return null
     return PreviewClip.cssClipPath(
       shape,
@@ -1522,6 +1533,44 @@ ${captureControlsHtml().prependIndent("          ")}
       frame.heightDp ?: return null,
     )
   }
+
+  /**
+   * The device frame this comparison actually rendered at, or null when it cannot be stated.
+   *
+   * An explicit `device=` override replaces the frame outright and is resolved from the device
+   * catalog exactly as discovery would have — including its shape, so switching a round preview to
+   * one of the Wear picker's square choices drops the clip rather than keeping a stale circle.
+   *
+   * A SIZE override suppresses the clip instead of adjusting it. `widthPx`/`heightPx` are pixels
+   * against a density this page does not carry, and `orientation` re-derives the frame through
+   * rules that live in the resolver; a clip guessed from any of them would be a circle in the wrong
+   * place, which is worse than the square stage this feature replaced — that at least never hid
+   * real pixels. Answering null puts such a render back on the un-clipped stage, honestly.
+   */
+  private fun effectiveDeviceFrame(
+    preview: ServePreview,
+    overrides: Map<String, String>,
+  ): ServeDeviceFrame? {
+    if (SIZE_OVERRIDE_KEYS.any { !overrides[it].isNullOrBlank() }) return null
+    val device = overrides["device"]?.takeIf { it.isNotBlank() } ?: return preview.deviceFrame
+    return ServeDeviceFrame.from(device, widthDp = null, heightDp = null)
+  }
+
+  /**
+   * Render overrides that change the frame's SHAPE by a route this page cannot re-derive. Kept as a
+   * list rather than folded into the check above so a new sizing knob in
+   * [ServeOverrides.SUPPORTED_KEYS] is one line to account for here.
+   */
+  private val SIZE_OVERRIDE_KEYS =
+    listOf(
+      "widthPx",
+      "heightPx",
+      "minWidthPx",
+      "minHeightPx",
+      "maxWidthPx",
+      "maxHeightPx",
+      "orientation",
+    )
 
   /**
    * The light/dark variant a preview **is**, from the catalog's baked `theme` token, else its night
@@ -8992,7 +9041,7 @@ $rows
       )
     // The SHAPE of that ground. A round device's stage has to stop at the bezel, or the three
     // panels agree with each other about a watch that is square.
-    val stageClip = stageClipFor(preview)
+    val stageClip = stageClipFor(preview, overrides)
     val stageAttrs =
       backdrop.color?.let { color ->
         // The theme word drives the existing CSS; the exact colour rides along as a custom property

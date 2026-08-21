@@ -107,4 +107,43 @@ class ServeWebStageClipTest {
     assertNull(ServeDeviceFrame.from(null, 411, 891))
     assertNull(ServeDeviceFrame.from("  ", 411, 891))
   }
+
+  @Test
+  fun `a single-axis dp hint does not displace the device, exactly as the renderer decides it`() {
+    // `frameDpOverriddenBy` is both-axes-or-neither, and the renderer that produced the PNG applied
+    // it. Deciding per axis here would put a 120×227 clip over a 227×227 render and crop live
+    // screen off two sides — a circle in the wrong place, which is worse than no clip at all.
+    val frame = ServeDeviceFrame.from("id:wearos_large_round", widthDp = 120, heightDp = null)
+    assertEquals(ServeDeviceFrame(227.0, 227.0, isRound = true), frame)
+  }
+
+  @Test
+  fun `a device override restates the clip from the device actually rendered`() {
+    // The Actual panel takes `device=` through its asset query, so the comparison on screen is of
+    // that frame. A square Wear choice must DROP the circle rather than crop the render it did not
+    // describe…
+    val round = preview(ServeDeviceFrame.from("id:wearos_large_round", 227, 227))
+    assertNull(ServeWeb.stageClipFor(round, mapOf("device" to "id:wearos_square")))
+    // …and the inverse must gain one, or a round render sits on a square stage.
+    val phone = preview(ServeDeviceFrame.from("id:pixel_5", null, null))
+    assertEquals(
+      "circle(50% at 50% 50%)",
+      ServeWeb.stageClipFor(phone, mapOf("device" to "id:wearos_large_round")),
+    )
+  }
+
+  @Test
+  fun `a size override suppresses the clip rather than guessing a circle for it`() {
+    // `widthPx`/`heightPx` are pixels against a density this page does not carry, and `orientation`
+    // re-derives the frame through rules that live in the resolver. A guess would be a circle in
+    // the wrong place; the un-clipped stage at least never hides real pixels.
+    val round = preview(ServeDeviceFrame.from("id:wearos_large_round", 227, 227))
+    assertNull(ServeWeb.stageClipFor(round, mapOf("widthPx" to "480")))
+    assertNull(ServeWeb.stageClipFor(round, mapOf("orientation" to "landscape")))
+    // An empty value is not an override — it must not cost the clip.
+    assertEquals(
+      "circle(50% at 50% 50%)",
+      ServeWeb.stageClipFor(round, mapOf("widthPx" to "")),
+    )
+  }
 }
