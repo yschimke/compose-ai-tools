@@ -12200,11 +12200,17 @@ $cards
       revisions.pinned?.let { " data-pinned-at=\"${WebEscaping.htmlEscape(it)}\"" }.orEmpty()
     // The axes the URL named and this page withheld, for `hydrateFromUrl` to defer on. Sorted so
     // the markup is stable across requests; absent entirely on the ordinary page.
+    //
+    // A JSON array rather than a delimited list, because a knob key is an author string and nothing
+    // forbids a comma in one. `knob.price,discount` comma-joined splits into two names that match
+    // nothing, and the real axis silently stops being withheld — on a pinned page, exactly the
+    // value the render ignored would come back.
     val unseededAttr =
       unseededOverrides
         .takeIf { it.isNotEmpty() }
-        ?.let {
-          " data-unseeded-overrides=\"${WebEscaping.htmlEscape(it.sorted().joinToString(","))}\""
+        ?.let { axes ->
+          val json = JsonArray(axes.sorted().map { JsonPrimitive(it) }).toString()
+          " data-unseeded-overrides=\"${WebEscaping.htmlEscape(json)}\""
         }
         .orEmpty()
     // `</script>` inside a JSON payload would end the element early, so the only sequence that can
