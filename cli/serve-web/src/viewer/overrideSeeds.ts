@@ -42,6 +42,26 @@ export function unseededOverrides(root: Element | null): Set<string> {
 }
 
 /**
+ * The lanes the BROWSER draws: the Wasm app, the Remote Compose JS canvas, and the CMP-Wasm player.
+ *
+ * Named here because withholding is a fact about the image the SERVER sent — a pinned revision's
+ * historical bytes, a baked fallback, a replay that could not apply the axis. None of that binds a
+ * lane that mounts the component in the browser and honours the control directly, so on those the
+ * URL's value is the truthful one and hydration runs free.
+ */
+const IN_BROWSER_LANES = new Set(["wasm", "rc", "rc-wasm"]);
+
+/**
+ * Whether a page's withheld axes apply to [mode] — true for every server-rendered lane (the
+ * snapshot, the daemon stream, SVG, a recording, an imported spec), false for [IN_BROWSER_LANES].
+ *
+ * Absent / unknown reads as the snapshot, which is where a page without `?mode=` opens.
+ */
+export function laneAppliesWithholding(mode: string | null): boolean {
+    return !IN_BROWSER_LANES.has(mode || "");
+}
+
+/**
  * The value a declared knob's control should open on.
  *
  * `initial` is the declaration (`data-knob-initial`) and is the answer whenever the URL has nothing
