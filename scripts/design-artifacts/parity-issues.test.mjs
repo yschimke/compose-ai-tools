@@ -101,3 +101,18 @@ test("a locator that fails to close is broken, not absent", () => {
   // And a good block followed by a dangling opener is ambiguous, not usable.
   assert.equal(parseLocator(shared.cases[0].block + "\n```compose-parity-locator/v1\nrepository: a/b\n").error, "multiple locator blocks");
 });
+
+test("a fence indented the way CommonMark allows is still a locator", () => {
+  // One to three leading spaces renders as an ordinary fenced block on GitHub — pasting the report
+  // inside a list item is enough to produce it — so a column-zero-only pattern reads a locator the
+  // reporter can plainly see as absent, and skips it.
+  const indent = (block, n) => block.split("\n").map((line) => (line ? " ".repeat(n) + line : line)).join("\n");
+  const good = shared.cases.find((shape) => shape.name === "full");
+  for (const n of [1, 2, 3]) {
+    assert.deepEqual(parseLocator(indent(good.block, n)), good.parse, `indented by ${n}`);
+  }
+  // Four is an indented code block, not a fence: the marker is literal text, so there is no locator.
+  assert.equal(parseLocator(indent(good.block, 4)).error, NO_LOCATOR);
+  // An indented block that fails to close is still broken rather than absent.
+  assert.equal(parseLocator("  ```compose-parity-locator/v1\n  repository: a/b\n").error, "unterminated locator block");
+});

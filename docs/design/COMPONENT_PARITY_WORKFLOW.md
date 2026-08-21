@@ -226,7 +226,10 @@ already has a trust boundary with tests:
   issue — which would send a real, damaged report down the silent path and let the run go green
   without it. The opener is matched separately and anchored to a line, so a body that merely names
   the fence in prose still counts as absent, while an unterminated one — and a good block trailed by
-  a dangling opener — is reported.
+  a dangling opener — is reported. Both patterns tolerate the **one to three leading spaces**
+  CommonMark allows, because a block pasted inside a list item renders as an ordinary fence on
+  GitHub and a column-zero-only pattern would read a plainly visible locator as absent. Four spaces
+  is an indented code block, not a fence, so the marker is literal text and there is no locator.
 
 ### Where the regeneration workflow lives
 

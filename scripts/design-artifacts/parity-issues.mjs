@@ -4,7 +4,13 @@ export const ISSUES_SCHEMA = "compose-preview-issues/v1";
 export const LOCATOR_FENCE = "compose-parity-locator/v1";
 
 const REPO = /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/;
-const FENCE = /```compose-parity-locator\/v1\s*\n([\s\S]*?)\n```/g;
+/**
+ * Both delimiters, anchored to a line and tolerating the one to three leading spaces CommonMark
+ * allows — a block indented inside a list item renders as an ordinary fence on GitHub, so a
+ * column-zero-only pattern reads a perfectly visible locator as absent. Content lines keep their
+ * indentation; the field parser already trims each key and value.
+ */
+const FENCE = /^ {0,3}```compose-parity-locator\/v1\s*\n([\s\S]*?)\n {0,3}```/gm;
 /**
  * Just the opening line of a fence, so a locator that FAILS to close can be told apart from one
  * that was never there. [FENCE] needs both delimiters, so a body whose closing ``` was deleted
@@ -12,7 +18,7 @@ const FENCE = /```compose-parity-locator\/v1\s*\n([\s\S]*?)\n```/g;
  * damaged parity report down the silent-skip path in [buildIssueIndex]. Anchored to a line so a
  * body merely *mentioning* the fence name in prose is not mistaken for one.
  */
-const FENCE_OPEN = /^```compose-parity-locator\/v1[^\S\n]*$/gm;
+const FENCE_OPEN = /^ {0,3}```compose-parity-locator\/v1[^\S\n]*$/gm;
 const AREA = new Set(["spec", "component", "preview", "renderer", "comparison"]);
 const PARITY = new Set(["regression", "known-difference", "verification-needed"]);
 
