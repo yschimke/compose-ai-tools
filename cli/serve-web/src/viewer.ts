@@ -25,9 +25,9 @@ import * as rules from "./viewer/rules.js";
 import { viewParam } from "./spec/views.js";
 import { type ApiDocLink, usableApiDocs } from "./viewer/apiDocs.js";
 import {
+    effectiveUnseeded,
     isChecked,
     knobHydratedValue,
-    laneAppliesWithholding,
     rcHydratedValue,
     unseededOverrides,
 } from "./viewer/overrideSeeds.js";
@@ -4390,6 +4390,19 @@ function setSizeInput(id: string, px: string | null) {
 // Restore every owned control from the URL. Also runs for Back/Forward, so a param the entry
 // does NOT carry has to reset its control — leaving the live value would make the restored page
 // disagree with its own URL.
+/**
+ * Whether [mode] names a lane this page can actually be put into — an offered, enabled mode radio.
+ *
+ * The same test the bookmarked-mode guard applies at the bottom of this file, and for the same
+ * reason: `?mode=` is what a URL asked for, not what the page will show. A stale or hand-shared
+ * mode naming a lane this session does not offer leaves the snapshot on screen.
+ */
+function laneIsEnterable(mode: string | null): boolean {
+    if (!mode) return false;
+    return Array.from(ticks('input[name="cp-mode"]')).some(function (r) {
+        return r.value === mode && !r.disabled;
+    });
+}
 function hydrateFromUrl(popped: boolean) {
     var q = new URLSearchParams(location.search);
     fields.forEach(function (f) {
@@ -4487,14 +4500,18 @@ function hydrateFromUrl(popped: boolean) {
         if (typeof syncSizeRows === "function") syncSizeRows();
     }
     // The axes this page will not let the URL drive, because its image did not apply them — scoped
-    // to the lane this pass is restoring INTO. Withholding describes what the server sent, so it
-    // binds the server-rendered lanes and not the ones the browser draws: a Wasm or RC-canvas entry
-    // mounts the component and honours the control, and resetting it to the declaration there would
-    // discard the value that history entry recorded. Read per pass, not captured, because
-    // Back/Forward can land on an entry in a different lane.
-    var unseeded = laneAppliesWithholding(q.get("mode"))
-        ? unseededOverrides(root)
-        : new Set<string>();
+    // to the lane this pass is restoring INTO, and to the control family that lane forwards.
+    // Withholding describes what the server sent, so it binds the server-rendered lanes and, on an
+    // in-browser one, still binds the half of the controls that lane cannot reach. Read per pass,
+    // not captured, because Back/Forward can land on an entry in a different lane. `mode` is a
+    // REQUEST, so it only counts when the lane can actually be entered — same radio the
+    // bookmarked-mode guard consults at the bottom of this file.
+    var wantedLane = q.get("mode");
+    var unseeded = effectiveUnseeded(
+        unseededOverrides(root),
+        wantedLane,
+        laneIsEnterable(wantedLane),
+    );
     controls(".cp-knob").forEach(function (el) {
         var key = el.getAttribute("data-knob-key");
         if (!key) return;
