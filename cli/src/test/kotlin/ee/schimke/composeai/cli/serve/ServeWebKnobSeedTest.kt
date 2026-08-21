@@ -173,6 +173,96 @@ class ServeWebKnobSeedTest {
     assertTrue(knobRow(html, "label").contains("""value="int:3""""), knobRow(html, "label"))
   }
 
+  private fun rcViewer(
+    declaration: ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration,
+    requestOverrides: Map<String, String>,
+  ): String {
+    val preview =
+      ServePreview(
+        id = "button-filled",
+        label = "Filled",
+        remoteComposeKnobs = listOf(declaration),
+      )
+    return ServeWeb.viewerPage(
+      preview,
+      token = "t",
+      basePath = "/compose-m3",
+      siblings = listOf(preview),
+      canApplyOverrides = true,
+      requestOverrides = requestOverrides,
+    )
+  }
+
+  private fun rcRow(html: String, name: String): String =
+    html.lineSequence().first { it.contains("""data-rc-name="$name"""") }
+
+  /**
+   * A Remote Compose bool reads `1` as true, like every other consumer of the same seed.
+   *
+   * `?rc.enabled=bool:1` parses to `BooleanValue(true)` and `hydrateFromUrl` ticks the box for it.
+   * Testing only for the literal `true` was safe while the control always showed the declaration
+   * (whose text is `true` / `false`); once a deep link can seed it, that spelling would have drawn
+   * an unticked box beside a render that obeyed the value.
+   */
+  @Test
+  fun `an rc bool seeded as 1 is checked`() {
+    val row =
+      rcRow(
+        rcViewer(
+          ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration(
+            "enabled",
+            ee.schimke.composeai.daemon.protocol.RemoteNamedValue.BooleanValue(false),
+          ),
+          mapOf("rc.enabled" to "bool:1"),
+        ),
+        "enabled",
+      )
+    assertTrue(row.contains(" checked"), row)
+  }
+
+  /**
+   * An RC seed whose kind won't parse as the declared one leaves the control alone.
+   *
+   * RC params type themselves from their own `<kind>:` tag and default to `string` with no
+   * declaration lookup — unlike a plain knob, which takes its type from the declaration. So
+   * `?rc.count=3` on a declared int parses as `StringValue("3")` and the renderer keeps the
+   * authored int: showing `3` would contradict the pixels, and the next query built from that
+   * control would serialise `rc.count=int:3`, turning a request the renderer ignored into one it
+   * obeys.
+   */
+  @Test
+  fun `an rc seed that would not parse as the declared kind is ignored`() {
+    val row =
+      rcRow(
+        rcViewer(
+          ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration(
+            "count",
+            ee.schimke.composeai.daemon.protocol.RemoteNamedValue.IntValue(5),
+          ),
+          mapOf("rc.count" to "3"),
+        ),
+        "count",
+      )
+    assertTrue(row.contains("""value="5""""), row)
+  }
+
+  /** …and one that agrees with the declared kind is taken, with its wire tag stripped. */
+  @Test
+  fun `an rc seed tagged with the declared kind seeds the control`() {
+    val row =
+      rcRow(
+        rcViewer(
+          ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration(
+            "count",
+            ee.schimke.composeai.daemon.protocol.RemoteNamedValue.IntValue(5),
+          ),
+          mapOf("rc.count" to "int:3"),
+        ),
+        "count",
+      )
+    assertTrue(row.contains("""value="3""""), row)
+  }
+
   /** A knob the request doesn't name is untouched — a plain visit renders exactly as before. */
   @Test
   fun `an unnamed knob keeps its declared value`() {

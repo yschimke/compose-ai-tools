@@ -13190,12 +13190,16 @@ ${ServeSiteIcon.linkTags().prependIndent("        ")}
         val kind = rcKnobKind(d.default)
         val declared = rcKnobValueText(d.default)
         // The request's value for this knob, seeded onto the control exactly as `overrideKnobsHtml`
-        // seeds a declared one and for the same reason. RC params carry their kind on the wire
-        // (`rc.<name>=<kind>:<value>`) while the control holds the bare value, so a matching prefix
-        // is stripped — mirroring `hydrateFromUrl`, which strips the same one client-side.
+        // seeds a declared one and for the same reason — but under RC's own typing rules, which are
+        // stricter: an RC seed carries its kind on the wire and defaults to `string` with no
+        // declaration lookup, so only a seed that will PARSE as this knob's kind may be shown.
+        // `ServeOverrides.rcControlValue` holds that rule and returns null for the rest, leaving
+        // the
+        // control on what the render actually used.
         val shown =
-          requestOverrides[ServeOverrides.RC_NAMED_PREFIX + d.name]?.removePrefix("$kind:")
-            ?: declared
+          requestOverrides[ServeOverrides.RC_NAMED_PREFIX + d.name]?.let {
+            ServeOverrides.rcControlValue(it, kind)
+          } ?: declared
         val value = WebEscaping.htmlEscape(shown)
         // `data-rc-initial` is the AUTHOR default, not what the control opens on when a deep link
         // seeds it — same load-bearing gap as `data-knob-initial`: the viewer omits a knob still
@@ -13205,7 +13209,11 @@ ${ServeSiteIcon.linkTags().prependIndent("        ")}
           "class=\"cp-rc-knob\" data-rc-name=\"$wireName\" data-rc-kind=\"$kind\" " +
             "data-rc-initial=\"${WebEscaping.htmlEscape(declared)}\""
         if (kind == "bool") {
-          val checked = if (value == "true") " checked" else ""
+          // `true` OR `1`, the same rule the parser and `hydrateFromUrl` read a bool by. Testing
+          // only for `true` was safe while this always rendered the declaration (whose text is
+          // `true`/`false`); a deep-linked `rc.enabled=bool:1` is a real value the render obeys and
+          // would have drawn the box unticked beside it.
+          val checked = if (boolText(shown) == "true") " checked" else ""
           "<label class=\"cp-live-row\"><input type=\"checkbox\" $attrs$checked$dis> $label</label>"
         } else {
           val inputType = if (kind == "int" || kind == "float" || kind == "dp") "number" else "text"

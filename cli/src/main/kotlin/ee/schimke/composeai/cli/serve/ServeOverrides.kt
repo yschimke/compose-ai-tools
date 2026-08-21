@@ -213,6 +213,29 @@ object ServeOverrides {
   }
 
   /**
+   * The bare value an `rc.<name>=<raw>` param puts on a **declared** Remote Compose control, or
+   * null when the seed does not apply to it and the declaration should stand.
+   *
+   * Stricter than [knobControlValue], because [parse] types the two differently. A plain knob takes
+   * its type from the DECLARATION, so a bare `knob.count=3` is an int on an int knob. An RC seed
+   * carries its own tag and defaults to `string` with no declaration lookup at all — so a bare
+   * `rc.count=3` parses as `StringValue("3")` and leaves a declared *int* knob on its authored
+   * value. Showing `3` on that control would contradict the pixels it was rendered beside, and the
+   * next query built from it serialises `rc.count=int:3`, quietly turning a request the renderer
+   * ignored into one it obeys.
+   *
+   * So a seed is taken only when the kind it will actually parse as matches the declared one: an
+   * explicit tag that agrees, or no tag at all on a `string` knob. Anything else — a bare value on
+   * a typed knob, a `float:` on an `int` — leaves the control showing what the render used.
+   */
+  fun rcControlValue(raw: String, declaredKind: String): String? {
+    val sep = raw.indexOf(':')
+    val wireKind = if (sep > 0) raw.substring(0, sep).takeIf { it in RC_KNOWN_KINDS } else null
+    val value = if (wireKind != null) raw.substring(sep + 1) else raw
+    return value.takeIf { (wireKind ?: "string") == declaredKind }
+  }
+
+  /**
    * The `<kind>` tags an `rc.<name>=<kind>:<value>` seed may carry. Superset of [KNOWN_KINDS] with
    * `dp` — Remote Compose distinguishes a density-independent measure ([RemoteNamedValue.DpValue])
    * from a raw float, matching the connector's `setUserLocalFloat` (dp) vs `setUserLocalFloat`

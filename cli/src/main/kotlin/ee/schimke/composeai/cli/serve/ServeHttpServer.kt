@@ -6287,7 +6287,14 @@ class ServeHttpServer(
           // The knob values THIS request asked for, so the controls open on them rather than on the
           // preview's declaration. Same map the issue report and the render links are built from,
           // so a deep link, the reported render and the on-page controls cannot disagree.
-          requestOverrides = requestOverrideParams(sessionId),
+          //
+          // …EXCEPT on a pinned revision, where the image is the historical baked bytes and
+          // `pinnedRenderQuerySuffix()` drops every render override for exactly that reason (see
+          // `imageQuerySuffix` above). Seeding the controls there would put a value on screen that
+          // the picture beside it cannot be showing — the same disagreement this parameter exists
+          // to remove, pointed the other way.
+          requestOverrides =
+            if (revisions.pinned == null) requestOverrideParams(sessionId) else emptyMap(),
           // Per-preview: a catalog advertises SVG globally as soon as it carries a `figma/` dir,
           // but
           // a preview whose slug has no baked `figma/<slug>.svg` still 404s the `.svg` lane, so
