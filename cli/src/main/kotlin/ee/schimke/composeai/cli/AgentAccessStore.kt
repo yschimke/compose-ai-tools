@@ -375,27 +375,35 @@ internal open class AgentAccessStore(
         ?.let {
           return File(it)
         }
+      // ONE rule, applied to every candidate: a home must be an absolute path.
+      //
+      // This leak has now been reachable three times by three different routes — the original `.`
+      // fallback, then a relative `user.home`, then a relative `XDG_CONFIG_HOME`/`HOME` — because
+      // each fix was applied to the branch that was pointed at rather than to the question. The
+      // question is the same every time: is this a real home, or does it resolve under whatever
+      // directory the command happens to be run from? For an agent that directory is a checkout,
+      // so the credentials land somewhere CI archives or the next `git add -A` commits, and the
+      // target becomes influenceable by anything that can add a `compose-preview/` path to the
+      // tree. Anything that fails the question is treated as absent.
       val configHome =
-        env("XDG_CONFIG_HOME")?.takeIf { it.isNotBlank() }
-          ?: env("HOME")?.takeIf { it.isNotBlank() }?.let { "$it/.config" }
+        absoluteHome(env("XDG_CONFIG_HOME"))
+          ?: absoluteHome(env("HOME"))?.let { "$it/.config" }
           // The JVM's own view of the user's home, which on Linux comes from the passwd entry
           // rather than the environment — so it survives the minimal `env -i` service context that
           // has neither variable set.
-          // Absolute only. `-Duser.home=.` resolves to `./.config/…` — straight back under the
-          // working directory, which is the exact outcome this whole path exists to prevent. A
-          // relative home is not a home; treat it as absent and let the refusal below fire.
-          ?: prop("user.home")
-            ?.takeIf { it.isNotBlank() && it != "?" && File(it).isAbsolute }
-            ?.let { "$it/.config" }
-          // …and if there is genuinely nowhere, REFUSE. The old fallback was `.`, which wrote
-          // bearer tokens and device secrets into whatever directory the command happened to run
-          // in — for an agent that is a checkout, so the credentials land somewhere that gets
-          // archived by CI or committed by the next `git add -A`. Worse, the target directory
-          // would then be attacker-influenced by anything that can add a `compose-preview/` path
-          // to the tree. Better to store nothing and say so.
+          ?: absoluteHome(prop("user.home"))?.let { "$it/.config" }
+          // …and if there is genuinely nowhere, REFUSE rather than inventing one.
           ?: throw NoCredentialHomeException()
       return File("$configHome/compose-preview/agent-access.json")
     }
+
+    /**
+     * [candidate] if it is a usable absolute path, else null — the single test every
+     * credential-home candidate goes through. `?` is JVM shorthand for "unknown", and a relative
+     * path is not a home however it was supplied.
+     */
+    private fun absoluteHome(candidate: String?): String? =
+      candidate?.trim()?.takeIf { it.isNotEmpty() && it != "?" && File(it).isAbsolute }
 
     /**
      * `scheme://host[:port]`, lowercased, default ports dropped, path and query discarded.

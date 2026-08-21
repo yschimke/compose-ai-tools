@@ -247,15 +247,40 @@ class AgentAccessStoreTest {
   }
 
   @Test
-  fun `a relative user home is not a home`() {
-    // `-Duser.home=.` resolved to `./.config/…` — straight back under the working directory, the
-    // exact outcome the refusal exists to prevent, reached by a different route.
-    assertFailsWith<NoCredentialHomeException> {
-      AgentAccessStore.defaultFile(prop = { "." }, env = { null })
+  fun `no relative path is ever a home, whichever variable supplies it`() {
+    // This leak was reachable three times by three routes — the original `.` fallback, a relative
+    // `user.home`, then a relative `XDG_CONFIG_HOME`/`HOME` — because each fix was applied to the
+    // branch that was pointed at. One rule now covers every candidate, and this covers all of them
+    // so a fourth route cannot open quietly.
+    for (relative in listOf(".", "relative/path", "./x", "")) {
+      assertFailsWith<NoCredentialHomeException>("user.home=$relative") {
+        AgentAccessStore.defaultFile(prop = { relative }, env = { null })
+      }
+      assertFailsWith<NoCredentialHomeException>("XDG_CONFIG_HOME=$relative") {
+        AgentAccessStore.defaultFile(
+          prop = { null },
+          env = { n -> if (n == "XDG_CONFIG_HOME") relative else null },
+        )
+      }
+      assertFailsWith<NoCredentialHomeException>("HOME=$relative") {
+        AgentAccessStore.defaultFile(
+          prop = { null },
+          env = { n -> if (n == "HOME") relative else null },
+        )
+      }
     }
-    assertFailsWith<NoCredentialHomeException> {
-      AgentAccessStore.defaultFile(prop = { "relative/path" }, env = { null })
-    }
+  }
+
+  @Test
+  fun `a relative variable falls through to an absolute one rather than winning`() {
+    // A relative XDG_CONFIG_HOME must not shadow a perfectly good HOME.
+    assertEquals(
+      File("/home/u/.config/compose-preview/agent-access.json"),
+      AgentAccessStore.defaultFile(
+        prop = { null },
+        env = { n -> mapOf("XDG_CONFIG_HOME" to ".", "HOME" to "/home/u")[n] },
+      ),
+    )
   }
 
   @Test

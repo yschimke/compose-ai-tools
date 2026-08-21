@@ -151,6 +151,21 @@ internal class AuthCommand(
         else fail("unrecognised --ttl '$ttlRaw' — try 45m, 2h, or a number of seconds", code = 64)
     val label = args.flagValue("--label")?.trim().orEmpty().ifEmpty { defaultLabel() }
 
+    // Establish that we can KEEP the result before asking the server for one.
+    //
+    // The abort for "nowhere to store credentials" used to fire after the request was opened, which
+    // left an uncollectable request sitting in the server's bounded pending map for its full ten
+    // minutes — and a caller retrying the way anyone would could exhaust the slots for everyone
+    // else. `--json` is exempt because it genuinely does not need a store: it prints the device
+    // secret, so its caller can poll for itself.
+    if (!json && optionalStore == null) {
+      fail(
+        storeFailure
+          ?: "no user config directory could be determined, and credentials will not be written " +
+            "to the working directory."
+      )
+    }
+
     val opened =
       when (val r = client.open(label = label, scope = scope, ttlSeconds = ttl)) {
         is AgentAccessClient.Result.Ok -> r.value
@@ -176,10 +191,10 @@ internal class AuthCommand(
         )
       )
 
-    // Nothing was persisted, so nothing later can redeem an approval — and the human-readable path
-    // never prints the token, by design. Waiting would mean asking a person to approve access that
-    // is guaranteed to be lost. `--json` is exempt: it prints the device secret, so its caller can
-    // poll for itself and needs no store at all.
+    // A store that EXISTS but could not be written to — checked after the fact, because unlike the
+    // missing-home case above it is not knowable until the write is attempted. Same conclusion:
+    // waiting would mean asking a person to approve access that is guaranteed to be lost, and the
+    // human-readable path never prints the token.
     if (remembered != true && !json) {
       fail(
         "opened the request, but could not save it locally (see the warning above) — so nothing " +
