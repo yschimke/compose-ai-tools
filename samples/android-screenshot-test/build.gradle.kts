@@ -75,8 +75,14 @@ tasks
 // our Parity renders are missing, which is the correct state when the screenshotTest source set was
 // never materialised and a broken build when it was — indistinguishable from inside the test,
 // because the Layoutlib references are committed either way. Left to guess it assumed the benign
-// case and skipped green, so dropping the `-P` flag from CI (or a render that quietly produced
-// nothing) would have retired the Studio-parity gate without failing anything.
+// case and skipped green.
+//
+// SCOPE, because it is narrower than it looks: this is derived from the same property that
+// materialises the source set, so it catches "the gate was asked to run and had nothing of ours to
+// compare" — a render that produced no fixtures. It canNOT catch the `-P` flag being dropped
+// altogether, which turns this false and hands the test back its skip. Nothing inside the build can
+// catch that, because a flagless run is also the legitimate local case. CI carries that half, in a
+// step that asserts the gate compared something without consulting Gradle at all.
 //
 // `withType<Test>` rather than the `matching` block above, which configures a generic `Task` and so
 // cannot reach `systemProperty`.
