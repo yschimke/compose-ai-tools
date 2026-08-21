@@ -940,14 +940,14 @@
     "serve-landing-tree-depth-component-open.dark.png": {
       "fixture": "serve-landing-tree-depth-component-open",
       "theme": "dark",
-      "sha256": "4aa53d49857bdf2d119a982ff4e5e17d037bbcdcd90a96448f53280bd0173a75",
-      "size": 77857
+      "sha256": "3522e332a2d5e86d57ebba3d3ec08c15762fb1d5a00b0fe2aaf97af9dfbf3a68",
+      "size": 83077
     },
     "serve-landing-tree-depth-component-open.light.png": {
       "fixture": "serve-landing-tree-depth-component-open",
       "theme": "light",
-      "sha256": "89271828bd435ebe7944da3aa32e662319723aa8eb8eb3580f6226db05ced580",
-      "size": 81974
+      "sha256": "795e855b3acb66522597fb94c7e96abdb7a54f4fed9935ce08d9b14fe9a18279",
+      "size": 75308
     },
     "serve-landing-tree-depth.dark.png": {
       "fixture": "serve-landing-tree-depth",
@@ -1348,8 +1348,8 @@
     "serve-viewer-connecting.dark.png": {
       "fixture": "serve-viewer-connecting",
       "theme": "dark",
-      "sha256": "23d216d3949f8326926cf8f584f7463d782b751f52c52eb2b9da8952818289b5",
-      "size": 134711
+      "sha256": "45fd71ff28b64125c24fd63cd66d33e1aa70556c3badd0239dc6449e6c4931a3",
+      "size": 135097
     },
     "serve-viewer-connecting.light.png": {
       "fixture": "serve-viewer-connecting",
