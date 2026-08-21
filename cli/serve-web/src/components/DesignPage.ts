@@ -516,16 +516,24 @@ export class DesignPage extends LitElement {
         canvas.height = Math.max(1, Math.round(crop.height));
         const context = canvas.getContext("2d");
         if (!context) return null;
-        // NO fill. This used to paint white first, to match the single ground the scorer composited
-        // our render onto — which was the right move while there was exactly one ground, and is the
-        // wrong one now that there are two. The fill is destructive: it resolves the crop's alpha
-        // here, so a transparent design node arrives at the scorer already flattened and the black
-        // pass has nothing left of its own to composite. A reference whose ink is white would then
-        // be blank on both grounds and score as a match against anything.
+        // White, to match what the scorer composites OUR render onto. Without it a transparent
+        // design node would be compared as black and every score would be wrong in the same
+        // direction.
         //
-        // Handing the crop over with its alpha intact costs nothing — `scoreOnEveryGround`
-        // composites both sides itself, onto the same ground each pass — and it is what lets the
-        // second ground see what the first one erased.
+        // This stays even though the scorer now composites on two grounds, because THIS crop is not
+        // an isolated node: `rasteriseSheet` rasterises a clone of the whole sheet, so the crop
+        // carries whatever the design drew behind and around the target — on a definition sheet, an
+        // opaque ground and its neighbouring cells. That furniture is opaque, so no ground moves it,
+        // while the render's surround is transparent and every ground does. Handing the crop over
+        // unflattened would make the black pass compare light sheet furniture against a black
+        // surround and charge the difference to the component, which `scoreOnEveryGround`'s
+        // minimum would then take as the answer.
+        //
+        // The scorer's own opacity gate catches this even without the fill — an opaque reference
+        // never earns a second ground — but normalising here keeps the two lanes agreeing about
+        // what the reference *is* rather than relying on that gate to notice.
+        context.fillStyle = "#fff";
+        context.fillRect(0, 0, canvas.width, canvas.height);
         context.drawImage(
             sheet.image,
             crop.left,

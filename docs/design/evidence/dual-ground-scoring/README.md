@@ -44,6 +44,9 @@ components**, so a correct metric should score them low:
 The first row is the headline: two components sharing nothing but the colour of their ink scored a
 **perfect match**. Not "high" — 100.0, the same number an image scores against itself.
 
+All five were re-measured after the opacity gate below was added, and none of them moved: every
+sticker in this catalog carries alpha on both sides, so all five still earn the black pass.
+
 The last two rows are the reassurance. The dark-ink control is **unchanged**, so the second ground
 costs nothing where the first was not destroying anything; and an image against itself still scores
 100, so taking the worse of two grounds introduces no noise-driven pessimism on an honest pair.
@@ -59,13 +62,30 @@ White and black together make the failure **structural** instead: a pixel can on
 grounds when its alpha is zero on both sides, which is the one case where "no evidence" is the honest
 answer. No per-catalog configuration, and nothing to keep in sync.
 
-## The reference side had to stop pre-flattening
+## A second ground is only scored when both sides can show one
 
-`DesignPage.sheetImage` filled its Figma-sheet crop with `#fff` before handing it over, to match the
-single ground the scorer used. That fill is destructive — it resolves the crop's alpha at crop time —
-so the black pass would have had nothing of its own left to composite, and a white-ink *reference*
-would have been blank on both grounds. The crop now keeps its alpha and all compositing happens in
-the scorer, which is the only place that knows how many grounds there are.
+Taking the minimum is only safe when the extra ground measures the *artwork*. On a **mixed** pair —
+an opaque reference against a render with a transparent surround — it does not: the reference sits
+still while the render's whole surround swings from white to black, so the black pass reports a
+difference that lives in the grounds, and the minimum would hand that back as the verdict.
+
+`groundsWorthScoring` drops the extra grounds in exactly that case, and it detects opacity for free:
+an opaque frame composites identically onto every ground, so its planes come back equal. Nothing is
+decoded or rasterised to find out.
+
+That case is the normal one for the design lane. `DesignPage.sheetImage` still flattens its crop onto
+`#fff`, because the crop is not an isolated node — `rasteriseSheet` rasterises a clone of the *whole*
+sheet, so the crop carries the opaque sheet furniture drawn behind and around the target. The gate
+would catch it either way; the fill keeps the two lanes agreeing about what the reference *is*
+instead of relying on that.
+
+## Every ground is rasterised before the first score
+
+`scorePlanes` yields to the event loop every eighth row, and not every source is a still: the RC
+lane's candidate is a live canvas the Remote Compose player schedules its own frames on. Scoring
+ground-by-ground would let it repaint between passes, so the two grounds would measure two different
+frames and the minimum of those is neither — a single-shot score that changes when nothing changed.
+All planes are therefore composited up front, synchronously, and only then scored.
 
 ## Cost
 

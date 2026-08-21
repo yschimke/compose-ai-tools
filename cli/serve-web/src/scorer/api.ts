@@ -78,19 +78,71 @@ async function scoreOnEveryGround(
     width: number,
     height: number,
 ): Promise<number> {
+    // EVERY plane is rasterised before the first await, not one ground at a time.
+    //
+    // `scorePlanes` yields to the event loop every eighth row, and a source is not always a still:
+    // `scoreCanvas`'s candidate is a live canvas owned by the Remote Compose player, which schedules
+    // its own animation frames. Scoring ground-by-ground would let it repaint between passes, so the
+    // two grounds would measure two different frames and the minimum of those is neither — a
+    // single-shot score that changes when nothing changed.
+    const planes = COMPARISON_GROUNDS.map((ground) => ({
+        reference: grayFromDraw(drawReference, width, height, ground),
+        candidate: grayFromDraw(drawCandidate, width, height, ground),
+    }));
+
     let worst = 100;
-    for (const ground of COMPARISON_GROUNDS) {
+    for (const { reference, candidate } of groundsWorthScoring(planes)) {
         worst = Math.min(
             worst,
-            await scorePlanes(
-                grayFromDraw(drawReference, width, height, ground),
-                grayFromDraw(drawCandidate, width, height, ground),
-                width,
-                height,
-            ),
+            await scorePlanes(reference, candidate, width, height),
         );
     }
     return worst;
+}
+
+/** One comparison, composited onto one ground. */
+export interface GroundPlanes {
+    reference: Float32Array;
+    candidate: Float32Array;
+}
+
+/**
+ * Which of the rasterised grounds actually deserve a score: all of them, or only the first.
+ *
+ * A second ground only means something when there is alpha for it to show through. An opaque image
+ * composites identically onto every ground, so its planes come back equal — which is also how this
+ * detects opacity, for free, without rasterising or decoding anything extra.
+ *
+ * The case it guards is a MIXED pair: an opaque reference against a render with a transparent
+ * surround. Nothing about the reference moves between grounds while all of the render's surround
+ * does, so the black pass would report a difference that is in the grounds rather than in the
+ * artwork, and `scoreOnEveryGround`'s minimum would take it as the answer. That is not hypothetical
+ * — a design-page reference is a crop of a rasterised sheet, opaque background and all.
+ *
+ * When BOTH sides are opaque the extra grounds are merely redundant and the minimum is a no-op, so
+ * dropping them costs nothing. When both carry alpha, scoring all of them is the whole point.
+ */
+export function groundsWorthScoring(
+    planes: ReadonlyArray<GroundPlanes>,
+): ReadonlyArray<GroundPlanes> {
+    const varies = (side: keyof GroundPlanes) =>
+        planes.some((plane) => !samePlane(plane[side], planes[0][side]));
+    return varies("reference") && varies("candidate") ? planes : [planes[0]];
+}
+
+/**
+ * Whether two luminance planes are the same picture.
+ *
+ * The tolerance is for a nearly-opaque pixel: alpha 254 lets a sliver of ground through and moves a
+ * luminance by well under one unit, which is not the alpha this is looking for. Anything that
+ * genuinely shows its ground moves by far more.
+ */
+function samePlane(a: Float32Array, b: Float32Array): boolean {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (Math.abs(a[i] - b[i]) > 1) return false;
+    }
+    return true;
 }
 
 /**
