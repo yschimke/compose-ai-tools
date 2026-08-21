@@ -711,6 +711,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-reference-compare-report-open-mobile/dark](renders/serve-reference-compare-report-open-mobile.dark.png) |
 | `light` | ![serve-reference-compare-report-open-mobile/light](renders/serve-reference-compare-report-open-mobile.light.png) |
 
+## serve-reference-compare-round-device
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-reference-compare-round-device/dark](renders/serve-reference-compare-round-device.dark.png) |
+| `light` | ![serve-reference-compare-round-device/light](renders/serve-reference-compare-round-device.light.png) |
+
 ## serve-report-bug
 
 | Theme | Capture |
