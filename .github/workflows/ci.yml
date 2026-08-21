@@ -727,6 +727,35 @@ jobs:
         run: |
           ./gradlew -Pandroid.experimental.enableScreenshotTest=true \
             :samples:android-screenshot-test:testDebugUnitTest --tests "*StudioParityTest*"
+      # Proof the gate above actually COMPARED something, independent of how it was invoked.
+      #
+      # `StudioParityTest` also fails when it is told it is required and finds no renders, but that
+      # signal is derived from the `-P` flag on the line above — so dropping that flag would turn
+      # the requirement off and the gate back into a green skip, which is the exact regression the
+      # in-test check reads as if it prevented. This step consults neither the flag nor Gradle: it
+      # looks at the side-by-side composites the gate writes per compared fixture, which exist only
+      # if a Layoutlib reference and one of our renders were actually put next to each other.
+      - name: Assert the Studio-parity gate compared something
+        run: |
+          set -euo pipefail
+          dir=samples/android-screenshot-test/build/studio-parity
+          # The directory is absent, not empty, when the gate never ran — and under `set -euo
+          # pipefail` a `find` over a missing path kills the step at the assignment, before the
+          # message below can explain what happened. Check for the directory first so the failure
+          # arrives with its reason attached.
+          if [ -d "$dir" ]; then
+            count=$(find "$dir" -name '*.png' | wc -l)
+          else
+            count=0
+          fi
+          if [ "$count" -eq 0 ]; then
+            echo "::error::The Studio-parity gate compared no fixtures. It did not run — check that" \
+              "-Pandroid.experimental.enableScreenshotTest=true is still on the step above and that" \
+              "composePreviewRenderAll rendered the StudioParityMatrix fixtures. Do not delete this" \
+              "step to go green: it is the only check that our renders still match Android Studio."
+            exit 1
+          fi
+          echo "Studio-parity gate compared ${count} fixture(s)."
       - name: Upload Studio-parity side-by-sides
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

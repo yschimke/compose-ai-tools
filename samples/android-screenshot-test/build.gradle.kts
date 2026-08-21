@@ -75,13 +75,35 @@ tasks
 // our Parity renders are missing, which is the correct state when the screenshotTest source set was
 // never materialised and a broken build when it was — indistinguishable from inside the test,
 // because the Layoutlib references are committed either way. Left to guess it assumed the benign
-// case and skipped green, so dropping the `-P` flag from CI (or a render that quietly produced
-// nothing) would have retired the Studio-parity gate without failing anything.
+// case and skipped green.
+//
+// SCOPE, because it is narrower than it looks: this is derived from the same property that
+// materialises the source set, so it catches "the gate was asked to run and had nothing of ours to
+// compare" — a render that produced no fixtures. It canNOT catch the `-P` flag being dropped
+// altogether, which turns this false and hands the test back its skip. Nothing inside the build can
+// catch that, because a flagless run is also the legitimate local case. CI carries that half, in a
+// step that asserts the gate compared something without consulting Gradle at all.
 //
 // `withType<Test>` rather than the `matching` block above, which configures a generic `Task` and so
 // cannot reach `systemProperty`.
 tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
   systemProperty("studioParity.required", screenshotTestEnabled)
+  // The gate's side-by-side composites are a real output of this task, so declare them as one.
+  //
+  // Undeclared, Gradle neither stores nor restores them, and `testDebugUnitTest` is cacheable: a
+  // FROM-CACHE run on a fresh CI runner therefore leaves `build/studio-parity` empty even though
+  // the parity test genuinely passed. The CI step that asserts the gate compared something then
+  // fails a build that was fine — observed on this PR's first run, which reported
+  // `testDebugUnitTest FROM-CACHE`, `BUILD SUCCESSFUL`, and no composites. Declared, they ride the
+  // cache entry with the test results, so a cache hit restores exactly what the cached run
+  // compared.
+  //
+  // `optional()` because the task legitimately produces none when the gate skips — no source set,
+  // so nothing of ours to compare.
+  outputs
+    .dir(layout.buildDirectory.dir("studio-parity"))
+    .withPropertyName("studioParityComposites")
+    .optional()
 }
 
 dependencies {

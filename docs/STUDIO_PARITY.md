@@ -38,20 +38,34 @@ it the fixtures don't compile into the build and the test skips itself.
 
 ## The gate cannot skip itself silently
 
-That skip is the one thing capable of retiring this gate without anyone noticing, so it is not left
-to inference. "Our renders are missing" reads identically whether the source set was never
-materialised (fine — nothing to compare) or the flag was dropped from CI and a render produced
-nothing (not fine — we have stopped checking against Studio). The Layoutlib references are
-committed, so their presence proves nothing either way.
+That skip is the one thing capable of retiring this gate without anyone noticing, so it is guarded
+in two places — and neither alone is enough.
 
-The build therefore states which case it is: `studioParity.required` is set from the same
-`screenshotTestEnabled` property that materialises the source set. With it true, absent renders are
-a **failure**; with it false, the test skips as before. A single fixture that stops rendering was
-already a failure (`our renderer produced no PNG`) — this covers the wholesale case, which is the
-one that short-circuits the test before that check runs.
+**Inside the build.** "Our renders are missing" reads identically whether the source set was never
+materialised (fine — nothing to compare) or it was materialised and the render produced nothing (not
+fine). The Layoutlib references are committed, so their presence distinguishes nothing. So the build
+states which case it is: `studioParity.required` is set from the same `screenshotTestEnabled`
+property that materialises the source set, and with it true, absent renders are a **failure** rather
+than a skip.
 
-Verified both ways rather than reasoned about: with the fixtures' PNGs moved aside and the flag on,
-the gate fails at the assertion; with the flag off, it still skips.
+**In CI, independently.** That property is derived from the `-P` flag, so it cannot catch the flag
+itself being dropped — that turns the requirement off and hands the test back its skip. Nothing
+inside the build *can* catch it, because a flagless run is also the legitimate local case. CI
+therefore asserts the gate **compared something**, by counting the side-by-side composites it writes
+per compared fixture. That consults neither the flag nor Gradle: those files exist only if a
+Layoutlib reference and one of our renders were actually put next to each other.
+
+A single fixture that stops rendering was already a failure (`our renderer produced no PNG`). These
+two cover the wholesale case, which short-circuits the test before that check runs.
+
+For that count to mean anything the composites have to survive a cache hit: `testDebugUnitTest` is
+cacheable, and CI runs with the build cache on, so a `FROM-CACHE` run on a fresh runner would leave
+`build/studio-parity` empty for a parity test that genuinely passed. The directory is therefore
+declared as an output of the test task (`studioParityComposites`, `optional()`), so a cache hit
+restores exactly what the cached run compared.
+
+Verified rather than reasoned about: with the fixtures' PNGs moved aside and the flag on, the gate
+fails at the assertion; with the flag off, it still skips.
 
 ## Why sizes are pinned instead of compared loosely
 
