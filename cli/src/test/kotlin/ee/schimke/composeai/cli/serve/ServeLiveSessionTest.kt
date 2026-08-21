@@ -366,6 +366,67 @@ class ServeLiveSessionTest {
     }
   }
 
+  /**
+   * A declared knob reaches the daemon **typed**, both in the socket's opening query and in the
+   * `setOverrides` that follows it.
+   *
+   * The lane's existing coverage is all `uiMode`, which is a display axis; a named knob travels a
+   * different route (`knob.<key>` → `knobKindsFor` → `PreviewOverrides.namedOverrides`) and reaches
+   * a different part of the render. Untyped it would land as a `StringValue("true")`, which a
+   * `previewOverrideBoolean` knob cannot read — so the composition would fall back to the author
+   * default and the live lane would quietly render the un-overridden state while the viewer showed
+   * the box ticked. That is the shape reported in yschimke/wear-m3-catalog#66, and this pins the
+   * serve half of it.
+   */
+  @Test
+  fun `a declared knob reaches the daemon typed, on connect and on setOverrides`() {
+    val session = FakeRenderSession(newRenderRoot(), streaming = true)
+    val preview =
+      ServePreview(
+        previewId,
+        "Red",
+        overrides =
+          listOf(
+            ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration(
+              key = "secondary",
+              type = "bool",
+              label = "secondary",
+              default =
+                ee.schimke.composeai.data.overrides.PreviewOverrideValue.BooleanValue(false),
+            )
+          ),
+      )
+    ServeRenderHost(session, listOf(preview), renderTimeoutSeconds = 30).use { h ->
+      val live =
+        assertNotNull(
+          ServeLiveSession.tryStart(
+            h,
+            previewId,
+            mapOf("knob.secondary" to "true"),
+            send = {},
+            system = "compose-m3",
+          )
+        )
+      assertEquals(
+        mapOf(
+          "secondary" to ee.schimke.composeai.data.overrides.PreviewOverrideValue.BooleanValue(true)
+        ),
+        session.lastStreamOverrides?.namedOverrides,
+        "the connect query's knob should reach stream/start typed",
+      )
+
+      // …and the replay the viewer sends on open, which REPLACES the whole bag.
+      live.onClientMessage("""{"type":"setOverrides","overrides":{"knob.secondary":"true"}}""")
+      assertEquals(
+        mapOf(
+          "secondary" to ee.schimke.composeai.data.overrides.PreviewOverrideValue.BooleanValue(true)
+        ),
+        session.lastStreamOverrides?.namedOverrides,
+        "setOverrides' knob should reach the restarted stream typed",
+      )
+    }
+  }
+
   @Test
   fun `a dark-first system drops uiMode from live setOverrides and switch messages`() {
     val session = FakeRenderSession(newRenderRoot(), streaming = true)

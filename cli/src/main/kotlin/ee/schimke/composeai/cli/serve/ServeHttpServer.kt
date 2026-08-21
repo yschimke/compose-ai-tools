@@ -4408,6 +4408,40 @@ class ServeHttpServer(
    * reports about the same preview, and an override normalised one way in one report and another
    * way in the other would make the same bug arrive looking like two.
    */
+  /**
+   * [requestOverrideParams], but empty whenever this page's picture cannot be showing them.
+   *
+   * Seeding the viewer's controls from the request is what stops a deep link's values from reaching
+   * the snapshot and nothing else. It is only honest while the image beside those controls actually
+   * carries the override; where it deliberately does not, a seeded control claims a state the
+   * pixels never had — the same contradiction, drawn the other way round, and worse for being on a
+   * *disabled* control the visitor cannot correct.
+   *
+   * Two such pages, both of which answer with bytes that ignored the override on purpose:
+   * - a **pinned revision** (`?at=<sha>`), whose image is the historical baked artifact —
+   *   `pinnedRenderQuerySuffix` strips every render override from its URL for exactly this reason;
+   * - an accepted **baked fallback** (`?fallback=baked`) on a preview with no lane that could have
+   *   applied one — `respondDroppedOverrides` returns the published snapshot and names what it
+   *   dropped. "No lane" is all three: neither serve-side render path, and no in-browser Wasm app
+   *   ([wasmSrc]) that would mount the component with the override itself.
+   *
+   * A daemon-backed page keeps its seeds: there the override reaches the renderer, so the control
+   * and the pixels agree by doing the ordinary thing.
+   */
+  private fun RoutingContext.seedableOverrideParams(
+    renderHost: ServeHost,
+    previewId: String,
+    sessionId: String,
+    pinnedRevision: String?,
+    wasmSrc: String?,
+  ): Map<String, String> {
+    if (pinnedRevision != null) return emptyMap()
+    val overrideCanReachThePixels =
+      renderHost.canApplyOverrides || renderHost.canRenderOverridesFor(previewId) || wasmSrc != null
+    if (!overrideCanReachThePixels && acceptsBakedFallback()) return emptyMap()
+    return requestOverrideParams(sessionId)
+  }
+
   private fun RoutingContext.requestOverrideParams(sessionId: String): Map<String, String> =
     call.request.queryParameters
       .entries()
@@ -6284,6 +6318,18 @@ class ServeHttpServer(
           // preview, so an unaliased (Android-only) variant reports false and its override controls
           // (knobs, App theme) render disabled/informational rather than enabled-but-dead.
           canRenderOverrides = renderHost.canRenderOverridesFor(preview.id),
+          // The knob values THIS request asked for, so the controls open on them rather than on the
+          // preview's declaration — unless this page's picture cannot be showing them, in which
+          // case seeding is the very disagreement the parameter exists to remove, pointed the other
+          // way. See `seedableOverrideParams`.
+          requestOverrides =
+            seedableOverrideParams(
+              renderHost,
+              preview.id,
+              sessionId,
+              revisions.pinned,
+              wasmSrc,
+            ),
           // Per-preview: a catalog advertises SVG globally as soon as it carries a `figma/` dir,
           // but
           // a preview whose slug has no baked `figma/<slug>.svg` still 404s the `.svg` lane, so
