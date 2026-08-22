@@ -81,8 +81,10 @@ differences" suggests. Two counts, and they are not the same number:
   only because there is nothing to accept in it. Of the rest, three (#85, #95, #86) are about
   components this catalog does not publish, #91's variants are unauthored, and #42 and #93 name
   several components each, which one locator cannot say.
-- **Three are acceptance candidates** — #40, #41, #87 — and two of those three want a mask the size
-  of the component.
+- **Four are acceptance candidates, across six sites** — #40, #41, #87, plus #42 three times over:
+  an acceptance is per preview, and §4 lets several of them share one tracking issue, so the case
+  the index cannot hold whole is still three acceptances. Only #40's mask is glyph-sized; #41's is
+  most of the bar, #87's a 2dp ring, and #42's a shadow surrounding each component.
 
 The per-issue verdicts and what each implies are in
 [the pilot population](../COMPONENT_PARITY_WORKFLOW.md#the-pilot-population-measured); batch 00's D1

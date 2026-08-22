@@ -385,7 +385,7 @@ because they lead different places.
 | [#40](https://github.com/yschimke/m3-catalog/issues/40) | `IconButton/Tonal` glyph colour | **yes** | one component, one preview, a 23.6% pixel delta inside the glyph |
 | [#41](https://github.com/yschimke/m3-catalog/issues/41) | `ShortNavigationBar` measures items at full bar width | **yes** | one component, one preview (`__compact`) |
 | [#87](https://github.com/yschimke/m3-catalog/issues/87) | `Checkbox` box padding 2dp vs 4dp | **yes** | one component, one preview |
-| [#42](https://github.com/yschimke/m3-catalog/issues/42) | Elevated shadow level | no | names **three** components — `Button/Elevated`, `Card/Elevated`, `ToggleButton/Elevated` |
+| [#42](https://github.com/yschimke/m3-catalog/issues/42) | Elevated shadow level | no — but see §4 | names **three** components — `Button/Elevated`, `Card/Elevated`, `ToggleButton/Elevated`. Not indexable whole; still three acceptance sites |
 | [#91](https://github.com/yschimke/m3-catalog/issues/91) | no hover/press state drawn | no | **five** components, and the variants it is about are deliberately *not authored* — there is no preview id to name |
 | [#85](https://github.com/yschimke/m3-catalog/issues/85) | `DropdownMenu` corner 4dp vs 16dp | no | the catalog publishes **no menu component**: no `images/menu-*`, no reference, no preview |
 | [#95](https://github.com/yschimke/m3-catalog/issues/95) | menu container colour and item icon size | no | same — the subject is not in the bundle |
@@ -416,14 +416,23 @@ Two limits and one judgement, and only the last is about masks:
    limit (1) again. What neither can have is an **acceptance**: they describe a constant the library
    does not publish, and the renders already match. Indexing them is a question about whether an
    upstream-ergonomics report belongs on a component page. §4's population is the smaller number
-   either way: **four issues could carry a locator today (#40, #41, #87, #89), three are acceptance
-   candidates (#40, #41, #87)**, and those are different counts for different decisions.
+   either way: **four issues could carry a locator today (#40, #41, #87, #89), and four are
+   acceptance candidates across six sites (#40, #41, #87, and #42 three times)** — different counts
+   answering different questions, and not even the same four.
 
-**What this means for §4.** The acceptance model is designed around #40 — a small mask over one
-element, a recorded accepted-candidate crop, the gates of the evaluation order — and #40 fits it
-exactly. But the per-preview pixel-difference population it can serve is *three* issues, not ten,
-and the other two of those three are not glyph-sized: #41 is a layout failure whose mask is most of
-the bar, and #87 a 2dp ring around a 20dp box.
+**What this means for §4 — and note that §4 counts differently from §3.** An index row is one issue
+on one component; an acceptance is one preview, and §4's closure rule is built on the fact that
+**several acceptances may point at one tracking issue** ("mandatory per acceptance but not *unique*
+to one"). So the two halves of this epic disagree about #42 on purpose: it cannot be indexed whole,
+and it is still three acceptances — `button-elevated`, `card-elevated`,
+`togglebutton-elevated` at 81.2%, 87.0% and 81.5% published match — sharing issue #42, closable only
+once all three resolve. The acceptance population is therefore **four issues and six sites** (#40,
+#41, #87, and #42 three times), not the three rows in the index.
+
+The model is designed around #40 — a small mask over one element, a recorded accepted-candidate
+crop, the gates of the evaluation order — and #40 fits it exactly. But of those six sites only #40's
+is glyph-sized: #41 is a layout failure whose mask is most of the bar, #87 a 2dp ring around a 20dp
+box, and #42's three are a shadow that surrounds each component.
 
 A component-sized mask is **not** an ignore rectangle. An earlier draft of this section said it was;
 the evaluation order says otherwise. Gate 3 compares the current candidate with the immutable
