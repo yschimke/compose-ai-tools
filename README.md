@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 329 preview(s) across 20 module(s) · 69 error(s) · 4 warning(s) · 30 info._
+_Auto-generated from `compose-preview/a11y/main`. 333 preview(s) across 20 module(s) · 69 error(s) · 4 warning(s) · 30 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -617,6 +617,18 @@ _No findings._
 
 _No findings._
 
+### `ShadowStickerCroppedPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/ShadowStickerCroppedPreview_Shadow_cropped-65777146.a11y.png" width="400" />
+
+_No findings._
+
+### `ShadowStickerGutteredPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/ShadowStickerGutteredPreview_Shadow_guttered-af019607.a11y.png" width="400" />
+
+_No findings._
+
 ### `SharedElementFilmstripPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/SharedElementFilmstripPreview_Shared_Element_Filmstrip-a8af1cd8_TIME_600ms.a11y.png" width="400" />
@@ -1058,6 +1070,18 @@ _No findings._
 ### `ShaderRenderEffectPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/ShaderRenderEffectPreview_Shader_Gallery_RenderEffect_Distort-305ff197.a11y.png" width="400" />
+
+_No findings._
+
+### `ShadowStickerCroppedPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/ShadowStickerCroppedPreview_Shadow_cropped-bc08dd3c.a11y.png" width="400" />
+
+_No findings._
+
+### `ShadowStickerGutteredPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/ShadowStickerGutteredPreview_Shadow_guttered-e26176a9.a11y.png" width="400" />
 
 _No findings._
 

@@ -1437,6 +1437,28 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "ShadowStickerCroppedPreview_Shadow_cropped-65777146.a11y.png",
+      "cleanBasename": "ShadowStickerCroppedPreview_Shadow_cropped-65777146.png",
+      "findings": [],
+      "functionName": "ShadowStickerCroppedPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.CaptureGutterPreviewsKt.ShadowStickerCroppedPreview_Shadow cropped",
+      "rendersDir": "android",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/CaptureGutterPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "ShadowStickerGutteredPreview_Shadow_guttered-af019607.a11y.png",
+      "cleanBasename": "ShadowStickerGutteredPreview_Shadow_guttered-af019607.png",
+      "findings": [],
+      "functionName": "ShadowStickerGutteredPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.CaptureGutterPreviewsKt.ShadowStickerGutteredPreview_Shadow guttered",
+      "rendersDir": "android",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/CaptureGutterPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "SharedElementFilmstripPreview_Shared_Element_Filmstrip-a8af1cd8_TIME_600ms.a11y.png",
       "cleanBasename": "SharedElementFilmstripPreview_Shared_Element_Filmstrip-a8af1cd8_TIME_600ms.png",
       "findings": [
@@ -2099,6 +2121,28 @@
       "previewId": "com.example.samplecmp.ShaderGalleryPreviewsKt.ShaderRenderEffectPreview_Shader Gallery \u2014 RenderEffect Distort",
       "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/ShaderGalleryPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "ShadowStickerCroppedPreview_Shadow_cropped-bc08dd3c.a11y.png",
+      "cleanBasename": "ShadowStickerCroppedPreview_Shadow_cropped-bc08dd3c.png",
+      "findings": [],
+      "functionName": "ShadowStickerCroppedPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.CaptureGutterPreviewsKt.ShadowStickerCroppedPreview_Shadow cropped",
+      "rendersDir": "cmp",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/CaptureGutterPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "ShadowStickerGutteredPreview_Shadow_guttered-e26176a9.a11y.png",
+      "cleanBasename": "ShadowStickerGutteredPreview_Shadow_guttered-e26176a9.png",
+      "findings": [],
+      "functionName": "ShadowStickerGutteredPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.CaptureGutterPreviewsKt.ShadowStickerGutteredPreview_Shadow guttered",
+      "rendersDir": "cmp",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/CaptureGutterPreviews.kt",
       "variant": ""
     },
     {
