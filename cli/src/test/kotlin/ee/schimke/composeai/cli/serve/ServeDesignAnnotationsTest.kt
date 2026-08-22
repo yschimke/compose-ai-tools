@@ -4,6 +4,7 @@ import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsInsets
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTokens
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTypography
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorBounds
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorGradient
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorNode
@@ -29,13 +30,17 @@ class ServeDesignAnnotationsTest {
     bounds: String = "0,0,100,50",
     tokens: ComposeSemanticsTokens? = null,
     role: String? = null,
+    typography: ComposeSemanticsTypography? = null,
+    placed: Boolean = true,
     children: List<ComposeSemanticsNode> = emptyList(),
   ) =
     ComposeSemanticsNode(
       nodeId = nodeId,
       boundsInRoot = bounds,
       role = role,
+      typography = typography,
       tokens = tokens,
+      placed = placed,
       children = children,
     )
 
@@ -354,6 +359,34 @@ class ServeDesignAnnotationsTest {
 
     assertEquals(1, all.count { it.kind == AnnotationKind.THEME })
     assertEquals(1, all.count { it.kind == AnnotationKind.LAYOUT })
+  }
+
+  @Test
+  fun `an unplaced semantics subtree describes nowhere on the frame`() {
+    // Wear's `AlertDialogContent` subcomposes a full trial copy of the dialog to decide whether
+    // its content has to scroll. That copy is measured and never placed, so every node in it
+    // reports the ORIGIN — and the typography layer drew a second title stacked in the frame's
+    // top-left corner (yschimke/wear-m3-catalog#77).
+    val title = ComposeSemanticsTypography(fontSize = "16.0sp", fontFamily = "Roboto Flex")
+    val boxes =
+      annotationsOf(
+          node(
+            bounds = "0,0,384,384",
+            children =
+              listOf(
+                node(nodeId = "2", bounds = "68,101,316,175", typography = title),
+                node(
+                  nodeId = "3",
+                  bounds = "0,0,384,354",
+                  placed = false,
+                  children = listOf(node(nodeId = "4", bounds = "0,0,248,74", typography = title)),
+                ),
+              ),
+          )
+        )
+        .filter { it.kind == AnnotationKind.TYPOGRAPHY }
+
+    assertEquals(listOf(AnnotationBounds(68, 101, 248, 74)), boxes.map { it.bounds })
   }
 
   @Test
