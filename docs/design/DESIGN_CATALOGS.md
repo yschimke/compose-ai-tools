@@ -759,14 +759,52 @@ So the inventory bar for these two is **exhaustive by feature, not by component*
 - New pipeline features should arrive with a carrier here. New *components* should
   not, unless they are the cheapest way to exercise something new.
 
-One standing exception, and it is load-bearing:
-`samples/design-catalog-remote-m3` declares `compareWith: "wear-m3"` and authors a
-`parallel` into ~19 `wear-m3` component ids. A `parallel` naming no sibling
-component still builds — it just renders an unpaired row (a `console.warn`, see
-`generate-design-catalog.mjs`) — so deleting one of those wear stickers silently
-degrades a *published* page. The by-component redundancy on the Wear sheet
-(`Button/Tonal`, `IconButton`, `CompactButton`, `AppCard`, `TitleCard`, …) therefore
-stays until `remote-m3`'s `compareWith` moves to the new `wear-m3-catalog`.
+That standing exception is **discharged.** `samples/design-catalog-remote-m3` used to
+declare `compareWith: "wear-m3"` and author a `parallel` into ~19 ids on the in-repo
+harness sheet, which pinned by-component redundancy there (`Button/Tonal`,
+`IconButton`, `CompactButton`, `AppCard`, `TitleCard`, …) purely so a *published*
+page would not silently degrade — a `parallel` naming no sibling still builds, it
+just renders an unpaired row behind a `console.warn`. It now points at the Wear
+**reference** catalog instead:
+
+```jsonc
+"compareWith": {
+  "system": "wear-m3-catalog",
+  "repo": "yschimke/wear-m3-catalog",
+  "designTitle": "M3 Wear OS kit"
+}
+```
+
+Nothing on the `wear-m3` sheet is load-bearing for another catalog's page any more,
+so it is free to be scoped by the feature rule above like `compose-m3` — a separate
+change, and one that should confirm against a published `matches.html` first.
+See [`renders/remote-m3-wear-catalog-repoint/`](../../renders/remote-m3-wear-catalog-repoint/).
+
+### Why the Remote catalog itself stays in this repo
+
+The reference-catalog rule says a design system's sheet belongs in its own repo, and
+`remote-m3` is the exception that does not move yet. It is not a preference — it is a
+dependency fact, and it has a **stated trigger**:
+
+`samples/design-catalog-remote-m3` depends on four project modules. Three are
+published (`:preview-annotations`, `:data-remotecompose-connector`,
+`:wear-preview-runtime`); `:third-party-rc-embedded-player` is **deliberately not**,
+because it `api`-exposes `androidx.compose.remote:*` coordinates that only resolve
+from the build-id-pinned androidx.dev snapshot repo declared in this project's
+`settings.gradle.kts` — see that module's own build file for why publishing it was
+withdrawn. All three remote groups (`compose-remote`, `wear-compose-remote`,
+`glance-wear`) are `1.0.0-SNAPSHOT` on a build id that ages out of androidx.dev after
+a few weeks, and the two published modules keep those deps off their POMs on purpose,
+so any external consumer has to declare and pin the snapshot repo itself.
+
+Moving the catalog to `wear-m3-catalog` today would therefore import an expiring
+snapshot pin into the repo whose job is a stable published kit reproduction, and drop
+the embedded-player lane. **The trigger is those three groups reaching Google Maven on
+release coordinates.** When they do, the move is cheap and worth making — co-locating
+the catalog with the kit references means a kit re-point fixes both sides in one PR,
+and `compareWith` drops to `{ "system": …, "spec": "../catalog.spec.json" }` with no
+`repo`. Until then this pairing is cross-repo, which is exactly the shape `compareWith`
+was widened to express.
 
 **That move is no longer blocked by the pipeline.** `compareWith` used to be a bare
 slug and could only ever name a sibling *module of this project*: the driver read the
