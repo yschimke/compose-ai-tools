@@ -413,6 +413,8 @@ fs.mkdirSync(referencesDir, { recursive: true });
 let written = 0;
 /** Published references whose content is a uniform rescale of their sticker's; see reference-scale.mjs. */
 const scaleFindings = [];
+/** References standing on a declared stage, whose sticker's alpha cannot locate its component. */
+let stagedScaleChecks = 0;
 /** How the backdrop landed, for the summary — silence would read as "every reference got one". */
 const backdropTally = { disc: 0, frame: 0, skipped: 0 };
 /** Reference id -> a `{ layout }` shim; `referenceAnnotations` reads only that field. */
@@ -532,9 +534,17 @@ for (const record of records) {
     }
   }
 
+  // Measured BEFORE any backdrop, and this is not an ordering detail. A backdrop fills the sticker's
+  // whole stage — a watch face, a full frame — so afterwards the alpha channel bounds the ground
+  // rather than the component, on both sides, and every such pair would compare 1:1 no matter how
+  // far apart the two components actually were. Everything else that moves the artwork (the fit,
+  // the placement) has already happened by here, so this is still what the lane will see.
+  const drawnBox = alphaBounds(raster.data, raster.width, raster.height);
+
   // Lay the sticker's own ground under the artwork, last, so it covers the letterboxing the fit may
   // just have added: the scorer crops to the content box, and a reference whose box is the artwork
   // alone gets blown up to the size of a watch face before it is compared with one.
+  let onStage = false;
   if (BACKDROP) {
     const stage = stickerStage(record, target);
     if (stage) {
@@ -543,15 +553,18 @@ for (const record of records) {
         data: applyBackdrop(raster.data, raster.width, raster.height, stage, BACKDROP),
       };
       backdropTally[stage.kind]++;
+      onStage = true;
     } else {
       backdropTally.skipped++;
     }
   }
 
-  // Checked on the PUBLISHED pixels rather than on the source raster, so a backdrop, a fit and a
-  // placement are all already in it — this asks what the comparison lane will actually see.
-  const drawnBox = alphaBounds(raster.data, raster.width, raster.height);
-  const stickerBox = stickerContent(record);
+  // The sticker's side of that problem has no fix here: a `showBackground` preview is opaque edge
+  // to edge, so its alpha locates the ground and never the component, and there is nothing to
+  // compare the reference's box against. Say so in the tally rather than publishing a 1:1 that was
+  // never measured.
+  const stickerBox = onStage ? null : stickerContent(record);
+  if (onStage) stagedScaleChecks++;
   const finding = scaleFinding(drawnBox, stickerBox);
   if (finding) {
     const verdict = scaleVerdict(rescaledHere);
@@ -588,6 +601,13 @@ if (scaleFindings.length > 0) {
     `design-references: ${scaleFindings.length} of ${written} published reference(s) draw their ` +
       `component at a uniform scale from their sticker's — ${exports} rescaled by this export, ` +
       `${scaleFindings.length - exports} published at full density and still a different size`,
+  );
+}
+if (stagedScaleChecks > 0) {
+  console.log(
+    `design-references: ${stagedScaleChecks} reference(s) stand on a declared stage, so their ` +
+      `sticker's alpha bounds the ground rather than the component and the scale check does not ` +
+      `apply to them`,
   );
 }
 
