@@ -91,7 +91,12 @@ internal class ServeImageUploader(
           !response.isSuccessful -> {
             val detail = response.body?.string()?.trim()?.take(400).orEmpty()
             Result.Failed(
-              "$base answered ${response.code}${if (detail.isEmpty()) "" else ": $detail"}"
+              "$base answered ${response.code}${if (detail.isEmpty()) "" else ": $detail"}" +
+                // A bodyless 404 is what a host WITHOUT `--accept-images` gives: the route was
+                // never registered, so there is nobody to write a refusal. Left bare it reads as
+                // "wrong URL" and sends the caller looking for a typo they didn't make — the host
+                // is right, the lane is simply off, which only its operator can change.
+                if (response.code == 404 && detail.isEmpty()) IMAGE_LANE_OFF else ""
             )
           }
           else -> parse(response.body?.string().orEmpty())
@@ -130,6 +135,12 @@ internal class ServeImageUploader(
   private data class ImageAccepted(val url: String? = null, val expiresIn: String? = null)
 
   companion object {
+    /** Appended to a bodyless `404`, which is exactly what a host with no image lane answers. */
+    private const val IMAGE_LANE_OFF =
+      " — that host does not accept image uploads (it was started without --accept-images). " +
+        "Ask its operator to enable the lane, or share these images another way " +
+        "(--mechanism gist / branch)."
+
     private val OCTET_STREAM = "application/octet-stream".toMediaType()
 
     private val JSON = Json { ignoreUnknownKeys = true }

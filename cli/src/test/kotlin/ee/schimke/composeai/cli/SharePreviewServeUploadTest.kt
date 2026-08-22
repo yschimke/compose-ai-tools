@@ -178,6 +178,34 @@ class SharePreviewServeUploadTest {
   }
 
   @Test
+  fun `a bodyless 404 says the lane is off rather than leaving a bare status`() {
+    // What a serve host started WITHOUT --accept-images actually answers: the route is not
+    // registered, so the 404 carries no body to explain itself. preview.coo.ee answered exactly
+    // this, and "answered 404" alone reads as a wrong URL.
+    val seen = mutableListOf<Recorded>()
+    withServer(seen, status = 404, body = "") { base ->
+      val reason =
+        (ServeImageUploader(base, "gho_secret").upload(png()) as ServeImageUploader.Result.Failed)
+          .reason
+      assertTrue(reason.contains("404"), reason)
+      assertTrue(reason.contains("--accept-images"), reason)
+      assertFalse(reason.contains("gho_secret"), reason)
+    }
+  }
+
+  @Test
+  fun `a 404 that explains itself is passed through as the host wrote it`() {
+    val seen = mutableListOf<Recorded>()
+    withServer(seen, status = 404, body = "no such image") { base ->
+      val reason =
+        (ServeImageUploader(base, "gho_secret").upload(png()) as ServeImageUploader.Result.Failed)
+          .reason
+      assertTrue(reason.contains("no such image"), reason)
+      assertFalse(reason.contains("--accept-images"), reason)
+    }
+  }
+
+  @Test
   fun `a host token rides in the query, where that host's other routes read it`() {
     val seen = mutableListOf<Recorded>()
     withServer(seen, status = 201, body = """{"url":"https://h/i/a.png"}""") { base ->
