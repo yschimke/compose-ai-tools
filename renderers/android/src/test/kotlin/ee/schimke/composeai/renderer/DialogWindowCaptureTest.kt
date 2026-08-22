@@ -91,6 +91,30 @@ class DialogWindowCaptureTest {
     assertTrue("the crop must land on the dialog's fill, not the backdrop", png.isEntirely(FILL))
   }
 
+  @Test
+  fun `a capture gutter widens the dialog crop instead of slicing the shadow off`() {
+    rule.setContent {
+      Dialog(onDismissRequest = {}) { Box(modifier = Modifier.size(64.dp).background(FILL)) }
+    }
+    rule.mainClock.advanceTimeBy(SETTLE_MS)
+
+    val png = capture("dialog-gutter.png")
+    val root = resolveRoot()
+    val window = DialogWindowCapture.shownDialogWindow(root)
+    assertNotNull("the dialog's window must be resolvable from its root", window)
+
+    // A dialog is cropped to its own window rect, which is a path the activity-hosted wrap crop
+    // never sees — so `@CaptureGutter` has to reach this crop or the one component that most
+    // reliably casts a shadow is the one component the gutter misses.
+    val gutter =
+      DialogWindowCapture.DialogCropGutter(leftPx = 8, topPx = 8, rightPx = 8, bottomPx = 10)
+    DialogWindowCapture.cropPngToDialogWindow(png, root, window!!, gutter)
+
+    val cropped = ImageIO.read(png)
+    assertEquals("crop grows by the left + right gutter", 64 + 16, cropped.width)
+    assertEquals("crop grows by the top + bottom gutter", 64 + 18, cropped.height)
+  }
+
   @OptIn(ExperimentalMaterial3Api::class)
   @Test
   fun `a full-screen bottom sheet window keeps the whole frame`() {

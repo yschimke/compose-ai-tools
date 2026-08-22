@@ -41,4 +41,38 @@ class CaptureGutterPixelTest {
     assertThat(gutW - bareW).isEqualTo(edge4 * 2)
     assertThat(gutH - bareH).isEqualTo(edge4 + edge5)
   }
+
+  /**
+   * The promise, at a fractional density: a `fillMaxWidth` child on a fixed 400dp frame measures
+   * the *same pixels* with and without a gutter.
+   *
+   * At 2.625 the window grows by a dp figure that doesn't divide evenly into the rounded per-edge
+   * pixels, so deriving the child's viewport by subtracting those edges from the enlarged window
+   * loses a pixel — enough for fill-width content to lay out differently from the un-guttered
+   * render. The green band's drawn width is the component's own measure, so comparing it across the
+   * pair is the assertion that the gutter changed the canvas and nothing else.
+   */
+  @Test
+  fun `a fill-width component measures identically with and without a gutter`() {
+    val bare = drawnWidth(renderFile(rendersDir, "FillWidthCroppedPreview_Fill_fixed"))
+    val guttered =
+      drawnWidth(renderFile(rendersDir, "FillWidthGutteredPreview_Fill_fixed_guttered"))
+    assertThat(guttered).isEqualTo(bare)
+  }
+
+  /** Width of the drawn (non-white) band — the fill-width component's own measured extent. */
+  private fun drawnWidth(file: File): Int {
+    assertThat(file.exists()).isTrue()
+    val img = ImageIO.read(file)
+    val y = img.height / 3
+    var minX = img.width
+    var maxX = -1
+    for (x in 0 until img.width) {
+      if ((img.getRGB(x, y) and 0xFFFFFF) == 0xFFFFFF) continue
+      if (x < minX) minX = x
+      if (x > maxX) maxX = x
+    }
+    check(maxX >= 0) { "row $y of ${file.name} is entirely background" }
+    return maxX - minX + 1
+  }
 }

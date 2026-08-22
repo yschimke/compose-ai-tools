@@ -262,6 +262,12 @@ lanes apply it — the `CaptureGutterPreviews` fixture pair renders `287×117 �
 Desktop and `262×117 → 284×141` on Android for `@CaptureGutter(all = 4, bottom = 5)`, i.e. the
 same `+22×+24` on each.
 
+Within the static lanes it reaches a preview's **still** capture (a `@FocusedPreview` still
+included) but not its motion products — an `@AnimatedPreview` GIF, an `@InteractionPreview`
+recording or a scrolling capture is still framed tight, so a component that declares a gutter and
+also records motion publishes two artefacts that disagree about its bounds
+([#4452](https://github.com/yschimke/compose-ai-tools/issues/4452)).
+
 The **live daemon** lane does not: the gutter is not on `RenderSpec`, so neither daemon
 `RenderEngine` sees it and a guttered preview streams at its un-guttered size while its snapshot
 PNG carries the gutter. That is a layout difference across lanes, which is exactly what this

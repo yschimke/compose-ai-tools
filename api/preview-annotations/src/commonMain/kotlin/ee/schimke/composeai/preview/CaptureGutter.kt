@@ -48,6 +48,19 @@ package ee.schimke.composeai.preview
  * component. Padding chosen to make a sticker sheet breathe belongs to the sheet, outside the
  * capture, where it doesn't move anybody's render bounds.
  *
+ * ### What it reaches
+ *
+ * Both static render lanes — Android (Robolectric) and CMP Desktop — apply it to a preview's
+ * **still** capture, including a `@FocusedPreview` still, and grow the canvas by the same dp on
+ * each so the published bounds never differ by lane.
+ *
+ * Not yet applied to the motion products a preview can also carry — an `@AnimatedPreview` GIF, an
+ * `@InteractionPreview` recording, a scrolling capture — nor to the live daemon lane
+ * (`compose-preview serve`, the VS Code panel). A component that declares a gutter and also records
+ * motion publishes a still with its shadow and a recording without it. Tracked as
+ * compose-ai-tools#4452 and #4443 respectively; a scrolling capture additionally has to settle what
+ * a gutter even means when the bounds are a stitched scroll extent rather than the component.
+ *
  * ### Fixed axes grow too
  *
  * Both kinds of axis gain the gutter, and for the same reason: the promise is that the component

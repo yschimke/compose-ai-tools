@@ -626,6 +626,7 @@ fun main(args: Array<String>) {
             settleTargetMs =
               if (settleAfterMs < 0) 0L
               else if (settleAfterMs > 0) settleAfterMs.toLong() else 32L + settleMaxMs.toLong(),
+            captureGutter = captureGutter,
           )
         if (!didCapture) {
           renderPreview(

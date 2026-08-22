@@ -736,15 +736,25 @@ abstract class RobolectricRenderTestBase(
     val inspectionMode =
       System.getProperty("composeai.render.inspectionMode")?.toBooleanStrictOrNull() ?: true
 
-    // `@CaptureGutter`: the sandbox / frame the composition is hosted in grows by the gutter, and
-    // [MeasuredWrapBox] hands the composable the space back minus it — so the component measures
+    // `@CaptureGutter`: the window the composition is hosted in grows by the gutter, and
+    // [MeasuredWrapBox] hands the composable back its ORIGINAL viewport — so the component measures
     // exactly what it measured without a gutter and the extra pixels are pure canvas. Same rule the
     // desktop lane applies in `composePreviewSceneSize`, so the two lanes agree on the bounds.
+    //
+    // The growth is in dp because a Robolectric qualifier has no other unit, and it is the
+    // **ceiling** of the pixel gutter rather than the declared dp: at a fractional density
+    // (2.625 is the AS phone default) rounding each edge to whole pixels can total more than the
+    // dp figure converts to — `all = 4` is 11px + 11px = 22px, which is 8.4dp, not 8. Rounding down
+    // would leave the window a pixel short of `component + gutter` and the crop would eat a pixel
+    // of shadow. The spare fraction of a dp is transparent canvas outside the crop.
     val gutter = params.captureGutter ?: CaptureGutterDp()
+    val gutterDensity = params.density ?: 2.0f
+    val gutterWidthDp = ceilDpForPx(gutter.start, gutter.end, gutterDensity)
+    val gutterHeightDp = ceilDpForPx(gutter.top, gutter.bottom, gutterDensity)
     val composeOptions =
       RoborazziComposeOptions.Builder()
         .apply {
-          size(widthDp + gutter.horizontal, heightDp + gutter.vertical)
+          size(widthDp + gutterWidthDp, heightDp + gutterHeightDp)
           if (isRound) addOption(RoundScreenOption)
           if (params.fontScale != 1.0f) fontScale(params.fontScale)
           if (params.uiMode != 0) uiMode(params.uiMode)
@@ -1215,9 +1225,18 @@ abstract class RobolectricRenderTestBase(
     // [EmojiCompatRenderSupport].
     EmojiCompatRenderSupport.ensureInitialized(appContext)
 
+    // The viewport qualifier grows by the `@CaptureGutter` here as well as in the Roborazzi
+    // `size(...)` option, and it is THIS one that decides the window the composition is measured
+    // in — it is applied later and wins. Growing only the Roborazzi option left the window at the
+    // declared frame, so the box's `child + gutter` was clamped back to it and the fixed-axis
+    // resize then *upscaled* the too-small capture, stretching the component by the gutter it was
+    // supposed to sit inside.
+    val qualifierDensity = params.density ?: 2.0f
+    val qualifierGutter = params.captureGutter ?: CaptureGutterDp()
     applyPreviewQualifiers(
-      widthDp = widthDp,
-      heightDp = heightDp,
+      widthDp = widthDp + ceilDpForPx(qualifierGutter.start, qualifierGutter.end, qualifierDensity),
+      heightDp =
+        heightDp + ceilDpForPx(qualifierGutter.top, qualifierGutter.bottom, qualifierDensity),
       isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
       locale = params.locale,
       uiMode = params.uiMode,
@@ -1527,6 +1546,10 @@ abstract class RobolectricRenderTestBase(
                         wrapWidth = wrapWidth,
                         wrapHeight = wrapHeight,
                         gutter = params.captureGutter ?: CaptureGutterDp(),
+                        // The viewport the composable would have had with no gutter — the window
+                        // above is this plus the gutter, and the box hands this back verbatim.
+                        viewportWidthDp = widthDp,
+                        viewportHeightDp = heightDp,
                         onMeasured = { measured = it },
                       ) {
                         strategyFor(params.kind).Render(preview, widthDp, heightDp, previewArgs)
@@ -2131,7 +2154,12 @@ abstract class RobolectricRenderTestBase(
                 // var shared across jobs.
                 resolveCaptureRoot().semanticsRoot?.let { root ->
                   DialogWindowCapture.shownDialogWindow(root)?.also { window ->
-                    DialogWindowCapture.cropPngToDialogWindow(outputFile, root, window)
+                    DialogWindowCapture.cropPngToDialogWindow(
+                      outputFile,
+                      root,
+                      window,
+                      dialogCropGutter(params.captureGutter, params.density ?: 2.0f),
+                    )
                   }
                 }
               } else {
@@ -2178,17 +2206,24 @@ abstract class RobolectricRenderTestBase(
               val resizeDensity = params.density ?: 2.0f
               // A fixed axis is resized to the frame it declared PLUS its capture gutter: the
               // gutter is canvas the author asked for, so trimming back to the bare frame would
-              // drop the shadow it exists to keep.
+              // drop the shadow it exists to keep. In PIXELS, added to the frame's own pixel
+              // width, rather than resolving the summed dp — the box laid the gutter out in
+              // rounded pixels, and re-deriving it from dp here would disagree with it by one at a
+              // fractional density.
               val resizeGutter = params.captureGutter ?: CaptureGutterDp()
+              val resizeGutterWPx =
+                edgePx(resizeGutter.start, resizeDensity) + edgePx(resizeGutter.end, resizeDensity)
+              val resizeGutterHPx =
+                edgePx(resizeGutter.top, resizeDensity) + edgePx(resizeGutter.bottom, resizeDensity)
               resizeFixedAxesPng(
                 file = outputFile,
                 targetWidth =
                   if (!wrapWidth && params.device == null && params.widthDp != null)
-                    ((widthDp + resizeGutter.horizontal) * resizeDensity).roundHalfUpPx()
+                    (widthDp * resizeDensity).roundHalfUpPx() + resizeGutterWPx
                   else null,
                 targetHeight =
                   if (!wrapHeight && params.device == null && params.heightDp != null)
-                    ((heightDp + resizeGutter.vertical) * resizeDensity).roundHalfUpPx()
+                    (heightDp * resizeDensity).roundHalfUpPx() + resizeGutterHPx
                   else null,
               )
             }
@@ -2384,6 +2419,8 @@ abstract class RobolectricRenderTestBase(
     wrapWidth: Boolean,
     wrapHeight: Boolean,
     gutter: CaptureGutterDp,
+    viewportWidthDp: Int,
+    viewportHeightDp: Int,
     onMeasured: (IntSize) -> Unit,
     content: @Composable () -> Unit,
   ) {
@@ -2394,16 +2431,21 @@ abstract class RobolectricRenderTestBase(
     val topPx = with(density) { gutter.top.dp.roundToPx() }
     val endPx = with(density) { gutter.end.dp.roundToPx() }
     val bottomPx = with(density) { gutter.bottom.dp.roundToPx() }
+    // The viewport the composable gets is the one it would have had with NO gutter, resolved from
+    // the same dp the un-guttered window would have used — NOT "the enlarged window minus the
+    // rounded edges". Those two differ at a fractional density: at 2.625 a 400dp window is 1050px
+    // and the enlarged one is 1073px, of which subtracting 11px + 11px leaves 1051px — a pixel the
+    // component never had, which is enough to remeasure `fillMaxWidth` content and defeat the
+    // annotation's one promise. Resolving the original dp gives back exactly 1050px.
+    val viewportWidthPx = with(density) { viewportWidthDp.dp.roundToPx() }
+    val viewportHeightPx = with(density) { viewportHeightDp.dp.roundToPx() }
     Box(
       modifier =
         Modifier.layout { measurable, constraints ->
-          // The gutter comes off the available space before the child is measured — the sandbox
-          // was enlarged by exactly this much — so the composable sees the constraints it would
-          // have had without a gutter, and the extra pixels end up as canvas around it rather than
-          // as a smaller box to lay out in. That is the whole difference between this and padding
-          // the preview body (m3-catalog#179).
-          val availWidth = (constraints.maxWidth - startPx - endPx).coerceAtLeast(0)
-          val availHeight = (constraints.maxHeight - topPx - bottomPx).coerceAtLeast(0)
+          // Clamped to the window in case the qualifier resolved a pixel differently than the dp
+          // conversion here — the constraint must stay satisfiable.
+          val availWidth = viewportWidthPx.coerceIn(0, constraints.maxWidth)
+          val availHeight = viewportHeightPx.coerceIn(0, constraints.maxHeight)
           val wrappedConstraints =
             Constraints(
               minWidth = if (wrapWidth) 0 else availWidth,
@@ -2477,6 +2519,49 @@ abstract class RobolectricRenderTestBase(
     // `FocusController.SETTLE_MS` so the connector's around-composable + the renderer's
     // per-capture clock advance share a single source of truth. Don't redeclare it here.
   }
+}
+
+/**
+ * One `@CaptureGutter` edge in pixels at [density]. Rounded per edge, matching what
+ * `MeasuredWrapBox` resolves in composition, so the window growth, the layout and the fixed-axis
+ * resize all agree on where the gutter's pixels are.
+ */
+internal fun edgePx(edgeDp: Int, density: Float): Int = Math.round(edgeDp * density)
+
+/**
+ * Dp the hosting window must grow on one axis to hold both [edgeADp] and [edgeBDp] at [density] —
+ * the **ceiling** of their summed pixels, because a Robolectric qualifier is dp-only and rounding
+ * down would leave the window a pixel short of `component + gutter`, costing a pixel of the shadow
+ * the gutter exists to keep. `0` for an absent gutter, so an un-annotated preview's window is
+ * untouched.
+ */
+internal fun ceilDpForPx(edgeADp: Int, edgeBDp: Int, density: Float): Int {
+  val totalPx = edgePx(edgeADp, density) + edgePx(edgeBDp, density)
+  if (totalPx <= 0) return 0
+  return kotlin.math.ceil(totalPx / density).toInt()
+}
+
+/**
+ * The dialog-window crop expansion for [gutter] at [density] — the same per-edge pixels the wrap
+ * box uses, mapped from start/end onto left/right. Dialog captures are cropped to their own window
+ * rect (see [DialogWindowCapture]), a path the activity-hosted wrap crop never reaches, so without
+ * this the gutter would miss the one component that most reliably casts a shadow.
+ *
+ * Left/right rather than start/end because the crop is applied to already-rendered pixels: an RTL
+ * capture has already been mirrored by the time the rect is computed, so the leading edge is on the
+ * right of the image. That is [DialogWindowCapture]'s own frame of reference, not layout's.
+ */
+internal fun dialogCropGutter(
+  gutter: CaptureGutterDp?,
+  density: Float,
+): DialogWindowCapture.DialogCropGutter {
+  if (gutter == null) return DialogWindowCapture.DialogCropGutter()
+  return DialogWindowCapture.DialogCropGutter(
+    leftPx = edgePx(gutter.start, density),
+    topPx = edgePx(gutter.top, density),
+    rightPx = edgePx(gutter.end, density),
+    bottomPx = edgePx(gutter.bottom, density),
+  )
 }
 
 /**

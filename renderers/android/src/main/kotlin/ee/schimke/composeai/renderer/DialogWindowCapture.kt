@@ -152,14 +152,37 @@ internal object DialogWindowCapture {
    * A `ModalBottomSheet`'s window fills the screen, so its rect covers the whole frame and this is
    * a no-op; a centred `Dialog` / `AlertDialog` crops to the dialog itself.
    */
-  fun cropPngToDialogWindow(file: File, root: SemanticsNode, window: android.view.Window) {
-    dialogWindowCropRect(file, root, window)?.let { cropPngToRect(file, it) }
+  /**
+   * [gutter] is the resolved `@CaptureGutter` in pixels, expanding the crop past the dialog window
+   * so an elevation shadow the dialog draws outside its own bounds survives. The dialog is composed
+   * into its own window and cropped to that window's rect here, which is a path the activity-hosted
+   * wrap crop never sees — so without this the gutter reaches every capture except the one whose
+   * component most reliably casts a shadow. Clamped to the captured frame: the dialog sits inside a
+   * full-screen capture, so there is normally room, but a dialog flush against an edge simply gets
+   * less gutter on that side rather than a crop that runs off the image.
+   */
+  fun cropPngToDialogWindow(
+    file: File,
+    root: SemanticsNode,
+    window: android.view.Window,
+    gutter: DialogCropGutter = DialogCropGutter(),
+  ) {
+    dialogWindowCropRect(file, root, window, gutter)?.let { cropPngToRect(file, it) }
   }
+
+  /** Per-edge crop expansion in pixels; all-zero is the pre-`@CaptureGutter` behaviour. */
+  data class DialogCropGutter(
+    val leftPx: Int = 0,
+    val topPx: Int = 0,
+    val rightPx: Int = 0,
+    val bottomPx: Int = 0,
+  )
 
   fun dialogWindowCropRect(
     file: File,
     root: SemanticsNode,
     window: android.view.Window,
+    gutter: DialogCropGutter = DialogCropGutter(),
   ): android.graphics.Rect? {
     if (!file.exists()) return null
     val original = runCatching { javax.imageio.ImageIO.read(file) }.getOrNull() ?: return null
@@ -175,7 +198,14 @@ internal object DialogWindowCapture {
     )
     val left = placed.left.coerceIn(0, original.width - width)
     val top = placed.top.coerceIn(0, original.height - height)
-    return android.graphics.Rect(left, top, left + width, top + height)
+    // Grow outward from the window's own rect, then clamp to the frame. Each edge is clamped
+    // independently so a dialog near one edge keeps the gutter it can have on the other three.
+    return android.graphics.Rect(
+      (left - gutter.leftPx).coerceAtLeast(0),
+      (top - gutter.topPx).coerceAtLeast(0),
+      (left + width + gutter.rightPx).coerceAtMost(original.width),
+      (top + height + gutter.bottomPx).coerceAtMost(original.height),
+    )
   }
 
   private fun cropPngToRect(file: File, rect: android.graphics.Rect) {
