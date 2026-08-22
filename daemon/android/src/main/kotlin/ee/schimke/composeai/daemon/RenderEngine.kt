@@ -50,6 +50,7 @@ import ee.schimke.composeai.data.render.extensions.PostCaptureProcessor
 import ee.schimke.composeai.data.render.extensions.RecordingDataProductStore
 import ee.schimke.composeai.data.render.extensions.compose.ComposeDataExtensionPipeline
 import ee.schimke.composeai.data.render.extensions.compose.RecordingExtensionCompositionSink
+import ee.schimke.composeai.data.render.extensions.isStructuralPreviewWrapper
 import ee.schimke.composeai.data.render.extensions.loadIrReplayClass
 import ee.schimke.composeai.data.render.extensions.loadPreviewWrapperClass
 import ee.schimke.composeai.data.render.extensions.provides
@@ -2596,6 +2597,9 @@ private fun resolvePreviewInvocation(
  * `:renderer-android` does the equivalent in
  * [ee.schimke.composeai.renderer.PreviewRenderStrategy]'s ComposePreviewStrategy.
  *
+ * A [themeProviderFqn] override normally REPLACES the declared wrapper; [resolveWrapperStack] owns
+ * that decision, including the structural-wrapper case where the two nest instead (theme outside).
+ *
  * **Why the FQN comes from the spec rather than `Method.annotations`.** The upstream
  * `androidx.compose.ui.tooling.preview.PreviewWrapper` annotation has `AnnotationRetention.BINARY`
  * (issue #1440): it's emitted into the class file but not retained at runtime, so
@@ -2617,23 +2621,66 @@ internal fun InvokeWithOptionalWrapper(
   themeProviderFqn: String? = null,
   previewArgs: List<Any?> = emptyList(),
 ) {
-  val wrapper =
+  val wrappers =
     remember(composableMethod, wrapperFqnFromSpec, themeProviderFqn) {
-      // A `themeProvider` override wraps the preview in an app-declared theme provider IN PLACE OF
-      // its own `@PreviewWrapper` — but only when it actually loads. On a stale/misspelled FQN,
-      // `loadWrapperByFqnOrNull` logs and returns null; we then fall back to the preview's declared
-      // wrapper rather than stripping it (which would drop a required `@PreviewWrapper` and
-      // misrender). A blank/absent themeProvider skips straight to the declared wrapper.
-      themeProviderFqn?.takeIf { it.isNotBlank() }?.let { loadWrapperByFqnOrNull(it) }
-        ?: resolveWrapperOrNull(composableMethod, wrapperFqnFromSpec)
+      resolveWrapperStack(composableMethod, wrapperFqnFromSpec, themeProviderFqn)
     }
-  if (wrapper == null) {
-    InvokeComposable(composableMethod, previewArgs)
+  val body: @Composable () -> Unit = { InvokeComposable(composableMethod, previewArgs) }
+  val declared = wrappers.declared
+  val inner: @Composable () -> Unit =
+    if (declared == null) {
+      body
+    } else {
+      { declared.first.invoke(currentComposer, declared.second, body) }
+    }
+  val theme = wrappers.theme
+  if (theme == null) {
+    inner()
   } else {
-    val (wrapMethod, wrapperInstance) = wrapper
-    val body: @Composable () -> Unit = { InvokeComposable(composableMethod, previewArgs) }
-    wrapMethod.invoke(currentComposer, wrapperInstance, body)
+    theme.first.invoke(currentComposer, theme.second, inner)
   }
+}
+
+/**
+ * The wrapper(s) [InvokeWithOptionalWrapper] composes around a preview body, outermost first: an
+ * optional `themeProvider` [theme] around an optional declared `@PreviewWrapper` [declared].
+ */
+private class WrapperStack(
+  val theme: Pair<ComposableMethod, Any>?,
+  val declared: Pair<ComposableMethod, Any>?,
+)
+
+/**
+ * Decide which wrappers a render composes around the preview body.
+ *
+ * A `themeProvider` override wraps the preview in an app-declared theme provider IN PLACE OF its
+ * own `@PreviewWrapper` — a declared wrapper is nearly always the preview's own theme, and swapping
+ * it is the entire point of the viewer's theme selector (keeping both would let the inner one
+ * shadow the chosen one). Two exceptions keep the declared wrapper:
+ * - the override doesn't load. On a stale / misspelled FQN `loadWrapperByFqnOrNull` logs and
+ *   returns null; falling back to the declared wrapper beats stripping it and misrendering.
+ * - the declared wrapper is **structural** ([isStructuralPreviewWrapper]) — it installs the surface
+ *   the body composes against, not a look. Replacing `@PreviewWrapper(RemotePreviewWrapper::class)`
+ *   leaves a `RemoteBox` / `RemoteColumn` / `RemoteRow` body on the plain UI applier and throws
+ *   `IllegalStateException: Invalid applier`. Here the theme nests OUTSIDE the structural wrapper
+ *   rather than replacing it, so the request is honoured as far as it can be and the render stands
+ *   up either way.
+ *
+ * A blank / absent themeProvider skips straight to the declared wrapper.
+ */
+private fun resolveWrapperStack(
+  composableMethod: ComposableMethod,
+  wrapperFqnFromSpec: String?,
+  themeProviderFqn: String?,
+): WrapperStack {
+  val declaredFqn = declaredWrapperFqnOrNull(composableMethod, wrapperFqnFromSpec)
+  val theme = themeProviderFqn?.takeIf { it.isNotBlank() }?.let { loadWrapperByFqnOrNull(it) }
+  val keepDeclared =
+    theme == null || (declaredFqn != null && isStructuralPreviewWrapper(declaredFqn))
+  return WrapperStack(
+    theme = theme,
+    declared = if (keepDeclared) declaredFqn?.let { loadWrapperByFqnOrNull(it) } else null,
+  )
 }
 
 /**
@@ -2679,12 +2726,20 @@ internal fun resolveWrapperOrNull(
   composableMethod: ComposableMethod,
   wrapperFqnFromSpec: String? = null,
 ): Pair<ComposableMethod, Any>? {
-  val wrapperFqn =
-    wrapperFqnFromSpec?.takeIf { it.isNotBlank() }
-      ?: resolveWrapperFqnViaReflection(composableMethod)
-      ?: return null
+  val wrapperFqn = declaredWrapperFqnOrNull(composableMethod, wrapperFqnFromSpec) ?: return null
   return loadWrapperByFqnOrNull(wrapperFqn)
 }
+
+/**
+ * The FQN of the preview's declared `@PreviewWrapper` provider — the spec-supplied one when
+ * present, otherwise the best-effort reflective read. Split out of [resolveWrapperOrNull] so
+ * [resolveWrapperStack] can ask about the wrapper (is it structural?) before deciding to load it.
+ */
+private fun declaredWrapperFqnOrNull(
+  composableMethod: ComposableMethod,
+  wrapperFqnFromSpec: String?,
+): String? =
+  wrapperFqnFromSpec?.takeIf { it.isNotBlank() } ?: resolveWrapperFqnViaReflection(composableMethod)
 
 /**
  * Fallback path used only when [resolveWrapperOrNull] was called without a spec-supplied FQN.
