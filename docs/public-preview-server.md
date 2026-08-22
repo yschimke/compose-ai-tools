@@ -3620,6 +3620,13 @@ Two things make it safe to state that narrowly:
   baked snapshot would itself satisfy. A font scale, a device, a knob or a theme asks for pixels the
   parity run never drew, so it routes to the renderer exactly as before. A player the run staged
   nothing for falls through the same way rather than 404ing.
+- **The published bytes are the player's render, not the compare page's presentation.** `rc-compare`
+  flattens both sides of a diff onto a mid-grey so light-on-transparent can't score as a false
+  match, and it used to flatten the image it *wrote* — which reached a served catalog as an opaque
+  grey card behind every component ([#4442](https://github.com/yschimke/compose-ai-tools/issues/4442),
+  evidence in [rc-published-lane-alpha](design/evidence/rc-published-lane-alpha/README.md)). The
+  driver now diffs a flattened copy and publishes the capture, alpha intact, so these bytes are a
+  sticker on transparency exactly like the baked PNG next to them.
 - **It is consulted before the baked snapshot, not after.** `bakedRender` answers from the preview's
   published PNG without reading the overrides at all, so ordering the staging second would make the
   whole lane unreachable on any host that has baked pixels — which is every real bundle and catalog

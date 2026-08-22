@@ -3,9 +3,12 @@
  * without a browser or a staged catalog (`rc-compare.mjs` renders on import, so nothing in it is
  * importable).
  *
- * The two functions here have an **ordering constraint** between them, and getting it wrong is
- * silent: `flattenOnto` composites alpha away *in place*, so `isFullyTransparent` must be asked
- * first — afterwards a blank sticker and a solid mid-grey card are the same pixels.
+ * `flattenOnto` composites alpha away *in place*, which carries an **ordering constraint** that is
+ * silent when broken: `isFullyTransparent` and `splitCoverage` must be asked first — afterwards a
+ * blank sticker and a solid mid-grey card are the same pixels. Prefer `flattenedCopy`, which leaves
+ * the source image alone, whenever those pixels are also *published*: the neutral exists to make a
+ * diff meaningful, and a caller that flattens in place ends up shipping the diffing background as
+ * if the player had painted it.
  */
 
 /**
@@ -29,6 +32,18 @@ export function flattenOnto(png, [br, bg, bb] = BG) {
     d[i + 3] = 255;
   }
   return png;
+}
+
+/**
+ * Flatten a copy of an RGBA image onto an opaque colour, leaving the input untouched.
+ *
+ * The diffing neutral is a property of the *comparison*, not of the render: a lane's PNG is both
+ * diffed and shown (and, for a published catalog, served back as that player's render of the
+ * preview), and flattening the image that gets written turns the neutral into a grey background the
+ * player never drew. Diff the copy, publish the original.
+ */
+export function flattenedCopy(png, bg = BG) {
+  return flattenOnto({ width: png.width, height: png.height, data: Buffer.from(png.data) }, bg);
 }
 
 /**
