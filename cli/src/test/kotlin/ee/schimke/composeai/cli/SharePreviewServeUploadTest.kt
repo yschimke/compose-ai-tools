@@ -198,6 +198,20 @@ class SharePreviewServeUploadTest {
   }
 
   @Test
+  fun `a bodyless 405 gets the same explanation as a bodyless 404`() {
+    // Disabling the lane can leave a catch-all that matches the path but not POST, so the same
+    // configuration answers 405 instead — ServeImageRoutingTest accepts either.
+    val seen = mutableListOf<Recorded>()
+    withServer(seen, status = 405, body = "") { base ->
+      val reason =
+        (ServeImageUploader(base, "gho_secret").upload(png()) as ServeImageUploader.Result.Failed)
+          .reason
+      assertTrue(reason.contains("405"), reason)
+      assertTrue(reason.contains("--accept-images"), reason)
+    }
+  }
+
+  @Test
   fun `a 404 that explains itself is passed through as the host wrote it`() {
     val seen = mutableListOf<Recorded>()
     withServer(seen, status = 404, body = "no such image") { base ->
