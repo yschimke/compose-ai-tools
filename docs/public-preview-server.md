@@ -2726,8 +2726,10 @@ compose-preview auth request --server https://preview.coo.ee --capability images
 compose-preview share-preview report.md before.png after.png --mechanism serve
 ```
 
-`share-preview` picks the stored grant up on its own (the host token resolves `--token` →
-`$COMPOSE_PREVIEW_TOKEN` → the grant store), so nothing else about the invocation changes. The
+`share-preview` picks the stored grant up on its own (its host token resolves `--serve-token` →
+`$COMPOSE_PREVIEW_SERVE_TOKEN` → the grant store — the `serve`-prefixed names, since this command
+also carries a *GitHub* credential and the two must not be confusable), so nothing else about the
+invocation changes. The
 upload is attributed to the grant and its approver — `uploadedBy` reads
 `agent grant 682daf65 (approved by @yschimke)` — and the capability is off unless the operator asked
 for it *and* a human ticked it, so nothing here widens what an existing box already does.

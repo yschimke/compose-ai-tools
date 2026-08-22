@@ -243,6 +243,8 @@ internal class AuthCommand(
           expiresInSeconds = opened.expiresInSeconds,
           requestedScope = opened.requestedScope,
           requestedTtlSeconds = opened.requestedTtlSeconds,
+          requestedCapabilities = opened.requestedCapabilities,
+          maxCapabilities = opened.maxCapabilities,
         ),
       )
       if ("--no-wait" in args) return
@@ -798,6 +800,16 @@ internal class AuthCommand(
     val expiresInSeconds: Long,
     val requestedScope: String,
     val requestedTtlSeconds: Long,
+    /**
+     * What survived the server's clamp, and what it would grant at all.
+     *
+     * Both matter to `--no-wait`, which emits this record and then exits: there is no later grant
+     * object to learn from, so without these a caller cannot tell that `images` was dropped by a
+     * host that does not offer it — and would send a human through an approval that cannot
+     * authorize the upload it was opened for.
+     */
+    val requestedCapabilities: List<String> = emptyList(),
+    val maxCapabilities: List<String> = emptyList(),
   )
 
   @Serializable
