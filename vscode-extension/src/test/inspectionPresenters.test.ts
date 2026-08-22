@@ -192,6 +192,36 @@ describe("computeInspectionBundleData (cardBundleOverlay path)", () => {
         assert.strictEqual(byId.get("semantics-3")?.level, "info");
     });
 
+    it("draws no overlay box for an unplaced compose/semantics subtree", () => {
+        // Measured, never placed: it has no position, so `boundsInRoot`
+        // reads as the origin and a box for it lands in the frame's
+        // top-left corner. The tree ROW stays — seeing the trial copy is
+        // how the duplicate makes sense — but the box does not.
+        const payload = {
+            root: {
+                nodeId: "1",
+                boundsInRoot: "0,0,100,100",
+                children: [
+                    { nodeId: "2", boundsInRoot: "10,10,40,40" },
+                    {
+                        nodeId: "3",
+                        boundsInRoot: "0,0,40,40",
+                        placed: false,
+                        children: [{ nodeId: "4", boundsInRoot: "0,0,20,20" }],
+                    },
+                ],
+            },
+        };
+        const data = computeInspectionBundleData(
+            (kind) => (kind === "compose/semantics" ? payload : undefined),
+            new Set<InspectionKind>(["compose/semantics"]),
+        );
+        const ids = new Set(data.overlay.map((b) => b.id));
+        assert.strictEqual(ids.has("semantics-2"), true);
+        assert.strictEqual(ids.has("semantics-3"), false);
+        assert.strictEqual(ids.has("semantics-4"), false, "subtree too");
+    });
+
     it("ignores kinds the user has not enabled", () => {
         const payload = {
             root: {

@@ -264,6 +264,11 @@ object ComposeSemanticsDataProducer {
           else -> null
         },
       clickable = cfg.getOrNull(SemanticsActions.OnClick) != null,
+      // Measured but never positioned is a state only the layout node knows about, and it is not
+      // rare: a `SubcomposeLayout` that measures a trial copy of its content to pick a layout
+      // leaves that copy in the semantics tree at the origin. Without this a consumer reads those
+      // bounds as the frame's top-left corner. See `ComposeSemanticsNode.placed`.
+      placed = layoutInfo.isPlaced,
       tokens = resolvedTokens(density),
       children = children.map { it.toWireNode(density) },
     )

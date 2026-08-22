@@ -41,8 +41,23 @@ class FigmaSvgPlaceholderTextTest {
       children = listOf(child),
     )
 
-  private fun semanticsText(l: Int, t: Int, r: Int, b: Int, text: String) =
-    ComposeSemanticsNode(nodeId = "sem", boundsInRoot = "$l,$t,$r,$b", text = text)
+  private fun semanticsText(
+    l: Int,
+    t: Int,
+    r: Int,
+    b: Int,
+    text: String,
+    nodeId: String = "sem",
+    placed: Boolean = true,
+    children: List<ComposeSemanticsNode> = emptyList(),
+  ) =
+    ComposeSemanticsNode(
+      nodeId = nodeId,
+      boundsInRoot = "$l,$t,$r,$b",
+      text = text,
+      placed = placed,
+      children = children,
+    )
 
   private fun model(layout: LayoutInspectorNode, semanticsRoot: ComposeSemanticsNode) =
     FigmaSvgModel.from(
@@ -83,6 +98,32 @@ class FigmaSvgPlaceholderTextTest {
     assertTrue("emitted as vector <text>", svg.contains("<text"))
     assertTrue("the run is not baked into a raster <image>", !svg.contains("<image"))
     assertEquals("the string appears exactly once", 1, svg.split(">Confetti<").size - 1)
+  }
+
+  @Test
+  fun anUnplacedTrialCopyDoesNotClaimTheLayerAheadOfTheRenderedText() {
+    // A `SubcomposeLayout` measuring a trial copy of its content to choose a layout (Wear
+    // `AlertDialogContent`) leaves a second copy of every string in the semantics tree. It is
+    // never placed, so it has no position and reports the ORIGIN — and the trial slot is
+    // subcomposed FIRST, so where that box lands within tolerance of a real layer's it is visited
+    // first and the strict `bestDist <` guard then keeps the rendered node from displacing it.
+    val leaf = placeholderTextLeaf("text-1", 0, 0, 200, 50)
+    val root = wrapper("slot", 0, 0, 200, 50, leaf)
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "sem-root",
+        boundsInRoot = "0,0,200,50",
+        children =
+          listOf(
+            // Visited first, exactly as the trial slot is subcomposed first.
+            semanticsText(0, 0, 200, 50, "trial", nodeId = "trial", placed = false),
+            semanticsText(0, 0, 200, 50, "rendered", nodeId = "real"),
+          ),
+      )
+
+    val m = model(root, semantics)
+
+    assertEquals("the rendered string wins the layer", "rendered", leafLayer(m).text?.content)
   }
 
   @Test

@@ -513,6 +513,37 @@ describe("buildSemanticsBoundsMap", () => {
         assert.ok(map.has("grandchild"));
     });
 
+    it("skips an unplaced subtree, which has no position to overlay", () => {
+        // A `SubcomposeLayout` measuring a trial copy of its content to pick
+        // a layout (Wear `AlertDialogContent`) leaves that copy in the tree,
+        // measured and never placed — so it reports the ORIGIN and the hover
+        // overlay drew it in the frame's top-left corner.
+        const payload: SemanticsLookupPayload = {
+            root: {
+                nodeId: "root",
+                boundsInRoot: "0,0,100,200",
+                children: [
+                    { nodeId: "real", boundsInRoot: "10,10,50,40" },
+                    {
+                        nodeId: "trial",
+                        boundsInRoot: "0,0,40,30",
+                        placed: false,
+                        children: [
+                            {
+                                nodeId: "trial-child",
+                                boundsInRoot: "0,0,20,20",
+                            },
+                        ],
+                    },
+                ],
+            },
+        };
+        const map = buildSemanticsBoundsMap(payload, "x");
+        assert.strictEqual(map.has("real"), true);
+        assert.strictEqual(map.has("trial"), false);
+        assert.strictEqual(map.has("trial-child"), false, "subtree too");
+    });
+
     it("skips nodes whose boundsInRoot fails to parse", () => {
         const payload: SemanticsLookupPayload = {
             root: {

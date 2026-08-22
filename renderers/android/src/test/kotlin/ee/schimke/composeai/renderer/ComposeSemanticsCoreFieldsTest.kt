@@ -10,11 +10,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import ee.schimke.composeai.daemon.ComposeSemanticsDataProducer
 import ee.schimke.composeai.daemon.ComposeSemanticsDataProductRegistry
@@ -106,6 +108,27 @@ class ComposeSemanticsCoreFieldsTest {
     assertNotNull(merging)
   }
 
+  @Test
+  fun `a subcomposed trial measure surfaces as placed=false`() {
+    // `SubcomposeLayout` is how a layout asks "how tall would this content be?" before choosing
+    // between two arrangements — Wear's `AlertDialogContent` subcomposes a whole trial copy of the
+    // dialog to decide scrollable-vs-fixed. The trial slot is measured and never placed, but it
+    // stays in the semantics tree reporting `boundsInRoot` at the ORIGIN, so a consumer drawing
+    // boxes off this tree drew the trial copy stacked in the frame's top-left corner
+    // (yschimke/wear-m3-catalog#77). `placed` is the only thing on the wire that tells them apart.
+    val nodes = nodesFor("trialMeasure") { TrialMeasureFixture() }
+    val trial =
+      nodes.firstOrNull { it["text"]?.jsonPrimitive?.content == "trial" }
+        ?: error("expected the trial-measure node; got $nodes")
+    val real =
+      nodes.firstOrNull { it["text"]?.jsonPrimitive?.content == "real" }
+        ?: error("expected the placed node; got $nodes")
+
+    assertEquals(false, trial["placed"]!!.jsonPrimitive.boolean)
+    // True is the default, so the producer omits it rather than writing it on every node.
+    assertEquals(null, real["placed"])
+  }
+
   /** Returns every node in the produced compose-semantics JSON tree as a flat list. */
   private fun nodesFor(previewId: String, content: @Composable () -> Unit): List<JsonObject> {
     composeRule.setContent { content() }
@@ -157,6 +180,22 @@ private fun ContentDescriptionFixture() {
 private fun ClickableButtonFixture() {
   Box(modifier = Modifier.size(200.dp, 56.dp).background(Color.White)) {
     Button(onClick = {}) { Text(text = "Buy") }
+  }
+}
+
+/**
+ * A `SubcomposeLayout` in the shape Wear's `AlertDialogContent` uses: subcompose a trial copy of
+ * the content, measure it to learn its unconstrained height, then subcompose and place the real
+ * one. The trial slot is never placed.
+ */
+@Composable
+private fun TrialMeasureFixture() {
+  SubcomposeLayout(modifier = Modifier.size(200.dp, 64.dp)) { constraints ->
+    subcompose("trial") { Text(text = "trial") }
+      .first()
+      .measure(constraints.copy(maxHeight = Constraints.Infinity))
+    val placeable = subcompose("real") { Text(text = "real") }.first().measure(constraints)
+    layout(placeable.width, placeable.height) { placeable.placeRelative(0, 0) }
   }
 }
 
