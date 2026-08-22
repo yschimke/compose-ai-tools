@@ -1,6 +1,6 @@
 /**
- * Unit tests for the PNG-vs-SVG comparison page (`compare.html`): each component
- * is a row pairing its rendered PNG with its browser-rendered figma-svg, and the
+ * Unit tests for the SVG-vs-PNG comparison page (`compare.html`): each component
+ * is a row pairing its browser-rendered figma-svg with its rendered PNG, and the
  * page carries the in-page structural-similarity (SSIM) scorer. The actual scoring
  * runs in a browser canvas (untestable under `node --test`); here we pin the page
  * structure — the `data-png`/`data-svg` wiring the scorer walks, the fallbacks for
@@ -50,6 +50,21 @@ test("a comparable component wires data-png + data-svg for the scorer", () => {
   // Both columns show the actual images.
   assert.match(html, /<img[^>]*src="images\/button-filled\/ideal__default__light\.png"/);
   assert.match(html, /<img[^>]*src="figma\/button-filled\.svg"/);
+});
+
+test("the design vector column comes before the render column", () => {
+  // The house rule: an imported/exported design spec is drawn to the LEFT of the
+  // render it is compared against — the same order the viewer's spec lane uses
+  // (Spec / Diff / Render) and the `figma-svg | diff | render` fidelity composite.
+  // This page used to lead with the PNG, so a reader who moved between the two
+  // surfaces had to re-establish which side was which.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /<th scope="col">SVG \(browser-rendered\)<\/th>\s*<th scope="col">PNG<\/th>/);
+  const row = html.slice(html.indexOf('<tr class="crow"'));
+  assert.ok(
+    row.indexOf('class="col-svg"') < row.indexOf('class="col-png"'),
+    "the figma-svg cell must precede the PNG cell in the row",
+  );
 });
 
 test("each theme pairs its PNG with the matching per-variant SVG", () => {

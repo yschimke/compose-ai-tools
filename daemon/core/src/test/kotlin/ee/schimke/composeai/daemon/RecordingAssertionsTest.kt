@@ -106,6 +106,24 @@ class RecordingAssertionsTest {
   }
 
   @Test
+  fun resolved_node_text_ignores_an_unplaced_trial_copy() {
+    // The assertion compares against what the user sees. A `SubcomposeLayout` trial measure (Wear
+    // `AlertDialogContent`) leaves a second copy of the container's text in the tree that was
+    // measured and never drawn; merging it in would assert against "Submit\nSubmit".
+    val container =
+      node(
+        testTag = "submit",
+        text = null,
+        children =
+          listOf(
+            node(text = "Submit"),
+            node(placed = false, children = listOf(node(text = "Submit"))),
+          ),
+      )
+    assertEquals("Submit", resolvedNodeText(container))
+  }
+
+  @Test
   fun resolved_node_text_is_null_when_nothing_has_text() {
     assertEquals(null, resolvedNodeText(node(testTag = "empty", text = null)))
   }
@@ -177,6 +195,7 @@ class RecordingAssertionsTest {
   private fun node(
     testTag: String? = null,
     text: String? = null,
+    placed: Boolean = true,
     children: List<ComposeSemanticsNode> = emptyList(),
   ): ComposeSemanticsNode =
     ComposeSemanticsNode(
@@ -184,6 +203,7 @@ class RecordingAssertionsTest {
       boundsInRoot = "",
       testTag = testTag,
       text = text,
+      placed = placed,
       children = children,
     )
 }

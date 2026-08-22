@@ -64,7 +64,15 @@ object ServeParityIssuesStore {
   fun sanitize(raw: ParityIssues): ParityIssues? {
     if (raw.schema != ParityIssues.SCHEMA || raw.issues.size > MAX_ISSUES) return null
     val generatedAt = raw.generatedAt?.trim()?.takeIf(::isTimestamp)
-    val issues = raw.issues.mapNotNull(::sanitizeIssue).distinctBy { it.repository to it.number }
+    // Identity is repository + number + **component**, not repository + number. One issue may name
+    // several components — an umbrella report covering three Elevated stickers files one issue and
+    // the producer emits a row each — and deduping by issue alone collapsed those to an arbitrary
+    // one of them at load time, so the report reached one component page and silently missed the
+    // rest. Two rows that agree on all three are still a duplicate and still collapse.
+    val issues =
+      raw.issues.mapNotNull(::sanitizeIssue).distinctBy {
+        Triple(it.repository, it.number, it.component)
+      }
     if (issues.isEmpty()) return null
     return ParityIssues(generatedAt = generatedAt, issues = issues)
   }

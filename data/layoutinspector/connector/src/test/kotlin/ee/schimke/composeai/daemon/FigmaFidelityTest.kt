@@ -25,11 +25,41 @@ class FigmaFidelityTest {
     val r = FigmaFidelity.compare(a, b)
     assertEquals(1.0, r.score, 1e-9)
     assertEquals(0.0, r.meanAbsError, 1e-9)
-    // Composite is `render | svg | diff` across, plus a label strip on top.
+    // Composite is `svg | diff | render` across, plus a label strip on top.
     assertEquals(40 * 3 + 12 * 2, r.composite.width)
     assertTrue(
       "composite must be taller than the panels for the label strip",
       r.composite.height > 30,
+    )
+  }
+
+  @Test
+  fun `the composite puts the spec first and the render last`() {
+    // The house rule, pinned in pixels: an imported/exported design spec is drawn to the LEFT of
+    // the render it is compared against — the same order the viewer's spec lane uses (Spec / Diff /
+    // Render). This composite used to read `render | figma-svg | diff`, so the two surfaces
+    // disagreed about which side was which.
+    //
+    // Two solid, unmistakable colours make the panels identifiable: the SVG panel is green, the
+    // render panel is blue, and a sample from the middle of each third says which landed where.
+    val render = solid(40, 30, 0x0000FF)
+    val svg = solid(40, 30, 0x00FF00)
+    val r = FigmaFidelity.compare(render, svg)
+    val labelH = r.composite.height - 30
+    val y = labelH + 15
+    val stride = 40 + 12
+    assertEquals("first panel is the figma-svg", 0x00FF00, r.composite.getRGB(20, y) and 0xFFFFFF)
+    assertEquals(
+      "last panel is the render",
+      0x0000FF,
+      r.composite.getRGB(2 * stride + 20, y) and 0xFFFFFF,
+    )
+    // The diff sits between them: every pixel mismatches here, so the middle third is the
+    // mismatch red rather than either source colour.
+    assertEquals(
+      "the diff is the middle panel",
+      0xE53935,
+      r.composite.getRGB(stride + 20, y) and 0xFFFFFF,
     )
   }
 

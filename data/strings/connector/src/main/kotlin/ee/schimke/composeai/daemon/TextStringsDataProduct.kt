@@ -131,6 +131,12 @@ class TextStringsDataProductRegistry(
     localeTag: String,
     fontScale: Float,
   ) {
+    // `text/strings` is a projection of the text the render DREW. An unplaced subtree was measured
+    // and never placed — a `SubcomposeLayout` trial measure duplicating content the frame draws
+    // once — so emitting it hands the Drawn-text panel and every localisation / readability audit a
+    // phantom string, at the origin, with overflow metrics for a line nobody saw. See
+    // `ComposeSemanticsNode.placed`.
+    if (!node.placed) return
     val semanticsText = node.text?.takeIf { it.isNotBlank() }
     val text =
       node.layoutText?.takeIf { it.isNotBlank() }

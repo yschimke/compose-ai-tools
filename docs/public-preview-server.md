@@ -1540,7 +1540,8 @@ page keeps asking for an ordinary pasted screenshot, exactly as it did before.
 A bundle or published catalog can map independently-authored UI mocks to exact preview ids. The
 landing links to **compare to Figma** — the comparison page deep-linked to its `reference` format
 (`/<system>/compare?format=reference`), named after the tool the references came from; that page's
-**PNG ↔ Figma** lane scores the canonical mock against Compose, and the focused comparison shows
+**Figma ↔ PNG** lane scores the canonical mock against Compose — the spec on the left, the render
+on the right, the same order the focused comparison uses — and that focused comparison shows
 **Reference / Diff / Actual** plus an opacity overlay and source provenance.
 
 References use a provider-neutral `compose-preview-references/v1` manifest at
@@ -1774,11 +1775,21 @@ every catalog served the format controls on the left:
 
 ![Compare-format controls without any design references](images/serve-references-lane-before.png)
 
-![Compare-format controls with the PNG ↔ Design reference lane](images/serve-references-lane-after.png)
+![Compare-format controls once the catalog publishes design references](images/serve-references-lane-after.png)
 
 and selecting it scores each mock against the sticker it is mapped to:
 
-![PNG ↔ Design reference lane on the meshcore-mobile catalog](images/serve-references-compare.png)
+![The design-reference lane on the meshcore-mobile catalog](images/serve-references-compare.png)
+
+Both shots predate two renames and the column swap, so read them for *where the
+control lives*, not for what it says: the lane's button is now named after the
+tool the references came from and in the order its columns stand (`Figma ↔ PNG`),
+and the design spec is the left picture column. The current layout is captured in
+[`renders/compare-wall-spec-left/`](../renders/compare-wall-spec-left/README.md)
+and re-shot on every PR by the harness state
+`serve-format-compare-reference-lane`; these two are kept as they are because
+they are captures of a real `meshcore-mobile` catalog that this repo cannot
+re-render on its own.
 
 ## Exploded 3D — the screen pulled apart by composable (`?exploded=1`)
 
@@ -2184,7 +2195,7 @@ of the feature publishes exactly what it did before.
 A catalog landing links this page as **design parity**, beside — not instead of — its comparison
 actions: **compare to Figma** is the side-by-side table (`/<system>/compare?format=reference`), and
 this page answers the question that table can't: *has this catalog's code drifted from the design
-file it is specified by?* Its subheading links back out to that whole-catalog **PNG ↔ Figma** table
+file it is specified by?* Its subheading links back out to that whole-catalog **Figma ↔ PNG** table
 for every mapped component at once. The design tool the catalog is specified by — read from
 `source.provider: figma` on its references, or from a Figma file named by its parity feed — names
 the comparison action, falling back to **compare to design references** when no tool can be named.

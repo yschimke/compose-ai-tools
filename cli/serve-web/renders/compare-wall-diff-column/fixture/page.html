@@ -1,0 +1,230 @@
+    <!doctype html>
+    <html lang="en" data-cp-theme-key="cp-theme:wear-m3-catalog">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta property="og:type" content="website">
+        <meta property="og:site_name" content="compose-preview">
+        <meta property="og:title" content="M3 Wear OS Apps Design Kit format comparison">
+        <meta property="og:description" content="Compare rendered PNG, SVG, and Remote Compose output for M3 Wear OS Apps Design Kit">
+        <meta property="og:url" content="https://preview.coo.ee/wear-m3-catalog/compare?format=reference">
+        
+        <meta name="twitter:card" content="summary">
+        <meta name="twitter:title" content="M3 Wear OS Apps Design Kit format comparison">
+        <meta name="twitter:description" content="Compare rendered PNG, SVG, and Remote Compose output for M3 Wear OS Apps Design Kit">
+        
+        <title>M3 Wear OS Apps Design Kit — format comparison</title>
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+        <link rel="icon" href="/favicon.ico" sizes="32x32">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        <link rel="stylesheet" href="/assets/serve.css">
+        <link rel="alternate" type="application/rss+xml" title="Catalog changes" href="/wear-m3-catalog/feed.xml">
+        <!-- Apply the Transparent choice before first paint (no checkerboard flash).
+             A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
+        <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
+        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||(((decodeURIComponent(location.pathname).split('/').pop()||"").match(/(?:^|__)(light|dark)(?:__|$)/)||[])[1]||localStorage.getItem("cp-theme:wear-m3-catalog")));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
+      </head>
+      <body>
+        <script src="/assets/serve-chrome.js"></script>
+        <header class="cp-site-header">
+  <div class="cp-site-lead">
+    <a class="cp-site-brand" href="/" aria-label="compose-preview home">
+      <span class="cp-site-mark" aria-hidden="true">◇</span>
+      <span class="cp-site-wordmark">compose-preview</span>
+    </a>
+    <span class="cp-site-catalog">M3 Wear OS Apps Design Kit</span>
+    <nav class="cp-breadcrumb" aria-label="Breadcrumb"><a href="/wear-m3-catalog/">M3 Wear OS Apps Design Kit</a><span class="cp-crumb-sep" aria-hidden="true">/</span><span class="cp-crumb-current">Compare formats</span></nav>
+  </div>
+  <nav class="cp-site-nav" aria-label="Primary navigation">
+    <details class="cp-site-menu" id="cp-site-menu">
+      <summary class="cp-site-menu-btn" title="Menu" aria-label="Menu"
+        aria-controls="cp-site-menu-panel"><span aria-hidden="true">⋮</span></summary>
+    </details>
+    <div class="cp-site-menu-panel" id="cp-site-menu-panel">
+      <a class="cp-site-status-link" id="cp-status-link" href="/status">Status<span
+        class="cp-daemon-status" id="cp-daemon-status" aria-hidden="true" hidden></span></a>
+      <details class="cp-settings">
+        <summary class="cp-settings-btn" title="Settings" aria-label="Settings">
+          <span aria-hidden="true">⚙</span><span class="cp-settings-btn-label">Settings</span>
+        </summary>
+        <div class="cp-settings-panel">
+          <fieldset class="cp-settings-group cp-settings-keyboard">
+            <legend class="cp-settings-legend">Keyboard</legend>
+            <label class="cp-settings-option">
+              <input type="checkbox" data-cp-keyboard-navigation>
+              <span>Power-user navigation</span>
+            </label>
+            <p class="cp-settings-hint">Jump between components, variants, modes, and overrides with
+              shortcuts and an on-screen command palette.</p>
+            <button type="button" class="cp-settings-tour" data-cp-keyboard-tour>
+              View keyboard tour
+            </button>
+          </fieldset>
+        </div>
+      </details>
+    </div>
+  </nav>
+</header>
+        <main class="cp-main">
+                <div id="cp-compare" data-default-format="svg" data-default-theme="dark" data-theme-key="cp-theme:wear-m3-catalog" data-has-svg="1" data-has-rc="0" data-has-reference="1" data-reference-label="Figma">
+          <h1 class="cp-head">Format comparison</h1>
+          <p class="cp-sub"><span class="cp-sub-formats">PNG, SVG and Remote Compose fidelity · scores measure the drawn content on a fixed backdrop</span></p>
+          <div class="cp-compare-controls">
+            <span class="cp-theme" role="group" aria-label="Comparison format"><button type="button" class="cp-theme-btn" data-compare-format="svg" aria-pressed="true">PNG ↔ SVG</button><button type="button" class="cp-theme-btn" data-compare-format="reference" aria-pressed="false">PNG ↔ Figma</button></span>
+            
+          </div>
+          <div class="cp-searchbar cp-compare-searchbar">
+            <input id="cp-compare-search" class="cp-search" type="search" placeholder="Filter comparisons…" aria-label="Filter comparisons">
+            <span id="cp-compare-count" class="cp-count" role="status"></span>
+          </div>
+          <div class="cp-preview-links cp-compare-links">
+      <details class="cp-report" id="cp-report" data-cp-repo="yschimke/wear-m3-catalog" data-cp-subject="these comparisons"><summary class="cp-report-link" title="Something wrong with these comparisons — files against yschimke/wear-m3-catalog"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> report a catalog issue</summary>
+        <div class="cp-report-panel"><form class="cp-report-form" method="get" target="_blank" rel="noopener" action="https://github.com/yschimke/wear-m3-catalog/issues/new"><label class="cp-report-summary">Summary<input class="cp-report-summary-input" type="text" name="title" required autocomplete="off" placeholder="Briefly describe what is wrong"></label><input type="hidden" name="body" id="cp-report-body" value="### What&#39;s wrong
+
+&lt;!-- What did you expect to see, and what did you get? --&gt;
+
+
+### Screenshot
+
+&lt;!-- Paste it here. The &quot;Report a problem&quot; launcher on the page has a capture control that copies the whole view, a region, or one element to your clipboard, so Ctrl-V / Cmd-V lands it in this issue. --&gt;
+
+
+### Which page
+
+| | |
+| --- | --- |
+| Design system | `wear-m3-catalog` |
+| Catalog | `yschimke/wear-m3-catalog@design-artifacts/wear-m3-catalog` |
+| Rendered by | compose-ai-tools 1.28.0 |
+
+[Open this page](https://preview.coo.ee/wear-m3-catalog/compare?format=reference)
+" data-report-template="### What&#39;s wrong
+
+&lt;!-- What did you expect to see, and what did you get? --&gt;
+
+
+### Screenshot
+
+&lt;!-- Paste it here. The &quot;Report a problem&quot; launcher on the page has a capture control that copies the whole view, a region, or one element to your clipboard, so Ctrl-V / Cmd-V lands it in this issue. --&gt;
+
+
+### Which page
+
+| | |
+| --- | --- |
+| Design system | `wear-m3-catalog` |
+| Catalog | `yschimke/wear-m3-catalog@design-artifacts/wear-m3-catalog` |
+| Rendered by | compose-ai-tools 1.28.0 |
+
+[Open this page](https://preview.coo.ee/wear-m3-catalog/compare?format=reference)
+"><button type="submit" class="cp-report-submit"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> Open a prefilled issue</button><span class="cp-report-note">Files against <code>yschimke/wear-m3-catalog</code> — the project whose code declares these comparisons, <em>not</em> the preview server. The rest of the report — what you were looking at, which build, the links — is filled in for you on GitHub.</span></form></div></details>
+          </div>
+          <div id="cp-compare-formats">        <div class="cp-compare-table-wrap">
+          <table class="cp-compare-table">
+            <thead><tr><th>Preview</th><th class="cp-compare-render-head">Rendered PNG</th><th class="cp-compare-diff-head">Diff</th><th class="cp-compare-target-head">SVG</th><th>Match</th></tr></thead>
+            <tbody><tr class="cp-compare-row" data-label="alertdialog"
+  data-hay="alertdialog alertdialog__ideal__default__192dp alertdialog__ideal__default__204dp alertdialog__ideal__default__216dp alertdialog__ideal__default__225dp alertdialog__ideal__default__240dp alertdialog__ideal__edge-button__204dp alertdialog__ideal__edge-button__216dp alertdialog__ideal__edge-button__225dp alertdialog__ideal__edge-button__240dp alertdialog__ideal__no-buttons__192dp alertdialog__ideal__no-buttons__204dp alertdialog__ideal__no-buttons__216dp alertdialog__ideal__no-buttons__225dp alertdialog__ideal__no-buttons__240dp" data-preview-ids="alertdialog__ideal__default__192dp alertdialog__ideal__default__204dp alertdialog__ideal__default__216dp alertdialog__ideal__default__225dp alertdialog__ideal__default__240dp alertdialog__ideal__edge-button__204dp alertdialog__ideal__edge-button__216dp alertdialog__ideal__edge-button__225dp alertdialog__ideal__edge-button__240dp alertdialog__ideal__no-buttons__192dp alertdialog__ideal__no-buttons__204dp alertdialog__ideal__no-buttons__216dp alertdialog__ideal__no-buttons__225dp alertdialog__ideal__no-buttons__240dp" data-png-neutral="/wear-m3-catalog/render/alertdialog__ideal__default__192dp.png" data-svg-neutral="/wear-m3-catalog/render/alertdialog__ideal__default__192dp.svg" data-reference-neutral="/wear-m3-catalog/reference/alertdialog__ideal__default__192dp.png" data-reference-detail-neutral="/wear-m3-catalog/compare/alertdialog__ideal__default__192dp?reference=alertdialog__ideal__default__192dp" data-declared-bg-neutral="dark">
+  <th scope="row"><a href="/wear-m3-catalog/p/alertdialog__ideal__default__192dp">alertdialog</a></th>
+  <td class="cp-compare-render-cell"><div class="cp-compare-shot"><img class="cp-compare-png" alt=""></div></td>
+  <td class="cp-compare-diff-cell"><div class="cp-compare-shot"><canvas class="cp-compare-diff" aria-label="Highlighted pixel difference"></canvas></div></td>
+<td class="cp-compare-target-cell"><div class="cp-compare-shot"><img class="cp-compare-vector" alt=""><canvas class="cp-compare-rc" hidden></canvas></div></td>
+  <td class="cp-compare-score">waiting…</td>
+</tr>
+<tr class="cp-compare-row" data-label="alertdialog — Edge button"
+  data-hay="alertdialog — edge button alertdialog__ideal__edge-button__192dp" data-preview-ids="alertdialog__ideal__edge-button__192dp" data-png-neutral="/wear-m3-catalog/render/alertdialog__ideal__edge-button__192dp.png" data-svg-neutral="/wear-m3-catalog/render/alertdialog__ideal__edge-button__192dp.svg" data-reference-neutral="/wear-m3-catalog/reference/alertdialog__ideal__edge-button__192dp.png" data-reference-detail-neutral="/wear-m3-catalog/compare/alertdialog__ideal__edge-button__192dp?reference=alertdialog__ideal__edge-button__192dp" data-declared-bg-neutral="dark">
+  <th scope="row"><a href="/wear-m3-catalog/p/alertdialog__ideal__edge-button__192dp">alertdialog<span class="cp-compare-variant">Edge button</span></a></th>
+  <td class="cp-compare-render-cell"><div class="cp-compare-shot"><img class="cp-compare-png" alt=""></div></td>
+  <td class="cp-compare-diff-cell"><div class="cp-compare-shot"><canvas class="cp-compare-diff" aria-label="Highlighted pixel difference"></canvas></div></td>
+<td class="cp-compare-target-cell"><div class="cp-compare-shot"><img class="cp-compare-vector" alt=""><canvas class="cp-compare-rc" hidden></canvas></div></td>
+  <td class="cp-compare-score">waiting…</td>
+</tr>
+<tr class="cp-compare-row" data-label="appcard"
+  data-hay="appcard appcard__ideal__default" data-preview-ids="appcard__ideal__default" data-png-neutral="/wear-m3-catalog/render/appcard__ideal__default.png" data-svg-neutral="/wear-m3-catalog/render/appcard__ideal__default.svg" data-reference-neutral="/wear-m3-catalog/reference/appcard__ideal__default.png" data-reference-detail-neutral="/wear-m3-catalog/compare/appcard__ideal__default?reference=appcard__ideal__default">
+  <th scope="row"><a href="/wear-m3-catalog/p/appcard__ideal__default">appcard</a></th>
+  <td class="cp-compare-render-cell"><div class="cp-compare-shot"><img class="cp-compare-png" alt=""></div></td>
+  <td class="cp-compare-diff-cell"><div class="cp-compare-shot"><canvas class="cp-compare-diff" aria-label="Highlighted pixel difference"></canvas></div></td>
+<td class="cp-compare-target-cell"><div class="cp-compare-shot"><img class="cp-compare-vector" alt=""><canvas class="cp-compare-rc" hidden></canvas></div></td>
+  <td class="cp-compare-score">waiting…</td>
+</tr>
+<tr class="cp-compare-row" data-label="button-child"
+  data-hay="button-child button-child__ideal__default" data-preview-ids="button-child__ideal__default" data-png-neutral="/wear-m3-catalog/render/button-child__ideal__default.png" data-svg-neutral="/wear-m3-catalog/render/button-child__ideal__default.svg" data-reference-neutral="/wear-m3-catalog/reference/button-child__ideal__default.png" data-reference-detail-neutral="/wear-m3-catalog/compare/button-child__ideal__default?reference=button-child__ideal__default">
+  <th scope="row"><a href="/wear-m3-catalog/p/button-child__ideal__default">button-child</a></th>
+  <td class="cp-compare-render-cell"><div class="cp-compare-shot"><img class="cp-compare-png" alt=""></div></td>
+  <td class="cp-compare-diff-cell"><div class="cp-compare-shot"><canvas class="cp-compare-diff" aria-label="Highlighted pixel difference"></canvas></div></td>
+<td class="cp-compare-target-cell"><div class="cp-compare-shot"><img class="cp-compare-vector" alt=""><canvas class="cp-compare-rc" hidden></canvas></div></td>
+  <td class="cp-compare-score">waiting…</td>
+</tr>
+<tr class="cp-compare-row" data-label="button-child — Disabled"
+  data-hay="button-child — disabled button-child__ideal__disabled" data-preview-ids="button-child__ideal__disabled" data-png-neutral="/wear-m3-catalog/render/button-child__ideal__disabled.png" data-svg-neutral="/wear-m3-catalog/render/button-child__ideal__disabled.svg" data-reference-neutral="/wear-m3-catalog/reference/button-child__ideal__disabled.png" data-reference-detail-neutral="/wear-m3-catalog/compare/button-child__ideal__disabled?reference=button-child__ideal__disabled">
+  <th scope="row"><a href="/wear-m3-catalog/p/button-child__ideal__disabled">button-child<span class="cp-compare-variant">Disabled</span></a></th>
+  <td class="cp-compare-render-cell"><div class="cp-compare-shot"><img class="cp-compare-png" alt=""></div></td>
+  <td class="cp-compare-diff-cell"><div class="cp-compare-shot"><canvas class="cp-compare-diff" aria-label="Highlighted pixel difference"></canvas></div></td>
+<td class="cp-compare-target-cell"><div class="cp-compare-shot"><img class="cp-compare-vector" alt=""><canvas class="cp-compare-rc" hidden></canvas></div></td>
+  <td class="cp-compare-score">waiting…</td>
+</tr>
+<tr class="cp-compare-row" data-label="button-child — Icon"
+  data-hay="button-child — icon button-child__ideal__icon" data-preview-ids="button-child__ideal__icon" data-png-neutral="/wear-m3-catalog/render/button-child__ideal__icon.png" data-svg-neutral="/wear-m3-catalog/render/button-child__ideal__icon.svg" data-reference-neutral="/wear-m3-catalog/reference/button-child__ideal__icon.png" data-reference-detail-neutral="/wear-m3-catalog/compare/button-child__ideal__icon?reference=button-child__ideal__icon">
+  <th scope="row"><a href="/wear-m3-catalog/p/button-child__ideal__icon">button-child<span class="cp-compare-variant">Icon</span></a></th>
+  <td class="cp-compare-render-cell"><div class="cp-compare-shot"><img class="cp-compare-png" alt=""></div></td>
+  <td class="cp-compare-diff-cell"><div class="cp-compare-shot"><canvas class="cp-compare-diff" aria-label="Highlighted pixel difference"></canvas></div></td>
+<td class="cp-compare-target-cell"><div class="cp-compare-shot"><img class="cp-compare-vector" alt=""><canvas class="cp-compare-rc" hidden></canvas></div></td>
+  <td class="cp-compare-score">waiting…</td>
+</tr></tbody>
+          </table>
+        </div>
+        <p id="cp-compare-empty" class="cp-empty" hidden>No comparisons match this filter.</p></div>
+          
+        </div>
+        <!-- The components bundle is UNCONDITIONAL here now: `<cp-compare-wall>` is the wall
+             itself, not just the RC lane's player, so a catalog with no Remote Compose would
+             otherwise get a page whose element never upgrades. The tag comes after
+             `format-compare.js` for tidiness only — the element reads
+             `window.ComposePreviewCompare` when it scores rather than when it upgrades, so no
+             script order can silence it. -->
+        <script src="/assets/serve-components.js"></script>
+        <script src="/assets/format-compare.js"></script>
+        <cp-compare-wall></cp-compare-wall>
+        </main>
+        <footer class="cp-site-footer">
+          <div class="cp-site-footer-links">
+            <a href="/wear-m3-catalog/feed.xml" class="cp-changelog-link" title="What changed in this design system, newest first (RSS)"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><circle cx="3" cy="13" r="2"/><path d="M1 8.5a6.5 6.5 0 016.5 6.5h-2A4.5 4.5 0 001 10.5v-2z"/><path d="M1 3a12 12 0 0112 12h-2A10 10 0 001 5V3z"/></svg> Changelog</a> ·
+            <a href="https://github.com/yschimke/compose-ai-tools"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> GitHub</a> ·
+            <form class="cp-report-bug" method="get" action="/report-bug"><input type="hidden" name="from" value=""><input type="hidden" name="token" value=""><input type="hidden" name="scheme" value=""><button type="submit" class="cp-report-bug-link" title="Report a bug in the preview server itself — not in a preview"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> report a server bug</button></form> ·
+            <a href="/version">/version</a> · <span class="cp-about-ver" title="running preview-server build">server v1.29.0</span>
+          </div>
+        </footer>
+        <div class="cp-fab" data-cp-capture-src="/assets/report-capture.js">
+          <details class="cp-fab-menu">
+            <summary class="cp-fab-btn" title="Report a problem" aria-label="Report a problem"
+              ><svg class="cp-fab-mark" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12.4a7.7 7.7 0 0 1-8.3 7.6c-.7 0-1.4-.1-2-.3L4 21l1.4-3.9a7.3 7.3 0 0 1-1.9-4.9 7.7 7.7 0 0 1 8.5-7.6 7.8 7.8 0 0 1 8.5 7.8z"/><path d="M12 8.4v4"/><path d="M12 15.4h.01"/></svg></summary>
+            <div class="cp-fab-panel">
+              <p class="cp-fab-head">Report a problem</p>
+              <p class="cp-fab-sub">Two trackers &mdash; pick whichever owns the thing that is
+                wrong.</p>
+              <a class="cp-fab-choice cp-fab-catalog" href="#cp-report" hidden>
+                <span class="cp-fab-what">Something is wrong with this <strong>preview</strong></span>
+                <span class="cp-fab-who">wrong colours, wrong spec, a state that is missing</span>
+              </a>
+              <form class="cp-report-bug" method="get" action="/report-bug"><input type="hidden" name="from" value=""><input type="hidden" name="token" value=""><input type="hidden" name="scheme" value=""><button type="submit" class="cp-fab-choice"><span class="cp-fab-what">Something is wrong with the <strong>preview server</strong></span><span class="cp-fab-who">the page, a control, a render that failed &mdash; goes to <code>yschimke/compose-ai-tools</code></span></button></form>
+              <div class="cp-shot" hidden>
+                <p class="cp-shot-head">Capture what you can see</p>
+                <p class="cp-fab-who">The report embeds the plain render. Anything the browser composes
+                  &mdash; the spec triptych, a wipe, an overlay, an error &mdash; only reaches the issue as a
+                  picture you take.</p>
+                <div class="cp-shot-modes">
+                  <button type="button" class="cp-shot-mode" data-cp-capture="view"
+                    title="The whole browser viewport, as it is now">Whole view</button>
+                  <button type="button" class="cp-shot-mode" data-cp-capture="region"
+                    title="Drag a box around the part that is wrong">Region</button>
+                  <button type="button" class="cp-shot-mode" data-cp-capture="element"
+                    title="Point at one element — a render, a table, a single cell">Element</button>
+                </div>
+                <p class="cp-shot-note" role="status"></p>
+                <ul class="cp-shot-list"></ul>
+              </div>
+            </div>
+          </details>
+        </div>
+        <script src="/assets/keyboard-navigation.js"></script>
+      </body>
+    </html>

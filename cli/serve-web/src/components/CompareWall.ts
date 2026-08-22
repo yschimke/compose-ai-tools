@@ -4,7 +4,9 @@
 // Three lanes over one table. SVG and Remote Compose compare a render against an export of THAT
 // render, so they share geometry by construction and report a bare percentage. The reference lane
 // compares independently-authored artwork — the design's own drawing — and is the only one that
-// carries a proportion figure.
+// carries a proportion figure, and the only one with a middle column: the delta map between the two
+// panels beside it, the same triptych the detail page opens onto, painted from the same normalised
+// frames the row's percentage is measured over.
 //
 // The scoring itself still belongs to `format-compare.js`, reached through the typed handle in
 // `compare/api.ts`. This element owns the wall: which two artifacts a row pairs, what the page is
@@ -16,6 +18,7 @@
 import { LitElement } from "lit";
 import { customElement } from "lit/decorators.js";
 import { compareApi } from "../compare/api.js";
+import { compareImageUrls } from "../compare/detail.js";
 import { grade } from "../compare/grade.js";
 import {
     rowTheme,
@@ -23,6 +26,7 @@ import {
     type Available,
     type Format,
 } from "../compare/pairing.js";
+import { specLeadsColumns, targetHeadLabel } from "../compare/columns.js";
 import { initialState, poppedState, type WallState } from "../compare/state.js";
 import { GEOMETRY_REPORT_THRESHOLD } from "../compare/thresholds.js";
 import {
@@ -35,6 +39,19 @@ import "../chrome/pageTheme.js";
 import { whenParsed } from "../dom/whenParsed.js";
 // Types only: the player bundle is script-injected at runtime, never imported.
 import type { RcPlayer } from "../rc/player.js";
+
+/**
+ * Longest side the wall keeps a delta map at.
+ *
+ * The detail page holds ONE map and shows it as large as the window allows, so it keeps the
+ * normalised frame's own dimensions. A wall holds one per row — every row of a catalog with design
+ * references, which for the published Wear catalog is 233 — and shows each in a 200px column at most
+ * 220px tall. Retaining the full normalised size there is backing store nobody can see: a wall of
+ * phone-sized captures would hold hundreds of megabytes of canvas, and a capture past the browser's
+ * canvas limit would turn a row that used to score into "unavailable". 440 is twice the tallest the
+ * column ever draws, so the map is still crisp at 2× device pixel ratio.
+ */
+const MAP_MAX_SIDE = 440;
 
 @customElement("cp-compare-wall")
 export class CompareWall extends LitElement {
@@ -50,6 +67,11 @@ export class CompareWall extends LitElement {
     /** The published Remote Compose player wall, when this catalog has one. */
     private lanesPane: HTMLElement | null = null;
     private formatsPane: HTMLElement | null = null;
+    /** The two picture columns' headers, so the pair can swap sides and stay named. */
+    private renderHead: HTMLElement | null = null;
+    private targetHead: HTMLElement | null = null;
+    /** The middle column's header, which rides between the pair wherever the pair goes. */
+    private diffHead: HTMLElement | null = null;
 
     private available: Available = { svg: false, rc: false, reference: false };
     private state!: WallState;
@@ -93,6 +115,9 @@ export class CompareWall extends LitElement {
             root.querySelectorAll<HTMLElement>(".cp-compare-row"),
         );
         this.body = root.querySelector("#cp-compare-formats tbody");
+        this.renderHead = root.querySelector(".cp-compare-render-head");
+        this.targetHead = root.querySelector(".cp-compare-target-head");
+        this.diffHead = root.querySelector(".cp-compare-diff-head");
         this.lanesPane = document.getElementById("cp-rc-lanes");
         this.formatsPane = document.getElementById("cp-compare-formats");
         this.count = document.getElementById("cp-compare-count");
@@ -235,6 +260,7 @@ export class CompareWall extends LitElement {
         }
         this.root.setAttribute("data-format", this.state.format);
         this.root.setAttribute("data-theme", this.state.theme);
+        this.orderColumns();
 
         // The lane wall is its own view: it owns its rows, its reference picker and its diffs, and
         // needs none of the per-row scoring below — every number it shows was computed offline. Hand
@@ -268,6 +294,36 @@ export class CompareWall extends LitElement {
             for (const row of visible) this.body?.appendChild(row);
             this.applySearch();
         });
+    }
+
+    /**
+     * Put the design spec on the left of the render, on the lane where there is one.
+     *
+     * The server renders the table in the order its OWN default format wants; a visitor who arrives
+     * on `?format=reference`, or presses the Figma button, changes the question the two columns are
+     * answering, so the columns move to match. Moving the cells (rather than reordering with CSS)
+     * is what keeps the header, the picture and the copied-out DOM agreeing — and a table cell has
+     * no `order` to give anyway.
+     *
+     * Idempotent: every run re-asserts the order, and a pair already in it is left untouched.
+     */
+    private orderColumns(): void {
+        const specFirst = specLeadsColumns(this.state.format);
+        if (this.targetHead) {
+            this.targetHead.textContent = targetHeadLabel(
+                this.state.format,
+                this.root.getAttribute("data-reference-label") ?? "",
+            );
+            lead(this.targetHead, this.renderHead, specFirst, this.diffHead);
+        }
+        for (const row of this.rows) {
+            lead(
+                cellOf(row, ".cp-compare-target-cell"),
+                cellOf(row, ".cp-compare-render-cell"),
+                specFirst,
+                cellOf(row, ".cp-compare-diff-cell"),
+            );
+        }
     }
 
     private applySearch(): void {
@@ -307,6 +363,15 @@ export class CompareWall extends LitElement {
     // ---- one row -------------------------------------------------------------
 
     private async scoreRow(row: HTMLElement, runId: number): Promise<void> {
+        // Nothing below may touch the row unless this chain is still the current one. Bumping
+        // `sequence` on a lane switch stops an abandoned run's RESULTS from landing, but the chain
+        // itself keeps walking its remaining rows — and everything between here and the awaited
+        // measurement writes to the row on the way past: the vector's src, the score cell's
+        // "comparing…", the blanked delta map. A stale chain arriving behind a finished one
+        // therefore wiped rows the visitor was already reading and left them that way, because the
+        // guard further down then discarded the very measurement that would have filled them back
+        // in. Checked here, an abandoned chain costs one comparison per remaining row and no paint.
+        if (runId !== this.sequence) return;
         const sources = this.sourcesOf(row);
         const variant = variantFor(
             sources,
@@ -319,7 +384,11 @@ export class CompareWall extends LitElement {
         const png = row.querySelector<HTMLImageElement>(".cp-compare-png");
         const vector =
             row.querySelector<HTMLImageElement>(".cp-compare-vector");
-        const canvas = row.querySelector("canvas");
+        // Two canvases per row now, so both are named: the delta map in the middle column and the
+        // one the Remote Compose lane plays into. A bare `querySelector("canvas")` would have
+        // started returning the diff, and the rc lane would have scored an empty frame.
+        const canvas = row.querySelector<HTMLCanvasElement>(".cp-compare-rc");
+        const diff = row.querySelector<HTMLCanvasElement>(".cp-compare-diff");
         if (!pngUrl || !candidateUrl || !score || !png || !vector || !canvas) {
             row.hidden = true;
             return;
@@ -339,6 +408,9 @@ export class CompareWall extends LitElement {
         score.className = "cp-compare-score";
 
         const format = this.state.format;
+        const detail = () => {
+            location.href = sources("reference-detail", variant);
+        };
         if (format === "svg" || format === "reference") {
             vector.hidden = false;
             canvas.hidden = true;
@@ -346,26 +418,43 @@ export class CompareWall extends LitElement {
             vector.alt = `${row.getAttribute("data-label")}${format === "svg" ? " SVG" : " design reference"}`;
             vector.title =
                 format === "reference" ? "Open Reference / Diff / Actual" : "";
-            vector.onclick =
-                format === "reference"
-                    ? () => {
-                          location.href = sources("reference-detail", variant);
-                      }
-                    : null;
+            vector.onclick = format === "reference" ? detail : null;
         } else {
             vector.hidden = true;
             canvas.hidden = false;
+        }
+        if (diff) {
+            // Blanked before the run, not just repainted after it: the map is only redrawn when the
+            // measurement succeeds, so a row that goes unmeasurable — or a lane switch away from the
+            // reference — would otherwise leave the PREVIOUS pair's magenta standing beside the new
+            // render, which reads as a finding rather than as stale paint.
+            diff.width = 0;
+            diff.height = 0;
+            diff.setAttribute(
+                "aria-label",
+                `${row.getAttribute("data-label")} difference from the design reference`,
+            );
+            diff.title =
+                format === "reference" ? "Open Reference / Diff / Actual" : "";
+            diff.onclick = format === "reference" ? detail : null;
         }
 
         try {
             const measured = await this.measure(
                 format,
-                row,
                 pngUrl,
                 candidateUrl,
                 canvas,
+                Boolean(diff),
             );
             if (runId !== this.sequence) return;
+            // Only NOW does the map reach the row. `measure` drew it into a canvas of its own, and
+            // that ordering is the whole point: the abandoned lane's rows are still in flight when a
+            // switch starts a second chain over the same elements, so a comparison that painted the
+            // shared canvas before this check could land after the new one and leave the old theme's
+            // magenta beside the new render and the new percentage — the stale-paint-reads-as-a-
+            // finding failure, arriving by the one route blanking the canvas up front cannot close.
+            if (diff && measured.map) this.paintMap(measured.map, diff);
             row.setAttribute("data-score", String(measured.percent));
             score.textContent = `${measured.percent.toFixed(1)}%`;
             score.className = `cp-compare-score cp-compare-score--${grade(measured.percent)}`;
@@ -401,11 +490,15 @@ export class CompareWall extends LitElement {
      */
     private async measure(
         format: Format,
-        row: HTMLElement,
         pngUrl: string,
         candidateUrl: string,
         canvas: HTMLCanvasElement,
-    ): Promise<{ percent: number; geometry?: number }> {
+        withMap: boolean,
+    ): Promise<{
+        percent: number;
+        geometry?: number;
+        map?: HTMLCanvasElement;
+    }> {
         const compare = compareApi();
         if (!compare) throw new Error("no scorer");
         // The vector lanes score a render against an export of that same render, so they share its
@@ -417,11 +510,52 @@ export class CompareWall extends LitElement {
             };
         }
         if (format === "reference") {
-            return compare.scoreImageUrls(candidateUrl, pngUrl);
+            if (!withMap) return compare.scoreImageUrls(candidateUrl, pngUrl);
+            // The same composition the detail page measures with, for the same reason: normalise
+            // the pair ONCE, then diff and score those frames, so the map in the middle column and
+            // the percentage at the end of the row are describing the same pixels. The number is
+            // unchanged — `compareImageUrls` scores the decoded originals, which is what
+            // `scoreImageUrls` did with its own two fetches.
+            //
+            // Painted into a canvas belonging to THIS call rather than to the row: it is handed back
+            // for the caller to copy in once the run has been validated, and it is thrown away
+            // afterwards instead of being retained per row at the normalised frame's full size.
+            const map = document.createElement("canvas");
+            const result = await compareImageUrls(
+                compare,
+                candidateUrl,
+                pngUrl,
+                map,
+                MAP_MAX_SIDE,
+            );
+            return { percent: result.score, geometry: result.geometry, map };
         }
         return {
             percent: await this.renderRc(pngUrl, candidateUrl, canvas, compare),
         };
+    }
+
+    /**
+     * Copy a freshly-measured delta map into the row's canvas, bounded to {@link MAP_MAX_SIDE}.
+     *
+     * The dimensions are set before the context is asked for, so a row still reports a painted map
+     * even where a 2D context is unavailable — that is the state a caller reads to tell a measured
+     * row from a blanked one, and it must not depend on the drawing itself succeeding.
+     */
+    private paintMap(
+        source: HTMLCanvasElement,
+        target: HTMLCanvasElement,
+    ): void {
+        const scale = Math.min(
+            1,
+            MAP_MAX_SIDE / Math.max(source.width, source.height, 1),
+        );
+        target.width = Math.max(1, Math.round(source.width * scale));
+        target.height = Math.max(1, Math.round(source.height * scale));
+        const context = target.getContext("2d");
+        if (!context) return;
+        context.clearRect(0, 0, target.width, target.height);
+        context.drawImage(source, 0, 0, target.width, target.height);
     }
 
     // ---- the client-rendered Remote Compose lane -----------------------------
@@ -500,4 +634,42 @@ declare global {
     interface HTMLElementTagNameMap {
         "cp-compare-wall": CompareWall;
     }
+}
+
+/** A row's picture cell, by its own class — position is what we are about to change. */
+function cellOf(row: HTMLElement, selector: string): HTMLElement | null {
+    return row.querySelector<HTMLElement>(selector);
+}
+
+/**
+ * Ensure [spec] sits before [render] when [specFirst], else after it, with [middle] between them.
+ *
+ * Both have to be present and siblings for there to be an order at all — a table rendered with the
+ * pair in one cell (or with one of them absent) is left exactly as it is rather than half-moved.
+ *
+ * [middle] is the delta map, and it has to be part of THIS decision rather than left where the
+ * server put it: it is only a diff of the two pictures if it sits between them, and swapping a pair
+ * that had something parked in the middle would otherwise shunt that something to the end. Absent
+ * or in another row, it is ignored and the pair is ordered on its own.
+ */
+function lead(
+    spec: HTMLElement | null,
+    render: HTMLElement | null,
+    specFirst: boolean,
+    middle: HTMLElement | null = null,
+): void {
+    if (!spec || !render || spec === render) return;
+    const parent = spec.parentElement;
+    if (!parent || render.parentElement !== parent) return;
+    const [first, second] = specFirst ? [spec, render] : [render, spec];
+    const seat = middle?.parentElement === parent ? middle : null;
+    if (!seat) {
+        if (first.nextElementSibling === second) return;
+        parent.insertBefore(first, second);
+        return;
+    }
+    if (first.nextElementSibling === seat && seat.nextElementSibling === second)
+        return;
+    parent.insertBefore(first, second);
+    parent.insertBefore(seat, second);
 }

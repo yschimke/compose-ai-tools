@@ -42,6 +42,15 @@ both rely on.
 the canonical-plane transform is a step of the comparison. Then relax or keep `space` validation
 deliberately rather than by accident.
 
+> **Answered: (a).** A plane is a property of a comparison and the index is a property of a render,
+> and (b) would make the published `tags/index.json` depend on the acceptances — breaking the
+> "publishing must not require a re-render" property batches 02 and 05 both rely on. It is also what
+> both producers already do, so (a) is a correction to the doc rather than a change to the code.
+>
+> Settled here because the `compose-parity-locator/v1` erratum needed it: the reserved `bounds`
+> field names its space and `v1` accepts `render-pixels` only. §2 of the contract carries the rule,
+> and both parsers refuse any other space rather than storing the guess.
+
 ## D2 — which surface carries the report form
 
 **Blocks:** 01 directly — it decides which page the form is built on, and 01 builds it. 02 and 03

@@ -3,11 +3,14 @@ package ee.schimke.composeai.cli.serve
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -313,7 +316,7 @@ class ServeIssueReportTest {
     val written =
       fixture["cases"]!!.jsonArray.map { it.jsonObject }.filter { it.containsKey("writer") }
     // A fixture that silently stopped carrying writer cases would pass every assertion below.
-    assertEquals(4, written.size, "the fixture must keep exercising the writer")
+    assertEquals(7, written.size, "the fixture must keep exercising the writer")
     for (case in written) {
       val name = case["name"]!!.jsonPrimitive.content
       val writer = case["writer"]!!.jsonObject
@@ -329,6 +332,8 @@ class ServeIssueReportTest {
             writer["overrides"]!!.jsonObject.entries.associate {
               it.key to it.value.jsonPrimitive.content
             },
+          element = writer["element"]?.jsonPrimitive?.contentOrNull,
+          bounds = writer["bounds"]?.jsonObject?.let(::boundsOf),
           revision = writer["revision"]?.jsonPrimitive?.contentOrNull,
         )
       val block = case["block"]!!.jsonPrimitive.content
@@ -336,4 +341,170 @@ class ServeIssueReportTest {
       assertEquals(locator, ServeIssueReport.locatorFromBody(block), name)
     }
   }
+
+  @Test
+  fun `the writer emits one block per component of an umbrella report`() {
+    // The other half of the multi-component contract: `parity-issues.test.mjs` asserts the producer
+    // reads these bodies back as one row per block. An issue like m3-catalog#42 names three
+    // components; one block can name one, so the body is their concatenation, in order.
+    val fixture =
+      Json.parseToJsonElement(
+          File("../scripts/design-artifacts/fixtures/parity-locators.json").readText()
+        )
+        .jsonObject
+    val bodies =
+      fixture["bodies"]!!.jsonArray.map { it.jsonObject }.filter { it.containsKey("writers") }
+    assertEquals(1, bodies.size, "the fixture must keep exercising the writer")
+    for (case in bodies) {
+      val name = case["name"]!!.jsonPrimitive.content
+      val locators =
+        case["writers"]!!
+          .jsonArray
+          .map { it.jsonObject }
+          .map { writer ->
+            ServeIssueReport.Locator(
+              repository = writer["repository"]!!.jsonPrimitive.content,
+              system = writer["system"]!!.jsonPrimitive.content,
+              componentId = writer["componentId"]!!.jsonPrimitive.content,
+              previewId = writer["previewId"]!!.jsonPrimitive.content,
+              referenceId = writer["referenceId"]!!.jsonPrimitive.content,
+              variant = writer["variant"]!!.jsonPrimitive.content,
+              overrides =
+                writer["overrides"]!!.jsonObject.entries.associate {
+                  it.key to it.value.jsonPrimitive.content
+                },
+            )
+          }
+      val body = case["body"]!!.jsonPrimitive.content
+      assertEquals(body, locators.joinToString("") { ServeIssueReport.locatorBlock(it) }, name)
+      assertEquals(locators, ServeIssueReport.locatorsFromBody(body), name)
+      // The single-locator reader keeps its old answer: the first block a body carries.
+      assertEquals(locators.first(), ServeIssueReport.locatorFromBody(body), name)
+    }
+  }
+
+  @Test
+  fun `a bounds rectangle is refused unless it names the plane v1 settled on`() {
+    // D1: both tag-index producers publish render pixels and the canonical-plane transform belongs
+    // to the comparison. A rectangle carrying any other space would be compared against a baseline
+    // measured somewhere else, which is how an element that never moved reports as `moved`.
+    val bounds = ServeIssueReport.Bounds(x = 18, y = 18, width = 24, height = 24)
+    assertEquals(
+      """{"height":24,"space":"render-pixels","width":24,"x":18,"y":18}""",
+      ServeIssueReport.canonicalBounds(bounds),
+    )
+    val block =
+      ServeIssueReport.locatorBlock(
+        ServeIssueReport.Locator(
+          repository = "yschimke/m3-catalog",
+          system = "m3-catalog",
+          componentId = "IconButton/Tonal",
+          previewId = "iconbutton-tonal__ideal__default__light",
+          referenceId = "iconbutton-tonal-figma",
+          variant = "ideal/default/light",
+          overrides = emptyMap(),
+          element = "glyph",
+          bounds = bounds,
+        )
+      )
+    assertEquals(bounds, ServeIssueReport.locatorFromBody(block)?.bounds)
+    assertEquals("glyph", ServeIssueReport.locatorFromBody(block)?.element)
+    assertTrue("""element: "glyph"""" in block, "the tag is written as a JSON string")
+    assertNull(
+      ServeIssueReport.locatorFromBody(block.replace("render-pixels", "display-pixels")),
+      "another plane is refused rather than stored as a guess",
+    )
+    assertNull(
+      ServeIssueReport.locatorFromBody(
+        block.replace(
+          """{"height":24,"space":"render-pixels","width":24,"x":18,"y":18}""",
+          """{"x":18,"y":18,"width":24,"height":24,"space":"render-pixels"}""",
+        )
+      ),
+      "non-canonical key order is refused, as it is for overrides",
+    )
+  }
+
+  @Test
+  fun `a tag keeps its edge whitespace, and a field value is read the way both engines read it`() {
+    // A tag index keys on the exact string, so `" glyph "` and `"glyph"` are different elements and
+    // normalising one into the other would point an acceptance at the wrong one — or at none. The
+    // quoting is what makes keeping it safe: both parsers trim the *line* value, and the spaces
+    // live
+    // inside the quotes where that trim cannot reach them.
+    val locator =
+      ServeIssueReport.locator(
+        ServeIssueReport.Context(
+          repo = "yschimke/m3-catalog",
+          previewId = "iconbutton-tonal__ideal__default__light",
+          system = "m3-catalog",
+          componentId = "IconButton/Tonal",
+          referenceId = "iconbutton-tonal-figma",
+          element = "  glyph  ",
+        )
+      )
+    assertEquals("  glyph  ", locator?.element)
+    val block = ServeIssueReport.locatorBlock(locator!!)
+    assertTrue("""element: "  glyph  """" in block, block)
+    assertEquals(locator, ServeIssueReport.locatorFromBody(block), "the block round-trips")
+    // And the line is read the same way here and in the producer: both trim both ends, so a body
+    // hand-edited to pad *outside* the quotes still reads the same tag.
+    val padded = block.replace("""element: "  glyph  """", """element: "  glyph  "  """)
+    assertEquals("  glyph  ", ServeIssueReport.locatorFromBody(padded)?.element)
+  }
+
+  @Test
+  fun `a tag cannot become syntax, however it is spelled`() {
+    // A `testTag` is arbitrary text and the block is line-oriented, so a bare value carrying a
+    // newline would not stay one field: `row\nrevision: injected` would read back as an element
+    // plus a revision nobody wrote, and a fence delimiter inside a tag could end the block early
+    // and drop the whole issue from the index. JSON quoting is what makes the value inert.
+    val locator =
+      ServeIssueReport.locator(
+        ServeIssueReport.Context(
+          repo = "yschimke/m3-catalog",
+          previewId = "iconbutton-tonal__ideal__default__light",
+          system = "m3-catalog",
+          componentId = "IconButton/Tonal",
+          referenceId = "iconbutton-tonal-figma",
+          element = "row\nrevision: injected",
+        )
+      )!!
+    val block = ServeIssueReport.locatorBlock(locator)
+    assertTrue("""element: "row\nrevision: injected"""" in block, block)
+    val read = ServeIssueReport.locatorFromBody(block)
+    assertEquals("row\nrevision: injected", read?.element)
+    assertNull(read?.revision, "the injected line is part of the tag, not a field of its own")
+    // A bare tag is refused rather than read as syntax.
+    assertNull(
+      ServeIssueReport.locatorFromBody(block.replace(""""row\nrevision: injected"""", "row"))
+    )
+  }
+
+  @Test
+  fun `an invalid rectangle cannot be constructed, let alone written into a report`() {
+    // The writer must not be able to emit a rectangle its own producer refuses: the reporter would
+    // file a body that looks right and the whole issue would drop out of the index when the
+    // workflow next ran. Batch 03's drag selection starts in display pixels, so the missed
+    // conversion is a real path — and this is where it stops, at construction.
+    assertFailsWith<IllegalArgumentException> {
+      ServeIssueReport.Bounds(x = 0, y = 0, width = 24, height = 24, space = "display-pixels")
+    }
+    // A negative origin is NOT invalid: a tagged node can extend above or left of the render root,
+    // and both tag-index producers publish signed coordinates for exactly that. Refusing it would
+    // leave batch 03 unable to record the bounds the index handed it.
+    assertEquals(-4, ServeIssueReport.Bounds(x = -4, y = -2, width = 24, height = 24).x)
+    assertFailsWith<IllegalArgumentException> {
+      ServeIssueReport.Bounds(x = 0, y = 0, width = 0, height = 24)
+    }
+  }
+
+  private fun boundsOf(writer: JsonObject): ServeIssueReport.Bounds =
+    ServeIssueReport.Bounds(
+      x = writer["x"]!!.jsonPrimitive.int,
+      y = writer["y"]!!.jsonPrimitive.int,
+      width = writer["width"]!!.jsonPrimitive.int,
+      height = writer["height"]!!.jsonPrimitive.int,
+      space = writer["space"]!!.jsonPrimitive.content,
+    )
 }

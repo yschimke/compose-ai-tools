@@ -158,19 +158,42 @@ export function alphaBounds(data, width, height) {
 }
 
 /**
- * Where to start drawing a `placed`-long axis so that the content between `from` and `from + span`
- * (in source units, scaled by `scale`) sits centred in `target`.
- *
- * Clamped so that content which fits is never pushed off the edge by the resample's rounding. When
- * it does not fit — the content is larger than the canvas and something has to go — the fractional
- * edge is what goes, and the clamp does not apply.
+ * The tight box of non-transparent pixels inside `region` of an RGBA raster, or null when it holds
+ * none. Windowed rather than whole-raster so a caller that deliberately nominates a sub-rect keeps
+ * its meaning: only the artwork it named decides the placement.
  */
-function centreOn(from, span, scale, placed, target) {
-  const start = Math.floor(from * scale);
-  const end = Math.min(placed, Math.ceil((from + span) * scale));
-  let offset = Math.floor((target - span * scale) / 2 - from * scale);
-  if (end - start <= target) offset = Math.min(Math.max(offset, -start), target - end);
-  return offset;
+function drawnBoundsIn(data, width, region) {
+  let minX = region.x1;
+  let minY = region.y1;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = region.y0; y < region.y1; y++) {
+    const row = y * width * 4;
+    for (let x = region.x0; x < region.x1; x++) {
+      if (data[row + x * 4 + 3] === 0) continue;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (maxX < 0) return null;
+  return { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
+}
+
+/**
+ * Where to start drawing a `placed`-long axis so the content occupying `[start, start + size)` of
+ * it sits centred in `target`, clamped so content that fits is never pushed off an edge.
+ *
+ * `start` and `size` are measured in the RESAMPLED raster, not estimated from the source by the
+ * scale. Estimating was wrong twice over: once against the unrounded factor, and once more when a
+ * `ceil` on a fractional edge reported a 25-row content box as 26, skipped the clamp as "does not
+ * fit", and cropped the row it was protecting.
+ */
+function centreOn(start, size, target) {
+  const offset = Math.floor((target - size) / 2) - start;
+  if (size > target) return offset;
+  return Math.min(Math.max(offset, -start), target - (start + size));
 }
 
 /**
@@ -202,24 +225,36 @@ export function placeRgba(data, width, height, targetWidth, targetHeight, conten
   const scale = Math.min(1, targetWidth / keep.width, targetHeight / keep.height);
   const placedWidth = Math.max(1, Math.round(width * scale));
   const placedHeight = Math.max(1, Math.round(height * scale));
-  // Centre the CONTENT on the canvas, then say where that puts the frame around it.
-  //
-  // Measured against the scale the resample ACTUALLY applied, not the one asked for: the placed
-  // dimensions are rounded, and offsetting by the unrounded factor pushed a content box that was
-  // meant to fill the canvas a pixel past its edge — a 300-unit vector fitted to 151px published
-  // as 150, one column short, with no sign of it anywhere.
-  const scaleX = placedWidth / width;
-  const scaleY = placedHeight / height;
-  const box = {
-    width: placedWidth,
-    height: placedHeight,
-    x: centreOn(keep.x, keep.width, scaleX, placedWidth, targetWidth),
-    y: centreOn(keep.y, keep.height, scaleY, placedHeight, targetHeight),
-  };
   const placed =
     placedWidth === width && placedHeight === height
       ? data
       : resampleRgba(data, width, height, placedWidth, placedHeight);
+
+  // Where the content actually ended up, read off the resampled raster. The placed dimensions are
+  // rounded and a bilinear edge lands where it lands, so anything derived from `scale` alone is an
+  // estimate — and an estimate a pixel out either crops the artwork or mis-centres it.
+  const scaleX = placedWidth / width;
+  const scaleY = placedHeight / height;
+  const window = {
+    x0: Math.max(0, Math.floor(keep.x * scaleX) - 1),
+    y0: Math.max(0, Math.floor(keep.y * scaleY) - 1),
+    x1: Math.min(placedWidth, Math.ceil((keep.x + keep.width) * scaleX) + 1),
+    y1: Math.min(placedHeight, Math.ceil((keep.y + keep.height) * scaleY) + 1),
+  };
+  const drawn = drawnBoundsIn(placed, placedWidth, window) ?? {
+    x: window.x0,
+    y: window.y0,
+    width: Math.max(1, window.x1 - window.x0),
+    height: Math.max(1, window.y1 - window.y0),
+  };
+
+  // Centre the CONTENT on the canvas, then say where that puts the frame around it.
+  const box = {
+    width: placedWidth,
+    height: placedHeight,
+    x: centreOn(drawn.x, drawn.width, targetWidth),
+    y: centreOn(drawn.y, drawn.height, targetHeight),
+  };
   if (box.width === targetWidth && box.height === targetHeight && box.x === 0 && box.y === 0) {
     return { data: placed, box };
   }

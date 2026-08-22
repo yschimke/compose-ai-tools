@@ -77,20 +77,32 @@ Batches 01 and 02 were merged and unreachable for a while: nothing *called* them
 the acceptance schema is for, and it came out smaller and more awkward than "a dozen known
 differences" suggests. Two counts, and they are not the same number:
 
-- **Four of m3-catalog's ten can carry a locator** — #40, #41 and #87 do; #89 could, and is left out
-  only because there is nothing to accept in it. Of the rest, three (#85, #95, #86) are about
-  components this catalog does not publish, #91's variants are unauthored, and #42 and #93 name
-  several components each, which one locator cannot say.
+- **Six of m3-catalog's ten can carry a locator, now that a body may carry one block per
+  component** — #40, #41 and #87 already do; #42 (three blocks) and #93 (two) became expressible
+  with the erratum below; #89 could, and is left out only because there is nothing to accept in it.
+  The four that remain out are not a locator problem: #85, #95 and #86 are about components this
+  catalog does not publish, and #91's variants are unauthored, so after any split each piece still
+  has no preview to name.
 - **Four are acceptance candidates, across six sites** — #40, #41, #87, plus #42 three times over:
-  an acceptance is per preview, and §4 lets several of them share one tracking issue, so the case
-  the index cannot hold whole is still three acceptances. Only #40's mask is glyph-sized; #41's is
-  most of the bar, #87's a 2dp ring, and #42's a shadow surrounding each component.
+  an acceptance is per preview, and §4 lets several of them share one tracking issue. Only #40's
+  mask is glyph-sized; #41's is most of the bar, #87's a 2dp ring, and #42's a shadow surrounding
+  each component. #93 is indexable but has no pixel delta to accept, which is why the two counts
+  still name different issues.
 
 The per-issue verdicts and what each implies are in
-[the pilot population](../COMPONENT_PARITY_WORKFLOW.md#the-pilot-population-measured); batch 00's D1
-and D5 should be answered against those numbers rather than against the worked example. D1 also
-gates a second thing now: batch 01's `element` / `bounds` reservation never landed, so batch 03
-inherits either a `v1` erratum or a version bump.
+[the pilot population](../COMPONENT_PARITY_WORKFLOW.md#the-pilot-population-measured); batch 00's D5
+should be answered against those numbers rather than against the worked example.
+
+**Four decisions have since been settled, and two of them changed the wire:**
+
+- **D1 is answered (a)** — the tag index publishes render-pixel bounds and names its space; the
+  canonical-plane transform belongs to the comparison.
+- **An umbrella issue carries one locator block per component**, and index rows are keyed by issue ×
+  component in both engines. This unblocks #42 and #93.
+- **`element` and `bounds` are reserved in `v1`** — batch 01's requirement, landed late as an
+  erratum, so batch 03 adds a selection to the existing version rather than bumping to `v2`.
+- **An acceptance may be geometric**, with an element gate required wherever an element exists. #41
+  and #87 are expressible; batch 04 must carry both shapes.
 
 ## Conventions every batch inherits
 

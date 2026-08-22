@@ -75,6 +75,14 @@ object ServeDesignAnnotations {
     // there is no layout tree to take them from, so the two trees can never both describe one node.
     val containersFromSemantics = layout == null
     fun walkSemantics(node: ComposeSemanticsNode, enclosing: AnnotationBounds?) {
+      // An unplaced node was measured but never positioned, so it draws nothing and its bounds
+      // read as the frame's ORIGIN rather than as "nowhere" — the same rule the layout walk below
+      // applies, and the same reason. Wear's `AlertDialogContent` is the case that found this: it
+      // subcomposes a full trial copy of the dialog to decide whether the content has to scroll,
+      // and that copy reached the typography layer as a second title stacked in the top-left
+      // corner (yschimke/wear-m3-catalog#77). The whole subtree goes with it: nothing under a node
+      // that was never placed is on the frame either.
+      if (!node.placed) return
       val bounds = SlotBounds.parse(node.boundsInRoot)?.takeIf { it.hasArea() }
       var nextEnclosing = enclosing
       if (bounds != null) {
@@ -97,8 +105,10 @@ object ServeDesignAnnotations {
     if (layout != null) {
       fun walkLayout(node: LayoutInspectorNode, enclosing: AnnotationBounds?) {
         // An unplaced node was measured but never positioned, so its bounds describe nowhere on
-        // the frame.
-        val box = node.bounds.toAnnotationBounds()?.takeIf { node.placed }
+        // the frame — and nothing beneath it is on the frame either, whatever its own `placed`
+        // says. Suppressing only this node's box left a descendant free to draw one.
+        if (!node.placed) return
+        val box = node.bounds.toAnnotationBounds()
         var nextEnclosing = enclosing
         if (box != null) {
           val role = node.displayName ?: node.component

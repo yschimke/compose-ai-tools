@@ -16,6 +16,7 @@ class SemanticsWireframeSvgTest {
     testTag: String? = null,
     clickable: Boolean = false,
     mergeMode: String? = null,
+    placed: Boolean = true,
     children: List<ComposeSemanticsNode> = emptyList(),
   ) =
     ComposeSemanticsNode(
@@ -27,6 +28,7 @@ class SemanticsWireframeSvgTest {
       testTag = testTag,
       clickable = clickable,
       mergeMode = mergeMode,
+      placed = placed,
       children = children,
     )
 
@@ -83,6 +85,34 @@ class SemanticsWireframeSvgTest {
     val payload = ComposeSemanticsPayload(root = node("x", "0,0,200,60", mergeMode = "clearAndSet"))
     val svg = SemanticsWireframeSvg.render(payload)
     assertTrue(svg.contains("stroke-dasharray"))
+  }
+
+  @Test
+  fun unplacedSubtreeIsNotDrawn() {
+    // A `SubcomposeLayout` trial measure leaves a whole second copy of the content in the tree,
+    // measured and never placed — so it reports the ORIGIN and would stack over the real frame.
+    val payload =
+      ComposeSemanticsPayload(
+        root =
+          node(
+            "root",
+            "0,0,200,200",
+            children =
+              listOf(
+                node("title", "20,20,180,60", label = "Title"),
+                node(
+                  "measure",
+                  "0,0,200,120",
+                  placed = false,
+                  children = listOf(node("ghost", "0,0,160,40", label = "Title")),
+                ),
+              ),
+          )
+      )
+
+    val svg = SemanticsWireframeSvg.render(payload)
+
+    assertEquals(1, Regex("Title").findAll(svg).count())
   }
 
   @Test

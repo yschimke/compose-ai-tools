@@ -6100,9 +6100,18 @@ class ServeWebFixtureTest {
         assetText("serve.css").contains(".cp-sys-actions > a { pointer-events: auto; }"),
       "the action row passes clicks through to the tile link; only its chips take them",
     )
+    // Both halves on one line, and both load-bearing: the rounding, because `overflow: visible`
+    // leaves nothing to clip the layer's square corners to the card's radius; and `z-index: -1`,
+    // which drops the tint UNDER the card's content so it stops washing `primary` across a design
+    // system's own screenshot. Lowering the layer rather than raising the hero is deliberate — a
+    // raised hero also outranks the stretched tile link and has to refuse pointer events, and then
+    // the part of it hanging outside the card stops hovering the card at all. The harness's
+    // "the front door's state layer stays under the hero, and the break-out keeps its hover"
+    // contract proves that end in a browser; this pins the declaration the Kotlin side ships.
     assertTrue(
-      assetText("serve.css").contains(".cp-card.cp-sys::after { border-radius: inherit; }"),
-      "the state layer rounds itself, now that `overflow: visible` no longer clips it to the card",
+      assetText("serve.css")
+        .contains(".cp-card.cp-sys::after { border-radius: inherit; z-index: -1; }"),
+      "the state layer rounds itself and paints beneath the hero instead of over it",
     )
     assertTrue(
       assetText("serve.css")

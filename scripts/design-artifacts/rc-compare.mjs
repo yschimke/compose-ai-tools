@@ -905,11 +905,11 @@ fs.writeFileSync(
 
 // Link the page from the catalog gallery. The index is generated earlier in the
 // pipeline (before this step runs), so splice the nav link in next to the
-// existing "PNG vs SVG compare" one rather than threading a flag through it.
+// existing "SVG vs PNG compare" one rather than threading a flag through it.
 const indexPath = path.join(OUT, "index.html");
 if (fs.existsSync(indexPath)) {
   let index = fs.readFileSync(indexPath, "utf8");
-  const anchor = '<a class="pagelink" href="compare.html">PNG vs SVG compare ↗</a>';
+  const anchor = '<a class="pagelink" href="compare.html">SVG vs PNG compare ↗</a>';
   const rcLink = ' <a class="pagelink" href="rc-compare.html">PNG vs Remote Compose ↗</a>';
   if (index.includes(anchor) && !index.includes('href="rc-compare.html"')) {
     index = index.replace(anchor, anchor + rcLink);

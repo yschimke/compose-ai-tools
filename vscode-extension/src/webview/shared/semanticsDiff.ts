@@ -21,6 +21,11 @@ export interface SemanticsNode {
     text?: string | null;
     mergeMode?: string | null;
     clickable?: boolean;
+    /**
+     * Measured AND positioned on the frame (schema v15). Omitted when true,
+     * so read it as `placed !== false` rather than trusting the raw value.
+     */
+    placed?: boolean;
     editableText?: string | null;
     inputText?: string | null;
     /** Resolved line/overflow metrics, consolidated under one object in schema v6 (#1903). */
@@ -129,6 +134,11 @@ const COMPARED_FIELDS: Array<[string, Extractor]> = [
     ["text", (n) => asStr(n.text)],
     ["mergeMode", (n) => asStr(n.mergeMode)],
     ["clickable", (n) => String(n.clickable ?? false)],
+    // Compared, not pruned — see the Kotlin `SemanticsDiff.COMPARED_FIELDS`: a node leaving the
+    // frame is the most interesting thing that can happen to it, and every OTHER consumer of this
+    // tree skips unplaced subtrees. The producer omits the field when true, so an absent value
+    // has to normalise to `true` or a v14 snapshot would read as a change against a v15 one.
+    ["placed", (n) => String(n.placed ?? true)],
     ["editableText", (n) => asStr(n.editableText)],
     ["inputText", (n) => asStr(n.inputText)],
     ["layoutTruncated", (n) => asBool(n.textOverflow?.truncated)],

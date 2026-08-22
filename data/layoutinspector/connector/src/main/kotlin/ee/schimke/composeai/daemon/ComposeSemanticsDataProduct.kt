@@ -264,6 +264,11 @@ object ComposeSemanticsDataProducer {
           else -> null
         },
       clickable = cfg.getOrNull(SemanticsActions.OnClick) != null,
+      // Measured but never positioned is a state only the layout node knows about, and it is not
+      // rare: a `SubcomposeLayout` that measures a trial copy of its content to pick a layout
+      // leaves that copy in the semantics tree at the origin. Without this a consumer reads those
+      // bounds as the frame's top-left corner. See `ComposeSemanticsNode.placed`.
+      placed = layoutInfo.isPlaced,
       tokens = resolvedTokens(density),
       children = children.map { it.toWireNode(density) },
     )
@@ -903,6 +908,11 @@ object ComposeSemanticsDataProducer {
  */
 fun ComposeSemanticsNode.toProbeNodes(): List<RecordingProbeNode> = buildList {
   fun visit(node: ComposeSemanticsNode) {
+    // A trial-measured subtree is a second copy of content the frame draws once, and it was never
+    // placed. Probing it gives the recording backend duplicate matches: `assert.textEquals` fails
+    // as ambiguous, and `assert.notVisible` fails for content that was never drawn. See
+    // `ComposeSemanticsNode.placed`.
+    if (!node.placed) return
     val testTag = node.testTag?.takeIf { it.isNotBlank() }
     val text = node.text?.takeIf { it.isNotBlank() }
     val contentDescription = node.label?.takeIf { it.isNotBlank() && it != text }
@@ -947,6 +957,9 @@ fun ComposeSemanticsNode.toProbeNodes(): List<RecordingProbeNode> = buildList {
 private fun ComposeSemanticsNode.mergedDescendantText(): String? {
   val parts = mutableListOf<String>()
   fun collect(n: ComposeSemanticsNode) {
+    // Compose's merged semantics announce what is on screen, so an unplaced trial copy must not
+    // contribute — it would double the container's text. See `ComposeSemanticsNode.placed`.
+    if (!n.placed) return
     n.text?.takeIf { it.isNotBlank() }?.let { parts.add(it) }
     n.children.forEach(::collect)
   }

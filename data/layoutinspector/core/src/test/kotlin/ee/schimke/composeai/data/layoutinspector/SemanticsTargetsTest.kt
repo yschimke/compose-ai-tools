@@ -12,6 +12,7 @@ class SemanticsTargetsTest {
     testTag: String? = null,
     text: String? = null,
     label: String? = null,
+    placed: Boolean = true,
     children: List<ComposeSemanticsNode> = emptyList(),
   ) =
     ComposeSemanticsNode(
@@ -21,6 +22,7 @@ class SemanticsTargetsTest {
       testTag = testTag,
       text = text,
       label = label,
+      placed = placed,
       children = children,
     )
 
@@ -48,6 +50,49 @@ class SemanticsTargetsTest {
       TargetResolution.NotFound,
       SemanticsTargets.resolve(root, SemanticsTarget.Tag("cancel")),
     )
+  }
+
+  @Test
+  fun aTrialMeasuresCopyDoesNotMakeATargetAmbiguous() {
+    // Wear's `AlertDialogContent` subcomposes a trial copy of the whole dialog to choose between
+    // its scrolling and fixed layouts, so every string in it appears twice — and the copy is never
+    // placed, which is also why it reports the origin instead of a position of its own. Matching
+    // it turned an unambiguous target into `Ambiguous` between the real node and one an agent
+    // could not have dispatched at.
+    val root =
+      node(
+        children =
+          listOf(
+            node(bounds = "100,40,140,80", testTag = "submit"),
+            node(
+              bounds = "0,0,120,40",
+              placed = false,
+              children = listOf(node(bounds = "0,0,40,40", testTag = "submit")),
+            ),
+          )
+      )
+
+    val res = SemanticsTargets.resolve(root, SemanticsTarget.Tag("submit"))
+
+    assertTrue("expected a single match, got $res", res is TargetResolution.Resolved)
+    assertEquals(SemanticsPoint(120, 60), (res as TargetResolution.Resolved).point)
+  }
+
+  @Test
+  fun anUnplacedNodeIsNotUnderThePointer() {
+    // It reports the ORIGIN rather than nowhere, so a hit test finds it over the frame's top-left
+    // corner — and it wins, being the smaller box.
+    val root =
+      node(
+        bounds = "0,0,200,200",
+        children =
+          listOf(
+            node(bounds = "0,0,200,200", testTag = "screen"),
+            node(bounds = "0,0,40,40", placed = false, testTag = "ghost"),
+          ),
+      )
+
+    assertEquals(SemanticsTarget.Tag("screen"), SemanticsTargets.nodeAt(root, 10, 10))
   }
 
   @Test

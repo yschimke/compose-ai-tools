@@ -1,10 +1,16 @@
 /**
  * Render a self-contained `compare.html` for a design-artifact catalog: every
- * component on one row, its rendered **PNG** (the raster source of truth) in one
- * column, its editable **figma-svg** (re-rasterized *by the browser*) in a second,
+ * component on one row, its editable **figma-svg** (re-rasterized *by the browser*)
+ * in one column, its rendered **PNG** (the raster source of truth) in a second,
  * and a **structural-similarity score** in a third — so a designer can eyeball
- * every component's PNG↔SVG fidelity at once and spot which vectors drift. Rows
+ * every component's SVG↔PNG fidelity at once and spot which vectors drift. Rows
  * sort **worst-match-first** once scored, so the biggest divergences surface first.
+ *
+ * The design vector leads and the render follows, left to right, because that is
+ * how every other surface that pairs the two draws them: the viewer's spec lane
+ * (Spec / Diff / Render), its wipe seam, the focused Reference / Diff / Actual
+ * page, the `figma-svg | diff | render` fidelity composite, and the Figma column
+ * of the PR preview-diff comment.
  *
  * Override toolbar: the header carries a control bar (font scale, embedded-fonts
  * toggle, theme, backdrop) that re-applies each override to the *in-browser*
@@ -706,14 +712,14 @@ function componentRow(component, figmaSvgSlugs, figmaVariantSvgPaths, hybridSlug
 
   return `<tr class="crow"${rowAttrs}>
   <th scope="row" class="rowhead"><span class="cid">${esc(id)}</span><span class="grp">${esc(group)}</span></th>
-  <td class="col-png">${pngCell}</td>
   <td class="col-svg">${svgCell}</td>
+  <td class="col-png">${pngCell}</td>
   ${scoreCell}
 </tr>`;
 }
 
 /**
- * Render the catalog to a complete PNG-vs-SVG comparison page.
+ * Render the catalog to a complete SVG-vs-PNG comparison page.
  * @param {object} catalog the flattened manifest (system, title, components, …)
  * @param {object} [opts] { figmaSvgSlugs?: Set<string>, figmaVariantSvgPaths?: Set<string>,
  *   hybridSlugs?: Set<string> } — the back-compat slugs and exact per-variant paths written, plus
@@ -765,7 +771,7 @@ export function renderCompareHtml(catalog, opts = {}) {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${esc(title)} — PNG vs SVG compare</title>
+<title>${esc(title)} — SVG vs PNG compare</title>
 <style>
   :root { color-scheme: light dark; --bg:#0f0f10; --panel:#1b1b1d; --fg:#e8e8ea; --muted:#9b9ba1; --line:#2a2a2d;
     --good:#7dd87d; --warn:#e0c060; --bad:#e08080; --accent:#6ea8fe; }
@@ -838,7 +844,7 @@ export function renderCompareHtml(catalog, opts = {}) {
 </head>
 <body>
 <header class="top">
-  <h1>${esc(title)} — PNG vs SVG</h1>
+  <h1>${esc(title)} — SVG vs PNG</h1>
   <div class="subtitle">${subtitleParts.join(" · ")}</div>
   <div class="summary">
     <span><span class="k">avg structural match</span> <b id="avg">…</b></span>
@@ -854,8 +860,8 @@ export function renderCompareHtml(catalog, opts = {}) {
     <button type="button" id="ov-reset">Reset</button>
     <span class="ov-active" id="ov-active" hidden></span>
   </div>
-  <p class="note">Each row pairs the rendered <strong>PNG</strong> (raster source of truth) with the editable
-  <strong>figma-svg</strong> re-rasterized <em>by your browser</em>. The match column is a windowed
+  <p class="note">Each row pairs the editable <strong>figma-svg</strong> re-rasterized <em>by your browser</em>
+  with the rendered <strong>PNG</strong> (raster source of truth) it is measured against. The match column is a windowed
   <strong>SSIM</strong> (structural similarity) computed live in the page — pre-blurred and downscaled so a
   half-pixel offset between the two rasterizers barely moves the score, unlike a per-pixel diff. The SVG is
   aligned to the PNG first (its export padding + root <code>translate</code> are cropped back out, matching the
@@ -877,8 +883,8 @@ export function renderCompareHtml(catalog, opts = {}) {
     <thead>
       <tr>
         <th scope="col">Component</th>
-        <th scope="col">PNG</th>
         <th scope="col">SVG (browser-rendered)</th>
+        <th scope="col">PNG</th>
         <th scope="col" class="col-score">Match ↑</th>
       </tr>
     </thead>

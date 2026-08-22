@@ -67,7 +67,16 @@ object ComposeSemanticsProduct {
   // 26 against half of 104, called a pill un-clamped, and reported a Δ against the kit's
   // fully-rounded sentinel on every icon button it compared. Additive; older entries decode with
   // `density = null`, which a consumer reads as "not stated" rather than as 1.
-  const val SCHEMA_VERSION: Int = 14
+  // v15 (yschimke/wear-m3-catalog#77): each node says whether it is `placed` — measured AND
+  // positioned on the frame.
+  // A `SubcomposeLayout` that measures a trial copy of its content to choose a layout (Wear
+  // `AlertDialogContent` subcomposes the whole dialog to decide scrollable-vs-fixed) leaves that
+  // copy in the semantics tree, measured, never placed, and reporting `boundsInRoot` at the
+  // origin — so a consumer drawing boxes off this tree drew a second title in the frame's
+  // top-left corner. `layout/inspector` has carried the same flag since its first version;
+  // this closes the gap on the tree that owns typography. Additive — older entries decode as
+  // `placed = true`, which is what every node they describe was assumed to be.
+  const val SCHEMA_VERSION: Int = 15
   const val FILE: String = "compose-semantics.json"
 }
 
@@ -264,6 +273,19 @@ data class ComposeSemanticsNode(
   val testTag: String? = null,
   val mergeMode: String? = null,
   val clickable: Boolean = false,
+  /**
+   * Whether this node was **placed** — measured *and* positioned into the frame (v15).
+   *
+   * False for a subtree a `SubcomposeLayout` measured without ever placing: Wear
+   * `AlertDialogContent` subcomposes a full trial copy of the dialog to decide whether its content
+   * needs to scroll, and Compose keeps that copy in the semantics tree. An unplaced node has no
+   * position, so its [boundsInRoot] reads as the origin — which is a rectangle in the top-left
+   * corner of the frame rather than "nowhere", and a consumer that draws boxes off this tree cannot
+   * tell the two apart without being told.
+   *
+   * Defaults to true so a payload written before v15 (and any hand-built node) reads as placed.
+   */
+  val placed: Boolean = true,
   /**
    * Resolved design-token data extracted from this node's modifiers (issue #1897).
    *

@@ -1827,6 +1827,58 @@ class ServeWebTest {
   }
 
   @Test
+  fun `the design spec leads the pair, and the render follows`() {
+    // The house rule everywhere the two are shown together: an imported design spec is drawn to
+    // the LEFT of the render it is compared against. The viewer's spec lane says it three ways
+    // already (the Spec / Diff / Render triptych, the wipe's seam, the focused Reference / Diff /
+    // Actual page); this wall — the page the catalog's own "compare to Figma" action opens — used
+    // to read the other way round, so the two frames swapped sides between one click and the next.
+    val html =
+      ServeWeb.comparisonPage(
+        "m3-catalog",
+        listOf(ServePreview(id = "button", label = "Button")),
+        token = "t",
+        referencesFor = { listOf(referenceFor(it)) },
+      )
+    assertTrue(
+      html.indexOf("cp-compare-target-cell") < html.indexOf("cp-compare-render-cell"),
+      "the design spec's cell comes first on the reference lane: $html",
+    )
+    assertTrue(
+      html.indexOf("cp-compare-target-head") < html.indexOf("cp-compare-render-head"),
+      "and its header moves with it: $html",
+    )
+    // Named for the lane it is showing, not the constant `SVG` this head used to be — a header
+    // reading `SVG` over the Figma column would state the pair backwards.
+    assertTrue(html.contains("<th class=\"cp-compare-target-head\">Figma</th>"), html)
+    // The button that enters the lane names the pair in the order the columns stand.
+    assertTrue(html.contains(">Figma ↔ PNG</button>"), html)
+  }
+
+  @Test
+  fun `the render leads the lanes that compare it against its own export`() {
+    // `svg` and `rc` are a different question: they pit a render against an export OF that render,
+    // where the render is the source of truth and the export is the thing on trial. So they keep
+    // the render first — only the design-spec lane leads with the spec.
+    val html =
+      ServeWeb.comparisonPage(
+        "m3-catalog",
+        listOf(ServePreview(id = "button", label = "Button")),
+        token = "t",
+        hasSvgFor = { true },
+      )
+    assertTrue(
+      html.indexOf("cp-compare-render-cell") < html.indexOf("cp-compare-target-cell"),
+      "the render's cell comes first on the SVG lane: $html",
+    )
+    assertTrue(
+      html.indexOf("cp-compare-render-head") < html.indexOf("cp-compare-target-head"),
+      "and its header with it: $html",
+    )
+    assertTrue(html.contains("<th class=\"cp-compare-target-head\">SVG</th>"), html)
+  }
+
+  @Test
   fun `a comparison wall with no catalog to file against renders no report affordance`() {
     val html =
       ServeWeb.comparisonPage(

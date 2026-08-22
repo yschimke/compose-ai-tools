@@ -162,6 +162,10 @@ object WearScrollSliceStitcher {
   private fun uniqueTextTops(root: ComposeSemanticsNode): Map<String, Int> {
     val rows = mutableListOf<Pair<String, Int>>()
     fun walk(n: ComposeSemanticsNode) {
+      // A trial-measured copy repeats a string that occurs once on the frame, which makes it
+      // non-unique and DROPS it from the anchor set — costing the alignment its best anchors.
+      // See `ComposeSemanticsNode.placed`.
+      if (!n.placed) return
       val t = n.text?.takeIf { it.isNotBlank() } ?: n.layoutText?.takeIf { it.isNotBlank() }
       val b = n.boundsInRoot.split(",").mapNotNull { it.trim().toIntOrNull() }
       if (t != null && b.size == 4 && b[3] > b[1]) rows.add(t to b[1])

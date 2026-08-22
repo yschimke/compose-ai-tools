@@ -73,6 +73,45 @@ class ScrollGifEncoderDisposalTest {
     )
   }
 
+  /**
+   * Re-encoding into an existing, LONGER file must leave nothing of it behind.
+   *
+   * `FileImageOutputStream` wraps a `RandomAccessFile` opened "rw", which overwrites from offset 0
+   * without truncating. A shorter sequence written over a longer file therefore ends at its own GIF
+   * trailer with the previous encode still sitting past it — invisible to every decoder, and enough
+   * to make the artifact's size a function of what the output directory held before rather than of
+   * the frames handed in. Caught on `wear-m3-catalog`, where a 28-frame re-render of a 46-frame
+   * placeholder capture came out at exactly the 46-frame file's byte count.
+   *
+   * Asserted as "the same frames encode to the same bytes whatever was there first", which is the
+   * property that matters, rather than as "the file got shorter".
+   */
+  @Test
+  fun `re-encoding a shorter sequence does not keep the previous encode's tail`() {
+    val fresh = tmp.newFile("fresh.gif")
+    ScrollGifEncoder.encode(frames = opaqueFrames().take(2), outputFile = fresh, frameDelayMs = 40)
+
+    val reused = tmp.newFile("reused.gif")
+    ScrollGifEncoder.encode(frames = opaqueFrames(), outputFile = reused, frameDelayMs = 40)
+    val longLength = reused.length()
+    ScrollGifEncoder.encode(frames = opaqueFrames().take(2), outputFile = reused, frameDelayMs = 40)
+
+    assertTrue(
+      "fixture is not exercising the bug: the 3-frame encode ($longLength) must be longer " +
+        "than the 2-frame one (${fresh.length()})",
+      longLength > fresh.length(),
+    )
+    assertEquals(
+      "re-encoding kept bytes of the longer encode past its own trailer",
+      fresh.length(),
+      reused.length(),
+    )
+    assertTrue(
+      "same frames, same delays — the bytes must not depend on what the file held first",
+      fresh.readBytes().contentEquals(reused.readBytes()),
+    )
+  }
+
   /** One opaque 8×8 square stepping across an otherwise transparent 40×16 canvas. */
   private fun translucentFrames(): List<BufferedImage> =
     listOf(0, 12, 24).map { x ->
