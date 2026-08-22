@@ -316,7 +316,7 @@ class ServeIssueReportTest {
     val written =
       fixture["cases"]!!.jsonArray.map { it.jsonObject }.filter { it.containsKey("writer") }
     // A fixture that silently stopped carrying writer cases would pass every assertion below.
-    assertEquals(6, written.size, "the fixture must keep exercising the writer")
+    assertEquals(7, written.size, "the fixture must keep exercising the writer")
     for (case in written) {
       val name = case["name"]!!.jsonPrimitive.content
       val writer = case["writer"]!!.jsonObject
@@ -490,9 +490,10 @@ class ServeIssueReportTest {
     assertFailsWith<IllegalArgumentException> {
       ServeIssueReport.Bounds(x = 0, y = 0, width = 24, height = 24, space = "display-pixels")
     }
-    assertFailsWith<IllegalArgumentException> {
-      ServeIssueReport.Bounds(x = -1, y = 0, width = 24, height = 24)
-    }
+    // A negative origin is NOT invalid: a tagged node can extend above or left of the render root,
+    // and both tag-index producers publish signed coordinates for exactly that. Refusing it would
+    // leave batch 03 unable to record the bounds the index handed it.
+    assertEquals(-4, ServeIssueReport.Bounds(x = -4, y = -2, width = 24, height = 24).x)
     assertFailsWith<IllegalArgumentException> {
       ServeIssueReport.Bounds(x = 0, y = 0, width = 0, height = 24)
     }

@@ -13,17 +13,20 @@ between the two is this change.
 
 | before | after |
 | --- | --- |
-| ![Before: the rendered PNG is the left column and the Figma reference is the right one, under a header that still reads "SVG"](before.light.png) | ![After: the Figma reference is the left column under a "Figma" header, with the rendered PNG on its right](after.light.png) |
+| ![Before: the rendered PNG is the left column and the design reference the right one, under a generic "Design reference" header](before.light.png) | ![After: the Figma reference is the left column under a "Figma" header, with the rendered PNG on its right](after.light.png) |
 
 - **before** — the render leads and the design reference follows, which is the
   opposite of what the viewer's spec lane shows one click away (Spec / Diff /
-  Render, and the wipe's seam). The second column's header also still reads
-  `SVG`: it was a constant, so it was already wrong on two of the three lanes.
+  Render, and the wipe's seam). The second column's header reads the generic
+  **Design reference**: it was painted by a `::after` in `serve.css`, keyed off
+  `data-format`, over a `<th>` hidden with `font-size: 0` — so it could name the
+  *lane* but never the catalog's own tool, because CSS has no way to reach that
+  string.
 - **after** — the design spec is the left column and the render the right one, so
   stepping from the catalog into the viewer no longer swaps the two frames. The
-  header names the lane it is actually showing (`Figma`, from the catalog's own
-  reference provider), and the button that enters the lane names the pair in the
-  order the columns stand (`Figma ↔ PNG`).
+  header is real DOM text again, naming the provider the references actually came
+  from (`Figma`), and the button that enters the lane names the pair in the order
+  the columns stand (`Figma ↔ PNG`).
 
 The `svg` and `rc` lanes are deliberately unchanged: they pit a render against an
 export **of that same render**, where the render is the source of truth and the
@@ -31,6 +34,10 @@ export is the thing on trial. Only the design-spec lane leads with the spec.
 
 The dark pair (`before.dark.png` / `after.dark.png`) is the same state on the
 dark sheet.
+
+The harness state asserts the header's *computed* style too — a visible font size
+and no `::after` content — because the bug above is exactly the kind a DOM-text
+assertion passes straight through.
 
 The state is registered with the harness as `serve-format-compare-reference-lane`,
 so the CI visual-diff bot diffs this lane on every subsequent PR without anyone

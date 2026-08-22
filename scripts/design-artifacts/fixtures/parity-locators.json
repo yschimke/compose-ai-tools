@@ -256,6 +256,50 @@
           "revision": null
         }
       }
+    },
+    {
+      "name": "bounds-above-the-render-root",
+      "why": "A uniquely tagged node can extend above or left of the render root, and both tag-index producers emit signed coordinates for it. A validator refusing a negative origin would mean batch 03 could not copy the bounds it was handed; clipping belongs to the comparison's plane transform.",
+      "writer": {
+        "repository": "yschimke/m3-catalog",
+        "system": "m3-catalog",
+        "componentId": "IconButton/Tonal",
+        "previewId": "iconbutton-tonal__ideal__default__light",
+        "referenceId": "iconbutton-tonal-figma",
+        "variant": "ideal/default/light",
+        "overrides": {},
+        "element": "glyph",
+        "bounds": {
+          "space": "render-pixels",
+          "x": -4,
+          "y": -2,
+          "width": 24,
+          "height": 24
+        },
+        "revision": "yschimke/m3-catalog@design-artifacts/m3-catalog"
+      },
+      "block": "```compose-parity-locator/v1\nrepository: yschimke/m3-catalog\nsystem: m3-catalog\ncomponent: IconButton/Tonal\npreview: iconbutton-tonal__ideal__default__light\nreference: iconbutton-tonal-figma\nvariant: ideal/default/light\noverrides: {}\nelement: \"glyph\"\nbounds: {\"height\":24,\"space\":\"render-pixels\",\"width\":24,\"x\":-4,\"y\":-2}\nrevision: yschimke/m3-catalog@design-artifacts/m3-catalog\n```\n",
+      "parse": {
+        "ok": true,
+        "locator": {
+          "repository": "yschimke/m3-catalog",
+          "system": "m3-catalog",
+          "component": "IconButton/Tonal",
+          "previewId": "iconbutton-tonal__ideal__default__light",
+          "referenceId": "iconbutton-tonal-figma",
+          "variant": "ideal/default/light",
+          "overrides": {},
+          "element": "glyph",
+          "bounds": {
+            "height": 24,
+            "space": "render-pixels",
+            "width": 24,
+            "x": -4,
+            "y": -2
+          },
+          "revision": "yschimke/m3-catalog@design-artifacts/m3-catalog"
+        }
+      }
     }
   ],
   "bodies": [
@@ -339,6 +383,15 @@
       "parse": {
         "ok": false,
         "error": "duplicate preview in locator blocks: button-elevated__ideal__default__light"
+      }
+    },
+    {
+      "name": "umbrella-repeats-a-reference",
+      "why": "DesignReference.id is unique within a served session and the focused comparison selects rows by it, so two blocks sharing one reference would render the same issue twice on that page.",
+      "body": "```compose-parity-locator/v1\nrepository: yschimke/m3-catalog\nsystem: m3-catalog\ncomponent: Button/Elevated\npreview: button-elevated__ideal__default__light\nreference: button-elevated__ideal__default__light\nvariant: ideal/default/light\noverrides: {}\n```\n```compose-parity-locator/v1\nrepository: yschimke/m3-catalog\nsystem: m3-catalog\ncomponent: Card/Elevated\npreview: card-elevated__ideal__default__light__compact\nreference: button-elevated__ideal__default__light\nvariant: ideal/default/light/compact\noverrides: {}\n```\n",
+      "parse": {
+        "ok": false,
+        "error": "duplicate reference in locator blocks: button-elevated__ideal__default__light"
       }
     }
   ]

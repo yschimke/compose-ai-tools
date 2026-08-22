@@ -817,16 +817,31 @@ const FIXTURE_STATES = [
     apply: async (page) => {
       // States run in order against the SAME page, and `report-menu` above leaves the launcher
       // open over the table this shot is about. Close it first rather than reordering the states,
-      // which would photograph that one on this lane instead.
-      await page.evaluate(() => {
-        document.getElementById("cp-report")?.removeAttribute("open");
-        document.querySelector(".cp-fab-menu")?.removeAttribute("open");
-      });
-      await expect(page.locator(".cp-fab-panel")).toBeHidden();
+      // which would photograph that one on this lane instead. The open element is `.cp-fab-menu`
+      // — the floating launcher — not the `#cp-report` disclosure inside it, which is a different
+      // control that this page never opened.
+      await page.evaluate(() =>
+        document.querySelector(".cp-fab-menu")?.removeAttribute("open"),
+      );
+      await page.waitForSelector(".cp-fab-menu[open]", { state: "detached" });
       await page.click('[data-compare-format="reference"]');
       // The header names the lane and moves with its column — assert both rather than trusting the
       // pixels, so a reordered table with a stale header fails loudly here.
       await expect(page.locator(".cp-compare-target-head")).toHaveText("Figma");
+      // …and assert the text is the text the READER sees. `serve.css` used to hide this `<th>`
+      // with `font-size: 0` and paint a `::after` whose content was the generic "Design reference"
+      // on every reference lane, so a DOM-text assertion passed while the page said something
+      // else. This is the only layer with real CSS, so it is the only one that can catch that.
+      const painted = await page.evaluate(() => {
+        const th = document.querySelector(".cp-compare-target-head");
+        const style = getComputedStyle(th);
+        return {
+          fontSize: parseFloat(style.fontSize),
+          after: getComputedStyle(th, "::after").content,
+        };
+      });
+      expect(painted.fontSize).toBeGreaterThan(0);
+      expect(["none", "normal"]).toContain(painted.after);
       await expect(page.locator(".cp-compare-diff-head")).toBeVisible();
       // Spec, map, render — in that order. The map's seat is the assertion that matters most here:
       // it is only a diff of the two pictures if it sits BETWEEN them, and the cells move at
@@ -4120,8 +4135,12 @@ test("contract · the front door's state layer stays under the hero, and the bre
       hitTag: hit?.tagName,
       hitHref: hit?.getAttribute("href"),
       imgTop: img.top,
-      // The hero is wider than the card once scaled — that overhang is what the side probe uses.
-      overhangs: img.width > cb.width && img.top < cb.top,
+      cardRight: cb.right,
+      imgRight: img.right,
+      // The hero is wider AND taller than the card once scaled — those two overhangs are what the
+      // probes below stand on. Asserted, because a fixture whose hero does not actually break out
+      // would make both of them vacuous while still passing.
+      overhangs: img.right > cb.right && img.top < cb.top,
     };
   });
 
@@ -4147,13 +4166,27 @@ test("contract · the front door's state layer stays under the hero, and the bre
   // …and the artwork has not retracted under the pointer standing on it.
   expect(strip.imgTop).toBeCloseTo(inside.imgTop, 0);
 
-  // The side overhang, which reaches over the neighbouring tile's column.
-  await page.mouse.move(box.x + box.width - 2, box.y + 60);
-  expect(
-    await page.evaluate(() =>
-      document.querySelector(".cp-syslist .cp-card").matches(":hover"),
-    ),
-  ).toBe(true);
+  // The side overhang, which reaches over the neighbouring tile's column. Derived from the hovered
+  // image's own right edge, NOT from the card's width: a probe a couple of pixels inside the card
+  // is still over the stretched link overlay, so it would stay green even if the overhang lost
+  // hit-testing entirely — which is the one thing this probe exists to catch.
+  const sideProbeX = (inside.cardRight + inside.imgRight) / 2;
+  expect(sideProbeX).toBeGreaterThan(inside.cardRight);
+  await page.mouse.move(sideProbeX, box.y + 60);
+  const side = await page.evaluate((x) => {
+    const c = document.querySelector(".cp-syslist .cp-card");
+    const hit = document.elementFromPoint(x, c.getBoundingClientRect().top + 60);
+    return {
+      hovered: c.matches(":hover"),
+      // The pointer must be past the card's own box, or it is not on the overhang at all.
+      pastCard: x > c.getBoundingClientRect().right,
+      // …and what it lands on has to belong to THIS card, not the neighbour it paints over.
+      inThisCard: c.contains(hit),
+    };
+  }, sideProbeX);
+  expect(side.pastCard).toBe(true);
+  expect(side.inThisCard).toBe(true);
+  expect(side.hovered).toBe(true);
 });
 
 test("contract · a catalog's sub-groups share rows instead of each claiming one", async ({

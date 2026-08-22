@@ -185,13 +185,27 @@ test("the reserved selection fields round-trip, and refuse a rectangle with no s
   assert.equal(parsedInjection.locator.revision, null, "the injected line is part of the tag, not a field");
   // Extent has to be real: a zero-width rectangle selects nothing but would suppress its own row.
   assert.match(parseLocator(reserved.block.replace('"width":24', '"width":0')).error, /positive extent|not canonical/);
-  assert.match(parseLocator(reserved.block.replace('"x":18', '"x":-1')).error, /non-negative integer|not canonical/);
+  // A negative origin is valid: a tagged node can sit above or left of the render root, and the tag
+  // index publishes signed coordinates for it.
+  const above = shared.cases.find((shape) => shape.name === "bounds-above-the-render-root");
+  assert.deepEqual(parseLocator(above.block).locator.bounds, { height: 24, space: "render-pixels", width: 24, x: -4, y: -2 });
 });
 
 test("two blocks may not claim the same preview", () => {
   // `issuesForPreview` matches rows by preview id as well as by component, so one preview named by
   // two blocks would show the same issue twice on that page and count two in its badge.
   const shape = shared.bodies.find((body) => body.name === "umbrella-repeats-a-preview");
+  const errors = [];
+  const index = buildIssueIndex(
+    [{ html_url: "https://github.com/yschimke/m3-catalog/issues/42", title: "Elevated shadow level", body: shape.body, state: "open" }],
+    { generatedAt: "2026-08-15T10:00:00Z", onError: (_, error) => errors.push(error) },
+  );
+  assert.deepEqual(index.issues, []);
+  assert.deepEqual(errors, [shape.parse.error]);
+});
+
+test("two blocks may not claim the same reference", () => {
+  const shape = shared.bodies.find((body) => body.name === "umbrella-repeats-a-reference");
   const errors = [];
   const index = buildIssueIndex(
     [{ html_url: "https://github.com/yschimke/m3-catalog/issues/42", title: "Elevated shadow level", body: shape.body, state: "open" }],
