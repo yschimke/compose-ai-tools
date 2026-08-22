@@ -182,6 +182,13 @@ fun renderFocusPreview(
    * [DesktopSettleClock] is needed here.
    */
   settleTargetMs: Long = 0L,
+  /**
+   * `@CaptureGutter` — the same capture-bounds gutter [renderPreview] applies. A focused capture is
+   * framed by the shared [ComposePreviewContentBox], so a component that declares a gutter has to
+   * get it here too: a reviewer diffing the resting and focused stills of one component must see
+   * the state change, not a 22-pixel reframe.
+   */
+  captureGutter: PreviewCaptureGutter = PreviewCaptureGutter.None,
   fileSystem: FileSystem = SystemFileSystem,
 ): Boolean {
   require(focus != null || hoverIndex != null) { "focus or hover intent required" }
@@ -215,7 +222,8 @@ fun renderFocusPreview(
       maxWidthPx = maxWidthPx,
       maxHeightPx = maxHeightPx,
     )
-  val sceneSize = composePreviewSceneSize(widthPx, heightPx, wrapWidth, wrapHeight, sizeBounds)
+  val sceneSize =
+    composePreviewSceneSize(widthPx, heightPx, wrapWidth, wrapHeight, sizeBounds, captureGutter)
   var measured: IntSize? = null
   var focusedBounds: Rectangle? = null
   var landed = false
@@ -271,6 +279,7 @@ fun renderFocusPreview(
               wrapHeight = wrapHeight,
               backgroundColor = bgColor,
               sizeBounds = sizeBounds,
+              gutter = captureGutter,
               onMeasured = { w, h -> measured = IntSize(w, h) },
             ) {
               InvokeFocusComposable(composableMethod, null, previewArgs)
@@ -390,6 +399,7 @@ fun renderFocusPreview(
           widthPx = widthPx,
           heightPx = heightPx,
           device = device,
+          captureGutter = captureGutter,
           fileSystem = fileSystem,
         )
       }
@@ -493,6 +503,7 @@ private fun captureFocusFrame(
   widthPx: Int,
   heightPx: Int,
   device: String?,
+  captureGutter: PreviewCaptureGutter,
   fileSystem: FileSystem,
 ) {
   val bitmap = provider.onRoot().captureToImage()
@@ -509,13 +520,14 @@ private fun captureFocusFrame(
   outputFile.parentFile?.mkdirs()
   val roundClip = isRoundPreviewDevice(device)
   if (((wrapWidth || wrapHeight) && measured != null) || roundClip) {
+    // A fixed axis keeps its declared frame PLUS the capture gutter, exactly as [renderPreview]
+    // does — the scene was enlarged by it and those pixels are the shadow the gutter is for.
     val cropW =
-      (if (wrapWidth && measured != null) measured.width else widthPx).coerceIn(1, sceneSize.width)
+      (if (wrapWidth && measured != null) measured.width else widthPx + captureGutter.horizontalPx)
+        .coerceIn(1, sceneSize.width)
     val cropH =
-      (if (wrapHeight && measured != null) measured.height else heightPx).coerceIn(
-        1,
-        sceneSize.height,
-      )
+      (if (wrapHeight && measured != null) measured.height else heightPx + captureGutter.verticalPx)
+        .coerceIn(1, sceneSize.height)
     val decoded = ByteArrayInputStream(bytes).use { ImageIO.read(it) }
     if (decoded != null) {
       val cropped =
