@@ -3998,19 +3998,23 @@ test("contract · the render history is a menu in the toggle row, and the fit ca
   expect(applied).toBe(expected);
 });
 
-test("contract · the front door's hero paints above the state layer and still passes its clicks", async ({
+test("contract · the front door's state layer stays under the hero, and the break-out keeps its hover", async ({
   page,
 }) => {
-  // Two invariants that arrived together and can only break together, both invisible to a DOM
-  // test and to a still capture.
+  // Two invariants that arrived together, both invisible to a DOM test and to a still capture.
   //
-  // The hero is raised above the card's `primary` state layer (`.cp-card::after`) so hovering a
-  // tile does not wash accent colour over the design system's own screenshot — that layer paints
-  // UNDER the artwork now, over the card surface and through a sticker's transparent margin.
-  // Raising it also lifted it above `.cp-sys-open::after`, the stretched overlay that makes the
-  // whole tile one link, so the hero has to give its pointer events back or the top 220px of
-  // every card silently stops being clickable. A shot of the page cannot see a dead click target,
-  // and a hit test alone cannot see the tint; this asks the browser for both.
+  // The card's `primary` state layer (`.cp-card::after`) drops UNDER the content on a front-door
+  // card, so hovering a tile no longer washes accent colour over the design system's own
+  // screenshot. The first shape of that change raised the HERO above the layer instead, and it
+  // broke the gesture in a way no screenshot shows: the hero then sat above `.cp-sys-open::after`
+  // — the stretched overlay that makes the whole tile one link — so it had to refuse pointer
+  // events to keep the card clickable, and pointing at the part of the scaled hero hanging
+  // OUTSIDE the card hit the page (or the neighbouring tile) rather than this card. The card
+  // stopped matching `:hover` and the artwork retracted from under the pointer that was on it.
+  //
+  // So this pins both ends: the layer is beneath the content, AND the card still answers the
+  // pointer everywhere its hero reaches — above its top edge and past its side — while the tile
+  // link still takes a click over the artwork.
   for (const [name, contentType] of SERVE_ASSETS) {
     await page.route(`**/assets/serve/**/${name}`, (route) =>
       route.fulfill({ path: resolve(serveAssetsDir, name), contentType }),
@@ -4026,36 +4030,62 @@ test("contract · the front door's hero paints above the state layer and still p
   await page.waitForFunction(() =>
     Array.from(document.images).every((i) => i.complete),
   );
+  // The break-out is a transition; the probes below read geometry, so settle it first.
+  await page.addStyleTag({
+    content: "*, *::before, *::after { transition-duration: 0ms !important; }",
+  });
 
-  const { heroZ, stateLayerZ, linkZ, hitTag, hitHref } = await page.evaluate(
-    () => {
-      const card = document.querySelector(".cp-syslist .cp-card");
-      const wrap = card.querySelector(".cp-imgwrap");
-      const box = wrap.getBoundingClientRect();
-      // The hero's own centre — the middle of the region the state layer used to tint and the
-      // region a visitor aims at when they click the picture.
-      const hit = document.elementFromPoint(
-        box.left + box.width / 2,
-        box.top + box.height / 2,
-      );
-      return {
-        heroZ: Number(getComputedStyle(wrap).zIndex),
-        stateLayerZ: Number(getComputedStyle(card, "::after").zIndex),
-        linkZ: Number(
-          getComputedStyle(card.querySelector(".cp-sys-open"), "::after")
-            .zIndex,
-        ),
-        hitTag: hit?.tagName,
-        hitHref: hit?.getAttribute("href"),
-      };
-    },
-  );
+  const card = page.locator(".cp-syslist .cp-card").first();
+  const box = await card.boundingBox();
+  // Park the pointer well inside the card, so the hero is scaled out to its hover size.
+  await page.mouse.move(box.x + box.width / 2, box.y + 150);
 
-  // Above the state layer — that is the whole point of the change.
-  expect(heroZ).toBeGreaterThan(stateLayerZ);
-  // …and therefore above the tile link's overlay too, which is why the events have to fall through.
-  expect(heroZ).toBeGreaterThan(linkZ);
+  const inside = await page.evaluate(() => {
+    const c = document.querySelector(".cp-syslist .cp-card");
+    const cb = c.getBoundingClientRect();
+    const hit = document.elementFromPoint(
+      cb.left + cb.width / 2,
+      c.querySelector(".cp-imgwrap").getBoundingClientRect().top + 100,
+    );
+    const img = c.querySelector(".cp-imgwrap img").getBoundingClientRect();
+    return {
+      stateLayerZ: Number(getComputedStyle(c, "::after").zIndex),
+      hovered: c.matches(":hover"),
+      hitTag: hit?.tagName,
+      hitHref: hit?.getAttribute("href"),
+      imgTop: img.top,
+      // The hero is wider than the card once scaled — that overhang is what the side probe uses.
+      overhangs: img.width > cb.width && img.top < cb.top,
+    };
+  });
+
+  // Beneath the content, which is where M3 draws a state layer anyway.
+  expect(inside.stateLayerZ).toBeLessThan(0);
   // Pointing at the middle of the picture still finds the tile link, not the image.
-  expect(hitTag).toBe("A");
-  expect(hitHref).toBe("/compose-m3/");
+  expect(inside.hovered).toBe(true);
+  expect(inside.hitTag).toBe("A");
+  expect(inside.hitHref).toBe("/compose-m3/");
+  // The fixture's hero must actually break out, or the two probes below prove nothing.
+  expect(inside.overhangs).toBe(true);
+
+  // Above the card's top edge, onto the strip of hero that hangs over the page.
+  await page.mouse.move(box.x + box.width / 2, inside.imgTop + 4);
+  const strip = await page.evaluate(() => {
+    const c = document.querySelector(".cp-syslist .cp-card");
+    return {
+      hovered: c.matches(":hover"),
+      imgTop: c.querySelector(".cp-imgwrap img").getBoundingClientRect().top,
+    };
+  });
+  expect(strip.hovered).toBe(true);
+  // …and the artwork has not retracted under the pointer standing on it.
+  expect(strip.imgTop).toBeCloseTo(inside.imgTop, 0);
+
+  // The side overhang, which reaches over the neighbouring tile's column.
+  await page.mouse.move(box.x + box.width - 2, box.y + 60);
+  expect(
+    await page.evaluate(() =>
+      document.querySelector(".cp-syslist .cp-card").matches(":hover"),
+    ),
+  ).toBe(true);
 });

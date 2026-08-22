@@ -9,11 +9,20 @@ Three things changed in the hover treatment, and only the first is visible witho
 
 1. **The break-out zoom grew** from `scale(1.12)` to `scale(1.15)` — a quarter more travel out of
    the card, still anchored at bottom-centre so the artwork only ever grows up and outward.
-2. **The hero moved above the card's state layer.** `.cp-card::after` is M3's `primary` tint at the
-   hover opacity, and it used to paint over the artwork: a design system's own screenshot came out
-   washed purple at exactly the moment a visitor was looking at it. The hero now sits at
-   `z-index: 4`, above the layer, so the tint stays on the card *around and behind* the picture.
-   That is what the phone pair below is for — the whites in the render are white again.
+2. **The state layer dropped under the card's content.** `.cp-card::after` is M3's `primary` tint
+   at the hover opacity, and it used to paint over the artwork: a design system's own screenshot
+   came out washed purple at exactly the moment a visitor was looking at it. On a `.cp-sys` card it
+   is now `z-index: -1` — above the card's background, below everything else, which is where M3
+   draws a state layer anyway. That is what the phone pair below is for: the whites in the render
+   are white again.
+
+   Lowering the layer, rather than raising the hero above it, is the whole point. Raising the hero
+   also lifts it above `.cp-sys-open::after`, the stretched overlay that makes the tile one link,
+   so the hero has to refuse pointer events to keep the card clickable — and then pointing at the
+   part of the scaled hero hanging *outside* the card hits the page (or the neighbouring tile)
+   instead of this card, so the artwork retracts from under the pointer standing on it. Measured
+   in the harness: with the pointer 13px above the card's top edge and over the hero's own pixels,
+   `card.matches(":hover")` was `false`. The contract test named below now pins both ends.
 3. **The hero casts a shadow shaped to itself**, via `filter: drop-shadow` rather than
    `box-shadow`. The filter traces the image's own alpha, so a round watch face throws a round
    shadow and a phone screenshot throws a rectangular one. A `box-shadow` would draw the 220px
@@ -48,6 +57,12 @@ resting page:
   boxed one.
 - The home-index image stub now serves the round placeholder to the Wear lanes, so that difference
   exists in the baseline at all.
+
+…and one contract test, `contract · the front door's state layer stays under the hero, and the
+break-out keeps its hover`, because neither half is a picture: it reads the layer's computed
+`z-index`, hit-tests the middle of the hero (which must still resolve to the tile link), and then
+walks the pointer onto the break-out strip above the card and onto the side overhang over the
+neighbouring column, asserting the card stays hovered and the hero does not retract.
 
 Reproduce with:
 

@@ -1426,23 +1426,25 @@ cp-parity-scores { display: contents; }
    into the transparent corners outside the border radius. It has to round itself now that nothing
    rounds it for it. */
 .cp-card.cp-sys { overflow: visible; }
-.cp-card.cp-sys::after { border-radius: inherit; }
+/* The state layer goes UNDER the card's content here, which is the one place in the product where
+   it has to. Everywhere else `.cp-card::after` paints over the tile at `z-index: 3` and that is
+   fine — a preview card's thumbnail is a small sample. A front-door hero is a design system's own
+   screenshot at 220px, and washing `primary` across it re-colours the very thing the card exists
+   to show, at exactly the moment someone is looking at it.
+   `z-index: -1` inside the card's own stacking context (`isolation: isolate`) puts the tint above
+   the card's background and below everything else — which is where M3 draws a state layer anyway,
+   under the content rather than over it. The alternative, raising the HERO above the layer, is
+   what shipped first and it was wrong: it put the hero above `.cp-sys-open::after` too, so the
+   hero had to refuse pointer events to keep the tile clickable — and then pointing at the part of
+   the scaled hero that hangs OUTSIDE the card hit the page (or the neighbouring tile) instead of
+   this card, so the artwork retracted from under the pointer that was on it. Lowering the layer
+   changes one number and leaves hit-testing exactly as it was.
+   Still needs its own rounding: `overflow: visible` above means nothing clips its square corners
+   to the card's radius. */
+.cp-card.cp-sys::after { border-radius: inherit; z-index: -1; }
 .cp-card.cp-sys:hover, .cp-card.cp-sys:focus-within { z-index: 4; }
-/* The hero sits ABOVE the card's state layer (`.cp-card::after`, `z-index: 3`), which is the one
-   place in the product where that layer is not wanted over the artwork: the front door's tint is
-   there to say "this tile is the target", and washing `primary` across a design system's own
-   screenshot re-colours the very thing the card exists to show. Under the hero the layer still
-   paints — over the card surface, and through a sticker's transparent margin — so the tile reads as
-   one lit object with the preview standing off it, which is the whole gesture here.
-
-   `pointer-events: none` is the price: `.cp-sys-open::after` (the stretched whole-tile link, at
-   `z-index: 1`) is now BELOW the hero, so without this the top 220px of every card would swallow
-   its own clicks. Nothing in a front-door hero is interactive — except the retry button an image
-   error puts there, which takes its events back below. */
-.cp-syslist .cp-imgwrap { min-height: 0; height: 220px; overflow: visible; z-index: 4;
-  pointer-events: none;
+.cp-syslist .cp-imgwrap { min-height: 0; height: 220px; overflow: visible;
   border-radius: var(--md-sys-shape-corner-medium) var(--md-sys-shape-corner-medium) 0 0; }
-.cp-syslist .cp-imgwrap .cp-image-error { pointer-events: auto; }
 .cp-syslist .cp-imgwrap > img { width: 100%; height: 100%; max-height: none; object-fit: contain; }
 /* A front-door card is a poster, not a table row: the meta block gets its own padding, the title
    and the library coordinate sit on separate rhythms, and the count line is divided off so a

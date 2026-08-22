@@ -6062,7 +6062,7 @@ class ServeWebFixtureTest {
         assetText("serve.css").contains(".cp-syslist .cp-imgwrap { min-height: 0; height: 220px;"),
       "system cards reserve one consistent hero region so metadata aligns across aspect ratios",
     )
-    // Four invariants the hero break-out depends on, each of which turns into a silent regression
+    // Three invariants the hero break-out depends on, each of which turns into a silent regression
     // rather than a failing render if it is dropped.
     assertTrue(
       assetText("serve.css").contains(".cp-sys-actions") &&
@@ -6070,22 +6070,18 @@ class ServeWebFixtureTest {
         assetText("serve.css").contains(".cp-sys-actions > a { pointer-events: auto; }"),
       "the action row passes clicks through to the tile link; only its chips take them",
     )
+    // Both halves on one line, and both load-bearing: the rounding, because `overflow: visible`
+    // leaves nothing to clip the layer's square corners to the card's radius; and `z-index: -1`,
+    // which drops the tint UNDER the card's content so it stops washing `primary` across a design
+    // system's own screenshot. Lowering the layer rather than raising the hero is deliberate — a
+    // raised hero also outranks the stretched tile link and has to refuse pointer events, and then
+    // the part of it hanging outside the card stops hovering the card at all. The harness's
+    // "the front door's state layer stays under the hero, and the break-out keeps its hover"
+    // contract proves that end in a browser; this pins the declaration the Kotlin side ships.
     assertTrue(
-      assetText("serve.css").contains(".cp-card.cp-sys::after { border-radius: inherit; }"),
-      "the state layer rounds itself, now that `overflow: visible` no longer clips it to the card",
-    )
-    // The hero sits ABOVE the state layer so the accent tint doesn't wash the artwork — which also
-    // puts it above the stretched tile link (`.cp-sys-open::after`, z-index 1), so the hero has to
-    // hand its pointer events back or the card's whole top 220px stops being clickable. The two
-    // declarations only make sense together, and the harness's
-    // "the front door's hero paints above the state layer and still passes its clicks" contract
-    // proves the pair in a browser; this pins them in the sheet the Kotlin side ships.
-    assertTrue(
-      assetText("serve.css").contains("overflow: visible; z-index: 4;") &&
-        assetText("serve.css").contains("pointer-events: none;") &&
-        assetText("serve.css")
-          .contains(".cp-syslist .cp-imgwrap .cp-image-error { pointer-events: auto; }"),
-      "the hero paints over the state layer and passes its clicks down to the tile link",
+      assetText("serve.css")
+        .contains(".cp-card.cp-sys::after { border-radius: inherit; z-index: -1; }"),
+      "the state layer rounds itself and paints beneath the hero instead of over it",
     )
     assertTrue(
       assetText("serve.css")
