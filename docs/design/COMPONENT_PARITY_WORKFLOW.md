@@ -1,9 +1,16 @@
 # Component parity: issues and scoped acceptance
 
-> **Status: proposal.** Investigation + phased plan for
-> [#3680](https://github.com/yschimke/compose-ai-tools/issues/3680). No code yet. This document
-> settles the contracts (locator, issue index, known-difference schema) and the delivery order; each
-> phase below is meant to become its own PR against an existing surface, not a new subsystem.
+> **Status: Phase 1 shipped; Phases 2–4 are still proposal.** Investigation + phased plan for
+> [#3680](https://github.com/yschimke/compose-ai-tools/issues/3680). This document settles the
+> contracts (locator, issue index, known-difference schema) and the delivery order; each phase below
+> is meant to become its own PR against an existing surface, not a new subsystem.
+>
+> **What is built:** the `compose-parity-locator/v1` block and the richer focused-comparison report
+> (#3887); `parity/issues.json` — producer, reader, staging and the four display surfaces (#3886,
+> #4404); and the catalog-side regeneration workflow (yschimke/m3-catalog#170). §3's "pilot
+> population" records what running it on real issues then measured. **Everything in §4 and §5 —
+> scoped acceptance, element selection, resolution automation — is still a proposal**, and that
+> measurement is the reason to read it again before implementing it.
 
 The preview server can already tell you that a component's render and its design reference disagree.
 It cannot tell you whether anyone *knows*. Every comparison is scored from scratch on every page
@@ -363,11 +370,12 @@ publishes the index on every issue event, and as of 2026-08-22 `parity/issues.js
 rows — #40 `IconButton/Tonal`, #41 `NavigationBar/Short`, #87 `Checkbox/Checked` — backfilled with
 ids read out of the published `references/index.json` rather than guessed.
 
-Three, out of a known-difference backlog of ten. The other seven were not skipped for effort; **the
-locator cannot express them**, and the reasons are worth having on the record before §4 freezes a
-schema around this population.
+Three, out of a known-difference backlog of ten. None of the other seven was skipped for effort, and
+the reasons are worth having on the record before §4 freezes a schema around this population. Two of
+them are limits of the locator; the third is a triage judgement, and the table keeps those apart
+because they lead different places.
 
-| Issue | Subject | Indexable? | Why |
+| Issue | Subject | Backfilled? | Why |
 | --- | --- | --- | --- |
 | [#40](https://github.com/yschimke/m3-catalog/issues/40) | `IconButton/Tonal` glyph colour | **yes** | one component, one preview, a 23.6% pixel delta inside the glyph |
 | [#41](https://github.com/yschimke/m3-catalog/issues/41) | `ShortNavigationBar` measures items at full bar width | **yes** | one component, one preview (`__compact`) |
@@ -377,10 +385,10 @@ schema around this population.
 | [#85](https://github.com/yschimke/m3-catalog/issues/85) | `DropdownMenu` corner 4dp vs 16dp | no | the catalog publishes **no menu component**: no `images/menu-*`, no reference, no preview |
 | [#95](https://github.com/yschimke/m3-catalog/issues/95) | menu container colour and item icon size | no | same — the subject is not in the bundle |
 | [#86](https://github.com/yschimke/m3-catalog/issues/86) | expanded full-screen search corner | no | `Search/Bar` publishes `default`, `query`, `avatar` and `container-docked`; the full-screen view is not among them |
-| [#89](https://github.com/yschimke/m3-catalog/issues/89) | no slider size scale on `SliderDefaults` | no | the size previews **exist and score 98.1–99.5%** — the catalog transcribed the kit's numbers by hand, so there is no difference to point at, only a missing constant |
-| [#93](https://github.com/yschimke/m3-catalog/issues/93) | no `ButtonDefaults.SmallContainerHeight`, no default FAB icon size | no | an API-availability gap with no pixel delta of its own |
+| [#89](https://github.com/yschimke/m3-catalog/issues/89) | no slider size scale on `SliderDefaults` | not yet — **a choice, not a limit** | the size previews exist and score **98.1–99.5%**: the catalog transcribed the kit's numbers by hand, so a locator would name a comparison that matches. Indexable whenever we want it on the page; what it cannot have is an acceptance |
+| [#93](https://github.com/yschimke/m3-catalog/issues/93) | no `ButtonDefaults.SmallContainerHeight`, no default FAB icon size | not yet — **a choice**, plus two families | same missing-constant shape, no pixel delta, and it spans `Button/*` and `Fab/*` |
 
-Three failure modes, and only one of them is about masks:
+Two limits and one judgement, and only the last is about masks:
 
 1. **One issue, several components** (#42, #91). The locator carries exactly one `component` and one
    `preview`, and the index row is keyed by issue number, so an umbrella report can join to at most
@@ -392,19 +400,43 @@ Three failure modes, and only one of them is about masks:
    render compared with a published reference. Three of the ten are about components the catalog
    does not draw, which makes them spec/library findings the index has nothing to attach them to.
    They are not badly written issues; they are outside what a *preview*-keyed index can hold.
-3. **No difference to accept** (#89, #93). Both describe a constant the library does not publish.
-   The renders match. An acceptance for either would be an acceptance of nothing.
+3. **Nothing to accept** (#89, #93) — a judgement rather than a limit, and worth stating precisely
+   because the two are easy to conflate. `buildIssueIndex` asks for a well-formed locator and
+   nothing else; it never inspects a pixel. Both issues have published previews with scored
+   references, so either could carry a locator today and would then show on its component's page
+   like any other. What neither can have is an **acceptance**: they describe a constant the library
+   does not publish, and the renders already match. Indexing them is a question about whether an
+   upstream-ergonomics report belongs on a component page. §4's population is the smaller number
+   either way.
 
 **What this means for §4.** The acceptance model is designed around #40 — a small mask over one
-element, a recorded accepted-candidate crop, three hash gates — and #40 fits it exactly. But the
-per-preview pixel-difference population it can serve is *three* issues, not ten, and the other two
-of those three are not glyph-sized: #41 is a layout failure whose mask is most of the bar, and #87
-is a 2dp ring around a 20dp box. An acceptance whose mask is the component silhouette is an ignore
-rectangle wearing a fingerprint, which is the exact thing the safety requirements exist to prevent.
-So before the conformance fixtures freeze, §4 needs an answer for the whole-component case:
-either it is refused outright (an acceptance must cover materially less than the component), or the
-element gate carries the weight and the mask is allowed to be large only when a tagged element
-bounds it.
+element, a recorded accepted-candidate crop, the gates of the evaluation order — and #40 fits it
+exactly. But the per-preview pixel-difference population it can serve is *three* issues, not ten,
+and the other two of those three are not glyph-sized: #41 is a layout failure whose mask is most of
+the bar, and #87 a 2dp ring around a 20dp box.
+
+A component-sized mask is **not** an ignore rectangle. An earlier draft of this section said it was;
+the evaluation order says otherwise. Gate 3 compares the current candidate with the immutable
+`accepted-candidate.png` *inside* the mask, so a missing glyph, a geometry shift or an unrelated
+regression in there invalidates the acceptance as `candidate-changed` before it suppresses anything,
+and gate 1 does the same for a changed reference. What degrades at that scale is subtler, and it is
+the actual open question:
+
+- **The acceptance stops meaning "this element differs" and starts meaning "pin this render".**
+  Every gate still fires, but inside the mask the thing being compared is the component's own past
+  self. The reference does no work there any more — including when a render change moves *towards*
+  it.
+- **Gate 4 has nothing to bind to.** A whole-component mask has no distinguished element, so the
+  acceptance falls back to geometric and loses the gate that separates "the glyph disappeared" from
+  "the glyph is still the wrong colour" — the one §4 calls load-bearing.
+- **The per-pixel tolerance covers thousands of pixels instead of forty.** Capped at `8` and
+  per-pixel rather than aggregate, so it is bounded either way, but the surface it applies to is two
+  orders of magnitude larger.
+
+So the question before the conformance fixtures freeze is not "refuse large masks", it is: does an
+acceptance **require** an element gate — which makes #41 inexpressible until the bar's parts are
+tagged — or is a geometric whole-component acceptance allowed, accepting that it re-invalidates on
+every render change and that the churn is the price of expressing #41 at all?
 
 ---
 
@@ -1916,11 +1948,19 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
   per component (keeps the contract as written, multiplies the backlog, and loses the fact that the
   five share a cause), or let a body carry **one locator block per component** and key index rows
   by issue × component (`previewIds` / `referenceIds` are already arrays on the row; the producer
-  currently refuses a second block outright). This is a `v1` wire decision and wants settling before
-  the conformance fixtures freeze, not after two engines have been written against them.
+  currently refuses a second block outright). **That second option is not a producer-only change:**
+  `ServeParityIssuesStore.sanitize` dedupes with `distinctBy { it.repository to it.number }` before
+  anything component-aware runs, so two rows for one issue collapse to an arbitrary one of them at
+  load time and the umbrella issue would still surface on a single component. Changing the row
+  identity in *both* engines, plus a fixture carrying one repository/number across two components,
+  is part of the decision rather than a follow-up. Either way this is a `v1` wire decision and wants
+  settling before the conformance fixtures freeze, not after two engines have been written against
+  them.
 - **A parity report needs its subject to be in the catalog.** Three of the ten (#85, #95, #86) are
   about a `DropdownMenu` and an expanded full-screen search view that this catalog does not publish
-  — no preview, no reference, nothing to compare — and two more (#89, #93) are missing-constant
-  reports whose renders match. Half the backlog is therefore outside what a preview-keyed index can
-  hold, however the locator is shaped. Worth deciding whether those belong in the index at all
-  (they do not today) or whether the catalog should grow the missing stickers so they can be.
+  — no preview, no reference, nothing to compare, however the locator is shaped. Two more (#89,
+  #93) are missing-constant reports whose renders match: those *could* be indexed, since the
+  producer never inspects a pixel, but there is nothing for §4 to accept — a question about what
+  belongs on a component page rather than a limit. Either way §4's population is three, not ten.
+  Worth deciding whether the catalog should grow the missing stickers, and whether an
+  upstream-ergonomics report belongs in the index.
