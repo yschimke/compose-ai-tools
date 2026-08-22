@@ -135,11 +135,19 @@ internal class ServeImageUploader(
   private data class ImageAccepted(val url: String? = null, val expiresIn: String? = null)
 
   companion object {
-    /** Appended to a bodyless `404`, which is exactly what a host with no image lane answers. */
+    /**
+     * Appended to a bodyless `404`, which is what a host with no image lane answers — but not
+     * *only* that. [rejectUnsafeUrl] constrains the scheme, the host and the userinfo, never the
+     * path, so a `--serve-url` carrying a stray prefix asks a real image host for
+     * `<base>/typo/images` and gets the same empty 404; so can a proxy in between. Naming the lane
+     * as the certain cause would just relocate the misdiagnosis, so this offers the likely reading
+     * and the cheap thing to check.
+     */
     private const val IMAGE_LANE_OFF =
-      " — that host does not accept image uploads (it was started without --accept-images). " +
-        "Ask its operator to enable the lane, or share these images another way " +
-        "(--mechanism gist / branch)."
+      " — most likely that host does not accept image uploads (it was started without " +
+        "--accept-images); a --serve-url with a stray path would answer the same way, so check " +
+        "the URL too. Otherwise ask its operator to enable the lane, or share these images " +
+        "another way (--mechanism gist / branch)."
 
     private val OCTET_STREAM = "application/octet-stream".toMediaType()
 

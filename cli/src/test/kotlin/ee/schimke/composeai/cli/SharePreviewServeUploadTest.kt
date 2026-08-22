@@ -189,6 +189,10 @@ class SharePreviewServeUploadTest {
           .reason
       assertTrue(reason.contains("404"), reason)
       assertTrue(reason.contains("--accept-images"), reason)
+      // A stray path on --serve-url produces the same empty 404 from a host whose lane IS on, so
+      // the message offers the lane as the likely cause and names the other thing to check.
+      assertTrue(reason.contains("most likely"), reason)
+      assertTrue(reason.contains("--serve-url"), reason)
       assertFalse(reason.contains("gho_secret"), reason)
     }
   }
