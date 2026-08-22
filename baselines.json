@@ -589,6 +589,18 @@
       "sha256": "aad33c4c0e72bc090e91a6f986d01710dcb2c2b8529013e3856336197df9314f",
       "size": 47225
     },
+    "serve-landing-declared-tabbed-themes.dark.png": {
+      "fixture": "serve-landing-declared-tabbed-themes",
+      "theme": "dark",
+      "sha256": "d24938c6fd210ec5cc84aee20813813dfaf25db19fac3f0dc6d8c5ed8aadede1",
+      "size": 114653
+    },
+    "serve-landing-declared-tabbed-themes.light.png": {
+      "fixture": "serve-landing-declared-tabbed-themes",
+      "theme": "light",
+      "sha256": "cea268a0dc12a13bad0e042d5ef76869cef7b20478fd8205e196fb54025a3c1e",
+      "size": 113133
+    },
     "serve-landing-declared-themes-actions-menu.dark.png": {
       "fixture": "serve-landing-declared-themes-actions-menu",
       "theme": "dark",
@@ -1450,8 +1462,8 @@
     "serve-viewer-exploded-controls.light.png": {
       "fixture": "serve-viewer-exploded-controls",
       "theme": "light",
-      "sha256": "57b8358496cf367d836faed146beb49f8b3406718862b0011a86361b5b55adb0",
-      "size": 112779
+      "sha256": "9b08465f5c8c9c6bba75042040b207d66ef1e18a46a69ea17c6e41930c56bfdd",
+      "size": 112718
     },
     "serve-viewer-exploded.dark.png": {
       "fixture": "serve-viewer-exploded",

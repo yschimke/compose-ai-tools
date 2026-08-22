@@ -354,6 +354,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-landing-catalog-palette-theme-sync-off/dark](renders/serve-landing-catalog-palette-theme-sync-off.dark.png) |
 | `light` | ![serve-landing-catalog-palette-theme-sync-off/light](renders/serve-landing-catalog-palette-theme-sync-off.light.png) |
 
+## serve-landing-declared-tabbed-themes
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-declared-tabbed-themes/dark](renders/serve-landing-declared-tabbed-themes.dark.png) |
+| `light` | ![serve-landing-declared-tabbed-themes/light](renders/serve-landing-declared-tabbed-themes.light.png) |
+
 ## serve-landing-declared-themes
 
 | Theme | Capture |
