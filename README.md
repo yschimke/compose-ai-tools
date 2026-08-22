@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 333 preview(s) across 20 module(s) · 69 error(s) · 4 warning(s) · 30 info._
+_Auto-generated from `compose-preview/a11y/main`. 335 preview(s) across 20 module(s) · 69 error(s) · 4 warning(s) · 30 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -156,6 +156,18 @@ _No findings._
 ### `FallbackCoverageSpecimenPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/FallbackCoverageSpecimenPreview_Fallback_coverage_specimen-4818cd3d.a11y.png" width="400" />
+
+_No findings._
+
+### `FillWidthCroppedPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/FillWidthCroppedPreview_Fill_fixed-57c55975.png" width="400" />
+
+_No findings._
+
+### `FillWidthGutteredPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/FillWidthGutteredPreview_Fill_fixed_guttered-9bec0a83.png" width="400" />
 
 _No findings._
 

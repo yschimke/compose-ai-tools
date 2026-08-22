@@ -498,6 +498,28 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "",
+      "cleanBasename": "FillWidthCroppedPreview_Fill_fixed-57c55975.png",
+      "findings": [],
+      "functionName": "FillWidthCroppedPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.CaptureGutterPreviewsKt.FillWidthCroppedPreview_Fill fixed",
+      "rendersDir": "android",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/CaptureGutterPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "FillWidthGutteredPreview_Fill_fixed_guttered-9bec0a83.png",
+      "findings": [],
+      "functionName": "FillWidthGutteredPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.CaptureGutterPreviewsKt.FillWidthGutteredPreview_Fill fixed guttered",
+      "rendersDir": "android",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/CaptureGutterPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "FitsInBoundsPreview-0da3b324.a11y.png",
       "cleanBasename": "FitsInBoundsPreview-0da3b324.png",
       "findings": [],
