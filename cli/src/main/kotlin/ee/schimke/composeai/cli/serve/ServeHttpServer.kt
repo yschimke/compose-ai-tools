@@ -5923,7 +5923,11 @@ class ServeHttpServer(
           return
         }
     val token = call.request.queryParameters["q"].orEmpty()
-    val match = index.match(system, previewIds, token)
+    // Off the request thread. A cold catalog's first `uses:` search is up to `maxFiles` network
+    // reads with the fetcher's own timeout on each, and running that inline blocks a thread Ktor
+    // also serves renders on — so a handful of uncached searches could starve routes that have
+    // nothing to do with this one.
+    val match = withContext(Dispatchers.IO) { index.match(system, previewIds, token) }
     // The answer depends on the interface-mode cookie, so it must not be cached across visitors in
     // one mode and handed to a visitor in the other — the same reason `componentBrowserMode` marks
     // the HTML it gates.

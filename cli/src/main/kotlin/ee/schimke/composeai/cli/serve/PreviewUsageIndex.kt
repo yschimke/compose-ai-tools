@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
+import java.util.concurrent.ConcurrentHashMap
+
 /**
  * Which functions each preview's own declaration **calls**, so the landing grid's filter can answer
  * "show me the previews that call `SwipeToReveal`".
@@ -84,7 +86,19 @@ class PreviewUsageIndex(
 
   private class Entry(val index: Index, val signature: Int, val builtAtMillis: Long)
 
-  private val cache = HashMap<String, Entry>()
+  private val cache = ConcurrentHashMap<String, Entry>()
+
+  /**
+   * One lock per catalog, so a build never blocks a search of a DIFFERENT catalog.
+   *
+   * The obvious `@Synchronized` on [match] was wrong in a way worth recording: building an index is
+   * up to [maxFiles] network reads, and holding one process-wide monitor across them meant a single
+   * cold catalog could park every other `uses:` request behind it — on a host whose request threads
+   * are shared with the routes that serve renders. Per-catalog locks keep the one property actually
+   * wanted (two concurrent searches of the same cold catalog do one build, not two) and drop the
+   * one that was accidental.
+   */
+  private val locks = ConcurrentHashMap<String, Any>()
 
   /**
    * The previews among [previewIds] whose declaration calls something matching [token].
@@ -94,7 +108,6 @@ class PreviewUsageIndex(
    * half-remembered names; an exact-match operator would need the reader to already know the
    * answer.
    */
-  @Synchronized
   fun match(system: String, previewIds: List<String>, token: String): Match {
     val index = index(system, previewIds)
     val needle = token.trim().lowercase()
@@ -118,16 +131,26 @@ class PreviewUsageIndex(
    */
   private fun index(system: String, previewIds: List<String>): Index {
     val signature = previewIds.sorted().hashCode()
-    val now = clock()
-    cache[system]
-      ?.takeIf { it.signature == signature && now - it.builtAtMillis < ttlSeconds * 1000 }
-      ?.let {
-        return it.index
+    fresh(system, signature)?.let {
+      return it
+    }
+    // Re-checked inside the lock: several requests can pass the read above together, and without
+    // the second look each of them would rebuild what the first has just finished.
+    synchronized(locks.computeIfAbsent(system) { Any() }) {
+      fresh(system, signature)?.let {
+        return it
       }
-    val built = build(system, previewIds)
-    cache[system] = Entry(built, signature, now)
-    return built
+      val built = build(system, previewIds)
+      cache[system] = Entry(built, signature, clock())
+      return built
+    }
   }
+
+  /** The cached index for [system], if it is still current for [signature] and inside its TTL. */
+  private fun fresh(system: String, signature: Int): Index? =
+    cache[system]
+      ?.takeIf { it.signature == signature && clock() - it.builtAtMillis < ttlSeconds * 1000 }
+      ?.index
 
   private fun build(system: String, previewIds: List<String>): Index {
     // Grouped by file, because that is the unit of both the fetch and the parse. Previews that
@@ -164,10 +187,7 @@ class PreviewUsageIndex(
       val lines = text.lines()
       val lineStarts = lineStartOffsets(lines)
       for ((previewId, bodyLine) in previews) {
-        val bounds = PlaygroundSeedResolver.declarationLines(lines, bodyLine) ?: continue
-        val from = lineStarts[bounds.first]
-        // End-exclusive: the offset one past the last character of the declaration's last line.
-        val to = lineStarts[bounds.last] + lines[bounds.last].length
+        val (from, to) = declarationSpan(facts, lines, lineStarts, bodyLine) ?: continue
         val callees =
           facts.calls
             .asSequence()
@@ -181,6 +201,46 @@ class PreviewUsageIndex(
       }
     }
     return Index(calleesById = calleesById, available = true, truncated = truncated)
+  }
+
+  /**
+   * The character range of the declaration [bodyLine] falls in, half-open, or null when it cannot
+   * be established.
+   *
+   * **The parse is the authority, and the line scan is only a fallback.**
+   * [PlaygroundSeedResolver.declarationLines] finds a declaration's bounds from formatting — a
+   * non-blank line at column 0 preceded by a blank one — and where two top-level declarations sit
+   * with no blank line between them it deliberately over-selects, taking both. That is the safe
+   * failure for its own caller, which seeds an editor buffer and would rather hand over too much
+   * than truncate someone's code mid-expression. It is the *unsafe* failure here: a merged range
+   * gives each of those previews the other's calls, so `uses:Button` answers with a preview that
+   * never calls one — a wrong answer, delivered confidently, which is worse than no answer.
+   *
+   * So the real declaration list from the parse decides whenever it can. The line scan stays for
+   * the one case it cannot: an analyzer predating the `declarations` field, which reports none.
+   * ktfmt (Google style) guarantees the blank line, so that fallback is right about every catalog
+   * in this repository — it just cannot be right about every catalog anywhere, which is the gap the
+   * parse closes.
+   */
+  private fun declarationSpan(
+    facts: UsageSourceFacts,
+    lines: List<String>,
+    lineStarts: IntArray,
+    bodyLine: Int?,
+  ): Pair<Int, Int>? {
+    if (bodyLine == null || bodyLine < 1 || bodyLine > lines.size) return null
+    if (facts.declarations.isNotEmpty()) {
+      // The anchor is a line inside the body; any offset on that line is inside the declaration,
+      // and the line's first non-blank character avoids landing on trailing whitespace beyond it.
+      val anchorOffset =
+        lineStarts[bodyLine - 1] +
+          lines[bodyLine - 1].indexOfFirst { !it.isWhitespace() }.coerceAtLeast(0)
+      val span = facts.declarationAt(anchorOffset) ?: return null
+      return span.start to span.end
+    }
+    val bounds = PlaygroundSeedResolver.declarationLines(lines, bodyLine) ?: return null
+    // End-exclusive: the offset one past the last character of the declaration's last line.
+    return lineStarts[bounds.first] to (lineStarts[bounds.last] + lines[bounds.last].length)
   }
 
   /** One file's text, or null when it cannot be read as Kotlin source. */
@@ -237,7 +297,19 @@ class PreviewUsageIndex(
   )
 
   companion object {
-    const val DEFAULT_MAX_BYTES: Int = 512 * 1024
+    /**
+     * Deliberately the **same** cap as [PlaygroundSeedResolver.DEFAULT_MAX_BYTES], and not merely a
+     * similar number.
+     *
+     * `PlaygroundSeedResolver.httpFetch` reads `maxBytes + 1` bytes and stops. That extra byte is
+     * the whole truncation protocol: a body at or over the cap comes back one byte longer than the
+     * cap, so a reader whose own limit matches can tell "a big file" from "the start of a bigger
+     * one". Setting a *larger* limit here silently accepts that prefix as if it were the file — and
+     * a prefix still parses, so the index would answer with the calls in the first 256 KiB and
+     * report itself complete, which is exactly the confident-but-wrong answer `available` exists to
+     * prevent.
+     */
+    const val DEFAULT_MAX_BYTES: Int = PlaygroundSeedResolver.DEFAULT_MAX_BYTES
     const val DEFAULT_MAX_FILES: Int = 200
     const val DEFAULT_TTL_SECONDS: Long = 300
   }

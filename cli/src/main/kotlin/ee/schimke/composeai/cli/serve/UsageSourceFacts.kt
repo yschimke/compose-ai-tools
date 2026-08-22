@@ -21,10 +21,30 @@ import kotlinx.serialization.json.Json
 data class UsageSourceFacts(
   @SerialName("calls") val calls: List<Call> = emptyList(),
   /**
+   * The file's top-level declarations, in source order. Empty from an analyzer predating the field,
+   * which is why every reader treats "no declarations" as "fall back", not as "an empty file".
+   */
+  @SerialName("declarations") val declarations: List<Span> = emptyList(),
+  /**
    * Set when the analyzer could not parse at all; the caller then behaves as if it had no facts.
    */
   @SerialName("error") val error: String? = null,
 ) {
+
+  /** A half-open character range into the analysed source. */
+  @Serializable
+  data class Span(@SerialName("start") val start: Int, @SerialName("end") val end: Int) {
+    operator fun contains(offset: Int): Boolean = offset in start until end
+  }
+
+  /**
+   * The top-level declaration containing [offset], or null when no parsed declaration does.
+   *
+   * Null is a real answer and not a shrug: an offset in the file header, in a blank run between
+   * declarations, or past the end of the last one belongs to no declaration, and a caller
+   * attributing calls must be able to say so rather than picking the nearest.
+   */
+  fun declarationAt(offset: Int): Span? = declarations.firstOrNull { offset in it }
 
   @Serializable
   data class Call(

@@ -168,8 +168,13 @@
       // ---- `uses:<composable>` — which previews CALL a thing (Dev mode only)
       var usesEndpoint = "/api/uses?session=compose-m3";
       var usesToken = "";
+      var usesRawQuery = "";
       var usesCache = {};
       var usesPending = {};
+      // Whether a `uses:` filter is running right now. Asked wherever the page would otherwise
+      // test `q !== ""` to mean "a filter is on": a query of only `uses:Foo` leaves `q` empty, and
+      // every such test would then read as "resting".
+      function usesActive() { return usesToken !== ""; }
       // Pulls `uses:<token>` out of the raw query and returns what is left for the text filter.
       // It also notices a CHANGE of token and starts the lookup, which is why it is one function
       // and not a pure split: `apply()` is the only place that reads the box, so it is the only
@@ -179,6 +184,9 @@
         var found = "";
         var rest = raw.replace(/(^|\s)uses:(\S*)/i, function (m, lead, t) { found = t; return lead; });
         if (found !== usesToken) { usesToken = found; usesFetch(found); }
+        // Kept for the Pages pane, which filters on what was TYPED rather than on the remainder —
+        // see `paneQ` in the filter script.
+        usesRawQuery = raw.trim().toLowerCase();
         return rest.trim().toLowerCase();
       }
       function usesEntry() { return usesToken ? usesCache[usesToken.toLowerCase()] : null; }
