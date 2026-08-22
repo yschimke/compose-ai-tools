@@ -76,6 +76,7 @@
  * them normally: two player renders are a real comparison even when the baked
  * capture is empty.
  */
+import { BG } from "./rc-compare-pixels.mjs";
 
 function esc(s) {
   return String(s ?? "").replace(
@@ -387,6 +388,8 @@ function clientScript(threshold) {
   const MODEL = JSON.parse(document.getElementById("rc-model").textContent);
   const THRESHOLD = ${JSON.stringify(threshold)};
   const MAX_DELTA = 35215; // pixelmatch's maximum YIQ difference, for the threshold scale
+  // The neutral the build-time diffs flatten onto (rc-compare-pixels.mjs BG), as a CSS colour.
+  const BG_CSS = ${JSON.stringify(`rgb(${BG[0]}, ${BG[1]}, ${BG[2]})`)};
   const select = document.getElementById("refselect");
   const status = document.getElementById("refstatus");
   const rows = Array.from(document.querySelectorAll("tr.row"));
@@ -454,11 +457,23 @@ function clientScript(threshold) {
     return images.get(src);
   }
 
+  /**
+   * The image's pixels flattened onto the diff neutral, which is what makes [delta] meaningful.
+   *
+   * The published lane PNGs are the players' own captures, alpha and all — a sticker on
+   * transparency, like the baked PNG. Reading them raw would score RGB the viewer never sees: a
+   * transparent black pixel and an opaque black one are the same three channels, so a coverage
+   * difference could vanish. Painting the neutral first and letting the draw composite over it is
+   * the canvas equivalent of the build-time flattenOnto(BG), so a client-side player-vs-player
+   * score means the same thing as the driver's lane-vs-baked one.
+   */
   function pixels(img) {
     const canvas = document.createElement("canvas");
     canvas.width = img.naturalWidth;
     canvas.height = img.naturalHeight;
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.fillStyle = BG_CSS;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(img, 0, 0);
     return ctx.getImageData(0, 0, canvas.width, canvas.height);
   }
