@@ -52,10 +52,10 @@
  * lane is an enhancement and must never cost a catalog its render. `--strict` turns any dropped
  * entry into a non-zero exit, for a repo that wants its parity coverage gated.
  *
- * A reference that published but is not COMPARABLE with its sticker — drawn at a uniform scale
- * away from it — is a warning too, once, with a count: see reference-scale.mjs for why that is a
- * defect in this pipeline rather than a finding about the component, and therefore something a
- * gated repo should be able to fail on.
+ * A reference that published but is not COMPARABLE with its sticker — drawn at a uniform scale away
+ * from it — is a warning too, but only when THIS export rescaled it: see reference-scale.mjs for
+ * why the ratio alone cannot tell that apart from the kit and the render genuinely disagreeing
+ * about a size, and why gating a publish on the latter would defeat the lane.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -72,7 +72,7 @@ import {
 } from "./design-references.mjs";
 import { alphaBounds, fitRgba, isRoundingDelta, placeRgba, resampleRgba } from "./png-resample.mjs";
 import { applyBackdrop, parseBackdrop, stageOf } from "./reference-backdrop.mjs";
-import { scaleFinding, scaleMessage } from "./reference-scale.mjs";
+import { scaleFinding, scaleMessage, scaleVerdict } from "./reference-scale.mjs";
 import { layoutFromNode } from "@design-parity/adapter-figma";
 import { scaleTree } from "./reference-layout.mjs";
 import { withReferenceAnnotations } from "@design-parity/catalog-export";
@@ -412,7 +412,7 @@ fs.mkdirSync(referencesDir, { recursive: true });
 
 let written = 0;
 /** Published references whose content is a uniform rescale of their sticker's; see reference-scale.mjs. */
-const rescaled = [];
+const scaleFindings = [];
 /** How the backdrop landed, for the summary — silence would read as "every reference got one". */
 const backdropTally = { disc: 0, frame: 0, skipped: 0 };
 /** Reference id -> a `{ layout }` shim; `referenceAnnotations` reads only that field. */
@@ -454,6 +454,10 @@ for (const record of records) {
 
   // Where the artwork ends up inside the published raster. Full-bleed unless it is placed/fitted.
   let placement = { width: target.width, height: target.height, x: 0, y: 0 };
+  // Did this run scale the artwork on the way in? The scale check below needs to know, because the
+  // ratio alone cannot tell an export this pipeline shrank from a component the kit and the code
+  // genuinely disagree about — and only one of those is this pipeline's to answer for.
+  let rescaledHere = false;
   if (raster.width !== target.width || raster.height !== target.height) {
     if (raster.preserveScale) {
       // A Figma component is exported at the Compose renderer's density. Its artboard is normally
@@ -488,6 +492,7 @@ for (const record of records) {
         `(drawing ${drawn.width}x${drawn.height}) on ${target.width}x${target.height} canvas`;
       // Still a warning when the DRAWN content had to shrink — that one is a real size divergence
       // between the kit and the render, and the published picture no longer shows the kit's scale.
+      rescaledHere = reduced;
       if (reduced) warnFor(record, `${message} (content too large; reduced to fit)`);
       else if (cropped) console.log(`design-references: ${message} (empty margin cropped)`);
       else console.log(`design-references: ${message}`);
@@ -512,6 +517,7 @@ for (const record of records) {
         // survives.
         const fitted = fitRgba(raster.data, raster.width, raster.height, target.width, target.height);
         placement = fitted.box;
+        rescaledHere = true;
         if (fitted.box.width !== target.width || fitted.box.height !== target.height) {
           warnFor(
             record,
@@ -548,8 +554,13 @@ for (const record of records) {
   const stickerBox = stickerContent(record);
   const finding = scaleFinding(drawnBox, stickerBox);
   if (finding) {
-    rescaled.push({ record, finding });
-    note(scaleMessage(record.id, finding, drawnBox, stickerBox));
+    const verdict = scaleVerdict(rescaledHere);
+    const message = scaleMessage(record.id, finding, drawnBox, stickerBox, verdict);
+    // `warnFor`, so a secondary stays a note: the tier contract is that one variant cell cannot
+    // cost the catalog its publish, and routing around it here would re-gate the run by accident.
+    if (verdict === "export") warnFor(record, message);
+    else note(message);
+    scaleFindings.push({ record, finding, verdict });
   }
 
   const bytes = writePng(raster);
@@ -565,25 +576,18 @@ for (const record of records) {
   if (scaled) annotatedReferences[record.id] = { layout: scaled };
 }
 
-// The gate m3-catalog#180 asked for. A reference whose content is a uniform rescale of its
-// sticker's is not comparable with it: the scorer normalises both sides to their content box, so
-// the number it publishes is about the shape and says nothing at all about the size — and 107 of
-// m3-catalog's 536 references had been like that for as long as the lane had existed, because
-// nothing anywhere looked. The per-record lines are notes; ONE warning carries the count, so a
-// `--strict` run fails on it without a primary's worth of noise per cell.
-if (rescaled.length > 0) {
-  const worst = [...rescaled].sort(
-    (a, b) => Math.abs(a.finding.scale - 1) - Math.abs(b.finding.scale - 1),
-  );
-  const named = worst
-    .slice(-3)
-    .reverse()
-    .map(({ record, finding }) => `${record.id} (${finding.scale}x)`)
-    .join(", ");
-  warn(
-    `${rescaled.length} of ${written} published reference(s) draw their component at a uniform ` +
-      `scale from their sticker's, so the comparison measures the scale rather than the design. ` +
-      `Worst: ${named}. See the notes above for the full list.`,
+// The gate m3-catalog#180 asked for: 107 of that catalog's 536 references drew their component at
+// a uniform fraction of the render they are compared with, and nothing anywhere looked. The scorer
+// could not — it crops both sides to their content box before scoring, so the size never reached
+// the number. Each finding is reported where it belongs (an export this pipeline rescaled is a
+// warning `--strict` fails on; a divergence it published at full density is a note about the
+// component), and the tally says how the run split so neither lane can hide inside the other.
+if (scaleFindings.length > 0) {
+  const exports = scaleFindings.filter((r) => r.verdict === "export").length;
+  console.log(
+    `design-references: ${scaleFindings.length} of ${written} published reference(s) draw their ` +
+      `component at a uniform scale from their sticker's — ${exports} rescaled by this export, ` +
+      `${scaleFindings.length - exports} published at full density and still a different size`,
   );
 }
 

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { scaleFinding, scaleMessage } from "./reference-scale.mjs";
+import { scaleFinding, scaleMessage, scaleVerdict } from "./reference-scale.mjs";
 
 const box = (width, height) => ({ x: 0, y: 0, width, height });
 
@@ -50,15 +50,26 @@ test("an undrawn side cannot be compared", () => {
   assert.equal(scaleFinding(box(0, 10), box(10, 10)), null);
 });
 
-test("the message names both sides and the factor", () => {
-  const message = scaleMessage(
-    "button-filled__ideal__xs",
-    scaleFinding(box(145, 56), box(219, 84)),
-    box(145, 56),
-    box(219, 84),
-  );
-  assert.match(message, /button-filled__ideal__xs/);
-  assert.match(message, /145x56/);
-  assert.match(message, /219x84/);
-  assert.match(message, /0\.664x/);
+test("the ratio alone does not decide whose defect it is", () => {
+  // checkbox-checked__ideal__disabled after the placement fix: 47x47 against 55x53, ratios 0.855
+  // and 0.887. That IS a uniform finding — and it is the kit and Compose disagreeing about a
+  // checkbox, not an export defect. Gating a publish on it would be the opposite of the point.
+  const finding = scaleFinding(box(47, 47), box(55, 53));
+  assert.ok(finding);
+  assert.equal(scaleVerdict(false), "divergence");
+  assert.equal(scaleVerdict(true), "export");
+});
+
+test("the message names both sides, the factor, and the verdict", () => {
+  const finding = scaleFinding(box(145, 56), box(219, 84));
+  const rescaled = scaleMessage("button-filled__ideal__xs", finding, box(145, 56), box(219, 84), "export");
+  assert.match(rescaled, /button-filled__ideal__xs/);
+  assert.match(rescaled, /145x56/);
+  assert.match(rescaled, /219x84/);
+  assert.match(rescaled, /0\.664x/);
+  assert.match(rescaled, /rescaled to fit/);
+
+  const divergent = scaleMessage("checkbox", finding, box(145, 56), box(219, 84), "divergence");
+  assert.match(divergent, /own density/);
+  assert.doesNotMatch(divergent, /rescaled to fit/);
 });

@@ -62,9 +62,10 @@ softer than a fresh export from Figma will be, and its **geometry is exact**.
 | `checkbox-checked__ideal__disabled` | 63x63 | 25x25 | 47x47 | 55x53 |
 
 The replay is also the proof that the diagnosis is right rather than plausible: run the same rebuilt
-source through the **old** placement and it reproduces what the catalog published, to a pixel, on
-every cell — 145x56@(36,14) against a published 145x56@(37,14), 200x200@(26,26) against
-200x200@(26,26).
+source through the **old** placement and it reproduces what the catalog published — exactly on
+`button-filled__ideal__xs` (145x56@(37,14)), `shape-materialshapes__ideal__fan` (200x200@(26,26)),
+`radiobutton-selected__ideal__disabled` and `splitbutton-filled__ideal__xl`, and within a pixel on
+the checkbox, whose drawn box had to be estimated from the node tree rather than measured.
 
 Four of the five land on the render exactly. The checkbox does not, and that is the point of
 separating the two readings: 0.47 was the pipeline, and the ~0.87 that remains is the kit and
@@ -74,14 +75,31 @@ report.
 ## The gate
 
 `reference-scale.mjs` compares each published reference's content box with its sticker's and reports
-a **uniform** rescale outside tolerance: both axes off by the same factor is the fingerprint of the
-pipeline resizing a picture, where a component that is genuinely the wrong size is wrong on the axis
-its size axis controls, and a difference in proportion is already what the scorer's `geometry`
-reports. Per-record lines are notes; one warning carries the count, so `--strict` can fail on it
-without a warning per cell.
+a **uniform** rescale outside tolerance — a difference in *proportion* being what the scorer's
+`geometry` already reports.
 
-`splitbutton-filled__ideal__xl` is the case that shows the split working. Its reference is 371x126
-against a 1049x105 render — but the kit node is 400x136 with no empty margin anywhere, so the
-placement has nothing to crop and this change does not move it. Width ratio 0.35 against height
-ratio 1.2 is not uniform, so the gate correctly leaves it to `geometry`: the kit's XL split button
-is 136dp tall and the render's is 40dp, which is a defect in the component, not in the export.
+A uniform ratio does not by itself say whose defect it is, and it must not: the checkbox above is
+0.87 on one axis and 0.85 on the other, well inside the uniform band, and it is a genuine parity
+finding. Failing a publish on it would be the opposite of what this lane is for. What separates the
+two is not the ratio but whether the pipeline scaled the artwork on the way in — which the emitter
+knows for a fact from the placement it just performed, so it passes that in:
+
+- **rescaled by this export** ⇒ the published picture is not the size the design was drawn at. A
+  defect here, reported through `warnFor` so a primary is a warning `--strict` fails on and a
+  secondary stays a note — one variant cell must not cost a catalog its publish.
+- **published at its own density and still a different size** ⇒ the kit and the render disagree. A
+  note, and a finding about the component.
+
+All 107 cells in the issue are the first kind; the checkbox residue is the second.
+
+`splitbutton-filled__ideal__xl` is the case that shows the uniform test working. Its reference is
+371x126 against a 1049x105 render — but the kit node is 400x136 with no empty margin anywhere, so
+the placement has nothing to crop and this change does not move it. Width ratio 0.35 against height
+ratio 1.2 is not uniform, so the gate leaves it to `geometry`: the kit's XL split button is 136dp
+tall and the render's is 40dp, which is a defect in the component, not in the export.
+
+One rounding note, because it is easy to get wrong and invisible when you do: the placed dimensions
+are rounded before the resample, so the offset has to be measured against the scale that was
+actually applied rather than the one that was asked for. Against the unrounded factor, a 300-unit
+vector fitted to 151px published as 150 — a column short, silently. `centreOn` derives the offset
+from `placedWidth / width` and clamps content that fits so the rounding cannot push it off an edge.

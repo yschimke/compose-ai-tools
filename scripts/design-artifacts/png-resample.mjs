@@ -158,6 +158,22 @@ export function alphaBounds(data, width, height) {
 }
 
 /**
+ * Where to start drawing a `placed`-long axis so that the content between `from` and `from + span`
+ * (in source units, scaled by `scale`) sits centred in `target`.
+ *
+ * Clamped so that content which fits is never pushed off the edge by the resample's rounding. When
+ * it does not fit — the content is larger than the canvas and something has to go — the fractional
+ * edge is what goes, and the clamp does not apply.
+ */
+function centreOn(from, span, scale, placed, target) {
+  const start = Math.floor(from * scale);
+  const end = Math.min(placed, Math.ceil((from + span) * scale));
+  let offset = Math.floor((target - span * scale) / 2 - from * scale);
+  if (end - start <= target) offset = Math.min(Math.max(offset, -start), target - end);
+  return offset;
+}
+
+/**
  * Centre a raster on a transparent target canvas without enlarging it.
  *
  * This is the operation a density-matched component export needs. Its pixel dimensions already
@@ -187,11 +203,18 @@ export function placeRgba(data, width, height, targetWidth, targetHeight, conten
   const placedWidth = Math.max(1, Math.round(width * scale));
   const placedHeight = Math.max(1, Math.round(height * scale));
   // Centre the CONTENT on the canvas, then say where that puts the frame around it.
+  //
+  // Measured against the scale the resample ACTUALLY applied, not the one asked for: the placed
+  // dimensions are rounded, and offsetting by the unrounded factor pushed a content box that was
+  // meant to fill the canvas a pixel past its edge — a 300-unit vector fitted to 151px published
+  // as 150, one column short, with no sign of it anywhere.
+  const scaleX = placedWidth / width;
+  const scaleY = placedHeight / height;
   const box = {
     width: placedWidth,
     height: placedHeight,
-    x: Math.floor((targetWidth - keep.width * scale) / 2 - keep.x * scale),
-    y: Math.floor((targetHeight - keep.height * scale) / 2 - keep.y * scale),
+    x: centreOn(keep.x, keep.width, scaleX, placedWidth, targetWidth),
+    y: centreOn(keep.y, keep.height, scaleY, placedHeight, targetHeight),
   };
   const placed =
     placedWidth === width && placedHeight === height

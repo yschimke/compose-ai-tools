@@ -204,3 +204,15 @@ test("placeRgba ignores an empty content box rather than dividing by it", () => 
   const { box } = placeRgba(data, 4, 4, 10, 8, { x: 0, y: 0, width: 0, height: 0 });
   assert.deepEqual(box, { width: 4, height: 4, x: 3, y: 2 });
 });
+
+test("placeRgba keeps content that exactly fits, despite the resample's rounding", () => {
+  // A 300-unit vector on a 380-unit artboard, fitted to 151px: the placed raster rounds to 191,
+  // and offsetting by the unrounded factor pushed a column off the canvas — 150px published for
+  // content that fills 151.
+  const content = { x: 40, y: 40, width: 300, height: 300 };
+  const data = raster(380, 380, (x, y) =>
+    x >= 40 && x < 340 && y >= 40 && y < 340 ? [0, 0, 0, 255] : [0, 0, 0, 0],
+  );
+  const { data: out } = placeRgba(data, 380, 380, 151, 151, content);
+  assert.deepEqual(alphaBounds(out, 151, 151), { x: 0, y: 0, width: 151, height: 151 });
+});

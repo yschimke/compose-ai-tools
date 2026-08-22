@@ -9,12 +9,16 @@
  * a fifth of m3-catalog's 536 references sat centred in their canvas at 0.47–0.91 of the render
  * with no signal anywhere (m3-catalog#180).
  *
- * The signature this looks for is a **uniform** rescale: both axes off by the same factor. That is
- * the fingerprint of the pipeline resizing the picture, not of the design and the code disagreeing
- * — a component that is genuinely the wrong size is wrong on the axis its size axis controls, and
- * a difference in proportion is what the scorer's `geometry` already reports. Keeping the two
- * apart is what lets this be gated: a uniform rescale is always a defect in the export, never a
- * finding about the component.
+ * The signature this looks for is a **uniform** rescale: both axes off by the same factor. A
+ * difference in *proportion* is what the scorer's `geometry` already reports, so a uniform one is
+ * the interesting half.
+ *
+ * It does NOT by itself say whose fault the size difference is, and an earlier draft of this file
+ * claimed it did. A kit and an implementation can disagree about a checkbox by a similar amount on
+ * both axes, and calling that an export defect would gate a `--strict` publish on a genuine parity
+ * finding — the opposite of what this lane is for. What separates the two is not the ratio: it is
+ * whether the pipeline scaled the artwork on the way in, which the emitter knows for a fact from
+ * the placement it just performed. So the caller passes that in, and [scaleVerdict] routes on it.
  *
  * Pure and dependency-free so it unit-tests without an `npm ci`.
  */
@@ -74,11 +78,26 @@ export function scaleFinding(referenceBox, stickerBox, options = {}) {
   };
 }
 
+/**
+ * What to do about a finding, given whether the pipeline rescaled the artwork to place it.
+ *
+ * `rescaled` ⇒ the published picture is not the size the design was exported at, which is a defect
+ * in this pipeline and gateable. Otherwise the reference went out at its own density and the two
+ * still differ: a size divergence between the kit and the render, which is a finding about the
+ * component and must not cost a catalog its publish.
+ */
+export function scaleVerdict(rescaled) {
+  return rescaled ? "export" : "divergence";
+}
+
 /** One line describing a finding, for the run log. */
-export function scaleMessage(id, finding, referenceBox, stickerBox) {
+export function scaleMessage(id, finding, referenceBox, stickerBox, verdict = "export") {
+  const because =
+    verdict === "export"
+      ? "the export was rescaled to fit this canvas, so the comparison sees the scale and not the design"
+      : "the export was published at its own density, so this is a size divergence rather than an export defect";
   return (
     `${id}: reference draws ${referenceBox.width}x${referenceBox.height} against the sticker's ` +
-    `${stickerBox.width}x${stickerBox.height} — a uniform ${finding.scale}x, so the comparison ` +
-    `reports the scale rather than the design`
+    `${stickerBox.width}x${stickerBox.height} — a uniform ${finding.scale}x; ${because}`
   );
 }
