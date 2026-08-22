@@ -2,6 +2,7 @@ package ee.schimke.composeai.scroll
 
 import java.awt.image.BufferedImage
 import java.io.File
+import java.io.RandomAccessFile
 import javax.imageio.IIOImage
 import javax.imageio.ImageIO
 import javax.imageio.ImageTypeSpecifier
@@ -67,9 +68,17 @@ object ScrollGifEncoder {
     // same size as the 46-frame one, carrying 62KB of the old render inside it. That makes the
     // artifact a function of the build directory's history rather than of its frames, which costs
     // reproducibility and quietly misleads any byte-level comparison of two renders.
-    // [ee.schimke.composeai.daemon.GifEncoder] already deletes; these two encoders should not
-    // disagree about it.
-    outputFile.delete()
+    //
+    // `setLength(0)` rather than `delete()`, because the two need different permissions and only
+    // one of them matches what the write itself needs. Unlinking needs write+execute on the
+    // PARENT DIRECTORY; truncating and writing need write on the FILE. So in a directory that
+    // does not permit unlinking — a sticky `/tmp`, a read-only output dir holding a writable file
+    // — `delete()` returns `false`, nothing checks it, `FileImageOutputStream` opens and
+    // overwrites anyway, and the stale tail survives the fix that was supposed to remove it.
+    // Truncating in place cannot fail where the encode below would succeed, and it throws rather
+    // than returning a boolean, so a genuine permission problem surfaces instead of being encoded
+    // into the artifact.
+    RandomAccessFile(outputFile, "rw").use { it.setLength(0L) }
     FileImageOutputStream(outputFile).use { stream ->
       writer.output = stream
       val param: ImageWriteParam = writer.defaultWriteParam
