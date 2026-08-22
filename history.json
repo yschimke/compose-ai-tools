@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "9fd86efaf1b0bc5665f7fe64a3285c333e13f9f5",
+    "generatedFrom": "d0dcae37ba879de2a94ce2ac5495dbb70182a983",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -826,6 +826,36 @@
                     "commit": "38de7e9ad4166cf04be90e34c90eec4988b694b1",
                     "date": "2026-08-14T10:40:34Z",
                     "sourceSha": "5b91ca7c",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:android/com.example.sampleandroid.CaptureGutterPreviewsKt.ShadowStickerCroppedPreview_Shadow cropped": {
+            "path": "renders/samples:android/ShadowStickerCroppedPreview_Shadow_cropped-65777146.png",
+            "versions": [
+                {
+                    "blob": "0308a51382333153dfa0faa18cdc9dd0c3f318f0",
+                    "commit": "d0dcae37ba879de2a94ce2ac5495dbb70182a983",
+                    "date": "2026-08-22T11:34:24Z",
+                    "sourceSha": "747469cc",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:android/com.example.sampleandroid.CaptureGutterPreviewsKt.ShadowStickerGutteredPreview_Shadow guttered": {
+            "path": "renders/samples:android/ShadowStickerGutteredPreview_Shadow_guttered-af019607.png",
+            "versions": [
+                {
+                    "blob": "d99b2007b04bb165af723cd89bfdbcfde25ca4e9",
+                    "commit": "d0dcae37ba879de2a94ce2ac5495dbb70182a983",
+                    "date": "2026-08-22T11:34:24Z",
+                    "sourceSha": "747469cc",
                     "commits": 1
                 }
             ],
@@ -3576,6 +3606,36 @@
                 }
             ],
             "observations": 2,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:cmp/com.example.samplecmp.CaptureGutterPreviewsKt.ShadowStickerCroppedPreview_Shadow cropped": {
+            "path": "renders/samples:cmp/ShadowStickerCroppedPreview_Shadow_cropped-bc08dd3c.png",
+            "versions": [
+                {
+                    "blob": "8882a1247c7baf31b2ce0f4fe389c88f788f4c46",
+                    "commit": "d0dcae37ba879de2a94ce2ac5495dbb70182a983",
+                    "date": "2026-08-22T11:34:24Z",
+                    "sourceSha": "747469cc",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:cmp/com.example.samplecmp.CaptureGutterPreviewsKt.ShadowStickerGutteredPreview_Shadow guttered": {
+            "path": "renders/samples:cmp/ShadowStickerGutteredPreview_Shadow_guttered-e26176a9.png",
+            "versions": [
+                {
+                    "blob": "d671a74104321b4c024e581704bb67f254360675",
+                    "commit": "d0dcae37ba879de2a94ce2ac5495dbb70182a983",
+                    "date": "2026-08-22T11:34:24Z",
+                    "sourceSha": "747469cc",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
             "unstable": false,
             "flapCount": 0
         },
