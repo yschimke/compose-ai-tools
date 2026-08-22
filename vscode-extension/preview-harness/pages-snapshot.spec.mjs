@@ -807,14 +807,31 @@ const FIXTURE_STATES = [
     apply: async (page) => {
       // States run in order against the SAME page, and `report-menu` above leaves the launcher
       // open over the table this shot is about. Close it first rather than reordering the states,
-      // which would photograph that one on this lane instead.
+      // which would photograph that one on this lane instead. The open element is `.cp-fab-menu`
+      // — the floating launcher — not the `#cp-report` disclosure inside it, which is a different
+      // control that this page never opened.
       await page.evaluate(() =>
-        document.getElementById("cp-report")?.removeAttribute("open"),
+        document.querySelector(".cp-fab-menu")?.removeAttribute("open"),
       );
+      await page.waitForSelector(".cp-fab-menu[open]", { state: "detached" });
       await page.click('[data-compare-format="reference"]');
       // The header names the lane and moves with its column — assert both rather than trusting the
       // pixels, so a reordered table with a stale header fails loudly here.
       await expect(page.locator(".cp-compare-target-head")).toHaveText("Figma");
+      // …and assert the text is the text the READER sees. `serve.css` used to hide this `<th>`
+      // with `font-size: 0` and paint a `::after` whose content was the generic "Design reference"
+      // on every reference lane, so a DOM-text assertion passed while the page said something
+      // else. This is the only layer with real CSS, so it is the only one that can catch that.
+      const painted = await page.evaluate(() => {
+        const th = document.querySelector(".cp-compare-target-head");
+        const style = getComputedStyle(th);
+        return {
+          fontSize: parseFloat(style.fontSize),
+          after: getComputedStyle(th, "::after").content,
+        };
+      });
+      expect(painted.fontSize).toBeGreaterThan(0);
+      expect(["none", "normal"]).toContain(painted.after);
       const specFirst = await page.evaluate(() => {
         const row = document.querySelector(".cp-compare-row:not([hidden])");
         const cells = Array.from(row?.children ?? []).map((c) => c.className);

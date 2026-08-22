@@ -2557,11 +2557,12 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
 .cp-compare-score--warn { color: light-dark(#8a5300, #e6b067); }
 .cp-compare-score--bad { color: light-dark(#8a1c1c, #ef9292); }
 .cp-compare-score--na { color: var(--cp-fg-faint); }
-#cp-compare .cp-compare-target-head { font-size: 0; }
-#cp-compare .cp-compare-target-head::after { font-size: 0.72rem; }
-#cp-compare[data-format="svg"] .cp-compare-target-head::after { content: "SVG"; }
-#cp-compare[data-format="rc"] .cp-compare-target-head::after { content: "Remote Compose"; }
-#cp-compare[data-format="reference"] .cp-compare-target-head::after { content: "Design reference"; }
+/* The comparison column's header names its lane in the DOM, not in a `::after`. It used to be a
+   `font-size: 0` `<th>` with three `content:` rules keyed off `data-format` — which worked, but
+   could only ever say the generic "Design reference", because CSS has no way to reach the catalog's
+   own provider name. `compare/columns.ts` writes the real label ("Figma") into the element, so the
+   text has to be visible for that to mean anything. Keeping both would also leave two writers for
+   one string, and the invisible one silently winning. */
 #cp-compare[data-format="reference"] .cp-compare-vector { cursor: pointer; }
 
 /* The Remote Compose player wall: one column per player, every render published by the offline
