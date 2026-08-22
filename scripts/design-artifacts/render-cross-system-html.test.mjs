@@ -267,3 +267,22 @@ test("the kit column is still baked — no view-time fetch reaches the design br
   assert.doesNotMatch(html, /fetch\(/);
   assert.doesNotMatch(html, /<script/);
 });
+
+test("a sibling title fetched from another repo cannot inject markup into the subtitle", () => {
+  // With the cross-repo form, `otherTitle` can come straight out of a fetched sibling
+  // catalog.json. The heading and table header always escaped it; the subtitle did not.
+  const html = renderCrossSystemHtml(catalog, {
+    parallelById,
+    otherComponents,
+    otherManifest,
+    otherSystem: "wear-m3-catalog",
+    otherTitle: '<img src=x onerror="alert(1)">',
+    otherRepo: "yschimke/wear-m3-catalog",
+    designRefById: new Map([["Button/Filled", { url: "https://example.test/r.png" }]]),
+  });
+
+  assert.doesNotMatch(html, /<img src=x/);
+  assert.match(html, /&lt;img src=x/);
+  // The arrow span is ours and stays real markup.
+  assert.match(html, /<span class="arrow">↔<\/span>/);
+});

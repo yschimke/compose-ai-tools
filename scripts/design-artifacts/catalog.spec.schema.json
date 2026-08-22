@@ -63,13 +63,13 @@
     "compareWith": {
       "description": "Optional sibling system to pair against on the cross-system compare page; components carry `parallel` handles into it. A bare slug means a sibling module of this project (spec read from `../design-catalog-<slug>/`, renders from this repo's `design-artifacts/<slug>` branch). Use the object form when the sibling is a catalog of ANOTHER repository, or to tune the design column.",
       "oneOf": [
-        { "type": "string" },
+        { "type": "string", "minLength": 1 },
         {
           "type": "object",
           "additionalProperties": false,
           "required": ["system"],
           "properties": {
-            "system": { "type": "string", "description": "The sibling system slug." },
+            "system": { "type": "string", "minLength": 1, "description": "The sibling system slug." },
             "repo": {
               "type": "string",
               "description": "`<owner>/<repo>` publishing the sibling's `design-artifacts/<system>` branch, when it is not this repository."

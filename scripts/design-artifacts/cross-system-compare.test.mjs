@@ -61,6 +61,9 @@ test("primary references inverted onto componentId, carrying the kit node uri", 
 
   assert.deepEqual(byId.get("Button/Filled"), {
     path: "references/button-filled.png",
+    // Carried so a caller can check the record still corresponds to a published preview before
+    // baking its URL — see the local arm in generate-design-catalog.mjs.
+    previewId: "button__filled",
     uri: "figma:B24oss2tTeXAFykyeyusz0/35239:93092",
   });
   assert.deepEqual([...byId.keys()], ["Button/Filled", "Card"]);
@@ -109,4 +112,13 @@ test("a missing or empty manifest joins to nothing instead of throwing", () => {
   assert.equal(primaryReferencesByComponentId(null).size, 0);
   assert.equal(primaryReferencesByComponentId({}).size, 0);
   assert.equal(primaryReferencesByComponentId({ references: [] }).size, 0);
+});
+
+test("an empty object-form system is rejected as hard as an empty string", () => {
+  // `{ system: "" }` used to read as configured, which resolves a sibling spec at
+  // `design-catalog-/catalog.spec.json` and fetches `design-artifacts//` — a pairing that is
+  // invalid AND published, rather than skipped.
+  assert.equal(normalizeCompareWith({ system: "" }), null);
+  assert.equal(normalizeCompareWith({ system: "   " }), null);
+  assert.equal(normalizeCompareWith("   "), null);
 });

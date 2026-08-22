@@ -32,8 +32,13 @@
  */
 export function normalizeCompareWith(compareWith) {
   if (!compareWith) return null;
-  if (typeof compareWith === "string") return { system: compareWith };
-  if (typeof compareWith !== "object" || typeof compareWith.system !== "string") return null;
+  if (typeof compareWith === "string") return compareWith.trim() ? { system: compareWith } : null;
+  if (typeof compareWith !== "object") return null;
+  // A blank `system` has to be rejected as hard as a missing one. The falsy check above already
+  // drops `"compareWith": ""`, and letting `{ "system": "" }` through instead of matching it would
+  // resolve a sibling spec at `design-catalog-/catalog.spec.json` and fetch a `design-artifacts//`
+  // URL — a pairing that is configured, invalid, and published rather than skipped.
+  if (typeof compareWith.system !== "string" || compareWith.system.trim() === "") return null;
   return compareWith;
 }
 
@@ -49,8 +54,12 @@ export function normalizeCompareWith(compareWith) {
  * First primary wins, so a manifest listing several for one component is stable rather than
  * order-dependent on the last write.
  *
+ * `previewId` is carried through as well as the raster path: it is what a caller needs to check
+ * that the record still corresponds to something published, which matters when the manifest was
+ * read from a branch that is about to be rewritten.
+ *
  * @param {{references?: object[]}|null|undefined} manifest a fetched `references/index.json`
- * @returns {Map<string, {path: string, uri?: string}>}
+ * @returns {Map<string, {path: string, previewId?: string, uri?: string}>}
  */
 export function primaryReferencesByComponentId(manifest) {
   const out = new Map();
@@ -60,7 +69,11 @@ export function primaryReferencesByComponentId(manifest) {
     const path = reference?.raster?.path;
     if (typeof componentId !== "string" || typeof path !== "string" || path === "") continue;
     if (out.has(componentId)) continue;
-    out.set(componentId, { path, ...(reference.source.uri ? { uri: reference.source.uri } : {}) });
+    out.set(componentId, {
+      path,
+      ...(typeof reference.previewId === "string" ? { previewId: reference.previewId } : {}),
+      ...(reference.source.uri ? { uri: reference.source.uri } : {}),
+    });
   }
   return out;
 }

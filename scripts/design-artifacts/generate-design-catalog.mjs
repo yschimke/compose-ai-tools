@@ -79,6 +79,7 @@ import {
   normalizeCompareWith,
   primaryReferencesByComponentId,
 } from "./cross-system-compare.mjs";
+import { servePreviewId } from "./design-references.mjs";
 import { renderReadmeMd } from "./render-readme-md.mjs";
 import {
   figmaRastersForId,
@@ -2010,10 +2011,19 @@ if (compare) {
     // fetched `catalog.json`'s own `meta.title` below. It used to be a bare `readFile` inside the
     // try, which meant a cross-repo pairing didn't degrade to a title-less page: it threw, and the
     // catch skipped the whole compare page with a one-line warning.
+    // An ABSENT spec is legitimate for exactly one shape — a cross-repo sibling, whose cover sheet
+    // is not in this checkout — and the title then falls back to its published catalog.json. An
+    // EXPLICIT `compareWith.spec` that is misspelled or malformed is an authoring error, and
+    // swallowing it publishes a page where every declared parallel reads unpaired (or, worse,
+    // silently uses a stale sibling manifest) while looking like a legitimate result. So the
+    // explicit path is read strictly and the convention path best-effort: a throw here is caught
+    // below and skips the compare page with a warning, which is the loud outcome that error wants.
     const otherSpecPath = compare.spec
       ? resolve(dirname(specPath), compare.spec)
       : join(dirname(dirname(specPath)), `design-catalog-${compare.system}`, "catalog.spec.json");
-    const otherSpec = await readJsonBestEffort(otherSpecPath);
+    const otherSpec = compare.spec
+      ? JSON.parse(await readFile(otherSpecPath, "utf8"))
+      : await readJsonBestEffort(otherSpecPath);
     const parallelById = {};
     for (const group of spec.groups ?? []) {
       for (const component of group.components ?? []) {
@@ -2096,6 +2106,19 @@ if (compare) {
     // point no local `references/` exists yet. That makes this system's own column one publish
     // behind on a BRAND-NEW reference, the same staleness the sibling manifest already carries and
     // for the same reason — the baked URLs point at each branch's tip, so the pixels stay current.
+    //
+    // The two arms are NOT equally safe under that staleness, though, and the local one needs a
+    // guard. The sibling's manifest and its PNGs were published together by its own run, so they
+    // agree with each other. This system's branch is the one THIS run is about to rewrite: a
+    // reference whose component was renamed or removed since the last publish is still in the old
+    // manifest, the emitter will not re-publish its PNG, and the baked tip URL then 404s on a page
+    // that reads as though it linked something. So a local record is only trusted when the preview
+    // it was minted from is still published in this run's catalog — in which case the emitter mints
+    // the same `references/<id>.png` again and the URL is good.
+    const publishedPreviewIds = new Set();
+    for (const component of indexManifest.components ?? [])
+      for (const image of component.images ?? [])
+        if (image?.path) publishedPreviewIds.add(servePreviewId(image.path));
     const designRefById = new Map();
     if (compare.design !== false) {
       const sibling = await fetchJsonBestEffort(`${otherBranchBase}references/index.json`);
@@ -2115,7 +2138,7 @@ if (compare) {
           continue;
         }
         const fromLocal = localRefs.get(componentId);
-        if (fromLocal) {
+        if (fromLocal && publishedPreviewIds.has(fromLocal.previewId)) {
           designRefById.set(componentId, {
             url: `https://raw.githubusercontent.com/${repo}/design-artifacts/${spec.system}/${fromLocal.path}`,
             uri: fromLocal.uri,

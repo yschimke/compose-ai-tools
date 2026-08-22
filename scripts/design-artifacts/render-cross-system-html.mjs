@@ -246,9 +246,14 @@ export function renderCrossSystemHtml(catalog, opts = {}) {
     // derivation), and the columns run this-system-first regardless — so a chain here would
     // contradict the table under it. Both are compared against the same reference; that is the
     // whole claim.
+    //
+    // ESCAPED, unlike the surrounding literal markup. Every other use of these three escapes, and
+    // this one did not — which only became a hazard with the cross-repo form, where `otherTitle`
+    // can come straight out of a FETCHED sibling `catalog.json` rather than a spec in this
+    // checkout. The arrow span is ours and stays raw; the titles are data.
     designRefById
-      ? `${title} <span class="arrow">↔</span> ${otherTitle}, both against ${designTitle}`
-      : `${title} <span class="arrow">↔</span> ${otherTitle}`,
+      ? `${esc(title)} <span class="arrow">↔</span> ${esc(otherTitle)}, both against ${esc(designTitle)}`
+      : `${esc(title)} <span class="arrow">↔</span> ${esc(otherTitle)}`,
     `${paired.length} paired`,
     `${pairedReal} rendered both sides`,
     ...(designRefById ? [`${designed} against a kit reference`] : []),
