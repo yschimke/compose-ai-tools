@@ -1468,8 +1468,8 @@
     "serve-viewer-exploded-controls.dark.png": {
       "fixture": "serve-viewer-exploded-controls",
       "theme": "dark",
-      "sha256": "2bc91e912ce911c7980e7eb8e57894a1de1a3177de658b8fecb7c6b5a5669ca1",
-      "size": 113463
+      "sha256": "a4e2167b8277053ca1a3dd20ebcf5e669abdfcc3e13e3e8003425cace1c1c0aa",
+      "size": 112292
     },
     "serve-viewer-exploded-controls.light.png": {
       "fixture": "serve-viewer-exploded-controls",
