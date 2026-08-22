@@ -539,8 +539,17 @@ gates both halves.
 
 It is deliberately not a control. A second input, or a chip beside the search box, would put that
 question into the furniture of every catalog page and for every visitor, and would sit there empty
-almost always. An operator costs nothing until it is typed — and it is not hidden either: the count
-line under the grid names the filter back to you the moment it is active (`4 of 137 · calls Button`).
+almost always. An operator costs nothing until it is typed — and it is not hidden either: a readout
+appears under the search box the moment it is active, naming the filter back to you
+(`4 of 137 call Button`).
+
+| Resting | `uses:Button` |
+| --- | --- |
+| ![The landing filter box before anything is typed](design/evidence/serve-uses-filter/resting.png) | ![Six previews narrowed to the two that call a Button](design/evidence/serve-uses-filter/uses-filter.png) |
+
+The two cards left standing are *Card* and *Profile screen*. Neither name contains "button", so the
+label-and-id filter could not have found either — and among the four it hid is `ButtonPreview`,
+which that filter would have matched. That inversion is the whole feature.
 
 ### Where the answer comes from
 
