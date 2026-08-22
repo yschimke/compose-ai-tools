@@ -1027,9 +1027,19 @@ html.cp-js .cp-tree-link[aria-expanded="false"] + .cp-tree-children { display: n
 /* A group row's count is plain text: two badge styles down one column would compete. */
 .cp-tree-count { margin-left: auto; font-size: var(--md-sys-typescale-label-small-size);
   font-weight: 400; font-variant-numeric: tabular-nums; color: var(--cp-fg-faint); }
+/* A catalog section, and a section-less catalog's synthesized family dividers, are the FLOW their
+   sub-groups pack into rather than a stack of full-width bands. Each `.cp-subgroup` asks for
+   exactly the width its own cards occupy (`--cp-n`, written inline by the server), so the
+   seventeen one-card families in a system like compose-m3 sit side by side on a row instead of
+   each claiming a five-column row and painting four of them blank — 28 of 33 rows were using at
+   most 2 of the 5 columns they declared (issue #4423). The headings still mark every boundary;
+   what they no longer do is force a grid break. */
+.cp-section, .cp-grid-groups { display: flex; flex-wrap: wrap; align-items: flex-start;
+  --cp-card-w: 212px; --cp-card-gap: 18px; gap: 0 var(--cp-card-gap, 18px); }
 .cp-section { margin: 0; scroll-margin-top: calc(var(--cp-sticky-tools, 64px) + 16px); }
 .cp-section[hidden] { display: none; }
-.cp-section-head { margin: 0 0 16px; font-size: var(--md-sys-typescale-title-medium-size);
+/* Full-width: it names the whole panel, not the first cluster on the row. */
+.cp-section-head { flex: 0 0 100%; margin: 0 0 16px; font-size: var(--md-sys-typescale-title-medium-size);
   line-height: var(--md-sys-typescale-title-medium-line);
   letter-spacing: var(--md-sys-typescale-title-medium-tracking); font-weight: 500; }
 html.cp-js .cp-section-head { display: none; }
@@ -1038,15 +1048,36 @@ html.cp-js .cp-section-head { display: none; }
    one section showing; with the panels stacked it is the only thing saying where one ends and the
    next begins. `cp-multi-section` is set by the filter script's `reflectTabs`. */
 html.cp-js.cp-multi-section .cp-section-head { display: block; }
-/* `scroll-margin-top` because both are jump targets — a tree row scrolls to a `.cp-subgroup`, and
-   a no-JS client follows `#cp-panel-<slug>` to a `.cp-section`. Without it the heading they were
-   asked for lands at viewport zero, under the sticky toolbar. */
-.cp-subgroup { margin: 0 0 30px; scroll-margin-top: calc(var(--cp-sticky-tools, 64px) + 16px); }
+/* One cluster of the flow above. `--cp-n` is the sub-group's card count, written inline by the
+   server and kept in step by the filter script: the basis is the width those cards actually
+   occupy, so a one-card family reserves one column rather than five. It SHRINKS but never grows —
+   a family wider than the pane drops to full width and wraps its own cards, and a short row is
+   left ragged rather than stretching a lone card across the sheet.
+
+   Every `var()` here carries a fallback, and that is a rule of this sheet rather than caution:
+   `ServeThemeCssTest` reads a bare `var(--cp-…)` as a name the theme projection has to emit, and
+   these three are layout measures, not palette entries.
+
+   `scroll-margin-top` because a sub-group is a jump target — a tree row scrolls to it. Without it
+   the heading a visitor asked for lands at viewport zero, under the sticky toolbar; the same
+   reason `.cp-section` above carries one for `#cp-panel-<slug>`. */
+.cp-subgroup {
+  flex: 0 1 calc(var(--cp-n, 1) * var(--cp-card-w, 212px)
+    + (var(--cp-n, 1) - 1) * var(--cp-card-gap, 18px));
+  min-width: 0; max-width: 100%;
+  margin: 0 0 30px; scroll-margin-top: calc(var(--cp-sticky-tools, 64px) + 16px); }
 .cp-subgroup[hidden] { display: none; }
-.cp-group-head { margin: 26px 0 12px; font-size: var(--md-sys-typescale-label-medium-size);
+/* No top margin any more: a cluster's heading is the top of its box, and 26px above it would
+   push every cluster on the row down by a line the flow no longer needs. */
+.cp-group-head { margin: 0 0 12px; font-size: var(--md-sys-typescale-label-medium-size);
   line-height: var(--md-sys-typescale-label-medium-line); font-weight: 500; letter-spacing: 0.06em;
   text-transform: uppercase; color: var(--cp-fg-faint); }
-.cp-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 18px; }
+/* Flex, not grid: a grid's `auto-fill` resolves to ONE column when the available space is
+   indefinite, which is exactly the measurement the cluster's flex basis above is taken from — the
+   whole sheet would stack into a single column. A wrapping flex row measures as the sum of its
+   cards, which is the number the basis wants. */
+.cp-cards { display: flex; flex-wrap: wrap; gap: var(--cp-card-gap, 18px); }
+.cp-cards > .cp-card { flex: 0 0 var(--cp-card-w, 212px); max-width: 100%; }
 /* The Theme picker carries one chip per configured theme (the baked light/dark pair plus any
    app-declared @ThemeCatalog theme), so it wraps rather than overflowing a narrow viewport.
    That is exactly why it is NOT an M3 segmented button: a segmented track is specified for a
@@ -1593,6 +1624,16 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-id { color: var(--cp-fg-muted); font-size: var(--md-sys-typescale-body-small-size);
   letter-spacing: var(--md-sys-typescale-body-small-tracking);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A preview id elides from the MIDDLE, because its distinguishing part is the SUFFIX: clipped at
+   the end, `iconbutton-standard__ide…` says nothing the label above it hasn't already said, while
+   `iconbutton-standard__…__light` still carries the mode and the scheme (issue #4423). CSS cannot
+   ellipsize a middle, so the server splits the id at its last `__` and the head half is the only
+   one allowed to shrink. `text-overflow: clip` on the row because the ellipsis now belongs to the
+   head span; leaving it on would draw a second one past the tail. */
+.cp-id-elide { display: flex; text-overflow: clip; }
+.cp-id-elide > .cp-id-head { min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+.cp-id-elide > .cp-id-tail { flex: 0 0 auto; white-space: nowrap; }
 .cp-engage { margin-top: 3px; color: var(--cp-fg-faint);
   font-size: var(--md-sys-typescale-label-medium-size); }
 .cp-viewer-engage { color: var(--cp-fg-faint);
@@ -3048,7 +3089,9 @@ html:not(.cp-bg-transparent) #cp-reference-compare[data-cp-stage-clip] .cp-refer
     border-radius: 999px; background: var(--cp-border-strong); }
   .cp-scrim.cp-scrim-on { display: block; position: fixed; inset: 0; z-index: 35;
     background: rgba(0, 0, 0, 0.38); }
-  .cp-grid, .cp-cards { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+  .cp-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+  .cp-section, .cp-grid-groups { --cp-card-w: 140px; --cp-card-gap: 12px; }
+  .cp-subgroup { margin-bottom: 20px; }
   .cp-syslist, .cp-syslist.cp-grid { grid-template-columns: 1fr; }
   .cp-card.cp-sys { grid-template-rows: 220px 1fr; }
   .cp-imgwrap img { max-height: 200px; }

@@ -103,7 +103,7 @@
 <div class="cp-sections" id="cp-grid">
 <section class="cp-section" id="cp-panel-components" role="region" aria-labelledby="cp-tab-components" data-section="components">
 <h2 class="cp-section-head">Components</h2>
-<div class="cp-subgroup" id="cp-group-components-buttons">
+<div class="cp-subgroup" id="cp-group-components-buttons" style="--cp-n:2">
 <h3 class="cp-group-head">Buttons</h3>
 <div class="cp-cards">
 <a class="cp-card" id="cp-card-button-filled-default" href="/compose-m3/p/button-filled-default" aria-label="Button Filled">
@@ -128,7 +128,7 @@
 </a>
 </div>
 </div>
-<div class="cp-subgroup" id="cp-group-components-cards">
+<div class="cp-subgroup" id="cp-group-components-cards" style="--cp-n:2">
 <h3 class="cp-group-head">Cards</h3>
 <div class="cp-cards">
 <a class="cp-card" id="cp-card-card-elevated-default" href="/compose-m3/p/card-elevated-default" aria-label="Card Elevated">
@@ -153,7 +153,7 @@
 </a>
 </div>
 </div>
-<div class="cp-subgroup" id="cp-group-components-navigation">
+<div class="cp-subgroup" id="cp-group-components-navigation" style="--cp-n:1">
 <h3 class="cp-group-head">Navigation</h3>
 <div class="cp-cards">
 <a class="cp-card" id="cp-card-navigation-bar-default" href="/compose-m3/p/navigation-bar-default" aria-label="Navigation Navigation Bar">
@@ -171,7 +171,7 @@
 </section>
 <section class="cp-section" id="cp-panel-screens" role="region" aria-labelledby="cp-tab-screens" data-section="screens">
 <h2 class="cp-section-head">Screens</h2>
-<div class="cp-subgroup" id="cp-group-screens-account">
+<div class="cp-subgroup" id="cp-group-screens-account" style="--cp-n:1">
 <h3 class="cp-group-head">Account</h3>
 <div class="cp-cards">
 <a class="cp-card" id="cp-card-profile-screen-default" href="/compose-m3/p/profile-screen-default" aria-label="Screens Profile">
@@ -494,6 +494,18 @@ function setCardSrc(img, url) {
     URL.revokeObjectURL(previous);
   }
 }
+// The id line elides from the MIDDLE (`iconbutton-standard__…__light`), so it is two spans
+// and a swap re-fills both rather than overwriting the line with one string — which would
+// delete the spans and take the elision with them. Same split rule as the server's
+// `cardIdHtml`: cut at the last `__`, the tail keeps the mode and the scheme.
+function setCardId(idn, id) {
+  var head = idn.querySelector(".cp-id-head");
+  var tail = idn.querySelector(".cp-id-tail");
+  if (!head || !tail) { idn.textContent = id; return; }
+  var cut = id.lastIndexOf("__");
+  head.textContent = cut > 0 ? id.slice(0, cut) : id;
+  tail.textContent = cut > 0 ? id.slice(cut) : "";
+}
 function applyVariant(c, k, withSrc) {
   var src = c.getAttribute("data-" + k + "-src");
   if (!src) return;
@@ -505,7 +517,7 @@ function applyVariant(c, k, withSrc) {
   c.setAttribute("href", c.getAttribute("data-" + k + "-href"));
   c.setAttribute("aria-label", lbl);
   if (lab) { lab.textContent = lbl; lab.setAttribute("title", lbl); }
-  if (idn) idn.textContent = c.getAttribute("data-" + k + "-id");
+  if (idn) setCardId(idn, c.getAttribute("data-" + k + "-id"));
   c.setAttribute("data-bg-theme", k === "d" ? "dark" : "light");
 }
 cards.forEach(function (c) {
@@ -624,7 +636,11 @@ applyThemeChoice();
         });
         if (count) count.textContent = q === "" ? (total + " preview" + (total === 1 ? "" : "s")) : (shown + " of " + total);
         if (empty) empty.hidden = shown !== 0;
-        navGroups.forEach(function (g) { g.hidden = !g.querySelector(".cp-card:not([hidden])"); });
+        navGroups.forEach(function (g) {
+          var on = g.querySelectorAll(".cp-card:not([hidden])").length;
+          g.hidden = !on;
+          if (on) g.style.setProperty("--cp-n", on);
+        });
         tabSections.forEach(function (s) { s.hidden = !s.querySelector(".cp-card:not([hidden])"); });
         treeComponents.forEach(function (c) {
           var card = document.getElementById(c.getAttribute("data-group"));

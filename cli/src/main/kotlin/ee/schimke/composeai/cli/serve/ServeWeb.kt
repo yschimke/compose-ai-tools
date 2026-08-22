@@ -2568,6 +2568,28 @@ ${captureControlsHtml().prependIndent("          ")}
    */
   private fun flatGroupAnchorId(groupSlug: String) = "cp-group-$groupSlug"
 
+  /**
+   * A card's id line, split so it elides from the MIDDLE rather than the end.
+   *
+   * At a catalog column's width almost every id is clipped, and clipped at the END it conveys
+   * nothing the label above it hasn't already said — `iconbutton-standard__ide…`. What
+   * distinguishes one render from its siblings is the SUFFIX (the mode and the scheme), so the id
+   * is cut at its last `__` and only the head half is allowed to shrink:
+   * `iconbutton-standard__…__light`. CSS has no middle ellipsis, hence the two spans.
+   *
+   * Both spans are always emitted, even for an id with no `__` (empty tail): the grid's light/dark
+   * swap re-fills them in place, and a card that arrived without a tail span would have nowhere to
+   * put its variant's suffix.
+   */
+  private fun cardIdHtml(id: String): String {
+    val cut = id.lastIndexOf("__")
+    val head = if (cut > 0) id.substring(0, cut) else id
+    val tail = if (cut > 0) id.substring(cut) else ""
+    return "<div class=\"cp-id cp-id-elide\">" +
+      "<span class=\"cp-id-head\">${WebEscaping.htmlEscape(head)}</span>" +
+      "<span class=\"cp-id-tail\">${WebEscaping.htmlEscape(tail)}</span></div>"
+  }
+
   /** A component row and the primary-axis variants beneath it. */
   private class TreeComponent(
     val label: String,
@@ -3674,6 +3696,18 @@ ${captureControlsHtml().prependIndent("          ")}
             URL.revokeObjectURL(previous);
           }
         }
+        // The id line elides from the MIDDLE (`iconbutton-standard__…__light`), so it is two spans
+        // and a swap re-fills both rather than overwriting the line with one string — which would
+        // delete the spans and take the elision with them. Same split rule as the server's
+        // `cardIdHtml`: cut at the last `__`, the tail keeps the mode and the scheme.
+        function setCardId(idn, id) {
+          var head = idn.querySelector(".cp-id-head");
+          var tail = idn.querySelector(".cp-id-tail");
+          if (!head || !tail) { idn.textContent = id; return; }
+          var cut = id.lastIndexOf("__");
+          head.textContent = cut > 0 ? id.slice(0, cut) : id;
+          tail.textContent = cut > 0 ? id.slice(cut) : "";
+        }
         function applyVariant(c, k, withSrc) {
           var src = c.getAttribute("data-" + k + "-src");
           if (!src) return;
@@ -3685,7 +3719,7 @@ ${captureControlsHtml().prependIndent("          ")}
           c.setAttribute("href", c.getAttribute("data-" + k + "-href"));
           c.setAttribute("aria-label", lbl);
           if (lab) { lab.textContent = lbl; lab.setAttribute("title", lbl); }
-          if (idn) idn.textContent = c.getAttribute("data-" + k + "-id");
+          if (idn) setCardId(idn, c.getAttribute("data-" + k + "-id"));
           c.setAttribute("data-bg-theme", k === "d" ? "dark" : "light");
         }
         cards.forEach(function (c) {
@@ -3853,10 +3887,18 @@ ${captureControlsHtml().prependIndent("          ")}
       else ""
     val hiddenExpr = if (hasTabs) "!(searchOk && tabOk)" else "!searchOk"
     val shownCond = if (hasTabs) "searchOk && tabOk" else "searchOk"
-    // After the per-card pass, collapse any sub-group / section left with no visible card.
+    // After the per-card pass, collapse any sub-group / section left with no visible card — and
+    // re-size the sub-groups that survived. A cluster's width is its card count (`--cp-n`, see
+    // `.cp-subgroup` in serve.css), and a filter changes that count: a family showing one of its
+    // four cards would otherwise go on reserving four columns and painting three of them blank,
+    // which is the whole thing this layout exists to stop happening.
     val groupPost =
       if (hasGroups)
-        "\n        navGroups.forEach(function (g) { g.hidden = !g.querySelector(\".cp-card:not([hidden])\"); });"
+        "\n        navGroups.forEach(function (g) {" +
+          "\n          var on = g.querySelectorAll(\".cp-card:not([hidden])\").length;" +
+          "\n          g.hidden = !on;" +
+          "\n          if (on) g.style.setProperty(\"--cp-n\", on);" +
+          "\n        });"
       else ""
     val sectionPost =
       if (hasTabs)
@@ -8046,7 +8088,7 @@ ${captureControlsHtml().prependIndent("          ")}
           </div>
           <div class="cp-meta">
             <div class="cp-label" title="${WebEscaping.htmlEscape(def.id)}">${WebEscaping.htmlEscape(defaultLabel)}</div>
-            ${if (componentBrowser) "" else "<div class=\"cp-id\">${WebEscaping.htmlEscape(def.id)}</div>"}$issueBadge
+            ${if (componentBrowser) "" else cardIdHtml(def.id)}$issueBadge
             ${if (componentBrowser) "" else viewCountHtml(cardViews(card))}
           </div>
         </a>
@@ -8113,7 +8155,7 @@ ${captureControlsHtml().prependIndent("          ")}
             </div>
             <div class="cp-meta">
               <div class="cp-label" title="$idText">$label</div>
-              ${if (componentBrowser) "" else "<div class=\"cp-id\">$idText</div>"}$issueBadge
+              ${if (componentBrowser) "" else cardIdHtml(p.id)}$issueBadge
               ${if (componentBrowser) "" else viewCountHtml(engagement[p.id]?.views ?: 0L)}
             </div>
           </a>
@@ -8202,7 +8244,12 @@ ${captureControlsHtml().prependIndent("          ")}
         buildString {
           append("<div class=\"cp-grid-groups\" id=\"cp-grid\">\n")
           synthGroups.forEach { g ->
-            append("<div class=\"cp-subgroup\" id=\"${flatGroupAnchorId(g.slug)}\">\n")
+            // `--cp-n` is the card count, and it is what stops a one-card family from reserving a
+            // whole five-column row: the sheet is a FLOW of clusters, each asking for the width
+            // its own cards occupy (see `.cp-subgroup` in serve.css). Written here rather than
+            // measured in CSS because only the server knows how many cards the group holds.
+            append("<div class=\"cp-subgroup\" id=\"${flatGroupAnchorId(g.slug)}\"")
+            append(" style=\"--cp-n:${g.cards.size}\">\n")
             if (g.name != null)
               append("<h2 class=\"cp-group-head\">${WebEscaping.htmlEscape(g.name)}</h2>\n")
             append("<div class=\"cp-cards\">\n")
@@ -8226,7 +8273,8 @@ ${captureControlsHtml().prependIndent("          ")}
               // The tree's group rows jump here, so a named group carries the anchor id the row
               // links to; an unnamed one has no row and needs none.
               val anchor = if (g.name == null) "" else " id=\"${groupAnchorId(sec.slug, g.slug)}\""
-              append("<div class=\"cp-subgroup\"$anchor>\n")
+              // `--cp-n`: the cluster's width in cards — see the synthesized-groups branch above.
+              append("<div class=\"cp-subgroup\"$anchor style=\"--cp-n:${g.cards.size}\">\n")
               if (g.name != null)
                 append("<h3 class=\"cp-group-head\">${WebEscaping.htmlEscape(g.name)}</h3>\n")
               append("<div class=\"cp-cards\">\n")
