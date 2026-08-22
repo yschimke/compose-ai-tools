@@ -768,6 +768,57 @@ degrades a *published* page. The by-component redundancy on the Wear sheet
 (`Button/Tonal`, `IconButton`, `CompactButton`, `AppCard`, `TitleCard`, …) therefore
 stays until `remote-m3`'s `compareWith` moves to the new `wear-m3-catalog`.
 
+**That move is no longer blocked by the pipeline.** `compareWith` used to be a bare
+slug and could only ever name a sibling *module of this project*: the driver read the
+sibling's spec from `samples/design-catalog-<slug>/catalog.spec.json` in the same
+checkout and baked its thumbnails out of *this* repository's `design-artifacts/<slug>`
+branch. Both assumptions are wrong for a sibling that lives in its own repo, and they
+failed in different ways — the spec read *threw*, so the catch skipped the compare page
+wholesale with a one-line warning, while the URLs would have baked under the wrong owner
+and 404'd only after a publish. The object form fixes both:
+
+```jsonc
+"compareWith": {
+  "system": "wear-m3-catalog",
+  "repo": "yschimke/wear-m3-catalog",  // whose design-artifacts branch to bake from
+  "designTitle": "M3 Wear OS kit"      // heading for the design column, below
+}
+```
+
+A bare string still means exactly what it always did. The sibling's title now falls back
+to its published `catalog.json` when there is no spec to read locally, so a cross-repo
+pairing degrades to a titled page rather than to no page.
+
+### The design column, and why a comparison wants three
+
+Two implementation columns tell a reader that two components differ. They cannot say
+*which one is wrong* — that needs the thing both are reproducing. So when either delivery
+branch publishes a `references/index.json` (`compose-preview-references/v1`, see
+[`design-references.mjs`](../../scripts/design-artifacts/design-references.mjs)), the
+compare page grows a leading **design** column: the kit artwork itself, joined onto
+`componentId` through `source.attributes.componentId`, baked to a raw URL the same way
+the sibling renders are.
+
+Only `tier: "primary"` records are eligible. A component's secondaries document one cell
+of its variant matrix — a disabled state, a size — and one of those standing in for the
+default in a single-thumbnail column would look entirely correct while being the wrong
+picture. Sibling references are preferred over local ones, because in the pairing this
+exists for the kit mapping lives on the catalog that reproduces a published kit; a port
+that has mapped the kit itself still contributes where the origin has not. Rows where
+neither side is mapped read "no kit reference" — an inert cell, never a spinner and never
+a borrowed picture.
+
+One staleness to know about: `emit-design-references.mjs` runs *after* the generator, so
+both `references/index.json` documents are read from their branches rather than from this
+run's output. A brand-new reference is therefore one publish behind — the same lag the
+sibling manifest already carries, and for the same reason. The baked URLs point at each
+branch's tip, so the pixels stay current either way.
+
+The header deliberately reads "A ↔ B, both against the kit" rather than a
+kit → origin → port chain. Which implementation is the origin is not something this page
+can know — a `parallel` is a correspondence, not a derivation — and the columns run
+this-system-first regardless, so a chain in the header would contradict the table under it.
+
 ## Authoring & validating the spec
 
 `catalog.spec.json` is hand-authored, and each component's `preview` must equal
