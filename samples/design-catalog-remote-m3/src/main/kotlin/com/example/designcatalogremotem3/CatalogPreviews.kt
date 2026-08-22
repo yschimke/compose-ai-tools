@@ -271,7 +271,11 @@ fun TextRemoteButton() = RemoteSticker {
     onClick = onClick,
     colors =
       RemoteTextButtonDefaults.textButtonColors(
-        containerColor = tween(stock.containerColor, RemoteMaterialTheme.colorScheme.primary, on)
+        // Content travels with the container: `primary` is a light fill in this dark-first scheme,
+        // so a label left at the stock near-white would end the tween light-on-light. `on` is 0f at
+        // rest, so the baked capture keeps the stock colours either way.
+        containerColor = tween(stock.containerColor, RemoteMaterialTheme.colorScheme.primary, on),
+        contentColor = tween(stock.contentColor, RemoteMaterialTheme.colorScheme.onPrimary, on),
       ),
     content = { RemoteText(KitCopy.GLYPHS.rs) },
   )
