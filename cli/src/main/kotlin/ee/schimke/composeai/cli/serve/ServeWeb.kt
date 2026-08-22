@@ -8864,11 +8864,27 @@ ${captureControlsHtml().prependIndent("          ")}
     val renderCell =
       "<td class=\"cp-compare-render-cell\"><div class=\"cp-compare-shot\">" +
         "<img class=\"cp-compare-png\" alt=\"\"></div></td>"
+    // The Remote Compose canvas is CLASSED because a row now holds two of them — this one and the
+    // delta map below — and `<cp-compare-wall>` has to tell the one it plays into from the one it
+    // paints.
     val targetCell =
       "<td class=\"cp-compare-target-cell\"><div class=\"cp-compare-shot\">" +
-        "<img class=\"cp-compare-vector\" alt=\"\"><canvas hidden></canvas></div></td>"
+        "<img class=\"cp-compare-vector\" alt=\"\"><canvas class=\"cp-compare-rc\" hidden></canvas>" +
+        "</div></td>"
+    // The delta map, and it belongs BETWEEN the pair wherever the pair ends up — the reference lane
+    // leads with the spec, the vector lanes lead with the render, and either way the middle column
+    // is what moved between the two beside it. That is the detail page's triptych at catalog scale.
+    // Only the reference lane shows it (`serve.css` keys the column off
+    // `#cp-compare[data-format]`):
+    // the vector lanes compare a render against an export of THAT render, so a map of what moved
+    // between them would be describing the exporter rather than the design.
+    val diffCell =
+      "<td class=\"cp-compare-diff-cell\"><div class=\"cp-compare-shot\">" +
+        "<canvas class=\"cp-compare-diff\" aria-label=\"Highlighted pixel difference\"></canvas>" +
+        "</div></td>"
     val pictureCells =
-      (if (specLeadsColumns) listOf(targetCell, renderCell) else listOf(renderCell, targetCell))
+      (if (specLeadsColumns) listOf(targetCell, diffCell, renderCell)
+        else listOf(renderCell, diffCell, targetCell))
         .joinToString("\n            ")
     val darkFirst = isDarkFirstSystem(basePath, sessionId, declaredSurface)
     // A viewer deep-link may name a non-default state/props variant that is intentionally folded
@@ -9036,8 +9052,10 @@ ${captureControlsHtml().prependIndent("          ")}
     val renderHeadHtml = "<th class=\"cp-compare-render-head\">Rendered PNG</th>"
     val targetHeadHtml =
       "<th class=\"cp-compare-target-head\">${WebEscaping.htmlEscape(targetHead)}</th>"
+    val diffHeadHtml = "<th class=\"cp-compare-diff-head\">Diff</th>"
     val pictureHeads =
-      if (specLeadsColumns) targetHeadHtml + renderHeadHtml else renderHeadHtml + targetHeadHtml
+      if (specLeadsColumns) targetHeadHtml + diffHeadHtml + renderHeadHtml
+      else renderHeadHtml + diffHeadHtml + targetHeadHtml
     val empty =
       if (rows.isEmpty())
         "<p class=\"cp-empty\">No previews in this session carry a comparable format.</p>"

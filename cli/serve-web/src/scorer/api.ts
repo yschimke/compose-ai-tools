@@ -281,14 +281,28 @@ export async function scoreImages(
 export async function normaliseImageUrls(
     referenceUrl: string,
     candidateUrl: string,
+    maxSide?: number,
 ): Promise<NormalisedPair> {
     const images = (await Promise.all([
         loadImage(referenceUrl),
         loadImage(candidateUrl),
     ])) as [HTMLImageElement, HTMLImageElement];
     const boxes = normalisedBoxes(images[0], images[1]);
-    const width = boxes.candidate.width;
-    const height = boxes.candidate.height;
+    // `maxSide` bounds the pixel space the pair is normalised INTO, for a caller that will never
+    // draw the result larger than that — the compare wall, whose map lives in a 200px column. It
+    // cannot move the percentage: `scoreImages` measures the decoded ORIGINALS at its own downscale,
+    // not these canvases. What it does change is the peak: uncapped, one row transiently holds three
+    // full-resolution RGBA buffers (two normalised sides plus the delta map), a frame past the
+    // browser's canvas limit fails outright, and the wall pays all of it once per row.
+    const bound = maxSide
+        ? Math.min(
+              1,
+              maxSide /
+                  Math.max(boxes.candidate.width, boxes.candidate.height, 1),
+          )
+        : 1;
+    const width = Math.max(1, Math.round(boxes.candidate.width * bound));
+    const height = Math.max(1, Math.round(boxes.candidate.height * bound));
     return {
         width,
         height,

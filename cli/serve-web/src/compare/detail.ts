@@ -6,6 +6,12 @@
 // to show but "dimensions differ" — least useful exactly when a visitor most wants to see where the
 // two drift apart. Normalising once and then diffing and scoring that pair means the delta map and
 // the percentage are describing the same pixels.
+//
+// `maxSide` is for a caller that will never draw the map at the frame's own size — the compare wall,
+// which holds one per row in a 200px column — and bounds the whole pipeline rather than only the
+// canvas that is kept, so the transient buffers shrink with it. The detail page passes nothing and
+// gets the frame's own dimensions, as before. Either way the percentage is the same number:
+// `scoreImages` measures the decoded originals, not these canvases.
 
 import type { CompareApi } from "./api.js";
 
@@ -25,8 +31,13 @@ export async function compareImageUrls(
     referenceUrl: string,
     actualUrl: string,
     canvas: HTMLCanvasElement,
+    maxSide?: number,
 ): Promise<ComparisonResult> {
-    const frames = await api.normaliseImageUrls(referenceUrl, actualUrl);
+    const frames = await api.normaliseImageUrls(
+        referenceUrl,
+        actualUrl,
+        maxSide,
+    );
     const changed = api.diffCanvases(
         frames.reference,
         frames.candidate,

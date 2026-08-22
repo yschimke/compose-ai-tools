@@ -799,6 +799,16 @@ const FIXTURE_STATES = [
     // action deep-links, and the one whose column order is a product-wide rule (spec left, render
     // right — see `compare/columns.ts`). Without this shot that rule is un-diffed: the columns and
     // their headers could swap back and no baseline would move.
+    //
+    // It is also the only lane with a MIDDLE column — the delta map between the pair — which is
+    // `display: none` everywhere else on this page, so the same applies to it: its seat between the
+    // two pictures, its ground and whether it paints at all would otherwise be covered by nothing.
+    // The two image lanes are stubbed with DIFFERENT artwork (`REFERENCE_PLACEHOLDER` against
+    // `_render-placeholder.png`), so what lands in this baseline is a real magenta map over a real
+    // mismatch rather than an empty box.
+    //
+    // Leaves the wall on a lane it did not start on, so it stays after every other state of this
+    // fixture: run before `report-menu`, it re-captured that baseline over the wrong lane.
     fixture: "serve-format-compare",
     suffix: "reference-lane",
     // The pointer's resting place is incidental here — the shot is about the table, and a click
@@ -832,26 +842,35 @@ const FIXTURE_STATES = [
       });
       expect(painted.fontSize).toBeGreaterThan(0);
       expect(["none", "normal"]).toContain(painted.after);
-      const specFirst = await page.evaluate(() => {
+      await expect(page.locator(".cp-compare-diff-head")).toBeVisible();
+      // Spec, map, render — in that order. The map's seat is the assertion that matters most here:
+      // it is only a diff of the two pictures if it sits BETWEEN them, and the cells move at
+      // runtime, so nothing else pins it.
+      const cells = await page.evaluate(() => {
         const row = document.querySelector(".cp-compare-row:not([hidden])");
-        const cells = Array.from(row?.children ?? []).map((c) => c.className);
-        return (
-          cells.indexOf("cp-compare-target-cell") <
-          cells.indexOf("cp-compare-render-cell")
-        );
+        return Array.from(row?.children ?? []).map((cell) => cell.className);
       });
-      expect(specFirst).toBe(true);
-      // Scores are asynchronous (fetch + decode + compare); capture the settled state rather than
-      // the "comparing…" skeleton, the same wait the base capture makes.
-      await page
-        .waitForFunction(() =>
-          Array.from(document.querySelectorAll(".cp-compare-score")).every(
-            (cell) =>
-              cell.textContent !== "waiting…" &&
-              cell.textContent !== "comparing…",
-          ),
-        )
-        .catch(() => {});
+      expect(cells.indexOf("cp-compare-target-cell")).toBeLessThan(
+        cells.indexOf("cp-compare-diff-cell"),
+      );
+      expect(cells.indexOf("cp-compare-diff-cell")).toBeLessThan(
+        cells.indexOf("cp-compare-render-cell"),
+      );
+      // BOTH halves have to have settled. The map is painted before the pair is scored, so waiting
+      // on the canvas alone catches the row mid-run with "comparing…" still in the score cell —
+      // and waiting on the score alone would let the shot land on a zero-width canvas.
+      await page.waitForFunction(() =>
+        Array.from(
+          document.querySelectorAll(".cp-compare-row:not([hidden])"),
+        ).every((row) => {
+          const score = row.querySelector(".cp-compare-score")?.textContent;
+          if (score === "waiting…" || score === "comparing…") return false;
+          return (
+            (row.querySelector(".cp-compare-diff")?.width ?? 0) > 0 ||
+            /unavailable/.test(score ?? "")
+          );
+        }),
+      );
     },
   },
   {
