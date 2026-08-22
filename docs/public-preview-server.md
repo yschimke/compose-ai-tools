@@ -883,6 +883,29 @@ keep a shut gate from turning the feature off:
   broken idle clock. The ceiling does **not** override a pause, the pressure gate, or catalog
   loading; a daemon start starved during loading is recorded as `livebundle-unavailable` and
   degrades that catalog to baked PNGs for the whole process, which is much worse than a cold cache.
+- **The host-pressure gate stops on one reading and resumes on another, and the gap between them is
+  bounded.** Load, CPU and available memory each have a stop side (`0.85`, `0.85`, `0.15`) and a
+  resume side (`0.60`, `0.70`, `0.25`); crossing a stop side halts admission at once, and only the
+  signals that actually tripped have to return to their resume side, held for 30s, before it opens
+  again. A reading can settle *between* the two — memory available 18% is neither at-or-below `0.15`
+  nor at-or-above `0.25` — and hysteresis alone has no answer to that: nothing re-trips, so the
+  reason degrades to a bare `host recovering`, and the quiet window never starts counting. Measured
+  on the public box as a gate held for eight hours at 2% CPU with theme optimization stuck at 0.35%
+  of its entries. So a hold during which **no** reading is over a stop threshold expires after
+  `-Dcomposeai.serve.optimizerMaxRecoveryMillis` (10 minutes). Hysteresis is meant to delay
+  resumption, not prevent it, and a bounded duty cycle — admit, maybe trip again, wait again — is
+  the right failure mode for best-effort work where a permanent latch is not. A reading still on
+  the wrong side of a *stop* threshold is untouched by the cap and holds the gate as long as it
+  lasts.
+- **The thresholds themselves are tunable**, because what counts as constrained is a property of
+  the host: `-Dcomposeai.serve.optimizerStopMemoryAvailableFraction`,
+  `…optimizerResumeMemoryAvailableFraction`, and the matching `…StopLoadPerCpu` /
+  `…ResumeLoadPerCpu` / `…StopCpuUtilization` / `…ResumeCpuUtilization`, plus
+  `…optimizerResumeQuietMillis` and `…optimizerSampleIntervalMillis`. Ratios outside `0.0..1.0` and
+  negative durations are ignored as typos. Worth setting when the box's *steady state* sits below a
+  resume threshold — 17 resident render daemons hold enough memory to park the public box near 18%
+  available, which puts the default `0.25` resume bar under the baseline and makes a permanent
+  latch on the first transient dip the expected outcome rather than a surprise.
 
 The grid is serial by default. Selecting an app-declared theme asks the server for a fixed,
 60-second page lease; at most one page server-wide receives a burst, clamped to five workers and
