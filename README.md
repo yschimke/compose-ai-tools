@@ -116,6 +116,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-agent-access/dark](renders/serve-agent-access.dark.png) |
 | `light` | ![serve-agent-access/light](renders/serve-agent-access.light.png) |
 
+## serve-agent-access-capabilities
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-agent-access-capabilities/dark](renders/serve-agent-access-capabilities.dark.png) |
+| `light` | ![serve-agent-access-capabilities/light](renders/serve-agent-access-capabilities.light.png) |
+
 ## serve-agent-access-granted
 
 | Theme | Capture |
