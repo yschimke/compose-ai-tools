@@ -7,7 +7,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -313,7 +315,7 @@ class ServeIssueReportTest {
     val written =
       fixture["cases"]!!.jsonArray.map { it.jsonObject }.filter { it.containsKey("writer") }
     // A fixture that silently stopped carrying writer cases would pass every assertion below.
-    assertEquals(4, written.size, "the fixture must keep exercising the writer")
+    assertEquals(5, written.size, "the fixture must keep exercising the writer")
     for (case in written) {
       val name = case["name"]!!.jsonPrimitive.content
       val writer = case["writer"]!!.jsonObject
@@ -329,6 +331,8 @@ class ServeIssueReportTest {
             writer["overrides"]!!.jsonObject.entries.associate {
               it.key to it.value.jsonPrimitive.content
             },
+          element = writer["element"]?.jsonPrimitive?.contentOrNull,
+          bounds = writer["bounds"]?.jsonObject?.let(::boundsOf),
           revision = writer["revision"]?.jsonPrimitive?.contentOrNull,
         )
       val block = case["block"]!!.jsonPrimitive.content
@@ -336,4 +340,95 @@ class ServeIssueReportTest {
       assertEquals(locator, ServeIssueReport.locatorFromBody(block), name)
     }
   }
+
+  @Test
+  fun `the writer emits one block per component of an umbrella report`() {
+    // The other half of the multi-component contract: `parity-issues.test.mjs` asserts the producer
+    // reads these bodies back as one row per block. An issue like m3-catalog#42 names three
+    // components; one block can name one, so the body is their concatenation, in order.
+    val fixture =
+      Json.parseToJsonElement(
+          File("../scripts/design-artifacts/fixtures/parity-locators.json").readText()
+        )
+        .jsonObject
+    val bodies =
+      fixture["bodies"]!!.jsonArray.map { it.jsonObject }.filter { it.containsKey("writers") }
+    assertEquals(1, bodies.size, "the fixture must keep exercising the writer")
+    for (case in bodies) {
+      val name = case["name"]!!.jsonPrimitive.content
+      val locators =
+        case["writers"]!!
+          .jsonArray
+          .map { it.jsonObject }
+          .map { writer ->
+            ServeIssueReport.Locator(
+              repository = writer["repository"]!!.jsonPrimitive.content,
+              system = writer["system"]!!.jsonPrimitive.content,
+              componentId = writer["componentId"]!!.jsonPrimitive.content,
+              previewId = writer["previewId"]!!.jsonPrimitive.content,
+              referenceId = writer["referenceId"]!!.jsonPrimitive.content,
+              variant = writer["variant"]!!.jsonPrimitive.content,
+              overrides =
+                writer["overrides"]!!.jsonObject.entries.associate {
+                  it.key to it.value.jsonPrimitive.content
+                },
+            )
+          }
+      val body = case["body"]!!.jsonPrimitive.content
+      assertEquals(body, locators.joinToString("") { ServeIssueReport.locatorBlock(it) }, name)
+      assertEquals(locators, ServeIssueReport.locatorsFromBody(body), name)
+      // The single-locator reader keeps its old answer: the first block a body carries.
+      assertEquals(locators.first(), ServeIssueReport.locatorFromBody(body), name)
+    }
+  }
+
+  @Test
+  fun `a bounds rectangle is refused unless it names the plane v1 settled on`() {
+    // D1: both tag-index producers publish render pixels and the canonical-plane transform belongs
+    // to the comparison. A rectangle carrying any other space would be compared against a baseline
+    // measured somewhere else, which is how an element that never moved reports as `moved`.
+    val bounds = ServeIssueReport.Bounds(x = 18, y = 18, width = 24, height = 24)
+    assertEquals(
+      """{"height":24,"space":"render-pixels","width":24,"x":18,"y":18}""",
+      ServeIssueReport.canonicalBounds(bounds),
+    )
+    val block =
+      ServeIssueReport.locatorBlock(
+        ServeIssueReport.Locator(
+          repository = "yschimke/m3-catalog",
+          system = "m3-catalog",
+          componentId = "IconButton/Tonal",
+          previewId = "iconbutton-tonal__ideal__default__light",
+          referenceId = "iconbutton-tonal-figma",
+          variant = "ideal/default/light",
+          overrides = emptyMap(),
+          element = "glyph",
+          bounds = bounds,
+        )
+      )
+    assertEquals(bounds, ServeIssueReport.locatorFromBody(block)?.bounds)
+    assertEquals("glyph", ServeIssueReport.locatorFromBody(block)?.element)
+    assertNull(
+      ServeIssueReport.locatorFromBody(block.replace("render-pixels", "display-pixels")),
+      "another plane is refused rather than stored as a guess",
+    )
+    assertNull(
+      ServeIssueReport.locatorFromBody(
+        block.replace(
+          """{"height":24,"space":"render-pixels","width":24,"x":18,"y":18}""",
+          """{"x":18,"y":18,"width":24,"height":24,"space":"render-pixels"}""",
+        )
+      ),
+      "non-canonical key order is refused, as it is for overrides",
+    )
+  }
+
+  private fun boundsOf(writer: JsonObject): ServeIssueReport.Bounds =
+    ServeIssueReport.Bounds(
+      x = writer["x"]!!.jsonPrimitive.int,
+      y = writer["y"]!!.jsonPrimitive.int,
+      width = writer["width"]!!.jsonPrimitive.int,
+      height = writer["height"]!!.jsonPrimitive.int,
+      space = writer["space"]!!.jsonPrimitive.content,
+    )
 }

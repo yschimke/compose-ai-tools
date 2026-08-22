@@ -1,11 +1,12 @@
 # Batch 03 — element selection on the focused comparison
 
 **Issue:** [#3803](https://github.com/yschimke/compose-ai-tools/issues/3803).
-**Depends on:** [01](01-locator-and-report.md) (the selection rides into the locator) **and
-[00](00-decisions.md) D1** — a selection persists authoring-time `bounds`, and until the plane
-question is settled those bounds get written in a space nobody has agreed on. Recording them in the
-wrong space makes an unmoved element fail the movement gate later, which is the exact failure the
-element gate exists to detect. The tag index half of this issue's original prerequisite is **already
+**Depends on:** [01](01-locator-and-report.md) (the selection rides into the locator). **D1 is
+answered (a)** and both fields are reserved in `v1`, so the plane question that used to block this
+batch is settled: bounds are recorded in render pixels and named as such, and the canonical-plane
+transform is the comparison's step. Recording them in another space would make an unmoved element
+fail the movement gate later — the exact failure the element gate exists to detect — which is why
+both parsers refuse one. The tag index half of this issue's original prerequisite is **already
 done** — see below.
 **Blocks:** the element gates in [batch 05](05-acceptance-engines.md).
 **Ships:** **yes.** Click an element, report *that element* rather than "somewhere in this picture".
@@ -95,13 +96,17 @@ The index already carries `{count, bounds}` per tag, which is everything a selec
 Into the locator block from batch 01, as the `element` selector plus its authoring-time `bounds` —
 the same fields the acceptance schema (batch 04) will carry.
 
-**These must be declared as optional `v1` fields in batch 01, not added to `v1` here.** Batch 01
-freezes `compose-parity-locator/v1` — writer, parser and shared fixture — and batch 02's index schema
-is built against it. If this batch then introduces two new keys into the same `v1` block, a strict
-parser rejects the report as mangled and a permissive one silently drops the selection, so the new
-affordance is absent from every downstream consumer while appearing to work in the browser. Either
-reserve `element` and `bounds` as optional in 01, or version the contract here and update the
-producer and reader fixtures together. Reserving them in 01 is much the cheaper of the two.
+**Both fields are already reserved — this batch fills them, it does not add them.** Batch 01 called
+for that and shipped without it; the reservation landed afterwards as a `v1` erratum, so
+`compose-parity-locator/v1` now carries `element` and `bounds` as optional fields that the writer
+emits when set and both parsers round-trip. Nothing writes them yet, which is this batch's job.
+
+`bounds` is not a bare rectangle: it carries `{"height":…,"space":"render-pixels","width":…,"x":…,"y":…}`
+as canonical JSON, and `v1` accepts no other space —
+[D1](00-decisions.md#d1--which-plane-the-element-tag-index-reports-bounds-in) is answered (a), so the
+tag index publishes render pixels and the canonical-plane transform belongs to the comparison. A
+selection recorded in display pixels is refused by both parsers rather than stored; if this batch
+needs a drag selection, convert it into render pixels before serialising.
 
 ## Traps
 

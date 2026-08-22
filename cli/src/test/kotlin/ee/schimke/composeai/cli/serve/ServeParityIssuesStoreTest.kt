@@ -44,6 +44,33 @@ class ServeParityIssuesStoreTest {
   private fun load() = ServeParityIssuesStore.load(File("/bundle"), fs)
 
   @Test
+  fun `an umbrella issue keeps a row per component, and a true duplicate still collapses`() {
+    // One issue may name several components — the producer emits a row each so the report reaches
+    // every component page it is about. Deduping by repository + number alone kept an arbitrary one
+    // of them, which is the silent half of the failure: the issue still appeared, just not where
+    // the rest of it belonged.
+    write(
+      ParityIssues(
+        generatedAt = "2026-08-15T10:00:00Z",
+        issues =
+          listOf(
+            issue().copy(component = "Button/Elevated"),
+            issue().copy(component = "Card/Elevated"),
+            issue().copy(component = "ToggleButton/Elevated"),
+            // Same repository, number AND component: a genuine duplicate, and still one row.
+            issue().copy(component = "Card/Elevated"),
+          ),
+      )
+    )
+    val rows = assertNotNull(load()).issues
+    assertEquals(
+      listOf("Button/Elevated", "Card/Elevated", "ToggleButton/Elevated"),
+      rows.map { it.component },
+    )
+    assertEquals(listOf(40, 40, 40), rows.map { it.number }, "the rows are one issue")
+  }
+
+  @Test
   fun `loads valid open and closed rows`() {
     write(
       ParityIssues(

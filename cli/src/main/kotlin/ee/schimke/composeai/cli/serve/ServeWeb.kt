@@ -10560,8 +10560,11 @@ $cards
           groups.entries.joinToString("\n") { (component, rows) ->
             "<section class=\"cp-parity-issue-group\"><h3>${esc(component)} (${rows.size})</h3>${parityIssueRowsHtml(rows)}</section>"
           }
+        // The heading counts *components*, and `open` is rows: an umbrella issue contributes one
+        // row per component it names, so counting rows here would report three components with an
+        // open issue where one issue names three.
         val openBand =
-          "<h2 class=\"cp-status-sec\">Components with open issues (${open.size})</h2>" +
+          "<h2 class=\"cp-status-sec\">Components with open issues (${groups.size})</h2>" +
             if (open.isEmpty()) "<p class=\"cp-muted\">No open issues.</p>" else summary
         val closedBand =
           if (closed.isEmpty()) ""

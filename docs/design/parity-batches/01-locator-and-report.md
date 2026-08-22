@@ -50,6 +50,13 @@ Rules that are not negotiable, each because it has a silent failure mode:
   means a strict parser rejects the report while a permissive one silently discards the selection.
   Reserving them costs a line each here and a fixture; retrofitting them costs a version bump across
   three consumers.
+
+  > **This did not happen when the batch shipped, and landed later as a `v1` erratum.** Both fields
+  > are now reserved and round-tripped by the writer, the producer and the shared fixture, with
+  > `bounds` naming its plane per [D1](00-decisions.md#d1--which-plane-the-element-tag-index-reports-bounds-in)
+  > (`render-pixels` only). The failure it nearly caused is worth keeping in view: both parsers
+  > ignore unknown keys, so nothing would have rejected a batch-03 report — the selection would have
+  > been dropped in silence.
 - **`bounds` cannot be a bare rectangle — it needs its space settled at the same time.** Three
   coordinate spaces are in play and they do not agree: a tag selection's bounds come from the index in
   **render pixels** ([D1](00-decisions.md#d1--which-plane-the-element-tag-index-reports-bounds-in)), a
