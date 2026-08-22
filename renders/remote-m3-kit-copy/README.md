@@ -55,6 +55,14 @@ same constant, so these now do too, and their `parallel` moved from the pill but
 
 ![The same five buttons with "MMM" inside their circles](round-text-button-fixed.png)
 
+**And the tapped state, which the resting render does not show.** `countedRemote` appends a tally to
+the visible label — `MMM` becomes `MMM (1)` on the first tap — so a fix that only looked at the
+baked capture would have left the overflow intact one interaction away, on a sheet whose whole point
+is that the stickers are live. These five now use `toggledRemote`, the size-preserving affordance the
+icon button already used for the same reason: a container-colour tween that says the tap landed
+without touching the metrics. `InteractiveActionCaptureTest` asserts their documents encode no
+counter, so the absence reads as a decision rather than an oversight.
+
 **An ellipsis sticker with no ellipsis.** `TruncatedTextRemote` exists to carry the
 `maxLines` + `overflow` product. `BODY` fits inside two lines at its width, so quoting it published
 a truncation sticker that did not truncate. It quotes `CARD_CONTENT` instead — still the kit's own

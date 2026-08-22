@@ -44,13 +44,6 @@ class InteractiveActionCaptureTest {
       "IconLabelSecondaryRemoteButton" to KitCopy.PRIMARY_LABEL,
       "CompactRemoteButton" to KitCopy.PRIMARY_LABEL,
       "CompactIconLabelRemoteButton" to KitCopy.PRIMARY_LABEL,
-      // The ROUND text buttons take the kit's glyph run instead: a two-word label is drawn through
-      // the edge of a circle, which is what `PRIMARY_LABEL` here produced before it was caught.
-      "TextRemoteButton" to KitCopy.GLYPHS,
-      "SmallRemoteTextButton" to KitCopy.GLYPHS,
-      "LargeRemoteTextButton" to KitCopy.GLYPHS,
-      "FilledRemoteTextButton" to KitCopy.GLYPHS,
-      "OutlinedRemoteTextButton" to KitCopy.GLYPHS,
       // Cards quote the kit's card slots.
       "CardRemote" to KitCopy.CARD_CONTENT,
       "OutlinedCardRemote" to KitCopy.CARD_CONTENT,
@@ -60,6 +53,35 @@ class InteractiveActionCaptureTest {
       "TimeContentRemoteTitleCard" to KitCopy.CARD_TITLE,
       "TimeRemoteAppCard" to KitCopy.CARD_TITLE,
     )
+
+  /**
+   * The round text buttons, which deliberately do NOT appear in [countedStickers].
+   *
+   * They carry the kit's `MMM` — a run of its widest glyph, which is how the kit sizes a round
+   * container — so the label is already the width of the circle and `countedRemote` would grow it
+   * to `MMM (1)` on the first tap, drawing the tally through the edge. They use `toggledRemote`
+   * instead: a colour tween that says the tap landed without touching the metrics. Asserted so the
+   * absence reads as a decision rather than an oversight.
+   */
+  private val toggledStickers =
+    listOf(
+      "TextRemoteButton",
+      "SmallRemoteTextButton",
+      "LargeRemoteTextButton",
+      "FilledRemoteTextButton",
+      "OutlinedRemoteTextButton",
+    )
+
+  @Test
+  fun `no round text button grows its label on tap`() {
+    for (stem in toggledStickers) {
+      val text = documentText(stem)
+      assertWithMessage("$stem still encodes a click counter into its label")
+        .that(text)
+        .doesNotContain("${KitCopy.GLYPHS} (")
+      assertWithMessage("$stem lost its kit glyph run").that(text).contains(KitCopy.GLYPHS)
+    }
+  }
 
   /**
    * The fragments `countedRemote` concatenates around the counter (`"<base> (" + n + ")"`). They

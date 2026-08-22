@@ -265,43 +265,60 @@ private fun SizedTextButton(
   style: androidx.compose.remote.creation.compose.text.RemoteTextStyle,
   label: String,
 ) {
-  val (text, onClick) = countedRemote(label)
+  val (on, onClick) = toggledRemote()
   RemoteTextButton(
     onClick = onClick,
     modifier = RemoteModifier.size(size),
     colors =
       RemoteTextButtonDefaults.textButtonColors(
-        containerColor = RemoteMaterialTheme.colorScheme.surfaceContainer,
+        containerColor =
+          tween(
+            RemoteMaterialTheme.colorScheme.surfaceContainer,
+            RemoteMaterialTheme.colorScheme.primary,
+            on,
+          ),
         contentColor = RemoteMaterialTheme.colorScheme.onSurface,
       ),
-    content = { RemoteText(text, style = style) },
+    content = { RemoteText(label.rs, style = style) },
   )
 }
 
 @CatalogRemoteModes
 @Composable
 fun FilledRemoteTextButton() = RemoteSticker {
-  val (label, onClick) = countedRemote(KitCopy.GLYPHS)
+  // A colour tween rather than a click tally: `MMM` already fills this circle, so a counter would
+  // draw `MMM (1)` through its edge. See `toggledRemote`.
+  val (on, onClick) = toggledRemote()
   RemoteTextButton(
     onClick = onClick,
     colors =
       RemoteTextButtonDefaults.textButtonColors(
-        containerColor = RemoteMaterialTheme.colorScheme.primary,
+        containerColor =
+          tween(
+            RemoteMaterialTheme.colorScheme.primary,
+            RemoteMaterialTheme.colorScheme.primaryDim,
+            on,
+          ),
         contentColor = RemoteMaterialTheme.colorScheme.onPrimary,
       ),
-    content = { RemoteText(label) },
+    content = { RemoteText(KitCopy.GLYPHS.rs) },
   )
 }
 
 @CatalogRemoteModes
 @Composable
 fun OutlinedRemoteTextButton() = RemoteSticker {
-  val (label, onClick) = countedRemote(KitCopy.GLYPHS)
+  val (on, onClick) = toggledRemote()
+  val stock = RemoteTextButtonDefaults.textButtonColors()
   RemoteTextButton(
     onClick = onClick,
     border = 2.rdp,
     borderColor = RemoteMaterialTheme.colorScheme.outline,
-    content = { RemoteText(label) },
+    colors =
+      RemoteTextButtonDefaults.textButtonColors(
+        containerColor = tween(stock.containerColor, RemoteMaterialTheme.colorScheme.primary, on)
+      ),
+    content = { RemoteText(KitCopy.GLYPHS.rs) },
   )
 }
 

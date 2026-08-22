@@ -58,6 +58,7 @@ import androidx.wear.compose.remote.material3.RemoteMaterialTheme
 import androidx.wear.compose.remote.material3.RemoteOutlinedCard
 import androidx.wear.compose.remote.material3.RemoteText
 import androidx.wear.compose.remote.material3.RemoteTextButton
+import androidx.wear.compose.remote.material3.RemoteTextButtonDefaults
 import androidx.wear.compose.remote.material3.RemoteTitleCard
 import androidx.wear.compose.remote.material3.buttonSizeModifier
 import ee.schimke.composeai.daemon.rememberOverridableRemoteColor
@@ -124,9 +125,16 @@ internal fun countedRemote(base: RemoteString): Pair<RemoteString, Action> {
 }
 
 /**
- * The fallback for the one sticker with no label at all to count into: the icon button. Returns a
- * 0→1 [RemoteFloat] and the [Action] that flips it, so the caller can [tween] a colour across it.
- * Everything else on the sheet takes the default [countedRemote] tally.
+ * The size-preserving affordance, for a sticker whose label has no room to grow. Returns a 0→1
+ * [RemoteFloat] and the [Action] that flips it, so the caller can [tween] a colour across it.
+ *
+ * Two kinds of sticker need it. The icon button has no label at all to count into. The **round**
+ * text buttons have one that is already the width of their circle: the kit sizes that container
+ * with `MMM`, a run of its widest glyph, and [countedRemote] would grow that to `MMM (1)` on the
+ * first tap — drawing the tally straight through the edge, which is the very thing quoting the kit
+ * fixed in the resting state. A colour tween says "that tap landed" without touching the metrics.
+ *
+ * Everything with a pill or a card to grow into takes the default [countedRemote] tally.
  *
  * At rest the float is `0f`, and `tween(a, b, 0f)` is `a` — so the baked capture keeps the stock
  * colours and only a live tap moves it.
@@ -256,8 +264,17 @@ fun NamedLabelRemoteButton() = RemoteSticker {
 fun TextRemoteButton() = RemoteSticker {
   // The kit's glyph run, not `PRIMARY_LABEL`: this container is a circle, and a two-word label is
   // drawn straight through its edge. `wear-m3-catalog`'s `TextButton` quotes the same constant.
-  val (label, onClick) = countedRemote(KitCopy.GLYPHS)
-  RemoteTextButton(onClick = onClick, content = { RemoteText(label) })
+  // `toggledRemote` rather than `countedRemote` for that same reason — see its KDoc.
+  val (on, onClick) = toggledRemote()
+  val stock = RemoteTextButtonDefaults.textButtonColors()
+  RemoteTextButton(
+    onClick = onClick,
+    colors =
+      RemoteTextButtonDefaults.textButtonColors(
+        containerColor = tween(stock.containerColor, RemoteMaterialTheme.colorScheme.primary, on)
+      ),
+    content = { RemoteText(KitCopy.GLYPHS.rs) },
+  )
 }
 
 // A round icon button (`RemoteIconButton`) carrying a single `RemoteIcon`. Inside the
