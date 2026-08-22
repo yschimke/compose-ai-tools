@@ -42,10 +42,11 @@ class RemoteComposeIrReplay {
     // Which player draws is read from the controller rather than passed in: the daemon resolves
     // this
     // composable reflectively against a fixed `(ByteArray)` signature (see the class doc), so there
-    // is no parameter to thread a choice through. Null — the default — keeps the view-backed
-    // player.
+    // is no parameter to thread a choice through. Null — nothing asked for a player — takes the
+    // embedded one, matching what a capture bakes through and what the viewer opens on; only an
+    // explicit `?rcPlayer=java` (RemoteComposePlayerKind.VIEW) selects the view-backed lane.
     val embedded =
-      RemoteComposeController.player.value == RemoteComposePlayerKind.EMBEDDED &&
+      RemoteComposeController.player.value != RemoteComposePlayerKind.VIEW &&
         isEmbeddedPlayerAvailable
 
     if (embedded) {

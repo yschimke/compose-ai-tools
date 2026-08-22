@@ -891,8 +891,9 @@ class ServeHttpRoutingTest {
    * This host's daemon never serves (every render falls back to baked), so a `200` carrying the
    * published bytes can only have come from the staging. Before this lane existed the same request
    * went to the daemon: ~0.75s warm on the public box, and on a cold one a baked fallback that then
-   * refused. The baked PNG cannot stand in for it — that is the *Java* player's capture, which is
-   * why the reference lane on the compare page is labelled "AndroidX Java".
+   * refused. The staged lane is still what answers it: the baked PNG is the catalog's own capture
+   * and this request names a player, so the two are only interchangeable when they happen to be the
+   * same player — a coincidence the routing must not depend on.
    */
   @Test
   fun `a bare player selection is served from the published parity staging`() {

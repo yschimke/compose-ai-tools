@@ -49,8 +49,12 @@ open class RemoteOverridablePreviewWrapper : PreviewWrapperProvider {
   /** Remote-compose platform profile to capture the document against. Defaults to ANDROIDX. */
   protected open val profile: Profile = RcPlatformProfiles.ANDROIDX
 
-  /** Player used to replay the captured document. */
-  protected open val player: RemoteComposePlayerKind = RemoteComposePlayerKind.VIEW
+  /**
+   * Player used to replay the captured document. [RemoteComposePlayerKind.EMBEDDED] — the vendored
+   * AndroidX `RcPlayer` — since it is what the rest of the pipeline defaults to; see
+   * [RemoteOverridablePreview] for why, and [RemoteViewPreviewWrapper] for the old lane.
+   */
+  protected open val player: RemoteComposePlayerKind = RemoteComposePlayerKind.EMBEDDED
 
   @Composable
   override fun Wrap(content: @Composable () -> Unit) {
@@ -62,12 +66,35 @@ open class RemoteOverridablePreviewWrapper : PreviewWrapperProvider {
  * Preview wrapper that replays the captured document with the embedded Compose Remote player.
  * Consumers must supply `:third-party-rc-embedded-player` (or its upstream equivalent) at runtime;
  * when it is absent this falls back to the standard View-backed player.
+ *
+ * Same lane as the plain [RemoteOverridablePreviewWrapper] now that embedded is the default. Kept
+ * because it is a published annotation target and because saying which player draws is worth an
+ * annotation even when it agrees with the default.
  */
 class RemoteEmbeddedPreviewWrapper : RemoteOverridablePreviewWrapper() {
   override val player: RemoteComposePlayerKind = RemoteComposePlayerKind.EMBEDDED
 
   // The renderer resolves wrapper methods with getDeclaredMethod, so this must be declared on the
   // concrete wrapper rather than inherited from RemoteOverridablePreviewWrapper.
+  @Composable
+  override fun Wrap(content: @Composable () -> Unit) {
+    RemoteOverridablePreview(profile = profile, player = player, content = content)
+  }
+}
+
+/**
+ * Preview wrapper that replays the captured document with the **View-backed** player
+ * (`RemoteComposePlayer` in an `AndroidView`) — the lane that was the default before the embedded
+ * player took it.
+ *
+ * It exists so that lane stays reachable by annotation rather than only by a `?rcPlayer=java`
+ * query: a preview whose fidelity depends on the framework `Canvas` (glyph hinting is the usual
+ * one) can pin itself here and keep baking through it.
+ */
+class RemoteViewPreviewWrapper : RemoteOverridablePreviewWrapper() {
+  override val player: RemoteComposePlayerKind = RemoteComposePlayerKind.VIEW
+
+  // Declared here for the same reflective-resolution reason as the sibling above.
   @Composable
   override fun Wrap(content: @Composable () -> Unit) {
     RemoteOverridablePreview(profile = profile, player = player, content = content)
@@ -99,7 +126,7 @@ class RemoteEmbeddedPreviewWrapper : RemoteOverridablePreviewWrapper() {
 fun RemoteOverridablePreview(
   profile: Profile,
   modifier: Modifier = Modifier,
-  player: RemoteComposePlayerKind = RemoteComposePlayerKind.VIEW,
+  player: RemoteComposePlayerKind = RemoteComposePlayerKind.EMBEDDED,
   content: @Composable @RemoteComposable () -> Unit,
 ) {
   val context = LocalContext.current

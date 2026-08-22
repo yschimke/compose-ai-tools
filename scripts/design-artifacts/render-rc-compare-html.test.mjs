@@ -159,7 +159,7 @@ test("summarizeRcCompare yields null mean when nothing rendered", () => {
 test("the page is a self-contained document with one column per player", () => {
   const html = renderRcCompareHtml(model);
   assert.match(html, /^<!doctype html>/);
-  assert.match(html, /AndroidX Java/);
+  assert.match(html, /AndroidX Embedded · baked/);
   assert.match(html, /RC · JS player/);
   // summary line reflects the counts
   assert.match(html, /mean mismatch <strong>38\.15%<\/strong>/);
@@ -257,12 +257,12 @@ test("the inlined row model carries each lane's render, build-time diff and scor
 test("a model with no embedded results renders the JS-only page — no empty embedded columns", () => {
   const html = renderRcCompareHtml(model);
   assert.equal(hasEmbeddedLane(model.rows), false);
-  assert.doesNotMatch(html, /AndroidX Embedded/);
-  assert.doesNotMatch(html, /AndroidX Embedded:<\/strong>/);
+  assert.doesNotMatch(html, /AndroidX Embedded · harness/);
+  assert.doesNotMatch(html, /AndroidX Embedded · harness:<\/strong>/);
   // exactly the baked + JS columns
   assert.match(
     html,
-    /<thead><tr><th>preview<\/th><th>AndroidX Java<\/th><th>RC · JS player<\/th><\/tr><\/thead>/,
+    /<thead><tr><th>preview<\/th><th>AndroidX Embedded · baked<\/th><th>RC · JS player<\/th><\/tr><\/thead>/,
   );
 });
 
@@ -289,10 +289,10 @@ test("an unrenderable row shows its note instead of an image and omits the rc/di
 
 test("the embedded lane adds one column and its own summary line", () => {
   const html = renderRcCompareHtml(withEmbedded(model));
-  assert.match(html, /AndroidX Embedded/);
-  assert.match(html, /<strong>AndroidX Embedded:<\/strong>/);
+  assert.match(html, /AndroidX Embedded · harness/);
+  assert.match(html, /<strong>AndroidX Embedded · harness:<\/strong>/);
   // One column per player — the embedded lane no longer drags a diff column along with it.
-  assert.equal((html.match(/<th>AndroidX Embedded<\/th>/g) || []).length, 1);
+  assert.equal((html.match(/<th>AndroidX Embedded · harness<\/th>/g) || []).length, 1);
   // Both players are diffable references, and both are in the client model.
   const client = clientModel(html);
   assert.ok(client.lanes.some((l) => l.id === "js"));
@@ -315,12 +315,12 @@ test("the cmp-jvm lane adds one column, a picker entry and its own summary line"
 
 test("the cmp-jvm and embedded lanes coexist, each its own column and summary", () => {
   const html = renderRcCompareHtml(withEmbeddedJvm(withEmbedded(model)));
-  assert.match(html, /AndroidX Embedded/);
+  assert.match(html, /AndroidX Embedded · harness/);
   assert.match(html, /RC · cmp-jvm player/);
   assert.match(html, /\(JS \+ embedded \+ cmp-jvm players\)/);
   // The lede names all three players and the worst-scoring sort, not just JS + embedded.
   assert.match(html, /<strong>JS player<\/strong>/);
-  assert.match(html, /<strong>AndroidX Embedded<\/strong>/);
+  assert.match(html, /<strong>AndroidX Embedded · harness<\/strong>/);
   assert.match(html, /<strong>cmp-jvm player<\/strong>/);
   assert.match(html, /Rows sort worst-match-first on the worst-scoring player/);
 });
@@ -434,15 +434,15 @@ test("a blank reference is excluded from the embedded mean too — the reference
   assert.ok(Math.abs(s.embeddedMeanPct - (41.5 + 1.2 + 8) / 3) < 1e-9);
 });
 
-test("a blank-reference row is flagged so the client never scores it against AndroidX Java", () => {
+test("a blank-reference row is flagged so the client never scores it against the baked lane", () => {
   const html = renderRcCompareHtml(blankModel);
-  assert.match(html, /the AndroidX Java render is fully transparent/);
+  assert.match(html, /the baked render is fully transparent/);
   const client = clientModel(html);
   const blank = client.rows.find((r) => r.name === "BrandedTextRemote");
   assert.equal(blank.referenceBlank, true);
   // Exactly one row carries the flag — the scored rows must not inherit it.
   assert.equal(client.rows.filter((r) => r.referenceBlank).length, 1);
-  assert.equal((html.match(/the AndroidX Java render is fully transparent/g) || []).length, 1);
+  assert.equal((html.match(/the baked render is fully transparent/g) || []).length, 1);
 });
 
 test("a blank-reference row sinks rather than topping the table on an unearned 0%", () => {
@@ -455,7 +455,7 @@ test("a blank-reference row sinks rather than topping the table on an unearned 0
 
 test("a blank row is called out once per page, not once per lane — the reference is shared", () => {
   const html = renderRcCompareHtml(withEmbedded(blankModel));
-  assert.equal((html.match(/the AndroidX Java render is fully transparent/g) || []).length, 1);
+  assert.equal((html.match(/the baked render is fully transparent/g) || []).length, 1);
   // Both lanes' summary lines report it, since the blank reference costs them the same row.
   assert.equal((html.match(/1<\/strong> unscored \(blank reference\)/g) || []).length, 2);
 });

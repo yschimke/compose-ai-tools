@@ -14,8 +14,8 @@ import okio.Path.Companion.toOkioPath
  * The offline `rc-compare` pipeline (`scripts/design-artifacts/rc-compare.mjs`) already renders
  * every `ir/<id>.rc` document through every player it can reach — the vendored TypeScript
  * `RC.RcdPlayer`, AndroidX's Compose-embedded `RcPlayer`, the Compose Desktop / Skiko player, the
- * CMP/Wasm player — pixel-diffs each against the AndroidX Java render, and publishes the lot beside
- * the catalog: one PNG per lane per preview plus `rc-compare-summary.json`. That is the same data
+ * CMP/Wasm player — pixel-diffs each against the baked render, and publishes the lot beside the
+ * catalog: one PNG per lane per preview plus `rc-compare-summary.json`. That is the same data
  * `rc-compare.html` is built from.
  *
  * The serve page reuses it rather than re-deriving it. Rendering a document in the visitor's
@@ -65,10 +65,9 @@ data class RcCompareRow(
   val width: Int = 0,
   val height: Int = 0,
   /**
-   * The AndroidX Java render carries no opaque pixel at all, so it is no reference: a player that
-   * also drew nothing would score a perfect 0%. Such a row is shown but reads `no reference`
-   * whenever the baked lane is the selected reference (two *player* renders still compare
-   * normally).
+   * The baked render carries no opaque pixel at all, so it is no reference: a player that also drew
+   * nothing would score a perfect 0%. Such a row is shown but reads `no reference` whenever the
+   * baked lane is the selected reference (two *player* renders still compare normally).
    */
   val referenceBlank: Boolean = false,
   val lanes: Map<String, RcCompareCell> = emptyMap(),
@@ -82,9 +81,9 @@ data class RcCompareCell(
    * Staged image name (`<lane>/<slot>.png`), served under `/<system>/rc-compare/`. Empty ⇒ none.
    */
   val render: String = "",
-  /** The build-time pixel diff against the AndroidX Java render. Empty for that lane itself. */
+  /** The build-time pixel diff against the baked render. Empty for that lane itself. */
   val diff: String = "",
-  /** Build-time mismatch against the AndroidX Java render. Null when unrendered or unscorable. */
+  /** Build-time mismatch against the baked render. Null when unrendered or unscorable. */
   val mismatchPct: Double? = null,
   val mismatchPx: Long? = null,
   /** Why this lane has no render, when it doesn't (the player's own reason). */
@@ -106,9 +105,7 @@ internal data class RcLaneSource(
   val short: String,
   /** Branch dir holding this lane's renders. */
   val renderDir: String,
-  /**
-   * Branch dir holding its build-time diff against the AndroidX Java render; null for that lane.
-   */
+  /** Branch dir holding its build-time diff against the baked render; null for that lane. */
   val diffDir: String?,
   /** Whether this lane ran at all for a given row — null ⇒ the lane was not part of the run. */
   val rendered: (RcSummaryRow) -> Boolean?,
@@ -149,20 +146,18 @@ internal object ServeRcCompare {
     listOf(
       RcLaneSource(
         id = "baked",
-        // The AndroidX `RemoteComposePlayer` — an Android `View` painting to a framework
-        // `Canvas` — rendered offline under Robolectric/Skiko. Named for the player rather
-        // than for the file it arrives as: "baked PNG" said how it got here, not what drew it,
-        // which is the only thing a reader comparing it against four other players cares about.
-        // Assumes the bundle's baked PNGs came from the View-backed player, which is true of every
-        // catalog scored today: `remote-m3` is the only published system with an `ir/*.rc` corpus,
-        // and it wraps nothing in `RemoteEmbeddedPreviewWrapper`. A preview that DOES carry that
-        // wrapper bakes its PNG through the embedded `RcPlayer` instead (see
-        // `RemoteOverridablePreview.kt`) — `samples/remotecompose` has two — and neither the bundle
-        // nor `rc-compare-summary.json` records which renderer produced a row, so a catalog mixing
-        // the two would be mislabelled here rather than detected. Carry provenance per row before
-        // scoring such a catalog.
-        label = "AndroidX Java",
-        short = "java",
+        // The catalog's own capture, rendered offline under Robolectric/Skiko. Named for the
+        // player rather than for the file it arrives as: "baked PNG" said how it got here, not
+        // what drew it, which is the only thing a reader comparing it against four other players
+        // cares about.
+        // That player is now the embedded `RcPlayer`: `RemoteOverridablePreview` defaults to
+        // `RemoteComposePlayerKind.EMBEDDED`, so a capture goes through it unless the preview pins
+        // the view-backed lane with `RemoteViewPreviewWrapper`. Neither the bundle nor
+        // `rc-compare-summary.json` records which renderer produced a row, so a catalog whose
+        // previews mix the two is mislabelled here rather than detected — carry provenance per row
+        // before scoring such a catalog.
+        label = "AndroidX Embedded · baked",
+        short = "baked",
         renderDir = "rc-baked",
         diffDir = null,
         // The driver writes a baked copy for every row it processes, rendered or not.
@@ -228,9 +223,9 @@ internal object ServeRcCompare {
    * The row model the compare page's client script diffs over, inlined as `application/json`.
    *
    * Keeping it as data — rather than having the script scrape the DOM — is what lets the client
-   * pick the *build-time* diff whenever the selected reference is AndroidX Java (exact `pixelmatch`
-   * numbers, zero work) and fall back to a canvas diff only for the player↔player question nothing
-   * precomputed can answer.
+   * pick the *build-time* diff whenever the selected reference is the baked lane (exact
+   * `pixelmatch` numbers, zero work) and fall back to a canvas diff only for the player↔player
+   * question nothing precomputed can answer.
    */
   @Serializable
   data class ClientModel(

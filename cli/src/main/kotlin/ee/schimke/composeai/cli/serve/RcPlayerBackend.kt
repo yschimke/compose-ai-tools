@@ -18,10 +18,13 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind
  *   TypeScript player.
  * * [JAVA] — the AOSP `remote-player-view` `RemoteComposePlayer` (an Android `View` painting into a
  *   framework `Canvas`), driven **server-side** by the daemon via [RemoteComposePlayerKind.VIEW].
- *   The default snapshot player for a Remote Compose preview on an Android backend.
+ *   Was the default snapshot player for a Remote Compose preview on an Android backend; that is now
+ *   [CMP_ANDROID], and this lane is what a preview pins itself to (or a `?rcPlayer=java` asks for)
+ *   when the framework `Canvas` is the point.
  * * [CMP_ANDROID] — the vendored AndroidX embedded `RcPlayer` (`:third-party-rc-embedded-player`),
  *   which interprets the document's operation tree into Compose layout/draw nodes directly, driven
- *   server-side via [RemoteComposePlayerKind.EMBEDDED].
+ *   server-side via [RemoteComposePlayerKind.EMBEDDED]. The default: it is what a capture bakes
+ *   through, what an unqualified replay uses, and what the viewer opens on.
  * * [CMP_JVM] — the same embedded player over Skiko/Desktop
  *   (`:third-party-rc-embedded-player-jvm`), rendered **server-side** by [RcJvmServerRenderer]: it
  *   spawns the module's `RcJvmRenderMain` as a one-shot subprocess off the CLI install's
@@ -61,9 +64,14 @@ enum class RcPlayerBackend(
    *
    * The offline parity run already draws every `ir/<id>.rc` document with every player, so this is
    * what lets a bare `?rcPlayer=<wire>` browse be answered from published bytes instead of a daemon
-   * render. Note [JAVA]'s column is `baked`: the AndroidX Java render **is** the reference the
-   * other lanes are scored against, which is also why the catalog's ordinary baked PNG is a Java
-   * capture rather than an embedded one.
+   * render.
+   *
+   * [JAVA] maps to **nothing**. It used to own the `baked` column, because the catalog's baked PNG
+   * was a view-backed capture and therefore the reference the other lanes were scored against. It
+   * isn't any more: `RemoteOverridablePreview` defaults to [RemoteComposePlayerKind.EMBEDDED], so
+   * `baked` is an embedded capture and serving it for `?rcPlayer=java` would hand back the wrong
+   * player's pixels under a confident `200`. The java lane therefore routes to the daemon, which
+   * can still draw it on request.
    */
   val rcCompareLane: String?,
 ) {
@@ -80,7 +88,7 @@ enum class RcPlayerBackend(
     "Java",
     playerKind = RemoteComposePlayerKind.VIEW,
     clientSide = false,
-    rcCompareLane = "baked",
+    rcCompareLane = null,
   ),
   CMP_ANDROID(
     "cmp-android",

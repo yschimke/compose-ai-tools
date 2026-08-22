@@ -3612,10 +3612,13 @@ no daemon, no render slot and no admission — which is what an override-free br
 
 Two things make it safe to state that narrowly:
 
-- **The baked PNG is not a substitute.** It is the **AndroidX Java** capture — the reference the
-  other lanes are scored against, which is why the compare page's first column is labelled that way.
-  Serving it for `?rcPlayer=cmp-android` would be the #3449 failure again: the wrong player's pixels
-  under a confident `200`.
+- **The baked PNG is not a substitute.** It is *a* player's capture — whichever one the preview
+  baked through, today the embedded `RcPlayer` — not whichever player the request names. Serving it
+  for a lane it did not draw would be the #3449 failure again: the wrong player's pixels under a
+  confident `200`. That is also why `?rcPlayer=java` no longer resolves to published bytes at all
+  ([`RcPlayerBackend.JAVA.rcCompareLane`](../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/RcPlayerBackend.kt)
+  is null): the column it used to claim is an embedded capture now, so the java lane goes to the
+  daemon, which can still draw it.
 - **Bare means bare.** Strip the player from the request and whatever remains must be something the
   baked snapshot would itself satisfy. A font scale, a device, a knob or a theme asks for pixels the
   parity run never drew, so it routes to the renderer exactly as before. A player the run staged
