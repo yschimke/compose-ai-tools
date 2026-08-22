@@ -20,7 +20,7 @@ import okio.Path.Companion.toPath
 /**
  * Desktop half of the **figma-svg fidelity harness**: rasterises a preview's `compose-figma.svg`,
  * aligns it to the padding-free render PNG, and scores how faithfully the layered export reproduces
- * the render via the pure [FigmaFidelity] engine — writing a `render | figma-svg | diff` composite
+ * the render via the pure [FigmaFidelity] engine — writing a `figma-svg | diff | render` composite
  * and a score sidecar.
  *
  * It runs only where the renderer runs and only when asked ([enabled]) so the default render path
