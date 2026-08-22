@@ -38,6 +38,32 @@ describe("semanticsDiff", () => {
         });
     });
 
+    it("reports a node leaving the frame, mirroring the Kotlin differ", () => {
+        // `placed` is COMPARED rather than pruned: every other consumer of this tree skips an
+        // unplaced subtree, but a diff that pruned it would report a node leaving the frame as
+        // no change at all.
+        const base = { root: node({ testTag: "row", text: "One" }) };
+        const head = {
+            root: node({ testTag: "row", text: "One", placed: false }),
+        };
+
+        const delta = diffSemantics(base, head);
+
+        assert.strictEqual(delta.changed.length, 1);
+        assert.deepStrictEqual(delta.changed[0].changes, [
+            { field: "placed", from: "true", to: "false" },
+        ]);
+    });
+
+    it("treats an omitted placed as true, so a pre-v15 snapshot is not a change", () => {
+        // The producer omits the field when true. Comparing raw values would report every v14
+        // snapshot as having changed against a v15 one.
+        const base = { root: node({ testTag: "row" }) };
+        const head = { root: node({ testTag: "row", placed: true }) };
+
+        assert.ok(semanticsDeltaIsEmpty(diffSemantics(base, head)));
+    });
+
     it("reports identical trees as an empty delta", () => {
         const tree = () => ({
             root: node({ testTag: "greeting", text: "Hello" }),
