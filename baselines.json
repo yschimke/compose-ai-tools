@@ -431,6 +431,22 @@
     "sha256": "bcd50e01a67cf35af0a27e19931f18d96a56afa3190c1521ed0354e2e329bcd8",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/AsyncImagePreviews.kt"
   },
+  "samples:android/com.example.sampleandroid.CaptureGutterPreviewsKt.FillWidthCroppedPreview_Fill fixed": {
+    "captureLabel": "",
+    "functionName": "FillWidthCroppedPreview",
+    "module": "samples:android",
+    "renderBasename": "FillWidthCroppedPreview_Fill_fixed-57c55975.png",
+    "sha256": "c3c14baf586a210cac33c8b5957ec20705544ff0d14085950aa02fe0029c066e",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/CaptureGutterPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.CaptureGutterPreviewsKt.FillWidthGutteredPreview_Fill fixed guttered": {
+    "captureLabel": "",
+    "functionName": "FillWidthGutteredPreview",
+    "module": "samples:android",
+    "renderBasename": "FillWidthGutteredPreview_Fill_fixed_guttered-9bec0a83.png",
+    "sha256": "8ccbb5159b42dc0d7d4c61ec50b0b78250cd808be57122779b4dec92c293b12b",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/CaptureGutterPreviews.kt"
+  },
   "samples:android/com.example.sampleandroid.CaptureGutterPreviewsKt.ShadowStickerCroppedPreview_Shadow cropped": {
     "captureLabel": "",
     "functionName": "ShadowStickerCroppedPreview",
@@ -444,7 +460,7 @@
     "functionName": "ShadowStickerGutteredPreview",
     "module": "samples:android",
     "renderBasename": "ShadowStickerGutteredPreview_Shadow_guttered-af019607.png",
-    "sha256": "5c791e126f5be57319d103340d1b422be401cde5aeb2da23e3fcd4254aa997ca",
+    "sha256": "c4601696719a8b9ba66f1904c12bfae39e243c6d7b7458dbbcc0b34e93cd7e09",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/CaptureGutterPreviews.kt"
   },
   "samples:android/com.example.sampleandroid.ColorGalleryKt.ColorSchemeSpecimenDarkPreview_ColorScheme specimen \u2014 dark": {
@@ -3822,6 +3838,22 @@
     "renderBasename": "RemoteWidgetSquirclePreview_Remote_Widget_Squircle-2f39ed33.png",
     "sha256": "a89de7f4f104ec39ef91707ba4eaa6c61bdb6d944b34f911d727376d527e05cc",
     "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/WearWidgetPreviews.kt"
+  },
+  "samples:remotecompose/wearthemecatalog__Remote_Coral": {
+    "captureLabel": "",
+    "functionName": "Remote Coral theme",
+    "module": "samples:remotecompose",
+    "renderBasename": "wearthemecatalog__Remote_Coral.png",
+    "sha256": "ab67b5aaca4deb80565f7e1ca7b249a41f01498fbbd9a5b29f000214c3804caa",
+    "sourceFile": null
+  },
+  "samples:remotecompose/wearthemecatalog__Remote_Default": {
+    "captureLabel": "",
+    "functionName": "Remote Default theme",
+    "module": "samples:remotecompose",
+    "renderBasename": "wearthemecatalog__Remote_Default.png",
+    "sha256": "4a3b9e82ee6b9634705848622d9f375b8ea591cc060708cbf5ecfdae4633b26a",
+    "sourceFile": null
   },
   "samples:sdk-matrix/com.example.sdkmatrix.MatrixPreviewKt.SdkMatrixPreview_SdkMatrixPreview": {
     "captureLabel": "",

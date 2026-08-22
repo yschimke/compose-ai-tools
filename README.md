@@ -36,6 +36,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `RemoteViewsWeatherWidgetPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/RemoteViewsWeatherWidgetPreview_RemoteViews_widget_4_2-f3e3deff.png" width="150" /> |
 | `AsyncImageArtworkPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/AsyncImageArtworkPreview_Async_Image_Artwork-89967208.png" width="150" /> |
 | `AsyncImageUnreachablePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/AsyncImageUnreachablePreview_Async_Image_Unreachable-9903d4bc.png" width="150" /> |
+| `FillWidthCroppedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/FillWidthCroppedPreview_Fill_fixed-57c55975.png" width="150" /> |
+| `FillWidthGutteredPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/FillWidthGutteredPreview_Fill_fixed_guttered-9bec0a83.png" width="150" /> |
 | `ShadowStickerCroppedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ShadowStickerCroppedPreview_Shadow_cropped-65777146.png" width="150" /> |
 | `ShadowStickerGutteredPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ShadowStickerGutteredPreview_Shadow_guttered-af019607.png" width="150" /> |
 | `ColorSchemeSpecimenDarkPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ColorSchemeSpecimenDarkPreview_ColorScheme_specimen_dark-789b6eae.png" width="150" /> |
@@ -549,6 +551,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `RemoteIndeterminateCircularProgressIndicatorStandardPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteIndeterminateCircularProgressIndicatorStandardPreview-ce0e723c.gif" width="150" /> |
 | `RemoteShaderGradientPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteShaderGradientPreview-6739688f.png" width="150" /> |
 | `RemoteWidgetSquirclePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteWidgetSquirclePreview_Remote_Widget_Squircle-2f39ed33.png" width="150" /> |
+| `Remote Coral theme` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/wearthemecatalog__Remote_Coral.png" width="150" /> |
+| `Remote Default theme` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/wearthemecatalog__Remote_Default.png" width="150" /> |
 
 ## samples:sdk-matrix
 
