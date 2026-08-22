@@ -124,7 +124,7 @@ links to the live preview server on click.
     [`\`index.html\``, `Self-contained gallery — [open via htmlpreview](${indexUrl})`],
     [
       `\`compare.html\``,
-      `PNG↔SVG comparison with a live structural-similarity score — [open via htmlpreview](${compareUrl})`,
+      `SVG↔PNG comparison with a live structural-similarity score — [open via htmlpreview](${compareUrl})`,
     ],
     ...(crossSystem
       ? [
@@ -158,12 +158,14 @@ Figma / Stitch / Claude Design.
 A self-contained gallery — one card per component with its rendered PNG,
 dimensions, accessibility greenlines, and a link to an editable SVG wireframe.
 
-## 🔬 Compare PNG vs SVG
+## 🔬 Compare SVG vs PNG
 
-**[▶ Open the PNG↔SVG comparison (htmlpreview)](${compareUrl})**
+**[▶ Open the SVG↔PNG comparison (htmlpreview)](${compareUrl})**
 
-Every component on one row: its rendered **PNG** beside its editable **figma-svg**
-re-rasterized by the browser, plus a live **structural-similarity (SSIM)** match
+Every component on one row: its editable **figma-svg** re-rasterized by the
+browser beside the rendered **PNG** it is measured against — the design vector on
+the left, the render on the right, as everywhere else the two are shown together
+— plus a live **structural-similarity (SSIM)** match
 score — so you can eyeball vector fidelity across the whole system at once and
 spot which stickers drift. The score is pre-blurred and downscaled, so a
 half-pixel rasterizer offset doesn't read as a mismatch.

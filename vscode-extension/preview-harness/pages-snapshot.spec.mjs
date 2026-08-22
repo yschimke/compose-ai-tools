@@ -793,6 +793,51 @@ const FIXTURE_STATES = [
     },
   },
   {
+    // The wall's DESIGN-SPEC lane, which the wall never opens on: `serve-format-compare` is served
+    // with `svg` as its default format, so every other shot of this page shows the render-vs-export
+    // question and none of them show the design one — the lane the catalog's own "compare to Figma"
+    // action deep-links, and the one whose column order is a product-wide rule (spec left, render
+    // right — see `compare/columns.ts`). Without this shot that rule is un-diffed: the columns and
+    // their headers could swap back and no baseline would move.
+    fixture: "serve-format-compare",
+    suffix: "reference-lane",
+    // The pointer's resting place is incidental here — the shot is about the table, and a click
+    // left on the format button would photograph its hover state instead.
+    parkPointer: true,
+    apply: async (page) => {
+      // States run in order against the SAME page, and `report-menu` above leaves the launcher
+      // open over the table this shot is about. Close it first rather than reordering the states,
+      // which would photograph that one on this lane instead.
+      await page.evaluate(() =>
+        document.getElementById("cp-report")?.removeAttribute("open"),
+      );
+      await page.click('[data-compare-format="reference"]');
+      // The header names the lane and moves with its column — assert both rather than trusting the
+      // pixels, so a reordered table with a stale header fails loudly here.
+      await expect(page.locator(".cp-compare-target-head")).toHaveText("Figma");
+      const specFirst = await page.evaluate(() => {
+        const row = document.querySelector(".cp-compare-row:not([hidden])");
+        const cells = Array.from(row?.children ?? []).map((c) => c.className);
+        return (
+          cells.indexOf("cp-compare-target-cell") <
+          cells.indexOf("cp-compare-render-cell")
+        );
+      });
+      expect(specFirst).toBe(true);
+      // Scores are asynchronous (fetch + decode + compare); capture the settled state rather than
+      // the "comparing…" skeleton, the same wait the base capture makes.
+      await page
+        .waitForFunction(() =>
+          Array.from(document.querySelectorAll(".cp-compare-score")).every(
+            (cell) =>
+              cell.textContent !== "waiting…" &&
+              cell.textContent !== "comparing…",
+          ),
+        )
+        .catch(() => {});
+    },
+  },
+  {
     // A component under the POINTER. The sheet carries no resting marks, so this is the whole
     // discovery story: the outline appears where you point, and it appears whether or not the
     // opt-in layer is on (this shot is taken with it off, which is the default). A hover state

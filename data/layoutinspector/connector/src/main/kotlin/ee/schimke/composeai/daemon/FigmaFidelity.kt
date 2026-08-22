@@ -10,7 +10,8 @@ import java.awt.image.BufferedImage
  * Structural **fidelity diff** between a rendered preview and its `compose/figma-svg` export: given
  * the real render and a rasterisation of the exported SVG at the same size, it scores how
  * faithfully the layered SVG reproduces the render and produces a side-by-side + diff-overlay image
- * to look at.
+ * to look at — spec on the left, render on the right, as everywhere else the two are shown
+ * together.
  *
  * This is the measurement half of the fidelity harness (the SVG rasterisation — Skia
  * [`loadSvgPainter`][androidx.compose.ui.res.loadSvgPainter] — lives in the desktop renderer, the
@@ -54,7 +55,7 @@ object FigmaFidelity {
     val meanAbsError: Double,
     val width: Int,
     val height: Int,
-    /** `render | svg | diff` panels in one image, labelled — the artifact a reviewer looks at. */
+    /** `svg | diff | render` panels in one image, labelled — the artifact a reviewer looks at. */
     val composite: BufferedImage,
   ) {
     val scorePercent: Double
@@ -184,12 +185,16 @@ object FigmaFidelity {
     g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
     g.color = Color(0xF3F4F6)
     g.fillRect(0, 0, outW, outH)
+    // Spec first, render last — the same left-to-right order the viewer's spec lane draws
+    // (Spec / Diff / Render) and the focused Reference / Diff / Actual page. This composite used
+    // to read `render | figma-svg | diff`, so a reviewer who looked at both surfaces had to work
+    // out which side was which each time.
     val panels =
       listOf(
-        "render" to render,
         "figma-svg" to svg,
         // Locale.ROOT keeps the label `.`-separated regardless of the host locale.
         "diff ${String.format(java.util.Locale.ROOT, "%.1f", score * 100)}%" to diff,
+        "render" to render,
       )
     g.font = Font(Font.SANS_SERIF, Font.BOLD, 12)
     for ((i, panel) in panels.withIndex()) {

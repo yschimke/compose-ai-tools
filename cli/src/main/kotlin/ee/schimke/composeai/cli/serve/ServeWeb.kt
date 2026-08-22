@@ -8853,6 +8853,23 @@ ${captureControlsHtml().prependIndent("          ")}
         referencesFor(preview.id).firstNotNullOfOrNull { designToolLabel(it.source.provider) }
       } ?: "Design reference"
     val defaultFormat = if (hasSvg) "svg" else if (hasRc) "rc" else "reference"
+    // An imported design spec is always drawn to the LEFT of the render it is compared against —
+    // the same order the viewer's spec lane states three ways (the Spec / Diff / Render triptych,
+    // the wipe's seam, and the focused Reference / Diff / Actual page). This wall's `reference`
+    // lane is that comparison at catalog scale, so it leads with the spec; `svg` and `rc` pit a
+    // render against an export OF that render, which is a different question and keeps the render
+    // first. `compare/columns.ts` owns the rule, and `<cp-compare-wall>` re-asserts it whenever the
+    // visitor switches lane — this only has to be right for the format the page is SERVED on.
+    val specLeadsColumns = defaultFormat == "reference"
+    val renderCell =
+      "<td class=\"cp-compare-render-cell\"><div class=\"cp-compare-shot\">" +
+        "<img class=\"cp-compare-png\" alt=\"\"></div></td>"
+    val targetCell =
+      "<td class=\"cp-compare-target-cell\"><div class=\"cp-compare-shot\">" +
+        "<img class=\"cp-compare-vector\" alt=\"\"><canvas hidden></canvas></div></td>"
+    val pictureCells =
+      (if (specLeadsColumns) listOf(targetCell, renderCell) else listOf(renderCell, targetCell))
+        .joinToString("\n            ")
     val darkFirst = isDarkFirstSystem(basePath, sessionId, declaredSurface)
     // A viewer deep-link may name a non-default state/props variant that is intentionally folded
     // out of this gallery. Keep every sibling id as an alias on the included component row so the
@@ -8962,8 +8979,7 @@ ${captureControlsHtml().prependIndent("          ")}
             if (variant.isEmpty()) ""
             else "<span class=\"cp-compare-variant\">${WebEscaping.htmlEscape(variant)}</span>"
           }</a></th>
-            <td><div class="cp-compare-shot"><img class="cp-compare-png" alt=""></div></td>
-            <td><div class="cp-compare-shot"><img class="cp-compare-vector" alt=""><canvas hidden></canvas></div></td>
+            $pictureCells
             <td class="cp-compare-score">waiting…</td>
           </tr>
           """
@@ -8986,8 +9002,10 @@ ${captureControlsHtml().prependIndent("          ")}
       if (hasReference)
         append(
           "<button type=\"button\" class=\"cp-theme-btn\" data-compare-format=\"reference\" " +
-            "aria-pressed=\"${defaultFormat == "reference"}\">PNG ↔ " +
-            "${WebEscaping.htmlEscape(referenceToolLabel)}</button>"
+            // Named in the order the columns stand: the spec leads this lane, so the button that
+            // enters it does too. Every other lane keeps the render first and says "PNG ↔ …".
+            "aria-pressed=\"${defaultFormat == "reference"}\">" +
+            "${WebEscaping.htmlEscape(referenceToolLabel)} ↔ PNG</button>"
         )
     }
     val themeControls =
@@ -9006,6 +9024,20 @@ ${captureControlsHtml().prependIndent("          ")}
           .trimIndent()
       else ""
 
+    // Named for the lane it is actually showing, not the constant `SVG` this used to be: with the
+    // columns free to swap, a header over the wrong picture does not merely omit a fact, it states
+    // the pair backwards. `compare/columns.ts` keeps the client's relabelling in step.
+    val targetHead =
+      when (defaultFormat) {
+        "reference" -> referenceToolLabel
+        "rc" -> "Remote Compose"
+        else -> "SVG"
+      }
+    val renderHeadHtml = "<th class=\"cp-compare-render-head\">Rendered PNG</th>"
+    val targetHeadHtml =
+      "<th class=\"cp-compare-target-head\">${WebEscaping.htmlEscape(targetHead)}</th>"
+    val pictureHeads =
+      if (specLeadsColumns) targetHeadHtml + renderHeadHtml else renderHeadHtml + targetHeadHtml
     val empty =
       if (rows.isEmpty())
         "<p class=\"cp-empty\">No previews in this session carry a comparable format.</p>"
@@ -9013,7 +9045,7 @@ ${captureControlsHtml().prependIndent("          ")}
         """
         <div class="cp-compare-table-wrap">
           <table class="cp-compare-table">
-            <thead><tr><th>Preview</th><th>Rendered PNG</th><th class="cp-compare-target-head">SVG</th><th>Match</th></tr></thead>
+            <thead><tr><th>Preview</th>$pictureHeads<th>Match</th></tr></thead>
             <tbody>$rows</tbody>
           </table>
         </div>
@@ -9036,7 +9068,8 @@ ${captureControlsHtml().prependIndent("          ")}
       "data-default-format=\"$defaultFormat\" data-default-theme=\"${if (darkFirst) "dark" else "light"}\" " +
         "data-theme-key=\"${WebEscaping.htmlEscape(themeStorageKey(sessionId, basePath))}\" " +
         "data-has-svg=\"${if (hasSvg) "1" else "0"}\" data-has-rc=\"${if (hasRc) "1" else "0"}\" " +
-        "data-has-reference=\"${if (hasReference) "1" else "0"}\"" +
+        "data-has-reference=\"${if (hasReference) "1" else "0"}\" " +
+        "data-reference-label=\"${WebEscaping.htmlEscape(referenceToolLabel)}\"" +
         (if (rcLanes != null) " data-rc-lanes=\"1\"" else "")
 
     return document(

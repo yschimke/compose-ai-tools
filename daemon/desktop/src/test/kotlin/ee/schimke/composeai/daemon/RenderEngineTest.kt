@@ -430,7 +430,7 @@ class RenderEngineTest {
   @Test
   fun figmaSvgFidelityScoresARender() {
     // End-to-end fidelity harness: with -Dcomposeai.figma.fidelity=true, a real render of a
-    // composite themed card must, alongside the SVG, drop a `render | figma-svg | diff` composite
+    // composite themed card must, alongside the SVG, drop a `figma-svg | diff | render` composite
     // and
     // a score sidecar — the SVG rasterised (Skia), aligned to the render, and scored by
     // FigmaFidelity.
@@ -476,7 +476,7 @@ class RenderEngineTest {
         score!! > 0.0 && score <= 1.0,
       )
 
-      // The composite is three render-width panels wide (render | figma-svg | diff) + gutters.
+      // The composite is three render-width panels wide (figma-svg | diff | render) + gutters.
       val img = javax.imageio.ImageIO.read(composite)
       assertNotNull("composite must decode", img)
       assertTrue(

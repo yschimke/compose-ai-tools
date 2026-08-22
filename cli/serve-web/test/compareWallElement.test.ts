@@ -451,6 +451,91 @@ describe("<cp-compare-wall>", () => {
         (window as Record<string, unknown>).cpRcFonts = priorFonts;
     });
 
+    it("moves the design spec to the left when the Figma lane is picked", async () => {
+        // The server renders the table in the order its own default format wants (`svg` here, so
+        // render first). Pressing the design-spec button changes which question the two columns
+        // answer, so the columns and their headers follow — spec left, render right, the same way
+        // the viewer's spec lane, its wipe seam and the focused Reference / Diff / Actual page all
+        // draw the pair. Leaving the lane puts them back.
+        stubScorer({ "/a/Button-reference-light": 80 });
+        document.body.innerHTML = `
+          <cp-compare-wall></cp-compare-wall>
+          <div id="cp-compare" data-default-format="svg" data-default-theme="light"
+               data-theme-key="cp-compare-theme" data-has-svg="1" data-has-reference="1"
+               data-reference-label="Figma">
+            <button data-compare-format="svg">SVG</button>
+            <button data-compare-format="reference">Figma</button>
+            <div id="cp-compare-formats"><table>
+              <thead><tr><th>Preview</th>
+                <th class="cp-compare-render-head">Rendered PNG</th>
+                <th class="cp-compare-target-head">SVG</th>
+                <th>Match</th></tr></thead>
+              <tbody>
+                <tr class="cp-compare-row" data-label="Button" data-hay="button"
+                    data-preview-ids="com.example.ButtonPreview"
+                    data-png-light="/a/Button-png-light" data-svg-light="/a/Button-svg-light"
+                    data-reference-light="/a/Button-reference-light">
+                  <th scope="row">Button</th>
+                  <td class="cp-compare-render-cell"><img class="cp-compare-png" alt=""></td>
+                  <td class="cp-compare-target-cell"><img class="cp-compare-vector" alt=""><canvas></canvas></td>
+                  <td class="cp-compare-score"></td>
+                </tr>
+              </tbody>
+            </table></div>
+          </div>`;
+        await flush();
+        await settle();
+
+        const headOrder = () =>
+            Array.from(document.querySelectorAll("thead th"))
+                .map((th) => th.className)
+                .filter(Boolean);
+        const cellOrder = () =>
+            Array.from(
+                document.querySelectorAll(
+                    ".cp-compare-row .cp-compare-render-cell, .cp-compare-row .cp-compare-target-cell",
+                ),
+            ).map((td) => td.className);
+        const headText = () =>
+            document.querySelector(".cp-compare-target-head")?.textContent;
+
+        assert.deepEqual(headOrder(), [
+            "cp-compare-render-head",
+            "cp-compare-target-head",
+        ]);
+        assert.deepEqual(cellOrder(), [
+            "cp-compare-render-cell",
+            "cp-compare-target-cell",
+        ]);
+        assert.equal(headText(), "SVG");
+
+        document
+            .querySelector<HTMLElement>('[data-compare-format="reference"]')!
+            .click();
+        await settle();
+        assert.deepEqual(headOrder(), [
+            "cp-compare-target-head",
+            "cp-compare-render-head",
+        ]);
+        assert.deepEqual(cellOrder(), [
+            "cp-compare-target-cell",
+            "cp-compare-render-cell",
+        ]);
+        // Named for the lane it is showing — a header still reading "SVG" over the Figma column
+        // would say the pair is the other way round.
+        assert.equal(headText(), "Figma");
+
+        document
+            .querySelector<HTMLElement>('[data-compare-format="svg"]')!
+            .click();
+        await settle();
+        assert.deepEqual(cellOrder(), [
+            "cp-compare-render-cell",
+            "cp-compare-target-cell",
+        ]);
+        assert.equal(headText(), "SVG");
+    });
+
     it("stays inert on a page that is not the compare wall", async () => {
         document.body.innerHTML = `<cp-compare-wall></cp-compare-wall><div class="cp-grid"></div>`;
         await flush();

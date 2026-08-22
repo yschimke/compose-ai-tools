@@ -932,7 +932,7 @@ class RenderEngine(
         }
         // Desktop-only figma-svg fidelity harness (opt-in via -Dcomposeai.figma.fidelity=true): the
         // shared ComposeFigmaSvgExtension in the loop above wrote compose/figma-svg; rasterise it
-        // and score against this render, dropping a `render | figma-svg | diff` composite. Android
+        // and score against this render, dropping a `figma-svg | diff | render` composite. Android
         // has no equivalent.
         if (FigmaSvgFidelity.enabled()) {
           try {
