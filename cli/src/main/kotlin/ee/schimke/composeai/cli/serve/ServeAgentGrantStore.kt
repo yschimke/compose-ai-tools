@@ -31,6 +31,13 @@ class ServeAgentGrantStore(
   val maxGrantTtlSeconds: Long = DEFAULT_MAX_GRANT_TTL_SECONDS,
   /** The most privileged scope any grant here may carry — the operator's ceiling. */
   val maxScope: ServeAgentGrantScope = ServeAgentGrantScope.DEFAULT_MAX,
+  /**
+   * The capabilities ([ServeAgentGrantCapability]) any grant here may carry — the operator's other
+   * ceiling, and empty by default. Separate from [maxScope] because capabilities are not rungs: a
+   * box that grants `live` has said nothing about whether an agent may also publish an image on its
+   * origin, and must not be read as having said yes.
+   */
+  val maxCapabilities: Set<ServeAgentGrantCapability> = emptySet(),
   private val maxActiveGrants: Int = DEFAULT_MAX_ACTIVE_GRANTS,
   private val maxPendingRequests: Int = DEFAULT_MAX_PENDING_REQUESTS,
   private val clock: () -> Long = System::currentTimeMillis,
@@ -71,6 +78,11 @@ class ServeAgentGrantStore(
     val requestedScope: ServeAgentGrantScope,
     /** Seconds of access the agent asked for; the approver may grant this or less. */
     val requestedTtlSeconds: Long,
+    /**
+     * The capabilities the agent asked for, already narrowed to this box's ceiling. The approver
+     * may grant these or fewer — never more, for the same reason the scope can only be narrowed.
+     */
+    val requestedCapabilities: Set<ServeAgentGrantCapability> = emptySet(),
     val createdAtMillis: Long,
     val expiresAtMillis: Long,
     @Volatile var state: State = State.PENDING,
@@ -114,6 +126,8 @@ class ServeAgentGrantStore(
     /** The bearer. Returned exactly once (the poll response) and never rendered again. */
     val token: String,
     val scope: ServeAgentGrantScope,
+    /** The independent permissions this grant carries beside its rung. Usually empty. */
+    val capabilities: Set<ServeAgentGrantCapability> = emptySet(),
     /** The label from the request, carried through so `/status` says what this is for. */
     val label: String,
     /** GitHub login, or `operator (token)` — see [ServeAgentGrants]. */
@@ -127,6 +141,12 @@ class ServeAgentGrantStore(
 
     /** True when this grant is at or above [wanted]. The one question every gate asks. */
     fun allows(wanted: ServeAgentGrantScope): Boolean = scope.implies(wanted)
+
+    /**
+     * True when this grant carries [wanted]. Deliberately **not** implied by any scope: the rung
+     * says how much of the machine the agent may spend, and a capability is a separate yes.
+     */
+    fun allows(wanted: ServeAgentGrantCapability): Boolean = wanted in capabilities
 
     /**
      * A short, stable, non-reversible handle on the token, for `/status` and the audit log. SHA-256
@@ -164,8 +184,11 @@ class ServeAgentGrantStore(
     client: String,
     requestedScope: ServeAgentGrantScope,
     requestedTtlSeconds: Long,
+    requestedCapabilities: Set<ServeAgentGrantCapability> = emptySet(),
   ): Request? =
-    synchronized(this) { openRequestLocked(label, client, requestedScope, requestedTtlSeconds) }
+    synchronized(this) {
+      openRequestLocked(label, client, requestedScope, requestedTtlSeconds, requestedCapabilities)
+    }
 
   /**
    * The cap has to be checked and the entry inserted under **one** lock.
@@ -181,6 +204,7 @@ class ServeAgentGrantStore(
     client: String,
     requestedScope: ServeAgentGrantScope,
     requestedTtlSeconds: Long,
+    requestedCapabilities: Set<ServeAgentGrantCapability>,
   ): Request? {
     val now = clock()
     purge(now)
@@ -218,6 +242,10 @@ class ServeAgentGrantStore(
         client = sanitizeLabel(client),
         requestedScope = minOf(requestedScope, maxScope),
         requestedTtlSeconds = requestedTtlSeconds.coerceIn(1, maxGrantTtlSeconds),
+        // Narrowed at the door, like the scope: the approval page must never offer a capability
+        // this box would refuse to mint, and an agent asking for one it cannot have should learn
+        // that from the response it already reads rather than from a silent omission later.
+        requestedCapabilities = requestedCapabilities intersect maxCapabilities,
         createdAtMillis = now,
         expiresAtMillis = now + requestTtlSeconds * 1000,
       )
@@ -251,6 +279,7 @@ class ServeAgentGrantStore(
     approvedBy: String,
     scope: ServeAgentGrantScope,
     ttlSeconds: Long,
+    capabilities: Set<ServeAgentGrantCapability> = emptySet(),
   ): Grant? {
     synchronized(this) {
       // Lookup, expiry validation and the state transition all inside the lock. Split across it,
@@ -265,12 +294,18 @@ class ServeAgentGrantStore(
       }
       val now = clock()
       val granted = minOf(scope, request.requestedScope, maxScope)
+      // Three-way intersection, exactly like the scope's three-way `minOf`: what the approver
+      // ticked, what the agent asked for, and what this box permits at all. A tampered form field
+      // therefore buys nothing here either.
+      val grantedCapabilities =
+        capabilities intersect request.requestedCapabilities intersect maxCapabilities
       val ttl = ttlSeconds.coerceIn(1, minOf(request.requestedTtlSeconds, maxGrantTtlSeconds))
       val grant =
         Grant(
           id = mintId(),
           token = mintToken(),
           scope = granted,
+          capabilities = grantedCapabilities,
           label = request.label,
           approvedBy = approvedBy,
           issuedAtMillis = now,
@@ -287,6 +322,7 @@ class ServeAgentGrantStore(
       request.state = Request.State.APPROVED
       audit(
         "agent-grant: minted ${grant.fingerprint} scope=${granted.wire} " +
+          capabilityAuditField(grantedCapabilities) +
           "ttl=${ttl}s approver=$approvedBy label=\"${grant.label}\""
       )
       return grant
@@ -465,6 +501,15 @@ class ServeAgentGrantStore(
    * the page said *approved*, and the agent's next poll found its id gone and was told the request
    * had expired.
    */
+  /**
+   * `caps=images ` for the audit line, or nothing at all when a grant carries none — which is the
+   * overwhelmingly common case, and a trailing `caps=` on every line would be noise that trains the
+   * reader to skip the field on the lines where it matters.
+   */
+  private fun capabilityAuditField(capabilities: Set<ServeAgentGrantCapability>): String =
+    if (capabilities.isEmpty()) ""
+    else "caps=${ServeAgentGrantCapability.wireNames(capabilities).joinToString(",")} "
+
   private fun evictOverflow(keep: Grant) {
     while (grants.size > maxActiveGrants) {
       val oldest =

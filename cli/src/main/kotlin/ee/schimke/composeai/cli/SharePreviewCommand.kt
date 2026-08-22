@@ -315,12 +315,22 @@ class SharePreviewCommand(
       System.err.println(it)
       exitProcess(64)
     }
+    // A GitHub credential is what the host's *default* gate wants — but it is not the only way to
+    // be admitted any more. A host may let an agent access grant carry the `images` capability
+    // (see docs/design/AGENT_ACCESS_GRANTS.md), and the entire point of that is to upload without
+    // holding a GitHub token at all. So a missing credential is only fatal when there is no host
+    // credential either: with a grant in hand the host is the one entitled to decide, and refusing
+    // here would mean this client vetoing an approval a human already gave.
+    val hostToken = serveHostToken
     val credential =
       when (val r = AgentGithubToken.resolve(githubTokenFile, ghToken = ::ghAuthToken)) {
         is AgentGithubToken.Result.Ok -> r
         is AgentGithubToken.Result.Err -> {
-          System.err.println(r.message)
-          exitProcess(1)
+          if (hostToken == null) {
+            System.err.println(r.message)
+            exitProcess(1)
+          }
+          null
         }
       }
 
@@ -334,7 +344,7 @@ class SharePreviewCommand(
       return
     }
 
-    val uploader = ServeImageUploader(url, credential.token, serveHostToken)
+    val uploader = ServeImageUploader(url, credential?.token, hostToken)
     val uploaded = LinkedHashMap<String, String>()
     var expiresIn: String? = null
     for (image in images) {
@@ -362,7 +372,8 @@ class SharePreviewCommand(
         files = images.map { SharePreviewFile(it.absolutePath, it.name, uploaded[it.name]) },
         markdown = rewritten,
         expiresIn = expiresIn,
-        credentialSource = credential.source,
+        // Null when a grant admitted the upload — there was no GitHub credential to have a source.
+        credentialSource = credential?.source,
         serveUrlSource = resolvedServeUrl?.source?.display,
       )
     )
@@ -687,9 +698,13 @@ class SharePreviewCommand(
           return
         }
         val expiry = response.expiresIn?.let { " (links expire in $it)" } ?: ""
+        // "authenticated from …" names the GitHub credential's source; with an agent grant there
+        // is no such credential, and saying so is the honest version of that sentence.
+        val admitted =
+          response.credentialSource?.let { "authenticated from $it" }
+            ?: "authenticated by the agent access grant for this host"
         println(
-          "Uploaded ${response.files.size} image(s) to ${response.rawBaseUrl}$expiry, " +
-            "authenticated from ${response.credentialSource}"
+          "Uploaded ${response.files.size} image(s) to ${response.rawBaseUrl}$expiry, $admitted"
         )
         response.files.forEach { f -> f.rawUrl?.let { println("  ${f.name}: $it") } }
         response.markdown?.let {

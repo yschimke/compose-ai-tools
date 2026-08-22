@@ -5525,6 +5525,11 @@ ${captureControlsHtml().prependIndent("          ")}
     approver: String,
     selectableScopes: List<ServeAgentGrantScope>,
     maxTtlSeconds: Long,
+    /**
+     * Independent permissions this approver may tick, already narrowed like [selectableScopes].
+     * Empty on almost every box — the whole feature is opt-in twice over.
+     */
+    selectableCapabilities: List<ServeAgentGrantCapability> = emptyList(),
     approveCsrf: String,
     denyCsrf: String,
     /**
@@ -5540,6 +5545,8 @@ ${captureControlsHtml().prependIndent("          ")}
      * says "you can't grant this" rather than silently omitting a row the agent asked for.
      */
     withheldScopes: List<ServeAgentGrantScope> = emptyList(),
+    /** Capabilities the agent asked for that this approver may not pass on. Same treatment. */
+    withheldCapabilities: List<ServeAgentGrantCapability> = emptyList(),
     withheldReason: String = "",
   ): String {
     val esc = WebEscaping::htmlEscape
@@ -5573,6 +5580,44 @@ ${captureControlsHtml().prependIndent("          ")}
         """
           .trimIndent()
       }
+    // **Checkboxes here, radios above**, and the difference is not cosmetic. The scopes are a
+    // ladder, so one control that picks a rung is the only honest way to draw them. A capability
+    // implies nothing and is implied by nothing, so it is its own yes/no — and unticking one says
+    // exactly what it looks like it says.
+    //
+    // Nothing is pre-ticked. An extra permission should be an act, not a default someone clicks
+    // past: the agent asking for it is not the human agreeing to it, and this page exists to keep
+    // those two separate.
+    val capabilityRows =
+      selectableCapabilities.joinToString("\n") { capability ->
+        """
+        <label class="cp-grant-scope">
+          <input type="checkbox" name="capability" value="${esc(capability.wire)}">
+          <span class="cp-grant-scope-name">${esc(capability.wire)}</span>
+          <span class="cp-grant-scope-what">${esc(capability.humanDescription)}</span>
+        </label>
+        """
+          .trimIndent()
+      }
+    val capabilityFieldset =
+      if (selectableCapabilities.isEmpty()) ""
+      else
+        """
+        <fieldset class="cp-grant-fieldset">
+          <legend>Anything else the agent may do</legend>
+          $capabilityRows
+        </fieldset>
+        """
+          .trimIndent()
+    val withheldCapabilityNote =
+      if (withheldCapabilities.isEmpty()) ""
+      else
+        """
+        <p class="cp-grant-withheld">Also asked for, not offered: ${
+          esc(withheldCapabilities.joinToString(", ") { it.wire })
+        } — ${esc(withheldReason)}</p>
+        """
+          .trimIndent()
     val withheld =
       if (withheldScopes.isEmpty()) ""
       else
@@ -5621,7 +5666,9 @@ ${captureControlsHtml().prependIndent("          ")}
             <legend>What the agent may do</legend>
             $scopeRows
           </fieldset>
+          $capabilityFieldset
           $withheld
+          $withheldCapabilityNote
           <label class="cp-grant-ttl">
             <span>Access expires after</span>
             <select name="ttl">
@@ -7018,6 +7065,11 @@ ${captureControlsHtml().prependIndent("          ")}
     val id: String,
     val fingerprint: String,
     val scopes: String,
+    /**
+     * Pre-formatted capability list, or empty. Its own column rather than appended to [scopes]: a
+     * capability is not a rung, and a cell reading `preview, live, images` would say it was.
+     */
+    val capabilities: String = "",
     val label: String,
     val approvedBy: String,
     val expiresInText: String,
@@ -7094,7 +7146,7 @@ ${captureControlsHtml().prependIndent("          ")}
     if (view.agentGrants.isEmpty() && view.agentGrantRequests.isEmpty()) return ""
     val liveRows =
       if (view.agentGrants.isEmpty())
-        "<tr><td colspan=\"6\" class=\"cp-empty\">No agent currently holds access.</td></tr>"
+        "<tr><td colspan=\"7\" class=\"cp-empty\">No agent currently holds access.</td></tr>"
       else
         view.agentGrants.joinToString("\n") { grant ->
           val revoke =
@@ -7105,6 +7157,7 @@ ${captureControlsHtml().prependIndent("          ")}
                 "<button class=\"cp-grant-revoke\" type=\"submit\">Revoke</button></form>"
           "<tr><td><code>${esc(grant.fingerprint)}</code></td>" +
             "<td>${esc(grant.scopes)}</td>" +
+            "<td>${if (grant.capabilities.isBlank()) "—" else esc(grant.capabilities)}</td>" +
             "<td>${if (grant.label.isBlank()) "—" else esc(grant.label)}</td>" +
             "<td>${esc(grant.approvedBy)}</td>" +
             "<td>${esc(grant.expiresInText)}</td>" +
@@ -7136,7 +7189,7 @@ ${captureControlsHtml().prependIndent("          ")}
       """
       <p class="cp-status-sec" id="agent-grants">Agent access</p>
       <div class="cp-status-scroll"><table class="cp-grant-table">
-        <thead><tr><th>Grant</th><th>Scopes</th><th>Purpose</th><th>Approved by</th><th>Expires in</th><th></th></tr></thead>
+        <thead><tr><th>Grant</th><th>Scopes</th><th>Also</th><th>Purpose</th><th>Approved by</th><th>Expires in</th><th></th></tr></thead>
         <tbody>
         $liveRows
         </tbody>

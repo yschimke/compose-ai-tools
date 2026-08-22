@@ -142,6 +142,7 @@ internal object CliFlagValidation {
             "--accept-images",
             "--agent-grants",
             "--agent-grant-scopes",
+            "--agent-grant-capabilities",
             "--agent-grant-max-ttl",
             "--agent-grant-max-active",
             "--agent-grant-rate-limit",
@@ -298,7 +299,17 @@ internal object CliFlagValidation {
       "init-script" to setOf("--path", "--print"),
       "pin" to setOf("--cli", "--json", "--remove", "--unset"),
       "auth" to
-        setOf("--server", "--scope", "--ttl", "--label", "--no-wait", "--json", "--help", "-h"),
+        setOf(
+          "--server",
+          "--scope",
+          "--capability",
+          "--ttl",
+          "--label",
+          "--no-wait",
+          "--json",
+          "--help",
+          "-h",
+        ),
       "version" to emptySet(),
       "help" to setOf("--all"),
     )

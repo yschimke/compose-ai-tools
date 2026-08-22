@@ -2320,6 +2320,20 @@ class ServeHttpServer(
     // Address-only, never [rateLimitKey]: that one prefers a signed-in cookie login, which on a
     // GitHub-auth host can be the same string the post-verification charge below uses — the two
     // budgets would then share one bucket and halve what the operator configured.
+    // A grant the operator ticked `images` on is an identity in its own right, and it is checked
+    // BEFORE the GitHub round trip — not as a fallback after one fails. A human operator of this
+    // box already made the access decision, by hand, minutes ago and for a bounded window; asking
+    // GitHub again would be asking a second question nobody needs answered, and would make an
+    // agent's upload depend on a credential the whole grant flow exists so it need not hold.
+    grantedImageIdentity()?.let { granted ->
+      val permit = acquireImagePermit(granted.budgetKey) ?: return
+      try {
+        acceptImageUpload(store, granted.login)
+      } finally {
+        permit.release()
+      }
+      return
+    }
     val verifyPermit = acquireImagePermit(clientAddressKey()) ?: return
     val identity =
       try {
@@ -2333,67 +2347,78 @@ class ServeHttpServer(
     // address of an agent in CI is shared or ephemeral, and the identity is the thing we actually
     // know. The key comes from the gate, not from the login — see [Identity.Ok.budgetKey].
     val permit = acquireImagePermit(identity.budgetKey) ?: return
-    val login = identity.login
     try {
-      val name = call.request.queryParameters["name"]
-      // Cap the body as it streams in — receiving it whole first would let a client OOM the server
-      // regardless of the store's own cap.
-      val body =
-        withContext(Dispatchers.IO) { call.receiveStream().use { readCapped(it, MAX_IMAGE_BYTES) } }
-          ?: run {
-            call.respondText(
-              "image exceeds ${MAX_IMAGE_BYTES / (1024 * 1024)}MB",
-              status = HttpStatusCode.PayloadTooLarge,
-            )
-            return
-          }
-      // isSecurityChecked = true: the identity gate above cleared this caller. The store still
-      // defends in depth (format sniff, size + count caps, TTL).
-      when (
-        val result =
-          withContext(Dispatchers.IO) {
-            store.add(name, body, uploadedBy = login, isSecurityChecked = true)
-          }
-      ) {
-        is ServeImageStore.Result.Ok -> {
-          val image = result.image
-          // Absolute, because the caller is about to paste it somewhere this server will never see
-          // — a PR body renders on github.com, where a relative path means nothing. Built from the
-          // forwarded origin, so a host behind Caddy hands back its public https:// name.
-          val url = externalOrigin() + image.path
-          val size = image.dimensions
-          call.respondText(
-            JSON.encodeToString(
-              ImageAcceptedResponse.serializer(),
-              ImageAcceptedResponse(
-                id = image.id,
-                name = image.name,
-                format = image.format.label,
-                formatId = image.format.id,
-                bytes = image.sizeBytes,
-                width = size?.width,
-                height = size?.height,
-                path = image.path,
-                url = url,
-                // The line the caller actually wanted. Handing back the finished markdown is not a
-                // convenience: an agent that assembles it itself is one backtick away from the
-                // `![alt](`url`)` shape that renders as literal text and silently loses the
-                // evidence the upload existed to provide.
-                markdown = "![${image.name}]($url)",
-                uploadedBy = image.uploadedBy,
-                expiresIn = ServeWeb.humanDuration(store.remainingSeconds(image)),
-                expiresAtEpochSeconds = image.expiresAtMillis / 1000,
-              ),
-            ),
-            ContentType.Application.Json,
-            HttpStatusCode.Created,
-          )
-        }
-        is ServeImageStore.Result.Failed ->
-          call.respondText(result.reason, status = HttpStatusCode.BadRequest)
-      }
+      acceptImageUpload(store, identity.login)
     } finally {
       permit.release()
+    }
+  }
+
+  /**
+   * Store the posted image and answer `201` with the line the caller pastes.
+   *
+   * Split out of [handleImageUpload] because there are now two ways to have been admitted — a
+   * verified GitHub credential, or an agent grant the operator ticked `images` on — and exactly one
+   * thing to do afterwards. [login] is whatever the admitting gate decided attribution should read
+   * as, and is what `uploadedBy` reports.
+   */
+  private suspend fun RoutingContext.acceptImageUpload(store: ServeImageStore, login: String) {
+    val name = call.request.queryParameters["name"]
+    // Cap the body as it streams in — receiving it whole first would let a client OOM the server
+    // regardless of the store's own cap.
+    val body =
+      withContext(Dispatchers.IO) { call.receiveStream().use { readCapped(it, MAX_IMAGE_BYTES) } }
+        ?: run {
+          call.respondText(
+            "image exceeds ${MAX_IMAGE_BYTES / (1024 * 1024)}MB",
+            status = HttpStatusCode.PayloadTooLarge,
+          )
+          return
+        }
+    // isSecurityChecked = true: the identity gate above cleared this caller. The store still
+    // defends in depth (format sniff, size + count caps, TTL).
+    when (
+      val result =
+        withContext(Dispatchers.IO) {
+          store.add(name, body, uploadedBy = login, isSecurityChecked = true)
+        }
+    ) {
+      is ServeImageStore.Result.Ok -> {
+        val image = result.image
+        // Absolute, because the caller is about to paste it somewhere this server will never see
+        // — a PR body renders on github.com, where a relative path means nothing. Built from the
+        // forwarded origin, so a host behind Caddy hands back its public https:// name.
+        val url = externalOrigin() + image.path
+        val size = image.dimensions
+        call.respondText(
+          JSON.encodeToString(
+            ImageAcceptedResponse.serializer(),
+            ImageAcceptedResponse(
+              id = image.id,
+              name = image.name,
+              format = image.format.label,
+              formatId = image.format.id,
+              bytes = image.sizeBytes,
+              width = size?.width,
+              height = size?.height,
+              path = image.path,
+              url = url,
+              // The line the caller actually wanted. Handing back the finished markdown is not a
+              // convenience: an agent that assembles it itself is one backtick away from the
+              // `![alt](`url`)` shape that renders as literal text and silently loses the
+              // evidence the upload existed to provide.
+              markdown = "![${image.name}]($url)",
+              uploadedBy = image.uploadedBy,
+              expiresIn = ServeWeb.humanDuration(store.remainingSeconds(image)),
+              expiresAtEpochSeconds = image.expiresAtMillis / 1000,
+            ),
+          ),
+          ContentType.Application.Json,
+          HttpStatusCode.Created,
+        )
+      }
+      is ServeImageStore.Result.Failed ->
+        call.respondText(result.reason, status = HttpStatusCode.BadRequest)
     }
   }
 
@@ -2416,6 +2441,33 @@ class ServeHttpServer(
         null
       }
     }
+  }
+
+  /**
+   * The upload identity of a live agent grant carrying [ServeAgentGrantCapability.IMAGES], or null
+   * when this call presents no such grant (in which case the GitHub gate has its say as before).
+   *
+   * This is the whole of the link between the grant lane and the image lane, and it is small on
+   * purpose: a grant does not become a GitHub account here, it becomes *an admitted caller with a
+   * name*. Two details carry the weight.
+   *
+   * **Attribution names the grant and the human behind it**, so `uploadedBy` on the stored image
+   * and in the `201` reads `agent grant 682daf65 (approved by @yschimke)` rather than borrowing a
+   * login nobody authenticated. An operator reading `/status` can tell a grant's upload from a
+   * collaborator's at a glance, and the approver is on the record either way.
+   *
+   * **The budget key is the grant**, not the address and not a login: a grant is already bounded
+   * (it expires, it is revocable, and the box caps how many are live), so per-grant is the bucket
+   * that matches what was actually handed out. Two grants approved for two different tasks do not
+   * throttle each other, and one grant cannot spend another's budget.
+   */
+  private fun RoutingContext.grantedImageIdentity(): ServeImageUploadAuth.Identity.Ok? {
+    val grant = agentGrantFor(call) ?: return null
+    if (!grant.allows(ServeAgentGrantCapability.IMAGES)) return null
+    return ServeImageUploadAuth.Identity.Ok(
+      login = "agent grant ${grant.fingerprint} (approved by ${grant.approvedBy})",
+      budgetKey = "grant:${grant.id}",
+    )
   }
 
   /**
@@ -5304,11 +5356,13 @@ class ServeHttpServer(
                 pendingRequests = store.pendingRequests().size,
                 maxScope = store.maxScope.wire,
                 maxTtlSeconds = store.maxGrantTtlSeconds,
+                maxCapabilities = ServeAgentGrantCapability.wireNames(store.maxCapabilities),
                 grants =
                   live.map { grant ->
                     AgentGrantDto(
                       fingerprint = grant.fingerprint,
                       scopes = grant.scopes.map { it.wire },
+                      capabilities = ServeAgentGrantCapability.wireNames(grant.capabilities),
                       approvedBy = grant.approvedBy,
                       expiresInSeconds = grant.secondsUntilExpiry(now),
                       label = grant.label,
@@ -8376,6 +8430,7 @@ class ServeHttpServer(
         id = grant.id,
         fingerprint = grant.fingerprint,
         scopes = grant.scopes.joinToString(", ") { it.wire },
+        capabilities = ServeAgentGrantCapability.wireNames(grant.capabilities).joinToString(", "),
         label = grant.label,
         approvedBy = grant.approvedBy,
         expiresInText = ServeAgentGrants.formatDuration(grant.secondsUntilExpiry(now)),
@@ -8451,6 +8506,11 @@ class ServeHttpServer(
             return
           }
       val scope = ServeAgentGrantScope.parse(parsed.scope) ?: ServeAgentGrantScope.DEFAULT_REQUEST
+      // Unknown names are dropped rather than refused — see [OpenRequest.capabilities]. The store
+      // narrows what survives to this box's ceiling, so asking for `images` on a box that offers
+      // none is not an error, it simply is not in the request that comes back.
+      val capabilities =
+        parsed.capabilities.mapNotNull { ServeAgentGrantCapability.parse(it) }.toSet()
       val ttl =
         parsed.ttlSeconds.takeIf { it > 0 } ?: ServeAgentGrantStore.DEFAULT_GRANT_TTL_SECONDS
       val request =
@@ -8466,6 +8526,7 @@ class ServeHttpServer(
           client = clientAddress(),
           requestedScope = scope,
           requestedTtlSeconds = ttl,
+          requestedCapabilities = capabilities,
         )
       if (request == null) {
         call.response.headers.append(HttpHeaders.RetryAfter, "60")
@@ -8491,6 +8552,9 @@ class ServeHttpServer(
             requestedTtlSeconds = request.requestedTtlSeconds,
             maxScope = store.maxScope.wire,
             maxTtlSeconds = store.maxGrantTtlSeconds,
+            requestedCapabilities =
+              ServeAgentGrantCapability.wireNames(request.requestedCapabilities),
+            maxCapabilities = ServeAgentGrantCapability.wireNames(store.maxCapabilities),
           ),
         ),
         ContentType.Application.Json,
@@ -8540,6 +8604,7 @@ class ServeHttpServer(
               token = outcome.grant.token,
               tokenHeader = TOKEN_HEADER,
               scopes = outcome.grant.scopes.map { it.wire },
+              capabilities = ServeAgentGrantCapability.wireNames(outcome.grant.capabilities),
               expiresInSeconds = outcome.grant.secondsUntilExpiry(System.currentTimeMillis()),
               approvedBy = outcome.grant.approvedBy,
               message = "approved by ${outcome.grant.approvedBy}",
@@ -8585,6 +8650,7 @@ class ServeHttpServer(
         ServeAgentGrants.WhoamiResponse(
           active = true,
           scopes = grant.scopes.map { it.wire },
+          capabilities = ServeAgentGrantCapability.wireNames(grant.capabilities),
           expiresInSeconds = grant.secondsUntilExpiry(System.currentTimeMillis()),
           approvedBy = grant.approvedBy,
           label = grant.label,
@@ -8658,6 +8724,16 @@ class ServeHttpServer(
     val selectable =
       ServeAgentGrants.selectableScopes(request.requestedScope, approver, store.maxScope)
     val withheld = ServeAgentGrantScope.upTo(request.requestedScope).filterNot { it in selectable }
+    val selectableCapabilities =
+      ServeAgentGrants.selectableCapabilities(
+        request.requestedCapabilities,
+        approver,
+        store.maxCapabilities,
+      )
+    // Named separately from the scope's withheld list because the reason differs and the page says
+    // so: a capability the agent asked for that this approver may not pass on.
+    val withheldCapabilities =
+      request.requestedCapabilities.filterNot { it in selectableCapabilities }
     val skin = call.siteSkin()
     markGeneration("static-page", "no-store")
     call.respondText(
@@ -8681,7 +8757,10 @@ class ServeHttpServer(
         version = BUNDLE_VERSION,
         siteName = skin.first,
         themeCss = skin.second,
+        selectableCapabilities =
+          ServeAgentGrantCapability.entries.filter { it in selectableCapabilities },
         withheldScopes = withheld,
+        withheldCapabilities = withheldCapabilities,
         withheldReason = "you do not hold it yourself on this server, so you cannot pass it on",
       ),
       ContentType.Text.Html,
@@ -8753,10 +8832,16 @@ class ServeHttpServer(
       form["scope"].orEmpty().mapNotNull { ServeAgentGrantScope.parse(it) }.maxOrNull()
         ?: ServeAgentGrantScope.PREVIEW
     val chosen = minOf(ticked, approver.ceiling)
+    // Capabilities ARE checkboxes — they are independent, so a box per capability describes the
+    // outcome honestly (the scopes' radio is the opposite case, see above). Absent means unticked
+    // means not granted, which is why nothing here defaults to the request.
+    val tickedCapabilities =
+      form["capability"].orEmpty().mapNotNull { ServeAgentGrantCapability.parse(it) }.toSet()
+    val chosenCapabilities = tickedCapabilities intersect approver.capabilityCeiling
     val ttl =
       form["ttl"]?.firstOrNull()?.let { ServeAgentGrants.parseDurationSeconds(it) }
         ?: ServeAgentGrantStore.DEFAULT_GRANT_TTL_SECONDS
-    val grant = store.approve(requestId, approver.name, chosen, ttl)
+    val grant = store.approve(requestId, approver.name, chosen, ttl, chosenCapabilities)
     if (grant == null) {
       respondAgentGrantNotice(
         heading = "Nothing to approve",
@@ -8774,7 +8859,14 @@ class ServeHttpServer(
           ServeAgentGrants.formatDuration(grant.secondsUntilExpiry(System.currentTimeMillis())) +
           ". You can end it early from the server status page at any time.",
       detail =
-        "Scopes: ${grant.scopes.joinToString(", ") { it.wire }} · grant ${grant.fingerprint}",
+        buildString {
+          append("Scopes: ${grant.scopes.joinToString(", ") { it.wire }}")
+          if (grant.capabilities.isNotEmpty()) {
+            val names = ServeAgentGrantCapability.wireNames(grant.capabilities).joinToString(", ")
+            append(" · also: $names")
+          }
+          append(" · grant ${grant.fingerprint}")
+        },
     )
   }
 
@@ -8802,9 +8894,14 @@ class ServeHttpServer(
     val auth = githubAuth
     if (auth != null) {
       val login = auth.currentLogin(call) ?: return null
-      return ServeAgentGrants.Approver.github(login, auth.hasRepositoryAccess(call), store.maxScope)
+      return ServeAgentGrants.Approver.github(
+        login,
+        auth.hasRepositoryAccess(call),
+        store.maxScope,
+        store.maxCapabilities,
+      )
     }
-    return ServeAgentGrants.Approver.operator(store.maxScope)
+    return ServeAgentGrants.Approver.operator(store.maxScope, store.maxCapabilities)
   }
 
   /**
@@ -9562,6 +9659,8 @@ private data class AgentAccessDto(
   /** The operator's ceiling — the most privileged scope this box will ever grant. */
   val maxScope: String,
   val maxTtlSeconds: Long,
+  /** Every capability this box will grant at all. Empty unless the operator opted in. */
+  val maxCapabilities: List<String> = emptyList(),
   /** One entry per live grant: fingerprint, scopes, approver, seconds left. Never a token. */
   val grants: List<AgentGrantDto> = emptyList(),
 )
@@ -9570,6 +9669,7 @@ private data class AgentAccessDto(
 private data class AgentGrantDto(
   val fingerprint: String,
   val scopes: List<String>,
+  val capabilities: List<String> = emptyList(),
   val approvedBy: String,
   val expiresInSeconds: Long,
   val label: String,

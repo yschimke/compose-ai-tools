@@ -2702,7 +2702,32 @@ holding its link. The client refuses to
 send the credential over plaintext to anything but a loopback host, refuses a URL with credentials
 in it, and never follows a redirect while carrying it.
 
-**Who may upload.** Not "anyone", on any host, ever — including a `--public` one:
+**Or an agent grant, with no GitHub credential at all.** A hosted agent session often cannot satisfy
+the rule below — Claude Code on the web, for instance, injects its GitHub credential only for
+`api.github.com`, so what reaches this host is a placeholder the host then asks GitHub about and is
+told nothing useful. The [agent access grant](design/AGENT_ACCESS_GRANTS.md) flow is the way through:
+an operator who runs the lane may let a grant carry the `images` capability, and a human ticks it
+per request.
+
+```bash
+# The operator, once, at startup:
+compose-preview serve --public --accept-images --image-upload-repo yschimke/compose-ai-tools \
+    --agent-grants --agent-grant-capabilities images
+
+# The agent, per task — prints a link and a code for a human to approve:
+compose-preview auth request --server https://preview.coo.ee --capability images \
+    --label "before/after for #4446"
+compose-preview share-preview report.md before.png after.png --mechanism serve
+```
+
+`share-preview` picks the stored grant up on its own (the host token resolves `--token` →
+`$COMPOSE_PREVIEW_TOKEN` → the grant store), so nothing else about the invocation changes. The
+upload is attributed to the grant and its approver — `uploadedBy` reads
+`agent grant 682daf65 (approved by @yschimke)` — and the capability is off unless the operator asked
+for it *and* a human ticked it, so nothing here widens what an existing box already does.
+
+**Who may upload with a GitHub credential.** Not "anyone", on any host, ever — including a `--public`
+one:
 
 - The caller sends `Authorization: Bearer <github-token>`, and the server asks **GitHub** who that is
   and whether they have access to `--image-upload-repo` (falling back to `--github-auth-repo`). The

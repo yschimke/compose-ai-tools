@@ -38,6 +38,7 @@ import ee.schimke.composeai.cli.serve.PlaygroundSandboxProbe
 import ee.schimke.composeai.cli.serve.PlaygroundSeedResolver
 import ee.schimke.composeai.cli.serve.PlaygroundTokenStore
 import ee.schimke.composeai.cli.serve.RenderOutcome
+import ee.schimke.composeai.cli.serve.ServeAgentGrantCapability
 import ee.schimke.composeai.cli.serve.ServeAgentGrantScope
 import ee.schimke.composeai.cli.serve.ServeAgentGrantStore
 import ee.schimke.composeai.cli.serve.ServeAgentGrants
@@ -736,6 +737,23 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
       }
       ?.coerceIn(60L, ServeAgentGrantStore.HARD_MAX_GRANT_TTL_SECONDS)
       ?: ServeAgentGrantStore.DEFAULT_MAX_GRANT_TTL_SECONDS
+
+  /**
+   * The independent capabilities a grant on this box may carry (`--agent-grant-capabilities
+   * images`), defaulting to **none**.
+   *
+   * Deliberately its own flag rather than another name in `--agent-grant-scopes`: a capability is
+   * not a rung on that ladder ([ServeAgentGrantCapability]), and an operator raising the scope
+   * ceiling to `live` has said nothing about whether an agent may publish an image on their origin.
+   * Two decisions, two flags.
+   */
+  private val agentGrantCapabilities: Set<ServeAgentGrantCapability> =
+    args.flagValue("--agent-grant-capabilities")?.let {
+      // Throws on an unknown name, same as `--agent-grant-scopes`: a typo here would silently
+      // withhold a capability the operator believes they turned on, and they would go looking for
+      // the bug in the agent.
+      ServeAgentGrantCapability.parseAll(it)
+    } ?: emptySet()
 
   /** How many grants may be live at once (`--agent-grant-max-active`). */
   private val agentGrantMaxActive: Int =
@@ -2426,9 +2444,29 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
           "and run Kotlin on this host."
       )
     }
+    // A capability for a lane this box does not run is a promise it cannot keep: the approval page
+    // would offer `images`, a human would tick it, and the upload would 404 on a route that was
+    // never registered. Refused at startup, where the operator can fix it, rather than discovered
+    // by an agent twenty minutes into a task.
+    if (ServeAgentGrantCapability.IMAGES in agentGrantCapabilities && !acceptImages) {
+      System.err.println(
+        "serve: --agent-grant-capabilities images refused — this server does not run the image " +
+          "lane, so a granted upload would have nowhere to go. Add --accept-images (with " +
+          "--image-upload-repo, or --github-auth-repo), or drop the capability."
+      )
+      throw IllegalArgumentException("--agent-grant-capabilities images needs --accept-images")
+    }
+    if (agentGrantCapabilities.isNotEmpty()) {
+      System.err.println(
+        "serve: agent grants may carry " +
+          ServeAgentGrantCapability.wireNames(agentGrantCapabilities).joinToString(", ") +
+          " when a human ticks it — an approved agent can then upload without a GitHub credential."
+      )
+    }
     return ServeAgentGrantStore(
       maxGrantTtlSeconds = agentGrantMaxTtlSeconds,
       maxScope = agentGrantMaxScope,
+      maxCapabilities = agentGrantCapabilities,
       maxActiveGrants = agentGrantMaxActive,
       // The audit trail. A grant is a credential this box minted on someone's say-so, so the say-so
       // belongs in the operator's log where a mint, an eviction and a revoke are all visible — the
@@ -4514,6 +4552,11 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
                           default preview,live). 'playground' lets an approved agent compile and run
                           Kotlin on this host, and can only be approved by someone who has access to
                           --github-auth-repo themselves.
+        --agent-grant-capabilities <list>
+                          Extra permissions a grant may carry beside its scope, chosen separately by
+                          the approver: currently 'images' (upload rendered previews through the
+                          image lane, needs --accept-images). Off by default — a scope ceiling says
+                          nothing about these.
         --agent-grant-max-ttl <duration>
                           Longest grant this server will mint, e.g. 90m / 2h / 3600 (default 8h,
                           hard ceiling 24h). The approver picks the actual lifetime on the page.
