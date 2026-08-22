@@ -9,6 +9,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { BG } from "./rc-compare-pixels.mjs";
 import {
   activeLanes,
   hasCmpWasmLane,
@@ -163,6 +164,20 @@ test("the page is a self-contained document with one column per player", () => {
   // summary line reflects the counts
   assert.match(html, /mean mismatch <strong>38\.15%<\/strong>/);
   assert.match(html, /1 not decodable/);
+});
+
+test("the client-side scorer flattens onto the diff neutral before reading pixels", () => {
+  // The published lane PNGs carry the player's alpha, so a raw canvas read would compare RGB the
+  // viewer never sees — a transparent black pixel and an opaque one are the same three channels.
+  // Painting the neutral first makes a player-vs-player score in the browser mean what the
+  // driver's build-time lane-vs-baked score means.
+  const html = renderRcCompareHtml(model);
+  const scorer = html.slice(html.indexOf("function pixels(img)"));
+  const fill = scorer.indexOf("ctx.fillRect(");
+  const draw = scorer.indexOf("ctx.drawImage(");
+  assert.ok(fill !== -1, "the scratch canvas is painted before the image is drawn onto it");
+  assert.ok(draw > fill, "the image composites over the neutral, not the other way round");
+  assert.match(html, new RegExp(`rgb\\(${BG[0]}, ${BG[1]}, ${BG[2]}\\)`));
 });
 
 test("nothing is diffed by default: no diff images, no score chips, picker on 'none'", () => {
