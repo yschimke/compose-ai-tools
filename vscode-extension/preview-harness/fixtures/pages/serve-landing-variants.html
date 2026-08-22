@@ -117,7 +117,7 @@
   </div>
   <div class="cp-meta">
     <div class="cp-label" title="button-filled__ideal__default__light">Button · Filled (light)</div>
-    <div class="cp-id">button-filled__ideal__default__light</div>
+    <div class="cp-id cp-id-elide"><span class="cp-id-head">button-filled__ideal__default</span><span class="cp-id-tail">__light</span></div>
     
   </div>
 </a>
@@ -273,6 +273,18 @@ function setCardSrc(img, url) {
     URL.revokeObjectURL(previous);
   }
 }
+// The id line elides from the MIDDLE (`iconbutton-standard__…__light`), so it is two spans
+// and a swap re-fills both rather than overwriting the line with one string — which would
+// delete the spans and take the elision with them. Same split rule as the server's
+// `cardIdHtml`: cut at the last `__`, the tail keeps the mode and the scheme.
+function setCardId(idn, id) {
+  var head = idn.querySelector(".cp-id-head");
+  var tail = idn.querySelector(".cp-id-tail");
+  if (!head || !tail) { idn.textContent = id; return; }
+  var cut = id.lastIndexOf("__");
+  head.textContent = cut > 0 ? id.slice(0, cut) : id;
+  tail.textContent = cut > 0 ? id.slice(cut) : "";
+}
 function applyVariant(c, k, withSrc) {
   var src = c.getAttribute("data-" + k + "-src");
   if (!src) return;
@@ -284,7 +296,7 @@ function applyVariant(c, k, withSrc) {
   c.setAttribute("href", c.getAttribute("data-" + k + "-href"));
   c.setAttribute("aria-label", lbl);
   if (lab) { lab.textContent = lbl; lab.setAttribute("title", lbl); }
-  if (idn) idn.textContent = c.getAttribute("data-" + k + "-id");
+  if (idn) setCardId(idn, c.getAttribute("data-" + k + "-id"));
   c.setAttribute("data-bg-theme", k === "d" ? "dark" : "light");
 }
 cards.forEach(function (c) {

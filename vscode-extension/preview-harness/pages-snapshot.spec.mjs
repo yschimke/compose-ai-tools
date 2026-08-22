@@ -3960,3 +3960,62 @@ test("contract · the render history is a menu in the toggle row, and the fit ca
   // when it takes another control, and a wrapped row moves the stage exactly as the strip did.
   expect(applied).toBe(expected);
 });
+
+test("contract · a catalog's sub-groups share rows instead of each claiming one", async ({
+  page,
+}) => {
+  for (const [name, contentType] of SERVE_ASSETS) {
+    await page.route(`**/assets/serve/**/${name}`, (route) =>
+      route.fulfill({ path: resolve(serveAssetsDir, name), contentType }),
+    );
+  }
+  await page.route("**/render/**", (route) =>
+    route.fulfill({ path: renderPlaceholder, contentType: "image/png" }),
+  );
+  // Pinned rather than inherited: this test is about which sub-groups land on the SAME row, and
+  // that is a function of the pane's width. 1440×1000 is the viewport issue #4423 measured at.
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/preview-harness/fixtures/pages/serve-landing-grouped.html");
+
+  const box = (id) =>
+    page.evaluate((sel) => {
+      const el = document.getElementById(sel);
+      const r = el.getBoundingClientRect();
+      return { top: Math.round(r.top), width: Math.round(r.width) };
+    }, id);
+
+  // FAB and Badge hold one card each. Under the per-sub-group grid they were two rows, each
+  // declaring the pane's full column count and painting all but one of those columns blank
+  // (issue #4423). They are clusters now, so they sit side by side, and a cluster is as wide as
+  // the cards it actually has: Button's three are wider than Badge's one.
+  const fab = await box("cp-group-fab");
+  const badge = await box("cp-group-badge");
+  const button = await box("cp-group-button");
+  const card = await box("cp-group-card");
+  expect(fab.top).toBe(badge.top);
+  expect(fab.width).toBe(badge.width);
+  expect(button.top).toBe(card.top);
+  expect(button.width).toBeGreaterThan(card.width);
+  expect(card.width).toBeGreaterThan(badge.width);
+  // Four sub-groups, two rows — not four.
+  expect(button.top).toBeLessThan(fab.top);
+
+  // No cluster is allowed to push the page sideways, whatever its card count.
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <=
+        document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+
+  // A filter changes how many cards a sub-group is showing, and the cluster has to follow it
+  // down — a family painting one of its three cards must stop reserving three columns.
+  await page.fill("#cp-search", "filled");
+  await page.waitForFunction(
+    () =>
+      document.querySelectorAll("#cp-grid .cp-card:not([hidden])").length === 2,
+  );
+  const filtered = await box("cp-group-button");
+  expect(filtered.width).toBe(badge.width);
+});
