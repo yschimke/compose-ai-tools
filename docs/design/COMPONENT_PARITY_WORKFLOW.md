@@ -1,9 +1,21 @@
 # Component parity: issues and scoped acceptance
 
-> **Status: proposal.** Investigation + phased plan for
-> [#3680](https://github.com/yschimke/compose-ai-tools/issues/3680). No code yet. This document
-> settles the contracts (locator, issue index, known-difference schema) and the delivery order; each
-> phase below is meant to become its own PR against an existing surface, not a new subsystem.
+> **Status: Phase 1 shipped; Phases 2–4 are still proposal.** Investigation + phased plan for
+> [#3680](https://github.com/yschimke/compose-ai-tools/issues/3680). This document settles the
+> contracts (locator, issue index, known-difference schema) and the delivery order; each phase below
+> is meant to become its own PR against an existing surface, not a new subsystem.
+>
+> **What is built:** the `compose-parity-locator/v1` block and the richer focused-comparison report
+> (#3887); `parity/issues.json` — producer, reader, staging and the four display surfaces (#3886,
+> #4404); and the catalog-side regeneration workflow (yschimke/m3-catalog#170). §3's "pilot
+> population" records what running it on real issues then measured. **Everything in §4 and §5 —
+> scoped acceptance, element selection, resolution automation — is still a proposal**, and that
+> measurement is the reason to read it again before implementing it.
+>
+> **One thing Phase 1 was supposed to ship and did not:** batch 01 required `element` and `bounds`
+> to be **reserved as optional `v1` fields** before the writer, the parser and the shared fixture
+> froze. Neither engine carries them, and both ignore unknown keys — so batch 03 cannot add the
+> selection to `v1` without a permissive parser silently discarding it. See §7.
 
 The preview server can already tell you that a component's render and its design reference disagree.
 It cannot tell you whether anyone *knows*. Every comparison is scored from scratch on every page
@@ -355,6 +367,95 @@ while.
 
 Both the serve host and the design-parity CI run read the same file. Neither ever calls the GitHub
 API at page-render time — same rule that keeps the host away from Figma.
+
+### The pilot population, measured
+
+*Phase 1 is live.* `m3-catalog`'s caller ([yschimke/m3-catalog#170](https://github.com/yschimke/m3-catalog/pull/170))
+publishes the index on every issue event, and as of 2026-08-22 `parity/issues.json` carries three
+rows — #40 `IconButton/Tonal`, #41 `NavigationBar/Short`, #87 `Checkbox/Checked` — backfilled with
+ids read out of the published `references/index.json` rather than guessed.
+
+Three, out of a known-difference backlog of ten. None of the other seven was skipped for effort, and
+the reasons are worth having on the record before §4 freezes a schema around this population. Two of
+them are limits of the locator; the third is a triage judgement, and the table keeps those apart
+because they lead different places.
+
+| Issue | Subject | Backfilled? | Why |
+| --- | --- | --- | --- |
+| [#40](https://github.com/yschimke/m3-catalog/issues/40) | `IconButton/Tonal` glyph colour | **yes** | one component, one preview, a 23.6% pixel delta inside the glyph |
+| [#41](https://github.com/yschimke/m3-catalog/issues/41) | `ShortNavigationBar` measures items at full bar width | **yes** | one component, one preview (`__compact`) |
+| [#87](https://github.com/yschimke/m3-catalog/issues/87) | `Checkbox` box padding 2dp vs 4dp | **yes** | one component, one preview |
+| [#42](https://github.com/yschimke/m3-catalog/issues/42) | Elevated shadow level | no — but see §4 | names **three** components — `Button/Elevated`, `Card/Elevated`, `ToggleButton/Elevated`. Not indexable whole; still three acceptance sites |
+| [#91](https://github.com/yschimke/m3-catalog/issues/91) | no hover/press state drawn | no | **five** components, and the variants it is about are deliberately *not authored* — there is no preview id to name |
+| [#85](https://github.com/yschimke/m3-catalog/issues/85) | `DropdownMenu` corner 4dp vs 16dp | no | the catalog publishes **no menu component**: no `images/menu-*`, no reference, no preview |
+| [#95](https://github.com/yschimke/m3-catalog/issues/95) | menu container colour and item icon size | no | same — the subject is not in the bundle |
+| [#86](https://github.com/yschimke/m3-catalog/issues/86) | expanded full-screen search corner | no | `Search/Bar` publishes `default`, `query`, `avatar` and `container-docked`; the full-screen view is not among them |
+| [#89](https://github.com/yschimke/m3-catalog/issues/89) | no slider size scale on `SliderDefaults` | not yet — **a choice, not a limit** | the size previews exist and score **98.1–99.5%**: the catalog transcribed the kit's numbers by hand, so a locator would name a comparison that matches. Indexable whenever we want it on the page; what it cannot have is an acceptance |
+| [#93](https://github.com/yschimke/m3-catalog/issues/93) | no `ButtonDefaults.SmallContainerHeight`, no default FAB icon size | not yet — **a choice**, plus two families | same missing-constant shape, no pixel delta, and it spans `Button/*` and `Fab/*` |
+
+Two limits and one judgement, and only the last is about masks:
+
+1. **One issue, several components** (#42, #93, and #91 as well as its other problem). The locator
+   carries exactly one `component` and one `preview`, and the index row is keyed by issue number, so
+   an umbrella report can join to at most one component page. `previewIds` / `referenceIds` are arrays on the row, which suggests the shape
+   was anticipated; the *writer* has no way to fill them. Note that `issuesForPreview` already joins
+   on `component` as well as on the exact preview id, so an indexed issue surfaces on **every**
+   preview of its component — the gap is across components, not across variants.
+2. **The subject is not in the catalog** (#85, #95, #86 — and #91). A parity report is about a
+   published render compared with a published reference. Three of the ten are about components the
+   catalog does not draw, which makes them spec/library findings the index has nothing to attach
+   them to. **#91 belongs here more than in (1)**: splitting it per component would not help,
+   because the interaction variants it is about are deliberately unauthored, so after the split each
+   piece still has no `preview` to name. They are not badly written issues; they are outside what a
+   *preview*-keyed index can hold.
+3. **Nothing to accept** (#89, #93) — a judgement rather than a limit, and worth stating precisely
+   because the two are easy to conflate. `buildIssueIndex` asks for a well-formed locator and
+   nothing else; it never inspects a pixel. Both issues have published previews with scored
+   references, so either could carry a locator today and would then show on its component's page
+   like any other — #89 cleanly, #93 only by choosing one of `Button/*` and `Fab/*`, which is
+   limit (1) again. What neither can have is an **acceptance**: they describe a constant the library
+   does not publish, and the renders already match. Indexing them is a question about whether an
+   upstream-ergonomics report belongs on a component page. §4's population is the smaller number
+   either way: **four issues could carry a locator today (#40, #41, #87, #89), and four are
+   acceptance candidates across six sites (#40, #41, #87, and #42 three times)** — different counts
+   answering different questions, and not even the same four.
+
+**What this means for §4 — and note that §4 counts differently from §3.** An index row is one issue
+on one component; an acceptance is one preview, and §4's closure rule is built on the fact that
+**several acceptances may point at one tracking issue** ("mandatory per acceptance but not *unique*
+to one"). So the two halves of this epic disagree about #42 on purpose: it cannot be indexed whole,
+and it is still three acceptances — `button-elevated`, `card-elevated`,
+`togglebutton-elevated` at 81.2%, 87.0% and 81.5% published match — sharing issue #42, closable only
+once all three resolve. The acceptance population is therefore **four issues and six sites** (#40,
+#41, #87, and #42 three times), not the three rows in the index.
+
+The model is designed around #40 — a small mask over one element, a recorded accepted-candidate
+crop, the gates of the evaluation order — and #40 fits it exactly. But of those six sites only #40's
+is glyph-sized: #41 is a layout failure whose mask is most of the bar, #87 a 2dp ring around a 20dp
+box, and #42's three are a shadow that surrounds each component.
+
+A component-sized mask is **not** an ignore rectangle. An earlier draft of this section said it was;
+the evaluation order says otherwise. Gate 3 compares the current candidate with the immutable
+`accepted-candidate.png` *inside* the mask, so a missing glyph, a geometry shift or an unrelated
+regression in there invalidates the acceptance as `candidate-changed` before it suppresses anything,
+and gate 1 does the same for a changed reference. What degrades at that scale is subtler, and it is
+the actual open question:
+
+- **The acceptance stops meaning "this element differs" and starts meaning "pin this render".**
+  Every gate still fires, but inside the mask the thing being compared is the component's own past
+  self. The reference does no work there any more — including when a render change moves *towards*
+  it.
+- **Gate 4 has nothing to bind to.** A whole-component mask has no distinguished element, so the
+  acceptance falls back to geometric and loses the gate that separates "the glyph disappeared" from
+  "the glyph is still the wrong colour" — the one §4 calls load-bearing.
+- **The per-pixel tolerance covers thousands of pixels instead of forty.** Capped at `8` and
+  per-pixel rather than aggregate, so it is bounded either way, but the surface it applies to is two
+  orders of magnitude larger.
+
+So the question before the conformance fixtures freeze is not "refuse large masks", it is: does an
+acceptance **require** an element gate — which makes #41 inexpressible until the bar's parts are
+tagged — or is a geometric whole-component acceptance allowed, accepting that it re-invalidates on
+every render change and that the churn is the price of expressing #41 at all?
 
 ---
 
@@ -1634,6 +1735,22 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
 
 ### Phase 1 — Issue visibility
 
+> **All four steps are delivered** — step 1 in [#3887](https://github.com/yschimke/compose-ai-tools/pull/3887),
+> steps 2–4 in [#3886](https://github.com/yschimke/compose-ai-tools/pull/3886) with the producer
+> corrections in [#4404](https://github.com/yschimke/compose-ai-tools/pull/4404), and the catalog's
+> caller in [yschimke/m3-catalog#170](https://github.com/yschimke/m3-catalog/pull/170).
+>
+> **The prose below is the plan as written before delivery, kept for its reasoning, and it is now
+> historical in the places where it describes the code.** `handleReferenceComparison` does read the
+> normalised overrides and does build a report context — it carries the form the step argued for —
+> so an implementer reading step 1 as a to-do list would redo work that exists. What it says about
+> *why* (which surface owns the score, why the interactive lanes stay disabled, why a
+> server-rendered locator would record the wrong frame) is still the rationale the code implements.
+>
+> **One requirement in step 1 did not land:** `element` and `bounds` were never reserved as optional
+> `v1` fields. See the status header and §7 — it is batch 03's problem now, and it is the reason
+> Phase 1 is "delivered" rather than "complete".
+
 1. **Locator contract + richer issue body.** Extend `ServeIssueReport.Context` with `componentId`,
    `referenceId`, variant axes, active overrides, comparison URL and raw scores; emit the
    `compose-parity-locator/v1` block alongside the existing prose table. No new files on the wire —
@@ -1733,7 +1850,9 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
    reaches the same conclusion; stating it here too because this is the step someone implements
    from, and "redirect to the comparison" is the instruction they would otherwise follow.
 2. **`compose-preview-issues/v1` + reader + staging.** `ServeParityIssues.kt`, `ServeCatalogStore`
-   staging, fixture-backed tests. Serves nothing yet.
+   staging, fixture-backed tests. Served nothing until step 3's producer and a catalog caller
+   existed — which is exactly how it sat, tests passing over an empty path, until
+   yschimke/m3-catalog#170.
 3. **Producer + regeneration workflow.** `parity-issues.mjs` / `emit-parity-issues.mjs` here; the
    issue-triggered workflow lands in the catalog repo.
 4. **Show open issues** on the viewer row, the focused comparison, the grid cards and the dashboard.
@@ -1859,3 +1978,40 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
   does not apply at `1.0`. It had to be settled rather than left open, because the full-scope
   matching rule depends on it. Say so if you want the looser reading; it is a `v1` schema decision
   either way.
+- **One issue, several components.** *Measured, not hypothetical — see "The pilot population" in
+  §3.* Three of `m3-catalog`'s ten known differences are umbrella reports: #42 names three
+  components, #93 spans `Button/*` and `Fab/*`, and #91 names five. The locator carries one
+  `component` and one `preview`, so none of them can be indexed whole. **#91 is not fixed by this
+  decision either way** — its interaction variants are unauthored, so each piece of a split still
+  has no `preview` to name; it belongs with the missing-subject cases below. Two ways out, and they are not equivalent: **split** the umbrella into one issue
+  per component (keeps the contract as written, multiplies the backlog, and loses the fact that the
+  five share a cause), or let a body carry **one locator block per component** and key index rows
+  by issue × component (`previewIds` / `referenceIds` are already arrays on the row; the producer
+  currently refuses a second block outright). **That second option is not a producer-only change:**
+  `ServeParityIssuesStore.sanitize` dedupes with `distinctBy { it.repository to it.number }` before
+  anything component-aware runs, so two rows for one issue collapse to an arbitrary one of them at
+  load time and the umbrella issue would still surface on a single component. Changing the row
+  identity in *both* engines, plus a fixture carrying one repository/number across two components,
+  is part of the decision rather than a follow-up. Either way this is a `v1` wire decision and wants
+  settling before the conformance fixtures freeze, not after two engines have been written against
+  them.
+- **`element` and `bounds` were never reserved in `v1`, and Phase 1 froze without them.** Batch 01
+  called for both as optional fields *before* the writer, the parser and the shared fixture froze,
+  precisely so batch 03 would not have to bump the version to add a selection. Neither
+  `ServeIssueReport.locatorBlock` nor `parseLocator` mentions them today, and both ignore unknown
+  keys — the permissive-parser failure that requirement existed to prevent, so a batch-03 report
+  carrying a selection would be indexed with the selection silently dropped. It cannot simply be
+  fixed now: batch 01 also says `bounds` may not be a bare rectangle, and which plane it is
+  expressed in is [D1](parity-batches/00-decisions.md), still open. So the choice is to answer D1
+  and reserve both fields as a `v1` erratum before anything else writes a locator, or to accept that
+  element selection arrives as `compose-parity-locator/v2`. Cheaper now than after a backlog of
+  filed reports.
+- **A parity report needs its subject to be in the catalog.** Three of the ten (#85, #95, #86) are
+  about a `DropdownMenu` and an expanded full-screen search view that this catalog does not publish
+  — no preview, no reference, nothing to compare, however the locator is shaped. Two more (#89,
+  #93) are missing-constant reports whose renders match: those *could* be indexed, since the
+  producer never inspects a pixel, but there is nothing for §4 to accept — a question about what
+  belongs on a component page rather than a limit. Either way §4's population is four issues across
+  six acceptance sites (#40, #41, #87, and #42 three times), not ten. Worth deciding whether the
+  catalog should grow the missing stickers, and whether an upstream-ergonomics report belongs in the
+  index.
