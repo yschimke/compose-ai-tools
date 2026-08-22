@@ -801,7 +801,42 @@ data class PreviewParams(
    * intent" (explicit component, `ACTION_MAIN`); tours always carry their spec's start intent.
    */
   val launchIntent: TourIntentSpec? = null,
+  /**
+   * `@CaptureGutter` — transparent dp the capture bounds are extended by on each edge, so a shadow
+   * / focus ring / overhanging badge drawn outside the component's own bounds isn't cropped at the
+   * image edge. `null` (the default) is no gutter, which is every preview that doesn't carry the
+   * annotation.
+   *
+   * The gutter is applied by the **renderer**, outside the composable: the scene grows by it, the
+   * component is measured against the same constraints it had without it, and it is placed inset.
+   * So this never changes what the component measures — only what the canvas contains — and a
+   * consumer reading it back knows the inner box (canvas minus gutter) is the component. That is
+   * the whole point of recording it here rather than letting a catalog pad its own preview body,
+   * where the gutter is indistinguishable from layout and every fit-to-width consumer scales the
+   * component down to make room for it (m3-catalog#179).
+   */
+  val captureGutter: CaptureGutterDp? = null,
 )
+
+/**
+ * Per-edge capture gutter in **dp**, from `@CaptureGutter`. Dp rather than px because it is
+ * declared in dp and each backend applies it at its own density — the two lanes must not disagree
+ * about how big a dp is, and converting once at discovery would pin it to whichever density
+ * discovery happened to resolve.
+ *
+ * Edges are start/end (layout-direction-resolved by the renderer), not left/right: a gutter for an
+ * overhanging badge belongs on the same side of the component under RTL.
+ */
+@Serializable
+data class CaptureGutterDp(
+  val start: Int = 0,
+  val top: Int = 0,
+  val end: Int = 0,
+  val bottom: Int = 0,
+) {
+  /** True when every edge is zero — nothing to apply, and nothing worth recording. */
+  fun isEmpty(): Boolean = start == 0 && top == 0 && end == 0 && bottom == 0
+}
 
 /**
  * One rendered snapshot of a preview at a specific point in some dimensional space. The non-null

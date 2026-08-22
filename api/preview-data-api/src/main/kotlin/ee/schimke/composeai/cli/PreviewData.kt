@@ -74,7 +74,39 @@ data class PreviewParams(
   val previewParameterLimit: Int = Int.MAX_VALUE,
   /** "COMPOSE" or "TILE". Free-form string so unknown future kinds round-trip. */
   val kind: String = "COMPOSE",
+  /**
+   * `@CaptureGutter` — transparent dp the RENDER's bounds are extended by on each edge, so a shadow
+   * / focus ring the component draws outside its own bounds isn't cropped at the image edge. `null`
+   * (every preview without the annotation) means the render is tight to the component as before.
+   *
+   * A consumer that lays renders out — a sticker sheet fitting each PNG to a column — should read
+   * it: the canvas minus the gutter is the component, so two renders of the same 40 dp control are
+   * only the same size once the gutter is taken off. That is the whole reason it travels here
+   * rather than staying anonymous transparent pixels (m3-catalog#179).
+   */
+  val captureGutter: CaptureGutterDp? = null,
 )
+
+/**
+ * Per-edge capture gutter in **dp**. Mirrors `discovery.CaptureGutterDp`. Edges are start/end
+ * (leading/trailing, resolved by the renderer against the capture's layout direction) rather than
+ * left/right.
+ */
+@Serializable
+data class CaptureGutterDp(
+  val start: Int = 0,
+  val top: Int = 0,
+  val end: Int = 0,
+  val bottom: Int = 0,
+) {
+  /** Dp the gutter adds across the horizontal axis. */
+  val horizontal: Int
+    get() = start + end
+
+  /** Dp the gutter adds across the vertical axis. */
+  val vertical: Int
+    get() = top + bottom
+}
 
 /**
  * Scroll state of a capture. Mirrors `ScrollCapture` in gradle-plugin/PreviewData.kt — kept as a

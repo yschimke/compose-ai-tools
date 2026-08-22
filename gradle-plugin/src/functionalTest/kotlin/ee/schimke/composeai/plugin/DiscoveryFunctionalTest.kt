@@ -2440,6 +2440,134 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
+  fun `composePreviewDiscover picks up @CaptureGutter`() {
+    val projectDir = createCmpTestProject()
+
+    // Stub the annotation at its canonical FQN inside the synthetic project, same as the
+    // @SettledPreview test above — discovery matches by FQN, not by artifact.
+    val gutterFqnDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    gutterFqnDir.mkdirs()
+    File(gutterFqnDir, "CaptureGutter.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)
+        annotation class CaptureGutter(
+          val all: Int = 0,
+          val start: Int = -1,
+          val top: Int = -1,
+          val end: Int = -1,
+          val bottom: Int = -1,
+        )
+        """
+          .trimIndent()
+      )
+
+    val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
+    srcFile.writeText(
+      """
+      package test
+
+      import androidx.compose.foundation.background
+      import androidx.compose.foundation.layout.Box
+      import androidx.compose.foundation.layout.size
+      import androidx.compose.runtime.Composable
+      import androidx.compose.ui.Modifier
+      import androidx.compose.ui.graphics.Color
+      import androidx.compose.ui.tooling.preview.Preview
+      import androidx.compose.ui.unit.dp
+      import ee.schimke.composeai.preview.CaptureGutter
+
+      // Hoisted onto a multi-preview annotation — a catalog whose elevated stickers share one
+      // shadow level declares the gutter once, which is why ANNOTATION_CLASS is a target.
+      @CaptureGutter(all = 4, bottom = 5)
+      @Preview(name = "Light")
+      @Preview(name = "Dark")
+      annotation class ElevatedStickerPreview
+
+      @ElevatedStickerPreview
+      @Composable
+      fun HoistedGutterPreview() {
+          Box(modifier = Modifier.size(50.dp).background(Color.Red))
+      }
+
+      @Preview
+      @CaptureGutter(start = 1, top = 2, end = 3, bottom = 4)
+      @Composable
+      fun PerEdgeGutterPreview() {
+          Box(modifier = Modifier.size(50.dp).background(Color.Blue))
+      }
+
+      // Out-of-range edges are clamped at discovery, so both backends read one already-sane
+      // gutter instead of clamping it differently in each.
+      @Preview
+      @CaptureGutter(all = 9999, top = -3)
+      @Composable
+      fun ClampedGutterPreview() {
+          Box(modifier = Modifier.size(50.dp).background(Color.Green))
+      }
+
+      // Every edge zero is what "no annotation" already means — recorded as nothing at all.
+      @Preview
+      @CaptureGutter(all = 0)
+      @Composable
+      fun ZeroGutterPreview() {
+          Box(modifier = Modifier.size(50.dp).background(Color.Cyan))
+      }
+
+      @Preview
+      @Composable
+      fun NoGutterPreview() {
+          Box(modifier = Modifier.size(50.dp).background(Color.Magenta))
+      }
+      """
+        .trimIndent()
+    )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+
+    // Hoisted onto the multi-preview annotation: every expansion of the function inherits the
+    // gutter, because what the component draws past its bounds is true of all of them.
+    val hoisted = manifest.previews.filter { it.functionName == "HoistedGutterPreview" }
+    assertThat(hoisted).hasSize(2)
+    for (p in hoisted) {
+      assertThat(p.params.captureGutter)
+        .isEqualTo(CaptureGutterDp(start = 4, top = 4, end = 4, bottom = 5))
+    }
+
+    // A per-edge declaration keeps each edge; `all` is only the fallback for an unset one.
+    val perEdge = manifest.previews.single { it.functionName == "PerEdgeGutterPreview" }
+    assertThat(perEdge.params.captureGutter)
+      .isEqualTo(CaptureGutterDp(start = 1, top = 2, end = 3, bottom = 4))
+
+    // Past the ceiling is capped; negative is floored at zero (no gutter on that edge).
+    val clamped = manifest.previews.single { it.functionName == "ClampedGutterPreview" }
+    assertThat(clamped.params.captureGutter)
+      .isEqualTo(CaptureGutterDp(start = 64, top = 0, end = 64, bottom = 64))
+
+    // An all-zero gutter is dropped rather than recorded as an inert field on every capture.
+    val zero = manifest.previews.single { it.functionName == "ZeroGutterPreview" }
+    assertThat(zero.params.captureGutter).isNull()
+
+    val none = manifest.previews.single { it.functionName == "NoGutterPreview" }
+    assertThat(none.params.captureGutter).isNull()
+  }
+
+  @Test
   fun `composePreviewDiscover picks up @ScrollingPreview`() {
     val projectDir = createCmpTestProject()
 

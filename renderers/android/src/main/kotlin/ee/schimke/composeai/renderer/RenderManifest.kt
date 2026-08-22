@@ -487,4 +487,34 @@ data class RenderPreviewParams(
    * launched with. `null` on an ACTIVITY preview means its default launch intent.
    */
   val launchIntent: TourIntentSpec? = null,
+  /**
+   * `@CaptureGutter` — transparent dp the capture bounds are extended by on each edge, so a shadow
+   * drawn outside the composable's own bounds isn't cropped at the image edge. Mirrors
+   * `discovery.PreviewParams.captureGutter`. `null` (every preview without the annotation) renders
+   * exactly as it did before the gutter existed.
+   */
+  val captureGutter: CaptureGutterDp? = null,
 )
+
+/**
+ * Per-edge capture gutter in **dp**. Mirrors `discovery.CaptureGutterDp` — see its kdoc for why the
+ * gutter travels in dp and why the edges are start/end rather than left/right.
+ */
+@Serializable
+data class CaptureGutterDp(
+  val start: Int = 0,
+  val top: Int = 0,
+  val end: Int = 0,
+  val bottom: Int = 0,
+) {
+  /** Dp the gutter adds across the horizontal axis. */
+  val horizontal: Int
+    get() = start + end
+
+  /** Dp the gutter adds across the vertical axis. */
+  val vertical: Int
+    get() = top + bottom
+
+  /** True when no edge carries a gutter. */
+  fun isEmpty(): Boolean = horizontal == 0 && vertical == 0
+}

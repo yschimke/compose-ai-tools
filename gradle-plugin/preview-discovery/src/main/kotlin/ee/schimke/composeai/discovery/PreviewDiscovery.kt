@@ -260,6 +260,16 @@ object PreviewDiscovery {
   private const val AMBIENT_PREVIEW_FQN = "ee.schimke.composeai.preview.AmbientPreview"
   private const val GLIMMER_ENVIRONMENT_PREVIEW_FQN =
     "ee.schimke.composeai.preview.GlimmerEnvironmentPreview"
+  // Capture-bounds gutter — a per-edge dp margin the RENDERER adds outside the composable so a
+  // shadow / focus ring drawn past the component's own bounds isn't cropped at the image edge.
+  // Same FQN-match policy as the sibling annotations. See `CaptureGutter.kt` and m3-catalog#179.
+  private const val CAPTURE_GUTTER_FQN = "ee.schimke.composeai.preview.CaptureGutter"
+  // Ceiling on one edge of a capture gutter, mirroring `MAX_CAPTURE_GUTTER_DP` in the annotation
+  // artifact. Restated rather than referenced for the same reason every other annotation constant
+  // here is: discovery FQN-matches and never loads the annotation classes.
+  private const val MAX_CAPTURE_GUTTER_DP = 64
+  // `@CaptureGutter`'s per-edge "take `all`" sentinel (`INHERIT_GUTTER`).
+  private const val INHERIT_GUTTER = -1
   // Pre-capture settle window — sibling annotation to @AmbientPreview, same FQN-match policy.
   // See `SettledPreview.kt`.
   private const val SETTLED_PREVIEW_FQN = "ee.schimke.composeai.preview.SettledPreview"
@@ -2058,11 +2068,22 @@ object PreviewDiscovery {
     // tag — so it's resolved once here and stamped onto each entry this method contributes below.
     val catalogEntry =
       extractCatalogEntry(method, annotations, catalogGroupsByFile[previewSourceFile])
+    // `@CaptureGutter` is function-level for the same reason: the gutter describes what the
+    // COMPONENT draws past its bounds, so it holds for every `@Preview` expansion of the function
+    // — light and dark, every size cell, every override variant — not for one of them.
+    val captureGutter = extractCaptureGutter(annotations)
     val firstNewPreviewIndex = previews.size
-    fun tagWithCatalog() {
-      if (catalogEntry == null) return
+    fun tagFunctionLevel() {
+      if (catalogEntry == null && captureGutter == null) return
       for (i in firstNewPreviewIndex until previews.size) {
-        previews[i] = previews[i].copy(catalog = catalogEntry)
+        val preview = previews[i]
+        previews[i] =
+          preview.copy(
+            catalog = catalogEntry ?: preview.catalog,
+            params =
+              if (captureGutter == null) preview.params
+              else preview.params.copy(captureGutter = captureGutter),
+          )
       }
     }
 
@@ -2094,7 +2115,7 @@ object PreviewDiscovery {
         previews.add(base)
         for (spec in overrideVariantSpecs) previews.add(overrideVariantPreview(base, spec))
       }
-      tagWithCatalog()
+      tagFunctionLevel()
       return
     }
 
@@ -2155,7 +2176,7 @@ object PreviewDiscovery {
       previews.add(base)
       for (variant in overrideVariantSpecs) previews.add(overrideVariantPreview(base, variant))
     }
-    tagWithCatalog()
+    tagFunctionLevel()
   }
 
   /**
@@ -3595,6 +3616,37 @@ object PreviewDiscovery {
         MAX_SETTLE_MS,
       )
     return SettleCapture(afterMs = afterMs.coerceAtMost(MAX_SETTLE_MS), maxMs = maxMs)
+  }
+
+  /**
+   * Reads `@CaptureGutter(all, start, top, end, bottom)` into a [CaptureGutterDp], or `null` when
+   * the annotation is absent or every edge resolves to zero (an all-zero gutter is what "no
+   * annotation" already means, and recording it would put an inert field in every manifest that
+   * copies one).
+   *
+   * Clamped here rather than in the renderers, for the same reason [extractSettleSpec] clamps:
+   * discovery is the single place the manifest is written, so a nonsense value can't reach the two
+   * backends and be clamped differently in each — which would show up as a lane-parity diff rather
+   * than as an error. A negative edge is `0`; anything past [MAX_CAPTURE_GUTTER_DP] is capped
+   * there.
+   */
+  private fun extractCaptureGutter(annotations: List<AnnotationInfo>): CaptureGutterDp? {
+    val ann = annotations.firstOrNull { it.name == CAPTURE_GUTTER_FQN } ?: return null
+    val pv = ann.parameterValues
+    val all = (pv.getValue("all") as? Int) ?: 0
+    fun edge(name: String): Int {
+      val raw = (pv.getValue(name) as? Int) ?: INHERIT_GUTTER
+      val resolved = if (raw == INHERIT_GUTTER) all else raw
+      return resolved.coerceIn(0, MAX_CAPTURE_GUTTER_DP)
+    }
+    val gutter =
+      CaptureGutterDp(
+        start = edge("start"),
+        top = edge("top"),
+        end = edge("end"),
+        bottom = edge("bottom"),
+      )
+    return gutter.takeUnless { it.isEmpty() }
   }
 
   /**

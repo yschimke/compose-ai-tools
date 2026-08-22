@@ -311,6 +311,19 @@ fun main(args: Array<String>) {
   // is the exact coordinate to capture at.
   val settleAfterMs = args.getOrNull(47)?.toIntOrNull()?.coerceAtLeast(-1) ?: -1
   val settleMaxMs = args.getOrNull(48)?.toIntOrNull()?.coerceIn(0, MAX_SETTLE_MS) ?: 0
+  // 50th–53rd (indices 49–52) — `@CaptureGutter`, per edge, in **dp** (m3-catalog#179). Zero /
+  // missing on every preview without the annotation, which is what keeps those captures
+  // byte-identical. Dp rather than px so the gutter is resolved against this render's own density
+  // right where the scene is built, instead of being pinned to whatever density the plugin
+  // resolved.
+  val captureGutter =
+    PreviewCaptureGutter.ofDp(
+      startDp = args.getOrNull(49)?.toIntOrNull() ?: 0,
+      topDp = args.getOrNull(50)?.toIntOrNull() ?: 0,
+      endDp = args.getOrNull(51)?.toIntOrNull() ?: 0,
+      bottomDp = args.getOrNull(52)?.toIntOrNull() ?: 0,
+      density = density,
+    )
   val focusIntent: DesktopFocusIntent? =
     when {
       focusDirections.isNotEmpty() ->
@@ -639,6 +652,7 @@ fun main(args: Array<String>) {
             maxHeightPx = maxHeightPx,
             settleAfterMs = settleAfterMs,
             settleMaxMs = settleMaxMs,
+            captureGutter = captureGutter,
           )
         }
       } else if (scrollDispatchMode != null) {
@@ -713,6 +727,7 @@ fun main(args: Array<String>) {
             maxHeightPx = maxHeightPx,
             settleAfterMs = settleAfterMs,
             settleMaxMs = settleMaxMs,
+            captureGutter = captureGutter,
           )
         }
       } else {
@@ -740,6 +755,7 @@ fun main(args: Array<String>) {
           maxHeightPx = maxHeightPx,
           settleAfterMs = settleAfterMs,
           settleMaxMs = settleMaxMs,
+          captureGutter = captureGutter,
         )
       }
       // Display filters — post-capture colour-matrix variants (grayscale / invert / daltonizer
@@ -1211,6 +1227,12 @@ internal fun renderPreview(
   // a positive value is the exact virtual-time coordinate to capture at.
   settleAfterMs: Int = -1,
   settleMaxMs: Int = 0,
+  // `@CaptureGutter` — transparent pixels the capture bounds are extended by on each edge, so an
+  // elevation shadow drawn past the composable's own bounds survives the intrinsic-size crop. The
+  // child is measured against the scene MINUS this, so the component's own measured size is
+  // unchanged by it. [PreviewCaptureGutter.None] (the default) is every preview without the
+  // annotation.
+  captureGutter: PreviewCaptureGutter = PreviewCaptureGutter.None,
   fileSystem: FileSystem = SystemFileSystem,
 ) {
   val clazz = Class.forName(className)
@@ -1261,7 +1283,8 @@ internal fun renderPreview(
         maxWidthPx = maxWidthPx,
         maxHeightPx = maxHeightPx,
       )
-    val sceneSize = composePreviewSceneSize(widthPx, heightPx, wrapWidth, wrapHeight, sizeBounds)
+    val sceneSize =
+      composePreviewSceneSize(widthPx, heightPx, wrapWidth, wrapHeight, sizeBounds, captureGutter)
     val sceneWidthPx = sceneSize.width
     val sceneHeightPx = sceneSize.height
     // A settled capture needs `delay` on the same virtual timeline as the frame clock, which the
@@ -1350,6 +1373,7 @@ internal fun renderPreview(
             wrapHeight = wrapHeight,
             backgroundColor = bgColor,
             sizeBounds = sizeBounds,
+            gutter = captureGutter,
             onMeasured = { w, h -> measured = IntSize(w, h) },
           ) {
             InvokeComposable(composableMethod, null, previewArgs)
@@ -1415,8 +1439,19 @@ internal fun renderPreview(
     if (((wrapWidth || wrapHeight) && m != null) || roundClip) {
       // Ceiling is the (possibly enlarged) scene dimension, not the raw widthPx/heightPx — a min
       // bound larger than the original frame grew the scene, and the crop must keep that extent.
-      val cropW = (if (wrapWidth && m != null) m.width else widthPx).coerceIn(1, sceneWidthPx)
-      val cropH = (if (wrapHeight && m != null) m.height else heightPx).coerceIn(1, sceneHeightPx)
+      // A fixed axis keeps its declared frame PLUS the capture gutter — the scene was enlarged by
+      // it and those pixels are the whole point, so cropping back to the bare frame would throw
+      // away the shadow the gutter exists to keep.
+      val cropW =
+        (if (wrapWidth && m != null) m.width else widthPx + captureGutter.horizontalPx).coerceIn(
+          1,
+          sceneWidthPx,
+        )
+      val cropH =
+        (if (wrapHeight && m != null) m.height else heightPx + captureGutter.verticalPx).coerceIn(
+          1,
+          sceneHeightPx,
+        )
       val decoded = ByteArrayInputStream(pngData.bytes).use { ImageIO.read(it) }
       if (decoded != null) {
         val cropped =

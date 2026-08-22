@@ -17,6 +17,8 @@ import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.RoborazziComposeOptions
 import com.github.takahirom.roborazzi.RoborazziComposeSetupOption
@@ -734,10 +736,15 @@ abstract class RobolectricRenderTestBase(
     val inspectionMode =
       System.getProperty("composeai.render.inspectionMode")?.toBooleanStrictOrNull() ?: true
 
+    // `@CaptureGutter`: the sandbox / frame the composition is hosted in grows by the gutter, and
+    // [MeasuredWrapBox] hands the composable the space back minus it — so the component measures
+    // exactly what it measured without a gutter and the extra pixels are pure canvas. Same rule the
+    // desktop lane applies in `composePreviewSceneSize`, so the two lanes agree on the bounds.
+    val gutter = params.captureGutter ?: CaptureGutterDp()
     val composeOptions =
       RoborazziComposeOptions.Builder()
         .apply {
-          size(widthDp, heightDp)
+          size(widthDp + gutter.horizontal, heightDp + gutter.vertical)
           if (isRound) addOption(RoundScreenOption)
           if (params.fontScale != 1.0f) fontScale(params.fontScale)
           if (params.uiMode != 0) uiMode(params.uiMode)
@@ -1519,6 +1526,7 @@ abstract class RobolectricRenderTestBase(
                       MeasuredWrapBox(
                         wrapWidth = wrapWidth,
                         wrapHeight = wrapHeight,
+                        gutter = params.captureGutter ?: CaptureGutterDp(),
                         onMeasured = { measured = it },
                       ) {
                         strategyFor(params.kind).Render(preview, widthDp, heightDp, previewArgs)
@@ -2168,15 +2176,19 @@ abstract class RobolectricRenderTestBase(
                 !interactionHandled
             ) {
               val resizeDensity = params.density ?: 2.0f
+              // A fixed axis is resized to the frame it declared PLUS its capture gutter: the
+              // gutter is canvas the author asked for, so trimming back to the bare frame would
+              // drop the shadow it exists to keep.
+              val resizeGutter = params.captureGutter ?: CaptureGutterDp()
               resizeFixedAxesPng(
                 file = outputFile,
                 targetWidth =
                   if (!wrapWidth && params.device == null && params.widthDp != null)
-                    (widthDp * resizeDensity).roundHalfUpPx()
+                    ((widthDp + resizeGutter.horizontal) * resizeDensity).roundHalfUpPx()
                   else null,
                 targetHeight =
                   if (!wrapHeight && params.device == null && params.heightDp != null)
-                    (heightDp * resizeDensity).roundHalfUpPx()
+                    ((heightDp + resizeGutter.vertical) * resizeDensity).roundHalfUpPx()
                   else null,
               )
             }
@@ -2371,22 +2383,40 @@ abstract class RobolectricRenderTestBase(
   private fun MeasuredWrapBox(
     wrapWidth: Boolean,
     wrapHeight: Boolean,
+    gutter: CaptureGutterDp,
     onMeasured: (IntSize) -> Unit,
     content: @Composable () -> Unit,
   ) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    // dp → px once, here, against the density this composition is actually running at. Each edge
+    // rounds independently so a symmetric gutter stays symmetric.
+    val startPx = with(density) { gutter.start.dp.roundToPx() }
+    val topPx = with(density) { gutter.top.dp.roundToPx() }
+    val endPx = with(density) { gutter.end.dp.roundToPx() }
+    val bottomPx = with(density) { gutter.bottom.dp.roundToPx() }
     Box(
       modifier =
         Modifier.layout { measurable, constraints ->
+          // The gutter comes off the available space before the child is measured — the sandbox
+          // was enlarged by exactly this much — so the composable sees the constraints it would
+          // have had without a gutter, and the extra pixels end up as canvas around it rather than
+          // as a smaller box to lay out in. That is the whole difference between this and padding
+          // the preview body (m3-catalog#179).
+          val availWidth = (constraints.maxWidth - startPx - endPx).coerceAtLeast(0)
+          val availHeight = (constraints.maxHeight - topPx - bottomPx).coerceAtLeast(0)
           val wrappedConstraints =
             Constraints(
-              minWidth = if (wrapWidth) 0 else constraints.maxWidth,
-              maxWidth = constraints.maxWidth,
-              minHeight = if (wrapHeight) 0 else constraints.maxHeight,
-              maxHeight = constraints.maxHeight,
+              minWidth = if (wrapWidth) 0 else availWidth,
+              maxWidth = availWidth,
+              minHeight = if (wrapHeight) 0 else availHeight,
+              maxHeight = availHeight,
             )
           val placeable = measurable.measure(wrappedConstraints)
-          onMeasured(IntSize(placeable.width, placeable.height))
-          layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+          val boxWidth = (placeable.width + startPx + endPx).coerceAtMost(constraints.maxWidth)
+          val boxHeight = (placeable.height + topPx + bottomPx).coerceAtMost(constraints.maxHeight)
+          onMeasured(IntSize(boxWidth, boxHeight))
+          val leftPx = if (layoutDirection == LayoutDirection.Rtl) endPx else startPx
+          layout(boxWidth, boxHeight) { placeable.place(leftPx, topPx) }
         },
       propagateMinConstraints = true,
     ) {

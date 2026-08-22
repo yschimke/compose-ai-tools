@@ -67,4 +67,56 @@ class ComposePreviewSceneTest {
     val size = composePreviewSceneSize(500, 700, wrapWidth = true, wrapHeight = true)
     assertEquals(IntSize(500, 700), size)
   }
+
+  @Test
+  fun `capture gutter grows the scene on both fixed and wrapped axes`() {
+    val gutter = PreviewCaptureGutter(startPx = 8, topPx = 8, endPx = 8, bottomPx = 10)
+    assertEquals(
+      "a fixed frame keeps its declared size and gains the gutter around it",
+      IntSize(416, 818),
+      composePreviewSceneSize(400, 800, wrapWidth = false, wrapHeight = false, gutter = gutter),
+    )
+    assertEquals(
+      "a wrapped axis gains it on top of the sandbox, so the wrap measure is unchanged",
+      IntSize(416, 818),
+      composePreviewSceneSize(400, 800, wrapWidth = true, wrapHeight = true, gutter = gutter),
+    )
+  }
+
+  @Test
+  fun `capture gutter stacks on an enlarged size-bound scene`() {
+    assertEquals(
+      "the min bound widens the scene, then the gutter is added to that",
+      IntSize(916, 800),
+      composePreviewSceneSize(
+        400,
+        800,
+        wrapWidth = true,
+        wrapHeight = false,
+        sizeBounds = PreviewSizeBounds(minWidthPx = 900),
+        gutter = PreviewCaptureGutter(startPx = 8, endPx = 8),
+      ),
+    )
+  }
+
+  @Test
+  fun `a dp gutter resolves per edge at the render density`() {
+    val gutter = PreviewCaptureGutter.ofDp(startDp = 4, topDp = 4, endDp = 4, bottomDp = 5, 2.625f)
+    assertEquals(11, gutter.startPx)
+    assertEquals(11, gutter.topPx)
+    assertEquals(11, gutter.endPx)
+    assertEquals(13, gutter.bottomPx)
+    assertEquals("horizontal is the sum of the two edges", 22, gutter.horizontalPx)
+    assertEquals("vertical is the sum of the two edges", 24, gutter.verticalPx)
+  }
+
+  @Test
+  fun `an all-zero gutter is empty and leaves the scene alone`() {
+    val none = PreviewCaptureGutter.ofDp(0, 0, 0, 0, density = 2.625f)
+    assertEquals(PreviewCaptureGutter.None, none)
+    assertEquals(
+      composePreviewSceneSize(400, 800, wrapWidth = true, wrapHeight = true),
+      composePreviewSceneSize(400, 800, wrapWidth = true, wrapHeight = true, gutter = none),
+    )
+  }
 }

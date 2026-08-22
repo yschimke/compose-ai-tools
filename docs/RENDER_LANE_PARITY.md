@@ -254,6 +254,21 @@ rather than every component preview inheriting a tile.
 
 ![Wear scroll capsule with and without the injected background, on a light and a dark canvas](../renders/lane-parity/figma-svg-background-off-capsule.png)
 
+## Known gap: `@CaptureGutter` on the live lane
+
+`@CaptureGutter` (m3-catalog#179) extends a capture's bounds by a per-edge dp margin so an
+elevation shadow drawn outside the component's own bounds survives the crop. Both **static**
+lanes apply it — the `CaptureGutterPreviews` fixture pair renders `287×117 → 309×141` on CMP
+Desktop and `262×117 → 284×141` on Android for `@CaptureGutter(all = 4, bottom = 5)`, i.e. the
+same `+22×+24` on each.
+
+The **live daemon** lane does not: the gutter is not on `RenderSpec`, so neither daemon
+`RenderEngine` sees it and a guttered preview streams at its un-guttered size while its snapshot
+PNG carries the gutter. That is a layout difference across lanes, which is exactly what this
+document says should not happen — tracked as
+[#4443](https://github.com/yschimke/compose-ai-tools/issues/4443), which also has to decide what
+a rotated capture does to a gutter whose edges are deliberately asymmetric.
+
 ## Reproducing
 
 `renders/lane-parity/` holds the strips above (snapshot / other lane / 6× amplified
