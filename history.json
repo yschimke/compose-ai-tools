@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
+    "generatedFrom": "9f8e029371ec827653259d2211009c22dc7f189d",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -5734,87 +5734,14 @@
             "unstable": false,
             "flapCount": 0
         },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.AppCardRemote_width=320dp,height=240dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/AppCardRemote_width_320dp_height_240dp_dpi_320-e2b2cd22.png",
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.AppCardRemote_width=227dp,height=200dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/AppCardRemote_width_227dp_height_200dp_dpi_320-fb7de18e.png",
             "versions": [
                 {
-                    "blob": "7c35f6aa554a72a7130d294ed36dcf0c4e09d307",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "f4e92976d30b832309cbb6d670d8d3c23c4797d8",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 2,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.BrandedTextRemote_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/BrandedTextRemote_width_200dp_height_200dp_dpi_320-ad5756ba.png",
-            "versions": [
-                {
-                    "blob": "9e7dccbdcce6bfb87b87aa72e569f5d47705f82c",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "cdda98eb5612e792a6dd8cbf7ec5ce7d93649cc6",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 2,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.ButtonGroupRemote_width=320dp,height=240dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/ButtonGroupRemote_width_320dp_height_240dp_dpi_320-3a9a618a.png",
-            "versions": [
-                {
-                    "blob": "266183cfee700fd56c7b96f5ff5a4b0a1225fbff",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "4da430ea34a3892c332d21749977453190e3decd",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "3f9e9f79054ea87d71a6d6ea4ea55d52d798e975",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.CardRemote_width=320dp,height=240dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/CardRemote_width_320dp_height_240dp_dpi_320-2eda8c93.png",
-            "versions": [
-                {
-                    "blob": "f5f830e5f58754177e02d4fa029591fb1462b1b5",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
+                    "blob": "325e2ceb3a16476d696d669a375765f62a136894",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
                     "commits": 1
                 }
             ],
@@ -5822,36 +5749,14 @@
             "unstable": false,
             "flapCount": 0
         },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.CircularProgressRemote_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/CircularProgressRemote_width_200dp_height_200dp_dpi_320-357c38a0.png",
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.BrandedTextRemote_width=227dp,height=100dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/BrandedTextRemote_width_227dp_height_100dp_dpi_320-0c934650.png",
             "versions": [
                 {
-                    "blob": "c9ade3028543c52169fe63d70223227f7e72388c",
-                    "commit": "9fd86efaf1b0bc5665f7fe64a3285c333e13f9f5",
-                    "date": "2026-08-20T17:51:17Z",
-                    "sourceSha": "2a83e7eb",
-                    "commits": 1
-                },
-                {
-                    "blob": "d8ec2fedb7a804c0c45e0677910440ca5d7507d9",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 2,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.ColorSchemeRemote_width=320dp,height=240dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/ColorSchemeRemote_width_320dp_height_240dp_dpi_320-4ee4c315.png",
-            "versions": [
-                {
-                    "blob": "6c9376122ae308f9cc1b3147ddeb811cc1c19020",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
+                    "blob": "77470efd866b0f6cfea995a2df4a626b23e2188a",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
                     "commits": 1
                 }
             ],
@@ -5859,101 +5764,14 @@
             "unstable": false,
             "flapCount": 0
         },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.CompactRemoteButton_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/CompactRemoteButton_width_200dp_height_200dp_dpi_320-7ee67fc7.png",
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.ButtonGroupRemote_width=227dp,height=200dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/ButtonGroupRemote_width_227dp_height_200dp_dpi_320-39ed3d03.png",
             "versions": [
                 {
-                    "blob": "9793fcdb3bcb5e4cc17dd5cd7ecc734d07682581",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "72ca0c2d7173694ee96ed9032a69c68fc1b0c93f",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "d369be6f67ccf520a1b6b6cefa91933e2c6a0e01",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.CustomShapeRemoteButton_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/CustomShapeRemoteButton_width_200dp_height_200dp_dpi_320-2f5d5e12.png",
-            "versions": [
-                {
-                    "blob": "83b7cb4b6c68bbeeb5ca70b95cdc19ef70538a21",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "dc386e3c94d06b65fdc60c52fce85df12b893879",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "9c310f80c51e3afcaba5375d0955b452843e57b1",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.FilledRemoteButton_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/FilledRemoteButton_width_200dp_height_200dp_dpi_320-6cca0df4.png",
-            "versions": [
-                {
-                    "blob": "fcfe36c3d1c608f166a13a2271894b4ba3fbcc73",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "a94ad8a5d58f6666ca254ca026a12f3a34cc2631",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "e93fb0e6c05268797bb94ccb6337bd07bc7779a3",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.IconRemoteButton_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/IconRemoteButton_width_200dp_height_200dp_dpi_320-f294781f.png",
-            "versions": [
-                {
-                    "blob": "09db1a960ce196c169e1379feb9c8daf34ad290d",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
+                    "blob": "2bf1e8169be4baff59e9f1fead572628229c8cac",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
                     "commits": 1
                 }
             ],
@@ -5961,14 +5779,14 @@
             "unstable": false,
             "flapCount": 0
         },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.IconRemote_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/IconRemote_width_200dp_height_200dp_dpi_320-434ea5c6.png",
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.CardRemote_width=227dp,height=200dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/CardRemote_width_227dp_height_200dp_dpi_320-8431f9c8.png",
             "versions": [
                 {
-                    "blob": "5536e578e377b6271f088aa65a1f7c3a3fe0d6a6",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
+                    "blob": "49df93e996358aa6009ee5b931c0c19f6ee0caff",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
                     "commits": 1
                 }
             ],
@@ -5976,94 +5794,164 @@
             "unstable": false,
             "flapCount": 0
         },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.NamedLabelRemoteButton_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/NamedLabelRemoteButton_width_200dp_height_200dp_dpi_320-623f9ce1.png",
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.CircularProgressRemote_width=227dp,height=227dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/CircularProgressRemote_width_227dp_height_227dp_dpi_320-00e452bd.png",
             "versions": [
                 {
-                    "blob": "fcfe36c3d1c608f166a13a2271894b4ba3fbcc73",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "a94ad8a5d58f6666ca254ca026a12f3a34cc2631",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "e93fb0e6c05268797bb94ccb6337bd07bc7779a3",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
+                    "blob": "de1dcc7443574a04a41f541ff2d1610538f96bcb",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
                     "commits": 1
                 }
             ],
-            "observations": 3,
+            "observations": 1,
             "unstable": false,
             "flapCount": 0
         },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.OutlinedCardRemote_width=320dp,height=240dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/OutlinedCardRemote_width_320dp_height_240dp_dpi_320-a0ceded5.png",
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.ColorSchemeRemote_width=227dp,height=200dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/ColorSchemeRemote_width_227dp_height_200dp_dpi_320-a30d8955.png",
             "versions": [
                 {
-                    "blob": "3c4383c243f79a01490df4efe368a8e4dcf348a6",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "de928ede29b9fb8e244738d56c5e7f39538f43a6",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
+                    "blob": "40043e7cbfdf0cac0d8db6d16b9062f77be99194",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
                     "commits": 1
                 }
             ],
-            "observations": 2,
+            "observations": 1,
             "unstable": false,
             "flapCount": 0
         },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.OutlinedRemoteButton_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/OutlinedRemoteButton_width_200dp_height_200dp_dpi_320-4a5e18ae.png",
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.CompactRemoteButton_width=227dp,height=100dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/CompactRemoteButton_width_227dp_height_100dp_dpi_320-26240606.png",
             "versions": [
                 {
-                    "blob": "db9b9a2db4b1d3cb1fa0e97cf4b75c11bf885639",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "75e7b74e8b548c0b510906e431a69a82dfe34712",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "9b08337de1254ecc5124fbbedaf0f9265792d84e",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
+                    "blob": "218a8b72086f8c16c3a7e9a36973ba49724c6c25",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
                     "commits": 1
                 }
             ],
-            "observations": 3,
+            "observations": 1,
             "unstable": false,
             "flapCount": 0
         },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.RemoteTextSticker_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/RemoteTextSticker_width_200dp_height_200dp_dpi_320-b00e81d6.png",
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.CustomShapeRemoteButton_width=227dp,height=100dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/CustomShapeRemoteButton_width_227dp_height_100dp_dpi_320-b2172448.png",
             "versions": [
                 {
-                    "blob": "9c2c5527919478ac61f6d6ba31b4ad78871c8bef",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
+                    "blob": "7fb82c0dcfb40f09d832a3d3c4c9f8ab8ff24885",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.FilledRemoteButton_width=227dp,height=100dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/FilledRemoteButton_width_227dp_height_100dp_dpi_320-2fd48784.png",
+            "versions": [
+                {
+                    "blob": "eb85e7e8d000ff1328ea21eb89a357ed0db11b51",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.IconRemoteButton_width=227dp,height=100dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/IconRemoteButton_width_227dp_height_100dp_dpi_320-163e361c.png",
+            "versions": [
+                {
+                    "blob": "25f0449eea5cce1b7c837f9d009a494608f913b8",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.IconRemote_width=227dp,height=100dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/IconRemote_width_227dp_height_100dp_dpi_320-ec28b0e4.png",
+            "versions": [
+                {
+                    "blob": "26096b47324f0f3163ef10f93b8b67f3b1a5de21",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.NamedLabelRemoteButton_width=227dp,height=100dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/NamedLabelRemoteButton_width_227dp_height_100dp_dpi_320-2f8cbeea.png",
+            "versions": [
+                {
+                    "blob": "eb85e7e8d000ff1328ea21eb89a357ed0db11b51",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.OutlinedCardRemote_width=227dp,height=200dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/OutlinedCardRemote_width_227dp_height_200dp_dpi_320-5fcabf7e.png",
+            "versions": [
+                {
+                    "blob": "2f85f9ffdcd9e23601e658c0810fb7afd102b659",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.OutlinedRemoteButton_width=227dp,height=100dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/OutlinedRemoteButton_width_227dp_height_100dp_dpi_320-d9c67376.png",
+            "versions": [
+                {
+                    "blob": "ba10ff214cbab7baeca09d60aa630eb552911962",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.RemoteTextSticker_width=227dp,height=100dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/RemoteTextSticker_width_227dp_height_100dp_dpi_320-8679bf34.png",
+            "versions": [
+                {
+                    "blob": "6bc478906b66ed5661574d4fd14daab5a41e8ce7",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
                     "commits": 1
                 }
             ],
@@ -6093,65 +5981,14 @@
             "unstable": false,
             "flapCount": 0
         },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.TextRemoteButton_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/TextRemoteButton_width_200dp_height_200dp_dpi_320-875514dd.png",
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.TextRemoteButton_width=227dp,height=100dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/TextRemoteButton_width_227dp_height_100dp_dpi_320-3909ee5c.png",
             "versions": [
                 {
-                    "blob": "a13933c4e2d781c5c5b07346097d3bf8be3399cd",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "a1a8f3178e838cf59c570a3b94b62bf08438d779",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "dc41942a80a0dff122dfa427ca2554bbe8251c76",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.TitleCardRemote_width=320dp,height=240dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/TitleCardRemote_width_320dp_height_240dp_dpi_320-ce704d0d.png",
-            "versions": [
-                {
-                    "blob": "8971ac5f29dc3eee6ad1ffea5917cf113bef91da",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "4c8882753e92a16958a17461c0fcb5615408ccfc",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 2,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.TruncatedTextRemote_width=320dp,height=240dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/TruncatedTextRemote_width_320dp_height_240dp_dpi_320-263bb46f.png",
-            "versions": [
-                {
-                    "blob": "131a1d0cf4a403395aac73637aa3c662f9466943",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
+                    "blob": "4005775ec90fab5a5cfda217924710b500fedee9",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
                     "commits": 1
                 }
             ],
@@ -6159,65 +5996,14 @@
             "unstable": false,
             "flapCount": 0
         },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.TypefaceSpecimenRemote_width=320dp,height=240dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/TypefaceSpecimenRemote_width_320dp_height_240dp_dpi_320-c074d884.png",
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.TitleCardRemote_width=227dp,height=200dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/TitleCardRemote_width_227dp_height_200dp_dpi_320-3a2d05ca.png",
             "versions": [
                 {
-                    "blob": "aabb8788934f85aa37e7b4f8ec33dce8426f6e87",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "99fe790be1e467f7ccceedf8e3eb9abe4509d5ce",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 2,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.TypographyRemote_width=320dp,height=240dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/TypographyRemote_width_320dp_height_240dp_dpi_320-af41f511.png",
-            "versions": [
-                {
-                    "blob": "9a6e3b8a9a635bb6e862ad123b595d1e5db7bacc",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "a18939338859fbdc024325989e601e83eb52007b",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "3dd42a4adcfc6f386e8945362f0df9e77a25f029",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.VariableWeightRemote_width=320dp,height=240dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/VariableWeightRemote_width_320dp_height_240dp_dpi_320-c5297cbc.png",
-            "versions": [
-                {
-                    "blob": "6b52ac9269ed53867083b3bdbef8809fb896d17d",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
+                    "blob": "00eec1d171d4508a3540c6bfe8a302874ddd345b",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
                     "commits": 1
                 }
             ],
@@ -6225,25 +6011,78 @@
             "unstable": false,
             "flapCount": 0
         },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.VariableWidthRemote_width=320dp,height=240dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/VariableWidthRemote_width_320dp_height_240dp_dpi_320-a9b00d46.png",
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.TruncatedTextRemote_width=227dp,height=200dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/TruncatedTextRemote_width_227dp_height_200dp_dpi_320-0905716a.png",
             "versions": [
                 {
-                    "blob": "d34c371232135f7b9efaf915577e6d4ae2520045",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "f3cbb9998fba01b258a4ad7d3d9e1bb717783a61",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
+                    "blob": "e2f8ac84f21bca5eefaf57d00d2a115991898f4d",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
                     "commits": 1
                 }
             ],
-            "observations": 2,
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.TypefaceSpecimenRemote_width=227dp,height=200dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/TypefaceSpecimenRemote_width_227dp_height_200dp_dpi_320-d4b3845c.png",
+            "versions": [
+                {
+                    "blob": "737acd98273930f6b8640dbac3385ab24dfd7002",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.TypographyRemote_width=227dp,height=200dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/TypographyRemote_width_227dp_height_200dp_dpi_320-36222f29.png",
+            "versions": [
+                {
+                    "blob": "406125a4c0d8ce0cbde0c1f9d371a651be974083",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.VariableWeightRemote_width=227dp,height=200dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/VariableWeightRemote_width_227dp_height_200dp_dpi_320-2a43fd75.png",
+            "versions": [
+                {
+                    "blob": "8d9436dd145b37f3dcd37c6afac14387892aef25",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.VariableWidthRemote_width=227dp,height=200dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/VariableWidthRemote_width_227dp_height_200dp_dpi_320-6a3faf34.png",
+            "versions": [
+                {
+                    "blob": "d8d3bf9c6d7cfe9afab123b4e25b615195bf89dc",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
             "unstable": false,
             "flapCount": 0
         },
@@ -6276,189 +6115,14 @@
             "unstable": false,
             "flapCount": 0
         },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.CompactIconLabelRemoteButton_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/CompactIconLabelRemoteButton_width_200dp_height_200dp_dpi_320-10546e96.png",
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.CompactIconLabelRemoteButton_width=227dp,height=100dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/CompactIconLabelRemoteButton_width_227dp_height_100dp_dpi_320-7feb86f5.png",
             "versions": [
                 {
-                    "blob": "51ba897ddd0c3a89d57c4853356db4a0c5b89c55",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "3963a4b64e655a3f1ef8a54003b942451e9d9158",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "40d863154a9703e34a2b906aa6198b0642f9ccf6",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.CompactIconOnlyRemoteButton_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/CompactIconOnlyRemoteButton_width_200dp_height_200dp_dpi_320-b75dc272.png",
-            "versions": [
-                {
-                    "blob": "1fe509cbadb32d01b0530bcbb8b50a4bf3703633",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "fbb4cf2439402f275a54df11c0d8abe9b6f9e2ac",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 2,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.DisabledCircularProgressRemote_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/DisabledCircularProgressRemote_width_200dp_height_200dp_dpi_320-4d8e778c.png",
-            "versions": [
-                {
-                    "blob": "887123b5ec22f09e8ec0b96d4890b3f77b6edab5",
-                    "commit": "9fd86efaf1b0bc5665f7fe64a3285c333e13f9f5",
-                    "date": "2026-08-20T17:51:17Z",
-                    "sourceSha": "2a83e7eb",
-                    "commits": 1
-                },
-                {
-                    "blob": "90eaf3f5de2c594421146f36ca0f024bc8cec809",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 2,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.DisabledRemoteButton_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/DisabledRemoteButton_width_200dp_height_200dp_dpi_320-6a5fcde6.png",
-            "versions": [
-                {
-                    "blob": "7175d8c2829271d59b5c401615299cb899d2e24a",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "599191ea74ede2faa960ac8e6aa41c9a796eaa90",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "9b0c909e92953bcbcce233eeec064dde8aa330dc",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.ExtraSmallRemoteIconButton_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/ExtraSmallRemoteIconButton_width_200dp_height_200dp_dpi_320-129d5c18.png",
-            "versions": [
-                {
-                    "blob": "64497fd12754e2ccd521115daae6a9a239c17706",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "b74854cd28153707af1237c70fefa537d7d98535",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 2,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.FilledRemoteIconButton_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/FilledRemoteIconButton_width_200dp_height_200dp_dpi_320-6ef461ca.png",
-            "versions": [
-                {
-                    "blob": "ad9ef1b9b35ee92c0724decc9370deb0adbdf195",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "75ff588d37c64a20abda31079cf0e4acc7591f30",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 2,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.FilledRemoteTextButton_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/FilledRemoteTextButton_width_200dp_height_200dp_dpi_320-c034f9e0.png",
-            "versions": [
-                {
-                    "blob": "5f2505dc59aa45b80c674d38c260343d9cb32126",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "a20dbb8551e624ab43faac8e3059717ec01363a2",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "2e36c89ac90f6d0da674bc41509d034648e2a76c",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.HorizontalPageIndicatorRemote_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/HorizontalPageIndicatorRemote_width_200dp_height_200dp_dpi_320-6c054c6d.png",
-            "versions": [
-                {
-                    "blob": "48c6948a676085c051853e3012f1afdc5d5120b6",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
+                    "blob": "0520db9f383b29741ed3543c9eccc6ffb8a21fea",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
                     "commits": 1
                 }
             ],
@@ -6466,406 +6130,14 @@
             "unstable": false,
             "flapCount": 0
         },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.IconLabelRemoteButton_width=320dp,height=240dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/IconLabelRemoteButton_width_320dp_height_240dp_dpi_320-d431fa0f.png",
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.CompactIconOnlyRemoteButton_width=227dp,height=100dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/CompactIconOnlyRemoteButton_width_227dp_height_100dp_dpi_320-a7419222.png",
             "versions": [
                 {
-                    "blob": "977c4eba270762058cf55d3185e16c809e6d6e28",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "60ad0c85064818beaf66a21fff4c3da7064d0941",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "531786a06b73714e6dac8ba680454bf7ca60dd94",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.IconLabelSecondaryRemoteButton_width=320dp,height=240dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/IconLabelSecondaryRemoteButton_width_320dp_height_240dp_dpi_320-2f89a268.png",
-            "versions": [
-                {
-                    "blob": "12fba186590682c146df3a65ea99de2e9dc92c27",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "5c11013499fef51290bbc57cdc91940a1529837f",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "29b574a43a921fd9348380f8e321d14342657d03",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.IndeterminateCircularProgressMotionRemote_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/IndeterminateCircularProgressMotionRemote_width_200dp_height_200dp_dpi_320-276f344c.gif",
-            "versions": [
-                {
-                    "blob": "1337568ea1e6dbe2e4f90d4cf87999f1b4481042",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "3db08d0025ebc3ec831c614ce2511d5ef86eb140",
-                    "commit": "9fd86efaf1b0bc5665f7fe64a3285c333e13f9f5",
-                    "date": "2026-08-20T17:51:17Z",
-                    "sourceSha": "2a83e7eb",
-                    "commits": 1
-                },
-                {
-                    "blob": "0df55c7e00a7e8a6188a58f3728d46f16a5767fe",
-                    "commit": "202816e3c14fe04ed50aee258ccf4c86ebdf1abd",
-                    "date": "2026-08-20T15:03:15Z",
-                    "sourceSha": "ab7b7e0f",
-                    "commits": 1
-                },
-                {
-                    "blob": "bf1410c27bf82661ea5b34e7a7f62f895947e71a",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 4,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.IndeterminateCircularProgressRemote_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/IndeterminateCircularProgressRemote_width_200dp_height_200dp_dpi_320-b60fdef2.png",
-            "versions": [
-                {
-                    "blob": "b060cdfdadba1f4b03a30c1c057855780bd37923",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "0e23081b7c6e3653b9fe7a2063ae269fe4db5ab7",
-                    "commit": "9fd86efaf1b0bc5665f7fe64a3285c333e13f9f5",
-                    "date": "2026-08-20T17:51:17Z",
-                    "sourceSha": "2a83e7eb",
-                    "commits": 1
-                },
-                {
-                    "blob": "c840dd59c8c364633e9c23152209c3c86539cceb",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.InteractivePageIndicatorRemote_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/InteractivePageIndicatorRemote_width_200dp_height_200dp_dpi_320-c33829cb.png",
-            "versions": [
-                {
-                    "blob": "f47aaaa140f217999355731e136f919b60b418a6",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "0c94e92d0047e1c0f843a8c947ae644c059905bc",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "650b3092a493bf63e0a10bc4778e1e915ac02c88",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.LargeRemoteIconButton_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/LargeRemoteIconButton_width_200dp_height_200dp_dpi_320-7673092a.png",
-            "versions": [
-                {
-                    "blob": "5162cb19ca7cf458cf7f59e34eb551d6a6098fa7",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "a1c65845f4ec36921d7e5d04bdc4ece590298382",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 2,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.LargeRemoteTextButton_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/LargeRemoteTextButton_width_200dp_height_200dp_dpi_320-549e574e.png",
-            "versions": [
-                {
-                    "blob": "006737c0d12f5acb5be452eea2d08134956c17a1",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "bebd46f35e4c3b2ffa5ba5cfc1dc368c5eb9e46e",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "e01738bdd6f5ecd132c12d263f17036d27fe6a79",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.OutlinedRemoteIconButton_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/OutlinedRemoteIconButton_width_200dp_height_200dp_dpi_320-0b6dbe86.png",
-            "versions": [
-                {
-                    "blob": "f73ad8da71f0166cd49a599845e26d2c79f3b1fc",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "67ef551dfb16d668e32637930450ddb31356d197",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 2,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.OutlinedRemoteTextButton_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/OutlinedRemoteTextButton_width_200dp_height_200dp_dpi_320-c3437e61.png",
-            "versions": [
-                {
-                    "blob": "897e98191bbd58cd11fb2ddca10b07eb84f8f7df",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "f778926ce132e44e6a470867119612a924e1622f",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "262169b889d197c5f45eb0b226f5d8b43ed7e69f",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.PageIndicatorMotionRemote_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/PageIndicatorMotionRemote_width_200dp_height_200dp_dpi_320-50316762.gif",
-            "versions": [
-                {
-                    "blob": "9c6a4eec45bf70ece306e6e015766a46f2679220",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "90d003ace3c5bcf5a9c05809195ab8761ce4499a",
-                    "commit": "202816e3c14fe04ed50aee258ccf4c86ebdf1abd",
-                    "date": "2026-08-20T15:03:15Z",
-                    "sourceSha": "ab7b7e0f",
-                    "commits": 1
-                },
-                {
-                    "blob": "9f458247c225e3268beed9b39fc619c8196a098b",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.SmallRemoteIconButton_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/SmallRemoteIconButton_width_200dp_height_200dp_dpi_320-d13aebe7.png",
-            "versions": [
-                {
-                    "blob": "eebfe64afcf3ef999b0396627bdb2f398cd24be2",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "df01f72f2bef044c3c82265044818a9f715ccd7d",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 2,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.SmallRemoteTextButton_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/SmallRemoteTextButton_width_200dp_height_200dp_dpi_320-c65978c9.png",
-            "versions": [
-                {
-                    "blob": "e02f3abf4f9f20fe0705118255f5a72c8c28ed39",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "4911d6ceb8c11b7acf23fa79064f4b786ac3a0c9",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "78c550863ba1a4c40d8304fedc9c4a5ae4f239ea",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.TimeContentRemoteTitleCard_width=320dp,height=240dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/TimeContentRemoteTitleCard_width_320dp_height_240dp_dpi_320-5f946c02.png",
-            "versions": [
-                {
-                    "blob": "531a3ef470dea09dec43128a714a9d972effa25a",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "3515819cd2d0e86e48583848927d9e31fafadf62",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "f8e54b7b866219feda5d2273fa66e00e147148dc",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.TimeRemoteAppCard_width=320dp,height=240dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/TimeRemoteAppCard_width_320dp_height_240dp_dpi_320-147ffe47.png",
-            "versions": [
-                {
-                    "blob": "f13f84481f55e38337e2381302494d885b972a3b",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "e7f8f355eeea9f34f97130dbe7fa0d5012b1458d",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "492556ee99e1d4bd7fb88ba3c3835b1197ec0c93",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.TitleOnlyRemoteTitleCard_width=320dp,height=240dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/TitleOnlyRemoteTitleCard_width_320dp_height_240dp_dpi_320-5e3c7a41.png",
-            "versions": [
-                {
-                    "blob": "6749ed568036429efc1e9f428b536dad1e817f87",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
+                    "blob": "88722d2da3823b8b4e36113c844fe64f6eba77ed",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
                     "commits": 1
                 }
             ],
@@ -6873,43 +6145,14 @@
             "unstable": false,
             "flapCount": 0
         },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.TonalRemoteButton_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/TonalRemoteButton_width_200dp_height_200dp_dpi_320-9b96aafe.png",
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.DisabledCircularProgressRemote_width=227dp,height=227dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/DisabledCircularProgressRemote_width_227dp_height_227dp_dpi_320-6bdade0a.png",
             "versions": [
                 {
-                    "blob": "16dc8e3cfa902c30be202facd3bda13dae3af6c2",
-                    "commit": "e8cc4d7fb4a891c9e7fadc8723a52f5dbafb74bf",
-                    "date": "2026-08-22T13:08:09Z",
-                    "sourceSha": "eb290a07",
-                    "commits": 1
-                },
-                {
-                    "blob": "32651d967c8e73101128b0a5534486ca9d811dae",
-                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
-                    "date": "2026-08-19T00:34:21Z",
-                    "sourceSha": "f1f4eb33",
-                    "commits": 1
-                },
-                {
-                    "blob": "d4481f9e43d55173fbe0ba8b7d8817972ba39021",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.VerticalPageIndicatorRemote_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/VerticalPageIndicatorRemote_width_200dp_height_200dp_dpi_320-99119bcd.png",
-            "versions": [
-                {
-                    "blob": "38ac9cefc4fe7964bdb799c6ca768ddbcf73e6a0",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
+                    "blob": "dca987b7bef1c28d8d1bb3fa2b874abfbbfd6727",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
                     "commits": 1
                 }
             ],
@@ -6917,14 +6160,344 @@
             "unstable": false,
             "flapCount": 0
         },
-        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.SystemThemePreviewsKt.SystemThemeSwatchesRemote_width=200dp,height=200dp,dpi=320": {
-            "path": "renders/samples:design-catalog-remote-m3/SystemThemeSwatchesRemote_width_200dp_height_200dp_dpi_320-c8673ea8.png",
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.DisabledRemoteButton_width=227dp,height=100dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/DisabledRemoteButton_width_227dp_height_100dp_dpi_320-e0048a7f.png",
             "versions": [
                 {
-                    "blob": "282371a84fe5b0cb62543bbdc7c5f04b4c6ff434",
-                    "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
-                    "date": "2026-08-16T23:07:27Z",
-                    "sourceSha": "39fa6d74",
+                    "blob": "c0f8815aa11e0ff3be6cc956a48e1ada86aa75e1",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.ExtraSmallRemoteIconButton_width=227dp,height=100dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/ExtraSmallRemoteIconButton_width_227dp_height_100dp_dpi_320-4f868d9e.png",
+            "versions": [
+                {
+                    "blob": "4a9897e4b76e0aadde76d2d179faba793516d127",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.FilledRemoteIconButton_width=227dp,height=100dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/FilledRemoteIconButton_width_227dp_height_100dp_dpi_320-564071a8.png",
+            "versions": [
+                {
+                    "blob": "5ad0081bd1a7377687496d2ef3cbef388d48c7ba",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.FilledRemoteTextButton_width=227dp,height=100dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/FilledRemoteTextButton_width_227dp_height_100dp_dpi_320-17b1d4a4.png",
+            "versions": [
+                {
+                    "blob": "eafa629f59e94a7a6de486ce9e6a414b3e45c329",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.HorizontalPageIndicatorRemote_width=227dp,height=227dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/HorizontalPageIndicatorRemote_width_227dp_height_227dp_dpi_320-053aaedc.png",
+            "versions": [
+                {
+                    "blob": "d3606191ff39f5dd3c8b3081297d28e3e37f1dc0",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.IconLabelRemoteButton_width=227dp,height=200dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/IconLabelRemoteButton_width_227dp_height_200dp_dpi_320-71a9e01b.png",
+            "versions": [
+                {
+                    "blob": "12b547019d8b13d09142fbd38412d6e701da4e9d",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.IconLabelSecondaryRemoteButton_width=227dp,height=200dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/IconLabelSecondaryRemoteButton_width_227dp_height_200dp_dpi_320-5a6fa3d1.png",
+            "versions": [
+                {
+                    "blob": "08a5b0c6ca8c878692bbdf2a1b6ec0890b593821",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.IndeterminateCircularProgressMotionRemote_width=227dp,height=227dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/IndeterminateCircularProgressMotionRemote_width_227dp_height_227dp_dpi_320-2bb1112e.gif",
+            "versions": [
+                {
+                    "blob": "ea05f88bd50d30dcc0265a43e8ca50c43290cce9",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.IndeterminateCircularProgressRemote_width=227dp,height=227dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/IndeterminateCircularProgressRemote_width_227dp_height_227dp_dpi_320-2e35e6f3.png",
+            "versions": [
+                {
+                    "blob": "3667fa7ed57ee664338418fafec5ed787a786d1f",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.InteractivePageIndicatorRemote_width=227dp,height=227dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/InteractivePageIndicatorRemote_width_227dp_height_227dp_dpi_320-bb0fb9a3.png",
+            "versions": [
+                {
+                    "blob": "fddbea2fca205569e51a66cffaad26aef59f0aed",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.LargeRemoteIconButton_width=227dp,height=100dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/LargeRemoteIconButton_width_227dp_height_100dp_dpi_320-1ee1b66c.png",
+            "versions": [
+                {
+                    "blob": "4c30e1781b3f365ff7633523a680c118711d1dc1",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.LargeRemoteTextButton_width=227dp,height=100dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/LargeRemoteTextButton_width_227dp_height_100dp_dpi_320-1850d39b.png",
+            "versions": [
+                {
+                    "blob": "4235d2ae2fdb041d66f7faf1e0f5e2b42d8fa896",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.OutlinedRemoteIconButton_width=227dp,height=100dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/OutlinedRemoteIconButton_width_227dp_height_100dp_dpi_320-2518eece.png",
+            "versions": [
+                {
+                    "blob": "be824a64c3dfe9ac67a747a46588196ea7ee3a45",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.OutlinedRemoteTextButton_width=227dp,height=100dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/OutlinedRemoteTextButton_width_227dp_height_100dp_dpi_320-d09e92b1.png",
+            "versions": [
+                {
+                    "blob": "022b20d4640e4e73dca4f1b010d5b33a0806cfd3",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.PageIndicatorMotionRemote_width=227dp,height=227dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/PageIndicatorMotionRemote_width_227dp_height_227dp_dpi_320-afd33477.gif",
+            "versions": [
+                {
+                    "blob": "e0df133b29389e0b51b8857b437dec351164c3eb",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.SmallRemoteIconButton_width=227dp,height=100dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/SmallRemoteIconButton_width_227dp_height_100dp_dpi_320-1f2e2319.png",
+            "versions": [
+                {
+                    "blob": "de511a6243ac5b3d4c33d93431639296b4ba0634",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.SmallRemoteTextButton_width=227dp,height=100dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/SmallRemoteTextButton_width_227dp_height_100dp_dpi_320-4b93ad7a.png",
+            "versions": [
+                {
+                    "blob": "73d310532a6762865086ace204d930edac43a134",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.TimeContentRemoteTitleCard_width=227dp,height=200dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/TimeContentRemoteTitleCard_width_227dp_height_200dp_dpi_320-48956f2b.png",
+            "versions": [
+                {
+                    "blob": "1d8ae6445086be3de5a46bdfd53ebce57a0b5a6e",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.TimeRemoteAppCard_width=227dp,height=200dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/TimeRemoteAppCard_width_227dp_height_200dp_dpi_320-9227b45d.png",
+            "versions": [
+                {
+                    "blob": "b13e5e1ea09fbc1647a079f7fe621e421af78afc",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.TitleOnlyRemoteTitleCard_width=227dp,height=200dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/TitleOnlyRemoteTitleCard_width_227dp_height_200dp_dpi_320-d0b2c8f5.png",
+            "versions": [
+                {
+                    "blob": "69e8b430029cb520bd7e26be39122e9aeaf2f73b",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.TonalRemoteButton_width=227dp,height=100dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/TonalRemoteButton_width_227dp_height_100dp_dpi_320-facda95f.png",
+            "versions": [
+                {
+                    "blob": "5df59e5f3ee89f9ebf93b52ee251c6686ca698bf",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.VerticalPageIndicatorRemote_width=227dp,height=227dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/VerticalPageIndicatorRemote_width_227dp_height_227dp_dpi_320-5ba65f76.png",
+            "versions": [
+                {
+                    "blob": "a30e86bf1df8c30b3022248976bdab8981814b24",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.SystemThemePreviewsKt.SystemThemeSwatchesRemote_width=227dp,height=100dp,dpi=320": {
+            "path": "renders/samples:design-catalog-remote-m3/SystemThemeSwatchesRemote_width_227dp_height_100dp_dpi_320-58e54dfa.png",
+            "versions": [
+                {
+                    "blob": "354a2f39d991a93cd474f47eea79165e023a7983",
+                    "commit": "9f8e029371ec827653259d2211009c22dc7f189d",
+                    "date": "2026-08-22T14:55:54Z",
+                    "sourceSha": "23197e7f",
                     "commits": 1
                 }
             ],
