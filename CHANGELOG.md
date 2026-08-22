@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.32.0](https://github.com/yschimke/compose-ai-tools/compare/v1.31.0...v1.32.0) (2026-08-22)
+
+
+### Features
+
+* **catalog:** point remote-m3 at the Wear reference catalog, not the harness sheet ([#4458](https://github.com/yschimke/compose-ai-tools/issues/4458)) ([4961667](https://github.com/yschimke/compose-ai-tools/commit/496166789b0fe58f82b1eeca8a46e888a6f0813f))
+* **rc:** default to the embedded player, not the AOSP view player ([#4455](https://github.com/yschimke/compose-ai-tools/issues/4455)) ([eb290a0](https://github.com/yschimke/compose-ai-tools/commit/eb290a0762c173c253c3c06f5aebc46cdb1200b3))
+* **serve:** let an approved agent grant carry image-upload access ([#4456](https://github.com/yschimke/compose-ai-tools/issues/4456)) ([842337a](https://github.com/yschimke/compose-ai-tools/commit/842337ab47af9f3163c75f3ea194f94ab00e69a3))
+
+
+### Bug Fixes
+
+* **auth:** name the requested capabilities in the handoff line ([#4460](https://github.com/yschimke/compose-ai-tools/issues/4460)) ([6e5cef4](https://github.com/yschimke/compose-ai-tools/commit/6e5cef492d1ab67ccf4a9c91d5b99a081582f591))
+* **remote-m3:** say what the kit says, and frame each sticker like the cell it pairs with ([#4461](https://github.com/yschimke/compose-ai-tools/issues/4461)) ([23197e7](https://github.com/yschimke/compose-ai-tools/commit/23197e7f2752da6e5df63acd0aa75560bb1f8da5))
+
 ## [1.31.0](https://github.com/yschimke/compose-ai-tools/compare/v1.30.0...v1.31.0) (2026-08-22)
 
 
