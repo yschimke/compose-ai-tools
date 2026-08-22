@@ -4227,8 +4227,8 @@ class ServeWebFixtureTest {
       "each named group is a tree row pointing at its sub-group anchor",
     )
     assertTrue(
-      landingSections.contains("<div class=\"cp-subgroup\" id=\"cp-group-components-device\">") &&
-        landingSections.contains("<div class=\"cp-subgroup\" id=\"cp-group-screens-device\">"),
+      landingSections.contains("<div class=\"cp-subgroup\" id=\"cp-group-components-device\"") &&
+        landingSections.contains("<div class=\"cp-subgroup\" id=\"cp-group-screens-device\""),
       "a group name reused across sections gets one anchor per section, not a shared one",
     )
     // The `group` still renders as a sub-heading inside its section — the tree navigates to those
@@ -4360,8 +4360,31 @@ class ServeWebFixtureTest {
     assertTrue(
       landingGrouped.contains("role=\"tree\"") &&
         landingGrouped.contains("aria-label=\"Catalog contents\"") &&
-        landingGrouped.contains("<div class=\"cp-subgroup\" id=\"cp-group-button\">"),
+        landingGrouped.contains("<div class=\"cp-subgroup\" id=\"cp-group-button\""),
       "a section-less catalog renders an outline tree over its synthesized families",
+    )
+    // Every sub-group carries its card count as `--cp-n`, which is what lets the sheet lay them
+    // out as CLUSTERS — a one-card family asking for one column instead of a whole five-column
+    // row with four of them painted blank (issue #4423). The count comes from the server because
+    // CSS has no way to ask how many cards a group holds; get it wrong and the layout silently
+    // reserves the wrong width, so it is pinned here rather than left to the pixel diff.
+    assertTrue(
+      landingGrouped.contains("id=\"cp-group-button\" style=\"--cp-n:3\"") &&
+        landingGrouped.contains("id=\"cp-group-card\" style=\"--cp-n:2\"") &&
+        landingGrouped.contains("id=\"cp-group-fab\" style=\"--cp-n:1\"") &&
+        landingGrouped.contains("id=\"cp-group-badge\" style=\"--cp-n:1\""),
+      "each sub-group declares how many cards wide it is",
+    )
+    // The id line is two spans so it can elide from the MIDDLE: clipped at the end, an id says
+    // nothing the label above it hasn't, because what distinguishes one render from its siblings
+    // is the suffix. Split at the last `__`, head shrinks, tail stays.
+    assertTrue(
+      landingGrouped.contains(
+        "<div class=\"cp-id cp-id-elide\">" +
+          "<span class=\"cp-id-head\">button-filled__ideal__default</span>" +
+          "<span class=\"cp-id-tail\">__light</span></div>"
+      ),
+      "a card's id elides from the middle, keeping the mode and the scheme",
     )
     // The design file's pages are their own PANE beside Components, not a branch at the foot of the
     // tree and not a chip in the header row. The branch put them below every family, component and
@@ -6070,9 +6093,18 @@ class ServeWebFixtureTest {
         assetText("serve.css").contains(".cp-sys-actions > a { pointer-events: auto; }"),
       "the action row passes clicks through to the tile link; only its chips take them",
     )
+    // Both halves on one line, and both load-bearing: the rounding, because `overflow: visible`
+    // leaves nothing to clip the layer's square corners to the card's radius; and `z-index: -1`,
+    // which drops the tint UNDER the card's content so it stops washing `primary` across a design
+    // system's own screenshot. Lowering the layer rather than raising the hero is deliberate — a
+    // raised hero also outranks the stretched tile link and has to refuse pointer events, and then
+    // the part of it hanging outside the card stops hovering the card at all. The harness's
+    // "the front door's state layer stays under the hero, and the break-out keeps its hover"
+    // contract proves that end in a browser; this pins the declaration the Kotlin side ships.
     assertTrue(
-      assetText("serve.css").contains(".cp-card.cp-sys::after { border-radius: inherit; }"),
-      "the state layer rounds itself, now that `overflow: visible` no longer clips it to the card",
+      assetText("serve.css")
+        .contains(".cp-card.cp-sys::after { border-radius: inherit; z-index: -1; }"),
+      "the state layer rounds itself and paints beneath the hero instead of over it",
     )
     assertTrue(
       assetText("serve.css")

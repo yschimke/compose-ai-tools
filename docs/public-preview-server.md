@@ -1540,7 +1540,8 @@ page keeps asking for an ordinary pasted screenshot, exactly as it did before.
 A bundle or published catalog can map independently-authored UI mocks to exact preview ids. The
 landing links to **compare to Figma** — the comparison page deep-linked to its `reference` format
 (`/<system>/compare?format=reference`), named after the tool the references came from; that page's
-**PNG ↔ Figma** lane scores the canonical mock against Compose, and the focused comparison shows
+**Figma ↔ PNG** lane scores the canonical mock against Compose — the spec on the left, the render
+on the right, the same order the focused comparison uses — and that focused comparison shows
 **Reference / Diff / Actual** plus an opacity overlay and source provenance.
 
 References use a provider-neutral `compose-preview-references/v1` manifest at
@@ -2184,7 +2185,7 @@ of the feature publishes exactly what it did before.
 A catalog landing links this page as **design parity**, beside — not instead of — its comparison
 actions: **compare to Figma** is the side-by-side table (`/<system>/compare?format=reference`), and
 this page answers the question that table can't: *has this catalog's code drifted from the design
-file it is specified by?* Its subheading links back out to that whole-catalog **PNG ↔ Figma** table
+file it is specified by?* Its subheading links back out to that whole-catalog **Figma ↔ PNG** table
 for every mapped component at once. The design tool the catalog is specified by — read from
 `source.provider: figma` on its references, or from a Figma file named by its parity feed — names
 the comparison action, falling back to **compare to design references** when no tool can be named.

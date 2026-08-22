@@ -793,32 +793,54 @@ const FIXTURE_STATES = [
     },
   },
   {
-    // The wall's REFERENCE lane, which is the only one with a middle column: the delta map between
-    // the render and the design's own drawing. The wall opens on whichever lane the catalog
-    // defaults to — SVG, here — so the diff column is `display: none` in the ordinary shot and
-    // every future change to it (the column's place in the row, the map's ground, whether it paints
-    // at all) would be diffed by nothing. The two lanes are stubbed with DIFFERENT artwork
-    // (`REFERENCE_PLACEHOLDER` against `_render-placeholder.png`), so what lands in this baseline is
-    // a real magenta map over a real mismatch rather than an empty box.
+    // The wall's DESIGN-SPEC lane, which the wall never opens on: `serve-format-compare` is served
+    // with `svg` as its default format, so every other shot of this page shows the render-vs-export
+    // question and none of them show the design one — the lane the catalog's own "compare to Figma"
+    // action deep-links, and the one whose column order is a product-wide rule (spec left, render
+    // right — see `compare/columns.ts`). Without this shot that rule is un-diffed: the columns and
+    // their headers could swap back and no baseline would move.
     //
-    // LAST among this fixture's states, and it has to stay last: states run in order against the
-    // SAME page, and this one leaves the wall on a lane it did not start on. Placed before the
-    // report-menu shot it silently re-captured that baseline with the launcher open over the
-    // reference lane — a state that exists to cover the launcher, quietly covering a different page
-    // instead. A new `serve-format-compare` state goes ABOVE this one, or restores the lane itself.
+    // It is also the only lane with a MIDDLE column — the delta map between the pair — which is
+    // `display: none` everywhere else on this page, so the same applies to it: its seat between the
+    // two pictures, its ground and whether it paints at all would otherwise be covered by nothing.
+    // The two image lanes are stubbed with DIFFERENT artwork (`REFERENCE_PLACEHOLDER` against
+    // `_render-placeholder.png`), so what lands in this baseline is a real magenta map over a real
+    // mismatch rather than an empty box.
+    //
+    // Leaves the wall on a lane it did not start on, so it stays after every other state of this
+    // fixture: run before `report-menu`, it re-captured that baseline over the wrong lane.
     fixture: "serve-format-compare",
     suffix: "reference-lane",
+    // The pointer's resting place is incidental here — the shot is about the table, and a click
+    // left on the format button would photograph its hover state instead.
     parkPointer: true,
     apply: async (page) => {
-      // The report-menu state above leaves its launcher open, and a `<details>` stays open until
-      // something closes it. Closed here rather than by shooting this state first, because the
-      // ordering is the other way round for the reason in the comment above.
-      await page.evaluate(() =>
-        document.querySelector(".cp-fab-menu")?.removeAttribute("open"),
-      );
+      // States run in order against the SAME page, and `report-menu` above leaves the launcher
+      // open over the table this shot is about. Close it first rather than reordering the states,
+      // which would photograph that one on this lane instead.
+      await page.evaluate(() => {
+        document.getElementById("cp-report")?.removeAttribute("open");
+        document.querySelector(".cp-fab-menu")?.removeAttribute("open");
+      });
       await expect(page.locator(".cp-fab-panel")).toBeHidden();
       await page.click('[data-compare-format="reference"]');
+      // The header names the lane and moves with its column — assert both rather than trusting the
+      // pixels, so a reordered table with a stale header fails loudly here.
+      await expect(page.locator(".cp-compare-target-head")).toHaveText("Figma");
       await expect(page.locator(".cp-compare-diff-head")).toBeVisible();
+      // Spec, map, render — in that order. The map's seat is the assertion that matters most here:
+      // it is only a diff of the two pictures if it sits BETWEEN them, and the cells move at
+      // runtime, so nothing else pins it.
+      const cells = await page.evaluate(() => {
+        const row = document.querySelector(".cp-compare-row:not([hidden])");
+        return Array.from(row?.children ?? []).map((cell) => cell.className);
+      });
+      expect(cells.indexOf("cp-compare-target-cell")).toBeLessThan(
+        cells.indexOf("cp-compare-diff-cell"),
+      );
+      expect(cells.indexOf("cp-compare-diff-cell")).toBeLessThan(
+        cells.indexOf("cp-compare-render-cell"),
+      );
       // BOTH halves have to have settled. The map is painted before the pair is scored, so waiting
       // on the canvas alone catches the row mid-run with "comparing…" still in the score cell —
       // and waiting on the score alone would let the shot land on a zero-width canvas.
@@ -2001,6 +2023,24 @@ const FIXTURE_STATES = [
     },
   },
   {
+    // …and the same gesture on a card whose hero is NOT a rectangle. The hover shadow is a
+    // `filter: drop-shadow`, so it traces the hero's own alpha rather than its layout box, and
+    // the card above — an opaque phone screenshot — cannot tell a shaped shadow from a boxed one.
+    // This is the Wear card, stubbed round with transparent corners, where the two differ by the
+    // whole shape of the shadow. It is also the card the break-out zoom has the most room to go
+    // wrong on: a square canvas fills the hero region's height, so if the scale ever grows past
+    // what the card can carry, this is where it collides with the title first.
+    fixture: "serve-home-index",
+    suffix: "card-hover-round",
+    apply: async (page) => {
+      await page.addStyleTag({
+        content:
+          "*, *::before, *::after { transition-duration: 0ms !important; }",
+      });
+      await page.hover('.cp-syslist .cp-card[data-bg-theme="dark"]');
+    },
+  },
+  {
     // The same treatment on a catalog's preview cards, where the tiles are small and dense —
     // the case where an underline sweeping four lines of metadata was worst.
     fixture: "serve-landing-public",
@@ -2971,6 +3011,25 @@ for (const fixture of listPageFixtures()) {
             });
           }
           if (!svg && fixture === "serve-reference-compare-round-device") {
+            return route.fulfill({
+              path: roundRenderPlaceholder,
+              contentType: "image/png",
+            });
+          }
+          // The front door's WEAR cards get the round stub, and this is not decoration: the hover
+          // gesture there casts a shadow shaped by the hero's own alpha
+          // (`filter: drop-shadow` on `.cp-card.cp-sys .cp-imgwrap img`), so a page where every
+          // card is stubbed with the same opaque 200×420 rectangle can only ever diff a
+          // rectangular shadow. A round watch face with transparent corners is the case that
+          // proves the shape follows the picture — and it is the case the front door actually
+          // serves, since the dark-first catalogs here are Wear. Matched on the card's own
+          // `data-bg-theme="dark"` systems by URL, so both hero lanes (`/hero/wear-m3/…` prebaked
+          // and `/confetti-wear/render/…` live) are covered.
+          if (
+            !svg &&
+            fixture === "serve-home-index" &&
+            /wear/.test(url.pathname)
+          ) {
             return route.fulfill({
               path: roundRenderPlaceholder,
               contentType: "image/png",
@@ -4003,4 +4062,155 @@ test("contract · the render history is a menu in the toggle row, and the fit ca
   // The late arrival must still leave the fit cap agreeing with the geometry — the row can wrap
   // when it takes another control, and a wrapped row moves the stage exactly as the strip did.
   expect(applied).toBe(expected);
+});
+
+test("contract · the front door's state layer stays under the hero, and the break-out keeps its hover", async ({
+  page,
+}) => {
+  // Two invariants that arrived together, both invisible to a DOM test and to a still capture.
+  //
+  // The card's `primary` state layer (`.cp-card::after`) drops UNDER the content on a front-door
+  // card, so hovering a tile no longer washes accent colour over the design system's own
+  // screenshot. The first shape of that change raised the HERO above the layer instead, and it
+  // broke the gesture in a way no screenshot shows: the hero then sat above `.cp-sys-open::after`
+  // — the stretched overlay that makes the whole tile one link — so it had to refuse pointer
+  // events to keep the card clickable, and pointing at the part of the scaled hero hanging
+  // OUTSIDE the card hit the page (or the neighbouring tile) rather than this card. The card
+  // stopped matching `:hover` and the artwork retracted from under the pointer that was on it.
+  //
+  // So this pins both ends: the layer is beneath the content, AND the card still answers the
+  // pointer everywhere its hero reaches — above its top edge and past its side — while the tile
+  // link still takes a click over the artwork.
+  for (const [name, contentType] of SERVE_ASSETS) {
+    await page.route(`**/assets/serve/**/${name}`, (route) =>
+      route.fulfill({ path: resolve(serveAssetsDir, name), contentType }),
+    );
+  }
+  await page.route("**/hero/**", (route) =>
+    route.fulfill({ path: renderPlaceholder, contentType: "image/png" }),
+  );
+  await page.route("**/render/**", (route) =>
+    route.fulfill({ path: renderPlaceholder, contentType: "image/png" }),
+  );
+  await page.goto("/preview-harness/fixtures/pages/serve-home-index.html");
+  await page.waitForFunction(() =>
+    Array.from(document.images).every((i) => i.complete),
+  );
+  // The break-out is a transition; the probes below read geometry, so settle it first.
+  await page.addStyleTag({
+    content: "*, *::before, *::after { transition-duration: 0ms !important; }",
+  });
+
+  const card = page.locator(".cp-syslist .cp-card").first();
+  const box = await card.boundingBox();
+  // Park the pointer well inside the card, so the hero is scaled out to its hover size.
+  await page.mouse.move(box.x + box.width / 2, box.y + 150);
+
+  const inside = await page.evaluate(() => {
+    const c = document.querySelector(".cp-syslist .cp-card");
+    const cb = c.getBoundingClientRect();
+    const hit = document.elementFromPoint(
+      cb.left + cb.width / 2,
+      c.querySelector(".cp-imgwrap").getBoundingClientRect().top + 100,
+    );
+    const img = c.querySelector(".cp-imgwrap img").getBoundingClientRect();
+    return {
+      stateLayerZ: Number(getComputedStyle(c, "::after").zIndex),
+      hovered: c.matches(":hover"),
+      hitTag: hit?.tagName,
+      hitHref: hit?.getAttribute("href"),
+      imgTop: img.top,
+      // The hero is wider than the card once scaled — that overhang is what the side probe uses.
+      overhangs: img.width > cb.width && img.top < cb.top,
+    };
+  });
+
+  // Beneath the content, which is where M3 draws a state layer anyway.
+  expect(inside.stateLayerZ).toBeLessThan(0);
+  // Pointing at the middle of the picture still finds the tile link, not the image.
+  expect(inside.hovered).toBe(true);
+  expect(inside.hitTag).toBe("A");
+  expect(inside.hitHref).toBe("/compose-m3/");
+  // The fixture's hero must actually break out, or the two probes below prove nothing.
+  expect(inside.overhangs).toBe(true);
+
+  // Above the card's top edge, onto the strip of hero that hangs over the page.
+  await page.mouse.move(box.x + box.width / 2, inside.imgTop + 4);
+  const strip = await page.evaluate(() => {
+    const c = document.querySelector(".cp-syslist .cp-card");
+    return {
+      hovered: c.matches(":hover"),
+      imgTop: c.querySelector(".cp-imgwrap img").getBoundingClientRect().top,
+    };
+  });
+  expect(strip.hovered).toBe(true);
+  // …and the artwork has not retracted under the pointer standing on it.
+  expect(strip.imgTop).toBeCloseTo(inside.imgTop, 0);
+
+  // The side overhang, which reaches over the neighbouring tile's column.
+  await page.mouse.move(box.x + box.width - 2, box.y + 60);
+  expect(
+    await page.evaluate(() =>
+      document.querySelector(".cp-syslist .cp-card").matches(":hover"),
+    ),
+  ).toBe(true);
+});
+
+test("contract · a catalog's sub-groups share rows instead of each claiming one", async ({
+  page,
+}) => {
+  for (const [name, contentType] of SERVE_ASSETS) {
+    await page.route(`**/assets/serve/**/${name}`, (route) =>
+      route.fulfill({ path: resolve(serveAssetsDir, name), contentType }),
+    );
+  }
+  await page.route("**/render/**", (route) =>
+    route.fulfill({ path: renderPlaceholder, contentType: "image/png" }),
+  );
+  // Pinned rather than inherited: this test is about which sub-groups land on the SAME row, and
+  // that is a function of the pane's width. 1440×1000 is the viewport issue #4423 measured at.
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/preview-harness/fixtures/pages/serve-landing-grouped.html");
+
+  const box = (id) =>
+    page.evaluate((sel) => {
+      const el = document.getElementById(sel);
+      const r = el.getBoundingClientRect();
+      return { top: Math.round(r.top), width: Math.round(r.width) };
+    }, id);
+
+  // FAB and Badge hold one card each. Under the per-sub-group grid they were two rows, each
+  // declaring the pane's full column count and painting all but one of those columns blank
+  // (issue #4423). They are clusters now, so they sit side by side, and a cluster is as wide as
+  // the cards it actually has: Button's three are wider than Badge's one.
+  const fab = await box("cp-group-fab");
+  const badge = await box("cp-group-badge");
+  const button = await box("cp-group-button");
+  const card = await box("cp-group-card");
+  expect(fab.top).toBe(badge.top);
+  expect(fab.width).toBe(badge.width);
+  expect(button.top).toBe(card.top);
+  expect(button.width).toBeGreaterThan(card.width);
+  expect(card.width).toBeGreaterThan(badge.width);
+  // Four sub-groups, two rows — not four.
+  expect(button.top).toBeLessThan(fab.top);
+
+  // No cluster is allowed to push the page sideways, whatever its card count.
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <=
+        document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+
+  // A filter changes how many cards a sub-group is showing, and the cluster has to follow it
+  // down — a family painting one of its three cards must stop reserving three columns.
+  await page.fill("#cp-search", "filled");
+  await page.waitForFunction(
+    () =>
+      document.querySelectorAll("#cp-grid .cp-card:not([hidden])").length === 2,
+  );
+  const filtered = await box("cp-group-button");
+  expect(filtered.width).toBe(badge.width);
 });

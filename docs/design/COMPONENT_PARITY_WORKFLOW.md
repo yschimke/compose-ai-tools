@@ -12,10 +12,12 @@
 > scoped acceptance, element selection, resolution automation — is still a proposal**, and that
 > measurement is the reason to read it again before implementing it.
 >
-> **One thing Phase 1 was supposed to ship and did not:** batch 01 required `element` and `bounds`
-> to be **reserved as optional `v1` fields** before the writer, the parser and the shared fixture
-> froze. Neither engine carries them, and both ignore unknown keys — so batch 03 cannot add the
-> selection to `v1` without a permissive parser silently discarding it. See §7.
+> **`v1` erratum, since delivered:** batch 01 required `element` and `bounds` to be **reserved as
+> optional fields** before the writer, the parser and the shared fixture froze, and Phase 1 shipped
+> without them. Both are now reserved and round-tripped by both engines, `bounds` carrying its plane
+> explicitly (D1), and a body may now carry **one block per component** so an umbrella report
+> reaches every component page it names. §2 has the contract; §7 records what those two decisions
+> settled.
 
 The preview server can already tell you that a component's render and its design reference disagree.
 It cannot tell you whether anyone *knows*. Every comparison is scored from scratch on every page
@@ -122,6 +124,37 @@ and every part of it is already computable on the serve host:
 | `variant` | the axis segments already inside the preview id — **axes only**. Live overrides are *not* folded in here; they travel in their own `overrides` field, because two representations of one fact means two ways to spell it and no rule for which wins |
 | `overrides` | the whole normalised override map the render lane received (display fields, size fields, overlay toggles, `knob.*`, `rc.*`) — the same set §4 matches acceptances on |
 | `revision` | `repo@branch` provenance + the compose-ai-tools version that rendered it |
+| `element` | **reserved**, unwritten until batch 03 — the `testTag` a selection resolved to, as a **JSON string** (`element: "glyph"`) |
+| `bounds` | **reserved**, unwritten until batch 03 — `{"height":…,"space":"render-pixels","width":…,"x":…,"y":…}` |
+
+**A body may carry one block per component, and that is how an umbrella report is indexed.** One
+issue legitimately spans several components — m3-catalog#42's Elevated shadow level covers
+`Button/`, `Card/` and `ToggleButton/Elevated` — and a block can only name one. So `parseLocators`
+reads every fence in the body and the index emits **one row per block**, keyed by issue *and*
+component. The blocks must agree: one `repository`, one `system`, no component twice — two rows with
+one identity collapse against each other in the reader — and **no preview twice**, because
+`issuesForPreview` matches rows by preview id as well as by component, so one preview named by two
+blocks would carry the same issue twice and count two in its badge. The alternative — splitting the
+umbrella into one issue per component — was rejected because it multiplies the backlog and loses the
+one fact that matters most about those issues, that they share a cause.
+
+**`element` and `bounds` are reserved now and written later, deliberately.** Batch 01 called for
+both before the writer, the parsers and the shared fixture froze; that did not happen, and both
+parsers ignore unknown keys, so a batch-03 report carrying a selection would have been indexed with
+the selection silently discarded — no strict-parser rejection to notice it. `bounds` names its space
+rather than being a bare rectangle, and `v1` accepts only `render-pixels`: per D1 both tag-index
+producers publish render pixels and the canonical-plane transform is a step of the **comparison**, a
+plane being a property of a comparison and the index a property of a render. A rectangle with no
+space is exactly what makes an element that never moved report as `moved`. Both values are canonical
+JSON on the same code-point rule the overrides carry — and `element` is a **quoted JSON string**
+rather than a bare value, which is load-bearing rather than tidy: a `testTag` is arbitrary text, the
+block is line-oriented, and a bare tag containing a newline does not stay one field. `row⏎revision:
+injected` would read back as an element plus a revision nobody wrote, and a tag carrying a fence
+delimiter could end the block early and take the whole issue out of the index. Quoting also makes a
+tag with leading or trailing whitespace expressible, which a format whose readers trim cannot
+otherwise carry — so the writer records the selected tag **verbatim**. A tag index keys on the exact
+string, and normalising `" glyph "` into `"glyph"` would point an acceptance at a different element,
+or at none.
 
 Two rules worth writing into the schema doc so they survive contact with a second implementer:
 
@@ -189,6 +222,11 @@ simply not there.
   preview id carrying no `__` axes. "No axes" is a fact about the preview, not a mangled body. Every
   *other* field must be non-blank: an emptied `system` or `preview` means the block no longer names
   one component, and that is a mangled body.
+- **`element` and `bounds` are absent or non-blank.** Reserved fields, so most blocks carry
+  neither; a *blank* one is a mangled body rather than an absent field, as is an `element` that is
+  not a canonical JSON string (a bare tag, or `""`). A `bounds` naming any space
+  other than `render-pixels`, carrying a non-integer or negative extent, a zero width or height, or
+  keys in insertion order rather than code-point order, is refused rather than stored as a guess.
 - **`overrides` keys sort by Unicode code point, not by UTF-16 code unit.** The distinction is
   invisible until a key is astral-plane: JavaScript's default `Array.prototype.sort` orders
   surrogates (`D800`–`DFFF`) below `E000`–`FFFF`, so a canonical block written by
@@ -452,10 +490,15 @@ the actual open question:
   per-pixel rather than aggregate, so it is bounded either way, but the surface it applies to is two
   orders of magnitude larger.
 
-So the question before the conformance fixtures freeze is not "refuse large masks", it is: does an
-acceptance **require** an element gate — which makes #41 inexpressible until the bar's parts are
-tagged — or is a geometric whole-component acceptance allowed, accepting that it re-invalidates on
-every render change and that the churn is the price of expressing #41 at all?
+***Settled: a geometric acceptance is allowed, and an element gate is preferred wherever an element
+exists.*** Requiring the gate outright would make #41 inexpressible until the bar's parts are
+tagged, which puts Phase 2's tag work in front of Phase 3 and leaves the pilot with #40 and #87
+alone. So `v1` permits an acceptance with no `element`, at the price the three bullets above
+describe — it re-invalidates on every render change, and its churn is the cost of being able to
+express #41 at all. An acceptance that *can* name an element must: the gate is what separates "the
+glyph disappeared" from "the glyph is still the wrong colour", and dropping it when it is available
+buys nothing. Refusing masks above a coverage fraction was the third option and was rejected as
+exactly the global threshold the epic's non-goals rule out.
 
 ---
 
@@ -1978,40 +2021,39 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
   does not apply at `1.0`. It had to be settled rather than left open, because the full-scope
   matching rule depends on it. Say so if you want the looser reading; it is a `v1` schema decision
   either way.
-- **One issue, several components.** *Measured, not hypothetical — see "The pilot population" in
-  §3.* Three of `m3-catalog`'s ten known differences are umbrella reports: #42 names three
-  components, #93 spans `Button/*` and `Fab/*`, and #91 names five. The locator carries one
-  `component` and one `preview`, so none of them can be indexed whole. **#91 is not fixed by this
-  decision either way** — its interaction variants are unauthored, so each piece of a split still
-  has no `preview` to name; it belongs with the missing-subject cases below. Two ways out, and they are not equivalent: **split** the umbrella into one issue
-  per component (keeps the contract as written, multiplies the backlog, and loses the fact that the
-  five share a cause), or let a body carry **one locator block per component** and key index rows
-  by issue × component (`previewIds` / `referenceIds` are already arrays on the row; the producer
-  currently refuses a second block outright). **That second option is not a producer-only change:**
-  `ServeParityIssuesStore.sanitize` dedupes with `distinctBy { it.repository to it.number }` before
-  anything component-aware runs, so two rows for one issue collapse to an arbitrary one of them at
-  load time and the umbrella issue would still surface on a single component. Changing the row
-  identity in *both* engines, plus a fixture carrying one repository/number across two components,
-  is part of the decision rather than a follow-up. Either way this is a `v1` wire decision and wants
-  settling before the conformance fixtures freeze, not after two engines have been written against
-  them.
-- **`element` and `bounds` were never reserved in `v1`, and Phase 1 froze without them.** Batch 01
-  called for both as optional fields *before* the writer, the parser and the shared fixture froze,
-  precisely so batch 03 would not have to bump the version to add a selection. Neither
-  `ServeIssueReport.locatorBlock` nor `parseLocator` mentions them today, and both ignore unknown
-  keys — the permissive-parser failure that requirement existed to prevent, so a batch-03 report
-  carrying a selection would be indexed with the selection silently dropped. It cannot simply be
-  fixed now: batch 01 also says `bounds` may not be a bare rectangle, and which plane it is
-  expressed in is [D1](parity-batches/00-decisions.md), still open. So the choice is to answer D1
-  and reserve both fields as a `v1` erratum before anything else writes a locator, or to accept that
-  element selection arrives as `compose-parity-locator/v2`. Cheaper now than after a backlog of
-  filed reports.
+- **One issue, several components.** ***Settled: one locator block per component.*** *Measured, not
+  hypothetical — see "The pilot population" in §3.* Three of `m3-catalog`'s ten known differences
+  are umbrella reports: #42 names three components, #93 spans `Button/*` and `Fab/*`, and #91 names
+  five. A block names one component, so a body carries one block each and the index emits a row per
+  block, keyed by issue × component. Splitting the umbrella into one issue per component was the
+  alternative and was rejected: it multiplies the backlog and loses the fact that the pieces share a
+  cause. **The reader was half of this**, and the half that would have been missed:
+  `ServeParityIssuesStore.sanitize` deduped with `distinctBy { it.repository to it.number }` before
+  anything component-aware ran, so the rows collapsed to an arbitrary one at load time and the issue
+  still reached exactly one component page. Identity is now repository + number + component in both
+  engines, with the shared fixture carrying a body that names two components and one that names the
+  same component twice. **#91 is not fixed by this either way** — its interaction variants are
+  unauthored, so each piece of a split still has no `preview` to name; it belongs with the
+  missing-subject cases below.
+- **`element` and `bounds` were never reserved in `v1`.** ***Settled: reserved as a `v1` erratum,
+  after answering D1.*** Batch 01 called for both as optional fields *before* the writer, the parser
+  and the shared fixture froze, precisely so batch 03 would not have to bump the version to add a
+  selection — and Phase 1 shipped without them. Since both parsers ignore unknown keys, that would
+  have been the permissive failure the requirement existed to prevent: a report carrying a selection
+  indexed with the selection dropped and no error anywhere. Reserving them meant settling
+  [D1](parity-batches/00-decisions.md#d1--which-plane-the-element-tag-index-reports-bounds-in)
+  first, since a rectangle with no plane is the ambiguity that makes an unmoved element report as
+  `moved`; D1 is answered **(a)** — the index publishes render-pixel bounds and names its space, the
+  canonical-plane transform belongs to the comparison — so `v1` accepts `render-pixels` and nothing
+  else. Doing it now cost a fixture case and two parsers; the alternative was a `v2` bump across the
+  writer, the producer and the reader once selection landed.
 - **A parity report needs its subject to be in the catalog.** Three of the ten (#85, #95, #86) are
   about a `DropdownMenu` and an expanded full-screen search view that this catalog does not publish
   — no preview, no reference, nothing to compare, however the locator is shaped. Two more (#89,
   #93) are missing-constant reports whose renders match: those *could* be indexed, since the
-  producer never inspects a pixel, but there is nothing for §4 to accept — a question about what
-  belongs on a component page rather than a limit. Either way §4's population is four issues across
-  six acceptance sites (#40, #41, #87, and #42 three times), not ten. Worth deciding whether the
-  catalog should grow the missing stickers, and whether an upstream-ergonomics report belongs in the
-  index.
+  producer never inspects a pixel, but there is nothing for §4 to accept. ***Settled: index them.***
+  A reader asking "why can't I name this size?" is standing on the component page, which is where
+  the answer belongs — so they carry locators and `area:component` like any other report, and simply
+  never carry an acceptance. §4's population is unchanged by that: four issues across six acceptance
+  sites (#40, #41, #87, and #42 three times), not ten. Still open: whether the catalog should grow
+  the stickers the three missing-subject reports are about.

@@ -1,12 +1,18 @@
 # Compare wall: the middle diff column
 
-Before/after for the delta map on `/{system}/compare?format=reference` — the column that sits
-between the rendered PNG and the design's own drawing and paints, per row, which pixels moved.
+Before/after for the delta map on `/{system}/compare?format=reference` — the column that sits between
+the design's own drawing and the render, and paints, per row, which pixels moved.
 
 | | |
 | --- | --- |
 | `before.png` | two panels and a percentage. Six rows scoring 78–99%, and no way to see *where* the two disagree without opening each row's detail page. |
 | `after.png` | three panels. The same six rows, the same six percentages, and the magenta map that says the alertdialog's whole face is offset while `button-child — Disabled` differs only in the weight of one label. |
+
+Both shots lead with the design reference and put the render on the right. That order is not this
+change — it is the product-wide rule that an imported spec is drawn to the LEFT of the render it is
+compared against (`compare/columns.ts`), and the pair swaps at runtime when the lane changes. What
+this change adds is the column *between* them, which is why `CompareWall` seats the map as part of
+that swap rather than leaving it where the server put it.
 
 The percentages are identical between the two shots on purpose: this adds a column, it does not
 change the measurement. What it does change is that the map and the number now come from **one**
@@ -33,9 +39,14 @@ node shoot.mjs before.png --before
 
 `--before` strips the diff cells and restores the pre-change panel width instead of checking out the
 old assets — the component before this change differed only in never painting a canvas that did not
-exist. That equivalence is checked rather than assumed: the `before.png` here is byte-identical to a
-shot of the same six rows taken against the **deployed** `serve.css` and `serve-components.js` from
-preview.coo.ee.
+exist, and the stylesheet only in not narrowing this lane's panels to make room for a third one.
+
+That equivalence was checked rather than assumed: when this branch opened, `before.png` was
+byte-identical to a shot of the same six rows taken against the **deployed** `serve.css` and
+`serve-components.js` from preview.coo.ee. It is no longer a live check — `main` has since made the
+two picture columns swap sides, so the deployed wall and this fixture no longer draw the same table.
+The pair above still isolates this change cleanly, because both halves are shot from the same merged
+source.
 
 ## What keeps this covered from now on
 

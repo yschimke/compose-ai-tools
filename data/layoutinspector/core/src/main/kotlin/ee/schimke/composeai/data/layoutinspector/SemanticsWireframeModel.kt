@@ -69,6 +69,11 @@ data class WireframeModel(
     }
 
     private fun collect(node: ComposeSemanticsNode, depth: Int, into: MutableList<WireframeBox>) {
+      // Measured but never positioned: an unplaced node reports its bounds at the ORIGIN, so
+      // drawing it stacks a phantom box in the frame's top-left corner rather than out of frame.
+      // A `SubcomposeLayout` that measures a trial copy of its content to choose a layout puts a
+      // whole second subtree there — see `ComposeSemanticsNode.placed`.
+      if (!node.placed) return
       val bounds = parseBounds(node.boundsInRoot)
       if (bounds != null) {
         into.add(

@@ -2568,6 +2568,28 @@ ${captureControlsHtml().prependIndent("          ")}
    */
   private fun flatGroupAnchorId(groupSlug: String) = "cp-group-$groupSlug"
 
+  /**
+   * A card's id line, split so it elides from the MIDDLE rather than the end.
+   *
+   * At a catalog column's width almost every id is clipped, and clipped at the END it conveys
+   * nothing the label above it hasn't already said — `iconbutton-standard__ide…`. What
+   * distinguishes one render from its siblings is the SUFFIX (the mode and the scheme), so the id
+   * is cut at its last `__` and only the head half is allowed to shrink:
+   * `iconbutton-standard__…__light`. CSS has no middle ellipsis, hence the two spans.
+   *
+   * Both spans are always emitted, even for an id with no `__` (empty tail): the grid's light/dark
+   * swap re-fills them in place, and a card that arrived without a tail span would have nowhere to
+   * put its variant's suffix.
+   */
+  private fun cardIdHtml(id: String): String {
+    val cut = id.lastIndexOf("__")
+    val head = if (cut > 0) id.substring(0, cut) else id
+    val tail = if (cut > 0) id.substring(cut) else ""
+    return "<div class=\"cp-id cp-id-elide\">" +
+      "<span class=\"cp-id-head\">${WebEscaping.htmlEscape(head)}</span>" +
+      "<span class=\"cp-id-tail\">${WebEscaping.htmlEscape(tail)}</span></div>"
+  }
+
   /** A component row and the primary-axis variants beneath it. */
   private class TreeComponent(
     val label: String,
@@ -3696,6 +3718,18 @@ ${captureControlsHtml().prependIndent("          ")}
             URL.revokeObjectURL(previous);
           }
         }
+        // The id line elides from the MIDDLE (`iconbutton-standard__…__light`), so it is two spans
+        // and a swap re-fills both rather than overwriting the line with one string — which would
+        // delete the spans and take the elision with them. Same split rule as the server's
+        // `cardIdHtml`: cut at the last `__`, the tail keeps the mode and the scheme.
+        function setCardId(idn, id) {
+          var head = idn.querySelector(".cp-id-head");
+          var tail = idn.querySelector(".cp-id-tail");
+          if (!head || !tail) { idn.textContent = id; return; }
+          var cut = id.lastIndexOf("__");
+          head.textContent = cut > 0 ? id.slice(0, cut) : id;
+          tail.textContent = cut > 0 ? id.slice(cut) : "";
+        }
         function applyVariant(c, k, withSrc) {
           var src = c.getAttribute("data-" + k + "-src");
           if (!src) return;
@@ -3707,7 +3741,7 @@ ${captureControlsHtml().prependIndent("          ")}
           c.setAttribute("href", c.getAttribute("data-" + k + "-href"));
           c.setAttribute("aria-label", lbl);
           if (lab) { lab.textContent = lbl; lab.setAttribute("title", lbl); }
-          if (idn) idn.textContent = c.getAttribute("data-" + k + "-id");
+          if (idn) setCardId(idn, c.getAttribute("data-" + k + "-id"));
           c.setAttribute("data-bg-theme", k === "d" ? "dark" : "light");
         }
         cards.forEach(function (c) {
@@ -3883,10 +3917,18 @@ ${captureControlsHtml().prependIndent("          ")}
       else ""
     val hiddenExpr = if (hasTabs) "!(searchOk && tabOk)" else "!searchOk"
     val shownCond = if (hasTabs) "searchOk && tabOk" else "searchOk"
-    // After the per-card pass, collapse any sub-group / section left with no visible card.
+    // After the per-card pass, collapse any sub-group / section left with no visible card — and
+    // re-size the sub-groups that survived. A cluster's width is its card count (`--cp-n`, see
+    // `.cp-subgroup` in serve.css), and a filter changes that count: a family showing one of its
+    // four cards would otherwise go on reserving four columns and painting three of them blank,
+    // which is the whole thing this layout exists to stop happening.
     val groupPost =
       if (hasGroups)
-        "\n        navGroups.forEach(function (g) { g.hidden = !g.querySelector(\".cp-card:not([hidden])\"); });"
+        "\n        navGroups.forEach(function (g) {" +
+          "\n          var on = g.querySelectorAll(\".cp-card:not([hidden])\").length;" +
+          "\n          g.hidden = !on;" +
+          "\n          if (on) g.style.setProperty(\"--cp-n\", on);" +
+          "\n        });"
       else ""
     val sectionPost =
       if (hasTabs)
@@ -8218,7 +8260,7 @@ ${captureControlsHtml().prependIndent("          ")}
           </div>
           <div class="cp-meta">
             <div class="cp-label" title="${WebEscaping.htmlEscape(def.id)}">${WebEscaping.htmlEscape(defaultLabel)}</div>
-            ${if (componentBrowser) "" else "<div class=\"cp-id\">${WebEscaping.htmlEscape(def.id)}</div>"}$issueBadge
+            ${if (componentBrowser) "" else cardIdHtml(def.id)}$issueBadge
             ${if (componentBrowser) "" else viewCountHtml(cardViews(card))}
           </div>
         </a>
@@ -8285,7 +8327,7 @@ ${captureControlsHtml().prependIndent("          ")}
             </div>
             <div class="cp-meta">
               <div class="cp-label" title="$idText">$label</div>
-              ${if (componentBrowser) "" else "<div class=\"cp-id\">$idText</div>"}$issueBadge
+              ${if (componentBrowser) "" else cardIdHtml(p.id)}$issueBadge
               ${if (componentBrowser) "" else viewCountHtml(engagement[p.id]?.views ?: 0L)}
             </div>
           </a>
@@ -8379,7 +8421,12 @@ ${captureControlsHtml().prependIndent("          ")}
         buildString {
           append("<div class=\"cp-grid-groups\" id=\"cp-grid\">\n")
           synthGroups.forEach { g ->
-            append("<div class=\"cp-subgroup\" id=\"${flatGroupAnchorId(g.slug)}\">\n")
+            // `--cp-n` is the card count, and it is what stops a one-card family from reserving a
+            // whole five-column row: the sheet is a FLOW of clusters, each asking for the width
+            // its own cards occupy (see `.cp-subgroup` in serve.css). Written here rather than
+            // measured in CSS because only the server knows how many cards the group holds.
+            append("<div class=\"cp-subgroup\" id=\"${flatGroupAnchorId(g.slug)}\"")
+            append(" style=\"--cp-n:${g.cards.size}\">\n")
             if (g.name != null)
               append("<h2 class=\"cp-group-head\">${WebEscaping.htmlEscape(g.name)}</h2>\n")
             append("<div class=\"cp-cards\">\n")
@@ -8403,7 +8450,8 @@ ${captureControlsHtml().prependIndent("          ")}
               // The tree's group rows jump here, so a named group carries the anchor id the row
               // links to; an unnamed one has no row and needs none.
               val anchor = if (g.name == null) "" else " id=\"${groupAnchorId(sec.slug, g.slug)}\""
-              append("<div class=\"cp-subgroup\"$anchor>\n")
+              // `--cp-n`: the cluster's width in cards — see the synthesized-groups branch above.
+              append("<div class=\"cp-subgroup\"$anchor style=\"--cp-n:${g.cards.size}\">\n")
               if (g.name != null)
                 append("<h3 class=\"cp-group-head\">${WebEscaping.htmlEscape(g.name)}</h3>\n")
               append("<div class=\"cp-cards\">\n")
@@ -8805,6 +8853,39 @@ ${captureControlsHtml().prependIndent("          ")}
         referencesFor(preview.id).firstNotNullOfOrNull { designToolLabel(it.source.provider) }
       } ?: "Design reference"
     val defaultFormat = if (hasSvg) "svg" else if (hasRc) "rc" else "reference"
+    // An imported design spec is always drawn to the LEFT of the render it is compared against —
+    // the same order the viewer's spec lane states three ways (the Spec / Diff / Render triptych,
+    // the wipe's seam, and the focused Reference / Diff / Actual page). This wall's `reference`
+    // lane is that comparison at catalog scale, so it leads with the spec; `svg` and `rc` pit a
+    // render against an export OF that render, which is a different question and keeps the render
+    // first. `compare/columns.ts` owns the rule, and `<cp-compare-wall>` re-asserts it whenever the
+    // visitor switches lane — this only has to be right for the format the page is SERVED on.
+    val specLeadsColumns = defaultFormat == "reference"
+    val renderCell =
+      "<td class=\"cp-compare-render-cell\"><div class=\"cp-compare-shot\">" +
+        "<img class=\"cp-compare-png\" alt=\"\"></div></td>"
+    // The Remote Compose canvas is CLASSED because a row now holds two of them — this one and the
+    // delta map below — and `<cp-compare-wall>` has to tell the one it plays into from the one it
+    // paints.
+    val targetCell =
+      "<td class=\"cp-compare-target-cell\"><div class=\"cp-compare-shot\">" +
+        "<img class=\"cp-compare-vector\" alt=\"\"><canvas class=\"cp-compare-rc\" hidden></canvas>" +
+        "</div></td>"
+    // The delta map, and it belongs BETWEEN the pair wherever the pair ends up — the reference lane
+    // leads with the spec, the vector lanes lead with the render, and either way the middle column
+    // is what moved between the two beside it. That is the detail page's triptych at catalog scale.
+    // Only the reference lane shows it (`serve.css` keys the column off
+    // `#cp-compare[data-format]`):
+    // the vector lanes compare a render against an export of THAT render, so a map of what moved
+    // between them would be describing the exporter rather than the design.
+    val diffCell =
+      "<td class=\"cp-compare-diff-cell\"><div class=\"cp-compare-shot\">" +
+        "<canvas class=\"cp-compare-diff\" aria-label=\"Highlighted pixel difference\"></canvas>" +
+        "</div></td>"
+    val pictureCells =
+      (if (specLeadsColumns) listOf(targetCell, diffCell, renderCell)
+        else listOf(renderCell, diffCell, targetCell))
+        .joinToString("\n            ")
     val darkFirst = isDarkFirstSystem(basePath, sessionId, declaredSurface)
     // A viewer deep-link may name a non-default state/props variant that is intentionally folded
     // out of this gallery. Keep every sibling id as an alias on the included component row so the
@@ -8907,13 +8988,6 @@ ${captureControlsHtml().prependIndent("          ")}
                 ?.let { " data-declared-bg-$variant=\"$it\"" }
             }
             .joinToString("")
-        // The middle cell is the delta map, sat exactly where the detail page puts it: rendered
-        // PNG, diff, design reference. Every row carries one, but only the reference lane shows it
-        // (`serve.css` keys the column off `#cp-compare[data-format]`) — that is the one lane
-        // comparing independently-authored artwork, so it is the one where "which pixels moved" is
-        // a question rather than a description of the exporter. The Remote Compose canvas beside it
-        // is CLASSED rather than left bare because a row now holds two canvases, and
-        // `<cp-compare-wall>` has to be able to tell the one it plays into from the one it paints.
         """
           <tr class="cp-compare-row" data-label="${WebEscaping.htmlEscape(label)}"
             data-hay="${WebEscaping.htmlEscape(hay)}" data-preview-ids="${WebEscaping.htmlEscape(ids)}"$pngAttrs$svgAttrs$rcAttrs$referenceAttrs$declaredBgAttrs>
@@ -8921,9 +8995,7 @@ ${captureControlsHtml().prependIndent("          ")}
             if (variant.isEmpty()) ""
             else "<span class=\"cp-compare-variant\">${WebEscaping.htmlEscape(variant)}</span>"
           }</a></th>
-            <td><div class="cp-compare-shot"><img class="cp-compare-png" alt=""></div></td>
-            <td class="cp-compare-diff-cell"><div class="cp-compare-shot"><canvas class="cp-compare-diff" aria-label="Highlighted pixel difference"></canvas></div></td>
-            <td><div class="cp-compare-shot"><img class="cp-compare-vector" alt=""><canvas class="cp-compare-rc" hidden></canvas></div></td>
+            $pictureCells
             <td class="cp-compare-score">waiting…</td>
           </tr>
           """
@@ -8946,8 +9018,10 @@ ${captureControlsHtml().prependIndent("          ")}
       if (hasReference)
         append(
           "<button type=\"button\" class=\"cp-theme-btn\" data-compare-format=\"reference\" " +
-            "aria-pressed=\"${defaultFormat == "reference"}\">PNG ↔ " +
-            "${WebEscaping.htmlEscape(referenceToolLabel)}</button>"
+            // Named in the order the columns stand: the spec leads this lane, so the button that
+            // enters it does too. Every other lane keeps the render first and says "PNG ↔ …".
+            "aria-pressed=\"${defaultFormat == "reference"}\">" +
+            "${WebEscaping.htmlEscape(referenceToolLabel)} ↔ PNG</button>"
         )
     }
     val themeControls =
@@ -8966,6 +9040,22 @@ ${captureControlsHtml().prependIndent("          ")}
           .trimIndent()
       else ""
 
+    // Named for the lane it is actually showing, not the constant `SVG` this used to be: with the
+    // columns free to swap, a header over the wrong picture does not merely omit a fact, it states
+    // the pair backwards. `compare/columns.ts` keeps the client's relabelling in step.
+    val targetHead =
+      when (defaultFormat) {
+        "reference" -> referenceToolLabel
+        "rc" -> "Remote Compose"
+        else -> "SVG"
+      }
+    val renderHeadHtml = "<th class=\"cp-compare-render-head\">Rendered PNG</th>"
+    val targetHeadHtml =
+      "<th class=\"cp-compare-target-head\">${WebEscaping.htmlEscape(targetHead)}</th>"
+    val diffHeadHtml = "<th class=\"cp-compare-diff-head\">Diff</th>"
+    val pictureHeads =
+      if (specLeadsColumns) targetHeadHtml + diffHeadHtml + renderHeadHtml
+      else renderHeadHtml + diffHeadHtml + targetHeadHtml
     val empty =
       if (rows.isEmpty())
         "<p class=\"cp-empty\">No previews in this session carry a comparable format.</p>"
@@ -8973,7 +9063,7 @@ ${captureControlsHtml().prependIndent("          ")}
         """
         <div class="cp-compare-table-wrap">
           <table class="cp-compare-table">
-            <thead><tr><th>Preview</th><th>Rendered PNG</th><th class="cp-compare-diff-head">Diff</th><th class="cp-compare-target-head">SVG</th><th>Match</th></tr></thead>
+            <thead><tr><th>Preview</th>$pictureHeads<th>Match</th></tr></thead>
             <tbody>$rows</tbody>
           </table>
         </div>
@@ -8996,7 +9086,8 @@ ${captureControlsHtml().prependIndent("          ")}
       "data-default-format=\"$defaultFormat\" data-default-theme=\"${if (darkFirst) "dark" else "light"}\" " +
         "data-theme-key=\"${WebEscaping.htmlEscape(themeStorageKey(sessionId, basePath))}\" " +
         "data-has-svg=\"${if (hasSvg) "1" else "0"}\" data-has-rc=\"${if (hasRc) "1" else "0"}\" " +
-        "data-has-reference=\"${if (hasReference) "1" else "0"}\"" +
+        "data-has-reference=\"${if (hasReference) "1" else "0"}\" " +
+        "data-reference-label=\"${WebEscaping.htmlEscape(referenceToolLabel)}\"" +
         (if (rcLanes != null) " data-rc-lanes=\"1\"" else "")
 
     return document(
@@ -10568,13 +10659,22 @@ $cards
           groups.entries.joinToString("\n") { (component, rows) ->
             "<section class=\"cp-parity-issue-group\"><h3>${esc(component)} (${rows.size})</h3>${parityIssueRowsHtml(rows)}</section>"
           }
+        // The heading counts *components*, and `open` is rows: an umbrella issue contributes one
+        // row per component it names, so counting rows here would report three components with an
+        // open issue where one issue names three.
         val openBand =
-          "<h2 class=\"cp-status-sec\">Components with open issues (${open.size})</h2>" +
+          "<h2 class=\"cp-status-sec\">Components with open issues (${groups.size})</h2>" +
             if (open.isEmpty()) "<p class=\"cp-muted\">No open issues.</p>" else summary
+        // The closed band is flat and its rows do not name a component, so one closed umbrella
+        // issue
+        // would otherwise render as three identical links under a count that claims three issues.
+        // The open band above needs no such collapse: it groups by component, which is exactly what
+        // distinguishes those rows from each other.
+        val closedIssues = closed.distinctBy { it.repository to it.number }
         val closedBand =
-          if (closed.isEmpty()) ""
+          if (closedIssues.isEmpty()) ""
           else
-            "<h2 class=\"cp-status-sec\">Closed issues (${closed.size})</h2>${parityIssueRowsHtml(closed)}"
+            "<h2 class=\"cp-status-sec\">Closed issues (${closedIssues.size})</h2>${parityIssueRowsHtml(closedIssues)}"
         openBand + closedBand
       }
     val issueBand =

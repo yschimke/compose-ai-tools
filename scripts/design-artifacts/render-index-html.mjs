@@ -423,7 +423,7 @@ export function renderIndexHtml(catalog, opts = {}) {
 <header class="top">
   <h1>${esc(title)}</h1>
   <div class="subtitle">${subtitleParts.join(" · ")}</div>
-  <div class="subtitle"><a class="pagelink" href="compare.html">PNG vs SVG compare ↗</a>${
+  <div class="subtitle"><a class="pagelink" href="compare.html">SVG vs PNG compare ↗</a>${
     crossSystem
       ? ` <a class="pagelink" href="matches.html">↔ ${esc(crossSystem.title)} matches ↗</a>`
       : ""

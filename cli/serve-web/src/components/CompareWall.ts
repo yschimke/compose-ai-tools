@@ -26,6 +26,7 @@ import {
     type Available,
     type Format,
 } from "../compare/pairing.js";
+import { specLeadsColumns, targetHeadLabel } from "../compare/columns.js";
 import { initialState, poppedState, type WallState } from "../compare/state.js";
 import { GEOMETRY_REPORT_THRESHOLD } from "../compare/thresholds.js";
 import {
@@ -66,6 +67,11 @@ export class CompareWall extends LitElement {
     /** The published Remote Compose player wall, when this catalog has one. */
     private lanesPane: HTMLElement | null = null;
     private formatsPane: HTMLElement | null = null;
+    /** The two picture columns' headers, so the pair can swap sides and stay named. */
+    private renderHead: HTMLElement | null = null;
+    private targetHead: HTMLElement | null = null;
+    /** The middle column's header, which rides between the pair wherever the pair goes. */
+    private diffHead: HTMLElement | null = null;
 
     private available: Available = { svg: false, rc: false, reference: false };
     private state!: WallState;
@@ -109,6 +115,9 @@ export class CompareWall extends LitElement {
             root.querySelectorAll<HTMLElement>(".cp-compare-row"),
         );
         this.body = root.querySelector("#cp-compare-formats tbody");
+        this.renderHead = root.querySelector(".cp-compare-render-head");
+        this.targetHead = root.querySelector(".cp-compare-target-head");
+        this.diffHead = root.querySelector(".cp-compare-diff-head");
         this.lanesPane = document.getElementById("cp-rc-lanes");
         this.formatsPane = document.getElementById("cp-compare-formats");
         this.count = document.getElementById("cp-compare-count");
@@ -251,6 +260,7 @@ export class CompareWall extends LitElement {
         }
         this.root.setAttribute("data-format", this.state.format);
         this.root.setAttribute("data-theme", this.state.theme);
+        this.orderColumns();
 
         // The lane wall is its own view: it owns its rows, its reference picker and its diffs, and
         // needs none of the per-row scoring below — every number it shows was computed offline. Hand
@@ -284,6 +294,36 @@ export class CompareWall extends LitElement {
             for (const row of visible) this.body?.appendChild(row);
             this.applySearch();
         });
+    }
+
+    /**
+     * Put the design spec on the left of the render, on the lane where there is one.
+     *
+     * The server renders the table in the order its OWN default format wants; a visitor who arrives
+     * on `?format=reference`, or presses the Figma button, changes the question the two columns are
+     * answering, so the columns move to match. Moving the cells (rather than reordering with CSS)
+     * is what keeps the header, the picture and the copied-out DOM agreeing — and a table cell has
+     * no `order` to give anyway.
+     *
+     * Idempotent: every run re-asserts the order, and a pair already in it is left untouched.
+     */
+    private orderColumns(): void {
+        const specFirst = specLeadsColumns(this.state.format);
+        if (this.targetHead) {
+            this.targetHead.textContent = targetHeadLabel(
+                this.state.format,
+                this.root.getAttribute("data-reference-label") ?? "",
+            );
+            lead(this.targetHead, this.renderHead, specFirst, this.diffHead);
+        }
+        for (const row of this.rows) {
+            lead(
+                cellOf(row, ".cp-compare-target-cell"),
+                cellOf(row, ".cp-compare-render-cell"),
+                specFirst,
+                cellOf(row, ".cp-compare-diff-cell"),
+            );
+        }
     }
 
     private applySearch(): void {
@@ -594,4 +634,42 @@ declare global {
     interface HTMLElementTagNameMap {
         "cp-compare-wall": CompareWall;
     }
+}
+
+/** A row's picture cell, by its own class — position is what we are about to change. */
+function cellOf(row: HTMLElement, selector: string): HTMLElement | null {
+    return row.querySelector<HTMLElement>(selector);
+}
+
+/**
+ * Ensure [spec] sits before [render] when [specFirst], else after it, with [middle] between them.
+ *
+ * Both have to be present and siblings for there to be an order at all — a table rendered with the
+ * pair in one cell (or with one of them absent) is left exactly as it is rather than half-moved.
+ *
+ * [middle] is the delta map, and it has to be part of THIS decision rather than left where the
+ * server put it: it is only a diff of the two pictures if it sits between them, and swapping a pair
+ * that had something parked in the middle would otherwise shunt that something to the end. Absent
+ * or in another row, it is ignored and the pair is ordered on its own.
+ */
+function lead(
+    spec: HTMLElement | null,
+    render: HTMLElement | null,
+    specFirst: boolean,
+    middle: HTMLElement | null = null,
+): void {
+    if (!spec || !render || spec === render) return;
+    const parent = spec.parentElement;
+    if (!parent || render.parentElement !== parent) return;
+    const [first, second] = specFirst ? [spec, render] : [render, spec];
+    const seat = middle?.parentElement === parent ? middle : null;
+    if (!seat) {
+        if (first.nextElementSibling === second) return;
+        parent.insertBefore(first, second);
+        return;
+    }
+    if (first.nextElementSibling === seat && seat.nextElementSibling === second)
+        return;
+    parent.insertBefore(first, second);
+    parent.insertBefore(seat, second);
 }

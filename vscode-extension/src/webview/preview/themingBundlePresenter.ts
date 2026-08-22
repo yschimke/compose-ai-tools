@@ -304,6 +304,8 @@ export function computeThemingBundleData(
 export interface SemanticsLookupNode {
     nodeId: string;
     boundsInRoot: string;
+    /** Measured AND positioned on the frame. Omitted when true (schema v15). */
+    placed?: boolean;
     children?: SemanticsLookupNode[];
 }
 
@@ -333,6 +335,13 @@ export function buildSemanticsBoundsMap(
     const out = new Map<string, OverlayBox>();
     if (!payload || !payload.root) return out;
     const visit = (node: SemanticsLookupNode): void => {
+        // An unplaced node was measured but never positioned, so it has no
+        // position at all — `boundsInRoot` reads as the origin, which is a
+        // box in the frame's top-left corner rather than "nowhere". A
+        // `SubcomposeLayout` measuring a trial copy of its content to pick a
+        // layout (Wear `AlertDialogContent`) leaves a whole second tree
+        // there, so the subtree goes with it.
+        if (node.placed === false) return;
         const bounds = parseBounds(node.boundsInRoot);
         if (bounds) {
             out.set(node.nodeId, {

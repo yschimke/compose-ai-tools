@@ -128,37 +128,147 @@ export function fitRgba(data, width, height, targetWidth, targetHeight) {
 }
 
 /**
+ * The tight box of pixels that are not fully transparent, or null when nothing is drawn at all.
+ *
+ * A Figma component node is exported at its own `absoluteBoundingBox`, and a kit routinely draws
+ * that box larger than the component: the Material 3 kit wraps a 32dp XSmall button in a 48dp
+ * touch-target frame, and every icon button, checkbox, switch and radio in a 48dp one. Those extra
+ * rows and columns are empty, but they are pixels, and [placeRgba] used to size its reduction off
+ * them — so a component that matched the render exactly was published two thirds the size, and the
+ * comparison then reported the padding instead of the design (m3-catalog#180).
+ */
+export function alphaBounds(data, width, height) {
+  if (width <= 0 || height <= 0) return null;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < height; y++) {
+    const row = y * width * 4;
+    for (let x = 0; x < width; x++) {
+      if (data[row + x * 4 + 3] === 0) continue;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (maxX < 0) return null;
+  return { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
+}
+
+/**
+ * The tight box of non-transparent pixels inside `region` of an RGBA raster, or null when it holds
+ * none. Windowed rather than whole-raster so a caller that deliberately nominates a sub-rect keeps
+ * its meaning: only the artwork it named decides the placement.
+ */
+function drawnBoundsIn(data, width, region) {
+  let minX = region.x1;
+  let minY = region.y1;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = region.y0; y < region.y1; y++) {
+    const row = y * width * 4;
+    for (let x = region.x0; x < region.x1; x++) {
+      if (data[row + x * 4 + 3] === 0) continue;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (maxX < 0) return null;
+  return { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
+}
+
+/**
+ * Where to start drawing a `placed`-long axis so the content occupying `[start, start + size)` of
+ * it sits centred in `target`, clamped so content that fits is never pushed off an edge.
+ *
+ * `start` and `size` are measured in the RESAMPLED raster, not estimated from the source by the
+ * scale. Estimating was wrong twice over: once against the unrounded factor, and once more when a
+ * `ceil` on a fractional edge reported a 25-row content box as 26, skipped the clamp as "does not
+ * fit", and cropped the row it was protecting.
+ */
+function centreOn(start, size, target) {
+  const offset = Math.floor((target - size) / 2) - start;
+  if (size > target) return offset;
+  return Math.min(Math.max(offset, -start), target - (start + size));
+}
+
+/**
  * Centre a raster on a transparent target canvas without enlarging it.
  *
  * This is the operation a density-matched component export needs. Its pixel dimensions already
  * describe the component at the renderer's scale; fitting it upward to consume a padded preview
- * canvas would change that scale. An oversized source is still reduced uniformly so it remains
- * representable rather than being clipped.
+ * canvas would change that scale.
+ *
+ * `content` — a sub-rect of the source, defaulting to the whole of it — is what has to stay
+ * representable, and it is centred rather than the raster it sits in. An oversized source is still
+ * reduced uniformly, but only when its *content* overflows: transparent margin that would otherwise
+ * force a reduction is cropped away instead, because empty pixels carry nothing the comparison can
+ * read and shrinking the artwork to keep them costs it the one thing it can.
+ *
+ * The returned `box` is where the WHOLE source landed, not where the content did — it may start
+ * outside the canvas or extend past it once a margin has been cropped. That is deliberate: the
+ * annotation layer maps design-frame coordinates through this box, and a box describing anything
+ * but the frame would put every greenline somewhere the artwork is not.
  */
-export function placeRgba(data, width, height, targetWidth, targetHeight) {
+export function placeRgba(data, width, height, targetWidth, targetHeight, content = undefined) {
   if (width <= 0 || height <= 0 || targetWidth <= 0 || targetHeight <= 0) {
     throw new Error(`place: bad dimensions ${width}x${height} -> ${targetWidth}x${targetHeight}`);
   }
-  const scale = Math.min(1, targetWidth / width, targetHeight / height);
-  const placedWidth = Math.max(1, Math.min(targetWidth, Math.round(width * scale)));
-  const placedHeight = Math.max(1, Math.min(targetHeight, Math.round(height * scale)));
-  const box = {
-    width: placedWidth,
-    height: placedHeight,
-    x: Math.floor((targetWidth - placedWidth) / 2),
-    y: Math.floor((targetHeight - placedHeight) / 2),
-  };
+  const keep =
+    content && content.width > 0 && content.height > 0
+      ? content
+      : { x: 0, y: 0, width, height };
+  const scale = Math.min(1, targetWidth / keep.width, targetHeight / keep.height);
+  const placedWidth = Math.max(1, Math.round(width * scale));
+  const placedHeight = Math.max(1, Math.round(height * scale));
   const placed =
     placedWidth === width && placedHeight === height
       ? data
       : resampleRgba(data, width, height, placedWidth, placedHeight);
-  if (box.width === targetWidth && box.height === targetHeight) return { data: placed, box };
+
+  // Where the content actually ended up, read off the resampled raster. The placed dimensions are
+  // rounded and a bilinear edge lands where it lands, so anything derived from `scale` alone is an
+  // estimate — and an estimate a pixel out either crops the artwork or mis-centres it.
+  const scaleX = placedWidth / width;
+  const scaleY = placedHeight / height;
+  const window = {
+    x0: Math.max(0, Math.floor(keep.x * scaleX) - 1),
+    y0: Math.max(0, Math.floor(keep.y * scaleY) - 1),
+    x1: Math.min(placedWidth, Math.ceil((keep.x + keep.width) * scaleX) + 1),
+    y1: Math.min(placedHeight, Math.ceil((keep.y + keep.height) * scaleY) + 1),
+  };
+  const drawn = drawnBoundsIn(placed, placedWidth, window) ?? {
+    x: window.x0,
+    y: window.y0,
+    width: Math.max(1, window.x1 - window.x0),
+    height: Math.max(1, window.y1 - window.y0),
+  };
+
+  // Centre the CONTENT on the canvas, then say where that puts the frame around it.
+  const box = {
+    width: placedWidth,
+    height: placedHeight,
+    x: centreOn(drawn.x, drawn.width, targetWidth),
+    y: centreOn(drawn.y, drawn.height, targetHeight),
+  };
+  if (box.width === targetWidth && box.height === targetHeight && box.x === 0 && box.y === 0) {
+    return { data: placed, box };
+  }
   const out = Buffer.alloc(targetWidth * targetHeight * 4);
-  const rowBytes = box.width * 4;
-  for (let y = 0; y < box.height; y++) {
-    const from = y * rowBytes;
-    const to = ((y + box.y) * targetWidth + box.x) * 4;
-    out.set(placed.subarray(from, from + rowBytes), to);
+  // Clip: a cropped margin puts part of the source outside the canvas, by design.
+  const fromY = Math.max(0, -box.y);
+  const toY = Math.min(placedHeight, targetHeight - box.y);
+  const fromX = Math.max(0, -box.x);
+  const toX = Math.min(placedWidth, targetWidth - box.x);
+  for (let y = fromY; y < toY; y++) {
+    if (toX <= fromX) break;
+    const from = (y * placedWidth + fromX) * 4;
+    const to = ((y + box.y) * targetWidth + (fromX + box.x)) * 4;
+    out.set(placed.subarray(from, from + (toX - fromX) * 4), to);
   }
   return { data: out, box };
 }

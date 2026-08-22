@@ -5,7 +5,7 @@
   "description": "Payload for the `compose/semantics` data product: the Compose semantics tree projected for a render. Kotlin source of truth: ComposeSemanticsPayload / ComposeSemanticsNode in :data-layoutinspector-core. Each node carries a stable `ref` (see #1784).",
   "x-composeai": {
     "kind": "compose/semantics",
-    "schemaVersion": 14,
+    "schemaVersion": 15,
     "kotlinType": "ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload",
     "kotlinConst": "ComposeSemanticsProduct.SCHEMA_VERSION",
     "fixture": "vscode-extension/preview-harness/fixtures/inspection-tree.json"
@@ -30,6 +30,7 @@
         "testTag": { "type": ["string", "null"] },
         "mergeMode": { "type": ["string", "null"] },
         "clickable": { "type": "boolean", "description": "Defaults to false; omitted when default." },
+        "placed": { "type": "boolean", "description": "Whether the node was measured AND positioned on the frame (v15). False for a subtree a SubcomposeLayout measured without ever placing — a trial measure reports its bounds at the origin, which reads as the frame's top-left corner rather than as nowhere. Defaults to true; omitted when default." },
         "tokens": { "anyOf": [{ "$ref": "#/definitions/ComposeSemanticsTokens" }, { "type": "null" }], "description": "Resolved design-token data from this node's modifiers (#1897). Omitted when the node declares none." },
         "children": { "type": "array", "items": { "$ref": "#/definitions/ComposeSemanticsNode" }, "description": "Omitted when empty." }
       }
