@@ -749,8 +749,12 @@ ${rows.map((r, i) => rowHtml(r, lanes, i)).join("\n")}
   td { padding:12px 8px; vertical-align:top; }
   figure.cell { margin:0; }
   figcaption { font-size:11px; color:var(--muted); margin-bottom:4px; }
+  /* Checkered on the *diff neutral* (#808080, the grey rc-compare-pixels.mjs flattens both sides
+     onto), not on the page: the lane PNGs are stickers on transparency, and a light one — a white
+     icon, a pale swatch — vanishes against a pale ground. The checker keeps transparency legible as
+     transparency; the mid-grey keeps light and dark content contrasting the way the score does. */
   .cell img { display:block; max-width:280px; width:100%; height:auto; border:1px solid var(--line); border-radius:6px; background:
-    repeating-conic-gradient(#0000 0% 25%, color-mix(in srgb, var(--fg) 6%, transparent) 0% 50%) 50% / 20px 20px; }
+    repeating-conic-gradient(#8c8c8c 0% 25%, #747474 0% 50%) 50% / 20px 20px; }
   /* The chosen reference is called out rather than diffed against itself. */
   .refbadge { display:none; margin-left:6px; padding:1px 6px; border-radius:999px; background:var(--accent); color:#fff; font-size:10px; text-transform:uppercase; letter-spacing:.04em; }
   figure.cell.is-reference .refbadge { display:inline-block; }

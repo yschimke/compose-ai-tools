@@ -9,7 +9,13 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { PNG } from "pngjs";
 
-import { BG, flattenOnto, isFullyTransparent, splitCoverage } from "./rc-compare-pixels.mjs";
+import {
+  BG,
+  flattenOnto,
+  flattenedCopy,
+  isFullyTransparent,
+  splitCoverage,
+} from "./rc-compare-pixels.mjs";
 
 /** A tiny RGBA image; `fill` is called per pixel and returns `[r, g, b, a]`. */
 function image(width, height, fill) {
@@ -77,6 +83,28 @@ test("flattening composites partial alpha toward the background", () => {
 test("flattening leaves opaque pixels untouched", () => {
   const png = flattenOnto(image(1, 1, () => [10, 20, 30, 255]), BG);
   assert.deepEqual([...png.data], [10, 20, 30, 255]);
+});
+
+test("flattenedCopy flattens the copy and leaves the source alone", () => {
+  // The published-render case: the lane PNG is written from the source, so the diffing neutral must
+  // not reach it. A transparent pixel stays transparent on the source and becomes the neutral on
+  // the copy.
+  const source = image(1, 1, () => [255, 0, 0, 0]);
+  const copy = flattenedCopy(source, BG);
+  assert.deepEqual([...source.data], [255, 0, 0, 0], "the source keeps its alpha");
+  assert.deepEqual([...copy.data], [...BG, 255]);
+  assert.equal(isFullyTransparent(source), true, "the source is still readable as blank");
+});
+
+test("flattenedCopy matches flattenOnto pixel for pixel", () => {
+  const partial = () => image(4, 4, (x, y) => [255, 0, 0, (x + y) * 16]);
+  assert.deepEqual([...flattenedCopy(partial(), BG).data], [...flattenOnto(partial(), BG).data]);
+});
+
+test("flattenedCopy carries the source dimensions, which the size gate reads", () => {
+  const copy = flattenedCopy(image(7, 3, () => [0, 0, 0, 255]), BG);
+  assert.equal(copy.width, 7);
+  assert.equal(copy.height, 3);
 });
 
 /**

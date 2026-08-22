@@ -52,7 +52,12 @@ import {
   readCmpWasmAllowlist,
   summarizeCmpWasmPixelParity,
 } from "./rc-compare-gate.mjs";
-import { BG, flattenOnto, isFullyTransparent, splitCoverage } from "./rc-compare-pixels.mjs";
+import {
+  BG,
+  flattenedCopy,
+  isFullyTransparent,
+  splitCoverage,
+} from "./rc-compare-pixels.mjs";
 import { laneSplit as laneSplitFor } from "./rc-compare-means.mjs";
 import { generationDensity } from "./rc-document-header.mjs";
 import { DEFAULT_FONTS_DIR, fontFaceCss, loadAndVerifyFonts } from "./rc-fonts.mjs";
@@ -258,7 +263,9 @@ if (EMBEDDED_JVM) {
  *
  * `baked` is already flattened onto the neutral background by the caller, so the embedded render is
  * flattened the same way before diffing — otherwise a transparent-background render would score as
- * a false match the same way the baked stickers would.
+ * a false match the same way the baked stickers would. The neutral stays *out* of the published
+ * PNG: these bytes are also what a served catalog hands back for `?rcPlayer=cmp-android`, so the
+ * file written here is the harness's own capture, alpha intact.
  *
  * `referenceBlank` suppresses the percentage (the images are still written, so the blank reference
  * is visible on the page) — see `isFullyTransparent`.
@@ -282,12 +289,13 @@ function embeddedFor(id, baked, bakedUnflattened, width, height, referenceBlank)
       embeddedDiff: "",
     };
   }
-  const embRaw = PNG.sync.read(fs.readFileSync(png));
+  const embBytes = fs.readFileSync(png);
+  const embRaw = PNG.sync.read(embBytes);
   const embCoverage =
     embRaw.width === width && embRaw.height === height
       ? splitCoverage(bakedUnflattened, embRaw.data, width, height)
       : null;
-  const emb = flattenOnto(embRaw, BG);
+  const emb = flattenedCopy(embRaw, BG);
   if (emb.width !== width || emb.height !== height) {
     return {
       embeddedRendered: false,
@@ -300,7 +308,7 @@ function embeddedFor(id, baked, bakedUnflattened, width, height, referenceBlank)
   }
   const diff = new PNG({ width, height });
   const px = pixelmatch(baked.data, emb.data, diff.data, width, height, { threshold: THRESHOLD });
-  fs.writeFileSync(path.join(dirs.embedded, `${id}.png`), PNG.sync.write(emb));
+  fs.writeFileSync(path.join(dirs.embedded, `${id}.png`), embBytes);
   fs.writeFileSync(path.join(dirs.embeddedDiff, `${id}.png`), PNG.sync.write(diff));
   return {
     embeddedRendered: true,
@@ -337,12 +345,13 @@ function embeddedJvmFor(id, baked, bakedUnflattened, width, height, referenceBla
       embeddedJvmDiff: "",
     };
   }
-  const embRaw = PNG.sync.read(fs.readFileSync(png));
+  const embBytes = fs.readFileSync(png);
+  const embRaw = PNG.sync.read(embBytes);
   const embCoverage =
     embRaw.width === width && embRaw.height === height
       ? splitCoverage(bakedUnflattened, embRaw.data, width, height)
       : null;
-  const emb = flattenOnto(embRaw, BG);
+  const emb = flattenedCopy(embRaw, BG);
   if (emb.width !== width || emb.height !== height) {
     return {
       embeddedJvmRendered: false,
@@ -355,7 +364,7 @@ function embeddedJvmFor(id, baked, bakedUnflattened, width, height, referenceBla
   }
   const diff = new PNG({ width, height });
   const px = pixelmatch(baked.data, emb.data, diff.data, width, height, { threshold: THRESHOLD });
-  fs.writeFileSync(path.join(dirs.embeddedJvm, `${id}.png`), PNG.sync.write(emb));
+  fs.writeFileSync(path.join(dirs.embeddedJvm, `${id}.png`), embBytes);
   fs.writeFileSync(path.join(dirs.embeddedJvmDiff, `${id}.png`), PNG.sync.write(diff));
   return {
     embeddedJvmRendered: true,
@@ -503,7 +512,7 @@ async function cmpWasmFor(id, bytes, baked, bakedUnflattened, width, height, ref
       pngRaw.width === width && pngRaw.height === height
         ? splitCoverage(bakedUnflattened, pngRaw.data, width, height)
         : null;
-    const png = flattenOnto(pngRaw, BG);
+    const png = flattenedCopy(pngRaw, BG);
     if (cmpWasmConsoleErrors.length) {
       throw new Error(`unexpected console error: ${cmpWasmConsoleErrors.join(" | ")}`);
     }
@@ -512,7 +521,7 @@ async function cmpWasmFor(id, bytes, baked, bakedUnflattened, width, height, ref
     }
     const diff = new PNG({ width, height });
     const px = pixelmatch(baked.data, png.data, diff.data, width, height, { threshold: THRESHOLD });
-    fs.writeFileSync(path.join(dirs.cmpWasm, `${id}.png`), PNG.sync.write(png));
+    fs.writeFileSync(path.join(dirs.cmpWasm, `${id}.png`), settled.buffer);
     fs.writeFileSync(path.join(dirs.cmpWasmDiff, `${id}.png`), PNG.sync.write(diff));
     return {
       cmpWasmRendered: true,
@@ -590,13 +599,14 @@ for (const id of rcIds) {
     console.log(`rc-compare: no baked PNG for ${id}, skipping`);
     continue;
   }
-  // Ask about blankness first: `flattenOnto` composites the alpha away in place.
-  const bakedRaw = PNG.sync.read(entries.get(pngName)());
+  const bakedBytes = entries.get(pngName)();
+  const bakedRaw = PNG.sync.read(bakedBytes);
   const referenceBlank = isFullyTransparent(bakedRaw);
-  // Keep the un-flattened pixels: `splitCoverage` below needs to know which side actually painted,
-  // and `flattenOnto` composites that away in place.
+  // `splitCoverage` below needs to know which side actually painted, which is what flattening
+  // composites away — so the flattening the diff needs happens on a copy and these stay the
+  // capture's own pixels.
   const bakedUnflattened = Buffer.from(bakedRaw.data);
-  const baked = flattenOnto(bakedRaw, BG);
+  const baked = flattenedCopy(bakedRaw, BG);
   const rcB64 = entries.get(`ir/${id}.rc`)().toString("base64");
   const { width, height } = baked;
 
@@ -669,24 +679,26 @@ for (const id of rcIds) {
       ...embeddedJvm,
       ...cmpWasm,
     });
-    fs.writeFileSync(path.join(dirs.baked, `${id}.png`), PNG.sync.write(baked));
+    fs.writeFileSync(path.join(dirs.baked, `${id}.png`), bakedBytes);
     console.log(`  ${name}: NOT RENDERED (${rows[rows.length - 1].note})`);
     continue;
   }
 
-  const rcRaw = PNG.sync.read(Buffer.from(result.dataUrl.split(",")[1], "base64"));
-  // Split before flattening: `mismatchPct` below can't tell "the player drew this the wrong colour"
-  // from "the player didn't draw here at all", and on an under-filling card the second dominates.
+  const rcBytes = Buffer.from(result.dataUrl.split(",")[1], "base64");
+  const rcRaw = PNG.sync.read(rcBytes);
+  // Split on the un-flattened pixels: `mismatchPct` below can't tell "the player drew this the
+  // wrong colour" from "the player didn't draw here at all", and on an under-filling card the
+  // second dominates.
   const coverage = splitCoverage(bakedUnflattened, rcRaw.data, width, height);
-  const rcPng = flattenOnto(rcRaw, BG);
+  const rcPng = flattenedCopy(rcRaw, BG);
   const diff = new PNG({ width, height });
   const mismatchPx = pixelmatch(baked.data, rcPng.data, diff.data, width, height, {
     threshold: THRESHOLD,
   });
   const mismatchPct = (100 * mismatchPx) / (width * height);
 
-  fs.writeFileSync(path.join(dirs.baked, `${id}.png`), PNG.sync.write(baked));
-  fs.writeFileSync(path.join(dirs.rc, `${id}.png`), PNG.sync.write(rcPng));
+  fs.writeFileSync(path.join(dirs.baked, `${id}.png`), bakedBytes);
+  fs.writeFileSync(path.join(dirs.rc, `${id}.png`), rcBytes);
   fs.writeFileSync(path.join(dirs.diff, `${id}.png`), PNG.sync.write(diff));
 
   rows.push({
