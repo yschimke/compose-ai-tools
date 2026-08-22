@@ -216,3 +216,23 @@ test("placeRgba keeps content that exactly fits, despite the resample's rounding
   const { data: out } = placeRgba(data, 380, 380, 151, 151, content);
   assert.deepEqual(alphaBounds(out, 151, 151), { x: 0, y: 0, width: 151, height: 151 });
 });
+
+test("placeRgba keeps content that fits after an asymmetric reduction", () => {
+  // A tall narrow artwork in the corner of a much larger raster: the reduction rounds 63 -> 30, and
+  // the content really occupies 25 of those rows. Estimating it from the scale said 26, read that
+  // as "does not fit", skipped the clamp and cropped the top row.
+  const content = { x: 0, y: 0, width: 10, height: 53 };
+  const data = raster(50, 63, (x, y) => (x < 10 && y < 53 ? [0, 0, 0, 255] : [0, 0, 0, 0]));
+  const { data: out } = placeRgba(data, 50, 63, 25, 25, content);
+  assert.deepEqual(alphaBounds(out, 25, 25), { x: 10, y: 0, width: 5, height: 25 });
+});
+
+test("placeRgba nominates only the content it was given", () => {
+  // Two separated marks; the caller names the left one. The right one is drawn but must not decide
+  // the placement — otherwise a deliberately narrowed rect silently means nothing.
+  const data = raster(40, 10, (x, y) =>
+    (x < 4 && y < 10) || (x >= 36 && y < 10) ? [0, 0, 0, 255] : [0, 0, 0, 0],
+  );
+  const { box } = placeRgba(data, 40, 10, 20, 10, { x: 0, y: 0, width: 4, height: 10 });
+  assert.equal(box.x, 8);
+});

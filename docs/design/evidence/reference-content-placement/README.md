@@ -92,14 +92,24 @@ knows for a fact from the placement it just performed, so it passes that in:
 
 All 107 cells in the issue are the first kind; the checkbox residue is the second.
 
+One place the check cannot speak, and says so rather than inventing an answer: a catalog publishing
+with `--reference-backdrop`. The reference's box is measured before the backdrop goes on, but the
+sticker's cannot be — a `showBackground` preview is opaque edge to edge, so its alpha bounds the
+watch face and never the component. Those pairs are counted in the tally as out of scope instead of
+comparing 1:1 by construction.
+
 `splitbutton-filled__ideal__xl` is the case that shows the uniform test working. Its reference is
 371x126 against a 1049x105 render — but the kit node is 400x136 with no empty margin anywhere, so
 the placement has nothing to crop and this change does not move it. Width ratio 0.35 against height
 ratio 1.2 is not uniform, so the gate leaves it to `geometry`: the kit's XL split button is 136dp
 tall and the render's is 40dp, which is a defect in the component, not in the export.
 
-One rounding note, because it is easy to get wrong and invisible when you do: the placed dimensions
-are rounded before the resample, so the offset has to be measured against the scale that was
-actually applied rather than the one that was asked for. Against the unrounded factor, a 300-unit
-vector fitted to 151px published as 150 — a column short, silently. `centreOn` derives the offset
-from `placedWidth / width` and clamps content that fits so the rounding cannot push it off an edge.
+One note on the arithmetic, because it is easy to get wrong and invisible when you do: **nothing
+about the placement is estimated from `scale`.** The raster is resampled first and the content's box
+is then read off the result, and the offset and the fits-or-not clamp both come from that. Two
+different bugs came from estimating it instead, each costing a row or column with no sign anywhere:
+centring on the unrounded factor published a 300-unit vector fitted to 151px as 150, and a `ceil` on
+a fractional edge reported a content box that really occupied 25 rows as 26, read that as "does not
+fit", skipped the clamp meant to protect it and cropped it. The measurement is windowed to the rect
+the caller nominated, so naming a sub-rect of a raster that draws more than one thing still means
+what it says.
