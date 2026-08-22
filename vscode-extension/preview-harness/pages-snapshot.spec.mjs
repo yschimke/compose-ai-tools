@@ -2813,6 +2813,67 @@ const FIXTURE_STATES = [
       await page.waitForTimeout(300);
     },
   },
+  {
+    // The Dev-mode `uses:` operator, ACTIVE. Nothing about it is visible on a resting page — it
+    // is an operator in the existing filter box, deliberately, rather than a control that would
+    // sit empty on every catalog — so without this shot the whole surface would be diffed by
+    // nothing. What it has to show is the part a screenshot can carry and prose cannot: that the
+    // cards left standing are ones whose NAMES do not say "button", and that the count line names
+    // the filter back to the reader.
+    //
+    // The endpoint is stubbed rather than served. What is under test here is the page's half —
+    // the parse and the index behind it are `PreviewUsageIndexTest`'s subject — and a real answer
+    // would need this fixture's `com.example.*` previews to exist in a repository to fetch.
+    fixture: "serve-landing",
+    suffix: "uses-filter",
+    parkPointer: true,
+    apply: async (page) => {
+      await page.route("**/api/uses*", (route) =>
+        route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify({
+            available: true,
+            truncated: false,
+            ids: ["com.example.CardPreview", "com.example.ProfileScreenPreview"],
+          }),
+        }),
+      );
+      await page.fill("#cp-search", "uses:Button");
+      // The answer arrives over the network, so the grid narrows a frame or two after the
+      // keystroke. Waiting on the readout's own text is what makes the shutter deterministic: it
+      // is written only once `apply()` has re-run with the resolved ids.
+      await page.waitForFunction(() =>
+        /call Button/.test(
+          document.getElementById("cp-uses-status")?.textContent || "",
+        ),
+      );
+    },
+  },
+  {
+    // The same operator where the catalog cannot be indexed — no source metadata, no parser
+    // sidecar, no fetcher. This is the state the `available` flag exists for: an empty grid that
+    // says "call index unavailable" rather than one that silently reads as "nothing calls that".
+    // It is a different picture from the one above by exactly one line of text, which is the
+    // point — that line is the entire difference between an answer and a shrug.
+    fixture: "serve-landing",
+    suffix: "uses-unavailable",
+    parkPointer: true,
+    apply: async (page) => {
+      await page.route("**/api/uses*", (route) =>
+        route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify({ available: false, truncated: false, ids: [] }),
+        }),
+      );
+      // A different token, so the page's per-token cache cannot answer this from the state above.
+      await page.fill("#cp-search", "uses:Slider");
+      await page.waitForFunction(() =>
+        /call index unavailable/.test(
+          document.getElementById("cp-uses-status")?.textContent || "",
+        ),
+      );
+    },
+  },
 ];
 
 /** Page fixtures = `fixtures/pages/*.html`, honouring the `HARNESS_FIXTURE` narrow. */
@@ -3498,6 +3559,123 @@ test("contract · a tree row's jump has landed before the shutter, not during it
   expect(await page.evaluate(() => window.scrollY)).toBe(landed);
   await page.waitForTimeout(400);
   expect(await page.evaluate(() => window.scrollY)).toBe(landed);
+});
+
+test("contract · a uses: filter spans every section, like any other filter", async ({
+  page,
+}) => {
+  // A filter ignores tab selection and searches the whole catalog; only a resting page is scoped
+  // to the open section. `uses:Foo` alone leaves the TEXT query empty, so a `q !== ""` test reads
+  // it as resting and keeps every other section hidden — matches outside the open tab vanish, and
+  // the readout counts only what survived. This holds the operator to the same rule the text
+  // filter has always had (#4424 review).
+  for (const [name, contentType] of SERVE_ASSETS) {
+    await page.route(`**/assets/serve/**/${name}`, (route) =>
+      route.fulfill({
+        contentType,
+        body: readFileSync(resolve(serveAssetsDir, name), "utf8"),
+      }),
+    );
+  }
+  await page.route("**/render/**", (route) =>
+    route.fulfill({ path: renderPlaceholder }),
+  );
+  await page.goto("/preview-harness/fixtures/pages/serve-landing-sections.html");
+
+  // Pick a REAL section, not the All row this catalog opens on. On `all` every card passes the tab
+  // predicate whatever the query is, so a test that skipped this step would pass with the fix
+  // reverted — it did, which is how this step earned its place.
+  const [picked, away] = await page.evaluate(() => {
+    const sections = Array.from(document.querySelectorAll(".cp-section")).filter(
+      (s) => s.querySelector("[data-uses-id]"),
+    );
+    const target = sections[sections.length - 1];
+    const other = sections.find((s) => s !== target);
+    return [
+      other.getAttribute("data-section"),
+      target.querySelector("[data-uses-id]").getAttribute("data-uses-id"),
+    ];
+  });
+  expect(picked).toBeTruthy();
+  expect(away).toBeTruthy();
+
+  // Select the section the match is NOT in, and confirm the card really is hidden first — so the
+  // assertion below is about the filter revealing it, not about it having been visible all along.
+  await page.click(`.cp-tab[data-tab="${picked}"], [data-tab="${picked}"]`);
+  await page.waitForFunction(
+    (id) => document.querySelector(`[data-uses-id="${id}"]`)?.hidden === true,
+    away,
+    { timeout: 15_000 },
+  );
+
+  await page.route("**/api/uses*", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ available: true, truncated: false, ids: [away] }),
+    }),
+  );
+  await page.fill("#cp-search", "uses:Foo");
+  await page.waitForFunction(
+    (id) => {
+      const card = document.querySelector(`[data-uses-id="${id}"]`);
+      return card && !card.hidden;
+    },
+    away,
+    { timeout: 15_000 },
+  );
+
+  // And the readout counted it, rather than counting only the open tab.
+  await expect(page.locator("#cp-uses-status")).toContainText("1 of");
+});
+
+test("contract · the Pages pane filters on what was typed, not on the remainder", async ({
+  page,
+}) => {
+  // `usesSplit` strips `uses:Foo` out of the query before the pane split runs, so a uses-only
+  // query reached the Pages pane as an EMPTY string — which that pane reads as "no filter" and
+  // answers by showing every page, while the readout above it described the hidden component grid.
+  // Design sheets have no composables to call, so the honest answer is the pane's own empty state
+  // (#4424 review).
+  for (const [name, contentType] of SERVE_ASSETS) {
+    await page.route(`**/assets/serve/**/${name}`, (route) =>
+      route.fulfill({
+        contentType,
+        body: readFileSync(resolve(serveAssetsDir, name), "utf8"),
+      }),
+    );
+  }
+  await page.route("**/render/**", (route) =>
+    route.fulfill({ path: renderPlaceholder }),
+  );
+  await page.route("**/pages/*.svg**", (route) =>
+    route.fulfill({ contentType: "image/svg+xml", body: PAGE_PLACEHOLDER }),
+  );
+  await page.route("**/api/uses*", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ available: true, truncated: false, ids: [] }),
+    }),
+  );
+  await page.goto("/preview-harness/fixtures/pages/serve-landing-grouped.html");
+
+  // Top-level page rows only — the nested section links under a branch are filtered as a unit
+  // with it, so counting both would blur what this is measuring.
+  const pageRows = () =>
+    page.evaluate(
+      () =>
+        Array.from(
+          document.querySelectorAll("#cp-pane-pages .cp-page-list > li"),
+        ).filter((r) => !r.hidden).length,
+    );
+
+  await page.click('.cp-pane-tab[data-pane="pages"]');
+  await expect.poll(pageRows).toBeGreaterThan(0);
+
+  await page.fill("#cp-search", "uses:Button");
+  // `uses:Button` is not any sheet's name, so the pane empties and says so. Before the fix the
+  // operator was stripped first, the pane filtered on "" and every row stayed.
+  await expect.poll(pageRows, { timeout: 15_000 }).toBe(0);
+  await expect(page.locator("#cp-pages-empty")).toBeVisible();
 });
 
 test("contract · the sidebar filter follows the pane it is pointed at", async ({

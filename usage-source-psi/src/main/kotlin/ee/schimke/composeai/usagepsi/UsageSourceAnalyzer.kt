@@ -58,7 +58,8 @@ class UsageSourceAnalyzer : AutoCloseable {
   }
 
   /**
-   * [source] → a JSON object of `calls`, or `{"error":"…"}` if it could not be parsed at all.
+   * [source] → a JSON object of `calls` and `declarations`, or `{"error":"…"}` if it could not be
+   * parsed at all.
    *
    * Never throws across the reflective boundary: an exception here would surface in the caller as
    * an `InvocationTargetException` carrying a frontend-loaded class the caller cannot name. A JSON
@@ -75,6 +76,19 @@ class UsageSourceAnalyzer : AutoCloseable {
       json {
         arrayField("calls", PsiTreeUtil.findChildrenOfType(file, KtCallExpression::class.java)) {
           call(it)
+        }
+        // The file's top-level declarations, in source order. Reported for the same reason the
+        // calls are: a caller that has to say WHICH declaration a call belongs to would otherwise
+        // infer the boundaries from formatting, and the blank-line rule that is safe for seeding an
+        // editor buffer (over-select rather than truncate) is wrong here — over-selecting merges
+        // two declarations, and every call in both is then attributed to each.
+        arrayField("declarations", file.declarations) { declaration ->
+          // `textRange` starts at the declaration proper. `startOffsetSkippingComments` would skip
+          // the KDoc the other way; what is wanted is the widest honest span, so the KDoc and
+          // annotations that precede a `fun` count as part of it rather than as a gap between
+          // declarations.
+          number("start", declaration.textRange.startOffset)
+          number("end", declaration.textRange.endOffset)
         }
       }
     } catch (e: Throwable) {

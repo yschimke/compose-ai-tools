@@ -3249,14 +3249,27 @@ ${captureControlsHtml().prependIndent("          ")}
    * whenever the module has previews (independent of the theme toggle, which only appears for
    * per-theme catalogs).
    */
-  private fun searchBoxHtml(): String =
-    """
+  private fun searchBoxHtml(usesFilter: Boolean = false): String {
+    // The `uses:` operator's readout, and the only furniture it adds to the page. Empty and hidden
+    // until the operator is typed, so a Dev-mode visitor who never uses it sees the same search bar
+    // as before; `role="status"` because what it reports arrives asynchronously, after a keystroke
+    // the reader has already finished making.
+    //
+    // It exists because the landing grid has no count line to borrow — `#cp-count` is emitted by
+    // the comparison pages, not this one — and without a readout the operator would narrow the grid
+    // with nothing on the page saying why, and an unindexable catalog would look exactly like a
+    // catalog where nothing matched.
+    val status =
+      if (!usesFilter) ""
+      else "\n      <p id=\"cp-uses-status\" class=\"cp-uses-status\" role=\"status\" hidden></p>"
+    return """
     <div class="cp-searchbar">
       <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
-        autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
+        autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">$status
     </div>
     """
       .trimIndent()
+  }
 
   /**
    * Landing-grid controls: the search box (matches a card's label + id, case-insensitive) and, when
@@ -3309,7 +3322,16 @@ ${captureControlsHtml().prependIndent("          ")}
      * the script it always did.
      */
     hasAllTab: Boolean = false,
+    /**
+     * Endpoint for the Dev-mode `uses:` operator ([usesFilterScript]). Empty — the default, and
+     * every Catalog-mode render — leaves out every mention of it, so that presentation emits the
+     * script byte-for-byte as before.
+     */
+    usesUrl: String = "",
   ): String {
+    // Declared before anything that branches on it — the tab predicate and the pane split below
+    // both ask whether the operator is wired.
+    val usesFilter = usesUrl.isNotEmpty()
     val hasDeclaredThemes = themeBaseJs.isNotEmpty()
     val themeLeaseUrlJs = WebEscaping.jsString(themeLeaseUrl)
     // Spliced one level in, so a page with no presence URL emits the script byte-for-byte as
@@ -3878,10 +3900,18 @@ ${captureControlsHtml().prependIndent("          ")}
           "\n      document.documentElement.classList.add(\"cp-js\");"
       else ""
     // A card is shown when it matches the search AND (while not searching) sits in the current tab.
+    // A filter spans every section; tab selection is ignored until it clears. `uses:` is a filter,
+    // so the same has to be true of it — and it is not enough to test `q`, because a query that is
+    // ONLY `uses:Foo` leaves `q` empty. Reading that as "not searching" kept every other section
+    // hidden, so matches outside the selected tab vanished and the readout counted only the cards
+    // in it. `reflectTabs`'s own `searching` was already right about this — it reads the raw input,
+    // where the operator is still present — which is why the branches opened while the cards under
+    // them stayed hidden; this line is the half that disagreed.
+    val searchingExpr = if (usesFilter) "(q !== \"\" || usesActive())" else "q !== \"\""
     val tabOkLine =
       if (hasTabs)
         "\n          var sec = c.closest(\".cp-section\");" +
-          "\n          var tabOk = q !== \"\" || !sec" +
+          "\n          var tabOk = $searchingExpr || !sec" +
           allTabCardClause +
           " || sec.getAttribute(\"data-section\") === current;"
       else ""
@@ -3974,10 +4004,17 @@ ${captureControlsHtml().prependIndent("          ")}
     // filter" under a sidebar that just found the Shape page, which is the box contradicting
     // itself. The grid belongs to the Components pane, so it is filtered when that pane is the one
     // showing and left whole otherwise.
+    // The Pages pane lists design sheets, which have no composables to call — so `uses:` is a
+    // question they cannot answer, and the pane filters on the RAW query rather than on the
+    // operator-stripped remainder. Without that, a query of only `uses:Foo` reached the pane as an
+    // empty string and showed every page while the readout above described the hidden component
+    // grid. Filtering on the raw text instead lands the pane on its own empty state, which is the
+    // truthful answer to "which of these sheets calls a Button".
+    val paneQExpr = if (usesFilter) "usesRawQuery" else "q"
     val paneSplit =
       if (!hasPanes) ""
       else
-        "\n        var paneQ = pane === \"pages\" ? q : \"\";" +
+        "\n        var paneQ = pane === \"pages\" ? $paneQExpr : \"\";" +
           "\n        if (pane === \"pages\") q = \"\";"
     val paneWiring =
       if (!hasPanes) ""
@@ -4067,6 +4104,24 @@ ${captureControlsHtml().prependIndent("          ")}
           "\n          });" +
           "\n          reflectTabs();"
       else ""
+    // ---- The Dev-mode `uses:` operator
+    //
+    // Four small splices rather than a second script: the operator narrows the SAME card list the
+    // text filter narrows, so it has to share `apply()` and the state around it. A parallel script
+    // would need its own pass over the cards and could disagree with this one about which are
+    // showing — the exact failure the pane strip's comment above describes.
+    val usesDecls = if (usesFilter) usesFilterScript(usesUrl) else ""
+    val queryExpr =
+      if (usesFilter) "var q = usesSplit(input ? input.value.trim() : \"\");"
+      else "var q = input ? input.value.trim().toLowerCase() : \"\";"
+    // Parenthesised only when there is a second conjunct, so a Catalog-mode script keeps the exact
+    // expression it had rather than gaining redundant brackets in every page fixture.
+    val searchOkExpr =
+      if (usesFilter) "(q === \"\" || hay.indexOf(q) !== -1) && usesOk(c)"
+      else "q === \"\" || hay.indexOf(q) !== -1"
+    // Written at the END of `apply()`, so the readout describes the grid as it now stands rather
+    // than as it was before this pass narrowed it.
+    val usesReport = if (usesFilter) "\n        usesReport(shown, total);" else ""
     val popWiring =
       "\n      if (urlState) {" +
         "\n        urlState.onPop(function () {$themePop$tabPop" +
@@ -4088,21 +4143,21 @@ ${captureControlsHtml().prependIndent("          ")}
       function urlParam(n) { return urlState ? urlState.get(n) : ""; }
       function pushUrl(v) { if (urlState) urlState.push(v); }
       function replaceUrl(v) { if (urlState) urlState.replace(v); }
-      if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }$groupDecls$treeDecls$tabDecls$paneDecls
+      if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }$usesDecls$groupDecls$treeDecls$tabDecls$paneDecls
       ${listOf(themeInit, themeRenderInit).filter { it.isNotEmpty() }.joinToString("\n")}
       function apply() {
         $applyTheme
-        var q = input ? input.value.trim().toLowerCase() : "";$paneSplit
+        $queryExpr$paneSplit
         var shown = 0;
         cards.forEach(function (c) {
           var lab = c.querySelector(".cp-label");
           var idn = c.querySelector(".cp-id");
           var hay = ((lab ? lab.textContent : "") + " " + (idn ? idn.textContent : "")).toLowerCase();
-          var searchOk = q === "" || hay.indexOf(q) !== -1;$tabOkLine
+          var searchOk = $searchOkExpr;$tabOkLine
           c.hidden = $hiddenExpr;
           if ($shownCond) shown++;
         });
-        if (count) count.textContent = q === "" ? (total + " preview" + (total === 1 ? "" : "s")) : (shown + " of " + total);
+        if (count) count.textContent = q === "" ? (total + " preview" + (total === 1 ? "" : "s")) : (shown + " of " + total);$usesReport
         if (empty) empty.hidden = shown !== 0;$groupPost$sectionPost$treePost$panePost
       }
       if (input) input.addEventListener("input", function () {
@@ -4117,6 +4172,116 @@ ${captureControlsHtml().prependIndent("          ")}
     })();
     """
       .trimIndent()
+  }
+
+  /**
+   * The `uses:` operator's state and helpers, spliced into [catalogFilterScript]'s IIFE.
+   *
+   * ### What it is
+   *
+   * `uses:Button` in the landing filter box narrows the grid to previews whose declaration
+   * **calls** something matching `Button` — resolved by the server
+   * ([ServeHttpServer.handleUsesSearch]), which parses the catalog's own source. It composes with
+   * the ordinary text filter, which keeps its meaning: `uses:Button tonal` is "calls a Button, and
+   * is called something with `tonal` in it".
+   *
+   * ### Why an operator and not a control
+   *
+   * The alternative was a second input, or a chip beside the search box. Both would put a question
+   * about *this repository's source* into the furniture of a page whose other controls are about
+   * the design system — and it would sit there, empty, on every catalog and for every visitor. An
+   * operator costs nothing until it is typed, rides the existing `?q=` (so a `uses:` search is as
+   * bookmarkable and shareable as any other filter), and reads as what it is. It is not hidden: the
+   * count line names the filter back to you the moment it is active.
+   *
+   * ### Unresolved is not empty
+   *
+   * A token whose answer has not arrived yet shows no cards and says so ("looking for calls to …"),
+   * and a catalog that cannot be indexed at all says *that* ("call index unavailable") rather than
+   * reporting an honest-looking zero. The distinction is the whole reason the endpoint answers with
+   * an `available` flag instead of just a list.
+   */
+  private fun usesFilterScript(usesUrl: String): String {
+    val script =
+      """
+      // ---- `uses:<composable>` — which previews CALL a thing (Dev mode only)
+      var usesEndpoint = ${WebEscaping.jsString(usesUrl)};
+      var usesToken = "";
+      var usesRawQuery = "";
+      var usesCache = {};
+      var usesPending = {};
+      // Whether a `uses:` filter is running right now. Asked wherever the page would otherwise
+      // test `q !== ""` to mean "a filter is on": a query of only `uses:Foo` leaves `q` empty, and
+      // every such test would then read as "resting".
+      function usesActive() { return usesToken !== ""; }
+      // Pulls `uses:<token>` out of the raw query and returns what is left for the text filter.
+      // It also notices a CHANGE of token and starts the lookup, which is why it is one function
+      // and not a pure split: `apply()` is the only place that reads the box, so it is the only
+      // place that can see the token change, and a separate listener would have to re-parse the
+      // same string and could disagree with this one about what was typed.
+      function usesSplit(raw) {
+        var found = "";
+        var rest = raw.replace(/(^|\s)uses:(\S*)/i, function (m, lead, t) { found = t; return lead; });
+        if (found !== usesToken) { usesToken = found; usesFetch(found); }
+        // Kept for the Pages pane, which filters on what was TYPED rather than on the remainder —
+        // see `paneQ` in the filter script.
+        usesRawQuery = raw.trim().toLowerCase();
+        return rest.trim().toLowerCase();
+      }
+      function usesEntry() { return usesToken ? usesCache[usesToken.toLowerCase()] : null; }
+      // A card carries its default preview id; every variant folded onto it shares that declaration.
+      function usesOk(c) {
+        if (usesToken === "") return true;
+        var entry = usesEntry();
+        if (!entry || !entry.available) return false;
+        var id = c.getAttribute("data-uses-id");
+        return !!id && entry.ids.indexOf(id) !== -1;
+      }
+      // The readout under the search box. Hidden entirely while the operator is not in use, so the
+      // page is unchanged for a visitor who never types it.
+      function usesReport(shown, total) {
+        var el = document.getElementById("cp-uses-status");
+        if (!el) return;
+        if (usesToken === "") { el.hidden = true; el.textContent = ""; return; }
+        var entry = usesEntry();
+        var note;
+        if (!entry) note = "looking for calls to " + usesToken + "…";
+        else if (!entry.available) note = "call index unavailable";
+        else
+          note =
+            shown + " of " + total + " call " + usesToken +
+            (entry.truncated ? " (partial index)" : "");
+        el.textContent = note;
+        el.hidden = false;
+      }
+      function usesFetch(t) {
+        if (t === "") return;
+        var key = t.toLowerCase();
+        if (usesCache[key] || usesPending[key]) return;
+        usesPending[key] = true;
+        var sep = usesEndpoint.indexOf("?") === -1 ? "?" : "&";
+        // Any failure — 404 in Catalog mode, an offline tab, a body that isn't JSON — lands as
+        // "unavailable" rather than as an empty result, so the count line never reports a zero the
+        // server did not actually compute.
+        var unavailable = { available: false, truncated: false, ids: [] };
+        fetch(usesEndpoint + sep + "q=" + encodeURIComponent(key))
+          .then(function (r) { return r.ok ? r.json() : unavailable; })
+          .catch(function () { return unavailable; })
+          .then(function (data) {
+            usesCache[key] = {
+              available: !!data.available,
+              truncated: !!data.truncated,
+              ids: (data.ids || []).slice()
+            };
+            delete usesPending[key];
+            apply();
+          });
+      }
+      """
+        .trimIndent()
+    // Spliced one level in, the way [presenceScript] is, so the emitted script keeps the IIFE's
+    // indentation instead of stitching a flush-left block into the middle of it.
+    return script.lines().joinToString("") { if (it.isEmpty()) "\n" else "\n      $it" }
   }
 
   /**
@@ -7945,6 +8110,13 @@ ${captureControlsHtml().prependIndent("          ")}
     // per-catalog localStorage entries and the dark-first lookup, which a site still needs.
     val linkSessionId = if (sessionInOrigin) null else sessionId
     val q = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
+    // The Dev-mode `uses:` operator's endpoint (`ServeHttpServer.handleUsesSearch`). Empty in
+    // Catalog mode, which is what keeps the operator out of that presentation entirely: no
+    // `data-uses-id` on a card, no branch of it in the filter script, and the same bytes on the
+    // wire a Catalog-mode visitor got before this existed. The route itself is gated the same way,
+    // so an empty string here is a matching front end to a 404 rather than the only lock.
+    val usesUrl = if (componentBrowser) "" else "$basePath/api/uses$q"
+    val usesFilter = usesUrl.isNotEmpty()
     val themeLeaseUrl =
       if (themeRenderBurstCapacity > 1) "$basePath/api/theme-render-lease$q" else ""
     val navSuffix =
@@ -8166,7 +8338,12 @@ ${captureControlsHtml().prependIndent("          ")}
     // rather than from position, so a row keeps pointing at the same component as the catalog
     // grows.
     fun cardHtml(card: GridCard): String {
-      val anchor = " id=\"${cardAnchors.getValue(card.default.id)}\""
+      // The `uses:` filter matches on the card's DEFAULT preview id, and one id is enough: a
+      // component's themes, states, sizes and content variants are renders of one declaration, so
+      // they share a source file and a body line and would every one of them carry the same answer.
+      val usesId =
+        if (usesFilter) " data-uses-id=\"${WebEscaping.htmlEscape(card.default.id)}\"" else ""
+      val anchor = " id=\"${cardAnchors.getValue(card.default.id)}\"" + usesId
       return if (card.swappable) swapCard(card, anchor) else singleCard(card.default, anchor)
     }
     val cards =
@@ -8289,7 +8466,8 @@ ${captureControlsHtml().prependIndent("          ")}
     // A tree stands BESIDE what it navigates. Its filter is part of that navigation, so the two
     // share one sidebar and remain together when the menu becomes sticky. A small catalog with no
     // tree keeps the filter in the toolbar above its flat grid.
-    val sidebarSearch = if (tabBar.isEmpty() || previews.isEmpty()) "" else searchBoxHtml() + "\n"
+    val sidebarSearch =
+      if (tabBar.isEmpty() || previews.isEmpty()) "" else searchBoxHtml(usesFilter) + "\n"
     // With both lists in play the tree becomes the Components PANE and the pages get their own,
     // with the switch above the filter that serves them both. The strip leads: it says what the
     // column is showing, and the filter below it reads as belonging to whichever that is.
@@ -8334,7 +8512,7 @@ ${captureControlsHtml().prependIndent("          ")}
     // Search + empty-state + the combined filter script are shown whenever there are previews to
     // filter, independent of the theme axis.
     val hasPreviews = previews.isNotEmpty()
-    val searchBox = if (hasPreviews && tabBar.isEmpty()) searchBoxHtml() + "\n" else ""
+    val searchBox = if (hasPreviews && tabBar.isEmpty()) searchBoxHtml(usesFilter) + "\n" else ""
     val emptyState =
       if (hasPreviews)
         "\n<p id=\"cp-empty\" class=\"cp-empty\" hidden>No previews match your filter.</p>"
@@ -8365,6 +8543,7 @@ ${captureControlsHtml().prependIndent("          ")}
           presenceUrl,
           hasPanes,
           hasAllTab,
+          usesUrl,
         )}</script>"
       else ""
     // The long-press live lane, in the SAME document order as the cards above (and as

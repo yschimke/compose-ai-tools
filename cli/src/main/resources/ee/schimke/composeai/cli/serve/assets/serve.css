@@ -831,6 +831,16 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
 .cp-empty { margin: 12px 0 0; font-size: var(--md-sys-typescale-body-medium-size);
   color: var(--cp-fg-muted); }
 .cp-empty[hidden] { display: none; }
+/* The `uses:` operator's readout (Dev mode only) — "4 of 137 call Button", or why there is no
+   answer. Label-large and muted, like .cp-count, because it is the same kind of thing: a tally
+   the page writes back, not copy. It takes the whole row under the input rather than sitting
+   beside it (`flex-basis: 100%` inside the flex-wrapping .cp-searchbar) so appearing mid-filter
+   never reflows the search box out from under the cursor. */
+.cp-uses-status { flex: 0 0 100%; margin: 6px 0 0;
+  font-size: var(--md-sys-typescale-label-large-size);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking);
+  color: var(--cp-fg-muted); }
+.cp-uses-status[hidden] { display: none; }
 /* Sectioned catalog: a navigation TREE beside the grid (ServeWeb.catalogTreeHtml) rather than a
    row of tabs above it — sections as rows, each opening onto its named sub-groups, so both levels
    of a catalog's structure are visible at once instead of only its top one. Progressive
