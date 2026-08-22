@@ -88,6 +88,11 @@ object ServeSemanticsTags {
   fun index(payload: ComposeSemanticsPayload): Map<String, TagEntry> {
     val out = LinkedHashMap<String, TagEntry>()
     fun walk(node: ComposeSemanticsNode) {
+      // A trial-measured copy is not a second use of the tag: it was never placed, so it is not on
+      // the frame and its bounds read as the origin. Counting it publishes `count = 2` for a tag
+      // that identifies exactly one node, which a scoped parity consumer rejects as ambiguous.
+      // See `ComposeSemanticsNode.placed`.
+      if (!node.placed) return
       // Blank-or-absent decides *omission*; the key is then the tag VERBATIM. Trimming it would be
       // a second identity rule, and Compose (and `SemanticsTargets.Tag`) match the exact string —
       // so normalising here collapses `"item"` and `" item "` into one entry reporting `count = 2`

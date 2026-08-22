@@ -31,6 +31,13 @@ object SemanticsDiff {
       "text" to { it.text },
       "mergeMode" to { it.mergeMode },
       "clickable" to { it.clickable.toString() },
+      // Deliberately COMPARED rather than pruned, unlike every drawing/targeting consumer of this
+      // tree. Those answer "what is on the frame?", so a subtree a `SubcomposeLayout` measured and
+      // never placed is noise to them. A diff answers "what changed?", and a node leaving the frame
+      // is the most interesting thing that can happen to it — pruning would report that as no
+      // change at all when `placed` is the only field that moved. Reporting it as a field change
+      // keeps the ref in the map and names what happened. See `ComposeSemanticsNode.placed`.
+      "placed" to { it.placed.toString() },
       "editableText" to { it.editableText },
       "inputText" to { it.inputText },
       "layoutTruncated" to { it.textOverflow?.truncated?.toString() },

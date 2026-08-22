@@ -23,9 +23,44 @@ class ServeSemanticsTagsTest {
     id: String,
     bounds: String,
     testTag: String? = null,
+    placed: Boolean = true,
     children: List<ComposeSemanticsNode> = emptyList(),
   ) =
-    ComposeSemanticsNode(nodeId = id, boundsInRoot = bounds, testTag = testTag, children = children)
+    ComposeSemanticsNode(
+      nodeId = id,
+      boundsInRoot = bounds,
+      testTag = testTag,
+      placed = placed,
+      children = children,
+    )
+
+  @Test
+  fun `a trial-measured copy of a tag is not a second use of it`() {
+    // A `SubcomposeLayout` measuring a trial copy of its content to choose a layout (Wear
+    // `AlertDialogContent`) duplicates every tag in the tree. The copy was never placed, so it is
+    // not on the frame — counting it reports `count = 2` for a tag that identifies exactly one
+    // node, and a scoped parity acceptance then rejects it as ambiguous.
+    val root =
+      node(
+        "root",
+        "0,0,200,200",
+        children =
+          listOf(
+            node("real", "10,10,60,40", testTag = "submit"),
+            node(
+              "trial",
+              "0,0,120,60",
+              placed = false,
+              children = listOf(node("trial-child", "0,0,50,30", testTag = "submit")),
+            ),
+          ),
+      )
+
+    val entry = index(root)["submit"]
+
+    assertEquals(1, entry?.count)
+    assertEquals(AnnotationBounds(10, 10, 50, 30), entry?.bounds)
+  }
 
   private fun index(root: ComposeSemanticsNode) =
     ServeSemanticsTags.index(ComposeSemanticsPayload(root))
