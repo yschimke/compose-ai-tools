@@ -2011,6 +2011,7 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
   — no preview, no reference, nothing to compare, however the locator is shaped. Two more (#89,
   #93) are missing-constant reports whose renders match: those *could* be indexed, since the
   producer never inspects a pixel, but there is nothing for §4 to accept — a question about what
-  belongs on a component page rather than a limit. Either way §4's population is three, not ten.
-  Worth deciding whether the catalog should grow the missing stickers, and whether an
-  upstream-ergonomics report belongs in the index.
+  belongs on a component page rather than a limit. Either way §4's population is four issues across
+  six acceptance sites (#40, #41, #87, and #42 three times), not ten. Worth deciding whether the
+  catalog should grow the missing stickers, and whether an upstream-ergonomics report belongs in the
+  index.
