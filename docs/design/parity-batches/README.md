@@ -75,12 +75,20 @@ Batches 01 and 02 were merged and unreachable for a while: nothing *called* them
 
 **Read the measurement before starting batch 04.** The backfill is also the survey of the population
 the acceptance schema is for, and it came out smaller and more awkward than "a dozen known
-differences" suggests: three of m3-catalog's ten are indexable, two are umbrella reports naming
-three and five components, three are about components this catalog does not publish at all, and two
-are missing-constant reports whose renders already match. Two of the three that *are* indexable want
-a mask the size of the component. The per-issue verdicts and what each implies are in
+differences" suggests. Two counts, and they are not the same number:
+
+- **Four of m3-catalog's ten can carry a locator** — #40, #41 and #87 do; #89 could, and is left out
+  only because there is nothing to accept in it. Of the rest, three (#85, #95, #86) are about
+  components this catalog does not publish, #91's variants are unauthored, and #42 and #93 name
+  several components each, which one locator cannot say.
+- **Three are acceptance candidates** — #40, #41, #87 — and two of those three want a mask the size
+  of the component.
+
+The per-issue verdicts and what each implies are in
 [the pilot population](../COMPONENT_PARITY_WORKFLOW.md#the-pilot-population-measured); batch 00's D1
-and D5 should be answered against those numbers rather than against the worked example.
+and D5 should be answered against those numbers rather than against the worked example. D1 also
+gates a second thing now: batch 01's `element` / `bounds` reservation never landed, so batch 03
+inherits either a `v1` erratum or a version bump.
 
 ## Conventions every batch inherits
 

@@ -11,6 +11,11 @@
 > population" records what running it on real issues then measured. **Everything in §4 and §5 —
 > scoped acceptance, element selection, resolution automation — is still a proposal**, and that
 > measurement is the reason to read it again before implementing it.
+>
+> **One thing Phase 1 was supposed to ship and did not:** batch 01 required `element` and `bounds`
+> to be **reserved as optional `v1` fields** before the writer, the parser and the shared fixture
+> froze. Neither engine carries them, and both ignore unknown keys — so batch 03 cannot add the
+> selection to `v1` without a permissive parser silently discarding it. See §7.
 
 The preview server can already tell you that a component's render and its design reference disagree.
 It cannot tell you whether anyone *knows*. Every comparison is scored from scratch on every page
@@ -390,24 +395,29 @@ because they lead different places.
 
 Two limits and one judgement, and only the last is about masks:
 
-1. **One issue, several components** (#42, #91). The locator carries exactly one `component` and one
-   `preview`, and the index row is keyed by issue number, so an umbrella report can join to at most
-   one component page. `previewIds` / `referenceIds` are arrays on the row, which suggests the shape
+1. **One issue, several components** (#42, #93, and #91 as well as its other problem). The locator
+   carries exactly one `component` and one `preview`, and the index row is keyed by issue number, so
+   an umbrella report can join to at most one component page. `previewIds` / `referenceIds` are arrays on the row, which suggests the shape
    was anticipated; the *writer* has no way to fill them. Note that `issuesForPreview` already joins
    on `component` as well as on the exact preview id, so an indexed issue surfaces on **every**
    preview of its component — the gap is across components, not across variants.
-2. **The subject is not in the catalog** (#85, #95, #86). A parity report is about a published
-   render compared with a published reference. Three of the ten are about components the catalog
-   does not draw, which makes them spec/library findings the index has nothing to attach them to.
-   They are not badly written issues; they are outside what a *preview*-keyed index can hold.
+2. **The subject is not in the catalog** (#85, #95, #86 — and #91). A parity report is about a
+   published render compared with a published reference. Three of the ten are about components the
+   catalog does not draw, which makes them spec/library findings the index has nothing to attach
+   them to. **#91 belongs here more than in (1)**: splitting it per component would not help,
+   because the interaction variants it is about are deliberately unauthored, so after the split each
+   piece still has no `preview` to name. They are not badly written issues; they are outside what a
+   *preview*-keyed index can hold.
 3. **Nothing to accept** (#89, #93) — a judgement rather than a limit, and worth stating precisely
    because the two are easy to conflate. `buildIssueIndex` asks for a well-formed locator and
    nothing else; it never inspects a pixel. Both issues have published previews with scored
    references, so either could carry a locator today and would then show on its component's page
-   like any other. What neither can have is an **acceptance**: they describe a constant the library
+   like any other — #89 cleanly, #93 only by choosing one of `Button/*` and `Fab/*`, which is
+   limit (1) again. What neither can have is an **acceptance**: they describe a constant the library
    does not publish, and the renders already match. Indexing them is a question about whether an
    upstream-ergonomics report belongs on a component page. §4's population is the smaller number
-   either way.
+   either way: **four issues could carry a locator today (#40, #41, #87, #89), three are acceptance
+   candidates (#40, #41, #87)**, and those are different counts for different decisions.
 
 **What this means for §4.** The acceptance model is designed around #40 — a small mask over one
 element, a recorded accepted-candidate crop, the gates of the evaluation order — and #40 fits it
@@ -1942,9 +1952,11 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
   matching rule depends on it. Say so if you want the looser reading; it is a `v1` schema decision
   either way.
 - **One issue, several components.** *Measured, not hypothetical — see "The pilot population" in
-  §3.* Two of `m3-catalog`'s ten known differences (#42, #91) are umbrella reports naming three and
-  five components; the locator carries one `component` and one `preview`, so neither can be
-  indexed at all. Two ways out, and they are not equivalent: **split** the umbrella into one issue
+  §3.* Three of `m3-catalog`'s ten known differences are umbrella reports: #42 names three
+  components, #93 spans `Button/*` and `Fab/*`, and #91 names five. The locator carries one
+  `component` and one `preview`, so none of them can be indexed whole. **#91 is not fixed by this
+  decision either way** — its interaction variants are unauthored, so each piece of a split still
+  has no `preview` to name; it belongs with the missing-subject cases below. Two ways out, and they are not equivalent: **split** the umbrella into one issue
   per component (keeps the contract as written, multiplies the backlog, and loses the fact that the
   five share a cause), or let a body carry **one locator block per component** and key index rows
   by issue × component (`previewIds` / `referenceIds` are already arrays on the row; the producer
@@ -1956,6 +1968,17 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
   is part of the decision rather than a follow-up. Either way this is a `v1` wire decision and wants
   settling before the conformance fixtures freeze, not after two engines have been written against
   them.
+- **`element` and `bounds` were never reserved in `v1`, and Phase 1 froze without them.** Batch 01
+  called for both as optional fields *before* the writer, the parser and the shared fixture froze,
+  precisely so batch 03 would not have to bump the version to add a selection. Neither
+  `ServeIssueReport.locatorBlock` nor `parseLocator` mentions them today, and both ignore unknown
+  keys — the permissive-parser failure that requirement existed to prevent, so a batch-03 report
+  carrying a selection would be indexed with the selection silently dropped. It cannot simply be
+  fixed now: batch 01 also says `bounds` may not be a bare rectangle, and which plane it is
+  expressed in is [D1](parity-batches/00-decisions.md), still open. So the choice is to answer D1
+  and reserve both fields as a `v1` erratum before anything else writes a locator, or to accept that
+  element selection arrives as `compose-parity-locator/v2`. Cheaper now than after a backlog of
+  filed reports.
 - **A parity report needs its subject to be in the catalog.** Three of the ten (#85, #95, #86) are
   about a `DropdownMenu` and an expanded full-screen search view that this catalog does not publish
   — no preview, no reference, nothing to compare, however the locator is shaped. Two more (#89,
