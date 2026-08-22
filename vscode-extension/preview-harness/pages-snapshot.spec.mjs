@@ -4099,8 +4099,12 @@ test("contract · the front door's state layer stays under the hero, and the bre
       hitTag: hit?.tagName,
       hitHref: hit?.getAttribute("href"),
       imgTop: img.top,
-      // The hero is wider than the card once scaled — that overhang is what the side probe uses.
-      overhangs: img.width > cb.width && img.top < cb.top,
+      cardRight: cb.right,
+      imgRight: img.right,
+      // The hero is wider AND taller than the card once scaled — those two overhangs are what the
+      // probes below stand on. Asserted, because a fixture whose hero does not actually break out
+      // would make both of them vacuous while still passing.
+      overhangs: img.right > cb.right && img.top < cb.top,
     };
   });
 
@@ -4126,13 +4130,27 @@ test("contract · the front door's state layer stays under the hero, and the bre
   // …and the artwork has not retracted under the pointer standing on it.
   expect(strip.imgTop).toBeCloseTo(inside.imgTop, 0);
 
-  // The side overhang, which reaches over the neighbouring tile's column.
-  await page.mouse.move(box.x + box.width - 2, box.y + 60);
-  expect(
-    await page.evaluate(() =>
-      document.querySelector(".cp-syslist .cp-card").matches(":hover"),
-    ),
-  ).toBe(true);
+  // The side overhang, which reaches over the neighbouring tile's column. Derived from the hovered
+  // image's own right edge, NOT from the card's width: a probe a couple of pixels inside the card
+  // is still over the stretched link overlay, so it would stay green even if the overhang lost
+  // hit-testing entirely — which is the one thing this probe exists to catch.
+  const sideProbeX = (inside.cardRight + inside.imgRight) / 2;
+  expect(sideProbeX).toBeGreaterThan(inside.cardRight);
+  await page.mouse.move(sideProbeX, box.y + 60);
+  const side = await page.evaluate((x) => {
+    const c = document.querySelector(".cp-syslist .cp-card");
+    const hit = document.elementFromPoint(x, c.getBoundingClientRect().top + 60);
+    return {
+      hovered: c.matches(":hover"),
+      // The pointer must be past the card's own box, or it is not on the overhang at all.
+      pastCard: x > c.getBoundingClientRect().right,
+      // …and what it lands on has to belong to THIS card, not the neighbour it paints over.
+      inThisCard: c.contains(hit),
+    };
+  }, sideProbeX);
+  expect(side.pastCard).toBe(true);
+  expect(side.inThisCard).toBe(true);
+  expect(side.hovered).toBe(true);
 });
 
 test("contract · a catalog's sub-groups share rows instead of each claiming one", async ({
