@@ -164,7 +164,26 @@ internal object ServeIssueReport {
     val width: Int,
     val height: Int,
     val space: String = RENDER_PIXELS,
-  )
+  ) {
+    /**
+     * The invariants both parsers enforce, checked where the rectangle is *made* rather than where
+     * it is serialised.
+     *
+     * A writer that emitted a rectangle its own producer refuses would hand the reporter a
+     * prefilled body that looks right and takes the **whole issue** out of the index when the
+     * workflow next runs — a failure with no symptom until someone wonders why the report never
+     * appeared. The reachable version of that is batch 03's drag selection, which starts in display
+     * pixels: a missed conversion is a mistake at the point of construction, and this is where it
+     * should stop.
+     */
+    init {
+      require(space == RENDER_PIXELS) { "bounds space must be $RENDER_PIXELS, was $space" }
+      require(x >= 0 && y >= 0) { "bounds origin must be non-negative, was ($x, $y)" }
+      require(width >= 1 && height >= 1) {
+        "bounds must have a positive extent, was ${width}x$height"
+      }
+    }
+  }
 
   /**
    * Which repo a preview's bug belongs to: the catalog's **source** repo (the Kotlin the preview is
@@ -353,7 +372,10 @@ internal object ServeIssueReport {
         .mapNotNull { line ->
           val separator = line.indexOf(':')
           if (separator <= 0) null
-          else line.substring(0, separator) to line.substring(separator + 1).trimStart()
+          // Trim **both** ends, as the producer does. This side trimmed only the start, so a value
+          // carrying a trailing space read one way here and another there — two engines disagreeing
+          // about what a block says, which is precisely what the shared fixture exists to stop.
+          else line.substring(0, separator).trim() to line.substring(separator + 1).trim()
         }
         .toMap()
     val overrides =
@@ -405,11 +427,11 @@ internal object ServeIssueReport {
     // `v1` accepts only the plane both tag-index producers publish; see [Bounds] and D1.
     require(space == RENDER_PIXELS) { "bounds space must be $RENDER_PIXELS" }
     fun extent(key: String): Int =
-      json[key]?.jsonPrimitive?.content?.toIntOrNull()?.takeIf { it >= 0 }
-        ?: error("bounds $key must be a non-negative integer")
+      json[key]?.jsonPrimitive?.content?.toIntOrNull() ?: error("bounds $key must be an integer")
+    // [Bounds] enforces the origin, extent and space invariants itself, so a rectangle that fails
+    // them throws here and the caller's `runCatching` turns it into a refused locator.
     val bounds =
       Bounds(x = extent("x"), y = extent("y"), width = extent("width"), height = extent("height"))
-    require(bounds.width >= 1 && bounds.height >= 1) { "bounds must have a positive extent" }
     require(json.keys.size == 5) { "bounds carries unknown keys" }
     require(canonicalBounds(bounds) == value) { "bounds are not canonical JSON" }
     return bounds

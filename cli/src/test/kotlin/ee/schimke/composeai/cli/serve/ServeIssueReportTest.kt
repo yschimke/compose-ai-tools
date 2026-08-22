@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli.serve
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -421,6 +422,53 @@ class ServeIssueReportTest {
       ),
       "non-canonical key order is refused, as it is for overrides",
     )
+  }
+
+  @Test
+  fun `a field value is read the same way both engines read it, and edge whitespace cannot survive`() {
+    // `key: value` lines, and both parsers trim the value — so a tag with edge whitespace does not
+    // survive the wire no matter what the writer emits. Trimming here rather than at read time is
+    // what makes the emitted bytes say what will actually be indexed; emitting it verbatim would
+    // just move the mangling to the reader, where nobody sees it. `v1` cannot express such a tag,
+    // and batch 03 must not select one without a format change.
+    val locator =
+      ServeIssueReport.locator(
+        ServeIssueReport.Context(
+          repo = "yschimke/m3-catalog",
+          previewId = "iconbutton-tonal__ideal__default__light",
+          system = "m3-catalog",
+          componentId = "IconButton/Tonal",
+          referenceId = "iconbutton-tonal-figma",
+          element = "  glyph  ",
+        )
+      )
+    assertEquals("glyph", locator?.element)
+    val block = ServeIssueReport.locatorBlock(locator!!)
+    assertEquals(locator, ServeIssueReport.locatorFromBody(block), "the block round-trips")
+    // The reader trims both ends, so a hand-edited body with a trailing space reads the same value
+    // this side and in the producer — which trims both ends too.
+    assertEquals(
+      "glyph",
+      ServeIssueReport.locatorFromBody(block.replace("element: glyph", "element: glyph  "))
+        ?.element,
+    )
+  }
+
+  @Test
+  fun `an invalid rectangle cannot be constructed, let alone written into a report`() {
+    // The writer must not be able to emit a rectangle its own producer refuses: the reporter would
+    // file a body that looks right and the whole issue would drop out of the index when the
+    // workflow next ran. Batch 03's drag selection starts in display pixels, so the missed
+    // conversion is a real path — and this is where it stops, at construction.
+    assertFailsWith<IllegalArgumentException> {
+      ServeIssueReport.Bounds(x = 0, y = 0, width = 24, height = 24, space = "display-pixels")
+    }
+    assertFailsWith<IllegalArgumentException> {
+      ServeIssueReport.Bounds(x = -1, y = 0, width = 24, height = 24)
+    }
+    assertFailsWith<IllegalArgumentException> {
+      ServeIssueReport.Bounds(x = 0, y = 0, width = 0, height = 24)
+    }
   }
 
   private fun boundsOf(writer: JsonObject): ServeIssueReport.Bounds =
