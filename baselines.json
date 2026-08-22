@@ -431,6 +431,22 @@
     "sha256": "bcd50e01a67cf35af0a27e19931f18d96a56afa3190c1521ed0354e2e329bcd8",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/AsyncImagePreviews.kt"
   },
+  "samples:android/com.example.sampleandroid.CaptureGutterPreviewsKt.ShadowStickerCroppedPreview_Shadow cropped": {
+    "captureLabel": "",
+    "functionName": "ShadowStickerCroppedPreview",
+    "module": "samples:android",
+    "renderBasename": "ShadowStickerCroppedPreview_Shadow_cropped-65777146.png",
+    "sha256": "e4d1848c4012855a241f47243414b8f05fcc87084855b8b5064ee93d508670d8",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/CaptureGutterPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.CaptureGutterPreviewsKt.ShadowStickerGutteredPreview_Shadow guttered": {
+    "captureLabel": "",
+    "functionName": "ShadowStickerGutteredPreview",
+    "module": "samples:android",
+    "renderBasename": "ShadowStickerGutteredPreview_Shadow_guttered-af019607.png",
+    "sha256": "5c791e126f5be57319d103340d1b422be401cde5aeb2da23e3fcd4254aa997ca",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/CaptureGutterPreviews.kt"
+  },
   "samples:android/com.example.sampleandroid.ColorGalleryKt.ColorSchemeSpecimenDarkPreview_ColorScheme specimen \u2014 dark": {
     "captureLabel": "",
     "functionName": "ColorSchemeSpecimenDarkPreview",
@@ -1718,6 +1734,22 @@
     "renderBasename": "AutoDetectDurationAnimatedPreview_Animated_Auto_Detect_Duration-fa7980ab.gif",
     "sha256": "8fbf4ce71961735d1c42ff2a8bdc3e93d9917f3502f1aa138348e971af345091",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/AnimatedPreviews.kt"
+  },
+  "samples:cmp/com.example.samplecmp.CaptureGutterPreviewsKt.ShadowStickerCroppedPreview_Shadow cropped": {
+    "captureLabel": "",
+    "functionName": "ShadowStickerCroppedPreview",
+    "module": "samples:cmp",
+    "renderBasename": "ShadowStickerCroppedPreview_Shadow_cropped-bc08dd3c.png",
+    "sha256": "d88bb9171bd4a6a977db1c01cba20f496b9fd2137863be1407b498f4e64e8b7c",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/CaptureGutterPreviews.kt"
+  },
+  "samples:cmp/com.example.samplecmp.CaptureGutterPreviewsKt.ShadowStickerGutteredPreview_Shadow guttered": {
+    "captureLabel": "",
+    "functionName": "ShadowStickerGutteredPreview",
+    "module": "samples:cmp",
+    "renderBasename": "ShadowStickerGutteredPreview_Shadow_guttered-e26176a9.png",
+    "sha256": "b9cf633dbee2b321fe9b71afba0107958cb5c3a0e36fbe601039f2932bad50b9",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/CaptureGutterPreviews.kt"
   },
   "samples:cmp/com.example.samplecmp.FontScalePreviewsKt.FontScale100Preview_Font scale 1.0x": {
     "captureLabel": "",

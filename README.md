@@ -36,6 +36,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `RemoteViewsWeatherWidgetPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/RemoteViewsWeatherWidgetPreview_RemoteViews_widget_4_2-f3e3deff.png" width="150" /> |
 | `AsyncImageArtworkPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/AsyncImageArtworkPreview_Async_Image_Artwork-89967208.png" width="150" /> |
 | `AsyncImageUnreachablePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/AsyncImageUnreachablePreview_Async_Image_Unreachable-9903d4bc.png" width="150" /> |
+| `ShadowStickerCroppedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ShadowStickerCroppedPreview_Shadow_cropped-65777146.png" width="150" /> |
+| `ShadowStickerGutteredPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ShadowStickerGutteredPreview_Shadow_guttered-af019607.png" width="150" /> |
 | `ColorSchemeSpecimenDarkPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ColorSchemeSpecimenDarkPreview_ColorScheme_specimen_dark-789b6eae.png" width="150" /> |
 | `ColorSchemeSpecimenLightPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ColorSchemeSpecimenLightPreview_ColorScheme_specimen_light-ea02bc05.png" width="150" /> |
 | `NamedColorPaletteSpecimenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/NamedColorPaletteSpecimenPreview_Named_colour_palette_specimen-e538b0c0.png" width="150" /> |
@@ -249,6 +251,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | Preview | Image |
 |---------|-------|
 | `AutoDetectDurationAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/AutoDetectDurationAnimatedPreview_Animated_Auto_Detect_Duration-fa7980ab.gif" width="150" /> |
+| `ShadowStickerCroppedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ShadowStickerCroppedPreview_Shadow_cropped-bc08dd3c.png" width="150" /> |
+| `ShadowStickerGutteredPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ShadowStickerGutteredPreview_Shadow_guttered-e26176a9.png" width="150" /> |
 | `FontScale100Preview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/FontScale100Preview_Font_scale_1_0x-966325ac.png" width="150" /> |
 | `FontScale150Preview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/FontScale150Preview_Font_scale_1_5x-8dbcc4ab.png" width="150" /> |
 | `FontScale200Preview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/FontScale200Preview_Font_scale_2_0x-cb8aeba5.png" width="150" /> |
