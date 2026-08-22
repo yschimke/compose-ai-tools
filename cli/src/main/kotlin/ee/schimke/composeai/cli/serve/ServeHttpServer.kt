@@ -7114,24 +7114,30 @@ class ServeHttpServer(
             return@withLeasedSession
           }
           val leaseToken = call.request.queryParameters["_themeLease"]
-          val leasePermit =
+          val admission =
             if (cached == null && pureThemeProvider != null && leaseToken != null) {
-              themeRenderLeases.admit(leaseToken, sessionId, renderHost)
+              themeRenderLeases.admission(leaseToken, sessionId, renderHost)
             } else {
               null
             }
-          if (
-            cached == null && pureThemeProvider != null && leaseToken != null && leasePermit == null
-          ) {
+          // Saturated is the only refusal. The claim is alive and its width is momentarily full, so
+          // `Retry-After` is a true statement and the page's backoff is the right response.
+          if (admission is ThemeRenderLeaseManager.Admission.Saturated) {
             call.response.headers.append(HttpHeaders.RetryAfter, "2")
             call.respondText(
-              "theme render lease expired or saturated",
+              "theme render lease saturated",
               status = HttpStatusCode.TooManyRequests,
             )
             return@withLeasedSession
           }
+          val leasePermit = (admission as? ThemeRenderLeaseManager.Admission.Admitted)?.permit
+          // A token this manager does not know — released, expired, or minted for another catalog —
+          // is treated exactly like a request that carried none: the render still happens, on the
+          // serial unleased lane. Refusing it instead (what a `429` did) is unrecoverable by the
+          // caller, because no amount of retrying makes a reaped claim valid again, and it stranded
+          // whole themed grids on the previous theme's pixels.
           val needsSerialThemePermit =
-            cached == null && pureThemeProvider != null && leaseToken == null
+            cached == null && pureThemeProvider != null && leasePermit == null
           val outcome =
             try {
               cached

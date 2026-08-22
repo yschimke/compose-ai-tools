@@ -657,6 +657,21 @@ class ServeHttpRoutingTest {
     assertEquals(0, ordinaryBurstHostRenders.get())
   }
 
+  @Test
+  fun `a theme render whose lease has gone falls back to the serial lane, it is not refused`() {
+    // A page holds several short-lived claims over its life — one for the on-screen batch, one per
+    // deferred batch as the visitor scrolls — and every one of them is handed back or expires. A
+    // render still carrying a reaped token used to be answered `429`, which no retry could ever
+    // satisfy, so the grid sat on the previous theme's pixels for good. It is the same request as
+    // one carrying no token at all: render it, serially.
+    val (renderCode, _) =
+      get("/burst/render/$previewId.png" + "?themeProvider=com.example.Brand&_themeLease=reaped")
+
+    assertEquals(200, renderCode)
+    assertEquals(1, ordinaryBurstHostRenders.get(), "served by the unleased lane")
+    assertEquals(0, leasedBurstHostRenders.get())
+  }
+
   /**
    * #3449: a validated override that could not be applied must not come back as `200 image/png`
    * carrying the un-overridden snapshot — those pixels are byte-identical to the override-free

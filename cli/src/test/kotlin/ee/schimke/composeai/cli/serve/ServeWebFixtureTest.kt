@@ -2521,6 +2521,10 @@ class ServeWebFixtureTest {
       )
     // A tabbed declared-theme catalog exercises initial queue priority before apply() has assigned
     // each card's hidden state (for a returning visitor whose saved tab is not the first one).
+    //
+    // Big enough, and with a burst capacity, to be the page the deferred-render contract runs on:
+    // its cards outrun one viewport, so picking a theme leaves some of them held against the
+    // scroll — the lane where a claim released by the on-screen batch used to strand them.
     val landingDeclaredTabbedThemes =
       ServeWeb.landingPage(
         "meshcore-mobile",
@@ -2529,6 +2533,7 @@ class ServeWebFixtureTest {
         sessionId = "meshcore-mobile",
         declaredThemes = listOf(ServeTheme("Brand Dark", "com.example.BrandDarkThemeCatalog")),
         canRenderThemeFor = { true },
+        themeRenderBurstCapacity = 5,
       )
     // The default-state viewer for that catalog: renders the `.cp-axes-tree` subtree of
     // links to the component's other same-theme states, the current (Default) state marked active.
@@ -3416,6 +3421,7 @@ class ServeWebFixtureTest {
         "serve-motion-index.html" to motionIndex,
         "serve-parity.html" to parity,
         "serve-landing-declared-themes.html" to landingDeclaredThemes,
+        "serve-landing-declared-tabbed-themes.html" to landingDeclaredTabbedThemes,
         "serve-landing-ir-replay-themes.html" to landingIrReplayThemes,
         "serve-landing-live.html" to landingLive,
         "serve-landing-states.html" to landingStates,
@@ -3988,7 +3994,8 @@ class ServeWebFixtureTest {
         landingDeclaredTabbedThemes.contains("themeQueue.push(job)") &&
         landingDeclaredTabbedThemes.contains("themeDeferredQueue.push(job)") &&
         landingDeclaredTabbedThemes.contains(
-          "themeVisible = themeSection.getAttribute(\"data-section\") === current"
+          "themeVisible = current === \"all\" || " +
+            "themeSection.getAttribute(\"data-section\") === current"
         ) &&
         landingDeclaredTabbedThemes.contains("deferTheme(themeDeferredQueue, themeQueueGen)"),
       "current-tab cards are rendered first, including before hidden state is initialized",

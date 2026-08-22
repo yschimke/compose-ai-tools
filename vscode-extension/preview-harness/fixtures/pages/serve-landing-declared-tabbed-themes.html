@@ -1,9 +1,9 @@
     <!doctype html>
-    <html lang="en" data-cp-theme-key="cp-theme:compose-m3">
+    <html lang="en" data-cp-theme-key="cp-theme:meshcore-mobile">
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Compose Material 3 — compose-preview</title>
+        <title>meshcore-mobile — compose-preview</title>
         <link rel="icon" href="/favicon.svg" type="image/svg+xml">
         <link rel="icon" href="/favicon.ico" sizes="32x32">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -12,25 +12,67 @@
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
-        <script>try{var p=new URLSearchParams(location.search),m={"theme:com.example.LightThemeCatalog":"light"},t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||(((decodeURIComponent(location.pathname).split('/').pop()||"").match(/(?:^|__)(light|dark)(?:__|$)/)||[])[1]||localStorage.getItem("cp-theme:compose-m3")));t=m[t]||t;if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
+        <script>try{var p=new URLSearchParams(location.search),m={"theme:com.example.BrandDarkThemeCatalog":"dark"},t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||(((decodeURIComponent(location.pathname).split('/').pop()||"").match(/(?:^|__)(light|dark)(?:__|$)/)||[])[1]||localStorage.getItem("cp-theme:meshcore-mobile")));t=m[t]||t;if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
       </head>
-      <body class="cp-component-browser">
+      <body>
         <script src="/assets/serve/fixture/serve-chrome.js"></script>
         <header class="cp-site-header">
   <div class="cp-site-lead">
-    <a class="cp-site-brand" href="/" aria-label="compose-preview home">
+    <a class="cp-site-brand" href="/?token=demo-token-fixture" aria-label="compose-preview home">
       <span class="cp-site-mark" aria-hidden="true">◇</span>
       <span class="cp-site-wordmark">compose-preview</span>
     </a>
-  <span class="cp-site-catalog">Compose Material 3</span>
+    <span class="cp-site-catalog">meshcore-mobile</span>
   </div>
-  <div class="cp-interface-mode" role="group" aria-label="Interface mode">
-    <button type="button" data-cp-interface-mode="catalog" aria-pressed="true">Catalog</button>
-    <button type="button" data-cp-interface-mode="dev" aria-pressed="false">Dev</button>
-  </div>
+  <nav class="cp-site-nav" aria-label="Primary navigation">
+    <div class="cp-interface-mode" role="group" aria-label="Interface mode">
+      <button type="button" data-cp-interface-mode="catalog" aria-pressed="false">Catalog</button>
+      <button type="button" data-cp-interface-mode="dev" aria-pressed="true">Dev</button>
+    </div>
+    <details class="cp-site-menu" id="cp-site-menu">
+      <summary class="cp-site-menu-btn" title="Menu" aria-label="Menu"
+        aria-controls="cp-site-menu-panel"><span aria-hidden="true">⋮</span></summary>
+    </details>
+    <div class="cp-site-menu-panel" id="cp-site-menu-panel">
+      <a class="cp-site-status-link" id="cp-status-link" href="/status?token=demo-token-fixture">Status<span
+        class="cp-daemon-status" id="cp-daemon-status" aria-hidden="true" hidden></span></a>
+      <details class="cp-settings">
+        <summary class="cp-settings-btn" title="Settings" aria-label="Settings">
+          <span aria-hidden="true">⚙</span><span class="cp-settings-btn-label">Settings</span>
+        </summary>
+        <div class="cp-settings-panel">
+          <fieldset class="cp-settings-group">
+                    <legend class="cp-settings-legend">Page theme</legend>
+                    <label class="cp-settings-option">
+                      <input type="radio" name="cp-page-theme" value="match" data-cp-page-theme checked>
+                      <span>Match the preview theme</span>
+                    </label>
+                    <label class="cp-settings-option">
+                      <input type="radio" name="cp-page-theme" value="system" data-cp-page-theme>
+                      <span>Follow my system</span>
+                    </label>
+                    <p class="cp-settings-hint">Selecting a Light or Dark preview theme paints this page to
+                      match. Choose Follow my system to keep the page on your operating system's setting.</p>
+                  </fieldset>
+          <fieldset class="cp-settings-group cp-settings-keyboard">
+            <legend class="cp-settings-legend">Keyboard</legend>
+            <label class="cp-settings-option">
+              <input type="checkbox" data-cp-keyboard-navigation>
+              <span>Power-user navigation</span>
+            </label>
+            <p class="cp-settings-hint">Jump between components, variants, modes, and overrides with
+              shortcuts and an on-screen command palette.</p>
+            <button type="button" class="cp-settings-tour" data-cp-keyboard-tour>
+              View keyboard tour
+            </button>
+          </fieldset>
+        </div>
+      </details>
+    </div>
+  </nav>
 </header>
         <main class="cp-main">
-                <div class="cp-catalog-head-row"><div class="cp-catalog-title"><h1 class="cp-head cp-catalog-head">Compose Material 3</h1></div><div class="cp-head-toggles">
+                <div class="cp-catalog-head-row"><div class="cp-catalog-title"><h1 class="cp-head cp-catalog-head">meshcore-mobile</h1></div><p class="cp-sub">9 previews</p><div class="cp-head-toggles">
 <div class="cp-toolbar">
   <details class="cp-theme-menu cp-catalog-theme">
     <summary class="cp-drawer-toggle cp-axis-toggle" aria-controls="cp-catalog-theme-bar">
@@ -41,11 +83,19 @@
     <div class="cp-theme-menu-panel">
       <span class="cp-theme cp-theme-bar" id="cp-catalog-theme-bar" role="group" aria-label="Preview theme">
         <button type="button" class="cp-theme-btn" data-theme-choice="default">Default</button>
-        <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.LightThemeCatalog" data-theme-mode="light">Light</button>
+        <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.BrandDarkThemeCatalog" data-theme-mode="dark">Brand Dark</button>
       </span>
     </div>
   </details>
 </div>
+<div class="cp-catalog-actions">
+          <details class="cp-actions-menu">
+            <summary class="cp-drawer-toggle cp-axis-toggle" title="More for this catalog" aria-label="More for this catalog" aria-controls="cp-catalog-actions-panel"><span aria-hidden="true">⋯</span></summary>
+          </details>
+          <div class="cp-actions-panel" id="cp-catalog-actions-panel">
+          <cp-bg-toggle label="Show the transparent checkerboard behind each preview"></cp-bg-toggle>
+          </div>
+        </div>
 </div>
 </div>
         <div class="cp-catalog-body">
@@ -53,45 +103,61 @@
 <div class="cp-searchbar">
   <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
     autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
+  <p id="cp-uses-status" class="cp-uses-status" role="status" hidden></p>
 </div>
 <nav class="cp-tree" id="cp-tabs" aria-label="Catalog sections">
 <ul class="cp-tree-list" role="tree" aria-label="Catalog sections">
 <li class="cp-tree-node" role="none">
-  <a class="cp-tab" role="treeitem" id="cp-tab-all" href="#cp-grid" data-tab="all" aria-controls="cp-grid" aria-selected="true">All<span class="cp-tab-count">6</span></a>
+  <a class="cp-tab" role="treeitem" id="cp-tab-all" href="#cp-grid" data-tab="all" aria-controls="cp-grid" aria-selected="true">All<span class="cp-tab-count">9</span></a>
 </li>
 <li class="cp-tree-node" role="none">
-  <a class="cp-tab" role="treeitem" id="cp-tab-components" href="#cp-panel-components" data-tab="components" aria-controls="cp-panel-components" aria-selected="false" aria-expanded="true" aria-owns="cp-tree-children-components">Components<span class="cp-tab-count">5</span></a>
-  <ul class="cp-tree-children" id="cp-tree-children-components" role="group">
-    <li role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-components-buttons" data-tab="components" data-group="cp-group-components-buttons" aria-expanded="true" aria-owns="cp-tree-of-cp-group-components-buttons">Buttons<span class="cp-tree-count">2</span></a>
-      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-components-buttons" role="group">
-        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-button-filled-default" data-tab="components" data-group="cp-card-button-filled-default">Button Filled</a>
+  <a class="cp-tab" role="treeitem" id="cp-tab-themes" href="#cp-panel-themes" data-tab="themes" aria-controls="cp-panel-themes" aria-selected="false" aria-expanded="true" aria-owns="cp-tree-children-themes">Themes<span class="cp-tab-count">2</span></a>
+  <ul class="cp-tree-children" id="cp-tree-children-themes" role="group">
+    <li role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-themes-foundation" data-tab="themes" data-group="cp-group-themes-foundation" aria-expanded="true" aria-owns="cp-tree-of-cp-group-themes-foundation">Foundation<span class="cp-tree-count">2</span></a>
+      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-themes-foundation" role="group">
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-theme-meshcore-light__ideal__default__compact" data-tab="themes" data-group="cp-card-theme-meshcore-light__ideal__default__compact">Theme · MeshCore (light)</a>
         </li>
-        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-button-outlined-default" data-tab="components" data-group="cp-card-button-outlined-default">Button Outlined</a>
-        </li>
-      </ul>
-    </li>
-    <li role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-components-cards" data-tab="components" data-group="cp-group-components-cards" aria-expanded="false" aria-owns="cp-tree-of-cp-group-components-cards">Cards<span class="cp-tree-count">2</span></a>
-      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-components-cards" role="group">
-        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-card-elevated-default" data-tab="components" data-group="cp-card-card-elevated-default">Card Elevated</a>
-        </li>
-        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-card-filled-default" data-tab="components" data-group="cp-card-card-filled-default">Card Filled</a>
-        </li>
-      </ul>
-    </li>
-    <li role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-components-navigation" data-tab="components" data-group="cp-group-components-navigation" aria-expanded="false" aria-owns="cp-tree-of-cp-group-components-navigation">Navigation<span class="cp-tree-count">1</span></a>
-      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-components-navigation" role="group">
-        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-navigation-bar-default" data-tab="components" data-group="cp-card-navigation-bar-default">Navigation Navigation Bar</a>
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-theme-material3-light__ideal__default__compact" data-tab="themes" data-group="cp-card-theme-material3-light__ideal__default__compact">Theme · Material 3 (light)</a>
         </li>
       </ul>
     </li>
   </ul>
 </li>
 <li class="cp-tree-node" role="none">
-  <a class="cp-tab" role="treeitem" id="cp-tab-screens" href="#cp-panel-screens" data-tab="screens" aria-controls="cp-panel-screens" aria-selected="false" aria-expanded="true" aria-owns="cp-tree-children-screens">Screens<span class="cp-tab-count">1</span></a>
+  <a class="cp-tab" role="treeitem" id="cp-tab-components" href="#cp-panel-components" data-tab="components" aria-controls="cp-panel-components" aria-selected="false" aria-expanded="true" aria-owns="cp-tree-children-components">Components<span class="cp-tab-count">4</span></a>
+  <ul class="cp-tree-children" id="cp-tree-children-components" role="group">
+    <li role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-components-device" data-tab="components" data-group="cp-group-components-device" aria-expanded="false" aria-owns="cp-tree-of-cp-group-components-device">Device<span class="cp-tree-count">2</span></a>
+      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-components-device" role="group">
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-devicesummarycard-populated__ideal__default__compact" data-tab="components" data-group="cp-card-devicesummarycard-populated__ideal__default__compact">Device summary · Populated</a>
+        </li>
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-devicesummarycard-loading__ideal__default__compact" data-tab="components" data-group="cp-card-devicesummarycard-loading__ideal__default__compact">Device summary · Loading</a>
+        </li>
+      </ul>
+    </li>
+    <li role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-components-contacts" data-tab="components" data-group="cp-group-components-contacts" aria-expanded="false" aria-owns="cp-tree-of-cp-group-components-contacts">Contacts<span class="cp-tree-count">2</span></a>
+      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-components-contacts" role="group">
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-contactrow-variants__ideal__default__compact" data-tab="components" data-group="cp-card-contactrow-variants__ideal__default__compact">Contact row · Variants</a>
+        </li>
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-contactlist-many__ideal__default__compact" data-tab="components" data-group="cp-card-contactlist-many__ideal__default__compact">Contact list · Many</a>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</li>
+<li class="cp-tree-node" role="none">
+  <a class="cp-tab" role="treeitem" id="cp-tab-screens" href="#cp-panel-screens" data-tab="screens" aria-controls="cp-panel-screens" aria-selected="false" aria-expanded="true" aria-owns="cp-tree-children-screens">Screens<span class="cp-tab-count">3</span></a>
   <ul class="cp-tree-children" id="cp-tree-children-screens" role="group">
-    <li role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-screens-account" data-tab="screens" data-group="cp-group-screens-account" aria-expanded="false" aria-owns="cp-tree-of-cp-group-screens-account">Account<span class="cp-tree-count">1</span></a>
-      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-screens-account" role="group">
-        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-profile-screen-default" data-tab="screens" data-group="cp-card-profile-screen-default">Screens Profile</a>
+    <li role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-screens-scanner" data-tab="screens" data-group="cp-group-screens-scanner" aria-expanded="false" aria-owns="cp-tree-of-cp-group-screens-scanner">Scanner<span class="cp-tree-count">2</span></a>
+      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-screens-scanner" role="group">
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-scanner-savedpopulated__ideal__default__compact" data-tab="screens" data-group="cp-card-scanner-savedpopulated__ideal__default__compact">Scanner · Saved populated</a>
+        </li>
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-scanner-blemany__ideal__default__compact" data-tab="screens" data-group="cp-card-scanner-blemany__ideal__default__compact">Scanner · BLE many</a>
+        </li>
+      </ul>
+    </li>
+    <li role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-screens-device" data-tab="screens" data-group="cp-group-screens-device" aria-expanded="false" aria-owns="cp-tree-of-cp-group-screens-device">Device<span class="cp-tree-count">1</span></a>
+      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-screens-device" role="group">
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-device-manycontacts__ideal__default__compact" data-tab="screens" data-group="cp-card-device-manycontacts__ideal__default__compact">Device · Many contacts</a>
         </li>
       </ul>
     </li>
@@ -101,68 +167,81 @@
 </nav>
 </aside>
 <div class="cp-sections" id="cp-grid">
+<section class="cp-section" id="cp-panel-themes" role="region" aria-labelledby="cp-tab-themes" data-section="themes">
+<h2 class="cp-section-head">Themes</h2>
+<div class="cp-subgroup" id="cp-group-themes-foundation" style="--cp-n:2">
+<h3 class="cp-group-head">Foundation</h3>
+<div class="cp-cards">
+<a class="cp-card" id="cp-card-theme-meshcore-light__ideal__default__compact" data-uses-id="theme-meshcore-light__ideal__default__compact" href="/p/theme-meshcore-light__ideal__default__compact?token=demo-token-fixture&session=meshcore-mobile" aria-label="Theme · MeshCore (light)">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="Theme · MeshCore (light)" src="/render/theme-meshcore-light__ideal__default__compact.png?token=demo-token-fixture&session=meshcore-mobile">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="theme-meshcore-light__ideal__default__compact">Theme · MeshCore (light)</div>
+    <div class="cp-id cp-id-elide"><span class="cp-id-head">theme-meshcore-light__ideal__default</span><span class="cp-id-tail">__compact</span></div>
+    
+  </div>
+</a>
+<a class="cp-card" id="cp-card-theme-material3-light__ideal__default__compact" data-uses-id="theme-material3-light__ideal__default__compact" href="/p/theme-material3-light__ideal__default__compact?token=demo-token-fixture&session=meshcore-mobile" aria-label="Theme · Material 3 (light)">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="Theme · Material 3 (light)" src="/render/theme-material3-light__ideal__default__compact.png?token=demo-token-fixture&session=meshcore-mobile">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="theme-material3-light__ideal__default__compact">Theme · Material 3 (light)</div>
+    <div class="cp-id cp-id-elide"><span class="cp-id-head">theme-material3-light__ideal__default</span><span class="cp-id-tail">__compact</span></div>
+    
+  </div>
+</a>
+</div>
+</div>
+</section>
 <section class="cp-section" id="cp-panel-components" role="region" aria-labelledby="cp-tab-components" data-section="components">
 <h2 class="cp-section-head">Components</h2>
-<div class="cp-subgroup" id="cp-group-components-buttons" style="--cp-n:2">
-<h3 class="cp-group-head">Buttons</h3>
+<div class="cp-subgroup" id="cp-group-components-device" style="--cp-n:2">
+<h3 class="cp-group-head">Device</h3>
 <div class="cp-cards">
-<a class="cp-card" id="cp-card-button-filled-default" href="/compose-m3/p/button-filled-default" aria-label="Button Filled">
+<a class="cp-card" id="cp-card-devicesummarycard-populated__ideal__default__compact" data-uses-id="devicesummarycard-populated__ideal__default__compact" href="/p/devicesummarycard-populated__ideal__default__compact?token=demo-token-fixture&session=meshcore-mobile" aria-label="Device summary · Populated">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Button Filled" src="/compose-m3/render/button-filled-default.png">
+    <img loading="lazy" alt="Device summary · Populated" src="/render/devicesummarycard-populated__ideal__default__compact.png?token=demo-token-fixture&session=meshcore-mobile">
   </div>
   <div class="cp-meta">
-    <div class="cp-label" title="button-filled-default">Button Filled</div>
-    
+    <div class="cp-label" title="devicesummarycard-populated__ideal__default__compact">Device summary · Populated</div>
+    <div class="cp-id cp-id-elide"><span class="cp-id-head">devicesummarycard-populated__ideal__default</span><span class="cp-id-tail">__compact</span></div>
     
   </div>
 </a>
-<a class="cp-card" id="cp-card-button-outlined-default" href="/compose-m3/p/button-outlined-default" aria-label="Button Outlined">
+<a class="cp-card" id="cp-card-devicesummarycard-loading__ideal__default__compact" data-uses-id="devicesummarycard-loading__ideal__default__compact" href="/p/devicesummarycard-loading__ideal__default__compact?token=demo-token-fixture&session=meshcore-mobile" aria-label="Device summary · Loading">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Button Outlined" src="/compose-m3/render/button-outlined-default.png">
+    <img loading="lazy" alt="Device summary · Loading" src="/render/devicesummarycard-loading__ideal__default__compact.png?token=demo-token-fixture&session=meshcore-mobile">
   </div>
   <div class="cp-meta">
-    <div class="cp-label" title="button-outlined-default">Button Outlined</div>
-    
+    <div class="cp-label" title="devicesummarycard-loading__ideal__default__compact">Device summary · Loading</div>
+    <div class="cp-id cp-id-elide"><span class="cp-id-head">devicesummarycard-loading__ideal__default</span><span class="cp-id-tail">__compact</span></div>
     
   </div>
 </a>
 </div>
 </div>
-<div class="cp-subgroup" id="cp-group-components-cards" style="--cp-n:2">
-<h3 class="cp-group-head">Cards</h3>
+<div class="cp-subgroup" id="cp-group-components-contacts" style="--cp-n:2">
+<h3 class="cp-group-head">Contacts</h3>
 <div class="cp-cards">
-<a class="cp-card" id="cp-card-card-elevated-default" href="/compose-m3/p/card-elevated-default" aria-label="Card Elevated">
+<a class="cp-card" id="cp-card-contactrow-variants__ideal__default__compact" data-uses-id="contactrow-variants__ideal__default__compact" href="/p/contactrow-variants__ideal__default__compact?token=demo-token-fixture&session=meshcore-mobile" aria-label="Contact row · Variants">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Card Elevated" src="/compose-m3/render/card-elevated-default.png">
+    <img loading="lazy" alt="Contact row · Variants" src="/render/contactrow-variants__ideal__default__compact.png?token=demo-token-fixture&session=meshcore-mobile">
   </div>
   <div class="cp-meta">
-    <div class="cp-label" title="card-elevated-default">Card Elevated</div>
-    
+    <div class="cp-label" title="contactrow-variants__ideal__default__compact">Contact row · Variants</div>
+    <div class="cp-id cp-id-elide"><span class="cp-id-head">contactrow-variants__ideal__default</span><span class="cp-id-tail">__compact</span></div>
     
   </div>
 </a>
-<a class="cp-card" id="cp-card-card-filled-default" href="/compose-m3/p/card-filled-default" aria-label="Card Filled">
+<a class="cp-card" id="cp-card-contactlist-many__ideal__default__compact" data-uses-id="contactlist-many__ideal__default__compact" href="/p/contactlist-many__ideal__default__compact?token=demo-token-fixture&session=meshcore-mobile" aria-label="Contact list · Many">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Card Filled" src="/compose-m3/render/card-filled-default.png">
+    <img loading="lazy" alt="Contact list · Many" src="/render/contactlist-many__ideal__default__compact.png?token=demo-token-fixture&session=meshcore-mobile">
   </div>
   <div class="cp-meta">
-    <div class="cp-label" title="card-filled-default">Card Filled</div>
-    
-    
-  </div>
-</a>
-</div>
-</div>
-<div class="cp-subgroup" id="cp-group-components-navigation" style="--cp-n:1">
-<h3 class="cp-group-head">Navigation</h3>
-<div class="cp-cards">
-<a class="cp-card" id="cp-card-navigation-bar-default" href="/compose-m3/p/navigation-bar-default" aria-label="Navigation Navigation Bar">
-  <div class="cp-imgwrap">
-    <img loading="lazy" alt="Navigation Navigation Bar" src="/compose-m3/render/navigation-bar-default.png">
-  </div>
-  <div class="cp-meta">
-    <div class="cp-label" title="navigation-bar-default">Navigation Navigation Bar</div>
-    
+    <div class="cp-label" title="contactlist-many__ideal__default__compact">Contact list · Many</div>
+    <div class="cp-id cp-id-elide"><span class="cp-id-head">contactlist-many__ideal__default</span><span class="cp-id-tail">__compact</span></div>
     
   </div>
 </a>
@@ -171,16 +250,41 @@
 </section>
 <section class="cp-section" id="cp-panel-screens" role="region" aria-labelledby="cp-tab-screens" data-section="screens">
 <h2 class="cp-section-head">Screens</h2>
-<div class="cp-subgroup" id="cp-group-screens-account" style="--cp-n:1">
-<h3 class="cp-group-head">Account</h3>
+<div class="cp-subgroup" id="cp-group-screens-scanner" style="--cp-n:2">
+<h3 class="cp-group-head">Scanner</h3>
 <div class="cp-cards">
-<a class="cp-card" id="cp-card-profile-screen-default" href="/compose-m3/p/profile-screen-default" aria-label="Screens Profile">
+<a class="cp-card" id="cp-card-scanner-savedpopulated__ideal__default__compact" data-uses-id="scanner-savedpopulated__ideal__default__compact" href="/p/scanner-savedpopulated__ideal__default__compact?token=demo-token-fixture&session=meshcore-mobile" aria-label="Scanner · Saved populated">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Screens Profile" src="/compose-m3/render/profile-screen-default.png">
+    <img loading="lazy" alt="Scanner · Saved populated" src="/render/scanner-savedpopulated__ideal__default__compact.png?token=demo-token-fixture&session=meshcore-mobile">
   </div>
   <div class="cp-meta">
-    <div class="cp-label" title="profile-screen-default">Screens Profile</div>
+    <div class="cp-label" title="scanner-savedpopulated__ideal__default__compact">Scanner · Saved populated</div>
+    <div class="cp-id cp-id-elide"><span class="cp-id-head">scanner-savedpopulated__ideal__default</span><span class="cp-id-tail">__compact</span></div>
     
+  </div>
+</a>
+<a class="cp-card" id="cp-card-scanner-blemany__ideal__default__compact" data-uses-id="scanner-blemany__ideal__default__compact" href="/p/scanner-blemany__ideal__default__compact?token=demo-token-fixture&session=meshcore-mobile" aria-label="Scanner · BLE many">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="Scanner · BLE many" src="/render/scanner-blemany__ideal__default__compact.png?token=demo-token-fixture&session=meshcore-mobile">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="scanner-blemany__ideal__default__compact">Scanner · BLE many</div>
+    <div class="cp-id cp-id-elide"><span class="cp-id-head">scanner-blemany__ideal__default</span><span class="cp-id-tail">__compact</span></div>
+    
+  </div>
+</a>
+</div>
+</div>
+<div class="cp-subgroup" id="cp-group-screens-device" style="--cp-n:1">
+<h3 class="cp-group-head">Device</h3>
+<div class="cp-cards">
+<a class="cp-card" id="cp-card-device-manycontacts__ideal__default__compact" data-uses-id="device-manycontacts__ideal__default__compact" href="/p/device-manycontacts__ideal__default__compact?token=demo-token-fixture&session=meshcore-mobile" aria-label="Device · Many contacts">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="Device · Many contacts" src="/render/device-manycontacts__ideal__default__compact.png?token=demo-token-fixture&session=meshcore-mobile">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="device-manycontacts__ideal__default__compact">Device · Many contacts</div>
+    <div class="cp-id cp-id-elide"><span class="cp-id-head">device-manycontacts__ideal__default</span><span class="cp-id-tail">__compact</span></div>
     
   </div>
 </a>
@@ -205,6 +309,79 @@
       function pushUrl(v) { if (urlState) urlState.push(v); }
       function replaceUrl(v) { if (urlState) urlState.replace(v); }
       if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }
+      // ---- `uses:<composable>` — which previews CALL a thing (Dev mode only)
+      var usesEndpoint = "/api/uses?token=demo-token-fixture\u0026session=meshcore-mobile";
+      var usesToken = "";
+      var usesRawQuery = "";
+      var usesCache = {};
+      var usesPending = {};
+      // Whether a `uses:` filter is running right now. Asked wherever the page would otherwise
+      // test `q !== ""` to mean "a filter is on": a query of only `uses:Foo` leaves `q` empty, and
+      // every such test would then read as "resting".
+      function usesActive() { return usesToken !== ""; }
+      // Pulls `uses:<token>` out of the raw query and returns what is left for the text filter.
+      // It also notices a CHANGE of token and starts the lookup, which is why it is one function
+      // and not a pure split: `apply()` is the only place that reads the box, so it is the only
+      // place that can see the token change, and a separate listener would have to re-parse the
+      // same string and could disagree with this one about what was typed.
+      function usesSplit(raw) {
+        var found = "";
+        var rest = raw.replace(/(^|\s)uses:(\S*)/i, function (m, lead, t) { found = t; return lead; });
+        if (found !== usesToken) { usesToken = found; usesFetch(found); }
+        // Kept for the Pages pane, which filters on what was TYPED rather than on the remainder —
+        // see `paneQ` in the filter script.
+        usesRawQuery = raw.trim().toLowerCase();
+        return rest.trim().toLowerCase();
+      }
+      function usesEntry() { return usesToken ? usesCache[usesToken.toLowerCase()] : null; }
+      // A card carries its default preview id; every variant folded onto it shares that declaration.
+      function usesOk(c) {
+        if (usesToken === "") return true;
+        var entry = usesEntry();
+        if (!entry || !entry.available) return false;
+        var id = c.getAttribute("data-uses-id");
+        return !!id && entry.ids.indexOf(id) !== -1;
+      }
+      // The readout under the search box. Hidden entirely while the operator is not in use, so the
+      // page is unchanged for a visitor who never types it.
+      function usesReport(shown, total) {
+        var el = document.getElementById("cp-uses-status");
+        if (!el) return;
+        if (usesToken === "") { el.hidden = true; el.textContent = ""; return; }
+        var entry = usesEntry();
+        var note;
+        if (!entry) note = "looking for calls to " + usesToken + "…";
+        else if (!entry.available) note = "call index unavailable";
+        else
+          note =
+            shown + " of " + total + " call " + usesToken +
+            (entry.truncated ? " (partial index)" : "");
+        el.textContent = note;
+        el.hidden = false;
+      }
+      function usesFetch(t) {
+        if (t === "") return;
+        var key = t.toLowerCase();
+        if (usesCache[key] || usesPending[key]) return;
+        usesPending[key] = true;
+        var sep = usesEndpoint.indexOf("?") === -1 ? "?" : "&";
+        // Any failure — 404 in Catalog mode, an offline tab, a body that isn't JSON — lands as
+        // "unavailable" rather than as an empty result, so the count line never reports a zero the
+        // server did not actually compute.
+        var unavailable = { available: false, truncated: false, ids: [] };
+        fetch(usesEndpoint + sep + "q=" + encodeURIComponent(key))
+          .then(function (r) { return r.ok ? r.json() : unavailable; })
+          .catch(function () { return unavailable; })
+          .then(function (data) {
+            usesCache[key] = {
+              available: !!data.available,
+              truncated: !!data.truncated,
+              ids: (data.ids || []).slice()
+            };
+            delete usesPending[key];
+            apply();
+          });
+      }
       var navGroups = document.querySelectorAll(".cp-subgroup");
       var treeGroups = document.querySelectorAll(".cp-tree-group");
       var treeComponents = document.querySelectorAll(".cp-tree-component");
@@ -215,7 +392,7 @@
       var tabSections = document.querySelectorAll(".cp-section");
       var current = tabBtns.length ? tabBtns[0].getAttribute("data-tab") : null;
       try {
-        var storedTab = localStorage.getItem("cp-tab:compose-m3");
+        var storedTab = localStorage.getItem("cp-tab:meshcore-mobile");
         tabBtns.forEach(function (t) {
           if (t.getAttribute("data-tab") === storedTab) current = storedTab;
         });
@@ -254,7 +431,7 @@
       reflectTabs();
       document.documentElement.classList.add("cp-js");
       var stored = null;
-try { stored = localStorage.getItem("cp-theme:compose-m3"); } catch (e) {}
+try { stored = localStorage.getItem("cp-theme:meshcore-mobile"); } catch (e) {}
 var themeBtns = document.querySelectorAll(".cp-theme-btn");
 function chipOffered(t) {
   var offered = false;
@@ -290,9 +467,9 @@ if (urlTheme && chipOffered(urlTheme)) theme = urlTheme;
 // this load resolved to, never the localStorage value a later click overwrote.
 var initialTheme = theme;
 var appliedTheme = null;
-var themeBase = ["/compose-m3/render/button-filled-default.png", "/compose-m3/render/button-outlined-default.png", "/compose-m3/render/card-elevated-default.png", "/compose-m3/render/card-filled-default.png", "/compose-m3/render/navigation-bar-default.png", "/compose-m3/render/profile-screen-default.png"];
+var themeBase = ["", "", "/render/devicesummarycard-populated__ideal__default__compact.png?token=demo-token-fixture\u0026session=meshcore-mobile", "/render/devicesummarycard-loading__ideal__default__compact.png?token=demo-token-fixture\u0026session=meshcore-mobile", "/render/contactrow-variants__ideal__default__compact.png?token=demo-token-fixture\u0026session=meshcore-mobile", "/render/contactlist-many__ideal__default__compact.png?token=demo-token-fixture\u0026session=meshcore-mobile", "/render/scanner-savedpopulated__ideal__default__compact.png?token=demo-token-fixture\u0026session=meshcore-mobile", "/render/scanner-blemany__ideal__default__compact.png?token=demo-token-fixture\u0026session=meshcore-mobile", "/render/device-manycontacts__ideal__default__compact.png?token=demo-token-fixture\u0026session=meshcore-mobile"];
 var themeGen = 0;
-var themeLeaseUrl = "";
+var themeLeaseUrl = "/api/theme-render-lease?token=demo-token-fixture\u0026session=meshcore-mobile";
 // Every claim this page currently holds. A list, not one slot: the visible batch and each
 // deferred batch take their own claim on the catalog's allocation, and abandoning a
 // generation (or leaving the page) has to hand back ALL of them — a single slot silently
@@ -648,19 +825,20 @@ function applyThemeChoice() {
   });
 }
 applyThemeChoice();
-        var q = input ? input.value.trim().toLowerCase() : "";
+        var q = usesSplit(input ? input.value.trim() : "");
         var shown = 0;
         cards.forEach(function (c) {
           var lab = c.querySelector(".cp-label");
           var idn = c.querySelector(".cp-id");
           var hay = ((lab ? lab.textContent : "") + " " + (idn ? idn.textContent : "")).toLowerCase();
-          var searchOk = q === "" || hay.indexOf(q) !== -1;
+          var searchOk = (q === "" || hay.indexOf(q) !== -1) && usesOk(c);
           var sec = c.closest(".cp-section");
-          var tabOk = q !== "" || !sec || current === "all" || sec.getAttribute("data-section") === current;
+          var tabOk = (q !== "" || usesActive()) || !sec || current === "all" || sec.getAttribute("data-section") === current;
           c.hidden = !(searchOk && tabOk);
           if (searchOk && tabOk) shown++;
         });
         if (count) count.textContent = q === "" ? (total + " preview" + (total === 1 ? "" : "s")) : (shown + " of " + total);
+        usesReport(shown, total);
         if (empty) empty.hidden = shown !== 0;
         navGroups.forEach(function (g) {
           var on = g.querySelectorAll(".cp-card:not([hidden])").length;
@@ -694,7 +872,7 @@ applyThemeChoice();
       themeBtns.forEach(function (b) {
         b.addEventListener("click", function () {
           theme = b.getAttribute("data-theme-choice");
-          try { localStorage.setItem("cp-theme:compose-m3", theme); } catch (e) {}
+          try { localStorage.setItem("cp-theme:meshcore-mobile", theme); } catch (e) {}
           // A discrete pick gets its own history entry, so Back returns to the previous theme
           // rather than leaving the catalog. No navigation: the grid re-points its own images.
           pushUrl({ theme: theme });
@@ -705,7 +883,7 @@ applyThemeChoice();
         t.addEventListener("click", function (e) {
           e.preventDefault();
           current = t.getAttribute("data-tab");
-          try { localStorage.setItem("cp-tab:compose-m3", current); } catch (e) {}
+          try { localStorage.setItem("cp-tab:meshcore-mobile", current); } catch (e) {}
           reflectTabs();
           pushUrl({ tab: current });
           apply();
@@ -748,7 +926,7 @@ applyThemeChoice();
         function selectTab(slug) {
           if (!slug || slug === current) return;
           current = slug;
-          try { localStorage.setItem("cp-tab:compose-m3", current); } catch (e) {}
+          try { localStorage.setItem("cp-tab:meshcore-mobile", current); } catch (e) {}
           reflectTabs();
           pushUrl({ tab: current });
           apply();
@@ -1028,13 +1206,54 @@ applyThemeChoice();
       })();
       apply();
     })();</script>
+<div class="cp-catalog-download"><a class="cp-action-chip" href="/bundle.zip?token=demo-token-fixture&amp;session=meshcore-mobile">download all (.zip)</a></div>
+
         <!-- Finishes the phone shape of this page's chrome: the tree sidebar's filter field moves
              into the sticky toolbar beside the Theme and `⋯` menus already there, and back out
              again above 640px, and the summary tally drops below the grid. Renders nothing;
              `serve.css` hides the tag. -->
         <cp-catalog-toolbar></cp-catalog-toolbar>
         </main>
+        <footer class="cp-site-footer">
+          <div class="cp-site-footer-links">
+            <a href="https://github.com/yschimke/compose-ai-tools"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> GitHub</a> ·
+            <form class="cp-report-bug" method="get" action="/report-bug"><input type="hidden" name="from" value=""><input type="hidden" name="token" value=""><input type="hidden" name="scheme" value=""><button type="submit" class="cp-report-bug-link" title="Report a bug in the preview server itself — not in a preview"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> report a server bug</button></form> ·
+            <a href="/version">/version</a>
+          </div>
+        </footer>
+        <div class="cp-fab" data-cp-capture-src="/assets/serve/fixture/report-capture.js">
+          <details class="cp-fab-menu">
+            <summary class="cp-fab-btn" title="Report a problem" aria-label="Report a problem"
+              ><svg class="cp-fab-mark" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12.4a7.7 7.7 0 0 1-8.3 7.6c-.7 0-1.4-.1-2-.3L4 21l1.4-3.9a7.3 7.3 0 0 1-1.9-4.9 7.7 7.7 0 0 1 8.5-7.6 7.8 7.8 0 0 1 8.5 7.8z"/><path d="M12 8.4v4"/><path d="M12 15.4h.01"/></svg></summary>
+            <div class="cp-fab-panel">
+              <p class="cp-fab-head">Report a problem</p>
+              <p class="cp-fab-sub">Two trackers &mdash; pick whichever owns the thing that is
+                wrong.</p>
+              <a class="cp-fab-choice cp-fab-catalog" href="#cp-report" hidden>
+                <span class="cp-fab-what">Something is wrong with this <strong>preview</strong></span>
+                <span class="cp-fab-who">wrong colours, wrong spec, a state that is missing</span>
+              </a>
+              <form class="cp-report-bug" method="get" action="/report-bug"><input type="hidden" name="from" value=""><input type="hidden" name="token" value=""><input type="hidden" name="scheme" value=""><button type="submit" class="cp-fab-choice"><span class="cp-fab-what">Something is wrong with the <strong>preview server</strong></span><span class="cp-fab-who">the page, a control, a render that failed &mdash; goes to <code>yschimke/compose-ai-tools</code></span></button></form>
+              <div class="cp-shot" hidden>
+                <p class="cp-shot-head">Capture what you can see</p>
+                <p class="cp-fab-who">The report embeds the plain render. Anything the browser composes
+                  &mdash; the spec triptych, a wipe, an overlay, an error &mdash; only reaches the issue as a
+                  picture you take.</p>
+                <div class="cp-shot-modes">
+                  <button type="button" class="cp-shot-mode" data-cp-capture="view"
+                    title="The whole browser viewport, as it is now">Whole view</button>
+                  <button type="button" class="cp-shot-mode" data-cp-capture="region"
+                    title="Drag a box around the part that is wrong">Region</button>
+                  <button type="button" class="cp-shot-mode" data-cp-capture="element"
+                    title="Point at one element — a render, a table, a single cell">Element</button>
+                </div>
+                <p class="cp-shot-note" role="status"></p>
+                <ul class="cp-shot-list"></ul>
+              </div>
+            </div>
+          </details>
+        </div>
         <script>(function(){var key="cp_chrome";document.querySelectorAll("[data-cp-interface-mode]").forEach(function(b){b.addEventListener("click",function(){var mode=b.getAttribute("data-cp-interface-mode");if(mode!=="catalog"&&mode!=="dev")return;try{document.cookie=key+"="+mode+"; path=/; max-age=31536000; samesite=lax"+(location.protocol==="https:"?"; secure":"");}catch(e){}var u=new URL(location.href);u.searchParams.delete("chrome");if(document.cookie.indexOf(key+"="+mode)<0)u.searchParams.set("chrome",mode);var q=u.searchParams.toString();location.assign(u.pathname+(q?"?"+q:"")+u.hash);});});})();</script>
-        
+        <script src="/assets/serve/fixture/keyboard-navigation.js"></script>
       </body>
     </html>

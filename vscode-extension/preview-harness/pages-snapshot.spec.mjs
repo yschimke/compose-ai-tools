@@ -3406,6 +3406,82 @@ test("contract · declared theme renders use bounded parallelism", async ({
   await expect.poll(() => released).toBe(true);
 });
 
+test("contract · deferred themed cards render under a live claim", async ({
+  page,
+}) => {
+  // The regression: deferred cards were stamped with the VISIBLE batch's token, and that claim is
+  // handed back the moment its last on-screen card settles — instantly, when the viewport holds
+  // none. Every card the visitor then scrolled to presented a token the server had already reaped
+  // and was refused for the life of the page, leaving the grid on the previous theme's pixels.
+  let issued = 0;
+  const live = new Set();
+  const rendered = [];
+  const staleTokenRequests = [];
+
+  await page.route("**/api/theme-render-lease?*", async (route) => {
+    const lease = `lease-${++issued}`;
+    live.add(lease);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ lease, concurrency: 5 }),
+    });
+  });
+  await page.route("**/api/theme-render-lease/release?*", async (route) => {
+    live.delete(new URL(route.request().url()).searchParams.get("lease"));
+    await route.fulfill({ status: 204, body: "" });
+  });
+
+  await page.route("**/render/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (!url.searchParams.has("themeProvider")) {
+      await route.fulfill({ path: renderPlaceholder, contentType: "image/png" });
+      return;
+    }
+    const token = url.searchParams.get("_themeLease");
+    // The server's own gate, in miniature: a token it no longer holds is not admitted.
+    if (token && !live.has(token)) {
+      staleTokenRequests.push(url.pathname);
+      await route.fulfill({ status: 429, body: "theme render lease saturated" });
+      return;
+    }
+    rendered.push(url.pathname);
+    await route.fulfill({ path: renderPlaceholder, contentType: "image/png" });
+  });
+
+  // Narrow and short, so this catalog's cards stack well past one screenful. Only the top ones
+  // count as on screen; the rest are held against the scroll, which is where the bug lived. The
+  // tab is **All**, the other half of it: every section is showing there, so nothing is the
+  // "current" section and the whole grid used to be classified as off screen.
+  await page.setViewportSize({ width: 420, height: 320 });
+  await page.goto(
+    "/preview-harness/fixtures/pages/serve-landing-declared-tabbed-themes.html",
+  );
+  // Every card this catalog can re-render under a declared theme. Two of its nine are the Themes
+  // section's own swatches, which carry no re-renderable base and are skipped by design.
+  const themable = 7;
+  await openCatalogThemeBar(page);
+  await page.getByRole("button", { name: "Brand Dark" }).click();
+
+  // Let the on-screen batch finish and hand its claim back before scrolling: a deferred card that
+  // ran while that token was still live would not have exercised the bug at all.
+  await expect.poll(() => rendered.length).toBeGreaterThan(0);
+  await expect.poll(() => live.size).toBe(0);
+
+  for (let step = 0; step < 12; step++) {
+    await page.mouse.wheel(0, 600);
+    await page.waitForTimeout(150);
+  }
+  await expect
+    .poll(() => new Set(rendered).size, { timeout: 15_000 })
+    .toBe(themable);
+  expect(staleTokenRequests).toEqual([]);
+  // The scrolled-to cards ran under claims of their own, not the on-screen batch's.
+  expect(issued).toBeGreaterThan(1);
+  // Nothing is left holding burst width once the grid has drained.
+  await expect.poll(() => live.size).toBe(0);
+});
+
 test("contract · snapshot overrides stay composed with a declared theme", async ({
   page,
 }) => {

@@ -25,6 +25,78 @@ class ServeWebDeferredThemeTest {
       canRenderThemeFor = { true },
     )
 
+  /** The same catalog, sectioned, so the grid carries tabs and an **All** row. */
+  private fun tabbedPage() =
+    ServeWeb.landingPage(
+      "compose-m3",
+      listOf(
+        ServePreview(id = "a", label = "A", section = "Actions"),
+        ServePreview(id = "b", label = "B", section = "Containment"),
+      ),
+      token = "t",
+      isPublic = true,
+      basePath = "/compose-m3",
+      declaredThemes = listOf(ServeTheme(name = "Brand", providerFqn = "com.example.BrandTheme")),
+      canRenderThemeFor = { true },
+    )
+
+  @Test
+  fun `on the All tab the grid is partitioned by geometry alone`() {
+    // The bug this pins: on **All** every section is showing, so no card's section equals the
+    // current tab and the section test rejected the entire grid. The visible batch came out empty,
+    // its burst claim was handed straight back, and every deferred card then presented a token the
+    // server had already reaped — a themed All tab rendered nothing at all.
+    val html = tabbedPage()
+    assertTrue(
+      html.contains(
+        "themeVisible = current === \"all\" || " +
+          "themeSection.getAttribute(\"data-section\") === current"
+      ),
+      "All shows every section, so only the viewport decides",
+    )
+  }
+
+  @Test
+  fun `a deferred batch renders under a claim of its own, not the visible batch's`() {
+    // The visible batch releases its claim the moment its last card settles — immediately, when no
+    // card was on screen. Deferred cards stamped with THAT token were then refused for the life of
+    // the page, which is what left a themed grid spinning on the previous theme's pixels.
+    val html = page()
+    val visibleStamp = html.indexOf("if (lease) stampThemeLease(themeQueue, lease);")
+    assertTrue(visibleStamp >= 0, "the page claim is stamped onto the on-screen batch alone")
+    assertFalse(
+      html.contains("themeQueue.concat(themeDeferredQueue)"),
+      "deferred jobs no longer inherit the visible batch's token",
+    )
+    assertTrue(
+      html.contains("function runDeferredThemeBatch(jobs, gen)") &&
+        html.contains("acquireThemeLease(gen, function (lease) {") &&
+        html.contains("if (lease) stampThemeLease(jobs, lease);"),
+      "each deferred batch asks for its own claim when the viewport reaches it",
+    )
+    assertTrue(
+      html.contains("job.baseSrc = job.baseSrc.replace(/&_themeLease=[^&]*/, \"\")"),
+      "re-stamping replaces the previous token rather than appending a second one",
+    )
+  }
+
+  @Test
+  fun `every claim the page holds is handed back, not just the last one acquired`() {
+    // Several claims are live at once now (the visible batch, plus a deferred batch per scroll), so
+    // abandoning a generation or leaving the page has to release all of them. A single slot left
+    // the rest tying up the catalog's burst width until their TTL expired.
+    val html = page()
+    assertTrue(html.contains("var themeLeases = [];"), "claims are tracked as a set")
+    assertTrue(
+      html.contains("function releaseAllThemeLeases(beacon)") &&
+        html.contains("releaseAllThemeLeases(false);") &&
+        html.contains(
+          "window.addEventListener(\"pagehide\", function () { releaseAllThemeLeases(true); });"
+        ),
+      "a theme change and a page exit both hand back every claim",
+    )
+  }
+
   @Test
   fun `off-screen cards are not queued up front with the visible ones`() {
     // Asserted on what actually runs, not on the absence of a string: the two queues ARE joined
@@ -47,8 +119,12 @@ class ServeWebDeferredThemeTest {
       "started a screenful early, so scrolling meets finished pixels not a spinner",
     )
     assertTrue(
-      html.contains("runThemeQueue(due, gen, null, 1)"),
-      "a trickle behind the scroll — no burst lease, one at a time",
+      html.contains("runDeferredThemeBatch(due, gen)"),
+      "a trickle behind the scroll — its own claim, one card at a time",
+    )
+    assertTrue(
+      html.contains("runThemeQueue(jobs, gen, lease, 1);"),
+      "one worker whatever width the claim was granted",
     )
   }
 
@@ -101,9 +177,7 @@ class ServeWebDeferredThemeTest {
     // Otherwise those cards would sit on the wrong theme forever.
     assertTrue(
       page()
-        .contains(
-          "if (!window.IntersectionObserver) { runThemeQueue(jobs, gen, null, 1); return; }"
-        )
+        .contains("if (!window.IntersectionObserver) { runDeferredThemeBatch(jobs, gen); return; }")
     )
   }
 
