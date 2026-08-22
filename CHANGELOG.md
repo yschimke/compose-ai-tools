@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.31.0](https://github.com/yschimke/compose-ai-tools/compare/v1.30.0...v1.31.0) (2026-08-22)
+
+
+### Features
+
+* **catalog:** compare across repositories, and against the kit both sides reproduce ([#4447](https://github.com/yschimke/compose-ai-tools/issues/4447)) ([c01c237](https://github.com/yschimke/compose-ai-tools/commit/c01c23768563ddd50652be8be43d98a15ba3f5f1))
+* **compare:** put the design spec left of the render, everywhere ([#4437](https://github.com/yschimke/compose-ai-tools/issues/4437)) ([be3a3c1](https://github.com/yschimke/compose-ai-tools/commit/be3a3c1e5a6f3c5c7b3c528e3b10842504e67ac3))
+* **parity:** a compose-parity-locator/v1 erratum — multi-component reports and reserved selection fields ([#4426](https://github.com/yschimke/compose-ai-tools/issues/4426)) ([a3e8606](https://github.com/yschimke/compose-ai-tools/commit/a3e8606cd52ee6406daa4062d6935dd62ba2c7ab))
+* **preview:** add @CaptureGutter so a shadow can fall outside the render bounds ([#4445](https://github.com/yschimke/compose-ai-tools/issues/4445)) ([687076e](https://github.com/yschimke/compose-ai-tools/commit/687076e3db137b69ccfa1a8ef8d2439648965c18))
+* **serve:** lift the front door's hero off its card on hover ([#4430](https://github.com/yschimke/compose-ai-tools/issues/4430)) ([bd7432c](https://github.com/yschimke/compose-ai-tools/commit/bd7432cef00c9307404befe2905348196bf15e3b))
+* **serve:** show the diff column on the compare wall's reference lane ([#4428](https://github.com/yschimke/compose-ai-tools/issues/4428)) ([ce263b0](https://github.com/yschimke/compose-ai-tools/commit/ce263b07e02244793b503e2aa3b6b003ee0bdfcf))
+
+
+### Bug Fixes
+
+* **compare:** let the design-column header say which tool it came from ([#4440](https://github.com/yschimke/compose-ai-tools/issues/4440)) ([3aa645b](https://github.com/yschimke/compose-ai-tools/commit/3aa645b01605323d02cf5a7c50cfebafa1ee83d3))
+* **design-artifacts:** measure a reference's placement, never estimate it ([#4436](https://github.com/yschimke/compose-ai-tools/issues/4436)) ([f5fbbf3](https://github.com/yschimke/compose-ai-tools/commit/f5fbbf35f6f499131bf48af3e0351582a3e725cf))
+* **design-artifacts:** size a reference off what it draws, not its artboard ([#4429](https://github.com/yschimke/compose-ai-tools/issues/4429)) ([7407aa7](https://github.com/yschimke/compose-ai-tools/commit/7407aa729d01be424d9cde8b7c81f16f87b69a4c))
+* **parity:** allow a signed bounds origin, refuse a reused reference, fix the pilot counts ([#4438](https://github.com/yschimke/compose-ai-tools/issues/4438)) ([95cee6d](https://github.com/yschimke/compose-ai-tools/commit/95cee6dfcefb48956a9b45b7bec865b32cffebc1))
+* **preview:** make the capture gutter reach the paths the first pass missed ([#4454](https://github.com/yschimke/compose-ai-tools/issues/4454)) ([01abf92](https://github.com/yschimke/compose-ai-tools/commit/01abf92cf923579587f5996629628648bd10eb74))
+* **rc-compare:** flatten onto the diff neutral before scoring in the browser ([#4451](https://github.com/yschimke/compose-ai-tools/issues/4451)) ([517f315](https://github.com/yschimke/compose-ai-tools/commit/517f3151794adab419f96d0e0b4fc712baec4f2f))
+* **rc-compare:** publish each player's own pixels, not the diff neutral ([#4448](https://github.com/yschimke/compose-ai-tools/issues/4448)) ([5a86551](https://github.com/yschimke/compose-ai-tools/commit/5a865515826892e76dc1dec4534087d94d5ba846))
+* **render:** nest a themeProvider override around a structural @PreviewWrapper ([#4449](https://github.com/yschimke/compose-ai-tools/issues/4449)) ([1d122d6](https://github.com/yschimke/compose-ai-tools/commit/1d122d66cbd95438cbeb5d6caccf14c0d3aed14c))
+* **scroll:** truncate the GIF before re-encoding into it ([#4433](https://github.com/yschimke/compose-ai-tools/issues/4433)) ([872573a](https://github.com/yschimke/compose-ai-tools/commit/872573a37a68aa55f218b23bfcea535bc5905207))
+* **semantics:** don't annotate a subtree that was measured but never placed ([#4432](https://github.com/yschimke/compose-ai-tools/issues/4432)) ([beaadec](https://github.com/yschimke/compose-ai-tools/commit/beaadec09d217cd314d75994fe270e72e8cdb2a8))
+* **semantics:** finish honouring `placed` across every consumer of the tree ([#4441](https://github.com/yschimke/compose-ai-tools/issues/4441)) ([445a714](https://github.com/yschimke/compose-ai-tools/commit/445a714e4e9ce4873fb412506880caa09c4a2f98))
+* **semantics:** mirror the `placed` diff field into the TypeScript differ ([#4444](https://github.com/yschimke/compose-ai-tools/issues/4444)) ([67c4ccc](https://github.com/yschimke/compose-ai-tools/commit/67c4ccc8d7955f758e58815a0a991cc3b4d16c4e))
+* **serve:** keep a themed grid rendering after the on-screen batch drains ([#4450](https://github.com/yschimke/compose-ai-tools/issues/4450)) ([747469c](https://github.com/yschimke/compose-ai-tools/commit/747469cc1de3d84243580b862cc1846c7a6afa68))
+* **serve:** pack catalog sub-groups into shared rows ([#4427](https://github.com/yschimke/compose-ai-tools/issues/4427)) ([e1dd194](https://github.com/yschimke/compose-ai-tools/commit/e1dd194543dac6447459ffc28cde461199e52ba4))
+* **share-preview:** name the off image lane instead of a bare 404 ([#4446](https://github.com/yschimke/compose-ai-tools/issues/4446)) ([403847c](https://github.com/yschimke/compose-ai-tools/commit/403847ca00f4bcf9fa4be320315655953fd6a271))
+
 ## [1.30.0](https://github.com/yschimke/compose-ai-tools/compare/v1.29.0...v1.30.0) (2026-08-22)
 
 
