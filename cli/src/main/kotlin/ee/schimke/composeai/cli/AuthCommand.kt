@@ -255,8 +255,17 @@ internal class AuthCommand(
       println("  ${opened.approveUrl}")
       println("  verification code: ${opened.userCode}")
       println()
+      // The capabilities belong in THIS line, not just in --json. It is the sentence an agent
+      // relays into a chat window, and the approval page asks for them explicitly — so omitting
+      // them made the relayed message understate the consent being sought, on the one feature whose
+      // entire premise is that the human sees what they are agreeing to. Printed as the server
+      // clamped them, so a capability this host does not offer is absent here too rather than
+      // promising a checkbox that will not appear.
+      val requestedCapabilities =
+        if (opened.requestedCapabilities.isEmpty()) ""
+        else " + ${opened.requestedCapabilities.joinToString(", ")}"
       println(
-        "  They will be asked to grant: ${opened.requestedScope} · " +
+        "  They will be asked to grant: ${opened.requestedScope}$requestedCapabilities · " +
           ServeAgentGrants.formatDuration(opened.requestedTtlSeconds) +
           (if (label.isNotEmpty()) " · \"$label\"" else "")
       )
