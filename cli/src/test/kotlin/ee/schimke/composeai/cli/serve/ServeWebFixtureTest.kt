@@ -2978,6 +2978,30 @@ class ServeWebFixtureTest {
         withheldReason = "you do not hold it yourself on this server, so you cannot pass it on",
       )
 
+    // The same page on a box that offers a CAPABILITY beside the scopes — the second fieldset, its
+    // checkboxes unticked, and one capability the approver may not pass on. Its own fixture rather
+    // than a variant of the one above, because the control that matters here (an independent
+    // checkbox, where the scopes are a radio) only exists on a box whose operator opted in, and a
+    // golden that never renders it would let that control change unseen.
+    val agentAccessCapabilities =
+      ServeWeb.agentGrantApprovalPage(
+        requestId = "9c2Qk1pTf0Xb7hLm4nRzQA",
+        userCode = "KX7M-9QD4",
+        label = "embed the before/after in the PR body",
+        client = "203.0.113.42",
+        requestedScope = ServeAgentGrantScope.LIVE,
+        requestedTtlSeconds = 1800,
+        expiresInSeconds = 540,
+        approver = "@yschimke",
+        selectableScopes = listOf(ServeAgentGrantScope.PREVIEW, ServeAgentGrantScope.LIVE),
+        selectableCapabilities = listOf(ServeAgentGrantCapability.IMAGES),
+        maxTtlSeconds = 8 * 3600,
+        approveCsrf = "fixed-approve-seal",
+        denyCsrf = "fixed-deny-seal",
+        formAction = "/agent-access/9c2Qk1pTf0Xb7hLm4nRzQA",
+        version = version,
+      )
+
     // What the approver lands on afterwards.
     val agentAccessGranted =
       ServeWeb.agentGrantNoticePage(
@@ -3445,6 +3469,7 @@ class ServeWebFixtureTest {
         "serve-viewer-nav-collapsed.html" to viewerNavCollapsed,
         "serve-notfound.html" to notFound,
         "serve-agent-access.html" to agentAccess,
+        "serve-agent-access-capabilities.html" to agentAccessCapabilities,
         "serve-agent-access-granted.html" to agentAccessGranted,
         "serve-docs-upload.html" to docUpload,
         "serve-playground.html" to playground,

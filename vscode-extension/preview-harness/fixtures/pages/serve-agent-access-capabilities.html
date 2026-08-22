@@ -66,7 +66,7 @@
         </div>
 
         <dl class="cp-grant-facts">
-          <dt>Purpose</dt><dd>fix wear-m3-catalog#68 &lt;the focus ring&gt;</dd>
+          <dt>Purpose</dt><dd>embed the before/after in the PR body</dd>
           <dt>Asked from</dt><dd>203.0.113.42</dd>
           <dt>Approving as</dt><dd>@yschimke</dd>
           <dt>This request expires in</dt><dd>9m</dd>
@@ -87,15 +87,22 @@
   <span class="cp-grant-scope-what">Open live preview sessions, which start a render daemon on this machine<span class="cp-grant-scope-implies">also includes preview</span></span>
 </label>
           </fieldset>
+                  <fieldset class="cp-grant-fieldset">
+          <legend>Anything else the agent may do</legend>
+          <label class="cp-grant-scope">
+  <input type="checkbox" name="capability" value="images">
+  <span class="cp-grant-scope-name">images</span>
+  <span class="cp-grant-scope-what">Upload rendered preview images, published at unlisted URLs on this server until they expire</span>
+</label>
+        </fieldset>
           
-          <p class="cp-grant-withheld">Not offered: playground — you do not hold it yourself on this server, so you cannot pass it on</p>
           
           <label class="cp-grant-ttl">
             <span>Access expires after</span>
             <select name="ttl">
               <option value="900">15m</option>
+<option value="1800" selected>30m</option>
 <option value="3600">1h</option>
-<option value="7200" selected>2h</option>
 <option value="14400">4h</option>
 <option value="28800">8h</option>
             </select>
