@@ -48,7 +48,7 @@ import ee.schimke.composeai.preview.AnimatedPreview
 @CatalogRemoteModes
 @Composable
 fun TonalRemoteButton() = RemoteSticker {
-  val (label, onClick) = countedRemote("Tonal")
+  val (label, onClick) = countedRemote(KitCopy.PRIMARY_LABEL)
   RemoteButton(
     onClick = onClick,
     colors =
@@ -65,7 +65,7 @@ fun TonalRemoteButton() = RemoteSticker {
 @CatalogRemoteLarge
 @Composable
 fun IconLabelRemoteButton() = RemoteSticker {
-  val (label, onClick) = countedRemote("Favourite")
+  val (label, onClick) = countedRemote(KitCopy.PRIMARY_LABEL)
   RemoteButton(
     onClick = onClick,
     icon = {
@@ -82,7 +82,7 @@ fun IconLabelRemoteButton() = RemoteSticker {
 @CatalogRemoteLarge
 @Composable
 fun IconLabelSecondaryRemoteButton() = RemoteSticker {
-  val (label, onClick) = countedRemote("Morning run")
+  val (label, onClick) = countedRemote(KitCopy.PRIMARY_LABEL)
   RemoteButton(
     onClick = onClick,
     icon = {
@@ -92,7 +92,7 @@ fun IconLabelSecondaryRemoteButton() = RemoteSticker {
         modifier = RemoteModifier.size(RemoteButtonDefaults.LargeIconSize),
       )
     },
-    secondaryLabel = { RemoteText("5.2 km · 28 min".rs) },
+    secondaryLabel = { RemoteText(KitCopy.SECONDARY_LABEL.rs) },
     label = { RemoteText(label) },
   )
 }
@@ -103,14 +103,14 @@ fun DisabledRemoteButton() = RemoteSticker {
   RemoteButton(
     onClick = valueChange(rememberMutableRemoteInt(0), 1.ri),
     enabled = false.rb,
-    content = { RemoteText("Disabled".rs) },
+    content = { RemoteText(KitCopy.PRIMARY_LABEL.rs) },
   )
 }
 
 @CatalogRemoteModes
 @Composable
 fun CompactIconLabelRemoteButton() = RemoteSticker {
-  val (label, onClick) = countedRemote("Add")
+  val (label, onClick) = countedRemote(KitCopy.PRIMARY_LABEL)
   RemoteCompactButton(
     onClick = onClick,
     icon = {
@@ -244,7 +244,7 @@ fun SmallRemoteTextButton() = RemoteSticker {
   SizedTextButton(
     size = RemoteTextButtonDefaults.SmallButtonSize,
     style = RemoteTextButtonDefaults.smallButtonTextStyle,
-    label = "Aa",
+    label = KitCopy.GLYPHS,
   )
 }
 
@@ -254,7 +254,7 @@ fun LargeRemoteTextButton() = RemoteSticker {
   SizedTextButton(
     size = RemoteTextButtonDefaults.LargeButtonSize,
     style = RemoteTextButtonDefaults.largeButtonTextStyle,
-    label = "Aa",
+    label = KitCopy.GLYPHS,
   )
 }
 
@@ -281,7 +281,7 @@ private fun SizedTextButton(
 @CatalogRemoteModes
 @Composable
 fun FilledRemoteTextButton() = RemoteSticker {
-  val (label, onClick) = countedRemote("OK")
+  val (label, onClick) = countedRemote(KitCopy.GLYPHS)
   RemoteTextButton(
     onClick = onClick,
     colors =
@@ -296,7 +296,7 @@ fun FilledRemoteTextButton() = RemoteSticker {
 @CatalogRemoteModes
 @Composable
 fun OutlinedRemoteTextButton() = RemoteSticker {
-  val (label, onClick) = countedRemote("More")
+  val (label, onClick) = countedRemote(KitCopy.GLYPHS)
   RemoteTextButton(
     onClick = onClick,
     border = 2.rdp,
@@ -308,36 +308,36 @@ fun OutlinedRemoteTextButton() = RemoteSticker {
 @CatalogRemoteLarge
 @Composable
 fun TitleOnlyRemoteTitleCard() = RemoteSticker {
-  val (title, onClick) = countedRemote("Morning run")
+  val (title, onClick) = countedRemote(KitCopy.CARD_TITLE)
   RemoteTitleCard(onClick = onClick, title = { RemoteText(title) })
 }
 
 @CatalogRemoteLarge
 @Composable
 fun TimeContentRemoteTitleCard() = RemoteSticker {
-  val (title, onClick) = countedRemote("Morning run")
+  val (title, onClick) = countedRemote(KitCopy.CARD_TITLE)
   RemoteTitleCard(
     onClick = onClick,
     title = { RemoteText(title) },
-    time = { RemoteText("10:10".rs) },
-    content = { RemoteText("5.2 km · 28 min".rs) },
+    time = { RemoteText(KitCopy.TIMESTAMP.rs) },
+    content = { RemoteText(KitCopy.CARD_CONTENT.rs) },
   )
 }
 
 @CatalogRemoteLarge
 @Composable
 fun TimeRemoteAppCard() = RemoteSticker {
-  val (title, onClick) = countedRemote("New message")
+  val (title, onClick) = countedRemote(KitCopy.CARD_TITLE)
   RemoteAppCard(
     onClick = onClick,
-    appName = { RemoteText("Messages".rs) },
+    appName = { RemoteText(KitCopy.APP_LABEL.rs) },
     title = { RemoteText(title) },
-    time = { RemoteText("10:10".rs) },
-    content = { RemoteText("See you soon".rs) },
+    time = { RemoteText(KitCopy.TIMESTAMP.rs) },
+    content = { RemoteText(KitCopy.CARD_CONTENT.rs) },
   )
 }
 
-@CatalogRemoteModes
+@CatalogRemoteDisplay
 @Composable
 fun DisabledCircularProgressRemote() = RemoteSticker {
   RemoteCircularProgressIndicator(
@@ -347,13 +347,13 @@ fun DisabledCircularProgressRemote() = RemoteSticker {
   )
 }
 
-@CatalogRemoteModes
+@CatalogRemoteDisplay
 @Composable
 fun IndeterminateCircularProgressRemote() = RemoteSticker {
   RemoteCircularProgressIndicator(modifier = RemoteModifier.size(72.rdp))
 }
 
-@CatalogRemoteModes
+@CatalogRemoteDisplay
 @AnimatedPreview(
   durationMs = 2000,
   frameIntervalMs = 50,
@@ -365,7 +365,7 @@ fun IndeterminateCircularProgressMotionRemote() = RemoteSticker {
   RemoteCircularProgressIndicator(modifier = RemoteModifier.size(72.rdp))
 }
 
-@CatalogRemoteModes
+@CatalogRemoteDisplay
 @Composable
 fun HorizontalPageIndicatorRemote() = RemoteSticker {
   RemoteHorizontalPageIndicator(
@@ -374,7 +374,7 @@ fun HorizontalPageIndicatorRemote() = RemoteSticker {
   )
 }
 
-@CatalogRemoteModes
+@CatalogRemoteDisplay
 @Composable
 fun VerticalPageIndicatorRemote() = RemoteSticker {
   RemoteVerticalPageIndicator(
@@ -383,7 +383,7 @@ fun VerticalPageIndicatorRemote() = RemoteSticker {
   )
 }
 
-@CatalogRemoteModes
+@CatalogRemoteDisplay
 @Composable
 fun InteractivePageIndicatorRemote() = RemoteSticker {
   val selected = rememberMutableRemoteInt(0)
@@ -406,7 +406,7 @@ fun InteractivePageIndicatorRemote() = RemoteSticker {
   }
 }
 
-@CatalogRemoteModes
+@CatalogRemoteDisplay
 @AnimatedPreview(
   durationMs = 1000,
   frameIntervalMs = 33,

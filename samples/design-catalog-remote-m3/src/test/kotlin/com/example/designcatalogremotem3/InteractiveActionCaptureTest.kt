@@ -31,29 +31,34 @@ class InteractiveActionCaptureTest {
   /** Sticker stem → the base label its `countedRemote(...)` was given. */
   private val countedStickers =
     mapOf(
-      "FilledRemoteButton" to "Filled",
-      "OutlinedRemoteButton" to "Outlined",
-      "CustomShapeRemoteButton" to "Filled",
+      // The kit's label for every single-slot button — see `KitCopy`. Referenced rather than
+      // spelled, so this test cannot drift back into asserting copy the catalog no longer draws.
+      "FilledRemoteButton" to KitCopy.PRIMARY_LABEL,
+      "OutlinedRemoteButton" to KitCopy.PRIMARY_LABEL,
+      "CustomShapeRemoteButton" to KitCopy.PRIMARY_LABEL,
       // Its label is an overridable named binding; the counter composes over it rather than
       // replacing it, so it takes the same default tally as everything else.
-      "NamedLabelRemoteButton" to "Filled",
-      "TextRemoteButton" to "Child",
-      "CompactRemoteButton" to "Compact",
-      "CardRemote" to "Card",
-      "OutlinedCardRemote" to "Card",
-      "TitleCardRemote" to "Morning run",
-      "AppCardRemote" to "Morning run",
-      "TonalRemoteButton" to "Tonal",
-      "IconLabelRemoteButton" to "Favourite",
-      "IconLabelSecondaryRemoteButton" to "Morning run",
-      "CompactIconLabelRemoteButton" to "Add",
-      "SmallRemoteTextButton" to "Aa",
-      "LargeRemoteTextButton" to "Aa",
-      "FilledRemoteTextButton" to "OK",
-      "OutlinedRemoteTextButton" to "More",
-      "TitleOnlyRemoteTitleCard" to "Morning run",
-      "TimeContentRemoteTitleCard" to "Morning run",
-      "TimeRemoteAppCard" to "New message",
+      "NamedLabelRemoteButton" to KitCopy.PRIMARY_LABEL,
+      "TonalRemoteButton" to KitCopy.PRIMARY_LABEL,
+      "IconLabelRemoteButton" to KitCopy.PRIMARY_LABEL,
+      "IconLabelSecondaryRemoteButton" to KitCopy.PRIMARY_LABEL,
+      "CompactRemoteButton" to KitCopy.PRIMARY_LABEL,
+      "CompactIconLabelRemoteButton" to KitCopy.PRIMARY_LABEL,
+      // The ROUND text buttons take the kit's glyph run instead: a two-word label is drawn through
+      // the edge of a circle, which is what `PRIMARY_LABEL` here produced before it was caught.
+      "TextRemoteButton" to KitCopy.GLYPHS,
+      "SmallRemoteTextButton" to KitCopy.GLYPHS,
+      "LargeRemoteTextButton" to KitCopy.GLYPHS,
+      "FilledRemoteTextButton" to KitCopy.GLYPHS,
+      "OutlinedRemoteTextButton" to KitCopy.GLYPHS,
+      // Cards quote the kit's card slots.
+      "CardRemote" to KitCopy.CARD_CONTENT,
+      "OutlinedCardRemote" to KitCopy.CARD_CONTENT,
+      "TitleCardRemote" to KitCopy.CARD_TITLE,
+      "AppCardRemote" to KitCopy.CARD_TITLE,
+      "TitleOnlyRemoteTitleCard" to KitCopy.CARD_TITLE,
+      "TimeContentRemoteTitleCard" to KitCopy.CARD_TITLE,
+      "TimeRemoteAppCard" to KitCopy.CARD_TITLE,
     )
 
   /**
