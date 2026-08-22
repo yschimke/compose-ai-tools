@@ -46,6 +46,8 @@ export interface SemanticsTreeNode {
     /** "mergeDescendants" | "clearAndSet" | undefined. */
     mergeMode?: string;
     clickable?: boolean;
+    /** Measured AND positioned on the frame. Omitted when true (schema v15). */
+    placed?: boolean;
     children?: SemanticsTreeNode[];
 }
 

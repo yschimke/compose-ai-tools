@@ -908,6 +908,11 @@ object ComposeSemanticsDataProducer {
  */
 fun ComposeSemanticsNode.toProbeNodes(): List<RecordingProbeNode> = buildList {
   fun visit(node: ComposeSemanticsNode) {
+    // A trial-measured subtree is a second copy of content the frame draws once, and it was never
+    // placed. Probing it gives the recording backend duplicate matches: `assert.textEquals` fails
+    // as ambiguous, and `assert.notVisible` fails for content that was never drawn. See
+    // `ComposeSemanticsNode.placed`.
+    if (!node.placed) return
     val testTag = node.testTag?.takeIf { it.isNotBlank() }
     val text = node.text?.takeIf { it.isNotBlank() }
     val contentDescription = node.label?.takeIf { it.isNotBlank() && it != text }
@@ -952,6 +957,9 @@ fun ComposeSemanticsNode.toProbeNodes(): List<RecordingProbeNode> = buildList {
 private fun ComposeSemanticsNode.mergedDescendantText(): String? {
   val parts = mutableListOf<String>()
   fun collect(n: ComposeSemanticsNode) {
+    // Compose's merged semantics announce what is on screen, so an unplaced trial copy must not
+    // contribute — it would double the container's text. See `ComposeSemanticsNode.placed`.
+    if (!n.placed) return
     n.text?.takeIf { it.isNotBlank() }?.let { parts.add(it) }
     n.children.forEach(::collect)
   }

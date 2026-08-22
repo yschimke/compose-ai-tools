@@ -164,6 +164,30 @@ describe("semanticsTreeLoader", () => {
             assert.ok(np.boxes.every((b) => b.level === "info"));
         });
 
+        it("draws no box for an unplaced panel subtree", () => {
+            // Same rule the 2D inspector overlay follows: a node measured but
+            // never placed has no position, so its bounds read as the panel's
+            // origin. A panel hosting a `SubcomposeLayout` trial measure
+            // (Wear `AlertDialogContent`) puts a whole phantom tree there.
+            const tree = validTreeObject();
+            const panel = (tree.root as Record<string, unknown>)
+                .children as Record<string, unknown>[];
+            (panel[0].panelContent as Record<string, unknown>).children = [
+                { nodeId: "2", boundsInRoot: "10,10,40,30" },
+                {
+                    nodeId: "3",
+                    boundsInRoot: "0,0,40,30",
+                    placed: false,
+                    children: [{ nodeId: "4", boundsInRoot: "0,0,20,20" }],
+                },
+            ];
+            const byId = panelWireframesById(parseSpatialSemanticsTree(tree));
+            assert.deepStrictEqual(
+                byId.get("panel")!.boxes.map((b) => b.id),
+                ["panel:1", "panel:2"],
+            );
+        });
+
         it("flags a mergeDescendants node as a warning-level box", () => {
             const byId = panelWireframesById(loadFixtureTree());
             const transport = byId.get("transport")!;

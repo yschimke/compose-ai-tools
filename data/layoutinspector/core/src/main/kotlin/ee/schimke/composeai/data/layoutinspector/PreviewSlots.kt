@@ -37,6 +37,10 @@ object PreviewSlots {
   fun extractSlots(payload: ComposeSemanticsPayload): List<PreviewSlot> {
     val out = mutableListOf<PreviewSlot>()
     fun walk(node: ComposeSemanticsNode) {
+      // A slot marker inside a trial-measured subtree marks nothing: it was never placed, so it has
+      // no box, and publishing it duplicates the real slot at the origin. See
+      // `ComposeSemanticsNode.placed`.
+      if (!node.placed) return
       val tag = node.testTag
       if (tag != null && tag.startsWith(SLOT_TAG_PREFIX)) {
         val parts = tag.removePrefix(SLOT_TAG_PREFIX).split(ATTR_SEP)

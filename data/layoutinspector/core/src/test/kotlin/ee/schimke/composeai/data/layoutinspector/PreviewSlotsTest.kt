@@ -9,8 +9,41 @@ class PreviewSlotsTest {
   private fun node(
     tag: String? = null,
     bounds: String = "0,0,0,0",
+    placed: Boolean = true,
     children: List<ComposeSemanticsNode> = emptyList(),
-  ) = ComposeSemanticsNode(nodeId = "0", boundsInRoot = bounds, testTag = tag, children = children)
+  ) =
+    ComposeSemanticsNode(
+      nodeId = "0",
+      boundsInRoot = bounds,
+      testTag = tag,
+      placed = placed,
+      children = children,
+    )
+
+  @Test
+  fun `a slot marker inside a trial-measured subtree marks nothing`() {
+    // The copy a `SubcomposeLayout` measures and never places carries the same markers as the
+    // arrangement it chose — at the origin, because an unplaced node has no position.
+    val slots =
+      PreviewSlots.extractSlots(
+        ComposeSemanticsPayload(
+          node(
+            bounds = "0,0,200,200",
+            children =
+              listOf(
+                node(tag = "dp-slot:leadingIcon", bounds = "8,8,40,40"),
+                node(
+                  bounds = "0,0,120,60",
+                  placed = false,
+                  children = listOf(node(tag = "dp-slot:leadingIcon", bounds = "0,0,32,32")),
+                ),
+              ),
+          )
+        )
+      )
+
+    assertEquals(listOf("leadingIcon"), slots.map { it.name })
+  }
 
   @Test
   fun `extracts named, bounded slots from dp-slot testTags, depth-first`() {

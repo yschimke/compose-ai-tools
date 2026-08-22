@@ -31,6 +31,69 @@ class TextStringsDataProductRegistryTest {
   }
 
   @Test
+  fun `an unplaced trial subtree contributes no drawn text`() {
+    // `text/strings` projects what the render DREW. A `SubcomposeLayout` measuring a trial copy of
+    // its content to choose a layout (Wear `AlertDialogContent`) leaves that copy in the semantics
+    // tree, measured and never placed — so it reports the origin, and emitting it hands the Drawn
+    // text panel and every localisation audit a phantom string nobody saw.
+    val previewId = "com.example.TrialMeasurePreview"
+    writeSemantics(
+      previewId,
+      """
+      {
+        "root": {
+          "nodeId": "1",
+          "boundsInRoot": "0,0,200,200",
+          "children": [
+            { "nodeId": "2", "boundsInRoot": "10,20,90,40", "text": "Title" },
+            {
+              "nodeId": "3",
+              "boundsInRoot": "0,0,200,120",
+              "placed": false,
+              "children": [
+                { "nodeId": "4", "boundsInRoot": "0,0,80,20", "text": "Title" }
+              ]
+            }
+          ]
+        }
+      }
+      """
+        .trimIndent(),
+    )
+    val registry =
+      TextStringsDataProductRegistry(
+        rootDir = rootDir,
+        previewIndex =
+          PreviewIndex.fromMap(
+            path = null,
+            byId =
+              mapOf(
+                previewId to
+                  PreviewInfoDto(
+                    id = previewId,
+                    className = "com.example.TrialKt",
+                    methodName = "TrialMeasurePreview",
+                  )
+              ),
+          ),
+      )
+
+    val outcome =
+      registry.fetch(
+        previewId = previewId,
+        kind = TextStringsDataProductRegistry.KIND,
+        params = null,
+        inline = true,
+      )
+
+    assertTrue(outcome is DataProductRegistry.Outcome.Ok)
+    val texts =
+      (outcome as DataProductRegistry.Outcome.Ok).result.payload!!.jsonObject["texts"]!!.jsonArray
+    assertEquals(1, texts.size)
+    assertEquals("10,20,90,40", texts[0].jsonObject["boundsInScreen"]!!.jsonPrimitive.content)
+  }
+
+  @Test
   fun `fetch projects text and semantic label separately`() {
     val previewId = "com.example.TextPreview"
     writeSemantics(
