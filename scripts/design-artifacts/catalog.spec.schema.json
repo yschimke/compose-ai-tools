@@ -61,8 +61,34 @@
       "items": { "type": "string" }
     },
     "compareWith": {
-      "type": "string",
-      "description": "Optional slug of a sibling system to pair against on the cross-system compare page; components carry `parallel` handles into it."
+      "description": "Optional sibling system to pair against on the cross-system compare page; components carry `parallel` handles into it. A bare slug means a sibling module of this project (spec read from `../design-catalog-<slug>/`, renders from this repo's `design-artifacts/<slug>` branch). Use the object form when the sibling is a catalog of ANOTHER repository, or to tune the design column.",
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["system"],
+          "properties": {
+            "system": { "type": "string", "minLength": 1, "description": "The sibling system slug." },
+            "repo": {
+              "type": "string",
+              "description": "`<owner>/<repo>` publishing the sibling's `design-artifacts/<system>` branch, when it is not this repository."
+            },
+            "spec": {
+              "type": "string",
+              "description": "Path to the sibling's catalog.spec.json, relative to this spec. Only for an in-checkout sibling that doesn't follow the `../design-catalog-<slug>/` convention; a cross-repo sibling has none and takes its title from its published catalog.json."
+            },
+            "designTitle": {
+              "type": "string",
+              "description": "Heading for the design-reference column (default \"Design kit\")."
+            },
+            "design": {
+              "type": "boolean",
+              "description": "Set false to suppress the design-reference column even where the branches publish references."
+            }
+          }
+        }
+      ]
     },
     "display": {
       "type": "object",

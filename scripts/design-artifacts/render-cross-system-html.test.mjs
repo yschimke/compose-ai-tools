@@ -179,3 +179,110 @@ test("the summary counts pairs and how many render both sides", () => {
   assert.match(html, /2 paired/);
   assert.match(html, /1 rendered both sides/);
 });
+
+test("a cross-repo sibling bakes its thumbnails under ITS repository, not this one", () => {
+  const html = renderCrossSystemHtml(catalog, {
+    parallelById,
+    otherComponents,
+    otherManifest,
+    otherSystem: "wear-m3-catalog",
+    otherTitle: "M3 Wear OS Apps",
+    repo: "yschimke/compose-ai-tools",
+    otherRepo: "yschimke/wear-m3-catalog",
+  });
+
+  assert.match(
+    html,
+    /src="https:\/\/raw\.githubusercontent\.com\/yschimke\/wear-m3-catalog\/design-artifacts\/wear-m3-catalog\/images\/button-filled/,
+  );
+  // The "open the sibling" link follows the same repo, or it lands on a branch that isn't there.
+  assert.match(html, /github\.com\/yschimke\/wear-m3-catalog\/blob\/design-artifacts\/wear-m3-catalog/);
+  assert.doesNotMatch(
+    html,
+    /raw\.githubusercontent\.com\/yschimke\/compose-ai-tools\/design-artifacts\/wear-m3-catalog/,
+  );
+});
+
+test("without design references the page stays exactly two implementation columns", () => {
+  const html = renderCrossSystemHtml(catalog, {
+    parallelById,
+    otherComponents,
+    otherManifest,
+    otherSystem: "wear-m3",
+    otherTitle: "Wear Compose Material 3",
+  });
+
+  assert.doesNotMatch(html, /Design kit/);
+  assert.doesNotMatch(html, /col-d/);
+  assert.doesNotMatch(html, /no kit reference/);
+});
+
+test("design references add a leading kit column, and only where one resolved", () => {
+  const designRefById = new Map([
+    [
+      "Button/Filled",
+      {
+        url: "https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/references/button-filled.png",
+        uri: "figma:B24oss2tTeXAFykyeyusz0/35239:93092",
+        from: "wear-m3-catalog",
+      },
+    ],
+    // Button/Icon is paired but neither catalog maps it to the kit.
+  ]);
+  const html = renderCrossSystemHtml(catalog, {
+    parallelById,
+    otherComponents,
+    otherManifest,
+    otherSystem: "wear-m3-catalog",
+    otherTitle: "M3 Wear OS Apps",
+    otherRepo: "yschimke/wear-m3-catalog",
+    designRefById,
+  });
+
+  assert.match(html, /<th scope="col">Design kit<\/th>/);
+  assert.match(html, /references\/button-filled\.png/);
+  // The kit node is on the cell so a reader can trace the picture back to the file it came from.
+  assert.match(html, /figma:B24oss2tTeXAFykyeyusz0\/35239:93092/);
+  // Paired-but-unmapped reads as an inert cell, never a spinner or a borrowed picture.
+  assert.match(html, /no kit reference/);
+  // The header counts what is actually three-way, not what is merely paired.
+  assert.match(html, /1 against a kit reference/);
+  // Both implementations against one reference — NOT a derivation chain, which would contradict
+  // the this-system-first column order under it.
+  assert.match(html, /M3 Wear OS Apps, both against Design kit/);
+});
+
+test("the kit column is still baked — no view-time fetch reaches the design branch", () => {
+  const designRefById = new Map([
+    ["Button/Filled", { url: "https://example.test/references/button-filled.png", from: "wear-m3-catalog" }],
+  ]);
+  const html = renderCrossSystemHtml(catalog, {
+    parallelById,
+    otherComponents,
+    otherManifest,
+    otherSystem: "wear-m3-catalog",
+    designRefById,
+  });
+
+  assert.doesNotMatch(html, /fetch\(/);
+  assert.doesNotMatch(html, /<script/);
+});
+
+test("a sibling title fetched from another repo cannot inject markup into the subtitle", () => {
+  // With the cross-repo form, `otherTitle` can come straight out of a fetched sibling
+  // catalog.json. The heading and table header always escaped it; the subtitle did not.
+  const html = renderCrossSystemHtml(catalog, {
+    parallelById,
+    otherComponents,
+    otherManifest,
+    otherSystem: "wear-m3-catalog",
+    otherTitle: '<img src=x onerror="alert(1)">',
+    otherRepo: "yschimke/wear-m3-catalog",
+    designRefById: new Map([["Button/Filled", { url: "https://example.test/r.png" }]]),
+  });
+
+  assert.doesNotMatch(html, /<img src=x/);
+  assert.match(html, /&lt;img src=x/);
+  // The arrow span is ours and stays real markup.
+  assert.match(html, /<span class="arrow">↔<\/span>/);
+});

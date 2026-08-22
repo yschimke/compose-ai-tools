@@ -75,6 +75,11 @@ import { renderIndexHtml } from "./render-index-html.mjs";
 import { renderFailuresFromBundles } from "./render-failures.mjs";
 import { renderCompareHtml } from "./render-compare-html.mjs";
 import { renderCrossSystemHtml } from "./render-cross-system-html.mjs";
+import {
+  normalizeCompareWith,
+  primaryReferencesByComponentId,
+} from "./cross-system-compare.mjs";
+import { servePreviewId } from "./design-references.mjs";
 import { renderReadmeMd } from "./render-readme-md.mjs";
 import {
   figmaRastersForId,
@@ -178,6 +183,22 @@ async function fetchJsonBestEffort(url, { timeoutMs = 15000 } = {}) {
     return null;
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/**
+ * `JSON.parse` of a local file, or null when it is missing or unparseable.
+ *
+ * The local counterpart of [fetchJsonBestEffort], for a file whose ABSENCE is a legitimate
+ * configuration rather than a fault — a sibling catalog that lives in another repository has no
+ * spec in this checkout, and the compare page degrades to the title its published manifest
+ * carries instead of being skipped wholesale.
+ */
+async function readJsonBestEffort(path) {
+  try {
+    return JSON.parse(await readFile(path, "utf8"));
+  } catch {
+    return null;
   }
 }
 
@@ -1980,14 +2001,29 @@ console.log(
 // render-cross-system-html.mjs). Best-effort: a missing/broken sibling spec just
 // skips the page rather than failing the publish.
 let crossSystem = null;
-if (spec.compareWith) {
+const compare = normalizeCompareWith(spec.compareWith);
+if (compare) {
   try {
-    const otherSpecPath = join(
-      dirname(dirname(specPath)),
-      `design-catalog-${spec.compareWith}`,
-      "catalog.spec.json",
-    );
-    const otherSpec = JSON.parse(await readFile(otherSpecPath, "utf8"));
+    // The sibling's cover sheet, for its human title. Two shapes reach here and only one of them
+    // has a file to read: a sibling MODULE of this project (the `samples/design-catalog-<slug>`
+    // convention, or an explicit `compareWith.spec` path) has its spec in this checkout, while a
+    // sibling REPOSITORY has none — so this is best-effort, and the title falls back to the
+    // fetched `catalog.json`'s own `meta.title` below. It used to be a bare `readFile` inside the
+    // try, which meant a cross-repo pairing didn't degrade to a title-less page: it threw, and the
+    // catch skipped the whole compare page with a one-line warning.
+    // An ABSENT spec is legitimate for exactly one shape — a cross-repo sibling, whose cover sheet
+    // is not in this checkout — and the title then falls back to its published catalog.json. An
+    // EXPLICIT `compareWith.spec` that is misspelled or malformed is an authoring error, and
+    // swallowing it publishes a page where every declared parallel reads unpaired (or, worse,
+    // silently uses a stale sibling manifest) while looking like a legitimate result. So the
+    // explicit path is read strictly and the convention path best-effort: a throw here is caught
+    // below and skips the compare page with a warning, which is the loud outcome that error wants.
+    const otherSpecPath = compare.spec
+      ? resolve(dirname(specPath), compare.spec)
+      : join(dirname(dirname(specPath)), `design-catalog-${compare.system}`, "catalog.spec.json");
+    const otherSpec = compare.spec
+      ? JSON.parse(await readFile(otherSpecPath, "utf8"))
+      : await readJsonBestEffort(otherSpecPath);
     const parallelById = {};
     for (const group of spec.groups ?? []) {
       for (const component of group.components ?? []) {
@@ -2005,17 +2041,18 @@ if (spec.compareWith) {
     // fetched manifest may be one generation stale (both branches regenerate in the
     // same workflow run), but the baked image URLs point at the branch tip, so the
     // pixels stay current — only a brand-new sibling component waits a run.
-    const otherCatalogUrl = `https://raw.githubusercontent.com/${repo}/design-artifacts/${spec.compareWith}/catalog.json`;
-    const otherManifest = await fetchJsonBestEffort(otherCatalogUrl);
+    const otherRepo = compare.repo ?? repo;
+    const otherBranchBase = `https://raw.githubusercontent.com/${otherRepo}/design-artifacts/${compare.system}/`;
+    const otherManifest = await fetchJsonBestEffort(`${otherBranchBase}catalog.json`);
     if (otherManifest) {
       console.log(
         `[${spec.system}] resolved ${otherManifest.components?.length ?? 0} sibling render(s) ` +
-          `from ${spec.compareWith} for matches thumbnails`,
+          `from ${otherRepo}@${compare.system} for matches thumbnails`,
       );
     } else {
       console.warn(
-        `[${spec.system}] sibling ${spec.compareWith} catalog not fetched — matches thumbnails ` +
-          `show "not rendered yet" until it publishes`,
+        `[${spec.system}] sibling ${compare.system} catalog not fetched from ${otherRepo} — ` +
+          `matches thumbnails show "not rendered yet" until it publishes`,
       );
     }
     // The sibling inventory (componentId / group / caption for each parallel) comes from the
@@ -2032,7 +2069,7 @@ if (spec.compareWith) {
           group: c.group,
           caption: c.caption,
         }))
-      : (otherSpec.groups ?? []).flatMap((group) =>
+      : (otherSpec?.groups ?? []).flatMap((group) =>
           (group.components ?? []).map((c) => ({
             componentId: c.componentId,
             group: group.name,
@@ -2053,9 +2090,66 @@ if (spec.compareWith) {
       if (unresolved.length > 0) {
         console.warn(
           `[${spec.system}] ${unresolved.length} parallel(s) name no component in ` +
-            `${spec.compareWith}, so those rows pair against nothing: ${unresolved.join(", ")}.`,
+            `${compare.system}, so those rows pair against nothing: ${unresolved.join(", ")}.`,
         );
       }
+    }
+    // The third column: the design-kit reference each pair is reproducing. Both delivery branches
+    // may publish a `references/index.json` (see design-references.mjs) — the sibling's is fetched
+    // from ITS branch and joined through the `parallel` handle, this system's from its OWN branch
+    // and joined directly. Sibling-first, because in the pairing this exists for (a port compared
+    // against the catalog that reproduces a published kit) the kit mapping lives on the origin
+    // side; a port that has mapped the kit itself still contributes where the origin has not.
+    //
+    // Read from the branches rather than from this run's output for one reason worth writing down:
+    // `emit-design-references.mjs` runs AFTER this generator in the reusable workflow, so at this
+    // point no local `references/` exists yet. That makes this system's own column one publish
+    // behind on a BRAND-NEW reference, the same staleness the sibling manifest already carries and
+    // for the same reason — the baked URLs point at each branch's tip, so the pixels stay current.
+    //
+    // The two arms are NOT equally safe under that staleness, though, and the local one needs a
+    // guard. The sibling's manifest and its PNGs were published together by its own run, so they
+    // agree with each other. This system's branch is the one THIS run is about to rewrite: a
+    // reference whose component was renamed or removed since the last publish is still in the old
+    // manifest, the emitter will not re-publish its PNG, and the baked tip URL then 404s on a page
+    // that reads as though it linked something. So a local record is only trusted when the preview
+    // it was minted from is still published in this run's catalog — in which case the emitter mints
+    // the same `references/<id>.png` again and the URL is good.
+    const publishedPreviewIds = new Set();
+    for (const component of indexManifest.components ?? [])
+      for (const image of component.images ?? [])
+        if (image?.path) publishedPreviewIds.add(servePreviewId(image.path));
+    const designRefById = new Map();
+    if (compare.design !== false) {
+      const sibling = await fetchJsonBestEffort(`${otherBranchBase}references/index.json`);
+      const local = await fetchJsonBestEffort(
+        `https://raw.githubusercontent.com/${repo}/design-artifacts/${spec.system}/references/index.json`,
+      );
+      const siblingRefs = primaryReferencesByComponentId(sibling);
+      const localRefs = primaryReferencesByComponentId(local);
+      for (const [componentId, parallelId] of Object.entries(parallelById)) {
+        const fromSibling = siblingRefs.get(parallelId);
+        if (fromSibling) {
+          designRefById.set(componentId, {
+            url: otherBranchBase + fromSibling.path,
+            uri: fromSibling.uri,
+            from: compare.system,
+          });
+          continue;
+        }
+        const fromLocal = localRefs.get(componentId);
+        if (fromLocal && publishedPreviewIds.has(fromLocal.previewId)) {
+          designRefById.set(componentId, {
+            url: `https://raw.githubusercontent.com/${repo}/design-artifacts/${spec.system}/${fromLocal.path}`,
+            uri: fromLocal.uri,
+            from: spec.system,
+          });
+        }
+      }
+      console.log(
+        `[${spec.system}] matches design column → ${designRefById.size} of ` +
+          `${Object.keys(parallelById).length} parallel(s) carry a kit reference`,
+      );
     }
     const matchesPath = join(outPath, "matches.html");
     await writeFile(
@@ -2064,16 +2158,23 @@ if (spec.compareWith) {
         parallelById,
         otherComponents,
         otherManifest,
-        otherSystem: spec.compareWith,
-        otherTitle: otherSpec.title,
+        otherSystem: compare.system,
+        // A published catalog.json is FLAT (`title` at the top level) — the generator spreads its
+        // `meta` object rather than nesting it — so the fetched fallback reads `.title`. The `.meta`
+        // arm is for a reader handed the nested in-memory shape; both are cheap and only one is
+        // ever populated.
+        otherTitle: otherSpec?.title ?? otherManifest?.title ?? otherManifest?.meta?.title,
         repo,
+        otherRepo,
+        designRefById,
+        designTitle: compare.designTitle,
         previewBase,
       }),
       "utf8",
     );
     crossSystem = {
-      system: spec.compareWith,
-      title: otherSpec.title ?? spec.compareWith,
+      system: compare.system,
+      title: otherSpec?.title ?? otherManifest?.title ?? otherManifest?.meta?.title ?? compare.system,
     };
     console.log(`[${spec.system}] matches → ${matchesPath}`);
   } catch (err) {
