@@ -3399,11 +3399,17 @@ ${captureControlsHtml().prependIndent("          ")}
         var themeBase = $themeBaseJs;
         var themeGen = 0;
         var themeLeaseUrl = $themeLeaseUrlJs;
-        var themeLease = null;
+        // Every claim this page currently holds. A list, not one slot: the visible batch and each
+        // deferred batch take their own claim on the catalog's allocation, and abandoning a
+        // generation (or leaving the page) has to hand back ALL of them — a single slot silently
+        // dropped every claim but the last, leaving the catalog's burst width tied up until its
+        // TTL ran out.
+        var themeLeases = [];
         var themeRenderRetries = 3;
         function releaseThemeLease(lease, beacon) {
           if (!lease || !themeLeaseUrl) return;
-          if (themeLease === lease) themeLease = null;
+          var held = themeLeases.indexOf(lease);
+          if (held !== -1) themeLeases.splice(held, 1);
           var queryAt = themeLeaseUrl.indexOf("?");
           var url = queryAt === -1
             ? themeLeaseUrl + "/release"
@@ -3421,10 +3427,23 @@ ${captureControlsHtml().prependIndent("          ")}
               var concurrency = grant && Number.isFinite(grant.concurrency)
                 ? Math.max(1, Math.min(5, grant.concurrency)) : 1;
               if (gen !== themeGen) { releaseThemeLease(lease, false); return; }
-              themeLease = lease;
+              if (lease) themeLeases.push(lease);
               callback(lease, concurrency);
             })
             .catch(function () { if (gen === themeGen) callback(null, 1); });
+        }
+        function releaseAllThemeLeases(beacon) {
+          themeLeases.slice().forEach(function (lease) { releaseThemeLease(lease, beacon); });
+        }
+        // Point a batch's jobs at the claim that admits them. Any earlier token is dropped first:
+        // a job re-queued under a fresh claim must not carry two.
+        function stampThemeLease(jobs, lease) {
+          jobs.forEach(function (job) {
+            job.baseSrc = job.baseSrc.replace(/&_themeLease=[^&]*/, "") +
+              "&_themeLease=" + encodeURIComponent(lease);
+            job.src = job.baseSrc;
+            job.retries = 0;
+          });
         }
         function finishThemeJob(batch) {
           batch.remaining--;
@@ -3531,8 +3550,16 @@ ${captureControlsHtml().prependIndent("          ")}
         }
         // Themed renders for cards that are off-screen (or hidden by search / another tab), held
         // until the viewport reaches them. `rootMargin` starts a card a screenful early so scrolling
-        // meets finished pixels rather than a spinner. No lease is taken: this is a trickle behind
-        // the visitor's scroll, not the burst the visible batch asks for.
+        // meets finished pixels rather than a spinner.
+        //
+        // A deferred batch takes a claim of ITS OWN and hands it back when it drains. It wants none
+        // of the burst — it runs one card at a time behind the visitor's scroll — but a render sent
+        // without a claim queues on the server's single unleased semaphore, shared with every other
+        // page. Riding the *visible* batch's token instead (what this used to do) was the bug: that
+        // claim is released the moment the on-screen cards finish — immediately, when none were on
+        // screen — and every later card then presented a token the server had already reaped and
+        // was refused `429` until its retries ran out. Claims for one catalog join one allocation,
+        // so asking again is a bookkeeping call, not extra width.
         var themeObserver = null;
         function stopDeferredTheme() {
           if (themeObserver) themeObserver.disconnect();
@@ -3549,11 +3576,20 @@ ${captureControlsHtml().prependIndent("          ")}
           var h = window.innerHeight || document.documentElement.clientHeight || 0;
           return r.bottom > -400 && r.top < h + 400;
         }
+        function runDeferredThemeBatch(jobs, gen) {
+          acquireThemeLease(gen, function (lease) {
+            if (gen !== themeGen) { releaseThemeLease(lease, false); return; }
+            if (lease) stampThemeLease(jobs, lease);
+            // One at a time whatever width was granted, and the batch releases the claim itself
+            // once its last card settles.
+            runThemeQueue(jobs, gen, lease, 1);
+          });
+        }
         function deferTheme(jobs, gen) {
           if (!jobs.length) return;
           // No IntersectionObserver (old browser): fall back to rendering them, serially, rather
           // than leaving those cards stuck on the wrong theme forever.
-          if (!window.IntersectionObserver) { runThemeQueue(jobs, gen, null, 1); return; }
+          if (!window.IntersectionObserver) { runDeferredThemeBatch(jobs, gen); return; }
           // Both the observer and its worklist are per-generation locals, never shared globals: a
           // callback already queued when the visitor picks another theme must retire ITSELF and
           // touch nothing else. Clearing the live observer or its pending list from a stale
@@ -3569,12 +3605,12 @@ ${captureControlsHtml().prependIndent("          ")}
                 if (pending[i].card === e.target) { due.push(pending.splice(i, 1)[0]); break; }
               }
             });
-            if (due.length) runThemeQueue(due, gen, null, 1);
+            if (due.length) runDeferredThemeBatch(due, gen);
           }, { rootMargin: "400px" });
           themeObserver = observer;
           jobs.forEach(function (job) { observer.observe(job.card); });
         }
-        window.addEventListener("pagehide", function () { releaseThemeLease(themeLease, true); });
+        window.addEventListener("pagehide", function () { releaseAllThemeLeases(true); });
         """
           .trimIndent()
       else ""
@@ -3589,18 +3625,27 @@ ${captureControlsHtml().prependIndent("          ")}
     // Under a DECLARED theme a swap card keeps its server-side default variant's metadata (label /
     // id / viewer link / stage backing, from `data-def`) — only the pixels come from the themed
     // render — so picking a theme never silently flips the light/dark axis too.
+    // On the **All** tab every section is on screen, so the card's own section is never the
+    // current tab and this test rejected the whole grid — the visible batch came out empty, the
+    // burst lease was released before a single render started, and every deferred card then
+    // carried a token the server no longer knew (issue: themed grid stuck on the old pixels).
+    // Geometry alone is the right answer there; the tab comparison is for the tabbed views.
+    val themeSectionShowing =
+      if (hasAllTab)
+        "current === \"$ALL_TAB\" || themeSection.getAttribute(\"data-section\") === current"
+      else "themeSection.getAttribute(\"data-section\") === current"
     val correctInitialThemeVisibility =
       if (hasTabs)
         "\n            var themeSection = c.closest(\".cp-section\");" +
           "\n            if (themeVisible && themeSection && (!input || input.value.trim() === \"\")) {" +
-          "\n              themeVisible = themeSection.getAttribute(\"data-section\") === current;" +
+          "\n              themeVisible = $themeSectionShowing;" +
           "\n            }"
       else ""
     val applyDeclaredTheme =
       if (hasDeclaredThemes)
         """
         var provider = theme.indexOf("theme:") === 0 ? theme.slice(6) : "";
-        releaseThemeLease(themeLease, false);
+        releaseAllThemeLeases(false);
         themeGen++;
         stopDeferredTheme();
         var themeQueue = [];
@@ -3654,21 +3699,11 @@ ${captureControlsHtml().prependIndent("          ")}
           // render as they come into view, which is also what makes an emptied search or a newly
           // opened tab render just its own cards.
           acquireThemeLease(themeQueueGen, function (lease, concurrency) {
-            if (lease) {
-              // Deferred jobs are stamped with the SAME page lease. They run one at a time, so they
-              // need none of its burst — but an unleased render queues on the server's single
-              // unleased-render semaphore, shared with every other page, where a scrolling visitor
-              // would be starved behind unrelated traffic. The grant is what says these renders
-              // belong to a page that was admitted.
-              themeQueue.concat(themeDeferredQueue).forEach(function (job) {
-                job.baseSrc += "&_themeLease=" + encodeURIComponent(lease);
-                job.src = job.baseSrc;
-              });
-            }
+            // This claim belongs to the ON-SCREEN batch alone, and dies with it. Deferred cards ask
+            // for their own when the viewport reaches them (runDeferredThemeBatch) — stamping them
+            // here handed them a token that was already released by the time they ran.
+            if (lease) stampThemeLease(themeQueue, lease);
             runThemeQueue(themeQueue, themeQueueGen, lease, concurrency);
-            // Passed WITHOUT the lease as the batch's own: the visible batch releases the grant
-            // when it drains, and a deferred batch must never release it a second time (nor hold
-            // it open across an idle scroll). The stamped URL above is what carries the token.
             deferTheme(themeDeferredQueue, themeQueueGen);
           });
           return;

@@ -44,6 +44,44 @@ class ThemeRenderLeaseManagerTest {
   }
 
   @Test
+  fun `a full claim and a reaped one are different answers`() {
+    // The caller has to tell them apart. A saturated claim is alive and its holder should come
+    // back, so refusing that render is honest. An unknown one never admits anything again, so
+    // refusing THAT one strands the page: it falls back to the serial unleased lane instead.
+    val manager = manager()
+    val host = Any()
+    val grant = assertNotNull(manager.acquire("wear", host, requestedCapacity = 5))
+
+    val permits = List(5) { assertNotNull(manager.admit(grant.token, "wear", host)) }
+    assertEquals(
+      ThemeRenderLeaseManager.Admission.Saturated,
+      manager.admission(grant.token, "wear", host),
+    )
+    permits.forEach { it.close() }
+
+    assertEquals(
+      ThemeRenderLeaseManager.Admission.Unknown,
+      manager.admission("never-minted", "wear", host),
+      "a token this manager never issued",
+    )
+    val released = assertNotNull(manager.acquire("wear", host, requestedCapacity = 5))
+    assertTrue(manager.release(released.token))
+    assertEquals(
+      ThemeRenderLeaseManager.Admission.Unknown,
+      manager.admission(released.token, "wear", host),
+      "a claim handed back is gone, not merely full",
+    )
+
+    val expiring = assertNotNull(manager.acquire("wear", host, requestedCapacity = 5))
+    now += ThemeRenderLeaseManager.TTL_MILLIS
+    assertEquals(
+      ThemeRenderLeaseManager.Admission.Unknown,
+      manager.admission(expiring.token, "wear", host),
+      "so is an expired one",
+    )
+  }
+
+  @Test
   fun `releasing one page claim does not release its catalog allocation`() {
     val manager = manager()
     val host = Any()

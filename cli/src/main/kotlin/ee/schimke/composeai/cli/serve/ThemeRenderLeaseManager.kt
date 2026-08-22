@@ -103,28 +103,42 @@ internal class ThemeRenderLeaseManager(
   }
 
   /**
-   * Admit one render under [token]. A token is valid only for its original session and exact host
-   * object, before expiry/release, and while fewer than the granted number are already in flight.
-   * The returned permit must be closed after the render finishes.
+   * The outcome of offering a token at admission. Two ways of saying no, and the caller must not
+   * conflate them: a [Saturated] claim is alive and its holder should come back, while an [Unknown]
+   * one never admits anything again — refusing that render leaves the page permanently stuck, so
+   * its caller falls back to the unleased lane instead.
    */
-  fun admit(token: String, sessionId: String, hostIdentity: Any): Permit? = lock.withLock {
+  sealed interface Admission {
+    data class Admitted(val permit: Permit) : Admission
+
+    data object Saturated : Admission
+
+    data object Unknown : Admission
+  }
+
+  /**
+   * Offer [token] for one render. A token is valid only for its original session and exact host
+   * object, before expiry/release, and while fewer than the granted number are already in flight.
+   * An [Admission.Admitted] permit must be closed after the render finishes.
+   */
+  fun admission(token: String, sessionId: String, hostIdentity: Any): Admission = lock.withLock {
     val lease =
       active.firstOrNull { allocation -> allocation.claims.any { it.token == token } }
-        ?: return null
+        ?: return Admission.Unknown
     val claim = lease.claims.first { it.token == token }
     if (lease.sessionId != sessionId || lease.hostIdentity !== hostIdentity) {
-      return null
+      return Admission.Unknown
     }
     if (claim.released || clock() >= claim.expiresAtMillis) {
       claim.released = true
       reapTerminalLease()
-      return null
+      return Admission.Unknown
     }
-    if (lease.inFlight >= lease.concurrency) return null
+    if (lease.inFlight >= lease.concurrency) return Admission.Saturated
 
     lease.inFlight++
     claim.inFlight++
-    Permit {
+    val permit = Permit {
       lock.withLock {
         check(lease.inFlight > 0) { "theme render lease permit underflow" }
         check(claim.inFlight > 0) { "theme render lease claim permit underflow" }
@@ -133,7 +147,12 @@ internal class ThemeRenderLeaseManager(
         reapTerminalLease()
       }
     }
+    Admission.Admitted(permit)
   }
+
+  /** [admission], for callers that only need the permit. */
+  fun admit(token: String, sessionId: String, hostIdentity: Any): Permit? =
+    (admission(token, sessionId, hostIdentity) as? Admission.Admitted)?.permit
 
   /**
    * Stop new admissions for [token]. Returns false for an unknown token. The active slot becomes
