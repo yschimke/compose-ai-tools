@@ -1035,6 +1035,15 @@ abstract class RenderPreviewsTask : DefaultTask() {
       // renderer that never reads these positions ignores them entirely.
       (settle?.afterMs ?: -1).toString(),
       (settle?.maxMs ?: 0).toString(),
+      // 50th–53rd — `@CaptureGutter`, per edge, in dp (m3-catalog#179). `0` on every edge is what a
+      // preview without the annotation sends, and it is also what a missing arg decodes to, so an
+      // older renderer pinned on the `composePreviewRenderer` configuration simply ignores these
+      // positions and renders exactly what it did before. Dp, not px: the renderer resolves them
+      // against the density it is actually composing at.
+      (preview.params.captureGutter?.start ?: 0).toString(),
+      (preview.params.captureGutter?.top ?: 0).toString(),
+      (preview.params.captureGutter?.end ?: 0).toString(),
+      (preview.params.captureGutter?.bottom ?: 0).toString(),
     )
 }
 
