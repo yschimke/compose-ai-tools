@@ -2141,6 +2141,57 @@ class ServeHttpRoutingTest {
   }
 
   /**
+   * `uses:` is a Dev-mode affordance, and the route that answers it is gated by the same switch the
+   * page is — so a Catalog-mode request gets a 404 rather than a result, and the operator cannot be
+   * reached by typing its URL in a presentation that does not offer it.
+   *
+   * What matching actually returns is [PreviewUsageIndexTest]'s subject; this host has no source
+   * fetcher, which is the other case worth pinning here: it answers `available: false` rather than
+   * an empty list, because the filter must be able to tell "nothing calls that" from "nobody
+   * looked".
+   */
+  @Test
+  fun `the uses index is Dev-mode only, and says so when it cannot answer`() {
+    val localRegistry = ServeSessionRegistry(open = { null })
+    localRegistry.register("shared:ui", host = burstHost, pinned = true)
+    val localServer =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused",
+          sessions = localRegistry,
+          defaultSessionId = "shared:ui",
+          isPublic = true,
+          componentBrowser = true,
+          catalogSessions = listOf("shared:ui"),
+        )
+        .also { it.start() }
+
+    fun get(path: String): Pair<Int, String> {
+      val request = Request.Builder().url("http://127.0.0.1:${localServer.port}$path").build()
+      return client.newCall(request).execute().use { it.code to it.body?.string().orEmpty() }
+    }
+
+    try {
+      val (catalogCode, _) = get("/api/uses?q=Button&chrome=catalog")
+      assertEquals(404, catalogCode)
+
+      val (devCode, devBody) = get("/api/uses?q=Button&chrome=dev")
+      assertEquals(200, devCode)
+      val dto = Json.parseToJsonElement(devBody).jsonObject
+      assertFalse(dto.getValue("available").jsonPrimitive.content.toBoolean(), devBody)
+
+      // The path form of the same route is gated identically — a canonical `/<system>/` URL is not
+      // a way around the mode.
+      assertEquals(404, get("/shared%3Aui/api/uses?q=Button&chrome=catalog").first)
+      assertEquals(200, get("/shared%3Aui/api/uses?q=Button&chrome=dev").first)
+    } finally {
+      localServer.stop()
+      localRegistry.close()
+    }
+  }
+
+  /**
    * Every route answers HEAD, because that is the probe a link unfurler sends before it commits to
    * downloading a page or its `og:image`. Before [io.ktor.server.plugins.autohead.AutoHeadResponse]
    * was installed these were 405 where a constant segment matched (`/`, `/status`) and 404 where

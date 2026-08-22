@@ -2813,6 +2813,67 @@ const FIXTURE_STATES = [
       await page.waitForTimeout(300);
     },
   },
+  {
+    // The Dev-mode `uses:` operator, ACTIVE. Nothing about it is visible on a resting page — it
+    // is an operator in the existing filter box, deliberately, rather than a control that would
+    // sit empty on every catalog — so without this shot the whole surface would be diffed by
+    // nothing. What it has to show is the part a screenshot can carry and prose cannot: that the
+    // cards left standing are ones whose NAMES do not say "button", and that the count line names
+    // the filter back to the reader.
+    //
+    // The endpoint is stubbed rather than served. What is under test here is the page's half —
+    // the parse and the index behind it are `PreviewUsageIndexTest`'s subject — and a real answer
+    // would need this fixture's `com.example.*` previews to exist in a repository to fetch.
+    fixture: "serve-landing",
+    suffix: "uses-filter",
+    parkPointer: true,
+    apply: async (page) => {
+      await page.route("**/api/uses*", (route) =>
+        route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify({
+            available: true,
+            truncated: false,
+            ids: ["com.example.CardPreview", "com.example.ProfileScreenPreview"],
+          }),
+        }),
+      );
+      await page.fill("#cp-search", "uses:Button");
+      // The answer arrives over the network, so the grid narrows a frame or two after the
+      // keystroke. Waiting on the readout's own text is what makes the shutter deterministic: it
+      // is written only once `apply()` has re-run with the resolved ids.
+      await page.waitForFunction(() =>
+        /call Button/.test(
+          document.getElementById("cp-uses-status")?.textContent || "",
+        ),
+      );
+    },
+  },
+  {
+    // The same operator where the catalog cannot be indexed — no source metadata, no parser
+    // sidecar, no fetcher. This is the state the `available` flag exists for: an empty grid that
+    // says "call index unavailable" rather than one that silently reads as "nothing calls that".
+    // It is a different picture from the one above by exactly one line of text, which is the
+    // point — that line is the entire difference between an answer and a shrug.
+    fixture: "serve-landing",
+    suffix: "uses-unavailable",
+    parkPointer: true,
+    apply: async (page) => {
+      await page.route("**/api/uses*", (route) =>
+        route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify({ available: false, truncated: false, ids: [] }),
+        }),
+      );
+      // A different token, so the page's per-token cache cannot answer this from the state above.
+      await page.fill("#cp-search", "uses:Slider");
+      await page.waitForFunction(() =>
+        /call index unavailable/.test(
+          document.getElementById("cp-uses-status")?.textContent || "",
+        ),
+      );
+    },
+  },
 ];
 
 /** Page fixtures = `fixtures/pages/*.html`, honouring the `HARNESS_FIXTURE` narrow. */

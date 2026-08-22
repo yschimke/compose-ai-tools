@@ -77,6 +77,7 @@
 <div class="cp-searchbar">
   <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
     autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
+  <p id="cp-uses-status" class="cp-uses-status" role="status" hidden></p>
 </div>
 <div class="cp-head-toggles">
 <div class="cp-toolbar">
@@ -105,7 +106,7 @@
 </div>
 </div>
 <div class="cp-grid" id="cp-grid">
-        <a class="cp-card" id="cp-card-button-filled__ideal__default__light" aria-label="Button · Filled (light)" data-swap="1" data-bg-theme="light" data-def="l"
+        <a class="cp-card" id="cp-card-button-filled__ideal__default__light" data-uses-id="button-filled__ideal__default__light" aria-label="Button · Filled (light)" data-swap="1" data-bg-theme="light" data-def="l"
   data-l-src="/render/button-filled__ideal__default__light.png?session=remote-m3" data-l-href="/p/button-filled__ideal__default__light?session=remote-m3"
   data-l-id="button-filled__ideal__default__light" data-l-label="Button · Filled (light)"
   data-d-src="/render/button-filled__ideal__default__dark.png?session=remote-m3" data-d-href="/p/button-filled__ideal__default__dark?session=remote-m3"
@@ -120,7 +121,7 @@
     
   </div>
 </a>
-<a class="cp-card" id="cp-card-switch-on__ideal__default__light" aria-label="Switch · On (light)" data-swap="1" data-bg-theme="light" data-def="l"
+<a class="cp-card" id="cp-card-switch-on__ideal__default__light" data-uses-id="switch-on__ideal__default__light" aria-label="Switch · On (light)" data-swap="1" data-bg-theme="light" data-def="l"
   data-l-src="/render/switch-on__ideal__default__light.png?session=remote-m3" data-l-href="/p/switch-on__ideal__default__light?session=remote-m3"
   data-l-id="switch-on__ideal__default__light" data-l-label="Switch · On (light)"
   data-d-src="/render/switch-on__ideal__default__dark.png?session=remote-m3" data-d-href="/p/switch-on__ideal__default__dark?session=remote-m3"
@@ -135,7 +136,7 @@
     
   </div>
 </a>
-<a class="cp-card" id="cp-card-badge" href="/p/badge?session=remote-m3" aria-label="Badge">
+<a class="cp-card" id="cp-card-badge" data-uses-id="badge" href="/p/badge?session=remote-m3" aria-label="Badge">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="Badge" src="/render/badge.png?session=remote-m3">
   </div>
@@ -162,6 +163,71 @@
       function pushUrl(v) { if (urlState) urlState.push(v); }
       function replaceUrl(v) { if (urlState) urlState.replace(v); }
       if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }
+      // ---- `uses:<composable>` — which previews CALL a thing (Dev mode only)
+      var usesEndpoint = "/api/uses?session=remote-m3";
+      var usesToken = "";
+      var usesCache = {};
+      var usesPending = {};
+      // Pulls `uses:<token>` out of the raw query and returns what is left for the text filter.
+      // It also notices a CHANGE of token and starts the lookup, which is why it is one function
+      // and not a pure split: `apply()` is the only place that reads the box, so it is the only
+      // place that can see the token change, and a separate listener would have to re-parse the
+      // same string and could disagree with this one about what was typed.
+      function usesSplit(raw) {
+        var found = "";
+        var rest = raw.replace(/(^|\s)uses:(\S*)/i, function (m, lead, t) { found = t; return lead; });
+        if (found !== usesToken) { usesToken = found; usesFetch(found); }
+        return rest.trim().toLowerCase();
+      }
+      function usesEntry() { return usesToken ? usesCache[usesToken.toLowerCase()] : null; }
+      // A card carries its default preview id; every variant folded onto it shares that declaration.
+      function usesOk(c) {
+        if (usesToken === "") return true;
+        var entry = usesEntry();
+        if (!entry || !entry.available) return false;
+        var id = c.getAttribute("data-uses-id");
+        return !!id && entry.ids.indexOf(id) !== -1;
+      }
+      // The readout under the search box. Hidden entirely while the operator is not in use, so the
+      // page is unchanged for a visitor who never types it.
+      function usesReport(shown, total) {
+        var el = document.getElementById("cp-uses-status");
+        if (!el) return;
+        if (usesToken === "") { el.hidden = true; el.textContent = ""; return; }
+        var entry = usesEntry();
+        var note;
+        if (!entry) note = "looking for calls to " + usesToken + "…";
+        else if (!entry.available) note = "call index unavailable";
+        else
+          note =
+            shown + " of " + total + " call " + usesToken +
+            (entry.truncated ? " (partial index)" : "");
+        el.textContent = note;
+        el.hidden = false;
+      }
+      function usesFetch(t) {
+        if (t === "") return;
+        var key = t.toLowerCase();
+        if (usesCache[key] || usesPending[key]) return;
+        usesPending[key] = true;
+        var sep = usesEndpoint.indexOf("?") === -1 ? "?" : "&";
+        // Any failure — 404 in Catalog mode, an offline tab, a body that isn't JSON — lands as
+        // "unavailable" rather than as an empty result, so the count line never reports a zero the
+        // server did not actually compute.
+        var unavailable = { available: false, truncated: false, ids: [] };
+        fetch(usesEndpoint + sep + "q=" + encodeURIComponent(key))
+          .then(function (r) { return r.ok ? r.json() : unavailable; })
+          .catch(function () { return unavailable; })
+          .then(function (data) {
+            usesCache[key] = {
+              available: !!data.available,
+              truncated: !!data.truncated,
+              ids: (data.ids || []).slice()
+            };
+            delete usesPending[key];
+            apply();
+          });
+      }
       var stored = null;
 try { stored = localStorage.getItem("cp-theme:remote-m3"); } catch (e) {}
 var themeBtns = document.querySelectorAll(".cp-theme-btn");
@@ -257,17 +323,18 @@ function applyThemeChoice() {
   });
 }
 applyThemeChoice();
-        var q = input ? input.value.trim().toLowerCase() : "";
+        var q = usesSplit(input ? input.value.trim() : "");
         var shown = 0;
         cards.forEach(function (c) {
           var lab = c.querySelector(".cp-label");
           var idn = c.querySelector(".cp-id");
           var hay = ((lab ? lab.textContent : "") + " " + (idn ? idn.textContent : "")).toLowerCase();
-          var searchOk = q === "" || hay.indexOf(q) !== -1;
+          var searchOk = (q === "" || hay.indexOf(q) !== -1) && usesOk(c);
           c.hidden = !searchOk;
           if (searchOk) shown++;
         });
         if (count) count.textContent = q === "" ? (total + " preview" + (total === 1 ? "" : "s")) : (shown + " of " + total);
+        usesReport(shown, total);
         if (empty) empty.hidden = shown !== 0;
       }
       if (input) input.addEventListener("input", function () {

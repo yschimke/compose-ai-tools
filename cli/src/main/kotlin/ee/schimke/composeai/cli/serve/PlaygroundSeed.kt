@@ -561,12 +561,39 @@ class PlaygroundSeedResolver(
      * the slice would be the whole file anyway.
      */
     internal fun sliceDeclaration(text: String, bodyLine: Int?): String? {
-      if (bodyLine == null) return null
       val lines = text.lines()
-      // An anchor past the end means the source has changed since the manifest was built. Slicing
-      // on a stale offset would hand over an arbitrary fragment, so fall back to the file.
+      val bounds = declarationLines(lines, bodyLine) ?: return null
+      val start = bounds.first
+      val end = bounds.last
+
+      val headerEnd = headerEndExclusive(lines)
+      if (headerEnd == 0 && start == 0 && end == lines.lastIndex) return null
+
+      val header = lines.subList(0, headerEnd).joinToString("\n").trimEnd()
+      val declaration = lines.subList(start, end + 1).joinToString("\n")
+      val slice = if (header.isEmpty()) declaration else "$header\n\n$declaration"
+      return slice.takeIf { it.trimEnd() != text.trimEnd() }
+    }
+
+    /**
+     * The **line range** of the top-level declaration containing [bodyLine], 0-based and inclusive,
+     * or null when the anchor cannot be trusted.
+     *
+     * The bounds rule is described at length on [sliceDeclaration], which is one of this function's
+     * two callers; the other is [PreviewUsageIndex], which needs the same declaration boundaries to
+     * say which calls in a file belong to which preview. Extracted rather than duplicated because a
+     * second copy of "where does this declaration end" is exactly the kind of near-miss that shows
+     * up as one preview quietly inheriting its neighbour's calls.
+     *
+     * Null means the anchor is unusable: absent, outside the text, pointing at a blank line (all
+     * three say the file moved under the `ref` since discovery ran), or sitting at or above the
+     * file header, where the outward scan has escaped past the imports. It does **not** mean "the
+     * whole file" — that is [sliceDeclaration]'s own extra guard, which belongs to seeding an
+     * editor buffer rather than to locating a declaration.
+     */
+    internal fun declarationLines(lines: List<String>, bodyLine: Int?): IntRange? {
+      if (bodyLine == null) return null
       if (bodyLine < 1 || bodyLine > lines.size) return null
-      // A blank anchor line means the same thing: the file moved under us.
       if (lines[bodyLine - 1].isBlank()) return null
 
       // Up to the declaration this anchor sits in…
@@ -578,16 +605,10 @@ class PlaygroundSeedResolver(
       var end = next - 1
       while (end > start && lines[end].isBlank()) end--
 
-      val headerEnd = headerEndExclusive(lines)
       // The declaration starting at or inside the header means the scan escaped upwards past the
       // imports — unusual formatting, and re-emitting the header would then duplicate lines.
-      if (start < headerEnd) return null
-      if (headerEnd == 0 && start == 0 && end == lines.lastIndex) return null
-
-      val header = lines.subList(0, headerEnd).joinToString("\n").trimEnd()
-      val declaration = lines.subList(start, end + 1).joinToString("\n")
-      val slice = if (header.isEmpty()) declaration else "$header\n\n$declaration"
-      return slice.takeIf { it.trimEnd() != text.trimEnd() }
+      if (start < headerEndExclusive(lines)) return null
+      return start..end
     }
 
     /**

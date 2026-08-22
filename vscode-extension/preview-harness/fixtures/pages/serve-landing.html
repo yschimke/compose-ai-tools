@@ -77,6 +77,7 @@
 <div class="cp-searchbar">
   <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
     autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
+  <p id="cp-uses-status" class="cp-uses-status" role="status" hidden></p>
 </div>
 <div class="cp-head-toggles">
 <div class="cp-catalog-actions">
@@ -90,7 +91,7 @@
 </div>
 </div>
 <div class="cp-grid" id="cp-grid">
-        <a class="cp-card" id="cp-card-com-example-ButtonPreview" href="/p/com.example.ButtonPreview?token=demo-token-fixture" aria-label="Button">
+        <a class="cp-card" id="cp-card-com-example-ButtonPreview" data-uses-id="com.example.ButtonPreview" href="/p/com.example.ButtonPreview?token=demo-token-fixture" aria-label="Button">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="Button" src="/render/com.example.ButtonPreview.png?token=demo-token-fixture">
   </div>
@@ -100,7 +101,7 @@
     
   </div>
 </a>
-<a class="cp-card" id="cp-card-com-example-CardPreview" href="/p/com.example.CardPreview?token=demo-token-fixture" aria-label="Card">
+<a class="cp-card" id="cp-card-com-example-CardPreview" data-uses-id="com.example.CardPreview" href="/p/com.example.CardPreview?token=demo-token-fixture" aria-label="Card">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="Card" src="/render/com.example.CardPreview.png?token=demo-token-fixture">
   </div>
@@ -110,7 +111,7 @@
     
   </div>
 </a>
-<a class="cp-card" id="cp-card-com-example-DialogPreview" href="/p/com.example.DialogPreview?token=demo-token-fixture" aria-label="Dialog">
+<a class="cp-card" id="cp-card-com-example-DialogPreview" data-uses-id="com.example.DialogPreview" href="/p/com.example.DialogPreview?token=demo-token-fixture" aria-label="Dialog">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="Dialog" src="/render/com.example.DialogPreview.png?token=demo-token-fixture">
   </div>
@@ -120,7 +121,7 @@
     
   </div>
 </a>
-<a class="cp-card" id="cp-card-com-example-ListScreenPreview" href="/p/com.example.ListScreenPreview?token=demo-token-fixture" aria-label="List screen">
+<a class="cp-card" id="cp-card-com-example-ListScreenPreview" data-uses-id="com.example.ListScreenPreview" href="/p/com.example.ListScreenPreview?token=demo-token-fixture" aria-label="List screen">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="List screen" src="/render/com.example.ListScreenPreview.png?token=demo-token-fixture">
   </div>
@@ -130,7 +131,7 @@
     
   </div>
 </a>
-<a class="cp-card" id="cp-card-com-example-ProfileScreenPreview" href="/p/com.example.ProfileScreenPreview?token=demo-token-fixture" aria-label="Profile screen">
+<a class="cp-card" id="cp-card-com-example-ProfileScreenPreview" data-uses-id="com.example.ProfileScreenPreview" href="/p/com.example.ProfileScreenPreview?token=demo-token-fixture" aria-label="Profile screen">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="Profile screen" src="/render/com.example.ProfileScreenPreview.png?token=demo-token-fixture">
   </div>
@@ -140,7 +141,7 @@
     
   </div>
 </a>
-<a class="cp-card" id="cp-card-com-example-SettingsScreenPreview" href="/p/com.example.SettingsScreenPreview?token=demo-token-fixture" aria-label="Settings screen">
+<a class="cp-card" id="cp-card-com-example-SettingsScreenPreview" data-uses-id="com.example.SettingsScreenPreview" href="/p/com.example.SettingsScreenPreview?token=demo-token-fixture" aria-label="Settings screen">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="Settings screen" src="/render/com.example.SettingsScreenPreview.png?token=demo-token-fixture">
   </div>
@@ -167,20 +168,86 @@
   function pushUrl(v) { if (urlState) urlState.push(v); }
   function replaceUrl(v) { if (urlState) urlState.replace(v); }
   if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }
+  // ---- `uses:<composable>` — which previews CALL a thing (Dev mode only)
+  var usesEndpoint = "/api/uses?token=demo-token-fixture";
+  var usesToken = "";
+  var usesCache = {};
+  var usesPending = {};
+  // Pulls `uses:<token>` out of the raw query and returns what is left for the text filter.
+  // It also notices a CHANGE of token and starts the lookup, which is why it is one function
+  // and not a pure split: `apply()` is the only place that reads the box, so it is the only
+  // place that can see the token change, and a separate listener would have to re-parse the
+  // same string and could disagree with this one about what was typed.
+  function usesSplit(raw) {
+    var found = "";
+    var rest = raw.replace(/(^|\s)uses:(\S*)/i, function (m, lead, t) { found = t; return lead; });
+    if (found !== usesToken) { usesToken = found; usesFetch(found); }
+    return rest.trim().toLowerCase();
+  }
+  function usesEntry() { return usesToken ? usesCache[usesToken.toLowerCase()] : null; }
+  // A card carries its default preview id; every variant folded onto it shares that declaration.
+  function usesOk(c) {
+    if (usesToken === "") return true;
+    var entry = usesEntry();
+    if (!entry || !entry.available) return false;
+    var id = c.getAttribute("data-uses-id");
+    return !!id && entry.ids.indexOf(id) !== -1;
+  }
+  // The readout under the search box. Hidden entirely while the operator is not in use, so the
+  // page is unchanged for a visitor who never types it.
+  function usesReport(shown, total) {
+    var el = document.getElementById("cp-uses-status");
+    if (!el) return;
+    if (usesToken === "") { el.hidden = true; el.textContent = ""; return; }
+    var entry = usesEntry();
+    var note;
+    if (!entry) note = "looking for calls to " + usesToken + "…";
+    else if (!entry.available) note = "call index unavailable";
+    else
+      note =
+        shown + " of " + total + " call " + usesToken +
+        (entry.truncated ? " (partial index)" : "");
+    el.textContent = note;
+    el.hidden = false;
+  }
+  function usesFetch(t) {
+    if (t === "") return;
+    var key = t.toLowerCase();
+    if (usesCache[key] || usesPending[key]) return;
+    usesPending[key] = true;
+    var sep = usesEndpoint.indexOf("?") === -1 ? "?" : "&";
+    // Any failure — 404 in Catalog mode, an offline tab, a body that isn't JSON — lands as
+    // "unavailable" rather than as an empty result, so the count line never reports a zero the
+    // server did not actually compute.
+    var unavailable = { available: false, truncated: false, ids: [] };
+    fetch(usesEndpoint + sep + "q=" + encodeURIComponent(key))
+      .then(function (r) { return r.ok ? r.json() : unavailable; })
+      .catch(function () { return unavailable; })
+      .then(function (data) {
+        usesCache[key] = {
+          available: !!data.available,
+          truncated: !!data.truncated,
+          ids: (data.ids || []).slice()
+        };
+        delete usesPending[key];
+        apply();
+      });
+  }
   
   function apply() {
     
-    var q = input ? input.value.trim().toLowerCase() : "";
+    var q = usesSplit(input ? input.value.trim() : "");
     var shown = 0;
     cards.forEach(function (c) {
       var lab = c.querySelector(".cp-label");
       var idn = c.querySelector(".cp-id");
       var hay = ((lab ? lab.textContent : "") + " " + (idn ? idn.textContent : "")).toLowerCase();
-      var searchOk = q === "" || hay.indexOf(q) !== -1;
+      var searchOk = (q === "" || hay.indexOf(q) !== -1) && usesOk(c);
       c.hidden = !searchOk;
       if (searchOk) shown++;
     });
     if (count) count.textContent = q === "" ? (total + " preview" + (total === 1 ? "" : "s")) : (shown + " of " + total);
+    usesReport(shown, total);
     if (empty) empty.hidden = shown !== 0;
   }
   if (input) input.addEventListener("input", function () {
