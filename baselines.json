@@ -961,6 +961,30 @@
       "sha256": "3fde1804edfbfec8134078cda9bab428d85465fd4e9770756b67667ae578301f",
       "size": 79370
     },
+    "serve-landing-uses-filter.dark.png": {
+      "fixture": "serve-landing-uses-filter",
+      "theme": "dark",
+      "sha256": "ca5b205765863b9aacc9f9c647775a075773e7b4b482ad892265d0853949138d",
+      "size": 47039
+    },
+    "serve-landing-uses-filter.light.png": {
+      "fixture": "serve-landing-uses-filter",
+      "theme": "light",
+      "sha256": "983677cc32bb086698b1f8762efbf1f9bd64e41caee209f9c74060b872ac1832",
+      "size": 45856
+    },
+    "serve-landing-uses-unavailable.dark.png": {
+      "fixture": "serve-landing-uses-unavailable",
+      "theme": "dark",
+      "sha256": "774eb567a22fcda6ec01e3b90310e057bb14146b47844c36b9ad21047d9ca3a3",
+      "size": 39130
+    },
+    "serve-landing-uses-unavailable.light.png": {
+      "fixture": "serve-landing-uses-unavailable",
+      "theme": "light",
+      "sha256": "d4125ec9fa2de7ed5fb837c5746cdcbd172142bb564e9df513848b4c451b5c7c",
+      "size": 38177
+    },
     "serve-landing-variants.dark.png": {
       "fixture": "serve-landing-variants",
       "theme": "dark",

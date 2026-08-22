@@ -571,6 +571,20 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-landing-tree-depth-component-open/dark](renders/serve-landing-tree-depth-component-open.dark.png) |
 | `light` | ![serve-landing-tree-depth-component-open/light](renders/serve-landing-tree-depth-component-open.light.png) |
 
+## serve-landing-uses-filter
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-uses-filter/dark](renders/serve-landing-uses-filter.dark.png) |
+| `light` | ![serve-landing-uses-filter/light](renders/serve-landing-uses-filter.light.png) |
+
+## serve-landing-uses-unavailable
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-uses-unavailable/dark](renders/serve-landing-uses-unavailable.dark.png) |
+| `light` | ![serve-landing-uses-unavailable/light](renders/serve-landing-uses-unavailable.light.png) |
+
 ## serve-landing-variants
 
 | Theme | Capture |
