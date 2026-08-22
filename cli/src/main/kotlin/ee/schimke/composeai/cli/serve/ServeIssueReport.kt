@@ -178,7 +178,13 @@ internal object ServeIssueReport {
      */
     init {
       require(space == RENDER_PIXELS) { "bounds space must be $RENDER_PIXELS, was $space" }
-      require(x >= 0 && y >= 0) { "bounds origin must be non-negative, was ($x, $y)" }
+      // The origin may be **negative**, deliberately: a uniquely tagged node can extend above or
+      // left of the render root, and both tag-index producers emit signed coordinates for that case
+      // — `ServeSemanticsTags` asks only for `right > left` / `bottom > top`, `tag-index.mjs`
+      // parses
+      // `-?\d+`, and `ServeTagIndex` validates only the extent. Requiring a non-negative origin
+      // here would mean batch 03 could not copy the bounds the index handed it. Clipping is the
+      // comparison's plane transform's business, not this constructor's.
       require(width >= 1 && height >= 1) {
         "bounds must have a positive extent, was ${width}x$height"
       }

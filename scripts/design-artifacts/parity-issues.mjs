@@ -113,9 +113,14 @@ function parseBounds(raw) {
   }
   if (bounds.space !== BOUNDS_SPACE) return { error: `bounds space must be ${BOUNDS_SPACE}` };
   for (const key of ["x", "y", "width", "height"]) {
-    const value = bounds[key];
-    if (!Number.isSafeInteger(value) || value < 0) return { error: `bounds ${key} must be a non-negative integer` };
+    if (!Number.isSafeInteger(bounds[key])) return { error: `bounds ${key} must be an integer` };
   }
+  // The **origin may be negative**: a uniquely tagged node can extend above or left of the render
+  // root, and both tag-index producers emit signed coordinates for exactly that case
+  // (`ServeSemanticsTags` asks only for `right > left` / `bottom > top`, `tag-index.mjs` parses
+  // `-?\d+`, and `ServeTagIndex` validates only the extent). Refusing a signed origin here would
+  // mean batch 03 could not copy the bounds it was handed. Clipping belongs to the comparison's
+  // plane transform, not to this validator.
   if (bounds.width < 1 || bounds.height < 1) return { error: "bounds must have a positive extent" };
   // Same rule the overrides carry: the block is canonical bytes, so a record and its re-serialised
   // form are comparable without parsing. A hand-edited body that reorders the keys is refused
@@ -170,6 +175,7 @@ export function parseLocators(body) {
   }
   const components = new Set();
   const previews = new Set();
+  const references = new Set();
   for (const locator of locators) {
     if (components.has(locator.component)) return { ok: false, error: `duplicate component in locator blocks: ${locator.component}` };
     components.add(locator.component);
@@ -179,6 +185,11 @@ export function parseLocators(body) {
     // the index should carry.
     if (previews.has(locator.previewId)) return { ok: false, error: `duplicate preview in locator blocks: ${locator.previewId}` };
     previews.add(locator.previewId);
+    // Same reasoning for the reference: `DesignReference.id` is unique within a served session, and
+    // the focused comparison selects rows by it, so two blocks sharing one reference would render
+    // the same issue twice on that comparison's page.
+    if (references.has(locator.referenceId)) return { ok: false, error: `duplicate reference in locator blocks: ${locator.referenceId}` };
+    references.add(locator.referenceId);
   }
   return { ok: true, locators };
 }

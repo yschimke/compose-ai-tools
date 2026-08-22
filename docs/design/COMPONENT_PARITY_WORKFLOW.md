@@ -423,19 +423,21 @@ because they lead different places.
 | [#40](https://github.com/yschimke/m3-catalog/issues/40) | `IconButton/Tonal` glyph colour | **yes** | one component, one preview, a 23.6% pixel delta inside the glyph |
 | [#41](https://github.com/yschimke/m3-catalog/issues/41) | `ShortNavigationBar` measures items at full bar width | **yes** | one component, one preview (`__compact`) |
 | [#87](https://github.com/yschimke/m3-catalog/issues/87) | `Checkbox` box padding 2dp vs 4dp | **yes** | one component, one preview |
-| [#42](https://github.com/yschimke/m3-catalog/issues/42) | Elevated shadow level | no — but see §4 | names **three** components — `Button/Elevated`, `Card/Elevated`, `ToggleButton/Elevated`. Not indexable whole; still three acceptance sites |
+| [#42](https://github.com/yschimke/m3-catalog/issues/42) | Elevated shadow level | **expressible since the erratum** | names **three** components — `Button/Elevated`, `Card/Elevated`, `ToggleButton/Elevated` — so its body carries three blocks and the index three rows. Three acceptance sites too |
 | [#91](https://github.com/yschimke/m3-catalog/issues/91) | no hover/press state drawn | no | **five** components, and the variants it is about are deliberately *not authored* — there is no preview id to name |
 | [#85](https://github.com/yschimke/m3-catalog/issues/85) | `DropdownMenu` corner 4dp vs 16dp | no | the catalog publishes **no menu component**: no `images/menu-*`, no reference, no preview |
 | [#95](https://github.com/yschimke/m3-catalog/issues/95) | menu container colour and item icon size | no | same — the subject is not in the bundle |
 | [#86](https://github.com/yschimke/m3-catalog/issues/86) | expanded full-screen search corner | no | `Search/Bar` publishes `default`, `query`, `avatar` and `container-docked`; the full-screen view is not among them |
 | [#89](https://github.com/yschimke/m3-catalog/issues/89) | no slider size scale on `SliderDefaults` | not yet — **a choice, not a limit** | the size previews exist and score **98.1–99.5%**: the catalog transcribed the kit's numbers by hand, so a locator would name a comparison that matches. Indexable whenever we want it on the page; what it cannot have is an acceptance |
-| [#93](https://github.com/yschimke/m3-catalog/issues/93) | no `ButtonDefaults.SmallContainerHeight`, no default FAB icon size | not yet — **a choice**, plus two families | same missing-constant shape, no pixel delta, and it spans `Button/*` and `Fab/*` |
+| [#93](https://github.com/yschimke/m3-catalog/issues/93) | no `ButtonDefaults.SmallContainerHeight`, no default FAB icon size | not yet — **a choice** | same missing-constant shape and no pixel delta; spanning `Button/*` and `Fab/*` stopped being a limit once a body could carry a block each |
 
 Two limits and one judgement, and only the last is about masks:
 
-1. **One issue, several components** (#42, #93, and #91 as well as its other problem). The locator
-   carries exactly one `component` and one `preview`, and the index row is keyed by issue number, so
-   an umbrella report can join to at most one component page. `previewIds` / `referenceIds` are arrays on the row, which suggests the shape
+1. **One issue, several components** (#42, #93, and #91 as well as its other problem). *Solved by
+   the erratum, and left here because it is what the measurement found.* The locator carried exactly
+   one `component` and one `preview` and the index row was keyed by issue number, so an umbrella
+   report could join to at most one component page. A body now carries one block per component and
+   the index a row per block. `previewIds` / `referenceIds` are arrays on the row, which suggests the shape
    was anticipated; the *writer* has no way to fill them. Note that `issuesForPreview` already joins
    on `component` as well as on the exact preview id, so an indexed issue surfaces on **every**
    preview of its component — the gap is across components, not across variants.
@@ -454,18 +456,19 @@ Two limits and one judgement, and only the last is about masks:
    limit (1) again. What neither can have is an **acceptance**: they describe a constant the library
    does not publish, and the renders already match. Indexing them is a question about whether an
    upstream-ergonomics report belongs on a component page. §4's population is the smaller number
-   either way: **four issues could carry a locator today (#40, #41, #87, #89), and four are
-   acceptance candidates across six sites (#40, #41, #87, and #42 three times)** — different counts
-   answering different questions, and not even the same four.
+   either way: **six issues can carry a locator (#40, #41, #87, #89, and — since the erratum — #42
+   and #93), and four are acceptance candidates across six sites (#40, #41, #87, and #42 three
+   times)** — different counts answering different questions, and not even the same issues.
 
-**What this means for §4 — and note that §4 counts differently from §3.** An index row is one issue
-on one component; an acceptance is one preview, and §4's closure rule is built on the fact that
-**several acceptances may point at one tracking issue** ("mandatory per acceptance but not *unique*
-to one"). So the two halves of this epic disagree about #42 on purpose: it cannot be indexed whole,
-and it is still three acceptances — `button-elevated`, `card-elevated`,
-`togglebutton-elevated` at 81.2%, 87.0% and 81.5% published match — sharing issue #42, closable only
-once all three resolve. The acceptance population is therefore **four issues and six sites** (#40,
-#41, #87, and #42 three times), not the three rows in the index.
+**What this means for §4 — and note that §4 still counts differently from §3.** An index row is one
+issue on one component; an acceptance is one preview, and §4's closure rule is built on the fact
+that **several acceptances may point at one tracking issue** ("mandatory per acceptance but not
+*unique* to one"). The erratum aligned the two for #42 — three blocks, three rows, three acceptances
+(`button-elevated`, `card-elevated`, `togglebutton-elevated` at 81.2%, 87.0% and 81.5% published
+match), closable only once all three resolve — but the counts still differ, because an issue can be
+indexable with nothing to accept (#89, #93) and an acceptance is per *preview* rather than per
+component. The acceptance population is **four issues and six sites** (#40, #41, #87, and #42 three
+times) against six indexable issues.
 
 The model is designed around #40 — a small mask over one element, a recorded accepted-candidate
 crop, the gates of the evaluation order — and #40 fits it exactly. But of those six sites only #40's
