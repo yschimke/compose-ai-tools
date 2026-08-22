@@ -41,6 +41,8 @@ export interface ComposeSemanticsNode {
     testTag?: string | null;
     mergeMode?: string | null;
     clickable?: boolean;
+    /** Measured AND positioned on the frame. Omitted when true (schema v15). */
+    placed?: boolean;
     children?: ComposeSemanticsNode[];
 }
 
@@ -126,6 +128,32 @@ function flattenSemantics(
     out.push({ id: root.nodeId, node: root });
     for (const child of root.children ?? []) {
         flattenSemantics(child, out);
+    }
+    return out;
+}
+
+/**
+ * Every node id inside an **unplaced** subtree — measured, never positioned,
+ * and therefore not on the frame.
+ *
+ * A `SubcomposeLayout` that measures a trial copy of its content to choose a
+ * layout (Wear `AlertDialogContent` subcomposes the whole dialog to decide
+ * scrollable-vs-fixed) leaves that copy in the semantics tree. It has no
+ * position, so every node in it reports `boundsInRoot` at the origin — which
+ * reads as the frame's top-left corner, not as "nowhere".
+ *
+ * Collected as a subtree rather than per node: whatever a descendant's own
+ * flag says, nothing under a node that was never placed is on the frame.
+ */
+function unplacedNodeIds(
+    root: ComposeSemanticsNode,
+    inUnplaced = false,
+    out: Set<string> = new Set(),
+): Set<string> {
+    const unplaced = inUnplaced || root.placed === false;
+    if (unplaced) out.add(root.nodeId);
+    for (const child of root.children ?? []) {
+        unplacedNodeIds(child, unplaced, out);
     }
     return out;
 }
@@ -320,10 +348,17 @@ function computeComposeSemanticsBundleData(
 ): InspectionKindData | null {
     if (!payload || !payload.root) return null;
     const flat = flattenSemantics(payload.root);
+    const unplaced = unplacedNodeIds(payload.root);
     const overlay: OverlayBox[] = [];
     for (const entry of flat) {
         const id = nsId("semantics", entry.id);
         nodeById.set(id, { kind: "compose/semantics", node: entry.node });
+        // The ROW stays — the tree is what this panel is for, and seeing the
+        // trial copy is how the duplicate makes sense. The BOX does not: an
+        // unplaced node has no position, so `boundsInRoot` reads as the
+        // origin, and drawing it stacks a phantom in the frame's top-left
+        // corner. See `unplacedNodeIds`.
+        if (unplaced.has(entry.node.nodeId)) continue;
         const bounds = parseCardBounds(entry.node.boundsInRoot);
         if (!bounds) continue;
         // `mergeDescendants` nodes absorb their children's semantics into
@@ -365,7 +400,8 @@ function computeComposeSemanticsBundleData(
         summary,
         columns,
         rows,
-        hasOverlayFor: (n) => parseCardBounds(n.boundsInRoot) !== null,
+        hasOverlayFor: (n) =>
+            !unplaced.has(n.nodeId) && parseCardBounds(n.boundsInRoot) !== null,
         jsonForCopy: () => payload,
     });
     return { body, summary, overlay };

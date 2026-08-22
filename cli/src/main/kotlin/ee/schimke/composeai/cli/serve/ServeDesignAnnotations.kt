@@ -105,8 +105,10 @@ object ServeDesignAnnotations {
     if (layout != null) {
       fun walkLayout(node: LayoutInspectorNode, enclosing: AnnotationBounds?) {
         // An unplaced node was measured but never positioned, so its bounds describe nowhere on
-        // the frame.
-        val box = node.bounds.toAnnotationBounds()?.takeIf { node.placed }
+        // the frame — and nothing beneath it is on the frame either, whatever its own `placed`
+        // says. Suppressing only this node's box left a descendant free to draw one.
+        if (!node.placed) return
+        val box = node.bounds.toAnnotationBounds()
         var nextEnclosing = enclosing
         if (box != null) {
           val role = node.displayName ?: node.component

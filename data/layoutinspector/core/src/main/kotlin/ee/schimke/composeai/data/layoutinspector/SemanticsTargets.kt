@@ -138,7 +138,22 @@ object SemanticsTargets {
   private fun sequiv(actual: String?, expected: String): Boolean =
     actual != null && actual.trim().equals(expected.trim(), ignoreCase = true)
 
+  /**
+   * Every node an agent could act on — the tree flattened, **stopping at an unplaced subtree**.
+   *
+   * A node that was measured but never placed is not on the frame and cannot be dispatched at, and
+   * it has no position either: its `boundsInRoot` reads as the origin, so [resolvedAt] would hand
+   * back a point in the frame's top-left corner. Worse, it is usually a *duplicate* — a
+   * `SubcomposeLayout` measuring a trial copy of its content to choose a layout (Wear
+   * `AlertDialogContent` does this for every dialog) leaves a second copy of every title, tag and
+   * role in the tree, which turned an unambiguous `RoleText` into [TargetResolution.Ambiguous]
+   * between the real node and a copy that draws nothing.
+   *
+   * Refs are deliberately **not** filtered: [SemanticsRefs.assign] still walks the whole tree, so a
+   * ref means the same thing before and after this. An unplaced node simply stops being a match.
+   */
   private fun ComposeSemanticsNode.flatten(): List<ComposeSemanticsNode> = buildList {
+    if (!placed) return@buildList
     add(this@flatten)
     children.forEach { addAll(it.flatten()) }
   }

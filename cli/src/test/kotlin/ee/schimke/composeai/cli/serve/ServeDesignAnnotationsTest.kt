@@ -413,6 +413,33 @@ class ServeDesignAnnotationsTest {
   }
 
   @Test
+  fun `an unplaced layout node takes its whole subtree with it`() {
+    // Suppressing only the unplaced node's own box left any descendant still flagged placed free
+    // to draw one — and nothing under a node that was never positioned is on the frame, whatever
+    // its own flag says.
+    val boxes =
+      annotationsOf(
+          node(),
+          layoutNode(
+            bounds = LayoutInspectorBounds(0, 0, 200, 100),
+            children =
+              listOf(
+                layoutNode(
+                  nodeId = "2",
+                  bounds = LayoutInspectorBounds(0, 0, 40, 40),
+                  placed = false,
+                  children =
+                    listOf(layoutNode(nodeId = "3", bounds = LayoutInspectorBounds(0, 0, 20, 20))),
+                )
+              ),
+          ),
+        )
+        .filter { it.kind == AnnotationKind.LAYOUT }
+
+    assertEquals(listOf("200×100px"), boxes.map { it.label })
+  }
+
+  @Test
   fun `a layout node is named by its friendly label before its own class`() {
     val boxes =
       annotationsOf(

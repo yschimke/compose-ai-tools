@@ -2562,6 +2562,15 @@ data class FigmaSvgModel(
       val textByNodeId = HashMap<String, FigmaSvgText>()
       val bestDistForNode = HashMap<String, Int>()
       fun walk(node: ComposeSemanticsNode) {
+        // An unplaced subtree draws nothing, so none of its text belongs on a layer — and it is
+        // usually a DUPLICATE of text that does: a `SubcomposeLayout` measuring a trial copy of
+        // its content to choose a layout (Wear `AlertDialogContent`) leaves a second copy of every
+        // string in the tree, anchored at the origin because an unplaced node has no position.
+        // Where that copy's box lands within `BOUNDS_TOLERANCE_PX` of a real layer's, it is
+        // visited FIRST (the trial slot is subcomposed before the arrangement it chooses) and the
+        // strict `bestDist <` below then keeps the real node from displacing it — exporting the
+        // trial string in place of the rendered one.
+        if (!node.placed) return
         val measuredContent = node.layoutText?.takeIf { it.isNotBlank() }
         val legacySemanticsContent = node.text?.takeIf { it.isNotBlank() }
         val raw = parseBoundsList(node.boundsInRoot)
