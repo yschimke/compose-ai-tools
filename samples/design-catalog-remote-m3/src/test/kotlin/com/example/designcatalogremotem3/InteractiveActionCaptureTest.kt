@@ -31,30 +31,57 @@ class InteractiveActionCaptureTest {
   /** Sticker stem → the base label its `countedRemote(...)` was given. */
   private val countedStickers =
     mapOf(
-      "FilledRemoteButton" to "Filled",
-      "OutlinedRemoteButton" to "Outlined",
-      "CustomShapeRemoteButton" to "Filled",
+      // The kit's label for every single-slot button — see `KitCopy`. Referenced rather than
+      // spelled, so this test cannot drift back into asserting copy the catalog no longer draws.
+      "FilledRemoteButton" to KitCopy.PRIMARY_LABEL,
+      "OutlinedRemoteButton" to KitCopy.PRIMARY_LABEL,
+      "CustomShapeRemoteButton" to KitCopy.PRIMARY_LABEL,
       // Its label is an overridable named binding; the counter composes over it rather than
       // replacing it, so it takes the same default tally as everything else.
-      "NamedLabelRemoteButton" to "Filled",
-      "TextRemoteButton" to "Child",
-      "CompactRemoteButton" to "Compact",
-      "CardRemote" to "Card",
-      "OutlinedCardRemote" to "Card",
-      "TitleCardRemote" to "Morning run",
-      "AppCardRemote" to "Morning run",
-      "TonalRemoteButton" to "Tonal",
-      "IconLabelRemoteButton" to "Favourite",
-      "IconLabelSecondaryRemoteButton" to "Morning run",
-      "CompactIconLabelRemoteButton" to "Add",
-      "SmallRemoteTextButton" to "Aa",
-      "LargeRemoteTextButton" to "Aa",
-      "FilledRemoteTextButton" to "OK",
-      "OutlinedRemoteTextButton" to "More",
-      "TitleOnlyRemoteTitleCard" to "Morning run",
-      "TimeContentRemoteTitleCard" to "Morning run",
-      "TimeRemoteAppCard" to "New message",
+      "NamedLabelRemoteButton" to KitCopy.PRIMARY_LABEL,
+      "TonalRemoteButton" to KitCopy.PRIMARY_LABEL,
+      "IconLabelRemoteButton" to KitCopy.PRIMARY_LABEL,
+      "IconLabelSecondaryRemoteButton" to KitCopy.PRIMARY_LABEL,
+      "CompactRemoteButton" to KitCopy.PRIMARY_LABEL,
+      "CompactIconLabelRemoteButton" to KitCopy.PRIMARY_LABEL,
+      // Cards quote the kit's card slots.
+      "CardRemote" to KitCopy.CARD_CONTENT,
+      "OutlinedCardRemote" to KitCopy.CARD_CONTENT,
+      "TitleCardRemote" to KitCopy.CARD_TITLE,
+      "AppCardRemote" to KitCopy.CARD_TITLE,
+      "TitleOnlyRemoteTitleCard" to KitCopy.CARD_TITLE,
+      "TimeContentRemoteTitleCard" to KitCopy.CARD_TITLE,
+      "TimeRemoteAppCard" to KitCopy.CARD_TITLE,
     )
+
+  /**
+   * The round text buttons, which deliberately do NOT appear in [countedStickers].
+   *
+   * They carry the kit's `MMM` — a run of its widest glyph, which is how the kit sizes a round
+   * container — so the label is already the width of the circle and `countedRemote` would grow it
+   * to `MMM (1)` on the first tap, drawing the tally through the edge. They use `toggledRemote`
+   * instead: a colour tween that says the tap landed without touching the metrics. Asserted so the
+   * absence reads as a decision rather than an oversight.
+   */
+  private val toggledStickers =
+    listOf(
+      "TextRemoteButton",
+      "SmallRemoteTextButton",
+      "LargeRemoteTextButton",
+      "FilledRemoteTextButton",
+      "OutlinedRemoteTextButton",
+    )
+
+  @Test
+  fun `no round text button grows its label on tap`() {
+    for (stem in toggledStickers) {
+      val text = documentText(stem)
+      assertWithMessage("$stem still encodes a click counter into its label")
+        .that(text)
+        .doesNotContain("${KitCopy.GLYPHS} (")
+      assertWithMessage("$stem lost its kit glyph run").that(text).contains(KitCopy.GLYPHS)
+    }
+  }
 
   /**
    * The fragments `countedRemote` concatenates around the counter (`"<base> (" + n + ")"`). They

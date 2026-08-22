@@ -58,6 +58,7 @@ import androidx.wear.compose.remote.material3.RemoteMaterialTheme
 import androidx.wear.compose.remote.material3.RemoteOutlinedCard
 import androidx.wear.compose.remote.material3.RemoteText
 import androidx.wear.compose.remote.material3.RemoteTextButton
+import androidx.wear.compose.remote.material3.RemoteTextButtonDefaults
 import androidx.wear.compose.remote.material3.RemoteTitleCard
 import androidx.wear.compose.remote.material3.buttonSizeModifier
 import ee.schimke.composeai.daemon.rememberOverridableRemoteColor
@@ -124,9 +125,16 @@ internal fun countedRemote(base: RemoteString): Pair<RemoteString, Action> {
 }
 
 /**
- * The fallback for the one sticker with no label at all to count into: the icon button. Returns a
- * 0→1 [RemoteFloat] and the [Action] that flips it, so the caller can [tween] a colour across it.
- * Everything else on the sheet takes the default [countedRemote] tally.
+ * The size-preserving affordance, for a sticker whose label has no room to grow. Returns a 0→1
+ * [RemoteFloat] and the [Action] that flips it, so the caller can [tween] a colour across it.
+ *
+ * Two kinds of sticker need it. The icon button has no label at all to count into. The **round**
+ * text buttons have one that is already the width of their circle: the kit sizes that container
+ * with `MMM`, a run of its widest glyph, and [countedRemote] would grow that to `MMM (1)` on the
+ * first tap — drawing the tally straight through the edge, which is the very thing quoting the kit
+ * fixed in the resting state. A colour tween says "that tap landed" without touching the metrics.
+ *
+ * Everything with a pill or a card to grow into takes the default [countedRemote] tally.
  *
  * At rest the float is `0f`, and `tween(a, b, 0f)` is `a` — so the baked capture keeps the stock
  * colours and only a live tap moves it.
@@ -174,7 +182,7 @@ internal val starIcon: ImageVector =
 @CatalogRemoteModes
 @Composable
 fun FilledRemoteButton() = RemoteSticker {
-  val (label, onClick) = countedRemote("Filled")
+  val (label, onClick) = countedRemote(KitCopy.PRIMARY_LABEL)
   RemoteButton(
     onClick = onClick,
     modifier = RemoteModifier.buttonSizeModifier(),
@@ -198,7 +206,7 @@ fun FilledRemoteButton() = RemoteSticker {
 @CatalogRemoteModes
 @Composable
 fun OutlinedRemoteButton() = RemoteSticker {
-  val (label, onClick) = countedRemote("Outlined")
+  val (label, onClick) = countedRemote(KitCopy.PRIMARY_LABEL)
   RemoteButton(
     onClick = onClick,
     modifier = RemoteModifier.buttonSizeModifier(),
@@ -218,7 +226,7 @@ fun OutlinedRemoteButton() = RemoteSticker {
 fun CustomShapeRemoteButton() = RemoteSticker {
   // Same label as its `Button/Filled` parallel — only the corner shape differs, so the
   // cross-system comparison isolates that one attribute.
-  val (label, onClick) = countedRemote("Filled")
+  val (label, onClick) = countedRemote(KitCopy.PRIMARY_LABEL)
   RemoteButton(
     onClick = onClick,
     modifier = RemoteModifier.buttonSizeModifier(),
@@ -240,7 +248,8 @@ fun NamedLabelRemoteButton() = RemoteSticker {
   // The counter composes over the override rather than replacing it: `countedRemote` takes the
   // bound `RemoteString` itself, so the label still resolves from the named value and only picks up
   // a `(n)` suffix once tapped. Both the override path and the click stay demonstrable.
-  val (label, onClick) = countedRemote(rememberOverridableRemoteString("label", "Filled"))
+  val (label, onClick) =
+    countedRemote(rememberOverridableRemoteString("label", KitCopy.PRIMARY_LABEL))
   RemoteButton(
     onClick = onClick,
     modifier = RemoteModifier.buttonSizeModifier(),
@@ -253,8 +262,23 @@ fun NamedLabelRemoteButton() = RemoteSticker {
 @CatalogRemoteModes
 @Composable
 fun TextRemoteButton() = RemoteSticker {
-  val (label, onClick) = countedRemote("Child")
-  RemoteTextButton(onClick = onClick, content = { RemoteText(label) })
+  // The kit's glyph run, not `PRIMARY_LABEL`: this container is a circle, and a two-word label is
+  // drawn straight through its edge. `wear-m3-catalog`'s `TextButton` quotes the same constant.
+  // `toggledRemote` rather than `countedRemote` for that same reason — see its KDoc.
+  val (on, onClick) = toggledRemote()
+  val stock = RemoteTextButtonDefaults.textButtonColors()
+  RemoteTextButton(
+    onClick = onClick,
+    colors =
+      RemoteTextButtonDefaults.textButtonColors(
+        // Content travels with the container: `primary` is a light fill in this dark-first scheme,
+        // so a label left at the stock near-white would end the tween light-on-light. `on` is 0f at
+        // rest, so the baked capture keeps the stock colours either way.
+        containerColor = tween(stock.containerColor, RemoteMaterialTheme.colorScheme.primary, on),
+        contentColor = tween(stock.contentColor, RemoteMaterialTheme.colorScheme.onPrimary, on),
+      ),
+    content = { RemoteText(KitCopy.GLYPHS.rs) },
+  )
 }
 
 // A round icon button (`RemoteIconButton`) carrying a single `RemoteIcon`. Inside the
@@ -283,7 +307,7 @@ fun IconRemoteButton() = RemoteSticker {
 @CatalogRemoteModes
 @Composable
 fun CompactRemoteButton() = RemoteSticker {
-  val (label, onClick) = countedRemote("Compact")
+  val (label, onClick) = countedRemote(KitCopy.PRIMARY_LABEL)
   RemoteCompactButton(onClick = onClick, label = { RemoteText(label) })
 }
 
@@ -308,7 +332,7 @@ fun ButtonGroupRemote() = RemoteSticker {
 @CatalogRemoteLarge
 @Composable
 fun CardRemote() = RemoteSticker {
-  val (label, onClick) = countedRemote("Card")
+  val (label, onClick) = countedRemote(KitCopy.CARD_CONTENT)
   RemoteCard(onClick = onClick, content = { RemoteText(label) })
 }
 
@@ -319,7 +343,7 @@ fun OutlinedCardRemote() = RemoteSticker {
   // filled `RemoteCard` (whose surface carries a light content colour), the outlined card's
   // transparent container leaves the default content colour invisible on the sticker canvas, so pin
   // the label to the theme's `onSurface` token — the same token the outlined button uses.
-  val (label, onClick) = countedRemote("Card")
+  val (label, onClick) = countedRemote(KitCopy.CARD_CONTENT)
   RemoteOutlinedCard(
     onClick = onClick,
     content = { RemoteText(label, color = RemoteMaterialTheme.colorScheme.onSurface) },
@@ -329,24 +353,24 @@ fun OutlinedCardRemote() = RemoteSticker {
 @CatalogRemoteLarge
 @Composable
 fun TitleCardRemote() = RemoteSticker {
-  val (title, onClick) = countedRemote("Morning run")
+  val (title, onClick) = countedRemote(KitCopy.CARD_TITLE)
   RemoteTitleCard(
     onClick = onClick,
     title = { RemoteText(title) },
-    subtitle = { RemoteText("5.2 km · 28 min".rs) },
+    subtitle = { RemoteText(KitCopy.SUBTITLE.rs) },
   )
 }
 
 @CatalogRemoteLarge
 @Composable
 fun AppCardRemote() = RemoteSticker {
-  val (title, onClick) = countedRemote("Morning run")
+  val (title, onClick) = countedRemote(KitCopy.CARD_TITLE)
   RemoteAppCard(
     onClick = onClick,
-    appName = { RemoteText("App".rs) },
+    appName = { RemoteText(KitCopy.APP_LABEL.rs) },
     title = { RemoteText(title) },
     appImage = { RemoteIcon(starIcon, null, modifier = RemoteModifier.size(16.rdp)) },
-    content = { RemoteText("5.2 km · 28 min".rs) },
+    content = { RemoteText(KitCopy.CARD_CONTENT.rs) },
   )
 }
 
@@ -418,7 +442,7 @@ fun WatchScreenRemote() = RemoteSticker {
 // document clock). Wear M3 parallel: `CircularProgressIndicator` (`Progress/Circular`).
 // ---------------------------------------------------------------------------
 
-@CatalogRemoteModes
+@CatalogRemoteDisplay
 @Composable
 fun CircularProgressRemote() = RemoteSticker {
   // The 0..1 fill is an editable `progress` float knob: the viewer's number field reseeds the arc
@@ -454,14 +478,10 @@ fun IconRemote() = RemoteSticker {
 @CatalogRemoteModes
 @Composable
 fun RemoteTextSticker() = RemoteSticker {
-  // Same default copy as the truncated sticker (and Wear's) — here it flows in full; the
-  // `Text/MaxLines-Truncated` pair below shows the same string clipped. The body is an editable
+  // The kit's own `Text-Body` string, which is what the `Text/Body` parallel draws — here it flows
+  // in full; the `Text/MaxLines-Truncated` sticker below clips the same string. Still an editable
   // `text` string knob, so the viewer can retype it live (`rc.text=<string>`).
-  val text =
-    rememberOverridableRemoteString(
-      "text",
-      "This body text is long enough to overflow two lines and truncate.",
-    )
+  val text = rememberOverridableRemoteString("text", KitCopy.BODY)
   RemoteText(text)
 }
 
@@ -472,8 +492,12 @@ fun RemoteTextSticker() = RemoteSticker {
 @Composable
 fun TruncatedTextRemote() = RemoteSticker {
   RemoteText(
-    // Identical copy to Wear's `Text/MaxLines-Truncated` parallel, so the pair is apples-to-apples.
-    "This body text is long enough to overflow two lines and truncate.".rs,
+    // The kit's `Card` body string rather than its `Text-Body` one, and deliberately: this sticker
+    // exists to carry the `maxLines` + `overflow` product, and `BODY` fits inside two lines at this
+    // width, so using it published an ellipsis sticker with no ellipsis in it. `CARD_CONTENT` is
+    // the kit's own longest body copy and overflows two lines here, so the capture shows the
+    // product working while still quoting the kit rather than inventing a string to overflow with.
+    KitCopy.CARD_CONTENT.rs,
     modifier = RemoteModifier.width(150.rdp),
     maxLines = 2,
     overflow = TextOverflow.Ellipsis,
@@ -653,7 +677,7 @@ fun ColorSchemeRemote() = RemoteSticker {
 // stop is a named-value binding so the connector can recolour it live.
 // ---------------------------------------------------------------------------
 
-@CatalogRemoteModes
+@CatalogRemoteCanvas
 @Composable
 fun ShaderGradientSticker() = RemoteSticker {
   val shaderColor = rememberOverridableRemoteColor("shaderColor", Color(0xFF7DE2FF))
