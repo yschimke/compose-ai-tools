@@ -16,6 +16,7 @@ import ee.schimke.composeai.cli.serve.LiveSeatLimiter
 import ee.schimke.composeai.cli.serve.MutableTrustStore
 import ee.schimke.composeai.cli.serve.OptimizerHostCoordinator
 import ee.schimke.composeai.cli.serve.OptimizerPressureGate
+import ee.schimke.composeai.cli.serve.OptimizerPressureThresholds
 import ee.schimke.composeai.cli.serve.PlaygroundAndroidRenderService
 import ee.schimke.composeai.cli.serve.PlaygroundAndroidSessionOpener
 import ee.schimke.composeai.cli.serve.PlaygroundBtaCompiler
@@ -894,7 +895,11 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
             lanes = ServeBackgroundWork.DEFAULT_MAX_CONCURRENT_OPTIMIZERS,
           )
         } ?: OptimizerHostCoordinator.NONE,
-      pressureGate = OptimizerPressureGate(sample = pressureSampler::sample),
+      pressureGate =
+        OptimizerPressureGate(
+          sample = pressureSampler::sample,
+          thresholds = OptimizerPressureThresholds.fromSystemProperties(),
+        ),
     )
   }
 

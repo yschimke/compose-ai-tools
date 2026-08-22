@@ -68,6 +68,136 @@ class HostOptimizerAdmissionTest {
   }
 
   @Test
+  fun `a reading parked in the dead band cannot hold the gate forever`() {
+    // The production stall: memory settles at 18% available, which is neither at-or-below the 15%
+    // stop side (so nothing re-trips) nor at-or-above the 25% resume side (so the quiet window
+    // never starts). Before maxRecoveryMillis this held admission for eight hours.
+    var now = 0L
+    var sample =
+      HostResourceSample(loadPerCpu = 0.02, cpuUtilization = 0.02, memoryAvailableFraction = 0.8)
+    val gate =
+      OptimizerPressureGate(
+        sample = { sample },
+        thresholds =
+          OptimizerPressureThresholds(
+            resumeQuietMillis = 1_000,
+            sampleIntervalMillis = 0,
+            maxRecoveryMillis = 10_000,
+          ),
+        clock = { now },
+      )
+    assertFalse(gate.snapshot().constrained)
+
+    sample = sample.copy(memoryAvailableFraction = 0.10)
+    assertTrue(gate.snapshot().constrained)
+
+    sample = sample.copy(memoryAvailableFraction = 0.18)
+    now = 1_000
+    assertTrue(gate.snapshot().constrained, "the dead band must still hold the gate at first")
+    val reason = gate.snapshot().reason.orEmpty()
+    assertTrue(reason.contains("18%"), "reason should name the reading: $reason")
+    assertTrue(reason.contains("25%"), "reason should name the bar it must clear: $reason")
+
+    now = 10_999
+    assertTrue(gate.snapshot().constrained)
+    now = 11_000
+    assertFalse(gate.snapshot().constrained, "the hold must expire once no stop threshold is met")
+  }
+
+  @Test
+  fun `a dead band hold does not expire while a stop threshold is still met`() {
+    var now = 0L
+    var sample =
+      HostResourceSample(loadPerCpu = 0.02, cpuUtilization = 0.02, memoryAvailableFraction = 0.10)
+    val gate =
+      OptimizerPressureGate(
+        sample = { sample },
+        thresholds =
+          OptimizerPressureThresholds(
+            resumeQuietMillis = 1_000,
+            sampleIntervalMillis = 0,
+            maxRecoveryMillis = 10_000,
+          ),
+        clock = { now },
+      )
+    assertTrue(gate.snapshot().constrained)
+
+    // Still under the stop threshold well past maxRecoveryMillis: the cap must not admit into a
+    // host that is genuinely out of memory.
+    now = 60_000
+    assertTrue(gate.snapshot().constrained)
+    assertTrue(gate.snapshot().reason.orEmpty().contains("memory available 10%"))
+
+    sample = sample.copy(memoryAvailableFraction = 0.30)
+    now = 60_001
+    assertTrue(gate.snapshot().constrained, "recovery is still gated on the quiet window")
+    now = 61_001
+    assertFalse(gate.snapshot().constrained)
+  }
+
+  @Test
+  fun `only the signal that tripped the hold has to recover`() {
+    var now = 0L
+    var sample =
+      HostResourceSample(loadPerCpu = 0.2, cpuUtilization = 0.2, memoryAvailableFraction = 0.8)
+    val gate =
+      OptimizerPressureGate(
+        sample = { sample },
+        thresholds =
+          OptimizerPressureThresholds(resumeQuietMillis = 1_000, sampleIntervalMillis = 0),
+        clock = { now },
+      )
+    assertFalse(gate.snapshot().constrained)
+
+    sample = sample.copy(memoryAvailableFraction = 0.10)
+    assertTrue(gate.snapshot().constrained)
+
+    // Memory is back above its resume side. CPU sits between its resume (0.70) and stop (0.85)
+    // thresholds — uncomfortable, but it never stopped anything, so it must not block resumption.
+    sample = sample.copy(memoryAvailableFraction = 0.40, cpuUtilization = 0.75)
+    now = 1
+    assertTrue(gate.snapshot().constrained, "one safe sample must not flap the optimizer back on")
+    now = 1_001
+    assertFalse(gate.snapshot().constrained)
+  }
+
+  @Test
+  fun `thresholds fall back to defaults when system properties are absent or unparseable`() {
+    val key = "composeai.serve.optimizerStopMemoryAvailableFraction"
+    val quiet = "composeai.serve.optimizerResumeQuietMillis"
+    val previous = System.getProperty(key)
+    val previousQuiet = System.getProperty(quiet)
+    try {
+      System.clearProperty(key)
+      System.clearProperty(quiet)
+      assertEquals(
+        OptimizerPressureThresholds(),
+        OptimizerPressureThresholds.fromSystemProperties(),
+      )
+
+      System.setProperty(key, "0.35")
+      System.setProperty(quiet, "5000")
+      val tuned = OptimizerPressureThresholds.fromSystemProperties()
+      assertEquals(0.35, tuned.stopMemoryAvailableFraction)
+      assertEquals(5_000L, tuned.resumeQuietMillis)
+
+      // A ratio outside 0..1 and a negative duration are typos, not instructions.
+      System.setProperty(key, "35")
+      System.setProperty(quiet, "-1")
+      val rejected = OptimizerPressureThresholds.fromSystemProperties()
+      assertEquals(
+        OptimizerPressureThresholds().stopMemoryAvailableFraction,
+        rejected.stopMemoryAvailableFraction,
+      )
+      assertEquals(OptimizerPressureThresholds().resumeQuietMillis, rejected.resumeQuietMillis)
+    } finally {
+      if (previous == null) System.clearProperty(key) else System.setProperty(key, previous)
+      if (previousQuiet == null) System.clearProperty(quiet)
+      else System.setProperty(quiet, previousQuiet)
+    }
+  }
+
+  @Test
   fun `load and memory independently constrain optimization`() {
     var sample =
       HostResourceSample(loadPerCpu = 0.9, cpuUtilization = 0.1, memoryAvailableFraction = 0.8)
