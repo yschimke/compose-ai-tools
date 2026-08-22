@@ -426,12 +426,12 @@ class ServeIssueReportTest {
   }
 
   @Test
-  fun `a field value is read the same way both engines read it, and edge whitespace cannot survive`() {
-    // `key: value` lines, and both parsers trim the value — so a tag with edge whitespace does not
-    // survive the wire no matter what the writer emits. Trimming here rather than at read time is
-    // what makes the emitted bytes say what will actually be indexed; emitting it verbatim would
-    // just move the mangling to the reader, where nobody sees it. `v1` cannot express such a tag,
-    // and batch 03 must not select one without a format change.
+  fun `a tag keeps its edge whitespace, and a field value is read the way both engines read it`() {
+    // A tag index keys on the exact string, so `" glyph "` and `"glyph"` are different elements and
+    // normalising one into the other would point an acceptance at the wrong one — or at none. The
+    // quoting is what makes keeping it safe: both parsers trim the *line* value, and the spaces
+    // live
+    // inside the quotes where that trim cannot reach them.
     val locator =
       ServeIssueReport.locator(
         ServeIssueReport.Context(
@@ -443,16 +443,14 @@ class ServeIssueReportTest {
           element = "  glyph  ",
         )
       )
-    assertEquals("glyph", locator?.element)
+    assertEquals("  glyph  ", locator?.element)
     val block = ServeIssueReport.locatorBlock(locator!!)
+    assertTrue("""element: "  glyph  """" in block, block)
     assertEquals(locator, ServeIssueReport.locatorFromBody(block), "the block round-trips")
-    // The reader trims both ends, so a hand-edited body with a trailing space reads the same value
-    // this side and in the producer — which trims both ends too.
-    assertEquals(
-      "glyph",
-      ServeIssueReport.locatorFromBody(block.replace("element: glyph", "element: glyph  "))
-        ?.element,
-    )
+    // And the line is read the same way here and in the producer: both trim both ends, so a body
+    // hand-edited to pad *outside* the quotes still reads the same tag.
+    val padded = block.replace("""element: "  glyph  """", """element: "  glyph  "  """)
+    assertEquals("  glyph  ", ServeIssueReport.locatorFromBody(padded)?.element)
   }
 
   @Test

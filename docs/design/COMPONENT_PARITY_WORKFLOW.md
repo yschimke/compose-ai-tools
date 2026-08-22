@@ -152,7 +152,9 @@ block is line-oriented, and a bare tag containing a newline does not stay one fi
 injected` would read back as an element plus a revision nobody wrote, and a tag carrying a fence
 delimiter could end the block early and take the whole issue out of the index. Quoting also makes a
 tag with leading or trailing whitespace expressible, which a format whose readers trim cannot
-otherwise carry.
+otherwise carry — so the writer records the selected tag **verbatim**. A tag index keys on the exact
+string, and normalising `" glyph "` into `"glyph"` would point an acceptance at a different element,
+or at none.
 
 Two rules worth writing into the schema doc so they survive contact with a second implementer:
 

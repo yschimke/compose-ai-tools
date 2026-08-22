@@ -303,7 +303,11 @@ internal object ServeIssueReport {
       referenceId = reference,
       variant = ctx.variant,
       overrides = ctx.overrides,
-      element = ctx.element?.trim()?.takeIf { it.isNotEmpty() },
+      // Verbatim, deliberately: the tag is JSON-quoted on the wire, so edge whitespace survives
+      // both parsers and the selected tag keeps its identity. A tag index treats `" glyph "` and
+      // `"glyph"` as different keys, and normalising here would point the acceptance at the wrong
+      // one — or at none. Only an *empty* tag is dropped, which both parsers refuse anyway.
+      element = ctx.element?.takeIf { it.isNotEmpty() },
       bounds = ctx.bounds,
       revision = ctx.catalog?.trim()?.takeIf { it.isNotEmpty() },
     )
