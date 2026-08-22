@@ -87,10 +87,19 @@ differences" suggests. Two counts, and they are not the same number:
   most of the bar, #87's a 2dp ring, and #42's a shadow surrounding each component.
 
 The per-issue verdicts and what each implies are in
-[the pilot population](../COMPONENT_PARITY_WORKFLOW.md#the-pilot-population-measured); batch 00's D1
-and D5 should be answered against those numbers rather than against the worked example. D1 also
-gates a second thing now: batch 01's `element` / `bounds` reservation never landed, so batch 03
-inherits either a `v1` erratum or a version bump.
+[the pilot population](../COMPONENT_PARITY_WORKFLOW.md#the-pilot-population-measured); batch 00's D5
+should be answered against those numbers rather than against the worked example.
+
+**Four decisions have since been settled, and two of them changed the wire:**
+
+- **D1 is answered (a)** — the tag index publishes render-pixel bounds and names its space; the
+  canonical-plane transform belongs to the comparison.
+- **An umbrella issue carries one locator block per component**, and index rows are keyed by issue ×
+  component in both engines. This unblocks #42 and #93.
+- **`element` and `bounds` are reserved in `v1`** — batch 01's requirement, landed late as an
+  erratum, so batch 03 adds a selection to the existing version rather than bumping to `v2`.
+- **An acceptance may be geometric**, with an element gate required wherever an element exists. #41
+  and #87 are expressible; batch 04 must carry both shapes.
 
 ## Conventions every batch inherits
 

@@ -10641,13 +10641,22 @@ $cards
           groups.entries.joinToString("\n") { (component, rows) ->
             "<section class=\"cp-parity-issue-group\"><h3>${esc(component)} (${rows.size})</h3>${parityIssueRowsHtml(rows)}</section>"
           }
+        // The heading counts *components*, and `open` is rows: an umbrella issue contributes one
+        // row per component it names, so counting rows here would report three components with an
+        // open issue where one issue names three.
         val openBand =
-          "<h2 class=\"cp-status-sec\">Components with open issues (${open.size})</h2>" +
+          "<h2 class=\"cp-status-sec\">Components with open issues (${groups.size})</h2>" +
             if (open.isEmpty()) "<p class=\"cp-muted\">No open issues.</p>" else summary
+        // The closed band is flat and its rows do not name a component, so one closed umbrella
+        // issue
+        // would otherwise render as three identical links under a count that claims three issues.
+        // The open band above needs no such collapse: it groups by component, which is exactly what
+        // distinguishes those rows from each other.
+        val closedIssues = closed.distinctBy { it.repository to it.number }
         val closedBand =
-          if (closed.isEmpty()) ""
+          if (closedIssues.isEmpty()) ""
           else
-            "<h2 class=\"cp-status-sec\">Closed issues (${closed.size})</h2>${parityIssueRowsHtml(closed)}"
+            "<h2 class=\"cp-status-sec\">Closed issues (${closedIssues.size})</h2>${parityIssueRowsHtml(closedIssues)}"
         openBand + closedBand
       }
     val issueBand =

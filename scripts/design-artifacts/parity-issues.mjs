@@ -33,6 +33,26 @@ const PARITY = new Set(["regression", "known-difference", "verification-needed"]
 const REQUIRED_FIELDS = ["repository", "system", "component", "preview", "reference", "variant", "overrides"];
 
 /**
+ * Reserved in `v1` for the selection batch 03 records, and unwritten until then.
+ *
+ * Batch 01 called for both keys *before* the writer, the parsers and the shared fixture froze, and
+ * that did not happen: element selection would then have had to add two keys to a `v1` that strict
+ * parsers reject and permissive ones — these two, which ignore unknown fields — silently discard.
+ * A report carrying a selection would have been indexed with the selection dropped and no error
+ * anywhere. Reserving them now costs a fixture case; retrofitting them costs a version bump across
+ * the writer, this producer and the Kotlin reader.
+ *
+ * `bounds` names its space rather than being a bare rectangle, per D1: the tag index publishes
+ * `render-pixels` and the canonical-plane transform belongs to the comparison, so a rectangle with
+ * no space is exactly the ambiguity that makes an element which never moved report as `moved`.
+ * `v1` therefore accepts only the space both producers actually emit.
+ */
+const OPTIONAL_FIELDS = ["element", "bounds"];
+const BOUNDS_SPACE = "render-pixels";
+/** Code-point order, which is what [canonicalJson] produces and what the writer emits. */
+const BOUNDS_KEYS = ["height", "space", "width", "x", "y"];
+
+/**
  * The subset whose value may not be blank. `variant` is the exception and the reason this list is
  * separate from [REQUIRED_FIELDS]: `ServeIssueReport.variantFor` returns "" for a preview id that
  * carries no `__` axes, and "no axes" is a fact about the preview, not a mangled body.
@@ -59,6 +79,51 @@ function compareCodePoints(a, b) {
   return left.length - right.length;
 }
 
+/** Re-serialise an object with its keys in code-point order — the writer's rule, for both maps. */
+function canonicalJson(value) {
+  return JSON.stringify(Object.fromEntries(Object.keys(value).sort(compareCodePoints).map((key) => [key, value[key]])));
+}
+
+/**
+ * `element` is a **JSON string**, not a bare value, and that is load-bearing rather than tidy.
+ *
+ * The block is line-oriented `key: value`, so a bare tag containing a newline does not stay one
+ * field: `row\nrevision: injected` parses as element `row` plus a revision nobody wrote, and a tag
+ * carrying a fence delimiter can end the block early and take the whole issue out of the index. Tag
+ * indexes preserve arbitrary strings, so the writer cannot assume the tag is well-behaved. JSON
+ * quoting makes every such value expressible and unambiguous — and, incidentally, is the only way a
+ * tag with leading or trailing whitespace survives a format whose readers trim.
+ */
+function parseElement(raw) {
+  let element;
+  try { element = JSON.parse(raw); } catch { return { error: "element must be a JSON string" }; }
+  if (typeof element !== "string") return { error: "element must be a JSON string" };
+  if (element === "") return { error: "empty locator field(s): element" };
+  if (JSON.stringify(element) !== raw) return { error: "element is not canonical JSON" };
+  return { element };
+}
+
+function parseBounds(raw) {
+  let bounds;
+  try { bounds = JSON.parse(raw); } catch { return { error: "invalid bounds JSON" }; }
+  if (!bounds || Array.isArray(bounds) || typeof bounds !== "object") return { error: "bounds must be an object" };
+  const keys = Object.keys(bounds).sort(compareCodePoints);
+  if (keys.length !== BOUNDS_KEYS.length || keys.some((key, i) => key !== BOUNDS_KEYS[i])) {
+    return { error: `bounds must carry exactly ${BOUNDS_KEYS.join(", ")}` };
+  }
+  if (bounds.space !== BOUNDS_SPACE) return { error: `bounds space must be ${BOUNDS_SPACE}` };
+  for (const key of ["x", "y", "width", "height"]) {
+    const value = bounds[key];
+    if (!Number.isSafeInteger(value) || value < 0) return { error: `bounds ${key} must be a non-negative integer` };
+  }
+  if (bounds.width < 1 || bounds.height < 1) return { error: "bounds must have a positive extent" };
+  // Same rule the overrides carry: the block is canonical bytes, so a record and its re-serialised
+  // form are comparable without parsing. A hand-edited body that reorders the keys is refused
+  // rather than quietly accepted into a fingerprint someone later compares by string.
+  if (canonicalJson(bounds) !== raw) return { error: "bounds are not canonical JSON" };
+  return { bounds };
+}
+
 export function canonicalIssueUrl(value) {
   const match = /^https:\/\/(?:www\.)?github\.com\/([^/]+)\/([^/]+)\/issues\/([1-9][0-9]*)\/?$/i.exec(String(value ?? "").trim());
   if (!match) return null;
@@ -74,17 +139,66 @@ export function canonicalIssueUrl(value) {
  */
 export const NO_LOCATOR = "missing locator block";
 
-/** Parse exactly one visible locator fence. A malformed or duplicate block is an explicit error. */
-export function parseLocator(body) {
+/**
+ * Parse **every** visible locator fence in a body.
+ *
+ * One issue may legitimately name several components: an umbrella report like the Elevated shadow
+ * level covers `Button/`, `Card/` and `ToggleButton/Elevated`, and one block can only say one of
+ * them. Each block is a complete locator; [buildIssueIndex] emits one row per block, so the issue
+ * reaches every component page it is about. What a body may **not** do is contradict itself — the
+ * blocks share one repository and one system, and no component may appear twice, since two rows
+ * with one identity would collapse against each other in the reader.
+ */
+export function parseLocators(body) {
   const text = String(body ?? "");
   const matches = [...text.matchAll(FENCE)];
-  // Count openers too: one that never closed is invisible to [FENCE], and a body carrying a good
-  // block plus a dangling opener is ambiguous about which frame it describes.
   const openers = [...text.matchAll(FENCE_OPEN)].length;
-  if (matches.length > 1 || openers > 1) return { ok: false, error: "multiple locator blocks" };
-  if (matches.length === 0) return { ok: false, error: openers ? "unterminated locator block" : NO_LOCATOR };
+  // An opener with no closer is invisible to [FENCE]; if the counts disagree, some block in this
+  // body failed to close and the body is damaged rather than merely multi-component.
+  if (openers > matches.length) return { ok: false, error: "unterminated locator block" };
+  if (matches.length === 0) return { ok: false, error: NO_LOCATOR };
+  const locators = [];
+  for (const [index, match] of matches.entries()) {
+    const parsed = parseLocatorBlock(match[1]);
+    if (!parsed.ok) return matches.length === 1 ? parsed : { ok: false, error: `locator block ${index + 1}: ${parsed.error}` };
+    locators.push(parsed.locator);
+  }
+  const [first] = locators;
+  for (const locator of locators.slice(1)) {
+    if (locator.repository !== first.repository) return { ok: false, error: "locator blocks disagree about the repository" };
+    if (locator.system !== first.system) return { ok: false, error: "locator blocks disagree about the system" };
+  }
+  const components = new Set();
+  const previews = new Set();
+  for (const locator of locators) {
+    if (components.has(locator.component)) return { ok: false, error: `duplicate component in locator blocks: ${locator.component}` };
+    components.add(locator.component);
+    // A served preview belongs to one component, and `issuesForPreview` matches rows by preview id
+    // as well as by component — so two blocks claiming one preview put the same issue on that
+    // preview's page twice and make its badge say two issues. That is a mistyped body, not a shape
+    // the index should carry.
+    if (previews.has(locator.previewId)) return { ok: false, error: `duplicate preview in locator blocks: ${locator.previewId}` };
+    previews.add(locator.previewId);
+  }
+  return { ok: true, locators };
+}
+
+/**
+ * Parse a body carrying exactly one fence. Kept beside [parseLocators] because most callers — and
+ * every per-block case in the shared fixture — describe a single locator, and because "this body
+ * says two different things" is a distinct answer from "here are its two components".
+ */
+export function parseLocator(body) {
+  const parsed = parseLocators(body);
+  if (!parsed.ok) return parsed;
+  if (parsed.locators.length > 1) return { ok: false, error: "multiple locator blocks" };
+  return { ok: true, locator: parsed.locators[0] };
+}
+
+/** Parse the content of one fence — every line between its delimiters. */
+function parseLocatorBlock(content) {
   const fields = Object.create(null);
-  for (const line of matches[0][1].split(/\r?\n/)) {
+  for (const line of content.split(/\r?\n/)) {
     const colon = line.indexOf(":");
     if (colon < 1) return { ok: false, error: `malformed locator line: ${line}` };
     const key = line.slice(0, colon).trim();
@@ -99,13 +213,28 @@ export function parseLocator(body) {
   const blank = NON_EMPTY_FIELDS.filter((key) => fields[key] === "");
   if (blank.length) return { ok: false, error: `empty locator field(s): ${blank.join(", ")}` };
   if (Object.hasOwn(fields, "revision") && fields.revision === "") return { ok: false, error: "empty locator field(s): revision" };
+  for (const key of OPTIONAL_FIELDS) {
+    if (Object.hasOwn(fields, key) && fields[key] === "") return { ok: false, error: `empty locator field(s): ${key}` };
+  }
   if (!REPO.test(fields.repository)) return { ok: false, error: "invalid repository" };
   let overrides;
   try { overrides = JSON.parse(fields.overrides); } catch { return { ok: false, error: "invalid overrides JSON" }; }
   if (!overrides || Array.isArray(overrides) || typeof overrides !== "object") return { ok: false, error: "overrides must be an object" };
   const canonicalOverrides = Object.fromEntries(Object.keys(overrides).sort(compareCodePoints).map((key) => [key, overrides[key]]));
-  if (JSON.stringify(canonicalOverrides) !== fields.overrides) return { ok: false, error: "overrides are not canonical JSON" };
-  return { ok: true, locator: { repository: fields.repository.toLowerCase(), system: fields.system, component: fields.component, previewId: fields.preview, referenceId: fields.reference, variant: fields.variant, overrides: canonicalOverrides, revision: Object.hasOwn(fields, "revision") ? fields.revision : null } };
+  if (canonicalJson(canonicalOverrides) !== fields.overrides) return { ok: false, error: "overrides are not canonical JSON" };
+  let element = null;
+  if (Object.hasOwn(fields, "element")) {
+    const parsed = parseElement(fields.element);
+    if (parsed.error) return { ok: false, error: parsed.error };
+    element = parsed.element;
+  }
+  let bounds = null;
+  if (Object.hasOwn(fields, "bounds")) {
+    const parsed = parseBounds(fields.bounds);
+    if (parsed.error) return { ok: false, error: parsed.error };
+    bounds = parsed.bounds;
+  }
+  return { ok: true, locator: { repository: fields.repository.toLowerCase(), system: fields.system, component: fields.component, previewId: fields.preview, referenceId: fields.reference, variant: fields.variant, overrides: canonicalOverrides, element, bounds, revision: Object.hasOwn(fields, "revision") ? fields.revision : null } };
 }
 
 function labelValue(labels, prefix, allowed) {
@@ -126,29 +255,35 @@ export function buildIssueIndex(issues, { generatedAt = new Date().toISOString()
   for (const issue of issues ?? []) {
     const identity = canonicalIssueUrl(issue?.html_url ?? issue?.url);
     if (!identity) { onError(issue, "invalid issue URL"); continue; }
-    const parsed = parseLocator(issue?.body);
+    const parsed = parseLocators(issue?.body);
     if (!parsed.ok && parsed.error === NO_LOCATOR) {
       const labelled = Boolean(labelValue(issue?.labels, "area:", AREA) ?? labelValue(issue?.labels, "parity:", PARITY));
       onSkip(issue, { labelled });
       continue;
     }
     if (!parsed.ok) { onError(issue, parsed.error); continue; }
-    if (parsed.locator.repository !== identity.repository) { onError(issue, "locator repository does not match issue URL"); continue; }
-    const row = {
-      repository: identity.repository,
-      number: identity.number,
-      title: String(issue?.title ?? "").trim(),
-      url: identity.url,
-      state: issue?.state === "closed" ? "closed" : "open",
-      area: labelValue(issue?.labels, "area:", AREA),
-      parity: labelValue(issue?.labels, "parity:", PARITY),
-      system: parsed.locator.system,
-      component: parsed.locator.component,
-      previewIds: [parsed.locator.previewId],
-      referenceIds: [parsed.locator.referenceId],
-    };
-    if (!row.title) { onError(issue, "missing title"); continue; }
-    byIdentity.set(`${row.repository}/${row.number}`, row);
+    if (parsed.locators[0].repository !== identity.repository) { onError(issue, "locator repository does not match issue URL"); continue; }
+    const title = String(issue?.title ?? "").trim();
+    if (!title) { onError(issue, "missing title"); continue; }
+    // One row per locator, so an umbrella issue reaches every component it names. The row carries
+    // the identity only: a selection recorded in the locator belongs to the acceptance that cites
+    // it, not to an index whose whole job is "which issues touch this component".
+    for (const locator of parsed.locators) {
+      const row = {
+        repository: identity.repository,
+        number: identity.number,
+        title,
+        url: identity.url,
+        state: issue?.state === "closed" ? "closed" : "open",
+        area: labelValue(issue?.labels, "area:", AREA),
+        parity: labelValue(issue?.labels, "parity:", PARITY),
+        system: locator.system,
+        component: locator.component,
+        previewIds: [locator.previewId],
+        referenceIds: [locator.referenceId],
+      };
+      byIdentity.set(`${row.repository}/${row.number}#${row.component}`, row);
+    }
   }
-  return { schema: ISSUES_SCHEMA, generatedAt, issues: [...byIdentity.values()].sort((a, b) => a.repository.localeCompare(b.repository) || a.number - b.number) };
+  return { schema: ISSUES_SCHEMA, generatedAt, issues: [...byIdentity.values()].sort((a, b) => a.repository.localeCompare(b.repository) || a.number - b.number || a.component.localeCompare(b.component)) };
 }

@@ -43,6 +43,9 @@ internal object ServeIssueReport {
 
   const val LOCATOR_FENCE: String = "compose-parity-locator/v1"
 
+  /** The only plane `v1` accepts for [Bounds]; see that type and D1. */
+  const val RENDER_PIXELS: String = "render-pixels"
+
   /** Repo bugs fall back to when a session names no source of its own — the renderer is ours. */
   const val FALLBACK_REPO: String = "yschimke/compose-ai-tools"
 
@@ -73,6 +76,13 @@ internal object ServeIssueReport {
     val referenceId: String? = null,
     /** Preview-id axes only; live controls belong exclusively to [overrides]. */
     val variant: String = "",
+    /**
+     * The selected element, when the reporter picked one. Reserved for batch 03; nothing fills it
+     * yet — see [Locator.element].
+     */
+    val element: String? = null,
+    /** The selected region, when the reporter dragged one. Reserved for batch 03; see [Bounds]. */
+    val bounds: Bounds? = null,
     /** The complete, normalised query map consumed by the render lane. */
     val overrides: Map<String, String> = emptyMap(),
     /** GitHub blob URL of the preview's source file (from [ServeUrls.githubBlobUrl]). */
@@ -123,8 +133,57 @@ internal object ServeIssueReport {
     val referenceId: String,
     val variant: String,
     val overrides: Map<String, String>,
+    /**
+     * The element a selection named, and the region it covered. **Reserved, and unwritten until
+     * batch 03 has a selector to fill them.**
+     *
+     * They exist now because batch 01 called for them before this writer, the JavaScript producer
+     * and the shared fixture froze, and that did not happen. Both parsers ignore unknown keys, so
+     * adding the selection to `v1` afterwards would have been indexed with the selection silently
+     * dropped — no strict-parser rejection to notice, no error anywhere.
+     */
+    val element: String? = null,
+    val bounds: Bounds? = null,
     val revision: String? = null,
   )
+
+  /**
+   * A selected region **and the plane it is measured in**, which is the half a bare rectangle
+   * leaves out.
+   *
+   * Three spaces are in play and they disagree: a tag selection comes from the index in render
+   * pixels, a drag selection is in display pixels, and an acceptance wants the canonical plane. D1
+   * settles that both tag-index producers publish `render-pixels` and that the canonical-plane
+   * transform is a step of the *comparison* — a plane is a property of a comparison, the index is a
+   * property of a render — so `v1` carries only that space, and an element that never moved cannot
+   * report as moved because two ends of the wire assumed different planes.
+   */
+  data class Bounds(
+    val x: Int,
+    val y: Int,
+    val width: Int,
+    val height: Int,
+    val space: String = RENDER_PIXELS,
+  ) {
+    /**
+     * The invariants both parsers enforce, checked where the rectangle is *made* rather than where
+     * it is serialised.
+     *
+     * A writer that emitted a rectangle its own producer refuses would hand the reporter a
+     * prefilled body that looks right and takes the **whole issue** out of the index when the
+     * workflow next runs — a failure with no symptom until someone wonders why the report never
+     * appeared. The reachable version of that is batch 03's drag selection, which starts in display
+     * pixels: a missed conversion is a mistake at the point of construction, and this is where it
+     * should stop.
+     */
+    init {
+      require(space == RENDER_PIXELS) { "bounds space must be $RENDER_PIXELS, was $space" }
+      require(x >= 0 && y >= 0) { "bounds origin must be non-negative, was ($x, $y)" }
+      require(width >= 1 && height >= 1) {
+        "bounds must have a positive extent, was ${width}x$height"
+      }
+    }
+  }
 
   /**
    * Which repo a preview's bug belongs to: the catalog's **source** repo (the Kotlin the preview is
@@ -244,6 +303,12 @@ internal object ServeIssueReport {
       referenceId = reference,
       variant = ctx.variant,
       overrides = ctx.overrides,
+      // Verbatim, deliberately: the tag is JSON-quoted on the wire, so edge whitespace survives
+      // both parsers and the selected tag keeps its identity. A tag index treats `" glyph "` and
+      // `"glyph"` as different keys, and normalising here would point the acceptance at the wrong
+      // one — or at none. Only an *empty* tag is dropped, which both parsers refuse anyway.
+      element = ctx.element?.takeIf { it.isNotEmpty() },
+      bounds = ctx.bounds,
       revision = ctx.catalog?.trim()?.takeIf { it.isNotEmpty() },
     )
   }
@@ -275,22 +340,46 @@ internal object ServeIssueReport {
     append("reference: ${locator.referenceId}\n")
     append("variant: ${locator.variant}\n")
     append("overrides: ${canonicalOverrides(locator.overrides)}\n")
+    locator.element?.let { append("element: ${canonicalElement(it)}\n") }
+    locator.bounds?.let { append("bounds: ${canonicalBounds(it)}\n") }
     locator.revision?.let { append("revision: $it\n") }
     append("```\n")
   }
+
+  /**
+   * Every locator a body carries, in order.
+   *
+   * One issue may name several components — an umbrella report like m3-catalog#42's Elevated shadow
+   * level covers three — and one block can only say one of them, so the body carries one block each
+   * and the index emits a row per block. Returns empty when the body has none; a body whose blocks
+   * contradict each other (two repositories, two systems, or one component twice) is the producer's
+   * to reject, since it is the side that turns them into rows.
+   */
+  fun locatorsFromBody(body: String): List<Locator> =
+    body.split("```$LOCATOR_FENCE\n").drop(1).mapNotNull { rest ->
+      val content = rest.substringBefore("\n```", missingDelimiterValue = "")
+      content.takeIf { it.isNotEmpty() }?.let { locatorFromContent(it) }
+    }
 
   fun locatorFromBody(body: String): Locator? {
     val fenced = body.substringAfter("```$LOCATOR_FENCE\n", missingDelimiterValue = "")
     if (fenced.isEmpty()) return null
     val content = fenced.substringBefore("\n```", missingDelimiterValue = "")
     if (content.isEmpty()) return null
+    return locatorFromContent(content)
+  }
+
+  private fun locatorFromContent(content: String): Locator? {
     val fields =
       content
         .lineSequence()
         .mapNotNull { line ->
           val separator = line.indexOf(':')
           if (separator <= 0) null
-          else line.substring(0, separator) to line.substring(separator + 1).trimStart()
+          // Trim **both** ends, as the producer does. This side trimmed only the start, so a value
+          // carrying a trailing space read one way here and another there — two engines disagreeing
+          // about what a block says, which is precisely what the shared fixture exists to stop.
+          else line.substring(0, separator).trim() to line.substring(separator + 1).trim()
         }
         .toMap()
     val overrides =
@@ -303,6 +392,9 @@ internal object ServeIssueReport {
       referenceId = fields["reference"]?.takeIf { it.isNotBlank() } ?: return null,
       variant = fields["variant"] ?: return null,
       overrides = overrides,
+      element =
+        fields["element"]?.let { runCatching { parseElement(it) }.getOrNull() ?: return null },
+      bounds = fields["bounds"]?.let { runCatching { parseBounds(it) }.getOrNull() ?: return null },
       revision = fields["revision"]?.takeIf { it.isNotBlank() },
     )
   }
@@ -313,6 +405,62 @@ internal object ServeIssueReport {
       JsonObject.serializer(),
       JsonObject(sorted.associate { it.key to JsonPrimitive(it.value) }),
     )
+  }
+
+  /**
+   * `element` is written as a **JSON string**, which is what keeps a tag from becoming syntax.
+   *
+   * The block is line-oriented `key: value`, and a `testTag` is an arbitrary string: one containing
+   * a newline would not stay one field — `row\nrevision: injected` reads back as an element plus a
+   * revision nobody wrote — and one carrying a fence delimiter could end the block early and drop
+   * the whole issue from the index. Quoting also makes a tag with leading or trailing whitespace
+   * expressible, which a format whose readers trim otherwise cannot carry at all.
+   */
+  fun canonicalElement(element: String): String =
+    Json.encodeToString(JsonPrimitive.serializer(), JsonPrimitive(element))
+
+  /**
+   * Canonical bounds JSON: the same code-point key order the overrides carry, so a block is
+   * comparable byte for byte without parsing it back.
+   */
+  fun canonicalBounds(bounds: Bounds): String =
+    Json.encodeToString(
+      JsonObject.serializer(),
+      JsonObject(
+        // Code point order: height < space < width < x < y.
+        linkedMapOf(
+          "height" to JsonPrimitive(bounds.height),
+          "space" to JsonPrimitive(bounds.space),
+          "width" to JsonPrimitive(bounds.width),
+          "x" to JsonPrimitive(bounds.x),
+          "y" to JsonPrimitive(bounds.y),
+        )
+      ),
+    )
+
+  private fun parseElement(value: String): String {
+    val element =
+      Json.parseToJsonElement(value).jsonPrimitive.takeIf { it.isString }?.contentOrNull
+        ?: error("element must be a JSON string")
+    require(element.isNotEmpty()) { "element must not be empty" }
+    require(canonicalElement(element) == value) { "element is not canonical JSON" }
+    return element
+  }
+
+  private fun parseBounds(value: String): Bounds {
+    val json = Json.parseToJsonElement(value).jsonObject
+    val space = json["space"]?.jsonPrimitive?.contentOrNull ?: error("bounds names no space")
+    // `v1` accepts only the plane both tag-index producers publish; see [Bounds] and D1.
+    require(space == RENDER_PIXELS) { "bounds space must be $RENDER_PIXELS" }
+    fun extent(key: String): Int =
+      json[key]?.jsonPrimitive?.content?.toIntOrNull() ?: error("bounds $key must be an integer")
+    // [Bounds] enforces the origin, extent and space invariants itself, so a rectangle that fails
+    // them throws here and the caller's `runCatching` turns it into a refused locator.
+    val bounds =
+      Bounds(x = extent("x"), y = extent("y"), width = extent("width"), height = extent("height"))
+    require(json.keys.size == 5) { "bounds carries unknown keys" }
+    require(canonicalBounds(bounds) == value) { "bounds are not canonical JSON" }
+    return bounds
   }
 
   private fun parseOverrides(value: String): Map<String, String> =
