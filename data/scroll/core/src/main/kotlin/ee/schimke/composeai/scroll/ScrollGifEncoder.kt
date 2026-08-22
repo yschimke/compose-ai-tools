@@ -58,6 +58,18 @@ object ScrollGifEncoder {
     val disposal = disposalMethodFor(frames)
 
     outputFile.parentFile?.mkdirs()
+    // Truncate, rather than write over whatever is there. `FileImageOutputStream` opens a
+    // `RandomAccessFile` in "rw" mode, which does NOT truncate: re-encoding a shorter sequence into
+    // an existing longer file leaves the previous encode's tail past the GIF trailer. Decoders stop
+    // at the trailer and show the right animation, so the only symptom is a file whose LENGTH is
+    // the high-water mark of every render that ever wrote it — measured on `wear-m3-catalog`'s
+    // placeholder recordings, a 28-frame re-render of a 46-frame capture came out byte-for-byte the
+    // same size as the 46-frame one, carrying 62KB of the old render inside it. That makes the
+    // artifact a function of the build directory's history rather than of its frames, which costs
+    // reproducibility and quietly misleads any byte-level comparison of two renders.
+    // [ee.schimke.composeai.daemon.GifEncoder] already deletes; these two encoders should not
+    // disagree about it.
+    outputFile.delete()
     FileImageOutputStream(outputFile).use { stream ->
       writer.output = stream
       val param: ImageWriteParam = writer.defaultWriteParam
