@@ -84,6 +84,25 @@ function canonicalJson(value) {
   return JSON.stringify(Object.fromEntries(Object.keys(value).sort(compareCodePoints).map((key) => [key, value[key]])));
 }
 
+/**
+ * `element` is a **JSON string**, not a bare value, and that is load-bearing rather than tidy.
+ *
+ * The block is line-oriented `key: value`, so a bare tag containing a newline does not stay one
+ * field: `row\nrevision: injected` parses as element `row` plus a revision nobody wrote, and a tag
+ * carrying a fence delimiter can end the block early and take the whole issue out of the index. Tag
+ * indexes preserve arbitrary strings, so the writer cannot assume the tag is well-behaved. JSON
+ * quoting makes every such value expressible and unambiguous — and, incidentally, is the only way a
+ * tag with leading or trailing whitespace survives a format whose readers trim.
+ */
+function parseElement(raw) {
+  let element;
+  try { element = JSON.parse(raw); } catch { return { error: "element must be a JSON string" }; }
+  if (typeof element !== "string") return { error: "element must be a JSON string" };
+  if (element === "") return { error: "empty locator field(s): element" };
+  if (JSON.stringify(element) !== raw) return { error: "element is not canonical JSON" };
+  return { element };
+}
+
 function parseBounds(raw) {
   let bounds;
   try { bounds = JSON.parse(raw); } catch { return { error: "invalid bounds JSON" }; }
@@ -150,9 +169,16 @@ export function parseLocators(body) {
     if (locator.system !== first.system) return { ok: false, error: "locator blocks disagree about the system" };
   }
   const components = new Set();
+  const previews = new Set();
   for (const locator of locators) {
     if (components.has(locator.component)) return { ok: false, error: `duplicate component in locator blocks: ${locator.component}` };
     components.add(locator.component);
+    // A served preview belongs to one component, and `issuesForPreview` matches rows by preview id
+    // as well as by component — so two blocks claiming one preview put the same issue on that
+    // preview's page twice and make its badge say two issues. That is a mistyped body, not a shape
+    // the index should carry.
+    if (previews.has(locator.previewId)) return { ok: false, error: `duplicate preview in locator blocks: ${locator.previewId}` };
+    previews.add(locator.previewId);
   }
   return { ok: true, locators };
 }
@@ -196,13 +222,19 @@ function parseLocatorBlock(content) {
   if (!overrides || Array.isArray(overrides) || typeof overrides !== "object") return { ok: false, error: "overrides must be an object" };
   const canonicalOverrides = Object.fromEntries(Object.keys(overrides).sort(compareCodePoints).map((key) => [key, overrides[key]]));
   if (canonicalJson(canonicalOverrides) !== fields.overrides) return { ok: false, error: "overrides are not canonical JSON" };
+  let element = null;
+  if (Object.hasOwn(fields, "element")) {
+    const parsed = parseElement(fields.element);
+    if (parsed.error) return { ok: false, error: parsed.error };
+    element = parsed.element;
+  }
   let bounds = null;
   if (Object.hasOwn(fields, "bounds")) {
     const parsed = parseBounds(fields.bounds);
     if (parsed.error) return { ok: false, error: parsed.error };
     bounds = parsed.bounds;
   }
-  return { ok: true, locator: { repository: fields.repository.toLowerCase(), system: fields.system, component: fields.component, previewId: fields.preview, referenceId: fields.reference, variant: fields.variant, overrides: canonicalOverrides, element: Object.hasOwn(fields, "element") ? fields.element : null, bounds, revision: Object.hasOwn(fields, "revision") ? fields.revision : null } };
+  return { ok: true, locator: { repository: fields.repository.toLowerCase(), system: fields.system, component: fields.component, previewId: fields.preview, referenceId: fields.reference, variant: fields.variant, overrides: canonicalOverrides, element, bounds, revision: Object.hasOwn(fields, "revision") ? fields.revision : null } };
 }
 
 function labelValue(labels, prefix, allowed) {

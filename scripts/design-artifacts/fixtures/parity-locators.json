@@ -158,7 +158,7 @@
     },
     {
       "name": "element-and-bounds",
-      "why": "The two fields batch 01 reserved for batch 03's selection. Nothing writes them yet; both engines must round-trip them now, because adding a key to a frozen v1 later is refused by a strict parser and silently dropped by a permissive one.",
+      "why": "The two fields batch 01 reserved for batch 03's selection. Nothing writes them yet; both engines must round-trip them now, because adding a key to a frozen v1 later is refused by a strict parser and silently dropped by a permissive one. The tag is a JSON string: a testTag is arbitrary text, and a line-oriented block cannot carry a newline, a fence delimiter or edge whitespace unquoted.",
       "writer": {
         "repository": "yschimke/m3-catalog",
         "system": "m3-catalog",
@@ -177,7 +177,7 @@
         },
         "revision": "yschimke/m3-catalog@design-artifacts/m3-catalog"
       },
-      "block": "```compose-parity-locator/v1\nrepository: yschimke/m3-catalog\nsystem: m3-catalog\ncomponent: IconButton/Tonal\npreview: iconbutton-tonal__ideal__default__light\nreference: iconbutton-tonal-figma\nvariant: ideal/default/light\noverrides: {}\nelement: glyph\nbounds: {\"height\":24,\"space\":\"render-pixels\",\"width\":24,\"x\":18,\"y\":18}\nrevision: yschimke/m3-catalog@design-artifacts/m3-catalog\n```\n",
+      "block": "```compose-parity-locator/v1\nrepository: yschimke/m3-catalog\nsystem: m3-catalog\ncomponent: IconButton/Tonal\npreview: iconbutton-tonal__ideal__default__light\nreference: iconbutton-tonal-figma\nvariant: ideal/default/light\noverrides: {}\nelement: \"glyph\"\nbounds: {\"height\":24,\"space\":\"render-pixels\",\"width\":24,\"x\":18,\"y\":18}\nrevision: yschimke/m3-catalog@design-artifacts/m3-catalog\n```\n",
       "parse": {
         "ok": true,
         "locator": {
@@ -203,7 +203,7 @@
     {
       "name": "bounds-in-another-space",
       "why": "D1 settles that the tag index publishes render-pixel bounds and the canonical-plane transform belongs to the comparison. A rectangle in the display plane is the failure that makes an element which never moved report as moved, so v1 refuses any other space rather than storing the guess.",
-      "block": "```compose-parity-locator/v1\nrepository: yschimke/m3-catalog\nsystem: m3-catalog\ncomponent: IconButton/Tonal\npreview: iconbutton-tonal__ideal__default__light\nreference: iconbutton-tonal-figma\nvariant: ideal/default/light\noverrides: {}\nelement: glyph\nbounds: {\"height\":24,\"space\":\"display-pixels\",\"width\":24,\"x\":18,\"y\":18}\nrevision: yschimke/m3-catalog@design-artifacts/m3-catalog\n```\n",
+      "block": "```compose-parity-locator/v1\nrepository: yschimke/m3-catalog\nsystem: m3-catalog\ncomponent: IconButton/Tonal\npreview: iconbutton-tonal__ideal__default__light\nreference: iconbutton-tonal-figma\nvariant: ideal/default/light\noverrides: {}\nelement: \"glyph\"\nbounds: {\"height\":24,\"space\":\"display-pixels\",\"width\":24,\"x\":18,\"y\":18}\nrevision: yschimke/m3-catalog@design-artifacts/m3-catalog\n```\n",
       "parse": {
         "ok": false,
         "error": "bounds space must be render-pixels"
@@ -212,10 +212,49 @@
     {
       "name": "bounds-not-canonical",
       "why": "Same rule the overrides carry: the block is canonical bytes, so two records are comparable without parsing. Key order here is insertion order, not code-point order.",
-      "block": "```compose-parity-locator/v1\nrepository: yschimke/m3-catalog\nsystem: m3-catalog\ncomponent: IconButton/Tonal\npreview: iconbutton-tonal__ideal__default__light\nreference: iconbutton-tonal-figma\nvariant: ideal/default/light\noverrides: {}\nelement: glyph\nbounds: {\"x\":18,\"y\":18,\"width\":24,\"height\":24,\"space\":\"render-pixels\"}\nrevision: yschimke/m3-catalog@design-artifacts/m3-catalog\n```\n",
+      "block": "```compose-parity-locator/v1\nrepository: yschimke/m3-catalog\nsystem: m3-catalog\ncomponent: IconButton/Tonal\npreview: iconbutton-tonal__ideal__default__light\nreference: iconbutton-tonal-figma\nvariant: ideal/default/light\noverrides: {}\nelement: \"glyph\"\nbounds: {\"x\":18,\"y\":18,\"width\":24,\"height\":24,\"space\":\"render-pixels\"}\nrevision: yschimke/m3-catalog@design-artifacts/m3-catalog\n```\n",
       "parse": {
         "ok": false,
         "error": "bounds are not canonical JSON"
+      }
+    },
+    {
+      "name": "element-unquoted",
+      "why": "A bare tag is what makes `row\\nrevision: injected` parse as two fields — an element silently truncated and a revision nobody wrote. v1 takes a JSON string so the value cannot become syntax.",
+      "block": "```compose-parity-locator/v1\nrepository: yschimke/m3-catalog\nsystem: m3-catalog\ncomponent: IconButton/Tonal\npreview: iconbutton-tonal__ideal__default__light\nreference: iconbutton-tonal-figma\nvariant: ideal/default/light\noverrides: {}\nelement: glyph\nbounds: {\"height\":24,\"space\":\"render-pixels\",\"width\":24,\"x\":18,\"y\":18}\nrevision: yschimke/m3-catalog@design-artifacts/m3-catalog\n```\n",
+      "parse": {
+        "ok": false,
+        "error": "element must be a JSON string"
+      }
+    },
+    {
+      "name": "element-with-a-newline",
+      "why": "The injection this encoding exists to stop, written out: the tag carries a line break and its escape keeps it one field instead of opening `revision:`.",
+      "writer": {
+        "repository": "yschimke/m3-catalog",
+        "system": "m3-catalog",
+        "componentId": "IconButton/Tonal",
+        "previewId": "iconbutton-tonal__ideal__default__light",
+        "referenceId": "iconbutton-tonal-figma",
+        "variant": "ideal/default/light",
+        "overrides": {},
+        "element": "row\nrevision: injected"
+      },
+      "block": "```compose-parity-locator/v1\nrepository: yschimke/m3-catalog\nsystem: m3-catalog\ncomponent: IconButton/Tonal\npreview: iconbutton-tonal__ideal__default__light\nreference: iconbutton-tonal-figma\nvariant: ideal/default/light\noverrides: {}\nelement: \"row\\nrevision: injected\"\n```\n",
+      "parse": {
+        "ok": true,
+        "locator": {
+          "repository": "yschimke/m3-catalog",
+          "system": "m3-catalog",
+          "component": "IconButton/Tonal",
+          "previewId": "iconbutton-tonal__ideal__default__light",
+          "referenceId": "iconbutton-tonal-figma",
+          "variant": "ideal/default/light",
+          "overrides": {},
+          "element": "row\nrevision: injected",
+          "bounds": null,
+          "revision": null
+        }
       }
     }
   ],
@@ -291,6 +330,15 @@
       "parse": {
         "ok": false,
         "error": "locator blocks disagree about the repository"
+      }
+    },
+    {
+      "name": "umbrella-repeats-a-preview",
+      "why": "A served preview belongs to one component, and issuesForPreview matches rows by preview id as well as by component — two blocks claiming one preview would put the same issue on that page twice and make its badge say two.",
+      "body": "```compose-parity-locator/v1\nrepository: yschimke/m3-catalog\nsystem: m3-catalog\ncomponent: Button/Elevated\npreview: button-elevated__ideal__default__light\nreference: button-elevated__ideal__default__light\nvariant: ideal/default/light\noverrides: {}\n```\n```compose-parity-locator/v1\nrepository: yschimke/m3-catalog\nsystem: m3-catalog\ncomponent: Card/Elevated\npreview: button-elevated__ideal__default__light\nreference: card-elevated__ideal__default__light__compact\nvariant: ideal/default/light/compact\noverrides: {}\n```\n",
+      "parse": {
+        "ok": false,
+        "error": "duplicate preview in locator blocks: button-elevated__ideal__default__light"
       }
     }
   ]

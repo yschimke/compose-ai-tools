@@ -174,9 +174,29 @@ test("the reserved selection fields round-trip, and refuse a rectangle with no s
   const parsed = parseLocator(reserved.block);
   assert.equal(parsed.locator.element, "glyph");
   assert.deepEqual(parsed.locator.bounds, { height: 24, space: "render-pixels", width: 24, x: 18, y: 18 });
-  // A blank value is a mangled body rather than an absent field.
-  assert.equal(parseLocator(reserved.block.replace("element: glyph", "element:")).error, "empty locator field(s): element");
+  // A blank value is a mangled body rather than an absent field, quoted or not.
+  assert.equal(parseLocator(reserved.block.replace('element: "glyph"', "element:")).error, "empty locator field(s): element");
+  assert.equal(parseLocator(reserved.block.replace('"glyph"', '""')).error, "empty locator field(s): element");
+  // The tag is a JSON string precisely so it cannot become syntax: a newline inside it stays inside
+  // it, instead of opening a field the reporter never wrote.
+  const injected = shared.cases.find((shape) => shape.name === "element-with-a-newline");
+  const parsedInjection = parseLocator(injected.block);
+  assert.equal(parsedInjection.locator.element, "row\nrevision: injected");
+  assert.equal(parsedInjection.locator.revision, null, "the injected line is part of the tag, not a field");
   // Extent has to be real: a zero-width rectangle selects nothing but would suppress its own row.
   assert.match(parseLocator(reserved.block.replace('"width":24', '"width":0')).error, /positive extent|not canonical/);
   assert.match(parseLocator(reserved.block.replace('"x":18', '"x":-1')).error, /non-negative integer|not canonical/);
+});
+
+test("two blocks may not claim the same preview", () => {
+  // `issuesForPreview` matches rows by preview id as well as by component, so one preview named by
+  // two blocks would show the same issue twice on that page and count two in its badge.
+  const shape = shared.bodies.find((body) => body.name === "umbrella-repeats-a-preview");
+  const errors = [];
+  const index = buildIssueIndex(
+    [{ html_url: "https://github.com/yschimke/m3-catalog/issues/42", title: "Elevated shadow level", body: shape.body, state: "open" }],
+    { generatedAt: "2026-08-15T10:00:00Z", onError: (_, error) => errors.push(error) },
+  );
+  assert.deepEqual(index.issues, []);
+  assert.deepEqual(errors, [shape.parse.error]);
 });

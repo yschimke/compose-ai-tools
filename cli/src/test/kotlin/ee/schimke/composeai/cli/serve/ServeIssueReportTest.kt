@@ -316,7 +316,7 @@ class ServeIssueReportTest {
     val written =
       fixture["cases"]!!.jsonArray.map { it.jsonObject }.filter { it.containsKey("writer") }
     // A fixture that silently stopped carrying writer cases would pass every assertion below.
-    assertEquals(5, written.size, "the fixture must keep exercising the writer")
+    assertEquals(6, written.size, "the fixture must keep exercising the writer")
     for (case in written) {
       val name = case["name"]!!.jsonPrimitive.content
       val writer = case["writer"]!!.jsonObject
@@ -409,6 +409,7 @@ class ServeIssueReportTest {
       )
     assertEquals(bounds, ServeIssueReport.locatorFromBody(block)?.bounds)
     assertEquals("glyph", ServeIssueReport.locatorFromBody(block)?.element)
+    assertTrue("""element: "glyph"""" in block, "the tag is written as a JSON string")
     assertNull(
       ServeIssueReport.locatorFromBody(block.replace("render-pixels", "display-pixels")),
       "another plane is refused rather than stored as a guess",
@@ -451,6 +452,34 @@ class ServeIssueReportTest {
       "glyph",
       ServeIssueReport.locatorFromBody(block.replace("element: glyph", "element: glyph  "))
         ?.element,
+    )
+  }
+
+  @Test
+  fun `a tag cannot become syntax, however it is spelled`() {
+    // A `testTag` is arbitrary text and the block is line-oriented, so a bare value carrying a
+    // newline would not stay one field: `row\nrevision: injected` would read back as an element
+    // plus a revision nobody wrote, and a fence delimiter inside a tag could end the block early
+    // and drop the whole issue from the index. JSON quoting is what makes the value inert.
+    val locator =
+      ServeIssueReport.locator(
+        ServeIssueReport.Context(
+          repo = "yschimke/m3-catalog",
+          previewId = "iconbutton-tonal__ideal__default__light",
+          system = "m3-catalog",
+          componentId = "IconButton/Tonal",
+          referenceId = "iconbutton-tonal-figma",
+          element = "row\nrevision: injected",
+        )
+      )!!
+    val block = ServeIssueReport.locatorBlock(locator)
+    assertTrue("""element: "row\nrevision: injected"""" in block, block)
+    val read = ServeIssueReport.locatorFromBody(block)
+    assertEquals("row\nrevision: injected", read?.element)
+    assertNull(read?.revision, "the injected line is part of the tag, not a field of its own")
+    // A bare tag is refused rather than read as syntax.
+    assertNull(
+      ServeIssueReport.locatorFromBody(block.replace(""""row\nrevision: injected"""", "row"))
     )
   }
 

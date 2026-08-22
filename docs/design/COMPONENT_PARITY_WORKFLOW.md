@@ -124,15 +124,17 @@ and every part of it is already computable on the serve host:
 | `variant` | the axis segments already inside the preview id — **axes only**. Live overrides are *not* folded in here; they travel in their own `overrides` field, because two representations of one fact means two ways to spell it and no rule for which wins |
 | `overrides` | the whole normalised override map the render lane received (display fields, size fields, overlay toggles, `knob.*`, `rc.*`) — the same set §4 matches acceptances on |
 | `revision` | `repo@branch` provenance + the compose-ai-tools version that rendered it |
-| `element` | **reserved**, unwritten until batch 03 — the `testTag` a selection resolved to |
+| `element` | **reserved**, unwritten until batch 03 — the `testTag` a selection resolved to, as a **JSON string** (`element: "glyph"`) |
 | `bounds` | **reserved**, unwritten until batch 03 — `{"height":…,"space":"render-pixels","width":…,"x":…,"y":…}` |
 
 **A body may carry one block per component, and that is how an umbrella report is indexed.** One
 issue legitimately spans several components — m3-catalog#42's Elevated shadow level covers
 `Button/`, `Card/` and `ToggleButton/Elevated` — and a block can only name one. So `parseLocators`
 reads every fence in the body and the index emits **one row per block**, keyed by issue *and*
-component. The blocks must agree: one `repository`, one `system`, and no component twice, since two
-rows with one identity collapse against each other in the reader. The alternative — splitting the
+component. The blocks must agree: one `repository`, one `system`, no component twice — two rows with
+one identity collapse against each other in the reader — and **no preview twice**, because
+`issuesForPreview` matches rows by preview id as well as by component, so one preview named by two
+blocks would carry the same issue twice and count two in its badge. The alternative — splitting the
 umbrella into one issue per component — was rejected because it multiplies the backlog and loses the
 one fact that matters most about those issues, that they share a cause.
 
@@ -144,7 +146,13 @@ rather than being a bare rectangle, and `v1` accepts only `render-pixels`: per D
 producers publish render pixels and the canonical-plane transform is a step of the **comparison**, a
 plane being a property of a comparison and the index a property of a render. A rectangle with no
 space is exactly what makes an element that never moved report as `moved`. Both values are canonical
-JSON on the same code-point rule the overrides carry.
+JSON on the same code-point rule the overrides carry — and `element` is a **quoted JSON string**
+rather than a bare value, which is load-bearing rather than tidy: a `testTag` is arbitrary text, the
+block is line-oriented, and a bare tag containing a newline does not stay one field. `row⏎revision:
+injected` would read back as an element plus a revision nobody wrote, and a tag carrying a fence
+delimiter could end the block early and take the whole issue out of the index. Quoting also makes a
+tag with leading or trailing whitespace expressible, which a format whose readers trim cannot
+otherwise carry.
 
 Two rules worth writing into the schema doc so they survive contact with a second implementer:
 
@@ -213,7 +221,8 @@ simply not there.
   *other* field must be non-blank: an emptied `system` or `preview` means the block no longer names
   one component, and that is a mangled body.
 - **`element` and `bounds` are absent or non-blank.** Reserved fields, so most blocks carry
-  neither; a *blank* one is a mangled body rather than an absent field. A `bounds` naming any space
+  neither; a *blank* one is a mangled body rather than an absent field, as is an `element` that is
+  not a canonical JSON string (a bare tag, or `""`). A `bounds` naming any space
   other than `render-pixels`, carrying a non-integer or negative extent, a zero width or height, or
   keys in insertion order rather than code-point order, is refused rather than stored as a guess.
 - **`overrides` keys sort by Unicode code point, not by UTF-16 code unit.** The distinction is

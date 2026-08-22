@@ -336,7 +336,7 @@ internal object ServeIssueReport {
     append("reference: ${locator.referenceId}\n")
     append("variant: ${locator.variant}\n")
     append("overrides: ${canonicalOverrides(locator.overrides)}\n")
-    locator.element?.let { append("element: $it\n") }
+    locator.element?.let { append("element: ${canonicalElement(it)}\n") }
     locator.bounds?.let { append("bounds: ${canonicalBounds(it)}\n") }
     locator.revision?.let { append("revision: $it\n") }
     append("```\n")
@@ -388,7 +388,8 @@ internal object ServeIssueReport {
       referenceId = fields["reference"]?.takeIf { it.isNotBlank() } ?: return null,
       variant = fields["variant"] ?: return null,
       overrides = overrides,
-      element = fields["element"]?.takeIf { it.isNotBlank() },
+      element =
+        fields["element"]?.let { runCatching { parseElement(it) }.getOrNull() ?: return null },
       bounds = fields["bounds"]?.let { runCatching { parseBounds(it) }.getOrNull() ?: return null },
       revision = fields["revision"]?.takeIf { it.isNotBlank() },
     )
@@ -401,6 +402,18 @@ internal object ServeIssueReport {
       JsonObject(sorted.associate { it.key to JsonPrimitive(it.value) }),
     )
   }
+
+  /**
+   * `element` is written as a **JSON string**, which is what keeps a tag from becoming syntax.
+   *
+   * The block is line-oriented `key: value`, and a `testTag` is an arbitrary string: one containing
+   * a newline would not stay one field — `row\nrevision: injected` reads back as an element plus a
+   * revision nobody wrote — and one carrying a fence delimiter could end the block early and drop
+   * the whole issue from the index. Quoting also makes a tag with leading or trailing whitespace
+   * expressible, which a format whose readers trim otherwise cannot carry at all.
+   */
+  fun canonicalElement(element: String): String =
+    Json.encodeToString(JsonPrimitive.serializer(), JsonPrimitive(element))
 
   /**
    * Canonical bounds JSON: the same code-point key order the overrides carry, so a block is
@@ -420,6 +433,15 @@ internal object ServeIssueReport {
         )
       ),
     )
+
+  private fun parseElement(value: String): String {
+    val element =
+      Json.parseToJsonElement(value).jsonPrimitive.takeIf { it.isString }?.contentOrNull
+        ?: error("element must be a JSON string")
+    require(element.isNotEmpty()) { "element must not be empty" }
+    require(canonicalElement(element) == value) { "element is not canonical JSON" }
+    return element
+  }
 
   private fun parseBounds(value: String): Bounds {
     val json = Json.parseToJsonElement(value).jsonObject
