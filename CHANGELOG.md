@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.30.0](https://github.com/yschimke/compose-ai-tools/compare/v1.29.0...v1.30.0) (2026-08-22)
+
+
+### Features
+
+* **serve:** find previews by the composables they call (`uses:`) ([#4424](https://github.com/yschimke/compose-ai-tools/issues/4424)) ([5388020](https://github.com/yschimke/compose-ai-tools/commit/53880207d857a7b46805180662a8f05e763f0522))
+* **serve:** publish render history for the design catalogs ([#4418](https://github.com/yschimke/compose-ai-tools/issues/4418)) ([4f810d9](https://github.com/yschimke/compose-ai-tools/commit/4f810d984592dcd8ad0805a0643fa963d2d0c1d2))
+
+
+### Bug Fixes
+
+* **serve:** bound the optimizer pressure gate's recovery hold ([#4422](https://github.com/yschimke/compose-ai-tools/issues/4422)) ([59725e5](https://github.com/yschimke/compose-ai-tools/commit/59725e5d93ad269a6828bb427b5189b3f200695f))
+* **serve:** correct four defects in the `uses:` filter ([#4425](https://github.com/yschimke/compose-ai-tools/issues/4425)) ([b43b982](https://github.com/yschimke/compose-ai-tools/commit/b43b9827508dafeb12b697a40c191a87239f082a))
+
 ## [1.29.0](https://github.com/yschimke/compose-ai-tools/compare/v1.28.0...v1.29.0) (2026-08-21)
 
 
