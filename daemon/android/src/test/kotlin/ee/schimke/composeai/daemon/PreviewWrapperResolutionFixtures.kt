@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.PreviewWrapper
 import androidx.compose.ui.unit.dp
+import ee.schimke.composeai.data.render.extensions.PreviewWrapperSubstitutionProvider
 
 /**
  * Wrapper class for [PreviewWrapperResolutionTest] and [WrappedPreviewRenderTest]. Mirrors the
@@ -32,6 +33,20 @@ class GreenBorderWrapper {
   @Composable
   fun Wrap(content: @Composable () -> Unit) {
     Box(modifier = Modifier.fillMaxSize().background(Color(0xFF1B5E20))) {
+      Box(modifier = Modifier.fillMaxSize().padding(8.dp)) { content() }
+    }
+  }
+}
+
+/**
+ * A second border wrapper in a colour [GreenBorderWrapper] can't be confused with, so a test that
+ * composes two wrappers at once can tell which one painted which pixels. Stands in for a selected
+ * `@ThemeCatalog` theme in [WrappedPreviewRenderTest]'s structural-nesting coverage.
+ */
+class BlueBorderWrapper {
+  @Composable
+  fun Wrap(content: @Composable () -> Unit) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF1565C0))) {
       Box(modifier = Modifier.fillMaxSize().padding(8.dp)) { content() }
     }
   }
@@ -60,6 +75,23 @@ class RequiredCompositionLocalWrapper {
   fun Wrap(content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalRequiredPreviewEnvironment provides true, content = content)
   }
+}
+
+/**
+ * Declares [RequiredCompositionLocalWrapper] **structural** for the daemon's test classpath —
+ * registered through `src/test/resources/META-INF/services/...PreviewWrapperSubstitutionProvider`,
+ * the same SPI `:data-remotecompose-connector` uses to declare the RemoteCompose wrappers.
+ *
+ * It stands in for `RemotePreviewWrapper`, which the daemon's test classpath doesn't carry: both
+ * install something the preview body cannot compose without (a required local here, the
+ * RemoteCompose applier there), so a `themeProvider` override must nest around it rather than
+ * replace it. Substitutes nothing, so no other test's wrapper resolution changes.
+ */
+class FixtureStructuralWrapperProvider : PreviewWrapperSubstitutionProvider {
+  override fun substituteFor(originalWrapperFqn: String): Class<*>? = null
+
+  override fun isStructural(wrapperFqn: String): Boolean =
+    wrapperFqn == RequiredCompositionLocalWrapper::class.java.name
 }
 
 /**

@@ -31,11 +31,13 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -1076,6 +1078,40 @@ class BluePrimaryThemeProvider {
   @Composable
   fun Wrap(content: @Composable () -> Unit) =
     MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xFF1565C0))) { content() }
+}
+
+/**
+ * App-owned preview environment used to model a **structural** wrapper — one that installs the
+ * surface its body composes against rather than a look. The renderer cannot provide it itself, so
+ * it must survive every render mode, including a `themeProvider` override that replaces an ordinary
+ * (theme-shaped) declared wrapper.
+ *
+ * Stands in for `RemotePreviewWrapper`, which this classpath doesn't carry: dropping that one
+ * leaves a `RemoteBox` / `RemoteColumn` / `RemoteRow` body on the plain UI applier and the render
+ * throws `IllegalStateException: Invalid applier`; dropping this one throws out of
+ * [WrapperRequiredSquare]'s `check`. Same failure shape, no alpha dependency.
+ */
+private val LocalRequiredPreviewEnvironment = staticCompositionLocalOf { false }
+
+@Suppress("unused") // instantiated reflectively by the daemon's InvokeWithOptionalWrapper
+class RequiredEnvironmentWrapper {
+  @Composable
+  fun Wrap(content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalRequiredPreviewEnvironment provides true, content = content)
+  }
+}
+
+/**
+ * Fails before drawing unless [RequiredEnvironmentWrapper] ran; otherwise paints the *ambient*
+ * `MaterialTheme.colorScheme.primary`, so one render answers both questions a nested wrapper stack
+ * raises — did the structural wrapper survive, and did the theme reach the body.
+ */
+@Composable
+fun WrapperRequiredSquare() {
+  check(LocalRequiredPreviewEnvironment.current) {
+    "Required app preview environment was not installed"
+  }
+  Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.primary))
 }
 
 /**

@@ -1,10 +1,13 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.util.Base64
 import javax.imageio.ImageIO
 import kotlin.math.abs
+import kotlinx.serialization.json.Json
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -212,6 +215,86 @@ class WrappedPreviewRenderTest {
     }
   }
 
+  /**
+   * A `themeProvider` override must NEST around a **structural** `@PreviewWrapper`, not replace it.
+   *
+   * Replacing is right for the ordinary case — a declared wrapper is nearly always the preview's
+   * own theme, and swapping it is what the viewer's theme selector is for. It is wrong when the
+   * wrapper installs the surface the body composes against: dropping
+   * `@PreviewWrapper(RemotePreviewWrapper::class)` leaves a `RemoteBox` / `RemoteColumn` /
+   * `RemoteRow` body on the plain UI applier and the render dies with `IllegalStateException:
+   * Invalid applier` before drawing anything. That is what took out every `meshcore-mobile` widget
+   * preview once the serve theme optimiser started pre-rendering each preview under each declared
+   * `@ThemeCatalog` theme — four renders, four failures, 60-280ms each.
+   *
+   * [RequiredCompositionLocalWrapper] stands in for the RemoteCompose wrapper (declared structural
+   * on the test classpath by [FixtureStructuralWrapperProvider]): its
+   * [WrapperRequiredFixturePreview] body `check`s the local the wrapper installs, so a replaced
+   * wrapper throws exactly as the applier mismatch does. [BlueBorderWrapper] plays the selected
+   * theme. Blue edges prove the theme composed outermost, and the body's own `0xFF66BB6A` green in
+   * the centre proves the structural wrapper survived underneath it.
+   */
+  @Test
+  fun themeProviderOverrideNestsAroundStructuralWrapper() {
+    val outputDir = tempFolder.newFolder("renders-structural-theme")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "structural",
+              className = "ee.schimke.composeai.daemon.PreviewWrapperResolutionFixturesKt",
+              functionName = "WrapperRequiredFixturePreview",
+              params =
+                PreviewParamsEntry(
+                  widthDp = 32,
+                  heightDp = 32,
+                  density = 1.0f,
+                  wrapperClassName = "ee.schimke.composeai.daemon.RequiredCompositionLocalWrapper",
+                ),
+            )
+          )
+      )
+    val host = PreviewManifestRouter(manifest = manifest)
+    host.start()
+    try {
+      val themed =
+        renderAndDecode(
+          host,
+          "previewId=structural;overrides=" +
+            encodeThemeProviderBag("ee.schimke.composeai.daemon.BlueBorderWrapper"),
+          "structural-themed",
+        )
+      // The theme wrapper is outermost, so its 8.dp blue band owns the edges...
+      assertEdgePixelsAreBlue(themed)
+      // ...and the body drew at all, which it only does when the structural wrapper installed its
+      // local. Before the fix the render failed outright with the wrapper's `check` message.
+      val centre = themed.getRGB(themed.width / 2, themed.height / 2)
+      val r = (centre shr 16) and 0xFF
+      val g = (centre shr 8) and 0xFF
+      val b = centre and 0xFF
+      assertTrue(
+        "centre should be the body's 0xFF66BB6A but was rgb($r,$g,$b) — the structural " +
+          "@PreviewWrapper was replaced by the themeProvider instead of nested inside it.",
+        g > r && g > b && g > 120 && r > 60,
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  /** A base64 `overrides=` bag carrying only a `themeProvider` selection. */
+  private fun encodeThemeProviderBag(fqn: String): String {
+    val json = Json { encodeDefaults = false }
+    val bytes =
+      json
+        .encodeToString(PreviewOverrides.serializer(), PreviewOverrides(themeProvider = fqn))
+        .toByteArray(Charsets.UTF_8)
+    return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+  }
+
   private fun renderAndDecode(
     host: PreviewManifestRouter,
     payload: String,
@@ -253,6 +336,27 @@ class WrappedPreviewRenderTest {
           "If body-red, the daemon skipped @PreviewWrapper's Wrap{} — regression in " +
           "RenderEngine.setContent's InvokeWithOptionalWrapper call site.",
         g > r && g > b && g > 60,
+      )
+    }
+  }
+
+  /**
+   * Blue twin of [assertEdgePixelsAreGreen], for the render whose outermost wrapper is
+   * [BlueBorderWrapper]'s `0xFF1565C0` band.
+   */
+  private fun assertEdgePixelsAreBlue(img: BufferedImage) {
+    val w = img.width
+    val h = img.height
+    val samples = listOf(w / 2 to 2, w / 2 to (h - 3), 2 to (h / 2), (w - 3) to (h / 2))
+    for ((x, y) in samples) {
+      val rgb = img.getRGB(x, y)
+      val r = (rgb shr 16) and 0xFF
+      val g = (rgb shr 8) and 0xFF
+      val b = rgb and 0xFF
+      assertTrue(
+        "edge pixel ($x,$y) should be theme-blue (~0x1565C0) but was rgb($r,$g,$b) — the " +
+          "themeProvider override did not compose around the structural wrapper.",
+        b > r && b > g && b > 100,
       )
     }
   }

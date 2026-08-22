@@ -1,9 +1,11 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.data.render.extensions.PreviewWrapperSubstitutionProvider
+import ee.schimke.composeai.data.render.extensions.isStructuralPreviewWrapper
 import ee.schimke.composeai.data.render.extensions.loadPreviewWrapperClass
 import java.util.ServiceLoader
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -56,5 +58,32 @@ class RemoteComposeWrapperSubstitutionTest {
     // `String` is a stand-in — any always-loadable class works as the "fall through" probe.
     val resolved = loadPreviewWrapperClass("java.lang.String")
     assertEquals(String::class.java, resolved)
+  }
+
+  /**
+   * Every RemoteCompose wrapper must read as **structural**, so the serve viewer's declared-theme
+   * selector (and the theme optimiser that pre-renders every preview under every theme) nests a
+   * theme around the wrapper instead of replacing it. Replacing it drops the capture the body needs
+   * and the render dies with `IllegalStateException: Invalid applier` — the whole `meshcore-mobile`
+   * widget set did exactly that.
+   *
+   * Both the connector's own wrappers and the upstream FQN are asserted: the check runs against the
+   * wrapper the preview *declared*, which is the upstream one, before substitution swaps it.
+   */
+  @Test
+  fun `remote compose wrappers are structural`() {
+    val provider = RemoteComposeWrapperSubstitution()
+    assertTrue(
+      provider.isStructural("androidx.compose.remote.tooling.preview.RemotePreviewWrapper")
+    )
+    assertTrue(provider.isStructural(RemoteOverridablePreviewWrapper::class.java.name))
+    assertTrue(provider.isStructural(RemoteEmbeddedPreviewWrapper::class.java.name))
+    assertFalse(provider.isStructural("com.example.AppLightThemeProvider"))
+  }
+
+  @Test
+  fun `isStructuralPreviewWrapper sees the connector's declaration through the SPI`() {
+    assertTrue(isStructuralPreviewWrapper(RemoteOverridablePreviewWrapper::class.java.name))
+    assertFalse(isStructuralPreviewWrapper("com.example.AppLightThemeProvider"))
   }
 }

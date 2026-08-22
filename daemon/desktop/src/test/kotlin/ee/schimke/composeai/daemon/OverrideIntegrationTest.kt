@@ -1181,6 +1181,73 @@ class OverrideIntegrationTest {
   }
 
   /**
+   * A `themeProvider` override must NEST around a **structural** `@PreviewWrapper` rather than
+   * replace it.
+   *
+   * Replacing is right for the ordinary case — a declared wrapper is nearly always the preview's
+   * own theme, and swapping it is exactly what the viewer's theme selector is for
+   * ([themeProviderOverrideWrapsPreviewInDeclaredTheme] above). It is wrong when the wrapper
+   * installs the surface the body composes against: dropping
+   * `@PreviewWrapper(RemotePreviewWrapper::class)` leaves a `RemoteBox` / `RemoteColumn` /
+   * `RemoteRow` body on the plain UI applier and the render dies with `IllegalStateException:
+   * Invalid applier`. That is what took out every `meshcore-mobile` widget preview once the serve
+   * theme optimiser began pre-rendering each preview under each declared `@ThemeCatalog` theme.
+   *
+   * [RequiredEnvironmentWrapper] stands in for the RemoteCompose wrapper — declared structural on
+   * this classpath by [FixtureStructuralWrapperProvider], and its [WrapperRequiredSquare] body
+   * `check`s the local it installs, so a replaced wrapper fails the render the same way the applier
+   * mismatch does. The body then paints the ambient primary, so the blue fill proves the theme is
+   * the OUTER wrapper of the two.
+   */
+  @Test
+  fun themeProviderOverrideNestsAroundStructuralWrapper() {
+    val outputDir = tempFolder.newFolder("renders-structural-theme")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "structural",
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "WrapperRequiredSquare",
+              widthPx = 200,
+              heightPx = 120,
+              density = 1.0f,
+              outputBaseName = "structural",
+              // The wrapper FQN only travels nested, exactly as the gradle plugin writes it.
+              params =
+                PreviewParamsEntry(
+                  wrapperClassName = "ee.schimke.composeai.daemon.RequiredEnvironmentWrapper"
+                ),
+            )
+          )
+      )
+    val host = PreviewManifestRouter(manifest = manifest)
+    host.start()
+    try {
+      // Renders at all → the structural wrapper survived the override (before the fix this threw
+      // "Required app preview environment was not installed" and produced no PNG)...
+      val themed =
+        renderAndDecode(
+          host,
+          "previewId=structural;overrides=" +
+            encodeThemeProviderBag("ee.schimke.composeai.daemon.BluePrimaryThemeProvider"),
+          "structural-themed",
+        )
+      // ...and the theme composed OUTSIDE it, so the body reads the declared theme's primary.
+      val bluePct = pixelMatchPct(themed, expectedRgb = 0x1565C0, perChannelTolerance = 8)
+      assertTrue(
+        "a themeProvider override must still apply around a structural wrapper; got " +
+          "${"%.2f".format(bluePct * 100)}% of the declared theme's blue primary",
+        bluePct >= 0.95,
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  /**
    * A stale / misspelled `themeProvider` must fall back to the preview's declared
    * `@PreviewWrapper`, not strip it (which would drop a required wrapper and misrender — the case a
    * shared URL with a removed provider hits). The manifest pins `wrapperClassName =
