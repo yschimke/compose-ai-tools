@@ -81,6 +81,9 @@ fun resolvedNodeText(node: ComposeSemanticsNode): String? {
     }
   val parts = mutableListOf<String>()
   fun collect(n: ComposeSemanticsNode) {
+    // The assertion compares against what the user sees, so an unplaced trial copy must not
+    // contribute its string — it was measured and never drawn. See `ComposeSemanticsNode.placed`.
+    if (!n.placed) return
     n.text?.takeIf { it.isNotEmpty() }?.let { parts.add(it) }
     n.children.forEach(::collect)
   }

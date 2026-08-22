@@ -29,6 +29,15 @@ object SemanticsRefs {
   fun assign(payload: ComposeSemanticsPayload): ComposeSemanticsPayload =
     ComposeSemanticsPayload(root = assign(payload.root), density = payload.density)
 
+  /**
+   * Assigns over the WHOLE tree, including any subtree that was measured but never placed — the one
+   * walk here that deliberately does not prune on [ComposeSemanticsNode.placed].
+   *
+   * A ref is an identity, not a claim that the node is on the frame: it has to mean the same thing
+   * in every payload the node appears in, or a stored ref stops addressing the same node the moment
+   * a `SubcomposeLayout` changes which arrangement it places. Consumers that care about the frame
+   * (`SemanticsTargets`, the annotation and wireframe walks) filter at the point of use instead.
+   */
   fun assign(root: ComposeSemanticsNode): ComposeSemanticsNode = assignNode(root, ROOT_REF)
 
   /** The anchor token for a node, before sibling disambiguation. */

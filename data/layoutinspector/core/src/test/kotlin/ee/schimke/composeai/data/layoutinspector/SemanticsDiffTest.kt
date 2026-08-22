@@ -14,6 +14,7 @@ class SemanticsDiffTest {
     label: String? = null,
     clickable: Boolean = false,
     layoutTruncated: Boolean? = null,
+    placed: Boolean = true,
     children: List<ComposeSemanticsNode> = emptyList(),
   ) =
     ComposeSemanticsNode(
@@ -24,6 +25,7 @@ class SemanticsDiffTest {
       text = text,
       label = label,
       clickable = clickable,
+      placed = placed,
       textOverflow = layoutTruncated?.let { ComposeSemanticsTextOverflow(truncated = it) },
       children = children,
     )
@@ -87,6 +89,20 @@ class SemanticsDiffTest {
     val base = node(children = listOf(node(testTag = "submit", text = "Go")))
     val head = node(children = listOf(node(testTag = "submit", text = "Send")))
     assertEquals("tag:submit", SemanticsDiff.diff(base, head).changed.single().anchor)
+  }
+
+  @Test
+  fun leavingTheFrameIsReportedRatherThanPruned() {
+    // Every drawing and targeting consumer of this tree skips a subtree that was measured and never
+    // placed, because they answer "what is on the frame?". A diff answers "what changed?", so it
+    // keeps the node and names the transition — pruning would report the most interesting thing
+    // that can happen to a node as no change at all.
+    val base = node(children = listOf(node(testTag = "row", text = "One")))
+    val head = node(children = listOf(node(testTag = "row", text = "One", placed = false)))
+    val change = SemanticsDiff.diff(base, head).changed.single()
+    assertEquals("placed", change.changes.single().field)
+    assertEquals("true", change.changes.single().from)
+    assertEquals("false", change.changes.single().to)
   }
 
   @Test

@@ -106,6 +106,12 @@ function boxesFromSemantics(
 ): OverlayBox[] {
     const out: OverlayBox[] = [];
     const walk = (node: SemanticsTreeNode): void => {
+        // Same rule as the 2D inspector overlay: a node measured but never
+        // placed has no position, so `boundsInRoot` reads as the origin and
+        // a box for it lands in the panel's top-left corner. A panel hosting
+        // a `SubcomposeLayout` trial measure (Wear `AlertDialogContent`)
+        // puts a whole phantom tree there.
+        if (node.placed === false) return;
         const bounds = parseBounds(node.boundsInRoot);
         if (bounds) {
             out.push({
