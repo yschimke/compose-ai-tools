@@ -1735,6 +1735,22 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
 
 ### Phase 1 — Issue visibility
 
+> **All four steps are delivered** — step 1 in [#3887](https://github.com/yschimke/compose-ai-tools/pull/3887),
+> steps 2–4 in [#3886](https://github.com/yschimke/compose-ai-tools/pull/3886) with the producer
+> corrections in [#4404](https://github.com/yschimke/compose-ai-tools/pull/4404), and the catalog's
+> caller in [yschimke/m3-catalog#170](https://github.com/yschimke/m3-catalog/pull/170).
+>
+> **The prose below is the plan as written before delivery, kept for its reasoning, and it is now
+> historical in the places where it describes the code.** `handleReferenceComparison` does read the
+> normalised overrides and does build a report context — it carries the form the step argued for —
+> so an implementer reading step 1 as a to-do list would redo work that exists. What it says about
+> *why* (which surface owns the score, why the interactive lanes stay disabled, why a
+> server-rendered locator would record the wrong frame) is still the rationale the code implements.
+>
+> **One requirement in step 1 did not land:** `element` and `bounds` were never reserved as optional
+> `v1` fields. See the status header and §7 — it is batch 03's problem now, and it is the reason
+> Phase 1 is "delivered" rather than "complete".
+
 1. **Locator contract + richer issue body.** Extend `ServeIssueReport.Context` with `componentId`,
    `referenceId`, variant axes, active overrides, comparison URL and raw scores; emit the
    `compose-parity-locator/v1` block alongside the existing prose table. No new files on the wire —
@@ -1834,7 +1850,9 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
    reaches the same conclusion; stating it here too because this is the step someone implements
    from, and "redirect to the comparison" is the instruction they would otherwise follow.
 2. **`compose-preview-issues/v1` + reader + staging.** `ServeParityIssues.kt`, `ServeCatalogStore`
-   staging, fixture-backed tests. Serves nothing yet.
+   staging, fixture-backed tests. Served nothing until step 3's producer and a catalog caller
+   existed — which is exactly how it sat, tests passing over an empty path, until
+   yschimke/m3-catalog#170.
 3. **Producer + regeneration workflow.** `parity-issues.mjs` / `emit-parity-issues.mjs` here; the
    issue-triggered workflow lands in the catalog repo.
 4. **Show open issues** on the viewer row, the focused comparison, the grid cards and the dashboard.
