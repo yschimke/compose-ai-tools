@@ -14,6 +14,7 @@ class ComposeSemanticsProbeNodesTest {
     label: String? = null,
     role: String? = null,
     clickable: Boolean = false,
+    placed: Boolean = true,
     children: List<ComposeSemanticsNode> = emptyList(),
   ) =
     ComposeSemanticsNode(
@@ -24,8 +25,48 @@ class ComposeSemanticsProbeNodesTest {
       label = label,
       role = role,
       clickable = clickable,
+      placed = placed,
       children = children,
     )
+
+  @Test
+  fun anUnplacedTrialSubtreeIsNotProbed() {
+    // Wear `AlertDialogContent` subcomposes a trial copy of the whole dialog to choose a layout and
+    // never places it. Probing that copy gives the recording backend two matches for one on-screen
+    // control: `assert.textEquals` fails as ambiguous, and `assert.notVisible` fails for content
+    // that was never drawn.
+    val probes =
+      node(
+          "root",
+          children =
+            listOf(
+              node("real", testTag = "submit", text = "Submit"),
+              node("trial", placed = false, children = listOf(node("ghost", text = "Submit"))),
+            ),
+        )
+        .toProbeNodes()
+
+    assertEquals(listOf("submit"), probes.mapNotNull { it.testTag })
+    assertEquals(listOf("Submit"), probes.mapNotNull { it.text })
+  }
+
+  @Test
+  fun anUnplacedDescendantDoesNotDoubleAContainersMergedText() {
+    val probes =
+      node(
+          "button",
+          role = "Button",
+          clickable = true,
+          children =
+            listOf(
+              node("label", text = "Add"),
+              node("trial", placed = false, children = listOf(node("ghost", text = "Add"))),
+            ),
+        )
+        .toProbeNodes()
+
+    assertEquals("Add", probes.first { it.role == "Button" }.mergedText)
+  }
 
   @Test
   fun flattensOnlyNodesWithAStableFinder() {
