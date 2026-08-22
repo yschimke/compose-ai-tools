@@ -9179,13 +9179,13 @@ ${captureControlsHtml().prependIndent("          ")}
 
   /**
    * The **Remote Compose players** view: every player's published render of every `ir/<id>.rc`
-   * document, one column per player, with AndroidX Java (the offline Robolectric/Skiko render, and
-   * the reference the offline run scored everything against) first.
+   * document, one column per player, with the baked capture (the offline Robolectric/Skiko render,
+   * and the reference the offline run scored everything against) first.
    *
    * Nothing is diffed until asked. Picking a column as the reference gives every *other* column a
    * pixel diff and a mismatch chip — which is the point of the view: "how far is cmp-wasm from
    * cmp-jvm?" is a question no build-time artifact answers, because the offline run only ever
-   * diffed each player against AndroidX Java.
+   * diffed each player against the baked render.
    *
    * The whole thing replays what the delivery branch already published, so the page costs a few
    * `<img>` loads rather than a `.rc` fetch plus a canvas render per preview — and it shows five
@@ -9270,7 +9270,7 @@ ${captureControlsHtml().prependIndent("          ")}
           <th scope="row">
             <a href="$viewer">${WebEscaping.htmlEscape(label)}</a>
             ${if (dims.isNotEmpty()) "<div class=\"cp-rc-dims\">$dims</div>" else ""}
-            ${if (row.referenceBlank) "<div class=\"cp-rc-blank\">the AndroidX Java render is fully transparent — nothing to compare against</div>" else ""}
+            ${if (row.referenceBlank) "<div class=\"cp-rc-blank\">the baked render is fully transparent — nothing to compare against</div>" else ""}
             <div class="cp-rc-scores" data-scores></div>
           </th>$cells
         </tr>
@@ -9305,7 +9305,7 @@ ${captureControlsHtml().prependIndent("          ")}
     return """
       <section id="cp-rc-lanes" hidden>
         <p class="cp-sub">Pick a column and every other column grows a pixel diff and a mismatch chip.
-          AndroidX Java replays the build-time <code>pixelmatch</code> diffs; another player diffs in your browser,
+          The baked lane replays the build-time <code>pixelmatch</code> diffs; another player diffs in your browser,
           which is how you compare two players directly.</p>
         <div class="cp-compare-controls">
           <span class="cp-compare-control-label">Diff against</span>

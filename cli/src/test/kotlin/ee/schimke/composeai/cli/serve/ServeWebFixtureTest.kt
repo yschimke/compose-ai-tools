@@ -289,9 +289,9 @@ class ServeWebFixtureTest {
   private fun rcCompareFixture(previews: List<ServePreview>): RcCompareManifest {
     val lanes =
       listOf(
-        RcCompareLane("baked", "AndroidX Java", "java"),
+        RcCompareLane("baked", "AndroidX Embedded · baked", "baked"),
         RcCompareLane("js", "RC · JS player", "js"),
-        RcCompareLane("embedded", "AndroidX Embedded", "embedded"),
+        RcCompareLane("embedded", "AndroidX Embedded · harness", "embedded"),
         RcCompareLane("cmp-jvm", "RC · cmp-jvm player", "cmp-jvm"),
         RcCompareLane("cmp-wasm", "RC · cmp-wasm player", "cmp-wasm"),
       )
@@ -3705,9 +3705,9 @@ class ServeWebFixtureTest {
     )
     assertEquals(
       listOf(
-        "AndroidX Java",
+        "AndroidX Embedded · baked",
         "RC · JS player",
-        "AndroidX Embedded",
+        "AndroidX Embedded · harness",
         "RC · cmp-jvm player",
         "RC · cmp-wasm player",
       ),

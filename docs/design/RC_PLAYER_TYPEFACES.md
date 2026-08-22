@@ -186,8 +186,9 @@ report says so (`font axis wdth is not implemented`) rather than dropping them s
 **That support is why the lane failed `remote-m3`'s strict pixel gate — the gate's reference was the
 side without it, and the reason was not the one first recorded here.** The gate scores each wasm
 render against the catalog's **baked** PNG, and the baked PNG comes from `RemoteOverridablePreview`,
-whose player defaults to `RemoteComposePlayerKind.VIEW` — the AOSP view player, i.e. the **Java** row
-of the matrix above. `VariableWeightRemote` / `VariableWidthRemote` are made of nothing but axes, and
+whose player defaulted at the time to `RemoteComposePlayerKind.VIEW` — the AOSP view player, i.e. the
+**Java** row of the matrix above. (That default is now `EMBEDDED`, so a catalog re-baked since then
+has an embedded reference; the analysis below is of the run that had the view-backed one.) `VariableWeightRemote` / `VariableWidthRemote` are made of nothing but axes, and
 the reference drew four identical weights and three identical widths while the lane under test drew
 the ramps. This document read that as the AOSP `CoreText` renderer dropping style-carried axes; it
 does not. `CoreText.paintingComponent` writes them with `PaintBundle.setTextAxis`, and
@@ -224,7 +225,9 @@ output and scores inside the normal mismatch band), but it does mean the wasm la
 
 ### Java — AOSP `remote-player-view`, server-side
 
-The default snapshot player for a Remote Compose preview on an Android backend. Typefaces come from
+Was the default snapshot player for a Remote Compose preview on an Android backend; the embedded
+`RcPlayer` is now, and this lane is what a preview pins itself to (`RemoteViewPreviewWrapper`, or a
+`?rcPlayer=java`) when the framework `Canvas` is the point. Typefaces come from
 `DefaultTypefaceResolver` in `remote-player-core`: built-in ids map to `Typeface.DEFAULT`/`SERIF`/
 `SANS_SERIF`/`MONOSPACE`; a named family is resolved by listing `/system/fonts/` and matching a
 filename that *contains* the name (which the daemon's Robolectric sandbox has no directory for — it

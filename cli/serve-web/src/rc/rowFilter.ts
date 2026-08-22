@@ -46,7 +46,7 @@ export function countLabel(visible: number): string {
 /**
  * What the control row says about the reference in force.
  *
- * The AndroidX Java lane replays numbers the offline run computed with pixelmatch; every other
+ * The baked lane replays numbers the offline run computed with pixelmatch; every other
  * diffed here, without pixelmatch's anti-aliasing pass. Those are not interchangeable — the
  * in-browser number reads a touch higher on text-heavy previews — so the line says which one is on
  * screen rather than letting a reader assume they are the same measurement.
@@ -54,7 +54,7 @@ export function countLabel(visible: number): string {
 export function statusFor(reference: string, shortLabel: string): string {
     if (reference === NO_REFERENCE) return "";
     if (reference === BAKED)
-        return "showing the build-time pixel diffs against AndroidX Java";
+        return "showing the build-time pixel diffs against the baked render";
     return (
         `diffing in your browser against ${shortLabel} — no anti-aliasing pass, so ` +
         "text-heavy previews read slightly higher than the build-time numbers"
