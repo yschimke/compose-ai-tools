@@ -1215,6 +1215,14 @@ jobs:
         run: python3 .github/ci/test_affected_gradle_tests.py -v
       - name: Run scoped findings filter tests
         run: python3 .github/actions/apply/test_filter_findings_scope.py -v
+      # The two publish helpers every delivery branch goes through. Both own a push-race retry
+      # loop against a shared branch, and both fail in the shape that is hardest to notice — a
+      # skipped or clobbered file on a branch nothing else validates. `test-push-branch.sh` shipped
+      # with no CI step at all, so it had been running nowhere.
+      - name: Run push-branch helper tests
+        run: bash .github/actions/apply/lib/test-push-branch.sh
+      - name: Run push-history helper tests
+        run: bash .github/actions/apply/lib/test-push-history.sh
       # Guards the path→system mapping that decides which design-artifacts delivery
       # branches a merge to main regenerates. A false negative there strands a
       # published catalog on stale renders without any signal.

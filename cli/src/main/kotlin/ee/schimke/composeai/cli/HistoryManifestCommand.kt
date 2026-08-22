@@ -22,15 +22,24 @@ import kotlin.system.exitProcess
  * `renders/<module>/` tree, no sidecars — and emits one static file covering every preview. Same
  * word, different branch, different shape; see [PreviewHistoryManifest] for why they aren't merged.
  *
+ * ### Two branch layouts
+ *
+ * `--layout renders` (the default) is the baseline branch described above. `--layout images` is the
+ * **design catalog** branch (`design-artifacts/<system>`), which stores
+ * `images/<slug>/<variant>.png` and ships no `baselines.json` — there the join is derived from the
+ * paths themselves, because the id the viewer addresses a preview by is exactly that path
+ * flattened. See [PreviewHistoryManifest.Layout].
+ *
  * Usage:
  * ```
  * compose-preview inspect history-manifest [--branch REF] [--repo DIR] [--output FILE]
- *                                          [--baselines FILE] [--quiet]
+ *                                          [--layout renders|images] [--baselines FILE] [--quiet]
  * ```
  *
  * `--branch` is any git ref the repo can resolve (`FETCH_HEAD` after a fetch, a remote-tracking
  * ref, a sha). `--baselines` overrides where `baselines.json` is read from; by default it comes out
  * of the same ref, so the manifest and the baselines it joins against are always the same snapshot.
+ * It is meaningless on `--layout images`, which reads no sidecar.
  */
 class HistoryManifestCommand(
   private val args: List<String>,
@@ -53,17 +62,36 @@ class HistoryManifestCommand(
     val output = File(args.valueOf("--output") ?: PreviewHistoryManifest.FILE_NAME)
     val quiet = "--quiet" in args
 
-    val baselinesJson =
-      args.valueOf("--baselines")?.let { path ->
-        val file = File(path)
-        if (!file.isFile) {
-          stderr("compose-preview history-manifest: no baselines file at ${file.path}.")
-          exit(1)
-        }
-        file.readText()
-      } ?: readBaselines(repoDir, branch, "baselines.json")
+    // Which delivery-branch layout this branch uses. Defaults to the baseline one so every existing
+    // invocation — the `apply` action's, and anyone regenerating a branch by hand — keeps behaving
+    // exactly as before.
+    val layoutArg = args.valueOf("--layout")
+    val layout = PreviewHistoryManifest.Layout.of(layoutArg ?: DEFAULT_LAYOUT.name)
+    if (layout == null) {
+      stderr(
+        "compose-preview history-manifest: unknown --layout '$layoutArg'; expected one of " +
+          PreviewHistoryManifest.Layout.entries.joinToString(", ") { it.name.lowercase() } +
+          "."
+      )
+      exit(1)
+    }
 
-    if (baselinesJson == null) {
+    // A design-catalog branch carries no `baselines.json` and needs none: its ids are the render
+    // paths flattened, so the join is derived below from whatever git reports. Reading a sidecar
+    // here would be inventing a requirement the layout does not have.
+    val baselinesJson =
+      if (layout != PreviewHistoryManifest.Layout.RENDERS) null
+      else
+        args.valueOf("--baselines")?.let { path ->
+          val file = File(path)
+          if (!file.isFile) {
+            stderr("compose-preview history-manifest: no baselines file at ${file.path}.")
+            exit(1)
+          }
+          file.readText()
+        } ?: readBaselines(repoDir, branch, "baselines.json")
+
+    if (layout == PreviewHistoryManifest.Layout.RENDERS && baselinesJson == null) {
       // Without baselines.json there is no path→preview-id mapping, so every timeline would be
       // dropped and we would write an empty manifest that looks like "this branch has no history".
       // Failing loudly is better than publishing that.
@@ -74,8 +102,8 @@ class HistoryManifestCommand(
       exit(1)
     }
 
-    val pathToPreviewId = PreviewHistoryManifest.renderPathsToPreviewIds(baselinesJson)
-    if (pathToPreviewId.isEmpty()) {
+    val pathToPreviewId = baselinesJson?.let { PreviewHistoryManifest.renderPathsToPreviewIds(it) }
+    if (baselinesJson != null && pathToPreviewId.isNullOrEmpty()) {
       stderr(
         "compose-preview history-manifest: baselines.json from '$branch' yielded no usable " +
           "entries; refusing to write an empty manifest."
@@ -100,11 +128,17 @@ class HistoryManifestCommand(
     // run appends another history commit forever. Pinning to the render tip makes a no-op run
     // regenerate a byte-identical file, which the push then skips. It also describes the manifest
     // better: this is the render state the timeline covers.
-    val generatedFrom = renderTip(repoDir, branch) ?: resolveSha(repoDir, branch) ?: branch
+    // Scoped to THIS layout's directory. Left on the `renders` default, a design catalog — which
+    // has no such tree — finds no render tip at all and falls through to the branch tip, which the
+    // history-only commit itself moves. The manifest would then differ from the published one on
+    // every single run and the publisher would append another history commit forever, which is the
+    // exact failure this anchor exists to prevent.
+    val generatedFrom =
+      renderTip(repoDir, branch, layout.dir) ?: resolveSha(repoDir, branch) ?: branch
 
     val timelines =
       try {
-        PreviewHistory.read(repoDir, branch, RENDERS_DIR)
+        PreviewHistory.read(repoDir, branch, layout.dir)
       } catch (e: Exception) {
         stderr(
           "compose-preview history-manifest: failed to read history from '$branch': ${e.message}"
@@ -112,18 +146,31 @@ class HistoryManifestCommand(
         exit(1)
       }
 
-    // A resolvable ref with baselines entries but no render history means the log read failed or
-    // the pathspec matched nothing — never a legitimately empty branch. Refuse rather than publish
-    // a manifest asserting this branch has no history.
+    // A resolvable ref with no render history means the log read failed or the pathspec matched
+    // nothing — never a legitimately empty branch. Refuse rather than publish a manifest asserting
+    // this branch has no history.
     if (timelines.isEmpty()) {
+      val against =
+        pathToPreviewId?.let { ", while baselines.json lists ${it.size} previews" }.orEmpty()
       stderr(
         "compose-preview history-manifest: '$branch' resolved but yielded no render history " +
-          "under '$RENDERS_DIR/', while baselines.json lists ${pathToPreviewId.size} previews; " +
-          "refusing to write an empty manifest."
+          "under '${layout.dir}/'$against; refusing to write an empty manifest."
       )
       exit(1)
     }
-    val manifest = PreviewHistoryManifest.build(timelines, pathToPreviewId, generatedFrom)
+
+    // On the image layout the join is total over what git reported, so it is derived here rather
+    // than read: every render on the branch is a render the timeline can key.
+    val join = pathToPreviewId ?: PreviewHistoryManifest.imagePathsToPreviewIds(timelines.keys)
+    if (join.isEmpty()) {
+      stderr(
+        "compose-preview history-manifest: none of the ${timelines.size} render paths under " +
+          "'${layout.dir}/' on '$branch' could be keyed to a preview; refusing to write an " +
+          "empty manifest."
+      )
+      exit(1)
+    }
+    val manifest = PreviewHistoryManifest.build(timelines, join, generatedFrom)
 
     output.absoluteFile.parentFile?.mkdirs()
     output.writeText(PreviewHistoryManifest.encode(manifest))
@@ -133,7 +180,7 @@ class HistoryManifestCommand(
       val unstable = manifest.previews.values.count { it.unstable }
       // Report the drop count explicitly: silence here would read as "every render was covered",
       // when in fact renders for deleted or renamed previews are intentionally left out.
-      val dropped = timelines.keys.count { it !in pathToPreviewId }
+      val dropped = timelines.keys.count { it !in join }
       stdout(
         "compose-preview history-manifest: wrote ${output.path}: " +
           "${manifest.previews.size} previews, $versions versions, $unstable unstable" +
@@ -144,7 +191,9 @@ class HistoryManifestCommand(
 
   private companion object {
     const val DEFAULT_BRANCH = "compose-preview/main"
-    const val RENDERS_DIR = "renders"
+
+    /** Keeps every pre-existing invocation on the baseline layout it was written for. */
+    val DEFAULT_LAYOUT = PreviewHistoryManifest.Layout.RENDERS
 
     val USAGE =
       """
@@ -157,7 +206,12 @@ class HistoryManifestCommand(
         --branch REF     Delivery-branch ref to read (default: $DEFAULT_BRANCH)
         --repo DIR       Repository to run git in (default: current directory)
         --output FILE    Where to write (default: ${PreviewHistoryManifest.FILE_NAME})
+        --layout NAME    Branch layout: renders (default) or images. `renders` reads
+                         renders/ and joins through baselines.json; `images` reads
+                         images/ and derives ids from the paths, as the design
+                         catalog branches (design-artifacts/<system>) are published.
         --baselines FILE Read baselines.json from here instead of from REF
+                         (renders layout only)
         --quiet          Suppress the summary line
       """
         .trimIndent()

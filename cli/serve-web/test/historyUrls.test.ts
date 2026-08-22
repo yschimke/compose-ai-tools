@@ -160,10 +160,27 @@ describe("renderUrlAt", () => {
         }
     });
 
-    it("confines the path to renders/ and refuses traversal", () => {
+    it("addresses a design-catalog branch's images/ renders too", () => {
+        // `design-artifacts/<system>` writes `images/<slug>/<variant>.png` rather than `renders/`.
+        // Before this was admitted, every entry in such a manifest failed the confinement check and
+        // the menu silently drew no timeline at all.
+        assert.equal(
+            renderUrlAt(
+                HOSTED,
+                { commit: "abc1234" },
+                "images/media-playerscreen/ideal__default__192dp.png",
+            ),
+            "https://raw.githubusercontent.com/yschimke/compose-ai-tools/abc1234/" +
+                "images/media-playerscreen/ideal__default__192dp.png",
+        );
+    });
+
+    it("confines the path to a publisher directory and refuses traversal", () => {
         for (const bad of [
             "other/a.png",
             "renders/../../etc/passwd",
+            "images/../../etc/passwd",
+            "imagesish/a.png",
             "..",
             "",
         ]) {

@@ -1833,6 +1833,18 @@ jobs:
           # Snapshots dedupe by content, so unchanged renders cost nothing;
           # SKIP_IF_UNCHANGED drops the commit when the tree is byte-identical.
           #
+          # CARRY_FORWARD_PATHS lists the files the BRANCH owns and `out/` does
+          # not generate. The helper snapshots this directory wholesale, so a
+          # branch file missing from it is a file the push deletes. That costs
+          # twice over: the deletion makes the tree differ from the parent, so
+          # SKIP_IF_UNCHANGED can no longer skip an otherwise-unchanged catalog
+          # and every no-op run appends a commit; and whatever re-adds the file
+          # afterwards leaves it 404ing for the window in between. `history.json`
+          # is here for exactly that reason — the step below publishes it as its
+          # own commit, so it is never in `out/`. (`preview-index.json` is the
+          # same problem with a different answer: REVISION_PREVIEW_INDEX rolls it
+          # forward rather than merely preserving it.)
+          #
           # Identity goes through git's own GIT_AUTHOR_*/GIT_COMMITTER_* env vars
           # rather than a helper-specific input, because push-branch.sh comes from
           # the `driver-ref` checkout — which a caller may pin to a revision older
@@ -1844,10 +1856,62 @@ jobs:
           GITHUB_TOKEN_INLINE="$GH_TOKEN" \
           MSG="chore(design-artifacts): regenerate ${SYSTEM} catalog ($(date -u +%F), ${SOURCE_SHA})" \
           SKIP_IF_UNCHANGED=1 \
-          CARRY_FORWARD_PATHS='parity/issues.json' \
+          CARRY_FORWARD_PATHS='parity/issues.json history.json' \
           REVISION_PREVIEW_INDEX=1 \
           GIT_AUTHOR_NAME="$INPUT_COMMIT_USER_NAME" \
           GIT_AUTHOR_EMAIL="$INPUT_COMMIT_USER_EMAIL" \
           GIT_COMMITTER_NAME="$INPUT_COMMIT_USER_NAME" \
           GIT_COMMITTER_EMAIL="$INPUT_COMMIT_USER_EMAIL" \
             bash "$GITHUB_WORKSPACE/compose-ai-tools/.github/actions/apply/lib/push-branch.sh"
+
+      - name: Publish render history to design-artifacts/${{ inputs.system }}
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SYSTEM: ${{ inputs.system }}
+        run: |
+          set -euo pipefail
+          # `history.json` — the per-preview render timeline `<cp-history-menu>` reads. The viewer
+          # has fetched it from this branch all along; until now the branch never published one, so
+          # the menu 404'd and drew nothing on every design catalog.
+          #
+          # A SECOND commit, after the catalog push above, and that ordering is load-bearing: the
+          # manifest describes the branch's history, so one computed before the publish could not
+          # include the publish it ships with and the newest render would be missing from its own
+          # timeline. The extractor filters on the `images` pathspec, so this commit is invisible to
+          # the next run's history and cannot pollute it.
+          #
+          # Runs even when the catalog push skipped as unchanged. "No render changed" does not imply
+          # "the manifest is current" on a branch that has never had one — that reading is exactly
+          # what would keep a first publish waiting forever for a render to move.
+          SOURCE_SHA=$(git -C "$GITHUB_WORKSPACE" rev-parse --short=8 HEAD)
+          HELPER="$GITHUB_WORKSPACE/compose-ai-tools/.github/actions/apply/lib/push-history.sh"
+
+          # The helper comes from the export-driver checkout, which for an external caller is the
+          # immutable release commit in .github/design-artifacts-driver-pin.txt — a revision that
+          # predates any file this workflow adds. Invoking it unconditionally would abort every
+          # external `publish: true` run with "No such file or directory", and do it AFTER the
+          # catalog commit above has already been pushed. Same hazard the identity comment above
+          # calls out for push-branch.sh, and the same answer the rest of this lane gives: a
+          # delivery branch that cannot refresh its timeline this run is not a failed publish.
+          if [ ! -f "$HELPER" ]; then
+            echo "::notice::render history: the pinned export driver has no push-history.sh; skipping history.json. It publishes once the driver pin advances."
+            exit 0
+          fi
+
+          cd "$GITHUB_WORKSPACE"
+          # Both identities, matching the catalog commit above. `git commit-tree` resolves author
+          # and committer independently, so passing only the committer would leave the author to
+          # whatever the helper's `git config` seeded — correct today, but only by way of an
+          # indirection nothing states.
+          TARGET_BRANCH="design-artifacts/${SYSTEM}" \
+          REPO="$GITHUB_REPOSITORY" \
+          GITHUB_TOKEN_INLINE="$GH_TOKEN" \
+          OUTPUT="$GITHUB_WORKSPACE/history.json" \
+          LAYOUT=images \
+          MSG="chore(design-artifacts): update ${SYSTEM} render history ($(date -u +%F), ${SOURCE_SHA})" \
+          GIT_AUTHOR_NAME="$INPUT_COMMIT_USER_NAME" \
+          GIT_AUTHOR_EMAIL="$INPUT_COMMIT_USER_EMAIL" \
+          GIT_COMMITTER_NAME="$INPUT_COMMIT_USER_NAME" \
+          GIT_COMMITTER_EMAIL="$INPUT_COMMIT_USER_EMAIL" \
+            bash "$HELPER"

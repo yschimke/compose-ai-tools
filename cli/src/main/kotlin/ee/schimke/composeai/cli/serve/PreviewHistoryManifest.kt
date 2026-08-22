@@ -131,6 +131,54 @@ object PreviewHistoryManifest {
   }
 
   /**
+   * The two delivery-branch layouts a manifest can be built over, and how each one answers "which
+   * preview is this render?".
+   *
+   * They differ in the only place that matters. A **baseline** branch (`compose-preview/main`)
+   * stores `renders/<module>/<basename>` and needs `baselines.json` to say which preview each file
+   * belongs to. A **design catalog** branch (`design-artifacts/<system>`) stores
+   * `images/<slug>/<variant>.png` and needs no sidecar at all: the id the viewer addresses a
+   * preview by *is* the path, flattened — which is exactly what
+   * [ServeCatalogStore.previewIdFor][ee.schimke.composeai.cli.serve.ServeCatalogStore.Companion.previewIdFor]
+   * computes for its routes.
+   *
+   * Reusing that function rather than restating the rule is the point: a manifest keyed by anything
+   * other than the id the routes use is a manifest the viewer silently finds nothing in, and a
+   * second spelling of the derivation is how the two would drift apart without anyone noticing.
+   */
+  enum class Layout(val dir: String) {
+    /** `renders/<module>/<basename>`, joined through `baselines.json`. */
+    RENDERS("renders"),
+    /** `images/<slug>/<variant>.png`, joined by flattening the path. */
+    IMAGES(ServeCatalogStore.IMAGES_DIR);
+
+    companion object {
+      /** Parse a `--layout` value, or null when it names neither layout. */
+      fun of(value: String?): Layout? = entries.firstOrNull { it.name.equals(value, true) }
+    }
+  }
+
+  /**
+   * Map image path → preview id for a [Layout.IMAGES] branch, by flattening each path the way the
+   * serve routes do.
+   *
+   * Takes the paths git actually reported rather than a manifest, because on this layout there is
+   * nothing to read: the derivation is total, so every render the branch has is a render the
+   * timeline can key. Paths outside `images/` are dropped — the extractor is already scoped to that
+   * pathspec, so one appearing here means something is wrong and inventing an id for it would put a
+   * bogus key in the manifest.
+   */
+  fun imagePathsToPreviewIds(paths: Iterable<String>): Map<String, String> {
+    val byPath = LinkedHashMap<String, String>()
+    for (path in paths) {
+      if (!path.startsWith("${ServeCatalogStore.IMAGES_DIR}/") || !path.endsWith(".png")) continue
+      if (".." in path.split("/")) continue
+      byPath[path] = ServeCatalogStore.previewIdFor(path)
+    }
+    return byPath
+  }
+
+  /**
    * Map render path → preview id, parsed from a `baselines.json` payload.
    *
    * The delivery branch stores `renders/<module>/<renderBasename>` and `baselines.json` records
