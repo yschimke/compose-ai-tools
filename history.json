@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "d0dcae37ba879de2a94ce2ac5495dbb70182a983",
+    "generatedFrom": "c940ef361fdcedf3a9039059aa427cbe7ed9fb7c",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -833,6 +833,36 @@
             "unstable": false,
             "flapCount": 0
         },
+        "samples:android/com.example.sampleandroid.CaptureGutterPreviewsKt.FillWidthCroppedPreview_Fill fixed": {
+            "path": "renders/samples:android/FillWidthCroppedPreview_Fill_fixed-57c55975.png",
+            "versions": [
+                {
+                    "blob": "b3d6e034e535ab8c22a1224623b153bdc7103cb9",
+                    "commit": "c940ef361fdcedf3a9039059aa427cbe7ed9fb7c",
+                    "date": "2026-08-22T12:04:48Z",
+                    "sourceSha": "01abf92c",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:android/com.example.sampleandroid.CaptureGutterPreviewsKt.FillWidthGutteredPreview_Fill fixed guttered": {
+            "path": "renders/samples:android/FillWidthGutteredPreview_Fill_fixed_guttered-9bec0a83.png",
+            "versions": [
+                {
+                    "blob": "c4decc439a013bba43dc96ea7c2fa8c7479c83dd",
+                    "commit": "c940ef361fdcedf3a9039059aa427cbe7ed9fb7c",
+                    "date": "2026-08-22T12:04:48Z",
+                    "sourceSha": "01abf92c",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
         "samples:android/com.example.sampleandroid.CaptureGutterPreviewsKt.ShadowStickerCroppedPreview_Shadow cropped": {
             "path": "renders/samples:android/ShadowStickerCroppedPreview_Shadow_cropped-65777146.png",
             "versions": [
@@ -852,6 +882,13 @@
             "path": "renders/samples:android/ShadowStickerGutteredPreview_Shadow_guttered-af019607.png",
             "versions": [
                 {
+                    "blob": "607241e27622a952dd40f0999266d4ce805426cf",
+                    "commit": "c940ef361fdcedf3a9039059aa427cbe7ed9fb7c",
+                    "date": "2026-08-22T12:04:48Z",
+                    "sourceSha": "01abf92c",
+                    "commits": 1
+                },
+                {
                     "blob": "d99b2007b04bb165af723cd89bfdbcfde25ca4e9",
                     "commit": "d0dcae37ba879de2a94ce2ac5495dbb70182a983",
                     "date": "2026-08-22T11:34:24Z",
@@ -859,7 +896,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -7937,6 +7974,36 @@
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
                     "sourceSha": "02b540ff",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:remotecompose/wearthemecatalog__Remote_Coral": {
+            "path": "renders/samples:remotecompose/wearthemecatalog__Remote_Coral.png",
+            "versions": [
+                {
+                    "blob": "74a7f6f6d47f5f1a5621e098e26e51c6784f4a16",
+                    "commit": "c940ef361fdcedf3a9039059aa427cbe7ed9fb7c",
+                    "date": "2026-08-22T12:04:48Z",
+                    "sourceSha": "01abf92c",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:remotecompose/wearthemecatalog__Remote_Default": {
+            "path": "renders/samples:remotecompose/wearthemecatalog__Remote_Default.png",
+            "versions": [
+                {
+                    "blob": "d6ed59a7f922f27b0c0291753dee426137cce652",
+                    "commit": "c940ef361fdcedf3a9039059aa427cbe7ed9fb7c",
+                    "date": "2026-08-22T12:04:48Z",
+                    "sourceSha": "01abf92c",
                     "commits": 1
                 }
             ],
