@@ -2448,13 +2448,44 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     // would offer `images`, a human would tick it, and the upload would 404 on a route that was
     // never registered. Refused at startup, where the operator can fix it, rather than discovered
     // by an agent twenty minutes into a task.
-    if (ServeAgentGrantCapability.IMAGES in agentGrantCapabilities && !acceptImages) {
+    //
+    // [imageLaneConfigured], not `acceptImages`: the flag alone is not a lane. Without a repository
+    // to gate on, [openImageLane] declines to build one and says so — and a box that keeps starting
+    // for some other reason would then have offered a capability whose every upload 404s.
+    if (ServeAgentGrantCapability.IMAGES in agentGrantCapabilities && !imageLaneConfigured) {
       System.err.println(
         "serve: --agent-grant-capabilities images refused — this server does not run the image " +
-          "lane, so a granted upload would have nowhere to go. Add --accept-images (with " +
-          "--image-upload-repo, or --github-auth-repo), or drop the capability."
+          "lane, so a granted upload would have nowhere to go. Add --accept-images AND a " +
+          "repository to gate it on (--image-upload-repo, or --github-auth-repo), or drop the " +
+          "capability."
       )
-      throw IllegalArgumentException("--agent-grant-capabilities images needs --accept-images")
+      throw IllegalArgumentException("--agent-grant-capabilities images needs the image lane")
+    }
+    // **The approver must hold what they are passing on**, and on a GitHub-gated box that is
+    // checked against `--github-auth-repo` — the only repository a session's cached verdict speaks
+    // for. When the image lane gates on a DIFFERENT repository, that verdict says nothing about
+    // whether the approver could upload there themselves, so ticking `images` would let someone
+    // with access to the OAuth repo alone mint a grant that publishes to a repo they have no rights
+    // on. The session stores a login and a boolean, not the visitor's token, so there is nothing
+    // here to re-ask GitHub with; the honest answer is to refuse the combination at startup rather
+    // than to approximate the check.
+    val imageRepository = imageUploadRepository
+    if (
+      ServeAgentGrantCapability.IMAGES in agentGrantCapabilities &&
+        githubAuth != null &&
+        !imageRepository.isNullOrBlank() &&
+        !imageRepository.equals(githubAuthRepo, ignoreCase = true)
+    ) {
+      System.err.println(
+        "serve: --agent-grant-capabilities images refused — the image lane gates on " +
+          "'$imageRepository' but sign-in gates on '${githubAuthRepo ?: "nothing"}', and a " +
+          "signed-in approver's access is only ever verified against the latter. Point " +
+          "--image-upload-repo at --github-auth-repo (or drop it, since it falls back), or drop " +
+          "the capability."
+      )
+      throw IllegalArgumentException(
+        "--agent-grant-capabilities images needs --image-upload-repo to match --github-auth-repo"
+      )
     }
     if (agentGrantCapabilities.isNotEmpty()) {
       System.err.println(

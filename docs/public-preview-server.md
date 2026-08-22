@@ -2710,8 +2710,14 @@ an operator who runs the lane may let a grant carry the `images` capability, and
 per request.
 
 ```bash
-# The operator, once, at startup:
-compose-preview serve --public --accept-images --image-upload-repo yschimke/compose-ai-tools \
+# The operator, once, at startup. The --github-auth-* block is not decoration: a --public box with
+# no sign-in has no way to tell an operator from a visitor, so --agent-grants is refused there —
+# somebody has to be able to approve. --image-upload-repo is omitted deliberately, so the image
+# lane gates on --github-auth-repo; naming a DIFFERENT repository is refused with this capability,
+# because a signed-in approver's access is only ever verified against the sign-in one.
+compose-preview serve --public --accept-images \
+    --github-auth-client-id "$ID" --github-auth-client-secret "$SECRET" \
+    --github-auth-cookie-secret "$COOKIE" --github-auth-repo yschimke/compose-ai-tools \
     --agent-grants --agent-grant-capabilities images
 
 # The agent, per task — prints a link and a code for a human to approve:

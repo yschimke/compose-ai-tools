@@ -303,6 +303,7 @@ internal class AuthCommand(
         GrantedJson(
           server = client.origin,
           scopes = outcome.scopes,
+          capabilities = outcome.capabilities,
           approvedBy = outcome.approvedBy.orEmpty(),
           expiresInSeconds = outcome.expiresInSeconds ?: 0,
           stored = saved == true,
@@ -438,6 +439,7 @@ internal class AuthCommand(
               StatusEntryJson(
                 server = entry.origin,
                 scopes = entry.scopes,
+                capabilities = entry.capabilities,
                 approvedBy = entry.approvedBy,
                 label = entry.label,
                 expiresInSeconds = left,
@@ -802,6 +804,12 @@ internal class AuthCommand(
   private data class GrantedJson(
     val server: String,
     val scopes: List<String>,
+    /**
+     * The independent permissions actually granted. Structured output that omitted these read
+     * identically whether `images` was ticked or declined, so automation could not tell an
+     * authorized upload from one that was about to be refused without attempting it.
+     */
+    val capabilities: List<String> = emptyList(),
     val approvedBy: String,
     val expiresInSeconds: Long,
     val stored: Boolean,
@@ -828,6 +836,7 @@ internal class AuthCommand(
   private data class StatusEntryJson(
     val server: String,
     val scopes: List<String>,
+    val capabilities: List<String> = emptyList(),
     val approvedBy: String,
     val label: String,
     val expiresInSeconds: Long,

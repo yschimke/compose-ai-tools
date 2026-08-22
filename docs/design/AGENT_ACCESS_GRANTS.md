@@ -132,7 +132,10 @@ Three edges are worth stating, since none of them is obvious:
 1. **The approver must hold it themselves.** On a GitHub-gated box, ticking `images` requires the
    approver's own session to carry `repositoryAccess` — the identical rule, and the identical
    `repositoryAccess` bit, that governs `playground`. Someone who could not upload cannot mint a
-   token that can.
+   token that can. That bit speaks for `--github-auth-repo` and nothing else, so a box whose image
+   lane gates on a **different** repository is refused this capability at startup: the verdict a
+   session carries would not be about the repository the upload actually publishes to, and
+   approximating it is how "the approver must hold it" quietly becomes false.
 2. **A capability for a lane the box does not run is refused at startup.** `--agent-grant-capabilities
    images` without `--accept-images` fails `serve` rather than offering a checkbox whose grant would
    404 on a route that was never registered.

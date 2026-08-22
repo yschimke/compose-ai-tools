@@ -41,7 +41,10 @@ enum class ServeAgentGrantCapability(
    */
   IMAGES(
     "images",
-    "Upload rendered preview images, published at unlisted URLs on this server for 7 days",
+    // No lifetime in this sentence: `--image-ttl` is an operator setting, so a hard-coded "for 7
+    // days" would understate the exposure on any box configured for longer — on the one page whose
+    // job is to state accurately what is being agreed to.
+    "Upload rendered preview images, published at unlisted URLs on this server until they expire",
   );
 
   companion object {
