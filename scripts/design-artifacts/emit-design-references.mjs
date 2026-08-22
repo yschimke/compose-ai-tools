@@ -51,6 +51,11 @@
  * from the manifest with a `::warning::` and the catalog publishes without it, because a reference
  * lane is an enhancement and must never cost a catalog its render. `--strict` turns any dropped
  * entry into a non-zero exit, for a repo that wants its parity coverage gated.
+ *
+ * A reference that published but is not COMPARABLE with its sticker — drawn at a uniform scale
+ * away from it — is a warning too, once, with a count: see reference-scale.mjs for why that is a
+ * defect in this pipeline rather than a finding about the component, and therefore something a
+ * gated repo should be able to fail on.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -65,8 +70,9 @@ import {
   planDesignReferences,
   referenceManifest,
 } from "./design-references.mjs";
-import { fitRgba, isRoundingDelta, placeRgba, resampleRgba } from "./png-resample.mjs";
+import { alphaBounds, fitRgba, isRoundingDelta, placeRgba, resampleRgba } from "./png-resample.mjs";
 import { applyBackdrop, parseBackdrop, stageOf } from "./reference-backdrop.mjs";
+import { scaleFinding, scaleMessage } from "./reference-scale.mjs";
 import { layoutFromNode } from "@design-parity/adapter-figma";
 import { scaleTree } from "./reference-layout.mjs";
 import { withReferenceAnnotations } from "@design-parity/catalog-export";
@@ -377,10 +383,36 @@ function stickerStage(record, target) {
   return stageCache.get(imagePath);
 }
 
+/**
+ * The tight content box of this record's published sticker, or null when it has none.
+ *
+ * Cached per image path for the same reason [stickerStage] is: a component's size cells each hold
+ * their own sticker, but a second reference on one preview would otherwise walk the same pixels
+ * twice.
+ */
+const stickerContentCache = new Map();
+function stickerContent(record) {
+  const imagePath = record.origin?.imagePath;
+  if (typeof imagePath !== "string" || imagePath === "") return null;
+  if (!stickerContentCache.has(imagePath)) {
+    let bounds = null;
+    try {
+      const sticker = readPng(path.join(OUT, imagePath));
+      bounds = alphaBounds(sticker.data, sticker.width, sticker.height);
+    } catch (error) {
+      note(`${record.id}: could not read ${imagePath} to check its scale (${error.message})`);
+    }
+    stickerContentCache.set(imagePath, bounds);
+  }
+  return stickerContentCache.get(imagePath);
+}
+
 const referencesDir = path.join(OUT, REFERENCES_DIR);
 fs.mkdirSync(referencesDir, { recursive: true });
 
 let written = 0;
+/** Published references whose content is a uniform rescale of their sticker's; see reference-scale.mjs. */
+const rescaled = [];
 /** How the backdrop landed, for the summary — silence would read as "every reference got one". */
 const backdropTally = { disc: 0, frame: 0, skipped: 0 };
 /** Reference id -> a `{ layout }` shim; `referenceAnnotations` reads only that field. */
@@ -428,19 +460,36 @@ for (const record of records) {
       // tight while the target sticker includes scaffold padding, so centre it at that natural
       // size. Scaling it up to fill the canvas is the bug that made correctly sized components
       // appear ~1.5x too large in the comparison lane.
+      //
+      // What the node's box measures is not always what it draws: a kit that wraps its components
+      // in a touch target exports a 32dp button inside a 48dp frame, and sizing the reduction off
+      // that frame shrank the artwork by the padding's ratio — a fifth of m3-catalog's references
+      // published at 0.47–0.91 of the render they are compared with (m3-catalog#180). So the
+      // *drawn* pixels decide, and an empty margin that would force a reduction is cropped instead.
+      const content = alphaBounds(raster.data, raster.width, raster.height);
       const placed = placeRgba(
         raster.data,
         raster.width,
         raster.height,
         target.width,
         target.height,
+        content ?? undefined,
       );
       placement = placed.box;
+      const drawn = content ?? { x: 0, y: 0, width: raster.width, height: raster.height };
       const reduced = placed.box.width !== raster.width || placed.box.height !== raster.height;
+      const cropped =
+        placed.box.x < 0 ||
+        placed.box.y < 0 ||
+        placed.box.x + placed.box.width > target.width ||
+        placed.box.y + placed.box.height > target.height;
       const message =
         `${record.id}: placing density-matched reference ${raster.width}x${raster.height} ` +
-        `on ${target.width}x${target.height} canvas`;
-      if (reduced) warnFor(record, `${message} (too large; reduced to fit)`);
+        `(drawing ${drawn.width}x${drawn.height}) on ${target.width}x${target.height} canvas`;
+      // Still a warning when the DRAWN content had to shrink — that one is a real size divergence
+      // between the kit and the render, and the published picture no longer shows the kit's scale.
+      if (reduced) warnFor(record, `${message} (content too large; reduced to fit)`);
+      else if (cropped) console.log(`design-references: ${message} (empty margin cropped)`);
       else console.log(`design-references: ${message}`);
       raster = { width: target.width, height: target.height, data: placed.data };
     } else {
@@ -493,6 +542,16 @@ for (const record of records) {
     }
   }
 
+  // Checked on the PUBLISHED pixels rather than on the source raster, so a backdrop, a fit and a
+  // placement are all already in it — this asks what the comparison lane will actually see.
+  const drawnBox = alphaBounds(raster.data, raster.width, raster.height);
+  const stickerBox = stickerContent(record);
+  const finding = scaleFinding(drawnBox, stickerBox);
+  if (finding) {
+    rescaled.push({ record, finding });
+    note(scaleMessage(record.id, finding, drawnBox, stickerBox));
+  }
+
   const bytes = writePng(raster);
   fs.writeFileSync(path.join(OUT, record.raster.path), bytes);
   // The server verifies this before advertising the reference, so a corrupted fetch on the box
@@ -504,6 +563,28 @@ for (const record of records) {
     ? scaleTree(capturedLayout, placement.width, placement.x, placement.y)
     : undefined;
   if (scaled) annotatedReferences[record.id] = { layout: scaled };
+}
+
+// The gate m3-catalog#180 asked for. A reference whose content is a uniform rescale of its
+// sticker's is not comparable with it: the scorer normalises both sides to their content box, so
+// the number it publishes is about the shape and says nothing at all about the size — and 107 of
+// m3-catalog's 536 references had been like that for as long as the lane had existed, because
+// nothing anywhere looked. The per-record lines are notes; ONE warning carries the count, so a
+// `--strict` run fails on it without a primary's worth of noise per cell.
+if (rescaled.length > 0) {
+  const worst = [...rescaled].sort(
+    (a, b) => Math.abs(a.finding.scale - 1) - Math.abs(b.finding.scale - 1),
+  );
+  const named = worst
+    .slice(-3)
+    .reverse()
+    .map(({ record, finding }) => `${record.id} (${finding.scale}x)`)
+    .join(", ");
+  warn(
+    `${rescaled.length} of ${written} published reference(s) draw their component at a uniform ` +
+      `scale from their sticker's, so the comparison measures the scale rather than the design. ` +
+      `Worst: ${named}. See the notes above for the full list.`,
+  );
 }
 
 if (BACKDROP) {
