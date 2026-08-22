@@ -277,6 +277,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-format-compare/dark](renders/serve-format-compare.dark.png) |
 | `light` | ![serve-format-compare/light](renders/serve-format-compare.light.png) |
 
+## serve-format-compare-reference-lane
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-format-compare-reference-lane/dark](renders/serve-format-compare-reference-lane.dark.png) |
+| `light` | ![serve-format-compare-reference-lane/light](renders/serve-format-compare-reference-lane.light.png) |
+
 ## serve-format-compare-report-menu
 
 | Theme | Capture |

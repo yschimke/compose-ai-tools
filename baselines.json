@@ -457,29 +457,41 @@
       "sha256": "75a88ba34aef5dab4ae816530c80d88a44c89d951b4f7f01ac9d9e3c7d35ffc7",
       "size": 55371
     },
+    "serve-format-compare-reference-lane.dark.png": {
+      "fixture": "serve-format-compare-reference-lane",
+      "theme": "dark",
+      "sha256": "def64db05859d002aa7f2c31e9a3fcb1833046ed35fcbf5a62bc93c577d0e690",
+      "size": 105120
+    },
+    "serve-format-compare-reference-lane.light.png": {
+      "fixture": "serve-format-compare-reference-lane",
+      "theme": "light",
+      "sha256": "0fdac20267cf38cdd215397d697399d9743f18cce760663d3ab30e7ce6470e00",
+      "size": 103044
+    },
     "serve-format-compare-report-menu.dark.png": {
       "fixture": "serve-format-compare-report-menu",
       "theme": "dark",
-      "sha256": "4021d0f2617787bde0fa219b5786b027697ac555adfaaa1c1b734a6fb4e84075",
-      "size": 115057
+      "sha256": "cfc7157e9e3ffb6a4c4cb3f0e62be05ada8bd13920baece460eb9e87e8c630ad",
+      "size": 115164
     },
     "serve-format-compare-report-menu.light.png": {
       "fixture": "serve-format-compare-report-menu",
       "theme": "light",
-      "sha256": "e52aeb70c8d0d550c41c6fac64b15570ea33ca7dcc0fc6b008e471b5c05e30cf",
-      "size": 113237
+      "sha256": "ce6230d81148271ccf982fb756b45b7e098f849f27458e6b433e2c4740b329fc",
+      "size": 113361
     },
     "serve-format-compare.dark.png": {
       "fixture": "serve-format-compare",
       "theme": "dark",
-      "sha256": "e41e9812a0d3cc8bcbdc64e2562881b769d388368dd22d6445f53eff7faa5f29",
-      "size": 71531
+      "sha256": "f24b495e989aa29882fb3d020ffa46175e7c3e85e19fa69bae4c1f66c44ca193",
+      "size": 71630
     },
     "serve-format-compare.light.png": {
       "fixture": "serve-format-compare",
       "theme": "light",
-      "sha256": "b44a537ca1950762344fd7173636bdb7a908adc7453770664560c7f3a19e9bbd",
-      "size": 70078
+      "sha256": "a92b37415383cc576fb89f248367b3d9cfdf14981b061f293e6374d39c5cda70",
+      "size": 70200
     },
     "serve-home-index-card-hover.dark.png": {
       "fixture": "serve-home-index-card-hover",
@@ -1420,14 +1432,14 @@
     "serve-viewer-exploded-controls.dark.png": {
       "fixture": "serve-viewer-exploded-controls",
       "theme": "dark",
-      "sha256": "fa200c431ca92b97bdf33ab3f74d575effed7cea138603c860b64d623d525d0c",
-      "size": 113353
+      "sha256": "2bc91e912ce911c7980e7eb8e57894a1de1a3177de658b8fecb7c6b5a5669ca1",
+      "size": 113463
     },
     "serve-viewer-exploded-controls.light.png": {
       "fixture": "serve-viewer-exploded-controls",
       "theme": "light",
-      "sha256": "57b8358496cf367d836faed146beb49f8b3406718862b0011a86361b5b55adb0",
-      "size": 112779
+      "sha256": "9b08465f5c8c9c6bba75042040b207d66ef1e18a46a69ea17c6e41930c56bfdd",
+      "size": 112718
     },
     "serve-viewer-exploded.dark.png": {
       "fixture": "serve-viewer-exploded",
