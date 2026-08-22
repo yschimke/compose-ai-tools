@@ -24,7 +24,13 @@ interface Scorer {
  */
 function stubScorer(
     scores: Record<string, number>,
-    options: { hold?: boolean; publish?: boolean } = {},
+    options: {
+        hold?: boolean;
+        holdReference?: boolean;
+        publish?: boolean;
+        /** Dimensions the stubbed delta map is painted at, before the wall bounds it. */
+        map?: { width: number; height: number };
+    } = {},
 ): Scorer {
     const held: Array<() => void> = [];
     const state: Scorer = {
@@ -53,6 +59,8 @@ function stubScorer(
         // stub keeps the score keyed off the reference URL, exactly as `scoreImageUrls` does.
         normaliseImageUrls: async (reference: string, candidate: string) => {
             state.calls.push(reference);
+            if (options.holdReference)
+                await new Promise<void>((r) => held.push(r));
             return {
                 reference: {},
                 candidate: {},
@@ -68,8 +76,8 @@ function stubScorer(
             into: HTMLCanvasElement,
         ) => {
             state.painted.push(into);
-            into.width = 8;
-            into.height = 8;
+            into.width = options.map?.width ?? 8;
+            into.height = options.map?.height ?? 8;
             return 12;
         },
         scoreImages: async (reference: { src?: string }) => ({
@@ -327,7 +335,12 @@ describe("<cp-compare-wall>", () => {
         const diff = document.querySelector<HTMLCanvasElement>(
             '[data-label="Button"] .cp-compare-diff',
         )!;
-        assert.deepEqual(scorer.painted, [diff]);
+        assert.equal(scorer.painted.length, 1);
+        assert.notEqual(
+            scorer.painted[0],
+            diff,
+            "the scorer must paint its own canvas, never the row's",
+        );
         assert.equal(diff.width, 8);
         assert.equal(scoreTextOf("Button"), "80.0%");
     });
@@ -362,6 +375,81 @@ describe("<cp-compare-wall>", () => {
             .click();
         await settle();
         assert.equal(diff.width, 0);
+    });
+
+    it("does not let an abandoned lane's map land on the row", async () => {
+        // The rows of a lane the visitor has left are still in flight when the next lane starts a
+        // second pass over the SAME elements. The score is already generation-guarded; the map has
+        // to be too, or the abandoned run repaints a canvas the new run has finished with and the
+        // row shows one lane's magenta beside the other's render and percentage. Blanking the canvas
+        // at the top of a run cannot close this — the stale paint arrives after that.
+        window.history.replaceState(null, "", "/compare?format=reference");
+        const scorer = stubScorer(
+            {
+                "/a/Button-reference-light": 80,
+                "/a/Button-svg-light": 93.4,
+            },
+            { holdReference: true },
+        );
+        await mount({
+            available: 'data-has-svg="1" data-has-reference="1"',
+            rows: [
+                {
+                    name: "Button",
+                    have: ["png-light", "reference-light", "svg-light"],
+                },
+            ],
+        });
+        await flush();
+        const diff = document.querySelector<HTMLCanvasElement>(
+            '[data-label="Button"] .cp-compare-diff',
+        )!;
+
+        document
+            .querySelector<HTMLElement>('[data-compare-format="svg"]')!
+            .click();
+        await settle();
+        assert.equal(scoreTextOf("Button"), "93.4%");
+
+        // The reference run now finishes, into a lane nobody is looking at.
+        scorer.settle();
+        await settle();
+        assert.equal(
+            diff.width,
+            0,
+            "the abandoned run must not repaint the row",
+        );
+        assert.equal(scoreTextOf("Button"), "93.4%");
+    });
+
+    it("bounds the map it keeps to what the column can draw", async () => {
+        // A reference exported at full device resolution normalises to a frame far larger than the
+        // 200px column that shows it, and the wall retains one per row rather than the detail page's
+        // one. Kept at source size, a catalog of large captures is hundreds of megabytes of backing
+        // store nobody can see — and a frame past the browser's canvas limit turns a row that used
+        // to score into "unavailable".
+        stubScorer(
+            { "/a/Button-reference-light": 80 },
+            { map: { width: 1600, height: 2400 } },
+        );
+        window.history.replaceState(null, "", "/compare?format=reference");
+        await mount({
+            available: 'data-has-svg="1" data-has-reference="1"',
+            rows: [
+                {
+                    name: "Button",
+                    have: ["png-light", "reference-light", "svg-light"],
+                },
+            ],
+        });
+        await settle();
+        const diff = document.querySelector<HTMLCanvasElement>(
+            '[data-label="Button"] .cp-compare-diff',
+        )!;
+        assert.equal(diff.height, 440);
+        // Bounded, not squashed: a map drawn at the wrong proportion would misreport where the two
+        // drawings disagree, which is the one thing this column exists to say.
+        assert.equal(diff.width, Math.round((1600 / 2400) * 440));
     });
 
     it("opens the Reference / Diff / Actual page from the map as well as the render", async () => {

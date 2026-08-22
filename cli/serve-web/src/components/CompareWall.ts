@@ -39,6 +39,19 @@ import { whenParsed } from "../dom/whenParsed.js";
 // Types only: the player bundle is script-injected at runtime, never imported.
 import type { RcPlayer } from "../rc/player.js";
 
+/**
+ * Longest side the wall keeps a delta map at.
+ *
+ * The detail page holds ONE map and shows it as large as the window allows, so it keeps the
+ * normalised frame's own dimensions. A wall holds one per row — every row of a catalog with design
+ * references, which for the published Wear catalog is 233 — and shows each in a 200px column at most
+ * 220px tall. Retaining the full normalised size there is backing store nobody can see: a wall of
+ * phone-sized captures would hold hundreds of megabytes of canvas, and a capture past the browser's
+ * canvas limit would turn a row that used to score into "unavailable". 440 is twice the tallest the
+ * column ever draws, so the map is still crisp at 2× device pixel ratio.
+ */
+const MAP_MAX_SIDE = 440;
+
 @customElement("cp-compare-wall")
 export class CompareWall extends LitElement {
     private installed = false;
@@ -383,9 +396,16 @@ export class CompareWall extends LitElement {
                 pngUrl,
                 candidateUrl,
                 canvas,
-                diff,
+                Boolean(diff),
             );
             if (runId !== this.sequence) return;
+            // Only NOW does the map reach the row. `measure` drew it into a canvas of its own, and
+            // that ordering is the whole point: the abandoned lane's rows are still in flight when a
+            // switch starts a second chain over the same elements, so a comparison that painted the
+            // shared canvas before this check could land after the new one and leave the old theme's
+            // magenta beside the new render and the new percentage — the stale-paint-reads-as-a-
+            // finding failure, arriving by the one route blanking the canvas up front cannot close.
+            if (diff && measured.map) this.paintMap(measured.map, diff);
             row.setAttribute("data-score", String(measured.percent));
             score.textContent = `${measured.percent.toFixed(1)}%`;
             score.className = `cp-compare-score cp-compare-score--${grade(measured.percent)}`;
@@ -424,8 +444,12 @@ export class CompareWall extends LitElement {
         pngUrl: string,
         candidateUrl: string,
         canvas: HTMLCanvasElement,
-        diff: HTMLCanvasElement | null,
-    ): Promise<{ percent: number; geometry?: number }> {
+        withMap: boolean,
+    ): Promise<{
+        percent: number;
+        geometry?: number;
+        map?: HTMLCanvasElement;
+    }> {
         const compare = compareApi();
         if (!compare) throw new Error("no scorer");
         // The vector lanes score a render against an export of that same render, so they share its
@@ -437,23 +461,51 @@ export class CompareWall extends LitElement {
             };
         }
         if (format === "reference") {
-            if (!diff) return compare.scoreImageUrls(candidateUrl, pngUrl);
+            if (!withMap) return compare.scoreImageUrls(candidateUrl, pngUrl);
             // The same composition the detail page measures with, for the same reason: normalise
             // the pair ONCE, then diff and score those frames, so the map in the middle column and
             // the percentage at the end of the row are describing the same pixels. The number is
             // unchanged — `compareImageUrls` scores the decoded originals, which is what
             // `scoreImageUrls` did with its own two fetches.
+            //
+            // Painted into a canvas belonging to THIS call rather than to the row: it is handed back
+            // for the caller to copy in once the run has been validated, and it is thrown away
+            // afterwards instead of being retained per row at the normalised frame's full size.
+            const map = document.createElement("canvas");
             const result = await compareImageUrls(
                 compare,
                 candidateUrl,
                 pngUrl,
-                diff,
+                map,
             );
-            return { percent: result.score, geometry: result.geometry };
+            return { percent: result.score, geometry: result.geometry, map };
         }
         return {
             percent: await this.renderRc(pngUrl, candidateUrl, canvas, compare),
         };
+    }
+
+    /**
+     * Copy a freshly-measured delta map into the row's canvas, bounded to {@link MAP_MAX_SIDE}.
+     *
+     * The dimensions are set before the context is asked for, so a row still reports a painted map
+     * even where a 2D context is unavailable — that is the state a caller reads to tell a measured
+     * row from a blanked one, and it must not depend on the drawing itself succeeding.
+     */
+    private paintMap(
+        source: HTMLCanvasElement,
+        target: HTMLCanvasElement,
+    ): void {
+        const scale = Math.min(
+            1,
+            MAP_MAX_SIDE / Math.max(source.width, source.height, 1),
+        );
+        target.width = Math.max(1, Math.round(source.width * scale));
+        target.height = Math.max(1, Math.round(source.height * scale));
+        const context = target.getContext("2d");
+        if (!context) return;
+        context.clearRect(0, 0, target.width, target.height);
+        context.drawImage(source, 0, 0, target.width, target.height);
     }
 
     // ---- the client-rendered Remote Compose lane -----------------------------
