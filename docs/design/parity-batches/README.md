@@ -53,30 +53,34 @@ Not a batch; context for what exists.
   projection; published-catalog `tags/index.json`), one host API `ServeHost.tagIndexForPreview`.
 - The theme annotation layer, reachable on the focused comparison, with visible legend ordinals.
 
-### …and not yet switched on
+### …and now switched on
 
-Batches 01 and 02 are merged, and until a catalog *calls* them nothing they built is reachable:
+Batches 01 and 02 were merged and unreachable for a while: nothing *called* them. That is fixed.
 
-- `parity-issues-reusable.yml` had **no callers**. No catalog repo carried a workflow invoking it,
-  so `parity/issues.json` was never generated — the m3-catalog delivery branch's `parity/` directory
-  held `activity.json` alone. The reader and every UI surface were serving the empty path in
-  production while their tests passed.
-- **No issue carries a locator block**, so even with the workflow adopted the index would have been
-  empty. m3-catalog's dozen genuine known differences (#40, #41, #42, #85–#95, …) are labelled
-  `invalid` + `upstream` — a taxonomy that predates this epic and that the producer does not read.
+- `parity-issues-reusable.yml` had **no callers** — no catalog repo carried a workflow invoking it,
+  so `parity/issues.json` was never generated and the reader and every UI surface were serving the
+  empty path in production while their tests passed. The caller is
+  [yschimke/m3-catalog#170](https://github.com/yschimke/m3-catalog/pull/170), which publishes the
+  index on every issue event.
+- Two producer defects found while switching it on, both fixed in
+  [#4404](https://github.com/yschimke/compose-ai-tools/pull/4404): it refused three shapes the
+  writer legitimately emits (see
+  [the locator contract](../COMPONENT_PARITY_WORKFLOW.md#which-fields-may-be-blank-and-which-may-be-absent)),
+  and it counted every ordinary issue's absent locator as a failure, so its exit code was non-zero
+  on any healthy repository.
+- **Three issues now carry a locator block** and `area:` / `parity:` labels — m3-catalog #40, #41
+  and #87, with `previewId` / `referenceId` read out of the published `references/index.json` rather
+  than guessed. `parity/issues.json` carries them, and preview.coo.ee shows them on the viewer, the
+  focused comparison, the grid cards and the parity dashboard.
 
-Two defects found while switching it on, both fixed: the producer refused three shapes the writer
-legitimately emits (see
-[the locator contract](../COMPONENT_PARITY_WORKFLOW.md#which-fields-may-be-blank-and-which-may-be-absent)),
-and it counted every ordinary issue's absent locator as a failure, so its exit code was non-zero on
-any healthy repository.
-
-What remains before the pilot reports anything: **backfill locator blocks and `area:` / `parity:`
-labels onto the real known differences**. Their ids have to come from the published catalog, not be
-guessed — a plausible wrong `previewId` produces an index that looks right and joins to nothing.
-Worth doing before batch 04 freezes an acceptance schema, because those dozen issues are the
-population the schema is for, and most of them are whole-component geometry and token differences
-rather than the single-element colour delta the design's worked example is built around.
+**Read the measurement before starting batch 04.** The backfill is also the survey of the population
+the acceptance schema is for, and it came out smaller and more awkward than "a dozen known
+differences" suggests: three of m3-catalog's ten are indexable, two are umbrella reports naming
+three and five components, three are about components this catalog does not publish at all, and two
+are missing-constant reports whose renders already match. Two of the three that *are* indexable want
+a mask the size of the component. The per-issue verdicts and what each implies are in
+[the pilot population](../COMPONENT_PARITY_WORKFLOW.md#the-pilot-population-measured); batch 00's D1
+and D5 should be answered against those numbers rather than against the worked example.
 
 ## Conventions every batch inherits
 
