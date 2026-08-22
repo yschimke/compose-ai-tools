@@ -4,7 +4,9 @@
 // Three lanes over one table. SVG and Remote Compose compare a render against an export of THAT
 // render, so they share geometry by construction and report a bare percentage. The reference lane
 // compares independently-authored artwork — the design's own drawing — and is the only one that
-// carries a proportion figure.
+// carries a proportion figure, and the only one with a middle column: the delta map between the two
+// panels beside it, the same triptych the detail page opens onto, painted from the same normalised
+// frames the row's percentage is measured over.
 //
 // The scoring itself still belongs to `format-compare.js`, reached through the typed handle in
 // `compare/api.ts`. This element owns the wall: which two artifacts a row pairs, what the page is
@@ -16,6 +18,7 @@
 import { LitElement } from "lit";
 import { customElement } from "lit/decorators.js";
 import { compareApi } from "../compare/api.js";
+import { compareImageUrls } from "../compare/detail.js";
 import { grade } from "../compare/grade.js";
 import {
     rowTheme,
@@ -319,7 +322,11 @@ export class CompareWall extends LitElement {
         const png = row.querySelector<HTMLImageElement>(".cp-compare-png");
         const vector =
             row.querySelector<HTMLImageElement>(".cp-compare-vector");
-        const canvas = row.querySelector("canvas");
+        // Two canvases per row now, so both are named: the delta map in the middle column and the
+        // one the Remote Compose lane plays into. A bare `querySelector("canvas")` would have
+        // started returning the diff, and the rc lane would have scored an empty frame.
+        const canvas = row.querySelector<HTMLCanvasElement>(".cp-compare-rc");
+        const diff = row.querySelector<HTMLCanvasElement>(".cp-compare-diff");
         if (!pngUrl || !candidateUrl || !score || !png || !vector || !canvas) {
             row.hidden = true;
             return;
@@ -339,6 +346,9 @@ export class CompareWall extends LitElement {
         score.className = "cp-compare-score";
 
         const format = this.state.format;
+        const detail = () => {
+            location.href = sources("reference-detail", variant);
+        };
         if (format === "svg" || format === "reference") {
             vector.hidden = false;
             canvas.hidden = true;
@@ -346,24 +356,34 @@ export class CompareWall extends LitElement {
             vector.alt = `${row.getAttribute("data-label")}${format === "svg" ? " SVG" : " design reference"}`;
             vector.title =
                 format === "reference" ? "Open Reference / Diff / Actual" : "";
-            vector.onclick =
-                format === "reference"
-                    ? () => {
-                          location.href = sources("reference-detail", variant);
-                      }
-                    : null;
+            vector.onclick = format === "reference" ? detail : null;
         } else {
             vector.hidden = true;
             canvas.hidden = false;
+        }
+        if (diff) {
+            // Blanked before the run, not just repainted after it: the map is only redrawn when the
+            // measurement succeeds, so a row that goes unmeasurable — or a lane switch away from the
+            // reference — would otherwise leave the PREVIOUS pair's magenta standing beside the new
+            // render, which reads as a finding rather than as stale paint.
+            diff.width = 0;
+            diff.height = 0;
+            diff.setAttribute(
+                "aria-label",
+                `${row.getAttribute("data-label")} difference from the design reference`,
+            );
+            diff.title =
+                format === "reference" ? "Open Reference / Diff / Actual" : "";
+            diff.onclick = format === "reference" ? detail : null;
         }
 
         try {
             const measured = await this.measure(
                 format,
-                row,
                 pngUrl,
                 candidateUrl,
                 canvas,
+                diff,
             );
             if (runId !== this.sequence) return;
             row.setAttribute("data-score", String(measured.percent));
@@ -401,10 +421,10 @@ export class CompareWall extends LitElement {
      */
     private async measure(
         format: Format,
-        row: HTMLElement,
         pngUrl: string,
         candidateUrl: string,
         canvas: HTMLCanvasElement,
+        diff: HTMLCanvasElement | null,
     ): Promise<{ percent: number; geometry?: number }> {
         const compare = compareApi();
         if (!compare) throw new Error("no scorer");
@@ -417,7 +437,19 @@ export class CompareWall extends LitElement {
             };
         }
         if (format === "reference") {
-            return compare.scoreImageUrls(candidateUrl, pngUrl);
+            if (!diff) return compare.scoreImageUrls(candidateUrl, pngUrl);
+            // The same composition the detail page measures with, for the same reason: normalise
+            // the pair ONCE, then diff and score those frames, so the map in the middle column and
+            // the percentage at the end of the row are describing the same pixels. The number is
+            // unchanged — `compareImageUrls` scores the decoded originals, which is what
+            // `scoreImageUrls` did with its own two fetches.
+            const result = await compareImageUrls(
+                compare,
+                candidateUrl,
+                pngUrl,
+                diff,
+            );
+            return { percent: result.score, geometry: result.geometry };
         }
         return {
             percent: await this.renderRc(pngUrl, candidateUrl, canvas, compare),

@@ -13,6 +13,8 @@ import "../src/components/CompareWall.js";
 
 interface Scorer {
     calls: string[];
+    /** The canvases `diffCanvases` was asked to paint, in the order the wall asked. */
+    painted: HTMLCanvasElement[];
     settle(): void;
 }
 
@@ -27,6 +29,7 @@ function stubScorer(
     const held: Array<() => void> = [];
     const state: Scorer = {
         calls: [],
+        painted: [],
         settle: () => {
             for (const release of held.splice(0)) release();
         },
@@ -45,9 +48,34 @@ function stubScorer(
             state.calls.push(reference);
             return { percent: scores[reference] ?? 0, geometry: 3.5 };
         },
-        scoreImages: async () => ({ percent: 100, geometry: 0 }),
-        normaliseImageUrls: async () => ({}) as never,
-        diffCanvases: () => 0,
+        // The reference lane goes through the normalise / diff / score composition, so the pair the
+        // map is painted from and the pair the percentage is taken over are the same frames. The
+        // stub keeps the score keyed off the reference URL, exactly as `scoreImageUrls` does.
+        normaliseImageUrls: async (reference: string, candidate: string) => {
+            state.calls.push(reference);
+            return {
+                reference: {},
+                candidate: {},
+                images: [{ src: reference }, { src: candidate }],
+                width: 8,
+                height: 8,
+                geometry: 3.5,
+            };
+        },
+        diffCanvases: (
+            _reference: unknown,
+            _candidate: unknown,
+            into: HTMLCanvasElement,
+        ) => {
+            state.painted.push(into);
+            into.width = 8;
+            into.height = 8;
+            return 12;
+        },
+        scoreImages: async (reference: { src?: string }) => ({
+            percent: scores[reference.src ?? ""] ?? 0,
+            geometry: 3.5,
+        }),
     };
     if (options.publish !== false)
         (window as Record<string, unknown>).ComposePreviewCompare = api;
@@ -59,7 +87,9 @@ const rowHtml = (name: string, have: string[]) => `
   <tr class="cp-compare-row" data-label="${name}" data-hay="${name.toLowerCase()}"
       data-preview-ids="com.example.${name}Preview"
       ${have.map((h) => `data-${h}="/a/${name}-${h}"`).join(" ")}>
-    <td><img class="cp-compare-png" alt=""><img class="cp-compare-vector" alt=""><canvas></canvas></td>
+    <td><img class="cp-compare-png" alt=""></td>
+    <td class="cp-compare-diff-cell"><canvas class="cp-compare-diff"></canvas></td>
+    <td><img class="cp-compare-vector" alt=""><canvas class="cp-compare-rc" hidden></canvas></td>
     <td><span class="cp-compare-score"></span></td>
   </tr>`;
 
@@ -271,6 +301,94 @@ describe("<cp-compare-wall>", () => {
             "11.0%",
             "the abandoned SVG run must not land",
         );
+    });
+
+    it("paints the middle diff map, and only in the reference lane", async () => {
+        // The wall's reason to carry a third panel at all: the reference lane compares
+        // independently-authored artwork, so "which pixels moved" is a real question there and a
+        // meaningless one in the vector lanes, which export the render they are scored against.
+        const scorer = stubScorer({ "/a/Button-reference-light": 80 });
+        await mount({
+            available: 'data-has-svg="1" data-has-reference="1"',
+            rows: [
+                {
+                    name: "Button",
+                    have: ["png-light", "reference-light", "svg-light"],
+                },
+            ],
+        });
+        await settle();
+        assert.deepEqual(scorer.painted, [], "the SVG lane has nothing to map");
+
+        document
+            .querySelector<HTMLElement>('[data-compare-format="reference"]')!
+            .click();
+        await settle();
+        const diff = document.querySelector<HTMLCanvasElement>(
+            '[data-label="Button"] .cp-compare-diff',
+        )!;
+        assert.deepEqual(scorer.painted, [diff]);
+        assert.equal(diff.width, 8);
+        assert.equal(scoreTextOf("Button"), "80.0%");
+    });
+
+    it("clears the map rather than leaving the last lane's magenta standing", async () => {
+        // A stale delta map beside a freshly-scored row reads as a finding. It has to go the moment
+        // the row is re-run, not once something else happens to repaint it.
+        stubScorer({
+            "/a/Button-reference-light": 80,
+            "/a/Button-svg-light": 93.4,
+        });
+        await mount({
+            available: 'data-has-svg="1" data-has-reference="1"',
+            rows: [
+                {
+                    name: "Button",
+                    have: ["png-light", "reference-light", "svg-light"],
+                },
+            ],
+        });
+        document
+            .querySelector<HTMLElement>('[data-compare-format="reference"]')!
+            .click();
+        await settle();
+        const diff = document.querySelector<HTMLCanvasElement>(
+            '[data-label="Button"] .cp-compare-diff',
+        )!;
+        assert.equal(diff.width, 8);
+
+        document
+            .querySelector<HTMLElement>('[data-compare-format="svg"]')!
+            .click();
+        await settle();
+        assert.equal(diff.width, 0);
+    });
+
+    it("opens the Reference / Diff / Actual page from the map as well as the render", async () => {
+        // Two panels of the same triptych; clicking the one that shows the problem should not be
+        // the click that does nothing.
+        stubScorer({ "/a/Button-reference-light": 80 });
+        window.history.replaceState(null, "", "/compare?format=reference");
+        await mount({
+            available: 'data-has-svg="1" data-has-reference="1"',
+            rows: [
+                {
+                    name: "Button",
+                    have: [
+                        "png-light",
+                        "reference-light",
+                        "reference-detail-light",
+                        "svg-light",
+                    ],
+                },
+            ],
+        });
+        await settle();
+        const diff = document.querySelector<HTMLCanvasElement>(
+            '[data-label="Button"] .cp-compare-diff',
+        )!;
+        assert.equal(diff.title, "Open Reference / Diff / Actual");
+        assert.equal(typeof diff.onclick, "function");
     });
 
     it("opens on the format a deep link names", async () => {

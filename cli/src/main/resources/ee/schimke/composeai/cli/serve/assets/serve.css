@@ -2465,6 +2465,21 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
 #cp-compare[data-format="reference"] .cp-compare-target-head::after { content: "Design reference"; }
 #cp-compare[data-format="reference"] .cp-compare-vector { cursor: pointer; }
 
+/* The middle column, the delta map between the render and the design reference. Shown only in the
+   reference lane: the vector lanes score a render against an export of the SAME render, so a map of
+   what moved between them would be describing the exporter, not the design. Hidden by DEFAULT — the
+   selector is `:not([data-format="reference"])` rather than a `display: none` the reference lane
+   overrides — because `<cp-compare-wall>` writes `data-format` when it runs, and a column that
+   started visible would flash a row of empty boxes on every load that lands on the SVG lane. */
+#cp-compare:not([data-format="reference"]) .cp-compare-diff-head,
+#cp-compare:not([data-format="reference"]) .cp-compare-diff-cell { display: none; }
+#cp-compare[data-format="reference"] .cp-compare-diff { cursor: pointer; }
+/* Three panels have to fit where two did, and the column that must NOT fall off the end is the
+   score: it is what the wall is sorted by and read for. So the reference lane trades panel width
+   for the row fitting — at 1024px the untouched 260px panels push `Match` past the scroll edge, and
+   a triage wall whose verdict is off-screen is the one regression this column could cause. */
+#cp-compare[data-format="reference"] .cp-compare-shot { width: min(200px, 22vw); min-width: 120px; }
+
 /* The Remote Compose player wall: one column per player, every render published by the offline
    rc-compare run. A diff appears *inside* a player's column once a reference column is picked. */
 #cp-compare[data-rc-lanes="1"][data-format="rc"] .cp-compare-theme-controls { display: none; }

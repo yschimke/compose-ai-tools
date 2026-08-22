@@ -772,6 +772,36 @@ const FIXTURE_STATES = [
     },
   },
   {
+    // The wall's REFERENCE lane, which is the only one with a middle column: the delta map between
+    // the render and the design's own drawing. The wall opens on whichever lane the catalog
+    // defaults to — SVG, here — so the diff column is `display: none` in the ordinary shot and
+    // every future change to it (the column's place in the row, the map's ground, whether it paints
+    // at all) would be diffed by nothing. The two lanes are stubbed with DIFFERENT artwork
+    // (`REFERENCE_PLACEHOLDER` against `_render-placeholder.png`), so what lands in this baseline is
+    // a real magenta map over a real mismatch rather than an empty box.
+    fixture: "serve-format-compare",
+    suffix: "reference-lane",
+    apply: async (page) => {
+      await page.click('[data-compare-format="reference"]');
+      await expect(page.locator(".cp-compare-diff-head")).toBeVisible();
+      // BOTH halves have to have settled. The map is painted before the pair is scored, so waiting
+      // on the canvas alone catches the row mid-run with "comparing…" still in the score cell —
+      // and waiting on the score alone would let the shot land on a zero-width canvas.
+      await page.waitForFunction(() =>
+        Array.from(
+          document.querySelectorAll(".cp-compare-row:not([hidden])"),
+        ).every((row) => {
+          const score = row.querySelector(".cp-compare-score")?.textContent;
+          if (score === "waiting…" || score === "comparing…") return false;
+          return (
+            (row.querySelector(".cp-compare-diff")?.width ?? 0) > 0 ||
+            /unavailable/.test(score ?? "")
+          );
+        }),
+      );
+    },
+  },
+  {
     // The same launcher on the COMPARISON WALL, whose catalog half is page-scoped: the wall shows
     // every component and singles out none, so its offer reads "these comparisons" and files a
     // report naming the page and its lane (issue #4289). Its own shot rather than a note on the

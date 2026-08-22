@@ -8907,6 +8907,13 @@ ${captureControlsHtml().prependIndent("          ")}
                 ?.let { " data-declared-bg-$variant=\"$it\"" }
             }
             .joinToString("")
+        // The middle cell is the delta map, sat exactly where the detail page puts it: rendered
+        // PNG, diff, design reference. Every row carries one, but only the reference lane shows it
+        // (`serve.css` keys the column off `#cp-compare[data-format]`) — that is the one lane
+        // comparing independently-authored artwork, so it is the one where "which pixels moved" is
+        // a question rather than a description of the exporter. The Remote Compose canvas beside it
+        // is CLASSED rather than left bare because a row now holds two canvases, and
+        // `<cp-compare-wall>` has to be able to tell the one it plays into from the one it paints.
         """
           <tr class="cp-compare-row" data-label="${WebEscaping.htmlEscape(label)}"
             data-hay="${WebEscaping.htmlEscape(hay)}" data-preview-ids="${WebEscaping.htmlEscape(ids)}"$pngAttrs$svgAttrs$rcAttrs$referenceAttrs$declaredBgAttrs>
@@ -8915,7 +8922,8 @@ ${captureControlsHtml().prependIndent("          ")}
             else "<span class=\"cp-compare-variant\">${WebEscaping.htmlEscape(variant)}</span>"
           }</a></th>
             <td><div class="cp-compare-shot"><img class="cp-compare-png" alt=""></div></td>
-            <td><div class="cp-compare-shot"><img class="cp-compare-vector" alt=""><canvas hidden></canvas></div></td>
+            <td class="cp-compare-diff-cell"><div class="cp-compare-shot"><canvas class="cp-compare-diff" aria-label="Highlighted pixel difference"></canvas></div></td>
+            <td><div class="cp-compare-shot"><img class="cp-compare-vector" alt=""><canvas class="cp-compare-rc" hidden></canvas></div></td>
             <td class="cp-compare-score">waiting…</td>
           </tr>
           """
@@ -8965,7 +8973,7 @@ ${captureControlsHtml().prependIndent("          ")}
         """
         <div class="cp-compare-table-wrap">
           <table class="cp-compare-table">
-            <thead><tr><th>Preview</th><th>Rendered PNG</th><th class="cp-compare-target-head">SVG</th><th>Match</th></tr></thead>
+            <thead><tr><th>Preview</th><th>Rendered PNG</th><th class="cp-compare-diff-head">Diff</th><th class="cp-compare-target-head">SVG</th><th>Match</th></tr></thead>
             <tbody>$rows</tbody>
           </table>
         </div>
