@@ -305,6 +305,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-home-index-card-hover/dark](renders/serve-home-index-card-hover.dark.png) |
 | `light` | ![serve-home-index-card-hover/light](renders/serve-home-index-card-hover.light.png) |
 
+## serve-home-index-card-hover-round
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-home-index-card-hover-round/dark](renders/serve-home-index-card-hover-round.dark.png) |
+| `light` | ![serve-home-index-card-hover-round/light](renders/serve-home-index-card-hover-round.light.png) |
+
 ## serve-landing
 
 | Theme | Capture |
