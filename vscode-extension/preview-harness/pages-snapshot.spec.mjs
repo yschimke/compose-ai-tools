@@ -1957,6 +1957,24 @@ const FIXTURE_STATES = [
     },
   },
   {
+    // …and the same gesture on a card whose hero is NOT a rectangle. The hover shadow is a
+    // `filter: drop-shadow`, so it traces the hero's own alpha rather than its layout box, and
+    // the card above — an opaque phone screenshot — cannot tell a shaped shadow from a boxed one.
+    // This is the Wear card, stubbed round with transparent corners, where the two differ by the
+    // whole shape of the shadow. It is also the card the break-out zoom has the most room to go
+    // wrong on: a square canvas fills the hero region's height, so if the scale ever grows past
+    // what the card can carry, this is where it collides with the title first.
+    fixture: "serve-home-index",
+    suffix: "card-hover-round",
+    apply: async (page) => {
+      await page.addStyleTag({
+        content:
+          "*, *::before, *::after { transition-duration: 0ms !important; }",
+      });
+      await page.hover('.cp-syslist .cp-card[data-bg-theme="dark"]');
+    },
+  },
+  {
     // The same treatment on a catalog's preview cards, where the tiles are small and dense —
     // the case where an underline sweeping four lines of metadata was worst.
     fixture: "serve-landing-public",
@@ -2927,6 +2945,25 @@ for (const fixture of listPageFixtures()) {
             });
           }
           if (!svg && fixture === "serve-reference-compare-round-device") {
+            return route.fulfill({
+              path: roundRenderPlaceholder,
+              contentType: "image/png",
+            });
+          }
+          // The front door's WEAR cards get the round stub, and this is not decoration: the hover
+          // gesture there casts a shadow shaped by the hero's own alpha
+          // (`filter: drop-shadow` on `.cp-card.cp-sys .cp-imgwrap img`), so a page where every
+          // card is stubbed with the same opaque 200×420 rectangle can only ever diff a
+          // rectangular shadow. A round watch face with transparent corners is the case that
+          // proves the shape follows the picture — and it is the case the front door actually
+          // serves, since the dark-first catalogs here are Wear. Matched on the card's own
+          // `data-bg-theme="dark"` systems by URL, so both hero lanes (`/hero/wear-m3/…` prebaked
+          // and `/confetti-wear/render/…` live) are covered.
+          if (
+            !svg &&
+            fixture === "serve-home-index" &&
+            /wear/.test(url.pathname)
+          ) {
             return route.fulfill({
               path: roundRenderPlaceholder,
               contentType: "image/png",
@@ -3959,4 +3996,66 @@ test("contract · the render history is a menu in the toggle row, and the fit ca
   // The late arrival must still leave the fit cap agreeing with the geometry — the row can wrap
   // when it takes another control, and a wrapped row moves the stage exactly as the strip did.
   expect(applied).toBe(expected);
+});
+
+test("contract · the front door's hero paints above the state layer and still passes its clicks", async ({
+  page,
+}) => {
+  // Two invariants that arrived together and can only break together, both invisible to a DOM
+  // test and to a still capture.
+  //
+  // The hero is raised above the card's `primary` state layer (`.cp-card::after`) so hovering a
+  // tile does not wash accent colour over the design system's own screenshot — that layer paints
+  // UNDER the artwork now, over the card surface and through a sticker's transparent margin.
+  // Raising it also lifted it above `.cp-sys-open::after`, the stretched overlay that makes the
+  // whole tile one link, so the hero has to give its pointer events back or the top 220px of
+  // every card silently stops being clickable. A shot of the page cannot see a dead click target,
+  // and a hit test alone cannot see the tint; this asks the browser for both.
+  for (const [name, contentType] of SERVE_ASSETS) {
+    await page.route(`**/assets/serve/**/${name}`, (route) =>
+      route.fulfill({ path: resolve(serveAssetsDir, name), contentType }),
+    );
+  }
+  await page.route("**/hero/**", (route) =>
+    route.fulfill({ path: renderPlaceholder, contentType: "image/png" }),
+  );
+  await page.route("**/render/**", (route) =>
+    route.fulfill({ path: renderPlaceholder, contentType: "image/png" }),
+  );
+  await page.goto("/preview-harness/fixtures/pages/serve-home-index.html");
+  await page.waitForFunction(() =>
+    Array.from(document.images).every((i) => i.complete),
+  );
+
+  const { heroZ, stateLayerZ, linkZ, hitTag, hitHref } = await page.evaluate(
+    () => {
+      const card = document.querySelector(".cp-syslist .cp-card");
+      const wrap = card.querySelector(".cp-imgwrap");
+      const box = wrap.getBoundingClientRect();
+      // The hero's own centre — the middle of the region the state layer used to tint and the
+      // region a visitor aims at when they click the picture.
+      const hit = document.elementFromPoint(
+        box.left + box.width / 2,
+        box.top + box.height / 2,
+      );
+      return {
+        heroZ: Number(getComputedStyle(wrap).zIndex),
+        stateLayerZ: Number(getComputedStyle(card, "::after").zIndex),
+        linkZ: Number(
+          getComputedStyle(card.querySelector(".cp-sys-open"), "::after")
+            .zIndex,
+        ),
+        hitTag: hit?.tagName,
+        hitHref: hit?.getAttribute("href"),
+      };
+    },
+  );
+
+  // Above the state layer — that is the whole point of the change.
+  expect(heroZ).toBeGreaterThan(stateLayerZ);
+  // …and therefore above the tile link's overlay too, which is why the events have to fall through.
+  expect(heroZ).toBeGreaterThan(linkZ);
+  // Pointing at the middle of the picture still finds the tile link, not the image.
+  expect(hitTag).toBe("A");
+  expect(hitHref).toBe("/compose-m3/");
 });

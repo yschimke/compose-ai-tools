@@ -6062,7 +6062,7 @@ class ServeWebFixtureTest {
         assetText("serve.css").contains(".cp-syslist .cp-imgwrap { min-height: 0; height: 220px;"),
       "system cards reserve one consistent hero region so metadata aligns across aspect ratios",
     )
-    // Three invariants the hero break-out depends on, each of which turns into a silent regression
+    // Four invariants the hero break-out depends on, each of which turns into a silent regression
     // rather than a failing render if it is dropped.
     assertTrue(
       assetText("serve.css").contains(".cp-sys-actions") &&
@@ -6073,6 +6073,19 @@ class ServeWebFixtureTest {
     assertTrue(
       assetText("serve.css").contains(".cp-card.cp-sys::after { border-radius: inherit; }"),
       "the state layer rounds itself, now that `overflow: visible` no longer clips it to the card",
+    )
+    // The hero sits ABOVE the state layer so the accent tint doesn't wash the artwork — which also
+    // puts it above the stretched tile link (`.cp-sys-open::after`, z-index 1), so the hero has to
+    // hand its pointer events back or the card's whole top 220px stops being clickable. The two
+    // declarations only make sense together, and the harness's
+    // "the front door's hero paints above the state layer and still passes its clicks" contract
+    // proves the pair in a browser; this pins them in the sheet the Kotlin side ships.
+    assertTrue(
+      assetText("serve.css").contains("overflow: visible; z-index: 4;") &&
+        assetText("serve.css").contains("pointer-events: none;") &&
+        assetText("serve.css")
+          .contains(".cp-syslist .cp-imgwrap .cp-image-error { pointer-events: auto; }"),
+      "the hero paints over the state layer and passes its clicks down to the tile link",
     )
     assertTrue(
       assetText("serve.css")

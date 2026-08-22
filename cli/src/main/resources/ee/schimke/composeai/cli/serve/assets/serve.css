@@ -1428,8 +1428,21 @@ cp-parity-scores { display: contents; }
 .cp-card.cp-sys { overflow: visible; }
 .cp-card.cp-sys::after { border-radius: inherit; }
 .cp-card.cp-sys:hover, .cp-card.cp-sys:focus-within { z-index: 4; }
-.cp-syslist .cp-imgwrap { min-height: 0; height: 220px; overflow: visible;
+/* The hero sits ABOVE the card's state layer (`.cp-card::after`, `z-index: 3`), which is the one
+   place in the product where that layer is not wanted over the artwork: the front door's tint is
+   there to say "this tile is the target", and washing `primary` across a design system's own
+   screenshot re-colours the very thing the card exists to show. Under the hero the layer still
+   paints — over the card surface, and through a sticker's transparent margin — so the tile reads as
+   one lit object with the preview standing off it, which is the whole gesture here.
+
+   `pointer-events: none` is the price: `.cp-sys-open::after` (the stretched whole-tile link, at
+   `z-index: 1`) is now BELOW the hero, so without this the top 220px of every card would swallow
+   its own clicks. Nothing in a front-door hero is interactive — except the retry button an image
+   error puts there, which takes its events back below. */
+.cp-syslist .cp-imgwrap { min-height: 0; height: 220px; overflow: visible; z-index: 4;
+  pointer-events: none;
   border-radius: var(--md-sys-shape-corner-medium) var(--md-sys-shape-corner-medium) 0 0; }
+.cp-syslist .cp-imgwrap .cp-image-error { pointer-events: auto; }
 .cp-syslist .cp-imgwrap > img { width: 100%; height: 100%; max-height: none; object-fit: contain; }
 /* A front-door card is a poster, not a table row: the meta block gets its own padding, the title
    and the library coordinate sit on separate rhythms, and the count line is divided off so a
@@ -1492,13 +1505,56 @@ cp-parity-scores { display: contents; }
    artwork lifting off its card says "this is the thing" in a way an inside-the-frame nudge cannot.
    Origin at bottom-centre so it grows UP and outward only — growing downward would ride the art
    over the title and the count line (`.cp-imgwrap` is positioned, so it paints above the static
-   meta block, and the overlap would be unreadable rather than playful). */
+   meta block, and the overlap would be unreadable rather than playful).
+
+   …and it casts a shadow SHAPED TO THE PREVIEW, not to a box: `filter: drop-shadow` traces the
+   image's own alpha, so a Wear sticker's round watch face throws a round shadow and a phone
+   screenshot throws a rectangular one, each following its own silhouette. That is what makes the
+   artwork read as lifted off the card rather than merely bigger on it — a `box-shadow` here would
+   draw the hero's LAYOUT box, a 220px rectangle whose corners are empty for most of these
+   previews, and the mismatch is exactly what the eye reads as "sticker pasted on".
+
+   THREE layers, because a cast shadow alone only works in one of the two schemes. A near-black
+   contact shadow separates a hero from a light card, but in dark mode the artwork most likely to
+   be here is a Wear sticker — a black watch face — and black-on-near-black is nothing at all: the
+   whole gesture disappears for exactly the catalogs whose hero is the most striking. So the first
+   layer is a BLOOM, transparent in light mode and a soft `primary` halo in dark, which lifts a
+   dark silhouette off a dark card the way the cast shadows lift a light one off a light card. It
+   is tinted from the palette rather than a fixed colour, so a catalog that publishes its own
+   scheme blooms in its own accent instead of in Material's default purple.
+
+   It is FIRST in the chain deliberately: filters compose left to right, so the two cast shadows
+   after it are cast by the bloomed image and land a touch softer — which is what a lit object
+   does. Reversing the order casts the bloom around the shadows instead, and that reads as fog.
+
+   The resting value is three zero-radius transparent shadows rather than `none`, so the set
+   interpolates: `none` → `drop-shadow(…)` is not an animatable transition and the shadow would
+   snap on. All three are kept under `prefers-reduced-motion` — the transition duration collapses
+   with everything else, but a shadow is depth, not travel, so a visitor who asked for less motion
+   keeps the affordance without anything moving under them.
+
+   Named `--hero-*` rather than `--cp-hero-*` on purpose: `--cp-*` is the THEMED palette namespace,
+   and `ServeThemeCssTest` holds every `var(--cp-…)` in this sheet to a property the projection
+   actually emits. These three are local plumbing for one rule, not palette entries — the palette
+   reaches them through `--md-sys-color-primary` inside the bloom. */
+.cp-card.cp-sys .cp-imgwrap img {
+  --hero-bloom: light-dark(
+    transparent, color-mix(in srgb, var(--md-sys-color-primary) 42%, transparent));
+  --hero-contact: light-dark(rgba(0, 0, 0, 0.20), rgba(0, 0, 0, 0.62));
+  --hero-cast: light-dark(rgba(0, 0, 0, 0.26), rgba(0, 0, 0, 0.80));
+  filter: drop-shadow(0 0 0 transparent) drop-shadow(0 0 0 transparent)
+    drop-shadow(0 0 0 transparent);
+  transition: transform 0.3s cubic-bezier(0.2, 0.7, 0.3, 1),
+    filter 0.3s cubic-bezier(0.2, 0.7, 0.3, 1); }
 .cp-card.cp-sys:hover .cp-imgwrap img,
 .cp-card.cp-sys:focus-within:not(:has(.cp-action-chip:focus-visible)) .cp-imgwrap img {
-  transform: scale(1.12); transform-origin: 50% 100%; }
+  transform: scale(1.15); transform-origin: 50% 100%;
+  filter: drop-shadow(0 0 20px var(--hero-bloom))
+    drop-shadow(0 2px 3px var(--hero-contact))
+    drop-shadow(0 14px 22px var(--hero-cast)); }
 /* A card mid-render is already animating (fade + spinner); leave its artwork alone so the two
    effects don't fight, and never zoom for a visitor who asked for less motion. */
-.cp-card.cp-reloading:hover .cp-imgwrap img { transform: none; }
+.cp-card.cp-reloading:hover .cp-imgwrap img { transform: none; filter: none; }
 @media (prefers-reduced-motion: reduce) {
   .cp-card, .cp-card::after, .cp-card .cp-imgwrap img { transition-duration: 0.01ms; }
   .cp-card:hover, .cp-card:focus-visible { transform: none; }
