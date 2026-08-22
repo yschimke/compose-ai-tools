@@ -393,31 +393,59 @@ class ServeHttpServer(
   // *handoff* needs a compiler, and `playgroundLinkFor` checks for one itself.
   ?.let { fetch ->
     PlaygroundSeedResolver(
-      locate = { system, previewId ->
-        // peekHost, not lease: this is a metadata read, and leasing would stand a daemon up just
-        // to answer where a file lives.
-        val host = sessions.peekHost(system)
-        when {
-          // Resident: authoritative, in BOTH directions. A live host that does not list this
-          // preview — a catalog refreshed under the same id with it dropped, or its source
-          // metadata cleared — has to answer "no". Falling through to a remembered location there
-          // would serve the previous publication's source instead of a 404, so its negative
-          // answer drops the stale entry too.
-          host != null -> sourceLocationOf(host, previewId)
-          // Suspended, but still a session this server serves: answer from the snapshot taken as
-          // it was suspended. Taken from the host being suspended, so a catalog refreshed and then
-          // idled out snapshots the REPLACEMENT — the case a lazily-primed map got wrong, since a
-          // stale entry could answer a tab that loaded before the refresh.
-          sessions.isKnownSession(system) -> catalogSourceLocationsSeen[system]?.get(previewId)
-          // Retired: the catalog is gone and every other session-backed route for it 404s. A
-          // remembered location would keep answering — and keep re-fetching the old repository
-          // once the seed's TTL lapsed — long after the catalog was withdrawn.
-          else -> null
-        }
-      },
+      locate = ::sourceLocationFor,
       fetch = fetch,
       onLog = { System.err.println("serve: playground seed: $it") },
     )
+  }
+
+  /**
+   * Answers the Dev-mode `uses:` filter — which previews call a given composable. Built on exactly
+   * the metadata and fetcher the seed resolver uses, and for the same reason: a preview's source
+   * location is this server's own registry, and one lookup should not disagree with the other.
+   *
+   * Null when no fetcher was supplied, which is also when the Source panel is absent — a host that
+   * cannot read a preview's source cannot index its calls either.
+   */
+  private val previewUsage: PreviewUsageIndex? = playgroundSourceFetch?.let { fetch ->
+    PreviewUsageIndex(
+      locate = ::sourceLocationFor,
+      fetch = fetch,
+      onLog = { System.err.println("serve: usage index: $it") },
+    )
+  }
+
+  /**
+   * Where a preview's source lives, across the three states a session can be in.
+   *
+   * Shared by the seed resolver and the usage index rather than written twice: both are answering
+   * "which file is this preview declared in", and a second copy of the resident/suspended/retired
+   * ladder below is a place for them to drift apart.
+   */
+  private fun sourceLocationFor(
+    system: String,
+    previewId: String,
+  ): PlaygroundSeedResolver.Location? {
+    // peekHost, not lease: this is a metadata read, and leasing would stand a daemon up just
+    // to answer where a file lives.
+    val host = sessions.peekHost(system)
+    return when {
+      // Resident: authoritative, in BOTH directions. A live host that does not list this
+      // preview — a catalog refreshed under the same id with it dropped, or its source
+      // metadata cleared — has to answer "no". Falling through to a remembered location there
+      // would serve the previous publication's source instead of a 404, so its negative
+      // answer drops the stale entry too.
+      host != null -> sourceLocationOf(host, previewId)
+      // Suspended, but still a session this server serves: answer from the snapshot taken as
+      // it was suspended. Taken from the host being suspended, so a catalog refreshed and then
+      // idled out snapshots the REPLACEMENT — the case a lazily-primed map got wrong, since a
+      // stale entry could answer a tab that loaded before the refresh.
+      sessions.isKnownSession(system) -> catalogSourceLocationsSeen[system]?.get(previewId)
+      // Retired: the catalog is gone and every other session-backed route for it 404s. A
+      // remembered location would keep answering — and keep re-fetching the old repository
+      // once the seed's TTL lapsed — long after the catalog was withdrawn.
+      else -> null
+    }
   }
 
   /** Where a preview's source lives according to [host], or null when it cannot say. */
@@ -1207,6 +1235,8 @@ class ServeHttpServer(
 
         get("/api/previews") { handleApiPreviews(sessionInPath = false) }
         get("/{system}/api/previews") { handleApiPreviews(sessionInPath = true) }
+        get("/api/uses") { handleUsesSearch(sessionInPath = false) }
+        get("/{system}/api/uses") { handleUsesSearch(sessionInPath = true) }
         // Which of a preview's published revisions actually differ. Fetched lazily by
         // `<cp-revision-runs>` when the revision menu is opened, never during page render.
         get("/api/render-runs/{name}") { handleRenderRuns(sessionInPath = false) }
@@ -5849,6 +5879,69 @@ class ServeHttpServer(
   }
 
   /**
+   * `GET /api/uses?q=<token>` (query) and `GET /{system}/api/uses?q=<token>` (path): the previews
+   * whose declaration **calls** something matching the token — what the landing filter box answers
+   * `uses:` with.
+   *
+   * ### Dev mode only, and 404 rather than empty
+   *
+   * Catalog mode is the streamlined component browser: a reader there is looking at a published
+   * design system, and "which previews call `ButtonGroup`" is a question about this repository's
+   * source, not about the system. So the route is withheld in that mode — the same presentation
+   * gate the header switch selects, read through [componentBrowserMode]. It answers 404 rather than
+   * an empty list because those mean different things to the caller, and an empty list would have
+   * the filter quietly claim nothing matched.
+   *
+   * ### Reads, never resumes
+   *
+   * [ServeSessionRegistry.peekHost] for a resident session, and the location snapshot for a
+   * suspended one — the same pair [sourceLocationFor] walks. Typing in a filter box must not stand
+   * a daemon up, and the index needs only the ids and the metadata behind them.
+   */
+  private suspend fun RoutingContext.handleUsesSearch(sessionInPath: Boolean) {
+    if (rejectBadToken()) return
+    if (componentBrowserMode()) {
+      call.respondText("not found", status = HttpStatusCode.NotFound)
+      return
+    }
+    val index = previewUsage
+    if (index == null) {
+      // No source fetcher on this host: the Source panel is absent for the same reason. Honest
+      // "unavailable" so the filter can say so instead of showing an empty grid.
+      call.respondText(
+        JSON.encodeToString(UsesResponse.serializer(), UsesResponse(available = false)),
+        ContentType.Application.Json,
+      )
+      return
+    }
+    val system = selectedSessionId(sessionInPath)
+    val previewIds =
+      sessions.peekHost(system)?.previews?.map { it.id }
+        ?: catalogSourceLocationsSeen[system]?.keys?.toList()
+        ?: run {
+          call.respondText("not found", status = HttpStatusCode.NotFound)
+          return
+        }
+    val token = call.request.queryParameters["q"].orEmpty()
+    val match = index.match(system, previewIds, token)
+    // The answer depends on the interface-mode cookie, so it must not be cached across visitors in
+    // one mode and handed to a visitor in the other — the same reason `componentBrowserMode` marks
+    // the HTML it gates.
+    call.response.headers.append(HttpHeaders.CacheControl, DYNAMIC_RESOURCE_CACHE_CONTROL)
+    call.respondText(
+      JSON.encodeToString(
+        UsesResponse.serializer(),
+        UsesResponse(
+          available = match.available,
+          truncated = match.truncated,
+          ids = match.ids.toList().sorted(),
+        ),
+      ),
+      ContentType.Application.Json,
+    )
+  }
+
+  /**
    * `GET /api/components`: the listed catalogs' component cards for home-page keyboard search.
    * Reads only resident or remembered metadata, so opening the palette never resumes every catalog
    * daemon. The browser fetches this lazily and keeps the result for the life of the page.
@@ -9743,6 +9836,21 @@ private data class RunningServerDto(
 
 @Serializable
 private data class FailureDto(val atEpochMillis: Long, val session: String, val reason: String)
+
+@Serializable
+private data class UsesResponse(
+  /**
+   * False when the catalog could not be indexed at all — no parser sidecar, no source metadata, or
+   * no fetcher on this host. Distinct from an empty [ids], which means the index ran and nothing
+   * calls the token.
+   */
+  val available: Boolean,
+  /**
+   * Whether the index stopped short of every source file, so absence is not evidence of absence.
+   */
+  val truncated: Boolean = false,
+  val ids: List<String> = emptyList(),
+)
 
 @Serializable
 private data class PreviewsResponse(

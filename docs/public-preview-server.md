@@ -506,6 +506,81 @@ revision list is also a tail, not an archive — about the last dozen publishes 
 that window still resolves, because what decides it is whether the branch still answers, not whether
 the sha is still on the page.
 
+## Filtering by what a preview *calls* — `uses:` (Dev mode)
+
+The landing page's filter box matches a card's label and its id. Those are names the catalog chose,
+which makes them the right thing to search when you know what you are looking for and the wrong
+thing entirely when you don't: `Button/Filled` is findable by name, and the six other components
+that happen to put a `Button` inside a larger composition are not — which is exactly the set someone
+changing `Button`'s API needs to see.
+
+Typing **`uses:Button`** into the same box narrows the grid to the previews whose declaration
+actually calls something matching `Button`:
+
+```
+uses:Button              every preview that calls a Button-ish composable
+uses:Button tonal        …and whose name or id also contains "tonal"
+uses:SwipeToReveal       one component's real usage across the catalog
+```
+
+Matching is a **case-insensitive substring** of the callee as written, so `uses:button` reaches
+`Button`, `FilledTonalButton` and `ButtonGroup` alike. The rest of the query keeps its ordinary
+meaning and both apply, so the operator narrows rather than replaces. It rides the existing `?q=`
+param like any other filter text, which makes a `uses:` search as bookmarkable and shareable as the
+rest of the page's state.
+
+**It is a Dev-mode affordance.** Catalog mode is the streamlined component browser, and "which
+previews call `ButtonGroup`" is a question about this repository's source rather than about the
+design system on the page — so the operator is not wired there at all: no `data-uses-id` on a card,
+no branch of it in the page script, and
+[`/{system}/api/uses`](../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeHttpServer.kt)
+answers 404 rather than a result. The [Catalog / Dev switch](#except-catalog--dev-which-is-a-mode-you-are-in)
+gates both halves.
+
+It is deliberately not a control. A second input, or a chip beside the search box, would put that
+question into the furniture of every catalog page and for every visitor, and would sit there empty
+almost always. An operator costs nothing until it is typed — and it is not hidden either: a readout
+appears under the search box the moment it is active, naming the filter back to you
+(`4 of 137 call Button`).
+
+| Resting | `uses:Button` |
+| --- | --- |
+| ![The landing filter box before anything is typed](design/evidence/serve-uses-filter/resting.png) | ![Six previews narrowed to the two that call a Button](design/evidence/serve-uses-filter/uses-filter.png) |
+
+The two cards left standing are *Card* and *Profile screen*. Neither name contains "button", so the
+label-and-id filter could not have found either — and among the four it hid is `ButtonPreview`,
+which that filter would have matched. That inversion is the whole feature.
+
+### Where the answer comes from
+
+The server parses the catalog's own source. Each preview's `repo` / `ref` / `sourceFile` /
+`bodyLine` already ride in the catalog metadata — it is what the viewer's Source panel and the
+playground handoff seed from — and
+[`PreviewUsageIndex`](../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/PreviewUsageIndex.kt)
+reuses both that lookup and the `:usage-source-psi` parser behind them. One fetch per distinct
+**file** (a catalog's previews come a section at a time, so a couple of hundred previews is a few
+dozen files), one parse each, and the same declaration-bounds rule the Source panel slices with
+splits a file's calls among the previews declared in it. The result is cached per catalog with a
+short TTL and rebuilt when the catalog's preview list changes.
+
+Three limits are worth stating plainly, because each is a case where the honest answer is narrower
+than it looks:
+
+- **No resolution.** A parse reports the callee as written, so this is "names called in this
+  declaration", not "Compose symbols this preview binds to". Two different `Button`s from two
+  packages are one entry, and a local helper is indexed alongside library API. Resolving properly
+  needs a classpath and a frontend per catalog — the expensive half of a compiler, for a filter box.
+- **No expansion through delegation.** The index covers a preview's own top-level declaration. A
+  catalog whose previews are one-line delegations to a shared component set — the `Sticker("<slug>")`
+  shape [`compose-usage.json`](../compose-usage.json) describes for the m3 sticker sheet — therefore
+  indexes as calling `Sticker`, which is true and not useful.
+- **Unavailable is not empty.** A catalog with no source metadata (an uploaded bundle), a host with
+  no source fetcher, or a deployment without the parser sidecar staged cannot be indexed at all. The
+  endpoint answers `available: false` and the count line says **call index unavailable** rather than
+  reporting a zero nobody computed. A token whose lookup is still in flight says *that* too
+  (**looking for calls to …**), and a catalog large enough to hit the file cap is marked **partial
+  index**.
+
 ## Every selection is in the URL
 
 What a visitor picks is reflected into the page URL, so the page on screen is the page its URL
