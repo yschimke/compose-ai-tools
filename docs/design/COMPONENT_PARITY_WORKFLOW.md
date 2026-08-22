@@ -356,6 +356,56 @@ while.
 Both the serve host and the design-parity CI run read the same file. Neither ever calls the GitHub
 API at page-render time — same rule that keeps the host away from Figma.
 
+### The pilot population, measured
+
+*Phase 1 is live.* `m3-catalog`'s caller ([yschimke/m3-catalog#170](https://github.com/yschimke/m3-catalog/pull/170))
+publishes the index on every issue event, and as of 2026-08-22 `parity/issues.json` carries three
+rows — #40 `IconButton/Tonal`, #41 `NavigationBar/Short`, #87 `Checkbox/Checked` — backfilled with
+ids read out of the published `references/index.json` rather than guessed.
+
+Three, out of a known-difference backlog of ten. The other seven were not skipped for effort; **the
+locator cannot express them**, and the reasons are worth having on the record before §4 freezes a
+schema around this population.
+
+| Issue | Subject | Indexable? | Why |
+| --- | --- | --- | --- |
+| [#40](https://github.com/yschimke/m3-catalog/issues/40) | `IconButton/Tonal` glyph colour | **yes** | one component, one preview, a 23.6% pixel delta inside the glyph |
+| [#41](https://github.com/yschimke/m3-catalog/issues/41) | `ShortNavigationBar` measures items at full bar width | **yes** | one component, one preview (`__compact`) |
+| [#87](https://github.com/yschimke/m3-catalog/issues/87) | `Checkbox` box padding 2dp vs 4dp | **yes** | one component, one preview |
+| [#42](https://github.com/yschimke/m3-catalog/issues/42) | Elevated shadow level | no | names **three** components — `Button/Elevated`, `Card/Elevated`, `ToggleButton/Elevated` |
+| [#91](https://github.com/yschimke/m3-catalog/issues/91) | no hover/press state drawn | no | **five** components, and the variants it is about are deliberately *not authored* — there is no preview id to name |
+| [#85](https://github.com/yschimke/m3-catalog/issues/85) | `DropdownMenu` corner 4dp vs 16dp | no | the catalog publishes **no menu component**: no `images/menu-*`, no reference, no preview |
+| [#95](https://github.com/yschimke/m3-catalog/issues/95) | menu container colour and item icon size | no | same — the subject is not in the bundle |
+| [#86](https://github.com/yschimke/m3-catalog/issues/86) | expanded full-screen search corner | no | `Search/Bar` publishes `default`, `query`, `avatar` and `container-docked`; the full-screen view is not among them |
+| [#89](https://github.com/yschimke/m3-catalog/issues/89) | no slider size scale on `SliderDefaults` | no | the size previews **exist and score 98.1–99.5%** — the catalog transcribed the kit's numbers by hand, so there is no difference to point at, only a missing constant |
+| [#93](https://github.com/yschimke/m3-catalog/issues/93) | no `ButtonDefaults.SmallContainerHeight`, no default FAB icon size | no | an API-availability gap with no pixel delta of its own |
+
+Three failure modes, and only one of them is about masks:
+
+1. **One issue, several components** (#42, #91). The locator carries exactly one `component` and one
+   `preview`, and the index row is keyed by issue number, so an umbrella report can join to at most
+   one component page. `previewIds` / `referenceIds` are arrays on the row, which suggests the shape
+   was anticipated; the *writer* has no way to fill them. Note that `issuesForPreview` already joins
+   on `component` as well as on the exact preview id, so an indexed issue surfaces on **every**
+   preview of its component — the gap is across components, not across variants.
+2. **The subject is not in the catalog** (#85, #95, #86). A parity report is about a published
+   render compared with a published reference. Three of the ten are about components the catalog
+   does not draw, which makes them spec/library findings the index has nothing to attach them to.
+   They are not badly written issues; they are outside what a *preview*-keyed index can hold.
+3. **No difference to accept** (#89, #93). Both describe a constant the library does not publish.
+   The renders match. An acceptance for either would be an acceptance of nothing.
+
+**What this means for §4.** The acceptance model is designed around #40 — a small mask over one
+element, a recorded accepted-candidate crop, three hash gates — and #40 fits it exactly. But the
+per-preview pixel-difference population it can serve is *three* issues, not ten, and the other two
+of those three are not glyph-sized: #41 is a layout failure whose mask is most of the bar, and #87
+is a 2dp ring around a 20dp box. An acceptance whose mask is the component silhouette is an ignore
+rectangle wearing a fingerprint, which is the exact thing the safety requirements exist to prevent.
+So before the conformance fixtures freeze, §4 needs an answer for the whole-component case:
+either it is refused outright (an acceptance must cover materially less than the component), or the
+element gate carries the weight and the mask is allowed to be large only when a tagged element
+bounds it.
+
 ---
 
 ## 4. Scoped acceptance
@@ -1859,3 +1909,18 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
   does not apply at `1.0`. It had to be settled rather than left open, because the full-scope
   matching rule depends on it. Say so if you want the looser reading; it is a `v1` schema decision
   either way.
+- **One issue, several components.** *Measured, not hypothetical — see "The pilot population" in
+  §3.* Two of `m3-catalog`'s ten known differences (#42, #91) are umbrella reports naming three and
+  five components; the locator carries one `component` and one `preview`, so neither can be
+  indexed at all. Two ways out, and they are not equivalent: **split** the umbrella into one issue
+  per component (keeps the contract as written, multiplies the backlog, and loses the fact that the
+  five share a cause), or let a body carry **one locator block per component** and key index rows
+  by issue × component (`previewIds` / `referenceIds` are already arrays on the row; the producer
+  currently refuses a second block outright). This is a `v1` wire decision and wants settling before
+  the conformance fixtures freeze, not after two engines have been written against them.
+- **A parity report needs its subject to be in the catalog.** Three of the ten (#85, #95, #86) are
+  about a `DropdownMenu` and an expanded full-screen search view that this catalog does not publish
+  — no preview, no reference, nothing to compare — and two more (#89, #93) are missing-constant
+  reports whose renders match. Half the backlog is therefore outside what a preview-keyed index can
+  hold, however the locator is shaped. Worth deciding whether those belong in the index at all
+  (they do not today) or whether the catalog should grow the missing stickers so they can be.
