@@ -107,7 +107,44 @@ an on-demand daemon render, and `/bundle.zip` renders the whole catalog. Those a
 `live` exists to describe, so they check the scope themselves; a bare replay stays `preview`,
 because refusing it would break ordinary browsing for a grant that was given exactly that.
 
-**The ingest lanes are outside the scope system entirely.** `POST /bundles/{name}` and `POST /docs`
+**A capability is not a rung, and is chosen separately.** Scope answers *how much of this machine
+may the agent spend*; some permissions are not on that ladder at all. `images` is the one that
+exists: uploading a PNG through the [image lane](../public-preview-server.md#uploading-a-preview-image---accept-images)
+is not "more" than starting a render daemon and not "less" than compiling a snippet — it is sideways
+from both. As a fourth rung it would have made every `playground` grant an uploader and every
+uploader a daemon-starter, so it is a **set** beside the scope
+([`ServeAgentGrantCapability`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeAgentGrantCapability.kt))
+rather than a value on it, with its own operator ceiling (`--agent-grant-capabilities`, default
+empty) and its own checkbox on the approval page. Radios for the ladder, checkboxes for the set:
+independent boxes describe independent permissions honestly, and nothing is pre-ticked.
+
+What the image lane then accepts is a grant carrying `images` **instead of** a GitHub credential,
+and the argument is that a grant says something stronger than the credential it replaces. The lane's
+GitHub check asks *does this account have write access to the gating repo* — a proxy for "is this
+person trusted here". A grant answers *a human operator of this box approved this specific agent,
+for these minutes, and their name is on it*. So attribution improves rather than degrades:
+`uploadedBy` reads `agent grant 682daf65 (approved by @yschimke)`, which is more than a login and
+names the human who said yes. The rate-limit bucket is the grant, not an address or a login, because
+a grant is already the bounded thing.
+
+Three edges are worth stating, since none of them is obvious:
+
+1. **The approver must hold it themselves.** On a GitHub-gated box, ticking `images` requires the
+   approver's own session to carry `repositoryAccess` — the identical rule, and the identical
+   `repositoryAccess` bit, that governs `playground`. Someone who could not upload cannot mint a
+   token that can. That bit speaks for `--github-auth-repo` and nothing else, so a box whose image
+   lane gates on a **different** repository is refused this capability at startup: the verdict a
+   session carries would not be about the repository the upload actually publishes to, and
+   approximating it is how "the approver must hold it" quietly becomes false.
+2. **A capability for a lane the box does not run is refused at startup.** `--agent-grant-capabilities
+   images` without `--accept-images` fails `serve` rather than offering a checkbox whose grant would
+   404 on a route that was never registered.
+3. **Revoking a grant does not unpublish what it uploaded.** The grant dies in minutes; the image
+   link lives for `--image-ttl` (7 days by default), because the upload was authorized when it
+   happened. An operator who needs the picture gone needs the image lane's own controls, not the
+   revoke button.
+
+**The other ingest lanes are outside the scope system entirely.** `POST /bundles/{name}` and `POST /docs`
 run through the same `rejectBadToken` as everything else, so a `preview` grant would have satisfied
 them — letting an agent granted "browse this server's catalogs" publish a document or replace a
 named runtime bundle. They take [`rejectBadTokenForIngest`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeHttpServer.kt)
@@ -172,9 +209,9 @@ internet mint itself credentials.
 ## What it is not
 
 - **Not a session.** No cookies, no refresh, no sliding expiry. It ends when it ends.
-- **Not an identity.** A grant does not become a GitHub login for the purposes of anything that
-  writes — the image-upload lane still wants a real GitHub credential, because what it does with one
-  is push to a repository.
+- **Not an identity.** A grant does not become a GitHub login. Where it now admits an upload
+  (`images`, above) it does so **as itself** — the audit line and `uploadedBy` name the grant and its
+  approver, never a GitHub account — and it confers nothing anywhere else that a login would.
 - **Not admin.** `--admin-token` routes are outside every scope. Nothing an agent can be granted
   reconfigures the box.
 
@@ -185,6 +222,8 @@ internet mint itself credentials.
 ```
 compose-preview auth request --server https://preview.coo.ee \
     --scope live --ttl 2h --label "fix wear-m3-catalog#68"
+compose-preview auth request --server https://preview.coo.ee \
+    --capability images --label "embed before/after in the PR body"
 compose-preview auth status
 compose-preview auth token      # prints the bearer, for scripting
 compose-preview auth revoke

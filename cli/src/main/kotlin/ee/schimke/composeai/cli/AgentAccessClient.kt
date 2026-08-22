@@ -68,11 +68,21 @@ internal class AgentAccessClient(
   }
 
   /** `POST /agent-access/request`. */
-  fun open(label: String, scope: String, ttlSeconds: Long): Result<OpenResponse> {
+  fun open(
+    label: String,
+    scope: String,
+    ttlSeconds: Long,
+    capabilities: List<String> = emptyList(),
+  ): Result<OpenResponse> {
     val body =
       JSON.encodeToString(
         OpenRequestBody.serializer(),
-        OpenRequestBody(label = label, scope = scope, ttlSeconds = ttlSeconds),
+        OpenRequestBody(
+          label = label,
+          scope = scope,
+          ttlSeconds = ttlSeconds,
+          capabilities = capabilities,
+        ),
       )
     return post("/agent-access/request", body, OpenResponse.serializer())
   }
@@ -154,7 +164,13 @@ internal class AgentAccessClient(
   // so every field is defaulted and unknown ones are ignored.
 
   @kotlinx.serialization.Serializable
-  private data class OpenRequestBody(val label: String, val scope: String, val ttlSeconds: Long)
+  private data class OpenRequestBody(
+    val label: String,
+    val scope: String,
+    val ttlSeconds: Long,
+    /** Omitted by an older CLI, ignored by an older host — defaulted on both sides. */
+    val capabilities: List<String> = emptyList(),
+  )
 
   @kotlinx.serialization.Serializable
   private data class PollRequestBody(val requestId: String, val deviceSecret: String)
@@ -172,6 +188,8 @@ internal class AgentAccessClient(
     val requestedTtlSeconds: Long = 0,
     val maxScope: String = "",
     val maxTtlSeconds: Long = 0,
+    val requestedCapabilities: List<String> = emptyList(),
+    val maxCapabilities: List<String> = emptyList(),
   )
 
   @kotlinx.serialization.Serializable
@@ -180,6 +198,7 @@ internal class AgentAccessClient(
     val token: String? = null,
     val tokenHeader: String? = null,
     val scopes: List<String> = emptyList(),
+    val capabilities: List<String> = emptyList(),
     val expiresInSeconds: Long? = null,
     val approvedBy: String? = null,
     val retryAfterSeconds: Long? = null,
@@ -190,6 +209,7 @@ internal class AgentAccessClient(
   data class WhoamiResponse(
     val active: Boolean = false,
     val scopes: List<String> = emptyList(),
+    val capabilities: List<String> = emptyList(),
     val expiresInSeconds: Long? = null,
     val approvedBy: String? = null,
     val label: String? = null,

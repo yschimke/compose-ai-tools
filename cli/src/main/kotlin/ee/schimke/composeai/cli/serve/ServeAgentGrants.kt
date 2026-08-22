@@ -47,6 +47,13 @@ object ServeAgentGrants {
     val scope: String = "",
     /** Requested lifetime. Clamped to the box's `--agent-grant-max-ttl`. */
     @SerialName("ttlSeconds") val ttlSeconds: Long = 0,
+    /**
+     * Independent permissions wanted beside [scope], by wire name ([ServeAgentGrantCapability]).
+     * Unknown names are ignored rather than refused: this is an agent describing what it would
+     * like, and a newer client naming a capability this server has never heard of should get the
+     * rest of its request honoured, not a 400.
+     */
+    val capabilities: List<String> = emptyList(),
   )
 
   /**
@@ -70,6 +77,10 @@ object ServeAgentGrants {
     /** The most privileged scope this server will grant at all, so an agent can stop asking. */
     val maxScope: String,
     val maxTtlSeconds: Long,
+    /** What was requested after clamping, so an agent can see a capability was dropped. */
+    val requestedCapabilities: List<String> = emptyList(),
+    /** Every capability this server will grant at all — empty on a box that offers none. */
+    val maxCapabilities: List<String> = emptyList(),
   )
 
   @Serializable data class PollRequest(val requestId: String = "", val deviceSecret: String = "")
@@ -88,6 +99,8 @@ object ServeAgentGrants {
     /** Where to put [token] — spelled out so an agent needn't know this server's conventions. */
     val tokenHeader: String? = null,
     val scopes: List<String> = emptyList(),
+    /** Independent permissions the human actually ticked. Usually empty. */
+    val capabilities: List<String> = emptyList(),
     val expiresInSeconds: Long? = null,
     val approvedBy: String? = null,
     /** How long the agent should wait before polling again. */
@@ -109,6 +122,7 @@ object ServeAgentGrants {
   data class WhoamiResponse(
     val active: Boolean,
     val scopes: List<String> = emptyList(),
+    val capabilities: List<String> = emptyList(),
     val expiresInSeconds: Long? = null,
     val approvedBy: String? = null,
     val label: String? = null,
@@ -133,17 +147,36 @@ object ServeAgentGrants {
     /** Display name, and what the audit line records: a GitHub login, or `operator (token)`. */
     val name: String,
     val ceiling: ServeAgentGrantScope,
+    /**
+     * The capabilities this approver may pass on — the same "never grant what you do not hold"
+     * rule, applied to the half of a grant that is not a rung.
+     *
+     * [ServeAgentGrantCapability.IMAGES] is the case that makes it concrete. The image lane admits
+     * a caller who has **write access to the gating repository**, so a signed-in visitor without
+     * that access cannot upload — and must not be able to hand an agent a token that does. It is
+     * the identical argument to the playground's, which is why the two are computed from the same
+     * `repositoryAccess` bit.
+     */
+    val capabilityCeiling: Set<ServeAgentGrantCapability> = emptySet(),
   ) {
     companion object {
       /** The holder of `--token` on a box with no GitHub auth: the operator, so no narrowing. */
-      fun operator(storeCeiling: ServeAgentGrantScope): Approver =
-        Approver("operator (token)", storeCeiling)
+      fun operator(
+        storeCeiling: ServeAgentGrantScope,
+        storeCapabilities: Set<ServeAgentGrantCapability> = emptySet(),
+      ): Approver = Approver("operator (token)", storeCeiling, storeCapabilities)
 
-      fun github(login: String, repositoryAccess: Boolean, storeCeiling: ServeAgentGrantScope) =
+      fun github(
+        login: String,
+        repositoryAccess: Boolean,
+        storeCeiling: ServeAgentGrantScope,
+        storeCapabilities: Set<ServeAgentGrantCapability> = emptySet(),
+      ) =
         Approver(
           name = "@$login",
           ceiling =
             if (repositoryAccess) storeCeiling else minOf(storeCeiling, ServeAgentGrantScope.LIVE),
+          capabilityCeiling = if (repositoryAccess) storeCapabilities else emptySet(),
         )
     }
   }
@@ -196,6 +229,18 @@ object ServeAgentGrants {
    * ceiling is the agent's own restraint and is honoured — the page never offers to *widen* a
    * request, because the agent has not told its human it wants more.
    */
+  /**
+   * The capabilities an approver may actually tick: the same three-way narrowing the scopes get —
+   * what the agent asked for, what this approver holds, and what the box permits — so the form can
+   * never offer something the POST would then refuse.
+   */
+  fun selectableCapabilities(
+    requested: Set<ServeAgentGrantCapability>,
+    approver: Approver,
+    storeCeiling: Set<ServeAgentGrantCapability>,
+  ): Set<ServeAgentGrantCapability> =
+    requested intersect approver.capabilityCeiling intersect storeCeiling
+
   fun selectableScopes(
     requested: ServeAgentGrantScope,
     approver: Approver,

@@ -109,6 +109,8 @@ internal object CliFlags {
       "--github-auth-scope",
       "--github-auth-users",
       "--agent-grant-scopes",
+      "--agent-grant-capabilities",
+      "--capability",
       "--agent-grant-max-ttl",
       "--agent-grant-max-active",
       "--agent-grant-rate-limit",

@@ -49,7 +49,15 @@ import okhttp3.RequestBody.Companion.asRequestBody
  */
 internal class ServeImageUploader(
   baseUrl: String,
-  private val token: String,
+  /**
+   * The GitHub credential, or **null** when the caller holds none.
+   *
+   * Null is not an error case here: a host that admits an agent grant carrying `images` wants no
+   * GitHub token, and sending an empty bearer would be worse than sending none — the host would ask
+   * GitHub about the empty string and refuse a caller it was about to admit. So the header is
+   * omitted entirely, and [hostToken] (the grant) is what identifies the caller.
+   */
+  private val token: String?,
   /** The host's own browse token (`--token`), for a serve box that isn't `--public`. */
   private val hostToken: String? = null,
   private val client: OkHttpClient =
@@ -75,7 +83,7 @@ internal class ServeImageUploader(
     val request =
       Request.Builder()
         .url("$base/images?name=${encodeQuery(label)}${hostToken.tokenQuery()}")
-        .header("Authorization", "Bearer $token")
+        .apply { token?.let { header("Authorization", "Bearer $it") } }
         .header("Accept", "application/json")
         .post(file.asRequestBody(OCTET_STREAM))
         .build()

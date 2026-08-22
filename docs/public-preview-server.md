@@ -2702,7 +2702,40 @@ holding its link. The client refuses to
 send the credential over plaintext to anything but a loopback host, refuses a URL with credentials
 in it, and never follows a redirect while carrying it.
 
-**Who may upload.** Not "anyone", on any host, ever — including a `--public` one:
+**Or an agent grant, with no GitHub credential at all.** A hosted agent session often cannot satisfy
+the rule below — Claude Code on the web, for instance, injects its GitHub credential only for
+`api.github.com`, so what reaches this host is a placeholder the host then asks GitHub about and is
+told nothing useful. The [agent access grant](design/AGENT_ACCESS_GRANTS.md) flow is the way through:
+an operator who runs the lane may let a grant carry the `images` capability, and a human ticks it
+per request.
+
+```bash
+# The operator, once, at startup. The --github-auth-* block is not decoration: a --public box with
+# no sign-in has no way to tell an operator from a visitor, so --agent-grants is refused there —
+# somebody has to be able to approve. --image-upload-repo is omitted deliberately, so the image
+# lane gates on --github-auth-repo; naming a DIFFERENT repository is refused with this capability,
+# because a signed-in approver's access is only ever verified against the sign-in one.
+compose-preview serve --public --accept-images \
+    --github-auth-client-id "$ID" --github-auth-client-secret "$SECRET" \
+    --github-auth-cookie-secret "$COOKIE" --github-auth-repo yschimke/compose-ai-tools \
+    --agent-grants --agent-grant-capabilities images
+
+# The agent, per task — prints a link and a code for a human to approve:
+compose-preview auth request --server https://preview.coo.ee --capability images \
+    --label "before/after for #4446"
+compose-preview share-preview report.md before.png after.png --mechanism serve
+```
+
+`share-preview` picks the stored grant up on its own (its host token resolves `--serve-token` →
+`$COMPOSE_PREVIEW_SERVE_TOKEN` → the grant store — the `serve`-prefixed names, since this command
+also carries a *GitHub* credential and the two must not be confusable), so nothing else about the
+invocation changes. The
+upload is attributed to the grant and its approver — `uploadedBy` reads
+`agent grant 682daf65 (approved by @yschimke)` — and the capability is off unless the operator asked
+for it *and* a human ticked it, so nothing here widens what an existing box already does.
+
+**Who may upload with a GitHub credential.** Not "anyone", on any host, ever — including a `--public`
+one:
 
 - The caller sends `Authorization: Bearer <github-token>`, and the server asks **GitHub** who that is
   and whether they have access to `--image-upload-repo` (falling back to `--github-auth-repo`). The

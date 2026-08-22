@@ -226,6 +226,11 @@ services:
       # default of 1 would break every box without an OAuth app). `0` opts out explicitly.
       SERVE_AGENT_GRANTS: "${SERVE_AGENT_GRANTS:-}"
       SERVE_AGENT_GRANT_SCOPES: "${SERVE_AGENT_GRANT_SCOPES:-}"
+      # Non-cumulative permissions a grant may carry beside its scope — currently `images`, which
+      # lets an approved agent use the image lane above without a GitHub credential of its own.
+      # Needs SERVE_ACCEPT_IMAGES; `serve` refuses to start otherwise rather than offering a
+      # checkbox whose grant would 404.
+      SERVE_AGENT_GRANT_CAPABILITIES: "${SERVE_AGENT_GRANT_CAPABILITIES:-}"
       SERVE_AGENT_GRANT_MAX_TTL: "${SERVE_AGENT_GRANT_MAX_TTL:-}"
       SERVE_AGENT_GRANT_MAX_ACTIVE: "${SERVE_AGENT_GRANT_MAX_ACTIVE:-}"
       SERVE_AGENT_GRANT_RATE_LIMIT: "${SERVE_AGENT_GRANT_RATE_LIMIT:-}"

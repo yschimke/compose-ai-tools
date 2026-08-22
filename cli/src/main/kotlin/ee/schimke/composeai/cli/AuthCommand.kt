@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.cli.serve.ServeAgentGrantCapability
 import ee.schimke.composeai.cli.serve.ServeAgentGrantScope
 import ee.schimke.composeai.cli.serve.ServeAgentGrants
 import kotlin.system.exitProcess
@@ -144,6 +145,24 @@ internal class AuthCommand(
         code = 64,
       )
     }
+    // Same treatment as `--scope`, for the same reason: a mistyped capability that reached the
+    // server would simply be dropped there, and the agent would learn it had less access than it
+    // asked for only when an upload was refused — after a human had already approved something.
+    val capabilities =
+      args
+        .flagValuesAll("--capability")
+        .flatMap { it.split(',', ' ') }
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .map { raw ->
+          ServeAgentGrantCapability.parse(raw)?.wire
+            ?: fail(
+              "unknown --capability '$raw' — expected one of " +
+                ServeAgentGrantCapability.entries.joinToString(", ") { it.wire },
+              code = 64,
+            )
+        }
+        .distinct()
     val ttlRaw = args.flagValue("--ttl")
     val ttl =
       ServeAgentGrants.parseDurationSeconds(ttlRaw)
@@ -167,7 +186,10 @@ internal class AuthCommand(
     }
 
     val opened =
-      when (val r = client.open(label = label, scope = scope, ttlSeconds = ttl)) {
+      when (
+        val r =
+          client.open(label = label, scope = scope, ttlSeconds = ttl, capabilities = capabilities)
+      ) {
         is AgentAccessClient.Result.Ok -> r.value
         is AgentAccessClient.Result.Err -> fail(r.reason)
       }
@@ -221,6 +243,8 @@ internal class AuthCommand(
           expiresInSeconds = opened.expiresInSeconds,
           requestedScope = opened.requestedScope,
           requestedTtlSeconds = opened.requestedTtlSeconds,
+          requestedCapabilities = opened.requestedCapabilities,
+          maxCapabilities = opened.maxCapabilities,
         ),
       )
       if ("--no-wait" in args) return
@@ -268,6 +292,7 @@ internal class AuthCommand(
           origin = client.origin,
           token = outcome.token.orEmpty(),
           scopes = outcome.scopes,
+          capabilities = outcome.capabilities,
           approvedBy = outcome.approvedBy.orEmpty(),
           label = label,
           expiresAtMillis = System.currentTimeMillis() + (outcome.expiresInSeconds ?: 0) * 1000,
@@ -280,6 +305,7 @@ internal class AuthCommand(
         GrantedJson(
           server = client.origin,
           scopes = outcome.scopes,
+          capabilities = outcome.capabilities,
           approvedBy = outcome.approvedBy.orEmpty(),
           expiresInSeconds = outcome.expiresInSeconds ?: 0,
           stored = saved == true,
@@ -415,6 +441,7 @@ internal class AuthCommand(
               StatusEntryJson(
                 server = entry.origin,
                 scopes = entry.scopes,
+                capabilities = entry.capabilities,
                 approvedBy = entry.approvedBy,
                 label = entry.label,
                 expiresInSeconds = left,
@@ -449,8 +476,10 @@ internal class AuthCommand(
           "unverified" -> " · could not reach the server to confirm"
           else -> ""
         }
+      val capabilities =
+        if (entry.capabilities.isEmpty()) "" else " + ${entry.capabilities.joinToString(", ")}"
       println(
-        "${entry.origin} — ${entry.scopes.joinToString(", ").ifEmpty { "preview" }} · " +
+        "${entry.origin} — ${entry.scopes.joinToString(", ").ifEmpty { "preview" }}$capabilities · " +
           "expires in ${ServeAgentGrants.formatDuration(left)}" +
           (if (entry.approvedBy.isNotEmpty()) " · approved by ${entry.approvedBy}" else "") +
           (if (entry.label.isNotEmpty()) " · \"${entry.label}\"" else "") +
@@ -537,6 +566,7 @@ internal class AuthCommand(
                 origin = pending.origin,
                 token = token,
                 scopes = polled.scopes,
+                capabilities = polled.capabilities,
                 approvedBy = polled.approvedBy.orEmpty(),
                 label = pending.label,
                 expiresAtMillis =
@@ -737,6 +767,9 @@ internal class AuthCommand(
                   Prints a link and a verification code, then waits for approval.
           --server <url>     The preview server (or ${'$'}COMPOSE_PREVIEW_SERVER).
           --scope <name>     preview | live | playground. Cumulative; default preview.
+          --capability <name> An extra, non-cumulative permission to ask for, repeatable or
+                             comma-separated: currently `images` (upload rendered previews,
+                             on a server that offers it). The approver ticks it separately.
           --ttl <duration>   How long to ask for, e.g. 45m / 2h (default 1h). The approver
                              chooses the actual lifetime, up to the server's ceiling.
           --label <text>     What the access is for; shown on the approval page.
@@ -767,12 +800,28 @@ internal class AuthCommand(
     val expiresInSeconds: Long,
     val requestedScope: String,
     val requestedTtlSeconds: Long,
+    /**
+     * What survived the server's clamp, and what it would grant at all.
+     *
+     * Both matter to `--no-wait`, which emits this record and then exits: there is no later grant
+     * object to learn from, so without these a caller cannot tell that `images` was dropped by a
+     * host that does not offer it — and would send a human through an approval that cannot
+     * authorize the upload it was opened for.
+     */
+    val requestedCapabilities: List<String> = emptyList(),
+    val maxCapabilities: List<String> = emptyList(),
   )
 
   @Serializable
   private data class GrantedJson(
     val server: String,
     val scopes: List<String>,
+    /**
+     * The independent permissions actually granted. Structured output that omitted these read
+     * identically whether `images` was ticked or declined, so automation could not tell an
+     * authorized upload from one that was about to be refused without attempting it.
+     */
+    val capabilities: List<String> = emptyList(),
     val approvedBy: String,
     val expiresInSeconds: Long,
     val stored: Boolean,
@@ -799,6 +848,7 @@ internal class AuthCommand(
   private data class StatusEntryJson(
     val server: String,
     val scopes: List<String>,
+    val capabilities: List<String> = emptyList(),
     val approvedBy: String,
     val label: String,
     val expiresInSeconds: Long,

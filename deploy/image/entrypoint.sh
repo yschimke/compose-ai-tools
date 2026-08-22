@@ -402,6 +402,9 @@ if [[ "${SERVE_AGENT_GRANTS:-}" == "1" || "${SERVE_AGENT_GRANTS:-}" == "true" ]]
   args+=(--agent-grants)
   [[ -n "${SERVE_AGENT_GRANT_SCOPES:-}" ]] &&
     args+=(--agent-grant-scopes "${SERVE_AGENT_GRANT_SCOPES}")
+  # Independent of the scope ceiling above, and refused by `serve` unless the image lane is on.
+  [[ -n "${SERVE_AGENT_GRANT_CAPABILITIES:-}" ]] &&
+    args+=(--agent-grant-capabilities "${SERVE_AGENT_GRANT_CAPABILITIES}")
   [[ -n "${SERVE_AGENT_GRANT_MAX_TTL:-}" ]] &&
     args+=(--agent-grant-max-ttl "${SERVE_AGENT_GRANT_MAX_TTL}")
   [[ -n "${SERVE_AGENT_GRANT_MAX_ACTIVE:-}" ]] &&

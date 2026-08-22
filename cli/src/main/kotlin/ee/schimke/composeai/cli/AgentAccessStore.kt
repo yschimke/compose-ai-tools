@@ -50,6 +50,11 @@ internal open class AgentAccessStore(
     val origin: String,
     val token: String,
     val scopes: List<String> = emptyList(),
+    /**
+     * Independent permissions the approver ticked ([ServeAgentGrantCapability]). Defaulted, so a
+     * file written by an older CLI reads back without complaint.
+     */
+    val capabilities: List<String> = emptyList(),
     val approvedBy: String = "",
     val label: String = "",
     /** Wall-clock epoch millis. Past ⇒ the entry is dropped on the next read. */
