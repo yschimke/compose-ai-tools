@@ -227,6 +227,58 @@ class PreviewUsageIndexTest {
     assertEquals(1, fetched.size)
   }
 
+  /**
+   * Two top-level declarations with **no blank line between them** — the case
+   * `PlaygroundSeedResolver.declarationLines` deliberately gets wrong.
+   *
+   * Its blank-line rule cannot see the second declaration start, so it returns one range covering
+   * both. That is the safe failure for seeding an editor buffer (hand over too much rather than cut
+   * code in half) and the unsafe one here: under it both previews inherit both call sets and
+   * `uses:Spacer` answers with the preview that never calls one. The parse reports real declaration
+   * spans, so attribution no longer depends on how the file is formatted.
+   */
+  @Test
+  fun `declarations with no blank line between them do not share their calls`() {
+    val packed =
+      """
+      package sections
+
+      @Composable
+      fun A() = Sticker { Spacer() }
+      @Composable
+      fun B() = Sticker { Icon() }
+      """
+        .trimIndent()
+    fun lineIn(needle: String) = packed.lines().indexOfFirst { it.contains(needle) } + 1
+    val where =
+      mapOf(
+        "A" to location(lineIn("fun A()")).copy(sourceFile = "src/main/kotlin/sections/Packed.kt"),
+        "B" to location(lineIn("fun B()")).copy(sourceFile = "src/main/kotlin/sections/Packed.kt"),
+      )
+    val index = index(locate = { _, id -> where[id] }, body = { packed.toByteArray() })
+    assertEquals(setOf("A"), index.match("m3", listOf("A", "B"), "Spacer").ids)
+    assertEquals(setOf("B"), index.match("m3", listOf("A", "B"), "Icon").ids)
+  }
+
+  /**
+   * A body over the fetcher's cap comes back as a truncated prefix plus one byte, and a prefix
+   * still parses — so accepting it would report the calls in the first 256 KiB as if they were the
+   * file's. The cap here matches the fetcher's precisely so that read is refused instead.
+   */
+  @Test
+  fun `a truncated read is refused rather than parsed as the whole file`() {
+    assertEquals(
+      PlaygroundSeedResolver.DEFAULT_MAX_BYTES,
+      PreviewUsageIndex.DEFAULT_MAX_BYTES,
+      "a larger cap here silently accepts the fetcher's truncated prefix",
+    )
+    // Exactly what `PlaygroundSeedResolver.httpFetch` hands back for an over-cap body.
+    val truncated = ByteArray(PreviewUsageIndex.DEFAULT_MAX_BYTES + 1) { ' '.code.toByte() }
+    val match = index(body = { truncated }).match("m3", ids, "Button")
+    assertTrue(match.ids.isEmpty())
+    assertTrue(log.any { it.contains("index cap") }, log.toString())
+  }
+
   /** CRLF source must not walk the call offsets out of the declaration they belong to. */
   @Test
   fun `a CRLF file indexes the same as an LF one`() {

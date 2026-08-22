@@ -3307,6 +3307,9 @@ ${captureControlsHtml().prependIndent("          ")}
      */
     usesUrl: String = "",
   ): String {
+    // Declared before anything that branches on it — the tab predicate and the pane split below
+    // both ask whether the operator is wired.
+    val usesFilter = usesUrl.isNotEmpty()
     val hasDeclaredThemes = themeBaseJs.isNotEmpty()
     val themeLeaseUrlJs = WebEscaping.jsString(themeLeaseUrl)
     // Spliced one level in, so a page with no presence URL emits the script byte-for-byte as
@@ -3863,10 +3866,18 @@ ${captureControlsHtml().prependIndent("          ")}
           "\n      document.documentElement.classList.add(\"cp-js\");"
       else ""
     // A card is shown when it matches the search AND (while not searching) sits in the current tab.
+    // A filter spans every section; tab selection is ignored until it clears. `uses:` is a filter,
+    // so the same has to be true of it — and it is not enough to test `q`, because a query that is
+    // ONLY `uses:Foo` leaves `q` empty. Reading that as "not searching" kept every other section
+    // hidden, so matches outside the selected tab vanished and the readout counted only the cards
+    // in it. `reflectTabs`'s own `searching` was already right about this — it reads the raw input,
+    // where the operator is still present — which is why the branches opened while the cards under
+    // them stayed hidden; this line is the half that disagreed.
+    val searchingExpr = if (usesFilter) "(q !== \"\" || usesActive())" else "q !== \"\""
     val tabOkLine =
       if (hasTabs)
         "\n          var sec = c.closest(\".cp-section\");" +
-          "\n          var tabOk = q !== \"\" || !sec" +
+          "\n          var tabOk = $searchingExpr || !sec" +
           allTabCardClause +
           " || sec.getAttribute(\"data-section\") === current;"
       else ""
@@ -3951,10 +3962,17 @@ ${captureControlsHtml().prependIndent("          ")}
     // filter" under a sidebar that just found the Shape page, which is the box contradicting
     // itself. The grid belongs to the Components pane, so it is filtered when that pane is the one
     // showing and left whole otherwise.
+    // The Pages pane lists design sheets, which have no composables to call — so `uses:` is a
+    // question they cannot answer, and the pane filters on the RAW query rather than on the
+    // operator-stripped remainder. Without that, a query of only `uses:Foo` reached the pane as an
+    // empty string and showed every page while the readout above described the hidden component
+    // grid. Filtering on the raw text instead lands the pane on its own empty state, which is the
+    // truthful answer to "which of these sheets calls a Button".
+    val paneQExpr = if (usesFilter) "usesRawQuery" else "q"
     val paneSplit =
       if (!hasPanes) ""
       else
-        "\n        var paneQ = pane === \"pages\" ? q : \"\";" +
+        "\n        var paneQ = pane === \"pages\" ? $paneQExpr : \"\";" +
           "\n        if (pane === \"pages\") q = \"\";"
     val paneWiring =
       if (!hasPanes) ""
@@ -4050,7 +4068,6 @@ ${captureControlsHtml().prependIndent("          ")}
     // text filter narrows, so it has to share `apply()` and the state around it. A parallel script
     // would need its own pass over the cards and could disagree with this one about which are
     // showing — the exact failure the pane strip's comment above describes.
-    val usesFilter = usesUrl.isNotEmpty()
     val usesDecls = if (usesFilter) usesFilterScript(usesUrl) else ""
     val queryExpr =
       if (usesFilter) "var q = usesSplit(input ? input.value.trim() : \"\");"
@@ -4148,8 +4165,13 @@ ${captureControlsHtml().prependIndent("          ")}
       // ---- `uses:<composable>` — which previews CALL a thing (Dev mode only)
       var usesEndpoint = ${WebEscaping.jsString(usesUrl)};
       var usesToken = "";
+      var usesRawQuery = "";
       var usesCache = {};
       var usesPending = {};
+      // Whether a `uses:` filter is running right now. Asked wherever the page would otherwise
+      // test `q !== ""` to mean "a filter is on": a query of only `uses:Foo` leaves `q` empty, and
+      // every such test would then read as "resting".
+      function usesActive() { return usesToken !== ""; }
       // Pulls `uses:<token>` out of the raw query and returns what is left for the text filter.
       // It also notices a CHANGE of token and starts the lookup, which is why it is one function
       // and not a pure split: `apply()` is the only place that reads the box, so it is the only
@@ -4159,6 +4181,9 @@ ${captureControlsHtml().prependIndent("          ")}
         var found = "";
         var rest = raw.replace(/(^|\s)uses:(\S*)/i, function (m, lead, t) { found = t; return lead; });
         if (found !== usesToken) { usesToken = found; usesFetch(found); }
+        // Kept for the Pages pane, which filters on what was TYPED rather than on the remainder —
+        // see `paneQ` in the filter script.
+        usesRawQuery = raw.trim().toLowerCase();
         return rest.trim().toLowerCase();
       }
       function usesEntry() { return usesToken ? usesCache[usesToken.toLowerCase()] : null; }

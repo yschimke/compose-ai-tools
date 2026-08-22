@@ -4182,8 +4182,14 @@ class ServeWebFixtureTest {
     // no card is filtered out by section; the per-section <h2>s that `cp-js` hides come back,
     // because the selected row no longer names the one section on screen; and a jump to a group
     // scrolls without narrowing the catalog down to that group's section.
+    // The leading conjunct is "is a filter running", and it is matched loosely on purpose: it was
+    // `q !== ""` alone until the Dev-mode `uses:` operator, and is `(q !== "" || usesActive())`
+    // since — because a query of only `uses:Foo` leaves `q` empty, and a filter has to span every
+    // section (see `ServeWeb.searchingExpr`). What this line is about is the rest of the
+    // expression, which that change does not touch: while All is the selected row, the section a
+    // card sits in must not hide it.
     assertTrue(
-      landingSections.contains("var tabOk = q !== \"\" || !sec || current === \"all\""),
+      Regex("""var tabOk = .+ \|\| !sec \|\| current === "all"""").containsMatchIn(landingSections),
       "under All a card is in the current tab whatever section holds it",
     )
     assertTrue(

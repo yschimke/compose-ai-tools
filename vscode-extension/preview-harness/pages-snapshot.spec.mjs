@@ -3561,6 +3561,123 @@ test("contract · a tree row's jump has landed before the shutter, not during it
   expect(await page.evaluate(() => window.scrollY)).toBe(landed);
 });
 
+test("contract · a uses: filter spans every section, like any other filter", async ({
+  page,
+}) => {
+  // A filter ignores tab selection and searches the whole catalog; only a resting page is scoped
+  // to the open section. `uses:Foo` alone leaves the TEXT query empty, so a `q !== ""` test reads
+  // it as resting and keeps every other section hidden — matches outside the open tab vanish, and
+  // the readout counts only what survived. This holds the operator to the same rule the text
+  // filter has always had (#4424 review).
+  for (const [name, contentType] of SERVE_ASSETS) {
+    await page.route(`**/assets/serve/**/${name}`, (route) =>
+      route.fulfill({
+        contentType,
+        body: readFileSync(resolve(serveAssetsDir, name), "utf8"),
+      }),
+    );
+  }
+  await page.route("**/render/**", (route) =>
+    route.fulfill({ path: renderPlaceholder }),
+  );
+  await page.goto("/preview-harness/fixtures/pages/serve-landing-sections.html");
+
+  // Pick a REAL section, not the All row this catalog opens on. On `all` every card passes the tab
+  // predicate whatever the query is, so a test that skipped this step would pass with the fix
+  // reverted — it did, which is how this step earned its place.
+  const [picked, away] = await page.evaluate(() => {
+    const sections = Array.from(document.querySelectorAll(".cp-section")).filter(
+      (s) => s.querySelector("[data-uses-id]"),
+    );
+    const target = sections[sections.length - 1];
+    const other = sections.find((s) => s !== target);
+    return [
+      other.getAttribute("data-section"),
+      target.querySelector("[data-uses-id]").getAttribute("data-uses-id"),
+    ];
+  });
+  expect(picked).toBeTruthy();
+  expect(away).toBeTruthy();
+
+  // Select the section the match is NOT in, and confirm the card really is hidden first — so the
+  // assertion below is about the filter revealing it, not about it having been visible all along.
+  await page.click(`.cp-tab[data-tab="${picked}"], [data-tab="${picked}"]`);
+  await page.waitForFunction(
+    (id) => document.querySelector(`[data-uses-id="${id}"]`)?.hidden === true,
+    away,
+    { timeout: 15_000 },
+  );
+
+  await page.route("**/api/uses*", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ available: true, truncated: false, ids: [away] }),
+    }),
+  );
+  await page.fill("#cp-search", "uses:Foo");
+  await page.waitForFunction(
+    (id) => {
+      const card = document.querySelector(`[data-uses-id="${id}"]`);
+      return card && !card.hidden;
+    },
+    away,
+    { timeout: 15_000 },
+  );
+
+  // And the readout counted it, rather than counting only the open tab.
+  await expect(page.locator("#cp-uses-status")).toContainText("1 of");
+});
+
+test("contract · the Pages pane filters on what was typed, not on the remainder", async ({
+  page,
+}) => {
+  // `usesSplit` strips `uses:Foo` out of the query before the pane split runs, so a uses-only
+  // query reached the Pages pane as an EMPTY string — which that pane reads as "no filter" and
+  // answers by showing every page, while the readout above it described the hidden component grid.
+  // Design sheets have no composables to call, so the honest answer is the pane's own empty state
+  // (#4424 review).
+  for (const [name, contentType] of SERVE_ASSETS) {
+    await page.route(`**/assets/serve/**/${name}`, (route) =>
+      route.fulfill({
+        contentType,
+        body: readFileSync(resolve(serveAssetsDir, name), "utf8"),
+      }),
+    );
+  }
+  await page.route("**/render/**", (route) =>
+    route.fulfill({ path: renderPlaceholder }),
+  );
+  await page.route("**/pages/*.svg**", (route) =>
+    route.fulfill({ contentType: "image/svg+xml", body: PAGE_PLACEHOLDER }),
+  );
+  await page.route("**/api/uses*", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ available: true, truncated: false, ids: [] }),
+    }),
+  );
+  await page.goto("/preview-harness/fixtures/pages/serve-landing-grouped.html");
+
+  // Top-level page rows only — the nested section links under a branch are filtered as a unit
+  // with it, so counting both would blur what this is measuring.
+  const pageRows = () =>
+    page.evaluate(
+      () =>
+        Array.from(
+          document.querySelectorAll("#cp-pane-pages .cp-page-list > li"),
+        ).filter((r) => !r.hidden).length,
+    );
+
+  await page.click('.cp-pane-tab[data-pane="pages"]');
+  await expect.poll(pageRows).toBeGreaterThan(0);
+
+  await page.fill("#cp-search", "uses:Button");
+  // `uses:Button` is not any sheet's name, so the pane empties and says so. Before the fix the
+  // operator was stripped first, the pane filtered on "" and every row stayed.
+  await expect.poll(pageRows, { timeout: 15_000 }).toBe(0);
+  await expect(page.locator("#cp-pages-empty")).toBeVisible();
+});
+
 test("contract · the sidebar filter follows the pane it is pointed at", async ({
   page,
 }) => {
