@@ -323,6 +323,15 @@ export class CompareWall extends LitElement {
     // ---- one row -------------------------------------------------------------
 
     private async scoreRow(row: HTMLElement, runId: number): Promise<void> {
+        // Nothing below may touch the row unless this chain is still the current one. Bumping
+        // `sequence` on a lane switch stops an abandoned run's RESULTS from landing, but the chain
+        // itself keeps walking its remaining rows — and everything between here and the awaited
+        // measurement writes to the row on the way past: the vector's src, the score cell's
+        // "comparing…", the blanked delta map. A stale chain arriving behind a finished one
+        // therefore wiped rows the visitor was already reading and left them that way, because the
+        // guard further down then discarded the very measurement that would have filled them back
+        // in. Checked here, an abandoned chain costs one comparison per remaining row and no paint.
+        if (runId !== this.sequence) return;
         const sources = this.sourcesOf(row);
         const variant = variantFor(
             sources,
@@ -477,6 +486,7 @@ export class CompareWall extends LitElement {
                 candidateUrl,
                 pngUrl,
                 map,
+                MAP_MAX_SIDE,
             );
             return { percent: result.score, geometry: result.geometry, map };
         }

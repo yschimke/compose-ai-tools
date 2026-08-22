@@ -15,6 +15,8 @@ interface Scorer {
     calls: string[];
     /** The canvases `diffCanvases` was asked to paint, in the order the wall asked. */
     painted: HTMLCanvasElement[];
+    /** The `maxSide` each normalisation was asked for — `undefined` means "the frame's own size". */
+    bounds: Array<number | undefined>;
     settle(): void;
 }
 
@@ -36,6 +38,7 @@ function stubScorer(
     const state: Scorer = {
         calls: [],
         painted: [],
+        bounds: [],
         settle: () => {
             for (const release of held.splice(0)) release();
         },
@@ -57,8 +60,13 @@ function stubScorer(
         // The reference lane goes through the normalise / diff / score composition, so the pair the
         // map is painted from and the pair the percentage is taken over are the same frames. The
         // stub keeps the score keyed off the reference URL, exactly as `scoreImageUrls` does.
-        normaliseImageUrls: async (reference: string, candidate: string) => {
+        normaliseImageUrls: async (
+            reference: string,
+            candidate: string,
+            maxSide?: number,
+        ) => {
             state.calls.push(reference);
+            state.bounds.push(maxSide);
             if (options.holdReference)
                 await new Promise<void>((r) => held.push(r));
             return {
@@ -422,13 +430,65 @@ describe("<cp-compare-wall>", () => {
         assert.equal(scoreTextOf("Button"), "93.4%");
     });
 
+    it("stops an abandoned chain before it resets the rows behind it", async () => {
+        // Bumping the generation stops a stale run's RESULTS from landing; it does not stop the
+        // chain, which keeps walking its remaining rows. Everything a row is reset to on the way to
+        // its measurement — the vector's src, "comparing…", the blanked map — was written before the
+        // only guard there was, so a stale chain arriving behind a finished one wiped rows the
+        // visitor was already reading and then discarded the measurement that would have refilled
+        // them. Those rows stayed blank for as long as the page was open.
+        window.history.replaceState(null, "", "/compare?format=reference");
+        const scorer = stubScorer(
+            {
+                "/a/Button-reference-light": 80,
+                "/a/Card-reference-light": 60,
+                "/a/Button-svg-light": 93.4,
+                "/a/Card-svg-light": 88.1,
+            },
+            { holdReference: true },
+        );
+        await mount({
+            available: 'data-has-svg="1" data-has-reference="1"',
+            rows: [
+                {
+                    name: "Button",
+                    have: ["png-light", "reference-light", "svg-light"],
+                },
+                {
+                    name: "Card",
+                    have: ["png-light", "reference-light", "svg-light"],
+                },
+            ],
+        });
+        await flush();
+
+        // The reference chain is parked on its FIRST row, so it has not reached Card yet.
+        document
+            .querySelector<HTMLElement>('[data-compare-format="svg"]')!
+            .click();
+        await settle();
+        assert.equal(scoreTextOf("Button"), "93.4%");
+        assert.equal(scoreTextOf("Card"), "88.1%");
+
+        // Released, the abandoned chain now walks on to Card — a row the visitor is reading.
+        scorer.settle();
+        await settle();
+        assert.equal(scoreTextOf("Card"), "88.1%");
+        assert.equal(
+            document.querySelector<HTMLCanvasElement>(
+                '[data-label="Card"] .cp-compare-diff',
+            )!.width,
+            0,
+        );
+    });
+
     it("bounds the map it keeps to what the column can draw", async () => {
         // A reference exported at full device resolution normalises to a frame far larger than the
         // 200px column that shows it, and the wall retains one per row rather than the detail page's
         // one. Kept at source size, a catalog of large captures is hundreds of megabytes of backing
         // store nobody can see — and a frame past the browser's canvas limit turns a row that used
         // to score into "unavailable".
-        stubScorer(
+        const scorer = stubScorer(
             { "/a/Button-reference-light": 80 },
             { map: { width: 1600, height: 2400 } },
         );
@@ -450,6 +510,11 @@ describe("<cp-compare-wall>", () => {
         // Bounded, not squashed: a map drawn at the wrong proportion would misreport where the two
         // drawings disagree, which is the one thing this column exists to say.
         assert.equal(diff.width, Math.round((1600 / 2400) * 440));
+        // And the bound is asked for UP FRONT, not applied to the finished map: normalising at the
+        // frame's own size would hold three full-resolution buffers per row on the way to a picture
+        // 200px wide, and a frame past the browser's canvas limit would fail there rather than
+        // scoring — which is what this lane used to do before it drew anything.
+        assert.deepEqual(scorer.bounds, [440]);
     });
 
     it("opens the Reference / Diff / Actual page from the map as well as the render", async () => {
