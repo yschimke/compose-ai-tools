@@ -91,7 +91,15 @@ internal class ServeImageUploader(
           !response.isSuccessful -> {
             val detail = response.body?.string()?.trim()?.take(400).orEmpty()
             Result.Failed(
-              "$base answered ${response.code}${if (detail.isEmpty()) "" else ": $detail"}"
+              "$base answered ${response.code}${if (detail.isEmpty()) "" else ": $detail"}" +
+                // A bodyless 404 — or 405 — is what a host WITHOUT `--accept-images` gives: the
+                // route was never registered, so there is nobody to write a refusal. Which of the
+                // two arrives depends on the box's other routes: a catch-all that matches the path
+                // but not POST answers 405, which is why the server's own
+                // [ServeImageRoutingTest] accepts either. Left bare, both read as "wrong URL" and
+                // send the caller looking for a typo they didn't make — the host is right, the
+                // lane is simply off, which only its operator can change.
+                if (response.code in LANE_ABSENT_CODES && detail.isEmpty()) IMAGE_LANE_OFF else ""
             )
           }
           else -> parse(response.body?.string().orEmpty())
@@ -130,6 +138,26 @@ internal class ServeImageUploader(
   private data class ImageAccepted(val url: String? = null, val expiresIn: String? = null)
 
   companion object {
+    /**
+     * The bodyless statuses an absent image lane produces — 404 where nothing matches the path, 405
+     * where a catch-all matches it but not `POST`.
+     */
+    private val LANE_ABSENT_CODES = setOf(404, 405)
+
+    /**
+     * Appended to a bodyless [LANE_ABSENT_CODES] answer, which is what a host with no image lane
+     * gives — but not *only* that. [rejectUnsafeUrl] constrains the scheme, the host and the
+     * userinfo, never the path, so a `--serve-url` carrying a stray prefix asks a real image host
+     * for `<base>/typo/images` and gets the same empty 404; so can a proxy in between. Naming the
+     * lane as the certain cause would just relocate the misdiagnosis, so this offers the likely
+     * reading and the cheap thing to check.
+     */
+    private const val IMAGE_LANE_OFF =
+      " — most likely that host does not accept image uploads (it was started without " +
+        "--accept-images); a --serve-url with a stray path would answer the same way, so check " +
+        "the URL too. Otherwise ask its operator to enable the lane, or share these images " +
+        "another way (--mechanism gist / branch)."
+
     private val OCTET_STREAM = "application/octet-stream".toMediaType()
 
     private val JSON = Json { ignoreUnknownKeys = true }
