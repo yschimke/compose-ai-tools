@@ -1,7 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { fitBox, fitRgba, isRoundingDelta, placeRgba, resampleRgba } from "./png-resample.mjs";
+import {
+  alphaBounds,
+  fitBox,
+  fitRgba,
+  isRoundingDelta,
+  placeRgba,
+  resampleRgba,
+} from "./png-resample.mjs";
 
 /** An RGBA buffer whose pixels are produced by `fn(x, y)` returning `[r,g,b,a]`. */
 function raster(width, height, fn) {
@@ -141,4 +148,71 @@ test("placeRgba only scales when the source would overflow the target", () => {
   const data = raster(4, 2, () => [1, 2, 3, 255]);
   const { box } = placeRgba(data, 4, 2, 2, 2);
   assert.deepEqual(box, { width: 2, height: 1, x: 0, y: 0 });
+});
+
+test("alphaBounds finds the drawn box inside a transparent frame", () => {
+  const data = raster(10, 6, (x, y) => (x >= 2 && x <= 6 && y >= 1 && y <= 3 ? [0, 0, 0, 255] : [0, 0, 0, 0]));
+  assert.deepEqual(alphaBounds(data, 10, 6), { x: 2, y: 1, width: 5, height: 3 });
+});
+
+test("alphaBounds keeps a barely-visible pixel — alpha 1 is drawn", () => {
+  const data = raster(4, 4, (x, y) => (x === 3 && y === 0 ? [0, 0, 0, 1] : [0, 0, 0, 0]));
+  assert.deepEqual(alphaBounds(data, 4, 4), { x: 3, y: 0, width: 1, height: 1 });
+});
+
+test("alphaBounds reports nothing for a fully transparent raster", () => {
+  assert.equal(alphaBounds(raster(4, 4, () => [9, 9, 9, 0]), 4, 4), null);
+});
+
+test("placeRgba crops an empty margin rather than shrinking what is drawn", () => {
+  // The m3-catalog#180 geometry, to scale: the kit exports its 32dp XSmall button inside a 48dp
+  // touch-target frame, so at the renderer's 2.625 density a 218x84 button arrives in a 218x126
+  // raster. The sticker canvas is the button alone. Sizing the reduction off the frame published
+  // it at 145x56 — two thirds of the render it is compared with.
+  const content = { x: 0, y: 21, width: 218, height: 84 };
+  const data = raster(218, 126, (x, y) =>
+    y >= content.y && y < content.y + content.height ? [0, 0, 0, 255] : [0, 0, 0, 0],
+  );
+  const { data: out, box } = placeRgba(data, 218, 126, 219, 84, content);
+  assert.deepEqual(box, { width: 218, height: 126, x: 0, y: -21 });
+  assert.deepEqual(alphaBounds(out, 219, 84), { x: 0, y: 0, width: 218, height: 84 });
+});
+
+test("placeRgba still reduces when the DRAWN content overflows", () => {
+  // A kit shape board: a 300-unit vector on a 380-unit artboard. The content genuinely does not
+  // fit, so it is reduced — but to the canvas, not to the canvas times the padding's ratio.
+  const content = { x: 40, y: 40, width: 300, height: 300 };
+  const data = raster(380, 380, (x, y) =>
+    x >= 40 && x < 340 && y >= 40 && y < 340 ? [0, 0, 0, 255] : [0, 0, 0, 0],
+  );
+  const { data: out } = placeRgba(data, 380, 380, 150, 150, content);
+  const drawn = alphaBounds(out, 150, 150);
+  assert.equal(drawn.width, 150);
+  assert.equal(drawn.height, 150);
+});
+
+test("placeRgba is unchanged when the content is the whole raster", () => {
+  const data = raster(4, 4, () => [1, 2, 3, 255]);
+  const withContent = placeRgba(data, 4, 4, 10, 8, { x: 0, y: 0, width: 4, height: 4 });
+  const without = placeRgba(data, 4, 4, 10, 8);
+  assert.deepEqual(withContent.box, without.box);
+  assert.deepEqual(withContent.data, without.data);
+});
+
+test("placeRgba ignores an empty content box rather than dividing by it", () => {
+  const data = raster(4, 4, () => [1, 2, 3, 255]);
+  const { box } = placeRgba(data, 4, 4, 10, 8, { x: 0, y: 0, width: 0, height: 0 });
+  assert.deepEqual(box, { width: 4, height: 4, x: 3, y: 2 });
+});
+
+test("placeRgba keeps content that exactly fits, despite the resample's rounding", () => {
+  // A 300-unit vector on a 380-unit artboard, fitted to 151px: the placed raster rounds to 191,
+  // and offsetting by the unrounded factor pushed a column off the canvas — 150px published for
+  // content that fills 151.
+  const content = { x: 40, y: 40, width: 300, height: 300 };
+  const data = raster(380, 380, (x, y) =>
+    x >= 40 && x < 340 && y >= 40 && y < 340 ? [0, 0, 0, 255] : [0, 0, 0, 0],
+  );
+  const { data: out } = placeRgba(data, 380, 380, 151, 151, content);
+  assert.deepEqual(alphaBounds(out, 151, 151), { x: 0, y: 0, width: 151, height: 151 });
 });
