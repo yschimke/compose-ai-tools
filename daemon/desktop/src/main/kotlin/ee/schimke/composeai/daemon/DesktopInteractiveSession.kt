@@ -280,7 +280,7 @@ class DesktopInteractiveSession(
     if (explicitX != null && explicitY != null) return explicitX to explicitY
     val target = input.target?.toSemanticsTarget() ?: return null
     val root =
-      state.scene.composeSemanticsRoot()
+      engine.laidOutSemanticsRoot(state)
         ?: return logUnresolved(target, "no semantics root available")
     return when (val res = SemanticsTargets.resolve(root, target)) {
       is TargetResolution.Resolved -> res.point.x to res.point.y
