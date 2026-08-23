@@ -20,7 +20,10 @@ describe("preview image states", () => {
         assert.equal(host.dataset.imageState, "loading");
         img.dispatchEvent(new Event("error"));
         assert.equal(host.dataset.imageState, "error");
-        assert.equal(host.querySelector(".cp-image-error")?.getAttribute("role"), "alert");
+        assert.equal(
+            host.querySelector(".cp-image-error")?.getAttribute("role"),
+            "alert",
+        );
         assert.equal(host.querySelector("button")?.textContent, "Retry");
 
         img.dispatchEvent(new Event("load"));
@@ -32,8 +35,14 @@ describe("preview image states", () => {
         document.body.innerHTML =
             '<div class="cp-imgwrap"><img src="/missing.png" alt="Missing"></div>';
         const img = document.querySelector<HTMLImageElement>("img")!;
-        Object.defineProperty(img, "complete", { configurable: true, value: true });
-        Object.defineProperty(img, "naturalWidth", { configurable: true, value: 0 });
+        Object.defineProperty(img, "complete", {
+            configurable: true,
+            value: true,
+        });
+        Object.defineProperty(img, "naturalWidth", {
+            configurable: true,
+            value: 0,
+        });
 
         installPreviewImageStates();
 

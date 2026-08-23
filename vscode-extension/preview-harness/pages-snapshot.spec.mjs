@@ -89,7 +89,10 @@ const motionPlaceholder = resolve(pagesDir, "_motion-placeholder.apng");
 // black stage the face and the corners composite to the same pixels and the device boundary is
 // invisible, which is the regression the clip exists to prevent and is only legible against a
 // capture that reproduces it.
-const roundRenderPlaceholder = resolve(pagesDir, "_render-placeholder-round.png");
+const roundRenderPlaceholder = resolve(
+  pagesDir,
+  "_render-placeholder-round.png",
+);
 // Fixtures navigated with a query string, because the state they capture lives in the URL rather
 // than in the served markup. The exploded viewer is the deep-link case in full: `?exploded=1` is
 // what puts the page on the vector lane and presses the 3D chip, exactly as a shared link does.
@@ -305,6 +308,32 @@ const ANNOTATIONS_PAYLOAD = {
       },
     },
   ],
+};
+
+// The published element tag index (`GET /tags/<previewId>`), which the focused comparison's element
+// selector fetches. Shaped exactly as `ServeAnnotationsPayload.encodeTags` writes it — `space` on
+// every entry included, because a consumer that read an index declaring no plane as though it
+// declared render pixels is the failure D1 settled — with bounds inside the 200×420 placeholder
+// render so the selection the shot shows lines up with the pixels beside it.
+//
+// Three entries, and each is a different answer the picker has to give: a unique tag with a box, a
+// unique tag with NO box (still an identity — `count` is what makes one), and a tag two nodes carry
+// (not an identity at all, so it is listed with its count and refused).
+const TAG_INDEX_PAYLOAD = {
+  previewId: "button-filled__ideal__default__light",
+  tags: {
+    "avatar-slot": { count: 1, bounds: null, space: "render-pixels" },
+    "follow-button": {
+      count: 1,
+      bounds: { x: 20, y: 132, width: 90, height: 36 },
+      space: "render-pixels",
+    },
+    "list-row": {
+      count: 2,
+      bounds: { x: 20, y: 258, width: 160, height: 64 },
+      space: "render-pixels",
+    },
+  },
 };
 
 // Fixtures captured with the REAL production CSS/JS routed in, rather than the older static-page
@@ -2670,6 +2699,99 @@ const FIXTURE_STATES = [
     },
   },
   {
+    // The DERIVED semantics layers over the Actual panel — typography, theme and layout read off
+    // the render's own tree, which this page could not draw at all until `<cp-inspect-layers>`
+    // learned to mount over a host other than the viewer. Captured deliberately for the same
+    // reason the authored redline below is: they default to off, so nothing would diff them.
+    //
+    // The claim worth seeing is that they land over the ACTUAL frame and nowhere else. The
+    // authored redline annotates both panels; these describe a semantics tree, and the reference
+    // is an imported raster with no tree behind it.
+    fixture: "serve-reference-compare",
+    suffix: "render-semantics",
+    apply: async (page) => {
+      // States run in order against the SAME page, and `report-open-mobile` above leaves the report
+      // panel expanded over the overlay. Close it: what this shot is about is the controls row and
+      // the layers, and a panel floating across the picture below them is noise the diff bot would
+      // have to be read past on every future change.
+      await page.evaluate(() =>
+        document.getElementById("cp-report")?.removeAttribute("open"),
+      );
+      for (const kind of ["typography", "theme", "layout"]) {
+        await page.check(`.cp-render-inspect[data-cp-inspect="${kind}"]`);
+      }
+      await expect(page.locator("#cp-render-inspect-legend")).toBeVisible();
+      // Placed from the frame's rendered size, so hold until the panel has actually laid out
+      // rather than racing the placeholder's load.
+      await page.waitForFunction(() => {
+        const box = document.querySelector(
+          "#cp-render-inspect-layer .cp-inspect-box",
+        );
+        return box && box.getBoundingClientRect().width > 0;
+      });
+      // Every annotation the stub payload carries, drawn once. The count is stated rather than
+      // asserted as "more than zero" so a layer silently dropping out of the projection fails here
+      // instead of shipping a legend that quietly lists less than it used to.
+      await expect(
+        page.locator("#cp-render-inspect-layer .cp-inspect-box"),
+      ).toHaveCount(7);
+      // The Reference panel keeps only the authored layer's container, never these boxes.
+      await expect(
+        page.locator('[data-cp-annotated="reference"] .cp-inspect-box'),
+      ).toHaveCount(0);
+      await page.mouse.move(0, 0);
+    },
+  },
+  {
+    // A selection ACTIVE — the whole point of the batch. The page states which element the
+    // prefilled report will name, and the locator block in the report's hidden body carries that
+    // element plus its region in render pixels.
+    //
+    // The duplicated tag is in the shot on purpose: it is listed with its count and disabled,
+    // because `count > 1` is not an element identity and silently resolving one of several is the
+    // failure the field exists to catch. A picker that simply hid it would leave someone hunting
+    // for a tag they can see in their own code.
+    fixture: "serve-reference-compare",
+    suffix: "element-selected",
+    apply: async (page) => {
+      // States run in order against the SAME page, and `report-open-mobile` above leaves the report
+      // panel expanded over the overlay. Close it: what this shot is about is the controls row and
+      // the layers, and a panel floating across the picture below them is noise the diff bot would
+      // have to be read past on every future change.
+      await page.evaluate(() =>
+        document.getElementById("cp-report")?.removeAttribute("open"),
+      );
+      await expect(page.locator(".cp-selection-tag")).toBeVisible();
+      await expect(page.locator(".cp-selection-tag option")).toHaveCount(4);
+      await expect(
+        page.locator('.cp-selection-tag option[value="list-row"]'),
+      ).toBeDisabled();
+      await page.selectOption(".cp-selection-tag", "follow-button");
+      await expect(page.locator(".cp-selection-state")).toContainText(
+        "follow-button",
+      );
+      // The visible state is only half of it. What actually ships in the issue is the hidden
+      // body, and a selector whose choice never reaches it is indistinguishable from not having
+      // one — so assert the two fields, canonically, rather than trusting the status line.
+      const body = await page.inputValue("#cp-report-body");
+      expect(body).toContain('element: "follow-button"');
+      expect(body).toContain(
+        'bounds: {"height":36,"space":"render-pixels","width":90,"x":20,"y":132}',
+      );
+      expect(body).not.toContain("{{selection}}");
+      // Typography on as well, so the shot shows the element named beside the layer a reporter
+      // would have been looking at when they picked it.
+      await page.check('.cp-render-inspect[data-cp-inspect="typography"]');
+      await page.waitForFunction(() => {
+        const box = document.querySelector(
+          "#cp-render-inspect-layer .cp-inspect-box",
+        );
+        return box && box.getBoundingClientRect().width > 0;
+      });
+      await page.mouse.move(0, 0);
+    },
+  },
+  {
     // The annotation layers default to off — the page's first job is the pixel diff, and boxes
     // drawn over both panels would obscure exactly what is being judged. That leaves the drawn
     // state invisible to the diff bot unless it is captured deliberately, so switch both layers
@@ -2933,7 +3055,10 @@ const FIXTURE_STATES = [
           body: JSON.stringify({
             available: true,
             truncated: false,
-            ids: ["com.example.CardPreview", "com.example.ProfileScreenPreview"],
+            ids: [
+              "com.example.CardPreview",
+              "com.example.ProfileScreenPreview",
+            ],
           }),
         }),
       );
@@ -3073,6 +3198,15 @@ for (const fixture of listPageFixtures()) {
         route.fulfill({
           contentType: "application/json",
           body: JSON.stringify(ANNOTATIONS_PAYLOAD),
+        }),
+      );
+      // The published tag index. Not a render product — this lane reads a file the catalog
+      // published — but it has no backend here for the same reason, and the element selector is
+      // inert without it.
+      await page.route("**/tags/*", (route) =>
+        route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify(TAG_INDEX_PAYLOAD),
         }),
       );
       await page.emulateMedia({ colorScheme: theme });
@@ -3435,14 +3569,20 @@ test("contract · deferred themed cards render under a live claim", async ({
   await page.route("**/render/**", async (route) => {
     const url = new URL(route.request().url());
     if (!url.searchParams.has("themeProvider")) {
-      await route.fulfill({ path: renderPlaceholder, contentType: "image/png" });
+      await route.fulfill({
+        path: renderPlaceholder,
+        contentType: "image/png",
+      });
       return;
     }
     const token = url.searchParams.get("_themeLease");
     // The server's own gate, in miniature: a token it no longer holds is not admitted.
     if (token && !live.has(token)) {
       staleTokenRequests.push(url.pathname);
-      await route.fulfill({ status: 429, body: "theme render lease saturated" });
+      await route.fulfill({
+        status: 429,
+        body: "theme render lease saturated",
+      });
       return;
     }
     rendered.push(url.pathname);
@@ -3774,15 +3914,17 @@ test("contract · a uses: filter spans every section, like any other filter", as
   await page.route("**/render/**", (route) =>
     route.fulfill({ path: renderPlaceholder }),
   );
-  await page.goto("/preview-harness/fixtures/pages/serve-landing-sections.html");
+  await page.goto(
+    "/preview-harness/fixtures/pages/serve-landing-sections.html",
+  );
 
   // Pick a REAL section, not the All row this catalog opens on. On `all` every card passes the tab
   // predicate whatever the query is, so a test that skipped this step would pass with the fix
   // reverted — it did, which is how this step earned its place.
   const [picked, away] = await page.evaluate(() => {
-    const sections = Array.from(document.querySelectorAll(".cp-section")).filter(
-      (s) => s.querySelector("[data-uses-id]"),
-    );
+    const sections = Array.from(
+      document.querySelectorAll(".cp-section"),
+    ).filter((s) => s.querySelector("[data-uses-id]"));
     const target = sections[sections.length - 1];
     const other = sections.find((s) => s !== target);
     return [
@@ -4251,7 +4393,10 @@ test("contract · the front door's state layer stays under the hero, and the bre
   await page.mouse.move(sideProbeX, box.y + 60);
   const side = await page.evaluate((x) => {
     const c = document.querySelector(".cp-syslist .cp-card");
-    const hit = document.elementFromPoint(x, c.getBoundingClientRect().top + 60);
+    const hit = document.elementFromPoint(
+      x,
+      c.getBoundingClientRect().top + 60,
+    );
     return {
       hovered: c.matches(":hover"),
       // The pointer must be past the card's own box, or it is not on the overhang at all.

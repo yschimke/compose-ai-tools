@@ -79,14 +79,92 @@ describe("reportRenderUrl", () => {
 });
 
 describe("fillReport", () => {
+    // The real row, as `ServeIssueReport.body` writes it. Spelled out here rather than approximated,
+    // because the score placeholder is filled by EXACT row identity — a template that only
+    // resembles the server's would pass a test and fill nothing in production.
+    const ROW = "| Raw comparison | `{{rawScores}}` |";
+    const template = [
+        "| Preview | `plain.Button` |",
+        ROW,
+        "",
+        "![render]({{render}})",
+        "Steps: {{unknown}}",
+    ].join("\n");
+
     it("substitutes the two placeholders and nothing else", () => {
         assert.equal(
             fillReport(
-                "Render: {{render}}\nScores: {{rawScores}}\nSteps: {{unknown}}",
+                template,
                 "https://preview.example/r.png",
                 "98.4% structural match",
             ),
-            "Render: https://preview.example/r.png\nScores: 98.4% structural match\nSteps: {{unknown}}",
+            [
+                "| Preview | `plain.Button` |",
+                "| Raw comparison | `98.4% structural match` |",
+                "",
+                "![render](https://preview.example/r.png)",
+                "Steps: {{unknown}}",
+            ].join("\n"),
+        );
+    });
+
+    it("drops the score row when the browser could not measure", () => {
+        // What the server itself writes when it has no measurements: no row at all, rather than a
+        // placeholder or a word where a number belongs.
+        assert.equal(
+            fillReport(template, "https://preview.example/r.png", null),
+            [
+                "| Preview | `plain.Button` |",
+                "",
+                "![render](https://preview.example/r.png)",
+                "Steps: {{unknown}}",
+            ].join("\n"),
+        );
+    });
+
+    it("substitutes the render LINK, never a bare occurrence in catalog text", () => {
+        // `ServeIssueReport.body` only ever emits the placeholder as a markdown destination. A bare
+        // occurrence therefore came from catalog-authored text, and rewriting it would leave the
+        // real link reading `{{render}}` — a broken image in every filed report. This got sharper
+        // when the body started being composed before any score existed: a bad substitution now
+        // replaces a perfectly good server-written body instead of never running.
+        const hostile = [
+            "| Preview | `weird{{render}}` |",
+            "![shot]({{render}})",
+        ].join("\n");
+        assert.equal(
+            fillReport(hostile, "https://preview.example/r.png", null),
+            [
+                "| Preview | `weird{{render}}` |",
+                "![shot](https://preview.example/r.png)",
+            ].join("\n"),
+        );
+    });
+
+    it("drops only the dedicated row, never another line carrying the same text", () => {
+        // Preview ids and variants are catalog-authored — third-party data. Filtering every line
+        // that CONTAINS the placeholder would take the `| Preview |` row and the locator's required
+        // `preview:` field with it, producing a report that cannot be indexed at all, on the exact
+        // path meant to make a failed comparison still reportable.
+        const hostile = [
+            "| Preview | `weird{{rawScores}}` |",
+            ROW,
+            "preview: weird{{rawScores}}",
+        ].join("\n");
+        assert.equal(
+            fillReport(hostile, "https://preview.example/r.png", null),
+            [
+                "| Preview | `weird{{rawScores}}` |",
+                "preview: weird{{rawScores}}",
+            ].join("\n"),
+        );
+    });
+
+    it("leaves a body with no score row alone", () => {
+        const noRow = "| Preview | `plain.Button` |\n![render]({{render}})";
+        assert.equal(
+            fillReport(noRow, "https://preview.example/r.png", null),
+            "| Preview | `plain.Button` |\n![render](https://preview.example/r.png)",
         );
     });
 });

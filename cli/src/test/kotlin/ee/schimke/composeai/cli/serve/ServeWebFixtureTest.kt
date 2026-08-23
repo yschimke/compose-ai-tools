@@ -170,6 +170,9 @@ class ServeWebFixtureTest {
     referenceId: String? = null,
     variant: String = "",
     overrides: Map<String, String> = emptyMap(),
+    // The focused comparison serves the template with the selection placeholder in it, because that
+    // is the one page carrying a selector. The viewer's report has no element to name.
+    selectionPlaceholder: Boolean = false,
   ) =
     ServeIssueReport.Context(
         repo = "yschimke/compose-ai-tools",
@@ -208,7 +211,12 @@ class ServeWebFixtureTest {
         ServeWeb.ReportIssue(
           action = ServeIssueReport.action(ctx.repo),
           body = ServeIssueReport.body(ctx),
-          bodyTemplate = ServeIssueReport.body(ctx, renderPlaceholder = true),
+          bodyTemplate =
+            ServeIssueReport.body(
+              ctx,
+              renderPlaceholder = true,
+              selectionPlaceholder = selectionPlaceholder,
+            ),
           repo = ctx.repo,
           login = "yschimke",
         )
@@ -1767,7 +1775,18 @@ class ServeWebFixtureTest {
             referenceId = comparisonReferences.first().id,
             variant = ServeIssueReport.variantFor(themedPreviews.first()),
             overrides = mapOf("fontScale" to "1.5", "knob.label" to "Send;now=x"),
+            selectionPlaceholder = true,
           ),
+        // The DERIVED semantics layers, which this page could not show until the inspection
+        // machinery learned to mount over a host other than the viewer. They are what gives the
+        // element selector something to point at on the render side of the comparison — the
+        // authored redline below annotates the reference far more often than the render.
+        derivedAnnotations = true,
+        annotationsSelectable = true,
+        // …and the tag index, which is the OTHER half, and the half an annotation-box-only design
+        // misses: a uniquely tagged node carrying neither typography nor container tokens produces
+        // no annotation at all, so nothing on this page draws a box for it.
+        tagIndexAvailable = true,
         // Both panels annotated, so the fixture covers the case the layers exist for: reading the
         // reference's spec against the actual's. The layout boxes agree here and the type styles
         // don't, which is what the page is meant to make obvious.
@@ -1905,6 +1924,23 @@ class ServeWebFixtureTest {
             revisions = catalogRevisions,
             repo = "yschimke/compose-ai-tools",
           ),
+        reportIssue =
+          fixtureReportIssue(
+            previewId = themedPreviews.first().id,
+            label = themedPreviews.first().label,
+            sourceFile = themedPreviews.first().sourceFile.orEmpty(),
+            componentId = ServeIssueReport.componentIdFor(themedPreviews.first()),
+            referenceId = comparisonReferences.first().id,
+            variant = ServeIssueReport.variantFor(themedPreviews.first()),
+            selectionPlaceholder = true,
+          ),
+        // No `tagIndexUrl`, and the reason said out loud. The pinned page is where the frame gate
+        // is visible: the published index describes the CURRENT render, so a tag selection here
+        // would record bounds measured on different pixels. The drag is unaffected — it is read off
+        // the pixels on screen — so the page still offers a way to point at something.
+        tagSelectionNote =
+          "Tag selection is off on a pinned revision: the tag index describes the current " +
+            "render, not this one. Drag a region instead.",
       )
     // The same page for a DARK-FIRST catalog, which is a materially different picture rather than a
     // recolour of the one above — and the case yschimke/wear-m3-catalog#56 was raised against.
@@ -3804,13 +3840,182 @@ class ServeWebFixtureTest {
         referenceComparison.contains("{{rawScores}}"),
       "the focused comparison pins the locator, canonical overrides and score placeholder",
     )
+    // The selection placeholder rides in the TEMPLATE only. The server-rendered body is what a
+    // visitor with JS off files, and it must not carry a token nothing will ever substitute.
+    assertEquals(
+      1,
+      referenceComparison.split("{{selection}}").size - 1,
+      "the selection placeholder appears once, in the template and nowhere else",
+    )
+    assertTrue(
+      referenceComparison.substringAfter("data-report-template=\"").contains("{{selection}}"),
+      "the selection placeholder rides in the report template",
+    )
+    assertTrue(
+      referenceComparison.contains("id=\"cp-compare-actual\"") &&
+        referenceComparison.contains("id=\"cp-render-inspect-layer\"") &&
+        referenceComparison.contains("data-cp-host=\"#cp-compare-actual\"") &&
+        // Opted in, so a box on THIS page is a target rather than only a reading aid — the brief's
+        // first of two ways to choose. The viewer's mount carries no such attribute.
+        referenceComparison.contains("data-cp-selectable=\"1\"") &&
+        referenceComparison.contains("<cp-inspect-layers"),
+      "the focused comparison mounts the derived semantics layers over its Actual panel",
+    )
+    assertTrue(
+      referenceComparison.contains("<cp-element-selection>") &&
+        referenceComparison.contains("class=\"cp-selection-tag\"") &&
+        // Built through the page's own link rules, so it carries whatever credential the reader
+        // presented — a hand-rolled query builder read only the request's query parameters and
+        // dropped it entirely for a header- or bearer-authorized page, silently hiding the picker.
+        referenceComparison.contains(
+          "data-cp-tags=\"/tags/button-filled__ideal__default__light?session=compose-m3\""
+        ) &&
+        referenceComparison.contains("id=\"cp-selection-layer\""),
+      "the focused comparison offers both a tag picker and a drag region",
+    )
+    // The pinned twin is the gate, and it is the load-bearing half of this feature: the published
+    // index describes the CURRENT render, so offering a tag selection here would persist bounds
+    // measured on different pixels into the acceptance's baseline — and later report an element
+    // that never moved as moved. The drag stays, because it is read off the pixels on screen.
+    assertTrue(
+      !referenceComparisonPinned.contains("data-cp-tags=") &&
+        referenceComparisonPinned.contains("class=\"cp-selection-drag\""),
+      "a pinned comparison withholds tag selection and keeps the drag",
+    )
+    // …and withholds the OTHER separately-fetched source of bounds for the same reason. The layers
+    // may still draw (a reading aid costs nothing out of date); clicking one records an
+    // acceptance's
+    // authoring-time baseline, and `.annotations` is a separate request from the PNG on screen.
+    assertTrue(
+      !referenceComparisonPinned.contains("data-cp-selectable="),
+      "a pinned comparison withholds annotation-box selection too",
+    )
+    // A host whose PNG is baked but whose ANNOTATIONS come from a live daemon is the same mismatch
+    // by another route — both live catalog wrappers are exactly that — so the page must not read
+    // `annotationsSelectable` off the PNG lane's flags. The layers still draw; only the click goes.
+    val liveAnnotationsComparison =
+      ServeWeb.referenceComparisonPage(
+        moduleLabel = "compose-m3",
+        preview = themedPreviews.first(),
+        reference = comparisonReferences.first(),
+        references = comparisonReferences,
+        token = token,
+        sessionId = "compose-m3",
+        isPublic = true,
+        version = version,
+        derivedAnnotations = true,
+        annotationsSelectable = false,
+        reportIssue =
+          fixtureReportIssue(
+            previewId = themedPreviews.first().id,
+            label = themedPreviews.first().label,
+            sourceFile = themedPreviews.first().sourceFile.orEmpty(),
+            componentId = ServeIssueReport.componentIdFor(themedPreviews.first()),
+            referenceId = comparisonReferences.first().id,
+            variant = ServeIssueReport.variantFor(themedPreviews.first()),
+            selectionPlaceholder = true,
+          ),
+      )
+    assertTrue(
+      liveAnnotationsComparison.contains("id=\"cp-render-inspect-layer\"") &&
+        !liveAnnotationsComparison.contains("data-cp-selectable=") &&
+        liveAnnotationsComparison.contains("class=\"cp-selection-drag\""),
+      "live annotations draw but cannot be selected; the drag stays",
+    )
+    assertTrue(
+      liveAnnotationsComparison.contains("data-cp-inspect=\"theme\"") &&
+        liveAnnotationsComparison.contains("data-cp-inspect=\"layout\""),
+      "the semantics lane carries all three layers",
+    )
+    // The one host that CAN be selected is the static bundle: no daemon, so it answers
+    // `.annotations` from what the catalog published over the very PNG it serves. It therefore has
+    // no `hasDesignAnnotationsFor`, and gating the mount on that alone made the pick path
+    // unreachable everywhere — the only selectable host was the only one with no mount, and every
+    // host with a mount renders per request. The intersection was empty in production while both
+    // halves looked individually correct, which is why this asserts the COMBINATION rather than
+    // either flag.
+    val publishedTypographyComparison =
+      ServeWeb.referenceComparisonPage(
+        moduleLabel = "compose-m3",
+        preview = themedPreviews.first(),
+        reference = comparisonReferences.first(),
+        references = comparisonReferences,
+        token = token,
+        sessionId = "compose-m3",
+        isPublic = true,
+        version = version,
+        derivedAnnotations = false,
+        publishedTypography = true,
+        annotationsSelectable = true,
+        reportIssue =
+          fixtureReportIssue(
+            previewId = themedPreviews.first().id,
+            label = themedPreviews.first().label,
+            sourceFile = themedPreviews.first().sourceFile.orEmpty(),
+            componentId = ServeIssueReport.componentIdFor(themedPreviews.first()),
+            referenceId = comparisonReferences.first().id,
+            variant = ServeIssueReport.variantFor(themedPreviews.first()),
+            selectionPlaceholder = true,
+          ),
+      )
+    assertTrue(
+      publishedTypographyComparison.contains("id=\"cp-render-inspect-layer\"") &&
+        publishedTypographyComparison.contains("data-cp-selectable=\"1\""),
+      "a published-typography host mounts the layers AND may select them",
+    )
+    // Typography only. Theme and Layout are projected from a semantics tree and nothing authors
+    // them into a bundle, so offering their checkboxes here would be two controls whose fetch can
+    // only come back with nothing to draw.
+    assertTrue(
+      publishedTypographyComparison.contains("data-cp-inspect=\"typography\"") &&
+        !publishedTypographyComparison.contains("data-cp-inspect=\"theme\"") &&
+        !publishedTypographyComparison.contains("data-cp-inspect=\"layout\""),
+      "the published lane carries Typography and no dead controls",
+    )
+    // And a host with neither lane draws nothing at all rather than an empty layer div.
+    val noAnnotationsComparison =
+      ServeWeb.referenceComparisonPage(
+        moduleLabel = "compose-m3",
+        preview = themedPreviews.first(),
+        reference = comparisonReferences.first(),
+        references = comparisonReferences,
+        token = token,
+        sessionId = "compose-m3",
+        isPublic = true,
+        version = version,
+        derivedAnnotations = false,
+        publishedTypography = false,
+        reportIssue =
+          fixtureReportIssue(
+            previewId = themedPreviews.first().id,
+            label = themedPreviews.first().label,
+            sourceFile = themedPreviews.first().sourceFile.orEmpty(),
+            componentId = ServeIssueReport.componentIdFor(themedPreviews.first()),
+            referenceId = comparisonReferences.first().id,
+            variant = ServeIssueReport.variantFor(themedPreviews.first()),
+            selectionPlaceholder = true,
+          ),
+      )
+    assertTrue(
+      !noAnnotationsComparison.contains("id=\"cp-render-inspect-layer\"") &&
+        !noAnnotationsComparison.contains("<cp-inspect-layers") &&
+        noAnnotationsComparison.contains("class=\"cp-selection-drag\""),
+      "no annotation lane means no mount, and the drag still stands alone",
+    )
     // The substitution moved into `<cp-reference-compare>` with the rest of this page, so the
     // bundle is where it is now pinned. The property being held is the same one: the filled report
     // reaches an INPUT's `value` and nothing else — never an href or any other navigation sink.
+    //
+    // Both placeholders are matched by the shape the WRITER above emits them in, not as bare text:
+    // the render one is a markdown link destination and the score one is a whole table row. A bare
+    // substring replace rewrote the first occurrence anywhere in the body, so catalog-authored text
+    // carrying either literal — a preview id, a variant derived from one — was edited instead while
+    // the real link or row kept its placeholder. These strings are therefore the contract between
+    // the two files, and a change on either side has to move both.
     assertTrue(
       assetText("serve-components.js").contains(".value=") &&
-        assetText("serve-components.js").contains("replace(\"{{render}}\",") &&
-        assetText("serve-components.js").contains("replace(\"{{rawScores}}\","),
+        assetText("serve-components.js").contains("](" + "{{render}})") &&
+        assetText("serve-components.js").contains("| Raw comparison | `{{rawScores}}` |"),
       "the components bundle substitutes the report input value after comparison",
     )
     val referencedState =

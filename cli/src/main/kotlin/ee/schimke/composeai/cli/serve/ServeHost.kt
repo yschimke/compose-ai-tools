@@ -668,6 +668,25 @@ interface ServeHost : AutoCloseable {
     AnnotationsOutcome.NotFound
 
   /**
+   * Whether [renderAnnotations] describes the **same frame** an override-free `/render/<id>.png`
+   * replays, rather than one produced for the annotations request itself.
+   *
+   * True only for a host whose annotations lane is a pure replay of published data
+   * ([ServeBundleHost]). False by default, and deliberately so: getting this wrong the safe way
+   * costs an affordance, and getting it wrong the other way records a region from a frame the
+   * reporter never saw as an acceptance's authoring-time baseline.
+   *
+   * **It is not implied by `canApplyOverrides == false`.** That names the PNG lane, and both live
+   * catalog wrappers keep the PNG baked for an override-free browse while asking their daemon for
+   * annotations *first*, falling back to published only on `NotFound`. A baked frame with live
+   * annotations is exactly the mismatch, so those hosts leave this false and the focused comparison
+   * withholds annotation-box selection on them — the layers still draw, since being a render out of
+   * date costs a reading aid nothing.
+   */
+  val annotationsFollowBakedFrame: Boolean
+    get() = false
+
+  /**
    * Join the shared live stream for [previewId], or `null` when this host has no live lane (the
    * snapshot fallback is used instead — always the case for [ServeBundleHost]).
    *

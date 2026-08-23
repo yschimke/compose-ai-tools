@@ -52,17 +52,63 @@ export function reportRenderUrl(actualUrl: string, base: string): string {
 }
 
 /**
- * The report body, filled.
+ * The one line the server writes for the browser's measurements.
+ *
+ * Matched EXACTLY rather than by substring, and that is the whole point of naming it: the row is
+ * the only line `ServeIssueReport.body` writes containing this placeholder, so anything else
+ * carrying that text came from catalog-authored data (a preview id, a variant derived from one)
+ * and must not be touched. Kept in step with `ServeIssueReport.body`'s `| Raw comparison |` row —
+ * `reportBodyRows.test.ts` and `ServeWebFixtureTest` both fail if the two drift.
+ */
+const RAW_SCORES_ROW = "| Raw comparison | `{{rawScores}}` |";
+
+/**
+ * The render placeholder as it appears in the body: a markdown link/image **destination**.
+ *
+ * `ServeIssueReport.body` emits it in exactly two shapes — `![alt]({{render}})` when the render is
+ * embeddable and `[PNG at these settings]({{render}})` when it is not — and never as bare text. So
+ * the destination form is the anchor, and a bare occurrence in catalog-authored text (a preview id
+ * carrying the literal) is left alone instead of being rewritten while the real link keeps the
+ * placeholder.
+ *
+ * That mattered less when the body was only composed after a successful score, because a failing
+ * comparison left the server's own body in place. It matters now: the body is composed as soon as
+ * the page parses, so a bad substitution would replace a perfectly good server-written report.
+ */
+const RENDER_DESTINATION = "]({{render}})";
+
+/**
+ * The report body's render and score placeholders, filled.
  *
  * Page-derived values reach the form's hidden INPUT and nothing else — never an `href` or any other
- * navigation sink. The template is server-written; only these two placeholders are substituted.
+ * navigation sink. The template is server-written; only these placeholders are substituted.
+ *
+ * A null [scores] **drops the score row** rather than leaving the placeholder or writing a word
+ * where a measurement belongs, reproducing exactly what the server writes when it has no
+ * measurements of its own. That case is reachable because the body is composed as soon as the page
+ * parses rather than only when the scorer finishes: a comparison the browser could not score — a
+ * reference the host cannot produce, a frame that never decoded — used to leave the report
+ * untouched, so a selection made on such a page would have reached nothing.
+ *
+ * Dropping it is done by exact-row identity, not by filtering lines that *contain* the placeholder.
+ * The latter was the obvious spelling and deleted every matching line, so a catalog-authored value
+ * carrying that text would take the `| Preview |` row and the locator's required `preview:` field
+ * with it — a report that is malformed or unindexable, produced by the very path meant to make a
+ * failed comparison still reportable.
  */
 export function fillReport(
     template: string,
     renderUrl: string,
-    scores: string,
+    scores: string | null,
 ): string {
-    return template
-        .replace("{{render}}", renderUrl)
-        .replace("{{rawScores}}", scores);
+    const filled = template.replace(RENDER_DESTINATION, `](${renderUrl})`);
+    const lines = filled.split("\n");
+    const at = lines.indexOf(RAW_SCORES_ROW);
+    // No row means nothing to fill: a body the server wrote without one (it had no measurements
+    // either), or one whose row format has drifted — and in both cases editing some other line that
+    // happens to carry the text would be worse than leaving the body alone.
+    if (at < 0) return filled;
+    if (scores === null) lines.splice(at, 1);
+    else lines[at] = RAW_SCORES_ROW.replace("{{rawScores}}", scores);
+    return lines.join("\n");
 }

@@ -9426,6 +9426,77 @@ $rows
     referenceAnnotations: List<DesignAnnotation> = emptyList(),
     actualAnnotations: List<DesignAnnotation> = emptyList(),
     /**
+     * Whether the host can project the **derived** layers — typography, theme and layout read off
+     * the render's own semantics tree — for this preview, i.e. answer `/render/<id>.annotations`.
+     *
+     * Separate from [actualAnnotations], which is the *producer-authored* list a bundle publishes
+     * in `annotations/index.json`. This page carried only the authored one for as long as it has
+     * existed, which is why most catalogs show a redline over the Reference panel and nothing over
+     * the render — and why, before this, an element selector on the Actual side would have had
+     * nothing to point at on the side that matters.
+     */
+    derivedAnnotations: Boolean = false,
+    /**
+     * Whether the catalog **published** typography over this preview's baked frame
+     * ([ServeHost.hasPublishedTypographyFor]) — the other lane behind the same Typography layer,
+     * and the only one a static bundle has.
+     *
+     * The viewer has always drawn this distinction ([hasPublishedTypography] there) and the
+     * comparison must too, because the two lanes do not overlap where it matters. A static bundle
+     * answers `.annotations` from `annotations/index.json` and never re-renders, so it is the one
+     * host whose layers and PNG are the same frame by construction — which is exactly the host
+     * [annotationsSelectable] is for. Gating this page's mount on [derivedAnnotations] alone put
+     * the two behind mutually exclusive predicates: a bundle host has no daemon, so no mount was
+     * emitted at all, while every host that got one renders per request and so is not selectable.
+     * The intersection was empty and no deployed comparison offered a selectable box.
+     *
+     * Only the Typography row rides this lane. Theme attributes and Layout boxes are projected from
+     * a semantics tree and nothing authors them into a bundle, so they stay gated on
+     * [derivedAnnotations] rather than becoming checkboxes with nothing behind them.
+     */
+    publishedTypography: Boolean = false,
+    /**
+     * Whether a **tag** selection would describe the frame on screen, and so whether to offer the
+     * picker at all. The URL itself is built here rather than passed in, so it goes through the
+     * same [linkQuery] rules as every other link on the page — a hand-rolled query builder in the
+     * handler read only the request's query parameters and so dropped the credential entirely for a
+     * page authorized by header or by an agent's bearer grant, silently hiding the picker on a
+     * catalog that publishes a perfectly good index.
+     *
+     * Null is not "no tags". `ServeHost.tagIndexForPreview` is the *published static* index,
+     * measured in CI over the baked render, and both live host wrappers delegate to their baked
+     * host — so an override-bearing or pinned frame is a different render than the one those bounds
+     * came from. A tag selection persists those bounds into the locator as the acceptance's
+     * baseline, so bounds read off another frame survive into a record that later reports an
+     * unchanged element as *moved*: a false invalidation with a plausible explanation attached,
+     * which is worse than a missing check. A dragged region has no such coupling — it is derived
+     * from the displayed pixels, so it describes what the reporter saw by construction — and stays
+     * offered either way.
+     *
+     * The index is a published artifact and is not scoped to the render query, so its URL carries
+     * the session keys and nothing else — no overrides (there are none, or this would be false) and
+     * no `reference=`.
+     */
+    tagIndexAvailable: Boolean = false,
+    /**
+     * Whether clicking one of the derived semantics boxes may **select** it.
+     *
+     * Separate from [derivedAnnotations], which decides whether the layers are drawn at all.
+     * Drawing them over a frame the server rendered for this request is fine — a reading aid a
+     * render out of date costs nothing. Recording one is not: `.annotations` is a separate request
+     * from the PNG the client already decoded, so on a host that renders per request the two can
+     * describe different frames wherever output varies, and a click would persist a region from one
+     * of them as the acceptance's authoring-time baseline.
+     */
+    annotationsSelectable: Boolean = false,
+    /**
+     * Why the tag picker is absent, when the reason is worth saying out loud. Shown beside the
+     * selector rather than left to be guessed at: "this catalog publishes no tag index" and "your
+     * overrides mean the index describes a different render" are different problems with different
+     * fixes, and a control that simply is not there teaches neither.
+     */
+    tagSelectionNote: String? = null,
+    /**
      * The catalog's published revisions and which one this page is pinned to. This is the page the
      * permalink feature was raised against (issue #3723): a comparison URL names a preview and a
      * reference, both of which are republished, so without a pin it describes whatever the pair
@@ -9540,6 +9611,82 @@ $rows
         """
           .trimIndent()
       }
+    // The DERIVED layers, mounted over the Actual panel by the same `<cp-inspect-layers>` the
+    // viewer
+    // uses (see `inspect/host.ts`). Deliberately a second, separately-labelled control group rather
+    // than more checkboxes in the one above: those toggle the redline a producer AUTHORED and that
+    // this page inlines for both panels, these toggle what the render's own semantics tree SAYS,
+    // and only the render has one. Folding them together would offer a Typography toggle that means
+    // two different things depending on which panel you looked at.
+    // Typography rides either lane; Theme and Layout only the semantics one. Same rule as the
+    // viewer's Inspect group, and for the same reason: a row whose fetch can only come back empty
+    // is a dead control.
+    val derivedLayers = buildList {
+      if (derivedAnnotations || publishedTypography) add("typography" to "Typography")
+      if (derivedAnnotations) {
+        add("theme" to "Theme")
+        add("layout" to "Layout")
+      }
+    }
+    val derivedControls =
+      if (derivedLayers.isEmpty()) ""
+      else {
+        val toggles =
+          derivedLayers.joinToString("\n") { (kind, label) ->
+            "<label class=\"cp-annotation-toggle\"><input type=\"checkbox\" " +
+              "class=\"cp-render-inspect\" data-cp-inspect=\"$kind\"> " +
+              WebEscaping.htmlEscape(label) +
+              "</label>"
+          }
+        """
+        <div class="cp-annotation-controls cp-render-inspect-controls" role="group"
+             aria-label="Render semantics layers">
+          <span class="cp-compare-control-label">Render semantics</span>
+          $toggles
+        </div>
+        <div class="cp-inspect-legend cp-render-inspect-legend" id="cp-render-inspect-legend"
+             role="region" aria-label="Render semantics legend" hidden></div>
+        <cp-inspect-layers
+          data-cp-host="#cp-compare-actual"
+          data-cp-layer="#cp-render-inspect-layer"
+          data-cp-legend="#cp-render-inspect-legend"
+          data-cp-toggles=".cp-render-inspect"
+${if (annotationsSelectable) "          data-cp-selectable=\"1\"\n" else ""}          data-cp-base="${WebEscaping.htmlEscape(basePath)}"></cp-inspect-layers>
+        """
+          .trimIndent()
+      }
+    // The element selector. A dragged region needs nothing from the server — it is read off the
+    // displayed pixels — so the control is offered on every focused comparison; the tag picker only
+    // appears where the index describes the frame being shown. See [tagIndexUrl].
+    val tagIndexUrl =
+      if (!tagIndexAvailable) null
+      else
+        "$basePath/tags/${WebEscaping.urlEncodeSegment(preview.id)}" +
+          querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
+    val tagAttr = tagIndexUrl?.let { " data-cp-tags=\"${WebEscaping.htmlEscape(it)}\"" }.orEmpty()
+    val tagNote =
+      tagSelectionNote
+        ?.takeIf { it.isNotBlank() }
+        ?.let { "<p class=\"cp-selection-note\">${WebEscaping.htmlEscape(it)}</p>" }
+        .orEmpty()
+    val selectionControls =
+      if (reportIssue == null) ""
+      else
+        """
+        <div class="cp-selection-controls" id="cp-element-selection" role="group"
+             aria-label="Report a single element"$tagAttr>
+          <span class="cp-compare-control-label">Report</span>
+          <select class="cp-selection-tag" aria-label="Tagged element" hidden>
+            <option value="">the whole render</option>
+          </select>
+          <button type="button" class="cp-selection-drag">Drag a region…</button>
+          <button type="button" class="cp-selection-clear" hidden>Clear</button>
+          <p class="cp-selection-state" role="status">Reporting the whole render.</p>
+          $tagNote
+        </div>
+        <cp-element-selection></cp-element-selection>
+        """
+          .trimIndent()
     val source = WebEscaping.htmlEscape(reference.source.provider)
     val revision =
       reference.source.revision
@@ -9602,10 +9749,16 @@ $rows
           <div class="cp-reference-grid">
             <section><h2>Reference</h2><div class="cp-compare-shot" data-cp-annotated="reference"><img src="$raster" alt="Design reference"></div></section>
             <section><h2>Diff</h2><div class="cp-compare-shot"><canvas class="cp-reference-diff" aria-label="Highlighted pixel difference"></canvas></div></section>
-            <section><h2>Actual</h2><div class="cp-compare-shot" data-cp-annotated="actual"><img src="$actual" alt="Actual Compose preview"></div></section>
+            <section><h2>Actual</h2><div class="cp-compare-shot" data-cp-annotated="actual" id="cp-compare-actual" data-preview-id="${WebEscaping.htmlEscape(preview.id)}"><img src="$actual" alt="Actual Compose preview">${
+              if (derivedLayers.isNotEmpty())
+                "<div class=\"cp-inspect-layer\" id=\"cp-render-inspect-layer\"></div>"
+              else ""
+            }<div class="cp-selection-layer" id="cp-selection-layer" hidden></div></div></section>
           </div>
           $annotationControls
-          <p class="cp-reference-result" role="status">comparing…</p>$report
+          $derivedControls
+          <p class="cp-reference-result" role="status">comparing…</p>
+          $selectionControls$report
           <label class="cp-overlay-control">Overlay <input class="cp-overlay-range" type="range" min="0" max="100" value="50"><span>50%</span></label>
           <div class="cp-reference-overlay"><img src="$raster" alt=""><img src="$actual" alt=""></div>
         </div>

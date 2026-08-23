@@ -124,8 +124,28 @@ and every part of it is already computable on the serve host:
 | `variant` | the axis segments already inside the preview id — **axes only**. Live overrides are *not* folded in here; they travel in their own `overrides` field, because two representations of one fact means two ways to spell it and no rule for which wins |
 | `overrides` | the whole normalised override map the render lane received (display fields, size fields, overlay toggles, `knob.*`, `rc.*`) — the same set §4 matches acceptances on |
 | `revision` | `repo@branch` provenance + the compose-ai-tools version that rendered it |
-| `element` | **reserved**, unwritten until batch 03 — the `testTag` a selection resolved to, as a **JSON string** (`element: "glyph"`) |
-| `bounds` | **reserved**, unwritten until batch 03 — `{"height":…,"space":"render-pixels","width":…,"x":…,"y":…}` |
+| `element` | the `testTag` a selection resolved to, as a **JSON string** (`element: "glyph"`). Optional: absent unless the reporter picked an element |
+| `bounds` | the region the selection covered — `{"height":…,"space":"render-pixels","width":…,"x":…,"y":…}`. Optional, and independently so: a tag whose every carrying node had a zero-area box names an element with no region |
+
+**A tag selection is only offered where the index describes the frame on screen.** The element tag
+index is published per *render* — computed in CI over the baked PNGs, read back by `ServeBundleHost`,
+and delegated to that baked host by both live wrappers — so on a frame an override or a revision pin
+has re-rendered, its bounds were measured on different pixels. A tag selection persists those bounds
+into the locator as the acceptance's *baseline*, so the wrong ones survive into a record that later
+reports an unchanged element as `moved`: a false invalidation with a plausible explanation attached,
+which is worse than a missing check. The focused comparison therefore withholds the tag picker
+whenever the frame is not the baked one, says which of the three reasons applies, and leaves the
+**drag** — a dragged region is derived from the displayed pixels, so it describes what the reporter
+saw by construction.
+
+That gate is **necessary but not sufficient**, and the residual is caching: a public server sends an
+override-free baked render with `max-age=300, stale-while-revalidate=3600` while the index is
+`no-store`, so a client can pair pixels from the previous catalog generation with a freshly-fetched
+index — the invariant broken by a republish rather than by an override. Closing it needs the image
+and the index to carry a **shared generation**, which is the coupling §5 must build before an element
+gate may read the index at all; until a gate measures against it, a slightly wrong recorded baseline
+is latent rather than active. The index itself is served at `GET /{system}/tags/{previewId}`, in the wire shape
+`ServeTagIndexStore` validates, `space` on every entry included.
 
 **A body may carry one block per component, and that is how an umbrella report is indexed.** One
 issue legitimately spans several components — m3-catalog#42's Elevated shadow level covers
@@ -138,10 +158,13 @@ blocks would carry the same issue twice and count two in its badge. The alternat
 umbrella into one issue per component — was rejected because it multiplies the backlog and loses the
 one fact that matters most about those issues, that they share a cause.
 
-**`element` and `bounds` are reserved now and written later, deliberately.** Batch 01 called for
-both before the writer, the parsers and the shared fixture froze; that did not happen, and both
-parsers ignore unknown keys, so a batch-03 report carrying a selection would have been indexed with
-the selection silently discarded — no strict-parser rejection to notice it. `bounds` names its space
+**`element` and `bounds` were reserved before anything wrote them, deliberately.** Batch 01 called
+for both before the writer, the parsers and the shared fixture froze; that did not happen, and both
+parsers ignore unknown keys, so a report carrying a selection would have been indexed with the
+selection silently discarded — no strict-parser rejection to notice it. Batch 03 fills them: the
+focused comparison's `<cp-element-selection>` writes them into the served body template through a
+`{{selection}}` placeholder, and `cli/serve-web`'s `report/locator.ts` is pinned to the same shared
+fixture as the Kotlin writer and the JavaScript parser, so all three engines agree on the bytes. `bounds` names its space
 rather than being a bare rectangle, and `v1` accepts only `render-pixels`: per D1 both tag-index
 producers publish render pixels and the canonical-plane transform is a step of the **comparison**, a
 plane being a property of a comparison and the index a property of a render. A rectangle with no
@@ -222,8 +245,10 @@ simply not there.
   preview id carrying no `__` axes. "No axes" is a fact about the preview, not a mangled body. Every
   *other* field must be non-blank: an emptied `system` or `preview` means the block no longer names
   one component, and that is a mangled body.
-- **`element` and `bounds` are absent or non-blank.** Reserved fields, so most blocks carry
-  neither; a *blank* one is a mangled body rather than an absent field, as is an `element` that is
+- **`element` and `bounds` are absent or non-blank.** Optional fields, and independently so: most
+  blocks carry neither, a report that named an element without dragging a region carries only
+  `element`, and a tag whose every carrying node had a zero-area box is one the index itself gives
+  no bounds for. A *blank* one is a mangled body rather than an absent field, as is an `element` that is
   not a canonical JSON string (a bare tag, or `""`). A `bounds` naming any space
   other than `render-pixels`, carrying a non-integer or negative extent, a zero width or height, or
   keys in insertion order rather than code-point order, is refused rather than stored as a guess.
