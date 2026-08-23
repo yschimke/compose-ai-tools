@@ -53,6 +53,15 @@ export interface InspectHost {
     hasSpecModes: boolean;
     /** See [LayerAnchor]. */
     anchor: LayerAnchor;
+    /**
+     * Whether a click on a box means "report this part of the render".
+     *
+     * False on the viewer, where a box is a reading aid and a click means nothing — and where
+     * adding one would change a shipped page's behaviour for no reason. True on the focused
+     * comparison, which is the page a report is filed from: the brief's two ways to choose are
+     * clicking an annotated element and dragging a region, and this is the first of them.
+     */
+    selectable: boolean;
     /** The prefix render URLs hang off, for the address to use before any frame has decoded. */
     base: string;
 }
@@ -84,6 +93,7 @@ export function viewerHost(): InspectHost | null {
         frameSource: "data-cp-src",
         hasSpecModes: true,
         anchor: "offset",
+        selectable: false,
         base: baseFrom(location.pathname),
     };
 }
@@ -124,6 +134,7 @@ export function panelHost(mount: HTMLElement): InspectHost | null {
         frameSource: "src",
         hasSpecModes: false,
         anchor: "centred",
+        selectable: mount.hasAttribute("data-cp-selectable"),
         base: mount.getAttribute("data-cp-base") ?? baseFrom(location.pathname),
     };
 }

@@ -63,6 +63,7 @@ async function mountPanel(withTag = true): Promise<void> {
         data-cp-layer="#cp-derived-layer"
         data-cp-legend="#cp-derived-legend"
         data-cp-toggles=".cp-derived-inspect"
+        data-cp-selectable="1"
         data-cp-base="/m3"></cp-inspect-layers>`
               : ""
       }`;
@@ -160,6 +161,24 @@ describe("<cp-inspect-layers> over a comparison panel", () => {
                 ".cp-reference-grid section:first-child .cp-inspect-box",
             ).length,
             0,
+        );
+    });
+
+    it("announces a pick when a selectable host's box is clicked", async () => {
+        // The brief's first of two ways to choose. The bounds travel as they are — every source
+        // reports them in the render's own pixel space, so a box click cannot acquire the
+        // display-plane error a drag has to be converted out of.
+        await mountPanel();
+        await tick("typography");
+        const picks: unknown[] = [];
+        window.addEventListener("cp-element-pick", (event) =>
+            picks.push((event as CustomEvent).detail?.bounds),
+        );
+        boxes()[0].dispatchEvent(new Event("click", { bubbles: true }));
+        assert.deepEqual(picks, [{ x: 0, y: 0, width: 100, height: 50 }]);
+        assert.ok(
+            boxes()[0].classList.contains("cp-inspect-box--selectable"),
+            "a selectable box says so, so the cursor can",
         );
     });
 

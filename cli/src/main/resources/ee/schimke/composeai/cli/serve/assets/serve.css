@@ -2807,6 +2807,10 @@ html:not(.cp-bg-transparent) #cp-reference-compare[data-cp-stage-clip] .cp-refer
 .cp-render-inspect-legend { position: static; flex: none; max-height: none; align-self: auto;
   min-width: 0; margin: 14px 0 0; }
 .cp-render-inspect-controls { margin-top: 10px; }
+/* A box on the comparison is a target, not just a reading aid: clicking one reports that part of
+   the render. Only the comparison's mount opts in (`data-cp-selectable`), so the viewer's boxes stay
+   inert and its behaviour is unchanged. */
+.cp-inspect-box--selectable { cursor: pointer; }
 
 /* Element selection (`<cp-element-selection>`). A REPORT affordance: it decides what the prefilled
    issue is about and accepts nothing. */

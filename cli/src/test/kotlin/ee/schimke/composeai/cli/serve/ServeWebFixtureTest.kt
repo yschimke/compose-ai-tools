@@ -3854,6 +3854,9 @@ class ServeWebFixtureTest {
       referenceComparison.contains("id=\"cp-compare-actual\"") &&
         referenceComparison.contains("id=\"cp-render-inspect-layer\"") &&
         referenceComparison.contains("data-cp-host=\"#cp-compare-actual\"") &&
+        // Opted in, so a box on THIS page is a target rather than only a reading aid — the brief's
+        // first of two ways to choose. The viewer's mount carries no such attribute.
+        referenceComparison.contains("data-cp-selectable=\"1\"") &&
         referenceComparison.contains("<cp-inspect-layers"),
       "the focused comparison mounts the derived semantics layers over its Actual panel",
     )

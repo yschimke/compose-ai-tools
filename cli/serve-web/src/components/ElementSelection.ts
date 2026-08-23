@@ -101,6 +101,12 @@ export class ElementSelection extends LitElement {
         // A reflow moves the frame under an already-drawn marquee, so the box has to be re-placed
         // rather than left where the pointer put it.
         this.on(window, "resize", () => this.placeMarquee());
+        // Clicking an annotated element — the brief's first of two ways to choose, alongside the
+        // drag. `<cp-inspect-layers>` raises this from a box on the Actual panel when its host is
+        // selectable; the boxes are its to own, so it announces the pick rather than this component
+        // reaching into another element's DOM.
+        this.on(window, "cp-element-pick", ((event: CustomEvent) =>
+            this.pickAnnotation(event.detail?.bounds)) as EventListener);
 
         void this.loadTags();
         return true;
@@ -146,6 +152,37 @@ export class ElementSelection extends LitElement {
             picker.appendChild(option);
         }
         picker.hidden = false;
+    }
+
+    /**
+     * A click on an annotated element, recorded as a REGION.
+     *
+     * A region and not an element, because an annotation carries no `testTag`: it is typography or
+     * a resolved container projected from the semantics tree, so there is no identity to name and
+     * claiming one would invent it. That makes this weaker than a tag selection — a geometric
+     * acceptance with no element gate — which is exactly why the tag picker exists beside it and why
+     * the brief insists selection be drivable from the index rather than from boxes alone.
+     *
+     * The bounds need no conversion: annotation bounds are already in the render's own pixel space,
+     * the plane `v1` accepts.
+     *
+     * Replaces any chosen tag, for the same reason a drag does: `bounds` is the selected element's
+     * authoring-time baseline, so pairing a tag with a rectangle that is not that element's box
+     * records a baseline the element never had.
+     */
+    private pickAnnotation(bounds: unknown): void {
+        const box = bounds as
+            { x: number; y: number; width: number; height: number } | undefined;
+        if (!box) return;
+        if (this.picker) this.picker.value = "";
+        this.apply({
+            bounds: {
+                x: Math.trunc(box.x),
+                y: Math.trunc(box.y),
+                width: Math.trunc(box.width),
+                height: Math.trunc(box.height),
+            },
+        });
     }
 
     private chooseTag(): void {

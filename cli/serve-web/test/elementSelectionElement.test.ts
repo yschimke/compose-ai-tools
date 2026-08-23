@@ -398,6 +398,38 @@ describe("<cp-element-selection>", () => {
         ]);
     });
 
+    it("records a clicked annotated element as a region", async () => {
+        // The brief's first of two ways to choose. A REGION and not an element, because an
+        // annotation carries no testTag — it is typography or a resolved container projected from
+        // the semantics tree, so there is no identity to name and claiming one would invent it.
+        await mount();
+        window.dispatchEvent(
+            new CustomEvent("cp-element-pick", {
+                detail: { bounds: { x: 12, y: 34, width: 56, height: 78 } },
+            }),
+        );
+        for (let i = 0; i < 3; i++) await flush();
+        // Annotation bounds are already in the render's own plane, so they travel unconverted.
+        assert.deepEqual(locatorLines(), [
+            'bounds: {"height":78,"space":"render-pixels","width":56,"x":12,"y":34}',
+        ]);
+    });
+
+    it("lets a clicked element replace a chosen tag, as a drag does", async () => {
+        await mount();
+        await choose("follow-button");
+        window.dispatchEvent(
+            new CustomEvent("cp-element-pick", {
+                detail: { bounds: { x: 1, y: 2, width: 3, height: 4 } },
+            }),
+        );
+        for (let i = 0; i < 3; i++) await flush();
+        assert.deepEqual(locatorLines(), [
+            'bounds: {"height":4,"space":"render-pixels","width":3,"x":1,"y":2}',
+        ]);
+        assert.equal(picker().value, "");
+    });
+
     it("treats a click with no drag as a cancel", async () => {
         await mount();
         await drag([10, 20], [10, 20]);

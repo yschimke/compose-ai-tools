@@ -457,6 +457,24 @@ export class InspectLayers extends LitElement {
         box.appendChild(badge);
         box.addEventListener("mouseenter", () => this.highlight(id));
         box.addEventListener("mouseleave", () => this.highlight(null));
+        // Only where the host says a click means something (see `InspectHost.selectable`). The
+        // viewer's boxes stay inert, so its behaviour and its markup are both unchanged.
+        //
+        // The bounds travel as they are: every source reports them in the RENDER's own pixel space,
+        // which is the plane `compose-parity-locator/v1` accepts, so a box click needs no conversion
+        // and cannot acquire the display-plane error a drag has to be converted out of.
+        if (this.host?.selectable) {
+            box.classList.add("cp-inspect-box--selectable");
+            box.addEventListener("click", (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                window.dispatchEvent(
+                    new CustomEvent("cp-element-pick", {
+                        detail: { bounds: entry.bounds, label: entry.title },
+                    }),
+                );
+            });
+        }
         this.boxes.push({ id, node: box, bounds: entry.bounds });
         return box;
     }

@@ -9612,6 +9612,7 @@ $rows
           data-cp-layer="#cp-render-inspect-layer"
           data-cp-legend="#cp-render-inspect-legend"
           data-cp-toggles=".cp-render-inspect"
+          data-cp-selectable="1"
           data-cp-base="${WebEscaping.htmlEscape(basePath)}"></cp-inspect-layers>
         """
           .trimIndent()
