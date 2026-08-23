@@ -213,6 +213,27 @@ describe("fillSelection", () => {
         assert.ok(!fillSelection(template, {}).includes("{{selection}}"));
     });
 
+    it("rewrites the placeholder LINE, not an earlier value that ends in it", () => {
+        // Catalog-authored ids are third-party data. A first-occurrence substring replace would
+        // rewrite this preview id and file the real placeholder verbatim, producing a locator the
+        // parity index cannot consume — with nothing anywhere to notice.
+        const hostile = [
+            "```compose-parity-locator/v1",
+            "preview: weird{{selection}}",
+            "overrides: {}",
+            "{{selection}}",
+            "```",
+            "",
+        ].join("\n");
+        const filled = fillSelection(hostile, { element: "glyph" });
+        assert.ok(
+            filled.includes("preview: weird{{selection}}"),
+            "the preview id must survive untouched",
+        );
+        assert.ok(!filled.includes("\n{{selection}}\n"), filled);
+        assert.ok(filled.includes('element: "glyph"'), filled);
+    });
+
     it("puts the selection between the overrides and the revision", () => {
         const filled = fillSelection(template, {
             element: "glyph",

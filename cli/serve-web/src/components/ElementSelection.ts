@@ -196,8 +196,21 @@ export class ElementSelection extends LitElement {
 
         let start: { x: number; y: number } | null = null;
         const offs: Array<() => void> = [];
+        // The frame may still be decoding when the drag is armed. Both of these keep the overlay
+        // matched to it: `load` for the first geometry it ever has, and the observer for every
+        // reflow after. Without them, arming a drag on an undecoded frame gives a 0x0 surface that
+        // cannot be dragged on at all.
+        const resizes =
+            typeof ResizeObserver === "function"
+                ? new ResizeObserver(() => this.sizeLayer())
+                : null;
+        resizes?.observe(frame);
+        const onFrameLoad = () => this.sizeLayer();
+        frame.addEventListener("load", onFrameLoad);
         const stop = () => {
             for (const off of offs) off();
+            frame.removeEventListener("load", onFrameLoad);
+            resizes?.disconnect();
             layer.hidden = true;
             layer.textContent = "";
             this.root?.removeAttribute("data-dragging");
@@ -277,6 +290,15 @@ export class ElementSelection extends LitElement {
         }) as EventListener);
     }
 
+    /**
+     * Match the overlay to the frame's CURRENT box.
+     *
+     * Re-run rather than done once, because the frame may not have decoded when the drag is armed:
+     * the Actual panel's image sizes itself, so before it loads its client box is zero and the
+     * overlay would be a 0×0 surface nothing can be dragged on — an armed gesture that silently
+     * cannot start, recoverable only by cancelling and trying again. `startDrag` keeps this in step
+     * with the image's own geometry for as long as the gesture is live.
+     */
     private sizeLayer(): void {
         const layer = this.layer;
         const frame = this.frame;

@@ -100,14 +100,24 @@ export const SELECTION_PLACEHOLDER = "{{selection}}";
 /**
  * [template] with the selection placeholder replaced by [selectionLines].
  *
- * The placeholder occupies a whole line, so it is consumed WITH its newline: substituting the empty
- * string then yields exactly the block a server with no selection to report writes by itself, and a
- * body that reaches GitHub with a stray blank line in a fenced block is one the producer's line
- * parser reads a field short.
+ * The placeholder occupies a whole LINE, and this matches it as one — the line has to equal the
+ * placeholder exactly, which is how the server writes it. A first-occurrence substring replace was
+ * the obvious spelling and the wrong one: any earlier locator value ending in the placeholder text
+ * (a preview id or a variant carrying it, both catalog-authored and so third-party data) would be
+ * rewritten instead, and the real placeholder would then be filed verbatim — a malformed locator
+ * that takes the whole issue out of the parity index, with nothing to notice it.
+ *
+ * The line is consumed WITH its newline: substituting the empty string then yields exactly the
+ * block a server with no selection to report writes by itself, where a stray blank line inside the
+ * fence is one the producer's line parser reads a field short.
  */
 export function fillSelection(template: string, selection: Selection): string {
-    return template.replace(
-        `${SELECTION_PLACEHOLDER}\n`,
-        selectionLines(selection),
-    );
+    const lines = template.split("\n");
+    const at = lines.indexOf(SELECTION_PLACEHOLDER);
+    if (at < 0) return template;
+    const filled = selectionLines(selection);
+    // `selectionLines` is newline-TERMINATED, so splice in its lines and drop the trailing empty
+    // piece; an empty selection splices nothing and removes the placeholder line entirely.
+    lines.splice(at, 1, ...(filled ? filled.split("\n").slice(0, -1) : []));
+    return lines.join("\n");
 }

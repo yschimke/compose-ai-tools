@@ -294,6 +294,27 @@ describe("<cp-element-selection>", () => {
         );
     });
 
+    it("sizes the overlay once a still-loading frame decodes", async () => {
+        // The Actual panel's image sizes itself, so arming a drag before it decodes gave a 0x0
+        // overlay — a gesture that silently could not start, recoverable only by cancelling.
+        await mount();
+        sizeFrame(0, 0);
+        document
+            .querySelector<HTMLButtonElement>(".cp-selection-drag")!
+            .dispatchEvent(new Event("click"));
+        await flush();
+        const layer = document.getElementById("cp-selection-layer")!;
+        assert.equal(layer.style.width, "0px", "nothing to size against yet");
+        // The frame decodes mid-gesture.
+        sizeFrame(400, 200);
+        document
+            .querySelector<HTMLImageElement>("#cp-compare-actual img")!
+            .dispatchEvent(new Event("load"));
+        await flush();
+        assert.equal(layer.style.width, "200px");
+        assert.equal(layer.style.height, "200px");
+    });
+
     it("treats a click with no drag as a cancel", async () => {
         await mount();
         await drag([10, 20], [10, 20]);

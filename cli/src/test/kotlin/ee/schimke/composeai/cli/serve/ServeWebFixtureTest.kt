@@ -1785,7 +1785,7 @@ class ServeWebFixtureTest {
         // …and the tag index, which is the OTHER half, and the half an annotation-box-only design
         // misses: a uniquely tagged node carrying neither typography nor container tokens produces
         // no annotation at all, so nothing on this page draws a box for it.
-        tagIndexUrl = "/compose-m3/tags/${themedPreviews.first().id}",
+        tagIndexAvailable = true,
         // Both panels annotated, so the fixture covers the case the layers exist for: reading the
         // reference's spec against the actual's. The layout boxes agree here and the type styles
         // don't, which is what the page is meant to make obvious.
@@ -3860,7 +3860,12 @@ class ServeWebFixtureTest {
     assertTrue(
       referenceComparison.contains("<cp-element-selection>") &&
         referenceComparison.contains("class=\"cp-selection-tag\"") &&
-        referenceComparison.contains("data-cp-tags=\"/compose-m3/tags/") &&
+        // Built through the page's own link rules, so it carries whatever credential the reader
+        // presented — a hand-rolled query builder read only the request's query parameters and
+        // dropped it entirely for a header- or bearer-authorized page, silently hiding the picker.
+        referenceComparison.contains(
+          "data-cp-tags=\"/tags/button-filled__ideal__default__light?session=compose-m3\""
+        ) &&
         referenceComparison.contains("id=\"cp-selection-layer\""),
       "the focused comparison offers both a tag picker and a drag region",
     )

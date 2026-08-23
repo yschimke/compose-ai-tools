@@ -1605,24 +1605,6 @@ class ServeHttpServer(
   private fun RoutingContext.requestQuerySuffix(): String =
     call.request.queryString().let { if (it.isEmpty()) "" else "?$it" }
 
-  /**
-   * Just the session keys (`token`, `session`) from this request, as a query suffix.
-   *
-   * For links to a lane that reads a **published** artifact: it needs whatever makes the server
-   * answer at all and nothing else. Carrying the page's render overrides there would suggest the
-   * artifact were scoped to them, which is the confusion the tag index's `space` field and its
-   * frame gate both exist to prevent.
-   */
-  private fun RoutingContext.sessionQuerySuffix(): String =
-    call.request.queryParameters
-      .entries()
-      .filter { (key, _) -> key == "token" || key == "session" }
-      .flatMap { (key, values) -> values.map { key to it } }
-      .joinToString("&") { (key, value) ->
-        "${WebEscaping.urlEncodeSegment(key)}=${WebEscaping.urlEncodeSegment(value)}"
-      }
-      .let { if (it.isEmpty()) "" else "?$it" }
-
   /** A pinned render accepts routing state and the pin itself, never viewer render overrides. */
   private fun RoutingContext.pinnedRenderQuerySuffix(): String =
     call.request.queryParameters
@@ -3642,13 +3624,7 @@ class ServeHttpServer(
           // projected from TODAY's render, so drawing them over a pinned frame would label
           // historical pixels with the current semantics tree.
           derivedAnnotations = !pinned && renderHost.hasDesignAnnotationsFor(preview.id),
-          // Session keys only. The page's own query carries `reference=` and would carry overrides
-          // — neither means anything to a route that reads a published file, and copying them in
-          // would make the fetch look as though the index were scoped to them.
-          tagIndexUrl =
-            if (!tagsDescribeFrame) null
-            else
-              "$basePath/tags/${WebEscaping.urlEncodeSegment(preview.id)}" + sessionQuerySuffix(),
+          tagIndexAvailable = tagsDescribeFrame,
           tagSelectionNote = tagSelectionNote,
           parityIssues =
             renderHost.parityIssues()?.issues.orEmpty().filter { issue ->

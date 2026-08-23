@@ -2832,9 +2832,13 @@ html:not(.cp-bg-transparent) #cp-reference-compare[data-cp-stage-clip] .cp-refer
 /* The drag surface, centred over the frame exactly like the layers above so a rectangle dragged on
    it is expressible in the render's own pixels. It takes the pointer while a drag is running —
    otherwise a drag that wandered over the panel would end in a click on whatever was underneath. */
+/* `touch-action: none` is load-bearing, not tidiness. On a touch device the default lets the
+   browser claim a drag — especially a vertical one on a scrollable page — as a scroll gesture,
+   which arrives as `pointercancel` and cancels the selection instead of recording it. Pointer
+   capture does not suppress a native gesture; declaring the surface's intent is what does. */
 .cp-reference-grid .cp-compare-shot #cp-selection-layer {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-  cursor: crosshair; z-index: 2; }
+  cursor: crosshair; touch-action: none; z-index: 2; }
 .cp-reference-grid .cp-compare-shot #cp-selection-layer[hidden] { display: none; }
 .cp-selection-marquee { position: absolute; box-sizing: border-box;
   border: 1px solid rgba(37, 99, 235, 0.95); background: rgba(37, 99, 235, 0.16); }

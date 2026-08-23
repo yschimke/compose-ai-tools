@@ -9437,8 +9437,12 @@ $rows
      */
     derivedAnnotations: Boolean = false,
     /**
-     * Where the element tag index for this preview lives, or null when a **tag** selection would
-     * not describe the frame on screen.
+     * Whether a **tag** selection would describe the frame on screen, and so whether to offer the
+     * picker at all. The URL itself is built here rather than passed in, so it goes through the
+     * same [linkQuery] rules as every other link on the page — a hand-rolled query builder in the
+     * handler read only the request's query parameters and so dropped the credential entirely for a
+     * page authorized by header or by an agent's bearer grant, silently hiding the picker on a
+     * catalog that publishes a perfectly good index.
      *
      * Null is not "no tags". `ServeHost.tagIndexForPreview` is the *published static* index,
      * measured in CI over the baked render, and both live host wrappers delegate to their baked
@@ -9449,8 +9453,12 @@ $rows
      * which is worse than a missing check. A dragged region has no such coupling — it is derived
      * from the displayed pixels, so it describes what the reporter saw by construction — and stays
      * offered either way.
+     *
+     * The index is a published artifact and is not scoped to the render query, so its URL carries
+     * the session keys and nothing else — no overrides (there are none, or this would be false) and
+     * no `reference=`.
      */
-    tagIndexUrl: String? = null,
+    tagIndexAvailable: Boolean = false,
     /**
      * Why the tag picker is absent, when the reason is worth saying out loud. Shown beside the
      * selector rather than left to be guessed at: "this catalog publishes no tag index" and "your
@@ -9611,6 +9619,11 @@ $rows
     // The element selector. A dragged region needs nothing from the server — it is read off the
     // displayed pixels — so the control is offered on every focused comparison; the tag picker only
     // appears where the index describes the frame being shown. See [tagIndexUrl].
+    val tagIndexUrl =
+      if (!tagIndexAvailable) null
+      else
+        "$basePath/tags/${WebEscaping.urlEncodeSegment(preview.id)}" +
+          querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
     val tagAttr = tagIndexUrl?.let { " data-cp-tags=\"${WebEscaping.htmlEscape(it)}\"" }.orEmpty()
     val tagNote =
       tagSelectionNote
