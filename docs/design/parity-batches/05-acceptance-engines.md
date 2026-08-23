@@ -5,12 +5,17 @@
 [#3809](https://github.com/yschimke/compose-ai-tools/issues/3809) (publish).
 **Depends on:** [04](04-acceptance-schema.md) (schema + fixtures — freeze it first, both sides build
 against one definition), [03](03-element-selection.md) (element gates must not be enabled without a
-selection path), [00](00-decisions.md) **D1, D3 and D5**.
+selection path), [00](00-decisions.md) **D1, D3, D5 and D6**.
 **Ships:** **yes.** Accepted and unaccepted scores reported separately, on a real catalog.
 
 **Read first:** [`../COMPONENT_PARITY_WORKFLOW.md`](../COMPONENT_PARITY_WORKFLOW.md) §4 — the ten
 invariants **and** the open-problems list; `format-compare.js`'s `scorePlanes` **in full** before
-touching a line of it.
+touching a line of it; and
+[00's D6](00-decisions.md#d6--the-render-generation-a-selection-is-allowed-to-describe), because the
+element gate resolves a published index against a frame and there is no shared generation to resolve
+it against yet. An element gate built before D6 lands reads bounds from one render and pixels from
+another whenever a catalog has republished recently — and reports an element that never moved as
+*moved*, which is the failure this epic's gating exists to prevent.
 
 The three issues are one batch because the whole point is that the two engines agree bit for bit, and
 "agree" is not testable one engine at a time. Publish rides along because an engine nobody's catalog

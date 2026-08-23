@@ -17,10 +17,10 @@ batch** — these files say what to do, not why, and the why is load-bearing thr
               │                                                ├─► 05 ──► 06
               ├─ D1,D5 ──────────────► 04 schema ──────────────┘  engines  resolution
               │                                                            + docs
-              └─ D3 ────────────────────────────────────────► 05 engines
+              └─ D3,D6 ─────────────────────────────────────► 05 engines
 ```
 
-**Every arrow out of 00 is a hard prerequisite, not a suggestion.** Each of D1–D5 blocks a batch
+**Every arrow out of 00 is a hard prerequisite, not a suggestion.** Each of D1–D6 blocks a batch
 because deciding it late means rewriting work rather than adding to it — a locator built before D2/D4
 records the wrong frame, and a fixture set frozen before D5 encodes a guess both engines then conform
 to.

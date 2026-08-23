@@ -133,16 +133,34 @@ wrong.
 **Blocks:** 05 (the element gate reads the index against a frame), and the hardening of the gate 03
 already shipped.
 
-Batch 03 gates selection on two predicates: `frameIsReplayedBaked` (this request is not pinned, not
-override-bearing, and the host cannot re-render) and `ServeHost.annotationsFollowBakedFrame` (this
-host's `.annotations` are a replay of published data rather than a fresh capture). Together they
-establish that the frame on screen **is** a replay of the baked render, which is what makes published
-bounds meaningful at all.
+Batch 03 gates the two selection sources **separately**, and the difference matters to whoever
+implements this:
 
-What they cannot establish is that it is a replay of the *same* baked render. The baked PNG is served
-`public, max-age=300, stale-while-revalidate=3600` while the tag and annotation lanes are `no-store`,
-so for a window after a catalog republishes, a viewer can hold last generation's pixels beside this
-generation's boxes. Nothing on the page carries a generation, so nothing can notice.
+- **The tag picker** is offered when `frameIsReplayedBaked` holds — this request is not pinned, carries
+  no override parameters, and the host's PNG lane cannot re-render (`!canApplyOverrides`) — and the
+  published index is non-empty.
+- **An annotation box** is clickable only when `frameIsReplayedBaked` **and**
+  `ServeHost.annotationsFollowBakedFrame` hold. The second is the stricter one and exists because
+  both live catalog wrappers keep the PNG baked for an override-free browse while asking their daemon
+  for annotations *first*: a baked frame with freshly captured annotations is the same mismatch by
+  another route, so the host states which lane its annotations follow rather than having it inferred
+  from a neighbouring flag.
+
+A generation stamp must respect that split. Coupling the tag picker to the annotation predicate would
+withhold a perfectly good index on hosts whose published tags do describe the frame.
+
+What neither predicate can establish is that the frame is a replay of the *same* baked render. The
+baked PNG is served `public, max-age=300, stale-while-revalidate=3600`. The tag route sets `no-store`
+— and **the `.annotations` route sets no `Cache-Control` at all**, so it inherits whatever heuristic
+freshness a browser or intermediary chooses, which is weaker than the tag lane and not a guarantee of
+anything. Either way, for a window after a catalog republishes a viewer can hold last generation's
+pixels beside this generation's boxes. Nothing on the page carries a generation, so nothing can
+notice.
+
+**(a) therefore has a prerequisite:** give the annotations response the same explicit no-store policy
+the tag route already has (`DYNAMIC_RESOURCE_CACHE_CONTROL`), so both lanes have a stated freshness
+before a generation is stamped on top of them. A stamp is worth nothing if the payload carrying it
+can itself be served from a cache of unknown age.
 
 | Option | Consequence |
 | --- | --- |
