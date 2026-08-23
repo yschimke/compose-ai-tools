@@ -128,6 +128,57 @@ wrong.
 
 ---
 
+## D6 — the render generation a selection is allowed to describe
+
+**Blocks:** 05 (the element gate reads the index against a frame), and the hardening of the gate 03
+already shipped.
+
+Batch 03 gates the two selection sources **separately**, and the difference matters to whoever
+implements this:
+
+- **The tag picker** is offered when `frameIsReplayedBaked` holds — this request is not pinned, carries
+  no override parameters, and the host's PNG lane cannot re-render (`!canApplyOverrides`) — and the
+  published index is non-empty.
+- **An annotation box** is clickable only when `frameIsReplayedBaked` **and**
+  `ServeHost.annotationsFollowBakedFrame` hold. The second is the stricter one and exists because
+  both live catalog wrappers keep the PNG baked for an override-free browse while asking their daemon
+  for annotations *first*: a baked frame with freshly captured annotations is the same mismatch by
+  another route, so the host states which lane its annotations follow rather than having it inferred
+  from a neighbouring flag.
+
+A generation stamp must respect that split. Coupling the tag picker to the annotation predicate would
+withhold a perfectly good index on hosts whose published tags do describe the frame.
+
+What neither predicate can establish is that the frame is a replay of the *same* baked render. The
+baked PNG is served `public, max-age=300, stale-while-revalidate=3600`. The tag route sets `no-store`
+— and **the `.annotations` route sets no `Cache-Control` at all**, so it inherits whatever heuristic
+freshness a browser or intermediary chooses, which is weaker than the tag lane and not a guarantee of
+anything. Either way, for a window after a catalog republishes a viewer can hold last generation's
+pixels beside this generation's boxes. Nothing on the page carries a generation, so nothing can
+notice.
+
+**(a) therefore has a prerequisite:** give the annotations response the same explicit no-store policy
+the tag route already has (`DYNAMIC_RESOURCE_CACHE_CONTROL`), so both lanes have a stated freshness
+before a generation is stamped on top of them. A stamp is worth nothing if the payload carrying it
+can itself be served from a cache of unknown age.
+
+| Option | Consequence |
+| --- | --- |
+| **(a) Stamp a generation on the render and refuse selection when the layers disagree.** | Changes how baked renders are addressed and cached. Closes the window rather than narrowing it, and 05's element gate needs the same stamp to resolve an index against a frame. **Chosen.** |
+| (b) Ship as-is and document the window. | A box is wrong only in the minutes after a republish, and the drag path is unaffected. But the wrongness is silent and lands in an acceptance's authoring-time baseline, where it later reports an unchanged element as *moved*. |
+| (c) Withhold the tag picker on cached deployments. | Safest, and costs the affordance on exactly the public deployments the parity workflow runs on. |
+
+(a) is chosen. The cost of (b) is the failure mode this whole batch's gating exists to prevent — a
+false invalidation with a plausible explanation attached — and it is worse than a missing check
+because nothing surfaces it. (c) trades the feature away on the deployments that need it.
+
+Until (a) lands, the shipped gates stand: they are correct about the *lane*, and the residual window
+is generational only. See
+[`../COMPONENT_PARITY_WORKFLOW.md`](../COMPONENT_PARITY_WORKFLOW.md) and the comments on
+`annotationsFollowBakedFrame`.
+
+---
+
 ## Loose ends (not blocking; file or fix opportunistically)
 
 - **`stampPreviewDensities` has the same fold bug** `previewsByFunctionReplacing` was written to fix:

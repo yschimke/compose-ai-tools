@@ -157,6 +157,37 @@ report with no `| Raw comparison |` row, where before it filed the server's body
 - The viewer's annotation rendering is byte-identical before and after the `inspect.js`
   generalisation, proved by the snapshot harness.
 
+## Left open, deliberately
+
+Three things came out of the review of [#4465](https://github.com/yschimke/compose-ai-tools/pull/4465)
+and were decided rather than absorbed. None blocks the batch's "done when"; each is written down here
+so the next reader finds a decision instead of a gap.
+
+- **The render generation** — the shipped gates prove the frame is a replay of the baked render, not
+  that it is the *same* replay. Promoted to [00's D6](00-decisions.md#d6--the-render-generation-a-selection-is-allowed-to-describe)
+  and answered (a): stamp a generation. Batch 05's element gate needs it regardless, so it belongs
+  there rather than as a patch to this batch's predicates.
+
+- **Report-body placeholders should carry a per-response nonce.** `fillReport` now matches
+  `{{render}}` and `{{rawScores}}` by exact anchor — a whole markdown link destination and a whole
+  table row — which fixed the reachable bug: a bare substring replace rewrote the first occurrence
+  anywhere in the body, so catalog-authored text carrying either literal was edited instead while the
+  real link kept its placeholder. A nonce would make the remaining case (catalog text authored in the
+  same shape as the anchor) unreachable rather than merely unlikely. **Follow-up PR** — the
+  substitution contract is shared by the Kotlin writer and the browser filler, so it moves with its
+  own fixtures.
+
+- **Authored layout boxes are not selectable.** A static bundle whose Actual annotations carry layout
+  entries but no typography draws those boxes through `ReferenceCompare`'s inline payload, which has
+  no selection handlers, so the box-click path is absent on that data shape. The drag still is not,
+  which is why this narrows a choice rather than removing the feature. **Follow-up PR**, and not a
+  one-line change: `ReferenceCompare` draws one payload over *both* panels, and reference annotations
+  are measured over the reference raster while actual ones are measured over the baked PNG. Two
+  planes, one component, distinguished per panel rather than per entry. The shape is a per-panel
+  `selectable` flag the Actual panel alone receives, emitting the same `cp-element-pick` event and
+  gated on the same predicate — with fixtures for the asymmetry, since getting it wrong writes
+  reference-raster bounds into a locator that declares `render-pixels`.
+
 ## Visual evidence
 
 Mandatory. Before/after of the comparison page with the derived layers mounted and a selection
