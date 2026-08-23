@@ -1,0 +1,30 @@
+{
+  "schema": "compose-preview-known-differences/v1",
+  "acceptances": [
+    {
+      "id": "m3-mismatched-reference",
+      "issue": "https://github.com/yschimke/m3-catalog/issues/40",
+      "system": "m3",
+      "component": "IconButton/Tonal",
+      "previewId": "iconbutton-tonal__ideal__default__light",
+      "referenceId": "iconbutton-tonal-ideal-light",
+      "variant": "ideal/default/light",
+      "mask": "mask.png",
+      "acceptedCandidate": "accepted-candidate.png",
+      "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+      "maskSha256": "633070357372b9a135464b4fd7c0f54bc8d38ac0c51bcd2691152086151b5248",
+      "acceptedCandidateSha256": "dc5687b50f70cb95379bfced5a0eae768dd4382cd6b393ee77d65bbdd6373fbf",
+      "plane": {
+        "plane": "content-box",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "width": 2,
+          "height": 1
+        }
+      },
+      "candidateTolerance": 2,
+      "acceptedAt": "2026-08-22T00:00:00Z"
+    }
+  ]
+}

@@ -403,8 +403,8 @@ export function issueKey(issue) {
  *   is `header-invalid`, because the line is where the failure occurs rather than how little data
  *   there turned out to be.
  *
- *   **The reader carries two obligations this module cannot discharge for it**, and returns
- *   `{ error }` to report either without materialising the file:
+ *   **The reader carries three obligations this module cannot discharge for it**, and returns
+ *   `{ error }` to report the first two without materialising the file:
  *
  *   - `{ error: "artifact-too-large" }` — the reader must refuse to allocate more than
  *     {@link BUDGET}`.maxArtifactBytes`. Handing back a whole oversized file so this module can
@@ -416,6 +416,14 @@ export function issueKey(issue) {
  *     inside an acceptance directory pointing outside the root. Whether the resolved path stays
  *     under `known-differences/` is a fact about the filesystem or the URL space the reader is
  *     serving from, and it must establish it before opening anything.
+ *   - **Resolution is exact-case, including the `<id>` directory.** A document spelling `MASK.png`
+ *     for a committed `mask.png` opens and evaluates on a case-insensitive Windows or macOS
+ *     filesystem and is `artifact-unreadable` on a Linux checkout or a case-sensitive URL space — the
+ *     same host-versus-checkout divergence the portable grammar and the case-folded id scan close
+ *     from the other side, and one no lexical rule can see, because it is a fact about which bytes
+ *     the reader actually opened. A reader whose filesystem resolves the request case-insensitively
+ *     must compare the resolved name against the requested one and report the mismatch as a failed
+ *     open (`null`) rather than serving the file it happened to find.
  * @param comparison the comparison being evaluated, or `null` for a validation-only pass.
  * @param catalog `{ previews: [{ system, id, component, variant, referenceIds }] }` for the
  *   orphaned-target walk, or `null` to skip it.
@@ -1185,6 +1193,16 @@ function regionAgrees(evaluation, canonical, other, tolerance, secondIsCrop) {
   const mask = evaluation.mask;
   const box = evaluation.coverage.box;
   if (canonical.width !== mask.width || canonical.height !== mask.height) return false;
+  // **The second raster's dimensions too, and by the shape it is claimed to have.** Only `canonical`
+  // was checked, so a full-plane `other` of different dimensions was indexed with its own stride and
+  // could agree at every masked coordinate while holding entirely different pixels there — a mask
+  // selecting one pixel let a 2-pixel candidate "resolve" against a 3-pixel reference that is not
+  // the recorded canonical plane at all. `resolved` is the strongest verdict this contract can
+  // reach, since it closes an issue, so it is the last place to infer a plane from a stride.
+  const expected = secondIsCrop
+    ? { width: box.width, height: box.height }
+    : { width: mask.width, height: mask.height };
+  if (other.width !== expected.width || other.height !== expected.height) return false;
   for (let y = box.y; y < box.y + box.height; y++) {
     for (let x = box.x; x < box.x + box.width; x++) {
       if (mask.pixels[(y * mask.width + x) * 4] !== 255) continue;

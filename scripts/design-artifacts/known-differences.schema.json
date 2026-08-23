@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schimke.ee/compose-ai-tools/known-differences.schema.json",
   "title": "compose-preview-known-differences/v1",
-  "description": "The committed known-difference document, `.design-parity/known-differences.json`. This file pins the document's SHAPE only. The rules that decide a verdict — id and path safety, the budget preflight, the mask's IHDR encoding, the animation check, hash normalisation, the five gates, the status precedence and the ordering of `statuses` and `validationFailures` — cannot be expressed in JSON Schema and are normative in docs/design/COMPONENT_PARITY_WORKFLOW.md §4, implemented in known-differences.mjs and pinned by fixtures/known-differences/. A document that validates here can still be refused; nothing that fails here is ever accepted.",
+  "description": "The committed known-difference document, `.design-parity/known-differences.json`. This file pins the document's SHAPE only. The rules that decide a verdict — id and path safety, the budget preflight, the mask's IHDR encoding, the animation check, hash normalisation, the five gates, the status precedence, the one entry per acceptance in `statuses` and the ordering of `validationFailures` (`statuses` is an unordered map and is given no ordering) — cannot be expressed in JSON Schema and are normative in docs/design/COMPONENT_PARITY_WORKFLOW.md §4, implemented in known-differences.mjs and pinned by fixtures/known-differences/. A document that validates here can still be refused; nothing that fails here is ever accepted.",
   "type": "object",
   "required": ["schema", "acceptances"],
   "additionalProperties": false,

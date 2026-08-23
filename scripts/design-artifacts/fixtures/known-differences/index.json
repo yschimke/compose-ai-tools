@@ -82,6 +82,21 @@
       "site": null
     },
     {
+      "id": "scope-other-previewid",
+      "title": "An acceptance authored for another `previewId`",
+      "site": null
+    },
+    {
+      "id": "scope-other-referenceid",
+      "title": "An acceptance authored for another `referenceId`",
+      "site": null
+    },
+    {
+      "id": "scope-other-variant",
+      "title": "An acceptance authored for another `variant`",
+      "site": null
+    },
+    {
       "id": "scope-other-system",
       "title": "A `wear-m3` acceptance must not suppress pixels in `m3`",
       "site": null
@@ -159,6 +174,11 @@
     {
       "id": "document-pixels-over-cap",
       "title": "128,000,001 declared across the set — the first total past the cap",
+      "site": null
+    },
+    {
+      "id": "gate-resolution-reference-dimensions-differ",
+      "title": "A canonical reference whose dimensions are not the recorded plane's",
       "site": null
     },
     {
@@ -247,8 +267,23 @@
       "site": null
     },
     {
+      "id": "id-at-segment-length-cap",
+      "title": "An `id` of exactly 255 bytes",
+      "site": null
+    },
+    {
+      "id": "path-at-segment-length-cap",
+      "title": "An artifact path segment of exactly 255 bytes",
+      "site": null
+    },
+    {
       "id": "id-not-safe-segment-too-long",
       "title": "An `id` longer than a filesystem component",
+      "site": null
+    },
+    {
+      "id": "artifact-unreadable-case-differs",
+      "title": "A path whose casing is not the committed file's",
       "site": null
     },
     {
@@ -324,6 +359,11 @@
     {
       "id": "dimension-mismatch-accepted-against-mask-box",
       "title": "An accepted candidate that is not the mask's bounding box",
+      "site": null
+    },
+    {
+      "id": "hash-mismatch-accepted-candidate-only",
+      "title": "Only the accepted candidate fails its recorded hash",
       "site": null
     },
     {

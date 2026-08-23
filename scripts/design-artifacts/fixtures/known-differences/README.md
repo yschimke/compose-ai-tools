@@ -75,6 +75,9 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `gate-multiple-causes` | Several gates fire at once |
 | `set-overlapping-masks` | Two acceptances whose masks overlap |
 | `set-mixed-validity` | One acceptance survives while its sibling is invalidated |
+| `scope-other-previewid` | An acceptance authored for another `previewId` |
+| `scope-other-referenceid` | An acceptance authored for another `referenceId` |
+| `scope-other-variant` | An acceptance authored for another `variant` |
 | `scope-other-system` | A `wear-m3` acceptance must not suppress pixels in `m3` |
 | `scope-overrides-match` | An acceptance authored under overrides applies at the frame carrying the same ones |
 | `scope-overrides-differ` | An acceptance authored at `fontScale=1.5` does not apply at the default frame |
@@ -91,6 +94,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `document-combined-failures` | A duplicated id, an unkeyable record and an over-cap count at once |
 | `document-pixels-at-cap` | 128 megapixels declared across the set — exactly the cap |
 | `document-pixels-over-cap` | 128,000,001 declared across the set — the first total past the cap |
+| `gate-resolution-reference-dimensions-differ` | A canonical reference whose dimensions are not the recorded plane's |
 | `document-axis-at-cap` | A raster exactly 8192 px on its long axis |
 | `document-axis-over-cap` | A raster 8193 px on its long axis |
 | `artifact-at-byte-cap` | A mask of exactly 8 MiB encoded |
@@ -108,7 +112,10 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `path-not-contained-trailing-dot` | An artifact path segment ending in a dot |
 | `id-not-safe-integer-like` | An `id` that is a canonical integer |
 | `schema-invalid-box-far-edge-unsafe` | A box whose fields are safe but whose far edge is not |
+| `id-at-segment-length-cap` | An `id` of exactly 255 bytes |
+| `path-at-segment-length-cap` | An artifact path segment of exactly 255 bytes |
 | `id-not-safe-segment-too-long` | An `id` longer than a filesystem component |
+| `artifact-unreadable-case-differs` | A path whose casing is not the committed file's |
 | `path-not-contained-segment-too-long` | An artifact path segment longer than a filesystem component |
 | `id-not-safe-windows-reserved-name` | An `id` Windows cannot open |
 | `path-not-contained-backslash` | An artifact path containing a backslash |
@@ -124,6 +131,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `animated-png-accepted-candidate` | An animated accepted candidate |
 | `dimension-mismatch-mask-against-plane` | A mask that is not the recorded plane's size |
 | `dimension-mismatch-accepted-against-mask-box` | An accepted candidate that is not the mask's bounding box |
+| `hash-mismatch-accepted-candidate-only` | Only the accepted candidate fails its recorded hash |
 | `hash-mismatch-both-artifacts` | Both artifacts fail their recorded hash |
 | `hash-recorded-uppercase` | An uppercase **recorded** hash |
 | `artifact-unreadable-missing-file` | A path that resolves to no file at all |

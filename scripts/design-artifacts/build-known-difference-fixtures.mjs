@@ -878,6 +878,47 @@ function pairComparison(world, extra = {}) {
 // 3. Scope. Served ids are unique only within a system, and overrides are part of the scope.
 // --------------------------------------------------------------------------------------------
 
+// **One field at a time, all of them.** With only `system`, `component` and the overrides varied, a
+// second engine that never compares `previewId`, `referenceId` or `variant` passes the whole suite —
+// and then applies a mask authored for one preview of a component to a *different* preview,
+// reference or variant of it, where the same geometry suppresses unrelated pixels. Each case below
+// holds every other field constant so it can fail for exactly one reason.
+for (const [field, value, why] of [
+  [
+    "previewId",
+    "iconbutton-tonal__ideal__default__dark",
+    "The same component in its dark preview: same geometry, different pixels beneath the mask.",
+  ],
+  [
+    "referenceId",
+    "iconbutton-tonal-ideal-dark",
+    "The same preview compared against a different reference — what the difference *is* changes, " +
+      "so an acceptance of the old difference says nothing about the new one.",
+  ],
+  [
+    "variant",
+    "ideal/compact/light",
+    "A variant is a layout: the accepted region is somewhere else on the canvas, and the recorded " +
+      "mask lands on whatever now occupies those coordinates.",
+  ],
+]) {
+  const world = glyphWorld();
+  const record = glyphRecord(world, { [field]: value });
+  addCase({
+    id: `scope-other-${field.toLowerCase()}`,
+    title: `An acceptance authored for another \`${field}\``,
+    why: `${why} Every recorded scope field must match, and this case varies only \`${field}\` so it can fail for one reason and no other.`,
+    document: document([record]),
+    files: glyphFiles(world, record),
+    comparison: glyphComparison(world),
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: { "m3-iconbutton-tonal-glyph": { status: "out-of-scope" } },
+      validationFailures: [],
+    },
+  });
+}
+
 {
   const world = glyphWorld();
   const record = glyphRecord(world, { system: "wear-m3" });
@@ -1352,6 +1393,77 @@ function lyingGreyPng(width, height) {
 }
 
 {
+  // A reference raster that is **not** the recorded canonical plane, agreeing at every masked
+  // coordinate under its own stride. Two pixels wide against three, one masked pixel at (0,0).
+  const plane = { plane: "content-box", box: { x: 0, y: 0, width: 2, height: 1 } };
+  const candidate = raster(2, 1);
+  fillRect(candidate, { x: 0, y: 0, width: 1, height: 1 }, RED);
+  // Three wide, and RED where the mask looks — so a comparison that trusts the stride agrees.
+  const reference = raster(3, 1);
+  fillRect(reference, { x: 0, y: 0, width: 1, height: 1 }, RED);
+  const { png: mask, samples } = maskPng(2, 1, (paint) => paint({ x: 0, y: 0, width: 1, height: 1 }));
+  const black = raster(2, 1);
+  fillRect(black, { x: 0, y: 0, width: 1, height: 1 }, BLACK);
+  const accepted = rgbaPng(crop(black, maskBox(samples, 2, 1)));
+  const record = {
+    id: "m3-mismatched-reference",
+    issue: "https://github.com/yschimke/m3-catalog/issues/40",
+    system: "m3",
+    component: "IconButton/Tonal",
+    previewId: "iconbutton-tonal__ideal__default__light",
+    referenceId: "iconbutton-tonal-ideal-light",
+    variant: "ideal/default/light",
+    mask: "mask.png",
+    acceptedCandidate: "accepted-candidate.png",
+    referenceSha256: REFERENCE_SHA,
+    maskSha256: sha256Hex(mask),
+    acceptedCandidateSha256: sha256Hex(accepted),
+    plane,
+    candidateTolerance: 2,
+    acceptedAt: "2026-08-22T00:00:00Z",
+  };
+  addCase({
+    id: "gate-resolution-reference-dimensions-differ",
+    title: "A canonical reference whose dimensions are not the recorded plane's",
+    why:
+      "The resolution test compares the candidate against the **reference** as a second full-plane " +
+      "raster, and only the first of the two was ever measured against the mask. So a reference of " +
+      "different dimensions was indexed with its own stride and could agree at every masked " +
+      "coordinate while holding different pixels there: here a one-pixel mask lets a 2-wide " +
+      "candidate 'resolve' against a 3-wide reference that is not the recorded plane at all. " +
+      "`resolved` closes an issue, which makes it the worst verdict to reach by inferring a plane " +
+      "from a stride — the acceptance is `invalidated` by its candidate instead.",
+    document: document([record]),
+    files: {
+      "artifacts/m3-mismatched-reference/mask.png": mask,
+      "artifacts/m3-mismatched-reference/accepted-candidate.png": accepted,
+      "canonical-reference.png": rgbaPng(reference),
+      "canonical-candidate.png": rgbaPng(candidate),
+    },
+    comparison: {
+      system: "m3",
+      component: "IconButton/Tonal",
+      previewId: "iconbutton-tonal__ideal__default__light",
+      referenceId: "iconbutton-tonal-ideal-light",
+      variant: "ideal/default/light",
+      overrides: {},
+      referenceSha256: REFERENCE_SHA,
+      plane,
+      canonicalReference: "canonical-reference.png",
+      canonicalCandidate: "canonical-candidate.png",
+      tagIndex: {},
+    },
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: {
+        "m3-mismatched-reference": { status: "invalidated", causes: ["candidate-changed"] },
+      },
+      validationFailures: [],
+    },
+  });
+}
+
+{
   // The per-axis cap is a separate number because the area cap does not imply it: `1 × 128,000,000`
   // is inside the area budget and undecodable in every browser. This pair sits on 8192 and one past
   // it, and the accepting half is a genuinely valid acceptance rather than a near miss.
@@ -1696,6 +1808,56 @@ glyphValidation({
   expected: refused(["schema-invalid"]),
 });
 
+// **The accepting halves of the segment ceiling.** With only the two 256-character refusals
+// committed, a consumer spelling the rule `segment.length >= 255` rejects legal ids and paths and
+// still passes every case — the same `>=` hazard the budget caps each carry an at-the-limit fixture
+// for. 255 is legal, and these two evaluate normally to prove it.
+{
+  const world = glyphWorld();
+  const longId = "a".repeat(255);
+  const record = glyphRecord(world, { id: longId });
+  addCase({
+    id: "id-at-segment-length-cap",
+    title: "An `id` of exactly 255 bytes",
+    why:
+      "The inclusive half of the portable-segment rule: 255 is a legal filesystem component " +
+      "everywhere this repository is checked out, so the record is evaluated like any other and " +
+      "its artifacts are read from a directory of that name.",
+    document: document([record]),
+    files: glyphFiles(world, record),
+    comparison: glyphComparison(world),
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: { [longId]: { status: "valid" } },
+      validationFailures: [],
+    },
+  });
+}
+
+{
+  const world = glyphWorld();
+  const longMask = `${"m".repeat(251)}.png`;
+  const record = glyphRecord(world, { mask: longMask });
+  addCase({
+    id: "path-at-segment-length-cap",
+    title: "An artifact path segment of exactly 255 bytes",
+    why: "The path half of the same inclusive boundary — extension included, since the filesystem counts the whole component.",
+    document: document([record]),
+    files: {
+      [`artifacts/${record.id}/${longMask}`]: world.maskPngBytes,
+      [`artifacts/${record.id}/accepted-candidate.png`]: world.acceptedPngBytes,
+      "canonical-reference.png": world.referencePngBytes,
+      "canonical-candidate.png": world.candidatePngBytes,
+    },
+    comparison: glyphComparison(world),
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+      validationFailures: [],
+    },
+  });
+}
+
 glyphValidation({
   id: "id-not-safe-segment-too-long",
   title: "An `id` longer than a filesystem component",
@@ -1709,6 +1871,20 @@ glyphValidation({
     "the budget caps and the tolerance ranges already use.",
   record: { id: "a".repeat(256) },
   expected: refused(["id-not-safe"], "a".repeat(256)),
+});
+
+glyphValidation({
+  id: "artifact-unreadable-case-differs",
+  title: "A path whose casing is not the committed file's",
+  why:
+    "`MASK.png` against a committed `mask.png` is not a containment failure and not a grammar " +
+    "failure — the path is perfectly portable and perfectly contained. It is a *resolution* " +
+    "failure, and only on some hosts: a case-insensitive Windows or macOS filesystem opens the " +
+    "file and evaluates the record, while a Linux checkout or a case-sensitive URL space cannot " +
+    "find it. So the reader owes exact-case resolution the way it owes containment and a bounded " +
+    "read, and reports the mismatch as a failed open rather than serving what it happened to find.",
+  record: { mask: "MASK.png" },
+  expected: refused(["artifact-unreadable"]),
 });
 
 glyphValidation({
@@ -1956,6 +2132,18 @@ glyphValidation({
     record: { acceptedCandidateSha256: sha256Hex(wrongCrop) },
     files: { "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": wrongCrop },
     expected: refused(["dimension-mismatch"]),
+  });
+
+  glyphValidation({
+    id: "hash-mismatch-accepted-candidate-only",
+    title: "Only the accepted candidate fails its recorded hash",
+    why:
+      "The mask-only mismatch and the both-artifacts case leave one shape uncovered, and it is the " +
+      "one a real corrupt crop takes. An engine that reports `mask-hash-mismatch` whenever *either* " +
+      "hash fails satisfies both of those expectations and emits the wrong reason set here — the " +
+      "exact set is what the contract pins, so each artifact needs its own single-failure case.",
+    record: { acceptedCandidateSha256: "c".repeat(64) },
+    expected: refused(["accepted-candidate-hash-mismatch"]),
   });
 
   glyphValidation({

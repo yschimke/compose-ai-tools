@@ -102,6 +102,17 @@ function artifactReader(caseDir, synthesize) {
     // allocated, rather than measured after being read into memory.
     const resolved = realpathSync(full);
     if (resolved !== root && !resolved.startsWith(root + sep)) return { error: "path-not-contained" };
+    // **Exact case, the reader's third obligation.** On a case-insensitive filesystem `MASK.png`
+    // opens the committed `mask.png`, so this runner would evaluate a record a Linux checkout
+    // reports as `artifact-unreadable` — the divergence would be in the *runner*, invisible to
+    // every fixture. `realpath` reports the on-disk spelling, so comparing it against the requested
+    // one is the check, and it costs nothing where the filesystem is already case-sensitive.
+    //
+    // **Which also means CI does not exercise it.** On the Linux runner `MASK.png` simply does not
+    // exist, so `artifact-unreadable-case-differs` passes with or without this line; the guard earns
+    // its keep only on a macOS or Windows checkout, where its absence would make this runner
+    // disagree with CI. Recorded rather than claimed as covered.
+    if (!resolved.endsWith(sep + relative.split("/").join(sep))) return null;
     const stats = statSync(resolved);
     if (!stats.isFile()) return { error: "path-not-contained" };
     if (stats.size > BUDGET.maxArtifactBytes) return { error: "artifact-too-large" };

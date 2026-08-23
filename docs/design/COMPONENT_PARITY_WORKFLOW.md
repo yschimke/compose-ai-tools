@@ -1337,6 +1337,15 @@ bounding box exactly. Otherwise one consumer rescales, another rejects, a third 
 overlap — same acceptance, three different suppression unions. Mismatches are `refused`, with
 conformance cases for both.
 
+**And resolution is exact-case, including the `<id>` directory.** `MASK.png` against a committed
+`mask.png` is neither a containment failure nor a grammar failure — the path is portable and
+contained. It is a *resolution* failure, and only on some hosts: a case-insensitive Windows or macOS
+filesystem opens the file and evaluates the record where a Linux checkout or a case-sensitive URL
+space cannot find it. No lexical rule can see it, because it is a fact about which bytes the reader
+actually opened — so it joins resolved containment and the bounded read as the **third obligation of
+the reader**, which must compare the resolved name against the requested one and report a mismatch as
+a failed open. `artifact-unreadable`, with its own fixture.
+
 **A path that resolves is not a file that opens.** A `mask` or `acceptedCandidate` path can be
 contained and syntactically perfect while the file is missing, unreadable, or truncated to nothing —
 at which point there are no bytes to hash, no header to parse and no decode to attempt, so none of
