@@ -12,8 +12,8 @@
       "mask": "mask.png",
       "acceptedCandidate": "accepted-candidate.png",
       "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
-      "maskSha256": "7827b73582027ac016d1120aa43ec9c2599d17971608a6e9e75fa7c903e26eee",
-      "acceptedCandidateSha256": "e81e5c2feff5e017eaaf4b20a4c584f6c573ae99bda8f99f062011e4af06739b",
+      "maskSha256": "3bd4b6f88582133044372761716eb35a21ec261257f9f5ccb9e896778a838117",
+      "acceptedCandidateSha256": "0d37467a035a313727618eb5ef1ec544979f83ee43960493e5440b6e5188d08b",
       "plane": {
         "plane": "content-box",
         "box": {

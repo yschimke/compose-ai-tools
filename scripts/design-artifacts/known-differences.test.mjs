@@ -23,7 +23,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
+  cpSync,
+  mkdirSync,
   mkdtempSync,
+  symlinkSync,
+  writeFileSync,
   readFileSync,
   readdirSync,
   existsSync,
@@ -454,6 +458,59 @@ test("the reference reader refuses an oversized artifact without handing back it
     read("m3-iconbutton-tonal-glyph/accepted-candidate.png") instanceof Uint8Array,
     "the artifact inside the cap still comes back as bytes",
   );
+});
+
+test("the reference reader discovers an escape that no path grammar can see", () => {
+  // **The one obligation the committed tree cannot express.** Every `path-not-contained` fixture is
+  // refused *lexically* — `..`, an absolute path, a backslash, a reserved segment — so an engine
+  // that validates the grammar and never resolves the path passes all of them, and then follows a
+  // symlink straight out of the acceptance it was reading. That is the case containment exists for,
+  // and a committed symlink cannot state it: git materialises one as a text file wherever the
+  // checkout has no symlink support, which would turn this into a `header-invalid` on Windows.
+  //
+  // So it is built here, against the real reader, with real `realpath` resolution. Two escapes: one
+  // into a *sibling acceptance* (inside the artifacts root, which a root-only containment check
+  // wrongly admits) and one out of the root entirely.
+  const scratch = mkdtempSync(join(tmpdir(), "known-differences-symlink-"));
+  try {
+    const artifacts = join(scratch, "artifacts");
+    mkdirSync(join(artifacts, "a"), { recursive: true });
+    mkdirSync(join(artifacts, "b"), { recursive: true });
+    const target = join(artifacts, "b", "mask.png");
+    writeFileSync(target, Buffer.from([137, 80, 78, 71]));
+    const outside = join(scratch, "outside.png");
+    writeFileSync(outside, Buffer.from([137, 80, 78, 71]));
+
+    let supported = true;
+    try {
+      symlinkSync(target, join(artifacts, "a", "sibling.png"));
+      symlinkSync(outside, join(artifacts, "a", "outside.png"));
+    } catch {
+      // A host without permission to create symlinks (unprivileged Windows) cannot run this.
+      supported = false;
+    }
+    if (!supported) return;
+
+    const read = artifactReader(scratch, []);
+    assert.deepEqual(
+      read("a/sibling.png"),
+      { error: "path-not-contained" },
+      "a symlink into another acceptance is contained in the root and still an escape",
+    );
+    assert.deepEqual(
+      read("a/outside.png"),
+      { error: "path-not-contained" },
+      "a symlink out of the artifacts root is an escape",
+    );
+    // The control: the same reader, the same directory, an ordinary file.
+    writeFileSync(join(artifacts, "a", "own.png"), Buffer.from([137, 80, 78, 71]));
+    assert.ok(
+      read("a/own.png") instanceof Uint8Array,
+      "an ordinary file beside the symlinks still reads",
+    );
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
 });
 
 test("the reason and cause orderings are the ones the contract lists", () => {

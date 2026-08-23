@@ -933,6 +933,40 @@ for (const [id, title, delta, status, why] of [
 }
 
 {
+  // **A legal negative origin, carried all the way to a verdict.** `v1` permits negative `x` and `y`
+  // — a transformed element or a content box can begin left of or above the canvas origin — and the
+  // only fixture with one lives in the standalone `rounding/` group, which never builds a document,
+  // never validates a schema and never runs a gate. So an engine adding the conventional
+  // `x >= 0 && y >= 0` raster-bounds check passes the entire conformance tree while refusing legal
+  // acceptances. The baseline and the resolved node agree exactly, so the element gate is satisfied
+  // and the only thing this case can fail on is the sign.
+  const world = glyphWorld();
+  const bounds = { x: -4, y: -4, width: 8, height: 8 };
+  const record = glyphRecord(world, {
+    element: { kind: "tag", tag: "iconbutton-tonal-glyph", bounds, tolerance: 0.25 },
+  });
+  addCase({
+    id: "element-bounds-negative-origin",
+    title: "An acceptance whose element baseline has a negative origin",
+    why:
+      "Negative coordinates are legal and unexercised anywhere a verdict is produced. This record " +
+      "validates, resolves its tag to a node at the same negative origin, measures a displacement " +
+      "of zero and is `valid` — so a bounds check that rejects the sign refuses it outright, and " +
+      "one that takes the absolute value measures a displacement of 8 and reports `element-moved`.",
+    document: document([record]),
+    files: glyphFiles(world, record),
+    comparison: glyphComparison(world, {
+      tagIndex: { "iconbutton-tonal-glyph": { count: 1, bounds } },
+    }),
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+      validationFailures: [],
+    },
+  });
+}
+
+{
   const world = glyphWorld();
   const record = glyphRecord(world, {
     element: { kind: "tag", tag: "iconbutton-tonal-glyph", bounds: { x: 8, y: 8, width: 8, height: 8 }, tolerance: 0.25 },
@@ -2274,6 +2308,22 @@ glyphValidation({
 });
 
 glyphValidation({
+  id: "accepted-at-leap-second-negative-offset",
+  title: "A leap second written in a negative offset",
+  why:
+    "`2016-12-31T18:59:60-05:00` is the same instant as `2016-12-31T23:59:60Z` — New York rather " +
+    "than Tokyo. Its `+09:00` sibling cannot pin the sign: an engine that adds the offset " +
+    "magnitude whichever way it points reaches `23:59:60` from `+09:00` by luck and lands on " +
+    "`13:59:60` here, refusing a legal timestamp. Both signs, or the branch is untested.",
+  record: { acceptedAt: "2016-12-31T18:59:60-05:00" },
+  expected: {
+    pins: ["statuses", "validationFailures"],
+    statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+    validationFailures: [],
+  },
+});
+
+glyphValidation({
   id: "schema-invalid-accepted-at-impossible-date",
   title: "An `acceptedAt` with the right shape and impossible values",
   why:
@@ -3496,6 +3546,38 @@ glyphValidation({
     copy[copy.length - 13] ^= 0xff;
     return copy;
   })();
+  // The same corruption on the chunk the decoder reads *first*. `IHDR` sits at a fixed offset, so
+  // its CRC is the four bytes at 29..32.
+  const corruptIhdrCrc = (() => {
+    const good = encodePng({
+      width: 24,
+      height: 24,
+      colourType: COLOUR_GREY,
+      samples: (() => {
+        const samples = new Uint8Array(24 * 24);
+        for (let y = 8; y < 16; y++) for (let x = 8; x < 16; x++) samples[y * 24 + x] = 255;
+        return samples;
+      })(),
+    });
+    const copy = Uint8Array.from(good);
+    copy[30] ^= 0xff;
+    return copy;
+  })();
+  glyphValidation({
+    id: "decode-failed-ihdr-crc-mismatch",
+    title: "A hash-valid artifact whose `IHDR` CRC does not verify",
+    why:
+      "Its `IDAT` sibling leaves 'verify the CRC of the compressed data only' passing the whole " +
+      "suite, and that is a natural thing to implement — the data chunk is the one whose corruption " +
+      "obviously matters. But `v1` permits exactly five chunks, every one of them consumed, so " +
+      "every CRC is fatal; a corrupt `IHDR`, `PLTE`, `tRNS` or `IEND` otherwise reaches a gate " +
+      "verdict here and `decode-failed` from a native decoder. The header bytes themselves are " +
+      "left valid, so only the checksum can refuse this file.",
+    record: { maskSha256: sha256Hex(corruptIhdrCrc) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/mask.png": corruptIhdrCrc },
+    expected: refused(["decode-failed"]),
+  });
+
   glyphValidation({
     id: "decode-failed-chunk-crc-mismatch",
     title: "A hash-valid artifact whose `IDAT` CRC does not verify",
@@ -3861,11 +3943,14 @@ glyphValidation({
     const world = glyphWorld();
     const candidate = raster(24, 24);
     fillRect(candidate, { x: 0, y: 0, width: 4, height: 4 }, GREY);
-    fillRect(candidate, world.glyph, [90, 90, 90, 255]);
+    fillRect(candidate, world.glyph, [90, 90, 90, 128]);
     const rows = [];
     for (let y = 0; y < 8; y++) {
       const row = new Uint8Array(8 * 2);
-      for (let x = 0; x < 8; x++) row.set([90, 255], x * 2);
+      // **Not `255`.** An opaque alpha sample cannot distinguish a decoder that reads the second
+      // byte from one that discards it and writes `255` — both produce the same raster, so the
+      // fixture would ratify the very implementation it exists to refuse.
+      for (let x = 0; x < 8; x++) row.set([90, 128], x * 2);
       rows.push(row);
     }
     const accepted = buildPng([
@@ -3881,8 +3966,9 @@ glyphValidation({
         "The one permitted colour type with no artifact in the tree. Each pixel is a grey sample " +
         "followed by an alpha sample, so an engine that treats the second byte as anything else — " +
         "or refuses the type outright — reads different pixels here and cannot reach `valid`, while " +
-        "passing every other case. `90, 255` decodes to `90,90,90,255`, which is what the canonical " +
-        "candidate holds under the mask.",
+        "passing every other case. `90, 128` decodes to `90,90,90,128`, which is what the canonical " +
+        "candidate holds under the mask. The alpha is deliberately **not** opaque: with `255` the " +
+        "case is satisfied by a decoder that never looks at the second byte at all.",
       document: document([record]),
       files: {
         "artifacts/m3-iconbutton-tonal-glyph/mask.png": world.maskPngBytes,
@@ -4009,6 +4095,92 @@ glyphValidation({
         "file is malformed, and emphatically not that alpha is `0`. Same decoded pixels as the " +
         "truecolour and RGBA suggested-palette cases, reached through the indexing path, so the " +
         "three together pin that the encoding is invisible to the verdict.",
+      document: document([record]),
+      files: {
+        "artifacts/m3-iconbutton-tonal-glyph/mask.png": world.maskPngBytes,
+        "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": accepted,
+        "canonical-reference.png": world.referencePngBytes,
+        "canonical-candidate.png": world.candidatePngBytes,
+      },
+      comparison: glyphComparison(world),
+      expected: {
+        pins: ["statuses", "validationFailures"],
+        statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+        validationFailures: [],
+      },
+    });
+  }
+
+  // **A palette entry past the end of `tRNS`.** The transparency table may be shorter than the
+  // palette, and every entry it does not reach is opaque. The existing indexed fixtures cannot pin
+  // that: one has a `tRNS` exactly as long as its palette, the other has no `tRNS` at all, so an
+  // engine defaulting *omitted entries of a present table* to `0` — rather than `255` — passes both
+  // and then reads a legal partially-transparent indexed candidate as transparent where it is not.
+  {
+    const world = glyphWorld();
+    const rows = [];
+    // Every pixel selects entry 1; `tRNS` describes only entry 0.
+    for (let y = 0; y < 8; y++) rows.push(new Uint8Array(8).fill(1));
+    const accepted = buildPng([
+      ihdr({ width: 8, height: 8, colourType: COLOUR_PALETTE }),
+      chunk("PLTE", Uint8Array.from([0, 0, 0, 200, 60, 60])),
+      chunk("tRNS", Uint8Array.from([0])),
+      idat(rows),
+      chunk("IEND"),
+    ]);
+    const record = glyphRecord(world, { acceptedCandidateSha256: sha256Hex(accepted) });
+    addCase({
+      id: "artifact-indexed-entry-beyond-trns",
+      title: "An indexed accepted candidate selecting a palette entry `tRNS` does not describe",
+      why:
+        "`tRNS` is a prefix of the palette, not a parallel array that must match its length. Entry " +
+        "1 has no alpha entry, so it is opaque — and the file is otherwise the same red as the " +
+        "truecolour, RGBA and no-`tRNS` cases, so all four decode to identical pixels by four " +
+        "different routes. An engine that treats 'past the end of the table' as transparent " +
+        "produces `0,0,0,0` here and cannot reach `valid`.",
+      document: document([record]),
+      files: {
+        "artifacts/m3-iconbutton-tonal-glyph/mask.png": world.maskPngBytes,
+        "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": accepted,
+        "canonical-reference.png": world.referencePngBytes,
+        "canonical-candidate.png": world.candidatePngBytes,
+      },
+      comparison: glyphComparison(world),
+      expected: {
+        pins: ["statuses", "validationFailures"],
+        statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+        validationFailures: [],
+      },
+    });
+  }
+
+  // **Scanline filters on a multi-channel image.** The tree's only filtered artifact is a greyscale
+  // mask, so the Sub/Average/Paeth predictors are only ever exercised with a left-neighbour distance
+  // of **one byte** — and a decoder that hardcodes that distance passes all four filter types. The
+  // distance is the pixel stride: three bytes for RGB, two for greyscale-alpha, four here.
+  {
+    const world = glyphWorld();
+    const rows = [];
+    for (let y = 0; y < 8; y++) {
+      const row = new Uint8Array(8 * 4);
+      for (let x = 0; x < 8; x++) row.set([200, 60, 60, 255], x * 4);
+      rows.push(row);
+    }
+    const accepted = buildPng([
+      ihdr({ width: 8, height: 8, colourType: COLOUR_RGBA }),
+      filteredIdat(rows, 4),
+      chunk("IEND"),
+    ]);
+    const record = glyphRecord(world, { acceptedCandidateSha256: sha256Hex(accepted) });
+    addCase({
+      id: "artifact-scanline-filters-multi-channel",
+      title: "An RGBA accepted candidate whose scanlines use filters 1–4",
+      why:
+        "Its greyscale sibling pins that the filter byte is *read*; this pins that the predictor " +
+        "steps by the pixel stride. With one channel the two are indistinguishable — `bpp` is 1 " +
+        "either way — so an engine with the distance hardcoded decodes that fixture correctly and " +
+        "mis-decodes every ordinary filtered RGB or RGBA candidate in the field. Same pixels as the " +
+        "unfiltered RGBA case, so only the filtering can make the verdict differ.",
       document: document([record]),
       files: {
         "artifacts/m3-iconbutton-tonal-glyph/mask.png": world.maskPngBytes,

@@ -92,6 +92,11 @@
       "site": null
     },
     {
+      "id": "element-bounds-negative-origin",
+      "title": "An acceptance whose element baseline has a negative origin",
+      "site": null
+    },
+    {
       "id": "gate-element-at-tolerance",
       "title": "A displacement exactly at tolerance passes",
       "site": null
@@ -324,6 +329,11 @@
     {
       "id": "accepted-at-leap-second-through-offset",
       "title": "A leap second written in a non-UTC offset",
+      "site": null
+    },
+    {
+      "id": "accepted-at-leap-second-negative-offset",
+      "title": "A leap second written in a negative offset",
       "site": null
     },
     {
@@ -667,6 +677,11 @@
       "site": null
     },
     {
+      "id": "decode-failed-ihdr-crc-mismatch",
+      "title": "A hash-valid artifact whose `IHDR` CRC does not verify",
+      "site": null
+    },
+    {
       "id": "decode-failed-chunk-crc-mismatch",
       "title": "A hash-valid artifact whose `IDAT` CRC does not verify",
       "site": null
@@ -749,6 +764,16 @@
     {
       "id": "artifact-indexed-opaque-without-trns",
       "title": "An indexed accepted candidate with no transparency chunk",
+      "site": null
+    },
+    {
+      "id": "artifact-indexed-entry-beyond-trns",
+      "title": "An indexed accepted candidate selecting a palette entry `tRNS` does not describe",
+      "site": null
+    },
+    {
+      "id": "artifact-scanline-filters-multi-channel",
+      "title": "An RGBA accepted candidate whose scanlines use filters 1–4",
       "site": null
     },
     {

@@ -1,7 +1,7 @@
 {
-  "title": "A greyscale-alpha accepted candidate",
+  "title": "An acceptance whose element baseline has a negative origin",
   "site": null,
-  "why": "The one permitted colour type with no artifact in the tree. Each pixel is a grey sample followed by an alpha sample, so an engine that treats the second byte as anything else — or refuses the type outright — reads different pixels here and cannot reach `valid`, while passing every other case. `90, 128` decodes to `90,90,90,128`, which is what the canonical candidate holds under the mask. The alpha is deliberately **not** opaque: with `255` the case is satisfied by a decoder that never looks at the second byte at all.",
+  "why": "Negative coordinates are legal and unexercised anywhere a verdict is produced. This record validates, resolves its tag to a node at the same negative origin, measures a displacement of zero and is `valid` — so a bounds check that rejects the sign refuses it outright, and one that takes the absolute value measures a displacement of 8 and reports `element-moved`.",
   "comparison": {
     "system": "m3",
     "component": "IconButton/Tonal",
@@ -25,8 +25,8 @@
       "iconbutton-tonal-glyph": {
         "count": 1,
         "bounds": {
-          "x": 8,
-          "y": 8,
+          "x": -4,
+          "y": -4,
           "width": 8,
           "height": 8
         }

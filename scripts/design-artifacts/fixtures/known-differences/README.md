@@ -79,6 +79,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `gate-element-moved-past-tolerance` | The resolved element moved further than `element.tolerance` allows |
 | `gate-element-resized-not-moved` | The element kept its origin and changed size |
 | `gate-element-denominator-is-the-smaller-side` | A rectangular baseline, displaced between the two possible thresholds |
+| `element-bounds-negative-origin` | An acceptance whose element baseline has a negative origin |
 | `gate-element-at-tolerance` | A displacement exactly at tolerance passes |
 | `gate-element-at-tolerance-inexact-product` | A displacement at a tolerance whose product is not exact in binary |
 | `gate-multiple-causes` | Several gates fire at once |
@@ -126,6 +127,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `schema-invalid-accepted-at-leap-second-off-instant` | A second `60` away from the leap-second instant |
 | `accepted-at-leap-second-at-instant` | A real leap second, and one reached through an offset |
 | `accepted-at-leap-second-through-offset` | A leap second written in a non-UTC offset |
+| `accepted-at-leap-second-negative-offset` | A leap second written in a negative offset |
 | `schema-invalid-accepted-at-impossible-date` | An `acceptedAt` with the right shape and impossible values |
 | `schema-invalid-accepted-at-not-a-timestamp` | An `acceptedAt` that is a string but not a date-time |
 | `path-not-contained-windows-reserved-name` | An artifact path segment Windows cannot open |
@@ -194,6 +196,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `schema-invalid-unknown-element-property` | An `element` carrying a property `v1` does not define |
 | `schema-invalid-note-wrong-type` | A numeric `note` |
 | `variant-empty-is-valid` | A default preview's empty `variant` |
+| `decode-failed-ihdr-crc-mismatch` | A hash-valid artifact whose `IHDR` CRC does not verify |
 | `decode-failed-chunk-crc-mismatch` | A hash-valid artifact whose `IDAT` CRC does not verify |
 | `decode-failed-bytes-after-idat-stream` | Bytes after the end of the `IDAT` zlib stream |
 | `header-invalid-inflates-past-declared-size` | A small legal header in front of a much larger inflation |
@@ -211,6 +214,8 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `artifact-truecolour-suggested-palette` | A truecolour accepted candidate carrying a suggested palette |
 | `artifact-rgba-suggested-palette` | An RGBA accepted candidate carrying a suggested palette |
 | `artifact-indexed-opaque-without-trns` | An indexed accepted candidate with no transparency chunk |
+| `artifact-indexed-entry-beyond-trns` | An indexed accepted candidate selecting a palette entry `tRNS` does not describe |
+| `artifact-scanline-filters-multi-channel` | An RGBA accepted candidate whose scanlines use filters 1–4 |
 | `artifact-trns-greyscale-decodes` | A greyscale accepted candidate whose `tRNS` names its own sample |
 | `artifact-trns-truecolour-decodes` | A truecolour accepted candidate whose `tRNS` names its own colour |
 | `decode-failed-empty-palette-trns` | A zero-length palette `tRNS` |
