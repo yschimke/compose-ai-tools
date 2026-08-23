@@ -241,6 +241,62 @@ class HostOptimizerAdmissionTest {
   }
 
   @Test
+  fun `a newly tripped signal closes an open duty cycle`() {
+    var now = 0L
+    var sample =
+      HostResourceSample(loadPerCpu = 0.17, cpuUtilization = 0.03, memoryAvailableFraction = 0.14)
+    val gate =
+      OptimizerPressureGate(
+        sample = { sample },
+        thresholds =
+          OptimizerPressureThresholds(
+            sampleIntervalMillis = 0,
+            starvationCapMillis = 10_000,
+            dutyCycleMillis = 1_000,
+          ),
+        clock = { now },
+      )
+    assertTrue(gate.snapshot().constrained)
+    now = 10_000
+    assertFalse(gate.snapshot().constrained)
+
+    // The memory reading that earned the concession may stay over its threshold — that is the
+    // point — but CPU crossing its own stop side is new pressure the window never answered for,
+    // and "a high reading stops admission immediately" outranks it.
+    sample = sample.copy(cpuUtilization = 0.95)
+    now = 10_500
+    val stopped = gate.snapshot()
+    assertTrue(stopped.constrained, "a new signal must cut the window short")
+    assertNull(stopped.dutyCycleUntilEpochMillis)
+    assertTrue(stopped.reason.orEmpty().contains("CPU 95%"), "and name itself: $stopped")
+  }
+
+  @Test
+  fun `the duty cycle stays shut while memory cannot be read at all`() {
+    var now = 0L
+    // `/proc/meminfo` unreadable while load and CPU are fine: the sampler reports a partial sample
+    // rather than none, and an unverified OOM floor must not buy a concession.
+    val sample =
+      HostResourceSample(loadPerCpu = 0.90, cpuUtilization = 0.10, memoryAvailableFraction = null)
+    val gate =
+      OptimizerPressureGate(
+        sample = { sample },
+        thresholds =
+          OptimizerPressureThresholds(
+            sampleIntervalMillis = 0,
+            starvationCapMillis = 10_000,
+            dutyCycleMillis = 1_000,
+          ),
+        clock = { now },
+      )
+    assertTrue(gate.snapshot().constrained)
+    now = 100_000
+    val held = gate.snapshot()
+    assertTrue(held.constrained, "an unknown memory reading is not a safe one")
+    assertEquals(0, held.dutyCycles)
+  }
+
+  @Test
   fun `a zero starvation cap keeps the hold permanent`() {
     var now = 0L
     val sample =

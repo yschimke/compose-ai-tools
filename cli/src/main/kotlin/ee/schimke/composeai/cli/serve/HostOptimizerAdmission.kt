@@ -213,6 +213,10 @@ class OptimizerPressureGate(
       // Only what actually stopped us has to come back: a hold taken for memory should not also
       // wait on a CPU reading that never crossed its own stop threshold.
       val safe = trippedBy.all { it.recovered(current, thresholds) }
+      // Read before the merge below: a signal crossing its stop threshold for the FIRST time in
+      // this hold is what has to cut a duty cycle short, and after the merge it is
+      // indistinguishable from the signal that has been holding all along.
+      val newlyTripped = tripped.map { it.first }.filterNot { it in trippedBy }
       val holding =
         if (tripped.isNotEmpty()) {
           trippedBy = trippedBy + tripped.map { it.first }
@@ -250,7 +254,7 @@ class OptimizerPressureGate(
         dutyCycleUntil = Long.MIN_VALUE
       }
       held = holding
-      val constrained = holding && !dutyCycling(current, now)
+      val constrained = holding && !dutyCycling(current, now, newlyTripped)
       cached =
         OptimizerPressureSnapshot(
           constrained = constrained,
@@ -293,21 +297,35 @@ class OptimizerPressureGate(
    *
    * Opens a [OptimizerPressureThresholds.dutyCycleMillis] window once a hold has withheld admission
    * for [OptimizerPressureThresholds.starvationCapMillis], then re-arms: hold, admit a slice, hold
-   * again. The window is closed early — and never opened — while memory sits under
-   * [OptimizerPressureThresholds.dutyCycleFloorMemoryAvailableFraction], so the one case that can
-   * actually kill the server keeps the permanent latch.
+   * again. The window is closed early — and never opened — while memory sits under (or cannot be
+   * read against) [OptimizerPressureThresholds.dutyCycleFloorMemoryAvailableFraction], so the one
+   * case that can actually kill the server keeps the permanent latch; and closed early when a
+   * signal that was not already holding crosses its stop threshold, so the concession never covers
+   * pressure it did not answer for.
    *
    * The reason string keeps naming the reading that is holding, because it still is: a duty cycle
    * is progress *despite* the pressure, not an all-clear. `dutyCycles` on `/status.json` is what
    * says the host has been running on it.
    */
-  private fun dutyCycling(sample: HostResourceSample, now: Long): Boolean {
+  private fun dutyCycling(
+    sample: HostResourceSample,
+    now: Long,
+    newlyTripped: List<PressureSignal>,
+  ): Boolean {
     if (thresholds.starvationCapMillis <= 0L) return false
-    val starved =
-      sample.memoryAvailableFraction?.let {
-        it < thresholds.dutyCycleFloorMemoryAvailableFraction
-      } == true
-    if (starved) {
+    // An unknown memory reading is not a safe one. `LinuxHostResourceSampler` returns a partial
+    // sample when `/proc/meminfo` is unreadable but load and CPU are not, and a load hold would
+    // then earn a concession with the OOM floor unverified. A host that never reports memory keeps
+    // the permanent latch, which is the conservative half of that trade.
+    val headroom = sample.memoryAvailableFraction
+    if (headroom == null || headroom < thresholds.dutyCycleFloorMemoryAvailableFraction) {
+      dutyCycleUntil = Long.MIN_VALUE
+      return false
+    }
+    // "A high reading stops admission immediately" is the gate's contract, and an open window must
+    // not buy a *different* signal up to `dutyCycleMillis` of grace. The signal that earned the
+    // concession may stay over its threshold — that is the whole point — but a new one closes it.
+    if (newlyTripped.isNotEmpty()) {
       dutyCycleUntil = Long.MIN_VALUE
       return false
     }
