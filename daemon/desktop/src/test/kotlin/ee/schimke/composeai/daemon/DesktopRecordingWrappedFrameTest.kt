@@ -367,6 +367,28 @@ class DesktopRecordingWrappedFrameTest {
   }
 
   @Test
+  fun `a translucent backdrop is never laid under the frame twice`() {
+    // The composition already painted a partly-transparent background into the source. Filling
+    // with it as well composites it twice — alpha 128 lands near 192 — shifting pixels across the
+    // whole component and putting the recording at odds with its still. Only a fully opaque
+    // backdrop is safe to lay underneath, and nothing needs filling otherwise: whatever the crop
+    // exposes was transparent in the composition too.
+    val src = BufferedImage(4, 4, BufferedImage.TYPE_INT_ARGB)
+    val halfWhite = 0x80FFFFFF.toInt()
+    for (x in 0 until 4) for (y in 0 until 4) src.setRGB(x, y, halfWhite)
+    val file = File(tempFolder.newFolder("half-backdrop"), "frame.png")
+    ImageIO.write(src, "PNG", file)
+
+    val framed = reframePngBytes(file.readBytes(), 4, 4, 4, 4, "test", backdropArgb = halfWhite)
+    val img = ImageIO.read(ByteArrayInputStream(framed))
+    assertEquals(
+      "a translucent backdrop must pass the source through untouched",
+      halfWhite,
+      img.getRGB(0, 0),
+    )
+  }
+
+  @Test
   fun `a pure crop preserves translucent pixels exactly`() {
     // Java2D's default `SrcOver` onto a zeroed canvas round-trips every pixel through
     // premultiplied alpha, which rounds the RGB of low-alpha pixels. The still path's Skia crop

@@ -1188,6 +1188,10 @@ class DesktopRecordingSession(
   private fun resolveNaturalSize(): Pair<Int, Int> {
     val sceneWidth = if (renderedSceneWidthPx > 0) renderedSceneWidthPx else sceneWidthPx
     val sceneHeight = if (renderedSceneHeightPx > 0) renderedSceneHeightPx else sceneHeightPx
+    // A TalkBack recording keeps the scene as its natural size — see [overlayFramedAgainstScene].
+    // Only the CROP is given up, not the scale: returning early instead would drop `scale` on the
+    // floor for a wrapped TalkBack recording, which every other combination honours.
+    if (overlayFramedAgainstScene) return sceneWidth to sceneHeight
     return recordingNaturalAxisPx(state.spec.wrapWidth, maxMeasuredWidthPx, sceneWidth) to
       recordingNaturalAxisPx(state.spec.wrapHeight, maxMeasuredHeightPx, sceneHeight)
   }
@@ -1226,7 +1230,6 @@ class DesktopRecordingSession(
     val nothingToCrop = naturalWidth == sceneWidth && naturalHeight == sceneHeight
     val nothingToScale = frameWidth == naturalWidth && frameHeight == naturalHeight
     if (framingKnownUpFront || (nothingToCrop && nothingToScale)) return frameWidth to frameHeight
-    if (overlayFramedAgainstScene) return sceneWidth to sceneHeight
 
     fun framed(bytes: ByteArray): ByteArray =
       scalePngBytes(bytes, naturalWidth, naturalHeight, frameWidth, frameHeight)
@@ -1343,7 +1346,12 @@ internal fun reframePngBytes(
   val src =
     ImageIO.read(ByteArrayInputStream(bytes))
       ?: error("$label: a captured frame is not a decodable PNG")
-  val opaqueBackdrop = (backdropArgb ushr 24) != 0
+  // Fully opaque only. A partly-transparent background is already painted into the source by the
+  // composition, so laying it underneath as well composites it twice — alpha 128 lands near 192,
+  // shifting pixels across the whole component and putting the recording at odds with its still.
+  // Nothing needs filling in that case anyway: whatever the crop exposes was transparent in the
+  // composition too.
+  val opaqueBackdrop = (backdropArgb ushr 24) == 0xFF
   // A frame that happens to need nothing keeps its exact bytes. The wholesale no-op is caught
   // by [finalizeFrames] before any decode; this is the per-frame case, where the set is being
   // reframed but this particular frame already matches.
