@@ -118,14 +118,26 @@ function artifactReader(caseDir, synthesize) {
     // reports it as `artifact-unreadable`, where the contract says `path-not-contained`. The bound is
     // the fixed `<root>/<id>/` the path is addressed against.
     //
-    // Compared **case-folded**, so that this check answers only the question it is for. A path that
-    // resolves to the right directory spelled the wrong way has not escaped anything, and reporting
-    // it here would take the exact-case check's answer away from it — `<id>` is part of the path the
-    // exact-case rule covers. A path that resolves into a *different* acceptance still fails, since
-    // two ids differing only by case are already refused by the identity scan.
-    const acceptance = join(root, path.split("/")[0]);
+    // **The base is resolved too, and the comparison is case-sensitive.** Both halves matter, and an
+    // earlier revision got this wrong in a way worth recording: it compared the two paths
+    // *case-folded*, to stop a wrongly-cased `<id>` — which has not escaped anything — being
+    // reported here instead of by the exact-case check below. That works, and it also folds together
+    // two genuinely different directories on a case-sensitive host. `/tmp/A/…/artifacts/id` and
+    // `/tmp/a/…/artifacts/id` are not the same tree, and a symlink into the parallel one passed
+    // containment — while the exact-case check could not catch it either, since that compares only
+    // the `artifacts/<id>/<path>` *suffix* and the difference is in an ancestor.
+    //
+    // Resolving the base gets both properties without folding anything: on a case-insensitive host
+    // `realpath` reports the committed spelling for the requested `<id>` whatever case it was asked
+    // for, so the wrongly-cased request is *contained* here and falls through to the exact-case check
+    // that owns it; on a case-sensitive host the two ancestors resolve to different strings and the
+    // escape is refused. `realpath` is doing the normalising, which is what it is for.
+    const requestedAcceptance = join(root, path.split("/")[0]);
+    const acceptance = existsSync(requestedAcceptance)
+      ? realpathSync(requestedAcceptance)
+      : requestedAcceptance;
     const within = (target, base) => target === base || target.startsWith(base + sep);
-    if (!within(resolved.toLowerCase(), acceptance.toLowerCase())) {
+    if (!within(resolved, acceptance)) {
       return { error: "path-not-contained" };
     }
     // **Exact case, the reader's third obligation.** On a case-insensitive filesystem `MASK.png`
@@ -504,6 +516,29 @@ test("the reference reader discovers an escape that no path grammar can see", ()
       { error: "path-not-contained" },
       "a symlink into another acceptance is contained in the root and still an escape",
     );
+    // **An ancestor differing only by case is a different tree, on a case-sensitive host.** This is
+    // the escape a case-folded containment check admits: the resolved path and the acceptance base
+    // fold to the same string, and the exact-case check cannot see it either, because that compares
+    // only the `artifacts/<id>/<path>` suffix — which matches exactly. Skipped where the filesystem
+    // cannot hold both spellings, since there the two names *are* one directory and nothing escaped.
+    const parallel = join(scratch, "..", `${scratch.split(sep).pop().toUpperCase()}`);
+    let parallelIsDistinct = false;
+    try {
+      mkdirSync(join(parallel, "artifacts", "a"), { recursive: true });
+      writeFileSync(join(parallel, "artifacts", "a", "mask.png"), Buffer.from([137, 80, 78, 71]));
+      parallelIsDistinct = realpathSync(parallel) !== realpathSync(scratch);
+    } catch {
+      parallelIsDistinct = false;
+    }
+    if (parallelIsDistinct) {
+      symlinkSync(join(parallel, "artifacts", "a", "mask.png"), join(artifacts, "a", "parallel.png"));
+      assert.deepEqual(
+        read("a/parallel.png"),
+        { error: "path-not-contained" },
+        "an ancestor differing only in case is a different tree, not a spelling of this one",
+      );
+      rmSync(parallel, { recursive: true, force: true });
+    }
     assert.deepEqual(
       read("a/outside.png"),
       { error: "path-not-contained" },
