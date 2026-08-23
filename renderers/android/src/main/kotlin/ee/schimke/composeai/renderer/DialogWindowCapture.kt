@@ -39,7 +39,21 @@ internal object DialogWindowCapture {
     val semanticsRoot: SemanticsNode?,
   )
 
-  class StableDialogCrop {
+  /**
+   * Per-frame dialog crop for a multi-frame capture, with the rect resolved once and reused.
+   *
+   * [gutter] is the `@CaptureGutter` expansion, and it has to be passed for the same reason the
+   * still path passes one: a dialog capture is cropped to the dialog's own window rect, which is
+   * inside the gutter the grown window and `MeasuredWrapBox` just made room for. Leaving it at the
+   * default would crop those pixels straight back off, so a guttered dialog would publish a still
+   * with its shadow and a GIF beside it without — the disagreement `@CaptureGutter`'s motion
+   * support exists to prevent (compose-ai-tools#4452). Scroll products deliberately pass nothing: a
+   * scrolling capture is documented as carrying no gutter.
+   */
+  class StableDialogCrop(
+    private val gutter: DialogCropGutter = DialogCropGutter(),
+    private val fixedAxisTarget: FixedAxisTarget = FixedAxisTarget(),
+  ) {
     private var cropRect: android.graphics.Rect? = null
 
     @OptIn(ExperimentalRoborazziApi::class)
@@ -50,12 +64,50 @@ internal object DialogWindowCapture {
     ): CaptureRoot {
       val root = resolveCaptureRoot(rule)
       root.interaction.captureRoboImage(file = file, roborazziOptions = roborazziOptions)
-      val semanticsRoot = root.semanticsRoot ?: return root
-      val window = shownDialogWindow(semanticsRoot) ?: return root
+      val semanticsRoot = root.semanticsRoot
+      val window = semanticsRoot?.let { shownDialogWindow(it) }
+      if (semanticsRoot == null || window == null) {
+        // Not a dialog preview: the frame is the hosting window, which the gutter grew in whole
+        // **dp**. Trim it to the pixel target the still uses. Same precedence the still path
+        // applies — a dialog crop frames the component itself, so it wins and this is skipped.
+        fixedAxisTarget.applyTo(file)
+        return root
+      }
       val rect =
-        cropRect ?: dialogWindowCropRect(file, semanticsRoot, window)?.also { cropRect = it }
+        cropRect
+          ?: dialogWindowCropRect(file, semanticsRoot, window, gutter)?.also { cropRect = it }
       if (rect != null) cropPngToRect(file, rect)
       return root
+    }
+  }
+
+  /**
+   * The exact pixel size a **fixed** axis's capture must come out at, or `null` per axis for an
+   * axis that wraps (and is therefore already the measured content plus its gutter).
+   *
+   * A Robolectric resource qualifier has no unit but dp, so the hosting window grows by
+   * `ceil(totalGutterPx / density)` dp — at a fractional density that is more pixels than the
+   * gutter actually resolves to. Two 4 dp edges at density 2.625 are 11 + 11 = 22 px, while the
+   * qualifier grows 9 dp ≈ 24 px. The still has always corrected for that; motion products encoded
+   * the qualifier-sized frame, so the same preview published a PNG at `frame + 22` and a GIF beside
+   * it at `frame + 24` (compose-ai-tools#4467). Passing the target through to every per-frame
+   * capture is what makes the two agree.
+   *
+   * All-null is the un-corrected behaviour, which is what a fully wrapped preview and every scroll
+   * product want.
+   */
+  data class FixedAxisTarget(val widthPx: Int? = null, val heightPx: Int? = null) {
+    internal fun applyTo(file: File) {
+      if (widthPx == null && heightPx == null) return
+      // A frame that won't decode is left alone rather than throwing. On the multi-frame paths
+      // this runs inside `captureDecodableFrame`'s capture lambda, and that retry only absorbs a
+      // transient Robolectric encode glitch when `FramePngReader.decode` is the thing that meets
+      // it — an `IIOException` raised *here* escapes the loop and turns a frame that would have
+      // re-encoded cleanly into an error sidecar. Skipping leaves the bad bytes on disk for the
+      // decode below to catch and re-capture, and the fresh frame gets trimmed on the next
+      // attempt. Only the decode failure is swallowed; anything else still propagates.
+      runCatching { resizeFixedAxesPng(file, widthPx, heightPx) }
+        .onFailure { if (it !is javax.imageio.IIOException) throw it }
     }
   }
 

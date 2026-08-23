@@ -2787,6 +2787,77 @@ html:not(.cp-bg-transparent) #cp-reference-compare[data-cp-stage-clip] .cp-refer
 .cp-annotation-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 14px;
   margin: 14px 0 0; color: var(--cp-fg-muted); font-size: 0.8rem; }
 .cp-annotation-toggle { display: inline-flex; align-items: center; gap: 6px; }
+/* The DERIVED semantics layers on the focused comparison — typography, theme and layout read off
+   the render's own semantics tree by `<cp-inspect-layers>`, which the viewer has drawn for a long
+   time and this page could not. Its boxes and badges are the viewer's (`.cp-inspect-*` below);
+   what differs is where the layer and the legend sit, so only that is restated here.
+
+   The layer is centred over the panel like `.cp-annotation-layer` above it rather than parked at
+   the frame's offset, because `.cp-compare-shot` is a centring grid — hence the `centred` anchor
+   the mount declares. Both layers are stacked over the same frame on purpose: the authored redline
+   and the render's own semantics are different claims about the same pixels, and seeing them
+   disagree is the point. */
+.cp-reference-grid .cp-compare-shot #cp-render-inspect-layer {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  pointer-events: none; }
+.cp-reference-grid .cp-compare-shot[data-inspect="on"] #cp-render-inspect-layer {
+  pointer-events: auto; }
+/* The viewer's legend is a sticky column beside its stage; here it reads under the grid, so the
+   column geometry has to be undone rather than inherited. */
+.cp-render-inspect-legend { position: static; flex: none; max-height: none; align-self: auto;
+  min-width: 0; margin: 14px 0 0; }
+.cp-render-inspect-controls { margin-top: 10px; }
+/* A box on the comparison is a target, not just a reading aid: clicking one reports that part of
+   the render. Only the comparison's mount opts in (`data-cp-selectable`), so the viewer's boxes stay
+   inert and its behaviour is unchanged. */
+.cp-inspect-box--selectable { cursor: pointer; }
+/* Layout is the exception, and deliberately so. Its boxes are `pointer-events: none` because the
+   layer draws every slot box — the outermost covers the whole frame, so a transparent interior that
+   captured the pointer would swallow every other layer's hover AND make "click the render anywhere"
+   select the root. The badge is therefore the target, exactly as it is on the viewer.
+
+   Keyed on `--selectable` rather than on a host selector: the viewer's own restore is scoped to
+   `.cp-viewer[data-inspect="on"]`, so without this a layout box on the comparison had no restore at
+   all and its click handler could never fire — one of the three layers silently inert. Scoping to
+   the class instead means this rule cannot reach the viewer, whose boxes carry no such class. */
+[data-inspect="on"] .cp-inspect-box--selectable[data-cp-kind="layout"] .cp-inspect-badge {
+  pointer-events: auto; cursor: pointer; }
+
+/* Element selection (`<cp-element-selection>`). A REPORT affordance: it decides what the prefilled
+   issue is about and accepts nothing. */
+.cp-selection-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+  margin: 12px 0 0; color: var(--cp-fg-muted); font-size: 0.8rem; }
+.cp-selection-tag { max-width: 260px; font: inherit; padding: 3px 6px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container-low); color: var(--cp-fg); }
+.cp-selection-tag[hidden] { display: none; }
+.cp-selection-controls button { font: inherit; padding: 3px 10px; cursor: pointer;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container-low); color: var(--cp-fg); }
+.cp-selection-controls button[hidden] { display: none; }
+.cp-selection-controls button:hover { border-color: rgba(37, 99, 235, 0.75);
+  background: rgba(37, 99, 235, 0.08); }
+.cp-selection-state { margin: 0; color: var(--cp-fg); font-variant-numeric: tabular-nums; }
+/* Why the tag picker is absent, when it is. "This catalog publishes no index" and "your overrides
+   mean the index describes a different render" are different problems with different fixes, and a
+   control that simply is not there teaches neither. */
+.cp-selection-note { flex-basis: 100%; margin: 0; color: var(--cp-fg-faint); font-size: 0.72rem; }
+/* The drag surface, centred over the frame exactly like the layers above so a rectangle dragged on
+   it is expressible in the render's own pixels. It takes the pointer while a drag is running —
+   otherwise a drag that wandered over the panel would end in a click on whatever was underneath. */
+/* `touch-action: none` is load-bearing, not tidiness. On a touch device the default lets the
+   browser claim a drag — especially a vertical one on a scrollable page — as a scroll gesture,
+   which arrives as `pointercancel` and cancels the selection instead of recording it. Pointer
+   capture does not suppress a native gesture; declaring the surface's intent is what does. */
+.cp-reference-grid .cp-compare-shot #cp-selection-layer {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  cursor: crosshair; touch-action: none; z-index: 2; }
+.cp-reference-grid .cp-compare-shot #cp-selection-layer[hidden] { display: none; }
+.cp-selection-marquee { position: absolute; box-sizing: border-box;
+  border: 1px solid rgba(37, 99, 235, 0.95); background: rgba(37, 99, 235, 0.16); }
+.cp-selection-marquee[hidden] { display: none; }
 /* ---------------------------------------------------------------------------
    Viewer inspection layers (see inspect.js): accessibility focus map, resolved
    typography, resolved theme attributes, layout boxes. The layer is absolutely positioned over
@@ -2845,6 +2916,11 @@ html:not(.cp-bg-transparent) #cp-reference-compare[data-cp-stage-clip] .cp-refer
 .cp-inspect-entry[data-level="warning"] { --cp-inspect-color: rgba(217, 119, 6, 0.95); }
 .cp-inspect-entry[data-level="error"] { --cp-inspect-color: rgba(220, 38, 38, 0.95); }
 .cp-inspect-entry-active { background: var(--md-sys-color-surface-container-high); }
+/* On a page where a pick means something, the legend row is the KEYBOARD path to selection — the
+   box over the frame is an unfocusable div, and the layout layer's interior takes no pointer at all.
+   The row already carries `tabindex`, so it only needs to say it is now an action rather than the
+   reading aid the `cursor: default` above declares it to be on the viewer. */
+.cp-inspect-entry--selectable { cursor: pointer; }
 .cp-inspect-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .cp-inspect-text strong { font-weight: 650; color: var(--cp-fg); overflow-wrap: anywhere; }
 .cp-inspect-detail { color: var(--cp-fg-muted); overflow-wrap: anywhere;

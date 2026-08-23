@@ -12,7 +12,6 @@ import androidx.compose.remote.creation.compose.layout.RemoteComposable
 import androidx.compose.remote.creation.profile.Profile
 import androidx.compose.remote.creation.profile.RcPlatformProfiles
 import androidx.compose.remote.player.compose.RemoteDocumentPlayer
-import androidx.compose.remote.player.compose.embedded.ExperimentalRemoteDocumentPlayer
 import androidx.compose.remote.player.core.RemoteDocument
 import androidx.compose.remote.player.core.state.StateUpdater
 import androidx.compose.runtime.Composable
@@ -24,6 +23,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import ee.schimke.composeai.data.render.IrSidecarChannel
+import ee.schimke.composeai.rcembedded.player.ExperimentalRemoteDocumentPlayer
 import java.time.Clock
 import java.time.ZoneId
 import kotlinx.coroutines.runBlocking

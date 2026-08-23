@@ -72,6 +72,13 @@ fun renderInteractionPreview(
   wrapWidth: Boolean = false,
   wrapHeight: Boolean = false,
   sizeBounds: PreviewSizeBounds = PreviewSizeBounds(),
+  /**
+   * `@CaptureGutter` (issue #4452). Same contract as on the still and animated paths: the scene
+   * grows, the composable is measured against the scene minus the gutter and placed inset, and the
+   * frames are cropped to `component + gutter`. Pointer targeting is unaffected — the script
+   * resolves its targets from the composition's own node bounds, which already carry the inset.
+   */
+  captureGutter: PreviewCaptureGutter = PreviewCaptureGutter.None,
   classLoader: ClassLoader? = null,
 ) {
   val composableMethod = resolveMotionComposable(className, functionName, previewArgs, classLoader)
@@ -83,7 +90,8 @@ fun renderInteractionPreview(
 
   val rtl = rendersRightToLeft(localeTag)
   val sceneDensity = Density(density, fontScale)
-  val sceneSize = composePreviewSceneSize(widthPx, heightPx, wrapWidth, wrapHeight, sizeBounds)
+  val sceneSize =
+    composePreviewSceneSize(widthPx, heightPx, wrapWidth, wrapHeight, sizeBounds, captureGutter)
   val bgColor =
     when {
       backgroundColor != 0L -> Color(backgroundColor.toInt())
@@ -121,6 +129,7 @@ fun renderInteractionPreview(
             onMeasured = bounds::observe,
             wrapperClassName = wrapperClassName,
             classLoader = classLoader,
+            gutter = captureGutter,
           ) {
             InvokeMotionComposable(composableMethod, null, previewArgs)
           }
@@ -132,7 +141,16 @@ fun renderInteractionPreview(
         mainClock.advanceTimeByFrame()
 
         if (forcedCrop == null) {
-          crop = motionCropSize(bounds.size, wrapWidth, wrapHeight, widthPx, heightPx, sceneSize)
+          crop =
+            motionCropSize(
+              bounds.size,
+              wrapWidth,
+              wrapHeight,
+              widthPx,
+              heightPx,
+              sceneSize,
+              captureGutter,
+            )
         }
 
         // Resolve every target ONCE, up front, against the composition at rest. Re-resolving per

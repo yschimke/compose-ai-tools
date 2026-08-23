@@ -255,6 +255,7 @@ class ServeHttpRoutingTest {
     designReference: Boolean = false,
     parityFeed: Boolean = false,
     stagesRcCompare: Boolean = false,
+    tagIndex: Boolean = false,
   ): ServeBundleHost {
     val dir = Files.createTempDirectory("routing-$label").toFile().also { it.deleteOnExit() }
     File(dir, "index.html").writeText("<html></html>")
@@ -290,6 +291,41 @@ class ServeHttpRoutingTest {
                       DesignReferenceRaster("references/red-design.png", width = 2, height = 2),
                     source = DesignReferenceSource(provider = "penpot", revision = "8"),
                   ),
+                )
+            ),
+          )
+        )
+    }
+    if (tagIndex) {
+      // The published element index, exactly as `scripts/design-artifacts/tag-index.mjs` writes it:
+      // one unique tag with a box, one unique tag whose every carrying node had a zero-area box,
+      // and one carried by two nodes. The last two are the interesting ones — a tag with no
+      // geometry is still an identity, and a tag with `count: 2` is not one at all.
+      File(dir, ServeTagIndexStore.DIRECTORY).apply { mkdirs() }
+      File(dir, "${ServeTagIndexStore.DIRECTORY}/${ServeTagIndexStore.INDEX_FILE}")
+        .writeText(
+          Json.encodeToString(
+            TagIndexManifest.serializer(),
+            TagIndexManifest(
+              previews =
+                mapOf(
+                  previewId to
+                    mapOf(
+                      "glyph" to
+                        WireTagEntry(
+                          count = 1,
+                          bounds = AnnotationBounds(x = 18, y = 18, width = 24, height = 24),
+                          space = ServeSemanticsTags.RENDER_PIXELS,
+                        ),
+                      "plain-marker" to
+                        WireTagEntry(count = 1, space = ServeSemanticsTags.RENDER_PIXELS),
+                      "row" to
+                        WireTagEntry(
+                          count = 2,
+                          bounds = AnnotationBounds(x = 0, y = 0, width = 90, height = 20),
+                          space = ServeSemanticsTags.RENDER_PIXELS,
+                        ),
+                    )
                 )
             ),
           )
@@ -422,6 +458,7 @@ class ServeHttpRoutingTest {
           rcDoc = rcDocBytes,
           designReference = true,
           parityFeed = true,
+          tagIndex = true,
         ),
       pinned = true,
     )
@@ -523,6 +560,107 @@ class ServeHttpRoutingTest {
   fun tearDown() {
     server.stop()
     registry.close()
+  }
+
+  /**
+   * `GET /tags/{name}` — the published element tag index, which had no HTTP surface until the
+   * focused comparison's element selector became its first consumer.
+   *
+   * The three shapes in the fixture are the three a consumer has to tell apart, and every one of
+   * them has to survive the wire: a unique tag with a box, a unique tag with **no** box (still an
+   * identity — `count` is what makes one), and a tag two nodes carry (not an identity at all).
+   */
+  @Test
+  fun `the tag index lane serves one preview's published index, on both session forms`() {
+    for (path in
+      listOf(
+        "/compose-m3/tags/$previewId",
+        "/compose-m3/tags/$previewId.json",
+        "/tags/$previewId?session=compose-m3",
+      )) {
+      val (code, body) = get(path)
+      assertEquals(200, code, "$path: $body")
+      val payload = Json.parseToJsonElement(body).jsonObject
+      assertEquals(previewId, payload["previewId"]?.jsonPrimitive?.content, path)
+      val tags = payload["tags"]!!.jsonObject
+      assertEquals(setOf("glyph", "plain-marker", "row"), tags.keys, path)
+      val glyph = tags["glyph"]!!.jsonObject
+      assertEquals(1, glyph["count"]?.jsonPrimitive?.content?.toInt(), path)
+      // The plane, named on every entry. A consumer that read an index declaring nothing as though
+      // it declared render pixels would compare bounds in a plane nobody stated — see D1 — so the
+      // discriminator has to actually reach the browser rather than merely exist in Kotlin.
+      assertEquals(
+        ServeSemanticsTags.RENDER_PIXELS,
+        glyph["space"]?.jsonPrimitive?.content,
+        path,
+      )
+      assertEquals(18, glyph["bounds"]!!.jsonObject["x"]?.jsonPrimitive?.content?.toInt(), path)
+      // Absent bounds are absent, not zeroed: a zero-area rectangle is a box a gate would measure
+      // against, and this tag has none.
+      assertTrue(
+        tags["plain-marker"]!!.jsonObject["bounds"].let { it == null || it.toString() == "null" },
+        path,
+      )
+      assertEquals(2, tags["row"]!!.jsonObject["count"]?.jsonPrimitive?.content?.toInt(), path)
+    }
+  }
+
+  @Test
+  fun `a preview whose id ends in json keeps its own index rather than another preview's`() {
+    // A preview id is unrestricted path-segment data. Stripping `.json` unconditionally would
+    // answer such a preview with a 404 — or, where the stripped form is also a real preview, with
+    // somebody else's element index, which is a selector silently targeting the wrong elements.
+    val host =
+      object : ServeHost {
+        override val previews =
+          listOf(ServePreview("com.example.Red", "Red"), ServePreview("com.example.Red.json", "J"))
+        override val label = "dotted"
+
+        // This lane never renders — it reads a published file — so the required member is a stub.
+        override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+          RenderOutcome.NotFound
+
+        override fun subscribeStream(
+          previewId: String,
+          overrides: PreviewOverrides,
+          codec: StreamCodec?,
+          maxFps: Int?,
+          onUnavailable: ((String) -> Unit)?,
+          onFrame: (StreamFrameParams) -> Unit,
+        ): StreamHandle? = null
+
+        override fun activeStreamCount(): Int = 0
+
+        override fun close() {}
+
+        override fun tagIndexForPreview(previewId: String) =
+          when (previewId) {
+            "com.example.Red" -> mapOf("plain" to ServeSemanticsTags.TagEntry(count = 1))
+            "com.example.Red.json" -> mapOf("dotted" to ServeSemanticsTags.TagEntry(count = 1))
+            else -> emptyMap()
+          }
+      }
+    registry.register("dotted", host = host, pinned = true)
+    fun tagsOf(path: String): Set<String> {
+      val (code, body) = get(path)
+      assertEquals(200, code, "$path: $body")
+      return Json.parseToJsonElement(body).jsonObject["tags"]!!.jsonObject.keys
+    }
+    // Verbatim wins: the id really ending in `.json` gets its own entry, not `com.example.Red`'s.
+    assertEquals(setOf("dotted"), tagsOf("/dotted/tags/com.example.Red.json"))
+    // And the alias still resolves where no preview claims the literal name.
+    assertEquals(setOf("plain"), tagsOf("/dotted/tags/com.example.Red"))
+  }
+
+  @Test
+  fun `a session that publishes no index answers an empty one, and an unknown preview 404s`() {
+    // "This preview carries no tags" and "this server cannot tell you" are different answers, and a
+    // consumer that cannot tell them apart has no way to choose between offering no tag targets and
+    // offering none YET.
+    val (code, body) = get("/default-mod/tags/$previewId")
+    assertEquals(200, code, body)
+    assertEquals(0, Json.parseToJsonElement(body).jsonObject["tags"]!!.jsonObject.size)
+    assertEquals(404, get("/compose-m3/tags/com.example.NotHere").first)
   }
 
   @Test

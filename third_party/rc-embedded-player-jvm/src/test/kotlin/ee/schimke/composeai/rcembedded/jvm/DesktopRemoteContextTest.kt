@@ -18,9 +18,9 @@ package ee.schimke.composeai.rcembedded.jvm
 
 import androidx.compose.remote.core.RemoteComposeState
 import androidx.compose.remote.core.SystemClock
-import androidx.compose.remote.player.compose.embedded.SnapshotRemoteComposeState
-import androidx.compose.remote.player.compose.embedded.StoreBackedRemoteContext
 import androidx.compose.runtime.snapshots.Snapshot
+import ee.schimke.composeai.rcembedded.player.SnapshotRemoteComposeState
+import ee.schimke.composeai.rcembedded.player.StoreBackedRemoteContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue

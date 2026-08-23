@@ -52,6 +52,7 @@ class DesktopInteractionRendererTest {
     heightPx: Int = 30,
     wrapWidth: Boolean = false,
     wrapHeight: Boolean = false,
+    captureGutter: PreviewCaptureGutter = PreviewCaptureGutter.None,
   ): File {
     val outputFile = File(tempFolder.newFolder(name), "$name.${spec.format.name.lowercase()}")
     renderInteractionPreview(
@@ -69,8 +70,34 @@ class DesktopInteractionRendererTest {
       spec = spec,
       wrapWidth = wrapWidth,
       wrapHeight = wrapHeight,
+      captureGutter = captureGutter,
     )
     return outputFile
+  }
+
+  @Test
+  fun `a capture gutter grows the recording's canvas and moves nothing inside it`() {
+    // Issue #4452 — an `@InteractionPreview` on a component that declares a `@CaptureGutter` used
+    // to come back cropped to the bare component while its still carried the shadow. The two
+    // renders below are the same script on the same fixture; only the gutter differs.
+    val gutter = PreviewCaptureGutter(startPx = 4, topPx = 4, endPx = 4, bottomPx = 5)
+    val bare = ApngFrames.read(render("ThreeCellSelector", spec(targets = listOf(2)), "no-gutter"))
+    val guttered =
+      ApngFrames.read(
+        render("ThreeCellSelector", spec(targets = listOf(2)), "gutter", captureGutter = gutter)
+      )
+
+    val bareFrame = bare.first()
+    val gutteredFrame = guttered.first()
+    assertEquals(bareFrame.width + gutter.horizontalPx, gutteredFrame.width)
+    assertEquals(bareFrame.height + gutter.verticalPx, gutteredFrame.height)
+
+    // The gesture still lands on cell 2 — the pointer resolves its target from the composition's
+    // own node bounds, which already carry the inset, so nothing had to be offset by hand.
+    assertTrue(
+      "cell 2 ends selected inside the guttered canvas",
+      guttered.last().isWhiteAt(75 + gutter.startPx, 15 + gutter.topPx),
+    )
   }
 
   @Test

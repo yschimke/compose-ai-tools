@@ -64,6 +64,18 @@ internal fun handleInteractionCapture(
   measuredContent: () -> IntSize?,
   glimmerEnvironment: ConnectorGlimmerEnvironment? = null,
   onClockAdvanced: (Long) -> Unit = {},
+  /**
+   * `@CaptureGutter` expansion for a `Dialog` / `AlertDialog` preview's per-frame crop. The dialog
+   * crop trims to the dialog's own window rect, which sits inside the gutter the grown window made
+   * room for — so without this a guttered dialog's recording comes back tight while its still
+   * carries the shadow (compose-ai-tools#4452).
+   */
+  dialogGutter: DialogWindowCapture.DialogCropGutter = DialogWindowCapture.DialogCropGutter(),
+  /**
+   * The pixel size a fixed axis's frames must come out at, shared with the still so the two cannot
+   * drift (issue #4467). Empty for a wrapped preview and for every scroll product.
+   */
+  fixedAxisTarget: DialogWindowCapture.FixedAxisTarget = DialogWindowCapture.FixedAxisTarget(),
 ): Boolean {
   val frameInterval = interaction.frameIntervalMs.coerceAtLeast(1)
   val timeline =
@@ -103,7 +115,7 @@ internal fun handleInteractionCapture(
 
   val frameOptions =
     RoborazziOptions(recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = isRound))
-  val stableDialogCrop = DialogWindowCapture.StableDialogCrop()
+  val stableDialogCrop = DialogWindowCapture.StableDialogCrop(dialogGutter, fixedAxisTarget)
 
   // Read off the clock rather than recomputed from the script: the settle tick, the per-frame
   // advances and the frame count all move independently, and a caller's bookkeeping that

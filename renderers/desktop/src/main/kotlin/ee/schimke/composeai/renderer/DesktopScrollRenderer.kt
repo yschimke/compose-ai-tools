@@ -76,6 +76,16 @@ enum class DesktopScrollMode {
  *
  * Returns `true` when [outputFile] was written; `false` for "no scrollable found" / "encoder
  * declined". Throws — propagated by the caller — when reflective composable invocation fails.
+ *
+ * ### No `@CaptureGutter` here, by decision
+ *
+ * The still and motion paths take a [PreviewCaptureGutter]; this one takes none, and that is a
+ * settled answer rather than an omission (issue #4452). A gutter says "the component draws this far
+ * past its own bounds" and is only meaningful where the capture bounds ARE the component's. Here
+ * they are not: a LONG capture is the stitched scroll extent (many viewports of a list), and a GIF
+ * frame is the declared viewport. Extending either by a margin would be padding the sheet, not
+ * keeping a shadow, and the annotation's KDoc says exactly that. A declined drive falls back to
+ * [renderPreview], which is a still and does apply the gutter.
  */
 // `InternalComposeUiApi` for `LocalSystemTheme`, the same opt-in [renderPreview] carries for the
 // same local — it is how Compose Desktop's `isSystemInDarkTheme()` is driven.

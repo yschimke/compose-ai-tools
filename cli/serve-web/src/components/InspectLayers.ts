@@ -15,9 +15,15 @@
 // Renders nothing of its own; the layer and legend containers are server-rendered and this fills
 // them. `serve.css` hides the tag.
 //
+// Mounted on two surfaces. The viewer's tag carries no attributes and gets the wiring this element
+// was written for. The focused comparison mounts a second instance over its Actual panel, naming its
+// own frame, layer, legend and toggles — which is how the DERIVED semantics layers reach the page
+// where a parity report is filed. `inspect/host.ts` is the whole of that difference; nothing below
+// this line knows which page it is on.
+//
 // The decisions live next door: `inspect/entries.ts` (which nodes and findings become boxes at all,
-// and what each says) and `inspect/layers.ts` (which endpoint a layer reads, and how a deep link
-// names it).
+// and what each says), `inspect/layers.ts` (which endpoint a layer reads, and how a deep link names
+// it) and `inspect/host.ts` (which DOM it draws into).
 
 import { LitElement } from "lit";
 import { customElement } from "lit/decorators.js";
@@ -30,7 +36,6 @@ import {
 import {
     LAYERS,
     activeLayers,
-    baseFrom,
     dataUrlFor,
     fallbackUrl,
     inspectParam,
@@ -38,6 +43,7 @@ import {
     sourcesFor,
     type LayerSpec,
 } from "../inspect/layers.js";
+import { resolveHost, type InspectHost } from "../inspect/host.js";
 
 interface Box {
     id: string;
@@ -48,13 +54,8 @@ interface Box {
 @customElement("cp-inspect-layers")
 export class InspectLayers extends LitElement {
     private installed = false;
-    private root: HTMLElement | null = null;
+    private host: InspectHost | null = null;
     private img: HTMLImageElement | null = null;
-    private composeImg: HTMLImageElement | null = null;
-    private specImg: HTMLImageElement | null = null;
-    private layer: HTMLElement | null = null;
-    private legend: HTMLElement | null = null;
-    private toggles: HTMLInputElement[] = [];
     private previewId = "";
 
     /** Per `(source × frame)`: re-ticking a layer must not re-run a render of the same frame. */
@@ -86,43 +87,28 @@ export class InspectLayers extends LitElement {
         this.resizes?.disconnect();
         this.resizes = null;
         this.installed = false;
+        this.host = null;
         this.generation++;
         super.disconnectedCallback();
     }
 
     private install(): boolean {
         if (!this.isConnected || this.installed) return true;
-        this.root = document.querySelector<HTMLElement>(".cp-viewer");
-        this.composeImg = document.getElementById(
-            "cp-img",
-        ) as HTMLImageElement | null;
-        this.specImg = document.getElementById(
-            "cp-spec-img",
-        ) as HTMLImageElement | null;
+        // Inert where the host can produce none of the products — a viewer without the inspect
+        // group, or a page whose mount tag names parts it does not have.
+        const host = resolveHost(this);
+        if (!host) return false;
+        this.host = host;
         this.syncTarget();
-        this.layer = document.getElementById("cp-inspect-layer");
-        this.legend = document.getElementById("cp-inspect-legend");
-        this.toggles = Array.from(
-            document.querySelectorAll<HTMLInputElement>(".cp-inspect"),
-        );
-        // Inert on a viewer whose host can produce none of the three products.
-        if (
-            !this.root ||
-            !this.composeImg ||
-            !this.layer ||
-            !this.legend ||
-            !this.toggles.length
-        )
-            return false;
         this.installed = true;
-        this.previewId = this.root.getAttribute("data-preview-id") ?? "";
+        this.previewId = host.root.getAttribute("data-preview-id") ?? "";
 
-        for (const toggle of this.toggles) {
+        for (const toggle of host.toggles) {
             this.on(toggle, "change", () => void this.refresh());
         }
         this.on(window, "resize", () => this.place());
-        this.on(this.composeImg, "load", () => this.place());
-        if (this.specImg) this.on(this.specImg, "load", () => this.place());
+        this.on(host.frame, "load", () => this.place());
+        if (host.specFrame) this.on(host.specFrame, "load", () => this.place());
         // `load` alone is a race this element must not depend on winning. It fires only if the
         // frame was still in flight when the tag upgraded — and when it has already decoded, the
         // sole `place()` is the one at the end of `draw()`, whose measurements are whatever the
@@ -137,10 +123,10 @@ export class InspectLayers extends LitElement {
         // already-capped frame changes `offsetLeft` without changing the image's own box.
         if (typeof ResizeObserver === "function") {
             this.resizes = new ResizeObserver(() => this.place());
-            this.resizes.observe(this.composeImg);
-            if (this.specImg) this.resizes.observe(this.specImg);
-            if (this.composeImg.parentElement)
-                this.resizes.observe(this.composeImg.parentElement);
+            this.resizes.observe(host.frame);
+            if (host.specFrame) this.resizes.observe(host.specFrame);
+            if (host.frame.parentElement)
+                this.resizes.observe(host.frame.parentElement);
         }
         // New pixels ⇒ new geometry and new facts. `viewer.js` stamps `data-cp-src` once the
         // replacement frame has DECODED, so that attribute is the one honest "the render changed"
@@ -152,11 +138,11 @@ export class InspectLayers extends LitElement {
                 if (this.activeKinds().length) void this.refresh();
                 else this.place();
             });
-            this.observer.observe(this.composeImg, {
+            this.observer.observe(host.frame, {
                 attributes: true,
-                attributeFilter: ["data-cp-src"],
+                attributeFilter: [host.frameSource],
             });
-            this.observer.observe(this.root, {
+            this.observer.observe(host.root, {
                 attributes: true,
                 attributeFilter: ["data-mode", "data-spec-view"],
             });
@@ -177,30 +163,34 @@ export class InspectLayers extends LitElement {
     }
 
     private activeKinds(): string[] {
-        return this.toggles
+        return (this.host?.toggles ?? [])
             .filter((el) => el.checked && !el.disabled)
             .map((el) => el.getAttribute("data-cp-inspect") ?? "");
     }
 
     private isSpec(): boolean {
+        if (!this.host?.hasSpecModes) return false;
         return (
-            this.root?.getAttribute("data-mode") === "spec" &&
-            this.root?.getAttribute("data-spec-view") === "spec"
+            this.host.root.getAttribute("data-mode") === "spec" &&
+            this.host.root.getAttribute("data-spec-view") === "spec"
         );
     }
 
     private isSpecComparison(): boolean {
-        const view = this.root?.getAttribute("data-spec-view");
+        if (!this.host?.hasSpecModes) return false;
+        const view = this.host.root.getAttribute("data-spec-view");
         return (
-            this.root?.getAttribute("data-mode") === "spec" &&
+            this.host.root.getAttribute("data-mode") === "spec" &&
             (view === "diff" || view === "triptych" || view === "slider")
         );
     }
 
     /** Inspection follows the surface on the stage: Compose render or imported Figma raster. */
     private syncTarget(): void {
+        const host = this.host;
+        if (!host) return;
         this.img =
-            this.isSpec() && this.specImg ? this.specImg : this.composeImg;
+            this.isSpec() && host.specFrame ? host.specFrame : host.frame;
     }
 
     /** Restore from a deep link: `?inspect=a11y,typography`. */
@@ -209,7 +199,7 @@ export class InspectLayers extends LitElement {
             new URLSearchParams(location.search).get("inspect"),
         );
         if (!wanted.length) return;
-        for (const toggle of this.toggles) {
+        for (const toggle of this.host?.toggles ?? []) {
             if (wanted.includes(toggle.getAttribute("data-cp-inspect") ?? ""))
                 toggle.checked = true;
         }
@@ -223,7 +213,7 @@ export class InspectLayers extends LitElement {
                     .getElementById("cp-spec-compare")
                     ?.getAttribute("data-reference") ?? "spec"
             );
-        return this.img?.getAttribute("data-cp-src") ?? "";
+        return this.img?.getAttribute(this.host?.frameSource ?? "") ?? "";
     }
 
     private referenceAnnotations(): unknown {
@@ -243,7 +233,7 @@ export class InspectLayers extends LitElement {
         const params = new URLSearchParams(location.search);
         return (
             dataUrlFor(this.frameUrl(), source) ??
-            fallbackUrl(baseFrom(location.pathname), this.previewId, source, {
+            fallbackUrl(this.host?.base ?? "", this.previewId, source, {
                 token: params.get("token") ?? "",
                 session: params.get("session") ?? "",
             })
@@ -309,13 +299,13 @@ export class InspectLayers extends LitElement {
             this.draw();
             return;
         }
-        this.legend?.setAttribute("aria-busy", "true");
+        this.host?.legend.setAttribute("aria-busy", "true");
         const names = sourcesFor(kinds);
         const results = await Promise.all(
             names.map((name) => this.fetchSource(name)),
         );
         if (generation !== this.generation) return;
-        this.legend?.removeAttribute("aria-busy");
+        this.host?.legend.removeAttribute("aria-busy");
         const byName = new Map(names.map((name, i) => [name, results[i]]));
         this.entries = activeLayers(kinds).flatMap((spec) => {
             const payload = byName.get(spec.source) ?? null;
@@ -352,13 +342,15 @@ export class InspectLayers extends LitElement {
      */
     private place(): void {
         const img = this.img;
-        const layer = this.layer;
+        const layer = this.host?.layer;
         if (!img || !layer || !img.naturalWidth || !this.boxes.length) return;
         const scale = img.clientWidth / img.naturalWidth;
         layer.style.width = `${img.clientWidth}px`;
         layer.style.height = `${img.clientHeight}px`;
-        layer.style.left = `${img.offsetLeft}px`;
-        layer.style.top = `${img.offsetTop}px`;
+        if (this.host?.anchor === "offset") {
+            layer.style.left = `${img.offsetLeft}px`;
+            layer.style.top = `${img.offsetTop}px`;
+        }
         for (const box of this.boxes) {
             box.node.style.left = `${box.bounds.x * scale}px`;
             box.node.style.top = `${box.bounds.y * scale}px`;
@@ -373,8 +365,9 @@ export class InspectLayers extends LitElement {
         for (const box of this.boxes) {
             box.node.classList.toggle("cp-inspect-box-active", box.id === id);
         }
-        for (const row of this.legend?.querySelectorAll("[data-cp-entry]") ??
-            []) {
+        for (const row of this.host?.legend.querySelectorAll(
+            "[data-cp-entry]",
+        ) ?? []) {
             row.classList.toggle(
                 "cp-inspect-entry-active",
                 row.getAttribute("data-cp-entry") === id,
@@ -383,18 +376,18 @@ export class InspectLayers extends LitElement {
     }
 
     private draw(): void {
-        const layer = this.layer;
-        const legend = this.legend;
+        const layer = this.host?.layer;
+        const legend = this.host?.legend;
         if (!layer || !legend) return;
         layer.textContent = "";
         legend.textContent = "";
         this.boxes = [];
         if (!this.entries.length) {
             legend.hidden = true;
-            this.root?.removeAttribute("data-inspect");
+            this.host?.root.removeAttribute("data-inspect");
             return;
         }
-        this.root?.setAttribute("data-inspect", "on");
+        this.host?.root.setAttribute("data-inspect", "on");
         legend.hidden = false;
         legend.appendChild(this.legendHead());
 
@@ -434,7 +427,9 @@ export class InspectLayers extends LitElement {
         entries.forEach((entry, index) => {
             const id = `${spec.kind}-${index}`;
             const ordinal = String(index + 1);
-            this.layer?.appendChild(this.box(entry, id, ordinal, spec.kind));
+            this.host?.layer.appendChild(
+                this.box(entry, id, ordinal, spec.kind),
+            );
             list.appendChild(this.row(entry, id, ordinal, spec.kind));
         });
         section.appendChild(list);
@@ -462,8 +457,40 @@ export class InspectLayers extends LitElement {
         box.appendChild(badge);
         box.addEventListener("mouseenter", () => this.highlight(id));
         box.addEventListener("mouseleave", () => this.highlight(null));
+        // Only where the host says a click means something (see `InspectHost.selectable`). The
+        // viewer's boxes stay inert, so its behaviour and its markup are both unchanged.
+        //
+        // The bounds travel as they are: every source reports them in the RENDER's own pixel space,
+        // which is the plane `compose-parity-locator/v1` accepts, so a box click needs no conversion
+        // and cannot acquire the display-plane error a drag has to be converted out of.
+        if (this.host?.selectable) {
+            box.classList.add("cp-inspect-box--selectable");
+            box.addEventListener("click", (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                this.announcePick(entry);
+            });
+        }
         this.boxes.push({ id, node: box, bounds: entry.bounds });
         return box;
+    }
+
+    /**
+     * Tell the page which part of the render was picked.
+     *
+     * One method for the box and its legend row, because they name the same element and must record
+     * the same thing — a keyboard reader and a pointer reader filing different reports for the same
+     * click target is the kind of divergence nobody would notice until the two reports disagreed.
+     *
+     * The bounds travel unconverted: every annotation source reports in the RENDER's own pixel
+     * space, which is the plane `compose-parity-locator/v1` accepts.
+     */
+    private announcePick(entry: Entry): void {
+        window.dispatchEvent(
+            new CustomEvent("cp-element-pick", {
+                detail: { bounds: entry.bounds, label: entry.title },
+            }),
+        );
     }
 
     private row(
@@ -502,6 +529,25 @@ export class InspectLayers extends LitElement {
         row.addEventListener("mouseleave", () => this.highlight(null));
         row.addEventListener("focus", () => this.highlight(id));
         row.addEventListener("blur", () => this.highlight(null));
+        // …and, where a pick means something, a keyboard path into the SELECTION as well.
+        //
+        // The box cannot be that path: it is an unfocusable `div` positioned over the frame, and
+        // the layout layer's interior does not even take a pointer. The row is already focusable
+        // and already names the thing the box outlines, so it is the affordance a keyboard reader
+        // reaches anyway. Without this, a page whose tag picker is withheld — a catalog that
+        // publishes annotations but no tag index — offers a keyboard user no way to select at all,
+        // since the drag is pointer-only.
+        if (this.host?.selectable) {
+            row.classList.add("cp-inspect-entry--selectable");
+            row.setAttribute("role", "button");
+            row.addEventListener("click", () => this.announcePick(entry));
+            row.addEventListener("keydown", (event: KeyboardEvent) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                // Space scrolls a focused element by default; a selection is not a scroll.
+                event.preventDefault();
+                this.announcePick(entry);
+            });
+        }
         return row;
     }
 }

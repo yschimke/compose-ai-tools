@@ -435,6 +435,11 @@ class RenderEngine(
         maxWidthPx = sizeOverrides?.maxWidthPx,
         maxHeightPx = sizeOverrides?.maxHeightPx,
       )
+    // `@CaptureGutter` (issue #4443). The live daemon lane carries it for the same reason the
+    // static lanes do — RENDER_LANE_PARITY.md's rule is that switching lanes changes font
+    // antialiasing, not layout, and a guttered preview that came back tight in the VS Code panel
+    // while its published PNG carried the gutter is a layout difference by any reading.
+    val captureGutter = spec.captureGutterPx()
     val sceneSize =
       ee.schimke.composeai.renderer.composePreviewSceneSize(
         widthPx = spec.widthPx,
@@ -442,6 +447,7 @@ class RenderEngine(
         wrapWidth = spec.wrapWidth,
         wrapHeight = spec.wrapHeight,
         sizeBounds = sizeBounds,
+        gutter = captureGutter,
       )
     val sceneWidthPx = sceneSize.width
     val sceneHeightPx = sceneSize.height
@@ -582,6 +588,7 @@ class RenderEngine(
                   wrapHeight = spec.wrapHeight,
                   backgroundColor = bgColor,
                   sizeBounds = sizeBounds,
+                  gutter = captureGutter,
                   onMeasured = { w, h ->
                     measuredContent[0] = w
                     measuredContent[1] = h
@@ -734,7 +741,42 @@ class RenderEngine(
    */
   @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
   internal fun renderSettlingFrame(state: SceneState, nanoTime: Long) {
+    state.recordFrameNanos(nanoTime)
     withPreviewLocale(state.spec.localeTag) { state.scene.render(nanoTime = nanoTime).close() }
+  }
+
+  /**
+   * Lay the held scene out so its semantics tree is readable, without moving the frame clock.
+   *
+   * `setUp` deliberately doesn't render, and **a scene that has never rendered has no layout**: its
+   * content nodes report `isPlaced = false` and `(0,0,0,0)` bounds. That makes the projected
+   * semantics tree useless for target resolution twice over — `SemanticsTargets` drops unplaced
+   * subtrees outright, so a `testTag` matches nothing; and even if it matched, the node's centre
+   * would be `(0,0)` rather than wherever it actually sits. Both the interactive and recording
+   * sessions can be asked to resolve a target before their first frame (a script event at `tMs =
+   * 0`), so they have to ask for this first. `driveStaticScrollToEndLocalized` has needed the same
+   * guarantee since it was written; this is that idiom, named.
+   *
+   * Renders **at the frame the scene is already on, without moving it**
+   * ([SceneState.lastRenderedFrameNanos]): re-rendering at the same timestamp is a no-op for the
+   * composition (see [renderFrame]), so this is idempotent and cheap to call before every
+   * resolution, and it cannot hand an animation a frame delta the session didn't ask for. Zero
+   * until the first frame, which is the deterministic frozen-at-zero clock a never-rendered scene
+   * should lay out on.
+   *
+   * Deliberately NOT `virtualFrameNanos`: that is the one-shot path's cursor, and a held session
+   * runs its own clock without touching it. Reading it here would render a mid-timeline recording
+   * at the wall clock and then jump it back on the next real frame.
+   *
+   * Under [withPreviewLocale] for the reason [renderSettlingFrame] documents: a frame run at the
+   * host default locale can bake default-language `stringResource(...)` text into a localized
+   * preview's resource cache.
+   */
+  @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+  internal fun layOutForSemantics(state: SceneState) {
+    withPreviewLocale(state.spec.localeTag) {
+      state.scene.render(nanoTime = state.lastRenderedFrameNanos).close()
+    }
   }
 
   /**
@@ -1006,11 +1048,13 @@ class RenderEngine(
 
   private fun renderFrame(state: SceneState, useWallClockFrameTime: Boolean) =
     when {
-      useWallClockFrameTime -> state.scene.render(nanoTime = currentFrameNanoTime())
+      useWallClockFrameTime ->
+        state.scene.render(nanoTime = currentFrameNanoTime().also { state.recordFrameNanos(it) })
       // A settle walk stopped at a coordinate and the capture belongs *on* it, not a frame past
       // it — see [SceneState.pinnedFrameNanos]. Both of renderOnce's frames render at the same
       // timestamp, which is a no-op for the composition and is what `DesktopRendererMain` does.
-      state.pinnedFrameNanos != null -> state.scene.render(nanoTime = state.pinnedFrameNanos!!)
+      state.pinnedFrameNanos != null ->
+        state.scene.render(nanoTime = state.pinnedFrameNanos!!.also { state.recordFrameNanos(it) })
       // A scroll drive ran and left the frame clock mid-timeline — keep going from there rather
       // than resetting to zero. See [SceneState.virtualFrameNanos].
       state.virtualFrameNanos > 0L -> state.scene.render(nanoTime = state.nextVirtualFrameNanos())
@@ -1226,12 +1270,36 @@ class RenderEngine(
      */
     internal var virtualFrameNanos: Long = 0L
 
+    /**
+     * The `nanoTime` this scene was last actually rendered at.
+     *
+     * Distinct from [virtualFrameNanos], which is the *one-shot* path's cursor. A held session runs
+     * its own clock — a scripted recording renders at the script's `tNanos`, a live one at
+     * wall-clock-since-start, an interactive one at the wall clock — and none of them touch that
+     * cursor. So [layOutForSemantics] cannot read the frame time off `virtualFrameNanos`: on a
+     * recording it is `0` forever, and rendering a mid-timeline scene at the default (wall clock)
+     * would hand every animation an enormous forward jump and then the next real frame an equally
+     * enormous negative one.
+     *
+     * Every render of a held scene updates this, so re-rendering at it is a no-op for the
+     * composition — which is what makes laying out before a target resolution free of side effects.
+     * `0` until the first frame, which is the deterministic frozen-at-zero clock a never-rendered
+     * scene should lay out on.
+     */
+    internal var lastRenderedFrameNanos: Long = 0L
+
+    /** Note that the scene has just been (or is about to be) rendered at [nanoTime]. */
+    internal fun recordFrameNanos(nanoTime: Long) {
+      lastRenderedFrameNanos = nanoTime
+    }
+
     /** Advances [virtualFrameNanos] by one 60 Hz frame and returns the new timestamp. */
     internal fun nextVirtualFrameNanos(): Long {
       // Anything that advances the cursor has overtaken the settled coordinate, so the pin no
       // longer describes a frame worth reproducing.
       pinnedFrameNanos = null
       virtualFrameNanos += FRAME_INTERVAL_NANOS
+      lastRenderedFrameNanos = virtualFrameNanos
       return virtualFrameNanos
     }
 
@@ -1589,6 +1657,7 @@ class RenderEngine(
     val settledAtNanos = settledAtMs * 1_000_000L
     state.virtualFrameNanos = settledAtNanos
     state.pinnedFrameNanos = settledAtNanos
+    state.lastRenderedFrameNanos = settledAtNanos
     System.err.println(
       "@SettledPreview on ${state.spec.outputBaseName}: settled at ${settledAtMs}ms " +
         "(${if (state.settleIsExact) "exact" else "auto"}, window ${state.settleWindowMs}ms)."
@@ -2317,7 +2386,49 @@ data class RenderSpec(
    * historical "render value 0 under the bare id" contract.
    */
   val previewParameterRow: String? = null,
+  /**
+   * `@CaptureGutter` edges in **dp** (issue #4443). Four flat Ints rather than a nested type
+   * because `:daemon:android`'s twin of this class can't see `:preview-data-api`'s
+   * `CaptureGutterDp`, and the two RenderSpecs are deliberately kept field-for-field identical so
+   * one payload string drives either backend.
+   *
+   * All-zero (the default) is every preview that doesn't declare the annotation, and an older
+   * client's payload — which carries no `captureGutter` token at all — decodes to exactly that, so
+   * the wire stays backward-compatible. Resolved to pixels once, against this render's own density,
+   * by [captureGutterPx].
+   *
+   * Edges are start/end (leading/trailing), resolved against the render's layout direction, not
+   * left/right. A rotated render does NOT rotate them — see [captureGutterPx].
+   */
+  val gutterStartDp: Int = 0,
+  val gutterTopDp: Int = 0,
+  val gutterEndDp: Int = 0,
+  val gutterBottomDp: Int = 0,
 ) {
+
+  /**
+   * This spec's `@CaptureGutter` in pixels at its own [density] — the same per-edge rounding the
+   * standalone renderer's [ee.schimke.composeai.renderer.PreviewCaptureGutter.ofDp] applies, so a
+   * `compose-preview serve` frame and the published PNG beside it grow by the same pixels
+   * (RENDER_LANE_PARITY.md).
+   *
+   * **Rotation leaves the edges alone, deliberately** (issue #4443 item 4). [DesktopHost] reduces
+   * `orientation = landscape` to a `widthPx ↔ heightPx` swap, and [PreviewManifestRouter] trades
+   * the wrap flags with it because a wrap flag names an *axis* of the frame. A gutter edge does
+   * not: it is a statement about the component — "my shadow falls this far below me" — and nothing
+   * about swapping the sandbox's width and height turns the component upside down or moves where
+   * its shadow lands. Rotating `bottom` onto `end` would put the deep edge to the side of a
+   * component whose shadow still falls downward, cropping it exactly where it matters and padding
+   * an edge that needed nothing. So the declared edges survive rotation verbatim.
+   */
+  fun captureGutterPx(): ee.schimke.composeai.renderer.PreviewCaptureGutter =
+    ee.schimke.composeai.renderer.PreviewCaptureGutter.ofDp(
+      startDp = gutterStartDp,
+      topDp = gutterTopDp,
+      endDp = gutterEndDp,
+      bottomDp = gutterBottomDp,
+      density = density,
+    )
 
   enum class SpecUiMode {
     LIGHT,
@@ -2381,6 +2492,7 @@ data class RenderSpec(
         map["functionName"]
           ?: error("RenderSpec.parseFromPayload: missing 'functionName' in '$payload'")
       val defaults = RenderSpec(className = className, functionName = functionName)
+      val gutterDp = parseGutterToken(map["captureGutter"])
       return RenderSpec(
         previewId = map["previewId"]?.takeIf { it.isNotBlank() },
         renderMode = map["mode"]?.takeIf { it.isNotBlank() },
@@ -2422,8 +2534,32 @@ data class RenderSpec(
         previewParameterLimit =
           map["previewParameterLimit"]?.toIntOrNull() ?: defaults.previewParameterLimit,
         previewParameterRow = map["previewParameterRow"]?.takeIf { it.isNotBlank() },
+        gutterStartDp = gutterDp.start,
+        gutterTopDp = gutterDp.top,
+        gutterEndDp = gutterDp.end,
+        gutterBottomDp = gutterDp.bottom,
       )
     }
+
+    /**
+     * The `captureGutter=<start>,<top>,<end>,<bottom>` payload token — four dp edges, in that
+     * order. A missing or malformed token is an all-zero gutter, which is also what every payload
+     * written before the token existed decodes to.
+     */
+    internal fun parseGutterToken(token: String?): GutterDp {
+      val parts = token?.split(',') ?: return GutterDp()
+      if (parts.size != 4) return GutterDp()
+      val edges = parts.map { it.trim().toIntOrNull()?.coerceAtLeast(0) ?: return GutterDp() }
+      return GutterDp(edges[0], edges[1], edges[2], edges[3])
+    }
+
+    /** Four dp edges, the parsed shape of a `captureGutter=` token. */
+    internal data class GutterDp(
+      val start: Int = 0,
+      val top: Int = 0,
+      val end: Int = 0,
+      val bottom: Int = 0,
+    )
 
     private val json = Json {
       ignoreUnknownKeys = true

@@ -69,7 +69,7 @@
           <div class="cp-reference-grid">
             <section><h2>Reference</h2><div class="cp-compare-shot" data-cp-annotated="reference"><img src="/reference/design-button-filled-light.png?session=compose-m3&fontScale=1.5&knob.label=Send%3Bnow%3Dx" alt="Design reference"></div></section>
             <section><h2>Diff</h2><div class="cp-compare-shot"><canvas class="cp-reference-diff" aria-label="Highlighted pixel difference"></canvas></div></section>
-            <section><h2>Actual</h2><div class="cp-compare-shot" data-cp-annotated="actual"><img src="/render/button-filled__ideal__default__light.png?session=compose-m3&fontScale=1.5&knob.label=Send%3Bnow%3Dx" alt="Actual Compose preview"></div></section>
+            <section><h2>Actual</h2><div class="cp-compare-shot" data-cp-annotated="actual" id="cp-compare-actual" data-preview-id="button-filled__ideal__default__light"><img src="/render/button-filled__ideal__default__light.png?session=compose-m3&fontScale=1.5&knob.label=Send%3Bnow%3Dx" alt="Actual Compose preview"><div class="cp-inspect-layer" id="cp-render-inspect-layer"></div><div class="cp-selection-layer" id="cp-selection-layer" hidden></div></div></section>
           </div>
                   <div class="cp-annotation-controls" role="group" aria-label="Annotation layers">
           <span class="cp-compare-control-label">Annotations</span>
@@ -78,7 +78,35 @@
 <label class="cp-annotation-toggle"><input type="checkbox" data-cp-annotation-kind="theme"> Theme</label>
         </div>
         <script type="application/json" id="cp-annotations">{"reference":[{"kind":"layout","bounds":{"x":12,"y":12,"width":196,"height":48},"label":"pad 16dp · gap 8dp","role":"Button","detail":{"padding":"16","gap":"8","cornerRadius":"20"}},{"kind":"typography","bounds":{"x":46,"y":26,"width":128,"height":20},"label":"labelLarge 14sp/20","role":"Label","detail":{"token":"labelLarge","fontFamily":"Roboto","fontSize":"14","fontWeight":"500","lineHeight":"20","unit":"sp"}},{"kind":"typography","bounds":{"x":46,"y":58,"width":128,"height":20},"label":"labelLarge 14sp/20","role":"Secondary label","detail":{"token":"labelLarge","fontFamily":"Roboto","fontSize":"14","fontWeight":"500","lineHeight":"20","unit":"sp"}}],"actual":[{"kind":"layout","bounds":{"x":12,"y":12,"width":196,"height":48},"label":"pad 16dp · gap 8dp","role":"Button","detail":{"padding":"16","gap":"8","cornerRadius":"20"}},{"kind":"typography","bounds":{"x":46,"y":26,"width":128,"height":20},"label":"bodyMedium 14sp/20","role":"Label","detail":{"token":"bodyMedium","fontFamily":"Roboto-Medium","fontSize":"14","fontWeight":"500","lineHeight":"20","unit":"sp"}},{"kind":"typography","bounds":{"x":46,"y":58,"width":128,"height":20},"label":"bodyMedium 14sp/20","role":"Secondary label","detail":{"token":"bodyMedium","fontFamily":"Roboto-Medium","fontSize":"14","fontWeight":"500","lineHeight":"20","unit":"sp"}},{"kind":"typography","bounds":{"x":46,"y":90,"width":128,"height":20},"label":"bodyMedium 14sp/20 wght 700","role":"Emphasized label","detail":{"token":"bodyMedium","fontFamily":"Roboto-Medium","fontSize":"14","fontWeight":"700","lineHeight":"20","unit":"sp"}},{"kind":"theme","bounds":{"x":12,"y":12,"width":196,"height":48},"label":"fill #FF6750A4 · radius 20.0dp · border 1.0dp #FF79747E","role":"Button","detail":{"background":"#FF6750A4","cornerRadius":"20.0dp","borderColor":"#FF79747E","borderWidth":"1.0dp"}}]}</script>
+                  <div class="cp-annotation-controls cp-render-inspect-controls" role="group"
+             aria-label="Render semantics layers">
+          <span class="cp-compare-control-label">Render semantics</span>
+          <label class="cp-annotation-toggle"><input type="checkbox" class="cp-render-inspect" data-cp-inspect="typography"> Typography</label>
+<label class="cp-annotation-toggle"><input type="checkbox" class="cp-render-inspect" data-cp-inspect="theme"> Theme</label>
+<label class="cp-annotation-toggle"><input type="checkbox" class="cp-render-inspect" data-cp-inspect="layout"> Layout</label>
+        </div>
+        <div class="cp-inspect-legend cp-render-inspect-legend" id="cp-render-inspect-legend"
+             role="region" aria-label="Render semantics legend" hidden></div>
+        <cp-inspect-layers
+          data-cp-host="#cp-compare-actual"
+          data-cp-layer="#cp-render-inspect-layer"
+          data-cp-legend="#cp-render-inspect-legend"
+          data-cp-toggles=".cp-render-inspect"
+          data-cp-selectable="1"
+          data-cp-base=""></cp-inspect-layers>
           <p class="cp-reference-result" role="status">comparing…</p>
+          <div class="cp-selection-controls" id="cp-element-selection" role="group"
+     aria-label="Report a single element" data-cp-tags="/tags/button-filled__ideal__default__light?session=compose-m3">
+  <span class="cp-compare-control-label">Report</span>
+  <select class="cp-selection-tag" aria-label="Tagged element" hidden>
+    <option value="">the whole render</option>
+  </select>
+  <button type="button" class="cp-selection-drag">Drag a region…</button>
+  <button type="button" class="cp-selection-clear" hidden>Clear</button>
+  <p class="cp-selection-state" role="status">Reporting the whole render.</p>
+  
+</div>
+<cp-element-selection></cp-element-selection>
       <details class="cp-report" id="cp-report" data-cp-repo="yschimke/compose-ai-tools" data-cp-subject="this preview"><summary class="cp-report-link" title="Something wrong with this preview — files against yschimke/compose-ai-tools as @yschimke"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> report a catalog issue</summary>
         <div class="cp-report-panel"><form class="cp-report-form" method="get" target="_blank" rel="noopener" action="https://github.com/yschimke/compose-ai-tools/issues/new"><label class="cp-report-summary">Summary<input class="cp-report-summary-input" type="text" name="title" required autocomplete="off" placeholder="Briefly describe what is wrong"></label><input type="hidden" name="body" id="cp-report-body" value="### What&#39;s wrong
 
@@ -145,6 +173,7 @@ preview: button-filled__ideal__default__light
 reference: design-button-filled-light
 variant: ideal/default/light
 overrides: {&quot;fontScale&quot;:&quot;1.5&quot;,&quot;knob.label&quot;:&quot;Send;now=x&quot;}
+{{selection}}
 revision: yschimke/compose-ai-tools@design-artifacts/compose-m3
 ```
 "><button type="submit" class="cp-report-submit"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> Open a prefilled issue</button><span class="cp-report-note">Files against <code>yschimke/compose-ai-tools</code> as @yschimke — the project whose code declares this preview, <em>not</em> the preview server. The rest of the report — what you were looking at, which build, the links — is filled in for you on GitHub.</span></form></div></details>

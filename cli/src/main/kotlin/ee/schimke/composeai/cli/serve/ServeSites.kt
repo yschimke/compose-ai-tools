@@ -273,6 +273,12 @@ data class ServeSites(private val byHost: Map<String, String>) {
         "compare",
         "reference",
         "pages",
+        // `GET /tags/<previewId>` — the published element tag index (see [ServeTagIndex]), which
+        // the focused comparison's element selector fetches. Reserved beside its neighbours for the
+        // same reason: a site host that had claimed the prefix would answer its own styled 404 and
+        // the selector would silently offer no tag targets on exactly the deployments the parity
+        // workflow runs on.
+        "tags",
         "rc-compare",
         "parity",
         "parity.json",

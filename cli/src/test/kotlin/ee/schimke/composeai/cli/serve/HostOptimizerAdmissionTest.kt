@@ -136,6 +136,426 @@ class HostOptimizerAdmissionTest {
   }
 
   @Test
+  fun `a hold whose stop threshold keeps re-tripping duty-cycles instead of latching forever`() {
+    var now = 0L
+    // The preview.coo.ee steady state: an idle box whose 17 resident daemons keep MemAvailable a
+    // hair under the stop side, so every sample re-trips and nothing ever "recovers".
+    val sample =
+      HostResourceSample(loadPerCpu = 0.17, cpuUtilization = 0.03, memoryAvailableFraction = 0.14)
+    val thresholds =
+      OptimizerPressureThresholds(
+        sampleIntervalMillis = 0,
+        starvationCapMillis = 10_000,
+        dutyCycleMillis = 1_000,
+      )
+    val gate = OptimizerPressureGate(sample = { sample }, thresholds = thresholds, clock = { now })
+    assertTrue(gate.snapshot().constrained)
+
+    now = 9_999
+    assertTrue(gate.snapshot().constrained, "the cap must not open early")
+    assertEquals(9_999, gate.snapshot().heldMillis)
+
+    now = 10_000
+    val open = gate.snapshot()
+    assertFalse(open.constrained, "a bounded duty cycle beats never optimizing at all")
+    assertEquals(1, open.dutyCycles)
+    assertEquals(11_000, open.dutyCycleUntilEpochMillis)
+    assertTrue(
+      open.reason.orEmpty().contains("memory available 14%"),
+      "the reading is still what is holding, so keep naming it: $open",
+    )
+
+    now = 11_000
+    assertTrue(gate.snapshot().constrained, "the window is bounded too")
+    now = 20_999
+    assertTrue(gate.snapshot().constrained)
+    now = 21_000
+    assertFalse(gate.snapshot().constrained, "the cap re-arms from the end of the window")
+    assertEquals(2, gate.snapshot().dutyCycles)
+  }
+
+  @Test
+  fun `an expired duty cycle closes even when sampling has stopped working`() {
+    var now = 0L
+    var readable = true
+    val gate =
+      OptimizerPressureGate(
+        sample = {
+          if (readable) {
+            HostResourceSample(
+              loadPerCpu = 0.17,
+              cpuUtilization = 0.03,
+              memoryAvailableFraction = 0.14,
+            )
+          } else {
+            null
+          }
+        },
+        thresholds =
+          OptimizerPressureThresholds(
+            sampleIntervalMillis = 0,
+            starvationCapMillis = 10_000,
+            dutyCycleMillis = 1_000,
+          ),
+        clock = { now },
+      )
+    assertTrue(gate.snapshot().constrained)
+
+    now = 10_000
+    assertFalse(gate.snapshot().constrained)
+
+    // `/proc` stops answering mid-window. The cached snapshot says "open"; without expiring it on
+    // the clock the concession becomes permanent, under pressure nothing can observe any more.
+    readable = false
+    now = 10_500
+    assertFalse(gate.snapshot().constrained, "the window itself is still running")
+    now = 11_000
+    val closed = gate.snapshot()
+    assertTrue(closed.constrained, "an elapsed window must close without a fresh reading")
+    assertNull(closed.dutyCycleUntilEpochMillis)
+    now = 60_000
+    assertTrue(gate.snapshot().constrained)
+  }
+
+  @Test
+  fun `the duty cycle never opens on a host that is genuinely out of memory`() {
+    var now = 0L
+    val sample =
+      HostResourceSample(loadPerCpu = 0.1, cpuUtilization = 0.1, memoryAvailableFraction = 0.02)
+    val gate =
+      OptimizerPressureGate(
+        sample = { sample },
+        thresholds =
+          OptimizerPressureThresholds(
+            sampleIntervalMillis = 0,
+            starvationCapMillis = 10_000,
+            dutyCycleMillis = 1_000,
+          ),
+        clock = { now },
+      )
+    assertTrue(gate.snapshot().constrained)
+    now = 100_000
+    val held = gate.snapshot()
+    assertTrue(held.constrained, "below the floor the latch is the correct failure mode")
+    assertEquals(0, held.dutyCycles)
+  }
+
+  @Test
+  fun `a newly tripped signal closes an open duty cycle`() {
+    var now = 0L
+    var sample =
+      HostResourceSample(loadPerCpu = 0.17, cpuUtilization = 0.03, memoryAvailableFraction = 0.14)
+    val gate =
+      OptimizerPressureGate(
+        sample = { sample },
+        thresholds =
+          OptimizerPressureThresholds(
+            sampleIntervalMillis = 0,
+            starvationCapMillis = 10_000,
+            dutyCycleMillis = 1_000,
+          ),
+        clock = { now },
+      )
+    assertTrue(gate.snapshot().constrained)
+    now = 10_000
+    assertFalse(gate.snapshot().constrained)
+
+    // The memory reading that earned the concession may stay over its threshold — that is the
+    // point — but CPU crossing its own stop side is new pressure the window never answered for,
+    // and "a high reading stops admission immediately" outranks it.
+    sample = sample.copy(cpuUtilization = 0.95)
+    now = 10_500
+    val stopped = gate.snapshot()
+    assertTrue(stopped.constrained, "a new signal must cut the window short")
+    assertNull(stopped.dutyCycleUntilEpochMillis)
+    assertTrue(stopped.reason.orEmpty().contains("CPU 95%"), "and name itself: $stopped")
+  }
+
+  @Test
+  fun `a signal that tripped earlier in the hold still closes a later window`() {
+    var now = 0L
+    var sample =
+      HostResourceSample(loadPerCpu = 0.17, cpuUtilization = 0.95, memoryAvailableFraction = 0.14)
+    val gate =
+      OptimizerPressureGate(
+        sample = { sample },
+        thresholds =
+          OptimizerPressureThresholds(
+            sampleIntervalMillis = 0,
+            starvationCapMillis = 10_000,
+            dutyCycleMillis = 1_000,
+          ),
+        clock = { now },
+      )
+    // CPU trips at the start of the hold and then goes quiet; memory keeps the hold alive, so
+    // `trippedBy` still remembers CPU for the rest of it. A second CPU spike is new pressure all
+    // the same, and must not be filtered out as "already tripped".
+    assertTrue(gate.snapshot().constrained)
+    now = 1_000
+    sample = sample.copy(cpuUtilization = 0.03)
+    assertTrue(gate.snapshot().constrained)
+
+    now = 11_000
+    assertFalse(gate.snapshot().constrained, "the cap opens a window")
+    now = 11_500
+    sample = sample.copy(cpuUtilization = 0.95)
+    val stopped = gate.snapshot()
+    assertTrue(stopped.constrained, "the CPU spike is new pressure, whenever it last happened")
+    assertNull(stopped.dutyCycleUntilEpochMillis)
+  }
+
+  @Test
+  fun `pressure after a window has elapsed does not re-arm the cap again`() {
+    var now = 0L
+    var sample =
+      HostResourceSample(loadPerCpu = 0.17, cpuUtilization = 0.03, memoryAvailableFraction = 0.14)
+    val gate =
+      OptimizerPressureGate(
+        sample = { sample },
+        thresholds =
+          OptimizerPressureThresholds(
+            sampleIntervalMillis = 0,
+            starvationCapMillis = 10_000,
+            dutyCycleMillis = 1_000,
+          ),
+        clock = { now },
+      )
+    assertTrue(gate.snapshot().constrained)
+    now = 10_000
+    assertFalse(gate.snapshot().constrained, "window open, scheduled to end at 11s")
+    now = 11_000
+    assertTrue(gate.snapshot().constrained, "and elapsed, having been served in full")
+
+    // A CPU trip four seconds later is cutting nothing short — the window is long over — so it must
+    // not push the next concession out from 21s to 25s.
+    now = 15_000
+    sample = sample.copy(cpuUtilization = 0.95)
+    assertTrue(gate.snapshot().constrained)
+    sample = sample.copy(cpuUtilization = 0.03)
+
+    now = 20_999
+    assertTrue(gate.snapshot().constrained)
+    now = 21_000
+    assertFalse(gate.snapshot().constrained, "still due 10s after the window that was served")
+  }
+
+  @Test
+  fun `an expiry noticed late still re-arms from the scheduled window end`() {
+    var now = 0L
+    var readable = true
+    val gate =
+      OptimizerPressureGate(
+        sample = {
+          if (readable) {
+            HostResourceSample(
+              loadPerCpu = 0.17,
+              cpuUtilization = 0.03,
+              memoryAvailableFraction = 0.14,
+            )
+          } else {
+            null
+          }
+        },
+        thresholds =
+          OptimizerPressureThresholds(
+            sampleIntervalMillis = 0,
+            starvationCapMillis = 10_000,
+            dutyCycleMillis = 1_000,
+          ),
+        clock = { now },
+      )
+    assertTrue(gate.snapshot().constrained)
+    now = 10_000
+    assertFalse(gate.snapshot().constrained, "the window opens, scheduled to end at 11s")
+
+    // The sampler goes blind across the expiry and stays blind until 20s. The concession was
+    // served in full, so the next one is due 10s after the scheduled end — charging a fresh cap
+    // from the moment someone happened to look would make blindness cost the host admission.
+    readable = false
+    now = 20_000
+    assertTrue(gate.snapshot().constrained)
+    readable = true
+    now = 20_999
+    assertTrue(gate.snapshot().constrained)
+    now = 21_000
+    assertFalse(gate.snapshot().constrained, "due at 21s, not 30s")
+  }
+
+  @Test
+  fun `a window cut short re-arms the cap from when it actually closed`() {
+    var now = 0L
+    var sample =
+      HostResourceSample(loadPerCpu = 0.17, cpuUtilization = 0.03, memoryAvailableFraction = 0.14)
+    val gate =
+      OptimizerPressureGate(
+        sample = { sample },
+        thresholds =
+          OptimizerPressureThresholds(
+            sampleIntervalMillis = 0,
+            starvationCapMillis = 10_000,
+            dutyCycleMillis = 1_000,
+          ),
+        clock = { now },
+      )
+    assertTrue(gate.snapshot().constrained)
+    now = 10_000
+    assertFalse(gate.snapshot().constrained)
+
+    // Cut short 100ms in. The next concession is owed 10s from *here*, not 10s from the end the
+    // window never reached — otherwise the cap silently becomes cap + window.
+    now = 10_100
+    sample = sample.copy(cpuUtilization = 0.95)
+    assertTrue(gate.snapshot().constrained)
+    sample = sample.copy(cpuUtilization = 0.03)
+
+    now = 20_099
+    assertTrue(gate.snapshot().constrained)
+    now = 20_100
+    assertFalse(gate.snapshot().constrained, "the cap runs from the early close")
+  }
+
+  @Test
+  fun `a hold closed while sampling is broken keeps reporting how long it has held`() {
+    var now = 0L
+    var readable = true
+    val gate =
+      OptimizerPressureGate(
+        sample = {
+          if (readable) {
+            HostResourceSample(
+              loadPerCpu = 0.17,
+              cpuUtilization = 0.03,
+              memoryAvailableFraction = 0.14,
+            )
+          } else {
+            null
+          }
+        },
+        thresholds =
+          OptimizerPressureThresholds(
+            sampleIntervalMillis = 0,
+            starvationCapMillis = 10_000,
+            dutyCycleMillis = 1_000,
+          ),
+        clock = { now },
+      )
+    assertTrue(gate.snapshot().constrained)
+    assertEquals(0, gate.snapshot().heldMillis)
+    now = 10_000
+    assertFalse(gate.snapshot().constrained)
+    // The hold is still on during the window, and it started at t=0 — the cap bookkeeping moving
+    // its own anchor to the window end must not make the reported duration collapse to zero.
+    assertEquals(10_000, gate.snapshot().heldMillis)
+
+    readable = false
+    now = 3_600_000
+    val stale = gate.snapshot()
+    assertTrue(stale.constrained)
+    assertEquals(3_600_000, stale.heldMillis, "an hour held must not report as zero: $stale")
+  }
+
+  @Test
+  fun `a zero-length window is not counted as a duty cycle`() {
+    var now = 0L
+    val sample =
+      HostResourceSample(loadPerCpu = 0.17, cpuUtilization = 0.03, memoryAvailableFraction = 0.14)
+    val gate =
+      OptimizerPressureGate(
+        sample = { sample },
+        thresholds =
+          OptimizerPressureThresholds(
+            sampleIntervalMillis = 0,
+            starvationCapMillis = 10_000,
+            dutyCycleMillis = 0,
+          ),
+        clock = { now },
+      )
+    assertTrue(gate.snapshot().constrained)
+    now = 10_000
+    assertTrue(gate.snapshot().constrained, "a window that admits nothing is not a concession")
+    now = 100_000
+    val held = gate.snapshot()
+    assertTrue(held.constrained)
+    assertEquals(0, held.dutyCycles, "and must not be reported as one: $held")
+  }
+
+  @Test
+  fun `the duty cycle stays shut while memory cannot be read at all`() {
+    var now = 0L
+    // `/proc/meminfo` unreadable while load and CPU are fine: the sampler reports a partial sample
+    // rather than none, and an unverified OOM floor must not buy a concession.
+    val sample =
+      HostResourceSample(loadPerCpu = 0.90, cpuUtilization = 0.10, memoryAvailableFraction = null)
+    val gate =
+      OptimizerPressureGate(
+        sample = { sample },
+        thresholds =
+          OptimizerPressureThresholds(
+            sampleIntervalMillis = 0,
+            starvationCapMillis = 10_000,
+            dutyCycleMillis = 1_000,
+          ),
+        clock = { now },
+      )
+    assertTrue(gate.snapshot().constrained)
+    now = 100_000
+    val held = gate.snapshot()
+    assertTrue(held.constrained, "an unknown memory reading is not a safe one")
+    assertEquals(0, held.dutyCycles)
+  }
+
+  @Test
+  fun `a zero starvation cap keeps the hold permanent`() {
+    var now = 0L
+    val sample =
+      HostResourceSample(loadPerCpu = 0.1, cpuUtilization = 0.1, memoryAvailableFraction = 0.14)
+    val gate =
+      OptimizerPressureGate(
+        sample = { sample },
+        thresholds = OptimizerPressureThresholds(sampleIntervalMillis = 0, starvationCapMillis = 0),
+        clock = { now },
+      )
+    assertTrue(gate.snapshot().constrained)
+    now = 10 * 60_000
+    assertTrue(gate.snapshot().constrained)
+    assertEquals(0, gate.snapshot().dutyCycles)
+  }
+
+  @Test
+  fun `recovery clears the starvation clock`() {
+    var now = 0L
+    var sample =
+      HostResourceSample(loadPerCpu = 0.1, cpuUtilization = 0.1, memoryAvailableFraction = 0.14)
+    val gate =
+      OptimizerPressureGate(
+        sample = { sample },
+        thresholds =
+          OptimizerPressureThresholds(
+            resumeQuietMillis = 0,
+            sampleIntervalMillis = 0,
+            starvationCapMillis = 10_000,
+          ),
+        clock = { now },
+      )
+    assertTrue(gate.snapshot().constrained)
+
+    now = 5_000
+    sample = sample.copy(memoryAvailableFraction = 0.80)
+    val recovered = gate.snapshot()
+    assertFalse(recovered.constrained)
+    assertNull(recovered.heldMillis)
+
+    // A new hold starts its own cap rather than inheriting the previous one's 5s of credit.
+    now = 6_000
+    sample = sample.copy(memoryAvailableFraction = 0.14)
+    assertTrue(gate.snapshot().constrained)
+    now = 15_999
+    assertTrue(gate.snapshot().constrained)
+    now = 16_000
+    assertFalse(gate.snapshot().constrained)
+  }
+
+  @Test
   fun `only the signal that tripped the hold has to recover`() {
     var now = 0L
     var sample =
@@ -240,6 +660,38 @@ class HostOptimizerAdmissionTest {
     assertTrue(snapshot.paused)
     assertTrue(snapshot.pressure?.constrained == true)
     assertTrue(snapshot.pauseReason.orEmpty().contains("load"))
+  }
+
+  @Test
+  fun `background work admits a slice once the starvation cap opens the gate`() {
+    var now = 0L
+    val gate =
+      OptimizerPressureGate(
+        sample = {
+          HostResourceSample(
+            loadPerCpu = 0.17,
+            cpuUtilization = 0.03,
+            memoryAvailableFraction = 0.14,
+          )
+        },
+        thresholds =
+          OptimizerPressureThresholds(
+            sampleIntervalMillis = 0,
+            starvationCapMillis = 10_000,
+            dutyCycleMillis = 1_000,
+          ),
+        clock = { now },
+      )
+    val work = ServeBackgroundWork(clock = { now }, pressureGate = gate)
+
+    assertNull(work.withOptimizerSlot("catalog", waitMillis = 0) { true })
+    assertTrue(work.optimizersPaused())
+
+    now = 10_000
+    assertEquals(true, work.withOptimizerSlot("catalog", waitMillis = 0) { true })
+    val snapshot = work.optimizerAdmissionSnapshot()
+    assertFalse(snapshot.paused, "the duty cycle has to reach the admission path, not just /status")
+    assertEquals(1, snapshot.pressure?.dutyCycles)
   }
 
   /**

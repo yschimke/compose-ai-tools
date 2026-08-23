@@ -749,8 +749,8 @@ abstract class RobolectricRenderTestBase(
     // of shadow. The spare fraction of a dp is transparent canvas outside the crop.
     val gutter = params.captureGutter ?: CaptureGutterDp()
     val gutterDensity = params.density ?: 2.0f
-    val gutterWidthDp = ceilDpForPx(gutter.start, gutter.end, gutterDensity)
-    val gutterHeightDp = ceilDpForPx(gutter.top, gutter.bottom, gutterDensity)
+    val gutterWidthDp = captureGutterAxisDp(gutter.start, gutter.end, gutterDensity)
+    val gutterHeightDp = captureGutterAxisDp(gutter.top, gutter.bottom, gutterDensity)
     val composeOptions =
       RoborazziComposeOptions.Builder()
         .apply {
@@ -1233,10 +1233,53 @@ abstract class RobolectricRenderTestBase(
     // supposed to sit inside.
     val qualifierDensity = params.density ?: 2.0f
     val qualifierGutter = params.captureGutter ?: CaptureGutterDp()
+    // The same per-edge expansion the still's dialog crop uses, resolved once for every motion
+    // handler that crops to a dialog window. Scroll products deliberately do NOT take it — a
+    // scrolling capture carries no gutter (see `@CaptureGutter`'s kdoc).
+    val motionDialogGutter =
+      dialogCropGutter(
+        params.captureGutter,
+        qualifierDensity,
+        previewRendersRtl(params.locale),
+      )
+    // The pixel size a fixed axis's capture has to come out at, resolved ONCE and used by both
+    // the still's post-capture resize and every motion handler's per-frame trim. Two derivations
+    // of the same number is exactly how the two drifted apart (issue #4467): the qualifier can
+    // only grow the window in whole dp, so at a fractional density it overshoots the gutter's
+    // real pixel extent, and only the still corrected for it.
+    //
+    // In PIXELS added to the frame's own pixel width, rather than resolving the summed dp: the
+    // box laid the gutter out in per-edge rounded pixels, and re-deriving it from dp here would
+    // disagree with it by one at a fractional density.
+    val fixedAxisTarget =
+      DialogWindowCapture.FixedAxisTarget(
+        widthPx =
+          fixedAxisTargetPx(
+            wrapped = wrapWidth,
+            hasDevice = params.device != null,
+            declaredDp = params.widthDp,
+            frameDp = widthDp,
+            leadingGutterDp = qualifierGutter.start,
+            trailingGutterDp = qualifierGutter.end,
+            density = qualifierDensity,
+          ),
+        heightPx =
+          fixedAxisTargetPx(
+            wrapped = wrapHeight,
+            hasDevice = params.device != null,
+            declaredDp = params.heightDp,
+            frameDp = heightDp,
+            leadingGutterDp = qualifierGutter.top,
+            trailingGutterDp = qualifierGutter.bottom,
+            density = qualifierDensity,
+          ),
+      )
     applyPreviewQualifiers(
-      widthDp = widthDp + ceilDpForPx(qualifierGutter.start, qualifierGutter.end, qualifierDensity),
+      widthDp =
+        widthDp + captureGutterAxisDp(qualifierGutter.start, qualifierGutter.end, qualifierDensity),
       heightDp =
-        heightDp + ceilDpForPx(qualifierGutter.top, qualifierGutter.bottom, qualifierDensity),
+        heightDp +
+          captureGutterAxisDp(qualifierGutter.top, qualifierGutter.bottom, qualifierDensity),
       isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
       locale = params.locale,
       uiMode = params.uiMode,
@@ -1912,6 +1955,8 @@ abstract class RobolectricRenderTestBase(
                       outputFile = outputFile,
                       curveCapture = animationCurveCapture,
                       glimmerEnvironment = job.capture.glimmerEnvironment?.toConnectorEnvironment(),
+                      dialogGutter = motionDialogGutter,
+                      fixedAxisTarget = fixedAxisTarget,
                     )
                     .also { handled ->
                       // The clock has been driven well past `currentTime`
@@ -1946,6 +1991,8 @@ abstract class RobolectricRenderTestBase(
                       isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
                       outputFile = outputFile,
                       glimmerEnvironment = job.capture.glimmerEnvironment?.toConnectorEnvironment(),
+                      dialogGutter = motionDialogGutter,
+                      fixedAxisTarget = fixedAxisTarget,
                     )
                     .also { handled ->
                       // Inside the guarded body — see the animated capture above.
@@ -2002,6 +2049,8 @@ abstract class RobolectricRenderTestBase(
                     wrapHeight = wrapHeight,
                     padArgb = resolveBackgroundColor(params).toArgb(),
                     measuredContent = { measured },
+                    dialogGutter = motionDialogGutter,
+                    fixedAxisTarget = fixedAxisTarget,
                     glimmerEnvironment = job.capture.glimmerEnvironment?.toConnectorEnvironment(),
                     // The handler reports what it actually drove, measured off `mainClock`
                     // itself, so the marker cannot drift from the clock the way a re-derived
@@ -2158,7 +2207,11 @@ abstract class RobolectricRenderTestBase(
                       outputFile,
                       root,
                       window,
-                      dialogCropGutter(params.captureGutter, params.density ?: 2.0f),
+                      dialogCropGutter(
+                        params.captureGutter,
+                        params.density ?: 2.0f,
+                        previewRendersRtl(params.locale),
+                      ),
                     )
                   }
                 }
@@ -2203,28 +2256,14 @@ abstract class RobolectricRenderTestBase(
                 !focusGifHandled &&
                 !interactionHandled
             ) {
-              val resizeDensity = params.density ?: 2.0f
               // A fixed axis is resized to the frame it declared PLUS its capture gutter: the
               // gutter is canvas the author asked for, so trimming back to the bare frame would
-              // drop the shadow it exists to keep. In PIXELS, added to the frame's own pixel
-              // width, rather than resolving the summed dp — the box laid the gutter out in
-              // rounded pixels, and re-deriving it from dp here would disagree with it by one at a
-              // fractional density.
-              val resizeGutter = params.captureGutter ?: CaptureGutterDp()
-              val resizeGutterWPx =
-                edgePx(resizeGutter.start, resizeDensity) + edgePx(resizeGutter.end, resizeDensity)
-              val resizeGutterHPx =
-                edgePx(resizeGutter.top, resizeDensity) + edgePx(resizeGutter.bottom, resizeDensity)
+              // drop the shadow it exists to keep. Shared with the motion handlers — see
+              // `fixedAxisTarget`.
               resizeFixedAxesPng(
                 file = outputFile,
-                targetWidth =
-                  if (!wrapWidth && params.device == null && params.widthDp != null)
-                    (widthDp * resizeDensity).roundHalfUpPx() + resizeGutterWPx
-                  else null,
-                targetHeight =
-                  if (!wrapHeight && params.device == null && params.heightDp != null)
-                    (heightDp * resizeDensity).roundHalfUpPx() + resizeGutterHPx
-                  else null,
+                targetWidth = fixedAxisTarget.widthPx,
+                targetHeight = fixedAxisTarget.heightPx,
               )
             }
 
@@ -2526,7 +2565,7 @@ abstract class RobolectricRenderTestBase(
  * `MeasuredWrapBox` resolves in composition, so the window growth, the layout and the fixed-axis
  * resize all agree on where the gutter's pixels are.
  */
-internal fun edgePx(edgeDp: Int, density: Float): Int = Math.round(edgeDp * density)
+fun captureGutterEdgePx(edgeDp: Int, density: Float): Int = Math.round(edgeDp * density)
 
 /**
  * Dp the hosting window must grow on one axis to hold both [edgeADp] and [edgeBDp] at [density] —
@@ -2535,8 +2574,8 @@ internal fun edgePx(edgeDp: Int, density: Float): Int = Math.round(edgeDp * dens
  * the gutter exists to keep. `0` for an absent gutter, so an un-annotated preview's window is
  * untouched.
  */
-internal fun ceilDpForPx(edgeADp: Int, edgeBDp: Int, density: Float): Int {
-  val totalPx = edgePx(edgeADp, density) + edgePx(edgeBDp, density)
+fun captureGutterAxisDp(edgeADp: Int, edgeBDp: Int, density: Float): Int {
+  val totalPx = captureGutterEdgePx(edgeADp, density) + captureGutterEdgePx(edgeBDp, density)
   if (totalPx <= 0) return 0
   return kotlin.math.ceil(totalPx / density).toInt()
 }
@@ -2549,19 +2588,37 @@ internal fun ceilDpForPx(edgeADp: Int, edgeBDp: Int, density: Float): Int {
  *
  * Left/right rather than start/end because the crop is applied to already-rendered pixels: an RTL
  * capture has already been mirrored by the time the rect is computed, so the leading edge is on the
- * right of the image. That is [DialogWindowCapture]'s own frame of reference, not layout's.
+ * right of the image. That is [DialogWindowCapture]'s own frame of reference, not layout's — which
+ * is why [rtl] has to swap the horizontal pair here. The wrap box does the same swap in layout
+ * coordinates (`leftPx = if (Rtl) endPx else startPx`); a dialog crop that mapped `start` onto
+ * `left` regardless would add an asymmetric gutter to the wrong side of a mirrored capture and
+ * leave the overhang it was sized for clipped.
  */
 internal fun dialogCropGutter(
   gutter: CaptureGutterDp?,
   density: Float,
+  rtl: Boolean = false,
 ): DialogWindowCapture.DialogCropGutter {
   if (gutter == null) return DialogWindowCapture.DialogCropGutter()
+  val leadingDp = if (rtl) gutter.end else gutter.start
+  val trailingDp = if (rtl) gutter.start else gutter.end
   return DialogWindowCapture.DialogCropGutter(
-    leftPx = edgePx(gutter.start, density),
-    topPx = edgePx(gutter.top, density),
-    rightPx = edgePx(gutter.end, density),
-    bottomPx = edgePx(gutter.bottom, density),
+    leftPx = captureGutterEdgePx(leadingDp, density),
+    topPx = captureGutterEdgePx(gutter.top, density),
+    rightPx = captureGutterEdgePx(trailingDp, density),
+    bottomPx = captureGutterEdgePx(gutter.bottom, density),
   )
+}
+
+/**
+ * Whether a capture at [localeTag] renders right-to-left — a pseudolocale's own direction (`ar-XB`)
+ * or a real RTL language (`ar`, `he`, `fa`, …). Same decision `applyPreviewQualifiers` makes when
+ * it emits `ldrtl`, pulled out so the dialog crop can agree with the layout it is cropping.
+ */
+fun previewRendersRtl(localeTag: String?): Boolean {
+  val pseudo = ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(localeTag)
+  if (pseudo != null) return pseudo.isRtl
+  return ee.schimke.composeai.data.pseudolocale.LocaleDirection.isRtl(localeTag)
 }
 
 /**
@@ -2582,7 +2639,7 @@ private fun cropPngTopLeft(file: File, wrapWidth: Boolean, wrapHeight: Boolean, 
   javax.imageio.ImageIO.write(cropped, "PNG", file)
 }
 
-private fun resizeFixedAxesPng(file: File, targetWidth: Int?, targetHeight: Int?) {
+internal fun resizeFixedAxesPng(file: File, targetWidth: Int?, targetHeight: Int?) {
   if (targetWidth == null && targetHeight == null) return
   if (!file.exists()) return
   val original = javax.imageio.ImageIO.read(file) ?: return
@@ -2628,6 +2685,40 @@ private fun resizeFixedAxesPng(file: File, targetWidth: Int?, targetHeight: Int?
     g.dispose()
   }
   javax.imageio.ImageIO.write(resized, "PNG", file)
+}
+
+/**
+ * The exact pixel size one **fixed** axis's capture must be trimmed to, or `null` when the axis is
+ * not one this correction applies to.
+ *
+ * Null for a **wrapped** axis (its capture is already `measured + gutter`, cropped to the box's own
+ * bounds — nothing to correct) and for a **device** frame (the device dictates the size; a preview
+ * that names one is asking for that frame, not for its own dp).
+ *
+ * Otherwise the declared frame in pixels PLUS the gutter in pixels. The gutter term is summed from
+ * per-edge rounded pixels rather than converted from summed dp, because that is how
+ * [MeasuredWrapBox] laid it out — re-deriving it from dp would disagree with the pixels on the
+ * canvas by one at a fractional density.
+ *
+ * This is deliberately NOT how the hosting window was grown: a Robolectric resource qualifier has
+ * no unit but dp, so the window grew by `ceil(totalGutterPx / density)` dp, which at a fractional
+ * density overshoots. Two 4 dp edges at density 2.625 resolve to 11 + 11 = 22 px while the
+ * qualifier adds 9 dp ≈ 24 px. The overshoot is transparent canvas, and trimming it here is what
+ * keeps a preview's still and its motion products the same size (issue #4467).
+ */
+internal fun fixedAxisTargetPx(
+  wrapped: Boolean,
+  hasDevice: Boolean,
+  declaredDp: Int?,
+  frameDp: Int,
+  leadingGutterDp: Int,
+  trailingGutterDp: Int,
+  density: Float,
+): Int? {
+  if (wrapped || hasDevice || declaredDp == null) return null
+  return (frameDp * density).roundHalfUpPx() +
+    captureGutterEdgePx(leadingGutterDp, density) +
+    captureGutterEdgePx(trailingGutterDp, density)
 }
 
 private fun Float.roundHalfUpPx(): Int = kotlin.math.floor(this + 0.5f).toInt().coerceAtLeast(1)
@@ -3672,6 +3763,17 @@ private fun handleAnimatedCapture(
   outputFile: File,
   curveCapture: SlotTreeCapture?,
   glimmerEnvironment: ConnectorGlimmerEnvironment? = null,
+  /**
+   * `@CaptureGutter` expansion for a `Dialog` / `AlertDialog` preview's per-frame crop. A dialog
+   * capture is cropped to the dialog's own window rect, which sits inside the gutter — so without
+   * this the GIF would come back tight while the still beside it carries the shadow.
+   */
+  dialogGutter: DialogWindowCapture.DialogCropGutter = DialogWindowCapture.DialogCropGutter(),
+  /**
+   * The pixel size a fixed axis's frames must come out at, shared with the still so the two cannot
+   * drift (issue #4467). Empty for a wrapped preview and for every scroll product.
+   */
+  fixedAxisTarget: DialogWindowCapture.FixedAxisTarget = DialogWindowCapture.FixedAxisTarget(),
 ): Boolean {
   val framesDir = File(outputFile.parentFile, "${outputFile.nameWithoutExtension}_anim_frames")
   framesDir.deleteRecursively()
@@ -3683,7 +3785,7 @@ private fun handleAnimatedCapture(
   val frameIntervalMs = animation.frameIntervalMs.coerceAtLeast(10)
 
   val frameFiles = mutableListOf<File>()
-  val stableDialogCrop = DialogWindowCapture.StableDialogCrop()
+  val stableDialogCrop = DialogWindowCapture.StableDialogCrop(dialogGutter, fixedAxisTarget)
 
   // Settle the composition by ticking one frame so any
   // LaunchedEffect(Unit) { … } has fired before the inspector reads
@@ -3922,6 +4024,13 @@ private fun handleFocusGifCapture(
   isRound: Boolean,
   outputFile: File,
   glimmerEnvironment: ConnectorGlimmerEnvironment? = null,
+  /** See [handleAnimatedCapture]'s `dialogGutter`. */
+  dialogGutter: DialogWindowCapture.DialogCropGutter = DialogWindowCapture.DialogCropGutter(),
+  /**
+   * The pixel size a fixed axis's frames must come out at, shared with the still so the two cannot
+   * drift (issue #4467). Empty for a wrapped preview and for every scroll product.
+   */
+  fixedAxisTarget: DialogWindowCapture.FixedAxisTarget = DialogWindowCapture.FixedAxisTarget(),
 ): Boolean {
   if (focusGif.steps.isEmpty()) return false
   val framesDir = File(outputFile.parentFile, "${outputFile.nameWithoutExtension}_focus_frames")
@@ -3931,7 +4040,7 @@ private fun handleFocusGifCapture(
   val frameRoborazziOptions =
     RoborazziOptions(recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = isRound))
   val frameFiles = mutableListOf<File>()
-  val stableDialogCrop = DialogWindowCapture.StableDialogCrop()
+  val stableDialogCrop = DialogWindowCapture.StableDialogCrop(dialogGutter, fixedAxisTarget)
 
   try {
     focusGif.steps.forEachIndexed { i, step ->

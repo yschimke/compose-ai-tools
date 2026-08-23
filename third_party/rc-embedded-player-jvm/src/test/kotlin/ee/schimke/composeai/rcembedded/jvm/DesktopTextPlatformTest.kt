@@ -18,13 +18,6 @@ package ee.schimke.composeai.rcembedded.jvm
 
 import androidx.compose.remote.core.RemoteComposeState
 import androidx.compose.remote.core.SystemClock
-import androidx.compose.remote.player.compose.embedded.SnapshotRemoteComposeState
-import androidx.compose.remote.player.compose.embedded.StoreBackedRemoteContext
-import androidx.compose.remote.player.compose.embedded.TextPaintSpec
-import androidx.compose.remote.player.compose.embedded.drawTextAtOriginPlatform
-import androidx.compose.remote.player.compose.embedded.drawTextOnPathPlatform
-import androidx.compose.remote.player.compose.embedded.measureTextInkBounds
-import androidx.compose.remote.player.compose.embedded.measureTextWidth
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Canvas
@@ -34,6 +27,13 @@ import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
+import ee.schimke.composeai.rcembedded.player.SnapshotRemoteComposeState
+import ee.schimke.composeai.rcembedded.player.StoreBackedRemoteContext
+import ee.schimke.composeai.rcembedded.player.TextPaintSpec
+import ee.schimke.composeai.rcembedded.player.drawTextAtOriginPlatform
+import ee.schimke.composeai.rcembedded.player.drawTextOnPathPlatform
+import ee.schimke.composeai.rcembedded.player.measureTextInkBounds
+import ee.schimke.composeai.rcembedded.player.measureTextWidth
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume

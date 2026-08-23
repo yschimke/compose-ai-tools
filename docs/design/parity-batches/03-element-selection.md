@@ -11,6 +11,12 @@ done** — see below.
 **Blocks:** the element gates in [batch 05](05-acceptance-engines.md).
 **Ships:** **yes.** Click an element, report *that element* rather than "somewhere in this picture".
 
+> **Delivered.** The focused comparison mounts the derived semantics layers over its Actual panel,
+> `GET /{system}/tags/{previewId}` serves the published index, and `<cp-element-selection>` fills
+> `element` and `bounds` in the locator block from a tag or a dragged region. What is written below
+> is the brief that produced it; the notes marked **Shipped as** record where each part landed and
+> the one place the shape differs from what the brief anticipated.
+
 **Read first:** [`../COMPONENT_PARITY_WORKFLOW.md`](../COMPONENT_PARITY_WORKFLOW.md) §5 and §6
 steps 5–6; `ServeSemanticsTags.kt` and `scripts/design-artifacts/tag-index.mjs` (the two producers,
 and the KDoc in each explains the rules); `inspect.js` and `viewer.js`'s `data-cp-src` frame
@@ -124,6 +130,24 @@ needs a drag selection, convert it into render pixels before serialising.
 - `bounds` may be absent for a tag whose every carrying node had a zero-area box. Handle it; do not
   assume presence.
 
+## Shipped as
+
+| Part of the brief | Where it landed |
+| --- | --- |
+| §1 generalise the inspection machinery | `cli/serve-web/src/inspect/host.ts`. The viewer's tag keeps its wiring and a tag naming a host reads its frame, layer, legend and toggles from there. Pinned byte for byte *before* the refactor by `test/inspectLayersMarkup.test.ts`, as the brief asked. |
+| §1 derived layers on the comparison | A second, separately-labelled **Render semantics** control group, its own layer inside the Actual panel and its own legend under the grid. Deliberately not folded into the existing `Annotations` toggles: those switch the layer a producer *authored* and this page inlines for both panels, these switch what the render's own semantics tree *says*, and only the render has one. |
+| §2 the HTTP route | `GET /tags/{name}` (`.json` accepted and stripped), beside `/reference` and `/pages`, through `ServeAnnotationsPayload.encodeTags` — the same encoder the `.annotations` response already uses for its `tags` key, so the two lanes cannot drift on the field that names the plane. Reserved against site hosts in `ServeSites.RESERVED_SYSTEMS`. |
+| §2 same-generation coupling | Not built — and not needed for what shipped, because selection from a separately-fetched product is **withheld** rather than coupled. One predicate, `frameIsReplayedBaked`, governs both sources of authoring-time bounds: the published tag index *and* the derived semantics layers, whose `.annotations` response is a separate request from the PNG the client decoded and so can describe a different render wherever output varies (animation, conditional composition, live data) — exactly as §2 warns. It holds when the frame is the catalog's baked render replayed rather than produced for this request: no overrides, no pin, and a host whose browsing lane is baked. Otherwise the page withholds the tag picker *and* the box clicks, says why once, and keeps the drag — which is read off the displayed pixels and so describes what the reporter saw by construction. Batch 05 still needs the real shared generation before an element gate may read the index. |
+| §3 selection | `<cp-element-selection>`, with all three ways in: **click an annotated element** on the Actual panel (recorded as a region — an annotation carries no `testTag`, so there is no identity to name and claiming one would invent it), **pick a tag** from the published index, or **drag a region**. A tag with `count > 1` is listed with its count and disabled — and refused again in the handler, for a keyboard path or a browser that ignores `disabled`. A drag converts each endpoint into the render plane as it is touched, so a reflow mid-gesture cannot mix two coordinate systems; an annotation box needs no conversion, its bounds already being render-pixel. A click or a drag **replaces** any chosen tag rather than decorating it: `bounds` is the element's authoring-time baseline, so pairing a tag with a rectangle that is not that element's box records a baseline it never had. |
+| §4 into the locator | A `{{selection}}` placeholder in the served body template, filled by `report/locator.ts`, which is pinned to the shared fixture alongside the Kotlin writer and the JavaScript parser. |
+
+One thing changed that the brief did not anticipate: the report's hidden body now has a **single
+writer** (`report/body.ts`). Three producers feed it — the render URL, the scorer, the selection —
+and each writing the whole body meant the last to run won, so selecting after scoring dropped the
+scores and scoring after selecting dropped the selection. Neither loss is visible anywhere but in
+the filed issue. A consequence worth knowing: a comparison the browser cannot score now files a
+report with no `| Raw comparison |` row, where before it filed the server's body unchanged.
+
 ## Done when
 
 - A tagged node with no typography or container tokens is selectable — the case the annotation-box-only
@@ -133,8 +157,46 @@ needs a drag selection, convert it into render pixels before serialising.
 - The viewer's annotation rendering is byte-identical before and after the `inspect.js`
   generalisation, proved by the snapshot harness.
 
+## Left open, deliberately
+
+Three things came out of the review of [#4465](https://github.com/yschimke/compose-ai-tools/pull/4465)
+and were decided rather than absorbed. None blocks the batch's "done when"; each is written down here
+so the next reader finds a decision instead of a gap.
+
+- **The render generation** — the shipped gates prove the frame is a replay of the baked render, not
+  that it is the *same* replay. Promoted to [00's D6](00-decisions.md#d6--the-render-generation-a-selection-is-allowed-to-describe)
+  and answered (a): stamp a generation. Batch 05's element gate needs it regardless, so it belongs
+  there rather than as a patch to this batch's predicates.
+
+- **Report-body placeholders should carry a per-response nonce.** `fillReport` now matches
+  `{{render}}` and `{{rawScores}}` by exact anchor — a whole markdown link destination and a whole
+  table row — which fixed the reachable bug: a bare substring replace rewrote the first occurrence
+  anywhere in the body, so catalog-authored text carrying either literal was edited instead while the
+  real link kept its placeholder. A nonce would make the remaining case (catalog text authored in the
+  same shape as the anchor) unreachable rather than merely unlikely. **Follow-up PR** — the
+  substitution contract is shared by the Kotlin writer and the browser filler, so it moves with its
+  own fixtures.
+
+- **Authored layout boxes are not selectable.** A static bundle whose Actual annotations carry layout
+  entries but no typography draws those boxes through `ReferenceCompare`'s inline payload, which has
+  no selection handlers, so the box-click path is absent on that data shape. The drag still is not,
+  which is why this narrows a choice rather than removing the feature. **Follow-up PR**, and not a
+  one-line change: `ReferenceCompare` draws one payload over *both* panels, and reference annotations
+  are measured over the reference raster while actual ones are measured over the baked PNG. Two
+  planes, one component, distinguished per panel rather than per entry. The shape is a per-panel
+  `selectable` flag the Actual panel alone receives, emitting the same `cp-element-pick` event and
+  gated on the same predicate — with fixtures for the asymmetry, since getting it wrong writes
+  reference-raster bounds into a locator that declares `render-pixels`.
+
 ## Visual evidence
 
 Mandatory. Before/after of the comparison page with the derived layers mounted and a selection
 active, both themes, via `ServeWebFixtureTest` → `pages-snapshot.spec.mjs`. The existing
 `renders/parity-comparison-annotations/` set is the precedent for committing them alongside.
+
+**Committed at [`renders/parity-element-selection/`](../../../renders/parity-element-selection/).**
+Two new `pages-snapshot.spec.mjs` states take them and keep taking them, so every future change to
+the layers or the selector is diffed without anyone remembering to: `render-semantics` (the derived
+layers on, asserting they land over the Actual panel and nowhere else) and `element-selected` (a tag
+chosen, asserting the two canonical fields reach the report's hidden body rather than trusting the
+status line). The pinned fixture covers the withheld-picker case in its default shot.

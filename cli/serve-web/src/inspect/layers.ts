@@ -71,9 +71,15 @@ export function fallbackUrl(
     return `${base}/render/${encodeURIComponent(previewId)}.${suffix}${query}`;
 }
 
-/** `/compose-m3/p/plain.Button` → `/compose-m3`, the prefix every render URL hangs off. */
+/**
+ * `/compose-m3/p/plain.Button` → `/compose-m3`, the prefix every render URL hangs off.
+ *
+ * Both surfaces that mount the layers are addressed the same way — the viewer at `/p/<id>`, the
+ * focused comparison at `/compare/<id>` — so one rule serves both. This is only the *fallback*
+ * address in either case: the frame on screen supplies the real one as soon as it has decoded.
+ */
 export function baseFrom(pathname: string): string {
-    return pathname.replace(/\/p\/[^/]*\/?$/, "");
+    return pathname.replace(/\/(?:p|compare)\/[^/]*\/?$/, "");
 }
 
 /** The layers a `?inspect=` value names, in the order the page declares them. */

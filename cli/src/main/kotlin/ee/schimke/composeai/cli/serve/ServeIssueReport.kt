@@ -41,6 +41,16 @@ internal object ServeIssueReport {
   /** Filled by the focused comparison once its browser-side scorer has completed. */
   const val RAW_SCORES_PLACEHOLDER: String = "{{rawScores}}"
 
+  /**
+   * Stand-in for the selection's `element:` / `bounds:` lines inside the locator block.
+   *
+   * Occupies a **whole line** and is substituted with its newline, so a body with nothing selected
+   * reproduces byte for byte the block this writer emits on its own. The selection is the one part
+   * of a locator the server cannot know: it is made by clicking, after the page is served. Only the
+   * template form carries it — see [body]'s `renderPlaceholder`, which the same reasoning produced.
+   */
+  const val SELECTION_PLACEHOLDER: String = "{{selection}}"
+
   const val LOCATOR_FENCE: String = "compose-parity-locator/v1"
 
   /** The only plane `v1` accepts for [Bounds]; see that type and D1. */
@@ -77,11 +87,15 @@ internal object ServeIssueReport {
     /** Preview-id axes only; live controls belong exclusively to [overrides]. */
     val variant: String = "",
     /**
-     * The selected element, when the reporter picked one. Reserved for batch 03; nothing fills it
-     * yet — see [Locator.element].
+     * The selected element, when the reporter picked one — see [Locator.element].
+     *
+     * Server-side this is normally null even on the focused comparison: a selection is made by
+     * clicking, after the page has been served, so the page's JS writes it into the body template's
+     * [SELECTION_PLACEHOLDER] instead. The field is here for a caller that already knows — and
+     * because [locator] has to be able to state a complete record either way.
      */
     val element: String? = null,
-    /** The selected region, when the reporter dragged one. Reserved for batch 03; see [Bounds]. */
+    /** The selected region, when the reporter dragged one. See [Bounds] and [element]. */
     val bounds: Bounds? = null,
     /** The complete, normalised query map consumed by the render lane. */
     val overrides: Map<String, String> = emptyMap(),
@@ -134,13 +148,18 @@ internal object ServeIssueReport {
     val variant: String,
     val overrides: Map<String, String>,
     /**
-     * The element a selection named, and the region it covered. **Reserved, and unwritten until
-     * batch 03 has a selector to fill them.**
+     * The element a selection named, and the region it covered.
      *
-     * They exist now because batch 01 called for them before this writer, the JavaScript producer
-     * and the shared fixture froze, and that did not happen. Both parsers ignore unknown keys, so
-     * adding the selection to `v1` afterwards would have been indexed with the selection silently
-     * dropped — no strict-parser rejection to notice, no error anywhere.
+     * Reserved ahead of a selector existing, because both parsers ignore unknown keys: adding the
+     * selection to `v1` after the format froze would have produced reports that indexed cleanly
+     * with the selection silently dropped — no strict-parser rejection to notice, no error
+     * anywhere. The focused comparison fills them now (`<cp-element-selection>`), through
+     * [SELECTION_PLACEHOLDER] rather than through this writer, since the choice is made after the
+     * page is served.
+     *
+     * [element] is the `testTag` **verbatim** and is only a usable identity while exactly one node
+     * carries it; [bounds] may be absent for a tag whose every carrying node had a zero-area box,
+     * and is absent for every selection made before a region was dragged.
      */
     val element: String? = null,
     val bounds: Bounds? = null,
@@ -210,7 +229,11 @@ internal object ServeIssueReport {
    * the viewer JS can substitute the live URL; the server-rendered `href` uses the real one, which
    * is what a visitor with JS off gets.
    */
-  fun body(ctx: Context, renderPlaceholder: Boolean = false): String {
+  fun body(
+    ctx: Context,
+    renderPlaceholder: Boolean = false,
+    selectionPlaceholder: Boolean = false,
+  ): String {
     val rows = buildList {
       ctx.system?.trim()?.takeIf { it.isNotEmpty() }?.let { add("| Design system | `$it` |") }
       ctx.previewId?.trim()?.takeIf { it.isNotEmpty() }?.let { add("| Preview | `$it` |") }
@@ -282,7 +305,7 @@ internal object ServeIssueReport {
       append(rows.joinToString("\n"))
       if (links.isNotEmpty()) append("\n\n").append(links.joinToString(" · "))
       append("\n")
-      locator(ctx)?.let { append("\n").append(locatorBlock(it)) }
+      locator(ctx)?.let { append("\n").append(locatorBlock(it, selectionPlaceholder)) }
     }
   }
 
@@ -337,7 +360,13 @@ internal object ServeIssueReport {
   fun variantFor(preview: ServePreview): String =
     preview.id.substringAfter("__", missingDelimiterValue = "").replace("__", "/")
 
-  fun locatorBlock(locator: Locator): String = buildString {
+  /**
+   * The block, as markdown. [selectionPlaceholder] swaps the selection's two lines for
+   * [SELECTION_PLACEHOLDER] so the page's JS can write in what the reporter picked; the
+   * server-rendered body uses the real (usually absent) values, which is what a visitor with JS off
+   * files.
+   */
+  fun locatorBlock(locator: Locator, selectionPlaceholder: Boolean = false): String = buildString {
     append("```$LOCATOR_FENCE\n")
     append("repository: ${locator.repository}\n")
     append("system: ${locator.system}\n")
@@ -346,8 +375,11 @@ internal object ServeIssueReport {
     append("reference: ${locator.referenceId}\n")
     append("variant: ${locator.variant}\n")
     append("overrides: ${canonicalOverrides(locator.overrides)}\n")
-    locator.element?.let { append("element: ${canonicalElement(it)}\n") }
-    locator.bounds?.let { append("bounds: ${canonicalBounds(it)}\n") }
+    if (selectionPlaceholder) append("$SELECTION_PLACEHOLDER\n")
+    else {
+      locator.element?.let { append("element: ${canonicalElement(it)}\n") }
+      locator.bounds?.let { append("bounds: ${canonicalBounds(it)}\n") }
+    }
     locator.revision?.let { append("revision: $it\n") }
     append("```\n")
   }

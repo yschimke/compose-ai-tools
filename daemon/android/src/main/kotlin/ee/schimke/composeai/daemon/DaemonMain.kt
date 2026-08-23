@@ -893,6 +893,14 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
       params.previewParameterProviderClassName ?: defaults.previewParameterProviderClassName,
     previewParameterLimit = params.previewParameterLimit ?: defaults.previewParameterLimit,
     overrides = bakedOverrides,
+    // `@CaptureGutter` (issue #4443). The production live/interactive path — `bundle daemon` and
+    // `compose-preview serve` resolve through `PreviewIndex`, not the harness-only
+    // `PreviewManifestRouter` — so the gutter has to be threaded here too. Mirrors
+    // `:daemon:desktop`'s `renderSpecFromInfo`.
+    gutterStartDp = params.captureGutter?.start ?: 0,
+    gutterTopDp = params.captureGutter?.top ?: 0,
+    gutterEndDp = params.captureGutter?.end ?: 0,
+    gutterBottomDp = params.captureGutter?.bottom ?: 0,
   )
 }
 

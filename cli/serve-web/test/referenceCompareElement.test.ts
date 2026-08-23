@@ -146,7 +146,7 @@ function markup(options: { annotations?: unknown } = {}): string {
         <label><input data-cp-annotation-kind="layout" type="checkbox" checked> Layout</label>
         <label><input data-cp-annotation-kind="typography" type="checkbox" checked> Type</label>
         <p class="cp-reference-result">comparing…</p>
-        <input id="cp-report-body" data-report-template="Render {{render}} — {{rawScores}}">
+        <input id="cp-report-body" data-report-template="![render]({{render}})&#10;| Raw comparison | \`{{rawScores}}\` |">
         <label class="cp-overlay-control">Overlay <input class="cp-overlay-range" type="range" min="0" max="100" value="50"><span>50%</span></label>
         <div class="cp-reference-overlay"><img src="/ref.png"><img src="/act.png"></div>
       </div>
@@ -256,8 +256,19 @@ describe("<cp-reference-compare>", () => {
             "cp-report-body",
         ) as HTMLInputElement;
         assert.ok(!body.value.includes("secret"), body.value);
+        // The real markdown-destination form, because the render placeholder is substituted by that
+        // anchor — a bare `{{render}}` in a template would pass here and fill nothing in production.
+        assert.ok(body.value.includes("![render](https://"), body.value);
         assert.ok(body.value.includes("theme=dark"), body.value);
-        assert.ok(body.value.includes("98.4% structural match"), body.value);
+        assert.ok(!body.value.includes("{{render}}"), body.value);
+        // The real `| Raw comparison |` row, because the score placeholder is filled by EXACT row
+        // identity — a template that merely resembles the server's would pass here and fill nothing
+        // in production.
+        assert.ok(
+            body.value.includes("| Raw comparison | `98.4% structural match;"),
+            body.value,
+        );
+        assert.ok(!body.value.includes("{{rawScores}}"), body.value);
     });
 
     it("places each panel's boxes against ITS OWN image", async () => {

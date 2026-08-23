@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.remote.player.compose.RemoteDocumentPlayer
-import androidx.compose.remote.player.compose.embedded.ExperimentalRemoteDocumentPlayer
 import androidx.compose.remote.player.core.RemoteDocument
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -45,6 +44,7 @@ import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorNode
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorPayload
+import ee.schimke.composeai.rcembedded.player.ExperimentalRemoteDocumentPlayer
 import java.io.File
 import java.nio.file.Files
 import kotlinx.serialization.json.Json

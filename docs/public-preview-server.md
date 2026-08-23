@@ -971,7 +971,27 @@ keep a shut gate from turning the feature off:
   resumption, not prevent it, and a bounded duty cycle — admit, maybe trip again, wait again — is
   the right failure mode for best-effort work where a permanent latch is not. A reading still on
   the wrong side of a *stop* threshold is untouched by the cap and holds the gate as long as it
-  lasts.
+  lasts — up to the starvation cap below.
+- **A reading parked on a stop side is bounded too, by a duty cycle.** The dead-band cap above only
+  covers a hold where nothing is over a stop threshold. The public box hit the other permanent
+  latch: 17 resident render daemons on an 8 GB host keep `MemAvailable` at a steady 14-15%, so
+  every sample re-trips the `0.15` memory stop, nothing ever "recovers", and theme optimization
+  simply never runs — `/status.json` reporting `paused · memory available 15%` with `wear-m3` warmed
+  to 5 of its 170 entries over a 15-hour uptime. A steady-state reading is the host's baseline
+  rather than an emergency, so after `-Dcomposeai.serve.optimizerStarvationCapMillis` (30 minutes)
+  the gate opens for `…optimizerDutyCycleMillis` (60 seconds), then holds again: hold, admit a
+  slice, hold. The exception is a genuine emergency — memory available under
+  `…optimizerDutyCycleFloorMemoryAvailableFraction` (`0.05`) never duty-cycles, because slow
+  progress is not worth an OOM-killed replica — and neither does a host whose memory reading is
+  *missing* (`/proc/meminfo` unreadable while load and CPU still are), since an unverified floor is
+  not a cleared one. A signal that was not already holding crossing its stop threshold closes an
+  open window immediately (measured against the previous sample, so a signal that tripped earlier in
+  the same hold and spiked again still counts), so the concession never covers pressure it did not
+  answer for. Set either the cap or the window length to `0` to restore the permanent latch.
+  `/status.json` publishes `themeOptimizer.pressure.heldMillis`, `…dutyCycleUntilEpochMillis` and a
+  cumulative `…dutyCycles`, and the status page's gate row says `duty cycle` beside the reading that
+  is still holding — a box running on the cap is making progress *despite* pressure, not because it
+  cleared.
 - **The thresholds themselves are tunable**, because what counts as constrained is a property of
   the host: `-Dcomposeai.serve.optimizerStopMemoryAvailableFraction`,
   `…optimizerResumeMemoryAvailableFraction`, and the matching `…StopLoadPerCpu` /
