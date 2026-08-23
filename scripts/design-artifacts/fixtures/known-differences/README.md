@@ -91,6 +91,8 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `id-not-safe-single-dot` | An `id` of `.` reaching a sibling's `mask.png` |
 | `id-not-safe-parent-dot` | An `id` of `..` |
 | `id-not-safe-separator` | An `id` carrying a path separator |
+| `path-not-contained-case-folded-collision` | Two artifact paths differing only in case |
+| `schema-invalid-accepted-at-not-a-timestamp` | An `acceptedAt` that is a string but not a date-time |
 | `path-not-contained-windows-reserved-name` | An artifact path segment Windows cannot open |
 | `path-not-contained-trailing-dot` | An artifact path segment ending in a dot |
 | `id-not-safe-windows-reserved-name` | An `id` Windows cannot open |
@@ -142,6 +144,8 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `decode-failed-duplicate-ihdr` | A second `IHDR` |
 | `decode-failed-trns-after-idat` | A `tRNS` after the image data |
 | `decode-failed-non-empty-iend` | A non-empty `IEND` |
+| `decode-failed-trns-on-alpha-colour-type` | A `tRNS` beside a colour type that already carries alpha |
+| `decode-failed-palette-on-greyscale` | A `PLTE` in a greyscale image |
 | `decode-failed-missing-iend` | A stream truncated after a complete `IDAT` |
 | `decode-failed-unsupported-compression-method` | An `IHDR` declaring a compression method the specification does not define |
 | `decode-failed-interlaced-accepted-candidate` | An interlaced accepted candidate |

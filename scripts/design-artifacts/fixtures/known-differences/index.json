@@ -182,6 +182,16 @@
       "site": null
     },
     {
+      "id": "path-not-contained-case-folded-collision",
+      "title": "Two artifact paths differing only in case",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-accepted-at-not-a-timestamp",
+      "title": "An `acceptedAt` that is a string but not a date-time",
+      "site": null
+    },
+    {
       "id": "path-not-contained-windows-reserved-name",
       "title": "An artifact path segment Windows cannot open",
       "site": null
@@ -434,6 +444,16 @@
     {
       "id": "decode-failed-non-empty-iend",
       "title": "A non-empty `IEND`",
+      "site": null
+    },
+    {
+      "id": "decode-failed-trns-on-alpha-colour-type",
+      "title": "A `tRNS` beside a colour type that already carries alpha",
+      "site": null
+    },
+    {
+      "id": "decode-failed-palette-on-greyscale",
+      "title": "A `PLTE` in a greyscale image",
       "site": null
     },
     {

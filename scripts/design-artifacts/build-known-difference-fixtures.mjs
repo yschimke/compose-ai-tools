@@ -1414,6 +1414,30 @@ glyphValidation({
 });
 
 glyphValidation({
+  id: "path-not-contained-case-folded-collision",
+  title: "Two artifact paths differing only in case",
+  why:
+    "`mask.png` beside `MASK.PNG` is two committed files on Linux and one file on Windows and on a " +
+    "default macOS filesystem, so the record either hashes the wrong bytes or cannot be checked out " +
+    "intact. The identical failure the case-folded **id** check prevents, one level down — the " +
+    "portable-identity rule has to apply wherever a name becomes a path, not only to the directory.",
+  record: { acceptedCandidate: "MASK.PNG" },
+  expected: refused(["path-not-contained"]),
+});
+
+glyphValidation({
+  id: "schema-invalid-accepted-at-not-a-timestamp",
+  title: "An `acceptedAt` that is a string but not a date-time",
+  why:
+    "The schema declares `format: \"date-time\"`. JSON Schema treats `format` as an annotation by " +
+    "default, so a consumer with assertion enabled rejects what a type-only check accepts — and " +
+    "`acceptedAt` is a recorded fact, so a string that is not a timestamp is a producer bug either " +
+    "way.",
+  record: { acceptedAt: "not-a-date" },
+  expected: refused(["schema-invalid"]),
+});
+
+glyphValidation({
   id: "path-not-contained-windows-reserved-name",
   title: "An artifact path segment Windows cannot open",
   why:
@@ -2298,6 +2322,40 @@ glyphValidation({
       "would add a rule with no divergence behind it.",
     record: { maskSha256: sha256Hex(fatIend) },
     files: { "artifacts/m3-iconbutton-tonal-glyph/mask.png": fatIend },
+    expected: refused(["decode-failed"]),
+  });
+
+  const trnsOnRgba = buildPng([
+    ihdr({ width: 8, height: 8 }),
+    chunk("tRNS", Uint8Array.from([0, 0, 0, 0, 0, 0])),
+    idat([new Uint8Array(32)]),
+    chunk("IEND"),
+  ]);
+  glyphValidation({
+    id: "decode-failed-trns-on-alpha-colour-type",
+    title: "A `tRNS` beside a colour type that already carries alpha",
+    why:
+      "Placement was only half of it: this chunk sits exactly where it belongs and is still illegal " +
+      "*for this image*, because PNG forbids `tRNS` for colour types 4 and 6. A conforming decoder " +
+      "rejects it while a placement-only check admits it and the decoder silently ignores the " +
+      "chunk — a gate verdict against a refusal, for one set of hash-valid bytes.",
+    record: { acceptedCandidateSha256: sha256Hex(trnsOnRgba) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": trnsOnRgba },
+    expected: refused(["decode-failed"]),
+  });
+
+  const paletteOnGrey = buildPng([
+    ihdr({ width: 24, height: 24, colourType: COLOUR_GREY }),
+    chunk("PLTE", Uint8Array.from([0, 0, 0, 255, 255, 255])),
+    idat(greyRows()),
+    chunk("IEND"),
+  ]);
+  glyphValidation({
+    id: "decode-failed-palette-on-greyscale",
+    title: "A `PLTE` in a greyscale image",
+    why: "The other half of the same rule, pointed at the other chunk: a palette is meaningless — and forbidden — for a greyscale colour type.",
+    record: { maskSha256: sha256Hex(paletteOnGrey) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/mask.png": paletteOnGrey },
     expected: refused(["decode-failed"]),
   });
 

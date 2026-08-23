@@ -1013,6 +1013,12 @@ retaining them once. And once a document is over budget nothing further about it
 nothing and costs everything the cap was defending. Unlike the bound below, this half *is* assertable:
 how many artifacts were fetched is observable through the same seam that supplies them.
 
+**The second read is compared on *every* header field.** An enumerated subset is not enough — one
+that omitted the transparency, compression, filter and interlace fields would let a swapped artifact
+keep the four being compared while changing what the mask-encoding rule is actually judged on, since
+that rule reads the *preflight's* header. Comparing the whole preflight cannot drift out of step with
+what the preflight learns.
+
 **The second read is validated again, not trusted.** Retaining nothing means the decode phase reads
 fresh bytes, and `readArtifact` may be network-backed or the tree may move under a long evaluation.
 Checking only presence and hashes there would let an artifact that has since grown past the byte cap,
@@ -1076,8 +1082,12 @@ machine-generated crops of an already-composited render, not photographs carryin
 data, a non-contiguous `IDAT` run, a non-empty `IEND` — each is built entirely from allowed chunks
 and each is rejected by a conforming decoder, so admitting them on membership alone reaches a gate
 verdict where the other side refuses. `v1` therefore constrains placement as well as vocabulary:
-`IHDR` first and once; `PLTE` and `tRNS` at most once and before any `IDAT` (and `tRNS` after `PLTE`
-for an indexed image); the `IDAT` run contiguous; `IEND` empty. There are only five chunks to
+`IHDR` first, once, and 13 bytes; `PLTE` and `tRNS` at most once and before any `IDAT` (and `tRNS`
+after `PLTE` for an indexed image); the `IDAT` run contiguous; `IEND` empty. **Placement is only half
+of it** — a chunk can sit exactly where it belongs and still be illegal *for this image*: `PLTE` in a
+greyscale file, `tRNS` beside colour type 4 or 6 which already carry alpha, a `tRNS` whose length
+does not match the colour type it describes, a `PLTE` whose length is not a multiple of three. The
+specification forbids each, so those are refused too. There are only five chunks to
 constrain, which is what the allowlist buys — the structural rules are finite because the vocabulary
 is. Bytes *after* `IEND` stay tolerated: nothing reads them, the byte cap fires on them before any
 decode, and policing them would add a rule with no divergence behind it.
@@ -1326,6 +1336,11 @@ on, so this is `document-unreadable` in the identifier-less `{ "reason": … }` 
 absent — the same shape as `document-too-large`, for the same reason. Without a token an engine is
 free to simply throw, which is not a result any fixture can compare against.
 
+**Case folding applies wherever a name becomes a path — the `id` *and* the two artifact paths.**
+`mask.png` beside `MASK.PNG` is two committed files on Linux and one file on Windows and default
+macOS, so the record either hashes the wrong bytes or cannot be checked out intact: the same failure
+as a folded `id` collision, one level down, and `path-not-contained` for it.
+
 **Collisions are detected case-folded, and reported under the first spelling seen.** `foo` and `FOO`
 are distinct map keys and the *same directory* on Windows and on a default macOS filesystem, so a
 document carrying both evaluates cleanly on Linux and, checked out anywhere else, has two records
@@ -1426,7 +1441,15 @@ separate groups, and a group that looks fully resolved then closes an issue a si
 still holding open — the precise failure the aggregation rule below exists to prevent, reintroduced
 by string equality. Parse to `owner`, `repo`, `number` first and aggregate on those, exactly as the
 issue index's own trust boundary already validates them; a URL that does not parse is
-`schema-invalid` rather than its own group of one.
+`schema-invalid` rather than its own group of one. **Parsed as a URL, not matched as a string** — the
+host is compared case-insensitively and the path segments are percent-decoded before comparison,
+because `%79schimke` and `yschimke` are the same owner and a regex over the raw text keys them
+separately, which is exactly the split this rule exists to prevent.
+
+**`acceptedAt`, when present, is an RFC 3339 date-time.** The schema declares `format: "date-time"`,
+and JSON Schema treats `format` as an annotation by default — so a consumer with assertion enabled
+refuses a document a type-only check accepts. It is a recorded fact either way: a string that is not
+a timestamp is a producer bug.
 
 **Closing the issue is an issue-level decision, not an acceptance-level one.** The tracking issue is
 mandatory per acceptance but not *unique* to one — the same glyph-colour delta legitimately spans a

@@ -264,12 +264,30 @@ export function decodePng(bytes) {
     // rules are finite because the vocabulary is.
     if (type === "IHDR" && offset !== 8) throw new Error("decode-failed: IHDR is not first");
     if (offset === 8 && type !== "IHDR") throw new Error("decode-failed: IHDR is not first");
+    if (type === "IHDR" && length !== 13) throw new Error("decode-failed: IHDR is not 13 bytes");
+    // Placement was only half of it. A chunk can sit exactly where it belongs and still be illegal
+    // *for this image* — `PLTE` in a greyscale file, `tRNS` beside a colour type that already carries
+    // alpha, a `tRNS` whose length does not match the colour type it describes. The specification
+    // forbids each, so a conforming decoder rejects them while a placement-only check admits them and
+    // reaches a gate verdict.
     if (type === "PLTE") {
       if (palette || sawIdat) throw new Error("decode-failed: misplaced PLTE");
+      if (colourType === COLOUR_GREY || colourType === COLOUR_GREY_ALPHA) {
+        throw new Error("decode-failed: PLTE on a greyscale image");
+      }
+      if (length === 0 || length % 3 !== 0 || length > 768) throw new Error("decode-failed: bad PLTE length");
     }
     if (type === "tRNS") {
       if (transparency || sawIdat) throw new Error("decode-failed: misplaced tRNS");
-      if (colourType === COLOUR_PALETTE && !palette) throw new Error("decode-failed: tRNS before PLTE");
+      if (colourType === COLOUR_GREY_ALPHA || colourType === COLOUR_RGBA) {
+        throw new Error("decode-failed: tRNS on an alpha colour type");
+      }
+      if (colourType === COLOUR_GREY && length !== 2) throw new Error("decode-failed: bad tRNS length");
+      if (colourType === COLOUR_RGB && length !== 6) throw new Error("decode-failed: bad tRNS length");
+      if (colourType === COLOUR_PALETTE) {
+        if (!palette) throw new Error("decode-failed: tRNS before PLTE");
+        if (length > palette.length / 3) throw new Error("decode-failed: bad tRNS length");
+      }
     }
     if (type === "IDAT") {
       if (idatEnded) throw new Error("decode-failed: IDAT run is not contiguous");

@@ -387,6 +387,15 @@ test("an issue arriving in several spellings is one group", () => {
   const keys = new Set(spellings.map((url) => issueKey(parseIssue(url))));
   assert.deepEqual([...keys], ["yschimke/m3-catalog#42"]);
   assert.equal(parseIssue("https://github.com/yschimke/m3-catalog/pull/42"), null);
+
+  // Percent-encoding and host case are two more spellings of one issue. A regex over the raw string
+  // keys them separately, which lets one subset look independently resolved.
+  assert.equal(
+    issueKey(parseIssue("https://GitHub.com/%79schimke/m3-catalog/issues/42")),
+    "yschimke/m3-catalog#42",
+  );
+  assert.equal(parseIssue("https://github.com.evil.test/yschimke/m3-catalog/issues/42"), null);
+  assert.equal(parseIssue("https://github.com/yschimke/m3-catalog/issues/0"), null);
 });
 
 test("ids and artifact paths refuse the shapes the contract names", () => {

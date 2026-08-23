@@ -83,6 +83,9 @@ const SAFE_SEGMENT = /^[A-Za-z0-9._-]+$/;
 
 const HEX64 = /^[0-9a-f]{64}$/;
 
+/** RFC 3339 date-time, which is what the schema's `format: "date-time"` means. */
+const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+
 /**
  * The authoritative ordering for `reasons` and for `validationFailures`.
  *
@@ -289,13 +292,32 @@ export function recordedHashValid(value) {
  */
 export function parseIssue(url) {
   if (typeof url !== "string") return null;
-  const match = /^https?:\/\/(?:www\.)?github\.com\/([^/]+)\/([^/]+)\/issues\/(\d+)\/?(?:[#?].*)?$/.exec(
-    url.trim(),
-  );
-  if (!match) return null;
-  const number = Number(match[3]);
+  let parsed;
+  try {
+    parsed = new URL(url.trim());
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+  // `new URL` lowercases the host for us, which is one of the spellings a regex over the raw string
+  // gets wrong. The other is percent-encoding: `%79schimke` and `yschimke` are the same owner and
+  // would otherwise key two groups, letting one subset look independently resolved — the precise
+  // failure aggregating on canonical identity exists to prevent.
+  const host = parsed.hostname.replace(/^www\./, "");
+  if (host !== "github.com") return null;
+  let segments;
+  try {
+    segments = parsed.pathname.split("/").filter(Boolean).map(decodeURIComponent);
+  } catch {
+    return null;
+  }
+  if (segments.length !== 4 || segments[2] !== "issues") return null;
+  const [owner, repo, , rawNumber] = segments;
+  if (!/^[A-Za-z0-9._-]+$/.test(owner) || !/^[A-Za-z0-9._-]+$/.test(repo)) return null;
+  if (!/^\d+$/.test(rawNumber)) return null;
+  const number = Number(rawNumber);
   if (!Number.isSafeInteger(number) || number <= 0) return null;
-  return { owner: match[1].toLowerCase(), repo: match[2].toLowerCase(), number };
+  return { owner: owner.toLowerCase(), repo: repo.toLowerCase(), number };
 }
 
 /** `owner/repo#number`, the key issue-level aggregation groups on. */
@@ -498,6 +520,16 @@ function preflightRecord(record, index, readArtifact, catalog) {
   const pathReasons = [];
   if (!isSafeArtifactPath(record.mask)) pathReasons.push("path-not-contained");
   if (!isSafeArtifactPath(record.acceptedCandidate)) pathReasons.push("path-not-contained");
+  // The same portable-identity rule the duplicate-id scan applies, applied where it was missing.
+  // `mask.png` beside `MASK.PNG` is two committed files on Linux and one file everywhere else, so
+  // the record either hashes the wrong bytes or cannot be checked out — the identical failure the
+  // case-folded id check exists to prevent, one level down.
+  if (
+    pathReasons.length === 0 &&
+    record.mask.toLowerCase() === record.acceptedCandidate.toLowerCase()
+  ) {
+    pathReasons.push("path-not-contained");
+  }
   if (pathReasons.length > 0) return fail(...pathReasons);
 
   const maskBytes = readArtifact(`${record.id}/${record.mask}`);
@@ -575,14 +607,12 @@ function decodeRecord(evaluation, readArtifact) {
     const now = preflightPng(bytes);
     if (now.error) return fail("header-invalid");
     if (now.animated) return fail("animated-png");
-    if (
-      now.width !== before.width ||
-      now.height !== before.height ||
-      now.bitDepth !== before.bitDepth ||
-      now.colourType !== before.colourType
-    ) {
-      return fail("artifact-unreadable");
-    }
+    // **Every field, not an enumerated subset.** An earlier revision compared four of them, which
+    // left a second read free to add a `tRNS`, or change the compression, filter or interlace method,
+    // while the fields being compared stayed put — and the mask-encoding check below reads the
+    // *preflight's* header, so a swapped artifact would have been judged on the old one. Comparing
+    // the whole object cannot drift out of step with what the preflight learns.
+    if (!samePreflight(now, before)) return fail("artifact-unreadable");
     if (now.width > BUDGET.maxAxis || now.height > BUDGET.maxAxis) return fail("header-invalid");
   }
   if (maskHeader.bitDepth !== 8 || maskHeader.colourType !== 0) return fail("mask-encoding-invalid");
@@ -686,6 +716,10 @@ function schemaReasons(record) {
   for (const field of ["note", "acceptedAt"]) {
     if (record[field] !== undefined && typeof record[field] !== "string") return invalid();
   }
+  // The schema declares `format: "date-time"`. JSON Schema treats `format` as an annotation by
+  // default, so a consumer with assertion enabled rejects what a type-only check here accepts — and
+  // `acceptedAt` is a recorded fact, so a string that is not a timestamp is a producer bug either way.
+  if (record.acceptedAt !== undefined && !RFC3339.test(record.acceptedAt)) return invalid();
   if (record.overrides !== undefined && !isStringMap(record.overrides)) return invalid();
   if (!isPlane(record.plane)) return invalid();
   if (!Number.isFinite(record.candidateTolerance)) return invalid();
@@ -796,6 +830,13 @@ function comparisonRefusals(record, evaluation, comparison) {
     return ["acceptance-is-noop"];
   }
   return [];
+}
+
+/** Two preflights describe the same artifact — every field the preflight learns, not a chosen few. */
+function samePreflight(a, b) {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys) if (a[key] !== b[key]) return false;
+  return true;
 }
 
 function planeMatches(recorded, current) {
