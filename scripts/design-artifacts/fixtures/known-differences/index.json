@@ -347,6 +347,11 @@
       "site": null
     },
     {
+      "id": "document-unreadable-unknown-property",
+      "title": "A document carrying a property `v1` does not define",
+      "site": null
+    },
+    {
       "id": "document-non-object-acceptances",
       "title": "`acceptances` holding `null`, a string and an array",
       "site": null
@@ -379,6 +384,16 @@
     {
       "id": "header-invalid-inflates-past-declared-size",
       "title": "A small legal header in front of a much larger inflation",
+      "site": null
+    },
+    {
+      "id": "ancillary-chunk-crc-is-not-fatal",
+      "title": "A corrupt CRC on a chunk the decoder never reads",
+      "site": null
+    },
+    {
+      "id": "decode-failed-unsupported-compression-method",
+      "title": "An `IHDR` declaring a compression method the specification does not define",
       "site": null
     },
     {

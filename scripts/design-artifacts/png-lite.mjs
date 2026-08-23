@@ -38,6 +38,9 @@ const CHANNELS = {
   [COLOUR_RGBA]: 4,
 };
 
+/** The chunks {@link decodePng} reads the contents of — the only ones whose CRC is fatal. */
+const CONSUMED_CHUNKS = new Set(["IHDR", "PLTE", "IDAT", "tRNS", "IEND"]);
+
 const CRC_TABLE = (() => {
   const table = new Uint32Array(256);
   for (let n = 0; n < 256; n++) {
@@ -79,16 +82,32 @@ export function buildPng(chunks) {
   return out;
 }
 
-/** An `IHDR` chunk, spelled out so a fixture can lie in any one field. */
-export function ihdr({ width, height, bitDepth = 8, colourType = COLOUR_RGBA, interlace = 0 }) {
+/**
+ * An `IHDR` chunk, spelled out so a fixture can lie in any one field.
+ *
+ * `compression` and `filter` are parameters rather than constants for the same reason the rest are:
+ * the specification defines exactly one legal value for each, so a fixture that exercises the check
+ * has to be able to write an illegal one — and it must be written *here*, where the chunk's CRC is
+ * computed over it, rather than poked into the finished file afterwards. A poked byte leaves a stale
+ * CRC, and the file is then refused by the CRC check before the method byte is ever read.
+ */
+export function ihdr({
+  width,
+  height,
+  bitDepth = 8,
+  colourType = COLOUR_RGBA,
+  compression = 0,
+  filter = 0,
+  interlace = 0,
+}) {
   const data = new Uint8Array(13);
   const view = new DataView(data.buffer);
   view.setUint32(0, width);
   view.setUint32(4, height);
   data[8] = bitDepth;
   data[9] = colourType;
-  data[10] = 0;
-  data[11] = 0;
+  data[10] = compression;
+  data[11] = filter;
   data[12] = interlace;
   return chunk("IHDR", data);
 }
@@ -167,6 +186,8 @@ export function preflightPng(bytes) {
     height,
     bitDepth: bytes[24],
     colourType: bytes[25],
+    compression: bytes[26],
+    filter: bytes[27],
     interlace: bytes[28],
     animated,
     byteLength: bytes.length,
@@ -190,6 +211,12 @@ export function decodePng(bytes) {
   const { width, height, bitDepth, colourType, interlace } = header;
   if (bitDepth !== 8) throw new Error("decode-failed: bit depth " + bitDepth);
   if (interlace !== 0) throw new Error("decode-failed: interlaced");
+  // `IHDR` declares a compression method and a filter method, and the specification defines exactly
+  // one of each — `0`. A conforming decoder refuses anything else, so ignoring these two bytes means
+  // inflating ordinary-looking scanlines and reaching a *gate verdict* where the browser reaches
+  // `decode-failed`. Same class as the interlace check above, and the same token.
+  if (header.compression !== 0) throw new Error("decode-failed: compression method " + header.compression);
+  if (header.filter !== 0) throw new Error("decode-failed: filter method " + header.filter);
   if (!(colourType in CHANNELS)) throw new Error("decode-failed: colour type " + colourType);
 
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -202,12 +229,23 @@ export function decodePng(bytes) {
     const type = readType(bytes, offset + 4);
     if (length > bytes.length - offset - 12) throw new Error("decode-failed: chunk overruns file");
     const data = bytes.subarray(offset + 8, offset + 8 + length);
-    // Verify the CRC of every chunk whose data this decoder consumes. The artifact's own `sha256`
-    // proves nobody edited the file in flight; it says nothing about whether the file was ever
-    // well-formed. Without this check a committed-corrupt PNG decodes here and may be rejected by a
-    // native decoder on the other side of the contract — one verdict per engine, from one set of
-    // hash-valid bytes, which is the divergence class this whole schema exists to close.
-    if (view.getUint32(offset + 8 + length) !== crc32(bytes.subarray(offset + 4, offset + 8 + length))) {
+    // Verify the CRC of the chunks whose contents this decoder actually consumes, and **only** those.
+    // The artifact's own `sha256` proves nobody edited the file in flight; it says nothing about
+    // whether the file was ever well-formed, so a committed-corrupt `IDAT` would otherwise decode
+    // here and be rejected by a native decoder on the other side of the contract.
+    //
+    // Checking *every* chunk is the same mistake pointed the other way. An unconsumed ancillary
+    // chunk — `tEXt`, `gAMA`, a colour profile — has no bearing on the pixels, and the PNG
+    // specification says a decoder may ignore an ancillary chunk whose CRC does not verify. Refusing
+    // one would make this the strict engine and every browser the lenient one, which is the same
+    // one-verdict-per-engine failure with the roles swapped.
+    //
+    // `tRNS` is ancillary and *is* consumed, so it stays in this set deliberately: the alternative is
+    // to drop a corrupt transparency chunk and decode the raster as opaque, which silently changes
+    // the pixels the candidate gate compares. Refusing a broken artifact is what this contract does
+    // everywhere else; quietly substituting different pixels is not.
+    if (CONSUMED_CHUNKS.has(type) &&
+        view.getUint32(offset + 8 + length) !== crc32(bytes.subarray(offset + 4, offset + 8 + length))) {
       throw new Error("decode-failed: chunk CRC mismatch");
     }
     if (type === "IDAT") parts.push(data);

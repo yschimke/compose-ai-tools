@@ -1008,11 +1008,25 @@ ceiling, and anything over it is `header-invalid` either way, since a file that 
 declared size has a header that lied. A fixture pins the verdict; the bound itself is a resource
 requirement on the implementation, which no verdict-shaped fixture can express.
 
-**Critical chunk CRCs are verified during decode, and a mismatch is `decode-failed`.** The artifact's
-`sha256` proves nobody edited the file in flight; it says nothing about whether the file was ever
-well-formed. Without this a committed-corrupt PNG decodes on one side of the contract and is refused
-by a native decoder on the other — one set of hash-valid bytes, two verdicts, which is the same
-failure the mask-encoding and animation rules exist to close.
+**The CRCs of consumed chunks are verified during decode, and a mismatch is `decode-failed`.** The
+artifact's `sha256` proves nobody edited the file in flight; it says nothing about whether the file
+was ever well-formed. Without this a committed-corrupt PNG decodes on one side of the contract and is
+refused by a native decoder on the other — one set of hash-valid bytes, two verdicts, which is the
+same failure the mask-encoding and animation rules exist to close.
+
+**Consumed, and only consumed** — `IHDR`, `PLTE`, `IDAT`, `tRNS`, `IEND`. Checking every chunk is the
+same mistake pointed the other way: an unconsumed ancillary chunk (`tEXt`, `gAMA`, a colour profile)
+has no bearing on the pixels, and the PNG specification says a decoder may ignore an ancillary chunk
+whose CRC does not verify — so refusing one makes this the strict engine and every browser the
+lenient one. Both halves are fixtures. `tRNS` is ancillary and *is* consumed, so it stays fatal on
+purpose: the alternative is to drop a corrupt transparency chunk and decode the raster as opaque,
+which silently changes the pixels the candidate gate compares, and refusing a broken artifact is what
+this contract does everywhere else.
+
+**`IHDR`'s compression and filter method bytes must both be `0`.** The specification defines exactly
+one of each, so a decoder that ignores them inflates ordinary-looking scanlines and reaches a *gate
+verdict* where a conforming decoder reaches `decode-failed`. Same class as an interlaced file, and
+the same token.
 
 **`tRNS` is decoded, for palette, greyscale and RGB alike.** `accepted-candidate.png` is an ordinary
 colour raster and carries no encoding rule, so a palette file with a transparency chunk is legal —
@@ -1178,6 +1192,11 @@ only report what it can name:
   **document** is rejected, exactly as for a duplicate id.
 
 Both are conformance fixtures, since "one bad record" and "an unreadable file" are different repairs.
+
+**Unknown properties are refused at the document level too**, where the verdict is
+`document-unreadable` rather than `schema-invalid` — there is no record to attribute it to, so it is
+a property of the file, in the identifier-less `{ "reason": … }` shape. The document carries `schema`
+and `acceptances` and nothing else.
 
 **Unknown properties are refused, at every level of the record.** The published schema declares
 `additionalProperties: false`, so a consumer that validates against it rejects bytes a consumer

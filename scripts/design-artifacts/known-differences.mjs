@@ -409,6 +409,14 @@ function parseDocument(documentText) {
   }
   if (document.schema !== KNOWN_DIFFERENCES_SCHEMA) return { failure: { reason: "document-unreadable" } };
   if (!Array.isArray(document.acceptances)) return { failure: { reason: "document-unreadable" } };
+  // Unknown *document-level* properties, for the same reason unknown record-level ones are refused:
+  // the published schema declares `additionalProperties: false` at both levels, so a schema-first
+  // consumer rejects bytes a required-fields-only consumer evaluates normally. `document-unreadable`
+  // rather than `schema-invalid` because there is no record to attribute it to — this is a property
+  // of the file.
+  for (const key of Object.keys(document)) {
+    if (key !== "schema" && key !== "acceptances") return { failure: { reason: "document-unreadable" } };
+  }
   return { document };
 }
 

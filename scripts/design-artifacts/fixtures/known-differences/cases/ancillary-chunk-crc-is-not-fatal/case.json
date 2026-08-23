@@ -1,0 +1,38 @@
+{
+  "title": "A corrupt CRC on a chunk the decoder never reads",
+  "site": null,
+  "why": "The accepting half of the CRC rule, and the case that keeps it from becoming the same divergence pointed the other way. An unconsumed ancillary chunk — `tEXt`, `gAMA`, a colour profile — has no bearing on the pixels, and the PNG specification says a decoder may ignore an ancillary chunk whose CRC does not verify. Refusing one would make this engine the strict one and every browser the lenient one. Only the chunks whose contents are actually consumed are fatal.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

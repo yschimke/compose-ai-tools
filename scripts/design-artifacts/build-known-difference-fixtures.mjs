@@ -1927,6 +1927,24 @@ glyphValidation({
   });
 }
 
+addCase({
+  id: "document-unreadable-unknown-property",
+  title: "A document carrying a property `v1` does not define",
+  why:
+    "The document level gets the same rule the record level does, and for the same reason: the " +
+    "published schema declares `additionalProperties: false` at both, so a schema-first consumer " +
+    "rejects bytes a required-fields-only consumer evaluates normally. `document-unreadable` rather " +
+    "than `schema-invalid` because there is no record to attribute it to — this is a property of the " +
+    "file.",
+  document: { schema: "compose-preview-known-differences/v1", acceptances: [], extra: true },
+  files: {},
+  expected: {
+    pins: ["statusesAbsent", "validationFailures"],
+    statusesAbsent: true,
+    validationFailures: [{ reason: "document-unreadable" }],
+  },
+});
+
 // --- shapes that are not records, and fields v1 does not define -----------------------------------
 
 {
@@ -2074,6 +2092,68 @@ glyphValidation({
     record: { maskSha256: sha256Hex(bomb) },
     files: { "artifacts/m3-iconbutton-tonal-glyph/mask.png": bomb },
     expected: refused(["header-invalid"]),
+  });
+
+  // A hash-valid mask whose *ancillary* `tEXt` CRC is corrupt. This one must still be `valid`.
+  const corruptAncillary = (() => {
+    const text = chunk("tEXt", Uint8Array.from("note\u0000ok", (ch) => ch.charCodeAt(0)));
+    text[text.length - 1] ^= 0xff;
+    const samples = new Uint8Array(24 * 24);
+    for (let y = 8; y < 16; y++) for (let x = 8; x < 16; x++) samples[y * 24 + x] = 255;
+    const rows = [];
+    for (let y = 0; y < 24; y++) rows.push(samples.subarray(y * 24, (y + 1) * 24));
+    return buildPng([
+      ihdr({ width: 24, height: 24, colourType: COLOUR_GREY }),
+      text,
+      idat(rows),
+      chunk("IEND"),
+    ]);
+  })();
+  glyphValidation({
+    id: "ancillary-chunk-crc-is-not-fatal",
+    title: "A corrupt CRC on a chunk the decoder never reads",
+    why:
+      "The accepting half of the CRC rule, and the case that keeps it from becoming the same " +
+      "divergence pointed the other way. An unconsumed ancillary chunk — `tEXt`, `gAMA`, a colour " +
+      "profile — has no bearing on the pixels, and the PNG specification says a decoder may ignore " +
+      "an ancillary chunk whose CRC does not verify. Refusing one would make this engine the strict " +
+      "one and every browser the lenient one. Only the chunks whose contents are actually consumed " +
+      "are fatal.",
+    record: { maskSha256: sha256Hex(corruptAncillary) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/mask.png": corruptAncillary },
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+      validationFailures: [],
+    },
+  });
+
+  // A legal-looking header declaring a compression method the specification does not define.
+  const badMethod = (() => {
+    const samples = new Uint8Array(24 * 24);
+    for (let y = 8; y < 16; y++) for (let x = 8; x < 16; x++) samples[y * 24 + x] = 255;
+    const rows = [];
+    for (let y = 0; y < 24; y++) rows.push(samples.subarray(y * 24, (y + 1) * 24));
+    return buildPng([
+      ihdr({ width: 24, height: 24, colourType: COLOUR_GREY, compression: 1 }),
+      idat(rows),
+      chunk("IEND"),
+    ]);
+  })();
+  glyphValidation({
+    id: "decode-failed-unsupported-compression-method",
+    title: "An `IHDR` declaring a compression method the specification does not define",
+    why:
+      "`IHDR` carries a compression method and a filter method, and the specification defines " +
+      "exactly one of each. Ignoring those two bytes means inflating ordinary-looking scanlines and " +
+      "reaching a *gate verdict* where a conforming decoder reaches `decode-failed` — the same " +
+      "class as an interlaced file, and the same token. The method byte is written *into* the " +
+      "chunk, so its CRC is correct: poking it into a finished file would leave a stale CRC, and the " +
+      "file would then be refused by the CRC check before the method byte was ever read — a fixture " +
+      "that passes for the wrong reason.",
+    record: { maskSha256: sha256Hex(badMethod) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/mask.png": badMethod },
+    expected: refused(["decode-failed"]),
   });
 
   // A palette accepted candidate whose single entry is transparent.

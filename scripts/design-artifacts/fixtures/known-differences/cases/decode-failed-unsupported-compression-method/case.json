@@ -1,0 +1,38 @@
+{
+  "title": "An `IHDR` declaring a compression method the specification does not define",
+  "site": null,
+  "why": "`IHDR` carries a compression method and a filter method, and the specification defines exactly one of each. Ignoring those two bytes means inflating ordinary-looking scanlines and reaching a *gate verdict* where a conforming decoder reaches `decode-failed` — the same class as an interlaced file, and the same token. The method byte is written *into* the chunk, so its CRC is correct: poking it into a finished file would leave a stale CRC, and the file would then be refused by the CRC check before the method byte was ever read — a fixture that passes for the wrong reason.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}
