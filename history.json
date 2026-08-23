@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "3a2f44d2c046c042005e9422e99e551908c720d7",
+    "generatedFrom": "17318ead2343865191488986b0c3105c90b2d28f",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -2891,6 +2891,13 @@
             "path": "renders/samples:android/SharedElementDebugMatchedAnimatedPreview_Shared_Element_Debug_Matched-6e9ea8cc.gif",
             "versions": [
                 {
+                    "blob": "be8229d2d6994f4d410496d2d1f514aa4a7b6803",
+                    "commit": "17318ead2343865191488986b0c3105c90b2d28f",
+                    "date": "2026-08-23T15:23:29Z",
+                    "sourceSha": "936f9cd9",
+                    "commits": 1
+                },
+                {
                     "blob": "63862fc08ee9ce886ed3f991d034c5970930aabf",
                     "commit": "202816e3c14fe04ed50aee258ccf4c86ebdf1abd",
                     "date": "2026-08-20T15:03:15Z",
@@ -2919,13 +2926,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 4,
+            "observations": 5,
             "unstable": false,
             "flapCount": 0
         },
         "samples:android/com.example.sampleandroid.SharedElementDebugPreviewsKt.SharedElementDebugUnmatchedAnimatedPreview_Shared Element Debug — Unmatched": {
             "path": "renders/samples:android/SharedElementDebugUnmatchedAnimatedPreview_Shared_Element_Debug_Unmatched-fe4cf131.gif",
             "versions": [
+                {
+                    "blob": "6ea2a61465db04e1f291b6fd78abb17c6b329491",
+                    "commit": "17318ead2343865191488986b0c3105c90b2d28f",
+                    "date": "2026-08-23T15:23:29Z",
+                    "sourceSha": "936f9cd9",
+                    "commits": 1
+                },
                 {
                     "blob": "75930ea3d63c8eeddca042cca20ba9b3b8d21336",
                     "commit": "202816e3c14fe04ed50aee258ccf4c86ebdf1abd",
@@ -2955,7 +2969,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 4,
+            "observations": 5,
             "unstable": false,
             "flapCount": 0
         },
@@ -2985,6 +2999,13 @@
             "path": "renders/samples:android/ContainerTransformAnimatedPreview_Container_Transform-7b9dc97b.gif",
             "versions": [
                 {
+                    "blob": "ab562184e2261d4c92f4f1bfbe5da2aaafff406a",
+                    "commit": "17318ead2343865191488986b0c3105c90b2d28f",
+                    "date": "2026-08-23T15:23:29Z",
+                    "sourceSha": "936f9cd9",
+                    "commits": 1
+                },
+                {
                     "blob": "eff99bc79d7c91b958fc1807f40c9572cb50aeca",
                     "commit": "202816e3c14fe04ed50aee258ccf4c86ebdf1abd",
                     "date": "2026-08-20T15:03:15Z",
@@ -2999,7 +3020,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 2,
+            "observations": 3,
             "unstable": false,
             "flapCount": 0
         },
