@@ -30,6 +30,7 @@ const tracked = [
     "keyboard-navigation.js",
     "report-capture.js",
     "format-compare.js",
+    "known-differences.js",
     "viewer.js",
 ].map((name) => relative(repoRoot, resolve(assets, name)));
 

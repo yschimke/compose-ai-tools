@@ -8,6 +8,13 @@
         "noEmit": true,
         "strict": true,
         "esModuleInterop": true,
+        // The acceptance engine is shared JavaScript, not a TypeScript port: `src/parity/` imports
+        // `scripts/design-artifacts/known-differences.mjs` so the browser and the offline driver run
+        // one implementation rather than two that a fixture suite has to keep honest. `checkJs` stays
+        // off — those files have their own `node --test` suite and are not this project's to
+        // type-check — but `allowJs` is what lets `tsc` follow the import and infer their shapes.
+        "allowJs": true,
+        "checkJs": false,
         "skipLibCheck": true,
         "experimentalDecorators": true,
         "useDefineForClassFields": false

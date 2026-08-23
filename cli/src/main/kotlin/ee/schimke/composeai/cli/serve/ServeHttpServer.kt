@@ -1233,6 +1233,23 @@ class ServeHttpServer(
         get("/parity.json") { handleParity(sessionInPath = false, json = true) }
         get("/{system}/parity.json") { handleParity(sessionInPath = true, json = true) }
 
+        // The committed known differences (see [ServeKnownDifferences]). Two routes because the
+        // engine needs two things and neither can be folded into the page: the document as **raw
+        // text**, so `document-unreadable` and the byte cap stay reachable in the consumer that
+        // owns
+        // those verdicts, and each artifact as bytes, so the browser decodes the same PNG the
+        // offline run does rather than an `<img>` the canvas has already normalised to RGBA.
+        get("/parity/known-differences.json") { handleKnownDifferences(sessionInPath = false) }
+        get("/{system}/parity/known-differences.json") {
+          handleKnownDifferences(sessionInPath = true)
+        }
+        get("/parity/known-differences/{path...}") {
+          handleKnownDifferenceArtifact(sessionInPath = false)
+        }
+        get("/{system}/parity/known-differences/{path...}") {
+          handleKnownDifferenceArtifact(sessionInPath = true)
+        }
+
         post("/refresh") { handleCatalogRefresh(sessionInPath = false) }
         post("/{system}/refresh") { handleCatalogRefresh(sessionInPath = true) }
 
@@ -3661,6 +3678,50 @@ class ServeHttpServer(
           annotationsSelectable = frameIsReplayedBaked && renderHost.annotationsFollowBakedFrame,
           tagIndexAvailable = tagsDescribeFrame,
           tagSelectionNote = tagSelectionNote,
+          // The acceptance band, and only on a catalog that has published a document. Absent rather
+          // than empty: an empty band would appear on every comparison in every catalog, and the
+          // page would also carry the engine's bundle — the heaviest asset on it — to evaluate
+          // nothing.
+          //
+          // The scope fields are read from the SAME `reportContext` the locator is written from,
+          // not derived a second time. An acceptance matches on every recorded field, `system` and
+          // `component` included, so two spellings of one identity would let a record miss the very
+          // comparison it was authored on.
+          knownDifferences =
+            renderHost.knownDifferences()?.let {
+              val system = reportContext.system
+              val component = reportContext.componentId
+              // Both are optional on a report — a page-scoped one names neither — and **required**
+              // by an acceptance's scope, which matches on every recorded field. A comparison that
+              // cannot name its system or its component can therefore never match a record, so the
+              // band and its bundle are left off rather than evaluating a document that has nothing
+              // to say about this page.
+              if (system == null || component == null) return@let null
+              KnownDifferenceScope(
+                system = system,
+                component = component,
+                previewId = preview.id,
+                referenceId = reference.id,
+                variant = reportContext.variant,
+                overrides = overrideParams,
+                // Null when the reference publishes no digest, which is `reference-hash-missing`
+                // and a **refusal**: the fingerprint gate has nothing to compare against, and a
+                // gate
+                // that cannot have fired must not be reported as having passed.
+                referenceSha256 = reference.raster.sha256,
+                // Empty unless the published index describes the frame on screen. That is the same
+                // gate the element *picker* is behind, and for a stronger reason here: an
+                // element-scoped acceptance whose gate cannot run suppresses nothing, so handing
+                // over an index measured on a different render would report an element that never
+                // moved as moved — a false invalidation with a plausible explanation attached.
+                tagIndex =
+                  if (!tagsDescribeFrame) emptyMap()
+                  else
+                    tagIndex.mapValues { (_, entry) ->
+                      WireTagEntry(count = entry.count, bounds = entry.bounds, space = entry.space)
+                    },
+              )
+            },
           parityIssues =
             renderHost.parityIssues()?.issues.orEmpty().filter { issue ->
               preview.id in issue.previewIds ||
@@ -6054,6 +6115,83 @@ class ServeHttpServer(
         ServeAnnotationsPayload.encodeTags(previewId, renderHost.tagIndexForPreview(previewId)),
         ContentType.Application.Json,
       )
+    }
+  }
+
+  /**
+   * `GET /parity/known-differences.json` (query) and `GET /{system}/…` (path): this catalog's
+   * committed known-difference document, **verbatim**.
+   *
+   * Text, not a parsed and re-serialised object. `compose-preview-known-differences/v1`'s verdicts
+   * belong to the engine — `document-unreadable`, `document-too-large`, a duplicated id, a schema
+   * token from the future are all answers it must be able to reach — and it can only reach them if
+   * the bytes arrive intact. A host that parsed on the way out would be a third implementation of
+   * the contract with no conformance suite behind it, disagreeing about exactly the cases the
+   * contract spends its length on. See [ServeKnownDifferences].
+   *
+   * **A catalog that publishes none answers 404**, which is the opposite of what `/tags/{name}`
+   * does and deliberately so. There, an empty index is a *legal answer about a preview that
+   * exists*, so `{}` is the truth and a 404 would lose it. Here there is no document at all, and
+   * the only empty-ish body this route could invent — `{}`, or a document with an empty
+   * `acceptances` array — would be a document **this host wrote**, which the engine would then
+   * judge. `{}` is `document-unreadable`, an invented empty document is a clean bill of health, and
+   * neither is a fact about the catalog. So absence is reported as absence and the consumer skips
+   * the evaluation entirely.
+   *
+   * `no-store`, like the tag route and for the same reason: the element gate and the acceptance
+   * gates resolve this against a frame, and a document served from a cache of unknown age is a
+   * verdict about a catalog generation nobody can name.
+   */
+  private suspend fun RoutingContext.handleKnownDifferences(sessionInPath: Boolean) {
+    if (rejectBadToken()) return
+    withLeasedSession(selectedSessionId(sessionInPath)) { renderHost ->
+      call.response.headers.append(HttpHeaders.CacheControl, DYNAMIC_RESOURCE_CACHE_CONTROL)
+      when (val document = renderHost.knownDifferences()) {
+        null -> call.respondText("not found", status = HttpStatusCode.NotFound)
+        is ServeKnownDifferences.Document.Text ->
+          call.respondText(document.text, ContentType.Application.Json)
+        // Refused from the file's length rather than read, so nothing here has allocated it. 413
+        // rather than a body, because the consumer's verdict is `document-too-large` and handing it
+        // a truncated document to reach that verdict would defeat the point of the ceiling.
+        ServeKnownDifferences.Document.TooLarge ->
+          call.respondText(
+            "known-differences.json is over the ${ServeKnownDifferences.MAX_DOCUMENT_BYTES}-byte ceiling",
+            status = HttpStatusCode.PayloadTooLarge,
+          )
+      }
+    }
+  }
+
+  /**
+   * `GET /parity/known-differences/{path...}` (query) and `GET /{system}/…` (path): one acceptance
+   * artifact, as bytes.
+   *
+   * **The three failures are distinct statuses, not one 404**, because the engine turns each into a
+   * different verdict for the record: `path-not-contained`, `artifact-too-large` and
+   * `artifact-unreadable`. Collapsing them here would leave the browser unable to reach two of the
+   * three, so a traversal and a typo would report identically — and the traversal is the one worth
+   * seeing.
+   *
+   * Bytes rather than an image response the page could put in an `<img>`: the browser engine
+   * decodes this with the same PNG reader the offline run uses, because a canvas decode normalises
+   * every colour type to 8-bit RGBA and so cannot see the mask-encoding rules the contract
+   * requires.
+   */
+  private suspend fun RoutingContext.handleKnownDifferenceArtifact(sessionInPath: Boolean) {
+    if (rejectBadToken()) return
+    val requested = call.parameters.getAll("path").orEmpty().joinToString("/")
+    withLeasedSession(selectedSessionId(sessionInPath)) { renderHost ->
+      call.response.headers.append(HttpHeaders.CacheControl, DYNAMIC_RESOURCE_CACHE_CONTROL)
+      when (val artifact = renderHost.knownDifferenceArtifact(requested)) {
+        is ServeKnownDifferences.Artifact.Bytes ->
+          call.respondBytes(artifact.bytes, ContentType.Image.PNG)
+        ServeKnownDifferences.Artifact.NotContained ->
+          call.respondText("not contained", status = HttpStatusCode.Forbidden)
+        ServeKnownDifferences.Artifact.TooLarge ->
+          call.respondText("too large", status = HttpStatusCode.PayloadTooLarge)
+        ServeKnownDifferences.Artifact.Unreadable ->
+          call.respondText("not found", status = HttpStatusCode.NotFound)
+      }
     }
   }
 

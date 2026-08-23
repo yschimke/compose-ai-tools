@@ -223,6 +223,14 @@ class ServeCatalogLiveHost(
 
   override fun parityIssues(): ParityIssues? = baked.parityIssues()
 
+  // The known differences ride the baked staging dir, like the tag index and the two feeds above:
+  // they are catalog data, not render output, so a live lane has nothing different to say about
+  // them.
+  override fun knownDifferences(): ServeKnownDifferences.Document? = baked.knownDifferences()
+
+  override fun knownDifferenceArtifact(relativePath: String): ServeKnownDifferences.Artifact =
+    baked.knownDifferenceArtifact(relativePath)
+
   // The catalog's published player comparison rides the baked staging dir, so it stays reachable
   // when a live daemon fronts this session.
   override fun rcCompare(): RcCompareManifest? = baked.rcCompare()

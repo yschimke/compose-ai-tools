@@ -254,6 +254,17 @@ class ServeBundleHost(
 
   override fun parityIssues(): ParityIssues? = parityIssues
 
+  // Read per call rather than cached like the feeds above, and for the opposite reason: this is the
+  // one carried artifact the host does not parse, so there is no parsed form to cache — and the
+  // document is bounded at 1 MiB, read only by a page that is about to evaluate it, and answered by
+  // a `no-store` route. Caching the *text* would buy a file read and cost the property that a
+  // delivery-branch commit reaches a serving host within one refresh tick.
+  override fun knownDifferences(): ServeKnownDifferences.Document? =
+    ServeKnownDifferences.document(bundleDir, fileSystem)
+
+  override fun knownDifferenceArtifact(relativePath: String): ServeKnownDifferences.Artifact =
+    ServeKnownDifferences.artifact(bundleDir, relativePath, fileSystem)
+
   private val annotations = ServeAnnotationStore.load(bundleDir, fileSystem)
 
   override fun annotationsForPreview(previewId: String): List<DesignAnnotation> =

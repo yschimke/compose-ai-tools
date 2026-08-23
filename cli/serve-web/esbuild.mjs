@@ -75,6 +75,15 @@ const assets = (name) =>
 // four external consumers are unaffected, since what they depend on is the path
 // and the `window.ComposePreviewCompare` shape, both unchanged.
 //
+// `known-differences.js` is the acceptance band and the engine behind it, emitted only by the
+// focused comparison. It is the heaviest bundle here after `viewer.js` because it carries the
+// contract's whole reference implementation — the document ladder, five gates, a dependency-free
+// PNG reader and the separated-plane scorer, shared verbatim with `scripts/design-artifacts/` so the
+// browser and the offline driver cannot disagree about what an acceptance means. Folding it into
+// `serve-components.js` would put all of that on the catalog grid and the design pages; folding it
+// into `format-compare.js` would charge that file's four external consumers for a surface none of
+// them uses.
+//
 // `viewer.js` is generated for the same reason and on the same terms: same path,
 // same script tag, same position after `serve-components.js` and
 // `format-compare.js`. It stays its own bundle because only the viewer page
@@ -87,6 +96,7 @@ const BUNDLES = [
     { entry: "src/keyboardNavigation.ts", out: "keyboard-navigation.js" },
     { entry: "src/reportCapture.ts", out: "report-capture.js" },
     { entry: "src/formatCompare.ts", out: "format-compare.js" },
+    { entry: "src/knownDifferences.ts", out: "known-differences.js" },
     { entry: "src/viewer.ts", out: "viewer.js" },
 ];
 

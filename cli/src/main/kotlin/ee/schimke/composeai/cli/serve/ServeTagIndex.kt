@@ -31,9 +31,17 @@ import okio.Path.Companion.toPath
  *
  * A malformed index, an unknown schema token, or an oversized one drops **wholesale** and the
  * catalog serves exactly as before — matching [ServeAnnotationStore] and
- * [ServeDesignReferenceStore]. An acceptance that then finds no tag entry degrades to no element
- * gate, which is the safe direction: a missing gate costs a check, a wrong one produces a wrong
- * verdict.
+ * [ServeDesignReferenceStore].
+ *
+ * **What an acceptance does next is not "degrade to no element gate".** An earlier revision of this
+ * sentence said so and called it the safe direction; it is only safe if the acceptance also stops
+ * *suppressing*. An element-scoped acceptance whose gate cannot run and whose mask still joins the
+ * valid union has silently become a plain ignore rectangle — and a tagged element that has
+ * disappeared or moved goes on being hidden, which is precisely the failure the element gate was
+ * added to catch. So the outcome is defined the other way: **an element-scoped acceptance that
+ * cannot resolve its tag suppresses nothing.** The engine reaches that verdict already — an absent
+ * entry resolves to no node, which is `element-moved`, which invalidates — and
+ * `gate-element-vanished` in the conformance fixtures is what keeps both engines there.
  */
 @Serializable
 data class TagIndexManifest(

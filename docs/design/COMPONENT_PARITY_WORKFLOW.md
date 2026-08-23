@@ -2197,6 +2197,24 @@ things depending on which tool you asked. Options considered:
 `ServeParityActivityStore` (one committed fixture, two languages, both tests load it), it is cheap,
 and it fails loudly.
 
+**And where a *stronger* option turned out to be available, it was taken: the browser runs the same
+module.** The reason it was not available when this section was written is that the reference
+implementation needed `node:zlib` and `node:crypto`, so a browser could only ever have had a port.
+It does not any more — `inflate-lite.mjs` and `sha256-lite.mjs` are those two primitives written
+out, `png-lite.mjs` imports nothing a browser lacks, and a guard test pins that across the whole
+import graph. `known-differences.js` therefore bundles the implementation itself, and the browser
+cannot diverge from the offline driver at all.
+
+The alternative was decoding through an `<img>` onto a canvas, and it is worth recording why that is
+not merely slower: a canvas decode normalises **every** colour type to 8-bit RGBA, so the
+mask-encoding rules above — bit depth `8`, colour type `0`, and the palette and 16-bit masks that
+sail through a sample-only check — are invisible to it. The browser would have accepted files the
+offline engine refuses, from identical bytes, and no fixture either engine passed would have said
+so.
+
+The fixtures lose nothing by this and keep their whole job: `design-parity` is still a genuine second
+implementation, in another language and another repository, and it is what they exist to hold honest.
+
 ***Delivered.*** The contract's rules are implemented in
 [`scripts/design-artifacts/known-differences.mjs`](../../scripts/design-artifacts/known-differences.mjs),
 its document shape in
