@@ -99,7 +99,15 @@ internal object DialogWindowCapture {
   data class FixedAxisTarget(val widthPx: Int? = null, val heightPx: Int? = null) {
     internal fun applyTo(file: File) {
       if (widthPx == null && heightPx == null) return
-      resizeFixedAxesPng(file, widthPx, heightPx)
+      // A frame that won't decode is left alone rather than throwing. On the multi-frame paths
+      // this runs inside `captureDecodableFrame`'s capture lambda, and that retry only absorbs a
+      // transient Robolectric encode glitch when `FramePngReader.decode` is the thing that meets
+      // it — an `IIOException` raised *here* escapes the loop and turns a frame that would have
+      // re-encoded cleanly into an error sidecar. Skipping leaves the bad bytes on disk for the
+      // decode below to catch and re-capture, and the fresh frame gets trimmed on the next
+      // attempt. Only the decode failure is swallowed; anything else still propagates.
+      runCatching { resizeFixedAxesPng(file, widthPx, heightPx) }
+        .onFailure { if (it !is javax.imageio.IIOException) throw it }
     }
   }
 

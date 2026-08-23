@@ -4,6 +4,7 @@ import java.awt.image.BufferedImage
 import java.io.File
 import java.nio.file.Files
 import javax.imageio.ImageIO
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -115,6 +116,27 @@ class FixedAxisMotionTargetTest {
     DialogWindowCapture.FixedAxisTarget(widthPx = 337).applyTo(file)
     // The wrapped axis keeps whatever the measured crop gave it.
     assertEquals(337 to 200, decode(file))
+  }
+
+  @Test
+  fun `an undecodable frame is left for the capture retry, not thrown out of it`() {
+    // Robolectric's native backend occasionally flushes a per-frame PNG whose signature and IEND
+    // are intact but whose IDAT stream `ImageIO` refuses. `captureDecodableFrame` re-captures
+    // those — but only when `FramePngReader.decode` is what meets the bad bytes. A throw from the
+    // trim escapes that loop and writes an error sidecar for a frame that would have re-encoded
+    // cleanly, so the trim skips instead and leaves the bytes for the decode to catch.
+    val file = Files.createTempFile("corrupt", ".png").toFile()
+    file.deleteOnExit()
+    val good = png(339, 200).readBytes()
+    // Header and trailer intact, interior shredded — the shape of the real glitch.
+    val corrupt = good.copyOf()
+    for (i in 40 until corrupt.size - 12) corrupt[i] = 0
+    file.writeBytes(corrupt)
+
+    DialogWindowCapture.FixedAxisTarget(widthPx = 337, heightPx = 198).applyTo(file)
+
+    // Untouched: the retry gets the same bytes to reject, and re-captures.
+    assertArrayEquals(corrupt, file.readBytes())
   }
 
   private fun target(
