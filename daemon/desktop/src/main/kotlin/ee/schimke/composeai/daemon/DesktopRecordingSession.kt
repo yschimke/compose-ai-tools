@@ -459,8 +459,15 @@ class DesktopRecordingSession(
    * dispatched input, not just at `setUp` — a **localized** recording would re-resolve its own
    * strings at the host default from the first input onward.
    */
-  private fun renderRecordingFrame(tNanos: Long): Image =
-    RenderEngine.withPreviewLocale(state.spec.localeTag) { state.scene.render(nanoTime = tNanos) }
+  private fun renderRecordingFrame(tNanos: Long): Image {
+    // A recording runs its own clock; the engine's one-shot cursor never moves. Recording the
+    // timestamp here is what lets `layOutForSemantics` re-render at *this* frame rather than
+    // snapping an in-flight animation to the wall clock and back (issue #4470 review).
+    state.recordFrameNanos(tNanos)
+    return RenderEngine.withPreviewLocale(state.spec.localeTag) {
+      state.scene.render(nanoTime = tNanos)
+    }
+  }
 
   private fun pointerIdOrDefault(event: RecordingScriptEvent): Int = event.pointerId ?: 0
 
@@ -830,13 +837,17 @@ class DesktopRecordingSession(
    * the pixels — so a panel click also becomes a coordinate-free, layout-resilient step. Falls back
    * to the raw pixel event when no targetable node is hit (canvas / custom-drawn surfaces) so the
    * timeline still reflects what happened. Non-pointer events (keys) pass through unchanged.
+   *
+   * [screenRoot] is the semantics tree of the screen the input landed on — projected by the caller
+   * *before* dispatching, because the whole point is to name what the user aimed at rather than
+   * whatever the click then put under the pointer.
    */
-  private fun captureLiveEvent(event: RecordingScriptEvent) {
+  private fun captureLiveEvent(event: RecordingScriptEvent, screenRoot: ComposeSemanticsNode?) {
     val px = event.pixelX
     val py = event.pixelY
     val resolved =
       if (event.target == null && px != null && py != null) {
-        val handle = engine.laidOutSemanticsRoot(state)?.let { SemanticsTargets.nodeAt(it, px, py) }
+        val handle = screenRoot?.let { SemanticsTargets.nodeAt(it, px, py) }
         if (handle != null)
           event.copy(target = handle.toInputTarget(), pixelX = null, pixelY = null)
         else event
@@ -862,11 +873,25 @@ class DesktopRecordingSession(
         // [stop] result carries `scriptEvents`); the dispatch's side effects on the held scene
         // are what live mode cares about.
         val ctx = SimpleRecordingDispatchContext(tNanos = tNanos, tMs = tMs)
+        // Projected ONCE per tick, and *before* any dispatch. Two reasons, both from the #4470
+        // review. Correctness: the reverse map has to answer "what was under the pointer on the
+        // screen the user clicked", so a click that navigates away, or a scroll that slides a
+        // different item under the pointer, must not be mapped against the screen its own dispatch
+        // produced. Cost: laying out per event would put a full `scene.render()` between every
+        // queued pointer move, and a burst of them would push the recorder past its frame cadence.
+        // One projection is enough for the whole drain — nothing re-renders until the frame below,
+        // so the screen genuinely has not changed between these events.
+        var tickRoot: ComposeSemanticsNode? = null
+        var tickRootProjected = false
         while (true) {
           val next = liveInputs.poll() ?: break
           val scriptEvent = next.toScriptEvent(tMs)
+          if (!tickRootProjected) {
+            tickRoot = engine.laidOutSemanticsRoot(state)
+            tickRootProjected = true
+          }
           scriptHandlers.dispatch(scriptEvent, ctx)
-          captureLiveEvent(scriptEvent)
+          captureLiveEvent(scriptEvent, tickRoot)
         }
 
         val image = renderRecordingFrame(tNanos)
