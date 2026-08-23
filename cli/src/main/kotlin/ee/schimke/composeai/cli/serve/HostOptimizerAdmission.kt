@@ -41,6 +41,33 @@ data class OptimizerPressureThresholds(
    * where a permanent latch is not.
    */
   val maxRecoveryMillis: Long = 10 * 60_000L,
+  /**
+   * Longest a hold whose stop threshold keeps **re-tripping** may withhold admission before the
+   * gate opens for [dutyCycleMillis]. `0` restores the old permanent latch.
+   *
+   * [maxRecoveryMillis] bounds the dead band; this bounds the other permanent latch, and it is the
+   * one production actually sat in. preview.coo.ee runs 17 resident render daemons on an 8 GB box,
+   * so `MemAvailable` there is a steady 14-15% — under the 15% stop side on every sample. Nothing
+   * is recovering, so the dead-band cap never engages, and theme optimization simply never ran:
+   * `/status.json` reported `paused · memory available 15%` with `wear-m3` warmed to 5 of its 170
+   * entries across a 15-hour uptime.
+   *
+   * A steady-state reading is the host's baseline, not an emergency, and best-effort work that
+   * never runs is indistinguishable from work that was never scheduled. So the same reasoning
+   * [maxRecoveryMillis] records applies: bound the hold, admit a slice, let it trip again. What
+   * stays permanent is a genuine emergency — see [dutyCycleFloorMemoryAvailableFraction].
+   */
+  val starvationCapMillis: Long = 30 * 60_000L,
+  /** How long the gate stays open once [starvationCapMillis] is exhausted. `0` disables the cap. */
+  val dutyCycleMillis: Long = 60_000L,
+  /**
+   * Memory headroom below which the duty cycle never opens, whatever the hold has cost.
+   *
+   * The stop side (15%) is "back off"; this is "the next allocation may be the one that OOM-kills
+   * the replica". A host there keeps the permanent latch, because slow progress is not worth a
+   * killed server.
+   */
+  val dutyCycleFloorMemoryAvailableFraction: Double = 0.05,
 ) {
   companion object {
     /**
@@ -68,6 +95,12 @@ data class OptimizerPressureThresholds(
         sampleIntervalMillis =
           millis("optimizerSampleIntervalMillis") ?: defaults.sampleIntervalMillis,
         maxRecoveryMillis = millis("optimizerMaxRecoveryMillis") ?: defaults.maxRecoveryMillis,
+        starvationCapMillis =
+          millis("optimizerStarvationCapMillis") ?: defaults.starvationCapMillis,
+        dutyCycleMillis = millis("optimizerDutyCycleMillis") ?: defaults.dutyCycleMillis,
+        dutyCycleFloorMemoryAvailableFraction =
+          fraction("optimizerDutyCycleFloorMemoryAvailableFraction")
+            ?: defaults.dutyCycleFloorMemoryAvailableFraction,
       )
     }
 
@@ -107,6 +140,12 @@ data class OptimizerPressureSnapshot(
   val cpuUtilization: Double? = null,
   val memoryAvailableFraction: Double? = null,
   val sampledAtEpochMillis: Long? = null,
+  /** How long the current uninterrupted hold has withheld admission, or null when open. */
+  val heldMillis: Long? = null,
+  /** Set while the starvation cap has opened the gate on a host that is still over a threshold. */
+  val dutyCycleUntilEpochMillis: Long? = null,
+  /** How many times the starvation cap has had to open this gate since the server started. */
+  val dutyCycles: Int = 0,
 )
 
 /**
@@ -119,6 +158,12 @@ data class OptimizerPressureSnapshot(
  * Because the stop and resume sides differ, a reading can settle between them and satisfy neither.
  * [OptimizerPressureThresholds.maxRecoveryMillis] bounds how long that costs: hysteresis delays
  * resumption, and this is what stops it preventing resumption outright.
+ *
+ * A reading that stays on the *stop* side is the other way a hold becomes permanent, and it is the
+ * one a busy host reaches by simply being busy. [OptimizerPressureThresholds.starvationCapMillis]
+ * bounds that one the same way: after the cap the gate opens for a bounded window, then holds
+ * again. Only a host under [OptimizerPressureThresholds.dutyCycleFloorMemoryAvailableFraction]
+ * keeps the latch.
  */
 class OptimizerPressureGate(
   private val sample: () -> HostResourceSample?,
@@ -136,12 +181,33 @@ class OptimizerPressureGate(
   /** When the current hold last saw every stop threshold clear — the [maxRecoveryMillis] anchor. */
   private var recoveringSince = Long.MIN_VALUE
 
+  /** Whether the pressure logic itself wants to hold, before the starvation cap has its say. */
+  private var held = false
+
+  /**
+   * When the next concession is measured from — moved to the end of each window the cap opens, and
+   * to the moment a window is cut short, so the cap always means "at most this long without one".
+   */
+  private var capAnchor = Long.MIN_VALUE
+
+  /** When the current uninterrupted hold began. Reporting only — `heldMillis` on `/status.json`. */
+  private var holdStartedAt = Long.MIN_VALUE
+
+  /** End of the window the starvation cap has opened, or [Long.MIN_VALUE] when not duty-cycling. */
+  private var dutyCycleUntil = Long.MIN_VALUE
+
+  private var dutyCycles = 0
+
+  /** What was over a stop threshold on the previous sample — the [newlyTripped] baseline. */
+  private var lastTripped = emptySet<PressureSignal>()
+
   fun snapshot(): OptimizerPressureSnapshot =
     synchronized(lock) {
       val now = clock()
-      if (now < nextSampleAt) return@synchronized cached
+      if (now < nextSampleAt) return@synchronized cachedClosingExpiredDutyCycle(now)
       nextSampleAt = now + thresholds.sampleIntervalMillis.coerceAtLeast(0L)
-      val current = runCatching(sample).getOrNull() ?: return@synchronized cached
+      val current =
+        runCatching(sample).getOrNull() ?: return@synchronized cachedClosingExpiredDutyCycle(now)
       val tripped = buildList {
         current.loadPerCpu
           ?.takeIf { it >= thresholds.stopLoadPerCpu }
@@ -156,13 +222,24 @@ class OptimizerPressureGate(
       // Only what actually stopped us has to come back: a hold taken for memory should not also
       // wait on a CPU reading that never crossed its own stop threshold.
       val safe = trippedBy.all { it.recovered(current, thresholds) }
-      val constrained =
+      // What is over a stop threshold *right now*, and what was over one on the previous sample.
+      // The difference is what has to cut a duty cycle short. Comparing against `trippedBy` would
+      // not do: that set accumulates for the life of the hold, so a signal that tripped once, went
+      // quiet, and spiked again while memory kept the hold alive would read as "already tripped"
+      // and buy the rest of the window.
+      val activeSignals = tripped.map { it.first }.toSet()
+      val newlyTripped = activeSignals - lastTripped
+      lastTripped = activeSignals
+      val holding =
         if (tripped.isNotEmpty()) {
           trippedBy = trippedBy + tripped.map { it.first }
           safeSince = Long.MIN_VALUE
           recoveringSince = Long.MIN_VALUE
           true
-        } else if (!cached.constrained) {
+        } else if (!held) {
+          // `held`, not the published `constrained`: a starvation duty cycle publishes an open gate
+          // while the hold is still on, and reading that back would end the hold without the quiet
+          // window it is owed.
           false
         } else {
           // Nothing is over a stop threshold any more, so the hold is now bounded either way:
@@ -180,27 +257,141 @@ class OptimizerPressureGate(
             }
           !quiet && !recoveryExhausted
         }
-      if (!constrained) {
+      if (holding) {
+        if (!held) {
+          holdStartedAt = now
+          capAnchor = now
+        }
+      } else {
         trippedBy = emptySet()
         safeSince = Long.MIN_VALUE
         recoveringSince = Long.MIN_VALUE
+        holdStartedAt = Long.MIN_VALUE
+        capAnchor = Long.MIN_VALUE
+        dutyCycleUntil = Long.MIN_VALUE
       }
+      held = holding
+      val constrained = holding && !dutyCycling(current, now, newlyTripped)
       cached =
         OptimizerPressureSnapshot(
           constrained = constrained,
           reason =
             when {
+              !holding -> null
               tripped.isNotEmpty() -> tripped.joinToString(", ") { it.second }
-              constrained -> recoveringReason(current)
-              else -> null
+              else -> recoveringReason(current)
             },
           loadPerCpu = current.loadPerCpu,
           cpuUtilization = current.cpuUtilization,
           memoryAvailableFraction = current.memoryAvailableFraction,
           sampledAtEpochMillis = now,
+          heldMillis = heldMillis(now, holding),
+          dutyCycleUntilEpochMillis = dutyCycleUntil.takeIf { it > now },
+          dutyCycles = dutyCycles,
         )
       cached
     }
+
+  /**
+   * The cached snapshot, with an elapsed duty-cycle window closed first.
+   *
+   * Both paths that reuse [cached] — inside the sample interval, and when sampling fails outright —
+   * would otherwise publish an open gate for as long as they last. Inside the sample interval that
+   * is at most one interval; when `/proc` stops being readable it is forever, and the 60-second
+   * window becomes a permanent admission of optimizer work under pressure nobody can see any more.
+   * The window is a *bounded* concession, so it expires on the clock rather than on the next
+   * successful reading.
+   */
+  private fun cachedClosingExpiredDutyCycle(now: Long): OptimizerPressureSnapshot {
+    if (!held || dutyCycleUntil == Long.MIN_VALUE || now < dutyCycleUntil) return cached
+    closeWindow(at = dutyCycleUntil)
+    // `heldMillis` is recomputed rather than carried over: the cached value was taken while the
+    // window was open, and republishing it would report a gate that has been shut for hours as
+    // having withheld admission for however long it had at the moment the sampler died.
+    cached =
+      cached.copy(
+        constrained = true,
+        dutyCycleUntilEpochMillis = null,
+        heldMillis = heldMillis(now, holding = true),
+      )
+    return cached
+  }
+
+  /** How long the current hold has withheld admission, or null when the gate is not holding. */
+  private fun heldMillis(now: Long, holding: Boolean): Long? =
+    if (holding && holdStartedAt != Long.MIN_VALUE) (now - holdStartedAt).coerceAtLeast(0L)
+    else null
+
+  /**
+   * Ends the open window, if any, and re-arms the cap from [at].
+   *
+   * A window cut short — by new pressure, or by memory dropping under the floor — must not leave
+   * the next concession measured from the end it never reached: that would withhold admission for
+   * up to `starvationCapMillis + dutyCycleMillis`, which is not what the cap says it does. So a
+   * live window closes at `now`.
+   *
+   * A window that simply *elapsed* is the other case, and it anchors at its scheduled end even when
+   * nothing observed the expiry until later: the concession was served in full, and a sampler that
+   * went blind for the next nine seconds is not a reason to charge the host another cap for them.
+   */
+  private fun closeWindow(at: Long) {
+    if (dutyCycleUntil == Long.MIN_VALUE) return
+    dutyCycleUntil = Long.MIN_VALUE
+    capAnchor = at
+  }
+
+  /**
+   * Whether the starvation cap should let this held gate through right now.
+   *
+   * Opens a [OptimizerPressureThresholds.dutyCycleMillis] window once a hold has withheld admission
+   * for [OptimizerPressureThresholds.starvationCapMillis], then re-arms: hold, admit a slice, hold
+   * again. The window is closed early — and never opened — while memory sits under (or cannot be
+   * read against) [OptimizerPressureThresholds.dutyCycleFloorMemoryAvailableFraction], so the one
+   * case that can actually kill the server keeps the permanent latch; and closed early when a
+   * signal that was not already holding crosses its stop threshold, so the concession never covers
+   * pressure it did not answer for.
+   *
+   * The reason string keeps naming the reading that is holding, because it still is: a duty cycle
+   * is progress *despite* the pressure, not an all-clear. `dutyCycles` on `/status.json` is what
+   * says the host has been running on it.
+   */
+  private fun dutyCycling(
+    sample: HostResourceSample,
+    now: Long,
+    newlyTripped: Set<PressureSignal>,
+  ): Boolean {
+    // A zero-length window admits nothing, so it is not a duty cycle — counting one would leave
+    // `/status.json` reporting concessions the gate never made. Both knobs disable the cap.
+    if (thresholds.starvationCapMillis <= 0L || thresholds.dutyCycleMillis <= 0L) return false
+    // `dutyCycleUntil` means "a window is live", and it has to be retired the moment one elapses:
+    // the two early closes below anchor at `now` because they are cutting a live window short, and
+    // a stale marker makes them do that to a window that already ran its course — re-anchoring a
+    // cap that was correctly anchored at the window's end when it opened.
+    if (dutyCycleUntil != Long.MIN_VALUE && now >= dutyCycleUntil) closeWindow(at = dutyCycleUntil)
+    // An unknown memory reading is not a safe one. `LinuxHostResourceSampler` returns a partial
+    // sample when `/proc/meminfo` is unreadable but load and CPU are not, and a load hold would
+    // then earn a concession with the OOM floor unverified. A host that never reports memory keeps
+    // the permanent latch, which is the conservative half of that trade.
+    val headroom = sample.memoryAvailableFraction
+    if (headroom == null || headroom < thresholds.dutyCycleFloorMemoryAvailableFraction) {
+      closeWindow(at = now)
+      return false
+    }
+    // "A high reading stops admission immediately" is the gate's contract, and an open window must
+    // not buy a *different* signal up to `dutyCycleMillis` of grace. The signal that earned the
+    // concession may stay over its threshold — that is the whole point — but a new one closes it.
+    if (newlyTripped.isNotEmpty()) {
+      closeWindow(at = now)
+      return false
+    }
+    if (now < dutyCycleUntil) return true
+    if (capAnchor == Long.MIN_VALUE) return false
+    if (now - capAnchor < thresholds.starvationCapMillis) return false
+    dutyCycleUntil = now + thresholds.dutyCycleMillis
+    capAnchor = dutyCycleUntil
+    dutyCycles++
+    return true
+  }
 
   /**
    * Why a hold with no reading over a stop threshold is still held.

@@ -29,19 +29,38 @@ inside it. Vendoring is the only way to depend on it.
 to the androidx.dev snapshot line — **now ships the embedded player itself**: 138 class files under
 `androidx/compose/remote/player/compose/embedded/`, the very package these sources are vendored into.
 
-Eight of them collide by fully-qualified name with the vendored copies:
+**45 of the 56 files vendored here collide by fully-qualified name** — measured against build
+`16130474`, the snapshot `settings.gradle.kts` pins today, by comparing the top-level names in this
+source tree against the classes in that artifact. That is the whole player, not a fringe: `RcPlayer`,
+every layout and modifier file, `RcPlayerDrawing`, `RcPlayerPaint`, `ExperimentalRemoteDocumentPlayer`
+— and `AndroidColorThemeResolver`, which is one of the local modifications below (the theme-fallback
+fix). So which bytes run is decided by classpath ordering, not by this directory: if the upstream
+class wins, the local delta silently is not there, and the embedded lane's pixels change with nothing
+in any log to say why.
+
+**Since 22 Aug 2026 it is no longer silent — it takes a catalog's live render lane down.** Upstream
+reshaped the entry point itself: `ExperimentalRemoteDocumentPlayer` moved `theme` to the end, added a
+`customPlugins: CustomPluginRegistry?` parameter, and (unlike the copy here) kept `autoUpdate`
+removed — so the descriptor the connector compiles against does not exist on the upstream class. With
+upstream's copy first on the classpath, every `remote-m3` render on preview.coo.ee died with
 
 ```
-AndroidColorThemeResolver     GraphContext         RcImageLoader
-DrawablePainter               GraphPaintContext    RemoteImageSupport
-EmbeddedPlayerTypefaceResolver                     SnapshotRemoteComposeState
+render failed: NoSuchMethodError: 'void androidx.compose.remote.player.compose.embedded
+  .ExperimentalRemoteDocumentPlayerKt.ExperimentalRemoteDocumentPlayer(RemoteDocument, Modifier,
+  int, ObjectIntMap, RcImageLoader, Function1, Function2, Function3, Composer, int, int)'
 ```
 
-**`AndroidColorThemeResolver` is on that list, and it is one of the local modifications below** —
-the theme-fallback fix. So which bytes run is decided by classpath ordering, not by this directory:
-if the upstream class wins, the local delta silently is not there, and the embedded lane's pixels
-change with nothing in any log to say why. `:samples:remotecompose:assembleDebug` still *builds*
-(measured), so there is no error to notice either.
+and `serve` — correctly — treats a `NoSuchMethodError` as non-recoverable and disables the catalog's
+whole live render lane, falling back to baked PNGs.
+`:samples:remotecompose:assembleDebug` still *builds*, so the compile says nothing about any of this.
+
+The connector no longer takes the class's presence as proof it can be called:
+`isEmbeddedPlayerAvailable`
+([`RemoteComposeIrReplay.kt`](../../data/remotecompose/connector/src/main/kotlin/ee/schimke/composeai/daemon/RemoteComposeIrReplay.kt))
+resolves the exact entry point and falls back to the View-backed player when it is absent, so a
+shadowed classpath degrades instead of killing the lane. That is a seatbelt, not the fix — the
+embedded lane is *unavailable* on such a classpath, which is why the decision below still has to be
+made.
 
 Reproduce the overlap:
 

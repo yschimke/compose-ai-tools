@@ -5198,8 +5198,22 @@ class ServeHttpServer(
      */
     private fun optimizerGateText(admission: ThemeOptimizerAdmissionSnapshot): String {
       val needs = "needs ${admission.idleThresholdMillis / 1000}s quiet"
+      // A host whose steady state sits on a stop threshold runs on the starvation cap's bounded
+      // windows rather than on an open gate. Without saying so, `/status` reads as an ordinary
+      // healthy gate that just happens to make very slow progress. Appended rather than returned
+      // early, because the quiet gate still has its own say: a duty cycle answers host pressure,
+      // not "is the server idle".
+      val pressure = admission.pressure
+      val cycles = pressure?.dutyCycles ?: 0
+      val dutyCycles =
+        when {
+          pressure?.dutyCycleUntilEpochMillis != null ->
+            " · duty cycle $cycles" + (pressure.reason?.let { " · $it" } ?: "")
+          cycles > 0 -> " · ${countLabel(cycles, "duty cycle")}"
+          else -> ""
+        }
       if (admission.paused) {
-        return "paused" + (admission.pauseReason?.let { " · $it" } ?: "")
+        return "paused" + (admission.pauseReason?.let { " · $it" } ?: "") + dutyCycles
       }
       val idle =
         admission.serverIdleMillis
@@ -5215,10 +5229,10 @@ class ServeHttpServer(
                 ServeBackgroundWork.IDLE_BLOCKED_BY_CATALOG_LOAD -> "catalogs loading"
                 else -> "server busy"
               }
-            return "closed · $why · $needs"
+            return "closed · $why · $needs$dutyCycles"
           }
       val open = idle >= admission.idleThresholdMillis
-      return "${if (open) "open" else "closed"} · idle ${idle / 1000}s · $needs"
+      return "${if (open) "open" else "closed"} · idle ${idle / 1000}s · $needs$dutyCycles"
     }
 
     fun toResponse(): StatusResponse {
