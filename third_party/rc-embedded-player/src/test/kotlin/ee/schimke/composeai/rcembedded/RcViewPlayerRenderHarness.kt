@@ -24,12 +24,12 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.remote.player.compose.RemoteDocumentPlayer
-import androidx.compose.remote.player.compose.embedded.enableEncodedImageReferences
 import androidx.compose.remote.player.core.RemoteDocument
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import ee.schimke.composeai.rcembedded.player.enableEncodedImageReferences
 import java.io.File
 import kotlinx.serialization.json.Json
 import org.junit.Assume.assumeTrue

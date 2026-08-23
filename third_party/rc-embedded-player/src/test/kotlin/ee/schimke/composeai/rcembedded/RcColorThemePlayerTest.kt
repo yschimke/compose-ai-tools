@@ -31,12 +31,12 @@ import androidx.compose.remote.creation.RemoteComposeWriter
 import androidx.compose.remote.creation.modifiers.RecordingModifier
 import androidx.compose.remote.creation.profile.RcPlatformProfiles
 import androidx.compose.remote.player.compose.RemoteDocumentPlayer
-import androidx.compose.remote.player.compose.embedded.ExperimentalRemoteDocumentPlayer
 import androidx.compose.remote.player.core.RemoteDocument
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import ee.schimke.composeai.rcembedded.player.ExperimentalRemoteDocumentPlayer
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test

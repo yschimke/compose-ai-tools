@@ -52,71 +52,71 @@ plugins {
 val sharedPlayerSources =
   listOf(
     // Reflective `CoreDocument` accessors + the document data model — plain `remote-core` types.
-    "androidx/compose/remote/player/compose/embedded/CoreDataAccessors.kt",
-    "androidx/compose/remote/player/compose/embedded/CoreDataModel.kt",
+    "ee/schimke/composeai/rcembedded/player/CoreDataAccessors.kt",
+    "ee/schimke/composeai/rcembedded/player/CoreDataModel.kt",
     // Snapshot-backed store: `RemoteComposeState` over Compose's `SnapshotStateMap`.
-    "androidx/compose/remote/player/compose/embedded/SnapshotRemoteComposeState.kt",
+    "ee/schimke/composeai/rcembedded/player/SnapshotRemoteComposeState.kt",
     // The platform-neutral `RemoteContext` — ported from `AndroidRemoteContext` minus `loadBitmap`.
-    "androidx/compose/remote/player/compose/embedded/StoreBackedRemoteContext.kt",
+    "ee/schimke/composeai/rcembedded/player/StoreBackedRemoteContext.kt",
     // `ColorTheme` index -> `android.R.color` name table, plus the light/dark mode resolution both
     // players share. Neutral: it names resources and resolves indices through a caller-supplied
     // lookup, and never touches `Resources` itself — which is what lets this lane behave correctly
     // (fallbacks, and a mode that was actually chosen) with no system palette to read.
-    "androidx/compose/remote/player/compose/embedded/ColorThemeResolution.kt",
+    "ee/schimke/composeai/rcembedded/player/ColorThemeResolution.kt",
     // Opaque image-loader handle, so the evaluator can carry one without naming `Drawable`.
-    "androidx/compose/remote/player/compose/embedded/RcImageSource.kt",
+    "ee/schimke/composeai/rcembedded/player/RcImageSource.kt",
     // The expression evaluator itself, and the composition locals the state path reads.
-    "androidx/compose/remote/player/compose/embedded/GraphContext.kt",
+    "ee/schimke/composeai/rcembedded/player/GraphContext.kt",
     // The draw-nothing `PaintContext` the evaluator hands to value-producing paint operations
     // (`ColorAttribute`). Neutral: it subclasses the `remote-core` abstract class and every member
     // is a no-op, so there is no canvas of any kind to name.
-    "androidx/compose/remote/player/compose/embedded/GraphPaintContext.kt",
-    "androidx/compose/remote/player/compose/embedded/RcPlayerCompositionLocals.kt",
+    "ee/schimke/composeai/rcembedded/player/GraphPaintContext.kt",
+    "ee/schimke/composeai/rcembedded/player/RcPlayerCompositionLocals.kt",
     // Core easing constant -> Compose easing; split out of `RcPlayer.kt` so the expression
     // evaluator below doesn't inherit that file's Android coupling for a six-line `when`.
-    "androidx/compose/remote/player/compose/embedded/RcPlayerEasing.kt",
+    "ee/schimke/composeai/rcembedded/player/RcPlayerEasing.kt",
     // The `rememberRemote*AsState` family, and the expression/animation evaluator behind it.
-    "androidx/compose/remote/player/compose/embedded/state/RcPlayerState.kt",
-    "androidx/compose/remote/player/compose/embedded/state/RcPlayerExpression.kt",
+    "ee/schimke/composeai/rcembedded/player/state/RcPlayerState.kt",
+    "ee/schimke/composeai/rcembedded/player/state/RcPlayerExpression.kt",
     // The canvas text seam's vocabulary: the paint projection the four text functions take, and the
     // ink-bounds carrier they return. Neutral values, so both halves share this one rather than
     // agreeing on two copies of it.
-    "androidx/compose/remote/player/compose/embedded/RcPlayerTextPaintSpec.kt",
+    "ee/schimke/composeai/rcembedded/player/RcPlayerTextPaintSpec.kt",
     // ---- the draw path (import-clean via the text + image seams) --------------------------------
     // The op interpreter and paint decoder, plus the component-tree dispatch split out of RcPlayer.
-    "androidx/compose/remote/player/compose/embedded/RcPlayerDrawing.kt",
-    "androidx/compose/remote/player/compose/embedded/RcPlayerPaint.kt",
-    "androidx/compose/remote/player/compose/embedded/RcPlayerDispatch.kt",
-    "androidx/compose/remote/player/compose/embedded/RcPlayerCanvas.kt",
-    "androidx/compose/remote/player/compose/embedded/RcPlayerModifiers.kt",
-    "androidx/compose/remote/player/compose/embedded/RcPlayerDensity.kt",
+    "ee/schimke/composeai/rcembedded/player/RcPlayerDrawing.kt",
+    "ee/schimke/composeai/rcembedded/player/RcPlayerPaint.kt",
+    "ee/schimke/composeai/rcembedded/player/RcPlayerDispatch.kt",
+    "ee/schimke/composeai/rcembedded/player/RcPlayerCanvas.kt",
+    "ee/schimke/composeai/rcembedded/player/RcPlayerModifiers.kt",
+    "ee/schimke/composeai/rcembedded/player/RcPlayerDensity.kt",
     // Custom (host-extension) components: schemas, the property reader, the plugin registry, and
     // the
     // dispatch leaf. All neutral Compose + remote-core — the host supplies the actual rendering.
-    "androidx/compose/remote/player/compose/embedded/RcPlayerCustom.kt",
+    "ee/schimke/composeai/rcembedded/player/RcPlayerCustom.kt",
     // Per-layout composables (the neutral ones; text/image/custom get jvm siblings, see below).
-    "androidx/compose/remote/player/compose/embedded/layout/RcPlayerBoxLayout.kt",
-    "androidx/compose/remote/player/compose/embedded/layout/RcPlayerColumnLayout.kt",
-    "androidx/compose/remote/player/compose/embedded/layout/RcPlayerRowLayout.kt",
-    "androidx/compose/remote/player/compose/embedded/layout/RcPlayerFitBoxLayout.kt",
-    "androidx/compose/remote/player/compose/embedded/layout/RcPlayerStateLayout.kt",
-    "androidx/compose/remote/player/compose/embedded/layout/RcPlayerCollapsibleLayout.kt",
-    "androidx/compose/remote/player/compose/embedded/layout/RcPlayerLayoutAlignment.kt",
+    "ee/schimke/composeai/rcembedded/player/layout/RcPlayerBoxLayout.kt",
+    "ee/schimke/composeai/rcembedded/player/layout/RcPlayerColumnLayout.kt",
+    "ee/schimke/composeai/rcembedded/player/layout/RcPlayerRowLayout.kt",
+    "ee/schimke/composeai/rcembedded/player/layout/RcPlayerFitBoxLayout.kt",
+    "ee/schimke/composeai/rcembedded/player/layout/RcPlayerStateLayout.kt",
+    "ee/schimke/composeai/rcembedded/player/layout/RcPlayerCollapsibleLayout.kt",
+    "ee/schimke/composeai/rcembedded/player/layout/RcPlayerLayoutAlignment.kt",
     // Component modifiers — all neutral Compose modifier factories.
-    "androidx/compose/remote/player/compose/embedded/modifier/AlignByModifier.kt",
-    "androidx/compose/remote/player/compose/embedded/modifier/BackgroundModifier.kt",
-    "androidx/compose/remote/player/compose/embedded/modifier/BorderModifier.kt",
-    "androidx/compose/remote/player/compose/embedded/modifier/ClickModifier.kt",
-    "androidx/compose/remote/player/compose/embedded/modifier/ClipModifier.kt",
-    "androidx/compose/remote/player/compose/embedded/modifier/GraphicsLayerModifier.kt",
-    "androidx/compose/remote/player/compose/embedded/modifier/HeightModifier.kt",
-    "androidx/compose/remote/player/compose/embedded/modifier/MarqueeModifier.kt",
-    "androidx/compose/remote/player/compose/embedded/modifier/OffsetModifier.kt",
-    "androidx/compose/remote/player/compose/embedded/modifier/PaddingModifier.kt",
-    "androidx/compose/remote/player/compose/embedded/modifier/RippleModifier.kt",
-    "androidx/compose/remote/player/compose/embedded/modifier/ScrollModifier.kt",
-    "androidx/compose/remote/player/compose/embedded/modifier/WidthModifier.kt",
-    "androidx/compose/remote/player/compose/embedded/modifier/ZIndexModifier.kt",
+    "ee/schimke/composeai/rcembedded/player/modifier/AlignByModifier.kt",
+    "ee/schimke/composeai/rcembedded/player/modifier/BackgroundModifier.kt",
+    "ee/schimke/composeai/rcembedded/player/modifier/BorderModifier.kt",
+    "ee/schimke/composeai/rcembedded/player/modifier/ClickModifier.kt",
+    "ee/schimke/composeai/rcembedded/player/modifier/ClipModifier.kt",
+    "ee/schimke/composeai/rcembedded/player/modifier/GraphicsLayerModifier.kt",
+    "ee/schimke/composeai/rcembedded/player/modifier/HeightModifier.kt",
+    "ee/schimke/composeai/rcembedded/player/modifier/MarqueeModifier.kt",
+    "ee/schimke/composeai/rcembedded/player/modifier/OffsetModifier.kt",
+    "ee/schimke/composeai/rcembedded/player/modifier/PaddingModifier.kt",
+    "ee/schimke/composeai/rcembedded/player/modifier/RippleModifier.kt",
+    "ee/schimke/composeai/rcembedded/player/modifier/ScrollModifier.kt",
+    "ee/schimke/composeai/rcembedded/player/modifier/WidthModifier.kt",
+    "ee/schimke/composeai/rcembedded/player/modifier/ZIndexModifier.kt",
   )
 
 /**
@@ -130,27 +130,27 @@ val sharedPlayerSources =
  */
 val jvmPlayerSources =
   listOf(
-    "androidx/compose/remote/player/compose/embedded/RcPlayerTextPlatformJvm.kt",
+    "ee/schimke/composeai/rcembedded/player/RcPlayerTextPlatformJvm.kt",
     // The jvm draw RemoteContext — StoreBackedRemoteContext + a skiko `loadBitmap` decode, the one
     // platform-bound member of the contract. Written here, so it names skiko rather than the SDK.
-    "androidx/compose/remote/player/compose/embedded/JvmRemoteContext.kt",
+    "ee/schimke/composeai/rcembedded/player/JvmRemoteContext.kt",
     // jvm halves of the three Android-only draw seams the shared draw path calls: image decode over
     // skiko, and no-op stubs for the deferred AGSL shaders and particles.
-    "androidx/compose/remote/player/compose/embedded/RcPlayerImagePlatformJvm.kt",
-    "androidx/compose/remote/player/compose/embedded/RcPlayerShadersJvm.kt",
-    "androidx/compose/remote/player/compose/embedded/RcPlayerParticlesJvm.kt",
+    "ee/schimke/composeai/rcembedded/player/RcPlayerImagePlatformJvm.kt",
+    "ee/schimke/composeai/rcembedded/player/RcPlayerShadersJvm.kt",
+    "ee/schimke/composeai/rcembedded/player/RcPlayerParticlesJvm.kt",
     // Vendored path utilities the draw path calls (core PathData -> Compose Path). Neutral upstream
     // source that ships only inside the `remote-player-compose` AAR a kotlin(jvm) module can't
     // consume, so it's vendored here; FloatsToPath swaps the conic op to skiko. See those files.
-    "androidx/compose/remote/player/compose/utils/PathUtils.kt",
-    "androidx/compose/remote/player/compose/utils/FloatsToPath.kt",
+    "ee/schimke/composeai/rcembedded/player/utils/PathUtils.kt",
+    "ee/schimke/composeai/rcembedded/player/utils/FloatsToPath.kt",
     // jvm halves of the two per-layout composables whose Android originals name framework types:
     // the
     // text seam (google:/device: fonts -> nearest standard family) and the image layout (the
     // `Drawable` host loader -> the embedded `ImageBitmap` decode). Different filenames from their
     // Android siblings so the per-relative-path `include` can't pull both in. See those files.
-    "androidx/compose/remote/player/compose/embedded/RcPlayerTextLayoutJvm.kt",
-    "androidx/compose/remote/player/compose/embedded/layout/RcPlayerImageLayoutJvm.kt",
+    "ee/schimke/composeai/rcembedded/player/RcPlayerTextLayoutJvm.kt",
+    "ee/schimke/composeai/rcembedded/player/layout/RcPlayerImageLayoutJvm.kt",
   )
 
 kotlin {

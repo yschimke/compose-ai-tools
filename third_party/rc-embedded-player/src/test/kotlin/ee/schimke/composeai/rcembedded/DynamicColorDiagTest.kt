@@ -23,10 +23,10 @@ import androidx.compose.remote.core.RemoteComposeBuffer
 import androidx.compose.remote.core.VariableProvider
 import androidx.compose.remote.core.operations.layout.Container
 import androidx.compose.remote.core.operations.layout.LayoutComponent
-import androidx.compose.remote.player.compose.embedded.buildComputedOpIndex
-import androidx.compose.remote.player.compose.embedded.enableEncodedImageReferences
-import androidx.compose.remote.player.compose.embedded.getOperationsReflection
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import ee.schimke.composeai.rcembedded.player.buildComputedOpIndex
+import ee.schimke.composeai.rcembedded.player.enableEncodedImageReferences
+import ee.schimke.composeai.rcembedded.player.getOperationsReflection
 import java.io.ByteArrayInputStream
 import java.io.File
 import kotlinx.serialization.json.Json

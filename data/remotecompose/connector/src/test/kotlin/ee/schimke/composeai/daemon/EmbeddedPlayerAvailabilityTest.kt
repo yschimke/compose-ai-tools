@@ -10,13 +10,15 @@ import org.junit.Test
 /**
  * Pins the embedded-player availability gate.
  *
- * The gate exists because two different artifacts now define
- * `androidx.compose.remote.player.compose.embedded.*`: the vendored
- * `:third-party-rc-embedded-player` and — from androidx-main build 16130474 —
- * `androidx.compose.remote:remote-player-compose` itself. Their `ExperimentalRemoteDocumentPlayer`
- * signatures differ, so a class-presence check answers "yes" on a classpath where the call this
- * module compiled to does not resolve, and the render dies with a `NoSuchMethodError` that `serve`
- * treats as fatal for the whole catalog render lane.
+ * The gate answers "did the consumer ship `:third-party-rc-embedded-player`". It resolves the entry
+ * point *method* rather than the class, because the two are not the same question and the gap
+ * between them cost a production render lane: while the vendored player still lived in
+ * `androidx.compose.remote.player.compose.embedded`, androidx-main build 16130474 began publishing
+ * an embedded player of its own into that package, `Class.forName` returned upstream's class, and
+ * the render died with a `NoSuchMethodError` that `serve` treats as fatal for the whole catalog
+ * render lane. The player has since moved to `ee.schimke.composeai.rcembedded.player`, which nobody
+ * else publishes into, so shadowing cannot recur — this stays as the seatbelt for a re-vendor whose
+ * entry point drifts.
  *
  * [`signature pin matches the call site this module compiles`] is the load-bearing one: it reads
  * the compiled call site's own constant pool, so the pinned parameter list cannot silently drift

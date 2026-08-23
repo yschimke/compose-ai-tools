@@ -184,9 +184,9 @@ class PlatformNeutralSourcesTest {
   }
 
   /**
-   * Locates `src/main/kotlin/androidx/compose/remote/player/compose/embedded`, walking up from the
-   * working directory so the test does not depend on which directory Gradle runs it from. Failing
-   * to find it fails the test — a guard that silently finds no files to check is worse than none.
+   * Locates `src/main/kotlin/ee.schimke.composeai.rcembedded.player`, walking up from the working
+   * directory so the test does not depend on which directory Gradle runs it from. Failing to find
+   * it fails the test — a guard that silently finds no files to check is worse than none.
    */
   private fun playerSourceRoot(): File {
     val suffix = "src/main/kotlin/${PLAYER_PACKAGE.replace('.', '/')}"
@@ -200,7 +200,7 @@ class PlatformNeutralSourcesTest {
   }
 
   private companion object {
-    const val PLAYER_PACKAGE = "androidx.compose.remote.player.compose.embedded"
+    const val PLAYER_PACKAGE = "ee.schimke.composeai.rcembedded.player"
     val PLAYER_PATH = PLAYER_PACKAGE.replace('.', '/')
 
     /**
