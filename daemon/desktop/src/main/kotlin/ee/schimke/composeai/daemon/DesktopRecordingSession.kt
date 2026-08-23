@@ -127,6 +127,19 @@ class DesktopRecordingSession(
 
   @Volatile private var maxMeasuredHeightPx: Int = 0
 
+  /**
+   * The size the scene actually rendered at, observed rather than recomputed.
+   *
+   * [sceneWidthPx] is a prediction from the spec, and it can be wrong: `composePreviewSceneSize`
+   * also folds in `PreviewSizeBounds`, so a preview with a `minWidthPx` larger than its sandbox
+   * composes bigger than `widthPx + gutter`. Reading it off the frame keeps the fixed-axis and
+   * `fillMax*` clauses honest for those previews, and lets the no-op check below compare against
+   * what is genuinely on disk. Falls back to the prediction when nothing rendered at all.
+   */
+  @Volatile private var renderedSceneWidthPx: Int = 0
+
+  @Volatile private var renderedSceneHeightPx: Int = 0
+
   // Live mode bookkeeping: wall-clock anchor + frame counter. Both written only by the tick
   // thread (with frameCount also read by stop() after the join).
   @Volatile private var liveStartNs: Long = 0L
@@ -481,10 +494,12 @@ class DesktopRecordingSession(
    * Fold this frame's measure pass into the running maximum. Called after every render, because a
    * wrap-content component can be a different size on any frame — see [maxMeasuredWidthPx].
    */
-  private fun observeMeasuredBounds() {
+  private fun observeMeasuredBounds(image: Image) {
     val measured = state.measuredContent
     if (measured[0] > maxMeasuredWidthPx) maxMeasuredWidthPx = measured[0]
     if (measured[1] > maxMeasuredHeightPx) maxMeasuredHeightPx = measured[1]
+    renderedSceneWidthPx = image.width
+    renderedSceneHeightPx = image.height
   }
 
   private fun renderRecordingFrame(tNanos: Long): Image {
@@ -494,7 +509,7 @@ class DesktopRecordingSession(
     state.recordFrameNanos(tNanos)
     val image =
       RenderEngine.withPreviewLocale(state.spec.localeTag) { state.scene.render(nanoTime = tNanos) }
-    observeMeasuredBounds()
+    observeMeasuredBounds(image)
     return image
   }
 
@@ -1093,9 +1108,12 @@ class DesktopRecordingSession(
    * recording agree about how big the preview is — with the measurement taken as the maximum over
    * the recording rather than a single pass.
    */
-  private fun resolveNaturalSize(): Pair<Int, Int> =
-    recordingNaturalAxisPx(state.spec.wrapWidth, maxMeasuredWidthPx, sceneWidthPx) to
-      recordingNaturalAxisPx(state.spec.wrapHeight, maxMeasuredHeightPx, sceneHeightPx)
+  private fun resolveNaturalSize(): Pair<Int, Int> {
+    val sceneWidth = if (renderedSceneWidthPx > 0) renderedSceneWidthPx else sceneWidthPx
+    val sceneHeight = if (renderedSceneHeightPx > 0) renderedSceneHeightPx else sceneHeightPx
+    return recordingNaturalAxisPx(state.spec.wrapWidth, maxMeasuredWidthPx, sceneWidth) to
+      recordingNaturalAxisPx(state.spec.wrapHeight, maxMeasuredHeightPx, sceneHeight)
+  }
 
   /**
    * Crop and scale every written frame — and every held `assert.pixels` snapshot — to the size
@@ -1115,16 +1133,29 @@ class DesktopRecordingSession(
     val frameWidth = (naturalWidth * scale).toInt().coerceAtLeast(1)
     val frameHeight = (naturalHeight * scale).toInt().coerceAtLeast(1)
 
+    // Decided from the sizes alone, BEFORE touching a single file: frames were written at the
+    // scene's size, so if the published size is that same size there is nothing to crop or scale
+    // and the whole pass is skipped. Checking inside `framed` instead would still decode every PNG
+    // to discover it had no work to do — which is the entire frame set of every fixed-size
+    // recording, decoded synchronously inside `stop()` for nothing.
+    val sceneWidth = if (renderedSceneWidthPx > 0) renderedSceneWidthPx else sceneWidthPx
+    val sceneHeight = if (renderedSceneHeightPx > 0) renderedSceneHeightPx else sceneHeightPx
+    if (frameWidth == sceneWidth && frameHeight == sceneHeight) return frameWidth to frameHeight
+
     fun framed(bytes: ByteArray): ByteArray =
       scalePngBytes(bytes, naturalWidth, naturalHeight, frameWidth, frameHeight)
 
+    // Failures propagate, as the original frame writes do. Swallowing them would let `stop()`
+    // report success and the new dimensions over a frame set that is half reframed — which the
+    // encoder then turns into a corrupt mixed-size recording, or which leaves pixel-assert
+    // evidence disagreeing with the frame on disk.
     framesDir
       .listFiles { f -> f.isFile && f.name.endsWith(".png") }
       ?.forEach { file ->
-        val bytes = runCatching { file.readBytes() }.getOrNull() ?: return@forEach
+        val bytes = file.readBytes()
         val framedBytes = framed(bytes)
         if (!framedBytes.contentEquals(bytes)) {
-          runCatching { fileSystem.write(file.path.toPath()) { write(framedBytes) } }
+          fileSystem.write(file.path.toPath()) { write(framedBytes) }
         }
       }
     pendingPixels.forEach { it.snapshotPng = framed(it.snapshotPng) }
@@ -1187,8 +1218,9 @@ class DesktopRecordingSession(
     h: Int,
   ): ByteArray {
     val src = ImageIO.read(ByteArrayInputStream(bytes)) ?: return bytes
-    // Already the published size with nothing to crop — hand the original bytes straight back so
-    // the common case costs one decode and no re-encode.
+    // A frame that happens to need nothing keeps its exact bytes. The wholesale no-op is caught
+    // by [finalizeFrames] before any decode; this is the per-frame case, where the set is being
+    // reframed but this particular frame already matches.
     if (src.width == w && src.height == h && srcWidth >= src.width && srcHeight >= src.height) {
       return bytes
     }

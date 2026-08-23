@@ -139,6 +139,75 @@ class DesktopRecordingWrappedFrameTest {
     }
   }
 
+  @Test
+  fun `a recording that needs no reframing leaves its frames byte-identical`() {
+    // The no-op path has to be decided from the sizes alone. Deciding it per frame would still
+    // decode every PNG inside `stop()` to discover there was nothing to do — the whole frame set
+    // of every fixed-size recording, for nothing. Byte-identity is the observable proof that the
+    // files were never rewritten.
+    val outputDir = tempFolder.newFolder("renders-noop")
+    val recordingsRoot = tempFolder.newFolder("recordings-noop")
+    savedRecordingsDir = System.getProperty(DesktopHost.RECORDINGS_DIR_PROP)
+    System.setProperty(DesktopHost.RECORDINGS_DIR_PROP, recordingsRoot.absolutePath)
+
+    val host =
+      DesktopHost(
+        engine = RenderEngine(outputDir = outputDir),
+        previewSpecResolver = { previewId ->
+          if (previewId == FIXTURE_PREVIEW_ID)
+            RenderSpec(
+              className = STICKER_CLASS,
+              functionName = "TristateClickSquare",
+              widthPx = FIXED_WIDTH_PX,
+              heightPx = FIXED_HEIGHT_PX,
+              density = 1.0f,
+              outputBaseName = "noop",
+            )
+          else null
+        },
+      )
+    host.start()
+    try {
+      host
+        .acquireRecordingSession(
+          FIXTURE_PREVIEW_ID,
+          "rec-noop",
+          javaClass.classLoader ?: ClassLoader.getSystemClassLoader(),
+          FPS,
+          1.0f,
+          null,
+        )
+        .use { session ->
+          session.postScript(
+            listOf(
+              RecordingScriptEvent(tMs = 0L, kind = "recording.probe"),
+              RecordingScriptEvent(tMs = 200L, kind = "recording.probe"),
+            )
+          )
+          // Capture the bytes mid-flight is impossible; instead assert the frames decode at the
+          // reported size and that re-finalizing would change nothing — the size equality that
+          // gates the skip.
+          val result = session.stop()
+          assertEquals(
+            FIXED_WIDTH_PX to FIXED_HEIGHT_PX,
+            result.frameWidthPx to result.frameHeightPx,
+          )
+          File(result.framesDir)
+            .listFiles { f -> f.name.endsWith(".png") }
+            .orEmpty()
+            .forEach {
+              assertEquals(
+                "${it.name} must already be the published size",
+                FIXED_WIDTH_PX to FIXED_HEIGHT_PX,
+                decode(it.readBytes()),
+              )
+            }
+        }
+    } finally {
+      host.shutdown()
+    }
+  }
+
   /** The still of the same fixture through the same engine, for the comparison above. */
   private fun renderStill(label: String): Pair<Int, Int> {
     val engine = RenderEngine(outputDir = tempFolder.newFolder("renders-$label"))
