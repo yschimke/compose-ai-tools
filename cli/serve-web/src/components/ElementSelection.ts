@@ -195,6 +195,13 @@ export class ElementSelection extends LitElement {
         this.say("Drag a box over the render · Esc to cancel");
 
         let start: { x: number; y: number } | null = null;
+        // The gesture belongs to ONE pointer. `touch-action: none` means the browser no longer
+        // steals a touch drag for scrolling, so a second finger landing on the overlay is now
+        // reachable — and without this it would reset the origin and let either contact finish the
+        // gesture, recording a rectangle spanning two fingers that nobody drew.
+        let owner: number | null = null;
+        const mine = (event: PointerEvent) =>
+            owner === null || event.pointerId === owner;
         const offs: Array<() => void> = [];
         // The frame may still be decoding when the drag is armed. Both of these keep the overlay
         // matched to it: `load` for the first geometry it ever has, and the observer for every
@@ -241,6 +248,9 @@ export class ElementSelection extends LitElement {
             offs.push(() => target.removeEventListener(type, handler, true));
         };
         listen(layer, "pointerdown", ((event: PointerEvent) => {
+            // A second contact during a live drag is ignored, not adopted.
+            if (start) return;
+            owner = event.pointerId;
             start = local(event);
             // Capture, so `pointermove`/`pointerup` keep arriving here once the pointer leaves the
             // frame. Guarded: happy-dom and older engines have no such method, and a drag that
@@ -249,10 +259,10 @@ export class ElementSelection extends LitElement {
             draw(start, start);
         }) as EventListener);
         listen(window, "pointermove", ((event: PointerEvent) => {
-            if (start) draw(start, local(event));
+            if (start && mine(event)) draw(start, local(event));
         }) as EventListener);
         listen(window, "pointerup", ((event: PointerEvent) => {
-            if (!start) return;
+            if (!start || !mine(event)) return;
             const end = local(event);
             const rect = {
                 x: Math.min(start.x, end.x),
@@ -278,7 +288,8 @@ export class ElementSelection extends LitElement {
         }) as EventListener);
         // A capture lost to the system (a context menu, a device switch, another element taking it)
         // ends the gesture rather than leaving a live overlay with no way to finish it.
-        listen(window, "pointercancel", (() => {
+        listen(window, "pointercancel", ((event: PointerEvent) => {
+            if (!mine(event)) return;
             stop();
             this.describe();
         }) as EventListener);

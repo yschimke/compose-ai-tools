@@ -144,18 +144,55 @@ async function drag(
         .dispatchEvent(new Event("click"));
     await flush();
     const layer = document.getElementById("cp-selection-layer")!;
-    const send = (type: string, [x, y]: [number, number]) => {
+    const send = (type: string, [x, y]: [number, number], pointerId = 1) => {
         const event = new Event(type, { bubbles: true }) as Event & {
             clientX: number;
             clientY: number;
+            pointerId: number;
         };
         event.clientX = x;
         event.clientY = y;
+        event.pointerId = pointerId;
         layer.dispatchEvent(event);
     };
     send("pointerdown", from);
     send("pointermove", to);
     send("pointerup", to);
+    for (let i = 0; i < 3; i++) await flush();
+}
+
+/** A two-finger sequence: the second contact must not steer or finish the first's gesture. */
+async function dragWithSecondFinger(): Promise<void> {
+    document
+        .querySelector<HTMLButtonElement>(".cp-selection-drag")!
+        .dispatchEvent(new Event("click"));
+    await flush();
+    const layer = document.getElementById("cp-selection-layer")!;
+    const send = (
+        type: string,
+        [x, y]: [number, number],
+        pointerId: number,
+    ) => {
+        const event = new Event(type, { bubbles: true }) as Event & {
+            clientX: number;
+            clientY: number;
+            pointerId: number;
+        };
+        event.clientX = x;
+        event.clientY = y;
+        event.pointerId = pointerId;
+        layer.dispatchEvent(event);
+    };
+    send("pointerdown", [10, 20], 1);
+    send("pointermove", [50, 60], 1);
+    // A second finger lands and wanders somewhere else entirely.
+    send("pointerdown", [150, 160], 2);
+    send("pointermove", [180, 190], 2);
+    // …and is lifted first. It must not finish the first finger's gesture.
+    send("pointerup", [180, 190], 2);
+    for (let i = 0; i < 3; i++) await flush();
+    // The owning finger finishes where it actually was.
+    send("pointerup", [50, 60], 1);
     for (let i = 0; i < 3; i++) await flush();
 }
 
@@ -313,6 +350,18 @@ describe("<cp-element-selection>", () => {
         await flush();
         assert.equal(layer.style.width, "200px");
         assert.equal(layer.style.height, "200px");
+    });
+
+    it("keeps a region drag bound to the finger that started it", async () => {
+        // `touch-action: none` stops the browser stealing a touch drag for scrolling, which makes a
+        // second contact on the overlay reachable. Without an owner, it would reset the origin and
+        // either finger could finish the gesture — recording a rectangle spanning two contacts that
+        // nobody drew.
+        await mount();
+        await dragWithSecondFinger();
+        assert.deepEqual(locatorLines(), [
+            'bounds: {"height":80,"space":"render-pixels","width":80,"x":20,"y":40}',
+        ]);
     });
 
     it("treats a click with no drag as a cancel", async () => {
