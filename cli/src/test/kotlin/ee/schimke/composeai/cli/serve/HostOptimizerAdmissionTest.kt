@@ -305,6 +305,48 @@ class HostOptimizerAdmissionTest {
   }
 
   @Test
+  fun `an expiry noticed late still re-arms from the scheduled window end`() {
+    var now = 0L
+    var readable = true
+    val gate =
+      OptimizerPressureGate(
+        sample = {
+          if (readable) {
+            HostResourceSample(
+              loadPerCpu = 0.17,
+              cpuUtilization = 0.03,
+              memoryAvailableFraction = 0.14,
+            )
+          } else {
+            null
+          }
+        },
+        thresholds =
+          OptimizerPressureThresholds(
+            sampleIntervalMillis = 0,
+            starvationCapMillis = 10_000,
+            dutyCycleMillis = 1_000,
+          ),
+        clock = { now },
+      )
+    assertTrue(gate.snapshot().constrained)
+    now = 10_000
+    assertFalse(gate.snapshot().constrained, "the window opens, scheduled to end at 11s")
+
+    // The sampler goes blind across the expiry and stays blind until 20s. The concession was
+    // served in full, so the next one is due 10s after the scheduled end — charging a fresh cap
+    // from the moment someone happened to look would make blindness cost the host admission.
+    readable = false
+    now = 20_000
+    assertTrue(gate.snapshot().constrained)
+    readable = true
+    now = 20_999
+    assertTrue(gate.snapshot().constrained)
+    now = 21_000
+    assertFalse(gate.snapshot().constrained, "due at 21s, not 30s")
+  }
+
+  @Test
   fun `a window cut short re-arms the cap from when it actually closed`() {
     var now = 0L
     var sample =

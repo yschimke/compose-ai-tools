@@ -304,7 +304,7 @@ class OptimizerPressureGate(
    */
   private fun cachedClosingExpiredDutyCycle(now: Long): OptimizerPressureSnapshot {
     if (!held || dutyCycleUntil == Long.MIN_VALUE || now < dutyCycleUntil) return cached
-    closeWindow(now)
+    closeWindow(at = dutyCycleUntil)
     // `heldMillis` is recomputed rather than carried over: the cached value was taken while the
     // window was open, and republishing it would report a gate that has been shut for hours as
     // having withheld admission for however long it had at the moment the sampler died.
@@ -323,16 +323,21 @@ class OptimizerPressureGate(
     else null
 
   /**
-   * Ends the open window, if any, and re-arms the cap from [now].
+   * Ends the open window, if any, and re-arms the cap from [at].
    *
    * A window cut short — by new pressure, or by memory dropping under the floor — must not leave
    * the next concession measured from the end it never reached: that would withhold admission for
-   * up to `starvationCapMillis + dutyCycleMillis`, which is not what the cap says it does.
+   * up to `starvationCapMillis + dutyCycleMillis`, which is not what the cap says it does. So a
+   * live window closes at `now`.
+   *
+   * A window that simply *elapsed* is the other case, and it anchors at its scheduled end even when
+   * nothing observed the expiry until later: the concession was served in full, and a sampler that
+   * went blind for the next nine seconds is not a reason to charge the host another cap for them.
    */
-  private fun closeWindow(now: Long) {
+  private fun closeWindow(at: Long) {
     if (dutyCycleUntil == Long.MIN_VALUE) return
     dutyCycleUntil = Long.MIN_VALUE
-    capAnchor = now
+    capAnchor = at
   }
 
   /**
@@ -364,14 +369,14 @@ class OptimizerPressureGate(
     // the permanent latch, which is the conservative half of that trade.
     val headroom = sample.memoryAvailableFraction
     if (headroom == null || headroom < thresholds.dutyCycleFloorMemoryAvailableFraction) {
-      closeWindow(now)
+      closeWindow(at = now)
       return false
     }
     // "A high reading stops admission immediately" is the gate's contract, and an open window must
     // not buy a *different* signal up to `dutyCycleMillis` of grace. The signal that earned the
     // concession may stay over its threshold — that is the whole point — but a new one closes it.
     if (newlyTripped.isNotEmpty()) {
-      closeWindow(now)
+      closeWindow(at = now)
       return false
     }
     if (now < dutyCycleUntil) return true
