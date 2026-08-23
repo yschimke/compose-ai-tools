@@ -1410,9 +1410,11 @@ the reader**, which must compare the resolved name against the requested one and
 a failed open. `artifact-unreadable`, with its own fixture.
 
 **A path that resolves is not a file that opens.** A `mask` or `acceptedCandidate` path can be
-contained and syntactically perfect while the file is missing, unreadable, or truncated to nothing —
-at which point there are no bytes to hash, no header to parse and no decode to attempt, so none of
-the other tokens apply. Left unnamed, the browser turns a failed fetch into a local refusal while the
+contained and syntactically perfect while the file is missing, unreadable, a **directory**, or
+truncated to nothing — at which point there are no bytes to hash, no header to parse and no decode to
+attempt, so none of the other tokens apply. The directory case is worth naming because it is the one
+that tempts a containment answer: it resolved, it is inside the acceptance, and containment is
+precisely what it did not fail. Left unnamed, the browser turns a failed fetch into a local refusal while the
 offline reader throws or silently drops the record. `artifact-unreadable`, refused.
 
 **Strictly a fetch/open/read failure, though.** A file that *opens* and is merely empty or truncated
@@ -1541,6 +1543,13 @@ free to simply throw, which is not a result any fixture can compare against.
 macOS, so the record either hashes the wrong bytes or cannot be checked out intact: the same failure
 as a folded `id` collision, one level down, and `path-not-contained` for it.
 
+**A collision needs two spellings.** The rule is about *distinct* strings that fold together, so a
+record naming the **same** path for both artifacts is not caught by it: one spelling of one file
+collides with nothing and escapes nowhere, and refusing it as `path-not-contained` reports a
+containment failure for a path that is contained — while taking the refusal away from whatever is
+actually wrong with the record. Fixtured: a record whose mask and accepted candidate are one RGBA
+file is refused, and refused as `mask-encoding-invalid`, because an RGBA image is not a binary mask.
+
 **Collisions are detected case-folded, and reported under the first spelling seen.** `foo` and `FOO`
 are distinct map keys and the *same directory* on Windows and on a default macOS filesystem, so a
 document carrying both evaluates cleanly on Linux and, checked out anywhere else, has two records
@@ -1654,12 +1663,9 @@ asserting the format refuses what a pattern check accepts. The `T` and the `Z` a
 — RFC 3339 says so — so an uppercase-only pattern refuses a legal timestamp, which is the same
 divergence pointed the other way and the one a tightening is likeliest to introduce.
 
-**A leap second is accepted wherever RFC 3339's grammar allows one, and its *instant* is not
-checked.** `2016-12-31T23:59:60Z` is a real leap second and `2016-12-31T12:00:60Z` is not, and telling
-them apart needs a leap-second table that grows by international announcement — unbounded, and
-re-derived identically by every consumer or not at all. Rejecting `:60` outright would refuse a legal
-timestamp, which is the worse error in the same way the uppercase-only pattern was. So the grammar is
-the rule here, deliberately, and the residue is a nonsense value in a provenance field no gate reads.
+**A leap second is legal only at the instant one could be inserted** — `23:59:60` UTC, with the
+offset applied first. The rule and its reasoning are stated once, above; it is named again here only
+so this list of `acceptedAt` traps is not read as permitting `:60` anywhere the grammar does.
 
 **And the `issue` URL is not trimmed before parsing.** The schema's `format: "uri"` rejects
 surrounding whitespace and a permissive URL parser accepts it, so trimming would let this module

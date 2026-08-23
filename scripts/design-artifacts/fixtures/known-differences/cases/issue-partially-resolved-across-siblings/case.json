@@ -1,0 +1,28 @@
+{
+  "title": "m3-catalog#42 — one of three acceptances resolves, and the issue stays open",
+  "site": "yschimke/m3-catalog#42 (Button/Elevated resolved; Card, ToggleButton still live)",
+  "why": "`locallyResolvedIssues` aggregates by issue, and the aggregation is the whole rule — a per-acceptance reading of it is indistinguishable from the correct one on every other fixture in this tree. Here the reached acceptance is genuinely fixed (`resolved`) while its two siblings on the same issue are merely not reached by this comparison (`out-of-scope`), which is not evidence that they are fixed. So `locallyResolvedIssues` is empty even though a `resolved` status is present, which no other case asserts.",
+  "comparison": {
+    "system": "m3",
+    "component": "Button/Elevated",
+    "previewId": "button-elevated__ideal__default__light",
+    "referenceId": "button-elevated-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 0,
+        "y": 0,
+        "width": 32,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {}
+  },
+  "catalog": null,
+  "synthesize": []
+}

@@ -22,6 +22,11 @@
       "site": "yschimke/m3-catalog#42 (Button/Elevated, Card/Elevated, ToggleButton/Elevated)"
     },
     {
+      "id": "issue-partially-resolved-across-siblings",
+      "title": "m3-catalog#42 — one of three acceptances resolves, and the issue stays open",
+      "site": "yschimke/m3-catalog#42 (Button/Elevated resolved; Card, ToggleButton still live)"
+    },
+    {
       "id": "gate-resolved-fixed-candidate",
       "title": "The candidate gate fired and the region converged on the reference",
       "site": "yschimke/m3-catalog#40 (fixed)"
@@ -264,6 +269,26 @@
     {
       "id": "path-not-contained-case-folded-collision",
       "title": "Two artifact paths differing only in case",
+      "site": null
+    },
+    {
+      "id": "accepted-at-fractional-seconds",
+      "title": "An `acceptedAt` carrying a fractional second",
+      "site": null
+    },
+    {
+      "id": "artifact-unreadable-path-is-a-directory",
+      "title": "A mask path that resolves to a directory",
+      "site": null
+    },
+    {
+      "id": "artifact-path-nested-directories",
+      "title": "A mask stored below a nested directory inside its acceptance",
+      "site": null
+    },
+    {
+      "id": "mask-and-candidate-share-one-path",
+      "title": "A record naming the same artifact as both its mask and its accepted candidate",
       "site": null
     },
     {
@@ -702,6 +727,16 @@
       "site": null
     },
     {
+      "id": "artifact-rgba-suggested-palette",
+      "title": "An RGBA accepted candidate carrying a suggested palette",
+      "site": null
+    },
+    {
+      "id": "artifact-indexed-opaque-without-trns",
+      "title": "An indexed accepted candidate with no transparency chunk",
+      "site": null
+    },
+    {
       "id": "artifact-trns-greyscale-decodes",
       "title": "A greyscale accepted candidate whose `tRNS` names its own sample",
       "site": null
@@ -774,6 +809,14 @@
     {
       "id": "downscale-non-integer-ratio",
       "title": "Three pixels into two — partial footprints"
+    },
+    {
+      "id": "downscale-non-integer-ratio-vertical",
+      "title": "Three rows into two — the same partial footprints, on the other axis"
+    },
+    {
+      "id": "downscale-non-integer-ratio-both-axes",
+      "title": "Three by three into two by two — a genuinely two-dimensional footprint"
     },
     {
       "id": "upscale-integer-ratio",

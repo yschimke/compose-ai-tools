@@ -908,8 +908,13 @@ function preflightRecord(record, index, readArtifact, catalog) {
   // `mask.png` beside `MASK.PNG` is two committed files on Linux and one file everywhere else, so
   // the record either hashes the wrong bytes or cannot be checked out — the identical failure the
   // case-folded id check exists to prevent, one level down.
+  // **Two spellings, not one path.** The rule is about a collision between *distinct* strings; the
+  // same path written twice addresses one committed file, which neither collides with anything nor
+  // escapes anywhere. Refusing it here would spend `path-not-contained` on a record whose paths are
+  // contained, and take the refusal away from whatever is actually wrong with it.
   if (
     pathReasons.length === 0 &&
+    record.mask !== record.acceptedCandidate &&
     record.mask.toLowerCase() === record.acceptedCandidate.toLowerCase()
   ) {
     pathReasons.push("path-not-contained");

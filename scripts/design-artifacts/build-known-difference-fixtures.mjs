@@ -26,6 +26,7 @@ import {
   COLOUR_GREY_ALPHA,
   COLOUR_PALETTE,
   COLOUR_RGB,
+  COLOUR_RGBA,
   buildPng,
   chunk,
   encodePng,
@@ -491,6 +492,108 @@ function document(acceptances) {
       pins: ["statuses", "validationFailures", "locallyResolvedIssues"],
       statuses: {
         "m3-button-elevated-shadow": { status: "valid" },
+        "m3-card-elevated-shadow": { status: "out-of-scope" },
+        "m3-togglebutton-elevated-shadow": { status: "out-of-scope" },
+      },
+      validationFailures: [],
+      locallyResolvedIssues: [],
+    },
+  });
+}
+
+{
+  // **One acceptance of three resolves, and the issue still does not close.** This is the case the
+  // closure rule is actually about, and neither existing fixture reaches it: the trio has no
+  // `resolved` record at all, and the only `resolved` fixture has a single acceptance, whose issue
+  // is therefore trivially fully-resolved. An engine that closes an issue as soon as *any* linked
+  // acceptance resolves passes both of them — and closing here would orphan the two live siblings,
+  // which is exactly what Phase 4's stale detection would then flag.
+  const plane = { plane: "content-box", box: { x: 0, y: 0, width: 32, height: 24 } };
+  const component = { x: 4, y: 4, width: 24, height: 16 };
+  const shadow = { x: 2, y: 2, width: 28, height: 20 };
+
+  const reference = raster(32, 24);
+  fillRect(reference, shadow, GREY);
+  fillRect(reference, component, BLACK);
+  // The candidate as it was when the acceptances were authored — the shadow missing.
+  const brokenCandidate = raster(32, 24);
+  fillRect(brokenCandidate, shadow, WHITE);
+  fillRect(brokenCandidate, component, BLACK);
+  // The candidate now: the shadow is drawn, so the reached acceptance has been fixed upstream.
+  const fixedCandidate = raster(32, 24);
+  fillRect(fixedCandidate, shadow, GREY);
+  fillRect(fixedCandidate, component, BLACK);
+
+  const { png: mask, samples } = maskPng(32, 24, (paint) => {
+    paint(shadow, 255);
+    paint(component, 0);
+  });
+  const box = maskBox(samples, 32, 24);
+  const accepted = crop(brokenCandidate, box);
+
+  const sites = [
+    ["m3-button-elevated-shadow", "Button/Elevated", "button-elevated"],
+    ["m3-card-elevated-shadow", "Card/Elevated", "card-elevated"],
+    ["m3-togglebutton-elevated-shadow", "ToggleButton/Elevated", "togglebutton-elevated"],
+  ];
+  const acceptances = sites.map(([id, componentName, slug]) => ({
+    id,
+    issue: "https://github.com/yschimke/m3-catalog/issues/42",
+    system: "m3",
+    component: componentName,
+    previewId: `${slug}__ideal__default__light`,
+    referenceId: `${slug}-ideal-light`,
+    variant: "ideal/default/light",
+    mask: "mask.png",
+    acceptedCandidate: "accepted-candidate.png",
+    referenceSha256: REFERENCE_SHA,
+    maskSha256: sha256Hex(mask),
+    acceptedCandidateSha256: sha256Hex(rgbaPng(accepted)),
+    plane,
+    candidateTolerance: 2,
+    note: "Elevated containers draw no shadow; the kit draws level 1.",
+    acceptedAt: "2026-08-22T00:00:00Z",
+  }));
+
+  const files = {
+    "canonical-reference.png": rgbaPng(reference),
+    "canonical-candidate.png": rgbaPng(fixedCandidate),
+  };
+  for (const [id] of sites) {
+    files[`artifacts/${id}/mask.png`] = mask;
+    files[`artifacts/${id}/accepted-candidate.png`] = rgbaPng(accepted);
+  }
+
+  addCase({
+    id: "issue-partially-resolved-across-siblings",
+    title: "m3-catalog#42 — one of three acceptances resolves, and the issue stays open",
+    site: "yschimke/m3-catalog#42 (Button/Elevated resolved; Card, ToggleButton still live)",
+    why:
+      "`locallyResolvedIssues` aggregates by issue, and the aggregation is the whole rule — a per-" +
+      "acceptance reading of it is indistinguishable from the correct one on every other fixture in " +
+      "this tree. Here the reached acceptance is genuinely fixed (`resolved`) while its two siblings " +
+      "on the same issue are merely not reached by this comparison (`out-of-scope`), which is not " +
+      "evidence that they are fixed. So `locallyResolvedIssues` is empty even though a `resolved` " +
+      "status is present, which no other case asserts.",
+    document: document(acceptances),
+    files,
+    comparison: {
+      system: "m3",
+      component: "Button/Elevated",
+      previewId: "button-elevated__ideal__default__light",
+      referenceId: "button-elevated-ideal-light",
+      variant: "ideal/default/light",
+      overrides: {},
+      referenceSha256: REFERENCE_SHA,
+      plane,
+      canonicalReference: "canonical-reference.png",
+      canonicalCandidate: "canonical-candidate.png",
+      tagIndex: {},
+    },
+    expected: {
+      pins: ["statuses", "validationFailures", "locallyResolvedIssues"],
+      statuses: {
+        "m3-button-elevated-shadow": { status: "resolved" },
         "m3-card-elevated-shadow": { status: "out-of-scope" },
         "m3-togglebutton-elevated-shadow": { status: "out-of-scope" },
       },
@@ -1944,6 +2047,114 @@ glyphValidation({
   record: { acceptedCandidate: "MASK.PNG" },
   expected: refused(["path-not-contained"]),
 });
+
+{
+  const world = glyphWorld();
+  const record = glyphRecord(world, { acceptedAt: "2026-08-22T00:00:00.5Z" });
+  addCase({
+    id: "accepted-at-fractional-seconds",
+    title: "An `acceptedAt` carrying a fractional second",
+    why:
+      "RFC 3339's `time-secfrac` is optional, and every other accepting timestamp here — including " +
+      "the lowercase-separator and offset cases — is written to whole seconds. So a parser that " +
+      "simply omits the production passes the entire suite and then refuses a legal timestamp, " +
+      "which is the same wrong-verdict-on-valid-input direction the uppercase-only pattern was.",
+    document: document([record]),
+    files: glyphFiles(world, record),
+    comparison: glyphComparison(world),
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+      validationFailures: [],
+    },
+  });
+}
+
+{
+  // **A path that resolves to a directory.** Contained, spelled exactly right, and still not an
+  // artifact — so the refusal belongs to the *open*, not to containment. Reporting
+  // `path-not-contained` here would be a wrong token for a path that is contained, and it is the
+  // one shape of read failure the tree never reached: the missing-file case never resolves at all,
+  // and the case-differs one cannot run on a case-sensitive checkout. A directory reproduces
+  // everywhere.
+  const world = glyphWorld();
+  const record = glyphRecord(world);
+  const files = glyphFiles(world, record);
+  const flat = "artifacts/m3-iconbutton-tonal-glyph/mask.png";
+  if (!files[flat]) throw new Error("the glyph mask is no longer committed at its flat path");
+  // The mask's own bytes, one level further down: the name the record addresses becomes a directory
+  // holding them rather than the file itself.
+  files[`${flat}/scanline.png`] = files[flat];
+  delete files[flat];
+  addCase({
+    id: "artifact-unreadable-path-is-a-directory",
+    title: "A mask path that resolves to a directory",
+    why:
+      "The reader owns this refusal — a lexical grammar cannot tell a file from a directory, and " +
+      "neither can a path check. `artifact-unreadable` is the token for a contained, correctly " +
+      "spelled path that will not open, which is exactly what this is; `path-not-contained` would " +
+      "say the opposite of what happened.",
+    document: document([record]),
+    files,
+    comparison: glyphComparison(world),
+    expected: refused(["artifact-unreadable"]),
+  });
+}
+
+{
+  // **A nested artifact path that is actually resolved.** `v1` permits safe segments joined by `/`,
+  // but the only record in the tree whose path contains one has the id `.`, so identity validation
+  // refuses it before the path is ever resolved — leaving "reject every nested path" and "resolve it
+  // against the wrong directory" both passing. This one is nested *and* legal, so it has to resolve.
+  const world = glyphWorld();
+  const record = glyphRecord(world, { mask: "masks/tonal/glyph.png" });
+  // The helper spells the mask at the flat path its own record uses, so the committed bytes have to
+  // be moved to where *this* record addresses them — otherwise the case would pass or fail on a
+  // missing file rather than on the nesting.
+  const files = glyphFiles(world, record);
+  const flat = "artifacts/m3-iconbutton-tonal-glyph/mask.png";
+  if (!files[flat]) throw new Error("the glyph mask is no longer committed at its flat path");
+  files[`artifacts/m3-iconbutton-tonal-glyph/${record.mask}`] = files[flat];
+  delete files[flat];
+  addCase({
+    id: "artifact-path-nested-directories",
+    title: "A mask stored below a nested directory inside its acceptance",
+    why:
+      "The accepting half of the artifact-path grammar. Its refusing siblings pin what a path may " +
+      "not be — `..`, an absolute path, a reserved or case-colliding segment — and every one of " +
+      "them is satisfied by an engine that simply refuses any path containing `/`. Resolution is " +
+      "against `<root>/<id>/`, so a nested path also distinguishes that from resolution against " +
+      "the artifacts root, which would find nothing here.",
+    document: document([record]),
+    files,
+    comparison: glyphComparison(world),
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+      validationFailures: [],
+    },
+  });
+}
+
+{
+  // **One path in both fields is not a collision.** The case-folded artifact-path rule exists for
+  // `mask.png` beside `MASK.PNG` — two spellings, one file on a case-insensitive checkout. An
+  // *identical* path is one spelling of one file: it collides with nothing and escapes nowhere, so
+  // spending `path-not-contained` on it refuses a record whose paths are contained and takes the
+  // refusal away from what is actually wrong. Here that is the mask: an RGBA image is not a binary
+  // mask, and `mask-encoding-invalid` is the token that says so.
+  const base = glyphRecord(glyphWorld());
+  glyphValidation({
+    id: "mask-and-candidate-share-one-path",
+    title: "A record naming the same artifact as both its mask and its accepted candidate",
+    why:
+      "The refusal must be attributed to the real defect, not to containment. Without this case the " +
+      "case-folded path check is indistinguishable from one that also refuses identical paths — and " +
+      "that reading reports a containment failure for a file sitting exactly where it belongs.",
+    record: { mask: base.acceptedCandidate, maskSha256: base.acceptedCandidateSha256 },
+    expected: refused(["mask-encoding-invalid"]),
+  });
+}
 
 {
   const world = glyphWorld();
@@ -3644,6 +3855,90 @@ glyphValidation({
     });
   }
 
+  // **The same suggested palette on an RGBA image**, which PNG permits for colour type 6 exactly as
+  // it does for 2. Its truecolour sibling above cannot stand in: an engine that special-cases
+  // `PLTE` on type 2 and refuses it on every RGBA candidate passes that fixture and this tree, then
+  // refuses legal accepted artifacts. Same pixels as the sibling, so the only difference between
+  // the two files is the encoding, and the verdict must not notice.
+  {
+    const world = glyphWorld();
+    const rows = [];
+    for (let y = 0; y < 8; y++) {
+      const row = new Uint8Array(8 * 4);
+      for (let x = 0; x < 8; x++) row.set([200, 60, 60, 255], x * 4);
+      rows.push(row);
+    }
+    const accepted = buildPng([
+      ihdr({ width: 8, height: 8, colourType: COLOUR_RGBA }),
+      chunk("PLTE", Uint8Array.from([200, 60, 60, 0, 0, 0, 255, 255, 255])),
+      idat(rows),
+      chunk("IEND"),
+    ]);
+    const record = glyphRecord(world, { acceptedCandidateSha256: sha256Hex(accepted) });
+    addCase({
+      id: "artifact-rgba-suggested-palette",
+      title: "An RGBA accepted candidate carrying a suggested palette",
+      why:
+        "`PLTE` is optional-and-ignored on colour type 6 for the same reason it is on type 2 — it " +
+        "quantises nothing and indexes nothing. The tree otherwise only ever pairs `PLTE` with an " +
+        "indexed image or a truecolour one, which leaves 'reject `PLTE` unless colour type is 2 or " +
+        "3' passing every case while refusing this legal file.",
+      document: document([record]),
+      files: {
+        "artifacts/m3-iconbutton-tonal-glyph/mask.png": world.maskPngBytes,
+        "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": accepted,
+        "canonical-reference.png": world.referencePngBytes,
+        "canonical-candidate.png": world.candidatePngBytes,
+      },
+      comparison: glyphComparison(world),
+      expected: {
+        pins: ["statuses", "validationFailures"],
+        statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+        validationFailures: [],
+      },
+    });
+  }
+
+  // **An indexed image with no `tRNS` at all**, which is the ordinary opaque case and the one the
+  // tree was missing. Every successful indexed fixture carries a transparency table, so two wrong
+  // implementations survive: one requiring `tRNS` on every palette image, and one defaulting an
+  // absent table to alpha `0` rather than `255`. The second is the more dangerous — it decodes a
+  // perfectly ordinary candidate as fully transparent.
+  {
+    const world = glyphWorld();
+    const rows = [];
+    for (let y = 0; y < 8; y++) rows.push(new Uint8Array(8));
+    const accepted = buildPng([
+      ihdr({ width: 8, height: 8, colourType: COLOUR_PALETTE }),
+      chunk("PLTE", Uint8Array.from([200, 60, 60, 0, 0, 0, 255, 255, 255])),
+      idat(rows),
+      chunk("IEND"),
+    ]);
+    const record = glyphRecord(world, { acceptedCandidateSha256: sha256Hex(accepted) });
+    addCase({
+      id: "artifact-indexed-opaque-without-trns",
+      title: "An indexed accepted candidate with no transparency chunk",
+      why:
+        "`tRNS` is optional, and its absence means every palette entry is opaque — not that the " +
+        "file is malformed, and emphatically not that alpha is `0`. Same decoded pixels as the " +
+        "truecolour and RGBA suggested-palette cases, reached through the indexing path, so the " +
+        "three together pin that the encoding is invisible to the verdict.",
+      document: document([record]),
+      files: {
+        "artifacts/m3-iconbutton-tonal-glyph/mask.png": world.maskPngBytes,
+        "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": accepted,
+        "canonical-reference.png": world.referencePngBytes,
+        "canonical-candidate.png": world.candidatePngBytes,
+      },
+      comparison: glyphComparison(world),
+      expected: {
+        pins: ["statuses", "validationFailures"],
+        statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+        validationFailures: [],
+      },
+    });
+  }
+
   // **`tRNS` that actually decodes**, on the two permitted colour types that are not the palette.
   // The single successful transparency fixture is palette-based, so an engine applying `tRNS` only
   // to palette images passes the suite and then reads a greyscale or truecolour accepted candidate
@@ -4017,6 +4312,41 @@ addResample({
   source: rgbaFrom([[grey(0), grey(90), grey(240)]]),
   target: { width: 2, height: 1 },
   expected: [grey(30), grey(190)],
+});
+
+addResample({
+  id: "downscale-non-integer-ratio-vertical",
+  title: "Three rows into two — the same partial footprints, on the other axis",
+  why:
+    "Its horizontal sibling is one row tall, as is every other non-integer case here, and the only " +
+    "multi-row fixture is an integer 2×2→1×1. So a **separable** implementation that applies the " +
+    "area kernel across x and nearest-neighbour down y passes the entire group while producing " +
+    "different canonical pixels for any real resize. The arithmetic is the mirror image — row 0 " +
+    "covers `[0, 1.5)` for `(0 × 1 + 90 × 0.5) / 1.5 = 30`, row 1 covers `[1.5, 3)` for " +
+    "`(90 × 0.5 + 240 × 1) / 1.5 = 190` — which is the point: the kernel is one rule over an area, " +
+    "not a rule about columns.",
+  source: rgbaFrom([[grey(0)], [grey(90)], [grey(240)]]),
+  target: { width: 1, height: 2 },
+  expected: [grey(30), grey(190)],
+});
+
+addResample({
+  id: "downscale-non-integer-ratio-both-axes",
+  title: "Three by three into two by two — a genuinely two-dimensional footprint",
+  why:
+    "Both one-dimensional cases can still be satisfied by running a 1-D kernel twice with a " +
+    "rounding step in between, and by any implementation whose axes happen not to interact. Here " +
+    "every destination covers a 1.5 × 1.5 source rectangle, so all four source pixels under it " +
+    "carry a *product* of two partial weights — the `0.25` corner term exists on no other fixture. " +
+    "Values chosen so each destination is an exact integer: this case is about the geometry, and " +
+    "the rounding rule is pinned by cases of its own.",
+  source: rgbaFrom([
+    [grey(0), grey(60), grey(120)],
+    [grey(60), grey(120), grey(180)],
+    [grey(120), grey(180), grey(240)],
+  ]),
+  target: { width: 2, height: 2 },
+  expected: [grey(40), grey(120), grey(120), grey(200)],
 });
 
 addResample({

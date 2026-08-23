@@ -65,6 +65,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `pilot-41-navigationbar-short` | m3-catalog#41 — ShortNavigationBar measures items at full bar width |
 | `pilot-87-checkbox-checked-ring` | m3-catalog#87 — Checkbox box padding 2dp vs 4dp |
 | `pilot-42-elevated-shadow-trio` | m3-catalog#42 — Elevated shadow level, three components on one issue |
+| `issue-partially-resolved-across-siblings` | m3-catalog#42 — one of three acceptances resolves, and the issue stays open |
 | `gate-resolved-fixed-candidate` | The candidate gate fired and the region converged on the reference |
 | `gate-metric-single-channel-over` | One channel past `candidateTolerance`, three identical |
 | `gate-metric-every-channel-at-tolerance` | Every channel exactly at `candidateTolerance` |
@@ -114,6 +115,10 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `id-not-safe-parent-dot` | An `id` of `..` |
 | `id-not-safe-separator` | An `id` carrying a path separator |
 | `path-not-contained-case-folded-collision` | Two artifact paths differing only in case |
+| `accepted-at-fractional-seconds` | An `acceptedAt` carrying a fractional second |
+| `artifact-unreadable-path-is-a-directory` | A mask path that resolves to a directory |
+| `artifact-path-nested-directories` | A mask stored below a nested directory inside its acceptance |
+| `mask-and-candidate-share-one-path` | A record naming the same artifact as both its mask and its accepted candidate |
 | `accepted-at-lowercase-separators` | An `acceptedAt` using lowercase `t` and `z` |
 | `schema-invalid-issue-url-untrimmed` | An `issue` with surrounding whitespace |
 | `accepted-at-absent-is-legal` | A record with no `acceptedAt` at all |
@@ -201,6 +206,8 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `decode-failed-trns-sample-out-of-range` | A `tRNS` sample the image's bit depth cannot contain |
 | `artifact-greyscale-alpha-decodes` | A greyscale-alpha accepted candidate |
 | `artifact-truecolour-suggested-palette` | A truecolour accepted candidate carrying a suggested palette |
+| `artifact-rgba-suggested-palette` | An RGBA accepted candidate carrying a suggested palette |
+| `artifact-indexed-opaque-without-trns` | An indexed accepted candidate with no transparency chunk |
 | `artifact-trns-greyscale-decodes` | A greyscale accepted candidate whose `tRNS` names its own sample |
 | `artifact-trns-truecolour-decodes` | A truecolour accepted candidate whose `tRNS` names its own colour |
 | `decode-failed-empty-palette-trns` | A zero-length palette `tRNS` |
@@ -221,6 +228,8 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `downscale-2x1-average` | Four pixels averaged into one |
 | `rounding-exactly-half` | An average landing exactly on .5 |
 | `downscale-non-integer-ratio` | Three pixels into two — partial footprints |
+| `downscale-non-integer-ratio-vertical` | Three rows into two — the same partial footprints, on the other axis |
+| `downscale-non-integer-ratio-both-axes` | Three by three into two by two — a genuinely two-dimensional footprint |
 | `upscale-integer-ratio` | Two pixels into four |
 | `upscale-non-integer-ratio` | Two pixels into three — the upscale that does not reduce to nearest-neighbour |
 | `rounding-half-survives-the-ratio` | An exact half that floating-point footprints lose |

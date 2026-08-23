@@ -106,8 +106,15 @@ function artifactReader(caseDir, synthesize) {
     // root-only check lets acceptance `a` read `b`'s bytes — and then the exact-case check below
     // reports it as `artifact-unreadable`, where the contract says `path-not-contained`. The bound is
     // the fixed `<root>/<id>/` the path is addressed against.
+    //
+    // Compared **case-folded**, so that this check answers only the question it is for. A path that
+    // resolves to the right directory spelled the wrong way has not escaped anything, and reporting
+    // it here would take the exact-case check's answer away from it — `<id>` is part of the path the
+    // exact-case rule covers. A path that resolves into a *different* acceptance still fails, since
+    // two ids differing only by case are already refused by the identity scan.
     const acceptance = join(root, path.split("/")[0]);
-    if (resolved !== acceptance && !resolved.startsWith(acceptance + sep)) {
+    const within = (target, base) => target === base || target.startsWith(base + sep);
+    if (!within(resolved.toLowerCase(), acceptance.toLowerCase())) {
       return { error: "path-not-contained" };
     }
     // **Exact case, the reader's third obligation.** On a case-insensitive filesystem `MASK.png`
@@ -122,7 +129,10 @@ function artifactReader(caseDir, synthesize) {
     // disagree with CI. Recorded rather than claimed as covered.
     if (!resolved.endsWith(sep + relative.split("/").join(sep))) return null;
     const stats = statSync(resolved);
-    if (!stats.isFile()) return { error: "path-not-contained" };
+    // Contained, correctly spelled, and still not an artifact — a directory is not bytes. It failed
+    // at the open, like any other contained path that cannot be read, so it takes that token rather
+    // than containment's: containment is exactly what it did *not* fail.
+    if (!stats.isFile()) return null;
     if (stats.size > BUDGET.maxArtifactBytes) return { error: "artifact-too-large" };
     return new Uint8Array(readFileSync(resolved));
   };
