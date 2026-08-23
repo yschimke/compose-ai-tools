@@ -2,8 +2,7 @@
 export function installPreviewImageStates(): void {
     const imagesFor = (host: HTMLElement): HTMLImageElement[] =>
         Array.from(host.querySelectorAll<HTMLImageElement>("img")).filter(
-            (candidate) =>
-                candidate.closest(".cp-imgwrap, .cp-stage") === host,
+            (candidate) => candidate.closest(".cp-imgwrap, .cp-stage") === host,
         );
 
     const clearError = (host: HTMLElement): void =>
@@ -68,7 +67,8 @@ export function installPreviewImageStates(): void {
         img.addEventListener("load", loaded);
         img.addEventListener("error", failed);
         new MutationObserver((records) => {
-            if (records.some((record) => record.attributeName === "src")) loading();
+            if (records.some((record) => record.attributeName === "src"))
+                loading();
             else syncHost(host);
         }).observe(img, {
             attributes: true,
@@ -81,7 +81,9 @@ export function installPreviewImageStates(): void {
 
     const scan = (): void =>
         document
-            .querySelectorAll<HTMLImageElement>(".cp-imgwrap img, .cp-stage > img")
+            .querySelectorAll<HTMLImageElement>(
+                ".cp-imgwrap img, .cp-stage > img",
+            )
             .forEach(wire);
     if (document.readyState === "loading")
         document.addEventListener("DOMContentLoaded", scan, { once: true });
