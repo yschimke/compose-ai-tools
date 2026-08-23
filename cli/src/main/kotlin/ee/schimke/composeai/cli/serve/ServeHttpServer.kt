@@ -3575,18 +3575,34 @@ class ServeHttpServer(
       // frame survive into a record that later reports an unchanged element as moved. The element
       // gates in batch 05 need a shared render generation before they can do better than this;
       // until then the honest answer on a re-rendered frame is to offer the drag and say why.
+      // Whether the frame on screen is the catalog's BAKED render, replayed rather than produced
+      // for this request. Everything a selection records as an authoring-time baseline has to come
+      // from the same frame the reporter is looking at, and this is the one condition under which
+      // the server can promise that for a product fetched by a SEPARATE request.
+      //
+      // `canApplyOverrides` is false exactly for the hosts that replay baked pixels for an
+      // override-free browse (a static bundle, and a live-catalog wrapper whose browsing lane is
+      // baked); a daemon-backed host renders per request, so its `.png` and its `.annotations` are
+      // two renders and may disagree wherever output varies — animation, conditional composition,
+      // live data. A pin or an override re-renders on any host.
+      val frameIsReplayedBaked =
+        !pinned && overrideParams.isEmpty() && !renderHost.canApplyOverrides
       val tagIndex = renderHost.tagIndexForPreview(preview.id)
-      val tagsDescribeFrame = tagIndex.isNotEmpty() && overrideParams.isEmpty() && !pinned
+      val tagsDescribeFrame = frameIsReplayedBaked && tagIndex.isNotEmpty()
       val tagSelectionNote =
         when {
-          tagsDescribeFrame -> null
-          tagIndex.isEmpty() -> "This catalog publishes no element tag index for this preview."
+          // A pin or an override means the frame was produced for this request, so NEITHER the
+          // published tag index nor the separately-fetched annotation layer describes it. Both
+          // selectors are withheld together, and the note says so once.
           pinned ->
-            "Tag selection is off on a pinned revision: the tag index describes the current " +
-              "render, not this one. Drag a region instead."
-          else ->
-            "Tag selection is off while overrides are applied: the tag index describes the " +
-              "catalog's baked render, not this one. Drag a region instead."
+            "Element selection is off on a pinned revision: the tag index and the semantics " +
+              "layers describe the current render, not this one. Drag a region instead."
+          !frameIsReplayedBaked ->
+            "Element selection is off while this frame is rendered for you: the tag index and " +
+              "the semantics layers are fetched separately and may describe a different render. " +
+              "Drag a region instead."
+          tagIndex.isEmpty() -> "This catalog publishes no element tag index for this preview."
+          else -> null
         }
       markGeneration("static-page", pageCacheControl())
       call.respondText(
@@ -3624,6 +3640,13 @@ class ServeHttpServer(
           // projected from TODAY's render, so drawing them over a pinned frame would label
           // historical pixels with the current semantics tree.
           derivedAnnotations = !pinned && renderHost.hasDesignAnnotationsFor(preview.id),
+          // The layers still DRAW on a re-rendered frame — they are a reading aid and being a
+          // render out of date costs nothing there. Clicking one is different: it records a region
+          // as an acceptance's authoring-time baseline, and `.annotations` is a separate request
+          // from the PNG the client already decoded, so on a host that renders per request the two
+          // can describe different frames wherever output varies. The drag is unaffected: it is
+          // read off the displayed pixels, so it describes what the reporter saw by construction.
+          annotationsSelectable = frameIsReplayedBaked,
           tagIndexAvailable = tagsDescribeFrame,
           tagSelectionNote = tagSelectionNote,
           parityIssues =

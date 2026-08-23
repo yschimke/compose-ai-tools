@@ -1782,6 +1782,7 @@ class ServeWebFixtureTest {
         // element selector something to point at on the render side of the comparison — the
         // authored redline below annotates the reference far more often than the render.
         derivedAnnotations = true,
+        annotationsSelectable = true,
         // …and the tag index, which is the OTHER half, and the half an annotation-box-only design
         // misses: a uniquely tagged node carrying neither typography nor container tokens produces
         // no annotation at all, so nothing on this page draws a box for it.
@@ -3880,6 +3881,14 @@ class ServeWebFixtureTest {
       !referenceComparisonPinned.contains("data-cp-tags=") &&
         referenceComparisonPinned.contains("class=\"cp-selection-drag\""),
       "a pinned comparison withholds tag selection and keeps the drag",
+    )
+    // …and withholds the OTHER separately-fetched source of bounds for the same reason. The layers
+    // may still draw (a reading aid costs nothing out of date); clicking one records an
+    // acceptance's
+    // authoring-time baseline, and `.annotations` is a separate request from the PNG on screen.
+    assertTrue(
+      !referenceComparisonPinned.contains("data-cp-selectable="),
+      "a pinned comparison withholds annotation-box selection too",
     )
     // The substitution moved into `<cp-reference-compare>` with the rest of this page, so the
     // bundle is where it is now pinned. The property being held is the same one: the filled report

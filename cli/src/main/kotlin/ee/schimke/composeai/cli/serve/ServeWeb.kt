@@ -9460,6 +9460,17 @@ $rows
      */
     tagIndexAvailable: Boolean = false,
     /**
+     * Whether clicking one of the derived semantics boxes may **select** it.
+     *
+     * Separate from [derivedAnnotations], which decides whether the layers are drawn at all.
+     * Drawing them over a frame the server rendered for this request is fine — a reading aid a
+     * render out of date costs nothing. Recording one is not: `.annotations` is a separate request
+     * from the PNG the client already decoded, so on a host that renders per request the two can
+     * describe different frames wherever output varies, and a click would persist a region from one
+     * of them as the acceptance's authoring-time baseline.
+     */
+    annotationsSelectable: Boolean = false,
+    /**
      * Why the tag picker is absent, when the reason is worth saying out loud. Shown beside the
      * selector rather than left to be guessed at: "this catalog publishes no tag index" and "your
      * overrides mean the index describes a different render" are different problems with different
@@ -9612,8 +9623,7 @@ $rows
           data-cp-layer="#cp-render-inspect-layer"
           data-cp-legend="#cp-render-inspect-legend"
           data-cp-toggles=".cp-render-inspect"
-          data-cp-selectable="1"
-          data-cp-base="${WebEscaping.htmlEscape(basePath)}"></cp-inspect-layers>
+${if (annotationsSelectable) "          data-cp-selectable=\"1\"\n" else ""}          data-cp-base="${WebEscaping.htmlEscape(basePath)}"></cp-inspect-layers>
         """
           .trimIndent()
       }
