@@ -299,11 +299,32 @@ PNG beside it carried the gutter — the component is the same size in both, onl
   either would be padding the sheet under the annotation's name. A declined scroll drive falls
   through to an ordinary still, which does carry the gutter.
 
-  CMP Desktop implements that exclusion directly. **Android does not yet** — it grows one hosting
-  window per preview, so a scrolling product of a guttered preview inherits the gutter. That is a
-  live divergence from the rule above, tracked with two smaller ones (fixed-axis motion frames
-  trimmed to the hosting window rather than to `frame + gutter` px, and wrapped desktop recordings
-  sized from the sandbox rather than the measured content) in
+  CMP Desktop hands its scroll renderer no gutter at all. Android grows **one** hosting window per
+  preview and captures every job for that preview inside it, so it cannot express the exclusion in
+  the window — its `LONG` slices and `GIF` frames trim the gutter back off after capture instead.
+  `TOP` is untouched on both lanes: the undriven first viewport is a still, and stills carry the
+  gutter.
+
+  Two Android frame shapes are **unsupported** with a gutter and keep it on their scroll products,
+  because trimming would be worse than not trimming: a **round device** (the circular mask is baked
+  into the capture, so cropping leaves an oversized — and for an asymmetric gutter, off-centre —
+  circle instead of the watch shape) and **`showSystemUi`** (`SystemBarsFrame` wraps the gutter box,
+  so the chrome is painted against the *grown* window's edges and trimming slices the bars). Both
+  need the scroll pass composed in an un-grown window rather than post-processed, and neither is a
+  combination any preview declares.
+
+  **`END` still diverges on Android**, knowingly. It is the one scroll mode whose product is an
+  ordinary still, so it shares the whole still post-capture chain — the focus overlay, the a11y /
+  semantics / layout-inspector products, a round device's baked-in mask — every one of which
+  describes the hosting window. Trimming the PNG underneath them would buy the right frame size and
+  lose every other product's agreement with it. Composing `END` in an un-grown window (a second
+  render pass, the way a settled still already splits) is the fix; until then a guttered `END`
+  capture is `frame + gutter` on Android and `frame` on CMP Desktop.
+
+  Two further divergences remain open: fixed-axis Android **motion** frames are trimmed to the
+  hosting window rather than to `frame + gutter` px (a pixel's disagreement with the still at a
+  fractional density), and a held **desktop recording** of a *wrapped* preview is sized from the
+  sandbox bound rather than the measured content — that one predates gutters. All are tracked in
   [#4467](https://github.com/yschimke/compose-ai-tools/issues/4467).
 * **Rotation does not rotate the edges.** `orientation = landscape` reduces to a
   `widthPx ↔ heightPx` swap, and the routers trade the *wrap flags* with it because a wrap flag
