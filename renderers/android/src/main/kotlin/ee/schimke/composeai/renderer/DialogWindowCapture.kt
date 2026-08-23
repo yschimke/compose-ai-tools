@@ -39,7 +39,18 @@ internal object DialogWindowCapture {
     val semanticsRoot: SemanticsNode?,
   )
 
-  class StableDialogCrop {
+  /**
+   * Per-frame dialog crop for a multi-frame capture, with the rect resolved once and reused.
+   *
+   * [gutter] is the `@CaptureGutter` expansion, and it has to be passed for the same reason the
+   * still path passes one: a dialog capture is cropped to the dialog's own window rect, which is
+   * inside the gutter the grown window and `MeasuredWrapBox` just made room for. Leaving it at the
+   * default would crop those pixels straight back off, so a guttered dialog would publish a still
+   * with its shadow and a GIF beside it without — the disagreement `@CaptureGutter`'s motion
+   * support exists to prevent (compose-ai-tools#4452). Scroll products deliberately pass nothing: a
+   * scrolling capture is documented as carrying no gutter.
+   */
+  class StableDialogCrop(private val gutter: DialogCropGutter = DialogCropGutter()) {
     private var cropRect: android.graphics.Rect? = null
 
     @OptIn(ExperimentalRoborazziApi::class)
@@ -53,7 +64,8 @@ internal object DialogWindowCapture {
       val semanticsRoot = root.semanticsRoot ?: return root
       val window = shownDialogWindow(semanticsRoot) ?: return root
       val rect =
-        cropRect ?: dialogWindowCropRect(file, semanticsRoot, window)?.also { cropRect = it }
+        cropRect
+          ?: dialogWindowCropRect(file, semanticsRoot, window, gutter)?.also { cropRect = it }
       if (rect != null) cropPngToRect(file, rect)
       return root
     }

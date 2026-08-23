@@ -1233,6 +1233,15 @@ abstract class RobolectricRenderTestBase(
     // supposed to sit inside.
     val qualifierDensity = params.density ?: 2.0f
     val qualifierGutter = params.captureGutter ?: CaptureGutterDp()
+    // The same per-edge expansion the still's dialog crop uses, resolved once for every motion
+    // handler that crops to a dialog window. Scroll products deliberately do NOT take it — a
+    // scrolling capture carries no gutter (see `@CaptureGutter`'s kdoc).
+    val motionDialogGutter =
+      dialogCropGutter(
+        params.captureGutter,
+        qualifierDensity,
+        previewRendersRtl(params.locale),
+      )
     applyPreviewQualifiers(
       widthDp =
         widthDp + captureGutterAxisDp(qualifierGutter.start, qualifierGutter.end, qualifierDensity),
@@ -1914,6 +1923,7 @@ abstract class RobolectricRenderTestBase(
                       outputFile = outputFile,
                       curveCapture = animationCurveCapture,
                       glimmerEnvironment = job.capture.glimmerEnvironment?.toConnectorEnvironment(),
+                      dialogGutter = motionDialogGutter,
                     )
                     .also { handled ->
                       // The clock has been driven well past `currentTime`
@@ -1948,6 +1958,7 @@ abstract class RobolectricRenderTestBase(
                       isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
                       outputFile = outputFile,
                       glimmerEnvironment = job.capture.glimmerEnvironment?.toConnectorEnvironment(),
+                      dialogGutter = motionDialogGutter,
                     )
                     .also { handled ->
                       // Inside the guarded body — see the animated capture above.
@@ -2004,6 +2015,7 @@ abstract class RobolectricRenderTestBase(
                     wrapHeight = wrapHeight,
                     padArgb = resolveBackgroundColor(params).toArgb(),
                     measuredContent = { measured },
+                    dialogGutter = motionDialogGutter,
                     glimmerEnvironment = job.capture.glimmerEnvironment?.toConnectorEnvironment(),
                     // The handler reports what it actually drove, measured off `mainClock`
                     // itself, so the marker cannot drift from the clock the way a re-derived
@@ -3698,6 +3710,12 @@ private fun handleAnimatedCapture(
   outputFile: File,
   curveCapture: SlotTreeCapture?,
   glimmerEnvironment: ConnectorGlimmerEnvironment? = null,
+  /**
+   * `@CaptureGutter` expansion for a `Dialog` / `AlertDialog` preview's per-frame crop. A dialog
+   * capture is cropped to the dialog's own window rect, which sits inside the gutter — so without
+   * this the GIF would come back tight while the still beside it carries the shadow.
+   */
+  dialogGutter: DialogWindowCapture.DialogCropGutter = DialogWindowCapture.DialogCropGutter(),
 ): Boolean {
   val framesDir = File(outputFile.parentFile, "${outputFile.nameWithoutExtension}_anim_frames")
   framesDir.deleteRecursively()
@@ -3709,7 +3727,7 @@ private fun handleAnimatedCapture(
   val frameIntervalMs = animation.frameIntervalMs.coerceAtLeast(10)
 
   val frameFiles = mutableListOf<File>()
-  val stableDialogCrop = DialogWindowCapture.StableDialogCrop()
+  val stableDialogCrop = DialogWindowCapture.StableDialogCrop(dialogGutter)
 
   // Settle the composition by ticking one frame so any
   // LaunchedEffect(Unit) { … } has fired before the inspector reads
@@ -3948,6 +3966,8 @@ private fun handleFocusGifCapture(
   isRound: Boolean,
   outputFile: File,
   glimmerEnvironment: ConnectorGlimmerEnvironment? = null,
+  /** See [handleAnimatedCapture]'s `dialogGutter`. */
+  dialogGutter: DialogWindowCapture.DialogCropGutter = DialogWindowCapture.DialogCropGutter(),
 ): Boolean {
   if (focusGif.steps.isEmpty()) return false
   val framesDir = File(outputFile.parentFile, "${outputFile.nameWithoutExtension}_focus_frames")
@@ -3957,7 +3977,7 @@ private fun handleFocusGifCapture(
   val frameRoborazziOptions =
     RoborazziOptions(recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = isRound))
   val frameFiles = mutableListOf<File>()
-  val stableDialogCrop = DialogWindowCapture.StableDialogCrop()
+  val stableDialogCrop = DialogWindowCapture.StableDialogCrop(dialogGutter)
 
   try {
     focusGif.steps.forEachIndexed { i, step ->
