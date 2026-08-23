@@ -17,9 +17,9 @@
 package ee.schimke.composeai.rcembedded.jvm
 
 import androidx.compose.remote.core.operations.BitmapData
-import androidx.compose.remote.player.compose.embedded.JvmRemoteContext
-import androidx.compose.remote.player.compose.embedded.SnapshotRemoteComposeState
 import androidx.compose.ui.graphics.ImageBitmap
+import ee.schimke.composeai.rcembedded.player.JvmRemoteContext
+import ee.schimke.composeai.rcembedded.player.SnapshotRemoteComposeState
 import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.EncodedImageFormat

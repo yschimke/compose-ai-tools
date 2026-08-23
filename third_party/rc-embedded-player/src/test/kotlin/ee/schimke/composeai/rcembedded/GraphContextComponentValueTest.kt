@@ -20,10 +20,10 @@ import androidx.compose.remote.core.RemoteClock
 import androidx.compose.remote.core.operations.FloatExpression
 import androidx.compose.remote.core.operations.Utils
 import androidx.compose.remote.core.operations.utilities.AnimatedFloatExpression
-import androidx.compose.remote.player.compose.embedded.GraphContext
-import androidx.compose.remote.player.compose.embedded.SnapshotRemoteComposeState
-import androidx.compose.remote.player.compose.embedded.buildComputedOpIndex
 import androidx.compose.runtime.mutableFloatStateOf
+import ee.schimke.composeai.rcembedded.player.GraphContext
+import ee.schimke.composeai.rcembedded.player.SnapshotRemoteComposeState
+import ee.schimke.composeai.rcembedded.player.buildComputedOpIndex
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

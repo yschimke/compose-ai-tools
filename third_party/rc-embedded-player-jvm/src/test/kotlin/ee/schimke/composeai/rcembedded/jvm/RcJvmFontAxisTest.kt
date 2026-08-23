@@ -16,10 +16,10 @@
 
 package ee.schimke.composeai.rcembedded.jvm
 
-import androidx.compose.remote.player.compose.embedded.packedAxisName
 import androidx.compose.ui.text.font.FontVariation
 import ee.schimke.composeai.fonts.google.GoogleFontKey
 import ee.schimke.composeai.fonts.google.GoogleFontSource
+import ee.schimke.composeai.rcembedded.player.packedAxisName
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals

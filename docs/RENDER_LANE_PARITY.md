@@ -305,6 +305,14 @@ PNG beside it carried the gutter — the component is the same size in both, onl
   `TOP` is untouched on both lanes: the undriven first viewport is a still, and stills carry the
   gutter.
 
+  Two Android frame shapes are **unsupported** with a gutter and keep it on their scroll products,
+  because trimming would be worse than not trimming: a **round device** (the circular mask is baked
+  into the capture, so cropping leaves an oversized — and for an asymmetric gutter, off-centre —
+  circle instead of the watch shape) and **`showSystemUi`** (`SystemBarsFrame` wraps the gutter box,
+  so the chrome is painted against the *grown* window's edges and trimming slices the bars). Both
+  need the scroll pass composed in an un-grown window rather than post-processed, and neither is a
+  combination any preview declares.
+
   **`END` still diverges on Android**, knowingly. It is the one scroll mode whose product is an
   ordinary still, so it shares the whole still post-capture chain — the focus overlay, the a11y /
   semantics / layout-inspector products, a round device's baked-in mask — every one of which

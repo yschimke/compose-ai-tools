@@ -52,21 +52,10 @@ internal object DialogWindowCapture {
    */
   class StableDialogCrop(
     private val gutter: DialogCropGutter = DialogCropGutter(),
+    private val fixedAxisTarget: FixedAxisTarget = FixedAxisTarget(),
     private val gutterTrim: GutterTrim = GutterTrim(),
   ) {
     private var cropRect: android.graphics.Rect? = null
-
-    /**
-     * Whether the most recent [captureFrame] actually removed a gutter.
-     *
-     * `false` for a dialog capture even when a trim was configured: that branch crops to the
-     * dialog's own window rect and never reaches the hosting-window trim. A caller that
-     * post-processes in the trimmed frame's coordinates — the round-device re-mask — has to know
-     * which branch ran, or it re-masks a dialog crop that was never resized (compose-ai-tools#4467
-     * review).
-     */
-    var trimmedLastFrame: Boolean = false
-      private set
 
     @OptIn(ExperimentalRoborazziApi::class)
     fun captureFrame(
@@ -79,14 +68,16 @@ internal object DialogWindowCapture {
       val semanticsRoot = root.semanticsRoot
       val window = semanticsRoot?.let { shownDialogWindow(it) }
       if (semanticsRoot == null || window == null) {
-        // Not a dialog preview: the frame is the hosting window, which may have been grown by a
-        // gutter this product does not want. A dialog capture needs no equivalent — it is cropped
-        // to the dialog's own window rect below, and a scroll capture passes the crop no gutter.
+        // Not a dialog preview: the frame is the hosting window, grown in whole **dp**. Two
+        // post-captures can apply, and they are mutually exclusive in practice — a motion product
+        // carries [fixedAxisTarget] (resize to the pixel target the still uses) and a scroll
+        // product carries [gutterTrim] (remove the gutter the contract excludes it from). Each is
+        // empty for the other's callers. A dialog capture takes neither: it is cropped to the
+        // dialog's own window rect below, which frames the component already.
+        fixedAxisTarget.applyTo(file)
         gutterTrim.applyTo(file)
-        trimmedLastFrame = !gutterTrim.isEmpty()
         return root
       }
-      trimmedLastFrame = false
       val rect =
         cropRect
           ?: dialogWindowCropRect(file, semanticsRoot, window, gutter)?.also { cropRect = it }
@@ -166,6 +157,36 @@ internal object DialogWindowCapture {
 
   /** The surviving rect of a [GutterTrim], in captured pixels. */
   internal data class TrimRect(val left: Int, val top: Int, val width: Int, val height: Int)
+
+  /**
+   * The exact pixel size a **fixed** axis's capture must come out at, or `null` per axis for an
+   * axis that wraps (and is therefore already the measured content plus its gutter).
+   *
+   * A Robolectric resource qualifier has no unit but dp, so the hosting window grows by
+   * `ceil(totalGutterPx / density)` dp — at a fractional density that is more pixels than the
+   * gutter actually resolves to. Two 4 dp edges at density 2.625 are 11 + 11 = 22 px, while the
+   * qualifier grows 9 dp ≈ 24 px. The still has always corrected for that; motion products encoded
+   * the qualifier-sized frame, so the same preview published a PNG at `frame + 22` and a GIF beside
+   * it at `frame + 24` (compose-ai-tools#4467). Passing the target through to every per-frame
+   * capture is what makes the two agree.
+   *
+   * All-null is the un-corrected behaviour, which is what a fully wrapped preview and every scroll
+   * product want.
+   */
+  data class FixedAxisTarget(val widthPx: Int? = null, val heightPx: Int? = null) {
+    internal fun applyTo(file: File) {
+      if (widthPx == null && heightPx == null) return
+      // A frame that won't decode is left alone rather than throwing. On the multi-frame paths
+      // this runs inside `captureDecodableFrame`'s capture lambda, and that retry only absorbs a
+      // transient Robolectric encode glitch when `FramePngReader.decode` is the thing that meets
+      // it — an `IIOException` raised *here* escapes the loop and turns a frame that would have
+      // re-encoded cleanly into an error sidecar. Skipping leaves the bad bytes on disk for the
+      // decode below to catch and re-capture, and the fresh frame gets trimmed on the next
+      // attempt. Only the decode failure is swallowed; anything else still propagates.
+      runCatching { resizeFixedAxesPng(file, widthPx, heightPx) }
+        .onFailure { if (it !is javax.imageio.IIOException) throw it }
+    }
+  }
 
   fun resolveCaptureRoot(rule: AndroidComposeTestRule<*, ComponentActivity>): CaptureRoot {
     val interactions = rule.onAllNodes(isRoot(), useUnmergedTree = true)

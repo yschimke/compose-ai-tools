@@ -938,6 +938,34 @@ fun TristateClickSquare() {
 }
 
 /**
+ * Live-recording reverse-map fixture: the click **replaces** the node it landed on.
+ *
+ * `before-click` fills the frame until it is pressed, after which the same rect is `after-click`.
+ * That makes the ordering in `captureLiveEvent` observable: a reverse map taken against the screen
+ * the input *produced* records `after-click`, which replays as a click on a node that did not exist
+ * when the user aimed — the regression the #4470 review caught. Taken against the screen the user
+ * clicked, it records `before-click`.
+ */
+@Composable
+fun ClickSwapsTargetSquare() {
+  var clicked by remember { mutableStateOf(false) }
+  Box(
+    modifier =
+      Modifier.fillMaxSize()
+        .background(if (clicked) Color(0xFF42A5F5) else Color(0xFFEF5350))
+        .testTag(if (clicked) "after-click" else "before-click")
+        .pointerInput(Unit) {
+          awaitPointerEventScope {
+            while (true) {
+              awaitFirstDown()
+              clicked = true
+            }
+          }
+        }
+  )
+}
+
+/**
  * Live-mode failure-propagation fixture for `DesktopRecordingSessionTest`. First composition paints
  * cyan and arms a click watcher; the click flips `boom = true`, the recomposition reads `boom` and
  * `error("…")`s. The thrown exception propagates out of `scene.render()` on the live tick thread —
