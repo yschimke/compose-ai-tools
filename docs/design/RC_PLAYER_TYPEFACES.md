@@ -38,7 +38,7 @@ viewer disagree about the *same* document:
    `Typeface.create(name, style)`; there is no `FontsContractCompat`/GMS call anywhere in
    `remote-player-view` or `remote-player-core`, so `google:Orbitron` cannot resolve — it renders in
    the platform default. The vendored embedded player's
-   [`EmbeddedPlayerTypefaceResolver`](../../third_party/rc-embedded-player/src/main/kotlin/androidx/compose/remote/player/compose/embedded/EmbeddedPlayerTypefaceResolver.kt)
+   [`EmbeddedPlayerTypefaceResolver`](../../third_party/rc-embedded-player/src/main/kotlin/ee/schimke/composeai/rcembedded/player/EmbeddedPlayerTypefaceResolver.kt)
    *does* issue a `FontsContractCompat.requestFont`, which under the daemon's Robolectric sandbox is
    intercepted by
    [`ShadowFontsContractCompat`](../../renderers/android/src/main/kotlin/ee/schimke/composeai/renderer/ShadowFontsContractCompat.kt)

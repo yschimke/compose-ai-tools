@@ -6,7 +6,6 @@ import androidx.collection.MutableObjectIntMap
 import androidx.collection.ObjectIntMap
 import androidx.collection.emptyObjectIntMap
 import androidx.compose.remote.player.compose.RemoteDocumentPlayer
-import androidx.compose.remote.player.compose.embedded.ExperimentalRemoteDocumentPlayer
 import androidx.compose.remote.player.core.RemoteDocument
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -15,6 +14,7 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import ee.schimke.composeai.data.render.IrSidecarChannel
 import ee.schimke.composeai.data.render.extensions.IrReplayComposableProvider
+import ee.schimke.composeai.rcembedded.player.ExperimentalRemoteDocumentPlayer
 import java.lang.reflect.Modifier
 
 /**
@@ -99,7 +99,7 @@ internal fun Map<String, RemoteNamedValue>.toNamedColorOverrides(): ObjectIntMap
 }
 
 internal const val EMBEDDED_PLAYER_FACADE =
-  "androidx.compose.remote.player.compose.embedded.ExperimentalRemoteDocumentPlayerKt"
+  "ee.schimke.composeai.rcembedded.player.ExperimentalRemoteDocumentPlayerKt"
 
 internal const val EMBEDDED_PLAYER_ENTRY_POINT = "ExperimentalRemoteDocumentPlayer"
 
@@ -124,7 +124,7 @@ internal val EMBEDDED_PLAYER_ENTRY_POINT_PARAMETERS: List<String> =
     "androidx.compose.ui.Modifier",
     "int",
     "androidx.collection.ObjectIntMap",
-    "androidx.compose.remote.player.compose.embedded.RcImageLoader",
+    "ee.schimke.composeai.rcembedded.player.RcImageLoader",
     "kotlin.jvm.functions.Function1",
     "kotlin.jvm.functions.Function2",
     "kotlin.jvm.functions.Function3",
@@ -137,21 +137,19 @@ internal val EMBEDDED_PLAYER_ENTRY_POINT_PARAMETERS: List<String> =
  * Whether [EMBEDDED_PLAYER_FACADE] on [classLoader] declares the exact entry point this module was
  * compiled against.
  *
- * A class-presence check is NOT enough, and that is not hypothetical. The vendored player
- * (`:third-party-rc-embedded-player`) shares its package with what `androidx.compose.remote:
- * remote-player-compose` publishes, and from androidx-main build 16130474 that artifact ships the
- * embedded player itself — same fully-qualified names, a different
- * `ExperimentalRemoteDocumentPlayer` signature (`theme` moved to the end, a `customPlugins`
- * parameter added, our removed `autoUpdate`). Two copies of one class in front of one classloader
- * means whichever jar comes first wins, so on a runtime classpath carrying both, `Class.forName`
- * succeeds against a class that does not have the method — and the render dies with
- * `NoSuchMethodError: 'void
- * …ExperimentalRemoteDocumentPlayerKt.ExperimentalRemoteDocumentPlayer(…)'`. That error is
- * non-recoverable by construction, so `serve` disables the catalog's whole live render lane on it
- * (`remote-m3` on preview.coo.ee, 22 Aug 2026) and falls back to baked PNGs.
+ * The ordinary answer is "did the consumer put `:third-party-rc-embedded-player` on the classpath",
+ * and since that module moved out of `androidx.compose.remote.player.compose.embedded` into a
+ * package nobody else publishes into, nothing can answer it falsely by shadowing.
  *
- * Resolving the *method* instead makes that case what it should always have been: the same graceful
- * degrade to the View-backed `RemoteDocumentPlayer` a consumer without the player at all gets.
+ * It resolves the *method* rather than the class anyway, because the two are not the same question
+ * and the gap between them cost a production render lane. When the vendored player still lived in
+ * upstream's package and androidx-main build 16130474 began publishing an embedded player of its
+ * own — same fully-qualified names, a reshaped `ExperimentalRemoteDocumentPlayer` — `Class.forName`
+ * happily returned upstream's class, the call failed to link, and `serve` disabled `remote-m3`'s
+ * whole live render lane on the resulting `NoSuchMethodError` (preview.coo.ee, 22 Aug 2026). The
+ * relocation is what makes that unrepeatable; this check is what keeps the failure graceful — a
+ * fall back to the View-backed `RemoteDocumentPlayer` — if a consumer ever ships a drifted copy
+ * anyway, e.g. a re-vendor whose entry point moved.
  */
 internal fun embeddedPlayerEntryPointPresent(classLoader: ClassLoader?): Boolean = runCatching {
   declaresEntryPoint(

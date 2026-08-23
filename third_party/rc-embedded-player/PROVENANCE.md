@@ -14,7 +14,7 @@ both lets `rc-compare` diff them against the same baked PNG.
 ## Upstream
 
 - Repository: <https://github.com/androidx/androidx>
-- Path: `compose/remote/integration-tests/player-compose-embedded/src/main/java/androidx/compose/remote/player/compose/embedded`
+- Path: `compose/remote/integration-tests/player-compose-embedded/src/main/java/ee.schimke.composeai.rcembedded.player`
 - Commit: `c8e7d738d7c76df3a87281ba8c3b880622df6282` (`androidx-main`, 2026-07-29)
 - License: Apache-2.0
 
@@ -22,27 +22,24 @@ There is **no published artifact** for this player. Upstream declares the module
 `SoftwareType.TEST_APPLICATION` — an integration-test app — so the player ships only as sources
 inside it. Vendoring is the only way to depend on it.
 
-### That premise has expired, and the collision is live
+### That premise has expired — so the vendored player left upstream's package
 
 `androidx.compose.remote:remote-player-compose:1.0.0-SNAPSHOT` — which this module takes as an
 `implementation` dependency, and which every Android consumer of it resolves since the catalog moved
 to the androidx.dev snapshot line — **now ships the embedded player itself**: 138 class files under
-`androidx/compose/remote/player/compose/embedded/`, the very package these sources are vendored into.
+`androidx/compose/remote/player/compose/embedded/`, the package these sources used to be vendored
+into. **45 of the 56 files here collided by fully-qualified name** — the whole player, not a fringe:
+`RcPlayer`, every layout and modifier file, `RcPlayerDrawing`, `RcPlayerPaint`,
+`ExperimentalRemoteDocumentPlayer`, and `AndroidColorThemeResolver`, which carries one of the local
+modifications below.
 
-**45 of the 56 files vendored here collide by fully-qualified name** — measured against build
-`16130474`, the snapshot `settings.gradle.kts` pins today, by comparing the top-level names in this
-source tree against the classes in that artifact. That is the whole player, not a fringe: `RcPlayer`,
-every layout and modifier file, `RcPlayerDrawing`, `RcPlayerPaint`, `ExperimentalRemoteDocumentPlayer`
-— and `AndroidColorThemeResolver`, which is one of the local modifications below (the theme-fallback
-fix). So which bytes run is decided by classpath ordering, not by this directory: if the upstream
-class wins, the local delta silently is not there, and the embedded lane's pixels change with nothing
-in any log to say why.
-
-**Since 22 Aug 2026 it is no longer silent — it takes a catalog's live render lane down.** Upstream
-reshaped the entry point itself: `ExperimentalRemoteDocumentPlayer` moved `theme` to the end, added a
-`customPlugins: CustomPluginRegistry?` parameter, and (unlike the copy here) kept `autoUpdate`
-removed — so the descriptor the connector compiles against does not exist on the upstream class. With
-upstream's copy first on the classpath, every `remote-m3` render on preview.coo.ee died with
+Which bytes ran was therefore decided by classpath ordering rather than by this directory. That is
+worse than it sounds for a module whose whole job is to be a *comparison* lane: if the upstream class
+won, the local delta silently was not there, the pixels changed with nothing in any log to say why,
+and no `rc-compare` or CMP/Wasm parity number could be attributed to a known player. On 22 Aug 2026
+it stopped being silent — upstream reshaped the entry point (`theme` moved to the end, a
+`customPlugins: CustomPluginRegistry?` parameter added), so with upstream's copy first every
+`remote-m3` render on preview.coo.ee died with
 
 ```
 render failed: NoSuchMethodError: 'void androidx.compose.remote.player.compose.embedded
@@ -50,19 +47,34 @@ render failed: NoSuchMethodError: 'void androidx.compose.remote.player.compose.e
   int, ObjectIntMap, RcImageLoader, Function1, Function2, Function3, Composer, int, int)'
 ```
 
-and `serve` — correctly — treats a `NoSuchMethodError` as non-recoverable and disables the catalog's
-whole live render lane, falling back to baked PNGs.
-`:samples:remotecompose:assembleDebug` still *builds*, so the compile says nothing about any of this.
+and `serve` — correctly — treats a `NoSuchMethodError` as non-recoverable and disabled the catalog's
+whole live render lane ([#4464](https://github.com/yschimke/compose-ai-tools/pull/4464)).
 
-The connector no longer takes the class's presence as proof it can be called:
-`isEmbeddedPlayerAvailable`
-([`RemoteComposeIrReplay.kt`](../../data/remotecompose/connector/src/main/kotlin/ee/schimke/composeai/daemon/RemoteComposeIrReplay.kt))
-resolves the exact entry point and falls back to the View-backed player when it is absent, so a
-shadowed classpath degrades instead of killing the lane. That is a seatbelt, not the fix — the
-embedded lane is *unavailable* on such a classpath, which is why the decision below still has to be
-made.
+**The fix was to stop squatting.** These sources now live in
+`ee.schimke.composeai.rcembedded.player` (`.layout`, `.modifier`, `.state`, `.utils`), a package
+nobody else publishes into, so both copies can sit on one classpath and neither can shadow the
+other. Two things follow, and both are improvements rather than costs:
 
-Reproduce the overlap:
+- a `rc-compare` or parity number is now attributable — the embedded column is *this* code, by
+  construction rather than by luck;
+- the availability gate in the connector
+  ([`RemoteComposeIrReplay.kt`](../../data/remotecompose/connector/src/main/kotlin/ee/schimke/composeai/daemon/RemoteComposeIrReplay.kt))
+  goes back to meaning "did the consumer ship the player", which is the question it always looked
+  like it was asking. It still resolves the entry-point *method* rather than the class, as a
+  seatbelt against a future re-vendor whose signature drifts.
+
+The refresh workflow pays for this: a `diff -r` against an androidx checkout now shows a package line
+and import block differing in every file. Handle it by rewriting upstream's package on the way in
+rather than by hand — the transform is exactly
+
+```
+androidx.compose.remote.player.compose.embedded[.x] -> ee.schimke.composeai.rcembedded.player[.x]
+androidx.compose.remote.player.compose.utils        -> ee.schimke.composeai.rcembedded.player.utils
+```
+
+(and the same with `/` for paths), after which the diff is as verbatim as it ever was.
+
+Reproduce the overlap that motivated this:
 
 ```bash
 ./gradlew :third-party-rc-embedded-player:assembleDebug
@@ -70,13 +82,30 @@ jar=$(find ~/.gradle/caches -path '*remote-player-compose-1.0.0-SNAPSHOT*' -name
 unzip -l "$jar" | grep -c 'compose/embedded'
 ```
 
-**This needs a decision, and it is not a small one.** Upstream publishing the player is exactly the
-condition under which vendoring stops being justified — but the local modifications listed below are
-rendering fixes, so adopting upstream wholesale changes the embedded lane's output. The three ways
-out: retire this module for the published artifact (and re-baseline `rc-compare`), relocate the
-vendored package (which costs the verbatim `diff -r` refresh this file is built around), or strip
-the upstream `embedded/` package from the dependency. Tracked as a follow-up to
+**What relocation does *not* decide:** whether to keep vendoring at all. Upstream publishing the
+player is still the condition under which vendoring stops being justified, and the two remaining
+options — retire this module for the published artifact (re-baselining `rc-compare`, and noting that
+upstream defaults `theme` to `Theme.SYSTEM` where this copy uses `Theme.UNSPECIFIED`), or keep it —
+are now a considered choice rather than something forced by a build accident. Relocation is correct
+under either, which is why it went first. Tracked as a follow-up to
 [#4184](https://github.com/yschimke/compose-ai-tools/pull/4184).
+
+### The path seam, and why it exists
+
+`RcPlayerDrawing.kt` is compiled into both this module and the jvm sibling, and calls
+`RemoteComposeState.getPath` / `getTweenPath`. The two targets need different implementations:
+upstream's Android version reaches `(path as AndroidPath).internalPath.conicTo(...)` behind an
+SDK-34 gate, which a `kotlin("jvm")` module cannot call, so the jvm side vendors an adapted copy
+routing CONIC through skiko (`utils/FloatsToPath.kt` there).
+
+That split used to be arranged by the same squatting trick one layer down — the jvm copy declared
+itself in `androidx.compose.remote.player.compose.utils`, so a single import string resolved to
+upstream's AAR on Android and to the vendored copy on jvm. It never collided in practice (a jvm
+classpath never sees the Android artifact), but it made which-code-runs a property of the classpath
+again. Both targets now import `ee.schimke.composeai.rcembedded.player.utils.getPath`, and each
+module supplies it: the jvm module from its adapted copy, this one by forwarding to upstream in
+[`utils/PathUtilsAndroid.kt`](src/main/kotlin/ee/schimke/composeai/rcembedded/player/utils/PathUtilsAndroid.kt).
+The Android rendering path is unchanged — it is the same upstream function it always called.
 
 ## What is vendored
 
@@ -88,8 +117,11 @@ modifications" below). Upstream's
 previews that live in the same source set are **not** vendored — they are demo/test scaffolding for
 the integration-test app, and they drag in Wear Material3 and `remote-creation-compose` capture.
 
-Package names are kept verbatim (`androidx.compose.remote.player.compose.embedded`) so refreshing
-the snapshot against a newer androidx checkout is a plain `diff -r` with no rename noise.
+Package names are **not** verbatim: upstream's
+`androidx.compose.remote.player.compose.embedded[.x]` is rewritten to
+`ee.schimke.composeai.rcembedded.player[.x]` on the way in, because upstream now publishes into that
+package itself (see "That premise has expired" above). Apply that rewrite when refreshing and a
+`diff -r` against an androidx checkout is verbatim again everywhere else.
 
 ## Copyright
 

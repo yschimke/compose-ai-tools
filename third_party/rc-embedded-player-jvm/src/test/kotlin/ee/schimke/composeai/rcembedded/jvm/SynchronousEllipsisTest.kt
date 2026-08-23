@@ -16,8 +16,8 @@
 
 package ee.schimke.composeai.rcembedded.jvm
 
-import androidx.compose.remote.player.compose.embedded.synchronousEllipsis
 import androidx.compose.ui.text.style.TextOverflow
+import ee.schimke.composeai.rcembedded.player.synchronousEllipsis
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

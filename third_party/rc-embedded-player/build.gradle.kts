@@ -64,7 +64,7 @@ plugins {
 android {
   // Keep the upstream package so the vendored sources stay a verbatim snapshot — diffing against a
   // newer androidx checkout is a plain `diff -r`, with no rename noise to sift through.
-  namespace = "androidx.compose.remote.player.compose.embedded"
+  namespace = "ee.schimke.composeai.rcembedded.player"
 
   // The alpha `compose-remote` AARs declare `minCompileSdk = 37`; same override the
   // `:data-remotecompose-connector` and `:samples:remotecompose` modules carry.

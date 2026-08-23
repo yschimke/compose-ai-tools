@@ -44,8 +44,8 @@ class AndroidColorTableDriftTest {
     val embedded =
       names(
         repoFile(
-          "third_party/rc-embedded-player/src/main/kotlin/androidx/compose/remote/player/" +
-            "compose/embedded/ColorThemeResolution.kt"
+          "third_party/rc-embedded-player/src/main/kotlin/ee/schimke/composeai/" +
+            "rcembedded/player/ColorThemeResolution.kt"
         ),
         marker = "internal val ANDROID_COLOR_NAMES",
       )
