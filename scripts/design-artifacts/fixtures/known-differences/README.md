@@ -180,6 +180,8 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `schema-invalid-unknown-property` | A record carrying the `finding` field cut from `v1` |
 | `schema-invalid-unknown-property-named-like-geometry` | An unknown record property that shares a geometry field's name |
 | `document-unreadable-element-tolerance-over-by-rounding` | An `element.tolerance` just past the ceiling, rounded back inside it |
+| `element-tolerance-at-ceiling-padded` | An `element.tolerance` of `0.25` written past the digit limit |
+| `document-unreadable-element-tolerance-negative-underflow` | An `element.tolerance` negative by a magnitude too small to survive the parse |
 | `document-unreadable-fractional-candidate-tolerance` | A `candidateTolerance` written as a near-integer fraction |
 | `schema-invalid-unknown-element-property` | An `element` carrying a property `v1` does not define |
 | `schema-invalid-note-wrong-type` | A numeric `note` |

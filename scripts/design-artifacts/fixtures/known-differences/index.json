@@ -597,6 +597,16 @@
       "site": null
     },
     {
+      "id": "element-tolerance-at-ceiling-padded",
+      "title": "An `element.tolerance` of `0.25` written past the digit limit",
+      "site": null
+    },
+    {
+      "id": "document-unreadable-element-tolerance-negative-underflow",
+      "title": "An `element.tolerance` negative by a magnitude too small to survive the parse",
+      "site": null
+    },
+    {
       "id": "document-unreadable-fractional-candidate-tolerance",
       "title": "A `candidateTolerance` written as a near-integer fraction",
       "site": null

@@ -95,7 +95,11 @@ Each exists because two engines would otherwise diverge on identical bytes.
   reads them" note; *nothing reads them* was the problem. The suite's oversize artifacts are padded
   inside the compressed stream instead (empty stored deflate blocks, zero-length `IDAT` chunks).
 - **`element.tolerance`'s range is checked on the token too**, as an exact decimal — it is the one
-  bounded field that is not an integer, and `0.25000000000000000001` is `0.25` after parsing.
+  bounded field that is not an integer, and `0.25000000000000000001` is `0.25` after parsing. Both
+  endpoints are reachable from the wrong side by an approximation of that rule, so both are pinned:
+  a truncated mantissa must ask whether a *discarded* digit was non-zero (`0.25` plus a hundred
+  zeroes is the maximum, not past it), and a magnitude below any representable scale keeps its sign
+  (`-1e-999999` is below a minimum of `0`, though it parses to `-0`).
 - **A repeated JSON member name refuses the document.** RFC 8259 leaves it undefined and runtimes
   differ — last value, first value, or a hard refusal — so `{"id":"safe","id":".."}` addresses two
   different artifact directories from one committed file. Detected **on the text**: by the time there

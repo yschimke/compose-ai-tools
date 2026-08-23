@@ -1344,6 +1344,18 @@ without requiring an integer, so the canonical-integer rule cannot carry it — 
 same shape: `0.25000000000000000001` is `0.25` by the time a range check can look. Its **range** is
 therefore checked on the token, as an exact decimal, without ever forming the double.
 
+Exactly as an exact decimal, which is narrower than it sounds — both endpoints are reachable from
+the wrong side by an engine that approximates it, and each has a fixture:
+
+- **Trailing zeroes are not a remainder.** A comparison that truncates a long mantissa before
+  comparing — which it must, since a million-digit token is legal — has to ask whether any digit it
+  *discarded* was non-zero, not whether it discarded any. `0.25` followed by a hundred zeroes is the
+  declared maximum, not a hair over it.
+- **A magnitude too small to represent still has a sign.** `-1e-999999` is strictly below a minimum
+  of `0` and is `-0` once parsed, so an engine that decides a far-below-scale token from its
+  magnitude alone puts it inside every range spanning zero. Below scale and negative is out of range
+  at a minimum of `0`; below scale and positive is not.
+
 Two things keep these checks from doing damage of their own, and both are pinned:
 
 - **It is scoped by containing object, never by member name.** The paths are a box's `x`, `y`,

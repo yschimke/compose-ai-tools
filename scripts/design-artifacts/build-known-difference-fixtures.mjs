@@ -3047,6 +3047,65 @@ glyphValidation({
   },
 });
 
+{
+  // **Exactly `0.25`, spelled with a hundred trailing zeroes** — the accepting half of the range
+  // walk, and the case its refusing sibling cannot stand in for. The walk truncates the mantissa
+  // before comparing, because a million-digit token is legal and only the leading digits can decide
+  // a comparison against a two-digit bound; the question that decides a tie is then whether any
+  // *discarded* digit was non-zero, not whether digits were discarded at all. An engine that
+  // conflates the two refuses this document — a value that is the declared maximum and passes the
+  // schema — and still passes every case above it. The text is built from the worked example and
+  // patched, so the padding cannot quietly stop landing on the token it is meant to pad.
+  const world = glyphWorld();
+  const element = {
+    kind: "tag",
+    tag: "iconbutton-tonal-glyph",
+    bounds: { x: 8, y: 8, width: 8, height: 8 },
+    tolerance: 0.25,
+  };
+  const text = `${JSON.stringify(document([glyphRecord(world, { element })]), null, 2)}\n`;
+  const marker = '"tolerance": 0.25';
+  if (text.split(marker).length !== 2) {
+    throw new Error("the element tolerance is no longer a single token spelled `0.25`");
+  }
+  glyphValidation({
+    id: "element-tolerance-at-ceiling-padded",
+    title: "An `element.tolerance` of `0.25` written past the digit limit",
+    why:
+      "The maximum is legal, and staying legal must not depend on how many zeroes follow it. This " +
+      "is the accepting half of the exact-decimal range rule: the refusing sibling " +
+      "(`0.25000000000000000001`) is satisfied by *any* engine that treats a long token as over " +
+      "the ceiling, so it alone would ratify one that refuses the ceiling itself.",
+    documentText: text.replace(marker, `${marker}${"0".repeat(100)}`),
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+      validationFailures: [],
+    },
+  });
+}
+
+glyphValidation({
+  id: "document-unreadable-element-tolerance-negative-underflow",
+  title: "An `element.tolerance` negative by a magnitude too small to survive the parse",
+  why:
+    "`-1e-999999` is a legal JSON number strictly below the declared minimum of `0`, and it is " +
+    "`-0` by the time any range check can look — so the sign, the only thing that makes it " +
+    "invalid, is exactly what the parse destroys. It is the mirror of the over-the-ceiling case at " +
+    "the other bound, and it needs the *sign* carried through a magnitude test that has already " +
+    "discarded the digits: an engine deciding a far-below-scale token from its magnitude alone " +
+    "puts it inside any range that spans zero and gates a record a lossless validator refuses.",
+  documentText:
+    '{"schema":"compose-preview-known-differences/v1","acceptances":[{"id":"a","element":' +
+    '{"kind":"tag","tag":"t","bounds":{"x":1,"y":1,"width":2,"height":2},' +
+    '"tolerance":-1e-999999}}]}',
+  expected: {
+    pins: ["statusesAbsent", "validationFailures"],
+    statusesAbsent: true,
+    validationFailures: [{ reason: "document-unreadable" }],
+  },
+});
+
 glyphValidation({
   id: "document-unreadable-fractional-candidate-tolerance",
   title: "A `candidateTolerance` written as a near-integer fraction",

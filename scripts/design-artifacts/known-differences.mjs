@@ -688,17 +688,24 @@ function tokenWithinRange(token, low, high) {
   if (significant === "") return low <= 0 && high >= 0;
 
   const kept = significant.slice(0, RANGE_DIGIT_LIMIT);
-  const dropped = significant.length - kept.length;
-  const scale = exponent - fraction.length + dropped;
+  const discarded = significant.slice(RANGE_DIGIT_LIMIT);
+  // Whether digits were dropped sets the *scale*; whether any of them was non-zero is a different
+  // question, and it is the one that breaks a tie. `0.25` written with a hundred trailing zeroes is
+  // exactly the maximum, not a hair over it.
+  const remainder = /[1-9]/.test(discarded);
+  const scale = exponent - fraction.length + discarded.length;
   // The value lies in `[10^(magnitude - 1), 10^magnitude)`, which is all the magnitude test needs.
   const magnitude = kept.length + scale;
   const negative = sign === "-";
 
   if (!Number.isFinite(magnitude) || Math.abs(magnitude) > RANGE_EXPONENT_WINDOW) {
-    // Far outside any short bound: decide from the sign and the direction alone.
-    const enormous = magnitude > 0;
-    if (negative) return enormous ? false : low <= 0 && high >= 0;
-    return enormous ? false : low <= 0 && high >= 0;
+    // Far outside any short bound, so the digits no longer matter — but the *sign* still does, and
+    // it decides two different questions. An enormous magnitude is beyond either bound whichever way
+    // it points. A tiny one is a non-zero value pressed right up against zero without ever reaching
+    // it, so it clears a bound of zero on one side and fails it on the other: `-1e-999999` is
+    // strictly below a minimum of `0`, however much it looks like `-0` once parsed.
+    if (magnitude > 0) return false;
+    return negative ? low < 0 && high >= 0 : low <= 0 && high > 0;
   }
 
   const value = BigInt(kept);
@@ -713,7 +720,8 @@ function tokenWithinRange(token, low, high) {
     const right = (boundNegative ? -boundValue : boundValue) * 10n ** BigInt(boundScale - common);
     if (left !== right) return left < right ? -1 : 1;
     // Equal on the digits kept: anything non-zero beyond them makes the magnitude strictly larger.
-    if (dropped === 0) return 0;
+    // Discarded zeroes change nothing, so they must not be mistaken for a remainder.
+    if (!remainder) return 0;
     return negative ? -1 : 1;
   };
   return compare(low) >= 0 && compare(high) <= 0;
