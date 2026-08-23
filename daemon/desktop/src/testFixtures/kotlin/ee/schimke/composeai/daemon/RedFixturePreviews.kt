@@ -938,6 +938,19 @@ fun TristateClickSquare() {
 }
 
 /**
+ * Wrap-content block measuring exactly half the 800x1600 px sandbox at density 1.
+ *
+ * Sized so that `measured * scale` lands precisely on the scene's own dimensions at `scale = 2` —
+ * the collision that makes a size-only no-op check wrong. Such a recording publishes at 800x1600,
+ * the scene's size, while still owing both a crop (to 400x800) and a scale (back up to 800x1600).
+ * Skipping it would leave the component in the corner of a sandbox-sized frame.
+ */
+@Composable
+fun HalfSandboxBlock() {
+  Box(modifier = Modifier.size(width = 400.dp, height = 800.dp).background(Color(0xFFEF5350)))
+}
+
+/**
  * Growing wrap-content fixture: a click **expands** the component (issue #4467).
  *
  * A closed 60x30 block that opens to 60x90 on the first press. The point is that a recording's crop

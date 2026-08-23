@@ -140,6 +140,20 @@ class DesktopRecordingSession(
 
   @Volatile private var renderedSceneHeightPx: Int = 0
 
+  /**
+   * Whether this recording's framing is settled before it starts.
+   *
+   * With both axes fixed there is nothing to crop — the natural size IS the scene — and no
+   * measurement that can move, so a frame can be scaled the moment it is taken, exactly as it was
+   * before framing was deferred. Deferring those would mean holding every frame at full scene
+   * resolution until `stop()`: a long `scale = 0.25` recording of a 4K preview would keep sixteen
+   * times the pixel area it asked for on disk, and can run the recordings volume out of space
+   * before it ever gets to be shrunk (issue #4467 review).
+   *
+   * Only a **wrapped** axis needs the deferral, because only it can grow mid-recording.
+   */
+  private val framingKnownUpFront: Boolean = !state.spec.wrapWidth && !state.spec.wrapHeight
+
   // Live mode bookkeeping: wall-clock anchor + frame counter. Both written only by the tick
   // thread (with frameCount also read by stop() after the join).
   @Volatile private var liveStartNs: Long = 0L
@@ -277,7 +291,7 @@ class DesktopRecordingSession(
     // Post-loop, and in this order: frame everything to the size the whole recording settled on,
     // THEN diff. The snapshots are framed by the same pass as the on-disk frames, so a golden
     // check still compares exactly the image that landed in the output.
-    val (frameWidthPx, frameHeightPx) = finalizeFrames(pendingPixels)
+    val (frameWidthPx, frameHeightPx) = finalizeFrames(pendingPixels, totalFrames)
     for (p in pendingPixels) {
       evidence[p.evidenceIndex] = evaluatePixelAssert(p.event, p.snapshotPng)
     }
@@ -386,7 +400,7 @@ class DesktopRecordingSession(
     val durationMs: Long = if (frameCount == 0) 0L else (frameCount - 1).toLong() * 1000L / fps
     // Safe here rather than on the tick thread: the join above has returned, so nothing is still
     // writing frames or folding measurements into the bounds.
-    val (frameWidthPx, frameHeightPx) = finalizeFrames(emptyList())
+    val (frameWidthPx, frameHeightPx) = finalizeFrames(emptyList(), frameCount)
     System.err.println(
       "compose-ai-daemon: DesktopRecordingSession.stop($recordingId, live): " +
         "captured $frameCount frame(s) over ~${durationMs}ms wall time " +
@@ -1096,9 +1110,17 @@ class DesktopRecordingSession(
    * the TalkBack focus overlay is composited in (issue #1956); otherwise it's the plain scaled
    * encode.
    */
-  private fun frameBytes(image: Image, frameIndex: Int): ByteArray =
-    if (state.spec.overrides?.talkBack == true) talkBackFrameBytes(image, frameIndex)
-    else encodeNaturalPng(image)
+  private fun frameBytes(image: Image, frameIndex: Int): ByteArray {
+    val natural =
+      if (state.spec.overrides?.talkBack == true) talkBackFrameBytes(image, frameIndex)
+      else encodeNaturalPng(image)
+    // Scaled here only when the framing cannot change — see [framingKnownUpFront]. A wrapped
+    // preview's frames stay at scene size until `stop()` knows how big the component ever got.
+    if (!framingKnownUpFront || scale == 1.0f) return natural
+    val scaledWidth = (image.width * scale).toInt().coerceAtLeast(1)
+    val scaledHeight = (image.height * scale).toInt().coerceAtLeast(1)
+    return scalePngBytes(natural, image.width, image.height, scaledWidth, scaledHeight)
+  }
 
   /**
    * The size every frame of this recording is published at, resolved once the recording has ended.
@@ -1128,36 +1150,50 @@ class DesktopRecordingSession(
    * A no-op for anything already the right size, which is every fixed-size preview at `scale = 1`:
    * those frames are neither re-decoded nor rewritten.
    */
-  private fun finalizeFrames(pendingPixels: List<PendingPixelAssert>): Pair<Int, Int> {
+  private fun finalizeFrames(
+    pendingPixels: List<PendingPixelAssert>,
+    frameCount: Int,
+  ): Pair<Int, Int> {
     val (naturalWidth, naturalHeight) = resolveNaturalSize()
     val frameWidth = (naturalWidth * scale).toInt().coerceAtLeast(1)
     val frameHeight = (naturalHeight * scale).toInt().coerceAtLeast(1)
 
-    // Decided from the sizes alone, BEFORE touching a single file: frames were written at the
-    // scene's size, so if the published size is that same size there is nothing to crop or scale
-    // and the whole pass is skipped. Checking inside `framed` instead would still decode every PNG
-    // to discover it had no work to do — which is the entire frame set of every fixed-size
-    // recording, decoded synchronously inside `stop()` for nothing.
+    // Decided from the sizes alone, BEFORE touching a single file, and requiring BOTH halves to be
+    // no-ops: nothing to crop (the published natural size is the whole scene) and nothing to scale
+    // (the frame size is that natural size). Comparing only the final frame size against the scene
+    // would collide — a 400x800 component in an 800x1600 scene at `scale = 2` publishes 800x1600,
+    // the scene's own size, while still needing both a crop and a scale.
+    //
+    // Checking inside `framed` instead would decode every PNG just to discover it had no work,
+    // which for a fixed-size recording is the entire frame set, synchronously inside `stop()`.
     val sceneWidth = if (renderedSceneWidthPx > 0) renderedSceneWidthPx else sceneWidthPx
     val sceneHeight = if (renderedSceneHeightPx > 0) renderedSceneHeightPx else sceneHeightPx
-    if (frameWidth == sceneWidth && frameHeight == sceneHeight) return frameWidth to frameHeight
+    val nothingToCrop = naturalWidth == sceneWidth && naturalHeight == sceneHeight
+    val nothingToScale = frameWidth == naturalWidth && frameHeight == naturalHeight
+    if (framingKnownUpFront || (nothingToCrop && nothingToScale)) return frameWidth to frameHeight
 
     fun framed(bytes: ByteArray): ByteArray =
       scalePngBytes(bytes, naturalWidth, naturalHeight, frameWidth, frameHeight)
 
+    // This recording's own frames, by index — NOT a glob of the directory. `framesDir` is keyed by
+    // `recordingId`, the counter behind it restarts at `rec-1` when the daemon does, and nothing
+    // clears the directory on setup. A glob would therefore sweep up any longer previous run's
+    // trailing frames: a one-frame recording could synchronously rewrite thousands of stale PNGs,
+    // and one unreadable leftover would fail a perfectly good recording.
+    //
     // Failures propagate, as the original frame writes do. Swallowing them would let `stop()`
     // report success and the new dimensions over a frame set that is half reframed — which the
     // encoder then turns into a corrupt mixed-size recording, or which leaves pixel-assert
     // evidence disagreeing with the frame on disk.
-    framesDir
-      .listFiles { f -> f.isFile && f.name.endsWith(".png") }
-      ?.forEach { file ->
-        val bytes = file.readBytes()
-        val framedBytes = framed(bytes)
-        if (!framedBytes.contentEquals(bytes)) {
-          fileSystem.write(file.path.toPath()) { write(framedBytes) }
-        }
+    for (index in 0 until frameCount) {
+      val file = File(framesDir, "frame-${"%05d".format(index)}.png")
+      if (!file.isFile) continue
+      val bytes = file.readBytes()
+      val framedBytes = framed(bytes)
+      if (!framedBytes.contentEquals(bytes)) {
+        fileSystem.write(file.path.toPath()) { write(framedBytes) }
       }
+    }
     pendingPixels.forEach { it.snapshotPng = framed(it.snapshotPng) }
     return frameWidth to frameHeight
   }

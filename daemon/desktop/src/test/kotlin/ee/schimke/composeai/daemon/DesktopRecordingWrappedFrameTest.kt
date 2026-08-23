@@ -1,10 +1,12 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
+import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
 import org.junit.After
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -206,6 +208,131 @@ class DesktopRecordingWrappedFrameTest {
     } finally {
       host.shutdown()
     }
+  }
+
+  @Test
+  fun `a wrapped recording at scale is cropped AND scaled, not skipped`() {
+    // The trap in a size-only no-op check: a component that measures exactly `scene / scale`
+    // publishes at the scene's own dimensions, so comparing the final frame size against the scene
+    // says "nothing to do" while both a crop and a scale are still owed. The sticker here is far
+    // smaller than the sandbox, so a skipped pass would leave it in the corner of a sandbox-sized
+    // frame rather than filling a scaled one.
+    val outputDir = tempFolder.newFolder("renders-scaled")
+    val recordingsRoot = tempFolder.newFolder("recordings-scaled")
+    savedRecordingsDir = System.getProperty(DesktopHost.RECORDINGS_DIR_PROP)
+    System.setProperty(DesktopHost.RECORDINGS_DIR_PROP, recordingsRoot.absolutePath)
+
+    val host =
+      DesktopHost(
+        engine = RenderEngine(outputDir = outputDir),
+        previewSpecResolver = { previewId ->
+          if (previewId == FIXTURE_PREVIEW_ID)
+            RenderSpec(
+              className = STICKER_CLASS,
+              functionName = "HalfSandboxBlock",
+              widthPx = SANDBOX_WIDTH_PX,
+              heightPx = SANDBOX_HEIGHT_PX,
+              wrapWidth = true,
+              wrapHeight = true,
+              density = 1.0f,
+              showBackground = true,
+              outputBaseName = "half-sandbox-scaled",
+            )
+          else null
+        },
+      )
+    host.start()
+    try {
+      host
+        .acquireRecordingSession(
+          FIXTURE_PREVIEW_ID,
+          "rec-scaled",
+          javaClass.classLoader ?: ClassLoader.getSystemClassLoader(),
+          FPS,
+          2.0f,
+          null,
+        )
+        .use { session ->
+          session.postScript(listOf(RecordingScriptEvent(tMs = 0L, kind = "recording.probe")))
+          val result = session.stop()
+          // 400x800 measured, scaled by 2 ⇒ 800x1600 — which is exactly the scene's own size, so
+          // a size-only check reads "nothing to do". The frame still owes a crop to 400x800 and a
+          // scale back up, and the proof it happened is the pixels: skipping leaves the component
+          // filling the top-left quarter, doing the work leaves it filling the frame.
+          assertEquals(800 to 1600, result.frameWidthPx to result.frameHeightPx)
+          val img = ImageIO.read(File(result.framesDir, "frame-00000.png"))
+          assertEquals(800 to 1600, img.width to img.height)
+          assertEquals(
+            "the component must fill the scaled frame, not sit in its corner",
+            0xEF5350,
+            img.getRGB(790, 1590) and 0xFFFFFF,
+          )
+        }
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
+  fun `stale frames from an earlier run are left alone`() {
+    // `framesDir` is keyed by recordingId, the counter restarts at `rec-1` when the daemon does,
+    // and nothing clears the directory. A glob would sweep a longer previous run's trailing frames
+    // into this recording's reframe pass — rewriting them, and failing this recording outright if
+    // one of them were unreadable.
+    val outputDir = tempFolder.newFolder("renders-stale")
+    val recordingsRoot = tempFolder.newFolder("recordings-stale")
+    savedRecordingsDir = System.getProperty(DesktopHost.RECORDINGS_DIR_PROP)
+    System.setProperty(DesktopHost.RECORDINGS_DIR_PROP, recordingsRoot.absolutePath)
+    // A leftover frame far beyond anything this recording will write, and a VALID PNG of the wrong
+    // size — that is what discriminates. Garbage would be no test at all: `ImageIO.read` returns
+    // null for it and the reframe hands the bytes straight back, so a directory glob would leave
+    // it untouched too. A decodable frame gets genuinely cropped and rewritten by a glob.
+    val staleDir = File(File(recordingsRoot, "frames"), "rec-stale").apply { mkdirs() }
+    val stale = File(staleDir, "frame-00099.png")
+    ImageIO.write(BufferedImage(40, 30, BufferedImage.TYPE_INT_ARGB), "PNG", stale)
+    val staleBytes = stale.readBytes()
+
+    val host =
+      DesktopHost(
+        engine = RenderEngine(outputDir = outputDir),
+        previewSpecResolver = { previewId ->
+          if (previewId == FIXTURE_PREVIEW_ID)
+            RenderSpec(
+              className = STICKER_CLASS,
+              functionName = "WrapContentStickerPreview",
+              widthPx = SANDBOX_WIDTH_PX,
+              heightPx = SANDBOX_HEIGHT_PX,
+              wrapWidth = true,
+              wrapHeight = true,
+              density = 2.0f,
+              showBackground = true,
+              outputBaseName = "sticker-stale",
+            )
+          else null
+        },
+      )
+    host.start()
+    try {
+      host
+        .acquireRecordingSession(
+          FIXTURE_PREVIEW_ID,
+          "rec-stale",
+          javaClass.classLoader ?: ClassLoader.getSystemClassLoader(),
+          FPS,
+          1.0f,
+          null,
+        )
+        .use { session ->
+          session.postScript(listOf(RecordingScriptEvent(tMs = 0L, kind = "recording.probe")))
+          // Would throw if the corrupt leftover were swept into the pass.
+          val result = session.stop()
+          assertEquals(176 to 176, result.frameWidthPx to result.frameHeightPx)
+        }
+    } finally {
+      host.shutdown()
+    }
+    assertArrayEquals("the leftover frame must be untouched", staleBytes, stale.readBytes())
+    assertEquals("and still its own size", 40 to 30, decode(stale.readBytes()))
   }
 
   /** The still of the same fixture through the same engine, for the comparison above. */
