@@ -84,7 +84,9 @@ const SAFE_SEGMENT = /^[A-Za-z0-9._-]+$/;
 const HEX64 = /^[0-9a-f]{64}$/;
 
 /** RFC 3339 date-time, which is what the schema's `format: "date-time"` means. */
-const RFC3339 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|([+-])(\d{2}):(\d{2}))$/;
+// The `T` and `Z` are case-insensitive — RFC 3339 says so in as many words — so an uppercase-only
+// pattern refuses a legal timestamp, which is a wrong verdict rather than a missing check.
+const RFC3339 = /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:[Zz]|([+-])(\d{2}):(\d{2}))$/;
 
 /**
  * Shape **and** meaning. `2026-99-99T99:99:99Z` matches the punctuation and the digit counts and is
@@ -314,9 +316,13 @@ export function recordedHashValid(value) {
  */
 export function parseIssue(url) {
   if (typeof url !== "string") return null;
+  // Not trimmed. `new URL` tolerates surrounding whitespace and the schema's `format: "uri"` does
+  // not, so trimming here would accept bytes a schema-first consumer refuses — the divergence this
+  // module already closes for unknown properties, reintroduced by a convenience.
+  if (url !== url.trim()) return null;
   let parsed;
   try {
-    parsed = new URL(url.trim());
+    parsed = new URL(url);
   } catch {
     return null;
   }

@@ -1086,7 +1086,12 @@ verdict where the other side refuses. `v1` therefore constrains placement as wel
 after `PLTE` for an indexed image); the `IDAT` run contiguous; `IEND` empty. **Placement is only half
 of it** — a chunk can sit exactly where it belongs and still be illegal *for this image*: `PLTE` in a
 greyscale file, `tRNS` beside colour type 4 or 6 which already carry alpha, a `tRNS` whose length
-does not match the colour type it describes, a `PLTE` whose length is not a multiple of three. The
+does not match the colour type it describes, a `PLTE` whose length is not a multiple of three, a
+palette `tRNS` with no entries at all. **`tRNS` samples are range-checked too**: they are stored as
+16-bit values whatever the bit depth, so at depth 8 a non-zero high byte names a sample no pixel can
+hold — and reading the low half alone (`0x01ff` → 255) makes a real pixel transparent where a decoder
+honouring the range leaves it opaque. Two rasters from one hash-valid file, landing in the candidate
+gate. The
 specification forbids each, so those are refused too. There are only five chunks to
 constrain, which is what the allowlist buys — the structural rules are finite because the vocabulary
 is. Bytes *after* `IEND` stay tolerated: nothing reads them, the byte cap fires on them before any
@@ -1467,7 +1472,13 @@ separately, which is exactly the split this rule exists to prevent.
 
 **`acceptedAt`, when present, is an RFC 3339 date-time — in shape *and* in meaning.**
 `2026-99-99T99:99:99Z` matches the punctuation and the digit counts and is not a date, so a validator
-asserting the format refuses what a pattern check accepts. The schema declares `format: "date-time"`,
+asserting the format refuses what a pattern check accepts. The `T` and the `Z` are **case-insensitive**
+— RFC 3339 says so — so an uppercase-only pattern refuses a legal timestamp, which is the same
+divergence pointed the other way and the one a tightening is likeliest to introduce.
+
+**And the `issue` URL is not trimmed before parsing.** The schema's `format: "uri"` rejects
+surrounding whitespace and a permissive URL parser accepts it, so trimming would let this module
+accept bytes a schema-first consumer refuses. The schema declares `format: "date-time"`,
 and JSON Schema treats `format` as an annotation by default — so a consumer with assertion enabled
 refuses a document a type-only check accepts. It is a recorded fact either way: a string that is not
 a timestamp is a producer bug.

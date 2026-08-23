@@ -284,6 +284,15 @@ export function decodePng(bytes) {
       }
       if (colourType === COLOUR_GREY && length !== 2) throw new Error("decode-failed: bad tRNS length");
       if (colourType === COLOUR_RGB && length !== 6) throw new Error("decode-failed: bad tRNS length");
+      // `tRNS` stores its samples as 16-bit values whatever the image's bit depth, and at depth 8
+      // the range is 0–255 — so a non-zero high byte names a sample the image cannot contain. That
+      // is not a harmless spare byte: reading the low half alone (`0x01ff` → 255) makes a real pixel
+      // transparent, while a decoder honouring the range finds no match and leaves it opaque. Two
+      // rasters, one hash-valid file, and the difference lands straight in the candidate gate.
+      if (colourType === COLOUR_GREY && data[0] !== 0) throw new Error("decode-failed: tRNS sample out of range");
+      if (colourType === COLOUR_RGB && (data[0] !== 0 || data[2] !== 0 || data[4] !== 0)) {
+        throw new Error("decode-failed: tRNS sample out of range");
+      }
       if (colourType === COLOUR_PALETTE) {
         if (!palette) throw new Error("decode-failed: tRNS before PLTE");
         if (length === 0 || length > palette.length / 3) throw new Error("decode-failed: bad tRNS length");

@@ -1425,6 +1425,38 @@ glyphValidation({
   expected: refused(["path-not-contained"]),
 });
 
+{
+  const world = glyphWorld();
+  const record = glyphRecord(world, { acceptedAt: "2026-08-22t00:00:00z" });
+  addCase({
+    id: "accepted-at-lowercase-separators",
+    title: "An `acceptedAt` using lowercase `t` and `z`",
+    why:
+      "RFC 3339 says the `T` and the `Z` are case-insensitive, so an uppercase-only pattern refuses " +
+      "a legal timestamp — a **wrong verdict** on valid input rather than a missing check, and the " +
+      "direction that is easy to miss when the rule is written as a tightening.",
+    document: document([record]),
+    files: glyphFiles(world, record),
+    comparison: glyphComparison(world),
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+      validationFailures: [],
+    },
+  });
+}
+
+glyphValidation({
+  id: "schema-invalid-issue-url-untrimmed",
+  title: "An `issue` with surrounding whitespace",
+  why:
+    "`new URL` tolerates surrounding whitespace and the schema's `format: \"uri\"` does not, so " +
+    "trimming before parsing accepts bytes a schema-first consumer refuses — the same divergence " +
+    "this module already closes for unknown properties, reintroduced by a convenience.",
+  record: { issue: " https://github.com/yschimke/m3-catalog/issues/40 " },
+  expected: refused(["schema-invalid"]),
+});
+
 glyphValidation({
   id: "schema-invalid-accepted-at-impossible-date",
   title: "An `acceptedAt` with the right shape and impossible values",
@@ -2353,6 +2385,32 @@ glyphValidation({
       "chunk — a gate verdict against a refusal, for one set of hash-valid bytes.",
     record: { acceptedCandidateSha256: sha256Hex(trnsOnRgba) },
     files: { "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": trnsOnRgba },
+    expected: refused(["decode-failed"]),
+  });
+
+  const outOfRangeTrns = (() => {
+    const samples = new Uint8Array(24 * 24);
+    for (let y = 8; y < 16; y++) for (let x = 8; x < 16; x++) samples[y * 24 + x] = 255;
+    const rows = [];
+    for (let y = 0; y < 24; y++) rows.push(samples.subarray(y * 24, (y + 1) * 24));
+    return buildPng([
+      ihdr({ width: 24, height: 24, colourType: COLOUR_GREY }),
+      chunk("tRNS", Uint8Array.from([1, 255])),
+      idat(rows),
+      chunk("IEND"),
+    ]);
+  })();
+  glyphValidation({
+    id: "decode-failed-trns-sample-out-of-range",
+    title: "A `tRNS` sample the image's bit depth cannot contain",
+    why:
+      "`tRNS` stores its samples as 16-bit values whatever the bit depth, and at depth 8 the range " +
+      "is 0–255 — so `0x01ff` names a sample no pixel can hold. Not a harmless spare byte: reading " +
+      "the low half alone makes a real pixel transparent, while a decoder honouring the range finds " +
+      "no match and leaves it opaque. Two rasters from one hash-valid file, and the difference lands " +
+      "straight in the candidate gate.",
+    record: { acceptedCandidateSha256: sha256Hex(outOfRangeTrns) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": outOfRangeTrns },
     expected: refused(["decode-failed"]),
   });
 

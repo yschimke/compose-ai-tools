@@ -187,6 +187,16 @@
       "site": null
     },
     {
+      "id": "accepted-at-lowercase-separators",
+      "title": "An `acceptedAt` using lowercase `t` and `z`",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-issue-url-untrimmed",
+      "title": "An `issue` with surrounding whitespace",
+      "site": null
+    },
+    {
       "id": "schema-invalid-accepted-at-impossible-date",
       "title": "An `acceptedAt` with the right shape and impossible values",
       "site": null
@@ -454,6 +464,11 @@
     {
       "id": "decode-failed-trns-on-alpha-colour-type",
       "title": "A `tRNS` beside a colour type that already carries alpha",
+      "site": null
+    },
+    {
+      "id": "decode-failed-trns-sample-out-of-range",
+      "title": "A `tRNS` sample the image's bit depth cannot contain",
       "site": null
     },
     {
