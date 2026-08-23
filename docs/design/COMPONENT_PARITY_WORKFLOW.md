@@ -654,35 +654,79 @@ by the conformance fixtures. Stated as invariants:
 | I8 | Every coordinate transform is stated, in both directions | Baselines are canonical-plane; `boundsInRoot` is render pixels; a drag is display pixels — mixing them invalidates unchanged elements or passes moved ones |
 | I9 | The **recorded** plane discriminant and box define the canonical destination, for masks, transforms and resampling alike | `normalisedBoxes` falls back to the full canvas below `MIN_BOX_COVERAGE`, so a full-canvas acceptance resampled against a content box suppresses the wrong pixels and invalidates as `candidate-changed` for no real reason |
 
-**Open problems Phase 3 must resolve.** These are the things the review rounds proved cannot be
-settled by prose here. They are listed because finding them was expensive and forgetting them would
-be worse than leaving them open:
+**The pixel semantics, settled — batch 00's D5.** Six questions were left open here through several
+review rounds, and they are answered below rather than deferred, because the conformance fixtures
+encode every one of them: a fixture set frozen ahead of these answers either encodes a guess or
+cannot be produced at all, and both engines then "conform" to whichever guess got written down.
+They are answered against the **measured** population above — six sites, only one of them
+glyph-sized — rather than against #40 alone, which is how this section previously accumulated three
+wrong pixel pipelines.
 
-1. **The portable pixel path** — kernel, rounding, edge handling, channel/alpha/premultiplication
-   and gray-projection semantics, and content-box sampling, which currently reaches its verdict
-   through a host `drawImage` downscale and so can differ per engine.
-2. **Mask participation in `edgeMask`** — the scorer classifies edges from raw neighbour values with
-   no notion of validity, so whatever fills a separated region can manufacture or suppress an edge
-   at the boundary, which decides whether a neighbouring pixel gets the displaced search at all.
-   Excluding masked coordinates as *sources and search candidates* is not sufficient.
-3. **The masked pass's denominator** — dividing by the full plane versus by remaining scorable
-   coordinates gives different numbers, and the all-masked case needs a defined result.
-4. **What "accepted contribution" means** — it is *not* a simple difference of the two scores. Under
-   a scorable-coordinate denominator the unaccepted mismatch can legitimately exceed raw (a small
-   accepted delta removed from a badly-regressed image raises the average), so the subtraction goes
-   negative while the acceptance is perfectly valid. Either define it as a signed score *effect*, or
-   report the accepted region's own regional mismatch instead of presenting a difference as an
-   additive contribution. The current text's claim that a valid acceptance necessarily raises
-   similarity is false.
-5. **Sub-pixel geometry** — element-bounds tolerance and mask-edge alignment both need defined
-   rounding, at each transform.
-6. **The match metric**, shared by the candidate gate and the resolution test — which channels,
-   compared how, against what threshold, and what happens at the mask edge. The two must use the
-   same one (see the status table) or they can disagree about whether two images match, but *which*
-   one is a Phase 3 choice for the same reason the kernel is.
+The reference implementation is
+[`scripts/design-artifacts/known-differences.mjs`](../../scripts/design-artifacts/known-differences.mjs)
+and the fixtures are
+[`scripts/design-artifacts/fixtures/known-differences/`](../../scripts/design-artifacts/fixtures/known-differences/).
 
-The gates and their invalidation causes below are design decisions and do stand as written; it is
-the pixel mechanics above that are deferred.
+1. **The portable pixel path is an area average over exact source footprints**, per channel, on
+   **non-premultiplied 8-bit RGBA**, accumulated in double precision and rounded **half-up**
+   (`floor(v + 0.5)`) exactly once at the end, clamped to `[0, 255]`. It needs no kernel radius and
+   no edge-extension rule — a destination pixel's footprint is clipped to the source rectangle and
+   never samples outside it — and it reduces to a box filter at integer ratios and to
+   nearest-neighbour when upscaling by an integer, so the three cases an implementation is most
+   likely to special-case are one rule. Not premultiplied, deliberately: premultiplying and
+   un-premultiplying adds a rounding step each way that two engines would have to agree on for no
+   benefit, and these artifacts are opaque by construction. Rounding per contribution rather than
+   once at the end is where two implementations drift, so the fixtures pin an average landing
+   exactly on `.5`. Content-box detection stays where it is — it feeds the plane gate, and the
+   recorded plane is what governs (I9).
+2. **Masked coordinates do not participate in `edgeMask`, and absence is not a value.** Excluding
+   them as sources and search candidates is not sufficient, because the classifier reads raw
+   neighbour values and whatever fills a separated region can manufacture or suppress an edge at the
+   boundary — which decides whether a neighbouring pixel gets the displaced search at all. So edge
+   classification runs **within each separated region**, and a neighbour outside the region
+   contributes **no gradient term** rather than a filler value; a coordinate with no present
+   neighbours is not an edge. The same rule excludes masked coordinates from `contentMask`'s
+   dilation, so they cannot enter the denominator through the back door either.
+3. **The masked pass's denominator is the scorer's own**, restricted to unmasked coordinates: the
+   pixels either frame drew on or disagrees about, minus everything in the surviving union. Not the
+   full plane — a mask would otherwise lower the score by existing. The all-masked case is already
+   defined by `scorePlanes`, which returns `100` when it measures nothing, and reusing that answer
+   is what keeps the two engines from picking two conventions for it.
+4. **"Accepted contribution" is the accepted region's own regional match, not a difference of
+   scores.** Under a scorable-coordinate denominator the unaccepted mismatch can legitimately exceed
+   raw — a small accepted delta removed from a badly-regressed image raises the average — so the
+   subtraction goes negative while the acceptance is perfectly valid, and the earlier claim that a
+   valid acceptance necessarily raises similarity is false. `accepted` is therefore the same 0–100
+   match measured **over the union of `valid` masks alone**, on the same metric and stages as the
+   other two. It shares their polarity and their units and is **not** comparable to them by
+   subtraction; a reader wanting "what did acceptance buy" reads `unaccepted` against `raw` and gets
+   a signed effect, which is what that quantity honestly is.
+5. **Sub-pixel geometry rounds outward, at every transform.** A real-valued box becomes the
+   **enclosing** integer box — `floor` the origin, `ceil` the far edge — applied after the
+   transform's arithmetic and never during it. Outward rather than nearest because a mask or a
+   selection that rounds inward is smaller than the region the author looked at, which is the
+   direction that silently stops covering pixels. The tag index publishes canonical bounds under the
+   same rule, so element displacement is measured between two integer boxes.
+6. **The match metric is the maximum absolute per-channel difference over R, G, B and A, applied
+   per pixel**, compared against `candidateTolerance` with `>` — a pixel exactly at the tolerance
+   passes, the same inclusive convention the ranges and the caps use. Per-pixel rather than
+   aggregate because an aggregate needs a second constant (how many over-threshold pixels are too
+   many) and a second constant is a second thing two engines pick differently. All four channels
+   because the existing delta map already charges for the same four, and an alpha-only change is a
+   visible change. The mask is strictly binary, so "at the mask edge" is not a case: a canonical
+   pixel is masked or it is not, and only masked pixels are compared. The candidate gate and the
+   resolution test use **this** metric, which is what stops them disagreeing about whether two
+   images match.
+
+**What stays open is the score, and only the score.** These six settle the gates — what a mask is
+permitted to suppress — which is the half that has to be settled first, because every gate resolves
+before any score is computed (I1). The separated-plane scoring path that turns them into `raw`,
+`accepted` and `unaccepted` is Phase 3's deliverable, measured against these same fixtures: the
+`expected.json` in each case is a **partial** pin whose `pins` array names the keys a runner must
+check, and the score keys are the ones Phase 3 adds.
+
+The gates and their invalidation causes below are design decisions and stand as written; the pixel
+mechanics above are now settled alongside them, and only the scoring path is deferred.
 
 **Selector contract.** An acceptance's `element` carries an explicit `kind`. **`v1` defines exactly
 one identifying kind**, deliberately:
@@ -1177,13 +1221,28 @@ Evaluated strictly in this order — the first row whose condition holds wins:
 
 | # | Status | Condition |
 | --- | --- | --- |
-| 1 | `refused` | **any** validation condition holds — either artifact's bytes fail their recorded hash; an artifact is hash-valid but fails to decode, decodes to zero/negative dimensions, carries a non-binary mask encoding, selects no pixels, or does not match its required dimensions; the targeted reference publishes no `sha256`; either tolerance is out of range; the `id` is not a safe single path segment; or an artifact path does not resolve inside the known-differences root. The acceptance is never evaluated, and the `reasons` token set below is the complete list |
-| 2 | `invalidated: [causes]` | **any gate other than `candidate-changed`** fires — `reference-changed`, `plane-changed`, `element-ambiguous`, `element-moved` |
-| 3 | `resolved` | the candidate gate **fired** *and* the masked region now agrees with the **reference** (see below) |
-| 4 | `invalidated: [candidate-changed]` | the candidate gate fired and the region did not converge |
-| 5 | `valid` | nothing fired |
+| 1 | `refused` | **any** validation condition holds — either artifact's bytes fail their recorded hash; an artifact is hash-valid but fails to decode, decodes to zero/negative dimensions, carries a non-binary mask encoding, selects no pixels, or does not match its required dimensions; the targeted reference publishes no `sha256`; either tolerance is out of range; the `id` is not a safe single path segment; an artifact path does not resolve inside the known-differences root; the record's target no longer resolves in the catalog (`orphaned-target`); or the stored candidate already agrees with the reference (`acceptance-is-noop`, and only once the fingerprint gate has passed). The acceptance is never evaluated, and the `reasons` token set below is the complete list |
+| 2 | `out-of-scope` | the record is well-formed but its recorded scope does not match **this** comparison. No gate runs and nothing is suppressed |
+| 3 | `invalidated: [causes]` | **any gate other than `candidate-changed`** fires — `reference-changed`, `plane-changed`, `element-ambiguous`, `element-moved` |
+| 4 | `resolved` | the candidate gate **fired** *and* the masked region now agrees with the **reference** (see below) |
+| 5 | `invalidated: [candidate-changed]` | the candidate gate fired and the region did not converge |
+| 6 | `valid` | nothing fired |
 
-**`resolved` outranks `candidate-changed` only, and only after the other gates pass** — rows 2 and 3
+**`out-of-scope` is the fifth status, and it exists because two other promises in this contract are
+otherwise incompatible.** `statuses` carries one entry per member of `acceptances[]`, and a
+comparison reaches only the acceptances whose *entire* recorded scope matches it — #42's three
+acceptances share one document and no comparison reaches more than one of them. Without a token for
+"well-formed, but not about this comparison" an engine must either invent a status, omit the entry,
+or misreport it as `valid`, and all three are choices two engines make differently. It suppresses
+nothing, contributes no `validationFailures`, and is not a finding.
+
+**Refusal outranks scope, and that ordering is deliberate.** A broken artifact is broken on every
+page, so a build gate's `validationFailures` must not depend on which comparison happened to run —
+which makes the refusal set comparison-independent and reproducible. The two exceptions are the two
+refusals a comparison genuinely decides, `reference-hash-missing` and `acceptance-is-noop`; both are
+reachable only in scope, and both have their own fixture.
+
+**`resolved` outranks `candidate-changed` only, and only after the other gates pass** — rows 3 and 4
 are in that order deliberately. If the pinned reference changed and the *new* reference happens to
 agree with the candidate inside the mask, that is not a resolution: it is an acceptance measured
 against a different spec, and closing the issue on it would discard a review nobody performed. The
@@ -1231,7 +1290,7 @@ it is a convention the closing step depends on, and the honest fallback is that 
 reviewed PR rather than an automatic action. Aggregating every referencing document before closing
 is the real fix and a `v2` conversation — it needs an inventory that does not exist yet.
 
-**`resolved` requires the candidate to have actually changed.** Row 3 is guarded on
+**`resolved` requires the candidate to have actually changed.** Row 4 is guarded on
 `candidate-changed` having fired, which looks redundant and is not: the resolution metric is
 permitted to be tolerant, so an *unchanged* candidate can agree with `accepted-candidate.png` **and**
 with the reference whenever the accepted delta was itself within that tolerance. Without the guard
@@ -1282,13 +1341,11 @@ and conflating them is the easy mistake:
 | resolution test | canonical candidate inside the mask ↔ **the reference** | "has it converged on the spec?" |
 
 So `resolved` is *not* "the candidate gate failed in a nice direction" — it is its own comparison,
-against the reference, over the masked region only. That much is a design decision and is settled
-here. What is **not** settled here is the metric and threshold it uses, or how it behaves at the
-mask edge: exact channel equality, `candidateTolerance`, the scorer's `LUMA_TOLERANCE` floor, and a
-regional score all classify a near-miss differently, and picking one blind would be the same error
-as picking a resampling kernel blind. It joins the pixel-semantics **open problems** above, with one
-constraint from this contract: whatever the resolution test uses, it must be the *same* metric the
-candidate gate uses, so the two cannot disagree about whether two images match.
+against the reference, over the masked region only. Its metric is D5 answer 6 above, which is the
+*same* metric the candidate gate uses, against the same `candidateTolerance`: the two comparisons
+differ only in what they compare against, which is precisely why they may not differ in how they
+compare. The mask is strictly binary, so the mask edge is not a case — a canonical pixel is masked
+or it is not.
 
 **`plane-changed` short-circuits the element gates, which is what makes one index sufficient.** Two
 acceptances on the same comparison can record *different* canonical planes — one authored either
@@ -1328,7 +1385,7 @@ serialise different results — which is the one thing a cross-engine contract e
 {
   "raw": 90.2,
   "unaccepted": 95.1,
-  "accepted": 4.9,
+  "accepted": 61.8,
   "statuses": {
     "m3-iconbutton-tonal-glyph": { "status": "valid" },
     "m3-fab-shadow":             { "status": "resolved" },
@@ -1336,7 +1393,8 @@ serialise different results — which is the one thing a cross-engine contract e
                                    "causes": ["reference-changed", "element-ambiguous"] },
     "m3-chip-border":            { "status": "refused",
                                    "reasons": ["mask-hash-mismatch",
-                                               "accepted-candidate-hash-mismatch"] }
+                                               "accepted-candidate-hash-mismatch"] },
+    "m3-card-elevated-shadow":   { "status": "out-of-scope" }
   },
   "validationFailures": [
     { "id": "m3-chip-border", "reason": "mask-hash-mismatch" },
@@ -1345,8 +1403,15 @@ serialise different results — which is the one thing a cross-engine contract e
 }
 ```
 
+All three numbers are **match percentages on one scale** — `raw` over the whole comparison,
+`unaccepted` over it minus the surviving union, `accepted` over the surviving union alone (D5
+answer 4). `accepted` is deliberately **not** `unaccepted - raw`: that subtraction goes legitimately
+negative under a scorable-coordinate denominator, and an earlier revision's `4.9` presented a signed
+score *effect* as though it were an additive contribution. A reader who wants the effect reads
+`unaccepted` against `raw` and gets it, signed, which is what that quantity honestly is.
+
 Every value is an object, never a bare string, so a consumer never has to branch on type. `status`
-is one of `valid` / `resolved` / `invalidated` / `refused`. `causes` is present **only** for
+is one of `valid` / `resolved` / `invalidated` / `refused` / `out-of-scope`. `causes` is present **only** for
 `invalidated`, always an array even for one cause, ordered as the gate table lists them — that fixed
 order is what makes the multi-cause fixture comparable. `reasons` is present **only** for `refused`, and is an
 **array** for the same reason `causes` is — both artifacts can fail at once, and a single-value
@@ -1588,16 +1653,13 @@ with these requirements:
    divergence fails as a resampler divergence instead of surfacing as an unexplained score drift
    months later.
 
-**These are requirements on a deliverable, not the specification itself — deliberately.** Picking
-the exact kernel, the rounding and edge rules, and the concrete channel/alpha/gray formulas is
-Phase 3's first task, not this document's. Two engines could both satisfy the list above and still
-diverge on, say, a translucent pixel at a non-integer scale ratio; that is a real gap, and closing
-it here would mean choosing constants with no implementation to validate them against and no
-fixtures to catch the choice being wrong. The mechanism that actually forces convergence is the
-intermediate-plane fixtures, which fail at the diverging stage — so the sequencing is: choose the
-kernel and semantics as Phase 3 step 1, land the fixtures with them, and treat any later engine
-disagreement as a fixture gap. A planning document that guessed the constants would produce a
-number both engines cite and neither validates.
+**Requirements 1, 2 and 3 are now met by D5's answers, and requirement 4 by the fixture tree.** The
+sequencing that got them there is the one this section called for and is worth keeping on the
+record: choose the kernel and the semantics *with* an implementation and a fixture set in the same
+change, never in prose alone. A planning document that guessed the constants would have produced a
+number both engines cite and neither validates — which is exactly what the three discarded pipelines
+were. What Phase 3 still owns is the **scoring** path those planes feed, and any later engine
+disagreement is now a fixture gap rather than an open question.
 
 This is a meaningful increase in Phase 3's cost, and it is load-bearing: without it, "the same
 acceptance semantics are used by design-parity and the preview server" — an explicit acceptance
@@ -1624,6 +1686,25 @@ things depending on which tool you asked. Options considered:
 **Recommended: the third.** It is the same device already used for `parity-activity.mjs` ↔
 `ServeParityActivityStore` (one committed fixture, two languages, both tests load it), it is cheap,
 and it fails loudly.
+
+***Delivered.*** The contract's rules are implemented in
+[`scripts/design-artifacts/known-differences.mjs`](../../scripts/design-artifacts/known-differences.mjs),
+its document shape in
+[`known-differences.schema.json`](../../scripts/design-artifacts/known-differences.schema.json), and
+the fixtures in
+[`fixtures/known-differences/`](../../scripts/design-artifacts/fixtures/known-differences/) — one
+case per pilot site, one rejecting case for every rule, and a group pinning the resampler on its own.
+The suite runs as `known-differences.test.mjs` in the design-artifacts driver's `node --test` job.
+Two things about it are load-bearing for the runners that follow:
+
+- **The fixtures are generated, and the suite proves it.** `build-known-difference-fixtures.mjs`
+  writes every byte, and one test regenerates the tree into a scratch directory and compares
+  digests. A hand-edited case would otherwise survive indefinitely, pinning bytes nobody can
+  re-derive — which is precisely the state the other two runners cannot audit from their own
+  repositories.
+- **Expected values are declared, never harvested.** Writing `expected.json` from a run of the
+  implementation would make every fixture agree with whatever that implementation happens to do,
+  bugs included; the suite would then pin the implementation rather than this contract.
 
 **A fixture must pin the intermediate planes, not only the final numbers.** Expecting just
 `{raw, accepted, unaccepted, invalidations}` is what the portable-comparison-path requirement above

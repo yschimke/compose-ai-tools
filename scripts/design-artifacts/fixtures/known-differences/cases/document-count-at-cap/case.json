@@ -1,0 +1,8 @@
+{
+  "title": "256 acceptances — exactly the cap",
+  "site": null,
+  "why": "The accepting half of the boundary. Each record here is refused for its own (deliberately unsafe) id, which is the cheap way to say 256 times over that the **document** was not rejected: `statuses` is present and carries one entry per record.",
+  "comparison": null,
+  "catalog": null,
+  "synthesize": []
+}

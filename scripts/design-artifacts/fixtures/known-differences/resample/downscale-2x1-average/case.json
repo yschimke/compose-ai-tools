@@ -1,0 +1,8 @@
+{
+  "title": "Four pixels averaged into one",
+  "why": "The plain case, and the one that pins the rounding: `(0 + 100 + 200 + 255) / 4 = 138.75`, rounded **half-up** to `139`. Accumulate in double precision and round exactly once, at the end — rounding per contribution is where two implementations drift.",
+  "target": {
+    "width": 1,
+    "height": 1
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "title": "A path that resolves to no file at all",
+  "site": null,
+  "why": "Contained and syntactically perfect while the file is missing — at which point there are no bytes to hash, no header to parse and no decode to attempt, so none of the other tokens apply. Left unnamed, the browser turns a failed fetch into a local refusal while the offline reader throws or silently drops the record.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

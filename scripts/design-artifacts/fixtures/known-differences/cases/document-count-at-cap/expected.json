@@ -1,0 +1,12 @@
+{
+  "pins": [
+    "statusesAbsent",
+    "statusCounts",
+    "validationFailureCount"
+  ],
+  "statusesAbsent": false,
+  "statusCounts": {
+    "refused": 256
+  },
+  "validationFailureCount": 256
+}

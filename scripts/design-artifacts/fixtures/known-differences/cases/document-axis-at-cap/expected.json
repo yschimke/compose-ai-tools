@@ -1,0 +1,12 @@
+{
+  "pins": [
+    "statuses",
+    "validationFailures"
+  ],
+  "statuses": {
+    "m3-wide-strip": {
+      "status": "valid"
+    }
+  },
+  "validationFailures": []
+}

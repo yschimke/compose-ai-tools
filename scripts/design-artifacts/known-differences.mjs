@@ -1,0 +1,820 @@
+/**
+ * `compose-preview-known-differences/v1` — the committed known-difference contract, as executable
+ * rules.
+ *
+ * Defined in this repo because `serve` is a consumer and the other wire contracts
+ * (`compose-preview-references/v1`, `compose-preview-annotations/v1`,
+ * `compose-preview-activity/v1`) already live here; `design-parity` and
+ * `@design-parity/catalog-export` are the second consumer and the publisher.
+ * [`COMPONENT_PARITY_WORKFLOW.md` §4](../../docs/design/COMPONENT_PARITY_WORKFLOW.md#the-normative-contract)
+ * is the specification — this file is the reference implementation of it, and the
+ * `fixtures/known-differences/` suite is what keeps the two, plus the two engines batch 05 writes,
+ * from drifting apart.
+ *
+ * **What this module decides, and what it deliberately does not.** It decides every *verdict*: the
+ * validation refusals, the five gates, the resolution test, the status precedence, and the exact
+ * ordering of `statuses` and `validationFailures`. It does **not** compute `raw` / `accepted` /
+ * `unaccepted` — those need the separated-plane scoring path that is batch 05's deliverable, and
+ * inventing numbers here would pin a scorer nobody has written. The gates are what a mask is allowed
+ * to suppress, so they are the half that has to be settled first (I1: every gate resolves before any
+ * score is computed).
+ *
+ * The canonical-plane rasters arrive **already resampled**, as inputs. That is the same seam: the
+ * portable resampler is specified (see {@link resampleArea}) and pinned by its own fixture group,
+ * but the gate cases pin gate semantics rather than re-deriving the resample in every one of them —
+ * so a resampler divergence fails as a resampler divergence, which is the whole point of pinning
+ * intermediate stages at all.
+ */
+
+import { decodePng, preflightPng, sha256Hex } from "./png-lite.mjs";
+
+/** The schema token a document must carry, exactly. */
+export const KNOWN_DIFFERENCES_SCHEMA = "compose-preview-known-differences/v1";
+
+/**
+ * The budget, versioned with the schema.
+ *
+ * All four are *inclusive* ceilings — a document at exactly 256 acceptances, exactly 128 megapixels,
+ * exactly 8192 px on a side or exactly 8 MiB per artifact is legal, and one unit past refuses. A
+ * `>=` check would reject both and leave two engines free to disagree about the case in between.
+ */
+export const BUDGET = {
+  maxAcceptances: 256,
+  maxPixels: 128_000_000,
+  maxAxis: 8192,
+  maxArtifactBytes: 8 * 1024 * 1024,
+};
+
+/** `candidateTolerance` is an 8-bit channel distance and an integer; `element.tolerance` is real. */
+export const CANDIDATE_TOLERANCE_RANGE = [0, 8];
+export const ELEMENT_TOLERANCE_RANGE = [0, 0.25];
+
+/** Ids that are fine as path segments and catastrophic as map keys. */
+const RESERVED_IDS = new Set(["__proto__", "constructor", "prototype"]);
+
+/** The one character class an `id` or an artifact path segment may use. */
+const SAFE_SEGMENT = /^[A-Za-z0-9._-]+$/;
+
+const HEX64 = /^[0-9a-f]{64}$/;
+
+/**
+ * The authoritative ordering for `reasons` and for `validationFailures`.
+ *
+ * Document-wide tokens lead, then identity, then structure, then artifacts — so a combined failure
+ * serialises the same way in both engines and a reader sees the widest problem first.
+ */
+export const REASON_ORDER = [
+  "document-unreadable",
+  "document-too-large",
+  "duplicate-id",
+  "id-missing",
+  "id-not-safe",
+  "schema-invalid",
+  "orphaned-target",
+  "path-not-contained",
+  "artifact-too-large",
+  "header-invalid",
+  "decode-failed",
+  "degenerate-dimensions",
+  "dimension-mismatch",
+  "mask-encoding-invalid",
+  "animated-png",
+  "mask-empty",
+  "artifact-unreadable",
+  "mask-hash-mismatch",
+  "accepted-candidate-hash-mismatch",
+  "reference-hash-missing",
+  "tolerance-out-of-range",
+  "acceptance-is-noop",
+];
+
+/** `causes` order, as the gate table lists them. `candidate-changed` never shares a list. */
+export const CAUSE_ORDER = [
+  "reference-changed",
+  "plane-changed",
+  "candidate-changed",
+  "element-ambiguous",
+  "element-moved",
+];
+
+const reasonRank = new Map(REASON_ORDER.map((token, index) => [token, index]));
+const causeRank = new Map(CAUSE_ORDER.map((token, index) => [token, index]));
+
+// ---------------------------------------------------------------------------------------------
+// The portable pixel path (batch 00's D5, answers 1 and 5)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The named resampler: an **area average over exact source footprints**, per channel, on
+ * non-premultiplied 8-bit RGBA, rounded half-up and clamped.
+ *
+ * Chosen over anything host-provided because `drawImage`'s filter is not reproducible off-browser
+ * and its smoothing quality is implementation-dependent — the same unchanged candidate bytes would
+ * otherwise produce different canonical pixels in the two engines and falsely invalidate as
+ * `candidate-changed`. An area average needs no kernel radius, no edge-extension rule (a footprint
+ * is clipped to the source rectangle and never samples outside it), and reduces to an exact box
+ * filter at integer ratios and to nearest-neighbour when upscaling by an integer — so the three
+ * cases an implementation is most likely to special-case are all the same arithmetic here.
+ *
+ * **Not premultiplied**, deliberately: premultiplying and un-premultiplying introduces a rounding
+ * step each way that two engines would have to agree on for no benefit, and this contract's
+ * artifacts are opaque by construction (a mask is greyscale with no alpha; an accepted candidate is
+ * a crop of an already-composited render). Alpha is averaged as an ordinary fourth channel.
+ *
+ * Accumulate in double precision and round **half-up** (`Math.floor(v + 0.5)`) exactly once, at the
+ * end — rounding per contribution is where two implementations drift.
+ */
+export function resampleArea(source, targetWidth, targetHeight) {
+  const { width, height, pixels } = source;
+  const out = new Uint8Array(targetWidth * targetHeight * 4);
+  const scaleX = width / targetWidth;
+  const scaleY = height / targetHeight;
+  for (let ty = 0; ty < targetHeight; ty++) {
+    const y0 = ty * scaleY;
+    const y1 = (ty + 1) * scaleY;
+    for (let tx = 0; tx < targetWidth; tx++) {
+      const x0 = tx * scaleX;
+      const x1 = (tx + 1) * scaleX;
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let a = 0;
+      let area = 0;
+      for (let sy = Math.floor(y0); sy < Math.min(height, Math.ceil(y1)); sy++) {
+        const coverY = Math.min(y1, sy + 1) - Math.max(y0, sy);
+        if (coverY <= 0) continue;
+        for (let sx = Math.floor(x0); sx < Math.min(width, Math.ceil(x1)); sx++) {
+          const coverX = Math.min(x1, sx + 1) - Math.max(x0, sx);
+          if (coverX <= 0) continue;
+          const weight = coverX * coverY;
+          const i = (sy * width + sx) * 4;
+          r += pixels[i] * weight;
+          g += pixels[i + 1] * weight;
+          b += pixels[i + 2] * weight;
+          a += pixels[i + 3] * weight;
+          area += weight;
+        }
+      }
+      const d = (ty * targetWidth + tx) * 4;
+      if (area === 0) continue;
+      out[d] = clamp8(r / area);
+      out[d + 1] = clamp8(g / area);
+      out[d + 2] = clamp8(b / area);
+      out[d + 3] = clamp8(a / area);
+    }
+  }
+  return { width: targetWidth, height: targetHeight, pixels: out };
+}
+
+function clamp8(value) {
+  return Math.max(0, Math.min(255, Math.floor(value + 0.5)));
+}
+
+/**
+ * D5 answer 5, in one function: a real-valued box becomes the **enclosing** integer box.
+ *
+ * Outward rather than nearest, and the same rule at every transform — a mask or a selection that
+ * rounds inward is smaller than the region the author looked at, which is the direction that
+ * silently stops covering pixels. Applied after the transform's arithmetic, never during it.
+ */
+export function enclosingBox({ x, y, width, height }) {
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const x1 = Math.ceil(x + width);
+  const y1 = Math.ceil(y + height);
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+}
+
+/**
+ * D5 answer 6, the match metric shared by the candidate gate and the resolution test: the
+ * **maximum absolute per-channel difference over R, G, B and A**, applied **per pixel**.
+ *
+ * Per-pixel rather than aggregate because an aggregate needs a second constant — how many
+ * over-threshold pixels are too many — and a second constant is a second thing two engines pick
+ * differently. All four channels because that is what the existing delta map already charges for
+ * (`DIFF_CHANNEL_TOLERANCE` compares the same four), and an alpha-only change is a visible change.
+ * The comparison is `>`, so a pixel exactly at the tolerance passes — the same inclusive convention
+ * the tolerance ranges and the budget caps use.
+ *
+ * The mask is strictly binary, so "at the mask edge" is not a case: a canonical pixel is masked or
+ * it is not, and only masked pixels are compared.
+ */
+export function pixelsAgree(a, aOffset, b, bOffset, tolerance) {
+  return (
+    Math.abs(a[aOffset] - b[bOffset]) <= tolerance &&
+    Math.abs(a[aOffset + 1] - b[bOffset + 1]) <= tolerance &&
+    Math.abs(a[aOffset + 2] - b[bOffset + 2]) <= tolerance &&
+    Math.abs(a[aOffset + 3] - b[bOffset + 3]) <= tolerance
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Identity, paths and hashes
+// ---------------------------------------------------------------------------------------------
+
+/** An `id` is a single safe path segment, is neither dot name, and is safe as a map key. */
+export function isSafeId(id) {
+  if (typeof id !== "string" || !SAFE_SEGMENT.test(id)) return false;
+  if (id === "." || id === "..") return false;
+  return !RESERVED_IDS.has(id);
+}
+
+/**
+ * Artifact paths are contained **and** portable: segments of `[A-Za-z0-9._-]` joined by `/`.
+ *
+ * Containment alone is not enough. `a\b.png` is checked as two segments by a validator that
+ * rewrites `\` to `/` and opened as one filename on POSIX; `#` and `?` become URL syntax the moment
+ * the serving host fetches the artifact rather than reading it off disk. A committed artifact path
+ * has no need of the rest of Unicode, so the grammar removes the encoding question instead of
+ * answering it.
+ */
+export function isSafeArtifactPath(path) {
+  if (typeof path !== "string" || path.length === 0) return false;
+  if (path.startsWith("/")) return false;
+  const segments = path.split("/");
+  return segments.every((segment) => SAFE_SEGMENT.test(segment) && segment !== "." && segment !== "..");
+}
+
+/**
+ * Compare a hash this schema owns against one a catalog served.
+ *
+ * Only the *served* side may be spelled loosely: `ServeDesignReferenceStore` lowercases a reference
+ * hash to validate it and then serves the original spelling, so raw string inequality reports
+ * `reference-changed` — "the design moved" — for a reference that never changed. The recorded side
+ * is held to 64 lowercase hex characters by {@link recordedHashValid} first and separately, because
+ * collapsing the two rules lets one engine lowercase an uppercase *recorded* hash and accept it
+ * while another rejects it.
+ */
+export function hashesMatch(recorded, served) {
+  if (typeof recorded !== "string" || typeof served !== "string") return false;
+  return recorded.toLowerCase() === served.toLowerCase();
+}
+
+/** Every hash this schema owns is exactly 64 lowercase hex characters, or the record is invalid. */
+export function recordedHashValid(value) {
+  return typeof value === "string" && HEX64.test(value);
+}
+
+/**
+ * Issue identity is the canonical `owner/repo/number`, never the URL string.
+ *
+ * Acceptances are hand-authored, so one issue arrives spelled several ways — a trailing slash, an
+ * `#issuecomment` fragment, `www.`, a mixed-case owner. Aggregating on the raw string splits those
+ * into separate groups, and a group that looks fully resolved then closes an issue a sibling
+ * acceptance is still holding open. Returns `null` for a URL that does not parse, which is
+ * `schema-invalid` rather than its own group of one.
+ */
+export function parseIssue(url) {
+  if (typeof url !== "string") return null;
+  const match = /^https?:\/\/(?:www\.)?github\.com\/([^/]+)\/([^/]+)\/issues\/(\d+)\/?(?:[#?].*)?$/.exec(
+    url.trim(),
+  );
+  if (!match) return null;
+  const number = Number(match[3]);
+  if (!Number.isSafeInteger(number) || number <= 0) return null;
+  return { owner: match[1].toLowerCase(), repo: match[2].toLowerCase(), number };
+}
+
+/** `owner/repo#number`, the key issue-level aggregation groups on. */
+export function issueKey(issue) {
+  return `${issue.owner}/${issue.repo}#${issue.number}`;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Evaluation
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Evaluate a known-differences document against one comparison.
+ *
+ * @param documentText raw JSON text — parsed here, so `document-unreadable` is reachable.
+ * @param readArtifact `(path) => Uint8Array | null`, where `path` is relative to the fixed
+ *   `.design-parity/known-differences/` root (`<id>/<mask>`). `null` means the fetch or open failed,
+ *   which is `artifact-unreadable`; a file that opens and holds too few bytes for an `IHDR` is
+ *   `header-invalid`, because the line is where the failure occurs rather than how little data there
+ *   turned out to be.
+ * @param comparison the comparison being evaluated, or `null` for a validation-only pass.
+ * @param catalog `{ previews: [{ system, id, component, variant, referenceIds }] }` for the
+ *   orphaned-target walk, or `null` to skip it.
+ * @returns `{ statuses, validationFailures }`. `statuses` is **absent** for a document-level
+ *   rejection — "no acceptance was evaluated" and "every acceptance was valid" must not serialise
+ *   the same way.
+ */
+export function evaluateKnownDifferences({ documentText, readArtifact, comparison = null, catalog = null }) {
+  const parsed = parseDocument(documentText);
+  if (parsed.failure) return { validationFailures: [parsed.failure] };
+  const records = parsed.document.acceptances;
+
+  const documentFailures = [];
+
+  // Identity first: a record with no usable key cannot be reported any other way, and a duplicated
+  // key cannot be represented in a map at all. Both reject the document.
+  const unkeyable = records
+    .map((record, index) => ({ record, index }))
+    .filter(({ record }) => typeof record?.id !== "string" || record.id.trim() === "");
+  for (const { index } of unkeyable) documentFailures.push({ index, reason: "id-missing" });
+
+  const firstSeen = new Map();
+  const counts = new Map();
+  records.forEach((record, index) => {
+    if (typeof record?.id !== "string" || record.id.trim() === "") return;
+    if (!firstSeen.has(record.id)) firstSeen.set(record.id, index);
+    counts.set(record.id, (counts.get(record.id) ?? 0) + 1);
+  });
+  const duplicates = [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([id]) => id)
+    .sort((a, b) => firstSeen.get(a) - firstSeen.get(b));
+  for (const id of duplicates) documentFailures.push({ id, reason: "duplicate-id" });
+
+  if (records.length > BUDGET.maxAcceptances) documentFailures.push({ reason: "document-too-large" });
+
+  // Per-record work happens even when the document is already doomed, because the *pixel* budget is
+  // a document verdict reached from per-record preflights — and a preflight refusal excludes its
+  // rasters from the running total, so the two cannot be separated.
+  const evaluations = records.map((record, index) => validateRecord(record, index, readArtifact, catalog));
+
+  let pixels = 0;
+  for (const evaluation of evaluations) {
+    if (!evaluation.preflightClean) continue;
+    for (const header of evaluation.headers) {
+      if (header.width > BUDGET.maxAxis || header.height > BUDGET.maxAxis) {
+        pushOnce(documentFailures, { reason: "document-too-large" });
+        break;
+      }
+      const area = header.width * header.height;
+      if (area > BUDGET.maxPixels) {
+        pushOnce(documentFailures, { reason: "document-too-large" });
+        break;
+      }
+      pixels += area;
+      if (pixels > BUDGET.maxPixels) {
+        pushOnce(documentFailures, { reason: "document-too-large" });
+        break;
+      }
+    }
+  }
+
+  if (documentFailures.length > 0) return { validationFailures: sortFailures(documentFailures, records) };
+
+  const statuses = new Map();
+  const validationFailures = [];
+
+  evaluations.forEach((evaluation, index) => {
+    const record = records[index];
+    const reasons = [...evaluation.reasons];
+
+    if (reasons.length === 0 && comparison) {
+      reasons.push(...comparisonRefusals(record, evaluation, comparison));
+    }
+
+    if (reasons.length > 0) {
+      statuses.set(record.id, { status: "refused", reasons: sortReasons(reasons) });
+      for (const reason of sortReasons(reasons)) validationFailures.push({ id: record.id, reason, index });
+      return;
+    }
+
+    if (!comparison || !scopeMatches(record, comparison)) {
+      statuses.set(record.id, { status: "out-of-scope" });
+      return;
+    }
+
+    statuses.set(record.id, runGates(record, evaluation, comparison));
+  });
+
+  return {
+    statuses: Object.fromEntries(statuses),
+    validationFailures: sortFailures(validationFailures, records),
+  };
+}
+
+function pushOnce(list, entry) {
+  if (!list.some((existing) => existing.reason === entry.reason && existing.id === entry.id)) list.push(entry);
+}
+
+function parseDocument(documentText) {
+  let document;
+  try {
+    document = JSON.parse(documentText);
+  } catch {
+    return { failure: { reason: "document-unreadable" } };
+  }
+  if (!document || typeof document !== "object" || Array.isArray(document)) {
+    return { failure: { reason: "document-unreadable" } };
+  }
+  if (document.schema !== KNOWN_DIFFERENCES_SCHEMA) return { failure: { reason: "document-unreadable" } };
+  if (!Array.isArray(document.acceptances)) return { failure: { reason: "document-unreadable" } };
+  return { document };
+}
+
+/**
+ * Everything about a record that one comparison cannot change.
+ *
+ * Kept comparison-independent on purpose: a build gate's `validationFailures` should not depend on
+ * which comparison happened to run, and a broken artifact is broken on every page. The two refusals
+ * that genuinely need a comparison — `reference-hash-missing` and `acceptance-is-noop` — are added
+ * by {@link comparisonRefusals}.
+ *
+ * The stages are a ladder: reasons accumulate *within* a stage (both hashes can fail at once) and a
+ * stage runs only when every earlier one was clean, so a record with an unparseable shape is never
+ * also reported for the paths that shape does not contain.
+ */
+function validateRecord(record, index, readArtifact, catalog) {
+  const evaluation = { index, reasons: [], headers: [], preflightClean: false, mask: null, accepted: null };
+  const fail = (...reasons) => {
+    evaluation.reasons.push(...reasons);
+    return evaluation;
+  };
+
+  if (!isSafeId(record.id)) return fail("id-not-safe");
+
+  const shapeReasons = schemaReasons(record);
+  if (shapeReasons.length > 0) return fail(...shapeReasons);
+
+  if (catalog && !catalogResolves(record, catalog)) return fail("orphaned-target");
+
+  const pathReasons = [];
+  if (!isSafeArtifactPath(record.mask)) pathReasons.push("path-not-contained");
+  if (!isSafeArtifactPath(record.acceptedCandidate)) pathReasons.push("path-not-contained");
+  if (pathReasons.length > 0) return fail(...pathReasons);
+
+  const maskBytes = readArtifact(`${record.id}/${record.mask}`);
+  const acceptedBytes = readArtifact(`${record.id}/${record.acceptedCandidate}`);
+  const unreadable = [];
+  if (!maskBytes) unreadable.push("artifact-unreadable");
+  if (!acceptedBytes) unreadable.push("artifact-unreadable");
+  if (unreadable.length > 0) return fail(...unreadable);
+
+  const oversized = [];
+  if (maskBytes.length > BUDGET.maxArtifactBytes) oversized.push("artifact-too-large");
+  if (acceptedBytes.length > BUDGET.maxArtifactBytes) oversized.push("artifact-too-large");
+  if (oversized.length > 0) return fail(...oversized);
+
+  // Both headers are read and validated before either raster joins the running total, so the budget
+  // is order-independent: an oversized-but-readable header beside an unreadable one must not give a
+  // different verdict depending on which was read first.
+  const maskHeader = preflightPng(maskBytes);
+  const acceptedHeader = preflightPng(acceptedBytes);
+  const headerReasons = [];
+  if (maskHeader.error) headerReasons.push("header-invalid");
+  if (acceptedHeader.error) headerReasons.push("header-invalid");
+  if (headerReasons.length === 0) {
+    if (maskHeader.animated) headerReasons.push("animated-png");
+    if (acceptedHeader.animated) headerReasons.push("animated-png");
+    if (maskHeader.bitDepth !== 8 || maskHeader.colourType !== 0) headerReasons.push("mask-encoding-invalid");
+  }
+  if (headerReasons.length > 0) return fail(...headerReasons);
+
+  evaluation.headers = [maskHeader, acceptedHeader];
+  evaluation.preflightClean = true;
+
+  const hashReasons = [];
+  if (!hashesMatch(record.maskSha256, sha256Hex(maskBytes))) hashReasons.push("mask-hash-mismatch");
+  if (!hashesMatch(record.acceptedCandidateSha256, sha256Hex(acceptedBytes))) {
+    hashReasons.push("accepted-candidate-hash-mismatch");
+  }
+  if (hashReasons.length > 0) return fail(...hashReasons);
+
+  // A correct hash does not make an artifact usable: bytes can be committed with a correctly
+  // computed `sha256` and still be corrupt, non-PNG, or decode to nothing. And a header whose
+  // declared dimensions disagree with the scanline data behind them is `header-invalid` rather than
+  // `decode-failed` — the second half of that rule is what stops a lying header walking past the cap.
+  const decoded = [maskBytes, acceptedBytes].map((bytes) => {
+    try {
+      return { image: decodePng(bytes) };
+    } catch (error) {
+      return { reason: error.message === "declared-dimensions-mismatch" ? "header-invalid" : "decode-failed" };
+    }
+  });
+  const decodeReasons = decoded.filter((entry) => entry.reason).map((entry) => entry.reason);
+  if (decodeReasons.length > 0) return fail(...decodeReasons);
+  const mask = decoded[0].image;
+  const accepted = decoded[1].image;
+
+  if (mask.width < 1 || mask.height < 1 || accepted.width < 1 || accepted.height < 1) {
+    return fail("degenerate-dimensions");
+  }
+
+  const coverage = maskCoverage(mask);
+  if (coverage.nonBinary) return fail("mask-encoding-invalid");
+  if (!coverage.box) return fail("mask-empty");
+
+  const dimensionReasons = [];
+  const plane = record.plane.box;
+  if (mask.width !== plane.width || mask.height !== plane.height) dimensionReasons.push("dimension-mismatch");
+  if (accepted.width !== coverage.box.width || accepted.height !== coverage.box.height) {
+    dimensionReasons.push("dimension-mismatch");
+  }
+  if (dimensionReasons.length > 0) return fail(...dimensionReasons);
+
+  evaluation.mask = mask;
+  evaluation.accepted = accepted;
+  evaluation.coverage = coverage;
+  return evaluation;
+}
+
+/**
+ * Required fields, their types, and the two spellings this schema owns.
+ *
+ * Absence has to be *representable* — a language default that fills a missing field is how this epic
+ * lost the same fact twice — so every required field is checked for presence explicitly rather than
+ * read through a default.
+ */
+function schemaReasons(record) {
+  const invalid = () => ["schema-invalid"];
+  for (const field of ["system", "component", "previewId", "referenceId", "variant", "mask", "acceptedCandidate"]) {
+    if (typeof record[field] !== "string" || record[field] === "") return invalid();
+  }
+  if (!parseIssue(record.issue)) return invalid();
+  for (const field of ["referenceSha256", "maskSha256", "acceptedCandidateSha256"]) {
+    if (!recordedHashValid(record[field])) return invalid();
+  }
+  if (record.overrides !== undefined && !isStringMap(record.overrides)) return invalid();
+  if (!isPlane(record.plane)) return invalid();
+  if (!Number.isFinite(record.candidateTolerance)) return invalid();
+  if (record.element !== undefined && !isElement(record.element)) return invalid();
+
+  const ranges = [];
+  if (!Number.isInteger(record.candidateTolerance)) ranges.push("tolerance-out-of-range");
+  else if (
+    record.candidateTolerance < CANDIDATE_TOLERANCE_RANGE[0] ||
+    record.candidateTolerance > CANDIDATE_TOLERANCE_RANGE[1]
+  ) {
+    ranges.push("tolerance-out-of-range");
+  }
+  if (record.element) {
+    const tolerance = record.element.tolerance;
+    if (tolerance < ELEMENT_TOLERANCE_RANGE[0] || tolerance > ELEMENT_TOLERANCE_RANGE[1]) {
+      ranges.push("tolerance-out-of-range");
+    }
+  }
+  return ranges;
+}
+
+function isStringMap(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return Object.values(value).every((entry) => typeof entry === "string");
+}
+
+function isBox(value) {
+  if (!value || typeof value !== "object") return false;
+  return ["x", "y", "width", "height"].every((key) => Number.isInteger(value[key])) &&
+    value.width > 0 &&
+    value.height > 0;
+}
+
+function isPlane(value) {
+  if (!value || typeof value !== "object") return false;
+  if (value.plane !== "content-box" && value.plane !== "full-canvas") return false;
+  return isBox(value.box);
+}
+
+function isElement(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  if (value.kind !== "tag") return false;
+  if (typeof value.tag !== "string" || value.tag === "") return false;
+  if (!isBox(value.bounds)) return false;
+  return Number.isFinite(value.tolerance);
+}
+
+/**
+ * The orphan walk: every scope field the catalog can resolve, not just the two ids.
+ *
+ * A component renamed while its preview and reference ids stay put leaves both id lookups
+ * succeeding and the acceptance permanently unreachable, which is the exact invisible-forever
+ * failure this exists to catch. `overrides` is the one field with no catalog fact to compare
+ * against — an acceptance naming a combination nobody has opened is *unused*, not orphaned.
+ */
+function catalogResolves(record, catalog) {
+  const preview = (catalog.previews ?? []).find(
+    (entry) => entry.system === record.system && entry.id === record.previewId,
+  );
+  if (!preview) return false;
+  if (preview.component !== record.component) return false;
+  if (preview.variant !== record.variant) return false;
+  return (preview.referenceIds ?? []).includes(record.referenceId);
+}
+
+/** Every recorded field must match — `system` and `component` are the two a page's key drops. */
+function scopeMatches(record, comparison) {
+  if (record.system !== comparison.system) return false;
+  if (record.component !== comparison.component) return false;
+  if (record.previewId !== comparison.previewId) return false;
+  if (record.referenceId !== comparison.referenceId) return false;
+  if (record.variant !== comparison.variant) return false;
+  return sameOverrides(record.overrides ?? {}, comparison.overrides ?? {});
+}
+
+function sameOverrides(a, b) {
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((key) => b[key] === a[key]);
+}
+
+/**
+ * The two refusals a comparison decides.
+ *
+ * `acceptance-is-noop` is sequenced **after** the fingerprint gate: the check compares the stored
+ * candidate against the *served* reference, and the reference the acceptance was authored against is
+ * not kept — so the moment the hash differs the predicate is being evaluated against the wrong
+ * image, and a changed reference whose new pixels happen to match the stored candidate would refuse
+ * where the contract intends `invalidated: reference-changed`.
+ */
+function comparisonRefusals(record, evaluation, comparison) {
+  if (!scopeMatches(record, comparison)) return [];
+  if (typeof comparison.referenceSha256 !== "string" || comparison.referenceSha256 === "") {
+    return ["reference-hash-missing"];
+  }
+  if (!hashesMatch(record.referenceSha256, comparison.referenceSha256)) return [];
+  if (!planeMatches(record.plane, comparison.plane)) return [];
+  const reference = comparison.canonicalReference;
+  if (!reference) return [];
+  if (regionAgrees(evaluation, reference, evaluation.accepted, record.candidateTolerance, true)) {
+    return ["acceptance-is-noop"];
+  }
+  return [];
+}
+
+function planeMatches(recorded, current) {
+  if (!current) return false;
+  if (recorded.plane !== current.plane) return false;
+  return ["x", "y", "width", "height"].every((key) => recorded.box[key] === current.box[key]);
+}
+
+/** The five gates, then the precedence table. */
+function runGates(record, evaluation, comparison) {
+  const causes = [];
+  const referenceChanged = !hashesMatch(record.referenceSha256, comparison.referenceSha256);
+  if (referenceChanged) causes.push("reference-changed");
+
+  const planeChanged = !planeMatches(record.plane, comparison.plane);
+  if (planeChanged) causes.push("plane-changed");
+
+  // `plane-changed` short-circuits the element gates: the published index carries bounds in the
+  // comparison's plane, and running the gate against bounds transformed through a plane the
+  // acceptance was not authored in manufactures a false `element-moved` on top of a correct
+  // `plane-changed`.
+  if (!planeChanged && record.element) causes.push(...elementCauses(record.element, comparison.tagIndex ?? {}));
+
+  const candidateChanged = !regionAgrees(
+    evaluation,
+    comparison.canonicalCandidate,
+    evaluation.accepted,
+    record.candidateTolerance,
+    true,
+  );
+
+  const nonCandidate = causes.filter((cause) => cause !== "candidate-changed");
+  if (nonCandidate.length > 0) return { status: "invalidated", causes: sortCauses(nonCandidate) };
+
+  if (candidateChanged) {
+    const converged = regionAgrees(
+      evaluation,
+      comparison.canonicalCandidate,
+      comparison.canonicalReference,
+      record.candidateTolerance,
+      false,
+    );
+    if (converged) return { status: "resolved" };
+    return { status: "invalidated", causes: ["candidate-changed"] };
+  }
+  return { status: "valid" };
+}
+
+/**
+ * Zero matches is always `element-moved` — that is "the glyph vanished", the case the gate exists
+ * for. More than one is `element-ambiguous` and stops there, because with several matches there is
+ * no single node whose bounds to measure and one engine would otherwise report both causes.
+ */
+function elementCauses(element, tagIndex) {
+  const entry = Object.hasOwn(tagIndex, element.tag) ? tagIndex[element.tag] : null;
+  const count = entry?.count ?? 0;
+  if (count > 1) return ["element-ambiguous"];
+  if (count < 1) return ["element-moved"];
+  const bounds = entry.bounds;
+  if (!isBox(bounds)) return ["element-moved"];
+  const baseline = element.bounds;
+  const displacement = Math.max(
+    Math.abs(bounds.x - baseline.x),
+    Math.abs(bounds.y - baseline.y),
+    Math.abs(bounds.x + bounds.width - (baseline.x + baseline.width)),
+    Math.abs(bounds.y + bounds.height - (baseline.y + baseline.height)),
+  );
+  const allowed = element.tolerance * Math.min(baseline.width, baseline.height);
+  return displacement > allowed ? ["element-moved"] : [];
+}
+
+/**
+ * Compare a canonical-plane raster against a second image inside the mask.
+ *
+ * `secondIsCrop` says whether the second image is the mask's bounding-box crop
+ * (`accepted-candidate.png`) or another full canonical-plane raster (the reference) — the two
+ * comparisons differ only in that offset, which is precisely why the contract requires them to
+ * share one metric.
+ */
+function regionAgrees(evaluation, canonical, other, tolerance, secondIsCrop) {
+  if (!canonical || !other) return false;
+  const mask = evaluation.mask;
+  const box = evaluation.coverage.box;
+  if (canonical.width !== mask.width || canonical.height !== mask.height) return false;
+  for (let y = box.y; y < box.y + box.height; y++) {
+    for (let x = box.x; x < box.x + box.width; x++) {
+      if (mask.pixels[(y * mask.width + x) * 4] !== 255) continue;
+      const left = (y * canonical.width + x) * 4;
+      const right = secondIsCrop
+        ? ((y - box.y) * other.width + (x - box.x)) * 4
+        : (y * other.width + x) * 4;
+      if (!pixelsAgree(canonical.pixels, left, other.pixels, right, tolerance)) return false;
+    }
+  }
+  return true;
+}
+
+/** The mask's bounding box, and whether any sample sits between the two legal values. */
+export function maskCoverage(mask) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -1;
+  let maxY = -1;
+  let nonBinary = false;
+  for (let y = 0; y < mask.height; y++) {
+    for (let x = 0; x < mask.width; x++) {
+      const value = mask.pixels[(y * mask.width + x) * 4];
+      if (value !== 0 && value !== 255) nonBinary = true;
+      if (value !== 255) continue;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (maxX < 0) return { box: null, nonBinary };
+  return { box: { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 }, nonBinary };
+}
+
+/**
+ * Deduplicated and ordered.
+ *
+ * A record has two artifacts and several tokens are shared between them — both headers unreadable is
+ * one `header-invalid`, not two. `validationFailures` carries one entry per `(record, reason)`
+ * **pair**, so the same token twice for one record is one pair; the two hash tokens are distinct
+ * precisely so that failure *can* be told apart per artifact.
+ */
+function sortReasons(reasons) {
+  return [...new Set(reasons)].sort((a, b) => reasonRank.get(a) - reasonRank.get(b));
+}
+
+function sortCauses(causes) {
+  return [...causes].sort((a, b) => causeRank.get(a) - causeRank.get(b));
+}
+
+/**
+ * Tokens first, then the record's index in `acceptances[]` within one token.
+ *
+ * The input index is the only ordering both engines can see: two records failing the same way would
+ * otherwise come out in map order in one engine and input order in the other.
+ */
+function sortFailures(failures, records) {
+  const indexOf = (entry) => {
+    if (typeof entry.index === "number") return entry.index;
+    if (entry.id === undefined) return -1;
+    const found = records.findIndex((record) => record?.id === entry.id);
+    return found < 0 ? Number.MAX_SAFE_INTEGER : found;
+  };
+  return failures
+    .map((entry, order) => ({ entry, order, index: indexOf(entry) }))
+    .sort((a, b) => {
+      const byReason = reasonRank.get(a.entry.reason) - reasonRank.get(b.entry.reason);
+      if (byReason !== 0) return byReason;
+      if (a.index !== b.index) return a.index - b.index;
+      return a.order - b.order;
+    })
+    .map(({ entry }) => {
+      if (entry.id !== undefined) return { id: entry.id, reason: entry.reason };
+      if (typeof entry.index === "number") return { index: entry.index, reason: entry.reason };
+      return { reason: entry.reason };
+    });
+}
+
+/**
+ * Issue-level closure: an issue is closable only once **every** acceptance linked to it resolves.
+ *
+ * The tracking issue is mandatory per acceptance but not unique to one — #42 is three acceptances
+ * against one issue — so `resolved` on one of them says nothing about the issue. Closing on the
+ * first resolution would also be self-defeating: the stale detection would immediately flag the
+ * siblings the closure just orphaned.
+ */
+export function closableIssues(documentRecords, statuses) {
+  const groups = new Map();
+  for (const record of documentRecords) {
+    const issue = parseIssue(record.issue);
+    if (!issue) continue;
+    const key = issueKey(issue);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(statuses?.[record.id]?.status ?? null);
+  }
+  return [...groups.entries()]
+    .filter(([, values]) => values.length > 0 && values.every((status) => status === "resolved"))
+    .map(([key]) => key)
+    .sort();
+}

@@ -1,0 +1,18 @@
+{
+  "pins": [
+    "statuses",
+    "validationFailures"
+  ],
+  "statuses": {
+    "m3-pair-first": {
+      "status": "valid"
+    },
+    "m3-pair-second": {
+      "status": "invalidated",
+      "causes": [
+        "element-moved"
+      ]
+    }
+  },
+  "validationFailures": []
+}

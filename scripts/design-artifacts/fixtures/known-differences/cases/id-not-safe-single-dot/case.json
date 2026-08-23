@@ -1,0 +1,38 @@
+{
+  "title": "An `id` of `.` reaching a sibling's `mask.png`",
+  "site": null,
+  "why": "`.` is the one that reads as harmless: no separator, every character in the class, and not the `..` everyone checks for — yet `known-differences/./` normalises to the root itself, so a `mask` of `some-other-id/mask.png` is genuinely contained and the containment check passes. One acceptance can then address every sibling's artifacts.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

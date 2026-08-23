@@ -1,0 +1,38 @@
+{
+  "title": "An animated mask",
+  "site": null,
+  "why": "An APNG is a PNG: signature, conforming `IHDR`, honest dimensions, a hash that verifies — every other check accepts it, and then the two engines read different pixels out of it, because a decoding library returns the `IDAT` default image while an `<img>` may advance the animation. A mask that changes between frames is a suppression union that changes while you look at it. Rejected rather than pinned to frame zero: a static acceptance artifact has no use for frames, so the file is a mistake or an attack either way.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

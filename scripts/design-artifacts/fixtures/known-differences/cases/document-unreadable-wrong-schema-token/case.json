@@ -1,0 +1,8 @@
+{
+  "title": "A document carrying a different schema token",
+  "site": null,
+  "why": "A wrong schema token is a file we cannot read, not a record we can refuse.",
+  "comparison": null,
+  "catalog": null,
+  "synthesize": []
+}

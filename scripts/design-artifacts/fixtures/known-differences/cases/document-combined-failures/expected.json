@@ -1,0 +1,20 @@
+{
+  "pins": [
+    "statusesAbsent",
+    "validationFailures"
+  ],
+  "statusesAbsent": true,
+  "validationFailures": [
+    {
+      "reason": "document-too-large"
+    },
+    {
+      "id": "twice",
+      "reason": "duplicate-id"
+    },
+    {
+      "index": 1,
+      "reason": "id-missing"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "title": "An uppercase *served* reference hash must not report `reference-changed`",
+  "site": null,
+  "why": "`ServeDesignReferenceStore` lowercases a reference hash to validate it and then serves the original spelling, so raw string inequality reports 'the design moved' for a reference that never changed. Both sides are lowercased before comparison. Its sibling fixture — an uppercase *recorded* hash — must be `schema-invalid`, because we can refuse two spellings of our own fields even though we cannot constrain what upstream publishes.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "A1B2C3D4E5F60718A1B2C3D4E5F60718A1B2C3D4E5F60718A1B2C3D4E5F60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

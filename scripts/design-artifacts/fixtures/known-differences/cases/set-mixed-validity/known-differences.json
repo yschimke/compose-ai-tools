@@ -1,0 +1,66 @@
+{
+  "schema": "compose-preview-known-differences/v1",
+  "acceptances": [
+    {
+      "id": "m3-pair-first",
+      "issue": "https://github.com/yschimke/m3-catalog/issues/40",
+      "system": "m3",
+      "component": "IconButton/Tonal",
+      "previewId": "iconbutton-tonal__ideal__default__light",
+      "referenceId": "iconbutton-tonal-ideal-light",
+      "variant": "ideal/default/light",
+      "mask": "mask.png",
+      "acceptedCandidate": "accepted-candidate.png",
+      "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+      "maskSha256": "18fb798432c3c794a21975b066aafe159ea768cf9f154d533f3e671025a0b2d3",
+      "acceptedCandidateSha256": "af51e5179d4a17612e1f530cb6624f5fa9d263b91ec97022f14be9206d6080df",
+      "plane": {
+        "plane": "content-box",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "width": 24,
+          "height": 24
+        }
+      },
+      "candidateTolerance": 2,
+      "acceptedAt": "2026-08-22T00:00:00Z"
+    },
+    {
+      "id": "m3-pair-second",
+      "issue": "https://github.com/yschimke/m3-catalog/issues/40",
+      "system": "m3",
+      "component": "IconButton/Tonal",
+      "previewId": "iconbutton-tonal__ideal__default__light",
+      "referenceId": "iconbutton-tonal-ideal-light",
+      "variant": "ideal/default/light",
+      "mask": "mask.png",
+      "acceptedCandidate": "accepted-candidate.png",
+      "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+      "maskSha256": "d42aa1467eb62df1de4a2bd7c137c1d57d461ba47d3cc42a9102fddaedf75d03",
+      "acceptedCandidateSha256": "af51e5179d4a17612e1f530cb6624f5fa9d263b91ec97022f14be9206d6080df",
+      "plane": {
+        "plane": "content-box",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "width": 24,
+          "height": 24
+        }
+      },
+      "candidateTolerance": 2,
+      "acceptedAt": "2026-08-22T00:00:00Z",
+      "element": {
+        "kind": "tag",
+        "tag": "gone",
+        "bounds": {
+          "x": 15,
+          "y": 15,
+          "width": 6,
+          "height": 6
+        },
+        "tolerance": 0.1
+      }
+    }
+  ]
+}

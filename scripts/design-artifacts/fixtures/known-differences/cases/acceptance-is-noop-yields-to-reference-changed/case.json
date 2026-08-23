@@ -1,0 +1,38 @@
+{
+  "title": "A no-op acceptance whose reference has also moved",
+  "site": null,
+  "why": "Sequenced **after** the fingerprint gate. The no-op check compares the stored candidate against the *served* reference, and the reference the acceptance was authored against is not kept — so the moment the hash differs the predicate is being evaluated against the wrong image, and refusal outranking everything would turn the correct `invalidated: reference-changed` into `refused: acceptance-is-noop`.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "4444444444444444444444444444444444444444444444444444444444444444",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

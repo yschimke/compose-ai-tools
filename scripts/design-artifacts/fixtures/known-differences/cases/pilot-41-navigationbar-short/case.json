@@ -1,0 +1,28 @@
+{
+  "title": "m3-catalog#41 — ShortNavigationBar measures items at full bar width",
+  "site": "yschimke/m3-catalog#41",
+  "why": "The geometric shape: no `element` key at all, and a mask covering most of the bar. It re-invalidates on every render change, and that churn is the price of being able to express #41 before the bar's parts are tagged.",
+  "comparison": {
+    "system": "m3",
+    "component": "NavigationBar/Short",
+    "previewId": "navigationbar-short__ideal__compact__light",
+    "referenceId": "navigationbar-short-ideal-light",
+    "variant": "ideal/compact/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 0,
+        "y": 0,
+        "width": 48,
+        "height": 12
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {}
+  },
+  "catalog": null,
+  "synthesize": []
+}

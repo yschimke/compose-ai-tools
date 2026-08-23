@@ -97,6 +97,51 @@ Each exists because two engines would otherwise diverge on identical bytes.
 - The fixture set is consumed by three runtimes. Keep it language-neutral: JSON plus PNG bytes plus an
   expected-result JSON, no Kotlin or JS harness assumptions baked into the directory shape.
 
+## What landed, and the seam with 05
+
+***Delivered.*** The contract's rules are
+[`scripts/design-artifacts/known-differences.mjs`](../../../scripts/design-artifacts/known-differences.mjs),
+the document shape is
+[`known-differences.schema.json`](../../../scripts/design-artifacts/known-differences.schema.json)
+(shape only — every verdict-deciding rule is prose in §4 and code in the module, because none of
+them is expressible in JSON Schema), the fixtures are
+[`fixtures/known-differences/`](../../../scripts/design-artifacts/fixtures/known-differences/), and
+the runner is `known-differences.test.mjs` in the design-artifacts driver's `node --test` job.
+[`png-lite.mjs`](../../../scripts/design-artifacts/png-lite.mjs) is the bounded header preflight and
+the deliberately-malformed-file writer the fixtures need; `pngjs` is a driver dependency and is not
+what either job wants, since a library decode allocates the oversized raster to measure it and
+refuses to write the APNG, palette mask and lying header the suite is worthless without.
+
+**The seam.** This batch pins every *verdict*: the refusals, the five gates, the resolution test, the
+status precedence, and the exact ordering of `statuses` and `validationFailures`. It does not compute
+`raw` / `accepted` / `unaccepted` — that is 05's separated-plane scoring path, and inventing numbers
+here would pin a scorer nobody has written. The seam is expressed in the fixtures rather than left to
+be remembered: each `expected.json` is a **partial** pin whose `pins` array names the keys a runner
+must check, so 05 adds score keys to these same cases instead of authoring a second tree. For the
+same reason the gate cases take their canonical-plane rasters as *inputs*, already resampled, and the
+resampler is pinned by a group of its own — a kernel divergence must fail as a kernel divergence
+rather than as a wrong verdict in sixty gate cases at once.
+
+**Two things `v1` gained while being written down**, both because the contract as drafted was not
+implementable without them:
+
+- **`out-of-scope` is a fifth status.** `statuses` carries one entry per member of `acceptances[]`,
+  and a comparison reaches only the acceptances whose entire recorded scope matches — #42's three
+  share one document and no comparison reaches more than one. Without a token for "well-formed, but
+  not about this comparison" an engine must invent a status, omit the entry, or misreport it as
+  `valid`. Refusal outranks it, so the refusal set stays comparison-independent.
+- **A per-record `reasons` list is deduplicated.** A record has two artifacts and several tokens are
+  shared between them, so both headers unreadable is one `header-invalid`, not two;
+  `validationFailures` carries one entry per `(record, reason)` **pair**. The two hash tokens are
+  distinct precisely so that failure *can* be told apart per artifact.
+
+**Still not covered here, and named so it is not mistaken for done.** The Kotlin runner is batch 05's:
+the fixture tree is language-neutral and `ServeParityIssuesStoreTest` is the worked example of a
+Kotlin test loading one of these directly, but nothing in `serve` reads a known-differences document
+yet. The stage table's `tag index` row also needs the server projector's own Kotlin tests to consume
+these payloads — pinning the artifact without running the code that produces it proves nothing about
+the code that produces it.
+
 ## Done when
 
 - Every rule above has at least one **rejecting** fixture and one accepting one.

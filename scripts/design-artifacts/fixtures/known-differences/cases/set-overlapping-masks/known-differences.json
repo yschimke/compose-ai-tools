@@ -1,0 +1,55 @@
+{
+  "schema": "compose-preview-known-differences/v1",
+  "acceptances": [
+    {
+      "id": "m3-pair-first",
+      "issue": "https://github.com/yschimke/m3-catalog/issues/40",
+      "system": "m3",
+      "component": "IconButton/Tonal",
+      "previewId": "iconbutton-tonal__ideal__default__light",
+      "referenceId": "iconbutton-tonal-ideal-light",
+      "variant": "ideal/default/light",
+      "mask": "mask.png",
+      "acceptedCandidate": "accepted-candidate.png",
+      "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+      "maskSha256": "c17d147021aa7844aa42878525e56606f6092c072ec0481963d8b4776d86b3e8",
+      "acceptedCandidateSha256": "e5f5559aeead1bdd1fe5149fd65fc4f32647aa942ff6a863e8dea5a80e6f4786",
+      "plane": {
+        "plane": "content-box",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "width": 24,
+          "height": 24
+        }
+      },
+      "candidateTolerance": 2,
+      "acceptedAt": "2026-08-22T00:00:00Z"
+    },
+    {
+      "id": "m3-pair-second",
+      "issue": "https://github.com/yschimke/m3-catalog/issues/40",
+      "system": "m3",
+      "component": "IconButton/Tonal",
+      "previewId": "iconbutton-tonal__ideal__default__light",
+      "referenceId": "iconbutton-tonal-ideal-light",
+      "variant": "ideal/default/light",
+      "mask": "mask.png",
+      "acceptedCandidate": "accepted-candidate.png",
+      "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+      "maskSha256": "ff4c6a0d5e5d4ede77c653eab95c429c7c0752303da811f59e57e32746820e07",
+      "acceptedCandidateSha256": "e5f5559aeead1bdd1fe5149fd65fc4f32647aa942ff6a863e8dea5a80e6f4786",
+      "plane": {
+        "plane": "content-box",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "width": 24,
+          "height": 24
+        }
+      },
+      "candidateTolerance": 2,
+      "acceptedAt": "2026-08-22T00:00:00Z"
+    }
+  ]
+}

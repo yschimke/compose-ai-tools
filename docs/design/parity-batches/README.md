@@ -31,7 +31,7 @@ to.
 | [01](01-locator-and-report.md) — locator + issue body | [#3801](https://github.com/yschimke/compose-ai-tools/issues/3801), [#3802](https://github.com/yschimke/compose-ai-tools/issues/3802) | **00 D2, D4** | partly — issues gain a parseable identity |
 | [02](02-issue-index.md) — issue index end to end | [#3804](https://github.com/yschimke/compose-ai-tools/issues/3804), [#3805](https://github.com/yschimke/compose-ai-tools/issues/3805), [#3806](https://github.com/yschimke/compose-ai-tools/issues/3806) | 01 | **yes** — open issues on the pages |
 | [03](03-element-selection.md) — element selection | [#3803](https://github.com/yschimke/compose-ai-tools/issues/3803) | 01, **00 D1** | **yes** — click an element to report it |
-| [04](04-acceptance-schema.md) — acceptance schema | [#3807](https://github.com/yschimke/compose-ai-tools/issues/3807) | **00 D1, D5** | no (contract + fixtures) |
+| [04](04-acceptance-schema.md) — acceptance schema | [#3807](https://github.com/yschimke/compose-ai-tools/issues/3807) | **00 D1, D5** | no (contract + fixtures) — **delivered** |
 | [05](05-acceptance-engines.md) — both engines + publish | [#3808](https://github.com/yschimke/compose-ai-tools/issues/3808), [#3809](https://github.com/yschimke/compose-ai-tools/issues/3809), [#3810](https://github.com/yschimke/compose-ai-tools/issues/3810) | 03, 04, **00 D3** | **yes** — accepted vs unaccepted scores |
 | [06](06-resolution-and-docs.md) — resolution, closure, docs | [#3811](https://github.com/yschimke/compose-ai-tools/issues/3811), [#3812](https://github.com/yschimke/compose-ai-tools/issues/3812) | 02, 05 | **yes** — the loop closes |
 
@@ -90,13 +90,36 @@ differences" suggests. Two counts, and they are not the same number:
   still name different issues.
 
 The per-issue verdicts and what each implies are in
-[the pilot population](../COMPONENT_PARITY_WORKFLOW.md#the-pilot-population-measured); batch 00's D5
-should be answered against those numbers rather than against the worked example.
+[the pilot population](../COMPONENT_PARITY_WORKFLOW.md#the-pilot-population-measured). D5 *was*
+answered against those numbers rather than against the worked example, and the fixture tree carries
+one case per site so the population stays checkable rather than remembered.
+
+**Batch 04 has landed, and with it D5.** `compose-preview-known-differences/v1` is implemented in
+[`known-differences.mjs`](../../../scripts/design-artifacts/known-differences.mjs), its document
+shape in [`known-differences.schema.json`](../../../scripts/design-artifacts/known-differences.schema.json),
+and its conformance suite in
+[`fixtures/known-differences/`](../../../scripts/design-artifacts/fixtures/known-differences/) —
+one case per pilot site, one rejecting case for every rule in §4, and a group pinning the portable
+resampler on its own. Three things worth carrying into 05:
+
+- **D5's six answers are in §4, not in code alone.** Resampler, mask-edge participation,
+  denominator, contribution sign, rounding, match metric — answered against the measured population
+  rather than against #40, and each exercised by a fixture. A decision made in code and not written
+  down is how the previous three pipelines went wrong.
+- **The seam is in the fixtures.** 04 pins the verdicts; the score stages are 05's, added to these
+  same cases. Each `expected.json` is a *partial* pin whose `pins` array says which keys are
+  normative, so 05 extends the tree rather than authoring a second one.
+- **`v1` gained a fifth status, `out-of-scope`.** `statuses` promises one entry per member of
+  `acceptances[]` and a comparison reaches only the acceptances whose entire scope matches it — #42's
+  three share a document and no comparison reaches more than one. The two promises are otherwise
+  incompatible, and each engine would resolve that differently.
 
 **Four decisions have since been settled, and two of them changed the wire:**
 
 - **D1 is answered (a)** — the tag index publishes render-pixel bounds and names its space; the
   canonical-plane transform belongs to the comparison.
+- **D5 is answered, all six** — see the block above and
+  [00 § D5](00-decisions.md#d5--the-pixel-semantics-decided-before-the-fixtures-are-frozen).
 - **An umbrella issue carries one locator block per component**, and index rows are keyed by issue ×
   component in both engines. This unblocks #42 and #93.
 - **`element` and `bounds` are reserved in `v1`** — batch 01's requirement, landed late as an

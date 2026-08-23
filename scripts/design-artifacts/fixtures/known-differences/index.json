@@ -1,0 +1,372 @@
+{
+  "schema": "compose-preview-known-differences/v1",
+  "cases": [
+    {
+      "id": "pilot-40-iconbutton-tonal-glyph",
+      "title": "m3-catalog#40 — IconButton/Tonal glyph colour",
+      "site": "yschimke/m3-catalog#40"
+    },
+    {
+      "id": "pilot-41-navigationbar-short",
+      "title": "m3-catalog#41 — ShortNavigationBar measures items at full bar width",
+      "site": "yschimke/m3-catalog#41"
+    },
+    {
+      "id": "pilot-87-checkbox-checked-ring",
+      "title": "m3-catalog#87 — Checkbox box padding 2dp vs 4dp",
+      "site": "yschimke/m3-catalog#87"
+    },
+    {
+      "id": "pilot-42-elevated-shadow-trio",
+      "title": "m3-catalog#42 — Elevated shadow level, three components on one issue",
+      "site": "yschimke/m3-catalog#42 (Button/Elevated, Card/Elevated, ToggleButton/Elevated)"
+    },
+    {
+      "id": "gate-resolved-fixed-candidate",
+      "title": "The candidate gate fired and the region converged on the reference",
+      "site": "yschimke/m3-catalog#40 (fixed)"
+    },
+    {
+      "id": "gate-candidate-changed",
+      "title": "The masked region is neither the accepted difference nor the reference",
+      "site": null
+    },
+    {
+      "id": "gate-reference-changed",
+      "title": "The served reference no longer hashes to the recorded one",
+      "site": null
+    },
+    {
+      "id": "gate-served-hash-uppercase",
+      "title": "An uppercase *served* reference hash must not report `reference-changed`",
+      "site": null
+    },
+    {
+      "id": "gate-plane-changed-short-circuits-element",
+      "title": "A changed plane short-circuits the element gates",
+      "site": null
+    },
+    {
+      "id": "gate-element-ambiguous",
+      "title": "The tag is carried by more than one node",
+      "site": null
+    },
+    {
+      "id": "gate-element-vanished",
+      "title": "The tag resolves to nothing at all",
+      "site": null
+    },
+    {
+      "id": "gate-element-moved-past-tolerance",
+      "title": "The resolved element moved further than `element.tolerance` allows",
+      "site": null
+    },
+    {
+      "id": "gate-element-at-tolerance",
+      "title": "A displacement exactly at tolerance passes",
+      "site": null
+    },
+    {
+      "id": "gate-multiple-causes",
+      "title": "Several gates fire at once",
+      "site": null
+    },
+    {
+      "id": "set-overlapping-masks",
+      "title": "Two acceptances whose masks overlap",
+      "site": null
+    },
+    {
+      "id": "set-mixed-validity",
+      "title": "One acceptance survives while its sibling is invalidated",
+      "site": null
+    },
+    {
+      "id": "scope-other-system",
+      "title": "A `wear-m3` acceptance must not suppress pixels in `m3`",
+      "site": null
+    },
+    {
+      "id": "scope-overrides-differ",
+      "title": "An acceptance authored at `fontScale=1.5` does not apply at the default frame",
+      "site": null
+    },
+    {
+      "id": "scope-refusal-is-comparison-independent",
+      "title": "A record that is out of scope *and* broken is still `refused`",
+      "site": null
+    },
+    {
+      "id": "document-unreadable-truncated",
+      "title": "Truncated JSON",
+      "site": null
+    },
+    {
+      "id": "document-unreadable-wrong-schema-token",
+      "title": "A document carrying a different schema token",
+      "site": null
+    },
+    {
+      "id": "document-unreadable-acceptances-not-array",
+      "title": "`acceptances` is an object",
+      "site": null
+    },
+    {
+      "id": "document-duplicate-ids",
+      "title": "One id used three times and a second used twice",
+      "site": null
+    },
+    {
+      "id": "document-id-missing",
+      "title": "Absent, blank, numeric and object ids",
+      "site": null
+    },
+    {
+      "id": "document-count-over-cap",
+      "title": "257 acceptances — one past the cap",
+      "site": null
+    },
+    {
+      "id": "document-count-at-cap",
+      "title": "256 acceptances — exactly the cap",
+      "site": null
+    },
+    {
+      "id": "document-combined-failures",
+      "title": "A duplicated id, an unkeyable record and an over-cap count at once",
+      "site": null
+    },
+    {
+      "id": "document-pixels-at-cap",
+      "title": "128 megapixels declared across the set — exactly the cap",
+      "site": null
+    },
+    {
+      "id": "document-pixels-over-cap",
+      "title": "128,008,000 megapixels declared — one raster past the cap",
+      "site": null
+    },
+    {
+      "id": "document-axis-at-cap",
+      "title": "A raster exactly 8192 px on its long axis",
+      "site": null
+    },
+    {
+      "id": "document-axis-over-cap",
+      "title": "A raster 8193 px on its long axis",
+      "site": null
+    },
+    {
+      "id": "artifact-too-large",
+      "title": "A mask one byte past 8 MiB encoded",
+      "site": null
+    },
+    {
+      "id": "id-not-safe-proto",
+      "title": "An `id` of `__proto__`",
+      "site": null
+    },
+    {
+      "id": "id-not-safe-single-dot",
+      "title": "An `id` of `.` reaching a sibling's `mask.png`",
+      "site": null
+    },
+    {
+      "id": "id-not-safe-parent-dot",
+      "title": "An `id` of `..`",
+      "site": null
+    },
+    {
+      "id": "id-not-safe-separator",
+      "title": "An `id` carrying a path separator",
+      "site": null
+    },
+    {
+      "id": "path-not-contained-backslash",
+      "title": "An artifact path containing a backslash",
+      "site": null
+    },
+    {
+      "id": "path-not-contained-hash",
+      "title": "An artifact path containing `#`",
+      "site": null
+    },
+    {
+      "id": "path-not-contained-parent",
+      "title": "An artifact path leaving the acceptance's directory",
+      "site": null
+    },
+    {
+      "id": "path-not-contained-absolute",
+      "title": "An absolute artifact path",
+      "site": null
+    },
+    {
+      "id": "mask-encoding-rgba-with-binary-samples",
+      "title": "An RGBA mask whose samples are strictly binary",
+      "site": null
+    },
+    {
+      "id": "mask-encoding-palette-with-binary-samples",
+      "title": "An indexed mask whose palette entries are strictly binary",
+      "site": null
+    },
+    {
+      "id": "mask-encoding-anti-aliased-sample",
+      "title": "A greyscale mask carrying one intermediate value",
+      "site": null
+    },
+    {
+      "id": "mask-empty",
+      "title": "A mask that selects nothing",
+      "site": null
+    },
+    {
+      "id": "animated-png-mask",
+      "title": "An animated mask",
+      "site": null
+    },
+    {
+      "id": "animated-png-accepted-candidate",
+      "title": "An animated accepted candidate",
+      "site": null
+    },
+    {
+      "id": "dimension-mismatch-mask-against-plane",
+      "title": "A mask that is not the recorded plane's size",
+      "site": null
+    },
+    {
+      "id": "dimension-mismatch-accepted-against-mask-box",
+      "title": "An accepted candidate that is not the mask's bounding box",
+      "site": null
+    },
+    {
+      "id": "hash-mismatch-both-artifacts",
+      "title": "Both artifacts fail their recorded hash",
+      "site": null
+    },
+    {
+      "id": "hash-recorded-uppercase",
+      "title": "An uppercase **recorded** hash",
+      "site": null
+    },
+    {
+      "id": "artifact-unreadable-missing-file",
+      "title": "A path that resolves to no file at all",
+      "site": null
+    },
+    {
+      "id": "header-invalid-truncated-file",
+      "title": "A file that opens and holds too few bytes for an `IHDR`",
+      "site": null
+    },
+    {
+      "id": "decode-failed-correctly-hashed-garbage",
+      "title": "A correctly hashed artifact that is not decodable",
+      "site": null
+    },
+    {
+      "id": "tolerance-candidate-at-ceiling",
+      "title": "`candidateTolerance` of exactly 8",
+      "site": null
+    },
+    {
+      "id": "tolerance-candidate-over-ceiling",
+      "title": "`candidateTolerance` of 9",
+      "site": null
+    },
+    {
+      "id": "tolerance-candidate-negative",
+      "title": "`candidateTolerance` of -1",
+      "site": null
+    },
+    {
+      "id": "tolerance-candidate-fractional",
+      "title": "`candidateTolerance` of 0.5",
+      "site": null
+    },
+    {
+      "id": "tolerance-element-over-ceiling",
+      "title": "`element.tolerance` of 0.3",
+      "site": null
+    },
+    {
+      "id": "tolerance-element-negative",
+      "title": "`element.tolerance` of -0.01",
+      "site": null
+    },
+    {
+      "id": "reference-hash-missing",
+      "title": "The targeted reference publishes no `sha256`",
+      "site": null
+    },
+    {
+      "id": "acceptance-is-noop",
+      "title": "A stored candidate that already agrees with the reference",
+      "site": null
+    },
+    {
+      "id": "acceptance-is-noop-yields-to-reference-changed",
+      "title": "A no-op acceptance whose reference has also moved",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-missing-issue",
+      "title": "A record with no `issue`",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-unparseable-issue",
+      "title": "An `issue` that is not a GitHub issue URL",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-unknown-element-kind",
+      "title": "An `element.kind` this version does not define",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-missing-plane",
+      "title": "A record with no recorded canonical plane",
+      "site": null
+    },
+    {
+      "id": "orphaned-target-component-renamed",
+      "title": "The component was renamed while its ids stayed put",
+      "site": null
+    },
+    {
+      "id": "orphaned-target-reference-detached",
+      "title": "The reference now hangs off a different preview",
+      "site": null
+    },
+    {
+      "id": "orphaned-target-variant-disagrees-with-preview-id",
+      "title": "A recorded `variant` that disagrees with its own `previewId`",
+      "site": null
+    }
+  ],
+  "resample": [
+    {
+      "id": "downscale-2x1-average",
+      "title": "Four pixels averaged into one"
+    },
+    {
+      "id": "rounding-exactly-half",
+      "title": "An average landing exactly on .5"
+    },
+    {
+      "id": "downscale-non-integer-ratio",
+      "title": "Three pixels into two — partial footprints"
+    },
+    {
+      "id": "upscale-integer-ratio",
+      "title": "Two pixels into four"
+    },
+    {
+      "id": "alpha-is-a-fourth-channel",
+      "title": "Alpha averaged without premultiplication"
+    }
+  ]
+}

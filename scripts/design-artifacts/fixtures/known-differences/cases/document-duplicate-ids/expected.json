@@ -1,0 +1,17 @@
+{
+  "pins": [
+    "statusesAbsent",
+    "validationFailures"
+  ],
+  "statusesAbsent": true,
+  "validationFailures": [
+    {
+      "id": "alpha",
+      "reason": "duplicate-id"
+    },
+    {
+      "id": "beta",
+      "reason": "duplicate-id"
+    }
+  ]
+}

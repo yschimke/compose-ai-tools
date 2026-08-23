@@ -1,0 +1,8 @@
+{
+  "title": "Truncated JSON",
+  "site": null,
+  "why": "Neither `schema-invalid` nor `id-missing` fits: there is no record to name and no index to fall back on. Without a token an engine is free to simply throw, which is not a result any fixture can compare against.",
+  "comparison": null,
+  "catalog": null,
+  "synthesize": []
+}

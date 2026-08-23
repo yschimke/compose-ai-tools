@@ -1,0 +1,8 @@
+{
+  "title": "Alpha averaged without premultiplication",
+  "why": "Premultiplying and un-premultiplying introduces a rounding step each way that two engines would have to agree on for no benefit — this contract's artifacts are opaque by construction. `(0 + 255) / 2 = 127.5 → 128` on alpha, and the colour channels average independently of it.",
+  "target": {
+    "width": 1,
+    "height": 1
+  }
+}

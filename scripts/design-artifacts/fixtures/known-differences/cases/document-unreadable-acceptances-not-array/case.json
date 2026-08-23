@@ -1,0 +1,8 @@
+{
+  "title": "`acceptances` is an object",
+  "site": null,
+  "why": "Same shape of failure, and the one an engine that trusts its deserializer walks straight past.",
+  "comparison": null,
+  "catalog": null,
+  "synthesize": []
+}
