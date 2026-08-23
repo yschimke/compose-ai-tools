@@ -1,7 +1,7 @@
 {
-  "title": "An unrecognized **critical** chunk with a valid CRC",
+  "title": "A stream truncated after a complete `IDAT`",
   "site": null,
-  "why": "The PNG specification requires a decoder to stop on a critical chunk it does not recognise, and a browser obeys it. `v1` goes further and refuses every chunk outside its allowlist, so this case and `decode-failed-chunk-not-permitted` reach the same verdict by the same rule — kept separate because a reader looking for the specification's requirement should find it covered, not inferred.",
+  "why": "It decodes to *something* — how much depends on where the truncation landed, which is exactly the consumer-dependent answer this contract cannot have. `IEND` is mandatory, so requiring it is the deterministic reading. Deliberately stricter than a browser, which will happily paint a partial raster: a committed artifact missing its terminator is broken, not partial.",
   "comparison": {
     "system": "m3",
     "component": "IconButton/Tonal",

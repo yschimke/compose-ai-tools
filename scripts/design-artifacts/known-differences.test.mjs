@@ -300,6 +300,41 @@ test("an over-budget document stops reading artifacts, and nothing is retained a
   assert.deepEqual([...counts.values()], [2, 2], "two artifacts, each read once per phase");
 });
 
+test("an artifact that changes between the two reads is refused, not trusted", () => {
+  // Not expressible as a fixture: the tree would have to hand out different bytes on the second
+  // read. `readArtifact` is the seam that makes it testable, and the case is real — the reader may
+  // be network-backed, or the tree may move under a long evaluation. Checking only presence and
+  // hashes on the re-read would let an artifact that grew past the byte cap, or whose header now
+  // declares an over-budget raster, walk through caps applied to bytes nobody decodes any more.
+  const caseDir = join(CASES, "pilot-40-iconbutton-tonal-glyph");
+  const meta = readJson(join(caseDir, "case.json"));
+  const documentText = readFileSync(join(caseDir, "known-differences.json"), "utf8");
+  const honest = artifactReader(caseDir, meta.synthesize);
+
+  const swapped = readJson(join(CASES, "dimension-mismatch-mask-against-plane", "case.json"));
+  const otherMask = new Uint8Array(
+    readFileSync(
+      join(CASES, "dimension-mismatch-mask-against-plane", "artifacts", "m3-iconbutton-tonal-glyph", "mask.png"),
+    ),
+  );
+  assert.ok(swapped, "the 20x20 mask from the dimension-mismatch case stands in for a changed file");
+
+  let masksRead = 0;
+  const unstable = (path) => {
+    if (path.endsWith("mask.png") && ++masksRead === 2) return otherMask;
+    return honest(path);
+  };
+
+  const result = evaluateKnownDifferences({
+    documentText,
+    readArtifact: unstable,
+    comparison: withCanonicalRasters(caseDir, meta.comparison),
+  });
+  assert.deepEqual(result.statuses, {
+    "m3-iconbutton-tonal-glyph": { status: "refused", reasons: ["artifact-unreadable"] },
+  });
+});
+
 test("the reason and cause orderings are the ones the contract lists", () => {
   // Pinned here rather than only implicitly through the fixtures: an ordering nobody asserts is an
   // ordering two engines can serialise differently while every single-token case still passes.

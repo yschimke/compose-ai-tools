@@ -362,6 +362,11 @@
       "site": null
     },
     {
+      "id": "document-duplicate-ids-case-folded",
+      "title": "Two ids differing only in case",
+      "site": null
+    },
+    {
       "id": "document-unreadable-unknown-property",
       "title": "A document carrying a property `v1` does not define",
       "site": null
@@ -402,8 +407,18 @@
       "site": null
     },
     {
-      "id": "ancillary-chunk-crc-is-not-fatal",
-      "title": "A corrupt CRC on a chunk the decoder never reads",
+      "id": "decode-failed-chunk-not-permitted",
+      "title": "An artifact carrying an ancillary chunk",
+      "site": null
+    },
+    {
+      "id": "decode-failed-colour-space-chunk",
+      "title": "An artifact carrying a colour-space chunk",
+      "site": null
+    },
+    {
+      "id": "decode-failed-missing-iend",
+      "title": "A stream truncated after a complete `IDAT`",
       "site": null
     },
     {

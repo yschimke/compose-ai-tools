@@ -1013,6 +1013,14 @@ retaining them once. And once a document is over budget nothing further about it
 nothing and costs everything the cap was defending. Unlike the bound below, this half *is* assertable:
 how many artifacts were fetched is observable through the same seam that supplies them.
 
+**The second read is validated again, not trusted.** Retaining nothing means the decode phase reads
+fresh bytes, and `readArtifact` may be network-backed or the tree may move under a long evaluation.
+Checking only presence and hashes there would let an artifact that has since grown past the byte cap,
+or whose header now declares an over-budget raster, walk through caps that were applied to bytes
+nobody is decoding any more. So the per-artifact checks are re-applied and the headers must still be
+the ones the budget was computed from; an artifact whose header changed between the two reads is not
+stable enough to evaluate, whatever it now contains, and is `artifact-unreadable`.
+
 **And inflation itself is bounded by the declared scanline size.** The preflight cannot see past the
 header, so a small legal `IHDR` in front of a compression bomb walks through every cap and is then
 expanded in full — these artifacts are third-party and may carry 8 MiB of compressed data, which
@@ -1027,14 +1035,11 @@ was ever well-formed. Without this a committed-corrupt PNG decodes on one side o
 refused by a native decoder on the other — one set of hash-valid bytes, two verdicts, which is the
 same failure the mask-encoding and animation rules exist to close.
 
-**Consumed, and only consumed** — `IHDR`, `PLTE`, `IDAT`, `tRNS`, `IEND`. Checking every chunk is the
-same mistake pointed the other way: an unconsumed ancillary chunk (`tEXt`, `gAMA`, a colour profile)
-has no bearing on the pixels, and the PNG specification says a decoder may ignore an ancillary chunk
-whose CRC does not verify — so refusing one makes this the strict engine and every browser the
-lenient one. Both halves are fixtures. `tRNS` is ancillary and *is* consumed, so it stays fatal on
-purpose: the alternative is to drop a corrupt transparency chunk and decode the raster as opaque,
-which silently changes the pixels the candidate gate compares, and refusing a broken artifact is what
-this contract does everywhere else.
+Since the allowlist below admits only chunks this decoder reads, every CRC in a permitted stream is
+fatal and there is no ancillary-versus-consumed line left to draw. An earlier revision drew one —
+ignoring bad CRCs on chunks like `tEXt`, because the specification permits that and refusing them
+would have made this the strict engine and every browser the lenient one. That reasoning was right
+and is now moot: `tEXt` is not permitted at all.
 
 **`IHDR`'s compression and filter method bytes must both be `0`.** The specification defines exactly
 one of each, so a decoder that ignores them inflates ordinary-looking scanlines and reaches a *gate
@@ -1051,10 +1056,26 @@ adds a large new surface to disagree on — 16-bit reduction alone is a rounding
 rather than answering is what this contract already does with the mask's encoding and with animation.
 Both halves are fixtures.
 
-**An unrecognized *critical* chunk is `decode-failed`.** The PNG specification requires a decoder to
-stop on one, and a browser obeys; skipping it and carrying on reaches a gate verdict where the other
-side refuses. Criticality is the case of the type's first letter, which is exactly why the ancillary
-half of the CRC rule above must still decode.
+**`v1` permits exactly five chunks — `IHDR`, `PLTE`, `IDAT`, `tRNS`, `IEND` — and refuses every
+other, critical or ancillary, known or invented.** An allowlist rather than a list of things to
+reject, and the difference is the point. The specification already requires stopping on an
+unrecognized *critical* chunk, and a browser obeys; but the expensive cases are ancillary.
+`gAMA`, `sRGB` and `iCCP` are not inert metadata — a colour-managed decoder transforms the samples
+through them and an unmanaged one returns them unchanged, so the same hash-valid accepted candidate
+yields different candidate and resolution verdicts on the two sides of this contract. Implementing
+colour management identically in two engines is exactly the question this document refuses to answer
+elsewhere. Enumerating what is understood makes the whole class finite and closed in one rule
+instead of one rule per feature, and every permitted chunk is a chunk this decoder reads, so every
+CRC is fatal and the earlier consumed-versus-ancillary distinction dissolves. The cost is that a
+producer must not emit ancillary chunks, which is one line in any encoder — and these artifacts are
+machine-generated crops of an already-composited render, not photographs carrying provenance.
+`acTL` keeps its own token: it is caught in the preflight, and `animated-png` says far more than
+"chunk not permitted".
+
+**`IEND` is required.** A stream truncated after a complete `IDAT` decodes to *something*, and how
+much depends on where the truncation landed — a consumer-dependent answer this contract cannot have.
+Deliberately stricter than a browser, which will paint the partial raster: a committed artifact
+missing its terminator is broken rather than partial.
 
 **There is no `degenerate-dimensions` token, and its absence is deliberate.** An earlier draft listed
 one for an artifact that "decodes to zero or negative dimensions". PNG dimensions are unsigned, so
@@ -1286,6 +1307,12 @@ token, or `acceptances` that is not an array. There is no record to name and no 
 on, so this is `document-unreadable` in the identifier-less `{ "reason": … }` shape, with `statuses`
 absent — the same shape as `document-too-large`, for the same reason. Without a token an engine is
 free to simply throw, which is not a result any fixture can compare against.
+
+**Collisions are detected case-folded, and reported under the first spelling seen.** `foo` and `FOO`
+are distinct map keys and the *same directory* on Windows and on a default macOS filesystem, so a
+document carrying both evaluates cleanly on Linux and, checked out anywhere else, has two records
+reading one another's artifacts — it cannot even be checked out intact. The `id` is doing double duty
+as an identifier and a path, and the path half is what decides whether two records are really two.
 
 **Duplicate acceptance ids fail the whole document, not one record.** `statuses` is keyed by id, so
 two records sharing one have a single slot between them — and making the duplicate a *per-acceptance*

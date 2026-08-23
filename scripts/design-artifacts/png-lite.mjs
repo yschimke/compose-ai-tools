@@ -38,8 +38,24 @@ const CHANNELS = {
   [COLOUR_RGBA]: 4,
 };
 
-/** The chunks {@link decodePng} reads the contents of — the only ones whose CRC is fatal. */
-const CONSUMED_CHUNKS = new Set(["IHDR", "PLTE", "IDAT", "tRNS", "IEND"]);
+/**
+ * The **complete** set of chunks `v1` permits. Anything else refuses the artifact.
+ *
+ * An allowlist rather than a growing list of things to reject, and that is the whole point. Every
+ * chunk PNG defines is a place where a lenient decoder and a colour-managed browser can disagree
+ * about the pixels a gate then compares — `gAMA`, `sRGB` and `iCCP` transform the samples outright,
+ * `tEXt` and friends do not but invite a rule about *which* ones do, and each new one caught this
+ * way is one more round of the same argument. Enumerating what is understood makes the question
+ * finite and closed: these five chunks, every one of which this decoder reads and whose CRC is
+ * therefore fatal, and nothing else.
+ *
+ * The cost is that a producer must not emit ancillary chunks, which is one line in any encoder — and
+ * these artifacts are machine-generated crops of an already-composited render, not photographs
+ * carrying provenance. `acTL` is the one exception to the token, not the rule: it is caught earlier
+ * in the preflight so an animated PNG reports `animated-png`, which says far more than "chunk not
+ * permitted".
+ */
+const PERMITTED_CHUNKS = new Set(["IHDR", "PLTE", "IDAT", "tRNS", "IEND"]);
 
 const CRC_TABLE = (() => {
   const table = new Uint32Array(256);
@@ -223,45 +239,40 @@ export function decodePng(bytes) {
   const parts = [];
   let palette = null;
   let transparency = null;
+  let sawIend = false;
   let offset = 8;
   while (offset + 8 <= bytes.length) {
     const length = view.getUint32(offset);
     const type = readType(bytes, offset + 4);
     if (length > bytes.length - offset - 12) throw new Error("decode-failed: chunk overruns file");
     const data = bytes.subarray(offset + 8, offset + 8 + length);
-    // Verify the CRC of the chunks whose contents this decoder actually consumes, and **only** those.
-    // The artifact's own `sha256` proves nobody edited the file in flight; it says nothing about
-    // whether the file was ever well-formed, so a committed-corrupt `IDAT` would otherwise decode
-    // here and be rejected by a native decoder on the other side of the contract.
-    //
-    // Checking *every* chunk is the same mistake pointed the other way. An unconsumed ancillary
-    // chunk — `tEXt`, `gAMA`, a colour profile — has no bearing on the pixels, and the PNG
-    // specification says a decoder may ignore an ancillary chunk whose CRC does not verify. Refusing
-    // one would make this the strict engine and every browser the lenient one, which is the same
-    // one-verdict-per-engine failure with the roles swapped.
-    //
-    // `tRNS` is ancillary and *is* consumed, so it stays in this set deliberately: the alternative is
-    // to drop a corrupt transparency chunk and decode the raster as opaque, which silently changes
-    // the pixels the candidate gate compares. Refusing a broken artifact is what this contract does
-    // everywhere else; quietly substituting different pixels is not.
-    // An unrecognized **critical** chunk must stop the decode — the PNG specification says so, and a
-    // browser obeys it. Skipping one and carrying on would reach a gate verdict where the other side
-    // of the contract reaches `decode-failed`. Criticality is the case of the type's first letter:
-    // uppercase is critical, lowercase ancillary.
-    if (!CONSUMED_CHUNKS.has(type) && (bytes[offset + 4] & 0x20) === 0) {
-      throw new Error("decode-failed: unrecognized critical chunk " + type);
-    }
-    if (CONSUMED_CHUNKS.has(type) &&
-        view.getUint32(offset + 8 + length) !== crc32(bytes.subarray(offset + 4, offset + 8 + length))) {
+    // Not on the allowlist — refused, whether it is critical, ancillary, known or invented. The
+    // specification already requires stopping on an unrecognized *critical* chunk; this goes further
+    // for the reason {@link PERMITTED_CHUNKS} gives.
+    if (!PERMITTED_CHUNKS.has(type)) throw new Error("decode-failed: chunk not permitted: " + type);
+    // Every permitted chunk is a consumed chunk, so every CRC here is fatal. The artifact's own
+    // `sha256` proves nobody edited the file in flight; it says nothing about whether the file was
+    // ever well-formed, and a committed-corrupt `IDAT` would otherwise decode here and be rejected by
+    // a native decoder on the other side of the contract.
+    if (view.getUint32(offset + 8 + length) !== crc32(bytes.subarray(offset + 4, offset + 8 + length))) {
       throw new Error("decode-failed: chunk CRC mismatch");
     }
     if (type === "IDAT") parts.push(data);
     if (type === "PLTE") palette = data;
     if (type === "tRNS") transparency = data;
-    if (type === "IEND") break;
+    if (type === "IEND") {
+      sawIend = true;
+      break;
+    }
     offset += 12 + length;
   }
   if (parts.length === 0) throw new Error("decode-failed: no IDAT");
+  // A stream truncated after a complete `IDAT` decodes to *something* — how much depends on where
+  // the truncation landed, which is exactly the kind of consumer-dependent answer this contract
+  // cannot have. `IEND` is mandatory, so requiring it is the deterministic reading. It makes this
+  // stricter than a browser, which will happily paint a partial raster, and that is the intended
+  // direction: a committed artifact that is missing its terminator is broken, not partial.
+  if (!sawIend) throw new Error("decode-failed: no IEND");
   if (colourType === COLOUR_PALETTE && !palette) throw new Error("decode-failed: no PLTE");
 
   const channels = CHANNELS[colourType];

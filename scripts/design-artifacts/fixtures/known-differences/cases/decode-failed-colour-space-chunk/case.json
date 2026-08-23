@@ -1,7 +1,7 @@
 {
-  "title": "An unrecognized **critical** chunk with a valid CRC",
+  "title": "An artifact carrying a colour-space chunk",
   "site": null,
-  "why": "The PNG specification requires a decoder to stop on a critical chunk it does not recognise, and a browser obeys it. `v1` goes further and refuses every chunk outside its allowlist, so this case and `decode-failed-chunk-not-permitted` reach the same verdict by the same rule — kept separate because a reader looking for the specification's requirement should find it covered, not inferred.",
+  "why": "`gAMA`, `sRGB` and `iCCP` are not inert metadata: a colour-managed decoder transforms the samples through them and an unmanaged one returns them unchanged, so the same hash-valid accepted candidate yields different candidate and resolution verdicts on the two sides of the contract. Implementing colour management identically in two engines is precisely the kind of question this contract refuses to answer, so the chunk is refused instead — which the allowlist already does, without needing a rule of its own.",
   "comparison": {
     "system": "m3",
     "component": "IconButton/Tonal",

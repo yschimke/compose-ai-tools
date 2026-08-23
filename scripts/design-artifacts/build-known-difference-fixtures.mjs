@@ -1959,6 +1959,33 @@ glyphValidation({
   });
 }
 
+{
+  const world = glyphWorld();
+  const base = glyphRecord(world);
+  addCase({
+    id: "document-duplicate-ids-case-folded",
+    title: "Two ids differing only in case",
+    why:
+      "`foo` and `FOO` are distinct map keys and the **same directory** on Windows and on a default " +
+      "macOS filesystem — so this document evaluates cleanly on Linux and, checked out anywhere " +
+      "else, has two records reading one another's artifacts. It cannot even be checked out intact. " +
+      "The `id` is doing double duty as an identifier and a path, and the path half decides whether " +
+      "two records are really two. Reported under the **first spelling seen**, since that is the " +
+      "position every engine has already reached at the moment it detects the collision.",
+    document: document([
+      { ...base, id: "m3-Glyph" },
+      { ...base, id: "m3-glyph" },
+    ]),
+    files: glyphFiles(world, base),
+    comparison: glyphComparison(world),
+    expected: {
+      pins: ["statusesAbsent", "validationFailures"],
+      statusesAbsent: true,
+      validationFailures: [{ id: "m3-Glyph", reason: "duplicate-id" }],
+    },
+  });
+}
+
 addCase({
   id: "document-unreadable-unknown-property",
   title: "A document carrying a property `v1` does not define",
@@ -2126,41 +2153,84 @@ glyphValidation({
     expected: refused(["header-invalid"]),
   });
 
-  // A hash-valid mask whose *ancillary* `tEXt` CRC is corrupt. This one must still be `valid`.
-  const corruptAncillary = (() => {
-    const text = chunk("tEXt", Uint8Array.from("note\u0000ok", (ch) => ch.charCodeAt(0)));
-    text[text.length - 1] ^= 0xff;
+  // Ancillary metadata of any kind, with a perfectly good CRC.
+  const withText = (() => {
     const samples = new Uint8Array(24 * 24);
     for (let y = 8; y < 16; y++) for (let x = 8; x < 16; x++) samples[y * 24 + x] = 255;
     const rows = [];
     for (let y = 0; y < 24; y++) rows.push(samples.subarray(y * 24, (y + 1) * 24));
     return buildPng([
       ihdr({ width: 24, height: 24, colourType: COLOUR_GREY }),
-      text,
+      chunk("tEXt", Uint8Array.from("note\u0000ok", (ch) => ch.charCodeAt(0))),
       idat(rows),
       chunk("IEND"),
     ]);
   })();
   glyphValidation({
-    id: "ancillary-chunk-crc-is-not-fatal",
-    title: "A corrupt CRC on a chunk the decoder never reads",
+    id: "decode-failed-chunk-not-permitted",
+    title: "An artifact carrying an ancillary chunk",
     why:
-      "The accepting half of the CRC rule, and the case that keeps it from becoming the same " +
-      "divergence pointed the other way. An unconsumed ancillary chunk — `tEXt`, `gAMA`, a colour " +
-      "profile — has no bearing on the pixels, and the PNG specification says a decoder may ignore " +
-      "an ancillary chunk whose CRC does not verify. Refusing one would make this engine the strict " +
-      "one and every browser the lenient one. Only the chunks whose contents are actually consumed " +
-      "are fatal.",
-    record: { maskSha256: sha256Hex(corruptAncillary) },
-    files: { "artifacts/m3-iconbutton-tonal-glyph/mask.png": corruptAncillary },
-    expected: {
-      pins: ["statuses", "validationFailures"],
-      statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
-      validationFailures: [],
-    },
+      "`v1` permits exactly five chunks — `IHDR`, `PLTE`, `IDAT`, `tRNS`, `IEND` — and refuses " +
+      "anything else, critical or ancillary, known or invented. An allowlist rather than a growing " +
+      "list of things to reject, because every PNG feature is another place a lenient decoder and a " +
+      "colour-managed browser disagree about the pixels a gate then compares, and each one caught " +
+      "individually is one more round of the same argument. The cost is that a producer must not " +
+      "emit ancillary chunks, which is one line in any encoder.",
+    record: { maskSha256: sha256Hex(withText) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/mask.png": withText },
+    expected: refused(["decode-failed"]),
   });
 
-  // A legal-looking header declaring a compression method the specification does not define.
+  // The case that motivated the allowlist rather than a sixth individual rule.
+  const colourManaged = (() => {
+    const samples = new Uint8Array(24 * 24);
+    for (let y = 8; y < 16; y++) for (let x = 8; x < 16; x++) samples[y * 24 + x] = 255;
+    const rows = [];
+    for (let y = 0; y < 24; y++) rows.push(samples.subarray(y * 24, (y + 1) * 24));
+    return buildPng([
+      ihdr({ width: 24, height: 24, colourType: COLOUR_GREY }),
+      chunk("gAMA", Uint8Array.from([0, 0, 177, 143])),
+      idat(rows),
+      chunk("IEND"),
+    ]);
+  })();
+  glyphValidation({
+    id: "decode-failed-colour-space-chunk",
+    title: "An artifact carrying a colour-space chunk",
+    why:
+      "`gAMA`, `sRGB` and `iCCP` are not inert metadata: a colour-managed decoder transforms the " +
+      "samples through them and an unmanaged one returns them unchanged, so the same hash-valid " +
+      "accepted candidate yields different candidate and resolution verdicts on the two sides of " +
+      "the contract. Implementing colour management identically in two engines is precisely the " +
+      "kind of question this contract refuses to answer, so the chunk is refused instead — which " +
+      "the allowlist already does, without needing a rule of its own.",
+    record: { acceptedCandidateSha256: sha256Hex(colourManaged) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": colourManaged },
+    expected: refused(["decode-failed"]),
+  });
+
+  // A stream that stops after a complete `IDAT`.
+  const noIend = (() => {
+    const samples = new Uint8Array(24 * 24);
+    for (let y = 8; y < 16; y++) for (let x = 8; x < 16; x++) samples[y * 24 + x] = 255;
+    const rows = [];
+    for (let y = 0; y < 24; y++) rows.push(samples.subarray(y * 24, (y + 1) * 24));
+    return buildPng([ihdr({ width: 24, height: 24, colourType: COLOUR_GREY }), idat(rows)]);
+  })();
+  glyphValidation({
+    id: "decode-failed-missing-iend",
+    title: "A stream truncated after a complete `IDAT`",
+    why:
+      "It decodes to *something* — how much depends on where the truncation landed, which is exactly " +
+      "the consumer-dependent answer this contract cannot have. `IEND` is mandatory, so requiring it " +
+      "is the deterministic reading. Deliberately stricter than a browser, which will happily paint " +
+      "a partial raster: a committed artifact missing its terminator is broken, not partial.",
+    record: { maskSha256: sha256Hex(noIend) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/mask.png": noIend },
+    expected: refused(["decode-failed"]),
+  });
+
+  // A legal-looking header declaring a compression method the specification does not define.  // A legal-looking header declaring a compression method the specification does not define.
   const badMethod = (() => {
     const samples = new Uint8Array(24 * 24);
     for (let y = 8; y < 16; y++) for (let x = 8; x < 16; x++) samples[y * 24 + x] = 255;
@@ -2242,10 +2312,10 @@ glyphValidation({
     title: "An unrecognized **critical** chunk with a valid CRC",
     why:
       "The PNG specification requires a decoder to stop on a critical chunk it does not recognise, " +
-      "and a browser obeys it — so skipping one and carrying on reaches a gate verdict where the " +
-      "other side of the contract reaches `decode-failed`. Criticality is the case of the type's " +
-      "first letter, which is why its sibling `ancillary-chunk-crc-is-not-fatal` (a lowercase " +
-      "`tEXt`) must still come out `valid`.",
+      "and a browser obeys it. `v1` goes further and refuses every chunk outside its allowlist, so " +
+      "this case and `decode-failed-chunk-not-permitted` reach the same verdict by the same rule — " +
+      "kept separate because a reader looking for the specification's requirement should find it " +
+      "covered, not inferred.",
     record: { maskSha256: sha256Hex(unknownCritical) },
     files: { "artifacts/m3-iconbutton-tonal-glyph/mask.png": unknownCritical },
     expected: refused(["decode-failed"]),

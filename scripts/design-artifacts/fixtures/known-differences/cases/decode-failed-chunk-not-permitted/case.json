@@ -1,7 +1,7 @@
 {
-  "title": "A corrupt CRC on a chunk the decoder never reads",
+  "title": "An artifact carrying an ancillary chunk",
   "site": null,
-  "why": "The accepting half of the CRC rule, and the case that keeps it from becoming the same divergence pointed the other way. An unconsumed ancillary chunk — `tEXt`, `gAMA`, a colour profile — has no bearing on the pixels, and the PNG specification says a decoder may ignore an ancillary chunk whose CRC does not verify. Refusing one would make this engine the strict one and every browser the lenient one. Only the chunks whose contents are actually consumed are fatal.",
+  "why": "`v1` permits exactly five chunks — `IHDR`, `PLTE`, `IDAT`, `tRNS`, `IEND` — and refuses anything else, critical or ancillary, known or invented. An allowlist rather than a growing list of things to reject, because every PNG feature is another place a lenient decoder and a colour-managed browser disagree about the pixels a gate then compares, and each one caught individually is one more round of the same argument. The cost is that a producer must not emit ancillary chunks, which is one line in any encoder.",
   "comparison": {
     "system": "m3",
     "component": "IconButton/Tonal",

@@ -337,18 +337,25 @@ export function evaluateKnownDifferences({ documentText, readArtifact, compariso
     .filter(({ record }) => typeof record?.id !== "string" || record.id.trim() === "");
   for (const { index } of unkeyable) documentFailures.push({ index, reason: "id-missing" });
 
+  // **Collisions are detected case-folded, and reported under the first spelling seen.** `foo` and
+  // `FOO` are distinct map keys and the *same directory* on Windows and on a default macOS
+  // filesystem — so a document carrying both evaluates cleanly on Linux and, checked out anywhere
+  // else, has two records reading one another's artifacts. It cannot even be checked out intact.
+  // The `id` is doing double duty as an identifier and a path, and the path half is the one that
+  // decides whether two records are really two.
   const firstSeen = new Map();
   const counts = new Map();
   records.forEach((record, index) => {
     if (typeof record?.id !== "string" || record.id.trim() === "") return;
-    if (!firstSeen.has(record.id)) firstSeen.set(record.id, index);
-    counts.set(record.id, (counts.get(record.id) ?? 0) + 1);
+    const key = record.id.toLowerCase();
+    if (!firstSeen.has(key)) firstSeen.set(key, { index, id: record.id });
+    counts.set(key, (counts.get(key) ?? 0) + 1);
   });
   const duplicates = [...counts.entries()]
     .filter(([, count]) => count > 1)
-    .map(([id]) => id)
-    .sort((a, b) => firstSeen.get(a) - firstSeen.get(b));
-  for (const id of duplicates) documentFailures.push({ id, reason: "duplicate-id" });
+    .map(([key]) => firstSeen.get(key))
+    .sort((a, b) => a.index - b.index);
+  for (const { id } of duplicates) documentFailures.push({ id, reason: "duplicate-id" });
 
   if (records.length > BUDGET.maxAcceptances) documentFailures.push({ reason: "document-too-large" });
 
@@ -542,9 +549,36 @@ function decodeRecord(evaluation, readArtifact) {
     return evaluation;
   };
 
-  // The preflight retained no bytes, so these are read again here. A file that vanished between the
-  // two reads is `artifact-unreadable`, exactly as it would have been on the first.
+  // **The second read is validated again, not trusted.** The preflight retained no bytes, so these
+  // are fresh reads — and `readArtifact` may be network-backed, or the tree may change underneath a
+  // long evaluation. Checking only presence and hashes would let an artifact that grew past the byte
+  // cap, or whose header now declares an over-budget raster, walk straight through caps that were
+  // applied to bytes nobody is decoding any more. So the per-artifact checks are re-applied, and the
+  // headers must still be the ones the budget was computed from; an artifact that changed between
+  // the two reads is not stable enough to evaluate, whatever it now contains.
   if (!maskBytes || !acceptedBytes) return fail("artifact-unreadable");
+
+  const reread = [
+    [maskBytes, maskHeader],
+    [acceptedBytes, acceptedHeader],
+  ];
+  const oversized = reread.filter(([bytes]) => bytes.length > BUDGET.maxArtifactBytes);
+  if (oversized.length > 0) return fail("artifact-too-large");
+  for (const [bytes, before] of reread) {
+    const now = preflightPng(bytes);
+    if (now.error) return fail("header-invalid");
+    if (now.animated) return fail("animated-png");
+    if (
+      now.width !== before.width ||
+      now.height !== before.height ||
+      now.bitDepth !== before.bitDepth ||
+      now.colourType !== before.colourType
+    ) {
+      return fail("artifact-unreadable");
+    }
+    if (now.width > BUDGET.maxAxis || now.height > BUDGET.maxAxis) return fail("header-invalid");
+  }
+  if (maskHeader.bitDepth !== 8 || maskHeader.colourType !== 0) return fail("mask-encoding-invalid");
 
   const hashReasons = [];
   if (!hashesMatch(record.maskSha256, sha256Hex(maskBytes))) hashReasons.push("mask-hash-mismatch");

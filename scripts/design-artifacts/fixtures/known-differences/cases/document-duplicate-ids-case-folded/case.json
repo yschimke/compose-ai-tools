@@ -1,7 +1,7 @@
 {
-  "title": "An unrecognized **critical** chunk with a valid CRC",
+  "title": "Two ids differing only in case",
   "site": null,
-  "why": "The PNG specification requires a decoder to stop on a critical chunk it does not recognise, and a browser obeys it. `v1` goes further and refuses every chunk outside its allowlist, so this case and `decode-failed-chunk-not-permitted` reach the same verdict by the same rule — kept separate because a reader looking for the specification's requirement should find it covered, not inferred.",
+  "why": "`foo` and `FOO` are distinct map keys and the **same directory** on Windows and on a default macOS filesystem — so this document evaluates cleanly on Linux and, checked out anywhere else, has two records reading one another's artifacts. It cannot even be checked out intact. The `id` is doing double duty as an identifier and a path, and the path half decides whether two records are really two. Reported under the **first spelling seen**, since that is the position every engine has already reached at the moment it detects the collision.",
   "comparison": {
     "system": "m3",
     "component": "IconButton/Tonal",
