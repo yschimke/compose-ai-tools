@@ -21,11 +21,12 @@ import org.junit.Test
  * and captures every job in it, so the still keeps the gutter and the scroll products trim it back
  * off here.
  *
- * Round devices and `showSystemUi` frames are **unsupported** in this combination and keep the
- * gutter — a baked-in circular mask and window-edge system chrome both make a post-hoc trim worse
- * than none. `END` is out of scope too: its product is an ordinary still sharing the whole still
- * post-capture chain, so it keeps the gutter on this lane — see `@CaptureGutter`'s kdoc and
- * issue #4467.
+ * Round devices, `showSystemUi` frames and **full-screen** dialog windows are **unsupported** in
+ * this combination and keep the gutter — a baked-in circular mask and window-edge system chrome
+ * both make a post-hoc trim worse than none, and a full-screen dialog's crop rect is the whole
+ * grown frame. A centred `Dialog` is fine: its rect is the component, so the gutter is excluded.
+ * `END` is out of scope too: its product is an ordinary still sharing the whole still post-capture
+ * chain, so it keeps the gutter on this lane — see `@CaptureGutter`'s kdoc and issue #4467.
  */
 class ScrollGutterTrimTest {
 
