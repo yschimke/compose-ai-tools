@@ -1072,6 +1072,24 @@ machine-generated crops of an already-composited render, not photographs carryin
 `acTL` keeps its own token: it is caught in the preflight, and `animated-png` says far more than
 "chunk not permitted".
 
+**Permitted is not the same as well-placed.** A duplicate `IHDR`, a `PLTE` or `tRNS` after the image
+data, a non-contiguous `IDAT` run, a non-empty `IEND` — each is built entirely from allowed chunks
+and each is rejected by a conforming decoder, so admitting them on membership alone reaches a gate
+verdict where the other side refuses. `v1` therefore constrains placement as well as vocabulary:
+`IHDR` first and once; `PLTE` and `tRNS` at most once and before any `IDAT` (and `tRNS` after `PLTE`
+for an indexed image); the `IDAT` run contiguous; `IEND` empty. There are only five chunks to
+constrain, which is what the allowlist buys — the structural rules are finite because the vocabulary
+is. Bytes *after* `IEND` stay tolerated: nothing reads them, the byte cap fires on them before any
+decode, and policing them would add a rule with no divergence behind it.
+
+**`tRNS` is refused on `mask.png` specifically.** It is permitted on the accepted candidate and is
+the one place the allowlist and the mask's own encoding rule pull against each other — the mask is
+greyscale with **no alpha**, and `tRNS` is how a greyscale PNG carries alpha anyway. Left admitted,
+the decode gives a matching sample alpha `0` while coverage reads only the grey channel: a
+transparent white pixel would suppress a comparison on one consumer and refuse the mask on another
+enforcing the no-alpha rule as written. Caught in the same `IHDR` preflight that already decides the
+encoding, and `mask-encoding-invalid` for the same reason the bit depth and colour type are.
+
 **`IEND` is required.** A stream truncated after a complete `IDAT` decodes to *something*, and how
 much depends on where the truncation landed — a consumer-dependent answer this contract cannot have.
 Deliberately stricter than a browser, which will paint the partial raster: a committed artifact

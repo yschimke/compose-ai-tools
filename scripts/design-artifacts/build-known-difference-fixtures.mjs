@@ -1553,6 +1553,34 @@ glyphValidation({
     expected: refused(["mask-encoding-invalid"]),
   });
 
+  const transparentMask = (() => {
+    const samples = new Uint8Array(24 * 24);
+    for (let y = 8; y < 16; y++) for (let x = 8; x < 16; x++) samples[y * 24 + x] = 255;
+    const rows = [];
+    for (let y = 0; y < 24; y++) rows.push(samples.subarray(y * 24, (y + 1) * 24));
+    return buildPng([
+      ihdr({ width: 24, height: 24, colourType: COLOUR_GREY }),
+      chunk("tRNS", Uint8Array.from([0, 255])),
+      idat(rows),
+      chunk("IEND"),
+    ]);
+  })();
+  glyphValidation({
+    id: "mask-encoding-transparency",
+    title: "A greyscale mask carrying `tRNS`",
+    why:
+      "The mask is greyscale with **no alpha**, and `tRNS` is how a greyscale PNG carries alpha " +
+      "anyway — so this is the one place the chunk allowlist and the mask's own encoding rule " +
+      "disagree, since `tRNS` is legitimately permitted on the accepted candidate. Left admitted, " +
+      "the decode gives a matching sample alpha `0` while the coverage scan reads only the grey " +
+      "channel: a transparent white pixel would suppress a comparison here and refuse the mask on a " +
+      "consumer enforcing the no-alpha rule as written. Refused in the same `IHDR` preflight that " +
+      "already decides the encoding.",
+    record: { maskSha256: sha256Hex(transparentMask) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/mask.png": transparentMask },
+    expected: refused(["mask-encoding-invalid"]),
+  });
+
   const emptyMask = encodePng({ width: 24, height: 24, colourType: COLOUR_GREY, samples: new Uint8Array(24 * 24) });
   glyphValidation({
     id: "mask-empty",
@@ -2206,6 +2234,70 @@ glyphValidation({
       "the allowlist already does, without needing a rule of its own.",
     record: { acceptedCandidateSha256: sha256Hex(colourManaged) },
     files: { "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": colourManaged },
+    expected: refused(["decode-failed"]),
+  });
+
+  // Allowed chunks, disallowed placement.
+  const greyRows = () => {
+    const samples = new Uint8Array(24 * 24);
+    for (let y = 8; y < 16; y++) for (let x = 8; x < 16; x++) samples[y * 24 + x] = 255;
+    const rows = [];
+    for (let y = 0; y < 24; y++) rows.push(samples.subarray(y * 24, (y + 1) * 24));
+    return rows;
+  };
+  const duplicateHeader = buildPng([
+    ihdr({ width: 24, height: 24, colourType: COLOUR_GREY }),
+    ihdr({ width: 24, height: 24, colourType: COLOUR_GREY }),
+    idat(greyRows()),
+    chunk("IEND"),
+  ]);
+  glyphValidation({
+    id: "decode-failed-duplicate-ihdr",
+    title: "A second `IHDR`",
+    why:
+      "**Permitted is not the same as well-placed.** Every chunk here is on the allowlist and the " +
+      "file is still malformed — a conforming decoder rejects it, so admitting it on membership " +
+      "alone reaches a gate verdict where the other side reaches `decode-failed`. There are only " +
+      "five chunks to constrain, which is what the allowlist bought: the structural rules are finite " +
+      "because the vocabulary is.",
+    record: { maskSha256: sha256Hex(duplicateHeader) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/mask.png": duplicateHeader },
+    expected: refused(["decode-failed"]),
+  });
+
+  const trailingTrns = buildPng([
+    ihdr({ width: 24, height: 24, colourType: COLOUR_GREY }),
+    idat(greyRows()),
+    chunk("tRNS", Uint8Array.from([0, 255])),
+    chunk("IEND"),
+  ]);
+  glyphValidation({
+    id: "decode-failed-trns-after-idat",
+    title: "A `tRNS` after the image data",
+    why:
+      "`tRNS` and `PLTE` describe how the image data is to be read, so both must precede it. After " +
+      "`IDAT` a decoder either ignores the chunk or applies it retroactively, and those are two " +
+      "different rasters for one set of hash-valid bytes.",
+    record: { acceptedCandidateSha256: sha256Hex(trailingTrns) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": trailingTrns },
+    expected: refused(["decode-failed"]),
+  });
+
+  const fatIend = buildPng([
+    ihdr({ width: 24, height: 24, colourType: COLOUR_GREY }),
+    idat(greyRows()),
+    chunk("IEND", Uint8Array.from([1, 2, 3, 4])),
+  ]);
+  glyphValidation({
+    id: "decode-failed-non-empty-iend",
+    title: "A non-empty `IEND`",
+    why:
+      "`IEND` carries no data by definition, so bytes inside it are a place for content to hide that " +
+      "one consumer skips and another refuses. Note the contract still tolerates bytes *after* " +
+      "`IEND`: nothing reads them, the byte cap fires on them before any decode, and policing them " +
+      "would add a rule with no divergence behind it.",
+    record: { maskSha256: sha256Hex(fatIend) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/mask.png": fatIend },
     expected: refused(["decode-failed"]),
   });
 

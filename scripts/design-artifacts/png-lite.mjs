@@ -162,7 +162,8 @@ export function encodePng({ width, height, colourType = COLOUR_RGBA, samples, ex
  * The contract's bounded header preflight: `IHDR` plus a walk of chunk *headers* to the first
  * `IDAT`.
  *
- * Returns `{ width, height, bitDepth, colourType, interlace, animated, byteLength }`, or
+ * Returns `{ width, height, bitDepth, colourType, interlace, animated, hasTransparency, byteLength }`,
+ * or
  * `{ error: "header-invalid" }` for anything it cannot read — a wrong signature, a file too short to
  * hold an `IHDR`, a chunk length that runs past the end, a missing `IDAT`. Never reads chunk data,
  * never allocates anything sized by the file, so an 8192-cap breach costs the same handful of bytes
@@ -180,6 +181,7 @@ export function preflightPng(bytes) {
   if (width === 0 || height === 0) return fail;
 
   let animated = false;
+  let hasTransparency = false;
   let offset = 8;
   let sawIdat = false;
   // Chunk lengths are unsigned 32-bit, so a hostile file can name a length that overflows the
@@ -189,6 +191,7 @@ export function preflightPng(bytes) {
     const type = readType(bytes, offset + 4);
     if (length > bytes.length - offset - 12) return fail;
     if (type === "acTL") animated = true;
+    if (type === "tRNS") hasTransparency = true;
     if (type === "IDAT") {
       sawIdat = true;
       break;
@@ -206,6 +209,7 @@ export function preflightPng(bytes) {
     filter: bytes[27],
     interlace: bytes[28],
     animated,
+    hasTransparency,
     byteLength: bytes.length,
   };
 }
@@ -240,6 +244,8 @@ export function decodePng(bytes) {
   let palette = null;
   let transparency = null;
   let sawIend = false;
+  let sawIdat = false;
+  let idatEnded = false;
   let offset = 8;
   while (offset + 8 <= bytes.length) {
     const length = view.getUint32(offset);
@@ -250,6 +256,27 @@ export function decodePng(bytes) {
     // specification already requires stopping on an unrecognized *critical* chunk; this goes further
     // for the reason {@link PERMITTED_CHUNKS} gives.
     if (!PERMITTED_CHUNKS.has(type)) throw new Error("decode-failed: chunk not permitted: " + type);
+    // **Permitted is not the same as well-placed.** A duplicate `IHDR`, a `PLTE` or `tRNS` after the
+    // image data, a non-contiguous `IDAT` run or a non-empty `IEND` are all built from allowed
+    // chunks and are all rejected by a conforming decoder — so admitting them on membership alone
+    // reaches a gate verdict where the other side of the contract reaches `decode-failed`. There are
+    // only five chunks to constrain, which is precisely what the allowlist bought: the structural
+    // rules are finite because the vocabulary is.
+    if (type === "IHDR" && offset !== 8) throw new Error("decode-failed: IHDR is not first");
+    if (offset === 8 && type !== "IHDR") throw new Error("decode-failed: IHDR is not first");
+    if (type === "PLTE") {
+      if (palette || sawIdat) throw new Error("decode-failed: misplaced PLTE");
+    }
+    if (type === "tRNS") {
+      if (transparency || sawIdat) throw new Error("decode-failed: misplaced tRNS");
+      if (colourType === COLOUR_PALETTE && !palette) throw new Error("decode-failed: tRNS before PLTE");
+    }
+    if (type === "IDAT") {
+      if (idatEnded) throw new Error("decode-failed: IDAT run is not contiguous");
+    } else if (sawIdat) {
+      idatEnded = true;
+    }
+    if (type === "IEND" && length !== 0) throw new Error("decode-failed: IEND is not empty");
     // Every permitted chunk is a consumed chunk, so every CRC here is fatal. The artifact's own
     // `sha256` proves nobody edited the file in flight; it says nothing about whether the file was
     // ever well-formed, and a committed-corrupt `IDAT` would otherwise decode here and be rejected by
@@ -257,7 +284,10 @@ export function decodePng(bytes) {
     if (view.getUint32(offset + 8 + length) !== crc32(bytes.subarray(offset + 4, offset + 8 + length))) {
       throw new Error("decode-failed: chunk CRC mismatch");
     }
-    if (type === "IDAT") parts.push(data);
+    if (type === "IDAT") {
+      parts.push(data);
+      sawIdat = true;
+    }
     if (type === "PLTE") palette = data;
     if (type === "tRNS") transparency = data;
     if (type === "IEND") {

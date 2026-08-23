@@ -101,6 +101,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `mask-encoding-rgba-with-binary-samples` | An RGBA mask whose samples are strictly binary |
 | `mask-encoding-palette-with-binary-samples` | An indexed mask whose palette entries are strictly binary |
 | `mask-encoding-anti-aliased-sample` | A greyscale mask carrying one intermediate value |
+| `mask-encoding-transparency` | A greyscale mask carrying `tRNS` |
 | `mask-empty` | A mask that selects nothing |
 | `animated-png-mask` | An animated mask |
 | `animated-png-accepted-candidate` | An animated accepted candidate |
@@ -138,6 +139,9 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `header-invalid-inflates-past-declared-size` | A small legal header in front of a much larger inflation |
 | `decode-failed-chunk-not-permitted` | An artifact carrying an ancillary chunk |
 | `decode-failed-colour-space-chunk` | An artifact carrying a colour-space chunk |
+| `decode-failed-duplicate-ihdr` | A second `IHDR` |
+| `decode-failed-trns-after-idat` | A `tRNS` after the image data |
+| `decode-failed-non-empty-iend` | A non-empty `IEND` |
 | `decode-failed-missing-iend` | A stream truncated after a complete `IDAT` |
 | `decode-failed-unsupported-compression-method` | An `IHDR` declaring a compression method the specification does not define |
 | `decode-failed-interlaced-accepted-candidate` | An interlaced accepted candidate |

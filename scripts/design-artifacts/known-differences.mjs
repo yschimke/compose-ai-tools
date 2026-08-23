@@ -523,7 +523,14 @@ function preflightRecord(record, index, readArtifact, catalog) {
   if (headerReasons.length === 0) {
     if (maskHeader.animated) headerReasons.push("animated-png");
     if (acceptedHeader.animated) headerReasons.push("animated-png");
-    if (maskHeader.bitDepth !== 8 || maskHeader.colourType !== 0) headerReasons.push("mask-encoding-invalid");
+    // The mask is greyscale with **no alpha**, and `tRNS` is how a greyscale PNG carries alpha
+    // anyway. Permitted on the accepted candidate, refused here: the decode would give a matching
+    // sample alpha `0` while `maskCoverage` reads only the grey channel, so a transparent white
+    // pixel suppresses a comparison on one consumer and refuses the mask on another that enforces
+    // the no-alpha rule as written.
+    if (maskHeader.bitDepth !== 8 || maskHeader.colourType !== 0 || maskHeader.hasTransparency) {
+      headerReasons.push("mask-encoding-invalid");
+    }
   }
   if (headerReasons.length > 0) return fail(...headerReasons);
 

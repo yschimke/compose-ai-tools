@@ -232,6 +232,11 @@
       "site": null
     },
     {
+      "id": "mask-encoding-transparency",
+      "title": "A greyscale mask carrying `tRNS`",
+      "site": null
+    },
+    {
       "id": "mask-empty",
       "title": "A mask that selects nothing",
       "site": null
@@ -414,6 +419,21 @@
     {
       "id": "decode-failed-colour-space-chunk",
       "title": "An artifact carrying a colour-space chunk",
+      "site": null
+    },
+    {
+      "id": "decode-failed-duplicate-ihdr",
+      "title": "A second `IHDR`",
+      "site": null
+    },
+    {
+      "id": "decode-failed-trns-after-idat",
+      "title": "A `tRNS` after the image data",
+      "site": null
+    },
+    {
+      "id": "decode-failed-non-empty-iend",
+      "title": "A non-empty `IEND`",
       "site": null
     },
     {
