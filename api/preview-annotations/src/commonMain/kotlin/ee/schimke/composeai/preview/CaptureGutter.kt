@@ -92,13 +92,11 @@ package ee.schimke.composeai.preview
  * every other product's agreement with it, so an Android `END` capture keeps the gutter while the
  * CMP Desktop one does not.
  *
- * Three caveats are still open. That Android `END` divergence is one. A fixed-axis Android
- * **motion** product is trimmed to the hosting window rather than to `frame + gutter` in pixels, so
- * at a fractional density it can differ from the still by a pixel. And a held **desktop recording**
- * of a *wrapped* preview is sized from the sandbox bound rather than the measured content — that
- * one predates gutters entirely, so the gutter term merely rides on top of a frame that was already
- * the wrong size. All three are tracked in compose-ai-tools#4467 — read them as the current limits
- * of the contract above, not as licence to rely on them.
+ * Two caveats are still open. That Android `END` divergence is one. The other is a held **desktop
+ * recording** of a *wrapped* preview, which is sized from the sandbox bound rather than the
+ * measured content — that one predates gutters entirely, so the gutter term merely rides on top of
+ * a frame that was already the wrong size. Both are tracked in compose-ai-tools#4467 — read them as
+ * the current limits of the contract above, not as licence to rely on them.
  *
  * A **rotated** capture (`orientation = landscape`, which the daemon reduces to a width↔height
  * swap) keeps the declared edges verbatim: a gutter edge names a direction the component draws in —

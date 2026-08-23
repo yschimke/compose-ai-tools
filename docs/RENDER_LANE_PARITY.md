@@ -324,11 +324,15 @@ PNG beside it carried the gutter — the component is the same size in both, onl
   render pass, the way a settled still already splits) is the fix; until then a guttered `END`
   capture is `frame + gutter` on Android and `frame` on CMP Desktop.
 
-  Two further divergences remain open: fixed-axis Android **motion** frames are trimmed to the
-  hosting window rather than to `frame + gutter` px (a pixel's disagreement with the still at a
-  fractional density), and a held **desktop recording** of a *wrapped* preview is sized from the
-  sandbox bound rather than the measured content — that one predates gutters. All are tracked in
+  One further divergence remains open: a held **desktop recording** of a *wrapped* preview is sized
+  from the sandbox bound rather than the measured content — that one predates gutters. Tracked, with
+  the `END` divergence above, in
   [#4467](https://github.com/yschimke/compose-ai-tools/issues/4467).
+
+  Fixed-axis Android **motion** frames used to disagree with the still by a pixel at fractional
+  densities, because the hosting window can only grow in whole dp; both now derive from one
+  `fixedAxisTargetPx`
+  ([#4471](https://github.com/yschimke/compose-ai-tools/pull/4471)).
 * **Rotation does not rotate the edges.** `orientation = landscape` reduces to a
   `widthPx ↔ heightPx` swap, and the routers trade the *wrap flags* with it because a wrap flag
   names an axis of the frame. A gutter edge names a direction the component draws in — `bottom` is
