@@ -749,8 +749,8 @@ abstract class RobolectricRenderTestBase(
     // of shadow. The spare fraction of a dp is transparent canvas outside the crop.
     val gutter = params.captureGutter ?: CaptureGutterDp()
     val gutterDensity = params.density ?: 2.0f
-    val gutterWidthDp = ceilDpForPx(gutter.start, gutter.end, gutterDensity)
-    val gutterHeightDp = ceilDpForPx(gutter.top, gutter.bottom, gutterDensity)
+    val gutterWidthDp = captureGutterAxisDp(gutter.start, gutter.end, gutterDensity)
+    val gutterHeightDp = captureGutterAxisDp(gutter.top, gutter.bottom, gutterDensity)
     val composeOptions =
       RoborazziComposeOptions.Builder()
         .apply {
@@ -1234,9 +1234,11 @@ abstract class RobolectricRenderTestBase(
     val qualifierDensity = params.density ?: 2.0f
     val qualifierGutter = params.captureGutter ?: CaptureGutterDp()
     applyPreviewQualifiers(
-      widthDp = widthDp + ceilDpForPx(qualifierGutter.start, qualifierGutter.end, qualifierDensity),
+      widthDp =
+        widthDp + captureGutterAxisDp(qualifierGutter.start, qualifierGutter.end, qualifierDensity),
       heightDp =
-        heightDp + ceilDpForPx(qualifierGutter.top, qualifierGutter.bottom, qualifierDensity),
+        heightDp +
+          captureGutterAxisDp(qualifierGutter.top, qualifierGutter.bottom, qualifierDensity),
       isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
       locale = params.locale,
       uiMode = params.uiMode,
@@ -2212,9 +2214,11 @@ abstract class RobolectricRenderTestBase(
               // fractional density.
               val resizeGutter = params.captureGutter ?: CaptureGutterDp()
               val resizeGutterWPx =
-                edgePx(resizeGutter.start, resizeDensity) + edgePx(resizeGutter.end, resizeDensity)
+                captureGutterEdgePx(resizeGutter.start, resizeDensity) +
+                  captureGutterEdgePx(resizeGutter.end, resizeDensity)
               val resizeGutterHPx =
-                edgePx(resizeGutter.top, resizeDensity) + edgePx(resizeGutter.bottom, resizeDensity)
+                captureGutterEdgePx(resizeGutter.top, resizeDensity) +
+                  captureGutterEdgePx(resizeGutter.bottom, resizeDensity)
               resizeFixedAxesPng(
                 file = outputFile,
                 targetWidth =
@@ -2526,7 +2530,7 @@ abstract class RobolectricRenderTestBase(
  * `MeasuredWrapBox` resolves in composition, so the window growth, the layout and the fixed-axis
  * resize all agree on where the gutter's pixels are.
  */
-internal fun edgePx(edgeDp: Int, density: Float): Int = Math.round(edgeDp * density)
+fun captureGutterEdgePx(edgeDp: Int, density: Float): Int = Math.round(edgeDp * density)
 
 /**
  * Dp the hosting window must grow on one axis to hold both [edgeADp] and [edgeBDp] at [density] —
@@ -2535,8 +2539,8 @@ internal fun edgePx(edgeDp: Int, density: Float): Int = Math.round(edgeDp * dens
  * the gutter exists to keep. `0` for an absent gutter, so an un-annotated preview's window is
  * untouched.
  */
-internal fun ceilDpForPx(edgeADp: Int, edgeBDp: Int, density: Float): Int {
-  val totalPx = edgePx(edgeADp, density) + edgePx(edgeBDp, density)
+fun captureGutterAxisDp(edgeADp: Int, edgeBDp: Int, density: Float): Int {
+  val totalPx = captureGutterEdgePx(edgeADp, density) + captureGutterEdgePx(edgeBDp, density)
   if (totalPx <= 0) return 0
   return kotlin.math.ceil(totalPx / density).toInt()
 }
@@ -2557,10 +2561,10 @@ internal fun dialogCropGutter(
 ): DialogWindowCapture.DialogCropGutter {
   if (gutter == null) return DialogWindowCapture.DialogCropGutter()
   return DialogWindowCapture.DialogCropGutter(
-    leftPx = edgePx(gutter.start, density),
-    topPx = edgePx(gutter.top, density),
-    rightPx = edgePx(gutter.end, density),
-    bottomPx = edgePx(gutter.bottom, density),
+    leftPx = captureGutterEdgePx(gutter.start, density),
+    topPx = captureGutterEdgePx(gutter.top, density),
+    rightPx = captureGutterEdgePx(gutter.end, density),
+    bottomPx = captureGutterEdgePx(gutter.bottom, density),
   )
 }
 

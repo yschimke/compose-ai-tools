@@ -514,9 +514,48 @@ class RenderEngine(
                       // children to zero. Fixed axes keep `fillMaxSize` so `fillMax*` / LazyColumn
                       // still have a finite viewport. Mirrors the desktop daemon + standalone
                       // renderer.
+                      // `@CaptureGutter` in pixels, resolved once against this render's own
+                      // density (issue #4443). Per-edge rounding, matching `MeasuredWrapBox` in
+                      // the batch renderer and `PreviewCaptureGutter.ofDp` on desktop, so all
+                      // three lanes put the gutter's pixels in the same place.
+                      val gutterStartPx =
+                        ee.schimke.composeai.renderer.captureGutterEdgePx(
+                          spec.gutterStartDp,
+                          spec.density,
+                        )
+                      val gutterTopPx =
+                        ee.schimke.composeai.renderer.captureGutterEdgePx(
+                          spec.gutterTopDp,
+                          spec.density,
+                        )
+                      val gutterEndPx =
+                        ee.schimke.composeai.renderer.captureGutterEdgePx(
+                          spec.gutterEndDp,
+                          spec.density,
+                        )
+                      val gutterBottomPx =
+                        ee.schimke.composeai.renderer.captureGutterEdgePx(
+                          spec.gutterBottomDp,
+                          spec.density,
+                        )
                       val contentBoxModifier =
-                        if (spec.wrapWidth || spec.wrapHeight) {
+                        if (spec.wrapWidth || spec.wrapHeight || spec.hasCaptureGutter()) {
                           Modifier.layout { measurable, constraints ->
+                            // The viewport handed to the composable is the one it would have had
+                            // with NO gutter — the sandbox pixels the spec asked for — NOT "the
+                            // grown window minus the rounded edges". Those two differ at a
+                            // fractional density, and the difference is enough to remeasure
+                            // `fillMaxWidth` content and defeat the annotation's one promise.
+                            // Clamped to the window in case the dp-only qualifier resolved a pixel
+                            // differently, so the constraint stays satisfiable.
+                            val availWidth =
+                              if (spec.hasCaptureGutter())
+                                environment.sandboxWidthPx.coerceIn(0, constraints.maxWidth)
+                              else constraints.maxWidth
+                            val availHeight =
+                              if (spec.hasCaptureGutter())
+                                environment.sandboxHeightPx.coerceIn(0, constraints.maxHeight)
+                              else constraints.maxHeight
                             // Size-mode bounds (Max / Min / Within) clamp the wrapped-axis measure:
                             // a max bound lowers the sandbox ceiling so the composable can't grow
                             // past it; a min bound raises the floor so it can't collapse below it.
@@ -525,30 +564,41 @@ class RenderEngine(
                             // keep the AS-parity wrap (min = 0, max = sandbox). Mirrors the desktop
                             // daemon RenderEngine.
                             val maxWBound =
-                              environment.sizeOverrides
-                                ?.maxWidthPx
-                                ?.coerceAtMost(constraints.maxWidth) ?: constraints.maxWidth
+                              environment.sizeOverrides?.maxWidthPx?.coerceAtMost(availWidth)
+                                ?: availWidth
                             val maxHBound =
-                              environment.sizeOverrides
-                                ?.maxHeightPx
-                                ?.coerceAtMost(constraints.maxHeight) ?: constraints.maxHeight
+                              environment.sizeOverrides?.maxHeightPx?.coerceAtMost(availHeight)
+                                ?: availHeight
                             val minWBound =
                               (environment.sizeOverrides?.minWidthPx ?: 0).coerceIn(0, maxWBound)
                             val minHBound =
                               (environment.sizeOverrides?.minHeightPx ?: 0).coerceIn(0, maxHBound)
                             val wrapped =
                               androidx.compose.ui.unit.Constraints(
-                                minWidth = if (spec.wrapWidth) minWBound else constraints.maxWidth,
-                                maxWidth = if (spec.wrapWidth) maxWBound else constraints.maxWidth,
-                                minHeight =
-                                  if (spec.wrapHeight) minHBound else constraints.maxHeight,
-                                maxHeight =
-                                  if (spec.wrapHeight) maxHBound else constraints.maxHeight,
+                                minWidth = if (spec.wrapWidth) minWBound else availWidth,
+                                maxWidth = if (spec.wrapWidth) maxWBound else availWidth,
+                                minHeight = if (spec.wrapHeight) minHBound else availHeight,
+                                maxHeight = if (spec.wrapHeight) maxHBound else availHeight,
                               )
                             val placeable = measurable.measure(wrapped)
-                            measuredContent[0] = placeable.width
-                            measuredContent[1] = placeable.height
-                            layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+                            // The box reports `child + gutter`, so the crop below keeps the gutter
+                            // and the child is placed inset by it. With no gutter every term is
+                            // zero and this is the pre-gutter layout verbatim.
+                            val boxWidth =
+                              (placeable.width + gutterStartPx + gutterEndPx).coerceAtMost(
+                                constraints.maxWidth
+                              )
+                            val boxHeight =
+                              (placeable.height + gutterTopPx + gutterBottomPx).coerceAtMost(
+                                constraints.maxHeight
+                              )
+                            measuredContent[0] = boxWidth
+                            measuredContent[1] = boxHeight
+                            val leftPx =
+                              if (layoutDirection == androidx.compose.ui.unit.LayoutDirection.Rtl)
+                                gutterEndPx
+                              else gutterStartPx
+                            layout(boxWidth, boxHeight) { placeable.place(leftPx, gutterTopPx) }
                           }
                         } else {
                           Modifier.fillMaxSize()
@@ -824,6 +874,26 @@ class RenderEngine(
                 file = outputFile,
                 root = resolvedSemanticsRoot,
                 window = dialogWindow,
+                gutterLeftPx =
+                  ee.schimke.composeai.renderer.captureGutterEdgePx(
+                    spec.gutterStartDp,
+                    spec.density,
+                  ),
+                gutterTopPx =
+                  ee.schimke.composeai.renderer.captureGutterEdgePx(
+                    spec.gutterTopDp,
+                    spec.density,
+                  ),
+                gutterRightPx =
+                  ee.schimke.composeai.renderer.captureGutterEdgePx(
+                    spec.gutterEndDp,
+                    spec.density,
+                  ),
+                gutterBottomPx =
+                  ee.schimke.composeai.renderer.captureGutterEdgePx(
+                    spec.gutterBottomDp,
+                    spec.density,
+                  ),
               )
             } else if (spec.wrapWidth || spec.wrapHeight) {
               WrappedFrameCrop.cropTopLeft(
@@ -834,10 +904,15 @@ class RenderEngine(
                 measuredHeight = measuredContent[1],
               )
             }
+            // A fixed axis is resized to the frame it declared PLUS its capture gutter — the
+            // gutter is canvas the author asked for, so trimming back to the bare frame would drop
+            // the shadow it exists to keep, and (worse) *upscale* the already-correct capture back
+            // to the smaller frame, stretching the component by the gutter it was meant to sit
+            // inside. Same arithmetic as the batch renderer's `resizeGutter` branch.
             resizeFixedAxesPng(
               file = outputFile,
-              targetWidth = if (spec.wrapWidth) null else spec.widthPx,
-              targetHeight = if (spec.wrapHeight) null else spec.heightPx,
+              targetWidth = if (spec.wrapWidth) null else spec.widthPx + spec.gutterHorizontalPx(),
+              targetHeight = if (spec.wrapHeight) null else spec.heightPx + spec.gutterVerticalPx(),
             )
 
             // Pull per-node theme facts while the composition is still alive so theme consumer
@@ -2086,7 +2161,23 @@ class RenderEngine(
    * A `ModalBottomSheet`'s window fills the screen, so its rect covers the whole frame and this is
    * a no-op; a centred `Dialog`/`AlertDialog` crops to the dialog itself.
    */
-  private fun cropPngToDialogWindow(file: File, root: SemanticsNode, window: android.view.Window) {
+  private fun cropPngToDialogWindow(
+    file: File,
+    root: SemanticsNode,
+    window: android.view.Window,
+    /**
+     * Per-edge `@CaptureGutter` expansion of the crop rect, in pixels (issue #4443). A dialog
+     * capture is the one path the activity-hosted wrap crop never reaches — `measuredContent`
+     * measures the activity's own (empty) content — so without this the gutter would miss the
+     * component that most reliably casts a shadow. Left/right rather than start/end because the
+     * rect is computed over already-rendered pixels, where an RTL capture has already been
+     * mirrored. Mirrors `DialogWindowCapture.dialogWindowCropRect` in the batch renderer.
+     */
+    gutterLeftPx: Int = 0,
+    gutterTopPx: Int = 0,
+    gutterRightPx: Int = 0,
+    gutterBottomPx: Int = 0,
+  ) {
     if (!file.exists()) return
     val original = runCatching { javax.imageio.ImageIO.read(file) }.getOrNull() ?: return
     val width = root.size.width.coerceIn(1, original.width)
@@ -2101,8 +2192,19 @@ class RenderEngine(
     )
     val left = placed.left.coerceIn(0, original.width - width)
     val top = placed.top.coerceIn(0, original.height - height)
-    if (left == 0 && top == 0 && width == original.width && height == original.height) return
-    val cropped = original.getSubimage(left, top, width, height)
+    // Grow outward from the window's own rect, then clamp to the frame. Each edge clamps
+    // independently so a dialog near one edge keeps the gutter it can have on the other three.
+    val cropLeft = (left - gutterLeftPx).coerceAtLeast(0)
+    val cropTop = (top - gutterTopPx).coerceAtLeast(0)
+    val cropRight = (left + width + gutterRightPx).coerceAtMost(original.width)
+    val cropBottom = (top + height + gutterBottomPx).coerceAtMost(original.height)
+    if (
+      cropLeft == 0 && cropTop == 0 && cropRight == original.width && cropBottom == original.height
+    ) {
+      return
+    }
+    val cropped =
+      original.getSubimage(cropLeft, cropTop, cropRight - cropLeft, cropBottom - cropTop)
     runCatching { javax.imageio.ImageIO.write(cropped, "PNG", file) }
   }
 
@@ -2169,14 +2271,37 @@ class RenderEngine(
         maxOf(spec.heightPx, sizeOverrides?.minHeightPx ?: 0, sizeOverrides?.maxHeightPx ?: 0)
       else spec.heightPx
 
+    // `@CaptureGutter` (issue #4443): the window the composition is hosted in grows by the gutter,
+    // and the content box below hands the composable back its ORIGINAL viewport — so the component
+    // measures exactly what it measured without the annotation and the extra pixels are canvas.
+    // Growing the qualifier is what actually moves the window (it is the viewport Robolectric
+    // measures in), and the growth is the CEILING of the summed edge pixels because a qualifier is
+    // dp-only: rounding down would leave the window a pixel short of `component + gutter` and cost
+    // a pixel of the very shadow the gutter exists to keep. Mirrors `RobolectricRenderTest`, which
+    // is the whole point — the two Android lanes must not disagree about the canvas.
+    val gutterQualifierWidthDp =
+      ee.schimke.composeai.renderer.captureGutterAxisDp(
+        spec.gutterStartDp,
+        spec.gutterEndDp,
+        spec.density,
+      )
+    val gutterQualifierHeightDp =
+      ee.schimke.composeai.renderer.captureGutterAxisDp(
+        spec.gutterTopDp,
+        spec.gutterBottomDp,
+        spec.density,
+      )
     applyPreviewQualifiers(
-      widthDp = pxToDp(sandboxWidthPx, spec.density),
-      heightDp = pxToDp(sandboxHeightPx, spec.density),
+      widthDp = pxToDp(sandboxWidthPx, spec.density) + gutterQualifierWidthDp,
+      heightDp = pxToDp(sandboxHeightPx, spec.density) + gutterQualifierHeightDp,
       density = spec.density,
       isRound = isRound,
       localeTag = spec.localeTag,
       uiMode = spec.uiMode,
       orientation = spec.orientation,
+      // The orientation decision reads the frame the COMPONENT was asked for, not the gutter-grown
+      // window: a gutter is a handful of dp and must never be what tips a near-square capture from
+      // `port` to `land`.
       widthPx = sandboxWidthPx,
       heightPx = sandboxHeightPx,
     )
@@ -3043,7 +3168,37 @@ data class RenderSpec(
    * historical "render value 0 under the bare id" contract.
    */
   val previewParameterRow: String? = null,
+  /**
+   * `@CaptureGutter` edges in **dp** (issue #4443) — field-for-field identical to
+   * `:daemon:desktop`'s `RenderSpec`, so one payload string drives either backend. All-zero (the
+   * default) is every preview without the annotation, and is what a payload written before the
+   * token existed decodes to.
+   *
+   * Edges are start/end (leading/trailing, resolved against the render's layout direction), not
+   * left/right. A rotated render keeps them as declared: a wrap flag names an axis of the frame and
+   * so is traded on rotation, but a gutter edge names a direction the *component* draws in, and
+   * swapping the frame's width and height does not turn the component over or move where its shadow
+   * falls.
+   */
+  val gutterStartDp: Int = 0,
+  val gutterTopDp: Int = 0,
+  val gutterEndDp: Int = 0,
+  val gutterBottomDp: Int = 0,
 ) {
+
+  /** True when no edge carries a gutter — the render then keeps its pre-gutter path verbatim. */
+  fun hasCaptureGutter(): Boolean =
+    gutterStartDp != 0 || gutterTopDp != 0 || gutterEndDp != 0 || gutterBottomDp != 0
+
+  /** Pixels this spec's gutter adds across the horizontal axis, at [density]. */
+  fun gutterHorizontalPx(): Int =
+    ee.schimke.composeai.renderer.captureGutterEdgePx(gutterStartDp, density) +
+      ee.schimke.composeai.renderer.captureGutterEdgePx(gutterEndDp, density)
+
+  /** Pixels this spec's gutter adds across the vertical axis, at [density]. */
+  fun gutterVerticalPx(): Int =
+    ee.schimke.composeai.renderer.captureGutterEdgePx(gutterTopDp, density) +
+      ee.schimke.composeai.renderer.captureGutterEdgePx(gutterBottomDp, density)
 
   enum class SpecUiMode {
     LIGHT,
@@ -3080,6 +3235,7 @@ data class RenderSpec(
       val className = map["className"] ?: return null
       val functionName = map["functionName"] ?: return null
       val defaults = RenderSpec(className = className, functionName = functionName)
+      val gutterDp = parseGutterToken(map["captureGutter"])
       return RenderSpec(
         previewId = map["previewId"]?.takeIf { it.isNotBlank() },
         className = className,
@@ -3122,7 +3278,28 @@ data class RenderSpec(
         previewParameterLimit =
           map["previewParameterLimit"]?.toIntOrNull() ?: defaults.previewParameterLimit,
         previewParameterRow = map["previewParameterRow"]?.takeIf { it.isNotBlank() },
+        gutterStartDp = gutterDp[0],
+        gutterTopDp = gutterDp[1],
+        gutterEndDp = gutterDp[2],
+        gutterBottomDp = gutterDp[3],
       )
+    }
+
+    /**
+     * The `captureGutter=<start>,<top>,<end>,<bottom>` payload token — four dp edges, in that
+     * order, returned as a 4-element array. A missing or malformed token is an all-zero gutter,
+     * which is also what every payload written before the token existed decodes to. Wire-format
+     * twin of `:daemon:desktop`'s `RenderSpec.parseGutterToken`.
+     */
+    internal fun parseGutterToken(token: String?): IntArray {
+      val none = intArrayOf(0, 0, 0, 0)
+      val parts = token?.split(',') ?: return none
+      if (parts.size != 4) return none
+      val edges = IntArray(4)
+      for (i in 0 until 4) {
+        edges[i] = parts[i].trim().toIntOrNull()?.coerceAtLeast(0) ?: return none
+      }
+      return edges
     }
 
     private val json = Json {

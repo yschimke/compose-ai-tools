@@ -254,26 +254,56 @@ rather than every component preview inheriting a tile.
 
 ![Wear scroll capsule with and without the injected background, on a light and a dark canvas](../renders/lane-parity/figma-svg-background-off-capsule.png)
 
-## Known gap: `@CaptureGutter` on the live lane
+## `@CaptureGutter` across the lanes
 
 `@CaptureGutter` (m3-catalog#179) extends a capture's bounds by a per-edge dp margin so an
-elevation shadow drawn outside the component's own bounds survives the crop. Both **static**
-lanes apply it — the `CaptureGutterPreviews` fixture pair renders `287×117 → 309×141` on CMP
-Desktop and `262×117 → 284×141` on Android for `@CaptureGutter(all = 4, bottom = 5)`, i.e. the
-same `+22×+24` on each.
+elevation shadow drawn outside the component's own bounds survives the crop. All four render
+lanes apply it, and the fixture below is the measurement rather than an assertion —
+`CaptureGutterPreviews` in `:samples:cmp` / `:samples:android`, one component rendered with and
+without `@CaptureGutter(all = 4, bottom = 5)`:
 
-Within the static lanes it reaches a preview's **still** capture (a `@FocusedPreview` still
-included) but not its motion products — an `@AnimatedPreview` GIF, an `@InteractionPreview`
-recording or a scrolling capture is still framed tight, so a component that declares a gutter and
-also records motion publishes two artefacts that disagree about its bounds
-([#4452](https://github.com/yschimke/compose-ai-tools/issues/4452)).
+| Lane | No gutter | Guttered | Δ |
+| --- | --- | --- | --- |
+| CMP Desktop, still (`composePreviewRenderAll`) | 287×117 | 309×141 | +22×+24 |
+| CMP Desktop, `@AnimatedPreview` GIF | 287×117 | 309×141 | +22×+24 |
+| Android / Robolectric, still | 262×117 | 284×141 | +22×+24 |
+| Daemon desktop (`RenderEngine`, wrapped sticker fixture) | 176×176 | 192×194 | +16×+18 |
+| Daemon Android (`RenderEngine`, 32×32 dp @1×) | 32×32 | 40×41 | +8×+9 |
 
-The **live daemon** lane does not: the gutter is not on `RenderSpec`, so neither daemon
-`RenderEngine` sees it and a guttered preview streams at its un-guttered size while its snapshot
-PNG carries the gutter. That is a layout difference across lanes, which is exactly what this
-document says should not happen — tracked as
-[#4443](https://github.com/yschimke/compose-ai-tools/issues/4443), which also has to decide what
-a rotated capture does to a gutter whose edges are deliberately asymmetric.
+The first three rows are the same component at density 2.625, so `+22×+24` on each is the claim
+that matters: the two static lanes and the desktop motion product publish one canvas. The two
+daemon rows use their own smaller fixtures (`DesktopCaptureGutterLaneTest`,
+`AndroidCaptureGutterLaneTest`) at density 2 and 1 respectively; each Δ is the declared dp
+resolved at that render's own density, which is the arithmetic every lane shares.
+
+The motion row is the one that used to disagree. Frame 0 of the fixture's `@AnimatedPreview`,
+before and after, against the guttered still's canvas (pink outline):
+
+![CMP Desktop @AnimatedPreview with @CaptureGutter — before, after, and the still](../renders/capture-gutter/cmp-desktop-motion-before-after.png)
+
+And the live daemon lane, which used to draw a guttered preview at its tight size while the baked
+PNG beside it carried the gutter — the component is the same size in both, only the canvas moved:
+
+![Live daemon lane with @CaptureGutter — before and after](../renders/capture-gutter/daemon-lane-before-after.png)
+
+### What a gutter reaches, and what it deliberately does not
+
+* **Stills** — including a `@FocusedPreview` still — on both static lanes and both daemon lanes.
+* **Motion products** — an `@AnimatedPreview` GIF and an `@InteractionPreview` recording. Every
+  frame of a recording shares one canvas, exactly as a still does, so the gutter is as well-defined
+  there; the desktop GIF row above is the fixture that pins it
+  ([#4452](https://github.com/yschimke/compose-ai-tools/issues/4452)).
+* **Scrolling captures — no, by decision.** A `@ScrollingPreview` LONG capture's bounds are the
+  stitched scroll extent and a scroll GIF's are the declared viewport. Neither is "the component
+  plus what it draws outside itself", so there is no edge for a gutter to sit on and extending
+  either would be padding the sheet under the annotation's name. A declined scroll drive falls
+  through to an ordinary still, which does carry the gutter.
+* **Rotation does not rotate the edges.** `orientation = landscape` reduces to a
+  `widthPx ↔ heightPx` swap, and the routers trade the *wrap flags* with it because a wrap flag
+  names an axis of the frame. A gutter edge names a direction the component draws in — `bottom` is
+  deeper because Material's shadows fall downward — and swapping the sandbox's width and height
+  does not turn the component over. So a rotated capture keeps the declared edges verbatim
+  ([#4443](https://github.com/yschimke/compose-ai-tools/issues/4443)).
 
 ## Reproducing
 

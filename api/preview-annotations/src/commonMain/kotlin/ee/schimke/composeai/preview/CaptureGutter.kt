@@ -50,16 +50,26 @@ package ee.schimke.composeai.preview
  *
  * ### What it reaches
  *
- * Both static render lanes — Android (Robolectric) and CMP Desktop — apply it to a preview's
- * **still** capture, including a `@FocusedPreview` still, and grow the canvas by the same dp on
- * each so the published bounds never differ by lane.
+ * Every render lane — Android (Robolectric) and CMP Desktop, batch and live daemon alike — grows
+ * the canvas by the same dp, so the published bounds never differ by lane and a preview does not
+ * change size when a viewer toggles PNG↔Live. It applies to:
+ * * a preview's **still** capture, a `@FocusedPreview` still included;
+ * * its **motion products** — an `@AnimatedPreview` GIF, an `@InteractionPreview` recording. Every
+ *   frame of a recording shares one canvas, exactly as a still does, so a gutter is as well-defined
+ *   there, and a component that declares one publishes its still and its recording on the same
+ *   canvas rather than two artefacts disagreeing about its bounds.
  *
- * Not yet applied to the motion products a preview can also carry — an `@AnimatedPreview` GIF, an
- * `@InteractionPreview` recording, a scrolling capture — nor to the live daemon lane
- * (`compose-preview serve`, the VS Code panel). A component that declares a gutter and also records
- * motion publishes a still with its shadow and a recording without it. Tracked as
- * compose-ai-tools#4452 and #4443 respectively; a scrolling capture additionally has to settle what
- * a gutter even means when the bounds are a stitched scroll extent rather than the component.
+ * It does **not** apply to a `@ScrollingPreview` capture, and that is a decision rather than a gap.
+ * A LONG capture's bounds are the stitched scroll extent — many viewports of a list, not a
+ * component — and a scroll GIF's are the declared viewport. Neither is "the component plus what it
+ * draws outside itself", so there is no edge for a gutter to sit on, and adding transparent dp
+ * around a scroll strip would be decorative padding wearing this annotation's name. A scroll drive
+ * that declines falls through to an ordinary still, which does carry the gutter.
+ *
+ * A **rotated** capture (`orientation = landscape`, which the daemon reduces to a width↔height
+ * swap) keeps the declared edges verbatim: a gutter edge names a direction the component draws in —
+ * [bottom] is deepest because Material's shadows fall downward — and swapping the frame's axes does
+ * not turn the component over.
  *
  * ### Fixed axes grow too
  *

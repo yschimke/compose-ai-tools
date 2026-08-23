@@ -1,5 +1,10 @@
 package com.example.samplecmp
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -7,9 +12,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import ee.schimke.composeai.preview.AnimatedPreview
 import ee.schimke.composeai.preview.CaptureGutter
 
 /**
@@ -53,4 +60,41 @@ fun ShadowStickerCroppedPreview() {
 @Composable
 fun ShadowStickerGutteredPreview() {
   ElevatedSticker()
+}
+
+/**
+ * The motion counterpart (compose-ai-tools#4452). Same sticker, same gutter, but the capture is an
+ * `@AnimatedPreview` GIF rather than a still — the fixture that keeps the two products of one
+ * component honest about its bounds. Before the motion paths carried the gutter, this GIF came out
+ * 8×9 dp smaller than the still above it, with the shadow sliced off exactly where the still keeps
+ * it; now both canvases are the component plus its declared gutter.
+ *
+ * The elevation is animated so the frames actually differ — a shadow that pulses between Level 1
+ * and Level 3 also makes the gutter's job visible in motion: at the deep end the shadow reaches
+ * further than the bare bounds, which is the pixel the gutter exists to keep.
+ */
+@CaptureGutter(all = 4, bottom = 5)
+@AnimatedPreview(durationMs = 1200, frameIntervalMs = 50, showCurves = false)
+@Preview(name = "Shadow guttered motion", showBackground = true)
+@Composable
+fun ShadowStickerGutteredAnimatedPreview() {
+  val transition = rememberInfiniteTransition(label = "shadowPulse")
+  val elevation by
+    transition.animateFloat(
+      initialValue = 2f,
+      targetValue = 8f,
+      animationSpec =
+        infiniteRepeatable(
+          animation = tween(durationMillis = 600),
+          repeatMode = RepeatMode.Reverse,
+        ),
+      label = "elevation",
+    )
+  Surface(
+    shape = RoundedCornerShape(16.dp),
+    color = MaterialTheme.colorScheme.surfaceContainerLow,
+    shadowElevation = elevation.dp,
+  ) {
+    Box(modifier = Modifier.padding(horizontal = 24.dp, vertical = 14.dp)) { Text("Elevated") }
+  }
 }

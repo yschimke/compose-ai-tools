@@ -173,6 +173,23 @@ class PreviewManifestRouter(
         append("backgroundColor=").append(resolved.backgroundColor).append(';')
       }
       effectiveDevice?.takeIf { it.isNotBlank() }?.let { append("device=").append(it).append(';') }
+      // `@CaptureGutter` (issue #4443) — four dp edges in start,top,end,bottom order. Emitted only
+      // when the preview declares one, so an un-annotated preview's payload is byte-identical to
+      // what it was before the token existed. Deliberately NOT traded with the wrap flags on a
+      // rotation: a wrap flag names an axis of the frame, a gutter edge names a direction the
+      // component draws in, and a `widthPx ↔ heightPx` swap does not move where a shadow falls.
+      if (!resolved.captureGutter.isEmpty()) {
+        val g = resolved.captureGutter
+        append("captureGutter=")
+          .append(g.start)
+          .append(',')
+          .append(g.top)
+          .append(',')
+          .append(g.end)
+          .append(',')
+          .append(g.bottom)
+          .append(';')
+      }
       // PROTOCOL.md § 5 (`renderNow.overrides`) — locale / fontScale / uiMode / orientation
       // pass straight through to the qualifier builder in `RenderEngine`. Wire-format twin
       // of the desktop router; keep both in lockstep so a single payload drives both.
@@ -512,6 +529,7 @@ data class PreviewManifestEntry(
       name = name,
       wrapperClassName = wrapperClassName,
       overrides = bakedOverrides,
+      captureGutter = p?.captureGutter ?: CaptureGutterDto(),
       wrapWidth = wrapWidth,
       wrapHeight = wrapHeight,
       uiMode = uiMode,
@@ -621,6 +639,13 @@ data class PreviewParamsEntry(
    */
   val previewParameterProviderClassName: String? = null,
   val previewParameterLimit: Int = Int.MAX_VALUE,
+  /**
+   * `@CaptureGutter` edges in dp, as `discovery.CaptureGutterDp` writes them into `previews.json`
+   * (issue #4443). Null — every preview without the annotation — is no gutter. Forwarded onto the
+   * render payload as a `captureGutter=` token so the live Robolectric lane grows the capture by
+   * the same dp the batch lane does.
+   */
+  val captureGutter: CaptureGutterDto? = null,
 )
 
 /**
@@ -662,4 +687,6 @@ data class ResolvedRenderParams(
    */
   val previewParameterProviderClassName: String? = null,
   val previewParameterLimit: Int = Int.MAX_VALUE,
+  /** `@CaptureGutter` edges in dp; all-zero (the default) is no gutter. See #4443. */
+  val captureGutter: CaptureGutterDto = CaptureGutterDto(),
 )

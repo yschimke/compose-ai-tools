@@ -618,6 +618,14 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
     kind = params.kind ?: defaults.kind,
     assetPath = params.assetPath ?: defaults.assetPath,
     overrides = bakedOverrides,
+    // `@CaptureGutter` (issue #4443). This is the production live/interactive path — `bundle
+    // daemon` and `compose-preview serve` resolve through `PreviewIndex`, not through the
+    // harness-only `PreviewManifestRouter` — so a gutter that stopped at the router would still
+    // have been dropped by every real `serve` session.
+    gutterStartDp = params.captureGutter?.start ?: 0,
+    gutterTopDp = params.captureGutter?.top ?: 0,
+    gutterEndDp = params.captureGutter?.end ?: 0,
+    gutterBottomDp = params.captureGutter?.bottom ?: 0,
   )
 }
 
