@@ -34,11 +34,12 @@ export const KNOWN_DIFFERENCES_SCHEMA = "compose-preview-known-differences/v1";
 /**
  * The budget, versioned with the schema.
  *
- * All four are *inclusive* ceilings — a document at exactly 256 acceptances, exactly 128 megapixels,
+ * All five are *inclusive* ceilings — a document at exactly 256 acceptances, exactly 128 megapixels,
  * exactly 8192 px on a side or exactly 8 MiB per artifact is legal, and one unit past refuses. A
  * `>=` check would reject both and leave two engines free to disagree about the case in between.
  */
 export const BUDGET = {
+  maxDocumentBytes: 1024 * 1024,
   maxAcceptances: 256,
   maxPixels: 128_000_000,
   maxAxis: 8192,
@@ -423,6 +424,13 @@ export function evaluateKnownDifferences({ documentText, readArtifact, compariso
 
   if (records.length > BUDGET.maxAcceptances) documentFailures.push({ reason: "document-too-large" });
 
+  // **Any document-level failure ends it here, before a single artifact is fetched.** An earlier
+  // revision stopped the loop below only for `document-too-large`, so a document rejected for a
+  // duplicate or unkeyable id still read all 512 of its artifacts — up to four gigabytes of bounded
+  // network or filesystem reads — and then discarded every one of them, because a document-level
+  // rejection carries no `statuses`. Nothing below this point can change that verdict.
+  if (documentFailures.length > 0) return { validationFailures: sortFailures(documentFailures, records) };
+
   // **Preflight only, one record at a time, retaining nothing.** The pixel budget is a document
   // verdict reached from per-record header reads, so the two cannot be separated — but nothing below
   // the header is kept. Holding each record's two artifacts until the budget had been checked would
@@ -512,6 +520,18 @@ function pushOnce(list, entry) {
 }
 
 function parseDocument(documentText) {
+  // **Bounded before parsing**, for the reason the artifact reader is bounded before opening: every
+  // other budget here fires *after* something has already been materialised unless it is checked
+  // first, and `JSON.parse` allocates the whole payload before the acceptance and raster caps can
+  // see it. A document with an empty `acceptances` array and one enormous string reaches none of
+  // them. 1 MiB is generous against real use — 256 records at a kilobyte each is a quarter of it —
+  // and this is the defence in depth: the *reader* should refuse to fetch past the ceiling, exactly
+  // as `readArtifact` must, since only it knows the size before the bytes exist.
+  if (typeof documentText !== "string") return { failure: { reason: "document-unreadable" } };
+  if (Buffer.byteLength(documentText, "utf8") > BUDGET.maxDocumentBytes) {
+    return { failure: { reason: "document-too-large" } };
+  }
+
   let document;
   try {
     document = JSON.parse(documentText);
@@ -927,6 +947,12 @@ function runGates(record, evaluation, comparison) {
   // `plane-changed`.
   if (!planeChanged && record.element) causes.push(...elementCauses(record.element, comparison.tagIndex ?? {}));
 
+  // The precedence table decides this before the candidate gate contributes anything, so the pixel
+  // scan is skipped rather than computed and discarded — a legal mask can be tens of millions of
+  // pixels, and an acceptance that is already `invalidated` should not pay for them.
+  const nonCandidate = causes.filter((cause) => cause !== "candidate-changed");
+  if (nonCandidate.length > 0) return { status: "invalidated", causes: sortCauses(nonCandidate) };
+
   const candidateChanged = !regionAgrees(
     evaluation,
     comparison.canonicalCandidate,
@@ -934,9 +960,6 @@ function runGates(record, evaluation, comparison) {
     record.candidateTolerance,
     true,
   );
-
-  const nonCandidate = causes.filter((cause) => cause !== "candidate-changed");
-  if (nonCandidate.length > 0) return { status: "invalidated", causes: sortCauses(nonCandidate) };
 
   if (candidateChanged) {
     const converged = regionAgrees(

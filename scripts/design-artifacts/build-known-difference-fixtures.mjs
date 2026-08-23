@@ -975,6 +975,31 @@ const refused = (reasons, recordId = "m3-iconbutton-tonal-glyph") => ({
 
 // --- the document itself -----------------------------------------------------------------------
 
+{
+  // One acceptance, and a `note` padded past the document ceiling.
+  const world = glyphWorld();
+  const record = glyphRecord(world, { note: "x".repeat(1024 * 1024) });
+  addCase({
+    id: "document-over-byte-cap",
+    title: "A document past the 1 MiB ceiling",
+    why:
+      "Bounded **before** parsing, for the reason the artifact reader is bounded before opening: " +
+      "every other budget fires after something has already been materialised unless it is checked " +
+      "first, and `JSON.parse` allocates the whole payload before the acceptance and raster caps can " +
+      "see it. A document with one enormous string and a single acceptance reaches none of them. " +
+      "The reader should refuse to fetch past the ceiling for the same reason `readArtifact` must; " +
+      "this is the defence in depth behind it.",
+    document: document([record]),
+    files: glyphFiles(world, record),
+    comparison: glyphComparison(world),
+    expected: {
+      pins: ["statusesAbsent", "validationFailures"],
+      statusesAbsent: true,
+      validationFailures: [{ reason: "document-too-large" }],
+    },
+  });
+}
+
 addCase({
   id: "document-unreadable-truncated",
   title: "Truncated JSON",

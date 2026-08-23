@@ -97,6 +97,11 @@
       "site": null
     },
     {
+      "id": "document-over-byte-cap",
+      "title": "A document past the 1 MiB ceiling",
+      "site": null
+    },
+    {
       "id": "document-unreadable-truncated",
       "title": "Truncated JSON",
       "site": null

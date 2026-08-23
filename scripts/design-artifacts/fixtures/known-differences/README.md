@@ -74,6 +74,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `scope-other-system` | A `wear-m3` acceptance must not suppress pixels in `m3` |
 | `scope-overrides-differ` | An acceptance authored at `fontScale=1.5` does not apply at the default frame |
 | `scope-refusal-is-comparison-independent` | A record that is out of scope *and* broken is still `refused` |
+| `document-over-byte-cap` | A document past the 1 MiB ceiling |
 | `document-unreadable-truncated` | Truncated JSON |
 | `document-unreadable-wrong-schema-token` | A document carrying a different schema token |
 | `document-unreadable-acceptances-not-array` | `acceptances` is an object |

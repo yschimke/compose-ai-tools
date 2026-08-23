@@ -310,6 +310,25 @@ test("an over-budget document stops reading artifacts, and nothing is retained a
     "only the first record's artifacts are ever fetched — the rest are never read at all",
   );
 
+  // And a document rejected on *identity* fetches nothing at all: the verdict is reached before the
+  // preflight loop starts, so every artifact read would be discarded.
+  const identityReads = [];
+  const duplicated = evaluateKnownDifferences({
+    documentText: JSON.stringify({
+      schema: "compose-preview-known-differences/v1",
+      acceptances: [overRecord, { ...overRecord }],
+    }),
+    readArtifact: (path) => {
+      identityReads.push(path);
+      return null;
+    },
+    comparison: null,
+  });
+  assert.deepEqual(duplicated.validationFailures, [
+    { id: overRecord.id, reason: "duplicate-id" },
+  ]);
+  assert.deepEqual(identityReads, [], "a document rejected on identity reads no artifacts");
+
   // And the happy path reads each artifact exactly twice — once for the header preflight, once to
   // hash and decode — never retaining the bytes of one record while another is preflighted.
   evaluateKnownDifferences({
@@ -425,6 +444,7 @@ test("the reason and cause orderings are the ones the contract lists", () => {
 
 test("the budget constants are the ones `v1` names", () => {
   assert.deepEqual(BUDGET, {
+    maxDocumentBytes: 1024 * 1024,
     maxAcceptances: 256,
     maxPixels: 128_000_000,
     maxAxis: 8192,

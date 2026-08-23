@@ -1014,6 +1014,19 @@ byte length and headers are the preflight; hashes, decode, mask semantics and di
 the document's budget has passed. Nothing in the second half can change a document verdict, which is
 what makes the split safe.
 
+**The document itself is bounded before it is parsed, at 1 MiB.** Every other budget here fires
+*after* something has been materialised unless it is checked first, and `JSON.parse` allocates the
+whole payload before the acceptance and raster caps can see any of it — a document with an empty
+`acceptances` array and one enormous string reaches none of them. The ceiling is generous against
+real use (256 records at a kilobyte each is a quarter of it), it is `document-too-large` like the
+other document verdicts, and the *reader* carries the same obligation `readArtifact` does: refuse to
+fetch past it rather than hand over the bytes so the caller can measure them.
+
+**And *any* document-level failure ends the evaluation before a single artifact is fetched.** A
+document rejected for a duplicate or unkeyable id carries no `statuses`, so every artifact read after
+that verdict is discarded work — up to 512 of them, bounded but pointless. Nothing after the identity
+scan and the count cap can change a document verdict, so nothing after it runs.
+
 **The preflight retains nothing, and stops reading the moment the document is over budget.** Both
 halves are the same lesson as the split itself: holding each record's two artifacts until the
 aggregate cap could fire would put 256 × 2 × 8 MiB — four gigabytes of individually legal, capped
@@ -1431,7 +1444,9 @@ which acceptance it happened to.
 section.** Every acceptance evaluates to exactly one **status**, and the resolution predicate is
 part of this contract because §6 cannot override it:
 
-Evaluated strictly in this order — the first row whose condition holds wins:
+Evaluated strictly in this order — the first row whose condition holds wins, and *only* as far as
+the winning row: an acceptance already invalidated by a non-candidate gate never runs the candidate
+comparison, which on a legal mask is tens of millions of pixels computed only to be discarded.
 
 | # | Status | Condition |
 | --- | --- | --- |
