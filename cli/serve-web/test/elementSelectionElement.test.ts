@@ -159,6 +159,43 @@ async function drag(
     for (let i = 0; i < 3; i++) await flush();
 }
 
+/**
+ * A drag whose `pointerup` is dispatched somewhere OUTSIDE the selection layer.
+ *
+ * happy-dom implements no pointer capture, so it cannot re-target the event the way a browser does.
+ * Dispatching on `document` instead is the closest honest stand-in: it asserts that the component
+ * does not depend on the release landing inside the layer's own subtree.
+ */
+async function dragReleasingOutside(
+    from: [number, number],
+    to: [number, number],
+): Promise<void> {
+    document
+        .querySelector<HTMLButtonElement>(".cp-selection-drag")!
+        .dispatchEvent(new Event("click"));
+    await flush();
+    const layer = document.getElementById("cp-selection-layer")!;
+    const send = (
+        target: EventTarget,
+        type: string,
+        [x, y]: [number, number],
+    ) => {
+        const event = new Event(type, { bubbles: true }) as Event & {
+            clientX: number;
+            clientY: number;
+            pointerId: number;
+        };
+        event.clientX = x;
+        event.clientY = y;
+        event.pointerId = 1;
+        target.dispatchEvent(event);
+    };
+    send(layer, "pointerdown", from);
+    send(layer, "pointermove", to);
+    send(document.body, "pointerup", to);
+    for (let i = 0; i < 3; i++) await flush();
+}
+
 describe("<cp-element-selection>", () => {
     beforeEach(() => stubFetch());
     afterEach(() => {
@@ -224,14 +261,37 @@ describe("<cp-element-selection>", () => {
         ]);
     });
 
-    it("keeps a chosen tag when a region is dragged around it", async () => {
+    it("lets a dragged region REPLACE a chosen tag, rather than combining them", async () => {
+        // `bounds` is the selected element's authoring-time baseline, not "a region near it". A tag
+        // paired with a rectangle that is not that element's box records a baseline the element
+        // never had, and an unchanged element then reports as moved later — so the drag replaces
+        // the tag instead of decorating it, and the picker resets to say so.
         await mount();
-        await choose("glyph");
+        await choose("follow-button");
         await drag([10, 20], [50, 60]);
         assert.deepEqual(locatorLines(), [
-            'element: "glyph"',
             'bounds: {"height":80,"space":"render-pixels","width":80,"x":20,"y":40}',
         ]);
+        assert.equal(picker().value, "");
+        assert.match(state()!, /region/);
+    });
+
+    it("finishes a drag released outside the frame", async () => {
+        // The ordinary way to select something flush with an edge. Without the layer capturing the
+        // pointer, the `pointerup` lands outside its subtree, never reaches it in any phase, and
+        // the region is silently lost behind a stuck overlay.
+        await mount();
+        await dragReleasingOutside([10, 20], [400, 400]);
+        // Clamped to the frame (200×200 displayed, 400 natural ⇒ ×2), so the rectangle stops at the
+        // render's own edge rather than describing pixels that are not in it.
+        assert.deepEqual(locatorLines(), [
+            'bounds: {"height":360,"space":"render-pixels","width":380,"x":20,"y":40}',
+        ]);
+        assert.equal(
+            document.getElementById("cp-selection-layer")!.hidden,
+            true,
+            "the overlay must not stay up after the gesture ends",
+        );
     });
 
     it("treats a click with no drag as a cancel", async () => {

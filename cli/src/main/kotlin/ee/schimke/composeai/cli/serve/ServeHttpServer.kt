@@ -3574,9 +3574,19 @@ class ServeHttpServer(
       // Whether a TAG selection would describe the frame on screen. All three conditions are about
       // the same thing: `tagIndexForPreview` is the published static index, measured in CI over the
       // baked render, and both live host wrappers delegate it to their baked host. So it describes
-      // the frame here exactly when the frame IS the baked one — no overrides re-rendering it, no
-      // pin replaying a different commit's pixels — and a host that publishes no index at all has
+      // the frame here when the frame is the baked one — no overrides re-rendering it, no pin
+      // replaying a different commit's pixels — and a host that publishes no index at all has
       // nothing to offer either way.
+      //
+      // **This is a necessary condition, not a sufficient one, and the gap is caching.** On a
+      // public server an override-free baked `/render/<id>.png` is served
+      // `STATIC_RESOURCE_CACHE_CONTROL` while this index is `no-store`, so within that window a
+      // client can pair pixels from the previous catalog generation with a freshly-fetched index —
+      // the same-frame invariant broken by a republish rather than by an override. Closing it needs
+      // the image and the index to carry a shared generation, which is the coupling batch 05 has to
+      // build before an element gate may read this at all; recording a slightly wrong baseline is
+      // latent until a gate measures against it. Tracked, not fixed here: it changes the render
+      // lane's URL and caching contract, which is more than this batch should move on its own.
       //
       // Getting this wrong is not a missing feature, it is a wrong record: a tag selection persists
       // the index's bounds into the locator as the acceptance's baseline, so bounds from another
@@ -5970,10 +5980,14 @@ class ServeHttpServer(
    * element tag index — `testTag → {count, bounds, space}` — as
    * [ServeAnnotationsPayload.encodeTags] writes it.
    *
-   * `.json` is accepted and stripped so the path reads like the machine artifact it mirrors; the
-   * bare id answers identically. Neither form re-renders: this reads the catalog's
-   * `tags/index.json` through [ServeHost.tagIndexForPreview] and nothing else, which is exactly why
-   * it needs no live-scope gate and can be served from a static bundle.
+   * `.json` is accepted as an **alias** so the path reads like the machine artifact it mirrors; the
+   * bare id answers identically. Resolved by trying the name VERBATIM first and only then the
+   * stripped form, because a preview id is unrestricted path-segment data and may itself end in
+   * `.json` — unconditional suffix removal would answer such a preview with a 404, or worse, with
+   * the index belonging to a different preview whose id is the stripped form. Neither form
+   * re-renders: this reads the catalog's `tags/index.json` through [ServeHost.tagIndexForPreview]
+   * and nothing else, which is exactly why it needs no live-scope gate and can be served from a
+   * static bundle.
    *
    * **An empty index is `{}`, not a 404.** "This preview carries no tags" and "this server cannot
    * tell you" are different answers, and a consumer that cannot distinguish them has no way to
@@ -5994,9 +6008,19 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.handleTagIndex(sessionInPath: Boolean) {
     if (rejectBadToken()) return
-    val previewId = call.parameters["name"].orEmpty().removeSuffix(".json")
+    val requested = call.parameters["name"].orEmpty()
     withLeasedSession(selectedSessionId(sessionInPath)) { renderHost ->
-      if (renderHost.previews.none { it.id == previewId }) {
+      // Verbatim wins over the alias, so a preview whose id really ends in `.json` keeps its own
+      // index instead of being answered with another preview's.
+      val previewId =
+        when {
+          renderHost.previews.any { it.id == requested } -> requested
+          else ->
+            requested.removeSuffix(".json").takeIf { alias ->
+              renderHost.previews.any { it.id == alias }
+            }
+        }
+      if (previewId == null) {
         call.respondText("not found", status = HttpStatusCode.NotFound)
         return@withLeasedSession
       }

@@ -136,8 +136,15 @@ reports an unchanged element as `moved`: a false invalidation with a plausible e
 which is worse than a missing check. The focused comparison therefore withholds the tag picker
 whenever the frame is not the baked one, says which of the three reasons applies, and leaves the
 **drag** — a dragged region is derived from the displayed pixels, so it describes what the reporter
-saw by construction. The element gates in §5 need a shared render generation before they can read the
-index at all. The index itself is served at `GET /{system}/tags/{previewId}`, in the wire shape
+saw by construction.
+
+That gate is **necessary but not sufficient**, and the residual is caching: a public server sends an
+override-free baked render with `max-age=300, stale-while-revalidate=3600` while the index is
+`no-store`, so a client can pair pixels from the previous catalog generation with a freshly-fetched
+index — the invariant broken by a republish rather than by an override. Closing it needs the image
+and the index to carry a **shared generation**, which is the coupling §5 must build before an element
+gate may read the index at all; until a gate measures against it, a slightly wrong recorded baseline
+is latent rather than active. The index itself is served at `GET /{system}/tags/{previewId}`, in the wire shape
 `ServeTagIndexStore` validates, `space` on every entry included.
 
 **A body may carry one block per component, and that is how an umbrella report is indexed.** One

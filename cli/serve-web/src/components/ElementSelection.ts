@@ -169,6 +169,16 @@ export class ElementSelection extends LitElement {
      * Over the *frame*, not the viewport: the rectangle has to be expressible in the render's own
      * pixels, and only the frame's box has a scale to convert by. The overlay takes the pointer
      * itself so a drag that wanders over the panel's own controls does not end in a click on them.
+     *
+     * A drag that leaves the frame still finishes. The gesture STARTS on the layer — only the frame
+     * is a place to begin selecting — but the move and release are watched on `window`, because a
+     * `pointerup` released outside the layer's subtree never reaches it in any phase: the overlay
+     * stayed up and the region was silently lost, and releasing just past the edge is the ordinary
+     * way to select something flush with it. `setPointerCapture` is set as well where the engine
+     * has it, which keeps the events off the page underneath; the window listeners are what make
+     * the gesture correct without it. Coordinates are clamped to the frame throughout, so a
+     * rectangle dragged past the boundary stops at it rather than describing pixels that are not in
+     * the render.
      */
     private startDrag(): void {
         const layer = this.layer;
@@ -219,12 +229,16 @@ export class ElementSelection extends LitElement {
         };
         listen(layer, "pointerdown", ((event: PointerEvent) => {
             start = local(event);
+            // Capture, so `pointermove`/`pointerup` keep arriving here once the pointer leaves the
+            // frame. Guarded: happy-dom and older engines have no such method, and a drag that
+            // stays inside the frame works without it.
+            layer.setPointerCapture?.(event.pointerId);
             draw(start, start);
         }) as EventListener);
-        listen(layer, "pointermove", ((event: PointerEvent) => {
+        listen(window, "pointermove", ((event: PointerEvent) => {
             if (start) draw(start, local(event));
         }) as EventListener);
-        listen(layer, "pointerup", ((event: PointerEvent) => {
+        listen(window, "pointerup", ((event: PointerEvent) => {
             if (!start) return;
             const end = local(event);
             const rect = {
@@ -238,9 +252,22 @@ export class ElementSelection extends LitElement {
             // A click with no drag is a cancel, not an error — that is what a stray click on a
             // full-frame overlay IS.
             if (!bounds) return this.describe();
-            // A region names no element: keep any tag already chosen, so "this tag, in this corner"
-            // is expressible, and drop nothing the reporter did not drop themselves.
-            this.apply({ element: this.selection.element, bounds });
+            // A drag REPLACES the selection, tag included. It is tempting to keep a chosen tag so
+            // "this tag, in this corner" is expressible, and that reading is wrong for this field:
+            // `bounds` is the selected element's *authoring-time baseline*, the thing a later
+            // movement gate measures from. Pairing a tag with a rectangle that is not that
+            // element's box records a baseline the element never had, so an unchanged element
+            // later reports as moved — the exact failure the plane rules elsewhere in this batch
+            // exist to prevent, arriving through the selector instead of through a coordinate
+            // space. A reporter who wants the tag back picks it again, and the picker says so.
+            if (this.picker) this.picker.value = "";
+            this.apply({ bounds });
+        }) as EventListener);
+        // A capture lost to the system (a context menu, a device switch, another element taking it)
+        // ends the gesture rather than leaving a live overlay with no way to finish it.
+        listen(window, "pointercancel", (() => {
+            stop();
+            this.describe();
         }) as EventListener);
         listen(window, "keydown", ((event: KeyboardEvent) => {
             if (event.key !== "Escape") return;

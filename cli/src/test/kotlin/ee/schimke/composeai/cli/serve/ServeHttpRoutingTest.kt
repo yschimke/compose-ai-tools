@@ -606,6 +606,53 @@ class ServeHttpRoutingTest {
   }
 
   @Test
+  fun `a preview whose id ends in json keeps its own index rather than another preview's`() {
+    // A preview id is unrestricted path-segment data. Stripping `.json` unconditionally would
+    // answer such a preview with a 404 — or, where the stripped form is also a real preview, with
+    // somebody else's element index, which is a selector silently targeting the wrong elements.
+    val host =
+      object : ServeHost {
+        override val previews =
+          listOf(ServePreview("com.example.Red", "Red"), ServePreview("com.example.Red.json", "J"))
+        override val label = "dotted"
+
+        // This lane never renders — it reads a published file — so the required member is a stub.
+        override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+          RenderOutcome.NotFound
+
+        override fun subscribeStream(
+          previewId: String,
+          overrides: PreviewOverrides,
+          codec: StreamCodec?,
+          maxFps: Int?,
+          onUnavailable: ((String) -> Unit)?,
+          onFrame: (StreamFrameParams) -> Unit,
+        ): StreamHandle? = null
+
+        override fun activeStreamCount(): Int = 0
+
+        override fun close() {}
+
+        override fun tagIndexForPreview(previewId: String) =
+          when (previewId) {
+            "com.example.Red" -> mapOf("plain" to ServeSemanticsTags.TagEntry(count = 1))
+            "com.example.Red.json" -> mapOf("dotted" to ServeSemanticsTags.TagEntry(count = 1))
+            else -> emptyMap()
+          }
+      }
+    registry.register("dotted", host = host, pinned = true)
+    fun tagsOf(path: String): Set<String> {
+      val (code, body) = get(path)
+      assertEquals(200, code, "$path: $body")
+      return Json.parseToJsonElement(body).jsonObject["tags"]!!.jsonObject.keys
+    }
+    // Verbatim wins: the id really ending in `.json` gets its own entry, not `com.example.Red`'s.
+    assertEquals(setOf("dotted"), tagsOf("/dotted/tags/com.example.Red.json"))
+    // And the alias still resolves where no preview claims the literal name.
+    assertEquals(setOf("plain"), tagsOf("/dotted/tags/com.example.Red"))
+  }
+
+  @Test
   fun `a session that publishes no index answers an empty one, and an unknown preview 404s`() {
     // "This preview carries no tags" and "this server cannot tell you" are different answers, and a
     // consumer that cannot tell them apart has no way to choose between offering no tag targets and
