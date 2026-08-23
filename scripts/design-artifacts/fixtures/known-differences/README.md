@@ -76,6 +76,8 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `plane-full-canvas-acceptance` | An acceptance authored and evaluated on the full-canvas plane |
 | `gate-element-ambiguous` | The tag is carried by more than one node |
 | `gate-element-vanished` | The tag resolves to nothing at all |
+| `gate-element-unique-bounds-absent` | The tag resolves to exactly one node that carries no bounds at all |
+| `gate-element-unique-bounds-zero-area` | The tag resolves to exactly one node that carries a zero-area box |
 | `gate-element-moved-past-tolerance` | The resolved element moved further than `element.tolerance` allows |
 | `gate-element-resized-not-moved` | The element kept its origin and changed size |
 | `gate-element-denominator-is-the-smaller-side` | A rectangular baseline, displaced between the two possible thresholds |

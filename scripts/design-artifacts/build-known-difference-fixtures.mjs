@@ -853,6 +853,46 @@ for (const [id, title, delta, status, why] of [
 }
 
 {
+  // **Resolved exactly once, and still unusable.** The contract's `element-moved` clause has three
+  // limbs — no match, a *single* match whose indexed bounds are missing/malformed/zero-area, and a
+  // single match that moved too far — and only the first and third are fixtured. Every committed
+  // `count: 1` case supplies a healthy positive-area box, so "unique means resolved" passes the whole
+  // tree and leaves an acceptance `valid`, still suppressing pixels, when the projector could not
+  // place the node at all.
+  const world = glyphWorld();
+  const record = glyphRecord(world, {
+    element: { kind: "tag", tag: "iconbutton-tonal-glyph", bounds: { x: 8, y: 8, width: 8, height: 8 }, tolerance: 0.25 },
+  });
+  for (const [suffix, title, bounds] of [
+    ["absent", "carries no bounds at all", undefined],
+    ["zero-area", "carries a zero-area box", { x: 8, y: 8, width: 0, height: 8 }],
+  ]) {
+    addCase({
+      id: `gate-element-unique-bounds-${suffix}`,
+      title: `The tag resolves to exactly one node that ${title}`,
+      why:
+        "Uniqueness is necessary and not sufficient: without usable bounds there is nothing to " +
+        "measure a displacement *from*, so the element cannot be shown to have stayed put and the " +
+        "acceptance must not keep suppressing its pixels. Zero-area is included because it is the " +
+        "shape a projector emits for a node it laid out but never placed — structurally a box, " +
+        "measurably nothing.",
+      document: document([record]),
+      files: glyphFiles(world, record),
+      comparison: glyphComparison(world, {
+        tagIndex: { "iconbutton-tonal-glyph": bounds === undefined ? { count: 1 } : { count: 1, bounds } },
+      }),
+      expected: {
+        pins: ["statuses", "validationFailures"],
+        statuses: {
+          "m3-iconbutton-tonal-glyph": { status: "invalidated", causes: ["element-moved"] },
+        },
+        validationFailures: [],
+      },
+    });
+  }
+}
+
+{
   const world = glyphWorld();
   const record = glyphRecord(world);
   addCase({

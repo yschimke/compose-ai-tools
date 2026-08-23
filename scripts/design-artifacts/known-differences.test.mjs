@@ -90,7 +90,14 @@ function artifactReader(caseDir, synthesize) {
   const artifactsDir = join(caseDir, "artifacts");
   const root = existsSync(artifactsDir) ? realpathSync(artifactsDir) : artifactsDir;
   return (path) => {
-    const relative = join("artifacts", path);
+    // **POSIX-separated, deliberately.** `join` would emit backslashes on Windows, and this string is
+    // used three ways that all assume `/`: as the key into the synthesised map (whose keys come from
+    // `case.json`, which is POSIX by definition), as the argument to `join` below (which normalises
+    // separators itself, so it does not need them), and as the exact-case comparison, which splits on
+    // `/`. Building it with `join` broke all three on Windows at once — the synthesised lookup missed
+    // every recipe, so the byte-cap fixtures read a file that is not there and failed as
+    // `artifact-unreadable` instead of testing the boundary they exist for.
+    const relative = `artifacts/${path}`;
     // The cap applies to synthesised bytes too. Exempting them would leave the reader's own bound
     // untested — the only case big enough to reach it is the synthesised one — and the module's
     // length check would quietly stand in for it, which is a fixture passing for the wrong reason.

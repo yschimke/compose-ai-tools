@@ -77,6 +77,16 @@
       "site": null
     },
     {
+      "id": "gate-element-unique-bounds-absent",
+      "title": "The tag resolves to exactly one node that carries no bounds at all",
+      "site": null
+    },
+    {
+      "id": "gate-element-unique-bounds-zero-area",
+      "title": "The tag resolves to exactly one node that carries a zero-area box",
+      "site": null
+    },
+    {
       "id": "gate-element-moved-past-tolerance",
       "title": "The resolved element moved further than `element.tolerance` allows",
       "site": null
