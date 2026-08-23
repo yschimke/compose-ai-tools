@@ -3922,6 +3922,86 @@ class ServeWebFixtureTest {
         liveAnnotationsComparison.contains("class=\"cp-selection-drag\""),
       "live annotations draw but cannot be selected; the drag stays",
     )
+    assertTrue(
+      liveAnnotationsComparison.contains("data-cp-inspect=\"theme\"") &&
+        liveAnnotationsComparison.contains("data-cp-inspect=\"layout\""),
+      "the semantics lane carries all three layers",
+    )
+    // The one host that CAN be selected is the static bundle: no daemon, so it answers
+    // `.annotations` from what the catalog published over the very PNG it serves. It therefore has
+    // no `hasDesignAnnotationsFor`, and gating the mount on that alone made the pick path
+    // unreachable everywhere — the only selectable host was the only one with no mount, and every
+    // host with a mount renders per request. The intersection was empty in production while both
+    // halves looked individually correct, which is why this asserts the COMBINATION rather than
+    // either flag.
+    val publishedTypographyComparison =
+      ServeWeb.referenceComparisonPage(
+        moduleLabel = "compose-m3",
+        preview = themedPreviews.first(),
+        reference = comparisonReferences.first(),
+        references = comparisonReferences,
+        token = token,
+        sessionId = "compose-m3",
+        isPublic = true,
+        version = version,
+        derivedAnnotations = false,
+        publishedTypography = true,
+        annotationsSelectable = true,
+        reportIssue =
+          fixtureReportIssue(
+            previewId = themedPreviews.first().id,
+            label = themedPreviews.first().label,
+            sourceFile = themedPreviews.first().sourceFile.orEmpty(),
+            componentId = ServeIssueReport.componentIdFor(themedPreviews.first()),
+            referenceId = comparisonReferences.first().id,
+            variant = ServeIssueReport.variantFor(themedPreviews.first()),
+            selectionPlaceholder = true,
+          ),
+      )
+    assertTrue(
+      publishedTypographyComparison.contains("id=\"cp-render-inspect-layer\"") &&
+        publishedTypographyComparison.contains("data-cp-selectable=\"1\""),
+      "a published-typography host mounts the layers AND may select them",
+    )
+    // Typography only. Theme and Layout are projected from a semantics tree and nothing authors
+    // them into a bundle, so offering their checkboxes here would be two controls whose fetch can
+    // only come back with nothing to draw.
+    assertTrue(
+      publishedTypographyComparison.contains("data-cp-inspect=\"typography\"") &&
+        !publishedTypographyComparison.contains("data-cp-inspect=\"theme\"") &&
+        !publishedTypographyComparison.contains("data-cp-inspect=\"layout\""),
+      "the published lane carries Typography and no dead controls",
+    )
+    // And a host with neither lane draws nothing at all rather than an empty layer div.
+    val noAnnotationsComparison =
+      ServeWeb.referenceComparisonPage(
+        moduleLabel = "compose-m3",
+        preview = themedPreviews.first(),
+        reference = comparisonReferences.first(),
+        references = comparisonReferences,
+        token = token,
+        sessionId = "compose-m3",
+        isPublic = true,
+        version = version,
+        derivedAnnotations = false,
+        publishedTypography = false,
+        reportIssue =
+          fixtureReportIssue(
+            previewId = themedPreviews.first().id,
+            label = themedPreviews.first().label,
+            sourceFile = themedPreviews.first().sourceFile.orEmpty(),
+            componentId = ServeIssueReport.componentIdFor(themedPreviews.first()),
+            referenceId = comparisonReferences.first().id,
+            variant = ServeIssueReport.variantFor(themedPreviews.first()),
+            selectionPlaceholder = true,
+          ),
+      )
+    assertTrue(
+      !noAnnotationsComparison.contains("id=\"cp-render-inspect-layer\"") &&
+        !noAnnotationsComparison.contains("<cp-inspect-layers") &&
+        noAnnotationsComparison.contains("class=\"cp-selection-drag\""),
+      "no annotation lane means no mount, and the drag still stands alone",
+    )
     // The substitution moved into `<cp-reference-compare>` with the rest of this page, so the
     // bundle is where it is now pinned. The property being held is the same one: the filled report
     // reaches an INPUT's `value` and nothing else — never an href or any other navigation sink.

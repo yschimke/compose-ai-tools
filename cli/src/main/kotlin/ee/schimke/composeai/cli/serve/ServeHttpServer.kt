@@ -3640,6 +3640,12 @@ class ServeHttpServer(
           // projected from TODAY's render, so drawing them over a pinned frame would label
           // historical pixels with the current semantics tree.
           derivedAnnotations = !pinned && renderHost.hasDesignAnnotationsFor(preview.id),
+          // The baked half of the same Typography layer, read here for the same reason the viewer
+          // reads it: a published catalog measured typography off the frame it also published, so
+          // the layer works on a host with no daemon at all. Without it this page's mount was
+          // gated on the semantics lane alone — which no selectable host has — and the annotation
+          // pick below could never be offered to anyone.
+          publishedTypography = !pinned && renderHost.hasPublishedTypographyFor(preview.id),
           // The layers still DRAW on a re-rendered frame — they are a reading aid and being a
           // render out of date costs nothing there. Clicking one is different: it records a region
           // as an acceptance's authoring-time baseline, and `.annotations` is a separate request

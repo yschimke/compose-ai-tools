@@ -9437,6 +9437,25 @@ $rows
      */
     derivedAnnotations: Boolean = false,
     /**
+     * Whether the catalog **published** typography over this preview's baked frame
+     * ([ServeHost.hasPublishedTypographyFor]) — the other lane behind the same Typography layer,
+     * and the only one a static bundle has.
+     *
+     * The viewer has always drawn this distinction ([hasPublishedTypography] there) and the
+     * comparison must too, because the two lanes do not overlap where it matters. A static bundle
+     * answers `.annotations` from `annotations/index.json` and never re-renders, so it is the one
+     * host whose layers and PNG are the same frame by construction — which is exactly the host
+     * [annotationsSelectable] is for. Gating this page's mount on [derivedAnnotations] alone put
+     * the two behind mutually exclusive predicates: a bundle host has no daemon, so no mount was
+     * emitted at all, while every host that got one renders per request and so is not selectable.
+     * The intersection was empty and no deployed comparison offered a selectable box.
+     *
+     * Only the Typography row rides this lane. Theme attributes and Layout boxes are projected from
+     * a semantics tree and nothing authors them into a bundle, so they stay gated on
+     * [derivedAnnotations] rather than becoming checkboxes with nothing behind them.
+     */
+    publishedTypography: Boolean = false,
+    /**
      * Whether a **tag** selection would describe the frame on screen, and so whether to offer the
      * picker at all. The URL itself is built here rather than passed in, so it goes through the
      * same [linkQuery] rules as every other link on the page — a hand-rolled query builder in the
@@ -9599,17 +9618,26 @@ $rows
     // this page inlines for both panels, these toggle what the render's own semantics tree SAYS,
     // and only the render has one. Folding them together would offer a Typography toggle that means
     // two different things depending on which panel you looked at.
+    // Typography rides either lane; Theme and Layout only the semantics one. Same rule as the
+    // viewer's Inspect group, and for the same reason: a row whose fetch can only come back empty
+    // is a dead control.
+    val derivedLayers = buildList {
+      if (derivedAnnotations || publishedTypography) add("typography" to "Typography")
+      if (derivedAnnotations) {
+        add("theme" to "Theme")
+        add("layout" to "Layout")
+      }
+    }
     val derivedControls =
-      if (!derivedAnnotations) ""
+      if (derivedLayers.isEmpty()) ""
       else {
         val toggles =
-          listOf("typography" to "Typography", "theme" to "Theme", "layout" to "Layout")
-            .joinToString("\n") { (kind, label) ->
-              "<label class=\"cp-annotation-toggle\"><input type=\"checkbox\" " +
-                "class=\"cp-render-inspect\" data-cp-inspect=\"$kind\"> " +
-                WebEscaping.htmlEscape(label) +
-                "</label>"
-            }
+          derivedLayers.joinToString("\n") { (kind, label) ->
+            "<label class=\"cp-annotation-toggle\"><input type=\"checkbox\" " +
+              "class=\"cp-render-inspect\" data-cp-inspect=\"$kind\"> " +
+              WebEscaping.htmlEscape(label) +
+              "</label>"
+          }
         """
         <div class="cp-annotation-controls cp-render-inspect-controls" role="group"
              aria-label="Render semantics layers">
@@ -9722,7 +9750,7 @@ ${if (annotationsSelectable) "          data-cp-selectable=\"1\"\n" else ""}    
             <section><h2>Reference</h2><div class="cp-compare-shot" data-cp-annotated="reference"><img src="$raster" alt="Design reference"></div></section>
             <section><h2>Diff</h2><div class="cp-compare-shot"><canvas class="cp-reference-diff" aria-label="Highlighted pixel difference"></canvas></div></section>
             <section><h2>Actual</h2><div class="cp-compare-shot" data-cp-annotated="actual" id="cp-compare-actual" data-preview-id="${WebEscaping.htmlEscape(preview.id)}"><img src="$actual" alt="Actual Compose preview">${
-              if (derivedAnnotations)
+              if (derivedLayers.isNotEmpty())
                 "<div class=\"cp-inspect-layer\" id=\"cp-render-inspect-layer\"></div>"
               else ""
             }<div class="cp-selection-layer" id="cp-selection-layer" hidden></div></div></section>
