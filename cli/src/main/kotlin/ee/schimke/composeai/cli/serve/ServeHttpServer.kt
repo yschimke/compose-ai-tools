@@ -3646,7 +3646,13 @@ class ServeHttpServer(
           // from the PNG the client already decoded, so on a host that renders per request the two
           // can describe different frames wherever output varies. The drag is unaffected: it is
           // read off the displayed pixels, so it describes what the reporter saw by construction.
-          annotationsSelectable = frameIsReplayedBaked,
+          //
+          // `frameIsReplayedBaked` alone is NOT enough here, and the difference is the whole point:
+          // it names the PNG lane, while both live catalog wrappers keep the PNG baked for an
+          // override-free browse and still ask their daemon for annotations first. A baked frame
+          // with live annotations is the same mismatch by another route, so the host states which
+          // lane its annotations follow rather than having it inferred from a neighbouring flag.
+          annotationsSelectable = frameIsReplayedBaked && renderHost.annotationsFollowBakedFrame,
           tagIndexAvailable = tagsDescribeFrame,
           tagSelectionNote = tagSelectionNote,
           parityIssues =

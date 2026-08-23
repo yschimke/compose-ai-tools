@@ -295,6 +295,12 @@ class ServeBundleHost(
    * ([ServeDesignAnnotations]) and no producer authors it into a bundle. `tags` comes from the
    * bundle's own published index, so the two halves still describe one frame.
    */
+  /**
+   * This host has no daemon, so its annotations are the catalog's published ones replayed over the
+   * catalog's baked frame — the one lane where the layers and the PNG describe the same render.
+   */
+  override val annotationsFollowBakedFrame: Boolean = true
+
   override fun renderAnnotations(
     previewId: String,
     overrides: PreviewOverrides,

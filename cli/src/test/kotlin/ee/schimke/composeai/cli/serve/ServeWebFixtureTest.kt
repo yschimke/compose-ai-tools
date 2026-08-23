@@ -3890,6 +3890,38 @@ class ServeWebFixtureTest {
       !referenceComparisonPinned.contains("data-cp-selectable="),
       "a pinned comparison withholds annotation-box selection too",
     )
+    // A host whose PNG is baked but whose ANNOTATIONS come from a live daemon is the same mismatch
+    // by another route — both live catalog wrappers are exactly that — so the page must not read
+    // `annotationsSelectable` off the PNG lane's flags. The layers still draw; only the click goes.
+    val liveAnnotationsComparison =
+      ServeWeb.referenceComparisonPage(
+        moduleLabel = "compose-m3",
+        preview = themedPreviews.first(),
+        reference = comparisonReferences.first(),
+        references = comparisonReferences,
+        token = token,
+        sessionId = "compose-m3",
+        isPublic = true,
+        version = version,
+        derivedAnnotations = true,
+        annotationsSelectable = false,
+        reportIssue =
+          fixtureReportIssue(
+            previewId = themedPreviews.first().id,
+            label = themedPreviews.first().label,
+            sourceFile = themedPreviews.first().sourceFile.orEmpty(),
+            componentId = ServeIssueReport.componentIdFor(themedPreviews.first()),
+            referenceId = comparisonReferences.first().id,
+            variant = ServeIssueReport.variantFor(themedPreviews.first()),
+            selectionPlaceholder = true,
+          ),
+      )
+    assertTrue(
+      liveAnnotationsComparison.contains("id=\"cp-render-inspect-layer\"") &&
+        !liveAnnotationsComparison.contains("data-cp-selectable=") &&
+        liveAnnotationsComparison.contains("class=\"cp-selection-drag\""),
+      "live annotations draw but cannot be selected; the drag stays",
+    )
     // The substitution moved into `<cp-reference-compare>` with the rest of this page, so the
     // bundle is where it is now pinned. The property being held is the same one: the filled report
     // reaches an INPUT's `value` and nothing else — never an href or any other navigation sink.
