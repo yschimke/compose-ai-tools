@@ -739,12 +739,26 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-reference-compare-dark-first/dark](renders/serve-reference-compare-dark-first.dark.png) |
 | `light` | ![serve-reference-compare-dark-first/light](renders/serve-reference-compare-dark-first.light.png) |
 
+## serve-reference-compare-element-selected
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-reference-compare-element-selected/dark](renders/serve-reference-compare-element-selected.dark.png) |
+| `light` | ![serve-reference-compare-element-selected/light](renders/serve-reference-compare-element-selected.light.png) |
+
 ## serve-reference-compare-pinned
 
 | Theme | Capture |
 | --- | --- |
 | `dark` | ![serve-reference-compare-pinned/dark](renders/serve-reference-compare-pinned.dark.png) |
 | `light` | ![serve-reference-compare-pinned/light](renders/serve-reference-compare-pinned.light.png) |
+
+## serve-reference-compare-render-semantics
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-reference-compare-render-semantics/dark](renders/serve-reference-compare-render-semantics.dark.png) |
+| `light` | ![serve-reference-compare-render-semantics/light](renders/serve-reference-compare-render-semantics.light.png) |
 
 ## serve-reference-compare-report-open-mobile
 
