@@ -2811,6 +2811,17 @@ html:not(.cp-bg-transparent) #cp-reference-compare[data-cp-stage-clip] .cp-refer
    the render. Only the comparison's mount opts in (`data-cp-selectable`), so the viewer's boxes stay
    inert and its behaviour is unchanged. */
 .cp-inspect-box--selectable { cursor: pointer; }
+/* Layout is the exception, and deliberately so. Its boxes are `pointer-events: none` because the
+   layer draws every slot box — the outermost covers the whole frame, so a transparent interior that
+   captured the pointer would swallow every other layer's hover AND make "click the render anywhere"
+   select the root. The badge is therefore the target, exactly as it is on the viewer.
+
+   Keyed on `--selectable` rather than on a host selector: the viewer's own restore is scoped to
+   `.cp-viewer[data-inspect="on"]`, so without this a layout box on the comparison had no restore at
+   all and its click handler could never fire — one of the three layers silently inert. Scoping to
+   the class instead means this rule cannot reach the viewer, whose boxes carry no such class. */
+[data-inspect="on"] .cp-inspect-box--selectable[data-cp-kind="layout"] .cp-inspect-badge {
+  pointer-events: auto; cursor: pointer; }
 
 /* Element selection (`<cp-element-selection>`). A REPORT affordance: it decides what the prefilled
    issue is about and accepts nothing. */

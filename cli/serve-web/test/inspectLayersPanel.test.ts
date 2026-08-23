@@ -26,6 +26,12 @@ const ANNOTATIONS = {
             bounds: { x: 0, y: 60, width: 100, height: 50 },
             label: "surface",
         },
+        {
+            kind: "layout",
+            bounds: { x: 0, y: 0, width: 200, height: 400 },
+            label: "pad 16dp",
+            role: "Frame",
+        },
     ],
 };
 
@@ -55,6 +61,7 @@ async function mountPanel(withTag = true): Promise<void> {
         <div class="cp-inspect-legend" id="cp-derived-legend" hidden></div>
         <label><input class="cp-derived-inspect" data-cp-inspect="typography" type="checkbox"> Type</label>
         <label><input class="cp-derived-inspect" data-cp-inspect="theme" type="checkbox"> Theme</label>
+        <label><input class="cp-derived-inspect" data-cp-inspect="layout" type="checkbox"> Layout</label>
       </div>
       ${
           withTag
@@ -180,6 +187,22 @@ describe("<cp-inspect-layers> over a comparison panel", () => {
             boxes()[0].classList.contains("cp-inspect-box--selectable"),
             "a selectable box says so, so the cursor can",
         );
+    });
+
+    it("picks a layout box through its badge, which is the only part that takes a pointer", async () => {
+        // Layout boxes are `pointer-events: none` by design — the layer draws every slot box and the
+        // outermost covers the whole frame, so a clickable interior would swallow every other
+        // layer's hover and make "click anywhere" select the root. The badge is the target, and the
+        // handler has to be reachable through it: a click on the badge bubbles to the box.
+        await mountPanel();
+        await tick("layout");
+        const picks: unknown[] = [];
+        window.addEventListener("cp-element-pick", (event) =>
+            picks.push((event as CustomEvent).detail?.bounds),
+        );
+        const badge = boxes()[0].querySelector(".cp-inspect-badge")!;
+        badge.dispatchEvent(new Event("click", { bubbles: true }));
+        assert.equal(picks.length, 1, "the badge must reach the box's handler");
     });
 
     it("stays inert when the page is missing the layer it named", async () => {
