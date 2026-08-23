@@ -92,6 +92,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `scope-other-referenceid` | An acceptance authored for another `referenceId` |
 | `scope-other-variant` | An acceptance authored for another `variant` |
 | `scope-other-system` | A `wear-m3` acceptance must not suppress pixels in `m3` |
+| `scope-overrides-explicitly-empty` | An acceptance carrying an explicit empty `overrides` map |
 | `scope-overrides-match` | An acceptance authored under overrides applies at the frame carrying the same ones |
 | `scope-overrides-differ` | An acceptance authored at `fontScale=1.5` does not apply at the default frame |
 | `scope-refusal-is-comparison-independent` | A record that is out of scope *and* broken is still `refused` |
@@ -129,6 +130,8 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `schema-invalid-accepted-at-leap-second-off-instant` | A second `60` away from the leap-second instant |
 | `accepted-at-leap-second-at-instant` | A real leap second, and one reached through an offset |
 | `accepted-at-leap-second-through-offset` | A leap second written in a non-UTC offset |
+| `schema-invalid-accepted-at-leap-second-off-month-end` | A leap second at the right time of day on the wrong day |
+| `accepted-at-leap-second-month-end-june` | A leap second at the end of June |
 | `accepted-at-leap-second-negative-offset` | A leap second written in a negative offset |
 | `schema-invalid-accepted-at-impossible-date` | An `acceptedAt` with the right shape and impossible values |
 | `schema-invalid-accepted-at-not-a-timestamp` | An `acceptedAt` that is a string but not a date-time |
@@ -216,6 +219,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `artifact-truecolour-suggested-palette` | A truecolour accepted candidate carrying a suggested palette |
 | `artifact-rgba-suggested-palette` | An RGBA accepted candidate carrying a suggested palette |
 | `artifact-indexed-opaque-without-trns` | An indexed accepted candidate with no transparency chunk |
+| `decode-failed-palette-index-out-of-range` | An indexed accepted candidate selecting an entry its palette does not define |
 | `artifact-indexed-entry-beyond-trns` | An indexed accepted candidate selecting a palette entry `tRNS` does not describe |
 | `artifact-scanline-filters-multi-channel` | An RGBA accepted candidate whose scanlines use filters 1–4 |
 | `artifact-trns-greyscale-decodes` | A greyscale accepted candidate whose `tRNS` names its own sample |

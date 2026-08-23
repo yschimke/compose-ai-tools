@@ -931,6 +931,14 @@ class RenderEngine(
                   ),
             )
 
+            // `@ScrollingPreview(END)` keeps the gutter on this lane. The contract excludes it —
+            // and LONG / GIF, which run in `runScrollScenario` and never grow the window, honour
+            // that — but END's product is an ordinary still that shares this whole post-capture
+            // chain: the a11y / semantics / layout-inspector / figma-svg products below all
+            // describe the hosting window, and a round device's mask is baked into the capture.
+            // Cropping the PNG here would buy the right frame size and lose every other product's
+            // agreement with it. Twin of the batch renderer's decision; tracked in issue #4467.
+
             // Pull per-node theme facts while the composition is still alive so theme consumer
             // attribution (#1847) can run after the rule tears the scene down.
             capturedThemeFacts = ThemeConsumerCapture.extractFacts(resolvedSemanticsRoot)

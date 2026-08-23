@@ -157,6 +157,11 @@
       "site": null
     },
     {
+      "id": "scope-overrides-explicitly-empty",
+      "title": "An acceptance carrying an explicit empty `overrides` map",
+      "site": null
+    },
+    {
       "id": "scope-overrides-match",
       "title": "An acceptance authored under overrides applies at the frame carrying the same ones",
       "site": null
@@ -339,6 +344,16 @@
     {
       "id": "accepted-at-leap-second-through-offset",
       "title": "A leap second written in a non-UTC offset",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-accepted-at-leap-second-off-month-end",
+      "title": "A leap second at the right time of day on the wrong day",
+      "site": null
+    },
+    {
+      "id": "accepted-at-leap-second-month-end-june",
+      "title": "A leap second at the end of June",
       "site": null
     },
     {
@@ -774,6 +789,11 @@
     {
       "id": "artifact-indexed-opaque-without-trns",
       "title": "An indexed accepted candidate with no transparency chunk",
+      "site": null
+    },
+    {
+      "id": "decode-failed-palette-index-out-of-range",
+      "title": "An indexed accepted candidate selecting an entry its palette does not define",
       "site": null
     },
     {
