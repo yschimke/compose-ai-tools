@@ -14,7 +14,7 @@ both lets `rc-compare` diff them against the same baked PNG.
 ## Upstream
 
 - Repository: <https://github.com/androidx/androidx>
-- Path: `compose/remote/integration-tests/player-compose-embedded/src/main/java/ee.schimke.composeai.rcembedded.player`
+- Path: `compose/remote/integration-tests/player-compose-embedded/src/main/java/androidx/compose/remote/player/compose/embedded`
 - Commit: `c8e7d738d7c76df3a87281ba8c3b880622df6282` (`androidx-main`, 2026-07-29)
 - License: Apache-2.0
 
@@ -119,9 +119,11 @@ the integration-test app, and they drag in Wear Material3 and `remote-creation-c
 
 Package names are **not** verbatim: upstream's
 `androidx.compose.remote.player.compose.embedded[.x]` is rewritten to
-`ee.schimke.composeai.rcembedded.player[.x]` on the way in, because upstream now publishes into that
-package itself (see "That premise has expired" above). Apply that rewrite when refreshing and a
-`diff -r` against an androidx checkout is verbatim again everywhere else.
+`ee.schimke.composeai.rcembedded.player[.x]` on the way in, because upstream now publishes an
+embedded player into `androidx.compose.remote.player.compose.embedded` itself (see "That premise has
+expired" above). Upstream's own tree still uses the original package — the rewrite is this
+repository's destination, not a change to the source it is copied from. Apply it when refreshing and
+a `diff -r` against an androidx checkout is verbatim again everywhere else.
 
 ## Copyright
 

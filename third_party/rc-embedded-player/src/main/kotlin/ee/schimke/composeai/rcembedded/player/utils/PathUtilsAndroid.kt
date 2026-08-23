@@ -19,9 +19,8 @@
 // `RcPlayerDrawing.kt` is compiled into both this module and the jvm sibling, and it needs
 // `RemoteComposeState.getPath` / `getTweenPath`. The two targets need *different* implementations:
 // upstream's Android version reaches `(path as AndroidPath).internalPath.conicTo(...)` behind an
-// SDK-34 gate, which a `kotlin("jvm")` module has no way to call, so the jvm side vendors an
-// adapted
-// copy routing CONIC through skiko instead (see the jvm module's `utils/FloatsToPath.kt`).
+// SDK-34 gate, which a `kotlin("jvm")` module cannot call, so the jvm side vendors a copy routing
+// CONIC through skiko instead (see the jvm module's `utils/FloatsToPath.kt`).
 //
 // That per-target split used to be arranged by *package squatting*: the jvm copy declared itself in
 // `androidx.compose.remote.player.compose.utils`, so the one import string in the shared source
