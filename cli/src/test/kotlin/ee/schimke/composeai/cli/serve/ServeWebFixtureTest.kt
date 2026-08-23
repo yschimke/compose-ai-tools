@@ -3881,10 +3881,17 @@ class ServeWebFixtureTest {
     // The substitution moved into `<cp-reference-compare>` with the rest of this page, so the
     // bundle is where it is now pinned. The property being held is the same one: the filled report
     // reaches an INPUT's `value` and nothing else — never an href or any other navigation sink.
+    //
+    // Both placeholders are matched by the shape the WRITER above emits them in, not as bare text:
+    // the render one is a markdown link destination and the score one is a whole table row. A bare
+    // substring replace rewrote the first occurrence anywhere in the body, so catalog-authored text
+    // carrying either literal — a preview id, a variant derived from one — was edited instead while
+    // the real link or row kept its placeholder. These strings are therefore the contract between
+    // the two files, and a change on either side has to move both.
     assertTrue(
       assetText("serve-components.js").contains(".value=") &&
-        assetText("serve-components.js").contains("replace(\"{{render}}\",") &&
-        assetText("serve-components.js").contains("replace(\"{{rawScores}}\","),
+        assetText("serve-components.js").contains("](" + "{{render}})") &&
+        assetText("serve-components.js").contains("| Raw comparison | `{{rawScores}}` |"),
       "the components bundle substitutes the report input value after comparison",
     )
     val referencedState =

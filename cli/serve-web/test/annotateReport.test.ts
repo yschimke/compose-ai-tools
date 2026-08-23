@@ -122,6 +122,25 @@ describe("fillReport", () => {
         );
     });
 
+    it("substitutes the render LINK, never a bare occurrence in catalog text", () => {
+        // `ServeIssueReport.body` only ever emits the placeholder as a markdown destination. A bare
+        // occurrence therefore came from catalog-authored text, and rewriting it would leave the
+        // real link reading `{{render}}` — a broken image in every filed report. This got sharper
+        // when the body started being composed before any score existed: a bad substitution now
+        // replaces a perfectly good server-written body instead of never running.
+        const hostile = [
+            "| Preview | `weird{{render}}` |",
+            "![shot]({{render}})",
+        ].join("\n");
+        assert.equal(
+            fillReport(hostile, "https://preview.example/r.png", null),
+            [
+                "| Preview | `weird{{render}}` |",
+                "![shot](https://preview.example/r.png)",
+            ].join("\n"),
+        );
+    });
+
     it("drops only the dedicated row, never another line carrying the same text", () => {
         // Preview ids and variants are catalog-authored — third-party data. Filtering every line
         // that CONTAINS the placeholder would take the `| Preview |` row and the locator's required

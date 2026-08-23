@@ -63,6 +63,21 @@ export function reportRenderUrl(actualUrl: string, base: string): string {
 const RAW_SCORES_ROW = "| Raw comparison | `{{rawScores}}` |";
 
 /**
+ * The render placeholder as it appears in the body: a markdown link/image **destination**.
+ *
+ * `ServeIssueReport.body` emits it in exactly two shapes — `![alt]({{render}})` when the render is
+ * embeddable and `[PNG at these settings]({{render}})` when it is not — and never as bare text. So
+ * the destination form is the anchor, and a bare occurrence in catalog-authored text (a preview id
+ * carrying the literal) is left alone instead of being rewritten while the real link keeps the
+ * placeholder.
+ *
+ * That mattered less when the body was only composed after a successful score, because a failing
+ * comparison left the server's own body in place. It matters now: the body is composed as soon as
+ * the page parses, so a bad substitution would replace a perfectly good server-written report.
+ */
+const RENDER_DESTINATION = "]({{render}})";
+
+/**
  * The report body's render and score placeholders, filled.
  *
  * Page-derived values reach the form's hidden INPUT and nothing else — never an `href` or any other
@@ -86,7 +101,7 @@ export function fillReport(
     renderUrl: string,
     scores: string | null,
 ): string {
-    const filled = template.replace("{{render}}", renderUrl);
+    const filled = template.replace(RENDER_DESTINATION, `](${renderUrl})`);
     const lines = filled.split("\n");
     const at = lines.indexOf(RAW_SCORES_ROW);
     // No row means nothing to fill: a body the server wrote without one (it had no measurements

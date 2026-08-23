@@ -30,8 +30,9 @@ import { whenParsed } from "../dom/whenParsed.js";
 import { reportBody } from "../report/body.js";
 import type { Selection } from "../report/locator.js";
 import {
+    renderRectBetween,
     tagTargets,
-    toRenderPixels,
+    toRenderPoint,
     type TagTarget,
 } from "../report/elementTargets.js";
 
@@ -195,6 +196,13 @@ export class ElementSelection extends LitElement {
         this.say("Drag a box over the render · Esc to cancel");
 
         let start: { x: number; y: number } | null = null;
+        // The origin in the RENDER plane, converted the moment it is touched. The display-space
+        // `start` above is only for drawing the marquee; recording from it would measure an origin
+        // captured against the old frame box with a scale taken from the new one if the frame
+        // reflows mid-gesture — two coordinate systems in one rectangle, naming a region nobody
+        // selected. The render plane is a property of the render, so a point converted early stays
+        // valid however the display subsequently resizes.
+        let startRender: { x: number; y: number } | null = null;
         // The gesture belongs to ONE pointer. `touch-action: none` means the browser no longer
         // steals a touch drag for scrolling, so a second finger landing on the overlay is now
         // reachable — and without this it would reset the origin and let either contact finish the
@@ -215,6 +223,8 @@ export class ElementSelection extends LitElement {
         const onFrameLoad = () => this.sizeLayer();
         frame.addEventListener("load", onFrameLoad);
         const stop = () => {
+            start = null;
+            startRender = null;
             for (const off of offs) off();
             frame.removeEventListener("load", onFrameLoad);
             resizes?.disconnect();
@@ -252,6 +262,7 @@ export class ElementSelection extends LitElement {
             if (start) return;
             owner = event.pointerId;
             start = local(event);
+            startRender = toRenderPoint(start, frame);
             // Capture, so `pointermove`/`pointerup` keep arriving here once the pointer leaves the
             // frame. Guarded: happy-dom and older engines have no such method, and a drag that
             // stays inside the frame works without it.
@@ -263,15 +274,13 @@ export class ElementSelection extends LitElement {
         }) as EventListener);
         listen(window, "pointerup", ((event: PointerEvent) => {
             if (!start || !mine(event)) return;
-            const end = local(event);
-            const rect = {
-                x: Math.min(start.x, end.x),
-                y: Math.min(start.y, end.y),
-                width: Math.abs(start.x - end.x),
-                height: Math.abs(start.y - end.y),
-            };
+            const endRender = toRenderPoint(local(event), frame);
+            const origin = startRender;
             stop();
-            const bounds = toRenderPixels(rect, frame);
+            const bounds =
+                origin && endRender
+                    ? renderRectBetween(origin, endRender)
+                    : null;
             // A click with no drag is a cancel, not an error — that is what a stray click on a
             // full-frame overlay IS.
             if (!bounds) return this.describe();

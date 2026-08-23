@@ -94,34 +94,64 @@ export interface DisplayRect {
 }
 
 /**
- * A dragged rectangle converted from display pixels into the render's own pixels.
+ * One display point, as **unrounded** render-plane coordinates.
  *
- * This conversion is the whole reason a drag selection is safe to record at all. `v1` accepts
+ * Unrounded on purpose: rounding belongs to the rectangle, where it can be done outward from both
+ * ends at once. Null when the frame has not decoded — no natural size means no scale, and guessing
+ * one is how a rectangle ends up in a plane nobody stated.
+ */
+export function toRenderPoint(
+    point: { x: number; y: number },
+    frame: { naturalWidth: number; clientWidth: number },
+): { x: number; y: number } | null {
+    if (!frame.naturalWidth || !frame.clientWidth) return null;
+    const scale = frame.naturalWidth / frame.clientWidth;
+    if (!Number.isFinite(scale) || scale <= 0) return null;
+    return { x: point.x * scale, y: point.y * scale };
+}
+
+/**
+ * The rectangle two render-plane points bound, rounded **outward**: `floor` the origin, `ceil` the
+ * far edge. A selection that grew by half a pixel still contains what the reporter dragged around,
+ * where one that shrank may have clipped the very edge they were pointing at.
+ *
+ * Taking two already-converted points rather than a display rectangle is what makes a drag survive
+ * a reflow. Converting at the END would measure an origin captured against the old frame box with a
+ * scale taken from the new one — two coordinate systems in one rectangle, silently naming a region
+ * nobody selected. A point converted at the moment it was touched stays valid however the frame is
+ * subsequently resized, because the render plane is a property of the render, not of the display.
+ *
+ * Null when the result has no area — a click with no drag is not a region.
+ */
+export function renderRectBetween(
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+): Bounds | null {
+    const x = Math.floor(Math.min(a.x, b.x));
+    const y = Math.floor(Math.min(a.y, b.y));
+    const width = Math.ceil(Math.max(a.x, b.x)) - x;
+    const height = Math.ceil(Math.max(a.y, b.y)) - y;
+    if (width < 1 || height < 1) return null;
+    return { x, y, width, height };
+}
+
+/**
+ * A dragged rectangle converted from display pixels into the render's own pixels, in one step.
+ *
+ * The convenience form, for a gesture whose frame cannot have moved under it. `v1` accepts
  * `render-pixels` and nothing else — both parsers refuse any other space rather than storing the
  * guess — because a rectangle recorded in the display plane makes an element that never moved
- * report as *moved* the first time someone views the page at a different width. The frame's
- * `naturalWidth / clientWidth` is the exact scale, and it is read from the image on screen rather
- * than from any page state, so a zoom, a responsive reflow and a device-pixel-ratio change are all
- * already accounted for.
- *
- * Rounded outward: `floor` the origin, `ceil` the far edge. A selection that grew by half a pixel
- * still contains what the reporter dragged around, where one that shrank may have clipped the very
- * edge they were pointing at. Null when the frame has not decoded (no natural size to scale by) or
- * when the result has no area — a click with no drag is not a region.
+ * report as *moved* the first time someone views the page at a different width.
  */
 export function toRenderPixels(
     rect: DisplayRect,
     frame: { naturalWidth: number; clientWidth: number },
 ): Bounds | null {
-    if (!frame.naturalWidth || !frame.clientWidth) return null;
-    const scale = frame.naturalWidth / frame.clientWidth;
-    if (!Number.isFinite(scale) || scale <= 0) return null;
-    const x = Math.floor(rect.x * scale);
-    const y = Math.floor(rect.y * scale);
-    const right = Math.ceil((rect.x + rect.width) * scale);
-    const bottom = Math.ceil((rect.y + rect.height) * scale);
-    const width = right - x;
-    const height = bottom - y;
-    if (width < 1 || height < 1) return null;
-    return { x, y, width, height };
+    const origin = toRenderPoint({ x: rect.x, y: rect.y }, frame);
+    const far = toRenderPoint(
+        { x: rect.x + rect.width, y: rect.y + rect.height },
+        frame,
+    );
+    if (!origin || !far) return null;
+    return renderRectBetween(origin, far);
 }

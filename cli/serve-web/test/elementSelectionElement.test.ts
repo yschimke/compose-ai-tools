@@ -364,6 +364,40 @@ describe("<cp-element-selection>", () => {
         ]);
     });
 
+    it("survives the frame reflowing mid-drag", async () => {
+        // Each endpoint is converted into the render plane the moment it is touched. Converting at
+        // the end instead would measure an origin captured against the OLD frame box with a scale
+        // taken from the new one — two coordinate systems in one rectangle, naming a region nobody
+        // selected. Reachable through the very reflow handling added for a still-decoding frame.
+        await mount();
+        document
+            .querySelector<HTMLButtonElement>(".cp-selection-drag")!
+            .dispatchEvent(new Event("click"));
+        await flush();
+        const layer = document.getElementById("cp-selection-layer")!;
+        const send = (type: string, [x, y]: [number, number]) => {
+            const event = new Event(type, { bubbles: true }) as Event & {
+                clientX: number;
+                clientY: number;
+                pointerId: number;
+            };
+            event.clientX = x;
+            event.clientY = y;
+            event.pointerId = 1;
+            layer.dispatchEvent(event);
+        };
+        // Frame is 400 natural at 200 displayed (×2). Origin 10,20 ⇒ 20,40 in render pixels.
+        send("pointerdown", [10, 20]);
+        // …then the grid reflows to half the width (×4).
+        sizeFrame(400, 100);
+        // Release at display 25,30 ⇒ 100,120 in render pixels.
+        send("pointerup", [25, 30]);
+        for (let i = 0; i < 3; i++) await flush();
+        assert.deepEqual(locatorLines(), [
+            'bounds: {"height":80,"space":"render-pixels","width":80,"x":20,"y":40}',
+        ]);
+    });
+
     it("treats a click with no drag as a cancel", async () => {
         await mount();
         await drag([10, 20], [10, 20]);
