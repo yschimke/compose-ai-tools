@@ -73,8 +73,26 @@ const RESERVED_SEGMENTS = new Set([
   ...Array.from({ length: 9 }, (_, i) => `lpt${i + 1}`),
 ]);
 
+/**
+ * The longest a single segment may be, in bytes.
+ *
+ * ext4, APFS, NTFS and every other filesystem a checkout of this repository plausibly lands on cap a
+ * *component* at 255 — not the path, the component — so a 256-character id is a record a URL-backed
+ * consumer fetches and evaluates happily while a normal `git checkout` cannot even create the
+ * directory it names, and the offline engine reports `artifact-unreadable` for bytes the serving
+ * host validated. That is the same host-versus-checkout divergence the reserved-name and
+ * trailing-dot rules exist to close, so it gets the same treatment rather than a new token. The
+ * character class is ASCII-only, checked first, so counting characters here counts bytes.
+ *
+ * Per segment and not per path on purpose: `PATH_MAX` is a property of the *reader's* working
+ * directory, not of the document, so a total-length rule would make the same committed bytes legal
+ * in one checkout and refused in another — which is the divergence, not a fix for it.
+ */
+const MAX_SEGMENT_LENGTH = 255;
+
 function isPortableSegment(segment) {
   if (!SAFE_SEGMENT.test(segment)) return false;
+  if (segment.length > MAX_SEGMENT_LENGTH) return false;
   if (segment === "." || segment === "..") return false;
   if (segment.endsWith(".") || segment.endsWith(" ")) return false;
   return !RESERVED_SEGMENTS.has(segment.split(".")[0].toLowerCase());
@@ -528,6 +546,63 @@ function pushOnce(list, entry) {
   if (!list.some((existing) => existing.reason === entry.reason && existing.id === entry.id)) list.push(entry);
 }
 
+/**
+ * Does any object in this document repeat a member name?
+ *
+ * A single left-to-right walk, run only on text `JSON.parse` has already accepted — so bracket
+ * balance and string termination are given and this does not need to be a validating parser. A
+ * string token is a member name exactly when the next non-whitespace character is `:`; names are
+ * unescaped through `JSON.parse` before comparison, because `"id"` and `"\u0069d"` are the same
+ * member and only one of the two spellings looks like a duplicate.
+ */
+function hasDuplicateMemberNames(documentText) {
+  const scopes = [];
+  let index = 0;
+  while (index < documentText.length) {
+    const character = documentText[index];
+    if (character === "{") {
+      scopes.push(new Set());
+      index += 1;
+      continue;
+    }
+    if (character === "[") {
+      scopes.push(null);
+      index += 1;
+      continue;
+    }
+    if (character === "}" || character === "]") {
+      scopes.pop();
+      index += 1;
+      continue;
+    }
+    if (character !== '"') {
+      index += 1;
+      continue;
+    }
+    let end = index + 1;
+    while (end < documentText.length && documentText[end] !== '"') {
+      end += documentText[end] === "\\" ? 2 : 1;
+    }
+    const raw = documentText.slice(index, end + 1);
+    index = end + 1;
+    let after = index;
+    while (after < documentText.length && /\s/.test(documentText[after])) after += 1;
+    if (documentText[after] !== ":") continue;
+    index = after + 1;
+    const names = scopes[scopes.length - 1];
+    if (!names) continue;
+    let name;
+    try {
+      name = JSON.parse(raw);
+    } catch {
+      return true;
+    }
+    if (names.has(name)) return true;
+    names.add(name);
+  }
+  return false;
+}
+
 function parseDocument(documentText) {
   // **Bounded before parsing**, for the reason the artifact reader is bounded before opening: every
   // other budget here fires *after* something has already been materialised unless it is checked
@@ -547,6 +622,15 @@ function parseDocument(documentText) {
   } catch {
     return { failure: { reason: "document-unreadable" } };
   }
+  // **A repeated member name is not a readable document**, whatever `JSON.parse` did with it. RFC
+  // 8259 leaves the behaviour undefined and runtimes genuinely differ: V8 keeps the last value,
+  // several keep the first, and strict parsers refuse the input outright. So `{"id":"safe","id":".."}`
+  // addresses one artifact directory here and a different one under a Python or Go engine — from
+  // byte-identical committed input, which is the single outcome a contract two engines are written
+  // against cannot tolerate. Detected on the text rather than the object because by the time there
+  // *is* an object the evidence is gone. `document-unreadable` for the same reason the unknown
+  // document property is: there is no record to attribute it to.
+  if (hasDuplicateMemberNames(documentText)) return { failure: { reason: "document-unreadable" } };
   if (!document || typeof document !== "object" || Array.isArray(document)) {
     return { failure: { reason: "document-unreadable" } };
   }

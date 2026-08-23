@@ -68,7 +68,14 @@ Each exists because two engines would otherwise diverge on identical bytes.
 - **Artifact paths are contained *and* portable**: `[A-Za-z0-9._-]` segments joined by `/`.
   `isSafeRelativePath` rewrites `\` to `/` before splitting, so `a\b.png` is checked as two segments
   and opened as one filename on POSIX; `#` and `?` become URL syntax when the host fetches rather
-  than reads.
+  than reads. **Segments cap at 255 bytes** — the component limit on ext4, APFS and NTFS alike — so a
+  256-character `id` cannot be checked out at all while a URL-backed consumer evaluates it happily.
+  Per segment, never per path: `PATH_MAX` belongs to the reader's working directory, so a total-length
+  rule would make identical bytes legal in one checkout and refused in another.
+- **A repeated JSON member name refuses the document.** RFC 8259 leaves it undefined and runtimes
+  differ — last value, first value, or a hard refusal — so `{"id":"safe","id":".."}` addresses two
+  different artifact directories from one committed file. Detected **on the text**: by the time there
+  is an object, the evidence is gone.
 - **Hashes compare normalised — but only the *served* one may be spelled loosely.**
   `ServeDesignReferenceStore` lowercases a reference hash to validate it and then serves the original
   spelling, so raw string inequality reports `reference-changed` for an unchanged reference; both

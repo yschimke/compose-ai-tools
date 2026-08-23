@@ -237,6 +237,16 @@
       "site": null
     },
     {
+      "id": "id-not-safe-segment-too-long",
+      "title": "An `id` longer than a filesystem component",
+      "site": null
+    },
+    {
+      "id": "path-not-contained-segment-too-long",
+      "title": "An artifact path segment longer than a filesystem component",
+      "site": null
+    },
+    {
       "id": "id-not-safe-windows-reserved-name",
       "title": "An `id` Windows cannot open",
       "site": null
@@ -429,6 +439,11 @@
     {
       "id": "document-duplicate-ids-case-folded",
       "title": "Two ids differing only in case",
+      "site": null
+    },
+    {
+      "id": "document-unreadable-duplicate-member",
+      "title": "An acceptance repeating a member name",
       "site": null
     },
     {

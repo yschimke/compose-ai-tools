@@ -566,10 +566,13 @@ bound is inclusive — `8` is legal, `9` refuses — and the fixtures pin both.
 **`candidateTolerance` is a field for the same reason `element.tolerance` is.** The candidate gate
 needs *some* slack for PNG round-tripping and the resample, and two engines choosing their own
 constants would disagree at the boundary — the one thing that must not happen. Recording it means
-both read one number off one artifact. The **metric** it applies to (which channels, compared how,
-and whether a count of over-threshold pixels or any single one trips the gate) is not settled here;
-it belongs with the pixel semantics in the open problems above, and the fixtures must pin cases on
-both sides of whatever boundary Phase 3 picks.
+both read one number off one artifact. The **metric** it applies to — which channels, compared how,
+and whether a count of over-threshold pixels or any single one trips the gate — **is settled**, in
+[§4's normative contract](#the-normative-contract) answer 6: the
+maximum absolute per-channel difference over R, G, B and A, per pixel, compared with `>`. An earlier
+draft of this paragraph deferred it to Phase 3 alongside the score; that is no longer true and
+following it would leave an engine free to pick a second metric while the fixtures pin this one.
+What Phase 3 still owns is the **score**, and only the score.
 
 **An earlier draft also carried an optional structured `finding` matcher** — `{ kind: "color",
 token: …, expected: …, actual: … }` — for the design-parity checks that are not pixel comparisons.
@@ -720,8 +723,17 @@ and the fixtures are
    **enclosing** integer box — `floor` the origin, `ceil` the far edge — applied after the
    transform's arithmetic and never during it. Outward rather than nearest because a mask or a
    selection that rounds inward is smaller than the region the author looked at, which is the
-   direction that silently stops covering pixels. The tag index publishes canonical bounds under the
-   same rule, so element displacement is measured between two integer boxes. Pinned by its own
+   direction that silently stops covering pixels. **The tag index does not publish canonical bounds
+   and must not be read as if it did** — it publishes `boundsInRoot` in **render pixels** and names
+   that space on the wire ([D1](parity-batches/00-decisions.md#d1--which-plane-the-element-tag-index-reports-bounds-in)),
+   because a plane is a property of a comparison and the index is a property of a render. The single
+   transform into the canonical plane is therefore a step of **the comparison**, which owns it
+   outright: an engine that expects canonical bounds from the index either compares raw render
+   coordinates or transforms an already-transformed box, and both report `element-moved` for an
+   element that never moved. The outward rounding applies to the index's own render-pixel box and
+   again to the transformed one, so element displacement is measured between two integer boxes — and
+   because rounding outward is idempotent on a box that is already integral, a correct engine
+   rounding at both ends is not double-counting anything. Pinned by its own
    fixture group, because every gate case is handed canonical boxes that are *already* integers — a
    second engine could round inward or to nearest and pass the whole suite otherwise, which is a
    claim the fixtures do not check masquerading as one they do.
@@ -1267,6 +1279,27 @@ distinct committed names collapse onto one file there. Either way the offline en
 serving host reports as `artifact-unreadable`, which is the divergence this rule exists to close, so
 both are refused — for artifact segments **and** for the `id`, which is doing double duty as a
 directory name.
+
+**And a segment is capped at 255 bytes.** Every filesystem a checkout of this repository plausibly
+lands on — ext4, APFS, NTFS — caps a path *component* at 255, so a 256-character `id` is a record a
+URL-backed consumer fetches and evaluates happily while `git checkout` cannot create the directory it
+names. That is the same host-versus-checkout divergence, so it takes the same tokens: `id-not-safe`
+for an `id`, `path-not-contained` for an artifact segment. The character class is ASCII-only, so
+counting characters counts bytes. The cap is **per segment and not per path**, deliberately:
+`PATH_MAX` is a property of the reader's working directory rather than of the document, so a
+total-length rule would make identical committed bytes legal in one checkout and refused in another
+— which is the divergence, not a fix for it. Inclusive as everywhere else: 255 is legal, 256 refuses.
+
+**A repeated JSON member name refuses the whole document.** RFC 8259 leaves the behaviour undefined
+and runtimes genuinely differ — V8 keeps the last value, several keep the first, strict parsers
+refuse the input — so an acceptance carrying both `"id": "safe"` and `"id": ".."` addresses one
+artifact directory here and a different one under another engine, from byte-identical committed
+bytes. That is precisely the outcome a contract two engines are written against exists to prevent, so
+the document is refused rather than disambiguated: there is no reading of those bytes both engines
+would agree on. `document-unreadable`, for the reason the unknown document-level property gets it —
+there is no record to attribute it to. It must be detected **on the text**, before or alongside the
+parse: by the time there is an object, the evidence is gone, which is why an engine that trusts its
+deserializer walks straight past this one.
 
 **A mask must select something.** An all-zero mask satisfies the encoding and dimension rules and
 still has no bounding box, which leaves `accepted-candidate.png`'s required dimensions undefined —

@@ -1602,6 +1602,33 @@ glyphValidation({
 });
 
 glyphValidation({
+  id: "id-not-safe-segment-too-long",
+  title: "An `id` longer than a filesystem component",
+  why:
+    "256 allowed ASCII characters, and every filesystem a checkout plausibly lands on caps a *path " +
+    "component* at 255 — ext4, APFS and NTFS alike. So a URL-backed consumer fetches and evaluates " +
+    "this record happily while a normal `git checkout` cannot create the directory it names, and " +
+    "the offline engine reports `artifact-unreadable` for bytes the serving host just validated. " +
+    "Same host-versus-checkout divergence as the reserved names and the trailing dot, so it gets " +
+    "the same token rather than a new one. 255 is legal and 256 refuses — the inclusive convention " +
+    "the budget caps and the tolerance ranges already use.",
+  record: { id: "a".repeat(256) },
+  expected: refused(["id-not-safe"], "a".repeat(256)),
+});
+
+glyphValidation({
+  id: "path-not-contained-segment-too-long",
+  title: "An artifact path segment longer than a filesystem component",
+  why:
+    "The path half of the same rule. Per *segment* and not per path on purpose: `PATH_MAX` is a " +
+    "property of the reader's working directory rather than of the document, so a total-length rule " +
+    "would make identical committed bytes legal in one checkout and refused in another — which is " +
+    "the divergence, not a fix for it.",
+  record: { mask: `${"m".repeat(252)}.png` },
+  expected: refused(["path-not-contained"]),
+});
+
+glyphValidation({
   id: "id-not-safe-windows-reserved-name",
   title: "An `id` Windows cannot open",
   why:
@@ -2224,6 +2251,30 @@ glyphValidation({
     },
   });
 }
+
+addCase({
+  id: "document-unreadable-duplicate-member",
+  title: "An acceptance repeating a member name",
+  why:
+    "RFC 8259 leaves a repeated member name undefined and runtimes genuinely differ: V8 keeps the " +
+    "last value, several keep the first, and strict parsers refuse the input. So this record " +
+    "addresses the `safe` artifact directory under a JavaScript engine and `..` under one that " +
+    "keeps the first — from byte-identical committed input, which is the single outcome a contract " +
+    "two engines are written against cannot tolerate. The document is refused rather than " +
+    "disambiguated, because there is no spelling of this file that both engines would agree on. " +
+    "`document-unreadable` for the reason the unknown document property gets it: there is no record " +
+    "to attribute it to. An engine that trusts its deserializer walks straight past this one — by " +
+    "the time there is an object, the evidence is gone.",
+  documentText:
+    '{"schema":"compose-preview-known-differences/v1","acceptances":[{"id":"safe","id":".."}]}',
+  document: null,
+  files: {},
+  expected: {
+    pins: ["statusesAbsent", "validationFailures"],
+    statusesAbsent: true,
+    validationFailures: [{ reason: "document-unreadable" }],
+  },
+});
 
 addCase({
   id: "document-unreadable-unknown-property",

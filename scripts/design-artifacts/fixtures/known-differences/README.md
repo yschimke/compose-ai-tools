@@ -102,6 +102,8 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `path-not-contained-trailing-dot` | An artifact path segment ending in a dot |
 | `id-not-safe-integer-like` | An `id` that is a canonical integer |
 | `schema-invalid-box-far-edge-unsafe` | A box whose fields are safe but whose far edge is not |
+| `id-not-safe-segment-too-long` | An `id` longer than a filesystem component |
+| `path-not-contained-segment-too-long` | An artifact path segment longer than a filesystem component |
 | `id-not-safe-windows-reserved-name` | An `id` Windows cannot open |
 | `path-not-contained-backslash` | An artifact path containing a backslash |
 | `path-not-contained-hash` | An artifact path containing `#` |
@@ -141,6 +143,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `orphaned-target-reference-detached` | The reference now hangs off a different preview |
 | `orphaned-target-variant-disagrees-with-preview-id` | A recorded `variant` that disagrees with its own `previewId` |
 | `document-duplicate-ids-case-folded` | Two ids differing only in case |
+| `document-unreadable-duplicate-member` | An acceptance repeating a member name |
 | `document-unreadable-unknown-property` | A document carrying a property `v1` does not define |
 | `document-non-object-acceptances` | `acceptances` holding `null`, a string and an array |
 | `schema-invalid-unknown-property` | A record carrying the `finding` field cut from `v1` |
