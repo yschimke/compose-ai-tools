@@ -22,6 +22,7 @@ import ee.schimke.composeai.data.layoutinspector.TargetResolution
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.renderer.encodePngData
+import java.awt.AlphaComposite
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
@@ -398,9 +399,28 @@ class DesktopRecordingSession(
     }
     val frameCount = liveFrameCount
     val durationMs: Long = if (frameCount == 0) 0L else (frameCount - 1).toLong() * 1000L / fps
-    // Safe here rather than on the tick thread: the join above has returned, so nothing is still
-    // writing frames or folding measurements into the bounds.
-    val (frameWidthPx, frameHeightPx) = finalizeFrames(emptyList(), frameCount)
+    // Only once the tick thread has genuinely terminated. `join` returning is not that — the
+    // branch above deliberately continues when it times out — and reframing under a live tick
+    // would race a frame write and could leave a trailing scene-sized PNG written *after* the
+    // pass, in a set whose reported dimensions say otherwise.
+    //
+    // A fixed-size recording is unaffected either way: its frames were framed as they were taken,
+    // so `finalizeFrames` only reports the size and touches nothing.
+    val tickThreadExited = thread == null || !thread.isAlive
+    val (frameWidthPx, frameHeightPx) =
+      if (tickThreadExited || framingKnownUpFront) {
+        finalizeFrames(emptyList(), frameCount)
+      } else {
+        // Report what is actually on disk — the un-reframed scene size — rather than dimensions
+        // the frames do not have.
+        System.err.println(
+          "compose-ai-daemon: DesktopRecordingSession.stop($recordingId, live): tick thread " +
+            "still running, so frames are published at the scene's size without reframing"
+        )
+        val sceneWidth = if (renderedSceneWidthPx > 0) renderedSceneWidthPx else sceneWidthPx
+        val sceneHeight = if (renderedSceneHeightPx > 0) renderedSceneHeightPx else sceneHeightPx
+        sceneWidth to sceneHeight
+      }
     System.err.println(
       "compose-ai-daemon: DesktopRecordingSession.stop($recordingId, live): " +
         "captured $frameCount frame(s) over ~${durationMs}ms wall time " +
@@ -1242,57 +1262,79 @@ class DesktopRecordingSession(
     return DesktopAccessibilityNodeExtractor.extractNodes(root)
   }
 
-  /**
-   * Bilinear-scale PNG [bytes] to [w]×[h] via AWT (the overlay path's scaler; matches the recording
-   * size).
-   */
+  /** Crop and scale PNG [bytes] — see [reframePngBytes], which this names for the recording. */
   private fun scalePngBytes(
     bytes: ByteArray,
     srcWidth: Int,
     srcHeight: Int,
     w: Int,
     h: Int,
-  ): ByteArray {
-    val src = ImageIO.read(ByteArrayInputStream(bytes)) ?: return bytes
-    // A frame that happens to need nothing keeps its exact bytes. The wholesale no-op is caught
-    // by [finalizeFrames] before any decode; this is the per-frame case, where the set is being
-    // reframed but this particular frame already matches.
-    if (src.width == w && src.height == h && srcWidth >= src.width && srcHeight >= src.height) {
-      return bytes
-    }
-    val dst = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
-    val g = dst.createGraphics()
-    try {
-      g.setRenderingHint(
-        RenderingHints.KEY_INTERPOLATION,
-        RenderingHints.VALUE_INTERPOLATION_BILINEAR,
-      )
-      g.drawImage(
-        src,
-        0,
-        0,
-        w,
-        h,
-        0,
-        0,
-        srcWidth.coerceIn(1, src.width),
-        srcHeight.coerceIn(1, src.height),
-        null,
-      )
-    } finally {
-      g.dispose()
-    }
-    return ByteArrayOutputStream().use { out ->
-      ImageIO.write(dst, "png", out)
-      out.toByteArray()
-    }
-  }
+  ): ByteArray = reframePngBytes(bytes, srcWidth, srcHeight, w, h, "recording '$recordingId'")
 
   private fun sceneOffset(px: Int, py: Int): androidx.compose.ui.geometry.Offset {
     // Recording scripts use the same image-natural pixel contract as interactive/input.
     // ImageComposeScene pointer positions are already physical pixels; density only scales dp
     // during layout, so applying it here again shifts every non-1x input toward the top-left.
     return androidx.compose.ui.geometry.Offset(px.toFloat(), py.toFloat())
+  }
+}
+
+/**
+ * Crop PNG [bytes] to `srcWidth x srcHeight` and scale that to `w x h` to [w]×[h] via AWT (the
+ * overlay path's scaler; matches the recording size).
+ */
+internal fun reframePngBytes(
+  bytes: ByteArray,
+  srcWidth: Int,
+  srcHeight: Int,
+  w: Int,
+  h: Int,
+  label: String,
+): ByteArray {
+  // A frame that will not decode is an error, not something to pass through. Returning the
+  // original bytes would leave it un-reframed while `stop()` reports the new dimensions, handing
+  // the encoder a mixed-size set — the same failure the propagating writes above exist to avoid.
+  val src =
+    ImageIO.read(ByteArrayInputStream(bytes))
+      ?: error("$label: a captured frame is not a decodable PNG")
+  // A frame that happens to need nothing keeps its exact bytes. The wholesale no-op is caught
+  // by [finalizeFrames] before any decode; this is the per-frame case, where the set is being
+  // reframed but this particular frame already matches.
+  if (src.width == w && src.height == h && srcWidth >= src.width && srcHeight >= src.height) {
+    return bytes
+  }
+  val cropWidth = srcWidth.coerceIn(1, src.width)
+  val cropHeight = srcHeight.coerceIn(1, src.height)
+  // A pure crop copies the raster instead of drawing. Java2D's default `SrcOver` onto a zeroed
+  // canvas round-trips every pixel through premultiplied alpha, which visibly rounds the RGB of
+  // low-alpha pixels — antialiased edges, shadows. The still path's Skia crop copies them
+  // untouched, and `PixelDiff` compares RGB regardless of alpha, so that rounding alone could
+  // push a recording past its cap against a still-derived baseline.
+  if (cropWidth == w && cropHeight == h) {
+    val cropped = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
+    cropped.setRGB(0, 0, w, h, src.getRGB(0, 0, w, h, null, 0, w), 0, w)
+    return ByteArrayOutputStream().use { out ->
+      ImageIO.write(cropped, "png", out)
+      out.toByteArray()
+    }
+  }
+  val dst = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
+  val g = dst.createGraphics()
+  try {
+    // `Src` rather than the default `SrcOver`, for the reason above: the destination starts
+    // fully transparent, and compositing over it is what mangles translucent source pixels.
+    g.composite = AlphaComposite.Src
+    g.setRenderingHint(
+      RenderingHints.KEY_INTERPOLATION,
+      RenderingHints.VALUE_INTERPOLATION_BILINEAR,
+    )
+    g.drawImage(src, 0, 0, w, h, 0, 0, cropWidth, cropHeight, null)
+  } finally {
+    g.dispose()
+  }
+  return ByteArrayOutputStream().use { out ->
+    ImageIO.write(dst, "png", out)
+    out.toByteArray()
   }
 }
 

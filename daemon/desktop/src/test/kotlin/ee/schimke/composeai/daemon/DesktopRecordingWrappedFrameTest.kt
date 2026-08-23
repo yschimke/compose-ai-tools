@@ -335,6 +335,40 @@ class DesktopRecordingWrappedFrameTest {
     assertEquals("and still its own size", 40 to 30, decode(stale.readBytes()))
   }
 
+  @Test
+  fun `an undecodable frame is rejected rather than passed through`() {
+    // Returning the original bytes would leave the frame un-reframed while `stop()` reports the
+    // new dimensions — handing the encoder a mixed-size set, the same failure the propagating
+    // writes exist to avoid.
+    val garbage = byteArrayOf(1, 2, 3, 4)
+    val thrown = runCatching { reframePngBytes(garbage, 2, 2, 2, 2, "test") }.exceptionOrNull()
+    assertTrue("expected a decode failure, got $thrown", thrown is IllegalStateException)
+  }
+
+  @Test
+  fun `a pure crop preserves translucent pixels exactly`() {
+    // Java2D's default `SrcOver` onto a zeroed canvas round-trips every pixel through
+    // premultiplied alpha, which rounds the RGB of low-alpha pixels. The still path's Skia crop
+    // copies them untouched, and `PixelDiff` compares RGB regardless of alpha — so that rounding
+    // alone could push a recording past its cap against a still-derived baseline.
+    val src = BufferedImage(4, 4, BufferedImage.TYPE_INT_ARGB)
+    // Deliberately low alpha over saturated channels: the case premultiplication mangles worst.
+    val translucent = (0x08 shl 24) or 0xFF3366
+    for (x in 0 until 4) for (y in 0 until 4) src.setRGB(x, y, translucent)
+    val file = File(tempFolder.newFolder("translucent"), "frame.png")
+    ImageIO.write(src, "PNG", file)
+
+    // Crop 4x4 down to 2x2 with no resampling — the pure-crop path.
+    val cropped = reframePngBytes(file.readBytes(), 2, 2, 2, 2, "test")
+    val img = ImageIO.read(ByteArrayInputStream(cropped))
+    assertEquals(2 to 2, img.width to img.height)
+    assertEquals(
+      "a pure crop must not disturb the source pixel",
+      translucent,
+      img.getRGB(0, 0),
+    )
+  }
+
   /** The still of the same fixture through the same engine, for the comparison above. */
   private fun renderStill(label: String): Pair<Int, Int> {
     val engine = RenderEngine(outputDir = tempFolder.newFolder("renders-$label"))
