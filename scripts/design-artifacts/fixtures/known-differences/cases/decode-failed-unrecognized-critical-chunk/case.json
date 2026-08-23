@@ -1,0 +1,38 @@
+{
+  "title": "An unrecognized **critical** chunk with a valid CRC",
+  "site": null,
+  "why": "The PNG specification requires a decoder to stop on a critical chunk it does not recognise, and a browser obeys it. `v1` goes further and refuses every chunk outside its allowlist, so this case and `decode-failed-chunk-not-permitted` reach the same verdict by the same rule — kept separate because a reader looking for the specification's requirement should find it covered, not inferred.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

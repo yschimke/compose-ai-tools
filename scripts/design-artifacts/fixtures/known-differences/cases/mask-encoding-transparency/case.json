@@ -1,0 +1,38 @@
+{
+  "title": "A greyscale mask carrying `tRNS`",
+  "site": null,
+  "why": "The mask is greyscale with **no alpha**, and `tRNS` is how a greyscale PNG carries alpha anyway — so this is the one place the chunk allowlist and the mask's own encoding rule disagree, since `tRNS` is legitimately permitted on the accepted candidate. Left admitted, the decode gives a matching sample alpha `0` while the coverage scan reads only the grey channel: a transparent white pixel would suppress a comparison here and refuse the mask on a consumer enforcing the no-alpha rule as written. Refused in the same `IHDR` preflight that already decides the encoding.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

@@ -1,0 +1,44 @@
+{
+  "title": "A mask of exactly 8 MiB encoded",
+  "site": null,
+  "why": "The accepting half of the encoded-byte boundary, and the one cap whose inclusive side the suite had left unpinned — the count, axis and pixel caps all carry both halves. Without it a runtime rejecting with `>=` passes every committed case while refusing an artifact `v1` calls legal. Same synthesis recipe as its sibling, one byte shorter.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": [
+    {
+      "path": "artifacts/m3-iconbutton-tonal-glyph/mask.png",
+      "from": "artifacts/m3-iconbutton-tonal-glyph/mask.base.png",
+      "padTo": 8388608
+    }
+  ]
+}

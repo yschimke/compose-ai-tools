@@ -1,0 +1,8 @@
+{
+  "title": "A duplicated id, an unkeyable record and an over-cap count at once",
+  "site": null,
+  "why": "Combined document failures are where an ordering that exists only implicitly diverges. Document-wide tokens lead, then identity: `document-too-large`, then `duplicate-id`, then `id-missing` — and within one token, the record's index in `acceptances[]`.",
+  "comparison": null,
+  "catalog": null,
+  "synthesize": []
+}

@@ -1,0 +1,28 @@
+{
+  "title": "Transparent pixels whose hidden colour differs",
+  "site": null,
+  "why": "Reading a canvas back commonly returns `0,0,0,0` for a fully transparent pixel — premultiplying by zero alpha destroys the colour and unpremultiplying cannot recover it. The match metric charges all four channels (D5 answer 6), so a decoder preserving the hidden RGB compares these two encodings of *invisible* unequal where a browser compares them equal, and the disagreement lands straight in the candidate gate. Normalised, the acceptance is `valid`; unnormalised it is `invalidated: [candidate-changed]` — so this case decides the rule rather than merely mentioning it.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {}
+  },
+  "catalog": null,
+  "synthesize": []
+}

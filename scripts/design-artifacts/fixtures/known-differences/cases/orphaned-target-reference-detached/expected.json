@@ -1,0 +1,20 @@
+{
+  "pins": [
+    "statuses",
+    "validationFailures"
+  ],
+  "statuses": {
+    "m3-iconbutton-tonal-glyph": {
+      "status": "refused",
+      "reasons": [
+        "orphaned-target"
+      ]
+    }
+  },
+  "validationFailures": [
+    {
+      "id": "m3-iconbutton-tonal-glyph",
+      "reason": "orphaned-target"
+    }
+  ]
+}

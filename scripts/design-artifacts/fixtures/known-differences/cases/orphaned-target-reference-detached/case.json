@@ -1,0 +1,50 @@
+{
+  "title": "The reference now hangs off a different preview",
+  "site": null,
+  "why": "A reference that exists but is attached elsewhere is as unreachable as one that was deleted.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": {
+    "previews": [
+      {
+        "system": "m3",
+        "id": "iconbutton-tonal__ideal__default__light",
+        "component": "IconButton/Tonal",
+        "variant": "ideal/default/light",
+        "referenceIds": [
+          "iconbutton-tonal-ideal-dark"
+        ]
+      }
+    ]
+  },
+  "synthesize": []
+}

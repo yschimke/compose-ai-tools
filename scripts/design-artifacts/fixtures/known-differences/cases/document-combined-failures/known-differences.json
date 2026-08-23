@@ -1,0 +1,877 @@
+{
+  "schema": "compose-preview-known-differences/v1",
+  "acceptances": [
+    {
+      "id": "twice",
+      "issue": "https://github.com/yschimke/m3-catalog/issues/40",
+      "system": "m3",
+      "component": "IconButton/Tonal",
+      "previewId": "iconbutton-tonal__ideal__default__light",
+      "referenceId": "iconbutton-tonal-ideal-light",
+      "variant": "ideal/default/light",
+      "mask": "mask.png",
+      "acceptedCandidate": "accepted-candidate.png",
+      "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+      "maskSha256": "7827b73582027ac016d1120aa43ec9c2599d17971608a6e9e75fa7c903e26eee",
+      "acceptedCandidateSha256": "0d37467a035a313727618eb5ef1ec544979f83ee43960493e5440b6e5188d08b",
+      "plane": {
+        "plane": "content-box",
+        "box": {
+          "x": 4,
+          "y": 4,
+          "width": 24,
+          "height": 24
+        }
+      },
+      "candidateTolerance": 2,
+      "element": {
+        "kind": "tag",
+        "tag": "iconbutton-tonal-glyph",
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        },
+        "tolerance": 0.1
+      },
+      "note": "Tonal icon button draws its glyph in onSurfaceVariant; the kit uses onSecondaryContainer.",
+      "acceptedAt": "2026-08-22T00:00:00Z"
+    },
+    {
+      "issue": "https://github.com/yschimke/m3-catalog/issues/40",
+      "system": "m3",
+      "component": "IconButton/Tonal",
+      "previewId": "iconbutton-tonal__ideal__default__light",
+      "referenceId": "iconbutton-tonal-ideal-light",
+      "variant": "ideal/default/light",
+      "mask": "mask.png",
+      "acceptedCandidate": "accepted-candidate.png",
+      "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+      "maskSha256": "7827b73582027ac016d1120aa43ec9c2599d17971608a6e9e75fa7c903e26eee",
+      "acceptedCandidateSha256": "0d37467a035a313727618eb5ef1ec544979f83ee43960493e5440b6e5188d08b",
+      "plane": {
+        "plane": "content-box",
+        "box": {
+          "x": 4,
+          "y": 4,
+          "width": 24,
+          "height": 24
+        }
+      },
+      "candidateTolerance": 2,
+      "element": {
+        "kind": "tag",
+        "tag": "iconbutton-tonal-glyph",
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        },
+        "tolerance": 0.1
+      },
+      "note": "Tonal icon button draws its glyph in onSurfaceVariant; the kit uses onSecondaryContainer.",
+      "acceptedAt": "2026-08-22T00:00:00Z"
+    },
+    {
+      "id": "twice",
+      "issue": "https://github.com/yschimke/m3-catalog/issues/40",
+      "system": "m3",
+      "component": "IconButton/Tonal",
+      "previewId": "iconbutton-tonal__ideal__default__light",
+      "referenceId": "iconbutton-tonal-ideal-light",
+      "variant": "ideal/default/light",
+      "mask": "mask.png",
+      "acceptedCandidate": "accepted-candidate.png",
+      "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+      "maskSha256": "7827b73582027ac016d1120aa43ec9c2599d17971608a6e9e75fa7c903e26eee",
+      "acceptedCandidateSha256": "0d37467a035a313727618eb5ef1ec544979f83ee43960493e5440b6e5188d08b",
+      "plane": {
+        "plane": "content-box",
+        "box": {
+          "x": 4,
+          "y": 4,
+          "width": 24,
+          "height": 24
+        }
+      },
+      "candidateTolerance": 2,
+      "element": {
+        "kind": "tag",
+        "tag": "iconbutton-tonal-glyph",
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        },
+        "tolerance": 0.1
+      },
+      "note": "Tonal icon button draws its glyph in onSurfaceVariant; the kit uses onSecondaryContainer.",
+      "acceptedAt": "2026-08-22T00:00:00Z"
+    },
+    {
+      "id": "pad-0!"
+    },
+    {
+      "id": "pad-1!"
+    },
+    {
+      "id": "pad-2!"
+    },
+    {
+      "id": "pad-3!"
+    },
+    {
+      "id": "pad-4!"
+    },
+    {
+      "id": "pad-5!"
+    },
+    {
+      "id": "pad-6!"
+    },
+    {
+      "id": "pad-7!"
+    },
+    {
+      "id": "pad-8!"
+    },
+    {
+      "id": "pad-9!"
+    },
+    {
+      "id": "pad-10!"
+    },
+    {
+      "id": "pad-11!"
+    },
+    {
+      "id": "pad-12!"
+    },
+    {
+      "id": "pad-13!"
+    },
+    {
+      "id": "pad-14!"
+    },
+    {
+      "id": "pad-15!"
+    },
+    {
+      "id": "pad-16!"
+    },
+    {
+      "id": "pad-17!"
+    },
+    {
+      "id": "pad-18!"
+    },
+    {
+      "id": "pad-19!"
+    },
+    {
+      "id": "pad-20!"
+    },
+    {
+      "id": "pad-21!"
+    },
+    {
+      "id": "pad-22!"
+    },
+    {
+      "id": "pad-23!"
+    },
+    {
+      "id": "pad-24!"
+    },
+    {
+      "id": "pad-25!"
+    },
+    {
+      "id": "pad-26!"
+    },
+    {
+      "id": "pad-27!"
+    },
+    {
+      "id": "pad-28!"
+    },
+    {
+      "id": "pad-29!"
+    },
+    {
+      "id": "pad-30!"
+    },
+    {
+      "id": "pad-31!"
+    },
+    {
+      "id": "pad-32!"
+    },
+    {
+      "id": "pad-33!"
+    },
+    {
+      "id": "pad-34!"
+    },
+    {
+      "id": "pad-35!"
+    },
+    {
+      "id": "pad-36!"
+    },
+    {
+      "id": "pad-37!"
+    },
+    {
+      "id": "pad-38!"
+    },
+    {
+      "id": "pad-39!"
+    },
+    {
+      "id": "pad-40!"
+    },
+    {
+      "id": "pad-41!"
+    },
+    {
+      "id": "pad-42!"
+    },
+    {
+      "id": "pad-43!"
+    },
+    {
+      "id": "pad-44!"
+    },
+    {
+      "id": "pad-45!"
+    },
+    {
+      "id": "pad-46!"
+    },
+    {
+      "id": "pad-47!"
+    },
+    {
+      "id": "pad-48!"
+    },
+    {
+      "id": "pad-49!"
+    },
+    {
+      "id": "pad-50!"
+    },
+    {
+      "id": "pad-51!"
+    },
+    {
+      "id": "pad-52!"
+    },
+    {
+      "id": "pad-53!"
+    },
+    {
+      "id": "pad-54!"
+    },
+    {
+      "id": "pad-55!"
+    },
+    {
+      "id": "pad-56!"
+    },
+    {
+      "id": "pad-57!"
+    },
+    {
+      "id": "pad-58!"
+    },
+    {
+      "id": "pad-59!"
+    },
+    {
+      "id": "pad-60!"
+    },
+    {
+      "id": "pad-61!"
+    },
+    {
+      "id": "pad-62!"
+    },
+    {
+      "id": "pad-63!"
+    },
+    {
+      "id": "pad-64!"
+    },
+    {
+      "id": "pad-65!"
+    },
+    {
+      "id": "pad-66!"
+    },
+    {
+      "id": "pad-67!"
+    },
+    {
+      "id": "pad-68!"
+    },
+    {
+      "id": "pad-69!"
+    },
+    {
+      "id": "pad-70!"
+    },
+    {
+      "id": "pad-71!"
+    },
+    {
+      "id": "pad-72!"
+    },
+    {
+      "id": "pad-73!"
+    },
+    {
+      "id": "pad-74!"
+    },
+    {
+      "id": "pad-75!"
+    },
+    {
+      "id": "pad-76!"
+    },
+    {
+      "id": "pad-77!"
+    },
+    {
+      "id": "pad-78!"
+    },
+    {
+      "id": "pad-79!"
+    },
+    {
+      "id": "pad-80!"
+    },
+    {
+      "id": "pad-81!"
+    },
+    {
+      "id": "pad-82!"
+    },
+    {
+      "id": "pad-83!"
+    },
+    {
+      "id": "pad-84!"
+    },
+    {
+      "id": "pad-85!"
+    },
+    {
+      "id": "pad-86!"
+    },
+    {
+      "id": "pad-87!"
+    },
+    {
+      "id": "pad-88!"
+    },
+    {
+      "id": "pad-89!"
+    },
+    {
+      "id": "pad-90!"
+    },
+    {
+      "id": "pad-91!"
+    },
+    {
+      "id": "pad-92!"
+    },
+    {
+      "id": "pad-93!"
+    },
+    {
+      "id": "pad-94!"
+    },
+    {
+      "id": "pad-95!"
+    },
+    {
+      "id": "pad-96!"
+    },
+    {
+      "id": "pad-97!"
+    },
+    {
+      "id": "pad-98!"
+    },
+    {
+      "id": "pad-99!"
+    },
+    {
+      "id": "pad-100!"
+    },
+    {
+      "id": "pad-101!"
+    },
+    {
+      "id": "pad-102!"
+    },
+    {
+      "id": "pad-103!"
+    },
+    {
+      "id": "pad-104!"
+    },
+    {
+      "id": "pad-105!"
+    },
+    {
+      "id": "pad-106!"
+    },
+    {
+      "id": "pad-107!"
+    },
+    {
+      "id": "pad-108!"
+    },
+    {
+      "id": "pad-109!"
+    },
+    {
+      "id": "pad-110!"
+    },
+    {
+      "id": "pad-111!"
+    },
+    {
+      "id": "pad-112!"
+    },
+    {
+      "id": "pad-113!"
+    },
+    {
+      "id": "pad-114!"
+    },
+    {
+      "id": "pad-115!"
+    },
+    {
+      "id": "pad-116!"
+    },
+    {
+      "id": "pad-117!"
+    },
+    {
+      "id": "pad-118!"
+    },
+    {
+      "id": "pad-119!"
+    },
+    {
+      "id": "pad-120!"
+    },
+    {
+      "id": "pad-121!"
+    },
+    {
+      "id": "pad-122!"
+    },
+    {
+      "id": "pad-123!"
+    },
+    {
+      "id": "pad-124!"
+    },
+    {
+      "id": "pad-125!"
+    },
+    {
+      "id": "pad-126!"
+    },
+    {
+      "id": "pad-127!"
+    },
+    {
+      "id": "pad-128!"
+    },
+    {
+      "id": "pad-129!"
+    },
+    {
+      "id": "pad-130!"
+    },
+    {
+      "id": "pad-131!"
+    },
+    {
+      "id": "pad-132!"
+    },
+    {
+      "id": "pad-133!"
+    },
+    {
+      "id": "pad-134!"
+    },
+    {
+      "id": "pad-135!"
+    },
+    {
+      "id": "pad-136!"
+    },
+    {
+      "id": "pad-137!"
+    },
+    {
+      "id": "pad-138!"
+    },
+    {
+      "id": "pad-139!"
+    },
+    {
+      "id": "pad-140!"
+    },
+    {
+      "id": "pad-141!"
+    },
+    {
+      "id": "pad-142!"
+    },
+    {
+      "id": "pad-143!"
+    },
+    {
+      "id": "pad-144!"
+    },
+    {
+      "id": "pad-145!"
+    },
+    {
+      "id": "pad-146!"
+    },
+    {
+      "id": "pad-147!"
+    },
+    {
+      "id": "pad-148!"
+    },
+    {
+      "id": "pad-149!"
+    },
+    {
+      "id": "pad-150!"
+    },
+    {
+      "id": "pad-151!"
+    },
+    {
+      "id": "pad-152!"
+    },
+    {
+      "id": "pad-153!"
+    },
+    {
+      "id": "pad-154!"
+    },
+    {
+      "id": "pad-155!"
+    },
+    {
+      "id": "pad-156!"
+    },
+    {
+      "id": "pad-157!"
+    },
+    {
+      "id": "pad-158!"
+    },
+    {
+      "id": "pad-159!"
+    },
+    {
+      "id": "pad-160!"
+    },
+    {
+      "id": "pad-161!"
+    },
+    {
+      "id": "pad-162!"
+    },
+    {
+      "id": "pad-163!"
+    },
+    {
+      "id": "pad-164!"
+    },
+    {
+      "id": "pad-165!"
+    },
+    {
+      "id": "pad-166!"
+    },
+    {
+      "id": "pad-167!"
+    },
+    {
+      "id": "pad-168!"
+    },
+    {
+      "id": "pad-169!"
+    },
+    {
+      "id": "pad-170!"
+    },
+    {
+      "id": "pad-171!"
+    },
+    {
+      "id": "pad-172!"
+    },
+    {
+      "id": "pad-173!"
+    },
+    {
+      "id": "pad-174!"
+    },
+    {
+      "id": "pad-175!"
+    },
+    {
+      "id": "pad-176!"
+    },
+    {
+      "id": "pad-177!"
+    },
+    {
+      "id": "pad-178!"
+    },
+    {
+      "id": "pad-179!"
+    },
+    {
+      "id": "pad-180!"
+    },
+    {
+      "id": "pad-181!"
+    },
+    {
+      "id": "pad-182!"
+    },
+    {
+      "id": "pad-183!"
+    },
+    {
+      "id": "pad-184!"
+    },
+    {
+      "id": "pad-185!"
+    },
+    {
+      "id": "pad-186!"
+    },
+    {
+      "id": "pad-187!"
+    },
+    {
+      "id": "pad-188!"
+    },
+    {
+      "id": "pad-189!"
+    },
+    {
+      "id": "pad-190!"
+    },
+    {
+      "id": "pad-191!"
+    },
+    {
+      "id": "pad-192!"
+    },
+    {
+      "id": "pad-193!"
+    },
+    {
+      "id": "pad-194!"
+    },
+    {
+      "id": "pad-195!"
+    },
+    {
+      "id": "pad-196!"
+    },
+    {
+      "id": "pad-197!"
+    },
+    {
+      "id": "pad-198!"
+    },
+    {
+      "id": "pad-199!"
+    },
+    {
+      "id": "pad-200!"
+    },
+    {
+      "id": "pad-201!"
+    },
+    {
+      "id": "pad-202!"
+    },
+    {
+      "id": "pad-203!"
+    },
+    {
+      "id": "pad-204!"
+    },
+    {
+      "id": "pad-205!"
+    },
+    {
+      "id": "pad-206!"
+    },
+    {
+      "id": "pad-207!"
+    },
+    {
+      "id": "pad-208!"
+    },
+    {
+      "id": "pad-209!"
+    },
+    {
+      "id": "pad-210!"
+    },
+    {
+      "id": "pad-211!"
+    },
+    {
+      "id": "pad-212!"
+    },
+    {
+      "id": "pad-213!"
+    },
+    {
+      "id": "pad-214!"
+    },
+    {
+      "id": "pad-215!"
+    },
+    {
+      "id": "pad-216!"
+    },
+    {
+      "id": "pad-217!"
+    },
+    {
+      "id": "pad-218!"
+    },
+    {
+      "id": "pad-219!"
+    },
+    {
+      "id": "pad-220!"
+    },
+    {
+      "id": "pad-221!"
+    },
+    {
+      "id": "pad-222!"
+    },
+    {
+      "id": "pad-223!"
+    },
+    {
+      "id": "pad-224!"
+    },
+    {
+      "id": "pad-225!"
+    },
+    {
+      "id": "pad-226!"
+    },
+    {
+      "id": "pad-227!"
+    },
+    {
+      "id": "pad-228!"
+    },
+    {
+      "id": "pad-229!"
+    },
+    {
+      "id": "pad-230!"
+    },
+    {
+      "id": "pad-231!"
+    },
+    {
+      "id": "pad-232!"
+    },
+    {
+      "id": "pad-233!"
+    },
+    {
+      "id": "pad-234!"
+    },
+    {
+      "id": "pad-235!"
+    },
+    {
+      "id": "pad-236!"
+    },
+    {
+      "id": "pad-237!"
+    },
+    {
+      "id": "pad-238!"
+    },
+    {
+      "id": "pad-239!"
+    },
+    {
+      "id": "pad-240!"
+    },
+    {
+      "id": "pad-241!"
+    },
+    {
+      "id": "pad-242!"
+    },
+    {
+      "id": "pad-243!"
+    },
+    {
+      "id": "pad-244!"
+    },
+    {
+      "id": "pad-245!"
+    },
+    {
+      "id": "pad-246!"
+    },
+    {
+      "id": "pad-247!"
+    },
+    {
+      "id": "pad-248!"
+    },
+    {
+      "id": "pad-249!"
+    },
+    {
+      "id": "pad-250!"
+    },
+    {
+      "id": "pad-251!"
+    },
+    {
+      "id": "pad-252!"
+    },
+    {
+      "id": "pad-253!"
+    }
+  ]
+}

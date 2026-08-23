@@ -1,0 +1,42 @@
+{
+  "schema": "compose-preview-known-differences/v1",
+  "acceptances": [
+    {
+      "id": "m3-checkbox-checked-ring",
+      "issue": "https://github.com/yschimke/m3-catalog/issues/87",
+      "system": "m3",
+      "component": "Checkbox/Checked",
+      "previewId": "checkbox-checked__ideal__default__light",
+      "referenceId": "checkbox-checked-ideal-light",
+      "variant": "ideal/default/light",
+      "mask": "mask.png",
+      "acceptedCandidate": "accepted-candidate.png",
+      "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+      "maskSha256": "f652bf342f9f74f5f1bd0dc7e35d646e883729003c9dbdf52552ca91d280f015",
+      "acceptedCandidateSha256": "675f2a7681d3a4797ffa5ccb7d7b921ca3827d0fbd3f268bdec8cc3e5d4378e8",
+      "plane": {
+        "plane": "content-box",
+        "box": {
+          "x": 2,
+          "y": 2,
+          "width": 24,
+          "height": 24
+        }
+      },
+      "candidateTolerance": 2,
+      "element": {
+        "kind": "tag",
+        "tag": "checkbox-checked-box",
+        "bounds": {
+          "x": 2,
+          "y": 2,
+          "width": 20,
+          "height": 20
+        },
+        "tolerance": 0.1
+      },
+      "note": "Checkbox draws its box with 2dp padding where the kit uses 4dp.",
+      "acceptedAt": "2026-08-22T00:00:00Z"
+    }
+  ]
+}

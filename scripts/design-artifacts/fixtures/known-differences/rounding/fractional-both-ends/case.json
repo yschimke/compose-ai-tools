@@ -1,0 +1,10 @@
+{
+  "title": "Fractional at both ends",
+  "why": "The case that separates outward rounding from inward: `ceil` the origin and `floor` the far edge and this box becomes `{x: 9, y: 3, width: 6, height: 2}` — half the height, and shifted.",
+  "box": {
+    "x": 8.5,
+    "y": 2.25,
+    "width": 7.25,
+    "height": 3.5
+  }
+}

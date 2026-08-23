@@ -1,0 +1,38 @@
+{
+  "title": "An `element.tolerance` just past the ceiling, rounded back inside it",
+  "site": null,
+  "why": "`element.tolerance` is the one field `v1` bounds without requiring an integer, so the integer token rule cannot carry it — and the same rounding hole is open: `0.25000000000000000001` is `0.25` by the time a range check can look, so this engine gates a record a lossless validator refuses as over the declared maximum. Decided as an exact decimal, without ever forming the double. A value that is *already* out of range after parsing — `0.3` — keeps its precise `tolerance-out-of-range`, which names the record; only the hidden case is traded up to a document refusal, and only because nothing else can see it.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

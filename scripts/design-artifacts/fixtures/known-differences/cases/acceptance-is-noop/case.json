@@ -1,0 +1,38 @@
+{
+  "title": "A stored candidate that already agrees with the reference",
+  "site": null,
+  "why": "Row 3's guard is not redundant: the resolution metric is permitted to be tolerant, so an unchanged candidate can agree with `accepted-candidate.png` **and** with the reference whenever the accepted delta was itself within tolerance. Without the check such a record is simply `valid` and its mask joins the suppression union, hiding whatever later appears in that region on the strength of an acceptance that never accepted anything. §7 records that mask authoring is currently manual, so 'authoring rejects it' describes a step that does not yet exist — the evaluator checks it directly.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

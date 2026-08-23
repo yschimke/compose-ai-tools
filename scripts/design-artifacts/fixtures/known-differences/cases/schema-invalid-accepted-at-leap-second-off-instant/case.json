@@ -1,0 +1,38 @@
+{
+  "title": "A second `60` away from the leap-second instant",
+  "site": null,
+  "why": "RFC 3339 admits `60` for exactly one instant — `23:59:60` **UTC** — so `2026-01-01T12:00:60Z` matches the grammar and is not a date-time, and a strict consumer refuses a record this evaluator would otherwise gate. Deliberately *not* a check that a leap second was really inserted then: that needs the IERS table, which grows by announcement and cannot live in a committed contract. This asks only whether the instant is one where a leap second could be inserted, which is a property of the clock — so every real leap second stays legal, including one announced after this was written.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

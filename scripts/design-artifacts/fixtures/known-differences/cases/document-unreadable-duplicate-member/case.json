@@ -1,0 +1,8 @@
+{
+  "title": "An acceptance repeating a member name",
+  "site": null,
+  "why": "RFC 8259 leaves a repeated member name undefined and runtimes genuinely differ: V8 keeps the last value, several keep the first, and strict parsers refuse the input. So this record addresses the `safe` artifact directory under a JavaScript engine and `..` under one that keeps the first — from byte-identical committed input, which is the single outcome a contract two engines are written against cannot tolerate. The document is refused rather than disambiguated, because there is no spelling of this file that both engines would agree on. `document-unreadable` for the reason the unknown document property gets it: there is no record to attribute it to. An engine that trusts its deserializer walks straight past this one — by the time there is an object, the evidence is gone.",
+  "comparison": null,
+  "catalog": null,
+  "synthesize": []
+}

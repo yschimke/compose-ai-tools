@@ -1,0 +1,38 @@
+{
+  "title": "A default preview's empty `variant`",
+  "site": null,
+  "why": "The locator contract settles this: **`variant` is always present and may be empty** — `ServeIssueReport.variantFor` returns `\"\"` for a preview id carrying no `__` axes, while every *other* field emptied means the record no longer names one component. Refusing a blank variant here would make every default preview's acceptance inexpressible, which is exactly the class of defect §2's blank-vs-absent rules exist to prevent.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

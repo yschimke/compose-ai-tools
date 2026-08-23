@@ -68,7 +68,42 @@ Each exists because two engines would otherwise diverge on identical bytes.
 - **Artifact paths are contained *and* portable**: `[A-Za-z0-9._-]` segments joined by `/`.
   `isSafeRelativePath` rewrites `\` to `/` before splitting, so `a\b.png` is checked as two segments
   and opened as one filename on POSIX; `#` and `?` become URL syntax when the host fetches rather
-  than reads.
+  than reads. **Segments cap at 255 bytes** — the component limit on ext4, APFS and NTFS alike — so a
+  256-character `id` cannot be checked out at all while a URL-backed consumer evaluates it happily.
+  Per segment, never per path: `PATH_MAX` belongs to the reader's working directory, so a total-length
+  rule would make identical bytes legal in one checkout and refused in another.
+- **Integer-valued fields are checked as written.** A box's `x`/`y`/`width`/`height` and an
+  acceptance's `candidateTolerance` must be canonical JSON integers — no fraction, no exponent —
+  because `9007199254740991.1` is already `…991`, and `2.00000000000000000001` already `2`, by the
+  time `isSafeInteger` can look; no bound closes that, since at every magnitude some fractional
+  literal is nearer an integer than the spacing of doubles there. Scoped by containing object rather
+  than by member name (an unknown property called `x` is `schema-invalid`, not a document refusal),
+  and firing only on tokens that *round onto* an integer, since a still-fractional value is already
+  caught with better attribution.
+- **The `IDAT` run is one zlib datastream, consumed whole.** An inflater stops at the end of the
+  first stream, so a second one can ride inside a permitted chunk with a correct length and CRC.
+- **A second `60` is legal only at `23:59:60` UTC**, offset applied first — not a check that a leap
+  second was really inserted then, which would need the IERS table. Reverses an earlier decline: that
+  was aimed at the table-shaped version of the finding, and this one needs no table.
+- **Boundaries are computed exactly.** The resampler's footprints are integers (scale by the target
+  dimension) and the element gate compares `displacement / min(width, height)` against the tolerance —
+  `0.145 × 200` is `28.999999999999996`, and a `4 → 3` resample puts a true `0.5` at
+  `0.49999999999999994`, so both boundaries fell the wrong way in binary.
+- **`IEND` must end the file.** Bytes after it bypass the allowlist, the placement rules and every
+  CRC — a decoder that stops there stops checking there — so a second `IHDR` or an `acTL` rides along
+  to a gate verdict here and a `decode-failed` elsewhere. Reverses an earlier "tolerated, nothing
+  reads them" note; *nothing reads them* was the problem. The suite's oversize artifacts are padded
+  inside the compressed stream instead (empty stored deflate blocks, zero-length `IDAT` chunks).
+- **`element.tolerance`'s range is checked on the token too**, as an exact decimal — it is the one
+  bounded field that is not an integer, and `0.25000000000000000001` is `0.25` after parsing. Both
+  endpoints are reachable from the wrong side by an approximation of that rule, so both are pinned:
+  a truncated mantissa must ask whether a *discarded* digit was non-zero (`0.25` plus a hundred
+  zeroes is the maximum, not past it), and a magnitude below any representable scale keeps its sign
+  (`-1e-999999` is below a minimum of `0`, though it parses to `-0`).
+- **A repeated JSON member name refuses the document.** RFC 8259 leaves it undefined and runtimes
+  differ — last value, first value, or a hard refusal — so `{"id":"safe","id":".."}` addresses two
+  different artifact directories from one committed file. Detected **on the text**: by the time there
+  is an object, the evidence is gone.
 - **Hashes compare normalised — but only the *served* one may be spelled loosely.**
   `ServeDesignReferenceStore` lowercases a reference hash to validate it and then serves the original
   spelling, so raw string inequality reports `reference-changed` for an unchanged reference; both
@@ -96,6 +131,54 @@ Each exists because two engines would otherwise diverge on identical bytes.
   defaults and passes whether or not the field was ever serialised. Assert against raw JSON.
 - The fixture set is consumed by three runtimes. Keep it language-neutral: JSON plus PNG bytes plus an
   expected-result JSON, no Kotlin or JS harness assumptions baked into the directory shape.
+
+## What landed, and the seam with 05
+
+***Delivered.*** The contract's rules are
+[`scripts/design-artifacts/known-differences.mjs`](../../../scripts/design-artifacts/known-differences.mjs),
+the document shape is
+[`known-differences.schema.json`](../../../scripts/design-artifacts/known-differences.schema.json)
+(shape only — every verdict-deciding rule is prose in §4 and code in the module, because none of
+them is expressible in JSON Schema), the fixtures are
+[`fixtures/known-differences/`](../../../scripts/design-artifacts/fixtures/known-differences/), and
+the runner is `known-differences.test.mjs` in the design-artifacts driver's `node --test` job.
+[`png-lite.mjs`](../../../scripts/design-artifacts/png-lite.mjs) is the bounded header preflight and
+the deliberately-malformed-file writer the fixtures need; `pngjs` is a driver dependency and is not
+what either job wants, since a library decode allocates the oversized raster to measure it and
+refuses to write the APNG, palette mask and lying header the suite is worthless without.
+
+**The seam.** This batch pins every *verdict*: the refusals, the five gates, the resolution test, the
+status precedence, the one entry per acceptance in `statuses`, and the exact ordering of
+`validationFailures`. **Not** an ordering for `statuses` — §4 defines it as an unordered map and
+gives it no ordering rule, so an implementer who read an ordering into this summary would build a
+wire-order requirement other runtimes cannot preserve. It does not compute
+`raw` / `accepted` / `unaccepted` — that is 05's separated-plane scoring path, and inventing numbers
+here would pin a scorer nobody has written. The seam is expressed in the fixtures rather than left to
+be remembered: each `expected.json` is a **partial** pin whose `pins` array names the keys a runner
+must check, so 05 adds score keys to these same cases instead of authoring a second tree. For the
+same reason the gate cases take their canonical-plane rasters as *inputs*, already resampled, and the
+resampler is pinned by a group of its own — a kernel divergence must fail as a kernel divergence
+rather than as a wrong verdict in sixty gate cases at once.
+
+**Two things `v1` gained while being written down**, both because the contract as drafted was not
+implementable without them:
+
+- **`out-of-scope` is a fifth status.** `statuses` carries one entry per member of `acceptances[]`,
+  and a comparison reaches only the acceptances whose entire recorded scope matches — #42's three
+  share one document and no comparison reaches more than one. Without a token for "well-formed, but
+  not about this comparison" an engine must invent a status, omit the entry, or misreport it as
+  `valid`. Refusal outranks it, so the refusal set stays comparison-independent.
+- **A per-record `reasons` list is deduplicated.** A record has two artifacts and several tokens are
+  shared between them, so both headers unreadable is one `header-invalid`, not two;
+  `validationFailures` carries one entry per `(record, reason)` **pair**. The two hash tokens are
+  distinct precisely so that failure *can* be told apart per artifact.
+
+**Still not covered here, and named so it is not mistaken for done.** The Kotlin runner is batch 05's:
+the fixture tree is language-neutral and `ServeParityIssuesStoreTest` is the worked example of a
+Kotlin test loading one of these directly, but nothing in `serve` reads a known-differences document
+yet. The stage table's `tag index` row also needs the server projector's own Kotlin tests to consume
+these payloads — pinning the artifact without running the code that produces it proves nothing about
+the code that produces it.
 
 ## Done when
 

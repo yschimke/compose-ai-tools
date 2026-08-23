@@ -1,0 +1,8 @@
+{
+  "title": "Two pixels into four",
+  "why": "Upscaling by an integer reduces to nearest-neighbour under the same arithmetic, so the three cases an implementation is most likely to special-case — integer downscale, fractional downscale, upscale — are all one rule here.",
+  "target": {
+    "width": 4,
+    "height": 1
+  }
+}

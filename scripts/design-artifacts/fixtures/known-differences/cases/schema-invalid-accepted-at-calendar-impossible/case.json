@@ -1,0 +1,38 @@
+{
+  "title": "An `acceptedAt` whose fields are each legal and whose date does not exist",
+  "site": null,
+  "why": "Its sibling `schema-invalid-accepted-at-impossible-date` puts every field out of range at once, so an engine that merely bounds each field passes it — and then accepts `2026-02-30`, which is the shape a real off-by-one produces. Every field here is individually legal; only the calendar rejects it, which is why the check is a round trip through the date rather than four range tests.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

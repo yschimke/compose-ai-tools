@@ -1,0 +1,28 @@
+{
+  "title": "One acceptance survives while its sibling is invalidated",
+  "site": null,
+  "why": "Scoring runs against the union of **survivors**, and 'survivor' means status `valid` rather than 'reached the end of the gates'. A single aggregate status cannot express this, so both engines could emit the same summary while disagreeing about which mask survived.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 0,
+        "y": 0,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {}
+  },
+  "catalog": null,
+  "synthesize": []
+}

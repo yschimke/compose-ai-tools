@@ -1,0 +1,28 @@
+{
+  "title": "A canonical reference whose dimensions are not the recorded plane's",
+  "site": null,
+  "why": "The resolution test compares the candidate against the **reference** as a second full-plane raster, and only the first of the two was ever measured against the mask. So a reference of different dimensions was indexed with its own stride and could agree at every masked coordinate while holding different pixels there: here a one-pixel mask lets a 2-wide candidate 'resolve' against a 3-wide reference that is not the recorded plane at all. `resolved` closes an issue, which makes it the worst verdict to reach by inferring a plane from a stride — the acceptance is `invalidated` by its candidate instead.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 0,
+        "y": 0,
+        "width": 2,
+        "height": 1
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {}
+  },
+  "catalog": null,
+  "synthesize": []
+}

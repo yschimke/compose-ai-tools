@@ -1,0 +1,25 @@
+{
+  "pins": [
+    "statuses",
+    "validationFailures"
+  ],
+  "statuses": {
+    "m3-iconbutton-tonal-glyph": {
+      "status": "refused",
+      "reasons": [
+        "header-invalid",
+        "animated-png"
+      ]
+    }
+  },
+  "validationFailures": [
+    {
+      "id": "m3-iconbutton-tonal-glyph",
+      "reason": "header-invalid"
+    },
+    {
+      "id": "m3-iconbutton-tonal-glyph",
+      "reason": "animated-png"
+    }
+  ]
+}

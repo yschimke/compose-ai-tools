@@ -1,0 +1,28 @@
+{
+  "title": "m3-catalog#42 — Elevated shadow level, three components on one issue",
+  "site": "yschimke/m3-catalog#42 (Button/Elevated, Card/Elevated, ToggleButton/Elevated)",
+  "why": "Three of the six sites at once, and the case the closure rule is built on: the tracking issue is mandatory per acceptance but not unique to one. A comparison reaches exactly one of the three, so the other two are `out-of-scope` — and the issue is not closable while any of them is unresolved.",
+  "comparison": {
+    "system": "m3",
+    "component": "Button/Elevated",
+    "previewId": "button-elevated__ideal__default__light",
+    "referenceId": "button-elevated-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 0,
+        "y": 0,
+        "width": 32,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {}
+  },
+  "catalog": null,
+  "synthesize": []
+}

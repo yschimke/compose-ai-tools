@@ -1,0 +1,20 @@
+{
+  "pins": [
+    "statuses",
+    "validationFailures"
+  ],
+  "statuses": {
+    "m3/glyph": {
+      "status": "refused",
+      "reasons": [
+        "id-not-safe"
+      ]
+    }
+  },
+  "validationFailures": [
+    {
+      "id": "m3/glyph",
+      "reason": "id-not-safe"
+    }
+  ]
+}

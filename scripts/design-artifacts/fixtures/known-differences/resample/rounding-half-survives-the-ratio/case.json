@@ -1,0 +1,8 @@
+{
+  "title": "An exact half that floating-point footprints lose",
+  "why": "`rounding-exactly-half` pins half-up on a ratio where double arithmetic happens to be exact, so it cannot catch an implementation whose *footprints* are floats. Four columns into three puts destination 0 on `(0 × 3 + 2 × 1) / 4 = 0.5` — one half-up, to `1`. Computed with floating footprints the same quantity is `0.49999999999999994`, which rounds to `0`: the specification says half-up and the implementation delivers half-down, from one unlucky ratio and a difference of a single unit. The fix is exact integer footprints, and this is the case that holds them to it. Every number here is derivable by hand, which is the point — scale by the target width and the overlaps are integers.",
+  "target": {
+    "width": 3,
+    "height": 1
+  }
+}

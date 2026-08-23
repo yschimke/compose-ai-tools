@@ -1,0 +1,38 @@
+{
+  "title": "An `id` that is a canonical integer",
+  "site": null,
+  "why": "The same family of map-key hazard as `__proto__`: JavaScript orders canonical array-index keys ahead of every other key and numerically among themselves, so a document listing `10` before `2` serialises them the other way round while an ordered-map consumer keeps the input order. `statuses` is a map and this contract promises it no ordering, so nothing is *wrong* today — but the `id` is doing double duty as an identifier and a key, and a key whose behaviour depends on the host language's property semantics is not one this schema should mint. Only canonical integers are affected; `2024-fix` is unaffected.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

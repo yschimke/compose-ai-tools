@@ -1,0 +1,38 @@
+{
+  "title": "An artifact carrying a chunk after `IEND`",
+  "site": null,
+  "why": "`IEND` ends the PNG datastream, so it must end the file. A decoder that stops at `IEND` simply never looks at what follows — which means the allowlist, the placement rules and every CRC stop applying one byte past where they were looking, and an artifact can carry a second `IHDR`, an `acTL`, or a kilobyte of anything at all and still reach a gate verdict here while a strict decoder refuses the datastream. The trailing chunk in this fixture is *itself* well-formed, CRC and all: position is the only thing wrong with it.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

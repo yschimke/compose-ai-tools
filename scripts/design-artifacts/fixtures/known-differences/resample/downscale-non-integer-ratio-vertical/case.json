@@ -1,0 +1,8 @@
+{
+  "title": "Three rows into two — the same partial footprints, on the other axis",
+  "why": "Its horizontal sibling is one row tall, as is every other non-integer case here, and the only multi-row fixture is an integer 2×2→1×1. So a **separable** implementation that applies the area kernel across x and nearest-neighbour down y passes the entire group while producing different canonical pixels for any real resize. The arithmetic is the mirror image — row 0 covers `[0, 1.5)` for `(0 × 1 + 90 × 0.5) / 1.5 = 30`, row 1 covers `[1.5, 3)` for `(90 × 0.5 + 240 × 1) / 1.5 = 190` — which is the point: the kernel is one rule over an area, not a rule about columns.",
+  "target": {
+    "width": 1,
+    "height": 2
+  }
+}

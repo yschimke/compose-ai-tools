@@ -1,0 +1,8 @@
+{
+  "title": "Three by three into two by two — a genuinely two-dimensional footprint",
+  "why": "Both one-dimensional cases can still be satisfied by running a 1-D kernel twice with a rounding step in between, and by any implementation whose axes happen not to interact. Here every destination covers a 1.5 × 1.5 source rectangle, so all four source pixels under it carry a *product* of two partial weights — the `0.25` corner term exists on no other fixture. Values chosen so each destination is an exact integer: this case is about the geometry, and the rounding rule is pinned by cases of its own.",
+  "target": {
+    "width": 2,
+    "height": 2
+  }
+}

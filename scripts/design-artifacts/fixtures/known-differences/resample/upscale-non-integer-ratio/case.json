@@ -1,0 +1,8 @@
+{
+  "title": "Two pixels into three — the upscale that does not reduce to nearest-neighbour",
+  "why": "Its sibling above cannot catch the shortcut it warns about: at an integer ratio the area average *is* nearest-neighbour, so an engine using the kernel for downscales and copying the nearest source pixel for every upscale passes it. At 2 → 3 the middle destination covers `[2/3, 4/3)` and takes a third of each source pixel — `(30 × 1/3 + 210 × 1/3) / (2/3) = 120` — while nearest-neighbour reads its centre at `1.0` and answers `210`. The outer two destinations sit wholly inside one source pixel each and agree under both readings, which is what makes the middle one the whole test.",
+  "target": {
+    "width": 3,
+    "height": 1
+  }
+}
