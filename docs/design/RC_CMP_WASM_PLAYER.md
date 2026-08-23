@@ -686,6 +686,26 @@ The remote-m3 replacement corpus is guarded in CI, not recorded as a one-off man
   whichever machine ran the measurement. A frame that is still blank at the timeout fails the row
   outright: `the player drew nothing in … ms while the baked reference has ink`. A missing render is
   reported as a missing render, never as a parity delta.
+- **The lane's wall clock is pinned, because a document can animate without an animation.**
+  `remote-m3`'s indeterminate circular progress builds its sweep from a float expression over
+  `CONTINUOUS_SEC`, which the player loads from the wall clock — so the pose is chosen by the second
+  the render started at. It is not caught mid-motion: the frame holds still for at least 7 s
+  afterwards, so it converges and the settle loop reports nothing wrong. It is just a *different*
+  stable frame every load. That is what made this one row score 0.05%–0.94% across five pull
+  requests that never touched a render path, against a 0.25 pp gate
+  ([#4431](https://github.com/yschimke/compose-ai-tools/issues/4431), and #3558 before it).
+  [`rc-clock.mjs`](../../scripts/design-artifacts/rc-clock.mjs) freezes `Date` at
+  **2024-01-01T10:10:00Z** — the instant `renderers/android`'s `PreviewClock` pins Android renders
+  to — through Playwright's `clock.setFixedTime`, which leaves `setTimeout`,
+  `requestAnimationFrame` and `performance.now()` running, so the player still boots, paces and
+  settles exactly as before. Both browser lanes are pinned; the TypeScript one had the same swing
+  (0.19% ↔ 0.67% between two runs of one commit). Measured over the published 51-row corpus: two
+  runs of the same commit moved **one** row unpinned (0.71% → 0.21%, 0.50 pp — twice the gate) and
+  **none** pinned, and the row settled at **0.0019%**, because pinning both lanes to 10:10 makes the
+  CMP/Wasm sweep agree with the baked Android one. Recorded per run as `cmpWasm.pinnedClock` in
+  `rc-compare-summary.json`; guarded by
+  [`rc-cmp-wasm-clock-pin.test.mjs`](../../scripts/design-artifacts/rc-cmp-wasm-clock-pin.test.mjs).
+  See [`docs/design/evidence/rc-parity-clock-pin/`](evidence/rc-parity-clock-pin/README.md).
 - **The readiness signal is deliberately late, and only for hosts that can flash.** After its three
   frames the player holds `ready` back for another 1.5 s, so viewer.js's `revealRcWasm` cannot swap
   the snapshot for a surface the compositor has not presented. `?handoffDelayMs=0` drops that tail

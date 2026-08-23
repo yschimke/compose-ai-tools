@@ -45,6 +45,7 @@ import { chromium } from "playwright";
 import { renderRcCompareHtml } from "./render-rc-compare-html.mjs";
 import { CHROMIUM_LAUNCH_ARGS } from "./rc-chromium.mjs";
 import { settledScreenshot } from "./rc-settle.mjs";
+import { PARITY_CLOCK_ISO, pinWallClock } from "./rc-clock.mjs";
 import {
   applyCmpWasmPerformanceBudgets,
   evaluateCmpWasmGate,
@@ -562,6 +563,9 @@ const browser = await chromium.launch({
   args: [...CHROMIUM_LAUNCH_ARGS],
 });
 const page = await browser.newContext({ deviceScaleFactor: 1 }).then((c) => c.newPage());
+// The TypeScript player reads the same clock the Wasm one does, so the JS lane is pinned to the
+// same instant rather than left to drift on its own (#4431).
+await pinWallClock(page);
 const cmpWasmServer = CMP_WASM ? await startCmpWasmServer(CMP_WASM) : null;
 const cmpWasmPages = new Map();
 /**
@@ -575,6 +579,11 @@ async function cmpWasmPageFor(density) {
   if (cmpWasmPages.has(density)) return cmpWasmPages.get(density);
   const context = await browser.newContext({ deviceScaleFactor: density });
   const page = await context.newPage();
+  // Before the first navigation, which is the only point a fake `Date` can be installed from. A
+  // document that reads the clock — `remote-m3`'s indeterminate progress sweep is built over
+  // `CONTINUOUS_SEC` — otherwise draws a different pose every run and scores as parity movement on
+  // pull requests that cannot have caused it (#4431). See rc-clock.mjs.
+  await pinWallClock(page);
   const consoleErrors = [];
   page.on("console", (message) => {
     if (message.type() === "error") consoleErrors.push(message.text());
@@ -848,6 +857,10 @@ fs.writeFileSync(
                 : null;
             })(),
             ...laneSplitFor(rows, "cmpWasm"),
+            // The instant every capture in this lane was taken at. Recorded because it is what
+            // makes the column reproducible: a document that reads the clock draws a different
+            // pose on every load otherwise (#4431, rc-clock.mjs).
+            pinnedClock: PARITY_CLOCK_ISO,
             firstFrame: (() => {
               const summarize = (kind) => {
                 const values = rows
