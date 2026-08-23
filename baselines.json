@@ -1476,7 +1476,7 @@
     "functionName": "SharedElementDebugMatchedAnimatedPreview",
     "module": "samples:android",
     "renderBasename": "SharedElementDebugMatchedAnimatedPreview_Shared_Element_Debug_Matched-6e9ea8cc.gif",
-    "sha256": "33e357fd298aabae690ff367c11f799503e31417460e5ddee2297302e7a9e956",
+    "sha256": "ea5ce200157556918ef759a987a8d6e313dd3831333ca7471593c6705b79f95f",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/SharedElementDebugPreviews.kt"
   },
   "samples:android/com.example.sampleandroid.SharedElementDebugPreviewsKt.SharedElementDebugUnmatchedAnimatedPreview_Shared Element Debug \u2014 Unmatched": {
@@ -1484,7 +1484,7 @@
     "functionName": "SharedElementDebugUnmatchedAnimatedPreview",
     "module": "samples:android",
     "renderBasename": "SharedElementDebugUnmatchedAnimatedPreview_Shared_Element_Debug_Unmatched-fe4cf131.gif",
-    "sha256": "6990206c6944565507b32d8ccd677284b380dddfdf848cbc4c2acb32495a12ac",
+    "sha256": "4adee25045d77923e87afd1bec11d3c8298850cdd4282ef517940e385ee0cdc9",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/SharedElementDebugPreviews.kt"
   },
   "samples:android/com.example.sampleandroid.SharedElementFilmstripPreviewKt.SharedElementFilmstripPreview_Shared Element Filmstrip": {
@@ -1500,7 +1500,7 @@
     "functionName": "ContainerTransformAnimatedPreview",
     "module": "samples:android",
     "renderBasename": "ContainerTransformAnimatedPreview_Container_Transform-7b9dc97b.gif",
-    "sha256": "881bb916caecaecf16efdc6ef933cbf52d9f76dcaf057b9e845bba950e5e718f",
+    "sha256": "d1b07e986c8e53f64ccd08f750308450004f3fb60909cbc160684a02f4438af0",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/SharedElementPreviews.kt"
   },
   "samples:android/com.example.sampleandroid.SharedElementPreviewsKt.FabToSheetAnimatedPreview_FAB To Sheet": {
