@@ -285,7 +285,43 @@ data class PreviewParamsDto(
    */
   val previewParameterProviderClassName: String? = null,
   val previewParameterLimit: Int? = null,
+  /**
+   * `@CaptureGutter` edges in dp, mirrored from the plugin's `PreviewParams.captureGutter`
+   * (issue #4443).
+   *
+   * Must be declared here, not only on the manifest routers' own DTOs, for the same reason
+   * [wrapSandboxWidthDp] must: `bundle daemon` and `compose-preview serve` launch with only
+   * `composeai.daemon.previewsJsonPath` and resolve through [PreviewIndex] rather than a router, so
+   * without this field `ignoreUnknownKeys` silently drops it and a guttered preview streams into
+   * the VS Code panel at its un-guttered size while the published PNG beside it carries the gutter
+   * — the PNG↔Live divergence RENDER_LANE_PARITY.md exists to keep out.
+   */
+  val captureGutter: CaptureGutterDto? = null,
 )
+
+/**
+ * Per-edge `@CaptureGutter` in **dp** — the daemon-side mirror of the plugin's
+ * `discovery.CaptureGutterDp`, deserialized straight out of `previews.json`, so the field names
+ * have to match it exactly.
+ *
+ * Dp rather than px because each backend applies it at its own density; converting once here would
+ * pin it to whichever density the manifest happened to be written with. Lives in `:daemon:core` so
+ * both backends and both manifest routers share one shape (they cannot see `:preview-data-api`
+ * between them).
+ *
+ * Edges are start/end (leading/trailing, resolved by the renderer against the capture's layout
+ * direction), not left/right.
+ */
+@Serializable
+data class CaptureGutterDto(
+  val start: Int = 0,
+  val top: Int = 0,
+  val end: Int = 0,
+  val bottom: Int = 0,
+) {
+  /** True when no edge carries a gutter — the render then keeps its pre-gutter path verbatim. */
+  fun isEmpty(): Boolean = start == 0 && top == 0 && end == 0 && bottom == 0
+}
 
 /**
  * `true` when [uiMode] decodes to night/dark via Android's `UI_MODE_NIGHT_YES` bit (0x20). `null`

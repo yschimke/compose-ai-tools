@@ -166,6 +166,27 @@ class PreviewManifestRouter(
       // composition in the synthetic `SystemBarsFrame`. Only emitted when set; absent keeps
       // the chrome-less default.
       if (resolved.showSystemUi) append("showSystemUi=true;")
+      // `@CaptureGutter` (issue #4443) — four dp edges in start,top,end,bottom order. Emitted only
+      // when the preview declares one, so an un-annotated preview's payload is byte-identical to
+      // what it was before the token existed.
+      //
+      // NOT rotated alongside the wrap flags above, and that asymmetry is the decision rather than
+      // an oversight: a wrap flag names an axis of the frame, so rotating the frame trades them; a
+      // gutter edge names a direction the *component* draws in, and swapping the sandbox's width
+      // and height does not turn the component over or move where its shadow falls. See
+      // `RenderSpec.captureGutterPx`.
+      if (!resolved.captureGutter.isEmpty()) {
+        val g = resolved.captureGutter
+        append("captureGutter=")
+          .append(g.start)
+          .append(',')
+          .append(g.top)
+          .append(',')
+          .append(g.end)
+          .append(',')
+          .append(g.bottom)
+          .append(';')
+      }
       // PROTOCOL.md § 5 (`renderNow.overrides`) — locale / fontScale / uiMode / orientation
       // pass straight through. `orientation = landscape` is applied above as a swap of the
       // forwarded widthPx/heightPx; the token still rides along so downstream consumers see
@@ -322,6 +343,13 @@ class PreviewManifestRouter(
           previewParameterRow = split?.row,
           kind = resolved.kind,
           assetPath = resolved.assetPath,
+          // A held session (interactive / recording / stream) composes the same preview as the
+          // one-shot render, so it has to carry the same gutter — otherwise scrubbing a guttered
+          // preview in the panel resizes it the moment the session takes over (#4443).
+          gutterStartDp = resolved.captureGutter.start,
+          gutterTopDp = resolved.captureGutter.top,
+          gutterEndDp = resolved.captureGutter.end,
+          gutterBottomDp = resolved.captureGutter.bottom,
         )
       }
     }
@@ -462,6 +490,7 @@ data class PreviewManifestEntry(
       wrapHeight = wrapHeight,
       previewParameterProviderClassName = previewParameterProviderClassName,
       previewParameterLimit = previewParameterLimit,
+      captureGutter = p?.captureGutter ?: CaptureGutterDto(),
     )
   }
 
@@ -526,6 +555,13 @@ data class PreviewParamsEntry(
    */
   val wrapperClassName: String? = null,
   /**
+   * `@CaptureGutter` edges in dp, as `discovery.CaptureGutterDp` writes them into `previews.json`
+   * (issue #4443). Null — every preview without the annotation — is no gutter, and so is an
+   * all-zero one. Forwarded onto the render payload as a `captureGutter=` token so the live daemon
+   * lane grows the capture by the same dp the static lanes do.
+   */
+  val captureGutter: CaptureGutterDto? = null,
+  /**
    * FQN of the `@PreviewParameter` provider harvested by discovery (BINARY-retention annotation,
    * invisible to runtime reflection — same provenance as [wrapperClassName]). Threaded into
    * [RenderSpec.previewParameterProviderClassName] so the render body renders the provider's first
@@ -563,4 +599,6 @@ data class ResolvedRenderParams(
   val wrapHeight: Boolean = false,
   val previewParameterProviderClassName: String? = null,
   val previewParameterLimit: Int = Int.MAX_VALUE,
+  /** `@CaptureGutter` edges in dp; all-zero (the default) is no gutter. See #4443. */
+  val captureGutter: CaptureGutterDto = CaptureGutterDto(),
 )

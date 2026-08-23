@@ -547,6 +547,7 @@ fun main(args: Array<String>) {
           wrapWidth = wrapWidth,
           wrapHeight = wrapHeight,
           sizeBounds = motionSizeBounds,
+          captureGutter = captureGutter,
         )
       } else if (hasAnimation) {
         // `@AnimatedPreview` — advance a paused clock across the window and encode a GIF. Always
@@ -573,6 +574,7 @@ fun main(args: Array<String>) {
           wrapWidth = wrapWidth,
           wrapHeight = wrapHeight,
           sizeBounds = motionSizeBounds,
+          captureGutter = captureGutter,
         )
       } else if (
         (focusIntent != null || hoverIndex != null) &&
@@ -670,6 +672,16 @@ fun main(args: Array<String>) {
         // a still frame under a "scroll gif" / "scroll long" label as if capture succeeded.
         // Throw instead — the per-value catch below writes the structured `.error.json`
         // sidecar so the panel surfaces the real failure.
+        // `@CaptureGutter` deliberately does NOT reach this path (issue #4452). A gutter is a
+        // statement about one canvas: "the component draws this far past its own bounds, keep those
+        // pixels". A scrolling capture has no such canvas. A LONG capture's bounds are the stitched
+        // scroll extent — many viewports of a list, not a component; a scroll GIF's are the
+        // viewport itself, which is a frame the preview declared rather than anything the content
+        // measured. Neither is "the component plus what it draws outside itself", so there is no
+        // edge for a gutter to sit on, and adding transparent dp around a scroll strip would be
+        // decorative padding wearing the annotation's name. The fall-through below is the one place
+        // a scroll capture does carry it: when the drive declines, `renderPreview` writes an
+        // ordinary still, and an ordinary still gets the gutter like any other.
         val didCapture =
           renderScrollPreview(
             className = className,

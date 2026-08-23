@@ -873,6 +873,12 @@ open class DesktopHost(
       // measure-and-crop pass sizes the axis that is no longer free (#3552 review). Same trade as
       // `applyOverrides`, `reshapeRenderPayload` and both routers; this is the lane the
       // bundle-backed live daemon takes, per the note on `overrides` below.
+      //
+      // The `@CaptureGutter` edges carried on `base` are deliberately NOT traded with them, and
+      // ride through this `copy` untouched (issue #4443). A wrap flag names an axis of the frame;
+      // a gutter edge names a direction the component draws in, and a `widthPx ↔ heightPx` swap
+      // does not turn the component over — its shadow still falls downward, so `bottom` stays
+      // `bottom`. See `RenderSpec.captureGutterPx`.
       wrapWidth = if (shouldSwap) base.wrapHeight else base.wrapWidth,
       wrapHeight = if (shouldSwap) base.wrapWidth else base.wrapHeight,
       density = map["density"]?.toFloatOrNull() ?: base.density,

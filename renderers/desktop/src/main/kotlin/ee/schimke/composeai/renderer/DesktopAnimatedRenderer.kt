@@ -81,6 +81,14 @@ fun renderAnimatedPreview(
   wrapWidth: Boolean = false,
   wrapHeight: Boolean = false,
   sizeBounds: PreviewSizeBounds = PreviewSizeBounds(),
+  /**
+   * `@CaptureGutter` (issue #4452). Grows the scene and insets the composable inside it, exactly as
+   * the still path does — every frame of the GIF shares one canvas, so a gutter is as well-defined
+   * here as it is on a still, and a component that declares one must not publish a still with its
+   * shadow and a GIF beside it with the shadow sliced off. [PreviewCaptureGutter.None] (the
+   * default) is every preview that doesn't declare one, and keeps the pre-gutter path verbatim.
+   */
+  captureGutter: PreviewCaptureGutter = PreviewCaptureGutter.None,
   classLoader: ClassLoader? = null,
 ) {
   if (showCurves) {
@@ -114,7 +122,8 @@ fun renderAnimatedPreview(
   // [rendersRightToLeft].
   val rtl = rendersRightToLeft(localeTag)
   val sceneDensity = Density(density, fontScale)
-  val sceneSize = composePreviewSceneSize(widthPx, heightPx, wrapWidth, wrapHeight, sizeBounds)
+  val sceneSize =
+    composePreviewSceneSize(widthPx, heightPx, wrapWidth, wrapHeight, sizeBounds, captureGutter)
   val bgColor =
     when {
       backgroundColor != 0L -> Color(backgroundColor.toInt())
@@ -150,6 +159,7 @@ fun renderAnimatedPreview(
             onMeasured = bounds::observe,
             wrapperClassName = wrapperClassName,
             classLoader = classLoader,
+            gutter = captureGutter,
           ) {
             InvokeMotionComposable(composableMethod, null, previewArgs)
           }
@@ -161,7 +171,16 @@ fun renderAnimatedPreview(
         mainClock.advanceTimeByFrame()
 
         if (forcedCrop == null) {
-          crop = motionCropSize(bounds.size, wrapWidth, wrapHeight, widthPx, heightPx, sceneSize)
+          crop =
+            motionCropSize(
+              bounds.size,
+              wrapWidth,
+              wrapHeight,
+              widthPx,
+              heightPx,
+              sceneSize,
+              captureGutter,
+            )
         }
 
         repeat(frameCount) {

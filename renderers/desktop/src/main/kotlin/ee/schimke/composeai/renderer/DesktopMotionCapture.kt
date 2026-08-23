@@ -386,6 +386,13 @@ internal class MotionBoundsTracker {
  * Mirrors the single-frame path's crop in [DesktopRendererMain] so a component's motion capture and
  * its static sticker come out the same size — which is what lets a viewer show one in place of the
  * other without the card resizing under the reader.
+ *
+ * [gutter] is why the two halves of that mirror are spelled differently. A wrapped axis takes
+ * [measured], which [ComposePreviewContentBox] already reports as `child + gutter` — adding the
+ * gutter again here would double it. A fixed axis takes the declared frame, which is the
+ * component's alone, so the gutter has to be added to it. Exactly the arithmetic
+ * `DesktopRendererMain.renderPreview` applies to its own crop, and the reason a guttered still and
+ * a guttered GIF of one component come out the same size (issue #4452).
  */
 internal fun motionCropSize(
   measured: IntSize,
@@ -394,13 +401,13 @@ internal fun motionCropSize(
   widthPx: Int,
   heightPx: Int,
   sceneSize: IntSize,
+  gutter: PreviewCaptureGutter = PreviewCaptureGutter.None,
 ): IntSize =
   IntSize(
-    (if (wrapWidth && measured.width > 0) measured.width else widthPx).coerceIn(1, sceneSize.width),
-    (if (wrapHeight && measured.height > 0) measured.height else heightPx).coerceIn(
-      1,
-      sceneSize.height,
-    ),
+    (if (wrapWidth && measured.width > 0) measured.width else widthPx + gutter.horizontalPx)
+      .coerceIn(1, sceneSize.width),
+    (if (wrapHeight && measured.height > 0) measured.height else heightPx + gutter.verticalPx)
+      .coerceIn(1, sceneSize.height),
   )
 
 /**
@@ -410,6 +417,12 @@ internal fun motionCropSize(
  * Sharing [ComposePreviewContentBox] with the static render is the point: before this, the motion
  * paths composed into a bare `fillMaxSize` box, so every capture came out the full device sandbox —
  * a 137×84 switch published as a 1050×2100 recording of a switch adrift in empty space.
+ *
+ * [gutter] rides the same share. A `@CaptureGutter` preview that also records motion has to publish
+ * a GIF on the same canvas as its still, or the two artefacts of one component disagree about its
+ * bounds — worse than neither carrying it (issue #4452). The box measures the child against the
+ * scene minus the gutter and places it inset, so every frame of the recording holds the component
+ * at exactly the size and offset the still holds it at.
  */
 @Composable
 internal fun MotionCaptureRoot(
@@ -423,6 +436,7 @@ internal fun MotionCaptureRoot(
   onMeasured: (width: Int, height: Int) -> Unit,
   wrapperClassName: String?,
   classLoader: ClassLoader?,
+  gutter: PreviewCaptureGutter = PreviewCaptureGutter.None,
   content: @Composable () -> Unit,
 ) {
   MotionPreviewProviders(rtl = rtl, sceneDensity = sceneDensity, uiMode = uiMode) {
@@ -432,6 +446,7 @@ internal fun MotionCaptureRoot(
         wrapHeight = wrapHeight,
         backgroundColor = backgroundColor,
         sizeBounds = sizeBounds,
+        gutter = gutter,
         onMeasured = onMeasured,
         content = content,
       )
