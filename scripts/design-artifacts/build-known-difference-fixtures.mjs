@@ -1566,6 +1566,42 @@ glyphValidation({
 });
 
 glyphValidation({
+  id: "id-not-safe-integer-like",
+  title: "An `id` that is a canonical integer",
+  why:
+    "The same family of map-key hazard as `__proto__`: JavaScript orders canonical array-index keys " +
+    "ahead of every other key and numerically among themselves, so a document listing `10` before " +
+    "`2` serialises them the other way round while an ordered-map consumer keeps the input order. " +
+    "`statuses` is a map and this contract promises it no ordering, so nothing is *wrong* today — " +
+    "but the `id` is doing double duty as an identifier and a key, and a key whose behaviour depends " +
+    "on the host language's property semantics is not one this schema should mint. Only canonical " +
+    "integers are affected; `2024-fix` is unaffected.",
+  record: { id: "10" },
+  expected: refused(["id-not-safe"], "10"),
+});
+
+glyphValidation({
+  id: "schema-invalid-box-far-edge-unsafe",
+  title: "A box whose fields are safe but whose far edge is not",
+  why:
+    "The completion of the safe-integer rule, and the half that actually reaches a gate: every " +
+    "measurement adds the edges — element displacement compares `x + width` against a baseline's — " +
+    "and a sum of two safe integers need not be safe. `{x: 9007199254740990, width: 3}` and " +
+    "`{x: 9007199254740990, width: 2}` round to the same JavaScript edge, so this engine measures no " +
+    "displacement where an exact-integer consumer measures one: `valid` against `element-moved`, " +
+    "from identical bytes.",
+  record: {
+    element: {
+      kind: "tag",
+      tag: "iconbutton-tonal-glyph",
+      bounds: { x: 9007199254740990, y: 8, width: 3, height: 8 },
+      tolerance: 0.1,
+    },
+  },
+  expected: refused(["schema-invalid"]),
+});
+
+glyphValidation({
   id: "id-not-safe-windows-reserved-name",
   title: "An `id` Windows cannot open",
   why:

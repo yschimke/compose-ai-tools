@@ -1,0 +1,38 @@
+{
+  "title": "A box whose fields are safe but whose far edge is not",
+  "site": null,
+  "why": "The completion of the safe-integer rule, and the half that actually reaches a gate: every measurement adds the edges — element displacement compares `x + width` against a baseline's — and a sum of two safe integers need not be safe. `{x: 9007199254740990, width: 3}` and `{x: 9007199254740990, width: 2}` round to the same JavaScript edge, so this engine measures no displacement where an exact-integer consumer measures one: `valid` against `element-moved`, from identical bytes.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

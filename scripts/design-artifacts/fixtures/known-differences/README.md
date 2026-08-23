@@ -100,6 +100,8 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `schema-invalid-accepted-at-not-a-timestamp` | An `acceptedAt` that is a string but not a date-time |
 | `path-not-contained-windows-reserved-name` | An artifact path segment Windows cannot open |
 | `path-not-contained-trailing-dot` | An artifact path segment ending in a dot |
+| `id-not-safe-integer-like` | An `id` that is a canonical integer |
+| `schema-invalid-box-far-edge-unsafe` | A box whose fields are safe but whose far edge is not |
 | `id-not-safe-windows-reserved-name` | An `id` Windows cannot open |
 | `path-not-contained-backslash` | An artifact path containing a backslash |
 | `path-not-contained-hash` | An artifact path containing `#` |

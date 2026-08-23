@@ -545,9 +545,13 @@ Without the accepting half a runtime comparing with `>=` — or `<=` at a floor 
 calls legal and still passes the whole suite, which is the failure mode the suite exists to catch
 pointed at the suite itself.
 
-**Coordinates are safe integers.** `9007199254740993` has already been rounded to `…992` by the time
-a JSON parser hands it over, so an integrality check alone accepts a value a `Long` consumer retains
-exactly. The schema carries matching bounds.
+**Coordinates are safe integers, and so are their far edges.** `9007199254740993` has already been
+rounded to `…992` by the time a JSON parser hands it over, so an integrality check alone accepts a
+value a `Long` consumer retains exactly. The edges matter more than the fields: every gate that
+measures a box adds them — element displacement compares `x + width` against a baseline's — and a sum
+of two safe integers need not be safe, so `{x: 9007199254740990, width: 3}` and the same box one
+pixel narrower round to the same edge here and differ by one for an exact-integer consumer. `valid`
+against `element-moved`, from identical bytes. The schema carries matching bounds.
 
 **`v1` fixes the range at `0 ≤ candidateTolerance ≤ 8`**, in 8-bit channel distance, integer. Named
 here rather than deferred to Phase 3 for the reason the budget caps are named: a ceiling each engine
@@ -1176,6 +1180,13 @@ necessarily per-acceptance anyway, since it is only detectable after the budget 
 `document-too-large`
 is then checked alongside the duplicate-id scan, both whole-document verdicts reached before any
 pixel buffer is allocated.
+
+**A canonical integer is not a usable `id` either**, for the same reason and one step further out:
+JavaScript orders array-index keys ahead of every other key and numerically among themselves, so a
+document listing `10` before `2` serialises them the other way round while an ordered-map consumer
+keeps the input order. `statuses` is a map and this contract promises it no ordering — so nothing is
+*wrong* today, and that is precisely why it is worth refusing now rather than discovering later that
+a consumer relied on the order. Only canonical integers are affected; `2024-fix` is not.
 
 **The `id` must also be safe as a map key, which is not the same constraint.** `__proto__` is a
 perfectly good path segment and a catastrophic object key: `statuses[id] = value` in the browser

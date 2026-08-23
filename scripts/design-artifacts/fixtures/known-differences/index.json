@@ -227,6 +227,16 @@
       "site": null
     },
     {
+      "id": "id-not-safe-integer-like",
+      "title": "An `id` that is a canonical integer",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-box-far-edge-unsafe",
+      "title": "A box whose fields are safe but whose far edge is not",
+      "site": null
+    },
+    {
       "id": "id-not-safe-windows-reserved-name",
       "title": "An `id` Windows cannot open",
       "site": null

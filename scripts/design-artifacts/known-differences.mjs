@@ -13,7 +13,8 @@
  *
  * **What this module decides, and what it deliberately does not.** It decides every *verdict*: the
  * validation refusals, the five gates, the resolution test, the status precedence, and the exact
- * ordering of `statuses` and `validationFailures`. It does **not** compute `raw` / `accepted` /
+ * ordering of `validationFailures` (`statuses` is a *map* — it promises one entry per acceptance,
+ * not an order). It does **not** compute `raw` / `accepted` /
  * `unaccepted` — those need the separated-plane scoring path that is batch 05's deliverable, and
  * inventing numbers here would pin a scorer nobody has written. The gates are what a mask is allowed
  * to suppress, so they are the half that has to be settled first (I1: every gate resolves before any
@@ -268,7 +269,15 @@ export function pixelsAgree(a, aOffset, b, bOffset, tolerance) {
 /** An `id` is a single safe path segment, is neither dot name, and is safe as a map key. */
 export function isSafeId(id) {
   if (typeof id !== "string" || !isPortableSegment(id)) return false;
-  return !RESERVED_IDS.has(id);
+  if (RESERVED_IDS.has(id)) return false;
+  // **An integer-like id is a map-key hazard of the same family as `__proto__`.** JavaScript orders
+  // canonical array-index keys ahead of every other key and numerically among themselves, so a
+  // document listing `"10"` before `"2"` serialises them the other way round while an ordered-map
+  // consumer keeps the input order. `statuses` is a *map* and this contract promises it no ordering,
+  // so nothing is wrong today — but the `id` is doing double duty as an identifier and a key, and a
+  // key whose behaviour depends on the host language's property semantics is not one this schema
+  // should mint. Only canonical integers are affected; `2024-fix` is not.
+  return String(Number(id)) !== id;
 }
 
 /**
@@ -842,9 +851,14 @@ function isBox(value) {
   // …992 by the time it reaches here, so `isInteger` accepts a coordinate a Kotlin `Long` consumer
   // retains exactly. Refusing what cannot round-trip is cheaper than reasoning about where the two
   // readings would first disagree.
-  return ["x", "y", "width", "height"].every((key) => Number.isSafeInteger(value[key])) &&
-    value.width > 0 &&
-    value.height > 0;
+  if (!["x", "y", "width", "height"].every((key) => Number.isSafeInteger(value[key]))) return false;
+  if (value.width <= 0 || value.height <= 0) return false;
+  // **The far edges too, not just the fields.** Every gate that measures a box adds them — element
+  // displacement compares `x + width` against a baseline's — and a sum of two safe integers need not
+  // be safe. `{x: 9007199254740990, width: 3}` and `{x: 9007199254740990, width: 2}` both round to
+  // the same JavaScript edge, so this engine measures no displacement where an exact-integer
+  // consumer measures one: `valid` against `element-moved`, from identical bytes.
+  return Number.isSafeInteger(value.x + value.width) && Number.isSafeInteger(value.y + value.height);
 }
 
 function isPlane(value) {
