@@ -1,0 +1,6 @@
+{
+  "title": "A white scaffold sheet with a mark inset on it",
+  "why": "The ordinary case, and the one the widening rule is visible in: the mark spans x 10–17, and the box is x 9–18 because a downscale can shave a partially-covered edge pixel. At this size the sampling scale is 1, so nothing is shaved and the widening is pure margin — which is the point, since the rule must not depend on whether it was needed.",
+  "reference": "reference.png",
+  "candidate": "candidate.png"
+}

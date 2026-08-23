@@ -5178,6 +5178,158 @@ function scoreOf(costSum, measured) {
 }
 
 // --------------------------------------------------------------------------------------------
+// 5d. The canonical plane, pinned on its own.
+//
+// The plane gate compares a **recomputed** plane against the recorded one, so a one-pixel
+// disagreement about a content box is not a rounding difference in a score — it is `plane-changed`
+// on one engine and `valid` on the other, from identical bytes. Every gate case is handed its plane
+// as an input precisely so it tests the gate rather than the measurement, which leaves the
+// measurement pinned by nothing at all without this group.
+//
+// Each expected box is derived by hand from `boxFromSamples`'s two rules — the drawn extent, then
+// widened by one sample cell each way and clamped — over rectangles chosen so no sample is partially
+// covered. The one case that does downscale is aligned to its ratio for the same reason: the kernel
+// has its own group, and a plane case that also exercised a partial footprint would fail for two
+// reasons at once.
+// --------------------------------------------------------------------------------------------
+
+const planeCases = [];
+
+function addPlane(entry) {
+  planeCases.push(entry);
+}
+
+{
+  const reference = fillRect(raster(32, 24, WHITE), { x: 10, y: 8, width: 8, height: 8 }, BLACK);
+  addPlane({
+    id: "an-opaque-sheet-crops-to-its-mark",
+    title: "A white scaffold sheet with a mark inset on it",
+    why:
+      "The ordinary case, and the one the widening rule is visible in: the mark spans x 10–17, and " +
+      "the box is x 9–18 because a downscale can shave a partially-covered edge pixel. At this size " +
+      "the sampling scale is 1, so nothing is shaved and the widening is pure margin — which is the " +
+      "point, since the rule must not depend on whether it was needed.",
+    reference,
+    candidate: reference,
+    expected: {
+      pins: ["referenceContentBox", "plane"],
+      referenceContentBox: { x: 9, y: 7, width: 10, height: 10 },
+      plane: { plane: "content-box", box: { x: 9, y: 7, width: 10, height: 10 } },
+    },
+  });
+}
+
+{
+  const reference = fillRect(raster(32, 24, GREY), { x: 10, y: 8, width: 8, height: 8 }, BLACK);
+  addPlane({
+    id: "an-unknown-opaque-corner-is-the-whole-image",
+    title: "An opaque backdrop that is not a sheet the renderer paints",
+    why:
+      "A uniform border around an interior region is the *same picture* whether the border is a " +
+      "scaffold sheet with a card inset on it or a card that bleeds to the artboard edge with text " +
+      "inset on it. Guessing gets the second one backwards — it strips the component's own surface " +
+      "— so an unrecognised corner means the whole image, which errs toward comparing too much.",
+    reference,
+    candidate: reference,
+    expected: {
+      pins: ["referenceContentBox", "plane"],
+      referenceContentBox: { x: 0, y: 0, width: 32, height: 24 },
+      // Whole-image on both sides still covers the canvas, so this is `content-box` with a box that
+      // happens to be everything — not the `full-canvas` fallback, which is about coverage.
+      plane: { plane: "content-box", box: { x: 0, y: 0, width: 32, height: 24 } },
+    },
+  });
+}
+
+{
+  const reference = fillRect(raster(32, 24, [0, 0, 0, 0]), { x: 10, y: 8, width: 8, height: 8 }, BLACK);
+  addPlane({
+    id: "alpha-decides-wherever-there-is-any",
+    title: "A transparent capture, measured by its alpha",
+    why:
+      "A transparent pixel is unambiguously not artwork, so alpha is read before colour and the " +
+      "backdrop is never guessed. Same mark and same box as the sheet case, reached down the other " +
+      "branch — which is what makes the two comparable at all.",
+    reference,
+    candidate: reference,
+    expected: {
+      pins: ["referenceContentBox"],
+      referenceContentBox: { x: 9, y: 7, width: 10, height: 10 },
+    },
+  });
+}
+
+{
+  const reference = raster(32, 24, WHITE);
+  addPlane({
+    id: "a-blank-capture-has-no-box",
+    title: "A capture with nothing drawn on it",
+    why:
+      "No drawn pixel means no content box, and whole-image is the only meaningful answer. A " +
+      "min/max scan that forgot this returns an inverted rectangle, which every later stage would " +
+      "carry as a negative width.",
+    reference,
+    candidate: reference,
+    expected: {
+      pins: ["referenceContentBox"],
+      referenceContentBox: { x: 0, y: 0, width: 32, height: 24 },
+    },
+  });
+}
+
+{
+  // 16 px of 768 is 2.08%, under the 5% floor — so BOTH sides fall back, including the candidate
+  // whose own box is perfectly usable. Cropping one and not the other would be worse than not
+  // cropping, and this is the case that records `full-canvas` on the wire.
+  const reference = fillRect(raster(32, 24, WHITE), { x: 10, y: 8, width: 2, height: 2 }, BLACK);
+  const candidate = fillRect(raster(32, 24, WHITE), { x: 6, y: 4, width: 20, height: 16 }, BLACK);
+  addPlane({
+    id: "a-sliver-falls-back-to-the-full-canvas",
+    title: "One side below `MIN_BOX_COVERAGE`, and both fall back",
+    why:
+      "An empty-state preview whose only mark is a heading yields a box of a few percent of the " +
+      "canvas, and stretching that sliver across its partner turns one line of text into the entire " +
+      "comparison. The fallback depends on the *candidate's* coverage, which the reference's " +
+      "`sha256` does not pin — which is exactly why the discriminant is a recorded field rather " +
+      "than something re-derived at evaluation time.",
+    reference,
+    candidate,
+    expected: {
+      pins: ["referenceContentBox", "candidateContentBox", "plane", "boxes"],
+      referenceContentBox: { x: 9, y: 7, width: 4, height: 4 },
+      candidateContentBox: { x: 5, y: 3, width: 22, height: 18 },
+      plane: { plane: "full-canvas", box: { x: 0, y: 0, width: 32, height: 24 } },
+      boxes: {
+        reference: { x: 0, y: 0, width: 32, height: 24 },
+        candidate: { x: 0, y: 0, width: 32, height: 24 },
+      },
+    },
+  });
+}
+
+{
+  // The only case whose sampling scale is not 1: 512 px on its long side halves to the 256-px
+  // sample grid, so each sample is a 2×2 average. The mark is aligned to that grid, so every sample
+  // is either wholly background or wholly mark and the expected box is exact integer arithmetic.
+  const reference = fillRect(raster(512, 256, WHITE), { x: 100, y: 60, width: 20, height: 20 }, BLACK);
+  addPlane({
+    id: "the-sampling-downscale-is-the-portable-kernel",
+    title: "A capture large enough to be downscaled before it is sampled",
+    why:
+      "`contentBox` samples a downscale rather than the full raster, and that downscale is the one " +
+      "host-dependent step in the measurement. Through `drawImage` it is a filter no offline engine " +
+      "can reproduce; here it is the portable area average, so the two engines measure the same box. " +
+      "Samples 50–59 carry the mark, widened to 49–61 and mapped back by the inverse scale.",
+    reference,
+    candidate: reference,
+    expected: {
+      pins: ["referenceContentBox"],
+      referenceContentBox: { x: 98, y: 58, width: 24, height: 24 },
+    },
+  });
+}
+
+// --------------------------------------------------------------------------------------------
 // 6. Write the tree.
 // --------------------------------------------------------------------------------------------
 
@@ -5235,6 +5387,17 @@ for (const entry of resampleCases) {
   );
 }
 
+for (const entry of planeCases) {
+  const dir = `plane/${entry.id}`;
+  write(`${dir}/reference.png`, Buffer.from(rgbaPng(entry.reference)));
+  write(`${dir}/candidate.png`, Buffer.from(rgbaPng(entry.candidate)));
+  write(
+    `${dir}/case.json`,
+    json({ title: entry.title, why: entry.why, reference: "reference.png", candidate: "candidate.png" }),
+  );
+  write(`${dir}/expected.json`, json(entry.expected));
+}
+
 for (const entry of scoringCases) {
   const dir = `scoring/${entry.id}`;
   write(`${dir}/reference.png`, Buffer.from(rgbaPng(entry.reference)));
@@ -5266,6 +5429,7 @@ write(
     resample: resampleCases.map((entry) => ({ id: entry.id, title: entry.title })),
     rounding: roundingCases.map((entry) => ({ id: entry.id, title: entry.title })),
     scoring: scoringCases.map((entry) => ({ id: entry.id, title: entry.title })),
+    plane: planeCases.map((entry) => ({ id: entry.id, title: entry.title })),
   }),
 );
 
@@ -5384,10 +5548,23 @@ write(
     "| --- | --- |",
     ...scoringCases.map((entry) => `| \`${entry.id}\` | ${entry.title} |`),
     "",
+    "## The canonical plane",
+    "",
+    "Content-box detection is part of the portable path, not a host detail: the plane gate compares a",
+    "**recomputed** plane against the recorded one, so a one-pixel disagreement about a box is",
+    "`plane-changed` on one engine and `valid` on the other. Every gate case is handed its plane as an",
+    "input — deliberately, so it tests the gate — which leaves the measurement pinned by nothing at all",
+    "without this group.",
+    "",
+    "| Case | What it pins |",
+    "| --- | --- |",
+    ...planeCases.map((entry) => `| \`${entry.id}\` | ${entry.title} |`),
+    "",
   ].join("\n"),
 );
 
 process.stdout.write(
   `known-differences fixtures: ${cases.length} cases, ${resampleCases.length} resample cases, ` +
-    `${roundingCases.length} rounding cases, ${scoringCases.length} scoring cases\n`,
+    `${roundingCases.length} rounding cases, ${scoringCases.length} scoring cases, ` +
+    `${planeCases.length} plane cases\n`,
 );

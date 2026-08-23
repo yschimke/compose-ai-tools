@@ -20,10 +20,12 @@ import { fileURLToPath } from "node:url";
 
 import { decodePng } from "./png-lite.mjs";
 import { SCORE_TUNING } from "./known-difference-tuning.mjs";
+import { PLANE_TUNING, contentBox, resolvePlane } from "./known-difference-plane.mjs";
 import { REGIONS, scoreComparison } from "./known-difference-score.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCORING = join(HERE, "fixtures", "known-differences", "scoring");
+const PLANE = join(HERE, "fixtures", "known-differences", "plane");
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
@@ -103,6 +105,37 @@ for (const id of readdirSync(SCORING).sort()) {
   });
 }
 
+for (const id of readdirSync(PLANE).sort()) {
+  const dir = join(PLANE, id);
+  const meta = readJson(join(dir, "case.json"));
+  const expected = readJson(join(dir, "expected.json"));
+
+  test(`plane: ${id} — ${meta.title}`, () => {
+    const reference = readPng(join(dir, meta.reference));
+    const candidate = readPng(join(dir, meta.candidate));
+    const resolved = resolvePlane(reference, candidate);
+
+    for (const pin of expected.pins) {
+      switch (pin) {
+        case "referenceContentBox":
+          assert.deepEqual(contentBox(reference), expected.referenceContentBox);
+          break;
+        case "candidateContentBox":
+          assert.deepEqual(contentBox(candidate), expected.candidateContentBox);
+          break;
+        case "plane":
+          assert.deepEqual(resolved.plane, expected.plane);
+          break;
+        case "boxes":
+          assert.deepEqual(resolved.boxes, expected.boxes);
+          break;
+        default:
+          assert.fail(`unknown pin \`${pin}\` in plane/${id}/expected.json`);
+      }
+    }
+  });
+}
+
 function scoredCount(result, region) {
   const planes = result.stages.regions[region];
   let count = 0;
@@ -144,6 +177,18 @@ test("the offline tuning constants mirror the browser's", () => {
 
   // The grounds are CSS strings there and RGB triples here, so they are compared by colour rather
   // than by spelling — the offline engine has no canvas to hand a string to.
+  for (const name of ["BOX_SAMPLE_SIDE", "BOX_COLOUR_TOLERANCE", "MIN_BOX_COVERAGE", "SHEET_TOLERANCE"]) {
+    assert.equal(numberOf(name), PLANE_TUNING[name], `${name} disagrees with tuning.ts`);
+  }
+  // `SCAFFOLD_SHEETS` decides whether an opaque capture is cropped at all, so a sheet added on one
+  // side alone is a content box measured two ways — the plane gate's version of a drifted constant.
+  const sheets = /SCAFFOLD_SHEETS[^=]*=\s*\n?\s*\[([\s\S]*?)\n\s*\];/.exec(source);
+  assert.ok(sheets, "tuning.ts no longer exports SCAFFOLD_SHEETS");
+  const triples = [...sheets[1].matchAll(/\[\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]/g)].map(
+    ([, r, g, b]) => [Number(r), Number(g), Number(b)],
+  );
+  assert.deepEqual(triples, PLANE_TUNING.SCAFFOLD_SHEETS);
+
   const grounds = /COMPARISON_GROUNDS[^=]*=\s*\[([^\]]*)\]/.exec(source);
   assert.ok(grounds, "tuning.ts no longer exports COMPARISON_GROUNDS");
   const hexes = [...grounds[1].matchAll(/#([0-9a-fA-F]{6})/g)].map(([, hex]) => [
@@ -164,6 +209,7 @@ test("the engine imports nothing a browser lacks", () => {
     "known-differences.mjs",
     "known-difference-score.mjs",
     "known-difference-tuning.mjs",
+    "known-difference-plane.mjs",
     "png-lite.mjs",
     "inflate-lite.mjs",
     "sha256-lite.mjs",

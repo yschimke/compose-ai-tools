@@ -1,0 +1,21 @@
+{
+  "pins": [
+    "referenceContentBox",
+    "plane"
+  ],
+  "referenceContentBox": {
+    "x": 9,
+    "y": 7,
+    "width": 10,
+    "height": 10
+  },
+  "plane": {
+    "plane": "content-box",
+    "box": {
+      "x": 9,
+      "y": 7,
+      "width": 10,
+      "height": 10
+    }
+  }
+}

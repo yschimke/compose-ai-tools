@@ -952,5 +952,31 @@
       "id": "overlapping-masks-suppress-the-seam-once",
       "title": "Two masks sharing four columns, whose union is one region"
     }
+  ],
+  "plane": [
+    {
+      "id": "an-opaque-sheet-crops-to-its-mark",
+      "title": "A white scaffold sheet with a mark inset on it"
+    },
+    {
+      "id": "an-unknown-opaque-corner-is-the-whole-image",
+      "title": "An opaque backdrop that is not a sheet the renderer paints"
+    },
+    {
+      "id": "alpha-decides-wherever-there-is-any",
+      "title": "A transparent capture, measured by its alpha"
+    },
+    {
+      "id": "a-blank-capture-has-no-box",
+      "title": "A capture with nothing drawn on it"
+    },
+    {
+      "id": "a-sliver-falls-back-to-the-full-canvas",
+      "title": "One side below `MIN_BOX_COVERAGE`, and both fall back"
+    },
+    {
+      "id": "the-sampling-downscale-is-the-portable-kernel",
+      "title": "A capture large enough to be downscaled before it is sampled"
+    }
   ]
 }

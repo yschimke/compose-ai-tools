@@ -1,0 +1,43 @@
+{
+  "pins": [
+    "referenceContentBox",
+    "candidateContentBox",
+    "plane",
+    "boxes"
+  ],
+  "referenceContentBox": {
+    "x": 9,
+    "y": 7,
+    "width": 4,
+    "height": 4
+  },
+  "candidateContentBox": {
+    "x": 5,
+    "y": 3,
+    "width": 22,
+    "height": 18
+  },
+  "plane": {
+    "plane": "full-canvas",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "width": 32,
+      "height": 24
+    }
+  },
+  "boxes": {
+    "reference": {
+      "x": 0,
+      "y": 0,
+      "width": 32,
+      "height": 24
+    },
+    "candidate": {
+      "x": 0,
+      "y": 0,
+      "width": 32,
+      "height": 24
+    }
+  }
+}

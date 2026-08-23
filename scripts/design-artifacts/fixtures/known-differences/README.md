@@ -298,3 +298,20 @@ by orders of magnitude more.
 | `an-all-masked-comparison-measures-nothing` | A mask covering the whole plane leaves `unaccepted` measuring nothing |
 | `an-empty-union-leaves-raw-untouched` | With nothing accepted, `unaccepted` is `raw` bit for bit |
 | `overlapping-masks-suppress-the-seam-once` | Two masks sharing four columns, whose union is one region |
+
+## The canonical plane
+
+Content-box detection is part of the portable path, not a host detail: the plane gate compares a
+**recomputed** plane against the recorded one, so a one-pixel disagreement about a box is
+`plane-changed` on one engine and `valid` on the other. Every gate case is handed its plane as an
+input — deliberately, so it tests the gate — which leaves the measurement pinned by nothing at all
+without this group.
+
+| Case | What it pins |
+| --- | --- |
+| `an-opaque-sheet-crops-to-its-mark` | A white scaffold sheet with a mark inset on it |
+| `an-unknown-opaque-corner-is-the-whole-image` | An opaque backdrop that is not a sheet the renderer paints |
+| `alpha-decides-wherever-there-is-any` | A transparent capture, measured by its alpha |
+| `a-blank-capture-has-no-box` | A capture with nothing drawn on it |
+| `a-sliver-falls-back-to-the-full-canvas` | One side below `MIN_BOX_COVERAGE`, and both fall back |
+| `the-sampling-downscale-is-the-portable-kernel` | A capture large enough to be downscaled before it is sampled |
