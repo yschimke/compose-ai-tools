@@ -2787,6 +2787,58 @@ html:not(.cp-bg-transparent) #cp-reference-compare[data-cp-stage-clip] .cp-refer
 .cp-annotation-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 14px;
   margin: 14px 0 0; color: var(--cp-fg-muted); font-size: 0.8rem; }
 .cp-annotation-toggle { display: inline-flex; align-items: center; gap: 6px; }
+/* The DERIVED semantics layers on the focused comparison — typography, theme and layout read off
+   the render's own semantics tree by `<cp-inspect-layers>`, which the viewer has drawn for a long
+   time and this page could not. Its boxes and badges are the viewer's (`.cp-inspect-*` below);
+   what differs is where the layer and the legend sit, so only that is restated here.
+
+   The layer is centred over the panel like `.cp-annotation-layer` above it rather than parked at
+   the frame's offset, because `.cp-compare-shot` is a centring grid — hence the `centred` anchor
+   the mount declares. Both layers are stacked over the same frame on purpose: the authored redline
+   and the render's own semantics are different claims about the same pixels, and seeing them
+   disagree is the point. */
+.cp-reference-grid .cp-compare-shot #cp-render-inspect-layer {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  pointer-events: none; }
+.cp-reference-grid .cp-compare-shot[data-inspect="on"] #cp-render-inspect-layer {
+  pointer-events: auto; }
+/* The viewer's legend is a sticky column beside its stage; here it reads under the grid, so the
+   column geometry has to be undone rather than inherited. */
+.cp-render-inspect-legend { position: static; flex: none; max-height: none; align-self: auto;
+  min-width: 0; margin: 14px 0 0; }
+.cp-render-inspect-controls { margin-top: 10px; }
+
+/* Element selection (`<cp-element-selection>`). A REPORT affordance: it decides what the prefilled
+   issue is about and accepts nothing. */
+.cp-selection-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+  margin: 12px 0 0; color: var(--cp-fg-muted); font-size: 0.8rem; }
+.cp-selection-tag { max-width: 260px; font: inherit; padding: 3px 6px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container-low); color: var(--cp-fg); }
+.cp-selection-tag[hidden] { display: none; }
+.cp-selection-controls button { font: inherit; padding: 3px 10px; cursor: pointer;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container-low); color: var(--cp-fg); }
+.cp-selection-controls button[hidden] { display: none; }
+.cp-selection-controls button:hover { border-color: rgba(37, 99, 235, 0.75);
+  background: rgba(37, 99, 235, 0.08); }
+.cp-selection-state { margin: 0; color: var(--cp-fg); font-variant-numeric: tabular-nums; }
+/* Why the tag picker is absent, when it is. "This catalog publishes no index" and "your overrides
+   mean the index describes a different render" are different problems with different fixes, and a
+   control that simply is not there teaches neither. */
+.cp-selection-note { flex-basis: 100%; margin: 0; color: var(--cp-fg-faint); font-size: 0.72rem; }
+/* The drag surface, centred over the frame exactly like the layers above so a rectangle dragged on
+   it is expressible in the render's own pixels. It takes the pointer while a drag is running —
+   otherwise a drag that wandered over the panel would end in a click on whatever was underneath. */
+.cp-reference-grid .cp-compare-shot #cp-selection-layer {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  cursor: crosshair; z-index: 2; }
+.cp-reference-grid .cp-compare-shot #cp-selection-layer[hidden] { display: none; }
+.cp-selection-marquee { position: absolute; box-sizing: border-box;
+  border: 1px solid rgba(37, 99, 235, 0.95); background: rgba(37, 99, 235, 0.16); }
+.cp-selection-marquee[hidden] { display: none; }
 /* ---------------------------------------------------------------------------
    Viewer inspection layers (see inspect.js): accessibility focus map, resolved
    typography, resolved theme attributes, layout boxes. The layer is absolutely positioned over

@@ -1205,6 +1205,14 @@ class ServeHttpServer(
         get("/reference/{name}") { handleDesignReferenceAsset(sessionInPath = false) }
         get("/{system}/reference/{name}") { handleDesignReferenceAsset(sessionInPath = true) }
 
+        // The published element tag index (see [ServeTagIndex]). Per preview, like `/reference` and
+        // `/pages` beside it, because that is what the artifact is: one index per render, published
+        // with the stickers. It had no HTTP surface until the focused comparison's element selector
+        // became its first consumer — inventing a route before a caller existed would have frozen a
+        // guess.
+        get("/tags/{name}") { handleTagIndex(sessionInPath = false) }
+        get("/{system}/tags/{name}") { handleTagIndex(sessionInPath = true) }
+
         // Design pages (see [ServeDesignPages]). One route per level rather than a
         // separate asset path: `{name}` ending in `.png` is the backdrop image, anything else is
         // the screen's own view — the same suffix convention `/reference/{name}` already uses.
@@ -1596,6 +1604,24 @@ class ServeHttpServer(
   /** Raw request query, including its leading `?` only when non-empty. */
   private fun RoutingContext.requestQuerySuffix(): String =
     call.request.queryString().let { if (it.isEmpty()) "" else "?$it" }
+
+  /**
+   * Just the session keys (`token`, `session`) from this request, as a query suffix.
+   *
+   * For links to a lane that reads a **published** artifact: it needs whatever makes the server
+   * answer at all and nothing else. Carrying the page's render overrides there would suggest the
+   * artifact were scoped to them, which is the confusion the tag index's `space` field and its
+   * frame gate both exist to prevent.
+   */
+  private fun RoutingContext.sessionQuerySuffix(): String =
+    call.request.queryParameters
+      .entries()
+      .filter { (key, _) -> key == "token" || key == "session" }
+      .flatMap { (key, values) -> values.map { key to it } }
+      .joinToString("&") { (key, value) ->
+        "${WebEscaping.urlEncodeSegment(key)}=${WebEscaping.urlEncodeSegment(value)}"
+      }
+      .let { if (it.isEmpty()) "" else "?$it" }
 
   /** A pinned render accepts routing state and the pin itself, never viewer render overrides. */
   private fun RoutingContext.pinnedRenderQuerySuffix(): String =
@@ -3530,12 +3556,46 @@ class ServeHttpServer(
         ServeWeb.ReportIssue(
           action = ServeIssueReport.action(reportContext.repo),
           body = ServeIssueReport.body(reportContext),
-          bodyTemplate = ServeIssueReport.body(reportContext, renderPlaceholder = true),
+          // The template the page's JS fills. It carries the selection placeholder as well as the
+          // render and score ones: what the reporter picked is decided by clicking, after the page
+          // was served, and it belongs in the SAME locator block the server already wrote rather
+          // than in a second block a producer would have to reconcile.
+          bodyTemplate =
+            ServeIssueReport.body(
+              reportContext,
+              renderPlaceholder = true,
+              selectionPlaceholder = true,
+            ),
           repo = reportContext.repo,
           login = githubAuth?.currentLogin(call),
         )
       val revisions = catalogRevisions(renderHost, preview.id)
       val pinned = revisions.pinned != null
+      // Whether a TAG selection would describe the frame on screen. All three conditions are about
+      // the same thing: `tagIndexForPreview` is the published static index, measured in CI over the
+      // baked render, and both live host wrappers delegate it to their baked host. So it describes
+      // the frame here exactly when the frame IS the baked one — no overrides re-rendering it, no
+      // pin replaying a different commit's pixels — and a host that publishes no index at all has
+      // nothing to offer either way.
+      //
+      // Getting this wrong is not a missing feature, it is a wrong record: a tag selection persists
+      // the index's bounds into the locator as the acceptance's baseline, so bounds from another
+      // frame survive into a record that later reports an unchanged element as moved. The element
+      // gates in batch 05 need a shared render generation before they can do better than this;
+      // until then the honest answer on a re-rendered frame is to offer the drag and say why.
+      val tagIndex = renderHost.tagIndexForPreview(preview.id)
+      val tagsDescribeFrame = tagIndex.isNotEmpty() && overrideParams.isEmpty() && !pinned
+      val tagSelectionNote =
+        when {
+          tagsDescribeFrame -> null
+          tagIndex.isEmpty() -> "This catalog publishes no element tag index for this preview."
+          pinned ->
+            "Tag selection is off on a pinned revision: the tag index describes the current " +
+              "render, not this one. Drag a region instead."
+          else ->
+            "Tag selection is off while overrides are applied: the tag index describes the " +
+              "catalog's baked render, not this one. Drag a region instead."
+        }
       markGeneration("static-page", pageCacheControl())
       call.respondText(
         ServeWeb.referenceComparisonPage(
@@ -3568,6 +3628,18 @@ class ServeHttpServer(
             if (pinned) emptyList() else renderHost.annotationsForReference(reference.id),
           actualAnnotations =
             if (pinned) emptyList() else renderHost.annotationsForPreview(previewId),
+          // Same rule as the authored layers above, for the same reason: the derived ones are
+          // projected from TODAY's render, so drawing them over a pinned frame would label
+          // historical pixels with the current semantics tree.
+          derivedAnnotations = !pinned && renderHost.hasDesignAnnotationsFor(preview.id),
+          // Session keys only. The page's own query carries `reference=` and would carry overrides
+          // — neither means anything to a route that reads a published file, and copying them in
+          // would make the fetch look as though the index were scoped to them.
+          tagIndexUrl =
+            if (!tagsDescribeFrame) null
+            else
+              "$basePath/tags/${WebEscaping.urlEncodeSegment(preview.id)}" + sessionQuerySuffix(),
+          tagSelectionNote = tagSelectionNote,
           parityIssues =
             renderHost.parityIssues()?.issues.orEmpty().filter { issue ->
               preview.id in issue.previewIds ||
@@ -5888,6 +5960,49 @@ class ServeHttpServer(
       call.response.headers.append(HttpHeaders.CacheControl, DYNAMIC_RESOURCE_CACHE_CONTROL)
       call.respondText(
         JSON.encodeToString(RenderRunsResponse.serializer(), dto),
+        ContentType.Application.Json,
+      )
+    }
+  }
+
+  /**
+   * `GET /tags/{name}` (query) and `GET /{system}/tags/{name}` (path): one preview's **published**
+   * element tag index — `testTag → {count, bounds, space}` — as
+   * [ServeAnnotationsPayload.encodeTags] writes it.
+   *
+   * `.json` is accepted and stripped so the path reads like the machine artifact it mirrors; the
+   * bare id answers identically. Neither form re-renders: this reads the catalog's
+   * `tags/index.json` through [ServeHost.tagIndexForPreview] and nothing else, which is exactly why
+   * it needs no live-scope gate and can be served from a static bundle.
+   *
+   * **An empty index is `{}`, not a 404.** "This preview carries no tags" and "this server cannot
+   * tell you" are different answers, and a consumer that cannot distinguish them has no way to
+   * choose between offering no tag targets and offering none *yet*. A preview this session does not
+   * serve at all is the 404.
+   *
+   * ## What this route does NOT establish
+   *
+   * That the index describes the frame the caller is looking at. It is the *published static*
+   * index, computed in CI over the baked render, and both live host wrappers delegate
+   * [ServeHost.tagIndexForPreview] to their baked host — so an override-bearing or pinned frame is
+   * a different render than the one these bounds were measured on. Tag-derived selection therefore
+   * has to be gated on the frame being the baked one ([ServeWeb.ReferenceComparison.tagSelection],
+   * decided by the page that knows which frame it is showing), and the element gates in batch 05
+   * need a shared render generation before they can read this at all. Recording bounds from another
+   * frame into an acceptance is worse than having no element gate: it reports an element that never
+   * moved as moved, with a plausible explanation attached.
+   */
+  private suspend fun RoutingContext.handleTagIndex(sessionInPath: Boolean) {
+    if (rejectBadToken()) return
+    val previewId = call.parameters["name"].orEmpty().removeSuffix(".json")
+    withLeasedSession(selectedSessionId(sessionInPath)) { renderHost ->
+      if (renderHost.previews.none { it.id == previewId }) {
+        call.respondText("not found", status = HttpStatusCode.NotFound)
+        return@withLeasedSession
+      }
+      call.response.headers.append(HttpHeaders.CacheControl, DYNAMIC_RESOURCE_CACHE_CONTROL)
+      call.respondBytes(
+        ServeAnnotationsPayload.encodeTags(previewId, renderHost.tagIndexForPreview(previewId)),
         ContentType.Application.Json,
       )
     }

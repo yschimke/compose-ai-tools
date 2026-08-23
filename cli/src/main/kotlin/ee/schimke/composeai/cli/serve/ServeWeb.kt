@@ -9426,6 +9426,39 @@ $rows
     referenceAnnotations: List<DesignAnnotation> = emptyList(),
     actualAnnotations: List<DesignAnnotation> = emptyList(),
     /**
+     * Whether the host can project the **derived** layers — typography, theme and layout read off
+     * the render's own semantics tree — for this preview, i.e. answer `/render/<id>.annotations`.
+     *
+     * Separate from [actualAnnotations], which is the *producer-authored* list a bundle publishes
+     * in `annotations/index.json`. This page carried only the authored one for as long as it has
+     * existed, which is why most catalogs show a redline over the Reference panel and nothing over
+     * the render — and why, before this, an element selector on the Actual side would have had
+     * nothing to point at on the side that matters.
+     */
+    derivedAnnotations: Boolean = false,
+    /**
+     * Where the element tag index for this preview lives, or null when a **tag** selection would
+     * not describe the frame on screen.
+     *
+     * Null is not "no tags". `ServeHost.tagIndexForPreview` is the *published static* index,
+     * measured in CI over the baked render, and both live host wrappers delegate to their baked
+     * host — so an override-bearing or pinned frame is a different render than the one those bounds
+     * came from. A tag selection persists those bounds into the locator as the acceptance's
+     * baseline, so bounds read off another frame survive into a record that later reports an
+     * unchanged element as *moved*: a false invalidation with a plausible explanation attached,
+     * which is worse than a missing check. A dragged region has no such coupling — it is derived
+     * from the displayed pixels, so it describes what the reporter saw by construction — and stays
+     * offered either way.
+     */
+    tagIndexUrl: String? = null,
+    /**
+     * Why the tag picker is absent, when the reason is worth saying out loud. Shown beside the
+     * selector rather than left to be guessed at: "this catalog publishes no tag index" and "your
+     * overrides mean the index describes a different render" are different problems with different
+     * fixes, and a control that simply is not there teaches neither.
+     */
+    tagSelectionNote: String? = null,
+    /**
      * The catalog's published revisions and which one this page is pinned to. This is the page the
      * permalink feature was raised against (issue #3723): a comparison URL names a preview and a
      * reference, both of which are republished, so without a pin it describes whatever the pair
@@ -9540,6 +9573,68 @@ $rows
         """
           .trimIndent()
       }
+    // The DERIVED layers, mounted over the Actual panel by the same `<cp-inspect-layers>` the
+    // viewer
+    // uses (see `inspect/host.ts`). Deliberately a second, separately-labelled control group rather
+    // than more checkboxes in the one above: those toggle the redline a producer AUTHORED and that
+    // this page inlines for both panels, these toggle what the render's own semantics tree SAYS,
+    // and only the render has one. Folding them together would offer a Typography toggle that means
+    // two different things depending on which panel you looked at.
+    val derivedControls =
+      if (!derivedAnnotations) ""
+      else {
+        val toggles =
+          listOf("typography" to "Typography", "theme" to "Theme", "layout" to "Layout")
+            .joinToString("\n") { (kind, label) ->
+              "<label class=\"cp-annotation-toggle\"><input type=\"checkbox\" " +
+                "class=\"cp-render-inspect\" data-cp-inspect=\"$kind\"> " +
+                WebEscaping.htmlEscape(label) +
+                "</label>"
+            }
+        """
+        <div class="cp-annotation-controls cp-render-inspect-controls" role="group"
+             aria-label="Render semantics layers">
+          <span class="cp-compare-control-label">Render semantics</span>
+          $toggles
+        </div>
+        <div class="cp-inspect-legend cp-render-inspect-legend" id="cp-render-inspect-legend"
+             role="region" aria-label="Render semantics legend" hidden></div>
+        <cp-inspect-layers
+          data-cp-host="#cp-compare-actual"
+          data-cp-layer="#cp-render-inspect-layer"
+          data-cp-legend="#cp-render-inspect-legend"
+          data-cp-toggles=".cp-render-inspect"
+          data-cp-base="${WebEscaping.htmlEscape(basePath)}"></cp-inspect-layers>
+        """
+          .trimIndent()
+      }
+    // The element selector. A dragged region needs nothing from the server — it is read off the
+    // displayed pixels — so the control is offered on every focused comparison; the tag picker only
+    // appears where the index describes the frame being shown. See [tagIndexUrl].
+    val tagAttr = tagIndexUrl?.let { " data-cp-tags=\"${WebEscaping.htmlEscape(it)}\"" }.orEmpty()
+    val tagNote =
+      tagSelectionNote
+        ?.takeIf { it.isNotBlank() }
+        ?.let { "<p class=\"cp-selection-note\">${WebEscaping.htmlEscape(it)}</p>" }
+        .orEmpty()
+    val selectionControls =
+      if (reportIssue == null) ""
+      else
+        """
+        <div class="cp-selection-controls" id="cp-element-selection" role="group"
+             aria-label="Report a single element"$tagAttr>
+          <span class="cp-compare-control-label">Report</span>
+          <select class="cp-selection-tag" aria-label="Tagged element" hidden>
+            <option value="">the whole render</option>
+          </select>
+          <button type="button" class="cp-selection-drag">Drag a region…</button>
+          <button type="button" class="cp-selection-clear" hidden>Clear</button>
+          <p class="cp-selection-state" role="status">Reporting the whole render.</p>
+          $tagNote
+        </div>
+        <cp-element-selection></cp-element-selection>
+        """
+          .trimIndent()
     val source = WebEscaping.htmlEscape(reference.source.provider)
     val revision =
       reference.source.revision
@@ -9602,10 +9697,16 @@ $rows
           <div class="cp-reference-grid">
             <section><h2>Reference</h2><div class="cp-compare-shot" data-cp-annotated="reference"><img src="$raster" alt="Design reference"></div></section>
             <section><h2>Diff</h2><div class="cp-compare-shot"><canvas class="cp-reference-diff" aria-label="Highlighted pixel difference"></canvas></div></section>
-            <section><h2>Actual</h2><div class="cp-compare-shot" data-cp-annotated="actual"><img src="$actual" alt="Actual Compose preview"></div></section>
+            <section><h2>Actual</h2><div class="cp-compare-shot" data-cp-annotated="actual" id="cp-compare-actual" data-preview-id="${WebEscaping.htmlEscape(preview.id)}"><img src="$actual" alt="Actual Compose preview">${
+              if (derivedAnnotations)
+                "<div class=\"cp-inspect-layer\" id=\"cp-render-inspect-layer\"></div>"
+              else ""
+            }<div class="cp-selection-layer" id="cp-selection-layer" hidden></div></div></section>
           </div>
           $annotationControls
-          <p class="cp-reference-result" role="status">comparing…</p>$report
+          $derivedControls
+          <p class="cp-reference-result" role="status">comparing…</p>
+          $selectionControls$report
           <label class="cp-overlay-control">Overlay <input class="cp-overlay-range" type="range" min="0" max="100" value="50"><span>50%</span></label>
           <div class="cp-reference-overlay"><img src="$raster" alt=""><img src="$actual" alt=""></div>
         </div>

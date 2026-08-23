@@ -499,6 +499,79 @@ class ServeIssueReportTest {
     }
   }
 
+  @Test
+  fun `the selection placeholder occupies a whole line and vanishes without a trace`() {
+    // The substitution has to reproduce the block this writer emits on its own when nothing was
+    // selected — otherwise every unselected report filed through the page differs from the format's
+    // own baseline, and a blank line left inside the fence makes the producer's line parser read a
+    // field short.
+    val locator = fixtureLocator()
+    val template = ServeIssueReport.locatorBlock(locator, selectionPlaceholder = true)
+    assertTrue("${ServeIssueReport.SELECTION_PLACEHOLDER}\n" in template, template)
+    assertEquals(
+      ServeIssueReport.locatorBlock(locator),
+      template.replace("${ServeIssueReport.SELECTION_PLACEHOLDER}\n", ""),
+    )
+  }
+
+  @Test
+  fun `substituting the placeholder yields exactly what the writer would have emitted`() {
+    // The cross-engine contract, stated from this side. `cli/serve-web`'s `report/locator.ts`
+    // produces those two lines in the browser, and `reportLocator.test.ts` pins it to the same
+    // shared fixture — so what the page files and what this writer would have written are the same
+    // bytes, which is what makes a filed report and a server-composed one comparable.
+    val locator = fixtureLocator()
+    val selected =
+      locator.copy(
+        element = "glyph",
+        bounds = ServeIssueReport.Bounds(x = 18, y = 18, width = 24, height = 24),
+      )
+    val lines =
+      "element: ${ServeIssueReport.canonicalElement("glyph")}\n" +
+        "bounds: ${ServeIssueReport.canonicalBounds(selected.bounds!!)}\n"
+    assertEquals(
+      ServeIssueReport.locatorBlock(selected),
+      ServeIssueReport.locatorBlock(locator, selectionPlaceholder = true)
+        .replace("${ServeIssueReport.SELECTION_PLACEHOLDER}\n", lines),
+    )
+    // …and the result parses back to the selection it names, in both directions.
+    assertEquals(
+      selected,
+      ServeIssueReport.locatorFromBody(ServeIssueReport.locatorBlock(selected)),
+    )
+  }
+
+  @Test
+  fun `only the template carries the placeholder`() {
+    // A body filed with JS off must never carry a token nothing will substitute — it would reach
+    // GitHub verbatim and the producer would index `{{selection}}` as a field.
+    val ctx =
+      ServeIssueReport.Context(
+        repo = "yschimke/m3-catalog",
+        previewId = "iconbutton-tonal",
+        system = "m3-catalog",
+        componentId = "IconButton/Tonal",
+        referenceId = "iconbutton-tonal-figma",
+      )
+    assertFalse(ServeIssueReport.SELECTION_PLACEHOLDER in ServeIssueReport.body(ctx))
+    assertTrue(
+      ServeIssueReport.SELECTION_PLACEHOLDER in
+        ServeIssueReport.body(ctx, renderPlaceholder = true, selectionPlaceholder = true)
+    )
+  }
+
+  private fun fixtureLocator(): ServeIssueReport.Locator =
+    ServeIssueReport.Locator(
+      repository = "yschimke/m3-catalog",
+      system = "m3-catalog",
+      componentId = "IconButton/Tonal",
+      previewId = "iconbutton-tonal__ideal__default__light",
+      referenceId = "iconbutton-tonal-figma",
+      variant = "ideal/default/light",
+      overrides = emptyMap(),
+      revision = "yschimke/m3-catalog@design-artifacts/m3-catalog",
+    )
+
   private fun boundsOf(writer: JsonObject): ServeIssueReport.Bounds =
     ServeIssueReport.Bounds(
       x = writer["x"]!!.jsonPrimitive.int,

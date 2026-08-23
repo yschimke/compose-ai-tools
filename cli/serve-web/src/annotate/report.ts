@@ -52,17 +52,27 @@ export function reportRenderUrl(actualUrl: string, base: string): string {
 }
 
 /**
- * The report body, filled.
+ * The report body's render and score placeholders, filled.
  *
  * Page-derived values reach the form's hidden INPUT and nothing else — never an `href` or any other
- * navigation sink. The template is server-written; only these two placeholders are substituted.
+ * navigation sink. The template is server-written; only these placeholders are substituted.
+ *
+ * A null [scores] **drops the whole row** rather than leaving the placeholder or writing a word
+ * where a measurement belongs. That case is reachable now that the body is composed as soon as the
+ * page parses rather than only when the scorer finishes: a comparison the browser could not score —
+ * a reference the host cannot produce, a frame that never decoded — used to leave the report
+ * untouched, so a selection made on such a page would have reached nothing. Dropping the row
+ * reproduces exactly what the server writes when it has no measurements of its own.
  */
 export function fillReport(
     template: string,
     renderUrl: string,
-    scores: string,
+    scores: string | null,
 ): string {
-    return template
-        .replace("{{render}}", renderUrl)
-        .replace("{{rawScores}}", scores);
+    const filled = template.replace("{{render}}", renderUrl);
+    if (scores !== null) return filled.replace("{{rawScores}}", scores);
+    return filled
+        .split("\n")
+        .filter((line) => !line.includes("{{rawScores}}"))
+        .join("\n");
 }

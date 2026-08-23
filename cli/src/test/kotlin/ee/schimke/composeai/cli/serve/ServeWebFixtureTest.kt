@@ -170,6 +170,9 @@ class ServeWebFixtureTest {
     referenceId: String? = null,
     variant: String = "",
     overrides: Map<String, String> = emptyMap(),
+    // The focused comparison serves the template with the selection placeholder in it, because that
+    // is the one page carrying a selector. The viewer's report has no element to name.
+    selectionPlaceholder: Boolean = false,
   ) =
     ServeIssueReport.Context(
         repo = "yschimke/compose-ai-tools",
@@ -208,7 +211,12 @@ class ServeWebFixtureTest {
         ServeWeb.ReportIssue(
           action = ServeIssueReport.action(ctx.repo),
           body = ServeIssueReport.body(ctx),
-          bodyTemplate = ServeIssueReport.body(ctx, renderPlaceholder = true),
+          bodyTemplate =
+            ServeIssueReport.body(
+              ctx,
+              renderPlaceholder = true,
+              selectionPlaceholder = selectionPlaceholder,
+            ),
           repo = ctx.repo,
           login = "yschimke",
         )
@@ -1767,7 +1775,17 @@ class ServeWebFixtureTest {
             referenceId = comparisonReferences.first().id,
             variant = ServeIssueReport.variantFor(themedPreviews.first()),
             overrides = mapOf("fontScale" to "1.5", "knob.label" to "Send;now=x"),
+            selectionPlaceholder = true,
           ),
+        // The DERIVED semantics layers, which this page could not show until the inspection
+        // machinery learned to mount over a host other than the viewer. They are what gives the
+        // element selector something to point at on the render side of the comparison — the
+        // authored redline below annotates the reference far more often than the render.
+        derivedAnnotations = true,
+        // …and the tag index, which is the OTHER half, and the half an annotation-box-only design
+        // misses: a uniquely tagged node carrying neither typography nor container tokens produces
+        // no annotation at all, so nothing on this page draws a box for it.
+        tagIndexUrl = "/compose-m3/tags/${themedPreviews.first().id}",
         // Both panels annotated, so the fixture covers the case the layers exist for: reading the
         // reference's spec against the actual's. The layout boxes agree here and the type styles
         // don't, which is what the page is meant to make obvious.
@@ -1905,6 +1923,23 @@ class ServeWebFixtureTest {
             revisions = catalogRevisions,
             repo = "yschimke/compose-ai-tools",
           ),
+        reportIssue =
+          fixtureReportIssue(
+            previewId = themedPreviews.first().id,
+            label = themedPreviews.first().label,
+            sourceFile = themedPreviews.first().sourceFile.orEmpty(),
+            componentId = ServeIssueReport.componentIdFor(themedPreviews.first()),
+            referenceId = comparisonReferences.first().id,
+            variant = ServeIssueReport.variantFor(themedPreviews.first()),
+            selectionPlaceholder = true,
+          ),
+        // No `tagIndexUrl`, and the reason said out loud. The pinned page is where the frame gate
+        // is visible: the published index describes the CURRENT render, so a tag selection here
+        // would record bounds measured on different pixels. The drag is unaffected — it is read off
+        // the pixels on screen — so the page still offers a way to point at something.
+        tagSelectionNote =
+          "Tag selection is off on a pinned revision: the tag index describes the current " +
+            "render, not this one. Drag a region instead.",
       )
     // The same page for a DARK-FIRST catalog, which is a materially different picture rather than a
     // recolour of the one above — and the case yschimke/wear-m3-catalog#56 was raised against.
@@ -3803,6 +3838,40 @@ class ServeWebFixtureTest {
         ) &&
         referenceComparison.contains("{{rawScores}}"),
       "the focused comparison pins the locator, canonical overrides and score placeholder",
+    )
+    // The selection placeholder rides in the TEMPLATE only. The server-rendered body is what a
+    // visitor with JS off files, and it must not carry a token nothing will ever substitute.
+    assertEquals(
+      1,
+      referenceComparison.split("{{selection}}").size - 1,
+      "the selection placeholder appears once, in the template and nowhere else",
+    )
+    assertTrue(
+      referenceComparison.substringAfter("data-report-template=\"").contains("{{selection}}"),
+      "the selection placeholder rides in the report template",
+    )
+    assertTrue(
+      referenceComparison.contains("id=\"cp-compare-actual\"") &&
+        referenceComparison.contains("id=\"cp-render-inspect-layer\"") &&
+        referenceComparison.contains("data-cp-host=\"#cp-compare-actual\"") &&
+        referenceComparison.contains("<cp-inspect-layers"),
+      "the focused comparison mounts the derived semantics layers over its Actual panel",
+    )
+    assertTrue(
+      referenceComparison.contains("<cp-element-selection>") &&
+        referenceComparison.contains("class=\"cp-selection-tag\"") &&
+        referenceComparison.contains("data-cp-tags=\"/compose-m3/tags/") &&
+        referenceComparison.contains("id=\"cp-selection-layer\""),
+      "the focused comparison offers both a tag picker and a drag region",
+    )
+    // The pinned twin is the gate, and it is the load-bearing half of this feature: the published
+    // index describes the CURRENT render, so offering a tag selection here would persist bounds
+    // measured on different pixels into the acceptance's baseline — and later report an element
+    // that never moved as moved. The drag stays, because it is read off the pixels on screen.
+    assertTrue(
+      !referenceComparisonPinned.contains("data-cp-tags=") &&
+        referenceComparisonPinned.contains("class=\"cp-selection-drag\""),
+      "a pinned comparison withholds tag selection and keeps the drag",
     )
     // The substitution moved into `<cp-reference-compare>` with the rest of this page, so the
     // bundle is where it is now pinned. The property being held is the same one: the filled report

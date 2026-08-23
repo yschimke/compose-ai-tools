@@ -26,12 +26,8 @@ import {
     type Bounds,
 } from "../annotate/match.js";
 import { clusterTypography } from "../annotate/clusters.js";
-import {
-    fillReport,
-    rawScores,
-    reportRenderUrl,
-    resultLine,
-} from "../annotate/report.js";
+import { rawScores, reportRenderUrl, resultLine } from "../annotate/report.js";
+import { reportBody } from "../report/body.js";
 import {
     groupTypography,
     pairTypography,
@@ -101,6 +97,7 @@ export class ReferenceCompare extends LitElement {
         if (!root) return false;
         this.installed = true;
         this.root = root;
+        this.claimReport();
         void this.compare();
         this.wireOverlay();
         this.setUpAnnotations();
@@ -140,7 +137,7 @@ export class ReferenceCompare extends LitElement {
                 canvas,
             );
             resultText.textContent = resultLine(result);
-            this.fillReportBody(result, actualUrl);
+            this.fillReportBody(result);
         } catch {
             // A reference the host cannot produce is not an error worth a stack trace; the page
             // still shows both panels and the redline.
@@ -148,19 +145,31 @@ export class ReferenceCompare extends LitElement {
         }
     }
 
-    private fillReportBody(result: ComparisonResult, actualUrl: string): void {
+    /**
+     * Hand the report field its render URL, before any scoring has happened.
+     *
+     * Early, deliberately. The field has one writer ([reportBody]) and three producers, and the
+     * element selector is one of them: a reporter who picks an element while the scorer is still
+     * running — or on a comparison the browser could not score at all — must still get their
+     * selection into the filed issue. Waiting for a score to compose the body is what used to make
+     * that impossible, silently.
+     */
+    private claimReport(): void {
         const body = document.getElementById(
             "cp-report-body",
         ) as HTMLInputElement | null;
-        const template = body?.getAttribute("data-report-template");
-        if (!body || !template) return;
+        if (!reportBody.attach(body)) return;
+        const actualUrl = this.root.getAttribute("data-actual") ?? "";
+        if (actualUrl)
+            reportBody.set({
+                render: reportRenderUrl(actualUrl, location.href),
+            });
+    }
+
+    private fillReportBody(result: ComparisonResult): void {
         // The report stays a GET form: page-derived values are written to its hidden INPUT and
         // nowhere else — never to an href or any other navigation sink.
-        body.value = fillReport(
-            template,
-            reportRenderUrl(actualUrl, location.href),
-            rawScores(result),
-        );
+        reportBody.set({ scores: rawScores(result) });
     }
 
     private wireOverlay(): void {
