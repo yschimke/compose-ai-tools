@@ -244,6 +244,13 @@ export function decodePng(bytes) {
     // to drop a corrupt transparency chunk and decode the raster as opaque, which silently changes
     // the pixels the candidate gate compares. Refusing a broken artifact is what this contract does
     // everywhere else; quietly substituting different pixels is not.
+    // An unrecognized **critical** chunk must stop the decode — the PNG specification says so, and a
+    // browser obeys it. Skipping one and carrying on would reach a gate verdict where the other side
+    // of the contract reaches `decode-failed`. Criticality is the case of the type's first letter:
+    // uppercase is critical, lowercase ancillary.
+    if (!CONSUMED_CHUNKS.has(type) && (bytes[offset + 4] & 0x20) === 0) {
+      throw new Error("decode-failed: unrecognized critical chunk " + type);
+    }
     if (CONSUMED_CHUNKS.has(type) &&
         view.getUint32(offset + 8 + length) !== crc32(bytes.subarray(offset + 4, offset + 8 + length))) {
       throw new Error("decode-failed: chunk CRC mismatch");

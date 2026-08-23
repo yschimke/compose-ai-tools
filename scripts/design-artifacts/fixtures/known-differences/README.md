@@ -91,6 +91,9 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `id-not-safe-single-dot` | An `id` of `.` reaching a sibling's `mask.png` |
 | `id-not-safe-parent-dot` | An `id` of `..` |
 | `id-not-safe-separator` | An `id` carrying a path separator |
+| `path-not-contained-windows-reserved-name` | An artifact path segment Windows cannot open |
+| `path-not-contained-trailing-dot` | An artifact path segment ending in a dot |
+| `id-not-safe-windows-reserved-name` | An `id` Windows cannot open |
 | `path-not-contained-backslash` | An artifact path containing a backslash |
 | `path-not-contained-hash` | An artifact path containing `#` |
 | `path-not-contained-parent` | An artifact path leaving the acceptance's directory |
@@ -134,6 +137,9 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `header-invalid-inflates-past-declared-size` | A small legal header in front of a much larger inflation |
 | `ancillary-chunk-crc-is-not-fatal` | A corrupt CRC on a chunk the decoder never reads |
 | `decode-failed-unsupported-compression-method` | An `IHDR` declaring a compression method the specification does not define |
+| `decode-failed-interlaced-accepted-candidate` | An interlaced accepted candidate |
+| `decode-failed-16-bit-accepted-candidate` | A 16-bit accepted candidate |
+| `decode-failed-unrecognized-critical-chunk` | An unrecognized **critical** chunk with a valid CRC |
 | `trns-transparency-is-decoded` | An accepted candidate carrying `tRNS` |
 
 ## The resampler
@@ -145,3 +151,17 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `downscale-non-integer-ratio` | Three pixels into two — partial footprints |
 | `upscale-integer-ratio` | Two pixels into four |
 | `alpha-is-a-fourth-channel` | Alpha averaged without premultiplication |
+
+## Sub-pixel rounding
+
+Outward, to the enclosing integer box. Its own group because every gate case is handed canonical
+boxes that are already integers — without these, a second engine could round inward or to nearest
+and still pass the whole suite.
+
+| Case | What it pins |
+| --- | --- |
+| `integer-box-is-unchanged` | A box already on the grid |
+| `fractional-origin-floors` | A fractional origin |
+| `fractional-far-edge-ceils` | A fractional far edge |
+| `fractional-both-ends` | Fractional at both ends |
+| `negative-origin` | A box whose origin is negative |

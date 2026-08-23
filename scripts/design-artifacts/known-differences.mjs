@@ -52,6 +52,32 @@ export const ELEMENT_TOLERANCE_RANGE = [0, 0.25];
 /** Ids that are fine as path segments and catastrophic as map keys. */
 const RESERVED_IDS = new Set(["__proto__", "constructor", "prototype"]);
 
+/**
+ * Segment names Windows cannot open, whatever extension follows them.
+ *
+ * `artifacts/CON.png` commits fine, evaluates fine on POSIX, and cannot be created under that name on
+ * Windows at all — so the offline engine reads a file the serving host reports as
+ * `artifact-unreadable`, which is the divergence the "contained **and** portable" rule exists to
+ * close. Reserved names apply with any extension, so the check is on the segment up to its first dot,
+ * case-insensitively. A trailing dot or space is the same class: Windows silently strips it, so two
+ * distinct committed names collapse onto one file there.
+ */
+const RESERVED_SEGMENTS = new Set([
+  "con",
+  "prn",
+  "aux",
+  "nul",
+  ...Array.from({ length: 9 }, (_, i) => `com${i + 1}`),
+  ...Array.from({ length: 9 }, (_, i) => `lpt${i + 1}`),
+]);
+
+function isPortableSegment(segment) {
+  if (!SAFE_SEGMENT.test(segment)) return false;
+  if (segment === "." || segment === "..") return false;
+  if (segment.endsWith(".") || segment.endsWith(" ")) return false;
+  return !RESERVED_SEGMENTS.has(segment.split(".")[0].toLowerCase());
+}
+
 /** The one character class an `id` or an artifact path segment may use. */
 const SAFE_SEGMENT = /^[A-Za-z0-9._-]+$/;
 
@@ -75,7 +101,6 @@ export const REASON_ORDER = [
   "artifact-too-large",
   "header-invalid",
   "decode-failed",
-  "degenerate-dimensions",
   "dimension-mismatch",
   "mask-encoding-invalid",
   "animated-png",
@@ -214,8 +239,7 @@ export function pixelsAgree(a, aOffset, b, bOffset, tolerance) {
 
 /** An `id` is a single safe path segment, is neither dot name, and is safe as a map key. */
 export function isSafeId(id) {
-  if (typeof id !== "string" || !SAFE_SEGMENT.test(id)) return false;
-  if (id === "." || id === "..") return false;
+  if (typeof id !== "string" || !isPortableSegment(id)) return false;
   return !RESERVED_IDS.has(id);
 }
 
@@ -231,8 +255,7 @@ export function isSafeId(id) {
 export function isSafeArtifactPath(path) {
   if (typeof path !== "string" || path.length === 0) return false;
   if (path.startsWith("/")) return false;
-  const segments = path.split("/");
-  return segments.every((segment) => SAFE_SEGMENT.test(segment) && segment !== "." && segment !== "..");
+  return path.split("/").every(isPortableSegment);
 }
 
 /**
@@ -329,38 +352,43 @@ export function evaluateKnownDifferences({ documentText, readArtifact, compariso
 
   if (records.length > BUDGET.maxAcceptances) documentFailures.push({ reason: "document-too-large" });
 
-  // **Preflight only.** The pixel budget is a document verdict reached from per-record header reads,
-  // so the two cannot be separated — but nothing below the header is touched yet. A document already
-  // over its count, axis or pixel cap must be rejected *before* any raster is decoded, which is the
-  // whole point of a bounded preflight: reading the headers of 257 acceptances costs a few kilobytes,
-  // decoding them first would allocate exactly what the cap exists to refuse.
-  const evaluations = records.map((record, index) => preflightRecord(record, index, readArtifact, catalog));
-
+  // **Preflight only, one record at a time, retaining nothing.** The pixel budget is a document
+  // verdict reached from per-record header reads, so the two cannot be separated — but nothing below
+  // the header is kept. Holding each record's two artifacts until the budget had been checked would
+  // put 256 × 2 × 8 MiB — four gigabytes of legal, individually-capped bytes — in memory *before* the
+  // aggregate cap could fire, which is the resource exhaustion the caps exist to prevent, reached
+  // through the guard itself. The bytes are re-read in {@link decodeRecord}; a preflight is a bounded
+  // read of a few dozen bytes per artifact, and reading twice is far cheaper than retaining once.
+  //
+  // **Compare as you go and stop reading.** Once the document is over budget nothing further about it
+  // is knowable — `statuses` is absent for a document-level rejection — so continuing to fetch the
+  // remaining artifacts buys nothing and costs everything the cap was defending.
+  const evaluations = [];
   let pixels = 0;
-  for (const evaluation of evaluations) {
+  for (const [index, record] of records.entries()) {
+    if (documentFailures.some((failure) => failure.reason === "document-too-large")) break;
+    const evaluation = preflightRecord(record, index, readArtifact, catalog);
+    evaluations.push(evaluation);
     if (!evaluation.preflightClean) continue;
     for (const header of evaluation.headers) {
-      if (header.width > BUDGET.maxAxis || header.height > BUDGET.maxAxis) {
-        pushOnce(documentFailures, { reason: "document-too-large" });
-        break;
-      }
       const area = header.width * header.height;
-      if (area > BUDGET.maxPixels) {
+      if (
+        header.width > BUDGET.maxAxis ||
+        header.height > BUDGET.maxAxis ||
+        area > BUDGET.maxPixels ||
+        pixels + area > BUDGET.maxPixels
+      ) {
         pushOnce(documentFailures, { reason: "document-too-large" });
         break;
       }
       pixels += area;
-      if (pixels > BUDGET.maxPixels) {
-        pushOnce(documentFailures, { reason: "document-too-large" });
-        break;
-      }
     }
   }
 
   if (documentFailures.length > 0) return { validationFailures: sortFailures(documentFailures, records) };
 
-  // Only now: hashes, decode, and everything that needs pixels.
-  for (const evaluation of evaluations) if (evaluation.preflightClean) decodeRecord(evaluation);
+  // Only now: re-read the bytes, hash them, decode, and everything that needs pixels.
+  for (const evaluation of evaluations) if (evaluation.preflightClean) decodeRecord(evaluation, readArtifact);
 
   const statuses = new Map();
   const validationFailures = [];
@@ -438,7 +466,6 @@ function preflightRecord(record, index, readArtifact, catalog) {
     record,
     reasons: [],
     headers: [],
-    bytes: null,
     preflightClean: false,
     mask: null,
     accepted: null,
@@ -494,7 +521,6 @@ function preflightRecord(record, index, readArtifact, catalog) {
   if (headerReasons.length > 0) return fail(...headerReasons);
 
   evaluation.headers = [maskHeader, acceptedHeader];
-  evaluation.bytes = [maskBytes, acceptedBytes];
   evaluation.preflightClean = true;
   return evaluation;
 }
@@ -506,14 +532,19 @@ function preflightRecord(record, index, readArtifact, catalog) {
  * mask semantics and dimensions are all per-acceptance, and a record that fails any of them was
  * already inside the budget it was charged against.
  */
-function decodeRecord(evaluation) {
-  const { record, headers, bytes } = evaluation;
+function decodeRecord(evaluation, readArtifact) {
+  const { record, headers } = evaluation;
   const [maskHeader, acceptedHeader] = headers;
-  const [maskBytes, acceptedBytes] = bytes;
+  const maskBytes = readArtifact(`${record.id}/${record.mask}`);
+  const acceptedBytes = readArtifact(`${record.id}/${record.acceptedCandidate}`);
   const fail = (...reasons) => {
     evaluation.reasons.push(...reasons);
     return evaluation;
   };
+
+  // The preflight retained no bytes, so these are read again here. A file that vanished between the
+  // two reads is `artifact-unreadable`, exactly as it would have been on the first.
+  if (!maskBytes || !acceptedBytes) return fail("artifact-unreadable");
 
   const hashReasons = [];
   if (!hashesMatch(record.maskSha256, sha256Hex(maskBytes))) hashReasons.push("mask-hash-mismatch");
@@ -537,10 +568,6 @@ function decodeRecord(evaluation) {
   if (decodeReasons.length > 0) return fail(...decodeReasons);
   const mask = decoded[0].image;
   const accepted = decoded[1].image;
-
-  if (mask.width < 1 || mask.height < 1 || accepted.width < 1 || accepted.height < 1) {
-    return fail("degenerate-dimensions");
-  }
 
   const coverage = maskCoverage(mask);
   if (coverage.nonBinary) return fail("mask-encoding-invalid");
@@ -892,14 +919,25 @@ function sortFailures(failures, records) {
 }
 
 /**
- * Issue-level closure: an issue is closable only once **every** acceptance linked to it resolves.
+ * Issues every acceptance of which has resolved **in this document** — a candidate set, not a
+ * closure decision.
  *
  * The tracking issue is mandatory per acceptance but not unique to one — #42 is three acceptances
- * against one issue — so `resolved` on one of them says nothing about the issue. Closing on the
- * first resolution would also be self-defeating: the stale detection would immediately flag the
- * siblings the closure just orphaned.
+ * against one issue — so `resolved` on one of them says nothing about the issue, and closing on the
+ * first resolution would be self-defeating: the stale detection would immediately flag the siblings
+ * the closure just orphaned. Hence the aggregation.
+ *
+ * **But one run cannot see far enough to close anything, and the name must not pretend otherwise.**
+ * An evaluation reads one `known-differences.json` in one source repo, while the workflow supports
+ * many of both, and the same upstream component bug reported from two catalogs is the *normal* way
+ * one issue ends up referenced twice. Each run would then see its own records all resolved and close
+ * the issue out from under a live acceptance in a document it never opened. `v1` constrains the other
+ * side — an issue is owned by exactly one document — but nothing offline can *enforce* that, so what
+ * this function returns is the local half of the evidence. The closing step must establish ownership
+ * separately; where it cannot, it deletes its resolved records and leaves the issue for a human,
+ * which is the safe half of the operation and the one that needs no global knowledge.
  */
-export function closableIssues(documentRecords, statuses) {
+export function locallyResolvedIssues(documentRecords, statuses) {
   const groups = new Map();
   for (const record of documentRecords) {
     const issue = parseIssue(record.issue);

@@ -706,7 +706,10 @@ and the fixtures are
    transform's arithmetic and never during it. Outward rather than nearest because a mask or a
    selection that rounds inward is smaller than the region the author looked at, which is the
    direction that silently stops covering pixels. The tag index publishes canonical bounds under the
-   same rule, so element displacement is measured between two integer boxes.
+   same rule, so element displacement is measured between two integer boxes. Pinned by its own
+   fixture group, because every gate case is handed canonical boxes that are *already* integers — a
+   second engine could round inward or to nearest and pass the whole suite otherwise, which is a
+   claim the fixtures do not check masquerading as one they do.
 6. **The match metric is the maximum absolute per-channel difference over R, G, B and A, applied
    per pixel**, compared against `candidateTolerance` with `>` — a pixel exactly at the tolerance
    passes, the same inclusive convention the ranges and the caps use. Per-pixel rather than
@@ -1000,6 +1003,16 @@ byte length and headers are the preflight; hashes, decode, mask semantics and di
 the document's budget has passed. Nothing in the second half can change a document verdict, which is
 what makes the split safe.
 
+**The preflight retains nothing, and stops reading the moment the document is over budget.** Both
+halves are the same lesson as the split itself: holding each record's two artifacts until the
+aggregate cap could fire would put 256 × 2 × 8 MiB — four gigabytes of individually legal, capped
+bytes — in memory *before* the cap that was meant to prevent exactly that. So a preflight reads an
+artifact's header and lets the bytes go; the decode phase reads them again, which is far cheaper than
+retaining them once. And once a document is over budget nothing further about it is knowable —
+`statuses` is absent for a document-level rejection — so fetching the remaining artifacts buys
+nothing and costs everything the cap was defending. Unlike the bound below, this half *is* assertable:
+how many artifacts were fetched is observable through the same seam that supplies them.
+
 **And inflation itself is bounded by the declared scanline size.** The preflight cannot see past the
 header, so a small legal `IHDR` in front of a compression bomb walks through every cap and is then
 expanded in full — these artifacts are third-party and may carry 8 MiB of compressed data, which
@@ -1027,6 +1040,28 @@ this contract does everywhere else.
 one of each, so a decoder that ignores them inflates ordinary-looking scanlines and reaches a *gate
 verdict* where a conforming decoder reaches `decode-failed`. Same class as an interlaced file, and
 the same token.
+
+**`v1` decodes a subset of PNG — 8-bit, non-interlaced — and anything outside it is `decode-failed`.**
+This is a *shared* restriction on both artifacts rather than a property of one decoder, and it has to
+be said here or it is not shared at all: a valid interlaced or 16-bit accepted candidate decodes
+perfectly in a browser, so an engine that simply refuses what its own library declines produces a
+refusal where the other reaches a gate verdict. The alternative was to implement Adam7 and the
+1/2/4/16-bit depths in both engines, which buys nothing an authoring tool cannot trivially avoid and
+adds a large new surface to disagree on — 16-bit reduction alone is a rounding decision. Restricting
+rather than answering is what this contract already does with the mask's encoding and with animation.
+Both halves are fixtures.
+
+**An unrecognized *critical* chunk is `decode-failed`.** The PNG specification requires a decoder to
+stop on one, and a browser obeys; skipping it and carrying on reaches a gate verdict where the other
+side refuses. Criticality is the case of the type's first letter, which is exactly why the ancillary
+half of the CRC rule above must still decode.
+
+**There is no `degenerate-dimensions` token, and its absence is deliberate.** An earlier draft listed
+one for an artifact that "decodes to zero or negative dimensions". PNG dimensions are unsigned, so
+negative cannot occur, and zero is declared in the `IHDR` and caught by the preflight as
+`header-invalid` — which left a token in the ordering that no artifact could ever reach. A dead token
+in a shared contract is not harmless: it is a verdict two engines can each believe they implement, on
+inputs neither can produce, and no fixture can tell them apart.
 
 **`tRNS` is decoded, for palette, greyscale and RGB alike.** `accepted-candidate.png` is an ordinary
 colour raster and carries no encoding rule, so a palette file with a transparency chunk is legal —
@@ -1108,6 +1143,15 @@ of `[A-Za-z0-9._-]` joined by `/`**, the same character class the `id` already u
 backslashes, no `#`, `?` or `%`, and no whitespace. Anything else is `path-not-contained`. A
 committed artifact path has no need of the rest of Unicode, and the restriction removes the encoding
 question instead of answering it.
+
+**The character class is not the whole of portability, either.** `artifacts/CON.png` satisfies every
+rule above, commits fine, and cannot be created under that name on Windows at all — reserved device
+names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`) apply whatever extension follows
+them. A segment ending in a dot or a space is the same class: Windows strips it silently, so two
+distinct committed names collapse onto one file there. Either way the offline engine reads a file the
+serving host reports as `artifact-unreadable`, which is the divergence this rule exists to close, so
+both are refused — for artifact segments **and** for the `id`, which is doing double duty as a
+directory name.
 
 **A mask must select something.** An all-zero mask satisfies the encoding and dimension rules and
 still has no bounding box, which leaves `accepted-candidate.png`'s required dimensions undefined —
@@ -1296,7 +1340,7 @@ Evaluated strictly in this order — the first row whose condition holds wins:
 
 | # | Status | Condition |
 | --- | --- | --- |
-| 1 | `refused` | **any** validation condition holds — either artifact's bytes fail their recorded hash; an artifact is hash-valid but fails to decode, decodes to zero/negative dimensions, carries a non-binary mask encoding, selects no pixels, or does not match its required dimensions; the targeted reference publishes no `sha256`; either tolerance is out of range; the `id` is not a safe single path segment; an artifact path does not resolve inside the known-differences root; the record's target no longer resolves in the catalog (`orphaned-target`); or the stored candidate already agrees with the reference (`acceptance-is-noop`, and only once the fingerprint gate has passed). The acceptance is never evaluated, and the `reasons` token set below is the complete list |
+| 1 | `refused` | **any** validation condition holds — either artifact's bytes fail their recorded hash; an artifact is hash-valid but fails to decode, carries a non-binary mask encoding, selects no pixels, or does not match its required dimensions; the targeted reference publishes no `sha256`; either tolerance is out of range; the `id` is not a safe single path segment; an artifact path does not resolve inside the known-differences root; the record's target no longer resolves in the catalog (`orphaned-target`); or the stored candidate already agrees with the reference (`acceptance-is-noop`, and only once the fingerprint gate has passed). The acceptance is never evaluated, and the `reasons` token set below is the complete list |
 | 2 | `out-of-scope` | the record is well-formed but its recorded scope does not match **this** comparison. No gate runs and nothing is suppressed |
 | 3 | `invalidated: [causes]` | **any gate other than `candidate-changed`** fires — `reference-changed`, `plane-changed`, `element-ambiguous`, `element-moved` |
 | 4 | `resolved` | the candidate gate **fired** *and* the masked region now agrees with the **reference** (see below) |
@@ -1359,6 +1403,11 @@ closing PR (Phase 4 step 12) may only close an issue whose acceptances all live 
 is editing. A run that cannot establish that — because it has no way to know what other documents
 reference the issue — deletes its resolved records and leaves the issue open for a human, which is
 the safe half of the operation and the one that never needs global knowledge.
+
+**And the API must not promise what it cannot know.** The local aggregation is exposed as
+`locallyResolvedIssues` — issues every acceptance of which resolved *in this document* — rather than
+as anything named for closure, because a caller reaching for a function called "closable" has already
+been told the wrong thing. Ownership is established separately by the closing step, or not at all.
 
 Nothing offline can *enforce* single ownership, which is worth stating plainly rather than implying:
 it is a convention the closing step depends on, and the honest fallback is that closure is a
@@ -1496,8 +1545,7 @@ field would leave two engines free to pick different ones. Same fixed ordering r
 
 `document-unreadable`, `document-too-large`, `duplicate-id`, `id-missing`, `id-not-safe`,
 `schema-invalid`, `orphaned-target`, `path-not-contained`, `artifact-too-large`, `header-invalid`,
-`decode-failed`,
-`degenerate-dimensions`, `dimension-mismatch`, `mask-encoding-invalid`, `animated-png`, `mask-empty`,
+`decode-failed`, `dimension-mismatch`, `mask-encoding-invalid`, `animated-png`, `mask-empty`,
 `artifact-unreadable`, `mask-hash-mismatch`, `accepted-candidate-hash-mismatch`,
 `reference-hash-missing`, `tolerance-out-of-range`, `acceptance-is-noop`.
 

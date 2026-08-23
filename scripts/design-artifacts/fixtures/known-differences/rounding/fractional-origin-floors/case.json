@@ -1,0 +1,10 @@
+{
+  "title": "A fractional origin",
+  "why": "`floor` the origin, so the box grows *towards* the pixel the author's selection already touched. Rounding the origin to nearest would move the left edge inward for anything past the half-pixel, which is the direction that silently stops covering pixels.",
+  "box": {
+    "x": 8.4,
+    "y": 8.6,
+    "width": 8,
+    "height": 8
+  }
+}

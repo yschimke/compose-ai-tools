@@ -1,0 +1,10 @@
+{
+  "title": "A box already on the grid",
+  "why": "The identity case. Outward rounding must not inflate a box that needs no rounding.",
+  "box": {
+    "x": 8,
+    "y": 8,
+    "width": 8,
+    "height": 8
+  }
+}

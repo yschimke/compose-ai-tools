@@ -2,7 +2,7 @@
   "pins": [
     "statuses",
     "validationFailures",
-    "closableIssues"
+    "locallyResolvedIssues"
   ],
   "statuses": {
     "m3-iconbutton-tonal-glyph": {
@@ -10,7 +10,7 @@
     }
   },
   "validationFailures": [],
-  "closableIssues": [
+  "locallyResolvedIssues": [
     "yschimke/m3-catalog#40"
   ]
 }

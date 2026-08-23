@@ -2,7 +2,7 @@
   "pins": [
     "statuses",
     "validationFailures",
-    "closableIssues"
+    "locallyResolvedIssues"
   ],
   "statuses": {
     "m3-button-elevated-shadow": {
@@ -16,5 +16,5 @@
     }
   },
   "validationFailures": [],
-  "closableIssues": []
+  "locallyResolvedIssues": []
 }

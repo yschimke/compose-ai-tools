@@ -35,11 +35,12 @@ import {
   CAUSE_ORDER,
   ELEMENT_TOLERANCE_RANGE,
   REASON_ORDER,
-  closableIssues,
+  enclosingBox,
   evaluateKnownDifferences,
   isSafeArtifactPath,
   isSafeId,
   issueKey,
+  locallyResolvedIssues,
   parseIssue,
   resampleArea,
 } from "./known-differences.mjs";
@@ -47,6 +48,7 @@ import {
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "known-differences");
 const CASES = join(ROOT, "cases");
 const RESAMPLE = join(ROOT, "resample");
+const ROUNDING = join(ROOT, "rounding");
 
 const index = JSON.parse(readFileSync(join(ROOT, "index.json"), "utf8"));
 
@@ -139,6 +141,10 @@ test("every case directory is listed in index.json, and vice versa", () => {
     readdirSync(RESAMPLE).sort(),
     index.resample.map((entry) => entry.id).sort(),
   );
+  assert.deepEqual(
+    readdirSync(ROUNDING).sort(),
+    index.rounding.map((entry) => entry.id).sort(),
+  );
 });
 
 for (const id of caseIds) {
@@ -182,9 +188,9 @@ for (const id of caseIds) {
           assert.deepEqual(counts, expected.statusCounts);
           break;
         }
-        case "closableIssues": {
+        case "locallyResolvedIssues": {
           const records = JSON.parse(documentText).acceptances;
-          assert.deepEqual(closableIssues(records, result.statuses), expected.closableIssues);
+          assert.deepEqual(locallyResolvedIssues(records, result.statuses), expected.locallyResolvedIssues);
           break;
         }
         default:
@@ -210,6 +216,16 @@ for (const id of readdirSync(RESAMPLE).sort()) {
   });
 }
 
+for (const id of readdirSync(ROUNDING).sort()) {
+  const dir = join(ROUNDING, id);
+  const meta = readJson(join(dir, "case.json"));
+  const expected = readJson(join(dir, "expected.json"));
+
+  test(`rounding: ${id} — ${meta.title}`, () => {
+    assert.deepEqual(enclosingBox(meta.box), expected);
+  });
+}
+
 // -----------------------------------------------------------------------------------------------
 // Properties the fixture tree cannot express, because they are about the *result structure* rather
 // than about any one document.
@@ -229,6 +245,59 @@ test("`statuses` never reaches the prototype, even for a reserved id", () => {
   assert.ok(Object.hasOwn(result.statuses, "__proto__"), "the id must be an own property");
   assert.equal({}.polluted, undefined);
   assert.equal(Object.getPrototypeOf(result.statuses.__proto__), Object.prototype);
+});
+
+test("an over-budget document stops reading artifacts, and nothing is retained across the split", () => {
+  // The one observable half of the preflight's resource contract. An allocation bound is not
+  // expressible as a verdict — a compression bomb and an honest oversize give the same
+  // `header-invalid` — but *how many artifacts were fetched* runs through the injected seam, so the
+  // short-circuit can be asserted directly.
+  const reads = [];
+  const readArtifact = (path) => {
+    reads.push(path);
+    const file = join(CASES, "pilot-40-iconbutton-tonal-glyph", "artifacts", path);
+    return existsSync(file) ? new Uint8Array(readFileSync(file)) : null;
+  };
+
+  // Well past the axis cap on the very first record, so the document is doomed before the second is
+  // reached — and every later artifact must go unread. `document-axis-over-cap` already ships a mask
+  // whose header declares 8193 px, which is what makes this cheap to state.
+  const overDir = join(CASES, "document-axis-over-cap");
+  const overRecord = JSON.parse(readFileSync(join(overDir, "known-differences.json"), "utf8")).acceptances[0];
+  const overReads = [];
+  const overBudget = evaluateKnownDifferences({
+    documentText: JSON.stringify({
+      schema: "compose-preview-known-differences/v1",
+      acceptances: [0, 1, 2, 3].map((i) => ({ ...overRecord, id: `over-${i}` })),
+    }),
+    readArtifact: (path) => {
+      overReads.push(path);
+      const file = join(overDir, "artifacts", path.replace(/^over-\d+\//, "m3-iconbutton-tonal-glyph/"));
+      return existsSync(file) ? new Uint8Array(readFileSync(file)) : null;
+    },
+    comparison: null,
+  });
+  assert.equal(overBudget.statuses, undefined, "the document is rejected");
+  assert.deepEqual(overBudget.validationFailures, [{ reason: "document-too-large" }]);
+  assert.deepEqual(
+    [...new Set(overReads.map((path) => path.split("/")[0]))],
+    ["over-0"],
+    "only the first record's artifacts are ever fetched — the rest are never read at all",
+  );
+
+  // And the happy path reads each artifact exactly twice — once for the header preflight, once to
+  // hash and decode — never retaining the bytes of one record while another is preflighted.
+  evaluateKnownDifferences({
+    documentText: readFileSync(
+      join(CASES, "pilot-40-iconbutton-tonal-glyph", "known-differences.json"),
+      "utf8",
+    ),
+    readArtifact,
+    comparison: null,
+  });
+  const counts = new Map();
+  for (const path of reads) counts.set(path, (counts.get(path) ?? 0) + 1);
+  assert.deepEqual([...counts.values()], [2, 2], "two artifacts, each read once per phase");
 });
 
 test("the reason and cause orderings are the ones the contract lists", () => {

@@ -401,7 +401,7 @@ function document(acceptances) {
 {
   // #42 names three components, so its body carries three locator blocks, the index three rows and
   // §4 three acceptances — all pointing at one tracking issue. An issue is closable only once every
-  // acceptance linked to it resolves, which is why the case pins `closableIssues` as well: one
+  // acceptance linked to it resolves, which is why the case pins `locallyResolvedIssues` as well: one
   // comparison can only reach one of the three, and the other two are `out-of-scope` rather than
   // absent.
   const plane = { plane: "content-box", box: { x: 0, y: 0, width: 32, height: 24 } };
@@ -476,14 +476,14 @@ function document(acceptances) {
       tagIndex: {},
     },
     expected: {
-      pins: ["statuses", "validationFailures", "closableIssues"],
+      pins: ["statuses", "validationFailures", "locallyResolvedIssues"],
       statuses: {
         "m3-button-elevated-shadow": { status: "valid" },
         "m3-card-elevated-shadow": { status: "out-of-scope" },
         "m3-togglebutton-elevated-shadow": { status: "out-of-scope" },
       },
       validationFailures: [],
-      closableIssues: [],
+      locallyResolvedIssues: [],
     },
   });
 }
@@ -509,10 +509,10 @@ function document(acceptances) {
     files: glyphFiles(world, record),
     comparison: glyphComparison(world),
     expected: {
-      pins: ["statuses", "validationFailures", "closableIssues"],
+      pins: ["statuses", "validationFailures", "locallyResolvedIssues"],
       statuses: { "m3-iconbutton-tonal-glyph": { status: "resolved" } },
       validationFailures: [],
-      closableIssues: ["yschimke/m3-catalog#40"],
+      locallyResolvedIssues: ["yschimke/m3-catalog#40"],
     },
   });
 }
@@ -1414,6 +1414,38 @@ glyphValidation({
 });
 
 glyphValidation({
+  id: "path-not-contained-windows-reserved-name",
+  title: "An artifact path segment Windows cannot open",
+  why:
+    "`CON.png` commits fine, evaluates fine on POSIX, and cannot be created under that name on " +
+    "Windows at all — reserved device names apply with any extension. The offline engine then reads " +
+    "a file the serving host reports as `artifact-unreadable`, which is exactly the divergence the " +
+    "'contained **and** portable' rule exists to close. Containment was never the whole claim.",
+  record: { mask: "CON.png" },
+  expected: refused(["path-not-contained"]),
+});
+
+glyphValidation({
+  id: "path-not-contained-trailing-dot",
+  title: "An artifact path segment ending in a dot",
+  why:
+    "Windows silently strips a trailing dot, so two distinct committed names collapse onto one file " +
+    "there. Same class as the reserved names, and the same token.",
+  record: { acceptedCandidate: "accepted-candidate.png." },
+  expected: refused(["path-not-contained"]),
+});
+
+glyphValidation({
+  id: "id-not-safe-windows-reserved-name",
+  title: "An `id` Windows cannot open",
+  why:
+    "The `id` is doing double duty as an identifier and a directory name, so it is held to the same " +
+    "portability grammar as the paths beneath it.",
+  record: { id: "nul" },
+  expected: refused(["id-not-safe"], "nul"),
+});
+
+glyphValidation({
   id: "path-not-contained-backslash",
   title: "An artifact path containing a backslash",
   why:
@@ -2156,6 +2188,69 @@ glyphValidation({
     expected: refused(["decode-failed"]),
   });
 
+  // A perfectly valid interlaced PNG, and a perfectly valid 16-bit one.
+  const interlaced = buildPng([
+    ihdr({ width: 8, height: 8, interlace: 1 }),
+    idat([new Uint8Array(4)]),
+    chunk("IEND"),
+  ]);
+  glyphValidation({
+    id: "decode-failed-interlaced-accepted-candidate",
+    title: "An interlaced accepted candidate",
+    why:
+      "`v1` decodes a **subset** of PNG — 8-bit, non-interlaced — and says so, for both artifacts. " +
+      "The alternative was to implement Adam7 and the 1/2/4/16-bit depths in every engine, which " +
+      "buys nothing an authoring tool cannot trivially avoid and adds a large new surface for the " +
+      "two engines to disagree on (16-bit reduction alone is a rounding decision). Restricting " +
+      "rather than answering is what this contract does with the mask's encoding and with animation, " +
+      "for the same reason. Stated in §4 so it is a shared restriction rather than an accident of " +
+      "one decoder.",
+    record: { acceptedCandidateSha256: sha256Hex(interlaced) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": interlaced },
+    expected: refused(["decode-failed"]),
+  });
+
+  const deep = buildPng([
+    ihdr({ width: 8, height: 8, bitDepth: 16, colourType: COLOUR_GREY }),
+    idat([new Uint8Array(16)]),
+    chunk("IEND"),
+  ]);
+  glyphValidation({
+    id: "decode-failed-16-bit-accepted-candidate",
+    title: "A 16-bit accepted candidate",
+    why: "The other half of the same restriction, and the one a bit-depth check written only for the mask would miss.",
+    record: { acceptedCandidateSha256: sha256Hex(deep) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": deep },
+    expected: refused(["decode-failed"]),
+  });
+
+  // A chunk type whose first letter is uppercase — critical — and which nothing recognises.
+  const unknownCritical = (() => {
+    const samples = new Uint8Array(24 * 24);
+    for (let y = 8; y < 16; y++) for (let x = 8; x < 16; x++) samples[y * 24 + x] = 255;
+    const rows = [];
+    for (let y = 0; y < 24; y++) rows.push(samples.subarray(y * 24, (y + 1) * 24));
+    return buildPng([
+      ihdr({ width: 24, height: 24, colourType: COLOUR_GREY }),
+      chunk("ABCD", Uint8Array.from([1, 2, 3])),
+      idat(rows),
+      chunk("IEND"),
+    ]);
+  })();
+  glyphValidation({
+    id: "decode-failed-unrecognized-critical-chunk",
+    title: "An unrecognized **critical** chunk with a valid CRC",
+    why:
+      "The PNG specification requires a decoder to stop on a critical chunk it does not recognise, " +
+      "and a browser obeys it — so skipping one and carrying on reaches a gate verdict where the " +
+      "other side of the contract reaches `decode-failed`. Criticality is the case of the type's " +
+      "first letter, which is why its sibling `ancillary-chunk-crc-is-not-fatal` (a lowercase " +
+      "`tEXt`) must still come out `valid`.",
+    record: { maskSha256: sha256Hex(unknownCritical) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/mask.png": unknownCritical },
+    expected: refused(["decode-failed"]),
+  });
+
   // A palette accepted candidate whose single entry is transparent.
   const translucent = (() => {
     const samples = new Uint8Array(8 * 8);
@@ -2279,6 +2374,71 @@ addResample({
 });
 
 // --------------------------------------------------------------------------------------------
+// 5b. Sub-pixel rounding, pinned on its own.
+//
+// D5 answer 5 is outward rounding to the enclosing integer box, and until this group existed the
+// suite did not test it at all: every gate case hands the evaluator canonical boxes that are already
+// integers, so a second engine could round inward or to nearest and still pass all eighty-six. A
+// claim the fixtures do not exercise is a claim two engines can each believe they implemented.
+// --------------------------------------------------------------------------------------------
+
+const roundingCases = [];
+
+function addRounding({ id, title, why, box, expected }) {
+  roundingCases.push({ id, title, why, box, expected });
+}
+
+addRounding({
+  id: "integer-box-is-unchanged",
+  title: "A box already on the grid",
+  why: "The identity case. Outward rounding must not inflate a box that needs no rounding.",
+  box: { x: 8, y: 8, width: 8, height: 8 },
+  expected: { x: 8, y: 8, width: 8, height: 8 },
+});
+
+addRounding({
+  id: "fractional-origin-floors",
+  title: "A fractional origin",
+  why:
+    "`floor` the origin, so the box grows *towards* the pixel the author's selection already " +
+    "touched. Rounding the origin to nearest would move the left edge inward for anything past the " +
+    "half-pixel, which is the direction that silently stops covering pixels.",
+  box: { x: 8.4, y: 8.6, width: 8, height: 8 },
+  expected: { x: 8, y: 8, width: 9, height: 9 },
+});
+
+addRounding({
+  id: "fractional-far-edge-ceils",
+  title: "A fractional far edge",
+  why:
+    "`ceil` the far edge, computed as `x + width` rather than by rounding the *width* — those differ " +
+    "whenever the origin is fractional, and only the first is the enclosing box.",
+  box: { x: 8, y: 8, width: 7.2, height: 7.8 },
+  expected: { x: 8, y: 8, width: 8, height: 8 },
+});
+
+addRounding({
+  id: "fractional-both-ends",
+  title: "Fractional at both ends",
+  why:
+    "The case that separates outward rounding from inward: `ceil` the origin and `floor` the far " +
+    "edge and this box becomes `{x: 9, y: 3, width: 6, height: 2}` — half the height, and shifted.",
+  box: { x: 8.5, y: 2.25, width: 7.25, height: 3.5 },
+  expected: { x: 8, y: 2, width: 8, height: 4 },
+});
+
+addRounding({
+  id: "negative-origin",
+  title: "A box whose origin is negative",
+  why:
+    "A transform can put a selection's origin outside the plane before clipping, and `floor` is not " +
+    "truncation there — `Math.trunc(-0.5)` is `0` and moves the edge *inward*. Languages differ on " +
+    "which one their integer cast performs, so the fixture pins the one this contract means.",
+  box: { x: -0.5, y: -2.5, width: 4, height: 4 },
+  expected: { x: -1, y: -3, width: 5, height: 5 },
+});
+
+// --------------------------------------------------------------------------------------------
 // 6. Write the tree.
 // --------------------------------------------------------------------------------------------
 
@@ -2313,6 +2473,12 @@ for (const entry of cases) {
   write(`${dir}/expected.json`, json(entry.expected));
 }
 
+for (const entry of roundingCases) {
+  const dir = `rounding/${entry.id}`;
+  write(`${dir}/case.json`, json({ title: entry.title, why: entry.why, box: entry.box }));
+  write(`${dir}/expected.json`, json(entry.expected));
+}
+
 for (const entry of resampleCases) {
   const dir = `resample/${entry.id}`;
   write(`${dir}/source.png`, Buffer.from(rgbaPng(entry.source)));
@@ -2336,6 +2502,7 @@ write(
     schema: "compose-preview-known-differences/v1",
     cases: cases.map((entry) => ({ id: entry.id, title: entry.title, site: entry.site ?? null })),
     resample: resampleCases.map((entry) => ({ id: entry.id, title: entry.title })),
+    rounding: roundingCases.map((entry) => ({ id: entry.id, title: entry.title })),
   }),
 );
 
@@ -2407,7 +2574,20 @@ write(
     "| --- | --- |",
     ...resampleCases.map((entry) => `| \`${entry.id}\` | ${entry.title} |`),
     "",
+    "## Sub-pixel rounding",
+    "",
+    "Outward, to the enclosing integer box. Its own group because every gate case is handed canonical",
+    "boxes that are already integers — without these, a second engine could round inward or to nearest",
+    "and still pass the whole suite.",
+    "",
+    "| Case | What it pins |",
+    "| --- | --- |",
+    ...roundingCases.map((entry) => `| \`${entry.id}\` | ${entry.title} |`),
+    "",
   ].join("\n"),
 );
 
-process.stdout.write(`known-differences fixtures: ${cases.length} cases, ${resampleCases.length} resample cases\n`);
+process.stdout.write(
+  `known-differences fixtures: ${cases.length} cases, ${resampleCases.length} resample cases, ` +
+    `${roundingCases.length} rounding cases\n`,
+);

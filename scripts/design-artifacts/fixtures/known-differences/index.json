@@ -182,6 +182,21 @@
       "site": null
     },
     {
+      "id": "path-not-contained-windows-reserved-name",
+      "title": "An artifact path segment Windows cannot open",
+      "site": null
+    },
+    {
+      "id": "path-not-contained-trailing-dot",
+      "title": "An artifact path segment ending in a dot",
+      "site": null
+    },
+    {
+      "id": "id-not-safe-windows-reserved-name",
+      "title": "An `id` Windows cannot open",
+      "site": null
+    },
+    {
       "id": "path-not-contained-backslash",
       "title": "An artifact path containing a backslash",
       "site": null
@@ -397,6 +412,21 @@
       "site": null
     },
     {
+      "id": "decode-failed-interlaced-accepted-candidate",
+      "title": "An interlaced accepted candidate",
+      "site": null
+    },
+    {
+      "id": "decode-failed-16-bit-accepted-candidate",
+      "title": "A 16-bit accepted candidate",
+      "site": null
+    },
+    {
+      "id": "decode-failed-unrecognized-critical-chunk",
+      "title": "An unrecognized **critical** chunk with a valid CRC",
+      "site": null
+    },
+    {
       "id": "trns-transparency-is-decoded",
       "title": "An accepted candidate carrying `tRNS`",
       "site": null
@@ -422,6 +452,28 @@
     {
       "id": "alpha-is-a-fourth-channel",
       "title": "Alpha averaged without premultiplication"
+    }
+  ],
+  "rounding": [
+    {
+      "id": "integer-box-is-unchanged",
+      "title": "A box already on the grid"
+    },
+    {
+      "id": "fractional-origin-floors",
+      "title": "A fractional origin"
+    },
+    {
+      "id": "fractional-far-edge-ceils",
+      "title": "A fractional far edge"
+    },
+    {
+      "id": "fractional-both-ends",
+      "title": "Fractional at both ends"
+    },
+    {
+      "id": "negative-origin",
+      "title": "A box whose origin is negative"
     }
   ]
 }

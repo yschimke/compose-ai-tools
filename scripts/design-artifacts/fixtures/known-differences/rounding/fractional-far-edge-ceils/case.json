@@ -1,0 +1,10 @@
+{
+  "title": "A fractional far edge",
+  "why": "`ceil` the far edge, computed as `x + width` rather than by rounding the *width* — those differ whenever the origin is fractional, and only the first is the enclosing box.",
+  "box": {
+    "x": 8,
+    "y": 8,
+    "width": 7.2,
+    "height": 7.8
+  }
+}
