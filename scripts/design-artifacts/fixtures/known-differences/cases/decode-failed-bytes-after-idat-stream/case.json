@@ -1,0 +1,38 @@
+{
+  "title": "Bytes after the end of the `IDAT` zlib stream",
+  "site": null,
+  "why": "The `IDAT` run is exactly one zlib datastream. An inflater stops at the end of the first one and ignores whatever follows, so a second compressed stream — or any bytes at all — can ride inside a permitted chunk with a correct length and a correct CRC, and still decode to the declared image here while a strict decoder refuses the file. The same shape as the bytes-after-`IEND` case one level down: the allowlist stops applying wherever the reader stops reading, so the decode has to assert that inflation consumed the whole payload.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

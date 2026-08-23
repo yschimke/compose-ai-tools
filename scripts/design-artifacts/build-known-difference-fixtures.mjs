@@ -766,6 +766,41 @@ for (const [id, title, delta, status, why] of [
 
 {
   const world = glyphWorld();
+  const record = glyphRecord(world, {
+    element: {
+      kind: "tag",
+      tag: "iconbutton-tonal-glyph",
+      bounds: { x: 0, y: 0, width: 200, height: 200 },
+      tolerance: 0.145,
+    },
+  });
+  addCase({
+    id: "gate-element-at-tolerance-inexact-product",
+    title: "A displacement at a tolerance whose product is not exact in binary",
+    why:
+      "Its sibling above sits on `0.25 × 8 = 2`, which double arithmetic gets exactly right, so it " +
+      "says nothing about how the boundary is computed. `0.145 × 200` is `28.999999999999996`, so a " +
+      "displacement of exactly 29 — the inclusive boundary — is `element-moved` under a scaled " +
+      "tolerance and `valid` under a decimal or ratio consumer: the same bytes, two verdicts, from " +
+      "the last binary digit. Comparing `displacement / min(width, height)` against the recorded " +
+      "tolerance is exact here, because `29 / 200` and the literal `0.145` are the same double.",
+    document: document([record]),
+    files: glyphFiles(world, record),
+    comparison: glyphComparison(world, {
+      tagIndex: {
+        "iconbutton-tonal-glyph": { count: 1, bounds: { x: 29, y: 29, width: 200, height: 200 } },
+      },
+    }),
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+      validationFailures: [],
+    },
+  });
+}
+
+{
+  const world = glyphWorld();
   const record = glyphRecord(world);
   addCase({
     id: "gate-multiple-causes",
@@ -1821,6 +1856,54 @@ glyphValidation({
 });
 
 glyphValidation({
+  id: "schema-invalid-accepted-at-leap-second-off-instant",
+  title: "A second `60` away from the leap-second instant",
+  why:
+    "RFC 3339 admits `60` for exactly one instant — `23:59:60` **UTC** — so `2026-01-01T12:00:60Z` " +
+    "matches the grammar and is not a date-time, and a strict consumer refuses a record this " +
+    "evaluator would otherwise gate. Deliberately *not* a check that a leap second was really " +
+    "inserted then: that needs the IERS table, which grows by announcement and cannot live in a " +
+    "committed contract. This asks only whether the instant is one where a leap second could be " +
+    "inserted, which is a property of the clock — so every real leap second stays legal, including " +
+    "one announced after this was written.",
+  record: { acceptedAt: "2026-01-01T12:00:60Z" },
+  expected: refused(["schema-invalid"]),
+});
+
+glyphValidation({
+  id: "accepted-at-leap-second-at-instant",
+  title: "A real leap second, and one reached through an offset",
+  why:
+    "The accepting half, and it has to be here or the rule above becomes 'refuse `60`' by " +
+    "accident — which would reject a legal timestamp, the failure mode the case-insensitive `T` and " +
+    "`Z` fix already had to undo once. `2016-12-31T23:59:60Z` is a leap second that happened. The " +
+    "offset arithmetic is what makes the rule non-trivial: `2017-01-01T08:59:60+09:00` is the same " +
+    "instant written in Tokyo time, so the check has to convert before it looks.",
+  record: { acceptedAt: "2016-12-31T23:59:60Z" },
+  expected: {
+    pins: ["statuses", "validationFailures"],
+    statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+    validationFailures: [],
+  },
+});
+
+glyphValidation({
+  id: "accepted-at-leap-second-through-offset",
+  title: "A leap second written in a non-UTC offset",
+  why:
+    "`2017-01-01T08:59:60+09:00` is `2016-12-31T23:59:60Z` — the same instant, spelled in Tokyo " +
+    "time. An implementation that checks the *local* clock reads `08:59` and refuses it; one that " +
+    "converts first accepts it. Its sibling above cannot tell those apart, because at `Z` the local " +
+    "clock and UTC are the same reading.",
+  record: { acceptedAt: "2017-01-01T08:59:60+09:00" },
+  expected: {
+    pins: ["statuses", "validationFailures"],
+    statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+    validationFailures: [],
+  },
+});
+
+glyphValidation({
   id: "schema-invalid-accepted-at-impossible-date",
   title: "An `acceptedAt` with the right shape and impossible values",
   why:
@@ -2869,6 +2952,39 @@ glyphValidation({
     expected: refused(["decode-failed"]),
   });
 
+  // A complete, correct `IDAT` with four extra bytes after the end of its zlib stream — still inside
+  // the chunk, so the length and the CRC are both right and nothing but the payload is unusual.
+  const trailingInsideIdat = (() => {
+    const samples = new Uint8Array(24 * 24);
+    for (let y = 8; y < 16; y++) for (let x = 8; x < 16; x++) samples[y * 24 + x] = 255;
+    const rows = [];
+    for (let y = 0; y < 24; y++) rows.push(samples.subarray(y * 24, (y + 1) * 24));
+    const honest = idat(rows);
+    const payload = honest.subarray(8, honest.length - 4);
+    const padded = new Uint8Array(payload.length + 4);
+    padded.set(payload, 0);
+    padded.set([9, 9, 9, 9], payload.length);
+    return buildPng([
+      ihdr({ width: 24, height: 24, colourType: COLOUR_GREY }),
+      chunk("IDAT", padded),
+      chunk("IEND"),
+    ]);
+  })();
+  glyphValidation({
+    id: "decode-failed-bytes-after-idat-stream",
+    title: "Bytes after the end of the `IDAT` zlib stream",
+    why:
+      "The `IDAT` run is exactly one zlib datastream. An inflater stops at the end of the first one " +
+      "and ignores whatever follows, so a second compressed stream — or any bytes at all — can ride " +
+      "inside a permitted chunk with a correct length and a correct CRC, and still decode to the " +
+      "declared image here while a strict decoder refuses the file. The same shape as the " +
+      "bytes-after-`IEND` case one level down: the allowlist stops applying wherever the reader " +
+      "stops reading, so the decode has to assert that inflation consumed the whole payload.",
+    record: { maskSha256: sha256Hex(trailingInsideIdat) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/mask.png": trailingInsideIdat },
+    expected: refused(["decode-failed"]),
+  });
+
   // A legal 24×24 greyscale header in front of an `IDAT` that inflates to far more than 24 rows.
   const bomb = (() => {
     const rows = [];
@@ -3450,6 +3566,23 @@ addResample({
   source: rgbaFrom([[grey(30), grey(210)]]),
   target: { width: 3, height: 1 },
   expected: [grey(30), grey(120), grey(210)],
+});
+
+addResample({
+  id: "rounding-half-survives-the-ratio",
+  title: "An exact half that floating-point footprints lose",
+  why:
+    "`rounding-exactly-half` pins half-up on a ratio where double arithmetic happens to be exact, so " +
+    "it cannot catch an implementation whose *footprints* are floats. Four columns into three puts " +
+    "destination 0 on `(0 × 3 + 2 × 1) / 4 = 0.5` — one half-up, to `1`. Computed with floating " +
+    "footprints the same quantity is `0.49999999999999994`, which rounds to `0`: the specification " +
+    "says half-up and the implementation delivers half-down, from one unlucky ratio and a difference " +
+    "of a single unit. The fix is exact integer footprints, and this is the case that holds them to " +
+    "it. Every number here is derivable by hand, which is the point — scale by the target width and " +
+    "the overlaps are integers.",
+  source: rgbaFrom([[grey(0), grey(2), grey(0), grey(0)]]),
+  target: { width: 3, height: 1 },
+  expected: [grey(1), grey(1), grey(0)],
 });
 
 addResample({

@@ -77,6 +77,11 @@
       "site": null
     },
     {
+      "id": "gate-element-at-tolerance-inexact-product",
+      "title": "A displacement at a tolerance whose product is not exact in binary",
+      "site": null
+    },
+    {
       "id": "gate-multiple-causes",
       "title": "Several gates fire at once",
       "site": null
@@ -249,6 +254,21 @@
     {
       "id": "schema-invalid-issue-url-untrimmed",
       "title": "An `issue` with surrounding whitespace",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-accepted-at-leap-second-off-instant",
+      "title": "A second `60` away from the leap-second instant",
+      "site": null
+    },
+    {
+      "id": "accepted-at-leap-second-at-instant",
+      "title": "A real leap second, and one reached through an offset",
+      "site": null
+    },
+    {
+      "id": "accepted-at-leap-second-through-offset",
+      "title": "A leap second written in a non-UTC offset",
       "site": null
     },
     {
@@ -562,6 +582,11 @@
       "site": null
     },
     {
+      "id": "decode-failed-bytes-after-idat-stream",
+      "title": "Bytes after the end of the `IDAT` zlib stream",
+      "site": null
+    },
+    {
       "id": "header-invalid-inflates-past-declared-size",
       "title": "A small legal header in front of a much larger inflation",
       "site": null
@@ -677,6 +702,10 @@
     {
       "id": "upscale-non-integer-ratio",
       "title": "Two pixels into three — the upscale that does not reduce to nearest-neighbour"
+    },
+    {
+      "id": "rounding-half-survives-the-ratio",
+      "title": "An exact half that floating-point footprints lose"
     },
     {
       "id": "alpha-is-a-fourth-channel",

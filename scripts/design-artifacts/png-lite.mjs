@@ -432,9 +432,20 @@ export function decodePng(bytes) {
     // a compression bomb would otherwise exhaust the process *after* every preflight budget had
     // passed, since none of them can see past the header. The declared scanline size is the only
     // honest ceiling, and anything over it is a header that lied about its dimensions either way.
-    raw = inflateSync(Buffer.concat(parts.map((p) => Buffer.from(p))), { maxOutputLength: expected });
+    const compressed = Buffer.concat(parts.map((p) => Buffer.from(p)));
+    const result = inflateSync(compressed, { maxOutputLength: expected, info: true });
+    raw = result.buffer;
+    // **The `IDAT` run is exactly one zlib datastream, and it must be consumed whole.** `inflateSync`
+    // stops at the end of the first stream and silently ignores whatever follows, so an artifact can
+    // append a second compressed stream — or any bytes at all — inside a permitted `IDAT` and still
+    // decode here while a strict decoder refuses it. The same shape as the bytes-after-`IEND` case,
+    // one level down: the allowlist stops applying wherever the reader stops reading.
+    if (result.engine.bytesWritten !== compressed.length) {
+      throw new Error("decode-failed: bytes follow the IDAT zlib stream");
+    }
   } catch (error) {
     if (error?.code === "ERR_BUFFER_TOO_LARGE") throw new Error("declared-dimensions-mismatch");
+    if (error?.message?.startsWith("decode-failed:")) throw error;
     throw new Error("decode-failed: inflate failed");
   }
   // Strict equality, not "at least": a header that lies about its dimensions is otherwise a way to

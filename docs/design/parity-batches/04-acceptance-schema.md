@@ -80,6 +80,15 @@ Each exists because two engines would otherwise diverge on identical bytes.
   than by member name (an unknown property called `x` is `schema-invalid`, not a document refusal),
   and firing only on tokens that *round onto* an integer, since a still-fractional value is already
   caught with better attribution.
+- **The `IDAT` run is one zlib datastream, consumed whole.** An inflater stops at the end of the
+  first stream, so a second one can ride inside a permitted chunk with a correct length and CRC.
+- **A second `60` is legal only at `23:59:60` UTC**, offset applied first — not a check that a leap
+  second was really inserted then, which would need the IERS table. Reverses an earlier decline: that
+  was aimed at the table-shaped version of the finding, and this one needs no table.
+- **Boundaries are computed exactly.** The resampler's footprints are integers (scale by the target
+  dimension) and the element gate compares `displacement / min(width, height)` against the tolerance —
+  `0.145 × 200` is `28.999999999999996`, and a `4 → 3` resample puts a true `0.5` at
+  `0.49999999999999994`, so both boundaries fell the wrong way in binary.
 - **`IEND` must end the file.** Bytes after it bypass the allowlist, the placement rules and every
   CRC — a decoder that stops there stops checking there — so a second `IHDR` or an `acTL` rides along
   to a gate verdict here and a `decode-failed` elsewhere. Reverses an earlier "tolerated, nothing

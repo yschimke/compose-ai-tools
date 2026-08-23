@@ -76,6 +76,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `gate-element-vanished` | The tag resolves to nothing at all |
 | `gate-element-moved-past-tolerance` | The resolved element moved further than `element.tolerance` allows |
 | `gate-element-at-tolerance` | A displacement exactly at tolerance passes |
+| `gate-element-at-tolerance-inexact-product` | A displacement at a tolerance whose product is not exact in binary |
 | `gate-multiple-causes` | Several gates fire at once |
 | `set-overlapping-masks` | Two acceptances whose masks overlap |
 | `set-mixed-validity` | One acceptance survives while its sibling is invalidated |
@@ -111,6 +112,9 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `path-not-contained-case-folded-collision` | Two artifact paths differing only in case |
 | `accepted-at-lowercase-separators` | An `acceptedAt` using lowercase `t` and `z` |
 | `schema-invalid-issue-url-untrimmed` | An `issue` with surrounding whitespace |
+| `schema-invalid-accepted-at-leap-second-off-instant` | A second `60` away from the leap-second instant |
+| `accepted-at-leap-second-at-instant` | A real leap second, and one reached through an offset |
+| `accepted-at-leap-second-through-offset` | A leap second written in a non-UTC offset |
 | `schema-invalid-accepted-at-impossible-date` | An `acceptedAt` with the right shape and impossible values |
 | `schema-invalid-accepted-at-not-a-timestamp` | An `acceptedAt` that is a string but not a date-time |
 | `path-not-contained-windows-reserved-name` | An artifact path segment Windows cannot open |
@@ -173,6 +177,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `schema-invalid-note-wrong-type` | A numeric `note` |
 | `variant-empty-is-valid` | A default preview's empty `variant` |
 | `decode-failed-chunk-crc-mismatch` | A hash-valid artifact whose `IDAT` CRC does not verify |
+| `decode-failed-bytes-after-idat-stream` | Bytes after the end of the `IDAT` zlib stream |
 | `header-invalid-inflates-past-declared-size` | A small legal header in front of a much larger inflation |
 | `decode-failed-bytes-after-iend` | An artifact carrying a chunk after `IEND` |
 | `decode-failed-chunk-not-permitted` | An artifact carrying an ancillary chunk |
@@ -202,6 +207,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `downscale-non-integer-ratio` | Three pixels into two — partial footprints |
 | `upscale-integer-ratio` | Two pixels into four |
 | `upscale-non-integer-ratio` | Two pixels into three — the upscale that does not reduce to nearest-neighbour |
+| `rounding-half-survives-the-ratio` | An exact half that floating-point footprints lose |
 | `alpha-is-a-fourth-channel` | Alpha averaged without premultiplication |
 
 ## Sub-pixel rounding

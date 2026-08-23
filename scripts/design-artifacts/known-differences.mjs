@@ -120,11 +120,30 @@ const RFC3339 = /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?
 function isRfc3339(value) {
   const match = RFC3339.exec(value);
   if (!match) return false;
-  const [, year, month, day, hour, minute, second, , offsetHour, offsetMinute] = match;
+  const [, year, month, day, hour, minute, second, offsetSign, offsetHour, offsetMinute] = match;
   if (Number(month) < 1 || Number(month) > 12) return false;
   if (Number(day) < 1 || Number(day) > 31) return false;
   if (Number(hour) > 23 || Number(minute) > 59 || Number(second) > 60) return false;
   if (offsetHour !== undefined && (Number(offsetHour) > 23 || Number(offsetMinute) > 59)) return false;
+  // **Second 60 only where a leap second can be inserted.** RFC 3339 admits `60` for exactly one
+  // instant — `23:59:60` **UTC** — so `2026-01-01T12:00:60Z` matches the grammar and is not a
+  // date-time, and a strict consumer refuses the record this evaluator would go on to gate.
+  //
+  // An earlier round declined this, and the decline was aimed at a different proposal: refusing
+  // instants where no leap second was *actually* inserted needs the IERS table, which grows by
+  // announcement and cannot live in a committed contract. This rule needs no table. It asks only
+  // whether the instant is one where a leap second *could* be inserted, which is a property of the
+  // clock, and it accepts every real leap second past and future — including one announced after
+  // this code was written. That distinction is the whole of the disagreement, so the finding stands
+  // and the earlier reasoning does not apply to it.
+  if (Number(second) === 60) {
+    const offsetMinutes =
+      offsetHour === undefined
+        ? 0
+        : (offsetSign === "-" ? -1 : 1) * (Number(offsetHour) * 60 + Number(offsetMinute));
+    const utcMinutes = ((Number(hour) * 60 + Number(minute) - offsetMinutes) % 1440 + 1440) % 1440;
+    if (utcMinutes !== 23 * 60 + 59) return false;
+  }
   const utc = new Date(`${year}-${month}-${day}T00:00:00Z`);
   return (
     utc.getUTCFullYear() === Number(year) &&
@@ -202,25 +221,37 @@ const causeRank = new Map(CAUSE_ORDER.map((token, index) => [token, index]));
 export function resampleArea(source, targetWidth, targetHeight) {
   const { width, height, pixels } = source;
   const out = new Uint8Array(targetWidth * targetHeight * 4);
-  const scaleX = width / targetWidth;
-  const scaleY = height / targetHeight;
+  // **Exact integer arithmetic, not floating footprints.** Scaling every coordinate by the target
+  // dimension turns each overlap into a difference of integers: destination `tx` covers source
+  // units `[tx·W, (tx+1)·W]` once both sides are multiplied by `T`, and a source column `sx` covers
+  // `[sx·T, (sx+1)·T]`. Their overlap is then exact, the weights are exact, and the average is a
+  // ratio of two integers rounded once.
+  //
+  // The floating version was subtly wrong at exactly the boundary this contract cares most about:
+  // resizing 108 columns to 87 puts destination 84 on a true `201.5`, which double arithmetic
+  // computes as `201.4999999999998` and rounds *down* — half-up in the specification and half-down
+  // in the implementation, from one unlucky ratio. A one-channel error is enough to move a
+  // tolerance-boundary gate verdict, so the kernel that exists to make two engines agree cannot be
+  // the thing that disagrees. The magnitudes stay far inside the safe-integer range: the scaled area
+  // of one destination pixel is `W × H`, at most 8192² here, and the numerator at most 255 times
+  // that.
   for (let ty = 0; ty < targetHeight; ty++) {
-    const y0 = ty * scaleY;
-    const y1 = (ty + 1) * scaleY;
+    const y0 = ty * height;
+    const y1 = (ty + 1) * height;
     for (let tx = 0; tx < targetWidth; tx++) {
-      const x0 = tx * scaleX;
-      const x1 = (tx + 1) * scaleX;
+      const x0 = tx * width;
+      const x1 = (tx + 1) * width;
       let r = 0;
       let g = 0;
       let b = 0;
       let a = 0;
       let area = 0;
-      for (let sy = Math.floor(y0); sy < Math.min(height, Math.ceil(y1)); sy++) {
-        const coverY = Math.min(y1, sy + 1) - Math.max(y0, sy);
-        if (coverY <= 0) continue;
-        for (let sx = Math.floor(x0); sx < Math.min(width, Math.ceil(x1)); sx++) {
-          const coverX = Math.min(x1, sx + 1) - Math.max(x0, sx);
-          if (coverX <= 0) continue;
+      for (let sy = Math.floor(y0 / targetHeight); sy < height; sy++) {
+        const coverY = Math.min(y1, (sy + 1) * targetHeight) - Math.max(y0, sy * targetHeight);
+        if (coverY <= 0) break;
+        for (let sx = Math.floor(x0 / targetWidth); sx < width; sx++) {
+          const coverX = Math.min(x1, (sx + 1) * targetWidth) - Math.max(x0, sx * targetWidth);
+          if (coverX <= 0) break;
           const weight = coverX * coverY;
           const i = (sy * width + sx) * 4;
           r += pixels[i] * weight;
@@ -232,13 +263,25 @@ export function resampleArea(source, targetWidth, targetHeight) {
       }
       const d = (ty * targetWidth + tx) * 4;
       if (area === 0) continue;
-      out[d] = clamp8(r / area);
-      out[d + 1] = clamp8(g / area);
-      out[d + 2] = clamp8(b / area);
-      out[d + 3] = clamp8(a / area);
+      out[d] = roundHalfUp(r, area);
+      out[d + 1] = roundHalfUp(g, area);
+      out[d + 2] = roundHalfUp(b, area);
+      out[d + 3] = roundHalfUp(a, area);
     }
   }
   return { width: targetWidth, height: targetHeight, pixels: out };
+}
+
+/**
+ * `round(numerator / denominator)` with halves going up, computed without ever forming the quotient.
+ *
+ * Both arguments are non-negative integers, so this is `floor((2n + d) / 2d)` — exact wherever the
+ * inputs are, which is the whole point of the integer footprints above. Clamped for the same reason
+ * the float version was: a channel is a byte.
+ */
+function roundHalfUp(numerator, denominator) {
+  const value = Math.floor((2 * numerator + denominator) / (2 * denominator));
+  return Math.max(0, Math.min(255, value));
 }
 
 function clamp8(value) {
@@ -1176,8 +1219,15 @@ function elementCauses(element, tagIndex) {
     Math.abs(bounds.x + bounds.width - (baseline.x + baseline.width)),
     Math.abs(bounds.y + bounds.height - (baseline.y + baseline.height)),
   );
-  const allowed = element.tolerance * Math.min(baseline.width, baseline.height);
-  return displacement > allowed ? ["element-moved"] : [];
+  // **Compared as a ratio, not against a scaled tolerance.** `tolerance × min(width, height)` is a
+  // float multiplication and lands just under the true value often enough to matter: with tolerance
+  // `0.145` and a 200px baseline it gives `28.999999999999996`, so a displacement of exactly 29 —
+  // which *is* the inclusive boundary — reports `element-moved` here and `valid` in a consumer using
+  // decimals or the ratio. Dividing instead makes the boundary exact wherever the recorded tolerance
+  // is: `29 / 200` and the literal `0.145` are the same double, because both are the nearest double
+  // to the same real number.
+  const minDimension = Math.min(baseline.width, baseline.height);
+  return displacement / minDimension > element.tolerance ? ["element-moved"] : [];
 }
 
 /**

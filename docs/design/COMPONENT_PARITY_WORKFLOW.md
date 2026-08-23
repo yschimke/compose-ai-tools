@@ -719,6 +719,18 @@ and the fixtures are
    other two. It shares their polarity and their units and is **not** comparable to them by
    subtraction; a reader wanting "what did acceptance buy" reads `unaccepted` against `raw` and gets
    a signed effect, which is what that quantity honestly is.
+4b. **The resampler's footprints are exact integers, and the element gate compares a ratio.** Both
+   are the same defect twice: a boundary the contract states in decimals, computed in binary, landing
+   on the wrong side. Scaling every resample coordinate by the target dimension makes each overlap a
+   difference of integers, so the average is a ratio of two integers rounded once — where floating
+   footprints put `4 → 3` destination 0 on `0.49999999999999994` for a true `0.5`, delivering
+   half-*down* from a rule that says half-up. The element gate has the same problem from the other
+   direction: `0.145 × 200` is `28.999999999999996`, so a displacement of exactly 29 — the inclusive
+   boundary — is `element-moved` under a scaled tolerance and `valid` under a decimal consumer.
+   Comparing `displacement / min(width, height)` against the recorded tolerance is exact wherever the
+   tolerance is, because `29 / 200` and the literal `0.145` are the same double. Both have fixtures
+   whose numbers are derivable by hand.
+
 5. **Sub-pixel geometry rounds outward, at every transform.** A real-valued box becomes the
    **enclosing** integer box — `floor` the origin, `ceil` the far edge — applied after the
    transform's arithmetic and never during it. Outward rather than nearest because a mask or a
@@ -1143,6 +1155,13 @@ specification forbids each, so those are refused too. There are only five chunks
 constrain, which is what the allowlist buys — the structural rules are finite because the vocabulary
 is.
 
+**The `IDAT` run is exactly one zlib datastream, consumed whole.** An inflater stops at the end of
+the first stream and ignores what follows, so a second compressed stream — or any bytes at all — can
+ride inside a permitted `IDAT` with a correct length and a correct CRC and still decode to the
+declared image, while a strict decoder refuses the file. The decode must assert that inflation
+consumed the entire concatenated payload; otherwise `decode-failed`. Same shape as the rule below,
+one level down: the allowlist stops applying wherever the reader stops reading.
+
 **And `IEND` must end the file — a reversal.** An earlier draft of this section tolerated bytes after
 `IEND` on the grounds that nothing reads them and policing them would add a rule with no divergence
 behind it. That was wrong, and wrong in the way the allowlist exists to prevent: *nothing reads them*
@@ -1335,6 +1354,17 @@ Two things keep that check from doing damage of its own, and both are pinned:
   would lose attribution for no gain.
 
 `element.tolerance` is a real number by design and is untouched.
+
+**A second `60` is legal only at the leap-second instant.** RFC 3339 admits it for exactly one
+reading of the clock — `23:59:60` **UTC** — so `2026-01-01T12:00:60Z` matches the grammar, is not a
+date-time, and is `schema-invalid`. The offset is applied before the check, since
+`2017-01-01T08:59:60+09:00` is the same instant written in Tokyo time. Deliberately **not** a check
+that a leap second was really inserted then: that needs the IERS table, which grows by international
+announcement and cannot live in a committed contract, and refusing `:60` outright would reject a
+legal timestamp. This rule asks only whether the instant is one where a leap second *could* be
+inserted — a property of the clock — so every real leap second stays legal, including one announced
+after this was written. An earlier round declined the table-shaped version of this finding; the
+narrow version needs no table, and it stands.
 
 **A mask must select something.** An all-zero mask satisfies the encoding and dimension rules and
 still has no bounding box, which leaves `accepted-candidate.png`'s required dimensions undefined —
