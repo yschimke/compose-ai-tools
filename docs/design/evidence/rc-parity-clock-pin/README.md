@@ -21,8 +21,12 @@ frame that is stable at the wrong thing reads exactly like a measurement.
 `scripts/design-artifacts/rc-clock.mjs` freezes `Date` at **2024-01-01T10:10:00Z** — the instant
 `renderers/android`'s `PreviewClock` pins Android renders to — using Playwright's
 `clock.setFixedTime`, which leaves `setTimeout`, `requestAnimationFrame` and `performance.now()`
-running, so boot, frame pacing and settlement are untouched. Both browser lanes are pinned: the
-TypeScript player reads the same clock and had the same swing.
+running, so boot, frame pacing and settlement are untouched. The contexts also run with
+`timezoneId: "UTC"`, so the calendar is pinned alongside the instant — an epoch alone is half a pin,
+since a non-UTC runner reads 10:10Z as a different local hour (`Asia/Kolkata`: 15:40, minute
+included) and a document painting an hour, a weekday or a date would diverge from a baked reference
+that pins the local time-of-day. Both browser lanes are pinned: the TypeScript player reads the same
+clock and had the same swing.
 
 ## Two loads of one commit, same document
 

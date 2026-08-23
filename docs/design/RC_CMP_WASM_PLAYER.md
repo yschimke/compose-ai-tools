@@ -698,7 +698,10 @@ The remote-m3 replacement corpus is guarded in CI, not recorded as a one-off man
   **2024-01-01T10:10:00Z** — the instant `renderers/android`'s `PreviewClock` pins Android renders
   to — through Playwright's `clock.setFixedTime`, which leaves `setTimeout`,
   `requestAnimationFrame` and `performance.now()` running, so the player still boots, paces and
-  settles exactly as before. Both browser lanes are pinned; the TypeScript one had the same swing
+  settles exactly as before. The contexts also run with `timezoneId: "UTC"`, because an instant is
+  only half a pin: a non-UTC runner reads the same moment as a different local hour (a Kolkata one
+  reads 10:10Z as 15:40, minute included), and a document painting `TIME_IN_HR`, a weekday or a
+  formatted date would then diverge from a baked reference that pins the local *time-of-day*. Both browser lanes are pinned; the TypeScript one had the same swing
   (0.19% ↔ 0.67% between two runs of one commit). Measured over the published 51-row corpus: two
   runs of the same commit moved **one** row unpinned (0.71% → 0.21%, 0.50 pp — twice the gate) and
   **none** pinned, and the row settled at **0.0019%**, because pinning both lanes to 10:10 makes the

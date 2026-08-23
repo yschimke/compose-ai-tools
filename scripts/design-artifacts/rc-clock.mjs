@@ -36,10 +36,14 @@
  * reproducible here is the *pixels*, not a formatted string, and an instant is the only form that
  * does not move with the runner's zone.
  *
- * This pins the clock, not the calendar zone: `CONTINUOUS_SEC` is derived from the local
- * minute-and-second, and every IANA offset is a whole number of minutes, so a runner in a
- * half-hour-offset zone reads a different (but still perfectly stable) second-into-the-hour. CI is
- * UTC; the guarantee that matters — two captures of one commit agree — holds in either.
+ * The lane's browser contexts are also given
+ * [PARITY_CLOCK_TIMEZONE] so the *calendar* is pinned alongside the instant. Without that, an
+ * instant is only half a pin: a runner in a non-UTC zone reads the same moment as a different local
+ * hour, and a document that paints `TIME_IN_HR`, a weekday or a formatted date renders something
+ * the baked Android reference — which pins the local *time-of-day* — never drew. `CONTINUOUS_SEC`
+ * happens to survive that (every IANA offset is a whole number of minutes, so the
+ * second-into-the-hour barely moves), which is exactly why the zone has to be pinned deliberately
+ * rather than left to the fixture that noticed.
  */
 
 /**
@@ -51,6 +55,13 @@ export const PARITY_CLOCK_EPOCH_MS = 1_704_103_800_000;
 
 /** Human-readable form of [PARITY_CLOCK_EPOCH_MS], for logs and page headers. */
 export const PARITY_CLOCK_ISO = "2024-01-01T10:10:00.000Z";
+
+/**
+ * The zone the lane's browser contexts run in, so [PARITY_CLOCK_EPOCH_MS] is read as the local
+ * `2024-01-01 10:10` that `PreviewClock` renders the Android references at — on any machine, not
+ * just a UTC runner. Passed as Playwright's `timezoneId` at context creation.
+ */
+export const PARITY_CLOCK_TIMEZONE = "UTC";
 
 /**
  * Freeze `page`'s wall clock at [PARITY_CLOCK_EPOCH_MS].
