@@ -58,7 +58,7 @@ data class OptimizerPressureThresholds(
    * stays permanent is a genuine emergency — see [dutyCycleFloorMemoryAvailableFraction].
    */
   val starvationCapMillis: Long = 30 * 60_000L,
-  /** How long the gate stays open once [starvationCapMillis] is exhausted. */
+  /** How long the gate stays open once [starvationCapMillis] is exhausted. `0` disables the cap. */
   val dutyCycleMillis: Long = 60_000L,
   /**
    * Memory headroom below which the duty cycle never opens, whatever the hold has cost.
@@ -192,6 +192,9 @@ class OptimizerPressureGate(
 
   private var dutyCycles = 0
 
+  /** What was over a stop threshold on the previous sample — the [newlyTripped] baseline. */
+  private var lastTripped = emptySet<PressureSignal>()
+
   fun snapshot(): OptimizerPressureSnapshot =
     synchronized(lock) {
       val now = clock()
@@ -213,10 +216,14 @@ class OptimizerPressureGate(
       // Only what actually stopped us has to come back: a hold taken for memory should not also
       // wait on a CPU reading that never crossed its own stop threshold.
       val safe = trippedBy.all { it.recovered(current, thresholds) }
-      // Read before the merge below: a signal crossing its stop threshold for the FIRST time in
-      // this hold is what has to cut a duty cycle short, and after the merge it is
-      // indistinguishable from the signal that has been holding all along.
-      val newlyTripped = tripped.map { it.first }.filterNot { it in trippedBy }
+      // What is over a stop threshold *right now*, and what was over one on the previous sample.
+      // The difference is what has to cut a duty cycle short. Comparing against `trippedBy` would
+      // not do: that set accumulates for the life of the hold, so a signal that tripped once, went
+      // quiet, and spiked again while memory kept the hold alive would read as "already tripped"
+      // and buy the rest of the window.
+      val activeSignals = tripped.map { it.first }.toSet()
+      val newlyTripped = activeSignals - lastTripped
+      lastTripped = activeSignals
       val holding =
         if (tripped.isNotEmpty()) {
           trippedBy = trippedBy + tripped.map { it.first }
@@ -310,9 +317,11 @@ class OptimizerPressureGate(
   private fun dutyCycling(
     sample: HostResourceSample,
     now: Long,
-    newlyTripped: List<PressureSignal>,
+    newlyTripped: Set<PressureSignal>,
   ): Boolean {
-    if (thresholds.starvationCapMillis <= 0L) return false
+    // A zero-length window admits nothing, so it is not a duty cycle — counting one would leave
+    // `/status.json` reporting concessions the gate never made. Both knobs disable the cap.
+    if (thresholds.starvationCapMillis <= 0L || thresholds.dutyCycleMillis <= 0L) return false
     // An unknown memory reading is not a safe one. `LinuxHostResourceSampler` returns a partial
     // sample when `/proc/meminfo` is unreadable but load and CPU are not, and a load hold would
     // then earn a concession with the OOM floor unverified. A host that never reports memory keeps
@@ -332,10 +341,10 @@ class OptimizerPressureGate(
     if (now < dutyCycleUntil) return true
     if (heldSince == Long.MIN_VALUE) return false
     if (now - heldSince < thresholds.starvationCapMillis) return false
-    dutyCycleUntil = now + thresholds.dutyCycleMillis.coerceAtLeast(0L)
+    dutyCycleUntil = now + thresholds.dutyCycleMillis
     heldSince = dutyCycleUntil
     dutyCycles++
-    return now < dutyCycleUntil
+    return true
   }
 
   /**

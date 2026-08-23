@@ -985,8 +985,9 @@ keep a shut gate from turning the feature off:
   progress is not worth an OOM-killed replica — and neither does a host whose memory reading is
   *missing* (`/proc/meminfo` unreadable while load and CPU still are), since an unverified floor is
   not a cleared one. A signal that was not already holding crossing its stop threshold closes an
-  open window immediately, so the concession never covers pressure it did not answer for. Set the
-  cap to `0` to restore the permanent latch.
+  open window immediately (measured against the previous sample, so a signal that tripped earlier in
+  the same hold and spiked again still counts), so the concession never covers pressure it did not
+  answer for. Set either the cap or the window length to `0` to restore the permanent latch.
   `/status.json` publishes `themeOptimizer.pressure.heldMillis`, `…dutyCycleUntilEpochMillis` and a
   cumulative `…dutyCycles`, and the status page's gate row says `duty cycle` beside the reading that
   is still holding — a box running on the cap is making progress *despite* pressure, not because it

@@ -272,6 +272,64 @@ class HostOptimizerAdmissionTest {
   }
 
   @Test
+  fun `a signal that tripped earlier in the hold still closes a later window`() {
+    var now = 0L
+    var sample =
+      HostResourceSample(loadPerCpu = 0.17, cpuUtilization = 0.95, memoryAvailableFraction = 0.14)
+    val gate =
+      OptimizerPressureGate(
+        sample = { sample },
+        thresholds =
+          OptimizerPressureThresholds(
+            sampleIntervalMillis = 0,
+            starvationCapMillis = 10_000,
+            dutyCycleMillis = 1_000,
+          ),
+        clock = { now },
+      )
+    // CPU trips at the start of the hold and then goes quiet; memory keeps the hold alive, so
+    // `trippedBy` still remembers CPU for the rest of it. A second CPU spike is new pressure all
+    // the same, and must not be filtered out as "already tripped".
+    assertTrue(gate.snapshot().constrained)
+    now = 1_000
+    sample = sample.copy(cpuUtilization = 0.03)
+    assertTrue(gate.snapshot().constrained)
+
+    now = 11_000
+    assertFalse(gate.snapshot().constrained, "the cap opens a window")
+    now = 11_500
+    sample = sample.copy(cpuUtilization = 0.95)
+    val stopped = gate.snapshot()
+    assertTrue(stopped.constrained, "the CPU spike is new pressure, whenever it last happened")
+    assertNull(stopped.dutyCycleUntilEpochMillis)
+  }
+
+  @Test
+  fun `a zero-length window is not counted as a duty cycle`() {
+    var now = 0L
+    val sample =
+      HostResourceSample(loadPerCpu = 0.17, cpuUtilization = 0.03, memoryAvailableFraction = 0.14)
+    val gate =
+      OptimizerPressureGate(
+        sample = { sample },
+        thresholds =
+          OptimizerPressureThresholds(
+            sampleIntervalMillis = 0,
+            starvationCapMillis = 10_000,
+            dutyCycleMillis = 0,
+          ),
+        clock = { now },
+      )
+    assertTrue(gate.snapshot().constrained)
+    now = 10_000
+    assertTrue(gate.snapshot().constrained, "a window that admits nothing is not a concession")
+    now = 100_000
+    val held = gate.snapshot()
+    assertTrue(held.constrained)
+    assertEquals(0, held.dutyCycles, "and must not be reported as one: $held")
+  }
+
+  @Test
   fun `the duty cycle stays shut while memory cannot be read at all`() {
     var now = 0L
     // `/proc/meminfo` unreadable while load and CPU are fine: the sampler reports a partial sample
