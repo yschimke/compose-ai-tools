@@ -29,13 +29,13 @@ import {
   COLOUR_RGBA,
   buildPng,
   chunk,
-  encodePng,
-  idat,
-  filteredIdat,
   ihdr,
   padPngTo,
   sha256Hex,
 } from "./png-lite.mjs";
+// The writer is a separate module because it needs a compressor and `png-lite.mjs` no longer does —
+// see its header. This generator runs on Node and is the only thing in the tree that writes a PNG.
+import { encodePng, filteredIdat, idat } from "./png-write.mjs";
 
 // Overridable so the conformance suite can regenerate into a scratch directory and prove the
 // committed tree still matches its recipe. "Generated" is only true while something enforces it.

@@ -153,3 +153,28 @@ test("the offline tuning constants mirror the browser's", () => {
   ]);
   assert.deepEqual(hexes, SCORE_TUNING.COMPARISON_GROUNDS);
 });
+
+test("the engine imports nothing a browser lacks", () => {
+  // The property `format-compare.js` depends on, and one that regresses in a single line. The
+  // browser engine and the offline engine are the *same* module — that is how "two engines, one
+  // semantics" is enforced here rather than merely fixtured — so a `node:` import anywhere in this
+  // graph breaks the bundle rather than degrading it, and it would do so in a build nobody runs on
+  // the way to a fixture pass.
+  const graph = [
+    "known-differences.mjs",
+    "known-difference-score.mjs",
+    "known-difference-tuning.mjs",
+    "png-lite.mjs",
+    "inflate-lite.mjs",
+    "sha256-lite.mjs",
+  ];
+  for (const name of graph) {
+    const source = readFileSync(join(HERE, name), "utf8");
+    const nodeImports = [...source.matchAll(/^import[^;]*from\s+"(node:[^"]+)"/gm)].map(([, id]) => id);
+    assert.deepEqual(nodeImports, [], `${name} imports ${nodeImports.join(", ")}`);
+    // Comments stripped first: these files explain *why* they avoid `Buffer`, and a check that
+    // cannot tell an explanation from a use would push the explanation out of the file.
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    assert.ok(!/\bBuffer\b/.test(code), `${name} uses Buffer, which a browser does not have`);
+  }
+});

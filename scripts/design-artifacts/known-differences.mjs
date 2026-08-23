@@ -865,7 +865,11 @@ function parseDocument(documentText) {
   // and this is the defence in depth: the *reader* should refuse to fetch past the ceiling, exactly
   // as `readArtifact` must, since only it knows the size before the bytes exist.
   if (typeof documentText !== "string") return { failure: { reason: "document-unreadable" } };
-  if (Buffer.byteLength(documentText, "utf8") > BUDGET.maxDocumentBytes) {
+  // `TextEncoder` rather than `Buffer.byteLength`, because this module is bundled into
+  // `format-compare.js` and a browser has no `Buffer` — see `png-lite.mjs`'s header. Both count
+  // UTF-8 bytes, which is what the ceiling is in: a document past it in bytes and inside it in
+  // *characters* is the case the `document-over-byte-cap-multibyte` fixture exists for.
+  if (new TextEncoder().encode(documentText).length > BUDGET.maxDocumentBytes) {
     return { failure: { reason: "document-too-large" } };
   }
 
