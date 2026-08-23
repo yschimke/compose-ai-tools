@@ -157,6 +157,11 @@
       "site": null
     },
     {
+      "id": "artifact-at-byte-cap",
+      "title": "A mask of exactly 8 MiB encoded",
+      "site": null
+    },
+    {
       "id": "artifact-too-large",
       "title": "A mask one byte past 8 MiB encoded",
       "site": null
@@ -317,6 +322,16 @@
       "site": null
     },
     {
+      "id": "tolerance-candidate-at-floor",
+      "title": "`candidateTolerance` of exactly 0",
+      "site": null
+    },
+    {
+      "id": "tolerance-element-at-floor",
+      "title": "`element.tolerance` of exactly 0",
+      "site": null
+    },
+    {
       "id": "tolerance-candidate-over-ceiling",
       "title": "`candidateTolerance` of 9",
       "site": null
@@ -369,6 +384,11 @@
     {
       "id": "schema-invalid-unknown-element-kind",
       "title": "An `element.kind` this version does not define",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-box-beyond-safe-integer",
+      "title": "A box coordinate past the safe-integer range",
       "site": null
     },
     {

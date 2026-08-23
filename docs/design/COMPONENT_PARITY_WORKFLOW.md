@@ -538,6 +538,17 @@ number rather than a shape. So the schema constrains it to a small finite range,
 outside that is `tolerance-out-of-range`, refused at validation. A tolerance that needs to be large
 is evidence the acceptance is wrong, not evidence the bound is.
 
+**Every cap here is inclusive at *both* ends, and the fixtures pin both.** The count, axis, pixel and
+encoded-byte caps each carry a passing case sitting exactly on the limit beside a refusing case one
+unit past it, and both tolerance ranges carry a passing case at `0` as well as at their ceiling.
+Without the accepting half a runtime comparing with `>=` — or `<=` at a floor — refuses what `v1`
+calls legal and still passes the whole suite, which is the failure mode the suite exists to catch
+pointed at the suite itself.
+
+**Coordinates are safe integers.** `9007199254740993` has already been rounded to `…992` by the time
+a JSON parser hands it over, so an integrality check alone accepts a value a `Long` consumer retains
+exactly. The schema carries matching bounds.
+
 **`v1` fixes the range at `0 ≤ candidateTolerance ≤ 8`**, in 8-bit channel distance, integer. Named
 here rather than deferred to Phase 3 for the reason the budget caps are named: a ceiling each engine
 picks for itself is not a ceiling, and a record legal to one consumer and refused by another is the
@@ -1475,6 +1486,13 @@ separately, which is exactly the split this rule exists to prevent.
 asserting the format refuses what a pattern check accepts. The `T` and the `Z` are **case-insensitive**
 — RFC 3339 says so — so an uppercase-only pattern refuses a legal timestamp, which is the same
 divergence pointed the other way and the one a tightening is likeliest to introduce.
+
+**A leap second is accepted wherever RFC 3339's grammar allows one, and its *instant* is not
+checked.** `2016-12-31T23:59:60Z` is a real leap second and `2016-12-31T12:00:60Z` is not, and telling
+them apart needs a leap-second table that grows by international announcement — unbounded, and
+re-derived identically by every consumer or not at all. Rejecting `:60` outright would refuse a legal
+timestamp, which is the worse error in the same way the uppercase-only pattern was. So the grammar is
+the rule here, deliberately, and the residue is a nonsense value in a provenance field no gate reads.
 
 **And the `issue` URL is not trimmed before parsing.** The schema's `format: "uri"` rejects
 surrounding whitespace and a permissive URL parser accepts it, so trimming would let this module

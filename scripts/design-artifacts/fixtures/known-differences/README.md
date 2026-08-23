@@ -86,6 +86,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `document-pixels-over-cap` | 128,008,000 megapixels declared — one raster past the cap |
 | `document-axis-at-cap` | A raster exactly 8192 px on its long axis |
 | `document-axis-over-cap` | A raster 8193 px on its long axis |
+| `artifact-at-byte-cap` | A mask of exactly 8 MiB encoded |
 | `artifact-too-large` | A mask one byte past 8 MiB encoded |
 | `id-not-safe-proto` | An `id` of `__proto__` |
 | `id-not-safe-single-dot` | An `id` of `.` reaching a sibling's `mask.png` |
@@ -118,6 +119,8 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `header-invalid-truncated-file` | A file that opens and holds too few bytes for an `IHDR` |
 | `decode-failed-correctly-hashed-garbage` | A correctly hashed artifact that is not decodable |
 | `tolerance-candidate-at-ceiling` | `candidateTolerance` of exactly 8 |
+| `tolerance-candidate-at-floor` | `candidateTolerance` of exactly 0 |
+| `tolerance-element-at-floor` | `element.tolerance` of exactly 0 |
 | `tolerance-candidate-over-ceiling` | `candidateTolerance` of 9 |
 | `tolerance-candidate-negative` | `candidateTolerance` of -1 |
 | `tolerance-candidate-fractional` | `candidateTolerance` of 0.5 |
@@ -129,6 +132,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `schema-invalid-missing-issue` | A record with no `issue` |
 | `schema-invalid-unparseable-issue` | An `issue` that is not a GitHub issue URL |
 | `schema-invalid-unknown-element-kind` | An `element.kind` this version does not define |
+| `schema-invalid-box-beyond-safe-integer` | A box coordinate past the safe-integer range |
 | `schema-invalid-missing-plane` | A record with no recorded canonical plane |
 | `orphaned-target-component-renamed` | The component was renamed while its ids stayed put |
 | `orphaned-target-reference-detached` | The reference now hangs off a different preview |

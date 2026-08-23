@@ -818,7 +818,11 @@ function hasExactly(value, keys) {
 
 function isBox(value) {
   if (!hasExactly(value, ["x", "y", "width", "height"])) return false;
-  return ["x", "y", "width", "height"].every((key) => Number.isInteger(value[key])) &&
+  // `isSafeInteger`, not `isInteger`: JSON's `9007199254740993` has *already* been rounded to
+  // …992 by the time it reaches here, so `isInteger` accepts a coordinate a Kotlin `Long` consumer
+  // retains exactly. Refusing what cannot round-trip is cheaper than reasoning about where the two
+  // readings would first disagree.
+  return ["x", "y", "width", "height"].every((key) => Number.isSafeInteger(value[key])) &&
     value.width > 0 &&
     value.height > 0;
 }

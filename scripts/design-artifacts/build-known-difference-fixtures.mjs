@@ -1336,6 +1336,43 @@ function lyingGreyPng(width, height) {
   const target = 8 * 1024 * 1024 + 1;
   const materialised = new Uint8Array(target);
   materialised.set(base, 0);
+  const atCap = new Uint8Array(8 * 1024 * 1024);
+  atCap.set(base, 0);
+  addCase({
+    id: "artifact-at-byte-cap",
+    title: "A mask of exactly 8 MiB encoded",
+    why:
+      "The accepting half of the encoded-byte boundary, and the one cap whose inclusive side the " +
+      "suite had left unpinned — the count, axis and pixel caps all carry both halves. Without it a " +
+      "runtime rejecting with `>=` passes every committed case while refusing an artifact `v1` calls " +
+      "legal. Same synthesis recipe as its sibling, one byte shorter.",
+    document: document([
+      glyphRecord(world, {
+        maskSha256: sha256Hex(atCap),
+        acceptedCandidateSha256: sha256Hex(world.acceptedPngBytes),
+      }),
+    ]),
+    files: {
+      "artifacts/m3-iconbutton-tonal-glyph/mask.base.png": base,
+      "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": world.acceptedPngBytes,
+      "canonical-reference.png": world.referencePngBytes,
+      "canonical-candidate.png": world.candidatePngBytes,
+    },
+    synthesize: [
+      {
+        path: "artifacts/m3-iconbutton-tonal-glyph/mask.png",
+        from: "artifacts/m3-iconbutton-tonal-glyph/mask.base.png",
+        padZerosTo: 8 * 1024 * 1024,
+      },
+    ],
+    comparison: glyphComparison(world),
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+      validationFailures: [],
+    },
+  });
+
   addCase({
     id: "artifact-too-large",
     title: "A mask one byte past 8 MiB encoded",
@@ -1825,6 +1862,36 @@ glyphValidation({
 });
 
 glyphValidation({
+  id: "tolerance-candidate-at-floor",
+  title: "`candidateTolerance` of exactly 0",
+  why:
+    "The inclusive **lower** bound, which the suite had left unpinned on both tolerance fields while " +
+    "pinning both ceilings. A consumer using `<= 0` would refuse a legal acceptance and still pass " +
+    "every committed case. Zero is also the strictest useful authoring value — exact channel " +
+    "equality inside the mask — so it is a shape a real record will take.",
+  record: { candidateTolerance: 0 },
+  expected: {
+    pins: ["statuses", "validationFailures"],
+    statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+    validationFailures: [],
+  },
+});
+
+glyphValidation({
+  id: "tolerance-element-at-floor",
+  title: "`element.tolerance` of exactly 0",
+  why: "The other half of the same omission: an element that must not have moved at all is a legal acceptance, not a refused one.",
+  record: {
+    element: { kind: "tag", tag: "iconbutton-tonal-glyph", bounds: { x: 8, y: 8, width: 8, height: 8 }, tolerance: 0 },
+  },
+  expected: {
+    pins: ["statuses", "validationFailures"],
+    statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+    validationFailures: [],
+  },
+});
+
+glyphValidation({
   id: "tolerance-candidate-over-ceiling",
   title: "`candidateTolerance` of 9",
   why:
@@ -1969,6 +2036,21 @@ glyphValidation({
     "capability on paper only, and worse than absent because it reads as available.",
   record: {
     element: { kind: "producer", id: "figma:1:2", bounds: { x: 8, y: 8, width: 8, height: 8 }, tolerance: 0.1 },
+  },
+  expected: refused(["schema-invalid"]),
+});
+
+glyphValidation({
+  id: "schema-invalid-box-beyond-safe-integer",
+  title: "A box coordinate past the safe-integer range",
+  why:
+    "`9007199254740993` is already `…992` by the time a JSON parser hands it over, so an " +
+    "`isInteger` check accepts a coordinate a Kotlin `Long` consumer retains exactly — two runtimes " +
+    "reading one document as two different geometries. Refusing what cannot round-trip is cheaper " +
+    "than reasoning about where the readings would first diverge, and the schema carries matching " +
+    "bounds so a schema-first consumer reaches the same verdict.",
+  record: {
+    plane: { plane: "content-box", box: { x: 4, y: 4, width: 24, height: 9007199254740993 } },
   },
   expected: refused(["schema-invalid"]),
 });
