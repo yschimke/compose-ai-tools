@@ -1,7 +1,7 @@
 {
-  "title": "128,000,001 declared across the set — the first total past the cap",
+  "title": "An unknown record property that shares a geometry field's name",
   "site": null,
-  "why": "**Compare as you go and short-circuit.** Summing across a third-party set is exactly where two engines diverge silently: a Kotlin accumulator can wrap into a value that sits under the cap while JavaScript keeps a large positive `Number` and rejects, and the offline consumer then allocates what the browser refused. Spread over two records and four rasters so the sum is the thing being pinned rather than any single header, and landing on **cap + 1** exactly so the fixture pins the constant rather than a neighbourhood of it.",
+  "why": "The scoping half of the integer-token rule. Coordinates are checked as *written*, on the text, and a check keyed on the member **name** would answer `document-unreadable` here — dropping the `statuses` entry of every well-formed sibling acceptance, where a schema-first consumer reports `schema-invalid` for this record alone. So the token check is keyed on the containing object's path (`plane.box`, `element.bounds`, the acceptance itself), never on the name, and an unknown property called `x` is an unknown property like any other. The token is the one that *does* round onto an integer, so a name-keyed check fires on it for certain.",
   "comparison": {
     "system": "m3",
     "component": "IconButton/Tonal",

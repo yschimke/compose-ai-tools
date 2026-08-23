@@ -566,31 +566,50 @@ function pushOnce(list, entry) {
  *    `{"id":"safe","id":".."}` addresses two different artifact directories from one committed file.
  *    Names are unescaped through `JSON.parse` before comparison, because `"id"` and `"\u0069d"` are
  *    the same member and only one of the two spellings looks like a duplicate.
- * 2. **Is a geometry coordinate written as a non-integer?** `Number.isSafeInteger` cannot see it:
- *    `9007199254740991.1` has already been rounded to `…991` by the time it reaches a check, so this
- *    engine accepts a coordinate a lossless consumer refuses as fractional. The far-edge rule made
- *    that reachable from *inside* the safe range rather than beyond it, and no bound closes the hole
- *    — at any magnitude some fractional literal is nearer to an integer than the spacing of doubles
- *    there — so the token is checked as written. Only `x`, `y`, `width` and `height` are checked:
- *    they are the fields where a large legal magnitude and an integrality requirement meet.
- *    `element.tolerance` is a real number by design.
+ * 2. **Is an integer-valued field written as a non-integer?** `Number.isSafeInteger` cannot see it:
+ *    `9007199254740991.1` has already been rounded to `…991` by the time it reaches a check, and so
+ *    has `2.00000000000000000001` to `2` — so this engine accepts what a lossless consumer, or a
+ *    Kotlin `Int` decoder, refuses. No bound closes the hole: at any magnitude some fractional
+ *    literal is nearer to an integer than the spacing of doubles there. So the token is checked as
+ *    written, at the paths where an integer is required — a box's `x`/`y`/`width`/`height` and an
+ *    acceptance's `candidateTolerance`. `element.tolerance` is a real number by design.
  */
 const GEOMETRY_KEYS = new Set(["x", "y", "width", "height"]);
 
+/**
+ * Where an integer-valued number may legally appear, as a path from the document root.
+ *
+ * **Scoped by containing object, never by member name.** A name-only check misfires on any other
+ * object that happens to carry one: an acceptance with the unknown property `"x": 0.5` is
+ * `schema-invalid` for that record, and answering `document-unreadable` instead would drop the
+ * `statuses` entry of every well-formed sibling — a different result from a schema-first consumer,
+ * which is the divergence this walk exists to prevent rather than to cause.
+ */
+const INTEGER_TOKEN_PATHS = new Map([
+  ["/acceptances/[]/plane/box", GEOMETRY_KEYS],
+  ["/acceptances/[]/element/bounds", GEOMETRY_KEYS],
+  ["/acceptances/[]", new Set(["candidateTolerance"])],
+]);
+
 function documentTextRefusal(documentText) {
   const scopes = [];
+  const path = [];
   let pendingKey = null;
   let index = 0;
   while (index < documentText.length) {
     const character = documentText[index];
     if (character === "{" || character === "[") {
       scopes.push(character === "{" ? new Set() : null);
+      // An array element is addressed as `[]`: the *index* never matters here, only which shape of
+      // object the member belongs to.
+      path.push(pendingKey ?? (scopes.length > 1 && scopes[scopes.length - 2] === null ? "[]" : ""));
       pendingKey = null;
       index += 1;
       continue;
     }
     if (character === "}" || character === "]") {
       scopes.pop();
+      path.pop();
       pendingKey = null;
       index += 1;
       continue;
@@ -627,7 +646,20 @@ function documentTextRefusal(documentText) {
       while (end < documentText.length && /[-+0-9.eE]/.test(documentText[end])) end += 1;
       const token = documentText.slice(index, end);
       index = end;
-      if (pendingKey !== null && GEOMETRY_KEYS.has(pendingKey) && !CANONICAL_INTEGER.test(token)) {
+      const integerKeys = INTEGER_TOKEN_PATHS.get(path.slice(1).map((step) => `/${step}`).join(""));
+      // **Only the tokens the parse *hides*.** A value that is still fractional after parsing —
+      // `candidateTolerance: 0.5`, a box `x: 0.5` — is caught by the ordinary record-level check,
+      // which names the record and picks the better token (`tolerance-out-of-range`,
+      // `schema-invalid`). Answering `document-unreadable` for those would trade a precise,
+      // attributed refusal for a blunt one and drop every sibling's `statuses` entry. What no
+      // value-level check can see is a fractional token that *rounds onto* an integer, so that is
+      // exactly what this catches.
+      if (
+        pendingKey !== null &&
+        integerKeys?.has(pendingKey) &&
+        !CANONICAL_INTEGER.test(token) &&
+        Number.isInteger(Number(token))
+      ) {
         return "document-unreadable";
       }
       pendingKey = null;

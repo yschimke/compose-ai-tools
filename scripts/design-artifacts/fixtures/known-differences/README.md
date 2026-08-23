@@ -79,6 +79,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `scope-overrides-match` | An acceptance authored under overrides applies at the frame carrying the same ones |
 | `scope-overrides-differ` | An acceptance authored at `fontScale=1.5` does not apply at the default frame |
 | `scope-refusal-is-comparison-independent` | A record that is out of scope *and* broken is still `refused` |
+| `document-at-byte-cap` | A document of exactly 1 MiB |
 | `document-over-byte-cap` | A document past the 1 MiB ceiling |
 | `document-unreadable-truncated` | Truncated JSON |
 | `document-unreadable-wrong-schema-token` | A document carrying a different schema token |
@@ -89,7 +90,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `document-count-at-cap` | 256 acceptances — exactly the cap |
 | `document-combined-failures` | A duplicated id, an unkeyable record and an over-cap count at once |
 | `document-pixels-at-cap` | 128 megapixels declared across the set — exactly the cap |
-| `document-pixels-over-cap` | 128,008,000 megapixels declared — one raster past the cap |
+| `document-pixels-over-cap` | 128,000,001 declared across the set — the first total past the cap |
 | `document-axis-at-cap` | A raster exactly 8192 px on its long axis |
 | `document-axis-over-cap` | A raster 8193 px on its long axis |
 | `artifact-at-byte-cap` | A mask of exactly 8 MiB encoded |
@@ -153,6 +154,8 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `document-unreadable-unknown-property` | A document carrying a property `v1` does not define |
 | `document-non-object-acceptances` | `acceptances` holding `null`, a string and an array |
 | `schema-invalid-unknown-property` | A record carrying the `finding` field cut from `v1` |
+| `schema-invalid-unknown-property-named-like-geometry` | An unknown record property that shares a geometry field's name |
+| `document-unreadable-fractional-candidate-tolerance` | A `candidateTolerance` written as a near-integer fraction |
 | `schema-invalid-unknown-element-property` | An `element` carrying a property `v1` does not define |
 | `schema-invalid-note-wrong-type` | A numeric `note` |
 | `variant-empty-is-valid` | A default preview's empty `variant` |

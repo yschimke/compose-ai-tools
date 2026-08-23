@@ -72,10 +72,14 @@ Each exists because two engines would otherwise diverge on identical bytes.
   256-character `id` cannot be checked out at all while a URL-backed consumer evaluates it happily.
   Per segment, never per path: `PATH_MAX` belongs to the reader's working directory, so a total-length
   rule would make identical bytes legal in one checkout and refused in another.
-- **Geometry coordinates are checked as written.** `x`, `y`, `width`, `height` must be canonical
-  JSON integers — no fraction, no exponent — because `9007199254740991.1` is already `…991` by the
-  time `isSafeInteger` can look, and no bound closes that: at every magnitude some fractional literal
-  is nearer an integer than the spacing of doubles there.
+- **Integer-valued fields are checked as written.** A box's `x`/`y`/`width`/`height` and an
+  acceptance's `candidateTolerance` must be canonical JSON integers — no fraction, no exponent —
+  because `9007199254740991.1` is already `…991`, and `2.00000000000000000001` already `2`, by the
+  time `isSafeInteger` can look; no bound closes that, since at every magnitude some fractional
+  literal is nearer an integer than the spacing of doubles there. Scoped by containing object rather
+  than by member name (an unknown property called `x` is `schema-invalid`, not a document refusal),
+  and firing only on tokens that *round onto* an integer, since a still-fractional value is already
+  caught with better attribution.
 - **A repeated JSON member name refuses the document.** RFC 8259 leaves it undefined and runtimes
   differ — last value, first value, or a hard refusal — so `{"id":"safe","id":".."}` addresses two
   different artifact directories from one committed file. Detected **on the text**: by the time there

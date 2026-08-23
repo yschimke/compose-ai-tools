@@ -102,6 +102,11 @@
       "site": null
     },
     {
+      "id": "document-at-byte-cap",
+      "title": "A document of exactly 1 MiB",
+      "site": null
+    },
+    {
       "id": "document-over-byte-cap",
       "title": "A document past the 1 MiB ceiling",
       "site": null
@@ -153,7 +158,7 @@
     },
     {
       "id": "document-pixels-over-cap",
-      "title": "128,008,000 megapixels declared — one raster past the cap",
+      "title": "128,000,001 declared across the set — the first total past the cap",
       "site": null
     },
     {
@@ -469,6 +474,16 @@
     {
       "id": "schema-invalid-unknown-property",
       "title": "A record carrying the `finding` field cut from `v1`",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-unknown-property-named-like-geometry",
+      "title": "An unknown record property that shares a geometry field's name",
+      "site": null
+    },
+    {
+      "id": "document-unreadable-fractional-candidate-tolerance",
+      "title": "A `candidateTolerance` written as a near-integer fraction",
       "site": null
     },
     {

@@ -1,7 +1,7 @@
 {
-  "title": "128,000,001 declared across the set — the first total past the cap",
+  "title": "A `candidateTolerance` written as a near-integer fraction",
   "site": null,
-  "why": "**Compare as you go and short-circuit.** Summing across a third-party set is exactly where two engines diverge silently: a Kotlin accumulator can wrap into a value that sits under the cap while JavaScript keeps a large positive `Number` and rejects, and the offline consumer then allocates what the browser refused. Spread over two records and four rasters so the sum is the thing being pinned rather than any single header, and landing on **cap + 1** exactly so the fixture pins the constant rather than a neighbourhood of it.",
+  "why": "`2.00000000000000000001` is `2` by the time an integer check can look, so this engine reaches a gate verdict where a lossless validator or a Kotlin `Int` decoder refuses the record — the same rounding divergence as a fractional coordinate, at the other end of the magnitude range. The existing `0.5` case does not reach it: that value stays fractional through the parse and is refused by the ordinary integer check. Written at a path where an integer is required, so the text walk catches it.",
   "comparison": {
     "system": "m3",
     "component": "IconButton/Tonal",

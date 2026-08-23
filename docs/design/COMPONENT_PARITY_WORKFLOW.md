@@ -1301,16 +1301,30 @@ there is no record to attribute it to. It must be detected **on the text**, befo
 parse: by the time there is an object, the evidence is gone, which is why an engine that trusts its
 deserializer walks straight past this one.
 
-**A geometry coordinate must be written as a canonical JSON integer** — `x`, `y`, `width`, `height`,
-with no fraction and no exponent — and this too is checked **on the text**, `document-unreadable`.
-`Number.isSafeInteger` cannot see the difference: `9007199254740991.1` has already been rounded to
-`…991` by the time any check runs, so a double-parsing engine accepts a coordinate a lossless one
-refuses as fractional, and the far-edge rule made that reachable from *inside* the safe range rather
-than only beyond it. No bound closes the hole — at every magnitude some fractional literal sits
-nearer an integer than the spacing of doubles there — so the only honest check is on the token as
-committed. It is deliberately narrow: those four fields are where a large legal magnitude and an
-integrality requirement meet. `element.tolerance` is a real number by design, and `candidateTolerance`
-is small enough that no fractional literal rounds onto one of its legal values.
+**An integer-valued field must be written as a canonical JSON integer** — no fraction, no exponent —
+and this too is checked **on the text**, `document-unreadable`. `Number.isSafeInteger` cannot see the
+difference: `9007199254740991.1` has already been rounded to `…991` by the time any check runs, and
+so has `2.00000000000000000001` to `2`, so a double-parsing engine accepts what a lossless validator
+or a Kotlin `Int` decoder refuses. The far-edge rule made the coordinate case reachable from *inside*
+the safe range rather than only beyond it. No bound closes the hole — at every magnitude some
+fractional literal sits nearer an integer than the spacing of doubles there — so the only honest
+check is on the token as committed.
+
+Two things keep that check from doing damage of its own, and both are pinned:
+
+- **It is scoped by containing object, never by member name.** The paths are a box's `x`, `y`,
+  `width`, `height` (`plane.box` and `element.bounds`) and an acceptance's `candidateTolerance`. An
+  acceptance carrying the *unknown* property `"x"` is `schema-invalid` for that record, and answering
+  `document-unreadable` for it would drop the `statuses` entry of every well-formed sibling — a
+  different result from a schema-first consumer, which is the divergence this rule exists to prevent
+  rather than to cause.
+- **It catches only the tokens the parse hides**, i.e. a fractional token that *rounds onto* an
+  integer. A value still fractional after parsing — `candidateTolerance: 0.5`, a box `x: 0.5` — is
+  caught by the ordinary record-level check, which names the record and picks the better token
+  (`tolerance-out-of-range`, `schema-invalid`). Trading those for a blunt document-level refusal
+  would lose attribution for no gain.
+
+`element.tolerance` is a real number by design and is untouched.
 
 **A mask must select something.** An all-zero mask satisfies the encoding and dimension rules and
 still has no bounding box, which leaves `accepted-candidate.png`'s required dimensions undefined —

@@ -1,7 +1,7 @@
 {
-  "title": "128,000,001 declared across the set — the first total past the cap",
+  "title": "A document of exactly 1 MiB",
   "site": null,
-  "why": "**Compare as you go and short-circuit.** Summing across a third-party set is exactly where two engines diverge silently: a Kotlin accumulator can wrap into a value that sits under the cap while JavaScript keeps a large positive `Number` and rejects, and the offline consumer then allocates what the browser refused. Spread over two records and four rasters so the sum is the thing being pinned rather than any single header, and landing on **cap + 1** exactly so the fixture pins the constant rather than a neighbourhood of it.",
+  "why": "Inclusive, like every other cap in `v1` — 1 MiB is legal and one byte more refuses. Its absence was reachable: an engine comparing `>=` against the ceiling refuses this document and passes every other case, because the over-cap fixture overshoots by the whole of its surrounding JSON. The acceptance is an ordinary valid one, so the case pins that the document is *evaluated*, not merely not-refused.",
   "comparison": {
     "system": "m3",
     "component": "IconButton/Tonal",

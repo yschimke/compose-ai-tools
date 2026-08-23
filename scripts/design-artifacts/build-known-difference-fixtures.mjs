@@ -988,7 +988,12 @@ function glyphValidation({ id, title, why, record: recordOverrides = {}, files: 
     id,
     title,
     why,
-    document: documentText ?? document([record]),
+    // `documentText` is committed **verbatim**, so a fixture can carry bytes `JSON.stringify` would
+    // not produce — a repeated member name, or a fractional token that rounds onto an integer.
+    // Routing it through `document` instead would commit a JSON-encoded *string*, which is
+    // `document-unreadable` whatever it contains: a case passing for the wrong reason.
+    document: documentText ? null : document([record]),
+    documentText,
     files,
     comparison: glyphComparison(world, comparisonOverrides),
     catalog,
@@ -997,6 +1002,12 @@ function glyphValidation({ id, title, why, record: recordOverrides = {}, files: 
   });
 }
 
+// **Declared here, not imported from the module.** Every expected value in this tree is written by
+// hand for the same reason: a fixture that reads the implementation's constant agrees with whatever
+// the implementation does, bugs included. `v1` names 1 MiB, so 1 MiB is what the fixture spells, and
+// the suite's own budget test is what holds the module to the same number.
+const MAX_DOCUMENT_BYTES = 1024 * 1024;
+
 const refused = (reasons, recordId = "m3-iconbutton-tonal-glyph") => ({
   pins: ["statuses", "validationFailures"],
   statuses: { [recordId]: { status: "refused", reasons } },
@@ -1004,6 +1015,42 @@ const refused = (reasons, recordId = "m3-iconbutton-tonal-glyph") => ({
 });
 
 // --- the document itself -----------------------------------------------------------------------
+
+{
+  // **Exactly 1 MiB**, the accepting half of the document ceiling. Without it a consumer comparing
+  // with `>=` refuses what `v1` calls legal and still passes every case: the over-cap fixture's
+  // `note` is a full 1 MiB on its own, so the surrounding JSON puts that document strictly past the
+  // ceiling and nothing lands on it. The padding is computed rather than guessed, and the text is
+  // committed verbatim so the byte count survives regeneration.
+  const world = glyphWorld();
+  const empty = `${JSON.stringify(document([glyphRecord(world, { note: "" })]), null, 2)}\n`;
+  const padding = MAX_DOCUMENT_BYTES - Buffer.byteLength(empty, "utf8");
+  if (padding < 0) throw new Error("the glyph record no longer fits inside the document ceiling");
+  const record = glyphRecord(world, { note: "x".repeat(padding) });
+  const text = `${JSON.stringify(document([record]), null, 2)}\n`;
+  if (Buffer.byteLength(text, "utf8") !== MAX_DOCUMENT_BYTES) {
+    throw new Error(`document is ${Buffer.byteLength(text, "utf8")} bytes, not the ceiling`);
+  }
+  addCase({
+    id: "document-at-byte-cap",
+    title: "A document of exactly 1 MiB",
+    why:
+      "Inclusive, like every other cap in `v1` — 1 MiB is legal and one byte more refuses. Its " +
+      "absence was reachable: an engine comparing `>=` against the ceiling refuses this document " +
+      "and passes every other case, because the over-cap fixture overshoots by the whole of its " +
+      "surrounding JSON. The acceptance is an ordinary valid one, so the case pins that the " +
+      "document is *evaluated*, not merely not-refused.",
+    document: null,
+    documentText: text,
+    files: glyphFiles(world, record),
+    comparison: glyphComparison(world),
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+      validationFailures: [],
+    },
+  });
+}
 
 {
   // One acceptance, and a `note` padded past the document ceiling.
@@ -1259,21 +1306,39 @@ function lyingGreyPng(width, height) {
     expected: refused(["header-invalid"]),
   });
 
-  const bigger = lyingGreyPng(8000, 8001);
+  // **The first illegal aggregate, not merely an illegal one.** 8000 × 8001 overshoots the cap by
+  // 8,000 pixels, so a consumer whose ceiling is wrong by anything up to 7,999 refuses this case and
+  // passes the suite — the constant would be pinned only to within a raster's height. These four
+  // declared rasters total 128,000,001: 64,000,000 + 63,992,000 + 8,000 + 1, one pixel past.
+  const nearlyBig = lyingGreyPng(7999, 8000);
+  const strip = lyingGreyPng(8000, 1);
+  const dot = lyingGreyPng(1, 1);
   addCase({
     id: "document-pixels-over-cap",
-    title: "128,008,000 megapixels declared — one raster past the cap",
+    title: "128,000,001 declared across the set — the first total past the cap",
     why:
       "**Compare as you go and short-circuit.** Summing across a third-party set is exactly where " +
       "two engines diverge silently: a Kotlin accumulator can wrap into a value that sits under the " +
       "cap while JavaScript keeps a large positive `Number` and rejects, and the offline consumer " +
-      "then allocates what the browser refused.",
+      "then allocates what the browser refused. Spread over two records and four rasters so the sum " +
+      "is the thing being pinned rather than any single header, and landing on **cap + 1** exactly " +
+      "so the fixture pins the constant rather than a neighbourhood of it.",
     document: document([
-      glyphRecord(world, { maskSha256: sha256Hex(mask), acceptedCandidateSha256: sha256Hex(bigger) }),
+      glyphRecord(world, {
+        maskSha256: sha256Hex(mask),
+        acceptedCandidateSha256: sha256Hex(nearlyBig),
+      }),
+      glyphRecord(world, {
+        id: "m3-iconbutton-tonal-glyph-second",
+        maskSha256: sha256Hex(strip),
+        acceptedCandidateSha256: sha256Hex(dot),
+      }),
     ]),
     files: {
       "artifacts/m3-iconbutton-tonal-glyph/mask.png": mask,
-      "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": bigger,
+      "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": nearlyBig,
+      "artifacts/m3-iconbutton-tonal-glyph-second/mask.png": strip,
+      "artifacts/m3-iconbutton-tonal-glyph-second/accepted-candidate.png": dot,
       "canonical-reference.png": world.referencePngBytes,
       "canonical-candidate.png": world.candidatePngBytes,
     },
@@ -2388,6 +2453,52 @@ glyphValidation({
     "silently ignored by one engine and acted on by a later one.",
   record: { finding: { kind: "color", token: "onSurfaceVariant" } },
   expected: refused(["schema-invalid"]),
+});
+
+// Written by hand rather than through `JSON.stringify`, which would re-emit the already-rounded
+// `9007199254740991` and commit a fixture that exercises nothing.
+function geometryNamedUnknownPropertyText() {
+  const world = glyphWorld();
+  const record = { ...glyphRecord(world), x: 0 };
+  const text = JSON.stringify(document([record]), null, 2);
+  const marked = text.replace('"x": 0\n', '"x": 9007199254740991.1\n');
+  if (marked === text) throw new Error("the unknown `x` property did not survive serialisation");
+  return `${marked}\n`;
+}
+
+glyphValidation({
+  id: "schema-invalid-unknown-property-named-like-geometry",
+  title: "An unknown record property that shares a geometry field's name",
+  why:
+    "The scoping half of the integer-token rule. Coordinates are checked as *written*, on the text, " +
+    "and a check keyed on the member **name** would answer `document-unreadable` here — dropping " +
+    "the `statuses` entry of every well-formed sibling acceptance, where a schema-first consumer " +
+    "reports `schema-invalid` for this record alone. So the token check is keyed on the containing " +
+    "object's path (`plane.box`, `element.bounds`, the acceptance itself), never on the name, and " +
+    "an unknown property called `x` is an unknown property like any other. The token is the one " +
+    "that *does* round onto an integer, so a name-keyed check fires on it for certain.",
+  documentText: geometryNamedUnknownPropertyText(),
+  expected: refused(["schema-invalid"]),
+});
+
+glyphValidation({
+  id: "document-unreadable-fractional-candidate-tolerance",
+  title: "A `candidateTolerance` written as a near-integer fraction",
+  why:
+    "`2.00000000000000000001` is `2` by the time an integer check can look, so this engine reaches " +
+    "a gate verdict where a lossless validator or a Kotlin `Int` decoder refuses the record — the " +
+    "same rounding divergence as a fractional coordinate, at the other end of the magnitude range. " +
+    "The existing `0.5` case does not reach it: that value stays fractional through the parse and " +
+    "is refused by the ordinary integer check. Written at a path where an integer is required, so " +
+    "the text walk catches it.",
+  documentText:
+    '{"schema":"compose-preview-known-differences/v1","acceptances":[{"id":"a",' +
+    '"candidateTolerance":2.00000000000000000001}]}',
+  expected: {
+    pins: ["statusesAbsent", "validationFailures"],
+    statusesAbsent: true,
+    validationFailures: [{ reason: "document-unreadable" }],
+  },
 });
 
 glyphValidation({
