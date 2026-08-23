@@ -94,6 +94,8 @@ Each exists because two engines would otherwise diverge on identical bytes.
   to a gate verdict here and a `decode-failed` elsewhere. Reverses an earlier "tolerated, nothing
   reads them" note; *nothing reads them* was the problem. The suite's oversize artifacts are padded
   inside the compressed stream instead (empty stored deflate blocks, zero-length `IDAT` chunks).
+- **`element.tolerance`'s range is checked on the token too**, as an exact decimal — it is the one
+  bounded field that is not an integer, and `0.25000000000000000001` is `0.25` after parsing.
 - **A repeated JSON member name refuses the document.** RFC 8259 leaves it undefined and runtimes
   differ — last value, first value, or a hard refusal — so `{"id":"safe","id":".."}` addresses two
   different artifact directories from one committed file. Detected **on the text**: by the time there

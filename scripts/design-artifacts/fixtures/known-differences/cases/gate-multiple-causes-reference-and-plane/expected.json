@@ -1,0 +1,16 @@
+{
+  "pins": [
+    "statuses",
+    "validationFailures"
+  ],
+  "statuses": {
+    "m3-iconbutton-tonal-glyph": {
+      "status": "invalidated",
+      "causes": [
+        "reference-changed",
+        "plane-changed"
+      ]
+    }
+  },
+  "validationFailures": []
+}

@@ -1,0 +1,38 @@
+{
+  "title": "The reference and the plane both changed",
+  "site": null,
+  "why": "`causes` is ordered as the gate table lists them, and the only other multi-cause case pairs `reference-changed` with `element-ambiguous` — so nothing pinned where `plane-changed` sits relative to `reference-changed`, and an engine emitting them the other way round passed. This pair is also the one a real reference refresh produces, since re-rendering a reference usually moves its content box too.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 5,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

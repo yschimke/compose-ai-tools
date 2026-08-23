@@ -1,7 +1,7 @@
 {
-  "title": "The tag is carried by more than one node",
+  "title": "A greyscale accepted candidate whose `tRNS` names its own sample",
   "site": null,
-  "why": "Uniqueness is re-checked at evaluation time, against the full semantics payload rather than the annotation layer — it was unique when the acceptance was authored, and only this check notices when it stops being. Ambiguity short-circuits the *bounds* check, so the causes list is exactly `[element-ambiguous]` — and the supplied bounds are displaced **past tolerance** so that the short-circuit is actually exercised: with bounds equal to the baseline, an engine running the bounds check *after* detecting ambiguity emits the same single cause and the case proves nothing. Here that engine emits `[element-ambiguous, element-moved]` and fails.",
+  "why": "A greyscale `tRNS` is one 16-bit sample; at depth 8 the high byte is zero and the low byte names the transparent grey. The acceptance is `valid` only if the chunk is honoured: the glyph decodes to alpha `0` — and to `0,0,0` RGB, since a fully transparent pixel is normalised at decode — which is exactly what the canonical candidate holds there. An engine that applies `tRNS` to palette images alone decodes an opaque colour and reports `candidate-changed`.",
   "comparison": {
     "system": "m3",
     "component": "IconButton/Tonal",
@@ -23,10 +23,10 @@
     "canonicalCandidate": "canonical-candidate.png",
     "tagIndex": {
       "iconbutton-tonal-glyph": {
-        "count": 2,
+        "count": 1,
         "bounds": {
-          "x": 20,
-          "y": 20,
+          "x": 8,
+          "y": 8,
           "width": 8,
           "height": 8
         }

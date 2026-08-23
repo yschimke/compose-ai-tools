@@ -1,7 +1,7 @@
 {
-  "title": "The tag is carried by more than one node",
+  "title": "An `element.tolerance` just past the ceiling, rounded back inside it",
   "site": null,
-  "why": "Uniqueness is re-checked at evaluation time, against the full semantics payload rather than the annotation layer — it was unique when the acceptance was authored, and only this check notices when it stops being. Ambiguity short-circuits the *bounds* check, so the causes list is exactly `[element-ambiguous]` — and the supplied bounds are displaced **past tolerance** so that the short-circuit is actually exercised: with bounds equal to the baseline, an engine running the bounds check *after* detecting ambiguity emits the same single cause and the case proves nothing. Here that engine emits `[element-ambiguous, element-moved]` and fails.",
+  "why": "`element.tolerance` is the one field `v1` bounds without requiring an integer, so the integer token rule cannot carry it — and the same rounding hole is open: `0.25000000000000000001` is `0.25` by the time a range check can look, so this engine gates a record a lossless validator refuses as over the declared maximum. Decided as an exact decimal, without ever forming the double. A value that is *already* out of range after parsing — `0.3` — keeps its precise `tolerance-out-of-range`, which names the record; only the hidden case is traded up to a document refusal, and only because nothing else can see it.",
   "comparison": {
     "system": "m3",
     "component": "IconButton/Tonal",
@@ -23,10 +23,10 @@
     "canonicalCandidate": "canonical-candidate.png",
     "tagIndex": {
       "iconbutton-tonal-glyph": {
-        "count": 2,
+        "count": 1,
         "bounds": {
-          "x": 20,
-          "y": 20,
+          "x": 8,
+          "y": 8,
           "width": 8,
           "height": 8
         }

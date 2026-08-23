@@ -1,7 +1,7 @@
 {
-  "title": "The tag is carried by more than one node",
+  "title": "An artifact whose scanlines use filters 1–4",
   "site": null,
-  "why": "Uniqueness is re-checked at evaluation time, against the full semantics payload rather than the annotation layer — it was unique when the acceptance was authored, and only this check notices when it stops being. Ambiguity short-circuits the *bounds* check, so the causes list is exactly `[element-ambiguous]` — and the supplied bounds are displaced **past tolerance** so that the short-circuit is actually exercised: with bounds equal to the baseline, an engine running the bounds check *after* detecting ambiguity emits the same single cause and the case proves nothing. Here that engine emits `[element-ambiguous, element-moved]` and fails.",
+  "why": "Every other PNG in this tree is written with filter `0` on every row, so the whole committed suite could be decoded by an engine implementing none of Sub, Up, Average or Paeth — and those are ordinary PNG that any encoder emits, so that engine then refuses or mis-decodes a perfectly legal accepted candidate in the field. This mask decodes to exactly the same samples as its unfiltered twin and the acceptance is `valid`; an engine that ignores the filter byte reads different pixels and cannot reach that verdict. The rows cycle through all four so no single filter can be the one that happens to be implemented.",
   "comparison": {
     "system": "m3",
     "component": "IconButton/Tonal",
@@ -23,10 +23,10 @@
     "canonicalCandidate": "canonical-candidate.png",
     "tagIndex": {
       "iconbutton-tonal-glyph": {
-        "count": 2,
+        "count": 1,
         "bounds": {
-          "x": 20,
-          "y": 20,
+          "x": 8,
+          "y": 8,
           "width": 8,
           "height": 8
         }

@@ -1,7 +1,7 @@
 {
-  "title": "The tag is carried by more than one node",
+  "title": "A truecolour accepted candidate whose `tRNS` names its own colour",
   "site": null,
-  "why": "Uniqueness is re-checked at evaluation time, against the full semantics payload rather than the annotation layer — it was unique when the acceptance was authored, and only this check notices when it stops being. Ambiguity short-circuits the *bounds* check, so the causes list is exactly `[element-ambiguous]` — and the supplied bounds are displaced **past tolerance** so that the short-circuit is actually exercised: with bounds equal to the baseline, an engine running the bounds check *after* detecting ambiguity emits the same single cause and the case proves nothing. Here that engine emits `[element-ambiguous, element-moved]` and fails.",
+  "why": "A truecolour `tRNS` is three 16-bit samples, so it is six bytes at any bit depth — the shape a length check keyed on the colour type has to know. The acceptance is `valid` only if the chunk is honoured: the glyph decodes to alpha `0` — and to `0,0,0` RGB, since a fully transparent pixel is normalised at decode — which is exactly what the canonical candidate holds there. An engine that applies `tRNS` to palette images alone decodes an opaque colour and reports `candidate-changed`.",
   "comparison": {
     "system": "m3",
     "component": "IconButton/Tonal",
@@ -23,10 +23,10 @@
     "canonicalCandidate": "canonical-candidate.png",
     "tagIndex": {
       "iconbutton-tonal-glyph": {
-        "count": 2,
+        "count": 1,
         "bounds": {
-          "x": 20,
-          "y": 20,
+          "x": 8,
+          "y": 8,
           "width": 8,
           "height": 8
         }

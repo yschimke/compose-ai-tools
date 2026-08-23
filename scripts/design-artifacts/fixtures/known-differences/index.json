@@ -72,6 +72,16 @@
       "site": null
     },
     {
+      "id": "gate-element-resized-not-moved",
+      "title": "The element kept its origin and changed size",
+      "site": null
+    },
+    {
+      "id": "gate-element-denominator-is-the-smaller-side",
+      "title": "A rectangular baseline, displaced between the two possible thresholds",
+      "site": null
+    },
+    {
       "id": "gate-element-at-tolerance",
       "title": "A displacement exactly at tolerance passes",
       "site": null
@@ -84,6 +94,11 @@
     {
       "id": "gate-multiple-causes",
       "title": "Several gates fire at once",
+      "site": null
+    },
+    {
+      "id": "gate-multiple-causes-reference-and-plane",
+      "title": "The reference and the plane both changed",
       "site": null
     },
     {
@@ -557,6 +572,11 @@
       "site": null
     },
     {
+      "id": "document-unreadable-element-tolerance-over-by-rounding",
+      "title": "An `element.tolerance` just past the ceiling, rounded back inside it",
+      "site": null
+    },
+    {
       "id": "document-unreadable-fractional-candidate-tolerance",
       "title": "A `candidateTolerance` written as a near-integer fraction",
       "site": null
@@ -642,6 +662,16 @@
       "site": null
     },
     {
+      "id": "artifact-trns-greyscale-decodes",
+      "title": "A greyscale accepted candidate whose `tRNS` names its own sample",
+      "site": null
+    },
+    {
+      "id": "artifact-trns-truecolour-decodes",
+      "title": "A truecolour accepted candidate whose `tRNS` names its own colour",
+      "site": null
+    },
+    {
       "id": "decode-failed-empty-palette-trns",
       "title": "A zero-length palette `tRNS`",
       "site": null
@@ -654,6 +684,16 @@
     {
       "id": "decode-failed-missing-iend",
       "title": "A stream truncated after a complete `IDAT`",
+      "site": null
+    },
+    {
+      "id": "artifact-scanline-filters-are-honoured",
+      "title": "An artifact whose scanlines use filters 1–4",
+      "site": null
+    },
+    {
+      "id": "decode-failed-unsupported-filter-method",
+      "title": "An `IHDR` declaring a filter method the specification does not define",
       "site": null
     },
     {

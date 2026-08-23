@@ -29,6 +29,7 @@ import {
   chunk,
   encodePng,
   idat,
+  filteredIdat,
   ihdr,
   padPngTo,
   sha256Hex,
@@ -681,11 +682,14 @@ for (const [id, title, delta, status, why] of [
       "Uniqueness is re-checked at evaluation time, against the full semantics payload rather than " +
       "the annotation layer — it was unique when the acceptance was authored, and only this check " +
       "notices when it stops being. Ambiguity short-circuits the *bounds* check, so the causes list " +
-      "is exactly `[element-ambiguous]`.",
+      "is exactly `[element-ambiguous]` — and the supplied bounds are displaced **past tolerance** " +
+      "so that the short-circuit is actually exercised: with bounds equal to the baseline, an engine " +
+      "running the bounds check *after* detecting ambiguity emits the same single cause and the case " +
+      "proves nothing. Here that engine emits `[element-ambiguous, element-moved]` and fails.",
     document: document([record]),
     files: glyphFiles(world, record),
     comparison: glyphComparison(world, {
-      tagIndex: { "iconbutton-tonal-glyph": { count: 2, bounds: { x: 8, y: 8, width: 8, height: 8 } } },
+      tagIndex: { "iconbutton-tonal-glyph": { count: 2, bounds: { x: 20, y: 20, width: 8, height: 8 } } },
     }),
     expected: {
       pins: ["statuses", "validationFailures"],
@@ -729,6 +733,64 @@ for (const [id, title, delta, status, why] of [
     files: glyphFiles(world, record),
     comparison: glyphComparison(world, {
       tagIndex: { "iconbutton-tonal-glyph": { count: 1, bounds: { x: 9, y: 8, width: 8, height: 8 } } },
+    }),
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: { "m3-iconbutton-tonal-glyph": { status: "invalidated", causes: ["element-moved"] } },
+      validationFailures: [],
+    },
+  });
+}
+
+{
+  const world = glyphWorld();
+  const record = glyphRecord(world);
+  addCase({
+    id: "gate-element-resized-not-moved",
+    title: "The element kept its origin and changed size",
+    why:
+      "Every other one-match case *translates* the element, so an engine comparing only `x` and `y` " +
+      "passes them all and leaves a resized element `valid` — still suppressing pixels of something " +
+      "that is no longer the shape it was. Here the origin is untouched and only the far edges move: " +
+      "`0.1 × min(8, 8) = 0.8` against a far-edge displacement of 2.",
+    document: document([record]),
+    files: glyphFiles(world, record),
+    comparison: glyphComparison(world, {
+      tagIndex: { "iconbutton-tonal-glyph": { count: 1, bounds: { x: 8, y: 8, width: 10, height: 10 } } },
+    }),
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: { "m3-iconbutton-tonal-glyph": { status: "invalidated", causes: ["element-moved"] } },
+      validationFailures: [],
+    },
+  });
+}
+
+{
+  const world = glyphWorld();
+  // A **rectangular** baseline, and a displacement between the two candidate denominators.
+  const record = glyphRecord(world, {
+    element: {
+      kind: "tag",
+      tag: "iconbutton-tonal-glyph",
+      bounds: { x: 8, y: 8, width: 40, height: 8 },
+      tolerance: 0.25,
+    },
+  });
+  addCase({
+    id: "gate-element-denominator-is-the-smaller-side",
+    title: "A rectangular baseline, displaced between the two possible thresholds",
+    why:
+      "Every other one-match case uses a **square** baseline, where `min` and `max` are the same " +
+      "number — so an engine normalising by the larger dimension passes all of them while granting " +
+      "five times the movement here. `0.25 × min(40, 8) = 2` and `0.25 × max(40, 8) = 10`; the " +
+      "displacement is 4, which fires under the contract's denominator and passes under the other.",
+    document: document([record]),
+    files: glyphFiles(world, record),
+    comparison: glyphComparison(world, {
+      tagIndex: {
+        "iconbutton-tonal-glyph": { count: 1, bounds: { x: 12, y: 8, width: 40, height: 8 } },
+      },
     }),
     expected: {
       pins: ["statuses", "validationFailures"],
@@ -821,6 +883,37 @@ for (const [id, title, delta, status, why] of [
         "m3-iconbutton-tonal-glyph": {
           status: "invalidated",
           causes: ["reference-changed", "element-ambiguous"],
+        },
+      },
+      validationFailures: [],
+    },
+  });
+}
+
+{
+  const world = glyphWorld();
+  const record = glyphRecord(world);
+  addCase({
+    id: "gate-multiple-causes-reference-and-plane",
+    title: "The reference and the plane both changed",
+    why:
+      "`causes` is ordered as the gate table lists them, and the only other multi-cause case pairs " +
+      "`reference-changed` with `element-ambiguous` — so nothing pinned where `plane-changed` sits " +
+      "relative to `reference-changed`, and an engine emitting them the other way round passed. " +
+      "This pair is also the one a real reference refresh produces, since re-rendering a reference " +
+      "usually moves its content box too.",
+    document: document([record]),
+    files: glyphFiles(world, record),
+    comparison: glyphComparison(world, {
+      referenceSha256: "3".repeat(64),
+      plane: { plane: "content-box", box: { x: 5, y: 4, width: 24, height: 24 } },
+    }),
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: {
+        "m3-iconbutton-tonal-glyph": {
+          status: "invalidated",
+          causes: ["reference-changed", "plane-changed"],
         },
       },
       validationFailures: [],
@@ -2847,6 +2940,28 @@ glyphValidation({
 });
 
 glyphValidation({
+  id: "document-unreadable-element-tolerance-over-by-rounding",
+  title: "An `element.tolerance` just past the ceiling, rounded back inside it",
+  why:
+    "`element.tolerance` is the one field `v1` bounds without requiring an integer, so the integer " +
+    "token rule cannot carry it — and the same rounding hole is open: `0.25000000000000000001` is " +
+    "`0.25` by the time a range check can look, so this engine gates a record a lossless validator " +
+    "refuses as over the declared maximum. Decided as an exact decimal, without ever forming the " +
+    "double. A value that is *already* out of range after parsing — `0.3` — keeps its precise " +
+    "`tolerance-out-of-range`, which names the record; only the hidden case is traded up to a " +
+    "document refusal, and only because nothing else can see it.",
+  documentText:
+    '{"schema":"compose-preview-known-differences/v1","acceptances":[{"id":"a","element":' +
+    '{"kind":"tag","tag":"t","bounds":{"x":1,"y":1,"width":2,"height":2},' +
+    '"tolerance":0.25000000000000000001}}]}',
+  expected: {
+    pins: ["statusesAbsent", "validationFailures"],
+    statusesAbsent: true,
+    validationFailures: [{ reason: "document-unreadable" }],
+  },
+});
+
+glyphValidation({
   id: "document-unreadable-fractional-candidate-tolerance",
   title: "A `candidateTolerance` written as a near-integer fraction",
   why:
@@ -3296,6 +3411,79 @@ glyphValidation({
     expected: refused(["decode-failed"]),
   });
 
+  // **`tRNS` that actually decodes**, on the two permitted colour types that are not the palette.
+  // The single successful transparency fixture is palette-based, so an engine applying `tRNS` only
+  // to palette images passes the suite and then reads a greyscale or truecolour accepted candidate
+  // as fully opaque — a different raster in the candidate gate, for legal bytes. Both cases make the
+  // glyph *transparent*, so honouring the chunk is the only way to reach the expected verdict: the
+  // canonical candidate holds `0,0,0,0` there, and an engine ignoring `tRNS` decodes an opaque
+  // colour instead and reports `candidate-changed`.
+  for (const [id, title, colourType, plte, trns, sample, extra] of [
+    [
+      "artifact-trns-greyscale-decodes",
+      "A greyscale accepted candidate whose `tRNS` names its own sample",
+      COLOUR_GREY,
+      null,
+      Uint8Array.from([0, 90]),
+      [90],
+      "A greyscale `tRNS` is one 16-bit sample; at depth 8 the high byte is zero and the low byte " +
+        "names the transparent grey.",
+    ],
+    [
+      "artifact-trns-truecolour-decodes",
+      "A truecolour accepted candidate whose `tRNS` names its own colour",
+      COLOUR_RGB,
+      null,
+      Uint8Array.from([0, 200, 0, 60, 0, 60]),
+      [200, 60, 60],
+      "A truecolour `tRNS` is three 16-bit samples, so it is six bytes at any bit depth — the shape " +
+        "a length check keyed on the colour type has to know.",
+    ],
+  ]) {
+    const world = glyphWorld();
+    // The candidate the comparison supplies: the glyph is fully transparent there.
+    const candidate = raster(24, 24);
+    fillRect(candidate, { x: 0, y: 0, width: 4, height: 4 }, GREY);
+    fillRect(candidate, world.glyph, [0, 0, 0, 0]);
+    const channels = colourType === COLOUR_GREY ? 1 : 3;
+    const rows = [];
+    for (let y = 0; y < 8; y++) {
+      const row = new Uint8Array(8 * channels);
+      for (let x = 0; x < 8; x++) row.set(sample, x * channels);
+      rows.push(row);
+    }
+    const accepted = buildPng([
+      ihdr({ width: 8, height: 8, colourType }),
+      ...(plte ? [chunk("PLTE", plte)] : []),
+      chunk("tRNS", trns),
+      idat(rows),
+      chunk("IEND"),
+    ]);
+    const record = glyphRecord(world, { acceptedCandidateSha256: sha256Hex(accepted) });
+    addCase({
+      id,
+      title,
+      why:
+        `${extra} The acceptance is \`valid\` only if the chunk is honoured: the glyph decodes to ` +
+        "alpha `0` — and to `0,0,0` RGB, since a fully transparent pixel is normalised at decode — " +
+        "which is exactly what the canonical candidate holds there. An engine that applies `tRNS` " +
+        "to palette images alone decodes an opaque colour and reports `candidate-changed`.",
+      document: document([record]),
+      files: {
+        "artifacts/m3-iconbutton-tonal-glyph/mask.png": world.maskPngBytes,
+        "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": accepted,
+        "canonical-reference.png": world.referencePngBytes,
+        "canonical-candidate.png": rgbaPng(candidate),
+      },
+      comparison: glyphComparison(world),
+      expected: {
+        pins: ["statuses", "validationFailures"],
+        statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+        validationFailures: [],
+      },
+    });
+  }
+
   const emptyPaletteTrns = buildPng([
     ihdr({ width: 8, height: 8, colourType: COLOUR_PALETTE }),
     chunk("PLTE", Uint8Array.from([200, 60, 60, 0, 0, 0])),
@@ -3348,6 +3536,64 @@ glyphValidation({
       "a partial raster: a committed artifact missing its terminator is broken, not partial.",
     record: { maskSha256: sha256Hex(noIend) },
     files: { "artifacts/m3-iconbutton-tonal-glyph/mask.png": noIend },
+    expected: refused(["decode-failed"]),
+  });
+
+  // A perfectly ordinary mask whose scanlines carry filter types 1–4 instead of 0.
+  const filteredMask = (() => {
+    const samples = new Uint8Array(24 * 24);
+    for (let y = 8; y < 16; y++) for (let x = 8; x < 16; x++) samples[y * 24 + x] = 255;
+    const rows = [];
+    for (let y = 0; y < 24; y++) rows.push(samples.subarray(y * 24, (y + 1) * 24));
+    return buildPng([
+      ihdr({ width: 24, height: 24, colourType: COLOUR_GREY }),
+      filteredIdat(rows, 1),
+      chunk("IEND"),
+    ]);
+  })();
+  glyphValidation({
+    id: "artifact-scanline-filters-are-honoured",
+    title: "An artifact whose scanlines use filters 1–4",
+    why:
+      "Every other PNG in this tree is written with filter `0` on every row, so the whole committed " +
+      "suite could be decoded by an engine implementing none of Sub, Up, Average or Paeth — and " +
+      "those are ordinary PNG that any encoder emits, so that engine then refuses or mis-decodes a " +
+      "perfectly legal accepted candidate in the field. This mask decodes to exactly the same " +
+      "samples as its unfiltered twin and the acceptance is `valid`; an engine that ignores the " +
+      "filter byte reads different pixels and cannot reach that verdict. The rows cycle through all " +
+      "four so no single filter can be the one that happens to be implemented.",
+    record: { maskSha256: sha256Hex(filteredMask) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/mask.png": filteredMask },
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+      validationFailures: [],
+    },
+  });
+
+  // The **filter** method byte, on its own — the compression byte left at its legal zero.
+  const badFilterMethod = (() => {
+    const samples = new Uint8Array(24 * 24);
+    for (let y = 8; y < 16; y++) for (let x = 8; x < 16; x++) samples[y * 24 + x] = 255;
+    const rows = [];
+    for (let y = 0; y < 24; y++) rows.push(samples.subarray(y * 24, (y + 1) * 24));
+    return buildPng([
+      ihdr({ width: 24, height: 24, colourType: COLOUR_GREY, filter: 1 }),
+      idat(rows),
+      chunk("IEND"),
+    ]);
+  })();
+  glyphValidation({
+    id: "decode-failed-unsupported-filter-method",
+    title: "An `IHDR` declaring a filter method the specification does not define",
+    why:
+      "`IHDR` carries **two** method bytes and the sibling case only ever moves one of them, so an " +
+      "engine that validates `compression` and ignores `filter` passes the suite and then accepts a " +
+      "correctly hashed PNG declaring `filter: 1` — reaching a gate verdict where a conforming " +
+      "decoder refuses the header. Not to be confused with the per-scanline filter *type*, which is " +
+      "a byte on every row and of which five are legal; this is the method byte, of which one is.",
+    record: { maskSha256: sha256Hex(badFilterMethod) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/mask.png": badFilterMethod },
     expected: refused(["decode-failed"]),
   });
 

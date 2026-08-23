@@ -456,9 +456,12 @@ export function issueKey(issue) {
  *     enforced from a bounded header read for exactly this reason; this one had been left to a
  *     check that arrives too late.
  *   - `{ error: "path-not-contained" }` — the grammar here is *lexical*, so it cannot see a symlink
- *     inside an acceptance directory pointing outside the root. Whether the resolved path stays
- *     under `known-differences/` is a fact about the filesystem or the URL space the reader is
- *     serving from, and it must establish it before opening anything.
+ *     inside an acceptance directory. Whether the resolved path stays inside **this acceptance's own
+ *     `<id>/` directory** — not merely somewhere under `known-differences/` — is a fact about the
+ *     filesystem or the URL space the reader is serving from, and it must establish it before
+ *     opening anything. The narrower bound is the load-bearing one: a link from one acceptance's
+ *     directory into another's stays under the root while letting a record read bytes it does not
+ *     own, and the hash it is then checked against is the *other* record's.
  *   - **Resolution is exact-case, including the `<id>` directory.** A document spelling `MASK.png`
  *     for a committed `mask.png` opens and evaluates on a case-insensitive Windows or macOS
  *     filesystem and is `artifact-unreadable` on a Linux checkout or a case-sensitive URL space — the
@@ -642,6 +645,42 @@ const INTEGER_TOKEN_PATHS = new Map([
   ["/acceptances/[]", new Set(["candidateTolerance"])],
 ]);
 
+/**
+ * Where a *real* number has a range, and the range is checked on the token.
+ *
+ * `element.tolerance` is the one field this contract bounds without requiring an integer, so the
+ * integer rule above cannot carry it — and the same rounding hole is open: `0.25000000000000000001`
+ * is `0.25` by the time a range check can look, so this engine gates a record a lossless validator
+ * refuses as over the declared maximum. Compared as an exact decimal, without ever forming a double.
+ */
+const REAL_TOKEN_RANGES = new Map([["/acceptances/[]/element", { tolerance: [0, 0.25] }]]);
+
+/**
+ * Is a JSON number token within `[low, high]`, decided exactly?
+ *
+ * The token is read as a scaled integer — digits and a power of ten — and compared against the bound
+ * scaled the same way, so `0.25000000000000000001` is greater than `0.25` here even though the two
+ * are one double. Both bounds are short decimals, which is what keeps this arithmetic small.
+ */
+function tokenWithinRange(token, low, high) {
+  const match = /^(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(token);
+  if (!match) return false;
+  const [, sign, whole, fraction = "", exponent = "0"] = match;
+  const digits = `${whole}${fraction}`;
+  const scale = Number(exponent) - fraction.length;
+  const compare = (bound) => {
+    // Both sides as integers over a common power of ten, chosen as the finer of the two scales.
+    const boundText = bound.toFixed(20);
+    const boundDigits = boundText.replace("-", "").replace(".", "").replace(/0+$/, "") || "0";
+    const boundScale = -(boundText.split(".")[1] ?? "").replace(/0+$/, "").length;
+    const common = Math.min(scale, boundScale);
+    const left = BigInt(`${sign}${digits}`) * 10n ** BigInt(scale - common);
+    const right = BigInt(`${bound < 0 ? "-" : ""}${boundDigits}`) * 10n ** BigInt(boundScale - common);
+    return left < right ? -1 : left > right ? 1 : 0;
+  };
+  return compare(low) >= 0 && compare(high) <= 0;
+}
+
 function documentTextRefusal(documentText) {
   const scopes = [];
   const path = [];
@@ -697,7 +736,20 @@ function documentTextRefusal(documentText) {
       while (end < documentText.length && /[-+0-9.eE]/.test(documentText[end])) end += 1;
       const token = documentText.slice(index, end);
       index = end;
-      const integerKeys = INTEGER_TOKEN_PATHS.get(path.slice(1).map((step) => `/${step}`).join(""));
+      const scope = path.slice(1).map((step) => `/${step}`).join("");
+      const integerKeys = INTEGER_TOKEN_PATHS.get(scope);
+      const realRange = pendingKey === null ? undefined : REAL_TOKEN_RANGES.get(scope)?.[pendingKey];
+      // Only where the parse *hides* it, exactly as for the integer fields: a token already outside
+      // the range after parsing keeps its precise, attributed refusal (`tolerance-out-of-range`,
+      // naming the record) rather than being traded for a blunt document-level one.
+      if (
+        realRange &&
+        !tokenWithinRange(token, realRange[0], realRange[1]) &&
+        Number(token) >= realRange[0] &&
+        Number(token) <= realRange[1]
+      ) {
+        return "document-unreadable";
+      }
       // **Only the tokens the parse *hides*.** A value that is still fractional after parsing —
       // `candidateTolerance: 0.5`, a box `x: 0.5` — is caught by the ordinary record-level check,
       // which names the record and picks the better token (`tolerance-out-of-range`,

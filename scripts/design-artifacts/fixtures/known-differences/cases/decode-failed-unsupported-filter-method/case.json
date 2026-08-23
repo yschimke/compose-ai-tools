@@ -1,7 +1,7 @@
 {
-  "title": "The tag is carried by more than one node",
+  "title": "An `IHDR` declaring a filter method the specification does not define",
   "site": null,
-  "why": "Uniqueness is re-checked at evaluation time, against the full semantics payload rather than the annotation layer — it was unique when the acceptance was authored, and only this check notices when it stops being. Ambiguity short-circuits the *bounds* check, so the causes list is exactly `[element-ambiguous]` — and the supplied bounds are displaced **past tolerance** so that the short-circuit is actually exercised: with bounds equal to the baseline, an engine running the bounds check *after* detecting ambiguity emits the same single cause and the case proves nothing. Here that engine emits `[element-ambiguous, element-moved]` and fails.",
+  "why": "`IHDR` carries **two** method bytes and the sibling case only ever moves one of them, so an engine that validates `compression` and ignores `filter` passes the suite and then accepts a correctly hashed PNG declaring `filter: 1` — reaching a gate verdict where a conforming decoder refuses the header. Not to be confused with the per-scanline filter *type*, which is a byte on every row and of which five are legal; this is the method byte, of which one is.",
   "comparison": {
     "system": "m3",
     "component": "IconButton/Tonal",
@@ -23,10 +23,10 @@
     "canonicalCandidate": "canonical-candidate.png",
     "tagIndex": {
       "iconbutton-tonal-glyph": {
-        "count": 2,
+        "count": 1,
         "bounds": {
-          "x": 20,
-          "y": 20,
+          "x": 8,
+          "y": 8,
           "width": 8,
           "height": 8
         }

@@ -101,7 +101,15 @@ function artifactReader(caseDir, synthesize) {
     // see — and the size is taken from a `stat` so an oversized file is refused *before* it is
     // allocated, rather than measured after being read into memory.
     const resolved = realpathSync(full);
-    if (resolved !== root && !resolved.startsWith(root + sep)) return { error: "path-not-contained" };
+    // **Contained in *this acceptance's* directory, not merely somewhere under the root.** A symlink
+    // at `artifacts/a/link` pointing into `artifacts/b` resolves inside the global root, so a
+    // root-only check lets acceptance `a` read `b`'s bytes — and then the exact-case check below
+    // reports it as `artifact-unreadable`, where the contract says `path-not-contained`. The bound is
+    // the fixed `<root>/<id>/` the path is addressed against.
+    const acceptance = join(root, path.split("/")[0]);
+    if (resolved !== acceptance && !resolved.startsWith(acceptance + sep)) {
+      return { error: "path-not-contained" };
+    }
     // **Exact case, the reader's third obligation.** On a case-insensitive filesystem `MASK.png`
     // opens the committed `mask.png`, so this runner would evaluate a record a Linux checkout
     // reports as `artifact-unreadable` — the divergence would be in the *runner*, invisible to

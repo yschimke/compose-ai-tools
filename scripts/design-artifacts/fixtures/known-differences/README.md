@@ -75,9 +75,12 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `gate-element-ambiguous` | The tag is carried by more than one node |
 | `gate-element-vanished` | The tag resolves to nothing at all |
 | `gate-element-moved-past-tolerance` | The resolved element moved further than `element.tolerance` allows |
+| `gate-element-resized-not-moved` | The element kept its origin and changed size |
+| `gate-element-denominator-is-the-smaller-side` | A rectangular baseline, displaced between the two possible thresholds |
 | `gate-element-at-tolerance` | A displacement exactly at tolerance passes |
 | `gate-element-at-tolerance-inexact-product` | A displacement at a tolerance whose product is not exact in binary |
 | `gate-multiple-causes` | Several gates fire at once |
+| `gate-multiple-causes-reference-and-plane` | The reference and the plane both changed |
 | `set-overlapping-masks` | Two acceptances whose masks overlap |
 | `set-mixed-validity` | One acceptance survives while its sibling is invalidated |
 | `scope-other-previewid` | An acceptance authored for another `previewId` |
@@ -172,6 +175,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `document-non-object-acceptances` | `acceptances` holding `null`, a string and an array |
 | `schema-invalid-unknown-property` | A record carrying the `finding` field cut from `v1` |
 | `schema-invalid-unknown-property-named-like-geometry` | An unknown record property that shares a geometry field's name |
+| `document-unreadable-element-tolerance-over-by-rounding` | An `element.tolerance` just past the ceiling, rounded back inside it |
 | `document-unreadable-fractional-candidate-tolerance` | A `candidateTolerance` written as a near-integer fraction |
 | `schema-invalid-unknown-element-property` | An `element` carrying a property `v1` does not define |
 | `schema-invalid-note-wrong-type` | A numeric `note` |
@@ -189,9 +193,13 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `zero-alpha-rgb-is-normalised` | Transparent pixels whose hidden colour differs |
 | `decode-failed-plte-after-trns` | A truecolor `PLTE` placed after `tRNS` |
 | `decode-failed-trns-sample-out-of-range` | A `tRNS` sample the image's bit depth cannot contain |
+| `artifact-trns-greyscale-decodes` | A greyscale accepted candidate whose `tRNS` names its own sample |
+| `artifact-trns-truecolour-decodes` | A truecolour accepted candidate whose `tRNS` names its own colour |
 | `decode-failed-empty-palette-trns` | A zero-length palette `tRNS` |
 | `decode-failed-palette-on-greyscale` | A `PLTE` in a greyscale image |
 | `decode-failed-missing-iend` | A stream truncated after a complete `IDAT` |
+| `artifact-scanline-filters-are-honoured` | An artifact whose scanlines use filters 1–4 |
+| `decode-failed-unsupported-filter-method` | An `IHDR` declaring a filter method the specification does not define |
 | `decode-failed-unsupported-compression-method` | An `IHDR` declaring a compression method the specification does not define |
 | `decode-failed-interlaced-accepted-candidate` | An interlaced accepted candidate |
 | `decode-failed-16-bit-accepted-candidate` | A 16-bit accepted candidate |

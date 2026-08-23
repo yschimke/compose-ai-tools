@@ -1339,7 +1339,12 @@ the safe range rather than only beyond it. No bound closes the hole — at every
 fractional literal sits nearer an integer than the spacing of doubles there — so the only honest
 check is on the token as committed.
 
-Two things keep that check from doing damage of its own, and both are pinned:
+**`element.tolerance` gets the same treatment on its own terms.** It is the one field `v1` bounds
+without requiring an integer, so the canonical-integer rule cannot carry it — and the hole is the
+same shape: `0.25000000000000000001` is `0.25` by the time a range check can look. Its **range** is
+therefore checked on the token, as an exact decimal, without ever forming the double.
+
+Two things keep these checks from doing damage of their own, and both are pinned:
 
 - **It is scoped by containing object, never by member name.** The paths are a box's `x`, `y`,
   `width`, `height` (`plane.box` and `element.bounds`) and an acceptance's `candidateTolerance`. An
@@ -1347,8 +1352,8 @@ Two things keep that check from doing damage of its own, and both are pinned:
   `document-unreadable` for it would drop the `statuses` entry of every well-formed sibling — a
   different result from a schema-first consumer, which is the divergence this rule exists to prevent
   rather than to cause.
-- **It catches only the tokens the parse hides**, i.e. a fractional token that *rounds onto* an
-  integer. A value still fractional after parsing — `candidateTolerance: 0.5`, a box `x: 0.5` — is
+- **It catches only the tokens the parse hides** — a fractional token that *rounds onto* an integer,
+  or a real that rounds back inside its range. A value still fractional after parsing — `candidateTolerance: 0.5`, a box `x: 0.5` — is
   caught by the ordinary record-level check, which names the record and picks the better token
   (`tolerance-out-of-range`, `schema-invalid`). Trading those for a blunt document-level refusal
   would lose attribution for no gain.
@@ -1376,6 +1381,12 @@ canonical plane's `width × height` exactly, and `accepted-candidate.png` must m
 bounding box exactly. Otherwise one consumer rescales, another rejects, a third compares only the
 overlap — same acceptance, three different suppression unions. Mismatches are `refused`, with
 conformance cases for both.
+
+**Containment is per acceptance, not per tree.** The resolved path must stay inside *this*
+acceptance's `<id>/` directory, and a reader bounding only at `known-differences/` lets a symlink from
+one acceptance's directory into another's through: the record then reads bytes it does not own and is
+checked against a hash belonging to a different record. Same obligation, one level narrower than it
+first appears.
 
 **And resolution is exact-case, including the `<id>` directory.** `MASK.png` against a committed
 `mask.png` is neither a containment failure nor a grammar failure — the path is portable and
@@ -1483,10 +1494,14 @@ inexpressible, with a fixture on each side.
 
 **A record need not be an object at all.** `acceptances` is third-party data and can hold `null`, a
 string or an array; all three are `id-missing` in the `{index, reason}` shape and the document is
-rejected. Worth stating because of what it implies about *order*: the preflight below runs even for a
-document already known to be doomed, since the pixel budget is reached from it — so it must not
-dereference what it was handed on the way there. An engine that throws here turns a malformed
-third-party document into a crash rather than the result this contract specifies.
+rejected, and **identity is decided before any artifact is opened**: an unkeyable record short-circuits
+the whole document, so nothing is fetched and nothing is preflighted. An earlier draft of this
+paragraph said the preflight ran anyway "since the pixel budget is reached from it", which was a
+stale ordering instruction — a second engine following it would perform up to 512 discarded artifact
+reads for a document it had already rejected, and would have to dereference the very non-object
+record this paragraph is about to get there. What survives from that draft is the reason it mattered:
+the preflight must never dereference what it was handed, because an engine that throws on a malformed
+third-party document turns it into a crash rather than the result this contract specifies.
 
 **The unkeyable case reports `id-missing`, and that token covers all three of its forms.** It needs
 saying, because neither neighbouring token fits: `schema-invalid` is per-acceptance and presupposes

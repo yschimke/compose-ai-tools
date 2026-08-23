@@ -207,6 +207,51 @@ export function ihdr({
 }
 
 /** Scanlines with filter byte 0, deflated — the only `IDAT` shape this module writes. */
+/**
+ * `IDAT` whose scanlines carry a **non-zero** filter type — one per row, cycling `1…4`.
+ *
+ * Every other artifact this generator writes uses filter `0`, so the whole committed tree could be
+ * decoded by an engine that implements none of Sub, Up, Average or Paeth. Those four are ordinary
+ * PNG that any encoder emits, and a decoder missing them refuses or mis-decodes a perfectly legal
+ * accepted candidate, so the suite needs at least one artifact that exercises them.
+ *
+ * The filters are applied here rather than left to a library, for the same reason the rest of this
+ * file exists: the fixture has to state which filter each row carries, not hope one was chosen.
+ */
+export function filteredIdat(rows, channels) {
+  const stride = rows[0].length;
+  const raw = new Uint8Array(rows.length * (stride + 1));
+  const previous = new Uint8Array(stride);
+  let offset = 0;
+  rows.forEach((row, y) => {
+    const filter = (y % 4) + 1;
+    raw[offset++] = filter;
+    for (let i = 0; i < stride; i++) {
+      const left = i >= channels ? row[i - channels] : 0;
+      const up = previous[i];
+      const upLeft = i >= channels ? previous[i - channels] : 0;
+      let delta;
+      if (filter === 1) delta = row[i] - left;
+      else if (filter === 2) delta = row[i] - up;
+      else if (filter === 3) delta = row[i] - ((left + up) >> 1);
+      else delta = row[i] - paethPredictor(left, up, upLeft);
+      raw[offset + i] = delta & 0xff;
+    }
+    offset += stride;
+    previous.set(row);
+  });
+  return chunk("IDAT", new Uint8Array(deflateSync(raw, { level: 9 })));
+}
+
+function paethPredictor(a, b, c) {
+  const p = a + b - c;
+  const pa = Math.abs(p - a);
+  const pb = Math.abs(p - b);
+  const pc = Math.abs(p - c);
+  if (pa <= pb && pa <= pc) return a;
+  return pb <= pc ? b : c;
+}
+
 export function idat(rows) {
   const raw = new Uint8Array(rows.reduce((sum, row) => sum + row.length + 1, 0));
   let offset = 0;
