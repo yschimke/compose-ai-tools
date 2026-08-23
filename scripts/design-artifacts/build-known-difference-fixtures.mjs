@@ -536,9 +536,18 @@ function document(acceptances) {
     ["m3-card-elevated-shadow", "Card/Elevated", "card-elevated"],
     ["m3-togglebutton-elevated-shadow", "ToggleButton/Elevated", "togglebutton-elevated"],
   ];
-  const acceptances = sites.map(([id, componentName, slug]) => ({
+  const acceptances = sites.map(([id, componentName, slug], index) => ({
     id,
-    issue: "https://github.com/yschimke/m3-catalog/issues/42",
+    // **The reached acceptance spells its issue differently, and it is the same issue.** Mixed-case
+    // owner and a trailing slash: `new URL` and the canonical key both fold them, and an engine
+    // grouping on the raw string does not — it would see the one *resolved* record alone in its own
+    // group, find that group fully resolved, and close #42 while two siblings are still live. The
+    // spelling variation has to sit on the resolved record for that to be the failure; on a live
+    // sibling it would merely split two unresolved groups and change nothing.
+    issue:
+      index === 0
+        ? "https://github.com/YSchimke/m3-catalog/issues/42/"
+        : "https://github.com/yschimke/m3-catalog/issues/42",
     system: "m3",
     component: componentName,
     previewId: `${slug}__ideal__default__light`,
@@ -1345,6 +1354,34 @@ for (const [field, value, why] of [
 {
   const world = glyphWorld();
   // Authored and compared under the *same* non-empty overrides, spelled in opposite key orders.
+  {
+    // **An explicitly empty `overrides`, which the schema permits and nothing else here writes.**
+    // Every other record either omits the key or carries a non-empty map, so "absent" and "present
+    // but empty" are never distinguished — and a consumer that handles absence and non-empty
+    // equality correctly can still treat a present `{}` as a distinct or unsupported scope, leaving
+    // a legal default-frame acceptance permanently `out-of-scope` and suppressing nothing.
+    const emptyWorld = glyphWorld();
+    const emptyRecord = glyphRecord(emptyWorld, { overrides: {} });
+    addCase({
+      id: "scope-overrides-explicitly-empty",
+      title: "An acceptance carrying an explicit empty `overrides` map",
+      why:
+        "`{}` and an absent key mean the same scope: the default frame, no overrides. The " +
+        "comparison here carries `{}` too, so both spellings of 'nothing' meet — and an engine " +
+        "keying on presence rather than on the entries reports `out-of-scope` for a record that " +
+        "names exactly this comparison. The matching and mismatching override cases beside this one " +
+        "both use non-empty maps, so neither reaches the empty one.",
+      document: document([emptyRecord]),
+      files: glyphFiles(emptyWorld, emptyRecord),
+      comparison: glyphComparison(emptyWorld),
+      expected: {
+        pins: ["statuses", "validationFailures"],
+        statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+        validationFailures: [],
+      },
+    });
+  }
+
   const record = glyphRecord(world, {
     overrides: { fontScale: "1.5", "knob.density": "compact" },
   });
@@ -2340,6 +2377,35 @@ glyphValidation({
     "converts first accepts it. Its sibling above cannot tell those apart, because at `Z` the local " +
     "clock and UTC are the same reading.",
   record: { acceptedAt: "2017-01-01T08:59:60+09:00" },
+  expected: {
+    pins: ["statuses", "validationFailures"],
+    statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+    validationFailures: [],
+  },
+});
+
+glyphValidation({
+  id: "schema-invalid-accepted-at-leap-second-off-month-end",
+  title: "A leap second at the right time of day on the wrong day",
+  why:
+    "`2026-01-01T23:59:60Z` reads `23:59` UTC and is still not a leap-second instant: RFC 3339 " +
+    "admits `:60` at the end of a UTC **month**, and 1 January is the start of one. Its sibling " +
+    "`…-off-instant` only moves the *time of day*, so an engine checking the clock and not the " +
+    "calendar passes that case and admits `:60` on 334 days of the year. Month-end is as static as " +
+    "the time of day — no table, nothing to keep current — so both halves are checkable.",
+  record: { acceptedAt: "2026-01-01T23:59:60Z" },
+  expected: refused(["schema-invalid"]),
+});
+
+glyphValidation({
+  id: "accepted-at-leap-second-month-end-june",
+  title: "A leap second at the end of June",
+  why:
+    "The accepting half of the month-end rule, and not December — the two real leap seconds in the " +
+    "tree are both 31 December, so an engine hardcoding that one date passes them and refuses the " +
+    "other month the IERS actually uses. Nothing here needs a historical lookup: the rule is that " +
+    "the instant *could* carry a leap second.",
+  record: { acceptedAt: "2026-06-30T23:59:60Z" },
   expected: {
     pins: ["statuses", "validationFailures"],
     statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
@@ -4148,6 +4214,44 @@ glyphValidation({
         statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
         validationFailures: [],
       },
+    });
+  }
+
+  // **A pixel selecting a palette entry that does not exist.** The tree covers well-formed indexed
+  // images and malformed `PLTE` *chunk structure*, but nothing reaches the decoder with an index
+  // past the end of the palette — so an engine that clamps to the last entry, or substitutes
+  // transparent black, decodes this file happily and reaches a gate verdict where the reference
+  // decoder refuses it. The palette is deliberately well-formed; only the sample is wrong.
+  {
+    const world = glyphWorld();
+    const rows = [];
+    for (let y = 0; y < 8; y++) rows.push(new Uint8Array(8).fill(1));
+    const outOfRangeIndex = buildPng([
+      ihdr({ width: 8, height: 8, colourType: COLOUR_PALETTE }),
+      chunk("PLTE", Uint8Array.from([200, 60, 60])),
+      idat(rows),
+      chunk("IEND"),
+    ]);
+    const record = glyphRecord(world, { acceptedCandidateSha256: sha256Hex(outOfRangeIndex) });
+    addCase({
+      id: "decode-failed-palette-index-out-of-range",
+      title: "An indexed accepted candidate selecting an entry its palette does not define",
+      why:
+        "A one-entry `PLTE` and every pixel asking for entry 1. There is no pixel this file could " +
+        "decode to, so the only conformant answer is to refuse it — and the two plausible ways to " +
+        "cope, clamping to the last entry or filling transparent black, both produce a raster and " +
+        "then a verdict. Its sibling `artifact-indexed-entry-beyond-trns` is the case this must not " +
+        "be confused with: there the *palette* covers the index and only `tRNS` runs short, which " +
+        "is legal and decodes opaque.",
+      document: document([record]),
+      files: {
+        "artifacts/m3-iconbutton-tonal-glyph/mask.png": world.maskPngBytes,
+        "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": outOfRangeIndex,
+        "canonical-reference.png": world.referencePngBytes,
+        "canonical-candidate.png": world.candidatePngBytes,
+      },
+      comparison: glyphComparison(world),
+      expected: refused(["decode-failed"]),
     });
   }
 

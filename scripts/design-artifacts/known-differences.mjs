@@ -136,20 +136,33 @@ function isRfc3339(value) {
   // clock, and it accepts every real leap second past and future — including one announced after
   // this code was written. That distinction is the whole of the disagreement, so the finding stands
   // and the earlier reasoning does not apply to it.
+  //
+  // **And the instant is a date, not just a time of day.** A leap second is inserted at the end of a
+  // UTC *month*, so `2026-01-01T23:59:60Z` reads `23:59` and is still not a leap-second instant. An
+  // earlier revision compared only the minute-of-day, modulo a day — which discards the very rollover
+  // that makes the offset cases work, and admits `:60` on 334 days of the year. Month-end is as
+  // static as the time of day is: no table, nothing to keep current.
+  const utc = new Date(`${year}-${month}-${day}T00:00:00Z`);
+  const dateIsReal =
+    utc.getUTCFullYear() === Number(year) &&
+    utc.getUTCMonth() + 1 === Number(month) &&
+    utc.getUTCDate() === Number(day);
+  if (!dateIsReal) return false;
   if (Number(second) === 60) {
     const offsetMinutes =
       offsetHour === undefined
         ? 0
         : (offsetSign === "-" ? -1 : 1) * (Number(offsetHour) * 60 + Number(offsetMinute));
-    const utcMinutes = ((Number(hour) * 60 + Number(minute) - offsetMinutes) % 1440 + 1440) % 1440;
-    if (utcMinutes !== 23 * 60 + 59) return false;
+    // The offset is applied to the whole date-time, so a local spelling that belongs to the previous
+    // or next UTC day lands on the right day before the day is examined.
+    const instant = utc.getTime() + (Number(hour) * 60 + Number(minute) - offsetMinutes) * 60_000;
+    const moment = new Date(instant);
+    if (moment.getUTCHours() !== 23 || moment.getUTCMinutes() !== 59) return false;
+    // The minute this `:60` completes ends at 00:00. If that is the first of a month, the instant
+    // sits on a month end.
+    if (new Date(instant + 60_000).getUTCDate() !== 1) return false;
   }
-  const utc = new Date(`${year}-${month}-${day}T00:00:00Z`);
-  return (
-    utc.getUTCFullYear() === Number(year) &&
-    utc.getUTCMonth() + 1 === Number(month) &&
-    utc.getUTCDate() === Number(day)
-  );
+  return true;
 }
 
 /**

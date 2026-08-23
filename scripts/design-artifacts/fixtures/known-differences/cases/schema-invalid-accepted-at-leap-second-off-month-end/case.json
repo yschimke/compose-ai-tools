@@ -1,0 +1,38 @@
+{
+  "title": "A leap second at the right time of day on the wrong day",
+  "site": null,
+  "why": "`2026-01-01T23:59:60Z` reads `23:59` UTC and is still not a leap-second instant: RFC 3339 admits `:60` at the end of a UTC **month**, and 1 January is the start of one. Its sibling `…-off-instant` only moves the *time of day*, so an engine checking the clock and not the calendar passes that case and admits `:60` on 334 days of the year. Month-end is as static as the time of day — no table, nothing to keep current — so both halves are checkable.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

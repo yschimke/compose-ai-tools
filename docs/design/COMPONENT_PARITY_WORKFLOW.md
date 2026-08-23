@@ -1411,10 +1411,13 @@ Two things keep these checks from doing damage of their own, and both are pinned
 
 `element.tolerance` is a real number by design and is untouched.
 
-**A second `60` is legal only at the leap-second instant.** RFC 3339 admits it for exactly one
-reading of the clock — `23:59:60` **UTC** — so `2026-01-01T12:00:60Z` matches the grammar, is not a
-date-time, and is `schema-invalid`. The offset is applied before the check, since
-`2017-01-01T08:59:60+09:00` is the same instant written in Tokyo time. Deliberately **not** a check
+**A second `60` is legal only at the leap-second instant.** RFC 3339 admits it at the end of a UTC
+**month** — `23:59:60` on the last day — so both `2026-01-01T12:00:60Z` (wrong time of day) and
+`2026-01-01T23:59:60Z` (right time, wrong day) match the grammar, are not date-times, and are
+`schema-invalid`. The offset is applied to the whole date-time before the check, since
+`2017-01-01T08:59:60+09:00` is the same instant written in Tokyo time — and normalising it crosses
+both a day and a month boundary, which is exactly why the offset cannot be applied to the time of day
+alone. Both halves of the instant are static: no table, nothing to keep current. Deliberately **not** a check
 that a leap second was really inserted then: that needs the IERS table, which grows by international
 announcement and cannot live in a committed contract, and refusing `:60` outright would reject a
 legal timestamp. This rule asks only whether the instant is one where a leap second *could* be
@@ -1541,9 +1544,16 @@ property is the case an `element.kind` check alone lets through.
 `ServeIssueReport.variantFor` returns `""` for a preview id carrying no `__` axes, so "no axes" is a
 fact about the preview rather than a mangled record — see
 [which fields may be blank](#which-fields-may-be-blank-and-which-may-be-absent), which settles it for
-the locator and settles it here for the same reason. Every *other* field emptied means the record no
-longer names one component. Refusing a blank `variant` would make every default preview's acceptance
-inexpressible, with a fixture on each side.
+the locator and settles it here for the same reason. Refusing a blank `variant` would make every
+default preview's acceptance inexpressible, with a fixture on each side.
+
+The rule is about the fields that **name a component** — `system`, `component`, `previewId`,
+`referenceId`, the element's `tag`, and the two artifact paths — each of which, emptied, leaves a
+record that identifies nothing. It is **not** a rule about every string in the document: `note` is
+free prose, carries no `minLength` in the schema, and an empty one is accepted, because "no note" is
+a thing an author can mean. An earlier revision of this paragraph said *every* other field, which the
+schema and this module both contradict — prose that a second engine could have followed into
+refusing a record the reference implementation accepts.
 
 **A record need not be an object at all.** `acceptances` is third-party data and can hold `null`, a
 string or an array; all three are `id-missing` in the `{index, reason}` shape and the document is
