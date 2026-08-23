@@ -492,6 +492,16 @@
       "site": null
     },
     {
+      "id": "zero-alpha-rgb-is-normalised",
+      "title": "Transparent pixels whose hidden colour differs",
+      "site": null
+    },
+    {
+      "id": "decode-failed-plte-after-trns",
+      "title": "A truecolor `PLTE` placed after `tRNS`",
+      "site": null
+    },
+    {
       "id": "decode-failed-trns-sample-out-of-range",
       "title": "A `tRNS` sample the image's bit depth cannot contain",
       "site": null

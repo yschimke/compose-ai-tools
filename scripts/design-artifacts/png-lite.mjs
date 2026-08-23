@@ -271,7 +271,11 @@ export function decodePng(bytes) {
     // forbids each, so a conforming decoder rejects them while a placement-only check admits them and
     // reaches a gate verdict.
     if (type === "PLTE") {
-      if (palette || sawIdat) throw new Error("decode-failed: misplaced PLTE");
+      // `tRNS` describes the palette, so it follows it whenever both are present — for truecolor's
+      // optional suggested palette as much as for an indexed image. The indexed branch below already
+      // required `PLTE` first; this is the same rule for the colour types that reach it the other
+      // way round.
+      if (palette || transparency || sawIdat) throw new Error("decode-failed: misplaced PLTE");
       if (colourType === COLOUR_GREY || colourType === COLOUR_GREY_ALPHA) {
         throw new Error("decode-failed: PLTE on a greyscale image");
       }
@@ -373,7 +377,10 @@ export function decodePng(bytes) {
       ? [transparency[1], transparency[3], transparency[5]]
       : null;
 
-  const pixels = new Uint8Array(width * height * 4);
+  // For RGBA the unfiltered scanlines *are* the output layout, so the third buffer is skipped — at
+  // the budget's ceiling each of these is hundreds of megabytes, and holding one fewer of them is
+  // free.
+  const pixels = colourType === COLOUR_RGBA ? lines : new Uint8Array(width * height * 4);
   for (let i = 0; i < width * height; i++) {
     const s = i * channels;
     const d = i * 4;
@@ -401,9 +408,17 @@ export function decodePng(bytes) {
       pixels[d + 1] = palette[p + 1];
       pixels[d + 2] = palette[p + 2];
       pixels[d + 3] = transparency && lines[s] < transparency.length ? transparency[lines[s]] : 255;
-    } else {
-      pixels.set(lines.subarray(s, s + 4), d);
     }
+  }
+
+  // **A fully transparent pixel is normalised to zero RGB.** Reading a canvas back commonly returns
+  // `0,0,0,0` for one, because premultiplying by zero alpha destroys the colour and unpremultiplying
+  // cannot recover it — so two encodings of *invisible* compare equal in a browser and unequal under
+  // a decoder that preserves the hidden channels. The match metric charges all four channels (D5
+  // answer 6), so that difference would land directly in the candidate gate. Normalising here rather
+  // than in the metric keeps every consumer of a decoded raster on the same pixels.
+  for (let d = 0; d < pixels.length; d += 4) {
+    if (pixels[d + 3] === 0) pixels[d] = pixels[d + 1] = pixels[d + 2] = 0;
   }
   return { width, height, colourType, pixels };
 }

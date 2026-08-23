@@ -728,7 +728,13 @@ and the fixtures are
    many) and a second constant is a second thing two engines pick differently. All four channels
    because the existing delta map already charges for the same four, and an alpha-only change is a
    visible change. The mask is strictly binary, so "at the mask edge" is not a case: a canonical
-   pixel is masked or it is not, and only masked pixels are compared. The candidate gate and the
+   pixel is masked or it is not, and only masked pixels are compared. **A fully transparent pixel is
+   normalised to zero RGB at decode**, before the metric ever sees it: reading a canvas back commonly
+   returns `0,0,0,0` for one, because premultiplying by zero alpha destroys the colour and
+   unpremultiplying cannot recover it — so without the normalisation two encodings of *invisible*
+   compare equal in a browser and unequal offline, and the disagreement lands in this gate. It is
+   done in the decoder rather than the metric so every consumer of a decoded raster sees the same
+   pixels. The candidate gate and the
    resolution test use **this** metric, which is what stops them disagreeing about whether two
    images match.
 
@@ -1106,8 +1112,9 @@ machine-generated crops of an already-composited render, not photographs carryin
 data, a non-contiguous `IDAT` run, a non-empty `IEND` — each is built entirely from allowed chunks
 and each is rejected by a conforming decoder, so admitting them on membership alone reaches a gate
 verdict where the other side refuses. `v1` therefore constrains placement as well as vocabulary:
-`IHDR` first, once, and 13 bytes; `PLTE` and `tRNS` at most once and before any `IDAT` (and `tRNS`
-after `PLTE` for an indexed image); the `IDAT` run contiguous; `IEND` empty. **Placement is only half
+`IHDR` first, once, and 13 bytes; `PLTE` and `tRNS` at most once and before any `IDAT`, with `tRNS`
+after `PLTE` whenever both are present — truecolor's optional suggested palette included, not only
+indexed images; the `IDAT` run contiguous; `IEND` empty. **Placement is only half
 of it** — a chunk can sit exactly where it belongs and still be illegal *for this image*: `PLTE` in a
 greyscale file, `tRNS` beside colour type 4 or 6 which already carry alpha, a `tRNS` whose length
 does not match the colour type it describes, a `PLTE` whose length is not a multiple of three, a

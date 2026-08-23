@@ -1,0 +1,12 @@
+{
+  "pins": [
+    "statuses",
+    "validationFailures"
+  ],
+  "statuses": {
+    "m3-transparent-glyph": {
+      "status": "valid"
+    }
+  },
+  "validationFailures": []
+}

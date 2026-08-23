@@ -153,6 +153,8 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `decode-failed-trns-after-idat` | A `tRNS` after the image data |
 | `decode-failed-non-empty-iend` | A non-empty `IEND` |
 | `decode-failed-trns-on-alpha-colour-type` | A `tRNS` beside a colour type that already carries alpha |
+| `zero-alpha-rgb-is-normalised` | Transparent pixels whose hidden colour differs |
+| `decode-failed-plte-after-trns` | A truecolor `PLTE` placed after `tRNS` |
 | `decode-failed-trns-sample-out-of-range` | A `tRNS` sample the image's bit depth cannot contain |
 | `decode-failed-empty-palette-trns` | A zero-length palette `tRNS` |
 | `decode-failed-palette-on-greyscale` | A `PLTE` in a greyscale image |

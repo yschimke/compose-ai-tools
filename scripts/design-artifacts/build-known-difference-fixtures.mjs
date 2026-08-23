@@ -2495,6 +2495,98 @@ glyphValidation({
     expected: refused(["decode-failed"]),
   });
 
+  // Two encodings of "invisible", differing **only** in the colour behind the transparency — so the
+  // verdict turns on the normalisation and nothing else. An earlier version of this case compared a
+  // transparent accepted candidate against an *opaque* canonical pixel, which differs on alpha
+  // whether or not the hidden RGB is normalised: it would have passed against a decoder that
+  // preserved the colour, testing nothing.
+  {
+    const plane = { plane: "content-box", box: { x: 4, y: 4, width: 24, height: 24 } };
+    const glyph = { x: 8, y: 8, width: 8, height: 8 };
+
+    // The reference draws an opaque glyph; the candidate leaves that region fully transparent.
+    const reference = fillRect(raster(24, 24), glyph, BLACK);
+    const candidate = fillRect(raster(24, 24), glyph, [0, 0, 0, 0]);
+    // The accepted crop records the same transparency with colour still sitting behind it.
+    const accepted = fillRect(raster(8, 8), { x: 0, y: 0, width: 8, height: 8 }, [77, 88, 99, 0]);
+    const { png: mask } = maskPng(24, 24, (paint) => paint(glyph));
+
+    const record = {
+      id: "m3-transparent-glyph",
+      issue: "https://github.com/yschimke/m3-catalog/issues/40",
+      system: "m3",
+      component: "IconButton/Tonal",
+      previewId: "iconbutton-tonal__ideal__default__light",
+      referenceId: "iconbutton-tonal-ideal-light",
+      variant: "ideal/default/light",
+      mask: "mask.png",
+      acceptedCandidate: "accepted-candidate.png",
+      referenceSha256: REFERENCE_SHA,
+      maskSha256: sha256Hex(mask),
+      acceptedCandidateSha256: sha256Hex(rgbaPng(accepted)),
+      plane,
+      candidateTolerance: 2,
+      acceptedAt: "2026-08-22T00:00:00Z",
+    };
+    addCase({
+      id: "zero-alpha-rgb-is-normalised",
+      title: "Transparent pixels whose hidden colour differs",
+      why:
+        "Reading a canvas back commonly returns `0,0,0,0` for a fully transparent pixel — " +
+        "premultiplying by zero alpha destroys the colour and unpremultiplying cannot recover it. " +
+        "The match metric charges all four channels (D5 answer 6), so a decoder preserving the " +
+        "hidden RGB compares these two encodings of *invisible* unequal where a browser compares " +
+        "them equal, and the disagreement lands straight in the candidate gate. Normalised, the " +
+        "acceptance is `valid`; unnormalised it is `invalidated: [candidate-changed]` — so this case " +
+        "decides the rule rather than merely mentioning it.",
+      document: document([record]),
+      files: {
+        "artifacts/m3-transparent-glyph/mask.png": mask,
+        "artifacts/m3-transparent-glyph/accepted-candidate.png": rgbaPng(accepted),
+        "canonical-reference.png": rgbaPng(reference),
+        "canonical-candidate.png": rgbaPng(candidate),
+      },
+      comparison: {
+        system: "m3",
+        component: "IconButton/Tonal",
+        previewId: "iconbutton-tonal__ideal__default__light",
+        referenceId: "iconbutton-tonal-ideal-light",
+        variant: "ideal/default/light",
+        overrides: {},
+        referenceSha256: REFERENCE_SHA,
+        plane,
+        canonicalReference: "canonical-reference.png",
+        canonicalCandidate: "canonical-candidate.png",
+        tagIndex: {},
+      },
+      expected: {
+        pins: ["statuses", "validationFailures"],
+        statuses: { "m3-transparent-glyph": { status: "valid" } },
+        validationFailures: [],
+      },
+    });
+  }
+
+  const plteAfterTrns = buildPng([
+    ihdr({ width: 8, height: 8, colourType: COLOUR_RGB }),
+    chunk("tRNS", Uint8Array.from([0, 0, 0, 0, 0, 0])),
+    chunk("PLTE", Uint8Array.from([1, 2, 3])),
+    idat([new Uint8Array(24)]),
+    chunk("IEND"),
+  ]);
+  glyphValidation({
+    id: "decode-failed-plte-after-trns",
+    title: "A truecolor `PLTE` placed after `tRNS`",
+    why:
+      "`tRNS` describes the palette, so it follows it whenever both are present — for truecolor's " +
+      "optional suggested palette as much as for an indexed image. The indexed branch already " +
+      "required `PLTE` first; this is the same rule reached from the other side, and without it a " +
+      "strict decoder refuses bytes this evaluator carried to a gate verdict.",
+    record: { acceptedCandidateSha256: sha256Hex(plteAfterTrns) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": plteAfterTrns },
+    expected: refused(["decode-failed"]),
+  });
+
   const outOfRangeTrns = (() => {
     const samples = new Uint8Array(24 * 24);
     for (let y = 8; y < 16; y++) for (let x = 8; x < 16; x++) samples[y * 24 + x] = 255;
@@ -2781,12 +2873,15 @@ addResample({
   id: "alpha-is-a-fourth-channel",
   title: "Alpha averaged without premultiplication",
   why:
-    "Premultiplying and un-premultiplying introduces a rounding step each way that two engines " +
-    "would have to agree on for no benefit — this contract's artifacts are opaque by construction. " +
-    "`(0 + 255) / 2 = 127.5 → 128` on alpha, and the colour channels average independently of it.",
-  source: rgbaFrom([[[10, 20, 30, 0], [200, 100, 50, 255]]]),
+    "Premultiplying and un-premultiplying introduces a rounding step each way that two engines would " +
+    "have to agree on for no benefit. `(64 + 255) / 2 = 159.5 → 160` on alpha, and the colour " +
+    "channels average independently of it — under premultiplied arithmetic they would be weighted by " +
+    "it instead. The partly-transparent pixel is deliberate: a **fully** transparent one cannot reach " +
+    "the resampler, because decoding normalises its RGB to zero (a browser cannot recover colour it " +
+    "premultiplied away), so a fixture built on one would be testing a state no decoded raster holds.",
+  source: rgbaFrom([[[10, 20, 30, 64], [200, 100, 50, 255]]]),
   target: { width: 1, height: 1 },
-  expected: [[105, 60, 40, 128]],
+  expected: [[105, 60, 40, 160]],
 });
 
 // --------------------------------------------------------------------------------------------
