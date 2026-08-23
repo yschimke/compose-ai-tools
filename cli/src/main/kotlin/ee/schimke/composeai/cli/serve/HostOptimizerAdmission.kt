@@ -195,9 +195,10 @@ class OptimizerPressureGate(
   fun snapshot(): OptimizerPressureSnapshot =
     synchronized(lock) {
       val now = clock()
-      if (now < nextSampleAt) return@synchronized cached
+      if (now < nextSampleAt) return@synchronized cachedClosingExpiredDutyCycle(now)
       nextSampleAt = now + thresholds.sampleIntervalMillis.coerceAtLeast(0L)
-      val current = runCatching(sample).getOrNull() ?: return@synchronized cached
+      val current =
+        runCatching(sample).getOrNull() ?: return@synchronized cachedClosingExpiredDutyCycle(now)
       val tripped = buildList {
         current.loadPerCpu
           ?.takeIf { it >= thresholds.stopLoadPerCpu }
@@ -269,6 +270,23 @@ class OptimizerPressureGate(
         )
       cached
     }
+
+  /**
+   * The cached snapshot, with an elapsed duty-cycle window closed first.
+   *
+   * Both paths that reuse [cached] — inside the sample interval, and when sampling fails outright —
+   * would otherwise publish an open gate for as long as they last. Inside the sample interval that
+   * is at most one interval; when `/proc` stops being readable it is forever, and the 60-second
+   * window becomes a permanent admission of optimizer work under pressure nobody can see any more.
+   * The window is a *bounded* concession, so it expires on the clock rather than on the next
+   * successful reading.
+   */
+  private fun cachedClosingExpiredDutyCycle(now: Long): OptimizerPressureSnapshot {
+    if (!held || dutyCycleUntil == Long.MIN_VALUE || now < dutyCycleUntil) return cached
+    dutyCycleUntil = Long.MIN_VALUE
+    cached = cached.copy(constrained = true, dutyCycleUntilEpochMillis = null)
+    return cached
+  }
 
   /**
    * Whether the starvation cap should let this held gate through right now.

@@ -175,6 +175,49 @@ class HostOptimizerAdmissionTest {
   }
 
   @Test
+  fun `an expired duty cycle closes even when sampling has stopped working`() {
+    var now = 0L
+    var readable = true
+    val gate =
+      OptimizerPressureGate(
+        sample = {
+          if (readable) {
+            HostResourceSample(
+              loadPerCpu = 0.17,
+              cpuUtilization = 0.03,
+              memoryAvailableFraction = 0.14,
+            )
+          } else {
+            null
+          }
+        },
+        thresholds =
+          OptimizerPressureThresholds(
+            sampleIntervalMillis = 0,
+            starvationCapMillis = 10_000,
+            dutyCycleMillis = 1_000,
+          ),
+        clock = { now },
+      )
+    assertTrue(gate.snapshot().constrained)
+
+    now = 10_000
+    assertFalse(gate.snapshot().constrained)
+
+    // `/proc` stops answering mid-window. The cached snapshot says "open"; without expiring it on
+    // the clock the concession becomes permanent, under pressure nothing can observe any more.
+    readable = false
+    now = 10_500
+    assertFalse(gate.snapshot().constrained, "the window itself is still running")
+    now = 11_000
+    val closed = gate.snapshot()
+    assertTrue(closed.constrained, "an elapsed window must close without a fresh reading")
+    assertNull(closed.dutyCycleUntilEpochMillis)
+    now = 60_000
+    assertTrue(gate.snapshot().constrained)
+  }
+
+  @Test
   fun `the duty cycle never opens on a host that is genuinely out of memory`() {
     var now = 0L
     val sample =
