@@ -79,11 +79,12 @@ package ee.schimke.composeai.preview
  * **`showSystemUi`**, whose synthetic status and nav bars are painted against the edges of the
  * grown window (trimming those edges slices the chrome rather than the gutter). Making either work
  * means composing the scroll pass in an un-grown window rather than post-processing it. A
- * scrollable hosted in a **dialog** keeps the gutter as well: those frames are cropped to the
- * dialog's own window rect and never reach the hosting-window trim, which frames the component
- * correctly for a centred `Dialog` but leaves a full-screen `ModalBottomSheet` un-trimmed. None of
- * the three is a combination worth the machinery: a gutter exists to keep a component's shadow, and
- * a scroll product has no component edge to keep one on.
+ * scrollable hosted in a **full-screen** dialog — a `ModalBottomSheet` — keeps it as well. Those
+ * frames are cropped to the dialog's own window rect instead of reaching the hosting-window trim,
+ * and for a centred `Dialog` that rect *is* the component, so the gutter is excluded correctly
+ * there; a full-screen window's rect is the whole grown frame, so nothing is removed. None of the
+ * three is a combination worth the machinery: a gutter exists to keep a component's shadow, and a
+ * scroll product has no component edge to keep one on.
  *
  * `END` is the exception on Android, and knowingly so. It is the one scroll mode whose product is
  * an ordinary still, so it shares the whole still post-capture chain — the focus overlay, the a11y

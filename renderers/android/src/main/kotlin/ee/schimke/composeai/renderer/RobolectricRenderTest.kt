@@ -1296,11 +1296,12 @@ abstract class RobolectricRenderTestBase(
     //    inside it, so the chrome is painted against the edges of the *grown* window and trimming
     //    those edges slices the bars instead of the gutter.
     //
-    // A scrollable hosted in a **dialog** keeps it too, for a structural reason rather than a
-    // decision: `StableDialogCrop` crops those frames to the dialog's own window rect and never
-    // reaches the hosting-window trim. For a centred `Dialog` that is right — the crop frames the
-    // component already — but a full-screen one (`ModalBottomSheet`) crops to the whole frame, so
-    // the gutter simply survives.
+    // A scrollable hosted in a **full-screen** dialog keeps it too, for a structural reason rather
+    // than a decision: `StableDialogCrop` crops those frames to the dialog's own window rect
+    // instead of reaching the hosting-window trim. The scroll handlers pass that crop no gutter,
+    // so a centred `Dialog` comes out at its own unexpanded rect and the gutter is excluded
+    // correctly — but a `ModalBottomSheet`'s window fills the screen, so its rect is the whole
+    // grown frame and nothing is removed.
     //
     // Both are combinations no preview in this repo declares (a gutter keeps a component's shadow;
     // a scroll product has no component edge to keep one on), and making them work means composing
