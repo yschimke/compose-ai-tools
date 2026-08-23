@@ -774,6 +774,9 @@ class RenderEngine(
    */
   @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
   internal fun layOutForSemantics(state: SceneState) {
+    // Same timestamp, new generation: the composition is unmoved, but any projection taken before
+    // this pass described an older layout.
+    state.recordFrameNanos(state.lastRenderedFrameNanos)
     withPreviewLocale(state.spec.localeTag) {
       state.scene.render(nanoTime = state.lastRenderedFrameNanos).close()
     }
@@ -1288,9 +1291,22 @@ class RenderEngine(
      */
     internal var lastRenderedFrameNanos: Long = 0L
 
+    /**
+     * How many times this scene has been rendered.
+     *
+     * A projected semantics tree is a snapshot of one layout pass, so this is what tells a caller
+     * holding one whether it is still current. A live tick can dispatch several queued inputs
+     * before its next frame, and `ScenePointerDispatch.press` renders a settling frame of its own —
+     * so "nothing re-renders between queued events" is not true in general, and a cached projection
+     * has to be invalidated rather than assumed (compose-ai-tools#4470 review).
+     */
+    internal var renderGeneration: Long = 0L
+      private set
+
     /** Note that the scene has just been (or is about to be) rendered at [nanoTime]. */
     internal fun recordFrameNanos(nanoTime: Long) {
       lastRenderedFrameNanos = nanoTime
+      renderGeneration++
     }
 
     /** Advances [virtualFrameNanos] by one 60 Hz frame and returns the new timestamp. */
