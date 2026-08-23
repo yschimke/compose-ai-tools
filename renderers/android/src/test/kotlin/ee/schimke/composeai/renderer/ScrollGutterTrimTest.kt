@@ -113,6 +113,31 @@ class ScrollGutterTrimTest {
     assertFalse(DialogWindowCapture.GutterTrim(gutter = rtl).isEmpty())
   }
 
+  @Test
+  fun `a device axis gets an exact target, not the capture minus the gutter`() {
+    // The window grew by whole dp on top of an already-resolved device frame, so at a fractional
+    // density `capture - gutter` keeps the quantization remainder — which on a round watch leaves
+    // a supposedly square frame uneven, and the re-mask an ellipse.
+    val trim =
+      DialogWindowCapture.GutterTrim(
+        gutter =
+          DialogWindowCapture.DialogCropGutter(
+            leftPx = 11,
+            topPx = 11,
+            rightPx = 11,
+            bottomPx = 11,
+          ),
+        fixedWidthPx = 300,
+        fixedHeightPx = 300,
+      )
+    // 300 + 11 + 11 = 322, plus a pixel of dp-rounding overshoot on each axis.
+    val file = png(323, 323)
+    trim.applyTo(file)
+    val (w, h) = size(file)
+    assertEquals("a round frame must come back square", w, h)
+    assertEquals(300 to 300, w to h)
+  }
+
   private fun png(width: Int, height: Int): File {
     val file = Files.createTempFile("capture", ".png").toFile()
     file.deleteOnExit()

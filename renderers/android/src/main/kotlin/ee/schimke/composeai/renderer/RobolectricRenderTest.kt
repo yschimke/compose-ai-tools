@@ -1252,18 +1252,31 @@ abstract class RobolectricRenderTestBase(
     // The fixed-axis frames are named explicitly rather than left to `image - gutter` because the
     // window grew by whole dp: LONG's stitcher plans against `heightDp * density` exactly, and a
     // viewport off by the dp-quantized remainder would drift the seam.
+    //
+    // `showSystemUi` opts out altogether. `SystemBarsFrame` wraps the gutter box rather than
+    // sitting inside it, so its status and nav bars are painted against the edges of the *grown*
+    // window — trimming those edges would slice the chrome rather than the gutter. A guttered
+    // system-UI frame keeps the gutter until the composition itself stops growing for it.
+    //
+    // A **device** axis takes an exact target like any other fixed one, unlike the still's resize
+    // beside it. Discovery has already resolved the device into dp, and the qualifier grew the
+    // window by whole dp on top of that — so `capture - gutter` would keep the quantization
+    // remainder and leave a round device's supposedly square frame uneven.
+    val trimSuppressedBySystemBars =
+      params.showSystemUi && params.kind != PreviewKind.TILE && !isRoundDevice(params.device)
     val scrollGutterTrim =
-      DialogWindowCapture.GutterTrim(
-        gutter = motionDialogGutter,
-        fixedWidthPx =
-          if (!wrapWidth && params.device == null && params.widthDp != null)
-            (widthDp * qualifierDensity).roundHalfUpPx()
-          else null,
-        fixedHeightPx =
-          if (!wrapHeight && params.device == null && params.heightDp != null)
-            (heightDp * qualifierDensity).roundHalfUpPx()
-          else null,
-      )
+      if (trimSuppressedBySystemBars) DialogWindowCapture.GutterTrim()
+      else
+        DialogWindowCapture.GutterTrim(
+          gutter = motionDialogGutter,
+          fixedWidthPx =
+            if (!wrapWidth && params.widthDp != null) (widthDp * qualifierDensity).roundHalfUpPx()
+            else null,
+          fixedHeightPx =
+            if (!wrapHeight && params.heightDp != null)
+              (heightDp * qualifierDensity).roundHalfUpPx()
+            else null,
+        )
     applyPreviewQualifiers(
       widthDp =
         widthDp + captureGutterAxisDp(qualifierGutter.start, qualifierGutter.end, qualifierDensity),
@@ -3443,18 +3456,19 @@ private fun handleGifCaptureInternal(
   // Per-frame crop matches END mode: each GIF frame should look like a
   // normal single capture, circle-clipped on round devices included.
   //
-  // Except when a `@CaptureGutter` has to be trimmed off afterwards. Roborazzi bakes the circular
-  // mask into the capture, so cropping that already-masked bitmap would leave an oversized — and,
-  // for an asymmetric gutter, off-centre — circle instead of the watch shape. Defer the mask to
-  // after the trim, which is the order LONG has always used (per-slice crop off, capsule clip
-  // after stitching). `applyWearPillClip` on a square frame degenerates to exactly the inscribed
-  // circle Roborazzi would have drawn.
-  val reclipRoundAfterTrim = isRound && !gutterTrim.isEmpty()
+  // Roborazzi bakes the circular mask into the capture, so trimming a gutter off afterwards leaves
+  // an oversized — and for an asymmetric gutter, off-centre — circle instead of the watch shape.
+  // The frame is re-masked at its trimmed size for that reason. `applyWearPillClip` on a square
+  // frame degenerates to exactly the inscribed circle Roborazzi drew, and the trimmed circle sits
+  // inside the grown one, so the second mask only removes corners the first one left behind.
+  //
+  // The device crop stays ON at capture: a *dialog* frame is cropped to the dialog's own window
+  // rect and never reaches the hosting-window trim, and it needs the screen circle applied to the
+  // full frame beforehand exactly as it always did. Which branch ran is only knowable per frame,
+  // hence `trimmedLastFrame` below rather than a decision made up here.
+  val maybeReclipRound = isRound && !gutterTrim.isEmpty()
   val frameRoborazziOptions =
-    RoborazziOptions(
-      recordOptions =
-        RoborazziOptions.RecordOptions(applyDeviceCrop = isRound && !reclipRoundAfterTrim)
-    )
+    RoborazziOptions(recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = isRound))
 
   val frameIntervalMs =
     if (scroll.frameIntervalMs > 0) scroll.frameIntervalMs
@@ -3468,9 +3482,11 @@ private fun handleGifCaptureInternal(
     captureDecodableFrame(frameFile, role = "scroll GIF") { f ->
       stableDialogCrop.captureFrame(rule = rule, file = f, roborazziOptions = frameRoborazziOptions)
     }
-    // After the decode check rather than inside the capture lambda: a validated frame is the one
-    // worth masking, and a clip that threw on a transient encode glitch would escape the retry.
-    if (reclipRoundAfterTrim) applyWearPillClip(frameFile)
+    // Only when this frame was actually resized — a dialog crop was never trimmed, so re-masking
+    // it would clip the dialog itself into an ellipse. After the decode check rather than inside
+    // the capture lambda: a validated frame is the one worth masking, and a clip that threw on a
+    // transient encode glitch would escape the retry.
+    if (maybeReclipRound && stableDialogCrop.trimmedLastFrame) applyWearPillClip(frameFile)
     frameFiles += frameFile
     frameDelays += delayMs
   }

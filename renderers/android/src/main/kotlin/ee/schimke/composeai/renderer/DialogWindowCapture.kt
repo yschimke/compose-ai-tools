@@ -56,6 +56,18 @@ internal object DialogWindowCapture {
   ) {
     private var cropRect: android.graphics.Rect? = null
 
+    /**
+     * Whether the most recent [captureFrame] actually removed a gutter.
+     *
+     * `false` for a dialog capture even when a trim was configured: that branch crops to the
+     * dialog's own window rect and never reaches the hosting-window trim. A caller that
+     * post-processes in the trimmed frame's coordinates — the round-device re-mask — has to know
+     * which branch ran, or it re-masks a dialog crop that was never resized (compose-ai-tools#4467
+     * review).
+     */
+    var trimmedLastFrame: Boolean = false
+      private set
+
     @OptIn(ExperimentalRoborazziApi::class)
     fun captureFrame(
       rule: AndroidComposeTestRule<*, ComponentActivity>,
@@ -71,8 +83,10 @@ internal object DialogWindowCapture {
         // gutter this product does not want. A dialog capture needs no equivalent — it is cropped
         // to the dialog's own window rect below, and a scroll capture passes the crop no gutter.
         gutterTrim.applyTo(file)
+        trimmedLastFrame = !gutterTrim.isEmpty()
         return root
       }
+      trimmedLastFrame = false
       val rect =
         cropRect
           ?: dialogWindowCropRect(file, semanticsRoot, window, gutter)?.also { cropRect = it }
