@@ -32,9 +32,6 @@ import javax.imageio.ImageIO
 import okio.FileSystem
 import okio.Path.Companion.toPath
 import org.jetbrains.skia.Image
-import org.jetbrains.skia.Rect
-import org.jetbrains.skia.SamplingMode
-import org.jetbrains.skia.Surface
 
 /**
  * Desktop concrete [RecordingSession] driving a virtual frame clock against a held
@@ -101,34 +98,34 @@ class DesktopRecordingSession(
 
   private var result: RecordingResult? = null
 
-  // The composable's measured intrinsic size, or `[0, 0]` on a preview with no wrapped axis.
-  // Reading it forces the held scene's first layout — `setUp` deliberately doesn't render, and the
-  // encoder needs a frame size before the first frame is taken.
-  private val measuredContentPx: IntArray = engine.measuredContentAfterLayout(state)
-
   // The scene the preview actually composed into: the sandbox (or declared frame) plus the gutter.
   // A `@CaptureGutter` preview composes into a scene grown by the gutter (issue #4443), so
-  // deriving this from `spec.widthPx` alone would make every guttered fixed-size recording take
-  // the resample path even at `scale = 1` and shrink the component back to its un-guttered box.
+  // deriving this from `spec.widthPx` alone would leave the frame short of what was rendered.
   private val sceneWidthPx: Int = state.spec.widthPx + state.spec.captureGutterPx().horizontalPx
 
   private val sceneHeightPx: Int = state.spec.heightPx + state.spec.captureGutterPx().verticalPx
 
-  // What the recording is OF, in natural pixels — the component, not the sandbox it was measured
-  // in. On a wrapped axis `spec.widthPx`/`heightPx` are the generous sandbox bound (400x800 dp),
-  // not the component's natural size, so a small wrap-content preview used to record a
-  // sandbox-sized frame with itself in the corner while the still beside it was `measured +
-  // gutter` — the same picture at two different sizes (issue #4467). Frames are cropped to this
-  // before any scaling.
-  private val naturalWidthPx: Int =
-    recordingNaturalAxisPx(state.spec.wrapWidth, measuredContentPx[0], sceneWidthPx)
+  /**
+   * The largest content size [ComposePreviewContentBox] measured over the whole recording.
+   *
+   * A still measures once, so it crops to *the* intrinsic size. A recording has no such single
+   * size: a component that expands mid-recording — a menu opening, a card growing into its detail
+   * state, a list revealing an item — is bigger at frame 90 than at frame 0, and cropping to the
+   * opening measurement would cut the expansion off exactly when it becomes the thing worth looking
+   * at. So every rendered frame folds its measure pass in here and the crop is taken from the
+   * maximum, once the recording has ended (issue #4467).
+   *
+   * The batch motion path solves the same problem by re-recording at the larger size once it
+   * notices the growth (`MotionBoundsTracker`). A held session cannot: it is driven by a client in
+   * real time, so replaying would re-dispatch real inputs. Deferring the crop is the equivalent
+   * that works here.
+   *
+   * Written by whichever thread renders (the playback loop, or live mode's tick thread) and read by
+   * `stop()` after that thread has finished, hence `@Volatile` rather than a lock.
+   */
+  @Volatile private var maxMeasuredWidthPx: Int = 0
 
-  private val naturalHeightPx: Int =
-    recordingNaturalAxisPx(state.spec.wrapHeight, measuredContentPx[1], sceneHeightPx)
-
-  private val frameWidthPx: Int = (naturalWidthPx * scale).toInt().coerceAtLeast(1)
-
-  private val frameHeightPx: Int = (naturalHeightPx * scale).toInt().coerceAtLeast(1)
+  @Volatile private var maxMeasuredHeightPx: Int = 0
 
   // Live mode bookkeeping: wall-clock anchor + frame counter. Both written only by the tick
   // thread (with frameCount also read by stop() after the join).
@@ -264,7 +261,10 @@ class DesktopRecordingSession(
       val image = renderRecordingFrame(tNanos)
       writeFramePng(image, frameIndex, virtualTimeMs = tMs)
     }
-    // Post-loop: diff each deferred assert.pixels' frozen snapshot against its baseline.
+    // Post-loop, and in this order: frame everything to the size the whole recording settled on,
+    // THEN diff. The snapshots are framed by the same pass as the on-disk frames, so a golden
+    // check still compares exactly the image that landed in the output.
+    val (frameWidthPx, frameHeightPx) = finalizeFrames(pendingPixels)
     for (p in pendingPixels) {
       evidence[p.evidenceIndex] = evaluatePixelAssert(p.event, p.snapshotPng)
     }
@@ -293,7 +293,7 @@ class DesktopRecordingSession(
    */
   private class PendingPixelAssert(
     val evidenceIndex: Int,
-    val snapshotPng: ByteArray,
+    var snapshotPng: ByteArray,
     val event: RecordingScriptEvent,
   )
 
@@ -371,6 +371,9 @@ class DesktopRecordingSession(
     }
     val frameCount = liveFrameCount
     val durationMs: Long = if (frameCount == 0) 0L else (frameCount - 1).toLong() * 1000L / fps
+    // Safe here rather than on the tick thread: the join above has returned, so nothing is still
+    // writing frames or folding measurements into the bounds.
+    val (frameWidthPx, frameHeightPx) = finalizeFrames(emptyList())
     System.err.println(
       "compose-ai-daemon: DesktopRecordingSession.stop($recordingId, live): " +
         "captured $frameCount frame(s) over ~${durationMs}ms wall time " +
@@ -474,14 +477,25 @@ class DesktopRecordingSession(
    * dispatched input, not just at `setUp` — a **localized** recording would re-resolve its own
    * strings at the host default from the first input onward.
    */
+  /**
+   * Fold this frame's measure pass into the running maximum. Called after every render, because a
+   * wrap-content component can be a different size on any frame — see [maxMeasuredWidthPx].
+   */
+  private fun observeMeasuredBounds() {
+    val measured = state.measuredContent
+    if (measured[0] > maxMeasuredWidthPx) maxMeasuredWidthPx = measured[0]
+    if (measured[1] > maxMeasuredHeightPx) maxMeasuredHeightPx = measured[1]
+  }
+
   private fun renderRecordingFrame(tNanos: Long): Image {
     // A recording runs its own clock; the engine's one-shot cursor never moves. Recording the
     // timestamp here is what lets `layOutForSemantics` re-render at *this* frame rather than
     // snapping an in-flight animation to the wall clock and back (issue #4470 review).
     state.recordFrameNanos(tNanos)
-    return RenderEngine.withPreviewLocale(state.spec.localeTag) {
-      state.scene.render(nanoTime = tNanos)
-    }
+    val image =
+      RenderEngine.withPreviewLocale(state.spec.localeTag) { state.scene.render(nanoTime = tNanos) }
+    observeMeasuredBounds()
+    return image
   }
 
   private fun pointerIdOrDefault(event: RecordingScriptEvent): Int = event.pointerId ?: 0
@@ -1069,59 +1083,64 @@ class DesktopRecordingSession(
    */
   private fun frameBytes(image: Image, frameIndex: Int): ByteArray =
     if (state.spec.overrides?.talkBack == true) talkBackFrameBytes(image, frameIndex)
-    else encodeScaledPng(image)
+    else encodeNaturalPng(image)
 
   /**
-   * Encode [image] to PNG bytes at the recording's frame size — the shared scale/encode path used
-   * by the plain (non-TalkBack) frame write and by the `assert.pixels` snapshot
-   * ([evaluatePixelAssert]). `scale == 1.0` (and a natural-size image) short-circuits to encoding
-   * the held scene's `Image` directly; otherwise the natural-size image is drawn into a
-   * `frameWidthPx × frameHeightPx` raster surface (LINEAR sampling) and that snapshot is encoded.
+   * The size every frame of this recording is published at, resolved once the recording has ended.
+   *
+   * `first`/`second` are the natural (pre-scale) pixel size. Follows the still's crop rule clause
+   * for clause (`RenderEngine.cropToMeasured`), because the claim is that a preview's still and its
+   * recording agree about how big the preview is — with the measurement taken as the maximum over
+   * the recording rather than a single pass.
    */
-  private fun encodeScaledPng(image: Image): ByteArray {
-    // The source rect is the component, not the whole scene — a wrapped preview composes in a
-    // sandbox far larger than itself, and the content is laid out at the top-left. Clamped to the
-    // image so a scene that came back smaller than expected is used whole rather than sampled off
-    // its own edge.
-    val srcWidth = minOf(image.width, naturalWidthPx)
-    val srcHeight = minOf(image.height, naturalHeightPx)
-    return if (
-      scale == 1.0f &&
-        image.width == srcWidth &&
-        image.height == srcHeight &&
-        srcWidth == frameWidthPx &&
-        srcHeight == frameHeightPx
-    ) {
-      // Fast path: nothing to crop and nothing to scale, encode the held scene's Image directly.
-      image.encodePngData()?.bytes ?: error("encodePngData() returned null")
-    } else {
-      // Crop-and-scale path: draw the component's rect of the Image onto a
-      // `frameWidthPx × frameHeightPx` raster surface and encode the snapshot. `LINEAR` sampling
-      // is the right default for both up- and down-scaling: cheaper than CATMULL_ROM, no aliasing
-      // for typical UI content, matches what browsers do for `<img>` rendering. We don't expose
-      // the sampling mode on the wire — if a caller wants pixel-perfect upscale they can pass
-      // `scale = 1.0` and resample client-side.
-      val surface = Surface.makeRasterN32Premul(frameWidthPx, frameHeightPx)
-      try {
-        surface.canvas.drawImageRect(
-          image = image,
-          src = Rect.makeWH(srcWidth.toFloat(), srcHeight.toFloat()),
-          dst = Rect.makeWH(frameWidthPx.toFloat(), frameHeightPx.toFloat()),
-          samplingMode = SamplingMode.LINEAR,
-          paint = null,
-          strict = true,
-        )
-        val snap = surface.makeImageSnapshot()
-        try {
-          snap.encodePngData()?.bytes ?: error("encodePngData() returned null (scaled)")
-        } finally {
-          snap.close()
+  private fun resolveNaturalSize(): Pair<Int, Int> =
+    recordingNaturalAxisPx(state.spec.wrapWidth, maxMeasuredWidthPx, sceneWidthPx) to
+      recordingNaturalAxisPx(state.spec.wrapHeight, maxMeasuredHeightPx, sceneHeightPx)
+
+  /**
+   * Crop and scale every written frame — and every held `assert.pixels` snapshot — to the size
+   * [resolveNaturalSize] settled on, and return that frame size in output pixels.
+   *
+   * This is the whole reason framing is deferred: the crop cannot be known until the last frame has
+   * been measured. Doing it here rather than per frame is also what keeps `frameBytes`' invariant
+   * intact — the snapshots go through the identical pass, so a golden check still compares exactly
+   * the image that lands in the output. The `assert.pixels` diff was already deferred to this point
+   * for evidence ordering, so the snapshots are still in hand.
+   *
+   * A no-op for anything already the right size, which is every fixed-size preview at `scale = 1`:
+   * those frames are neither re-decoded nor rewritten.
+   */
+  private fun finalizeFrames(pendingPixels: List<PendingPixelAssert>): Pair<Int, Int> {
+    val (naturalWidth, naturalHeight) = resolveNaturalSize()
+    val frameWidth = (naturalWidth * scale).toInt().coerceAtLeast(1)
+    val frameHeight = (naturalHeight * scale).toInt().coerceAtLeast(1)
+
+    fun framed(bytes: ByteArray): ByteArray =
+      scalePngBytes(bytes, naturalWidth, naturalHeight, frameWidth, frameHeight)
+
+    framesDir
+      .listFiles { f -> f.isFile && f.name.endsWith(".png") }
+      ?.forEach { file ->
+        val bytes = runCatching { file.readBytes() }.getOrNull() ?: return@forEach
+        val framedBytes = framed(bytes)
+        if (!framedBytes.contentEquals(bytes)) {
+          runCatching { fileSystem.write(file.path.toPath()) { write(framedBytes) } }
         }
-      } finally {
-        surface.close()
       }
-    }
+    pendingPixels.forEach { it.snapshotPng = framed(it.snapshotPng) }
+    return frameWidth to frameHeight
   }
+
+  /**
+   * Encode [image] to PNG bytes at the scene's **natural** size — no crop, no scale.
+   *
+   * Framing is deliberately not done here. A recording's crop is only knowable once the recording
+   * has ended (see [maxMeasuredWidthPx]), so every frame is written whole and [finalizeFrames]
+   * crops and scales the lot at `stop()`. Doing it per frame would mean committing to the opening
+   * measurement and clipping anything that grew afterwards.
+   */
+  private fun encodeNaturalPng(image: Image): ByteArray =
+    image.encodePngData()?.bytes ?: error("encodePngData() returned null")
 
   /**
    * Composite the TalkBack focus overlay onto [image] and write the result to [outFile]. Extracts
@@ -1144,21 +1163,9 @@ class DesktopRecordingSession(
       } else {
         naturalBytes
       }
-    // Same crop-then-scale as the plain path — the overlay is drawn in natural pixel space, so
-    // cropping afterwards keeps it registered with the component it annotates.
-    val srcWidth = minOf(image.width, naturalWidthPx)
-    val srcHeight = minOf(image.height, naturalHeightPx)
-    return if (
-      scale == 1.0f &&
-        image.width == srcWidth &&
-        image.height == srcHeight &&
-        srcWidth == frameWidthPx &&
-        srcHeight == frameHeightPx
-    ) {
-      overlaidNatural
-    } else {
-      scalePngBytes(overlaidNatural, srcWidth, srcHeight, frameWidthPx, frameHeightPx)
-    }
+    // Natural size, like the plain path — [finalizeFrames] frames it at `stop()`. The overlay is
+    // drawn in natural pixel space, so cropping afterwards keeps it registered with the component.
+    return overlaidNatural
   }
 
   /** This frame's accessibility nodes from the held scene's live semantics tree (pre-order). */
@@ -1180,6 +1187,11 @@ class DesktopRecordingSession(
     h: Int,
   ): ByteArray {
     val src = ImageIO.read(ByteArrayInputStream(bytes)) ?: return bytes
+    // Already the published size with nothing to crop — hand the original bytes straight back so
+    // the common case costs one decode and no re-encode.
+    if (src.width == w && src.height == h && srcWidth >= src.width && srcHeight >= src.height) {
+      return bytes
+    }
     val dst = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
     val g = dst.createGraphics()
     try {

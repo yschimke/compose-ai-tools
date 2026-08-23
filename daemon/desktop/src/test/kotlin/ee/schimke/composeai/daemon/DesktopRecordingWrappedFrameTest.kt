@@ -70,6 +70,75 @@ class DesktopRecordingWrappedFrameTest {
     assertEquals(800, recordingNaturalAxisPx(wrapped = true, measuredPx = 0, scenePx = 800))
   }
 
+  @Test
+  fun `a component that grows mid-recording is framed at its largest, not its opening size`() {
+    // The regression this whole design exists to avoid. Sizing from the first layout would crop
+    // every post-expansion frame back to the closed block and slice off the revealed rows —
+    // exactly the content the recording was taken to show.
+    val outputDir = tempFolder.newFolder("renders-growth")
+    val recordingsRoot = tempFolder.newFolder("recordings-growth")
+    savedRecordingsDir = System.getProperty(DesktopHost.RECORDINGS_DIR_PROP)
+    System.setProperty(DesktopHost.RECORDINGS_DIR_PROP, recordingsRoot.absolutePath)
+
+    val host =
+      DesktopHost(
+        engine = RenderEngine(outputDir = outputDir),
+        previewSpecResolver = { previewId ->
+          if (previewId == GROWTH_PREVIEW_ID)
+            RenderSpec(
+              className = STICKER_CLASS,
+              functionName = "ExpandingClickBlock",
+              widthPx = SANDBOX_WIDTH_PX,
+              heightPx = SANDBOX_HEIGHT_PX,
+              wrapWidth = true,
+              wrapHeight = true,
+              density = 1.0f,
+              showBackground = true,
+              outputBaseName = "expanding-click-block",
+            )
+          else null
+        },
+      )
+    host.start()
+    try {
+      host
+        .acquireRecordingSession(
+          GROWTH_PREVIEW_ID,
+          "rec-growth",
+          javaClass.classLoader ?: ClassLoader.getSystemClassLoader(),
+          FPS,
+          1.0f,
+          null,
+        )
+        .use { session ->
+          // Frame 0 closed; click at 30x15 (inside the closed block) opens it; later frames grow.
+          session.postScript(
+            listOf(
+              RecordingScriptEvent(tMs = 0L, kind = "recording.probe"),
+              RecordingScriptEvent(tMs = 100L, kind = "input.click", pixelX = 30, pixelY = 15),
+              RecordingScriptEvent(tMs = 400L, kind = "recording.probe"),
+            )
+          )
+          val result = session.stop()
+          // 60x30 dp closed, 60x90 dp open, at density 1.
+          assertEquals(
+            "every frame must be published at the expanded height",
+            60 to 90,
+            result.frameWidthPx to result.frameHeightPx,
+          )
+          // …and the frames on disk have to agree, including the ones written before the growth.
+          val frames =
+            File(result.framesDir).listFiles { f -> f.name.endsWith(".png") }.orEmpty().sorted()
+          assertTrue("expected several frames; got ${frames.size}", frames.size > 1)
+          frames.forEach {
+            assertEquals("${it.name} must match the frame size", 60 to 90, decode(it.readBytes()))
+          }
+        }
+    } finally {
+      host.shutdown()
+    }
+  }
+
   /** The still of the same fixture through the same engine, for the comparison above. */
   private fun renderStill(label: String): Pair<Int, Int> {
     val engine = RenderEngine(outputDir = tempFolder.newFolder("renders-$label"))
@@ -156,6 +225,7 @@ class DesktopRecordingWrappedFrameTest {
 
   private companion object {
     private const val FIXTURE_PREVIEW_ID = "wrapped-sticker"
+    private const val GROWTH_PREVIEW_ID = "expanding-click-block"
     private const val STICKER_CLASS = "ee.schimke.composeai.daemon.RedFixturePreviewsKt"
     private const val SANDBOX_WIDTH_PX = 800
     private const val SANDBOX_HEIGHT_PX = 1600
