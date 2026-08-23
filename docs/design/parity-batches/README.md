@@ -32,7 +32,7 @@ to.
 | [02](02-issue-index.md) — issue index end to end | [#3804](https://github.com/yschimke/compose-ai-tools/issues/3804), [#3805](https://github.com/yschimke/compose-ai-tools/issues/3805), [#3806](https://github.com/yschimke/compose-ai-tools/issues/3806) | 01 | **yes** — open issues on the pages |
 | [03](03-element-selection.md) — element selection | [#3803](https://github.com/yschimke/compose-ai-tools/issues/3803) | 01, **00 D1** | **yes** — click an element to report it |
 | [04](04-acceptance-schema.md) — acceptance schema | [#3807](https://github.com/yschimke/compose-ai-tools/issues/3807) | **00 D1, D5** | no (contract + fixtures) |
-| [05](05-acceptance-engines.md) — both engines + publish | [#3808](https://github.com/yschimke/compose-ai-tools/issues/3808), [#3809](https://github.com/yschimke/compose-ai-tools/issues/3809), [#3810](https://github.com/yschimke/compose-ai-tools/issues/3810) | 03, 04, **00 D3** | **yes** — accepted vs unaccepted scores |
+| [05](05-acceptance-engines.md) — both engines + publish | [#3808](https://github.com/yschimke/compose-ai-tools/issues/3808), [#3809](https://github.com/yschimke/compose-ai-tools/issues/3809), [#3810](https://github.com/yschimke/compose-ai-tools/issues/3810) | 03, 04, **00 D3, D6** | **yes** — accepted vs unaccepted scores |
 | [06](06-resolution-and-docs.md) — resolution, closure, docs | [#3811](https://github.com/yschimke/compose-ai-tools/issues/3811), [#3812](https://github.com/yschimke/compose-ai-tools/issues/3812) | 02, 05 | **yes** — the loop closes |
 
 **01 and 02 can run ahead of everything else** once 00's D2 and D4 are answered — two decisions, not
@@ -103,6 +103,12 @@ should be answered against those numbers rather than against the worked example.
   erratum, so batch 03 adds a selection to the existing version rather than bumping to `v2`.
 - **An acceptance may be geometric**, with an element gate required wherever an element exists. #41
   and #87 are expressible; batch 04 must carry both shapes.
+
+**D6 was added after batch 03 shipped**, from what building the selector exposed: the gates that
+decide whether a selection may be recorded prove the frame is a *replay* of the baked render but not
+that it is the *same* replay, because nothing on the page carries a render generation. Answered (a)
+— stamp one — which 05's element gate needs regardless. Batch 03's shipped gates stand meanwhile;
+the residual window is generational only.
 
 ## Conventions every batch inherits
 

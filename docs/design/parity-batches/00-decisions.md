@@ -128,6 +128,39 @@ wrong.
 
 ---
 
+## D6 — the render generation a selection is allowed to describe
+
+**Blocks:** 05 (the element gate reads the index against a frame), and the hardening of the gate 03
+already shipped.
+
+Batch 03 gates selection on two predicates: `frameIsReplayedBaked` (this request is not pinned, not
+override-bearing, and the host cannot re-render) and `ServeHost.annotationsFollowBakedFrame` (this
+host's `.annotations` are a replay of published data rather than a fresh capture). Together they
+establish that the frame on screen **is** a replay of the baked render, which is what makes published
+bounds meaningful at all.
+
+What they cannot establish is that it is a replay of the *same* baked render. The baked PNG is served
+`public, max-age=300, stale-while-revalidate=3600` while the tag and annotation lanes are `no-store`,
+so for a window after a catalog republishes, a viewer can hold last generation's pixels beside this
+generation's boxes. Nothing on the page carries a generation, so nothing can notice.
+
+| Option | Consequence |
+| --- | --- |
+| **(a) Stamp a generation on the render and refuse selection when the layers disagree.** | Changes how baked renders are addressed and cached. Closes the window rather than narrowing it, and 05's element gate needs the same stamp to resolve an index against a frame. **Chosen.** |
+| (b) Ship as-is and document the window. | A box is wrong only in the minutes after a republish, and the drag path is unaffected. But the wrongness is silent and lands in an acceptance's authoring-time baseline, where it later reports an unchanged element as *moved*. |
+| (c) Withhold the tag picker on cached deployments. | Safest, and costs the affordance on exactly the public deployments the parity workflow runs on. |
+
+(a) is chosen. The cost of (b) is the failure mode this whole batch's gating exists to prevent — a
+false invalidation with a plausible explanation attached — and it is worse than a missing check
+because nothing surfaces it. (c) trades the feature away on the deployments that need it.
+
+Until (a) lands, the shipped gates stand: they are correct about the *lane*, and the residual window
+is generational only. See
+[`../COMPONENT_PARITY_WORKFLOW.md`](../COMPONENT_PARITY_WORKFLOW.md) and the comments on
+`annotationsFollowBakedFrame`.
+
+---
+
 ## Loose ends (not blocking; file or fix opportunistically)
 
 - **`stampPreviewDensities` has the same fold bug** `previewsByFunctionReplacing` was written to fix:
