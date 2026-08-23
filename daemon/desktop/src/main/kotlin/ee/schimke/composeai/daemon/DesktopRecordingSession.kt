@@ -30,6 +30,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.concurrent.ConcurrentLinkedQueue
 import javax.imageio.ImageIO
+import kotlin.math.ceil
 import okio.FileSystem
 import okio.Path.Companion.toPath
 import org.jetbrains.skia.Image
@@ -154,6 +155,20 @@ class DesktopRecordingSession(
    * Only a **wrapped** axis needs the deferral, because only it can grow mid-recording.
    */
   private val framingKnownUpFront: Boolean = !state.spec.wrapWidth && !state.spec.wrapHeight
+
+  /**
+   * A TalkBack recording is never reframed.
+   *
+   * The focus overlay is post-draw decoration, not part of the composition: it is drawn onto the
+   * finished PNG with its announcement card against the image's bottom edge. Cropping afterwards
+   * would discard the card and leave the stroke floating in a frame it was not measured against.
+   * The still path avoids this by cropping *then* overlaying; a recording cannot, because the
+   * overlay is per-frame live semantics and the crop is not known until the recording ends.
+   *
+   * So those recordings publish at the scene's size — exactly what they did before framing was
+   * deferred, and the size the overlay was positioned for (issue #4467 review).
+   */
+  private val overlayFramedAgainstScene: Boolean = state.spec.overrides?.talkBack == true
 
   // Live mode bookkeeping: wall-clock anchor + frame counter. Both written only by the tick
   // thread (with frameCount also read by stop() after the join).
@@ -528,10 +543,30 @@ class DesktopRecordingSession(
    * Fold this frame's measure pass into the running maximum. Called after every render, because a
    * wrap-content component can be a different size on any frame — see [maxMeasuredWidthPx].
    */
+  @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
   private fun observeMeasuredBounds(image: Image) {
     val measured = state.measuredContent
     if (measured[0] > maxMeasuredWidthPx) maxMeasuredWidthPx = measured[0]
     if (measured[1] > maxMeasuredHeightPx) maxMeasuredHeightPx = measured[1]
+    // Every semantics owner, not just the content box. A `DropdownMenu`, tooltip or dialog paints
+    // into an owner of its own, outside the box entirely — so a crop taken from the box alone would
+    // cut the popup off, which is a regression against recording the whole scene. The batch motion
+    // path folds every root in for exactly this reason (`observeMotionRootBounds`).
+    runCatching {
+      for (owner in state.scene.semanticsOwners) {
+        val bounds = owner.unmergedRootSemanticsNode.boundsInWindow
+        val right = ceil(bounds.right.toDouble()).toInt()
+        val bottom = ceil(bounds.bottom.toDouble()).toInt()
+        if (right > maxMeasuredWidthPx) maxMeasuredWidthPx = right
+        if (bottom > maxMeasuredHeightPx) maxMeasuredHeightPx = bottom
+      }
+    }
+      .onFailure {
+        System.err.println(
+          "compose-ai-daemon: DesktopRecordingSession($recordingId): could not read semantics " +
+            "owner bounds (${it.javaClass.simpleName}); popup content may be cropped"
+        )
+      }
     renderedSceneWidthPx = image.width
     renderedSceneHeightPx = image.height
   }
@@ -1191,6 +1226,7 @@ class DesktopRecordingSession(
     val nothingToCrop = naturalWidth == sceneWidth && naturalHeight == sceneHeight
     val nothingToScale = frameWidth == naturalWidth && frameHeight == naturalHeight
     if (framingKnownUpFront || (nothingToCrop && nothingToScale)) return frameWidth to frameHeight
+    if (overlayFramedAgainstScene) return sceneWidth to sceneHeight
 
     fun framed(bytes: ByteArray): ByteArray =
       scalePngBytes(bytes, naturalWidth, naturalHeight, frameWidth, frameHeight)
@@ -1269,7 +1305,16 @@ class DesktopRecordingSession(
     srcHeight: Int,
     w: Int,
     h: Int,
-  ): ByteArray = reframePngBytes(bytes, srcWidth, srcHeight, w, h, "recording '$recordingId'")
+  ): ByteArray =
+    reframePngBytes(
+      bytes,
+      srcWidth,
+      srcHeight,
+      w,
+      h,
+      "recording '$recordingId'",
+      backdropArgb = previewBackgroundArgb(state.spec),
+    )
 
   private fun sceneOffset(px: Int, py: Int): androidx.compose.ui.geometry.Offset {
     // Recording scripts use the same image-natural pixel contract as interactive/input.
@@ -1290,6 +1335,7 @@ internal fun reframePngBytes(
   w: Int,
   h: Int,
   label: String,
+  backdropArgb: Int = 0,
 ): ByteArray {
   // A frame that will not decode is an error, not something to pass through. Returning the
   // original bytes would leave it un-reframed while `stop()` reports the new dimensions, handing
@@ -1297,20 +1343,35 @@ internal fun reframePngBytes(
   val src =
     ImageIO.read(ByteArrayInputStream(bytes))
       ?: error("$label: a captured frame is not a decodable PNG")
+  val opaqueBackdrop = (backdropArgb ushr 24) != 0
   // A frame that happens to need nothing keeps its exact bytes. The wholesale no-op is caught
   // by [finalizeFrames] before any decode; this is the per-frame case, where the set is being
   // reframed but this particular frame already matches.
-  if (src.width == w && src.height == h && srcWidth >= src.width && srcHeight >= src.height) {
+  //
+  // An opaque backdrop is never "nothing": a frame taken before the component grew is the right
+  // SIZE while still being transparent everywhere the component had not reached, and that is
+  // precisely what the fill below is for.
+  if (
+    !opaqueBackdrop &&
+      src.width == w &&
+      src.height == h &&
+      srcWidth >= src.width &&
+      srcHeight >= src.height
+  ) {
     return bytes
   }
   val cropWidth = srcWidth.coerceIn(1, src.width)
   val cropHeight = srcHeight.coerceIn(1, src.height)
-  // A pure crop copies the raster instead of drawing. Java2D's default `SrcOver` onto a zeroed
-  // canvas round-trips every pixel through premultiplied alpha, which visibly rounds the RGB of
-  // low-alpha pixels — antialiased edges, shadows. The still path's Skia crop copies them
-  // untouched, and `PixelDiff` compares RGB regardless of alpha, so that rounding alone could
-  // push a recording past its cap against a still-derived baseline.
-  if (cropWidth == w && cropHeight == h) {
+  // A pure crop with nothing to lay under it copies the raster instead of drawing. Java2D's
+  // default `SrcOver` onto a zeroed canvas round-trips every pixel through premultiplied alpha,
+  // which visibly rounds the RGB of low-alpha pixels — antialiased edges, shadows. The still
+  // path's Skia crop copies them untouched, and `PixelDiff` compares RGB regardless of alpha, so
+  // that rounding alone could push a recording past its cap against a still-derived baseline.
+  //
+  // An opaque [backdropArgb] takes the drawing path instead, and deliberately: there the source
+  // really is being composited over a background, which is what the composition would have done
+  // itself had it been that size.
+  if (cropWidth == w && cropHeight == h && !opaqueBackdrop) {
     val cropped = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
     cropped.setRGB(0, 0, w, h, src.getRGB(0, 0, w, h, null, 0, w), 0, w)
     return ByteArrayOutputStream().use { out ->
@@ -1321,9 +1382,21 @@ internal fun reframePngBytes(
   val dst = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
   val g = dst.createGraphics()
   try {
-    // `Src` rather than the default `SrcOver`, for the reason above: the destination starts
-    // fully transparent, and compositing over it is what mangles translucent source pixels.
-    g.composite = AlphaComposite.Src
+    // The preview's own background, laid down first. A wrap-content component that GREW during
+    // the recording leaves earlier frames with the background painted only inside their
+    // then-smaller content box — everything the later maximum crops in around it is bare scene.
+    // Without this the backdrop visibly flashes in as the component expands. The batch motion
+    // collector fills the same exposed space with its `padArgb`.
+    if (opaqueBackdrop) {
+      g.color = java.awt.Color(backdropArgb, true)
+      g.composite = AlphaComposite.Src
+      g.fillRect(0, 0, w, h)
+      g.composite = AlphaComposite.SrcOver
+    } else {
+      // `Src` rather than the default `SrcOver`, for the reason above: the destination starts
+      // fully transparent, and compositing over it is what mangles translucent source pixels.
+      g.composite = AlphaComposite.Src
+    }
     g.setRenderingHint(
       RenderingHints.KEY_INTERPOLATION,
       RenderingHints.VALUE_INTERPOLATION_BILINEAR,

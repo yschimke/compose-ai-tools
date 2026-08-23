@@ -346,6 +346,27 @@ class DesktopRecordingWrappedFrameTest {
   }
 
   @Test
+  fun `an opaque backdrop fills space the component had not grown into yet`() {
+    // A wrap-content component that grows leaves earlier frames with the preview background
+    // painted only inside their then-smaller content box; everything the later maximum crops in
+    // around it is bare scene. Without a fill the backdrop visibly flashes in as it expands.
+    val src = BufferedImage(4, 4, BufferedImage.TYPE_INT_ARGB)
+    src.setRGB(0, 0, 0xFF00FF00.toInt()) // one opaque green pixel, the rest transparent
+    val file = File(tempFolder.newFolder("backdrop"), "frame.png")
+    ImageIO.write(src, "PNG", file)
+
+    val white = 0xFFFFFFFF.toInt()
+    val framed = reframePngBytes(file.readBytes(), 4, 4, 4, 4, "test", backdropArgb = white)
+    val img = ImageIO.read(ByteArrayInputStream(framed))
+    assertEquals("the component's own pixel survives", 0xFF00FF00.toInt(), img.getRGB(0, 0))
+    assertEquals("space it had not reached yet takes the backdrop", white, img.getRGB(3, 3))
+
+    // …and a transparent-background preview still gets the exact-copy path, so nothing is filled.
+    val untouched = reframePngBytes(file.readBytes(), 4, 4, 4, 4, "test", backdropArgb = 0)
+    assertEquals(0, ImageIO.read(ByteArrayInputStream(untouched)).getRGB(3, 3))
+  }
+
+  @Test
   fun `a pure crop preserves translucent pixels exactly`() {
     // Java2D's default `SrcOver` onto a zeroed canvas round-trips every pixel through
     // premultiplied alpha, which rounds the RGB of low-alpha pixels. The still path's Skia crop
