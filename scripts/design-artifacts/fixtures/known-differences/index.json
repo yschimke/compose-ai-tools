@@ -552,6 +552,11 @@
       "site": null
     },
     {
+      "id": "decode-failed-bytes-after-iend",
+      "title": "An artifact carrying a chunk after `IEND`",
+      "site": null
+    },
+    {
       "id": "decode-failed-chunk-not-permitted",
       "title": "An artifact carrying an ancillary chunk",
       "site": null

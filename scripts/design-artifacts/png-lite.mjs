@@ -85,6 +85,84 @@ export function chunk(type, data = new Uint8Array(0)) {
   return out;
 }
 
+/**
+ * Grow a PNG to an exact encoded length **without changing the image it decodes to**.
+ *
+ * The fixtures need artifacts of a stated byte size — the encoded-byte cap and one byte past it —
+ * and committing 8 MiB twice to pin a boundary is not a trade this tree should make. Appending zero
+ * bytes after `IEND` was the obvious way and is now refused, correctly: `IEND` ends the datastream,
+ * so anything after it bypasses the allowlist, the placement rules and every CRC.
+ *
+ * So the padding goes *inside* the compressed stream, where it is legal and inert:
+ *
+ * - an **empty stored deflate block** — `00 00 00 FF FF`, `BFINAL=0`, `BTYPE=00`, `LEN=0` — costs
+ *   five bytes, inflates to nothing, and leaves the next block byte-aligned exactly as it found it.
+ *   Inserted straight after the two-byte zlib header, before the original block, so the Adler-32
+ *   trailer (which covers the *uncompressed* bytes) is untouched.
+ * - a **zero-length `IDAT` chunk** costs twelve, contributes nothing to the stream, and keeps the
+ *   `IDAT` run contiguous.
+ *
+ * Five and twelve are coprime, so every padding of 44 bytes or more is reachable exactly (43 is the
+ * Frobenius number of the pair, and the sizes here are megabytes). The
+ * result is a PNG a strict decoder accepts and any decoder renders identically to its input.
+ */
+export function padPngTo(bytes, targetLength) {
+  const padding = targetLength - bytes.length;
+  if (padding < 0) throw new Error(`cannot pad ${bytes.length} bytes down to ${targetLength}`);
+  if (padding === 0) return Uint8Array.from(bytes);
+
+  let emptyChunks = -1;
+  let storedBlocks = 0;
+  for (let candidate = 0; candidate <= 4; candidate++) {
+    const remainder = padding - 12 * candidate;
+    if (remainder >= 0 && remainder % 5 === 0) {
+      emptyChunks = candidate;
+      storedBlocks = remainder / 5;
+      break;
+    }
+  }
+  if (emptyChunks < 0) {
+    throw new Error(`padding of ${padding} bytes is not expressible as 5a + 12b; 44 and above always are`);
+  }
+
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const before = [];
+  const after = [];
+  let idatPayload = null;
+  let offset = SIGNATURE.length;
+  while (offset + 8 <= bytes.length) {
+    const length = view.getUint32(offset);
+    const type = String.fromCharCode(...bytes.subarray(offset + 4, offset + 8));
+    const whole = bytes.subarray(offset, offset + 12 + length);
+    if (type === "IDAT") {
+      if (idatPayload) throw new Error("padPngTo expects a single IDAT");
+      idatPayload = bytes.subarray(offset + 8, offset + 8 + length);
+    } else if (idatPayload) {
+      after.push(whole);
+    } else {
+      before.push(whole);
+    }
+    offset += 12 + length;
+  }
+  if (!idatPayload) throw new Error("padPngTo found no IDAT");
+
+  const padded = new Uint8Array(idatPayload.length + storedBlocks * 5);
+  padded.set(idatPayload.subarray(0, 2), 0);
+  for (let i = 0; i < storedBlocks; i++) {
+    padded.set([0x00, 0x00, 0x00, 0xff, 0xff], 2 + i * 5);
+  }
+  padded.set(idatPayload.subarray(2), 2 + storedBlocks * 5);
+
+  const out = buildPng([
+    ...before,
+    chunk("IDAT", padded),
+    ...Array.from({ length: emptyChunks }, () => chunk("IDAT", new Uint8Array(0))),
+    ...after,
+  ]);
+  if (out.length !== targetLength) throw new Error(`padded to ${out.length}, not ${targetLength}`);
+  return out;
+}
+
 /** Concatenate the signature and a list of chunks into a file. */
 export function buildPng(chunks) {
   const total = chunks.reduce((sum, c) => sum + c.length, SIGNATURE.length);
@@ -322,6 +400,14 @@ export function decodePng(bytes) {
     if (type === "PLTE") palette = data;
     if (type === "tRNS") transparency = data;
     if (type === "IEND") {
+      // **`IEND` ends the datastream, so it must end the file.** A chunk or arbitrary bytes appended
+      // after it bypass the allowlist, the placement rules and every CRC — this loop simply stops —
+      // so an artifact carrying a second `IHDR`, an `acTL`, or a kilobyte of anything at all past the
+      // end reaches a gate verdict here while a strict decoder refuses the datastream. That is the
+      // same divergence the allowlist exists to close, one byte past where it was looking.
+      if (offset + 12 + length !== bytes.length) {
+        throw new Error("decode-failed: bytes follow IEND");
+      }
       sawIend = true;
       break;
     }

@@ -36,7 +36,7 @@ import { createHash } from "node:crypto";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { decodePng } from "./png-lite.mjs";
+import { decodePng, padPngTo } from "./png-lite.mjs";
 import {
   BUDGET,
   CANDIDATE_TOLERANCE_RANGE,
@@ -67,18 +67,18 @@ function readJson(path) {
 /**
  * Materialise a case's artifacts.
  *
- * `synthesize` is how a fixture expresses a file too big to commit: append `padZerosTo - length`
- * zero bytes to the named base file. Trailing bytes after `IEND` are ignored by every decoder and
- * never reached by a preflight that stops at the first `IDAT`, so the only thing they change is the
- * encoded byte length — which is the one thing the case is about.
+ * `synthesize` is how a fixture expresses a file too big to commit: pad the named base file to
+ * `padTo` bytes. The padding goes inside the compressed stream — empty stored deflate blocks and
+ * zero-length `IDAT` chunks — so the artifact stays a PNG a strict decoder accepts and decodes to
+ * exactly the image its base does, and the only thing it changes is the encoded byte length, which
+ * is the one thing the case is about. It is `padPngTo` on both sides rather than a rule spelled
+ * twice, because a recipe two runtimes materialise differently is not a recipe.
  */
 function artifactReader(caseDir, synthesize) {
   const synthesised = new Map();
   for (const recipe of synthesize ?? []) {
-    const base = readFileSync(join(caseDir, recipe.from));
-    const padded = new Uint8Array(recipe.padZerosTo);
-    padded.set(base, 0);
-    synthesised.set(recipe.path, padded);
+    const base = new Uint8Array(readFileSync(join(caseDir, recipe.from)));
+    synthesised.set(recipe.path, padPngTo(base, recipe.padTo));
   }
   // A case with no artifacts at all has no `artifacts/` directory, so the root is resolved leniently:
   // every path beneath a root that does not exist is a missing file, which is what the reader

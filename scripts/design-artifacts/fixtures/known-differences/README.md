@@ -34,10 +34,12 @@ The canonical-plane rasters arrive **already resampled**, deliberately. The port
 own group under `resample/`, so a resampler divergence fails there rather than surfacing as a wrong
 verdict in sixty gate cases at once — which is the entire reason for pinning intermediate stages.
 
-`synthesize` is how a case expresses a file too big to commit: append `padZerosTo - length` zero
-bytes to the named base file. Trailing bytes after `IEND` are ignored by every decoder and never
-reached by a preflight that stops at the first `IDAT`, so the only thing they change is the encoded
-byte length.
+`synthesize` is how a case expresses a file too big to commit: pad the named base file to `padTo`
+bytes. The padding goes **inside the compressed stream** — empty stored deflate blocks and
+zero-length `IDAT` chunks — so the artifact stays a PNG a strict decoder accepts and decodes to
+exactly the image its base does, and the only thing the recipe changes is the encoded byte length.
+Appending bytes after `IEND` would be cheaper and wrong: `IEND` ends the datastream, so anything
+after it bypasses the chunk allowlist, the placement rules and every CRC.
 
 ## The pilot population
 
@@ -169,6 +171,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `variant-empty-is-valid` | A default preview's empty `variant` |
 | `decode-failed-chunk-crc-mismatch` | A hash-valid artifact whose `IDAT` CRC does not verify |
 | `header-invalid-inflates-past-declared-size` | A small legal header in front of a much larger inflation |
+| `decode-failed-bytes-after-iend` | An artifact carrying a chunk after `IEND` |
 | `decode-failed-chunk-not-permitted` | An artifact carrying an ancillary chunk |
 | `decode-failed-colour-space-chunk` | An artifact carrying a colour-space chunk |
 | `decode-failed-duplicate-ihdr` | A second `IHDR` |

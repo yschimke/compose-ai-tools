@@ -38,7 +38,7 @@
     {
       "path": "artifacts/m3-iconbutton-tonal-glyph/mask.png",
       "from": "artifacts/m3-iconbutton-tonal-glyph/mask.base.png",
-      "padZerosTo": 8388608
+      "padTo": 8388608
     }
   ]
 }

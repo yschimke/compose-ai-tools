@@ -1141,8 +1141,18 @@ honouring the range leaves it opaque. Two rasters from one hash-valid file, land
 gate. The
 specification forbids each, so those are refused too. There are only five chunks to
 constrain, which is what the allowlist buys — the structural rules are finite because the vocabulary
-is. Bytes *after* `IEND` stay tolerated: nothing reads them, the byte cap fires on them before any
-decode, and policing them would add a rule with no divergence behind it.
+is.
+
+**And `IEND` must end the file — a reversal.** An earlier draft of this section tolerated bytes after
+`IEND` on the grounds that nothing reads them and policing them would add a rule with no divergence
+behind it. That was wrong, and wrong in the way the allowlist exists to prevent: *nothing reads them*
+is exactly the problem. A decoder that stops at `IEND` stops applying the allowlist, the placement
+rules and the CRCs one byte past where it was looking, so an artifact can carry a second `IHDR`, an
+`acTL`, or a kilobyte of anything at all, reach a gate verdict here, and be refused as a malformed
+datastream by a stricter decoder. `IEND` terminates the PNG datastream, so anything after it is
+`decode-failed`. The fixtures' own oversize artifacts were built by appending zeros there and are now
+padded **inside** the compressed stream instead — empty stored deflate blocks and zero-length `IDAT`
+chunks, which are inert, legal, and decode to the same image.
 
 **`tRNS` is refused on `mask.png` specifically.** It is permitted on the accepted candidate and is
 the one place the allowlist and the mask's own encoding rule pull against each other — the mask is
@@ -1700,14 +1710,23 @@ manufacture a false `element-moved` cause on top of a correct `plane-changed` �
 causes. The index is therefore always in the plane of every acceptance still being gated, and the
 `causes` list stays comparable across engines.
 
-**The index publishes bounds in canonical coordinates, already transformed.** `boundsInRoot` is
-render-pixel space (I8), the fixtures expect canonical, and nothing said who converts — so one
-implementation would compare raw bounds against a canonical baseline, another transform once, and a
-third double-transform bounds the server had already converted, each giving different `element-moved`
-verdicts on the same tree. The **server transforms once**, using the render→canonical row of the
-table above, and consumers use the values as-is; a consumer that transforms again is wrong. That
-placement follows the same logic as the index itself — the authoritative work stays where the whole
-tree and the resolved plane already are.
+**The index publishes bounds in render pixels, and the comparison transforms them.** `boundsInRoot`
+is render-pixel space (I8), the gates need canonical, and nothing originally said who converts — so
+one implementation would compare raw bounds against a canonical baseline, another transform once, and
+a third double-transform bounds it believed were already converted, each giving a different
+`element-moved` verdict on the same tree. An earlier draft of this paragraph assigned the transform to
+the **server**; [D1](parity-batches/00-decisions.md#d1--which-plane-the-element-tag-index-reports-bounds-in)
+settled it the other way, and this text now follows it.
+
+**The transform belongs to the comparison**, using the render→canonical row of the table above,
+because *a plane is a property of a comparison and the index is a property of a render*. The canonical
+plane is resolved per comparison, from a reference raster and an acceptance record; neither producer
+can see one. `ServeSemanticsTags` sees a single daemon render and `scripts/design-artifacts/tag-index.mjs`
+a single packed bundle, so both emit `boundsInRoot` and declare `space: "render-pixels"` on the wire,
+and `ServeTagIndexStore` refuses an entry claiming anything else. Making the index comparison-scoped
+instead would make the published `tags/index.json` depend on the acceptances, and it would have to be
+regenerated whenever one changed — breaking the "publishing must not require a re-render" property
+batches 02 and 05 both rely on.
 
 **The tag index and the scored PNG must come from one render.** Semantics move with overrides,
 conditional composition and animation, so an index computed by a different render than the frame

@@ -80,6 +80,11 @@ Each exists because two engines would otherwise diverge on identical bytes.
   than by member name (an unknown property called `x` is `schema-invalid`, not a document refusal),
   and firing only on tokens that *round onto* an integer, since a still-fractional value is already
   caught with better attribution.
+- **`IEND` must end the file.** Bytes after it bypass the allowlist, the placement rules and every
+  CRC — a decoder that stops there stops checking there — so a second `IHDR` or an `acTL` rides along
+  to a gate verdict here and a `decode-failed` elsewhere. Reverses an earlier "tolerated, nothing
+  reads them" note; *nothing reads them* was the problem. The suite's oversize artifacts are padded
+  inside the compressed stream instead (empty stored deflate blocks, zero-length `IDAT` chunks).
 - **A repeated JSON member name refuses the document.** RFC 8259 leaves it undefined and runtimes
   differ — last value, first value, or a hard refusal — so `{"id":"safe","id":".."}` addresses two
   different artifact directories from one committed file. Detected **on the text**: by the time there

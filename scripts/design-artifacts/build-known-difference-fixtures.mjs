@@ -30,6 +30,7 @@ import {
   encodePng,
   idat,
   ihdr,
+  padPngTo,
   sha256Hex,
 } from "./png-lite.mjs";
 
@@ -1554,11 +1555,13 @@ function lyingGreyPng(width, height) {
 }
 
 {
-  // 8 MiB + 1 byte. The padding is a synthesis instruction rather than a committed blob: any
-  // runtime can materialise it from the recipe — append this many zero bytes to the base file — and
-  // the repo stores a few hundred bytes instead of eight megabytes. Trailing bytes after `IEND` are
-  // ignored by every decoder and never reached by a preflight that stops at the first `IDAT`, so
-  // the only thing the padding changes is the one thing under test: the encoded byte length.
+  // 8 MiB + 1 byte. The padding is a synthesis instruction rather than a committed blob: any runtime
+  // can materialise it from the recipe — pad this base file to this many bytes — and the repo stores
+  // a few hundred bytes instead of eight megabytes twice over. The padding goes **inside the
+  // compressed stream** (empty stored deflate blocks and zero-length `IDAT` chunks, see
+  // {@link padPngTo}), so the artifact stays a PNG a strict decoder accepts and decodes to exactly
+  // the image its base does. An earlier recipe appended zero bytes after `IEND`, which is cheaper
+  // and wrong: `IEND` ends the datastream, so those bytes bypass the allowlist and every CRC.
   const world = glyphWorld();
   const base = encodePng({ width: 24, height: 24, colourType: COLOUR_GREY, samples: (() => {
     const samples = new Uint8Array(24 * 24);
@@ -1566,10 +1569,8 @@ function lyingGreyPng(width, height) {
     return samples;
   })() });
   const target = 8 * 1024 * 1024 + 1;
-  const materialised = new Uint8Array(target);
-  materialised.set(base, 0);
-  const atCap = new Uint8Array(8 * 1024 * 1024);
-  atCap.set(base, 0);
+  const materialised = padPngTo(base, target);
+  const atCap = padPngTo(base, 8 * 1024 * 1024);
   addCase({
     id: "artifact-at-byte-cap",
     title: "A mask of exactly 8 MiB encoded",
@@ -1594,7 +1595,7 @@ function lyingGreyPng(width, height) {
       {
         path: "artifacts/m3-iconbutton-tonal-glyph/mask.png",
         from: "artifacts/m3-iconbutton-tonal-glyph/mask.base.png",
-        padZerosTo: 8 * 1024 * 1024,
+        padTo: 8 * 1024 * 1024,
       },
     ],
     comparison: glyphComparison(world),
@@ -1629,7 +1630,7 @@ function lyingGreyPng(width, height) {
       {
         path: "artifacts/m3-iconbutton-tonal-glyph/mask.png",
         from: "artifacts/m3-iconbutton-tonal-glyph/mask.base.png",
-        padZerosTo: target,
+        padTo: target,
       },
     ],
     comparison: glyphComparison(world),
@@ -2809,6 +2810,39 @@ glyphValidation({
       chunk("IEND"),
     ]);
   })();
+  // A complete, correct PNG with a second `IHDR` appended after `IEND` — and a valid CRC on it, so
+  // nothing but the position is wrong.
+  const afterIend = (() => {
+    const samples = new Uint8Array(24 * 24);
+    for (let y = 8; y < 16; y++) for (let x = 8; x < 16; x++) samples[y * 24 + x] = 255;
+    const rows = [];
+    for (let y = 0; y < 24; y++) rows.push(samples.subarray(y * 24, (y + 1) * 24));
+    const complete = buildPng([
+      ihdr({ width: 24, height: 24, colourType: COLOUR_GREY }),
+      idat(rows),
+      chunk("IEND"),
+    ]);
+    const trailing = ihdr({ width: 1, height: 1, colourType: COLOUR_GREY });
+    const out = new Uint8Array(complete.length + trailing.length);
+    out.set(complete, 0);
+    out.set(trailing, complete.length);
+    return out;
+  })();
+  glyphValidation({
+    id: "decode-failed-bytes-after-iend",
+    title: "An artifact carrying a chunk after `IEND`",
+    why:
+      "`IEND` ends the PNG datastream, so it must end the file. A decoder that stops at `IEND` " +
+      "simply never looks at what follows — which means the allowlist, the placement rules and every " +
+      "CRC stop applying one byte past where they were looking, and an artifact can carry a second " +
+      "`IHDR`, an `acTL`, or a kilobyte of anything at all and still reach a gate verdict here while " +
+      "a strict decoder refuses the datastream. The trailing chunk in this fixture is *itself* " +
+      "well-formed, CRC and all: position is the only thing wrong with it.",
+    record: { maskSha256: sha256Hex(afterIend) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/mask.png": afterIend },
+    expected: refused(["decode-failed"]),
+  });
+
   glyphValidation({
     id: "decode-failed-chunk-not-permitted",
     title: "An artifact carrying an ancillary chunk",
@@ -3496,10 +3530,12 @@ write(
     "own group under `resample/`, so a resampler divergence fails there rather than surfacing as a wrong",
     "verdict in sixty gate cases at once — which is the entire reason for pinning intermediate stages.",
     "",
-    "`synthesize` is how a case expresses a file too big to commit: append `padZerosTo - length` zero",
-    "bytes to the named base file. Trailing bytes after `IEND` are ignored by every decoder and never",
-    "reached by a preflight that stops at the first `IDAT`, so the only thing they change is the encoded",
-    "byte length.",
+    "`synthesize` is how a case expresses a file too big to commit: pad the named base file to `padTo`",
+    "bytes. The padding goes **inside the compressed stream** — empty stored deflate blocks and",
+    "zero-length `IDAT` chunks — so the artifact stays a PNG a strict decoder accepts and decodes to",
+    "exactly the image its base does, and the only thing the recipe changes is the encoded byte length.",
+    "Appending bytes after `IEND` would be cheaper and wrong: `IEND` ends the datastream, so anything",
+    "after it bypasses the chunk allowlist, the placement rules and every CRC.",
     "",
     "## The pilot population",
     "",

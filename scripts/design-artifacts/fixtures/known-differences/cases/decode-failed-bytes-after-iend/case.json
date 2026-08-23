@@ -1,7 +1,7 @@
 {
-  "title": "A mask one byte past 8 MiB encoded",
+  "title": "An artifact carrying a chunk after `IEND`",
   "site": null,
-  "why": "Dimensions do not bound file size: PNG compression varies by orders of magnitude with content, and an acceptance's rasters are exactly the noisy sub-regions that compress worst. The cap sits comfortably under `ServeCatalogStore`'s own 25 MB fetch limit, so the two engines agree well before the host's fetch would fail, and far above a real mask or crop.",
+  "why": "`IEND` ends the PNG datastream, so it must end the file. A decoder that stops at `IEND` simply never looks at what follows — which means the allowlist, the placement rules and every CRC stop applying one byte past where they were looking, and an artifact can carry a second `IHDR`, an `acTL`, or a kilobyte of anything at all and still reach a gate verdict here while a strict decoder refuses the datastream. The trailing chunk in this fixture is *itself* well-formed, CRC and all: position is the only thing wrong with it.",
   "comparison": {
     "system": "m3",
     "component": "IconButton/Tonal",
@@ -34,11 +34,5 @@
     }
   },
   "catalog": null,
-  "synthesize": [
-    {
-      "path": "artifacts/m3-iconbutton-tonal-glyph/mask.png",
-      "from": "artifacts/m3-iconbutton-tonal-glyph/mask.base.png",
-      "padTo": 8388609
-    }
-  ]
+  "synthesize": []
 }
