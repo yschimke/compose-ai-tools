@@ -656,27 +656,65 @@ const INTEGER_TOKEN_PATHS = new Map([
 const REAL_TOKEN_RANGES = new Map([["/acceptances/[]/element", { tolerance: [0, 0.25] }]]);
 
 /**
- * Is a JSON number token within `[low, high]`, decided exactly?
+ * Is a JSON number token within `[low, high]`, decided exactly and **without ever building a number
+ * proportional to the token**?
  *
- * The token is read as a scaled integer — digits and a power of ten — and compared against the bound
- * scaled the same way, so `0.25000000000000000001` is greater than `0.25` here even though the two
- * are one double. Both bounds are short decimals, which is what keeps this arithmetic small.
+ * The token is a decimal — digits and a power of ten — and the bounds are short decimals, so the
+ * comparison is integer arithmetic over a common scale. Two things must never be materialised on the
+ * way there, because this input is third-party and bounded only by the document's byte ceiling:
+ *
+ * - **the power of ten.** `1e999999999999999999999` is a legal JSON number, and `10n ** 10n**21n`
+ *   throws `RangeError: Maximum BigInt size exceeded` — turning a short malformed record into a crash
+ *   of the evaluator, and of whatever build or server is hosting it. So the decimal *magnitude* is
+ *   compared first, from digit counts alone, and the scaling only runs inside a window where it is
+ *   known to be small.
+ * - **the digit string.** A million-digit mantissa is equally legal and equally cheap to write. Only
+ *   the leading digits can decide a comparison against a two-digit bound, so the mantissa is
+ *   truncated, and the truncation remembers whether anything non-zero followed — which is exactly
+ *   what decides the tie when the visible digits are equal.
  */
+const RANGE_DIGIT_LIMIT = 64;
+const RANGE_EXPONENT_WINDOW = 32;
+
 function tokenWithinRange(token, low, high) {
   const match = /^(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(token);
   if (!match) return false;
-  const [, sign, whole, fraction = "", exponent = "0"] = match;
-  const digits = `${whole}${fraction}`;
-  const scale = Number(exponent) - fraction.length;
+  const [, sign, whole, fraction = "", exponentText = "0"] = match;
+
+  // Safe on its own: the exponent is a run of digits, and one too large to represent becomes
+  // `Infinity`, which the magnitude test rejects without any arithmetic.
+  const exponent = Number(exponentText);
+  const significant = `${whole}${fraction}`.replace(/^0+/, "");
+  if (significant === "") return low <= 0 && high >= 0;
+
+  const kept = significant.slice(0, RANGE_DIGIT_LIMIT);
+  const dropped = significant.length - kept.length;
+  const scale = exponent - fraction.length + dropped;
+  // The value lies in `[10^(magnitude - 1), 10^magnitude)`, which is all the magnitude test needs.
+  const magnitude = kept.length + scale;
+  const negative = sign === "-";
+
+  if (!Number.isFinite(magnitude) || Math.abs(magnitude) > RANGE_EXPONENT_WINDOW) {
+    // Far outside any short bound: decide from the sign and the direction alone.
+    const enormous = magnitude > 0;
+    if (negative) return enormous ? false : low <= 0 && high >= 0;
+    return enormous ? false : low <= 0 && high >= 0;
+  }
+
+  const value = BigInt(kept);
   const compare = (bound) => {
-    // Both sides as integers over a common power of ten, chosen as the finer of the two scales.
     const boundText = bound.toFixed(20);
-    const boundDigits = boundText.replace("-", "").replace(".", "").replace(/0+$/, "") || "0";
-    const boundScale = -(boundText.split(".")[1] ?? "").replace(/0+$/, "").length;
+    const boundNegative = boundText.startsWith("-");
+    const [boundWhole, boundFraction = ""] = boundText.replace("-", "").split(".");
+    const boundScale = -boundFraction.length;
+    const boundValue = BigInt(`${boundWhole}${boundFraction}`);
     const common = Math.min(scale, boundScale);
-    const left = BigInt(`${sign}${digits}`) * 10n ** BigInt(scale - common);
-    const right = BigInt(`${bound < 0 ? "-" : ""}${boundDigits}`) * 10n ** BigInt(boundScale - common);
-    return left < right ? -1 : left > right ? 1 : 0;
+    const left = (negative ? -value : value) * 10n ** BigInt(scale - common);
+    const right = (boundNegative ? -boundValue : boundValue) * 10n ** BigInt(boundScale - common);
+    if (left !== right) return left < right ? -1 : 1;
+    // Equal on the digits kept: anything non-zero beyond them makes the magnitude strictly larger.
+    if (dropped === 0) return 0;
+    return negative ? -1 : 1;
   };
   return compare(low) >= 0 && compare(high) <= 0;
 }
@@ -966,8 +1004,14 @@ function decodeRecord(evaluation, readArtifact) {
     // while the fields being compared stayed put — and the mask-encoding check below reads the
     // *preflight's* header, so a swapped artifact would have been judged on the old one. Comparing
     // the whole object cannot drift out of step with what the preflight learns.
+    // **An artifact that changed is unstable, and that is the whole verdict.** The axis cap is a
+    // *first-phase* rule, decided from the preflight the budget was computed against; re-applying it
+    // to the second read reported `[header-invalid, artifact-unreadable]` for a mask swapped for an
+    // 8193-wide one, where the contract says a changed second read is `artifact-unreadable` and
+    // nothing else. `samePreflight` compares every field, so a raster that grew past the cap is
+    // already caught — the extra check could only ever add a second token to a refusal that was
+    // complete.
     if (!samePreflight(now, before)) rereadFailures.push("artifact-unreadable");
-    if (now.width > BUDGET.maxAxis || now.height > BUDGET.maxAxis) rereadFailures.push("header-invalid");
   }
   if (rereadFailures.length > 0) return fail(...rereadFailures);
   if (maskHeader.bitDepth !== 8 || maskHeader.colourType !== 0) return fail("mask-encoding-invalid");

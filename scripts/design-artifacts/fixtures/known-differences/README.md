@@ -72,6 +72,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `gate-reference-changed` | The served reference no longer hashes to the recorded one |
 | `gate-served-hash-uppercase` | An uppercase *served* reference hash must not report `reference-changed` |
 | `gate-plane-changed-short-circuits-element` | A changed plane short-circuits the element gates |
+| `plane-full-canvas-acceptance` | An acceptance authored and evaluated on the full-canvas plane |
 | `gate-element-ambiguous` | The tag is carried by more than one node |
 | `gate-element-vanished` | The tag resolves to nothing at all |
 | `gate-element-moved-past-tolerance` | The resolved element moved further than `element.tolerance` allows |
@@ -115,6 +116,8 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `path-not-contained-case-folded-collision` | Two artifact paths differing only in case |
 | `accepted-at-lowercase-separators` | An `acceptedAt` using lowercase `t` and `z` |
 | `schema-invalid-issue-url-untrimmed` | An `issue` with surrounding whitespace |
+| `accepted-at-absent-is-legal` | A record with no `acceptedAt` at all |
+| `schema-invalid-accepted-at-calendar-impossible` | An `acceptedAt` whose fields are each legal and whose date does not exist |
 | `schema-invalid-accepted-at-leap-second-off-instant` | A second `60` away from the leap-second instant |
 | `accepted-at-leap-second-at-instant` | A real leap second, and one reached through an offset |
 | `accepted-at-leap-second-through-offset` | A leap second written in a non-UTC offset |
@@ -170,6 +173,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `orphaned-target-variant-disagrees-with-preview-id` | A recorded `variant` that disagrees with its own `previewId` |
 | `document-duplicate-ids-case-folded` | Two ids differing only in case |
 | `document-unreadable-fractional-coordinate` | A geometry coordinate written as a non-integer |
+| `document-unreadable-duplicate-member-escaped` | A repeated member name spelled with an escape |
 | `document-unreadable-duplicate-member` | An acceptance repeating a member name |
 | `document-unreadable-unknown-property` | A document carrying a property `v1` does not define |
 | `document-non-object-acceptances` | `acceptances` holding `null`, a string and an array |
@@ -193,6 +197,8 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `zero-alpha-rgb-is-normalised` | Transparent pixels whose hidden colour differs |
 | `decode-failed-plte-after-trns` | A truecolor `PLTE` placed after `tRNS` |
 | `decode-failed-trns-sample-out-of-range` | A `tRNS` sample the image's bit depth cannot contain |
+| `artifact-greyscale-alpha-decodes` | A greyscale-alpha accepted candidate |
+| `artifact-truecolour-suggested-palette` | A truecolour accepted candidate carrying a suggested palette |
 | `artifact-trns-greyscale-decodes` | A greyscale accepted candidate whose `tRNS` names its own sample |
 | `artifact-trns-truecolour-decodes` | A truecolour accepted candidate whose `tRNS` names its own colour |
 | `decode-failed-empty-palette-trns` | A zero-length palette `tRNS` |

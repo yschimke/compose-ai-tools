@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   COLOUR_GREY,
+  COLOUR_GREY_ALPHA,
   COLOUR_PALETTE,
   COLOUR_RGB,
   buildPng,
@@ -667,6 +668,34 @@ for (const [id, title, delta, status, why] of [
     expected: {
       pins: ["statuses", "validationFailures"],
       statuses: { "m3-iconbutton-tonal-glyph": { status: "invalidated", causes: ["plane-changed"] } },
+      validationFailures: [],
+    },
+  });
+}
+
+{
+  // **A record actually authored on `full-canvas`**, not merely a comparison that changed into one.
+  // The only other appearance of the token is the deliberately-mismatched plane in the case above,
+  // so an engine recognising it well enough to report `plane-changed` — and no further — passed the
+  // suite while mishandling the fallback plane the contract selects whenever content coverage falls
+  // under `MIN_BOX_COVERAGE`. That fallback is not exotic: it is what a nearly-empty preview gets.
+  const world = glyphWorld();
+  const plane = { plane: "full-canvas", box: { x: 0, y: 0, width: 24, height: 24 } };
+  const record = glyphRecord(world, { plane });
+  addCase({
+    id: "plane-full-canvas-acceptance",
+    title: "An acceptance authored and evaluated on the full-canvas plane",
+    why:
+      "The `plane` field is a discriminant *and* a box, and both halves must match. Here both sides " +
+      "say `full-canvas` over the same box, so the acceptance is evaluated exactly as a " +
+      "`content-box` one would be — which is the point: the fallback changes which pixels the plane " +
+      "covers, not how any gate behaves.",
+    document: document([record]),
+    files: glyphFiles(world, record),
+    comparison: glyphComparison(world, { plane }),
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
       validationFailures: [],
     },
   });
@@ -1948,6 +1977,43 @@ glyphValidation({
   expected: refused(["schema-invalid"]),
 });
 
+{
+  const world = glyphWorld();
+  const record = glyphRecord(world);
+  delete record.acceptedAt;
+  addCase({
+    id: "accepted-at-absent-is-legal",
+    title: "A record with no `acceptedAt` at all",
+    why:
+      "`acceptedAt` is optional in the schema and in the validator, and every *other* fixture that " +
+      "reaches a non-refused status happens to carry one — so an engine that made it mandatory " +
+      "passed the whole suite while rejecting legal hand-authored acceptances, which is precisely " +
+      "the population `v1` expects to be written by hand. The optional fields need accepting cases " +
+      "as much as the required ones need refusing cases.",
+    document: document([record]),
+    files: glyphFiles(world, record),
+    comparison: glyphComparison(world),
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+      validationFailures: [],
+    },
+  });
+}
+
+glyphValidation({
+  id: "schema-invalid-accepted-at-calendar-impossible",
+  title: "An `acceptedAt` whose fields are each legal and whose date does not exist",
+  why:
+    "Its sibling `schema-invalid-accepted-at-impossible-date` puts every field out of range at once, " +
+    "so an engine that merely bounds each field passes it — and then accepts `2026-02-30`, which is " +
+    "the shape a real off-by-one produces. Every field here is individually legal; only the calendar " +
+    "rejects it, which is why the check is a round trip through the date rather than four range " +
+    "tests.",
+  record: { acceptedAt: "2026-02-30T12:00:00Z" },
+  expected: refused(["schema-invalid"]),
+});
+
 glyphValidation({
   id: "schema-invalid-accepted-at-leap-second-off-instant",
   title: "A second `60` away from the leap-second instant",
@@ -2830,6 +2896,26 @@ addCase({
 });
 
 addCase({
+  id: "document-unreadable-duplicate-member-escaped",
+  title: "A repeated member name spelled with an escape",
+  why:
+    "`\\u0069d` **is** `id` — JSON names are compared after unescaping — so this document repeats a " +
+    "member exactly as its sibling does, and parsers can still choose different winners for the " +
+    "pair. An engine scanning raw key tokens sees two different strings and passes the case, which " +
+    "is why the sibling alone does not pin the unescaping step the rule actually requires.",
+  documentText:
+    '{"schema":"compose-preview-known-differences/v1","acceptances":' +
+    '[{"id":"safe","\\u0069d":".."}]}',
+  document: null,
+  files: {},
+  expected: {
+    pins: ["statusesAbsent", "validationFailures"],
+    statusesAbsent: true,
+    validationFailures: [{ reason: "document-unreadable" }],
+  },
+});
+
+addCase({
   id: "document-unreadable-duplicate-member",
   title: "An acceptance repeating a member name",
   why:
@@ -3410,6 +3496,94 @@ glyphValidation({
     files: { "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": outOfRangeTrns },
     expected: refused(["decode-failed"]),
   });
+
+  // **Colour type 4 — greyscale with alpha — has no artifact at all.** The decoder declares it
+  // supported and the successful candidates cover 0, 2, 3 and 6, so an engine refusing type 4, or
+  // reading its second byte as anything but alpha, passes the entire suite and then produces a wrong
+  // candidate verdict for a legal accepted candidate.
+  {
+    const world = glyphWorld();
+    const candidate = raster(24, 24);
+    fillRect(candidate, { x: 0, y: 0, width: 4, height: 4 }, GREY);
+    fillRect(candidate, world.glyph, [90, 90, 90, 255]);
+    const rows = [];
+    for (let y = 0; y < 8; y++) {
+      const row = new Uint8Array(8 * 2);
+      for (let x = 0; x < 8; x++) row.set([90, 255], x * 2);
+      rows.push(row);
+    }
+    const accepted = buildPng([
+      ihdr({ width: 8, height: 8, colourType: COLOUR_GREY_ALPHA }),
+      idat(rows),
+      chunk("IEND"),
+    ]);
+    const record = glyphRecord(world, { acceptedCandidateSha256: sha256Hex(accepted) });
+    addCase({
+      id: "artifact-greyscale-alpha-decodes",
+      title: "A greyscale-alpha accepted candidate",
+      why:
+        "The one permitted colour type with no artifact in the tree. Each pixel is a grey sample " +
+        "followed by an alpha sample, so an engine that treats the second byte as anything else — " +
+        "or refuses the type outright — reads different pixels here and cannot reach `valid`, while " +
+        "passing every other case. `90, 255` decodes to `90,90,90,255`, which is what the canonical " +
+        "candidate holds under the mask.",
+      document: document([record]),
+      files: {
+        "artifacts/m3-iconbutton-tonal-glyph/mask.png": world.maskPngBytes,
+        "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": accepted,
+        "canonical-reference.png": world.referencePngBytes,
+        "canonical-candidate.png": rgbaPng(candidate),
+      },
+      comparison: glyphComparison(world),
+      expected: {
+        pins: ["statuses", "validationFailures"],
+        statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+        validationFailures: [],
+      },
+    });
+  }
+
+  // **A suggested palette on a truecolour image is legal**, and the only truecolour `PLTE` in the
+  // tree sits illegally after `tRNS` and expects a refusal — so an engine rejecting every `PLTE` on
+  // colour type 2 passes the suite and refuses legal accepted candidates.
+  {
+    const world = glyphWorld();
+    const rows = [];
+    for (let y = 0; y < 8; y++) {
+      const row = new Uint8Array(8 * 3);
+      for (let x = 0; x < 8; x++) row.set([200, 60, 60], x * 3);
+      rows.push(row);
+    }
+    const accepted = buildPng([
+      ihdr({ width: 8, height: 8, colourType: COLOUR_RGB }),
+      chunk("PLTE", Uint8Array.from([200, 60, 60, 0, 0, 0, 255, 255, 255])),
+      idat(rows),
+      chunk("IEND"),
+    ]);
+    const record = glyphRecord(world, { acceptedCandidateSha256: sha256Hex(accepted) });
+    addCase({
+      id: "artifact-truecolour-suggested-palette",
+      title: "A truecolour accepted candidate carrying a suggested palette",
+      why:
+        "`PLTE` before the image data is permitted on colour type 2, where it is a *suggestion* for " +
+        "quantising displays and contributes nothing to the pixels — so the decode must ignore it " +
+        "rather than refuse the file or index through it. The refusing sibling only ever places one " +
+        "after `tRNS`, which says nothing about the legal position.",
+      document: document([record]),
+      files: {
+        "artifacts/m3-iconbutton-tonal-glyph/mask.png": world.maskPngBytes,
+        "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": accepted,
+        "canonical-reference.png": world.referencePngBytes,
+        "canonical-candidate.png": world.candidatePngBytes,
+      },
+      comparison: glyphComparison(world),
+      expected: {
+        pins: ["statuses", "validationFailures"],
+        statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+        validationFailures: [],
+      },
+    });
+  }
 
   // **`tRNS` that actually decodes**, on the two permitted colour types that are not the palette.
   // The single successful transparency fixture is palette-based, so an engine applying `tRNS` only

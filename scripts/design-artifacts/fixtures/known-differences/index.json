@@ -57,6 +57,11 @@
       "site": null
     },
     {
+      "id": "plane-full-canvas-acceptance",
+      "title": "An acceptance authored and evaluated on the full-canvas plane",
+      "site": null
+    },
+    {
       "id": "gate-element-ambiguous",
       "title": "The tag is carried by more than one node",
       "site": null
@@ -269,6 +274,16 @@
     {
       "id": "schema-invalid-issue-url-untrimmed",
       "title": "An `issue` with surrounding whitespace",
+      "site": null
+    },
+    {
+      "id": "accepted-at-absent-is-legal",
+      "title": "A record with no `acceptedAt` at all",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-accepted-at-calendar-impossible",
+      "title": "An `acceptedAt` whose fields are each legal and whose date does not exist",
       "site": null
     },
     {
@@ -547,6 +562,11 @@
       "site": null
     },
     {
+      "id": "document-unreadable-duplicate-member-escaped",
+      "title": "A repeated member name spelled with an escape",
+      "site": null
+    },
+    {
       "id": "document-unreadable-duplicate-member",
       "title": "An acceptance repeating a member name",
       "site": null
@@ -659,6 +679,16 @@
     {
       "id": "decode-failed-trns-sample-out-of-range",
       "title": "A `tRNS` sample the image's bit depth cannot contain",
+      "site": null
+    },
+    {
+      "id": "artifact-greyscale-alpha-decodes",
+      "title": "A greyscale-alpha accepted candidate",
+      "site": null
+    },
+    {
+      "id": "artifact-truecolour-suggested-palette",
+      "title": "A truecolour accepted candidate carrying a suggested palette",
       "site": null
     },
     {
