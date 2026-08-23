@@ -11,6 +11,12 @@ done** — see below.
 **Blocks:** the element gates in [batch 05](05-acceptance-engines.md).
 **Ships:** **yes.** Click an element, report *that element* rather than "somewhere in this picture".
 
+> **Delivered.** The focused comparison mounts the derived semantics layers over its Actual panel,
+> `GET /{system}/tags/{previewId}` serves the published index, and `<cp-element-selection>` fills
+> `element` and `bounds` in the locator block from a tag or a dragged region. What is written below
+> is the brief that produced it; the notes marked **Shipped as** record where each part landed and
+> the one place the shape differs from what the brief anticipated.
+
 **Read first:** [`../COMPONENT_PARITY_WORKFLOW.md`](../COMPONENT_PARITY_WORKFLOW.md) §5 and §6
 steps 5–6; `ServeSemanticsTags.kt` and `scripts/design-artifacts/tag-index.mjs` (the two producers,
 and the KDoc in each explains the rules); `inspect.js` and `viewer.js`'s `data-cp-src` frame
@@ -124,6 +130,24 @@ needs a drag selection, convert it into render pixels before serialising.
 - `bounds` may be absent for a tag whose every carrying node had a zero-area box. Handle it; do not
   assume presence.
 
+## Shipped as
+
+| Part of the brief | Where it landed |
+| --- | --- |
+| §1 generalise the inspection machinery | `cli/serve-web/src/inspect/host.ts`. The viewer's tag keeps its wiring and a tag naming a host reads its frame, layer, legend and toggles from there. Pinned byte for byte *before* the refactor by `test/inspectLayersMarkup.test.ts`, as the brief asked. |
+| §1 derived layers on the comparison | A second, separately-labelled **Render semantics** control group, its own layer inside the Actual panel and its own legend under the grid. Deliberately not folded into the existing `Annotations` toggles: those switch the layer a producer *authored* and this page inlines for both panels, these switch what the render's own semantics tree *says*, and only the render has one. |
+| §2 the HTTP route | `GET /tags/{name}` (`.json` accepted and stripped), beside `/reference` and `/pages`, through `ServeAnnotationsPayload.encodeTags` — the same encoder the `.annotations` response already uses for its `tags` key, so the two lanes cannot drift on the field that names the plane. Reserved against site hosts in `ServeSites.RESERVED_SYSTEMS`. |
+| §2 same-generation coupling | Not built — and not needed for what shipped, because tag selection is **withheld** rather than coupled. `handleReferenceComparison` offers the picker only when the published index describes the frame on screen: an index exists, no overrides are applied, and no revision is pinned. Otherwise it omits the picker, states which of those three is the reason, and keeps the drag. Batch 05 still needs the shared generation before an element gate can read the index. |
+| §3 selection | `<cp-element-selection>`. A tag with `count > 1` is listed with its count and disabled — and refused again in the handler, for a keyboard path or a browser that ignores `disabled`. A drag is converted by `toRenderPixels`, rounding outward. |
+| §4 into the locator | A `{{selection}}` placeholder in the served body template, filled by `report/locator.ts`, which is pinned to the shared fixture alongside the Kotlin writer and the JavaScript parser. |
+
+One thing changed that the brief did not anticipate: the report's hidden body now has a **single
+writer** (`report/body.ts`). Three producers feed it — the render URL, the scorer, the selection —
+and each writing the whole body meant the last to run won, so selecting after scoring dropped the
+scores and scoring after selecting dropped the selection. Neither loss is visible anywhere but in
+the filed issue. A consequence worth knowing: a comparison the browser cannot score now files a
+report with no `| Raw comparison |` row, where before it filed the server's body unchanged.
+
 ## Done when
 
 - A tagged node with no typography or container tokens is selectable — the case the annotation-box-only
@@ -138,3 +162,10 @@ needs a drag selection, convert it into render pixels before serialising.
 Mandatory. Before/after of the comparison page with the derived layers mounted and a selection
 active, both themes, via `ServeWebFixtureTest` → `pages-snapshot.spec.mjs`. The existing
 `renders/parity-comparison-annotations/` set is the precedent for committing them alongside.
+
+**Committed at [`renders/parity-element-selection/`](../../../renders/parity-element-selection/).**
+Two new `pages-snapshot.spec.mjs` states take them and keep taking them, so every future change to
+the layers or the selector is diffed without anyone remembering to: `render-semantics` (the derived
+layers on, asserting they land over the Actual panel and nowhere else) and `element-selected` (a tag
+chosen, asserting the two canonical fields reach the report's hidden body rather than trusting the
+status line). The pinned fixture covers the withheld-picker case in its default shot.
