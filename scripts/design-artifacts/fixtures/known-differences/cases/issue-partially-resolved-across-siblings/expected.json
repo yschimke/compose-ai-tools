@@ -1,0 +1,20 @@
+{
+  "pins": [
+    "statuses",
+    "validationFailures",
+    "locallyResolvedIssues"
+  ],
+  "statuses": {
+    "m3-button-elevated-shadow": {
+      "status": "resolved"
+    },
+    "m3-card-elevated-shadow": {
+      "status": "out-of-scope"
+    },
+    "m3-togglebutton-elevated-shadow": {
+      "status": "out-of-scope"
+    }
+  },
+  "validationFailures": [],
+  "locallyResolvedIssues": []
+}

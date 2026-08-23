@@ -1,0 +1,910 @@
+{
+  "schema": "compose-preview-known-differences/v1",
+  "cases": [
+    {
+      "id": "pilot-40-iconbutton-tonal-glyph",
+      "title": "m3-catalog#40 — IconButton/Tonal glyph colour",
+      "site": "yschimke/m3-catalog#40"
+    },
+    {
+      "id": "pilot-41-navigationbar-short",
+      "title": "m3-catalog#41 — ShortNavigationBar measures items at full bar width",
+      "site": "yschimke/m3-catalog#41"
+    },
+    {
+      "id": "pilot-87-checkbox-checked-ring",
+      "title": "m3-catalog#87 — Checkbox box padding 2dp vs 4dp",
+      "site": "yschimke/m3-catalog#87"
+    },
+    {
+      "id": "pilot-42-elevated-shadow-trio",
+      "title": "m3-catalog#42 — Elevated shadow level, three components on one issue",
+      "site": "yschimke/m3-catalog#42 (Button/Elevated, Card/Elevated, ToggleButton/Elevated)"
+    },
+    {
+      "id": "issue-partially-resolved-across-siblings",
+      "title": "m3-catalog#42 — one of three acceptances resolves, and the issue stays open",
+      "site": "yschimke/m3-catalog#42 (Button/Elevated resolved; Card, ToggleButton still live)"
+    },
+    {
+      "id": "gate-resolved-fixed-candidate",
+      "title": "The candidate gate fired and the region converged on the reference",
+      "site": "yschimke/m3-catalog#40 (fixed)"
+    },
+    {
+      "id": "gate-metric-single-channel-over",
+      "title": "One channel past `candidateTolerance`, three identical",
+      "site": null
+    },
+    {
+      "id": "gate-metric-every-channel-at-tolerance",
+      "title": "Every channel exactly at `candidateTolerance`",
+      "site": null
+    },
+    {
+      "id": "gate-candidate-changed",
+      "title": "The masked region is neither the accepted difference nor the reference",
+      "site": null
+    },
+    {
+      "id": "gate-reference-changed",
+      "title": "The served reference no longer hashes to the recorded one",
+      "site": null
+    },
+    {
+      "id": "gate-served-hash-uppercase",
+      "title": "An uppercase *served* reference hash must not report `reference-changed`",
+      "site": null
+    },
+    {
+      "id": "gate-plane-changed-short-circuits-element",
+      "title": "A changed plane short-circuits the element gates",
+      "site": null
+    },
+    {
+      "id": "plane-full-canvas-acceptance",
+      "title": "An acceptance authored and evaluated on the full-canvas plane",
+      "site": null
+    },
+    {
+      "id": "gate-element-ambiguous",
+      "title": "The tag is carried by more than one node",
+      "site": null
+    },
+    {
+      "id": "gate-element-vanished",
+      "title": "The tag resolves to nothing at all",
+      "site": null
+    },
+    {
+      "id": "gate-element-unique-bounds-absent",
+      "title": "The tag resolves to exactly one node that carries no bounds at all",
+      "site": null
+    },
+    {
+      "id": "gate-element-unique-bounds-zero-area",
+      "title": "The tag resolves to exactly one node that carries a zero-area box",
+      "site": null
+    },
+    {
+      "id": "gate-element-moved-past-tolerance",
+      "title": "The resolved element moved further than `element.tolerance` allows",
+      "site": null
+    },
+    {
+      "id": "gate-element-resized-not-moved",
+      "title": "The element kept its origin and changed size",
+      "site": null
+    },
+    {
+      "id": "gate-element-denominator-is-the-smaller-side",
+      "title": "A rectangular baseline, displaced between the two possible thresholds",
+      "site": null
+    },
+    {
+      "id": "element-bounds-negative-origin",
+      "title": "An acceptance whose element baseline has a negative origin",
+      "site": null
+    },
+    {
+      "id": "gate-element-at-tolerance",
+      "title": "A displacement exactly at tolerance passes",
+      "site": null
+    },
+    {
+      "id": "gate-element-at-tolerance-inexact-product",
+      "title": "A displacement at a tolerance whose product is not exact in binary",
+      "site": null
+    },
+    {
+      "id": "gate-multiple-causes",
+      "title": "Several gates fire at once",
+      "site": null
+    },
+    {
+      "id": "gate-multiple-causes-reference-and-plane",
+      "title": "The reference and the plane both changed",
+      "site": null
+    },
+    {
+      "id": "set-overlapping-masks",
+      "title": "Two acceptances whose masks overlap",
+      "site": null
+    },
+    {
+      "id": "set-mixed-validity",
+      "title": "One acceptance survives while its sibling is invalidated",
+      "site": null
+    },
+    {
+      "id": "scope-other-previewid",
+      "title": "An acceptance authored for another `previewId`",
+      "site": null
+    },
+    {
+      "id": "scope-other-referenceid",
+      "title": "An acceptance authored for another `referenceId`",
+      "site": null
+    },
+    {
+      "id": "scope-other-variant",
+      "title": "An acceptance authored for another `variant`",
+      "site": null
+    },
+    {
+      "id": "scope-other-system",
+      "title": "A `wear-m3` acceptance must not suppress pixels in `m3`",
+      "site": null
+    },
+    {
+      "id": "scope-overrides-match",
+      "title": "An acceptance authored under overrides applies at the frame carrying the same ones",
+      "site": null
+    },
+    {
+      "id": "scope-overrides-differ",
+      "title": "An acceptance authored at `fontScale=1.5` does not apply at the default frame",
+      "site": null
+    },
+    {
+      "id": "scope-refusal-is-comparison-independent",
+      "title": "A record that is out of scope *and* broken is still `refused`",
+      "site": null
+    },
+    {
+      "id": "document-at-byte-cap",
+      "title": "A document of exactly 1 MiB",
+      "site": null
+    },
+    {
+      "id": "document-over-byte-cap-multibyte",
+      "title": "A document past the ceiling in bytes but not in characters",
+      "site": null
+    },
+    {
+      "id": "document-over-byte-cap",
+      "title": "A document past the 1 MiB ceiling",
+      "site": null
+    },
+    {
+      "id": "document-unreadable-truncated",
+      "title": "Truncated JSON",
+      "site": null
+    },
+    {
+      "id": "document-unreadable-wrong-schema-token",
+      "title": "A document carrying a different schema token",
+      "site": null
+    },
+    {
+      "id": "document-unreadable-acceptances-not-array",
+      "title": "`acceptances` is an object",
+      "site": null
+    },
+    {
+      "id": "document-duplicate-ids",
+      "title": "One id used three times and a second used twice",
+      "site": null
+    },
+    {
+      "id": "document-id-missing",
+      "title": "Absent, blank, numeric and object ids",
+      "site": null
+    },
+    {
+      "id": "document-count-over-cap",
+      "title": "257 acceptances — one past the cap",
+      "site": null
+    },
+    {
+      "id": "document-count-at-cap",
+      "title": "256 acceptances — exactly the cap",
+      "site": null
+    },
+    {
+      "id": "document-combined-failures",
+      "title": "A duplicated id, an unkeyable record and an over-cap count at once",
+      "site": null
+    },
+    {
+      "id": "document-pixels-at-cap",
+      "title": "128 megapixels declared across the set — exactly the cap",
+      "site": null
+    },
+    {
+      "id": "document-pixels-over-cap",
+      "title": "128,000,001 declared across the set — the first total past the cap",
+      "site": null
+    },
+    {
+      "id": "gate-resolution-reference-dimensions-differ",
+      "title": "A canonical reference whose dimensions are not the recorded plane's",
+      "site": null
+    },
+    {
+      "id": "document-axis-at-cap",
+      "title": "A raster exactly 8192 px on its long axis",
+      "site": null
+    },
+    {
+      "id": "document-axis-over-cap",
+      "title": "A raster 8193 px on its long axis",
+      "site": null
+    },
+    {
+      "id": "artifact-at-byte-cap",
+      "title": "A mask of exactly 8 MiB encoded",
+      "site": null
+    },
+    {
+      "id": "artifact-too-large",
+      "title": "A mask one byte past 8 MiB encoded",
+      "site": null
+    },
+    {
+      "id": "id-not-safe-proto",
+      "title": "An `id` of `__proto__`",
+      "site": null
+    },
+    {
+      "id": "id-not-safe-single-dot",
+      "title": "An `id` of `.` reaching a sibling's `mask.png`",
+      "site": null
+    },
+    {
+      "id": "id-not-safe-parent-dot",
+      "title": "An `id` of `..`",
+      "site": null
+    },
+    {
+      "id": "id-not-safe-separator",
+      "title": "An `id` carrying a path separator",
+      "site": null
+    },
+    {
+      "id": "path-not-contained-case-folded-collision",
+      "title": "Two artifact paths differing only in case",
+      "site": null
+    },
+    {
+      "id": "accepted-at-fractional-seconds",
+      "title": "An `acceptedAt` carrying a fractional second",
+      "site": null
+    },
+    {
+      "id": "artifact-unreadable-path-is-a-directory",
+      "title": "A mask path that resolves to a directory",
+      "site": null
+    },
+    {
+      "id": "artifact-path-nested-directories",
+      "title": "A mask stored below a nested directory inside its acceptance",
+      "site": null
+    },
+    {
+      "id": "mask-and-candidate-share-one-path",
+      "title": "A record naming the same artifact as both its mask and its accepted candidate",
+      "site": null
+    },
+    {
+      "id": "accepted-at-lowercase-separators",
+      "title": "An `acceptedAt` using lowercase `t` and `z`",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-issue-url-untrimmed",
+      "title": "An `issue` with surrounding whitespace",
+      "site": null
+    },
+    {
+      "id": "accepted-at-absent-is-legal",
+      "title": "A record with no `acceptedAt` at all",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-accepted-at-calendar-impossible",
+      "title": "An `acceptedAt` whose fields are each legal and whose date does not exist",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-accepted-at-leap-second-off-instant",
+      "title": "A second `60` away from the leap-second instant",
+      "site": null
+    },
+    {
+      "id": "accepted-at-leap-second-at-instant",
+      "title": "A real leap second, and one reached through an offset",
+      "site": null
+    },
+    {
+      "id": "accepted-at-leap-second-through-offset",
+      "title": "A leap second written in a non-UTC offset",
+      "site": null
+    },
+    {
+      "id": "accepted-at-leap-second-negative-offset",
+      "title": "A leap second written in a negative offset",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-accepted-at-impossible-date",
+      "title": "An `acceptedAt` with the right shape and impossible values",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-accepted-at-not-a-timestamp",
+      "title": "An `acceptedAt` that is a string but not a date-time",
+      "site": null
+    },
+    {
+      "id": "path-not-contained-windows-reserved-name",
+      "title": "An artifact path segment Windows cannot open",
+      "site": null
+    },
+    {
+      "id": "path-not-contained-trailing-dot",
+      "title": "An artifact path segment ending in a dot",
+      "site": null
+    },
+    {
+      "id": "id-not-safe-integer-like",
+      "title": "An `id` that is a canonical integer",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-box-far-edge-unsafe",
+      "title": "A box whose fields are safe but whose far edge is not",
+      "site": null
+    },
+    {
+      "id": "id-at-segment-length-cap",
+      "title": "An `id` of exactly 255 bytes",
+      "site": null
+    },
+    {
+      "id": "path-at-segment-length-cap",
+      "title": "An artifact path segment of exactly 255 bytes",
+      "site": null
+    },
+    {
+      "id": "id-not-safe-segment-too-long",
+      "title": "An `id` longer than a filesystem component",
+      "site": null
+    },
+    {
+      "id": "artifact-unreadable-case-differs",
+      "title": "A path whose casing is not the committed file's",
+      "site": null
+    },
+    {
+      "id": "path-not-contained-segment-too-long",
+      "title": "An artifact path segment longer than a filesystem component",
+      "site": null
+    },
+    {
+      "id": "id-not-safe-windows-reserved-name",
+      "title": "An `id` Windows cannot open",
+      "site": null
+    },
+    {
+      "id": "path-not-contained-backslash",
+      "title": "An artifact path containing a backslash",
+      "site": null
+    },
+    {
+      "id": "path-not-contained-hash",
+      "title": "An artifact path containing `#`",
+      "site": null
+    },
+    {
+      "id": "path-not-contained-parent",
+      "title": "An artifact path leaving the acceptance's directory",
+      "site": null
+    },
+    {
+      "id": "path-not-contained-absolute",
+      "title": "An absolute artifact path",
+      "site": null
+    },
+    {
+      "id": "mask-encoding-rgba-with-binary-samples",
+      "title": "An RGBA mask whose samples are strictly binary",
+      "site": null
+    },
+    {
+      "id": "mask-encoding-palette-with-binary-samples",
+      "title": "An indexed mask whose palette entries are strictly binary",
+      "site": null
+    },
+    {
+      "id": "mask-encoding-anti-aliased-sample",
+      "title": "A greyscale mask carrying one intermediate value",
+      "site": null
+    },
+    {
+      "id": "mask-encoding-transparency",
+      "title": "A greyscale mask carrying `tRNS`",
+      "site": null
+    },
+    {
+      "id": "mask-empty",
+      "title": "A mask that selects nothing",
+      "site": null
+    },
+    {
+      "id": "animated-png-mask",
+      "title": "An animated mask",
+      "site": null
+    },
+    {
+      "id": "header-invalid-beside-animated-sibling",
+      "title": "An unreadable mask header beside an animated accepted candidate",
+      "site": null
+    },
+    {
+      "id": "animated-png-accepted-candidate",
+      "title": "An animated accepted candidate",
+      "site": null
+    },
+    {
+      "id": "dimension-mismatch-mask-against-plane",
+      "title": "A mask that is not the recorded plane's size",
+      "site": null
+    },
+    {
+      "id": "dimension-mismatch-accepted-against-mask-box",
+      "title": "An accepted candidate that is not the mask's bounding box",
+      "site": null
+    },
+    {
+      "id": "hash-mismatch-accepted-candidate-only",
+      "title": "Only the accepted candidate fails its recorded hash",
+      "site": null
+    },
+    {
+      "id": "hash-mismatch-both-artifacts",
+      "title": "Both artifacts fail their recorded hash",
+      "site": null
+    },
+    {
+      "id": "hash-recorded-uppercase",
+      "title": "An uppercase **recorded** hash",
+      "site": null
+    },
+    {
+      "id": "artifact-unreadable-missing-file",
+      "title": "A path that resolves to no file at all",
+      "site": null
+    },
+    {
+      "id": "header-invalid-truncated-file",
+      "title": "A file that opens and holds too few bytes for an `IHDR`",
+      "site": null
+    },
+    {
+      "id": "decode-failed-correctly-hashed-garbage",
+      "title": "A correctly hashed artifact that is not decodable",
+      "site": null
+    },
+    {
+      "id": "tolerance-candidate-at-ceiling",
+      "title": "`candidateTolerance` of exactly 8",
+      "site": null
+    },
+    {
+      "id": "tolerance-candidate-at-floor",
+      "title": "`candidateTolerance` of exactly 0",
+      "site": null
+    },
+    {
+      "id": "tolerance-element-at-floor",
+      "title": "`element.tolerance` of exactly 0",
+      "site": null
+    },
+    {
+      "id": "tolerance-candidate-over-ceiling",
+      "title": "`candidateTolerance` of 9",
+      "site": null
+    },
+    {
+      "id": "tolerance-candidate-negative",
+      "title": "`candidateTolerance` of -1",
+      "site": null
+    },
+    {
+      "id": "tolerance-candidate-fractional",
+      "title": "`candidateTolerance` of 0.5",
+      "site": null
+    },
+    {
+      "id": "tolerance-element-over-ceiling",
+      "title": "`element.tolerance` of 0.3",
+      "site": null
+    },
+    {
+      "id": "tolerance-element-negative",
+      "title": "`element.tolerance` of -0.01",
+      "site": null
+    },
+    {
+      "id": "reference-hash-missing",
+      "title": "The targeted reference publishes no `sha256`",
+      "site": null
+    },
+    {
+      "id": "acceptance-is-noop",
+      "title": "A stored candidate that already agrees with the reference",
+      "site": null
+    },
+    {
+      "id": "acceptance-is-noop-yields-to-reference-changed",
+      "title": "A no-op acceptance whose reference has also moved",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-missing-issue",
+      "title": "A record with no `issue`",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-unparseable-issue",
+      "title": "An `issue` that is not a GitHub issue URL",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-unknown-element-kind",
+      "title": "An `element.kind` this version does not define",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-box-beyond-safe-integer",
+      "title": "A box coordinate past the safe-integer range",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-missing-plane",
+      "title": "A record with no recorded canonical plane",
+      "site": null
+    },
+    {
+      "id": "orphaned-target-component-renamed",
+      "title": "The component was renamed while its ids stayed put",
+      "site": null
+    },
+    {
+      "id": "orphaned-target-reference-detached",
+      "title": "The reference now hangs off a different preview",
+      "site": null
+    },
+    {
+      "id": "orphaned-target-variant-disagrees-with-preview-id",
+      "title": "A recorded `variant` that disagrees with its own `previewId`",
+      "site": null
+    },
+    {
+      "id": "document-duplicate-ids-case-folded",
+      "title": "Two ids differing only in case",
+      "site": null
+    },
+    {
+      "id": "document-unreadable-fractional-coordinate",
+      "title": "A geometry coordinate written as a non-integer",
+      "site": null
+    },
+    {
+      "id": "document-unreadable-duplicate-member-escaped",
+      "title": "A repeated member name spelled with an escape",
+      "site": null
+    },
+    {
+      "id": "document-unreadable-duplicate-member",
+      "title": "An acceptance repeating a member name",
+      "site": null
+    },
+    {
+      "id": "document-unreadable-unknown-property",
+      "title": "A document carrying a property `v1` does not define",
+      "site": null
+    },
+    {
+      "id": "document-non-object-acceptances",
+      "title": "`acceptances` holding `null`, a string and an array",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-unknown-property",
+      "title": "A record carrying the `finding` field cut from `v1`",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-unknown-property-named-like-geometry",
+      "title": "An unknown record property that shares a geometry field's name",
+      "site": null
+    },
+    {
+      "id": "document-unreadable-element-tolerance-over-by-rounding",
+      "title": "An `element.tolerance` just past the ceiling, rounded back inside it",
+      "site": null
+    },
+    {
+      "id": "element-tolerance-at-ceiling-padded",
+      "title": "An `element.tolerance` of `0.25` written past the digit limit",
+      "site": null
+    },
+    {
+      "id": "document-unreadable-candidate-tolerance-exponent-overflow",
+      "title": "A `candidateTolerance` whose exponent overflows the double",
+      "site": null
+    },
+    {
+      "id": "tolerance-element-exponent-overflow",
+      "title": "An `element.tolerance` whose exponent overflows the double",
+      "site": null
+    },
+    {
+      "id": "document-unreadable-element-tolerance-negative-underflow",
+      "title": "An `element.tolerance` negative by a magnitude too small to survive the parse",
+      "site": null
+    },
+    {
+      "id": "document-unreadable-fractional-candidate-tolerance",
+      "title": "A `candidateTolerance` written as a near-integer fraction",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-unknown-element-property",
+      "title": "An `element` carrying a property `v1` does not define",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-note-wrong-type",
+      "title": "A numeric `note`",
+      "site": null
+    },
+    {
+      "id": "variant-empty-is-valid",
+      "title": "A default preview's empty `variant`",
+      "site": null
+    },
+    {
+      "id": "decode-failed-ihdr-crc-mismatch",
+      "title": "A hash-valid artifact whose `IHDR` CRC does not verify",
+      "site": null
+    },
+    {
+      "id": "decode-failed-chunk-crc-mismatch",
+      "title": "A hash-valid artifact whose `IDAT` CRC does not verify",
+      "site": null
+    },
+    {
+      "id": "decode-failed-bytes-after-idat-stream",
+      "title": "Bytes after the end of the `IDAT` zlib stream",
+      "site": null
+    },
+    {
+      "id": "header-invalid-inflates-past-declared-size",
+      "title": "A small legal header in front of a much larger inflation",
+      "site": null
+    },
+    {
+      "id": "decode-failed-bytes-after-iend",
+      "title": "An artifact carrying a chunk after `IEND`",
+      "site": null
+    },
+    {
+      "id": "decode-failed-chunk-not-permitted",
+      "title": "An artifact carrying an ancillary chunk",
+      "site": null
+    },
+    {
+      "id": "decode-failed-colour-space-chunk",
+      "title": "An artifact carrying a colour-space chunk",
+      "site": null
+    },
+    {
+      "id": "decode-failed-duplicate-ihdr",
+      "title": "A second `IHDR`",
+      "site": null
+    },
+    {
+      "id": "decode-failed-trns-after-idat",
+      "title": "A `tRNS` after the image data",
+      "site": null
+    },
+    {
+      "id": "decode-failed-non-empty-iend",
+      "title": "A non-empty `IEND`",
+      "site": null
+    },
+    {
+      "id": "decode-failed-trns-on-alpha-colour-type",
+      "title": "A `tRNS` beside a colour type that already carries alpha",
+      "site": null
+    },
+    {
+      "id": "zero-alpha-rgb-is-normalised",
+      "title": "Transparent pixels whose hidden colour differs",
+      "site": null
+    },
+    {
+      "id": "decode-failed-plte-after-trns",
+      "title": "A truecolor `PLTE` placed after `tRNS`",
+      "site": null
+    },
+    {
+      "id": "decode-failed-trns-sample-out-of-range",
+      "title": "A `tRNS` sample the image's bit depth cannot contain",
+      "site": null
+    },
+    {
+      "id": "artifact-greyscale-alpha-decodes",
+      "title": "A greyscale-alpha accepted candidate",
+      "site": null
+    },
+    {
+      "id": "artifact-truecolour-suggested-palette",
+      "title": "A truecolour accepted candidate carrying a suggested palette",
+      "site": null
+    },
+    {
+      "id": "artifact-rgba-suggested-palette",
+      "title": "An RGBA accepted candidate carrying a suggested palette",
+      "site": null
+    },
+    {
+      "id": "artifact-indexed-opaque-without-trns",
+      "title": "An indexed accepted candidate with no transparency chunk",
+      "site": null
+    },
+    {
+      "id": "artifact-indexed-entry-beyond-trns",
+      "title": "An indexed accepted candidate selecting a palette entry `tRNS` does not describe",
+      "site": null
+    },
+    {
+      "id": "artifact-scanline-filters-multi-channel",
+      "title": "An RGBA accepted candidate whose scanlines use filters 1–4",
+      "site": null
+    },
+    {
+      "id": "artifact-trns-greyscale-decodes",
+      "title": "A greyscale accepted candidate whose `tRNS` names its own sample",
+      "site": null
+    },
+    {
+      "id": "artifact-trns-truecolour-decodes",
+      "title": "A truecolour accepted candidate whose `tRNS` names its own colour",
+      "site": null
+    },
+    {
+      "id": "decode-failed-empty-palette-trns",
+      "title": "A zero-length palette `tRNS`",
+      "site": null
+    },
+    {
+      "id": "decode-failed-palette-on-greyscale",
+      "title": "A `PLTE` in a greyscale image",
+      "site": null
+    },
+    {
+      "id": "decode-failed-missing-iend",
+      "title": "A stream truncated after a complete `IDAT`",
+      "site": null
+    },
+    {
+      "id": "artifact-scanline-filters-are-honoured",
+      "title": "An artifact whose scanlines use filters 1–4",
+      "site": null
+    },
+    {
+      "id": "decode-failed-unsupported-filter-method",
+      "title": "An `IHDR` declaring a filter method the specification does not define",
+      "site": null
+    },
+    {
+      "id": "decode-failed-unsupported-compression-method",
+      "title": "An `IHDR` declaring a compression method the specification does not define",
+      "site": null
+    },
+    {
+      "id": "decode-failed-interlaced-accepted-candidate",
+      "title": "An interlaced accepted candidate",
+      "site": null
+    },
+    {
+      "id": "decode-failed-16-bit-accepted-candidate",
+      "title": "A 16-bit accepted candidate",
+      "site": null
+    },
+    {
+      "id": "decode-failed-unrecognized-critical-chunk",
+      "title": "An unrecognized **critical** chunk with a valid CRC",
+      "site": null
+    },
+    {
+      "id": "trns-transparency-is-decoded",
+      "title": "An accepted candidate carrying `tRNS`",
+      "site": null
+    }
+  ],
+  "resample": [
+    {
+      "id": "downscale-2x1-average",
+      "title": "Four pixels averaged into one"
+    },
+    {
+      "id": "rounding-exactly-half",
+      "title": "An average landing exactly on .5"
+    },
+    {
+      "id": "downscale-non-integer-ratio",
+      "title": "Three pixels into two — partial footprints"
+    },
+    {
+      "id": "downscale-non-integer-ratio-vertical",
+      "title": "Three rows into two — the same partial footprints, on the other axis"
+    },
+    {
+      "id": "downscale-non-integer-ratio-both-axes",
+      "title": "Three by three into two by two — a genuinely two-dimensional footprint"
+    },
+    {
+      "id": "upscale-integer-ratio",
+      "title": "Two pixels into four"
+    },
+    {
+      "id": "upscale-non-integer-ratio",
+      "title": "Two pixels into three — the upscale that does not reduce to nearest-neighbour"
+    },
+    {
+      "id": "rounding-half-survives-the-ratio",
+      "title": "An exact half that floating-point footprints lose"
+    },
+    {
+      "id": "alpha-is-a-fourth-channel",
+      "title": "Alpha averaged without premultiplication"
+    }
+  ],
+  "rounding": [
+    {
+      "id": "integer-box-is-unchanged",
+      "title": "A box already on the grid"
+    },
+    {
+      "id": "fractional-origin-floors",
+      "title": "A fractional origin"
+    },
+    {
+      "id": "fractional-far-edge-ceils",
+      "title": "A fractional far edge"
+    },
+    {
+      "id": "fractional-both-ends",
+      "title": "Fractional at both ends"
+    },
+    {
+      "id": "negative-origin",
+      "title": "A box whose origin is negative"
+    }
+  ]
+}

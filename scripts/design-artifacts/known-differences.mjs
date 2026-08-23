@@ -1,0 +1,1499 @@
+/**
+ * `compose-preview-known-differences/v1` — the committed known-difference contract, as executable
+ * rules.
+ *
+ * Defined in this repo because `serve` is a consumer and the other wire contracts
+ * (`compose-preview-references/v1`, `compose-preview-annotations/v1`,
+ * `compose-preview-activity/v1`) already live here; `design-parity` and
+ * `@design-parity/catalog-export` are the second consumer and the publisher.
+ * [`COMPONENT_PARITY_WORKFLOW.md` §4](../../docs/design/COMPONENT_PARITY_WORKFLOW.md#the-normative-contract)
+ * is the specification — this file is the reference implementation of it, and the
+ * `fixtures/known-differences/` suite is what keeps the two, plus the two engines batch 05 writes,
+ * from drifting apart.
+ *
+ * **What this module decides, and what it deliberately does not.** It decides every *verdict*: the
+ * validation refusals, the five gates, the resolution test, the status precedence, and the exact
+ * ordering of `validationFailures` (`statuses` is a *map* — it promises one entry per acceptance,
+ * not an order). It does **not** compute `raw` / `accepted` /
+ * `unaccepted` — those need the separated-plane scoring path that is batch 05's deliverable, and
+ * inventing numbers here would pin a scorer nobody has written. The gates are what a mask is allowed
+ * to suppress, so they are the half that has to be settled first (I1: every gate resolves before any
+ * score is computed).
+ *
+ * The canonical-plane rasters arrive **already resampled**, as inputs. That is the same seam: the
+ * portable resampler is specified (see {@link resampleArea}) and pinned by its own fixture group,
+ * but the gate cases pin gate semantics rather than re-deriving the resample in every one of them —
+ * so a resampler divergence fails as a resampler divergence, which is the whole point of pinning
+ * intermediate stages at all.
+ */
+
+import { decodePng, preflightPng, sha256Hex } from "./png-lite.mjs";
+
+/** The schema token a document must carry, exactly. */
+export const KNOWN_DIFFERENCES_SCHEMA = "compose-preview-known-differences/v1";
+
+/**
+ * The budget, versioned with the schema.
+ *
+ * All five are *inclusive* ceilings — a document at exactly 256 acceptances, exactly 128 megapixels,
+ * exactly 8192 px on a side or exactly 8 MiB per artifact is legal, and one unit past refuses. A
+ * `>=` check would reject both and leave two engines free to disagree about the case in between.
+ */
+export const BUDGET = {
+  maxDocumentBytes: 1024 * 1024,
+  maxAcceptances: 256,
+  maxPixels: 128_000_000,
+  maxAxis: 8192,
+  maxArtifactBytes: 8 * 1024 * 1024,
+};
+
+/** `candidateTolerance` is an 8-bit channel distance and an integer; `element.tolerance` is real. */
+export const CANDIDATE_TOLERANCE_RANGE = [0, 8];
+export const ELEMENT_TOLERANCE_RANGE = [0, 0.25];
+
+/** The exact spellings JavaScript treats as integer keys — no leading zeros, no `+`, no fraction. */
+const CANONICAL_INTEGER = /^-?(0|[1-9][0-9]*)$/;
+
+/** Ids that are fine as path segments and catastrophic as map keys. */
+const RESERVED_IDS = new Set(["__proto__", "constructor", "prototype"]);
+
+/**
+ * Segment names Windows cannot open, whatever extension follows them.
+ *
+ * `artifacts/CON.png` commits fine, evaluates fine on POSIX, and cannot be created under that name on
+ * Windows at all — so the offline engine reads a file the serving host reports as
+ * `artifact-unreadable`, which is the divergence the "contained **and** portable" rule exists to
+ * close. Reserved names apply with any extension, so the check is on the segment up to its first dot,
+ * case-insensitively. A trailing dot or space is the same class: Windows silently strips it, so two
+ * distinct committed names collapse onto one file there.
+ */
+const RESERVED_SEGMENTS = new Set([
+  "con",
+  "prn",
+  "aux",
+  "nul",
+  ...Array.from({ length: 9 }, (_, i) => `com${i + 1}`),
+  ...Array.from({ length: 9 }, (_, i) => `lpt${i + 1}`),
+]);
+
+/**
+ * The longest a single segment may be, in bytes.
+ *
+ * ext4, APFS, NTFS and every other filesystem a checkout of this repository plausibly lands on cap a
+ * *component* at 255 — not the path, the component — so a 256-character id is a record a URL-backed
+ * consumer fetches and evaluates happily while a normal `git checkout` cannot even create the
+ * directory it names, and the offline engine reports `artifact-unreadable` for bytes the serving
+ * host validated. That is the same host-versus-checkout divergence the reserved-name and
+ * trailing-dot rules exist to close, so it gets the same treatment rather than a new token. The
+ * character class is ASCII-only, checked first, so counting characters here counts bytes.
+ *
+ * Per segment and not per path on purpose: `PATH_MAX` is a property of the *reader's* working
+ * directory, not of the document, so a total-length rule would make the same committed bytes legal
+ * in one checkout and refused in another — which is the divergence, not a fix for it.
+ */
+const MAX_SEGMENT_LENGTH = 255;
+
+function isPortableSegment(segment) {
+  if (!SAFE_SEGMENT.test(segment)) return false;
+  if (segment.length > MAX_SEGMENT_LENGTH) return false;
+  if (segment === "." || segment === "..") return false;
+  if (segment.endsWith(".") || segment.endsWith(" ")) return false;
+  return !RESERVED_SEGMENTS.has(segment.split(".")[0].toLowerCase());
+}
+
+/** The one character class an `id` or an artifact path segment may use. */
+const SAFE_SEGMENT = /^[A-Za-z0-9._-]+$/;
+
+const HEX64 = /^[0-9a-f]{64}$/;
+
+/** RFC 3339 date-time, which is what the schema's `format: "date-time"` means. */
+// The `T` and `Z` are case-insensitive — RFC 3339 says so in as many words — so an uppercase-only
+// pattern refuses a legal timestamp, which is a wrong verdict rather than a missing check.
+const RFC3339 = /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:[Zz]|([+-])(\d{2}):(\d{2}))$/;
+
+/**
+ * Shape **and** meaning. `2026-99-99T99:99:99Z` matches the punctuation and the digit counts and is
+ * not a date, so a validator asserting the schema's `date-time` format refuses what a pattern check
+ * accepts — the same gap the pattern was added to close, one level down. The calendar check is a
+ * round-trip through `Date`, which is where leap years and month lengths already live.
+ */
+function isRfc3339(value) {
+  const match = RFC3339.exec(value);
+  if (!match) return false;
+  const [, year, month, day, hour, minute, second, offsetSign, offsetHour, offsetMinute] = match;
+  if (Number(month) < 1 || Number(month) > 12) return false;
+  if (Number(day) < 1 || Number(day) > 31) return false;
+  if (Number(hour) > 23 || Number(minute) > 59 || Number(second) > 60) return false;
+  if (offsetHour !== undefined && (Number(offsetHour) > 23 || Number(offsetMinute) > 59)) return false;
+  // **Second 60 only where a leap second can be inserted.** RFC 3339 admits `60` for exactly one
+  // instant — `23:59:60` **UTC** — so `2026-01-01T12:00:60Z` matches the grammar and is not a
+  // date-time, and a strict consumer refuses the record this evaluator would go on to gate.
+  //
+  // An earlier round declined this, and the decline was aimed at a different proposal: refusing
+  // instants where no leap second was *actually* inserted needs the IERS table, which grows by
+  // announcement and cannot live in a committed contract. This rule needs no table. It asks only
+  // whether the instant is one where a leap second *could* be inserted, which is a property of the
+  // clock, and it accepts every real leap second past and future — including one announced after
+  // this code was written. That distinction is the whole of the disagreement, so the finding stands
+  // and the earlier reasoning does not apply to it.
+  if (Number(second) === 60) {
+    const offsetMinutes =
+      offsetHour === undefined
+        ? 0
+        : (offsetSign === "-" ? -1 : 1) * (Number(offsetHour) * 60 + Number(offsetMinute));
+    const utcMinutes = ((Number(hour) * 60 + Number(minute) - offsetMinutes) % 1440 + 1440) % 1440;
+    if (utcMinutes !== 23 * 60 + 59) return false;
+  }
+  const utc = new Date(`${year}-${month}-${day}T00:00:00Z`);
+  return (
+    utc.getUTCFullYear() === Number(year) &&
+    utc.getUTCMonth() + 1 === Number(month) &&
+    utc.getUTCDate() === Number(day)
+  );
+}
+
+/**
+ * The authoritative ordering for `reasons` and for `validationFailures`.
+ *
+ * Document-wide tokens lead, then identity, then structure, then artifacts — so a combined failure
+ * serialises the same way in both engines and a reader sees the widest problem first.
+ */
+export const REASON_ORDER = [
+  "document-unreadable",
+  "document-too-large",
+  "duplicate-id",
+  "id-missing",
+  "id-not-safe",
+  "schema-invalid",
+  "orphaned-target",
+  "path-not-contained",
+  "artifact-too-large",
+  "header-invalid",
+  "decode-failed",
+  "dimension-mismatch",
+  "mask-encoding-invalid",
+  "animated-png",
+  "mask-empty",
+  "artifact-unreadable",
+  "mask-hash-mismatch",
+  "accepted-candidate-hash-mismatch",
+  "reference-hash-missing",
+  "tolerance-out-of-range",
+  "acceptance-is-noop",
+];
+
+/** `causes` order, as the gate table lists them. `candidate-changed` never shares a list. */
+export const CAUSE_ORDER = [
+  "reference-changed",
+  "plane-changed",
+  "candidate-changed",
+  "element-ambiguous",
+  "element-moved",
+];
+
+const reasonRank = new Map(REASON_ORDER.map((token, index) => [token, index]));
+const causeRank = new Map(CAUSE_ORDER.map((token, index) => [token, index]));
+
+// ---------------------------------------------------------------------------------------------
+// The portable pixel path (batch 00's D5, answers 1 and 5)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The named resampler: an **area average over exact source footprints**, per channel, on
+ * non-premultiplied 8-bit RGBA, rounded half-up and clamped.
+ *
+ * Chosen over anything host-provided because `drawImage`'s filter is not reproducible off-browser
+ * and its smoothing quality is implementation-dependent — the same unchanged candidate bytes would
+ * otherwise produce different canonical pixels in the two engines and falsely invalidate as
+ * `candidate-changed`. An area average needs no kernel radius, no edge-extension rule (a footprint
+ * is clipped to the source rectangle and never samples outside it), and reduces to an exact box
+ * filter at integer ratios and to nearest-neighbour when upscaling by an integer — so the three
+ * cases an implementation is most likely to special-case are all the same arithmetic here.
+ *
+ * **Not premultiplied**, deliberately: premultiplying and un-premultiplying introduces a rounding
+ * step each way that two engines would have to agree on for no benefit, and this contract's
+ * artifacts are opaque by construction (a mask is greyscale with no alpha; an accepted candidate is
+ * a crop of an already-composited render). Alpha is averaged as an ordinary fourth channel.
+ *
+ * Accumulate in double precision and round **half-up** (`Math.floor(v + 0.5)`) exactly once, at the
+ * end — rounding per contribution is where two implementations drift.
+ */
+export function resampleArea(source, targetWidth, targetHeight) {
+  const { width, height, pixels } = source;
+  const out = new Uint8Array(targetWidth * targetHeight * 4);
+  // **Exact integer arithmetic, not floating footprints.** Scaling every coordinate by the target
+  // dimension turns each overlap into a difference of integers: destination `tx` covers source
+  // units `[tx·W, (tx+1)·W]` once both sides are multiplied by `T`, and a source column `sx` covers
+  // `[sx·T, (sx+1)·T]`. Their overlap is then exact, the weights are exact, and the average is a
+  // ratio of two integers rounded once.
+  //
+  // The floating version was subtly wrong at exactly the boundary this contract cares most about:
+  // resizing 108 columns to 87 puts destination 84 on a true `201.5`, which double arithmetic
+  // computes as `201.4999999999998` and rounds *down* — half-up in the specification and half-down
+  // in the implementation, from one unlucky ratio. A one-channel error is enough to move a
+  // tolerance-boundary gate verdict, so the kernel that exists to make two engines agree cannot be
+  // the thing that disagrees. The magnitudes stay far inside the safe-integer range: the scaled area
+  // of one destination pixel is `W × H`, at most 8192² here, and the numerator at most 255 times
+  // that.
+  for (let ty = 0; ty < targetHeight; ty++) {
+    const y0 = ty * height;
+    const y1 = (ty + 1) * height;
+    for (let tx = 0; tx < targetWidth; tx++) {
+      const x0 = tx * width;
+      const x1 = (tx + 1) * width;
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let a = 0;
+      let area = 0;
+      for (let sy = Math.floor(y0 / targetHeight); sy < height; sy++) {
+        const coverY = Math.min(y1, (sy + 1) * targetHeight) - Math.max(y0, sy * targetHeight);
+        if (coverY <= 0) break;
+        for (let sx = Math.floor(x0 / targetWidth); sx < width; sx++) {
+          const coverX = Math.min(x1, (sx + 1) * targetWidth) - Math.max(x0, sx * targetWidth);
+          if (coverX <= 0) break;
+          const weight = coverX * coverY;
+          const i = (sy * width + sx) * 4;
+          r += pixels[i] * weight;
+          g += pixels[i + 1] * weight;
+          b += pixels[i + 2] * weight;
+          a += pixels[i + 3] * weight;
+          area += weight;
+        }
+      }
+      const d = (ty * targetWidth + tx) * 4;
+      if (area === 0) continue;
+      out[d] = roundHalfUp(r, area);
+      out[d + 1] = roundHalfUp(g, area);
+      out[d + 2] = roundHalfUp(b, area);
+      out[d + 3] = roundHalfUp(a, area);
+    }
+  }
+  return { width: targetWidth, height: targetHeight, pixels: out };
+}
+
+/**
+ * `round(numerator / denominator)` with halves going up, computed without ever forming the quotient.
+ *
+ * Both arguments are non-negative integers, so this is `floor((2n + d) / 2d)` — exact wherever the
+ * inputs are, which is the whole point of the integer footprints above. Clamped for the same reason
+ * the float version was: a channel is a byte.
+ */
+function roundHalfUp(numerator, denominator) {
+  const value = Math.floor((2 * numerator + denominator) / (2 * denominator));
+  return Math.max(0, Math.min(255, value));
+}
+
+function clamp8(value) {
+  return Math.max(0, Math.min(255, Math.floor(value + 0.5)));
+}
+
+/**
+ * D5 answer 5, in one function: a real-valued box becomes the **enclosing** integer box.
+ *
+ * Outward rather than nearest, and the same rule at every transform — a mask or a selection that
+ * rounds inward is smaller than the region the author looked at, which is the direction that
+ * silently stops covering pixels. Applied after the transform's arithmetic, never during it.
+ */
+export function enclosingBox({ x, y, width, height }) {
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const x1 = Math.ceil(x + width);
+  const y1 = Math.ceil(y + height);
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+}
+
+/**
+ * D5 answer 6, the match metric shared by the candidate gate and the resolution test: the
+ * **maximum absolute per-channel difference over R, G, B and A**, applied **per pixel**.
+ *
+ * Per-pixel rather than aggregate because an aggregate needs a second constant — how many
+ * over-threshold pixels are too many — and a second constant is a second thing two engines pick
+ * differently. All four channels because that is what the existing delta map already charges for
+ * (`DIFF_CHANNEL_TOLERANCE` compares the same four), and an alpha-only change is a visible change.
+ * The comparison is `>`, so a pixel exactly at the tolerance passes — the same inclusive convention
+ * the tolerance ranges and the budget caps use.
+ *
+ * The mask is strictly binary, so "at the mask edge" is not a case: a canonical pixel is masked or
+ * it is not, and only masked pixels are compared.
+ */
+export function pixelsAgree(a, aOffset, b, bOffset, tolerance) {
+  return (
+    Math.abs(a[aOffset] - b[bOffset]) <= tolerance &&
+    Math.abs(a[aOffset + 1] - b[bOffset + 1]) <= tolerance &&
+    Math.abs(a[aOffset + 2] - b[bOffset + 2]) <= tolerance &&
+    Math.abs(a[aOffset + 3] - b[bOffset + 3]) <= tolerance
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Identity, paths and hashes
+// ---------------------------------------------------------------------------------------------
+
+/** An `id` is a single safe path segment, is neither dot name, and is safe as a map key. */
+export function isSafeId(id) {
+  if (typeof id !== "string" || !isPortableSegment(id)) return false;
+  if (RESERVED_IDS.has(id)) return false;
+  // **An integer-like id is a map-key hazard of the same family as `__proto__`.** JavaScript orders
+  // canonical array-index keys ahead of every other key and numerically among themselves, so a
+  // document listing `"10"` before `"2"` serialises them the other way round while an ordered-map
+  // consumer keeps the input order. `statuses` is a *map* and this contract promises it no ordering,
+  // so nothing is wrong today — but the `id` is doing double duty as an identifier and a key, and a
+  // key whose behaviour depends on the host language's property semantics is not one this schema
+  // should mint. Only canonical integers are affected; `2024-fix` is not.
+  //
+  // Spelled as a pattern rather than as `String(Number(id)) !== id`, which also refused `NaN`,
+  // `Infinity` and `-Infinity`: those round-trip through `Number` unchanged and are neither
+  // array-index properties nor reserved keys, so refusing them was the check disagreeing with the
+  // rule it implements. A leading-zero spelling like `007` is not canonical either, and is fine.
+  return !CANONICAL_INTEGER.test(id);
+}
+
+/**
+ * Artifact paths are contained **and** portable: segments of `[A-Za-z0-9._-]` joined by `/`.
+ *
+ * Containment alone is not enough. `a\b.png` is checked as two segments by a validator that
+ * rewrites `\` to `/` and opened as one filename on POSIX; `#` and `?` become URL syntax the moment
+ * the serving host fetches the artifact rather than reading it off disk. A committed artifact path
+ * has no need of the rest of Unicode, so the grammar removes the encoding question instead of
+ * answering it.
+ */
+export function isSafeArtifactPath(path) {
+  if (typeof path !== "string" || path.length === 0) return false;
+  if (path.startsWith("/")) return false;
+  return path.split("/").every(isPortableSegment);
+}
+
+/**
+ * Compare a hash this schema owns against one a catalog served.
+ *
+ * Only the *served* side may be spelled loosely: `ServeDesignReferenceStore` lowercases a reference
+ * hash to validate it and then serves the original spelling, so raw string inequality reports
+ * `reference-changed` — "the design moved" — for a reference that never changed. The recorded side
+ * is held to 64 lowercase hex characters by {@link recordedHashValid} first and separately, because
+ * collapsing the two rules lets one engine lowercase an uppercase *recorded* hash and accept it
+ * while another rejects it.
+ */
+export function hashesMatch(recorded, served) {
+  if (typeof recorded !== "string" || typeof served !== "string") return false;
+  return recorded.toLowerCase() === served.toLowerCase();
+}
+
+/** Every hash this schema owns is exactly 64 lowercase hex characters, or the record is invalid. */
+export function recordedHashValid(value) {
+  return typeof value === "string" && HEX64.test(value);
+}
+
+/**
+ * Issue identity is the canonical `owner/repo/number`, never the URL string.
+ *
+ * Acceptances are hand-authored, so one issue arrives spelled several ways — a trailing slash, an
+ * `#issuecomment` fragment, `www.`, a mixed-case owner. Aggregating on the raw string splits those
+ * into separate groups, and a group that looks fully resolved then closes an issue a sibling
+ * acceptance is still holding open. Returns `null` for a URL that does not parse, which is
+ * `schema-invalid` rather than its own group of one.
+ */
+export function parseIssue(url) {
+  if (typeof url !== "string") return null;
+  // Not trimmed. `new URL` tolerates surrounding whitespace and the schema's `format: "uri"` does
+  // not, so trimming here would accept bytes a schema-first consumer refuses — the divergence this
+  // module already closes for unknown properties, reintroduced by a convenience.
+  if (url !== url.trim()) return null;
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+  // `new URL` lowercases the host for us, which is one of the spellings a regex over the raw string
+  // gets wrong. The other is percent-encoding: `%79schimke` and `yschimke` are the same owner and
+  // would otherwise key two groups, letting one subset look independently resolved — the precise
+  // failure aggregating on canonical identity exists to prevent.
+  const host = parsed.hostname.replace(/^www\./, "");
+  if (host !== "github.com") return null;
+  let segments;
+  try {
+    segments = parsed.pathname.split("/").filter(Boolean).map(decodeURIComponent);
+  } catch {
+    return null;
+  }
+  if (segments.length !== 4 || segments[2] !== "issues") return null;
+  const [owner, repo, , rawNumber] = segments;
+  if (!/^[A-Za-z0-9._-]+$/.test(owner) || !/^[A-Za-z0-9._-]+$/.test(repo)) return null;
+  if (!/^\d+$/.test(rawNumber)) return null;
+  const number = Number(rawNumber);
+  if (!Number.isSafeInteger(number) || number <= 0) return null;
+  return { owner: owner.toLowerCase(), repo: repo.toLowerCase(), number };
+}
+
+/** `owner/repo#number`, the key issue-level aggregation groups on. */
+export function issueKey(issue) {
+  return `${issue.owner}/${issue.repo}#${issue.number}`;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Evaluation
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Evaluate a known-differences document against one comparison.
+ *
+ * @param documentText raw JSON text — parsed here, so `document-unreadable` is reachable.
+ * @param readArtifact `(path) => Uint8Array | null | { error }`, where `path` is relative to the
+ *   fixed `.design-parity/known-differences/` root (`<id>/<mask>`). `null` means the fetch or open
+ *   failed, which is `artifact-unreadable`; a file that opens and holds too few bytes for an `IHDR`
+ *   is `header-invalid`, because the line is where the failure occurs rather than how little data
+ *   there turned out to be.
+ *
+ *   **The reader carries three obligations this module cannot discharge for it**, and returns
+ *   `{ error }` to report the first two without materialising the file:
+ *
+ *   - `{ error: "artifact-too-large" }` — the reader must refuse to allocate more than
+ *     {@link BUDGET}`.maxArtifactBytes`. Handing back a whole oversized file so this module can
+ *     measure its `.length` exhausts the process through the very guard meant to prevent that, and
+ *     only the reader is positioned to know the size before the bytes exist. Every other budget is
+ *     enforced from a bounded header read for exactly this reason; this one had been left to a
+ *     check that arrives too late.
+ *   - `{ error: "path-not-contained" }` — the grammar here is *lexical*, so it cannot see a symlink
+ *     inside an acceptance directory. Whether the resolved path stays inside **this acceptance's own
+ *     `<id>/` directory** — not merely somewhere under `known-differences/` — is a fact about the
+ *     filesystem or the URL space the reader is serving from, and it must establish it before
+ *     opening anything. The narrower bound is the load-bearing one: a link from one acceptance's
+ *     directory into another's stays under the root while letting a record read bytes it does not
+ *     own, and the hash it is then checked against is the *other* record's.
+ *   - **Resolution is exact-case, including the `<id>` directory.** A document spelling `MASK.png`
+ *     for a committed `mask.png` opens and evaluates on a case-insensitive Windows or macOS
+ *     filesystem and is `artifact-unreadable` on a Linux checkout or a case-sensitive URL space — the
+ *     same host-versus-checkout divergence the portable grammar and the case-folded id scan close
+ *     from the other side, and one no lexical rule can see, because it is a fact about which bytes
+ *     the reader actually opened. A reader whose filesystem resolves the request case-insensitively
+ *     must compare the resolved name against the requested one and report the mismatch as a failed
+ *     open (`null`) rather than serving the file it happened to find.
+ * @param comparison the comparison being evaluated, or `null` for a validation-only pass.
+ * @param catalog `{ previews: [{ system, id, component, variant, referenceIds }] }` for the
+ *   orphaned-target walk, or `null` to skip it.
+ * @returns `{ statuses, validationFailures }`. `statuses` is **absent** for a document-level
+ *   rejection — "no acceptance was evaluated" and "every acceptance was valid" must not serialise
+ *   the same way.
+ */
+export function evaluateKnownDifferences({ documentText, readArtifact, comparison = null, catalog = null }) {
+  const parsed = parseDocument(documentText);
+  if (parsed.failure) return { validationFailures: [parsed.failure] };
+  const records = parsed.document.acceptances;
+
+  const documentFailures = [];
+
+  // Identity first: a record with no usable key cannot be reported any other way, and a duplicated
+  // key cannot be represented in a map at all. Both reject the document.
+  const unkeyable = records
+    .map((record, index) => ({ record, index }))
+    .filter(({ record }) => typeof record?.id !== "string" || record.id.trim() === "");
+  for (const { index } of unkeyable) documentFailures.push({ index, reason: "id-missing" });
+
+  // **Collisions are detected case-folded, and reported under the first spelling seen.** `foo` and
+  // `FOO` are distinct map keys and the *same directory* on Windows and on a default macOS
+  // filesystem — so a document carrying both evaluates cleanly on Linux and, checked out anywhere
+  // else, has two records reading one another's artifacts. It cannot even be checked out intact.
+  // The `id` is doing double duty as an identifier and a path, and the path half is the one that
+  // decides whether two records are really two.
+  const firstSeen = new Map();
+  const counts = new Map();
+  records.forEach((record, index) => {
+    if (typeof record?.id !== "string" || record.id.trim() === "") return;
+    const key = record.id.toLowerCase();
+    if (!firstSeen.has(key)) firstSeen.set(key, { index, id: record.id });
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  });
+  const duplicates = [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([key]) => firstSeen.get(key))
+    .sort((a, b) => a.index - b.index);
+  for (const { id } of duplicates) documentFailures.push({ id, reason: "duplicate-id" });
+
+  if (records.length > BUDGET.maxAcceptances) documentFailures.push({ reason: "document-too-large" });
+
+  // **Any document-level failure ends it here, before a single artifact is fetched.** An earlier
+  // revision stopped the loop below only for `document-too-large`, so a document rejected for a
+  // duplicate or unkeyable id still read all 512 of its artifacts — up to four gigabytes of bounded
+  // network or filesystem reads — and then discarded every one of them, because a document-level
+  // rejection carries no `statuses`. Nothing below this point can change that verdict.
+  if (documentFailures.length > 0) return { validationFailures: sortFailures(documentFailures, records) };
+
+  // **Preflight only, one record at a time, retaining nothing.** The pixel budget is a document
+  // verdict reached from per-record header reads, so the two cannot be separated — but nothing below
+  // the header is kept. Holding each record's two artifacts until the budget had been checked would
+  // put 256 × 2 × 8 MiB — four gigabytes of legal, individually-capped bytes — in memory *before* the
+  // aggregate cap could fire, which is the resource exhaustion the caps exist to prevent, reached
+  // through the guard itself. The bytes are re-read in {@link decodeRecord}; a preflight is a bounded
+  // read of a few dozen bytes per artifact, and reading twice is far cheaper than retaining once.
+  //
+  // **Compare as you go and stop reading.** Once the document is over budget nothing further about it
+  // is knowable — `statuses` is absent for a document-level rejection — so continuing to fetch the
+  // remaining artifacts buys nothing and costs everything the cap was defending.
+  const evaluations = [];
+  let pixels = 0;
+  for (const [index, record] of records.entries()) {
+    if (documentFailures.some((failure) => failure.reason === "document-too-large")) break;
+    const evaluation = preflightRecord(record, index, readArtifact, catalog);
+    evaluations.push(evaluation);
+    if (!evaluation.preflightClean) continue;
+    for (const header of evaluation.headers) {
+      const area = header.width * header.height;
+      if (
+        header.width > BUDGET.maxAxis ||
+        header.height > BUDGET.maxAxis ||
+        area > BUDGET.maxPixels ||
+        pixels + area > BUDGET.maxPixels
+      ) {
+        pushOnce(documentFailures, { reason: "document-too-large" });
+        break;
+      }
+      pixels += area;
+    }
+  }
+
+  if (documentFailures.length > 0) return { validationFailures: sortFailures(documentFailures, records) };
+
+  // Only now: re-read the bytes, hash them, decode, and everything that needs pixels.
+  for (const evaluation of evaluations) if (evaluation.preflightClean) decodeRecord(evaluation, readArtifact);
+
+  const statuses = new Map();
+  const validationFailures = [];
+
+  evaluations.forEach((evaluation, index) => {
+    const record = records[index];
+    const reasons = [...evaluation.reasons];
+
+    if (reasons.length === 0 && comparison) {
+      reasons.push(...comparisonRefusals(record, evaluation, comparison));
+    }
+
+    if (reasons.length > 0) {
+      statuses.set(record.id, { status: "refused", reasons: sortReasons(reasons) });
+      for (const reason of sortReasons(reasons)) validationFailures.push({ id: record.id, reason, index });
+      return;
+    }
+
+    if (!comparison || !scopeMatches(record, comparison)) {
+      statuses.set(record.id, { status: "out-of-scope" });
+      return;
+    }
+
+    statuses.set(record.id, runGates(record, evaluation, comparison));
+  });
+
+  return {
+    statuses: Object.fromEntries(statuses),
+    validationFailures: sortFailures(validationFailures, records),
+  };
+}
+
+/**
+ * What one `readArtifact` answer means: bytes, a refusal the reader is better placed to make, or a
+ * failure to read at all. Only the two tokens the reader can legitimately establish are honoured —
+ * anything else it invents is treated as an unreadable artifact rather than trusted into the result.
+ */
+function readReason(result) {
+  if (result instanceof Uint8Array) return null;
+  if (result && typeof result === "object" && typeof result.error === "string") {
+    return result.error === "artifact-too-large" || result.error === "path-not-contained"
+      ? result.error
+      : "artifact-unreadable";
+  }
+  return "artifact-unreadable";
+}
+
+function pushOnce(list, entry) {
+  if (!list.some((existing) => existing.reason === entry.reason && existing.id === entry.id)) list.push(entry);
+}
+
+/**
+ * The refusals only the document *text* can carry, in one left-to-right walk.
+ *
+ * Run on text `JSON.parse` has already accepted, so bracket balance and string termination are
+ * given and this does not need to be a validating parser. It answers two questions the parsed
+ * object can no longer be asked:
+ *
+ * 1. **Does any object repeat a member name?** RFC 8259 leaves that undefined and runtimes genuinely
+ *    differ — V8 keeps the last value, several keep the first, strict parsers refuse the input — so
+ *    `{"id":"safe","id":".."}` addresses two different artifact directories from one committed file.
+ *    Names are unescaped through `JSON.parse` before comparison, because `"id"` and `"\u0069d"` are
+ *    the same member and only one of the two spellings looks like a duplicate.
+ * 2. **Is an integer-valued field written as a non-integer?** `Number.isSafeInteger` cannot see it:
+ *    `9007199254740991.1` has already been rounded to `…991` by the time it reaches a check, and so
+ *    has `2.00000000000000000001` to `2` — so this engine accepts what a lossless consumer, or a
+ *    Kotlin `Int` decoder, refuses. No bound closes the hole: at any magnitude some fractional
+ *    literal is nearer to an integer than the spacing of doubles there. So the token is checked as
+ *    written, at the paths where an integer is required — a box's `x`/`y`/`width`/`height` and an
+ *    acceptance's `candidateTolerance`. `element.tolerance` is a real number by design.
+ */
+const GEOMETRY_KEYS = new Set(["x", "y", "width", "height"]);
+
+/**
+ * Where an integer-valued number may legally appear, as a path from the document root.
+ *
+ * **Scoped by containing object, never by member name.** A name-only check misfires on any other
+ * object that happens to carry one: an acceptance with the unknown property `"x": 0.5` is
+ * `schema-invalid` for that record, and answering `document-unreadable` instead would drop the
+ * `statuses` entry of every well-formed sibling — a different result from a schema-first consumer,
+ * which is the divergence this walk exists to prevent rather than to cause.
+ */
+const INTEGER_TOKEN_PATHS = new Map([
+  ["/acceptances/[]/plane/box", GEOMETRY_KEYS],
+  ["/acceptances/[]/element/bounds", GEOMETRY_KEYS],
+  ["/acceptances/[]", new Set(["candidateTolerance"])],
+]);
+
+/**
+ * Where a *real* number has a range, and the range is checked on the token.
+ *
+ * `element.tolerance` is the one field this contract bounds without requiring an integer, so the
+ * integer rule above cannot carry it — and the same rounding hole is open: `0.25000000000000000001`
+ * is `0.25` by the time a range check can look, so this engine gates a record a lossless validator
+ * refuses as over the declared maximum. Compared as an exact decimal, without ever forming a double.
+ */
+const REAL_TOKEN_RANGES = new Map([["/acceptances/[]/element", { tolerance: [0, 0.25] }]]);
+
+/**
+ * Is a JSON number token within `[low, high]`, decided exactly and **without ever building a number
+ * proportional to the token**?
+ *
+ * The token is a decimal — digits and a power of ten — and the bounds are short decimals, so the
+ * comparison is integer arithmetic over a common scale. Two things must never be materialised on the
+ * way there, because this input is third-party and bounded only by the document's byte ceiling:
+ *
+ * - **the power of ten.** `1e999999999999999999999` is a legal JSON number, and `10n ** 10n**21n`
+ *   throws `RangeError: Maximum BigInt size exceeded` — turning a short malformed record into a crash
+ *   of the evaluator, and of whatever build or server is hosting it. So the decimal *magnitude* is
+ *   compared first, from digit counts alone, and the scaling only runs inside a window where it is
+ *   known to be small.
+ * - **the digit string.** A million-digit mantissa is equally legal and equally cheap to write. Only
+ *   the leading digits can decide a comparison against a two-digit bound, so the mantissa is
+ *   truncated, and the truncation remembers whether anything non-zero followed — which is exactly
+ *   what decides the tie when the visible digits are equal.
+ */
+const RANGE_DIGIT_LIMIT = 64;
+const RANGE_EXPONENT_WINDOW = 32;
+
+function tokenWithinRange(token, low, high) {
+  const match = /^(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(token);
+  if (!match) return false;
+  const [, sign, whole, fraction = "", exponentText = "0"] = match;
+
+  // Safe on its own: the exponent is a run of digits, and one too large to represent becomes
+  // `Infinity`, which the magnitude test rejects without any arithmetic.
+  const exponent = Number(exponentText);
+  const significant = `${whole}${fraction}`.replace(/^0+/, "");
+  if (significant === "") return low <= 0 && high >= 0;
+
+  const kept = significant.slice(0, RANGE_DIGIT_LIMIT);
+  const discarded = significant.slice(RANGE_DIGIT_LIMIT);
+  // Whether digits were dropped sets the *scale*; whether any of them was non-zero is a different
+  // question, and it is the one that breaks a tie. `0.25` written with a hundred trailing zeroes is
+  // exactly the maximum, not a hair over it.
+  const remainder = /[1-9]/.test(discarded);
+  const scale = exponent - fraction.length + discarded.length;
+  // The value lies in `[10^(magnitude - 1), 10^magnitude)`, which is all the magnitude test needs.
+  const magnitude = kept.length + scale;
+  const negative = sign === "-";
+
+  if (!Number.isFinite(magnitude) || Math.abs(magnitude) > RANGE_EXPONENT_WINDOW) {
+    // Far outside any short bound, so the digits no longer matter — but the *sign* still does, and
+    // it decides two different questions. An enormous magnitude is beyond either bound whichever way
+    // it points. A tiny one is a non-zero value pressed right up against zero without ever reaching
+    // it, so it clears a bound of zero on one side and fails it on the other: `-1e-999999` is
+    // strictly below a minimum of `0`, however much it looks like `-0` once parsed.
+    if (magnitude > 0) return false;
+    return negative ? low < 0 && high >= 0 : low <= 0 && high > 0;
+  }
+
+  const value = BigInt(kept);
+  const compare = (bound) => {
+    const boundText = bound.toFixed(20);
+    const boundNegative = boundText.startsWith("-");
+    const [boundWhole, boundFraction = ""] = boundText.replace("-", "").split(".");
+    const boundScale = -boundFraction.length;
+    const boundValue = BigInt(`${boundWhole}${boundFraction}`);
+    const common = Math.min(scale, boundScale);
+    const left = (negative ? -value : value) * 10n ** BigInt(scale - common);
+    const right = (boundNegative ? -boundValue : boundValue) * 10n ** BigInt(boundScale - common);
+    if (left !== right) return left < right ? -1 : 1;
+    // Equal on the digits kept: anything non-zero beyond them makes the magnitude strictly larger.
+    // Discarded zeroes change nothing, so they must not be mistaken for a remainder.
+    if (!remainder) return 0;
+    return negative ? -1 : 1;
+  };
+  return compare(low) >= 0 && compare(high) <= 0;
+}
+
+function documentTextRefusal(documentText) {
+  const scopes = [];
+  const path = [];
+  let pendingKey = null;
+  let index = 0;
+  while (index < documentText.length) {
+    const character = documentText[index];
+    if (character === "{" || character === "[") {
+      scopes.push(character === "{" ? new Set() : null);
+      // An array element is addressed as `[]`: the *index* never matters here, only which shape of
+      // object the member belongs to.
+      path.push(pendingKey ?? (scopes.length > 1 && scopes[scopes.length - 2] === null ? "[]" : ""));
+      pendingKey = null;
+      index += 1;
+      continue;
+    }
+    if (character === "}" || character === "]") {
+      scopes.pop();
+      path.pop();
+      pendingKey = null;
+      index += 1;
+      continue;
+    }
+    if (character === '"') {
+      let end = index + 1;
+      while (end < documentText.length && documentText[end] !== '"') {
+        end += documentText[end] === "\\" ? 2 : 1;
+      }
+      const raw = documentText.slice(index, end + 1);
+      index = end + 1;
+      let after = index;
+      while (after < documentText.length && /\s/.test(documentText[after])) after += 1;
+      if (documentText[after] !== ":") {
+        pendingKey = null;
+        continue;
+      }
+      index = after + 1;
+      const names = scopes[scopes.length - 1];
+      if (!names) continue;
+      let name;
+      try {
+        name = JSON.parse(raw);
+      } catch {
+        return "document-unreadable";
+      }
+      if (names.has(name)) return "document-unreadable";
+      names.add(name);
+      pendingKey = name;
+      continue;
+    }
+    if (character === "-" || (character >= "0" && character <= "9")) {
+      let end = index;
+      while (end < documentText.length && /[-+0-9.eE]/.test(documentText[end])) end += 1;
+      const token = documentText.slice(index, end);
+      index = end;
+      const scope = path.slice(1).map((step) => `/${step}`).join("");
+      const integerKeys = INTEGER_TOKEN_PATHS.get(scope);
+      const realRange = pendingKey === null ? undefined : REAL_TOKEN_RANGES.get(scope)?.[pendingKey];
+      // Only where the parse *hides* it, exactly as for the integer fields: a token already outside
+      // the range after parsing keeps its precise, attributed refusal (`tolerance-out-of-range`,
+      // naming the record) rather than being traded for a blunt document-level one.
+      if (
+        realRange &&
+        !tokenWithinRange(token, realRange[0], realRange[1]) &&
+        Number(token) >= realRange[0] &&
+        Number(token) <= realRange[1]
+      ) {
+        return "document-unreadable";
+      }
+      // **Only the tokens the parse *hides*.** A value that is still fractional after parsing —
+      // `candidateTolerance: 0.5`, a box `x: 0.5` — is caught by the ordinary record-level check,
+      // which names the record and picks the better token (`tolerance-out-of-range`,
+      // `schema-invalid`). Answering `document-unreadable` for those would trade a precise,
+      // attributed refusal for a blunt one and drop every sibling's `statuses` entry. What no
+      // value-level check can see is a fractional token that *rounds onto* an integer, so that is
+      // exactly what this catches.
+      //
+      // **Overflow destroys the evidence just as thoroughly as rounding does.** `1e999` parses to
+      // `Infinity`, which is not an integer — so a test asking only "did this round onto an integer"
+      // lets the largest exponent spellings through while refusing `2e0`, for the same defect. Both
+      // are an exponent at a path that requires a canonical integer, and both are unrecoverable
+      // after the parse, so both are decided here. A token that survives as an ordinary fractional
+      // number still keeps its attributed record-level refusal.
+      if (
+        pendingKey !== null &&
+        integerKeys?.has(pendingKey) &&
+        !CANONICAL_INTEGER.test(token) &&
+        (Number.isInteger(Number(token)) || !Number.isFinite(Number(token)))
+      ) {
+        return "document-unreadable";
+      }
+      pendingKey = null;
+      continue;
+    }
+    index += 1;
+  }
+  return null;
+}
+
+function parseDocument(documentText) {
+  // **Bounded before parsing**, for the reason the artifact reader is bounded before opening: every
+  // other budget here fires *after* something has already been materialised unless it is checked
+  // first, and `JSON.parse` allocates the whole payload before the acceptance and raster caps can
+  // see it. A document with an empty `acceptances` array and one enormous string reaches none of
+  // them. 1 MiB is generous against real use — 256 records at a kilobyte each is a quarter of it —
+  // and this is the defence in depth: the *reader* should refuse to fetch past the ceiling, exactly
+  // as `readArtifact` must, since only it knows the size before the bytes exist.
+  if (typeof documentText !== "string") return { failure: { reason: "document-unreadable" } };
+  if (Buffer.byteLength(documentText, "utf8") > BUDGET.maxDocumentBytes) {
+    return { failure: { reason: "document-too-large" } };
+  }
+
+  let document;
+  try {
+    document = JSON.parse(documentText);
+  } catch {
+    return { failure: { reason: "document-unreadable" } };
+  }
+  // **The refusals only the text can carry** — a repeated member name, and a geometry coordinate
+  // written as a non-integer. Both are invisible once there is an object: the first because the
+  // parser has already chosen a winner, the second because it has already rounded. Both take
+  // `document-unreadable`, the token the unknown document-level property gets, for the same reason —
+  // the evidence is a property of the bytes and there is no record it can honestly be attributed to.
+  const textRefusal = documentTextRefusal(documentText);
+  if (textRefusal) return { failure: { reason: textRefusal } };
+  if (!document || typeof document !== "object" || Array.isArray(document)) {
+    return { failure: { reason: "document-unreadable" } };
+  }
+  if (document.schema !== KNOWN_DIFFERENCES_SCHEMA) return { failure: { reason: "document-unreadable" } };
+  if (!Array.isArray(document.acceptances)) return { failure: { reason: "document-unreadable" } };
+  // Unknown *document-level* properties, for the same reason unknown record-level ones are refused:
+  // the published schema declares `additionalProperties: false` at both levels, so a schema-first
+  // consumer rejects bytes a required-fields-only consumer evaluates normally. `document-unreadable`
+  // rather than `schema-invalid` because there is no record to attribute it to — this is a property
+  // of the file.
+  for (const key of Object.keys(document)) {
+    if (key !== "schema" && key !== "acceptances") return { failure: { reason: "document-unreadable" } };
+  }
+  return { document };
+}
+
+/**
+ * Everything about a record that one comparison cannot change.
+ *
+ * Kept comparison-independent on purpose: a build gate's `validationFailures` should not depend on
+ * which comparison happened to run, and a broken artifact is broken on every page. The two refusals
+ * that genuinely need a comparison — `reference-hash-missing` and `acceptance-is-noop` — are added
+ * by {@link comparisonRefusals}.
+ *
+ * The stages are a ladder: reasons accumulate *within* a stage (both hashes can fail at once) and a
+ * stage runs only when every earlier one was clean, so a record with an unparseable shape is never
+ * also reported for the paths that shape does not contain.
+ */
+function preflightRecord(record, index, readArtifact, catalog) {
+  const evaluation = {
+    index,
+    record,
+    reasons: [],
+    headers: [],
+    preflightClean: false,
+    mask: null,
+    accepted: null,
+  };
+  const fail = (...reasons) => {
+    evaluation.reasons.push(...reasons);
+    return evaluation;
+  };
+
+  // A record need not be an object at all — `acceptances` is third-party data and can hold `null`,
+  // a string, an array. Those are already `id-missing` in the identity scan and the document is
+  // rejected for them, but this function still runs first (the pixel budget needs the preflight),
+  // so it must not dereference what it was handed. Nothing further is knowable about such a record.
+  if (!record || typeof record !== "object" || Array.isArray(record)) return evaluation;
+
+  if (!isSafeId(record.id)) return fail("id-not-safe");
+
+  const shapeReasons = schemaReasons(record);
+  if (shapeReasons.length > 0) return fail(...shapeReasons);
+
+  if (catalog && !catalogResolves(record, catalog)) return fail("orphaned-target");
+
+  const pathReasons = [];
+  if (!isSafeArtifactPath(record.mask)) pathReasons.push("path-not-contained");
+  if (!isSafeArtifactPath(record.acceptedCandidate)) pathReasons.push("path-not-contained");
+  // The same portable-identity rule the duplicate-id scan applies, applied where it was missing.
+  // `mask.png` beside `MASK.PNG` is two committed files on Linux and one file everywhere else, so
+  // the record either hashes the wrong bytes or cannot be checked out — the identical failure the
+  // case-folded id check exists to prevent, one level down.
+  // **Two spellings, not one path.** The rule is about a collision between *distinct* strings; the
+  // same path written twice addresses one committed file, which neither collides with anything nor
+  // escapes anywhere. Refusing it here would spend `path-not-contained` on a record whose paths are
+  // contained, and take the refusal away from whatever is actually wrong with it.
+  if (
+    pathReasons.length === 0 &&
+    record.mask !== record.acceptedCandidate &&
+    record.mask.toLowerCase() === record.acceptedCandidate.toLowerCase()
+  ) {
+    pathReasons.push("path-not-contained");
+  }
+  if (pathReasons.length > 0) return fail(...pathReasons);
+
+  const maskRead = readArtifact(`${record.id}/${record.mask}`);
+  const acceptedRead = readArtifact(`${record.id}/${record.acceptedCandidate}`);
+  const readReasons = [maskRead, acceptedRead].map(readReason).filter(Boolean);
+  if (readReasons.length > 0) return fail(...readReasons);
+  const maskBytes = maskRead;
+  const acceptedBytes = acceptedRead;
+
+  // Still checked here, because a reader that hands back bytes has already made its claim about
+  // them and this is the cheap confirmation of it. The reader's obligation is not to *allocate*
+  // past the cap; this catches a reader that allocated anyway.
+  const oversized = [];
+  if (maskBytes.length > BUDGET.maxArtifactBytes) oversized.push("artifact-too-large");
+  if (acceptedBytes.length > BUDGET.maxArtifactBytes) oversized.push("artifact-too-large");
+  if (oversized.length > 0) return fail(...oversized);
+
+  // Both headers are read and validated before either raster joins the running total, so the budget
+  // is order-independent: an oversized-but-readable header beside an unreadable one must not give a
+  // different verdict depending on which was read first.
+  const maskHeader = preflightPng(maskBytes);
+  const acceptedHeader = preflightPng(acceptedBytes);
+  const headerReasons = [];
+  if (maskHeader.error) headerReasons.push("header-invalid");
+  if (acceptedHeader.error) headerReasons.push("header-invalid");
+  // **Each header that parsed is inspected, whichever one failed.** Gating these on *both* headers
+  // being readable makes the reason set depend on its siblings: an unreadable mask beside a
+  // detectable APNG candidate would report `header-invalid` alone and silently drop `animated-png`,
+  // even though that header was read and the evidence was in hand. The reason set is exact and
+  // deduplicated per record — the second-read stage already accumulates this way, and there is no
+  // reason for the first to differ.
+  if (!maskHeader.error && maskHeader.animated) headerReasons.push("animated-png");
+  if (!acceptedHeader.error && acceptedHeader.animated) headerReasons.push("animated-png");
+  // The mask is greyscale with **no alpha**, and `tRNS` is how a greyscale PNG carries alpha
+  // anyway. Permitted on the accepted candidate, refused here: the decode would give a matching
+  // sample alpha `0` while `maskCoverage` reads only the grey channel, so a transparent white
+  // pixel suppresses a comparison on one consumer and refuses the mask on another that enforces
+  // the no-alpha rule as written.
+  if (
+    !maskHeader.error &&
+    (maskHeader.bitDepth !== 8 || maskHeader.colourType !== 0 || maskHeader.hasTransparency)
+  ) {
+    headerReasons.push("mask-encoding-invalid");
+  }
+  if (headerReasons.length > 0) return fail(...headerReasons);
+
+  evaluation.headers = [maskHeader, acceptedHeader];
+  evaluation.preflightClean = true;
+  return evaluation;
+}
+
+/**
+ * The half that touches pixels, run only after the document's budget has passed.
+ *
+ * Nothing here can change a *document* verdict, which is what makes the split safe: hashes, decodes,
+ * mask semantics and dimensions are all per-acceptance, and a record that fails any of them was
+ * already inside the budget it was charged against.
+ */
+function decodeRecord(evaluation, readArtifact) {
+  const { record, headers } = evaluation;
+  const [maskHeader, acceptedHeader] = headers;
+  const maskRead = readArtifact(`${record.id}/${record.mask}`);
+  const acceptedRead = readArtifact(`${record.id}/${record.acceptedCandidate}`);
+  const fail = (...reasons) => {
+    evaluation.reasons.push(...reasons);
+    return evaluation;
+  };
+
+  // **The second read is validated again, not trusted.** The preflight retained no bytes, so these
+  // are fresh reads — and `readArtifact` may be network-backed, or the tree may change underneath a
+  // long evaluation. Checking only presence and hashes would let an artifact that grew past the byte
+  // cap, or whose header now declares an over-budget raster, walk straight through caps that were
+  // applied to bytes nobody is decoding any more. So the per-artifact checks are re-applied, and the
+  // headers must still be the ones the budget was computed from; an artifact that changed between
+  // the two reads is not stable enough to evaluate, whatever it now contains.
+  const rereadReasons = [maskRead, acceptedRead].map(readReason).filter(Boolean);
+  if (rereadReasons.length > 0) return fail(...rereadReasons);
+  const maskBytes = maskRead;
+  const acceptedBytes = acceptedRead;
+
+  const reread = [
+    [maskBytes, maskHeader],
+    [acceptedBytes, acceptedHeader],
+  ];
+  const oversized = reread.filter(([bytes]) => bytes.length > BUDGET.maxArtifactBytes);
+  if (oversized.length > 0) return fail("artifact-too-large");
+  // **Both artifacts, then report.** Returning on the first one made the *order* of the pair decide
+  // which reason a reader saw: a mask that turned animated while the accepted candidate's header
+  // turned unreadable produced `animated-png` alone, and swapping the pair produced `header-invalid`
+  // alone. §4 says reasons accumulate within a validation stage and the fixtures pin the exact set,
+  // so a stage that drops a distinct reason is the contract disagreeing with itself. Duplicates are
+  // collapsed by `sortReasons`, so both artifacts failing the same way still reports one token.
+  const rereadFailures = [];
+  for (const [bytes, before] of reread) {
+    const now = preflightPng(bytes);
+    if (now.error) {
+      rereadFailures.push("header-invalid");
+      continue;
+    }
+    if (now.animated) rereadFailures.push("animated-png");
+    // **Every field, not an enumerated subset.** An earlier revision compared four of them, which
+    // left a second read free to add a `tRNS`, or change the compression, filter or interlace method,
+    // while the fields being compared stayed put — and the mask-encoding check below reads the
+    // *preflight's* header, so a swapped artifact would have been judged on the old one. Comparing
+    // the whole object cannot drift out of step with what the preflight learns.
+    // **An artifact that changed is unstable, and that is the whole verdict.** The axis cap is a
+    // *first-phase* rule, decided from the preflight the budget was computed against; re-applying it
+    // to the second read reported `[header-invalid, artifact-unreadable]` for a mask swapped for an
+    // 8193-wide one, where the contract says a changed second read is `artifact-unreadable` and
+    // nothing else. `samePreflight` compares every field, so a raster that grew past the cap is
+    // already caught — the extra check could only ever add a second token to a refusal that was
+    // complete.
+    if (!samePreflight(now, before)) rereadFailures.push("artifact-unreadable");
+  }
+  if (rereadFailures.length > 0) return fail(...rereadFailures);
+  if (maskHeader.bitDepth !== 8 || maskHeader.colourType !== 0) return fail("mask-encoding-invalid");
+
+  const hashReasons = [];
+  if (!hashesMatch(record.maskSha256, sha256Hex(maskBytes))) hashReasons.push("mask-hash-mismatch");
+  if (!hashesMatch(record.acceptedCandidateSha256, sha256Hex(acceptedBytes))) {
+    hashReasons.push("accepted-candidate-hash-mismatch");
+  }
+  if (hashReasons.length > 0) return fail(...hashReasons);
+
+  // A correct hash does not make an artifact usable: bytes can be committed with a correctly
+  // computed `sha256` and still be corrupt, non-PNG, or decode to nothing. And a header whose
+  // declared dimensions disagree with the scanline data behind them is `header-invalid` rather than
+  // `decode-failed` — the second half of that rule is what stops a lying header walking past the cap.
+  const decoded = [maskBytes, acceptedBytes].map((bytes) => {
+    try {
+      return { image: decodePng(bytes) };
+    } catch (error) {
+      return { reason: error.message === "declared-dimensions-mismatch" ? "header-invalid" : "decode-failed" };
+    }
+  });
+  const decodeReasons = decoded.filter((entry) => entry.reason).map((entry) => entry.reason);
+  if (decodeReasons.length > 0) return fail(...decodeReasons);
+  const mask = decoded[0].image;
+  const accepted = decoded[1].image;
+
+  const coverage = maskCoverage(mask);
+  if (coverage.nonBinary) return fail("mask-encoding-invalid");
+  if (!coverage.box) return fail("mask-empty");
+
+  const dimensionReasons = [];
+  const plane = record.plane.box;
+  if (mask.width !== plane.width || mask.height !== plane.height) dimensionReasons.push("dimension-mismatch");
+  if (accepted.width !== coverage.box.width || accepted.height !== coverage.box.height) {
+    dimensionReasons.push("dimension-mismatch");
+  }
+  if (dimensionReasons.length > 0) return fail(...dimensionReasons);
+
+  evaluation.mask = mask;
+  evaluation.accepted = accepted;
+  evaluation.coverage = coverage;
+  return evaluation;
+}
+
+/** Every property `v1` defines, so anything else is a field one engine would read and another drop. */
+const ACCEPTANCE_FIELDS = new Set([
+  "id",
+  "issue",
+  "system",
+  "component",
+  "previewId",
+  "referenceId",
+  "variant",
+  "overrides",
+  "mask",
+  "acceptedCandidate",
+  "referenceSha256",
+  "maskSha256",
+  "acceptedCandidateSha256",
+  "plane",
+  "candidateTolerance",
+  "element",
+  "note",
+  "acceptedAt",
+]);
+
+/**
+ * Required fields, their types, and the two spellings this schema owns.
+ *
+ * Absence has to be *representable* — a language default that fills a missing field is how this epic
+ * lost the same fact twice — so every required field is checked for presence explicitly rather than
+ * read through a default.
+ *
+ * **Unknown properties are refused, and that is not pedantry.** `known-differences.schema.json`
+ * declares `additionalProperties: false`, so a consumer that runs the schema first rejects bytes a
+ * consumer that runs only this function accepts — the cross-runtime divergence this whole contract
+ * exists to prevent, manufactured by the validator itself. It is also what keeps the two fields cut
+ * from `v1` cut: a document carrying `finding` or a `producer` selector is refused rather than
+ * silently ignored by one engine and acted on by a later one.
+ *
+ * `variant` is the one string field that **may be empty**, and it is the exception on purpose:
+ * `ServeIssueReport.variantFor` returns `""` for a preview id carrying no `__` axes, and "no axes"
+ * is a fact about the preview rather than a mangled record. Every other field emptied means the
+ * record no longer names one component. The locator contract already settles this
+ * ([§2](../../docs/design/COMPONENT_PARITY_WORKFLOW.md#which-fields-may-be-blank-and-which-may-be-absent)),
+ * and refusing a blank `variant` here would make every default preview's acceptance inexpressible.
+ */
+function schemaReasons(record) {
+  const invalid = () => ["schema-invalid"];
+  for (const key of Object.keys(record)) if (!ACCEPTANCE_FIELDS.has(key)) return invalid();
+
+  for (const field of ["system", "component", "previewId", "referenceId", "mask", "acceptedCandidate"]) {
+    if (typeof record[field] !== "string" || record[field] === "") return invalid();
+  }
+  if (typeof record.variant !== "string") return invalid();
+  if (!parseIssue(record.issue)) return invalid();
+  for (const field of ["referenceSha256", "maskSha256", "acceptedCandidateSha256"]) {
+    if (!recordedHashValid(record[field])) return invalid();
+  }
+  for (const field of ["note", "acceptedAt"]) {
+    if (record[field] !== undefined && typeof record[field] !== "string") return invalid();
+  }
+  // The schema declares `format: "date-time"`. JSON Schema treats `format` as an annotation by
+  // default, so a consumer with assertion enabled rejects what a type-only check here accepts — and
+  // `acceptedAt` is a recorded fact, so a string that is not a timestamp is a producer bug either way.
+  if (record.acceptedAt !== undefined && !isRfc3339(record.acceptedAt)) return invalid();
+  if (record.overrides !== undefined && !isStringMap(record.overrides)) return invalid();
+  if (!isPlane(record.plane)) return invalid();
+  // Same reasoning as `element.tolerance`: a non-finite number is out of range, and the integer test
+  // below already refuses it as such. Structural invalidity is about *shape*, not magnitude.
+  if (typeof record.candidateTolerance !== "number" || Number.isNaN(record.candidateTolerance)) {
+    return invalid();
+  }
+  if (record.element !== undefined && !isElement(record.element)) return invalid();
+
+  const ranges = [];
+  if (!Number.isInteger(record.candidateTolerance)) ranges.push("tolerance-out-of-range");
+  else if (
+    record.candidateTolerance < CANDIDATE_TOLERANCE_RANGE[0] ||
+    record.candidateTolerance > CANDIDATE_TOLERANCE_RANGE[1]
+  ) {
+    ranges.push("tolerance-out-of-range");
+  }
+  if (record.element) {
+    const tolerance = record.element.tolerance;
+    if (tolerance < ELEMENT_TOLERANCE_RANGE[0] || tolerance > ELEMENT_TOLERANCE_RANGE[1]) {
+      ranges.push("tolerance-out-of-range");
+    }
+  }
+  return ranges;
+}
+
+function isStringMap(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return Object.values(value).every((entry) => typeof entry === "string");
+}
+
+/** Exactly these keys, and no others — nested objects are held to the same rule as the record. */
+function hasExactly(value, keys) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return Object.keys(value).every((key) => keys.includes(key));
+}
+
+function isBox(value) {
+  if (!hasExactly(value, ["x", "y", "width", "height"])) return false;
+  // `isSafeInteger`, not `isInteger`: JSON's `9007199254740993` has *already* been rounded to
+  // …992 by the time it reaches here, so `isInteger` accepts a coordinate a Kotlin `Long` consumer
+  // retains exactly. Refusing what cannot round-trip is cheaper than reasoning about where the two
+  // readings would first disagree.
+  if (!["x", "y", "width", "height"].every((key) => Number.isSafeInteger(value[key]))) return false;
+  if (value.width <= 0 || value.height <= 0) return false;
+  // **The far edges too, not just the fields.** Every gate that measures a box adds them — element
+  // displacement compares `x + width` against a baseline's — and a sum of two safe integers need not
+  // be safe. `{x: 9007199254740990, width: 3}` and `{x: 9007199254740990, width: 2}` both round to
+  // the same JavaScript edge, so this engine measures no displacement where an exact-integer
+  // consumer measures one: `valid` against `element-moved`, from identical bytes.
+  return Number.isSafeInteger(value.x + value.width) && Number.isSafeInteger(value.y + value.height);
+}
+
+function isPlane(value) {
+  if (!hasExactly(value, ["plane", "box"])) return false;
+  if (value.plane !== "content-box" && value.plane !== "full-canvas") return false;
+  return isBox(value.box);
+}
+
+function isElement(value) {
+  if (!hasExactly(value, ["kind", "tag", "bounds", "tolerance"])) return false;
+  if (value.kind !== "tag") return false;
+  if (typeof value.tag !== "string" || value.tag === "") return false;
+  if (!isBox(value.bounds)) return false;
+  // **A number, finite or not.** `1e999` is a legal JSON number that parses to `Infinity`, and it is
+  // unambiguously outside `[0, 0.25]` — which is a *range* failure with its own attributed token, not
+  // a structural one. Refusing it here would report `schema-invalid` where a lossless consumer, which
+  // never forms the double at all, says `tolerance-out-of-range`. `NaN` has no JSON literal, so it
+  // cannot arrive from a parse; it is excluded anyway, because it would pass both range comparisons.
+  return typeof value.tolerance === "number" && !Number.isNaN(value.tolerance);
+}
+
+/**
+ * The orphan walk: every scope field the catalog can resolve, not just the two ids.
+ *
+ * A component renamed while its preview and reference ids stay put leaves both id lookups
+ * succeeding and the acceptance permanently unreachable, which is the exact invisible-forever
+ * failure this exists to catch. `overrides` is the one field with no catalog fact to compare
+ * against — an acceptance naming a combination nobody has opened is *unused*, not orphaned.
+ */
+function catalogResolves(record, catalog) {
+  const preview = (catalog.previews ?? []).find(
+    (entry) => entry.system === record.system && entry.id === record.previewId,
+  );
+  if (!preview) return false;
+  if (preview.component !== record.component) return false;
+  if (preview.variant !== record.variant) return false;
+  return (preview.referenceIds ?? []).includes(record.referenceId);
+}
+
+/** Every recorded field must match — `system` and `component` are the two a page's key drops. */
+function scopeMatches(record, comparison) {
+  if (record.system !== comparison.system) return false;
+  if (record.component !== comparison.component) return false;
+  if (record.previewId !== comparison.previewId) return false;
+  if (record.referenceId !== comparison.referenceId) return false;
+  if (record.variant !== comparison.variant) return false;
+  return sameOverrides(record.overrides ?? {}, comparison.overrides ?? {});
+}
+
+function sameOverrides(a, b) {
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((key) => b[key] === a[key]);
+}
+
+/**
+ * The two refusals a comparison decides.
+ *
+ * `acceptance-is-noop` is sequenced **after** the fingerprint gate: the check compares the stored
+ * candidate against the *served* reference, and the reference the acceptance was authored against is
+ * not kept — so the moment the hash differs the predicate is being evaluated against the wrong
+ * image, and a changed reference whose new pixels happen to match the stored candidate would refuse
+ * where the contract intends `invalidated: reference-changed`.
+ */
+function comparisonRefusals(record, evaluation, comparison) {
+  if (!scopeMatches(record, comparison)) return [];
+  if (typeof comparison.referenceSha256 !== "string" || comparison.referenceSha256 === "") {
+    return ["reference-hash-missing"];
+  }
+  if (!hashesMatch(record.referenceSha256, comparison.referenceSha256)) return [];
+  if (!planeMatches(record.plane, comparison.plane)) return [];
+  const reference = comparison.canonicalReference;
+  if (!reference) return [];
+  if (regionAgrees(evaluation, reference, evaluation.accepted, record.candidateTolerance, true)) {
+    return ["acceptance-is-noop"];
+  }
+  return [];
+}
+
+/** Two preflights describe the same artifact — every field the preflight learns, not a chosen few. */
+function samePreflight(a, b) {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys) if (a[key] !== b[key]) return false;
+  return true;
+}
+
+function planeMatches(recorded, current) {
+  if (!current) return false;
+  if (recorded.plane !== current.plane) return false;
+  return ["x", "y", "width", "height"].every((key) => recorded.box[key] === current.box[key]);
+}
+
+/** The five gates, then the precedence table. */
+function runGates(record, evaluation, comparison) {
+  const causes = [];
+  const referenceChanged = !hashesMatch(record.referenceSha256, comparison.referenceSha256);
+  if (referenceChanged) causes.push("reference-changed");
+
+  const planeChanged = !planeMatches(record.plane, comparison.plane);
+  if (planeChanged) causes.push("plane-changed");
+
+  // `plane-changed` short-circuits the element gates: the published index carries bounds in the
+  // comparison's plane, and running the gate against bounds transformed through a plane the
+  // acceptance was not authored in manufactures a false `element-moved` on top of a correct
+  // `plane-changed`.
+  if (!planeChanged && record.element) causes.push(...elementCauses(record.element, comparison.tagIndex ?? {}));
+
+  // The precedence table decides this before the candidate gate contributes anything, so the pixel
+  // scan is skipped rather than computed and discarded — a legal mask can be tens of millions of
+  // pixels, and an acceptance that is already `invalidated` should not pay for them.
+  const nonCandidate = causes.filter((cause) => cause !== "candidate-changed");
+  if (nonCandidate.length > 0) return { status: "invalidated", causes: sortCauses(nonCandidate) };
+
+  const candidateChanged = !regionAgrees(
+    evaluation,
+    comparison.canonicalCandidate,
+    evaluation.accepted,
+    record.candidateTolerance,
+    true,
+  );
+
+  if (candidateChanged) {
+    const converged = regionAgrees(
+      evaluation,
+      comparison.canonicalCandidate,
+      comparison.canonicalReference,
+      record.candidateTolerance,
+      false,
+    );
+    if (converged) return { status: "resolved" };
+    return { status: "invalidated", causes: ["candidate-changed"] };
+  }
+  return { status: "valid" };
+}
+
+/**
+ * Zero matches is always `element-moved` — that is "the glyph vanished", the case the gate exists
+ * for. More than one is `element-ambiguous` and stops there, because with several matches there is
+ * no single node whose bounds to measure and one engine would otherwise report both causes.
+ */
+function elementCauses(element, tagIndex) {
+  const entry = Object.hasOwn(tagIndex, element.tag) ? tagIndex[element.tag] : null;
+  const count = entry?.count ?? 0;
+  if (count > 1) return ["element-ambiguous"];
+  if (count < 1) return ["element-moved"];
+  const bounds = entry.bounds;
+  if (!isBox(bounds)) return ["element-moved"];
+  const baseline = element.bounds;
+  const displacement = Math.max(
+    Math.abs(bounds.x - baseline.x),
+    Math.abs(bounds.y - baseline.y),
+    Math.abs(bounds.x + bounds.width - (baseline.x + baseline.width)),
+    Math.abs(bounds.y + bounds.height - (baseline.y + baseline.height)),
+  );
+  // **Compared as a ratio, not against a scaled tolerance.** `tolerance × min(width, height)` is a
+  // float multiplication and lands just under the true value often enough to matter: with tolerance
+  // `0.145` and a 200px baseline it gives `28.999999999999996`, so a displacement of exactly 29 —
+  // which *is* the inclusive boundary — reports `element-moved` here and `valid` in a consumer using
+  // decimals or the ratio. Dividing instead makes the boundary exact wherever the recorded tolerance
+  // is: `29 / 200` and the literal `0.145` are the same double, because both are the nearest double
+  // to the same real number.
+  const minDimension = Math.min(baseline.width, baseline.height);
+  return displacement / minDimension > element.tolerance ? ["element-moved"] : [];
+}
+
+/**
+ * Compare a canonical-plane raster against a second image inside the mask.
+ *
+ * `secondIsCrop` says whether the second image is the mask's bounding-box crop
+ * (`accepted-candidate.png`) or another full canonical-plane raster (the reference) — the two
+ * comparisons differ only in that offset, which is precisely why the contract requires them to
+ * share one metric.
+ */
+function regionAgrees(evaluation, canonical, other, tolerance, secondIsCrop) {
+  if (!canonical || !other) return false;
+  const mask = evaluation.mask;
+  const box = evaluation.coverage.box;
+  if (canonical.width !== mask.width || canonical.height !== mask.height) return false;
+  // **The second raster's dimensions too, and by the shape it is claimed to have.** Only `canonical`
+  // was checked, so a full-plane `other` of different dimensions was indexed with its own stride and
+  // could agree at every masked coordinate while holding entirely different pixels there — a mask
+  // selecting one pixel let a 2-pixel candidate "resolve" against a 3-pixel reference that is not
+  // the recorded canonical plane at all. `resolved` is the strongest verdict this contract can
+  // reach, since it closes an issue, so it is the last place to infer a plane from a stride.
+  const expected = secondIsCrop
+    ? { width: box.width, height: box.height }
+    : { width: mask.width, height: mask.height };
+  if (other.width !== expected.width || other.height !== expected.height) return false;
+  for (let y = box.y; y < box.y + box.height; y++) {
+    for (let x = box.x; x < box.x + box.width; x++) {
+      if (mask.pixels[(y * mask.width + x) * 4] !== 255) continue;
+      const left = (y * canonical.width + x) * 4;
+      const right = secondIsCrop
+        ? ((y - box.y) * other.width + (x - box.x)) * 4
+        : (y * other.width + x) * 4;
+      if (!pixelsAgree(canonical.pixels, left, other.pixels, right, tolerance)) return false;
+    }
+  }
+  return true;
+}
+
+/** The mask's bounding box, and whether any sample sits between the two legal values. */
+export function maskCoverage(mask) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -1;
+  let maxY = -1;
+  let nonBinary = false;
+  for (let y = 0; y < mask.height; y++) {
+    for (let x = 0; x < mask.width; x++) {
+      const value = mask.pixels[(y * mask.width + x) * 4];
+      if (value !== 0 && value !== 255) nonBinary = true;
+      if (value !== 255) continue;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (maxX < 0) return { box: null, nonBinary };
+  return { box: { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 }, nonBinary };
+}
+
+/**
+ * Deduplicated and ordered.
+ *
+ * A record has two artifacts and several tokens are shared between them — both headers unreadable is
+ * one `header-invalid`, not two. `validationFailures` carries one entry per `(record, reason)`
+ * **pair**, so the same token twice for one record is one pair; the two hash tokens are distinct
+ * precisely so that failure *can* be told apart per artifact.
+ */
+function sortReasons(reasons) {
+  return [...new Set(reasons)].sort((a, b) => reasonRank.get(a) - reasonRank.get(b));
+}
+
+function sortCauses(causes) {
+  return [...causes].sort((a, b) => causeRank.get(a) - causeRank.get(b));
+}
+
+/**
+ * Tokens first, then the record's index in `acceptances[]` within one token.
+ *
+ * The input index is the only ordering both engines can see: two records failing the same way would
+ * otherwise come out in map order in one engine and input order in the other.
+ */
+function sortFailures(failures, records) {
+  const indexOf = (entry) => {
+    if (typeof entry.index === "number") return entry.index;
+    if (entry.id === undefined) return -1;
+    const found = records.findIndex((record) => record?.id === entry.id);
+    return found < 0 ? Number.MAX_SAFE_INTEGER : found;
+  };
+  return failures
+    .map((entry, order) => ({ entry, order, index: indexOf(entry) }))
+    .sort((a, b) => {
+      const byReason = reasonRank.get(a.entry.reason) - reasonRank.get(b.entry.reason);
+      if (byReason !== 0) return byReason;
+      if (a.index !== b.index) return a.index - b.index;
+      return a.order - b.order;
+    })
+    .map(({ entry }) => {
+      if (entry.id !== undefined) return { id: entry.id, reason: entry.reason };
+      if (typeof entry.index === "number") return { index: entry.index, reason: entry.reason };
+      return { reason: entry.reason };
+    });
+}
+
+/**
+ * Issues every acceptance of which has resolved **in this document** — a candidate set, not a
+ * closure decision.
+ *
+ * The tracking issue is mandatory per acceptance but not unique to one — #42 is three acceptances
+ * against one issue — so `resolved` on one of them says nothing about the issue, and closing on the
+ * first resolution would be self-defeating: the stale detection would immediately flag the siblings
+ * the closure just orphaned. Hence the aggregation.
+ *
+ * **But one run cannot see far enough to close anything, and the name must not pretend otherwise.**
+ * An evaluation reads one `known-differences.json` in one source repo, while the workflow supports
+ * many of both, and the same upstream component bug reported from two catalogs is the *normal* way
+ * one issue ends up referenced twice. Each run would then see its own records all resolved and close
+ * the issue out from under a live acceptance in a document it never opened. `v1` constrains the other
+ * side — an issue is owned by exactly one document — but nothing offline can *enforce* that, so what
+ * this function returns is the local half of the evidence. The closing step must establish ownership
+ * separately; where it cannot, it deletes its resolved records and leaves the issue for a human,
+ * which is the safe half of the operation and the one that needs no global knowledge.
+ */
+export function locallyResolvedIssues(documentRecords, statuses) {
+  const groups = new Map();
+  for (const record of documentRecords) {
+    const issue = parseIssue(record.issue);
+    if (!issue) continue;
+    const key = issueKey(issue);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(statuses?.[record.id]?.status ?? null);
+  }
+  return [...groups.entries()]
+    .filter(([, values]) => values.length > 0 && values.every((status) => status === "resolved"))
+    .map(([key]) => key)
+    .sort();
+}

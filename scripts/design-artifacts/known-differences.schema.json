@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schimke.ee/compose-ai-tools/known-differences.schema.json",
+  "title": "compose-preview-known-differences/v1",
+  "description": "The committed known-difference document, `.design-parity/known-differences.json`. This file pins the document's SHAPE only. The rules that decide a verdict — id and path safety, the budget preflight, the mask's IHDR encoding, the animation check, hash normalisation, the five gates, the status precedence, the one entry per acceptance in `statuses` and the ordering of `validationFailures` (`statuses` is an unordered map and is given no ordering) — cannot be expressed in JSON Schema and are normative in docs/design/COMPONENT_PARITY_WORKFLOW.md §4, implemented in known-differences.mjs and pinned by fixtures/known-differences/. A document that validates here can still be refused; nothing that fails here is ever accepted.",
+  "type": "object",
+  "required": ["schema", "acceptances"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "compose-preview-known-differences/v1" },
+    "acceptances": {
+      "type": "array",
+      "maxItems": 256,
+      "items": { "$ref": "#/$defs/acceptance" }
+    }
+  },
+  "$defs": {
+    "acceptance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "issue",
+        "system",
+        "component",
+        "previewId",
+        "referenceId",
+        "variant",
+        "mask",
+        "acceptedCandidate",
+        "referenceSha256",
+        "maskSha256",
+        "acceptedCandidateSha256",
+        "plane",
+        "candidateTolerance"
+      ],
+      "properties": {
+        "id": {
+          "description": "A stable identifier doing double duty as a map key and a path segment, which is why it is constrained three ways — the character class here, the reserved map keys (`__proto__`, `constructor`, `prototype`) and both dot names, neither of which JSON Schema can express.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "issue": {
+          "description": "Mandatory per acceptance, not unique to one: several acceptances legitimately point at one tracking issue, and the issue is closable only once every one of them resolves. Compared as canonical owner/repo/number, never as the URL string.",
+          "type": "string",
+          "format": "uri"
+        },
+        "system": { "type": "string", "minLength": 1 },
+        "component": { "type": "string", "minLength": 1 },
+        "previewId": { "type": "string", "minLength": 1 },
+        "referenceId": { "type": "string", "minLength": 1 },
+        "variant": {
+          "description": "Axes only. Overrides live in `overrides` and nowhere else — one fact, one field.",
+          "type": "string"
+        },
+        "overrides": {
+          "description": "The whole normalised map the render lane receives, with absence meaning 'no overrides'. Matching is exact over the whole set: every key the render lane accepts is in scope, including `knob.<key>` and `rc.<name>`, because a key that did not affect the render would not be in the map.",
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "mask": { "$ref": "#/$defs/artifactPath" },
+        "acceptedCandidate": { "$ref": "#/$defs/artifactPath" },
+        "referenceSha256": { "$ref": "#/$defs/recordedHash" },
+        "maskSha256": { "$ref": "#/$defs/recordedHash" },
+        "acceptedCandidateSha256": { "$ref": "#/$defs/recordedHash" },
+        "plane": {
+          "description": "The canonical plane the mask was authored against. `normalisedBoxes` falls back to the full canvas below MIN_BOX_COVERAGE, and the reference's sha256 does not pin which side of that threshold the pair fell — so the discriminant and the resolved box are recorded rather than re-derived.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["plane", "box"],
+          "properties": {
+            "plane": { "enum": ["content-box", "full-canvas"] },
+            "box": { "$ref": "#/$defs/box" }
+          }
+        },
+        "candidateTolerance": {
+          "description": "Per-pixel 8-bit channel distance for the candidate gate and the resolution test. Integer, and the integer requirement is normative: JSON has one number type, so 0.5 sails through a range-only check in JavaScript and is rejected by a Kotlin Int field.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8
+        },
+        "element": { "$ref": "#/$defs/element" },
+        "note": { "type": "string" },
+        "acceptedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "element": {
+      "description": "Optional. An acceptance with no `element` key at all is the geometric case; one that CAN name an element must, because the gate is what separates 'the glyph disappeared' from 'the glyph is still the wrong colour'.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "tag", "bounds", "tolerance"],
+      "properties": {
+        "kind": {
+          "description": "v1 defines exactly one identifying kind. A `producer` kind was cut because nothing can currently carry it, and a selector kind with no authoring path is worse than absent — it reads as available.",
+          "const": "tag"
+        },
+        "tag": {
+          "description": "The testTag, matched anywhere in the tree; the ancestor path is irrelevant because the resolver never walks it.",
+          "type": "string",
+          "minLength": 1
+        },
+        "bounds": {
+          "description": "The authoring-time baseline in canonical-plane coordinates. Required, not derivable: the evaluator otherwise holds only the element's current bounds, and the mask is not a usable stand-in because it commonly covers one part of the selected element.",
+          "$ref": "#/$defs/box"
+        },
+        "tolerance": {
+          "description": "A fraction of the SMALLER baseline dimension, compared against the MAXIMUM of the four edge displacements, with `>` so a displacement exactly at tolerance passes.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.25
+        }
+      }
+    },
+    "box": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "width", "height"],
+      "properties": {
+        "x": { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 },
+        "y": { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 },
+        "width": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "height": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+      }
+    },
+    "artifactPath": {
+      "description": "Relative to the acceptance's own directory under .design-parity/known-differences/<id>/. Contained AND portable: segments of [A-Za-z0-9._-] joined by /, so no backslash, no # or ? or %, and no whitespace — a contained path can still name different files on either side of the contract.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$"
+    },
+    "recordedHash": {
+      "description": "Exactly 64 lowercase hex characters. We cannot constrain what a producer publishes upstream — a SERVED hash may be spelled loosely and is normalised before comparison — but we can refuse two spellings of our own fields.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

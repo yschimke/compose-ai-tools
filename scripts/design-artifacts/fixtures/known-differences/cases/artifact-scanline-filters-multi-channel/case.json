@@ -1,0 +1,38 @@
+{
+  "title": "An RGBA accepted candidate whose scanlines use filters 1–4",
+  "site": null,
+  "why": "Its greyscale sibling pins that the filter byte is *read*; this pins that the predictor steps by the pixel stride. With one channel the two are indistinguishable — `bpp` is 1 either way — so an engine with the distance hardcoded decodes that fixture correctly and mis-decodes every ordinary filtered RGB or RGBA candidate in the field. Same pixels as the unfiltered RGBA case, so only the filtering can make the verdict differ.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

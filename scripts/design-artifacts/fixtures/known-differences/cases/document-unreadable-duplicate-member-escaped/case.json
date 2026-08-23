@@ -1,0 +1,8 @@
+{
+  "title": "A repeated member name spelled with an escape",
+  "site": null,
+  "why": "`\\u0069d` **is** `id` — JSON names are compared after unescaping — so this document repeats a member exactly as its sibling does, and parsers can still choose different winners for the pair. An engine scanning raw key tokens sees two different strings and passes the case, which is why the sibling alone does not pin the unescaping step the rule actually requires.",
+  "comparison": null,
+  "catalog": null,
+  "synthesize": []
+}

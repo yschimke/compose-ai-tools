@@ -1,0 +1,38 @@
+{
+  "title": "A leap second written in a negative offset",
+  "site": null,
+  "why": "`2016-12-31T18:59:60-05:00` is the same instant as `2016-12-31T23:59:60Z` — New York rather than Tokyo. Its `+09:00` sibling cannot pin the sign: an engine that adds the offset magnitude whichever way it points reaches `23:59:60` from `+09:00` by luck and lands on `13:59:60` here, refusing a legal timestamp. Both signs, or the branch is untested.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

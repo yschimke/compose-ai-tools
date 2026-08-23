@@ -1,0 +1,12 @@
+{
+  "pins": [
+    "statusesAbsent",
+    "validationFailures"
+  ],
+  "statusesAbsent": true,
+  "validationFailures": [
+    {
+      "reason": "document-unreadable"
+    }
+  ]
+}

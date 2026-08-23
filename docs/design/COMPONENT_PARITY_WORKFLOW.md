@@ -563,6 +563,21 @@ number rather than a shape. So the schema constrains it to a small finite range,
 outside that is `tolerance-out-of-range`, refused at validation. A tolerance that needs to be large
 is evidence the acceptance is wrong, not evidence the bound is.
 
+**Every cap here is inclusive at *both* ends, and the fixtures pin both.** The count, axis, pixel and
+encoded-byte caps each carry a passing case sitting exactly on the limit beside a refusing case one
+unit past it, and both tolerance ranges carry a passing case at `0` as well as at their ceiling.
+Without the accepting half a runtime comparing with `>=` — or `<=` at a floor — refuses what `v1`
+calls legal and still passes the whole suite, which is the failure mode the suite exists to catch
+pointed at the suite itself.
+
+**Coordinates are safe integers, and so are their far edges.** `9007199254740993` has already been
+rounded to `…992` by the time a JSON parser hands it over, so an integrality check alone accepts a
+value a `Long` consumer retains exactly. The edges matter more than the fields: every gate that
+measures a box adds them — element displacement compares `x + width` against a baseline's — and a sum
+of two safe integers need not be safe, so `{x: 9007199254740990, width: 3}` and the same box one
+pixel narrower round to the same edge here and differ by one for an exact-integer consumer. `valid`
+against `element-moved`, from identical bytes. The schema carries matching bounds.
+
 **`v1` fixes the range at `0 ≤ candidateTolerance ≤ 8`**, in 8-bit channel distance, integer. Named
 here rather than deferred to Phase 3 for the reason the budget caps are named: a ceiling each engine
 picks for itself is not a ceiling, and a record legal to one consumer and refused by another is the
@@ -576,10 +591,13 @@ bound is inclusive — `8` is legal, `9` refuses — and the fixtures pin both.
 **`candidateTolerance` is a field for the same reason `element.tolerance` is.** The candidate gate
 needs *some* slack for PNG round-tripping and the resample, and two engines choosing their own
 constants would disagree at the boundary — the one thing that must not happen. Recording it means
-both read one number off one artifact. The **metric** it applies to (which channels, compared how,
-and whether a count of over-threshold pixels or any single one trips the gate) is not settled here;
-it belongs with the pixel semantics in the open problems above, and the fixtures must pin cases on
-both sides of whatever boundary Phase 3 picks.
+both read one number off one artifact. The **metric** it applies to — which channels, compared how,
+and whether a count of over-threshold pixels or any single one trips the gate — **is settled**, in
+[§4's normative contract](#the-normative-contract) answer 6: the
+maximum absolute per-channel difference over R, G, B and A, per pixel, compared with `>`. An earlier
+draft of this paragraph deferred it to Phase 3 alongside the score; that is no longer true and
+following it would leave an engine free to pick a second metric while the fixtures pin this one.
+What Phase 3 still owns is the **score**, and only the score.
 
 **An earlier draft also carried an optional structured `finding` matcher** — `{ kind: "color",
 token: …, expected: …, actual: … }` — for the design-parity checks that are not pixel comparisons.
@@ -679,35 +697,109 @@ by the conformance fixtures. Stated as invariants:
 | I8 | Every coordinate transform is stated, in both directions | Baselines are canonical-plane; `boundsInRoot` is render pixels; a drag is display pixels — mixing them invalidates unchanged elements or passes moved ones |
 | I9 | The **recorded** plane discriminant and box define the canonical destination, for masks, transforms and resampling alike | `normalisedBoxes` falls back to the full canvas below `MIN_BOX_COVERAGE`, so a full-canvas acceptance resampled against a content box suppresses the wrong pixels and invalidates as `candidate-changed` for no real reason |
 
-**Open problems Phase 3 must resolve.** These are the things the review rounds proved cannot be
-settled by prose here. They are listed because finding them was expensive and forgetting them would
-be worse than leaving them open:
+**The pixel semantics, settled — batch 00's D5.** Six questions were left open here through several
+review rounds, and they are answered below rather than deferred, because the conformance fixtures
+encode every one of them: a fixture set frozen ahead of these answers either encodes a guess or
+cannot be produced at all, and both engines then "conform" to whichever guess got written down.
+They are answered against the **measured** population above — six sites, only one of them
+glyph-sized — rather than against #40 alone, which is how this section previously accumulated three
+wrong pixel pipelines.
 
-1. **The portable pixel path** — kernel, rounding, edge handling, channel/alpha/premultiplication
-   and gray-projection semantics, and content-box sampling, which currently reaches its verdict
-   through a host `drawImage` downscale and so can differ per engine.
-2. **Mask participation in `edgeMask`** — the scorer classifies edges from raw neighbour values with
-   no notion of validity, so whatever fills a separated region can manufacture or suppress an edge
-   at the boundary, which decides whether a neighbouring pixel gets the displaced search at all.
-   Excluding masked coordinates as *sources and search candidates* is not sufficient.
-3. **The masked pass's denominator** — dividing by the full plane versus by remaining scorable
-   coordinates gives different numbers, and the all-masked case needs a defined result.
-4. **What "accepted contribution" means** — it is *not* a simple difference of the two scores. Under
-   a scorable-coordinate denominator the unaccepted mismatch can legitimately exceed raw (a small
-   accepted delta removed from a badly-regressed image raises the average), so the subtraction goes
-   negative while the acceptance is perfectly valid. Either define it as a signed score *effect*, or
-   report the accepted region's own regional mismatch instead of presenting a difference as an
-   additive contribution. The current text's claim that a valid acceptance necessarily raises
-   similarity is false.
-5. **Sub-pixel geometry** — element-bounds tolerance and mask-edge alignment both need defined
-   rounding, at each transform.
-6. **The match metric**, shared by the candidate gate and the resolution test — which channels,
-   compared how, against what threshold, and what happens at the mask edge. The two must use the
-   same one (see the status table) or they can disagree about whether two images match, but *which*
-   one is a Phase 3 choice for the same reason the kernel is.
+The reference implementation is
+[`scripts/design-artifacts/known-differences.mjs`](../../scripts/design-artifacts/known-differences.mjs)
+and the fixtures are
+[`scripts/design-artifacts/fixtures/known-differences/`](../../scripts/design-artifacts/fixtures/known-differences/).
 
-The gates and their invalidation causes below are design decisions and do stand as written; it is
-the pixel mechanics above that are deferred.
+1. **The portable pixel path is an area average over exact source footprints**, per channel, on
+   **non-premultiplied 8-bit RGBA**, accumulated in double precision and rounded **half-up**
+   (`floor(v + 0.5)`) exactly once at the end, clamped to `[0, 255]`. It needs no kernel radius and
+   no edge-extension rule — a destination pixel's footprint is clipped to the source rectangle and
+   never samples outside it — and it reduces to a box filter at integer ratios and to
+   nearest-neighbour when upscaling by an integer, so the three cases an implementation is most
+   likely to special-case are one rule. Not premultiplied, deliberately: premultiplying and
+   un-premultiplying adds a rounding step each way that two engines would have to agree on for no
+   benefit, and these artifacts are opaque by construction. Rounding per contribution rather than
+   once at the end is where two implementations drift, so the fixtures pin an average landing
+   exactly on `.5`. Content-box detection stays where it is — it feeds the plane gate, and the
+   recorded plane is what governs (I9).
+2. **Masked coordinates do not participate in `edgeMask`, and absence is not a value.** Excluding
+   them as sources and search candidates is not sufficient, because the classifier reads raw
+   neighbour values and whatever fills a separated region can manufacture or suppress an edge at the
+   boundary — which decides whether a neighbouring pixel gets the displaced search at all. So edge
+   classification runs **within each separated region**, and a neighbour outside the region
+   contributes **no gradient term** rather than a filler value; a coordinate with no present
+   neighbours is not an edge. The same rule excludes masked coordinates from `contentMask`'s
+   dilation, so they cannot enter the denominator through the back door either.
+3. **The masked pass's denominator is the scorer's own**, restricted to unmasked coordinates: the
+   pixels either frame drew on or disagrees about, minus everything in the surviving union. Not the
+   full plane — a mask would otherwise lower the score by existing. The all-masked case is already
+   defined by `scorePlanes`, which returns `100` when it measures nothing, and reusing that answer
+   is what keeps the two engines from picking two conventions for it.
+4. **"Accepted contribution" is the accepted region's own regional match, not a difference of
+   scores.** Under a scorable-coordinate denominator the unaccepted mismatch can legitimately exceed
+   raw — a small accepted delta removed from a badly-regressed image raises the average — so the
+   subtraction goes negative while the acceptance is perfectly valid, and the earlier claim that a
+   valid acceptance necessarily raises similarity is false. `accepted` is therefore the same 0–100
+   match measured **over the union of `valid` masks alone**, on the same metric and stages as the
+   other two. It shares their polarity and their units and is **not** comparable to them by
+   subtraction; a reader wanting "what did acceptance buy" reads `unaccepted` against `raw` and gets
+   a signed effect, which is what that quantity honestly is.
+4b. **The resampler's footprints are exact integers, and the element gate compares a ratio.** Both
+   are the same defect twice: a boundary the contract states in decimals, computed in binary, landing
+   on the wrong side. Scaling every resample coordinate by the target dimension makes each overlap a
+   difference of integers, so the average is a ratio of two integers rounded once — where floating
+   footprints put `4 → 3` destination 0 on `0.49999999999999994` for a true `0.5`, delivering
+   half-*down* from a rule that says half-up. The element gate has the same problem from the other
+   direction: `0.145 × 200` is `28.999999999999996`, so a displacement of exactly 29 — the inclusive
+   boundary — is `element-moved` under a scaled tolerance and `valid` under a decimal consumer.
+   Comparing `displacement / min(width, height)` against the recorded tolerance is exact wherever the
+   tolerance is, because `29 / 200` and the literal `0.145` are the same double. Both have fixtures
+   whose numbers are derivable by hand.
+
+5. **Sub-pixel geometry rounds outward, at every transform.** A real-valued box becomes the
+   **enclosing** integer box — `floor` the origin, `ceil` the far edge — applied after the
+   transform's arithmetic and never during it. Outward rather than nearest because a mask or a
+   selection that rounds inward is smaller than the region the author looked at, which is the
+   direction that silently stops covering pixels. **The tag index does not publish canonical bounds
+   and must not be read as if it did** — it publishes `boundsInRoot` in **render pixels** and names
+   that space on the wire ([D1](parity-batches/00-decisions.md#d1--which-plane-the-element-tag-index-reports-bounds-in)),
+   because a plane is a property of a comparison and the index is a property of a render. The single
+   transform into the canonical plane is therefore a step of **the comparison**, which owns it
+   outright: an engine that expects canonical bounds from the index either compares raw render
+   coordinates or transforms an already-transformed box, and both report `element-moved` for an
+   element that never moved. The outward rounding applies to the index's own render-pixel box and
+   again to the transformed one, so element displacement is measured between two integer boxes — and
+   because rounding outward is idempotent on a box that is already integral, a correct engine
+   rounding at both ends is not double-counting anything. Pinned by its own
+   fixture group, because every gate case is handed canonical boxes that are *already* integers — a
+   second engine could round inward or to nearest and pass the whole suite otherwise, which is a
+   claim the fixtures do not check masquerading as one they do.
+6. **The match metric is the maximum absolute per-channel difference over R, G, B and A, applied
+   per pixel**, compared against `candidateTolerance` with `>` — a pixel exactly at the tolerance
+   passes, the same inclusive convention the ranges and the caps use. Per-pixel rather than
+   aggregate because an aggregate needs a second constant (how many over-threshold pixels are too
+   many) and a second constant is a second thing two engines pick differently. All four channels
+   because the existing delta map already charges for the same four, and an alpha-only change is a
+   visible change. The mask is strictly binary, so "at the mask edge" is not a case: a canonical
+   pixel is masked or it is not, and only masked pixels are compared. **A fully transparent pixel is
+   normalised to zero RGB at decode**, before the metric ever sees it: reading a canvas back commonly
+   returns `0,0,0,0` for one, because premultiplying by zero alpha destroys the colour and
+   unpremultiplying cannot recover it — so without the normalisation two encodings of *invisible*
+   compare equal in a browser and unequal offline, and the disagreement lands in this gate. It is
+   done in the decoder rather than the metric so every consumer of a decoded raster sees the same
+   pixels. The candidate gate and the
+   resolution test use **this** metric, which is what stops them disagreeing about whether two
+   images match.
+
+**What stays open is the score, and only the score.** These six settle the gates — what a mask is
+permitted to suppress — which is the half that has to be settled first, because every gate resolves
+before any score is computed (I1). The separated-plane scoring path that turns them into `raw`,
+`accepted` and `unaccepted` is Phase 3's deliverable, measured against these same fixtures: the
+`expected.json` in each case is a **partial** pin whose `pins` array names the keys a runner must
+check, and the score keys are the ones Phase 3 adds.
+
+The gates and their invalidation causes below are design decisions and stand as written; the pixel
+mechanics above are now settled alongside them, and only the scoring path is deferred.
 
 **Selector contract.** An acceptance's `element` carries an explicit `kind`. **`v1` defines exactly
 one identifying kind**, deliberately:
@@ -972,6 +1064,169 @@ A file whose header is unreadable, or whose declared
 dimensions disagree with what the full decode later produces, is `header-invalid` — the second half
 matters because a lying header is otherwise a way to walk straight past the cap.
 
+**The preflight is strictly before any decode, and that is an ordering requirement rather than an
+optimisation.** A document already over its count, axis or pixel cap must be rejected before a single
+raster is decoded — otherwise a document with 257 acceptances, or with honest headers past the caps,
+has already allocated exactly what the caps exist to refuse by the time the verdict is reached, and
+the guard protects nothing. So the per-record ladder splits in two: identity, shape, catalog, paths,
+byte length and headers are the preflight; hashes, decode, mask semantics and dimensions come after
+the document's budget has passed. Nothing in the second half can change a document verdict, which is
+what makes the split safe.
+
+**The document itself is bounded before it is parsed, at 1 MiB.** Every other budget here fires
+*after* something has been materialised unless it is checked first, and `JSON.parse` allocates the
+whole payload before the acceptance and raster caps can see any of it — a document with an empty
+`acceptances` array and one enormous string reaches none of them. The ceiling is generous against
+real use (256 records at a kilobyte each is a quarter of it), it is `document-too-large` like the
+other document verdicts, and the *reader* carries the same obligation `readArtifact` does: refuse to
+fetch past it rather than hand over the bytes so the caller can measure them.
+
+**And *any* document-level failure ends the evaluation before a single artifact is fetched.** A
+document rejected for a duplicate or unkeyable id carries no `statuses`, so every artifact read after
+that verdict is discarded work — up to 512 of them, bounded but pointless. Nothing after the identity
+scan and the count cap can change a document verdict, so nothing after it runs.
+
+**The preflight retains nothing, and stops reading the moment the document is over budget.** Both
+halves are the same lesson as the split itself: holding each record's two artifacts until the
+aggregate cap could fire would put 256 × 2 × 8 MiB — four gigabytes of individually legal, capped
+bytes — in memory *before* the cap that was meant to prevent exactly that. So a preflight reads an
+artifact's header and lets the bytes go; the decode phase reads them again, which is far cheaper than
+retaining them once. And once a document is over budget nothing further about it is knowable —
+`statuses` is absent for a document-level rejection — so fetching the remaining artifacts buys
+nothing and costs everything the cap was defending. Unlike the bound below, this half *is* assertable:
+how many artifacts were fetched is observable through the same seam that supplies them.
+
+**The second read is compared on *every* header field.** An enumerated subset is not enough — one
+that omitted the transparency, compression, filter and interlace fields would let a swapped artifact
+keep the four being compared while changing what the mask-encoding rule is actually judged on, since
+that rule reads the *preflight's* header. Comparing the whole preflight cannot drift out of step with
+what the preflight learns.
+
+**The second read is validated again, not trusted.** Retaining nothing means the decode phase reads
+fresh bytes, and `readArtifact` may be network-backed or the tree may move under a long evaluation.
+Checking only presence and hashes there would let an artifact that has since grown past the byte cap,
+or whose header now declares an over-budget raster, walk through caps that were applied to bytes
+nobody is decoding any more. So the per-artifact checks are re-applied and the headers must still be
+the ones the budget was computed from; an artifact whose header changed between the two reads is not
+stable enough to evaluate, whatever it now contains, and is `artifact-unreadable`.
+
+**And inflation itself is bounded by the declared scanline size.** The preflight cannot see past the
+header, so a small legal `IHDR` in front of a compression bomb walks through every cap and is then
+expanded in full — these artifacts are third-party and may carry 8 MiB of compressed data, which
+deflate expands by orders of magnitude. The declared `height × (stride + 1)` is the only honest
+ceiling, and anything over it is `header-invalid` either way, since a file that inflates past its
+declared size has a header that lied. A fixture pins the verdict; the bound itself is a resource
+requirement on the implementation, which no verdict-shaped fixture can express.
+
+**The CRCs of consumed chunks are verified during decode, and a mismatch is `decode-failed`.** The
+artifact's `sha256` proves nobody edited the file in flight; it says nothing about whether the file
+was ever well-formed. Without this a committed-corrupt PNG decodes on one side of the contract and is
+refused by a native decoder on the other — one set of hash-valid bytes, two verdicts, which is the
+same failure the mask-encoding and animation rules exist to close.
+
+Since the allowlist below admits only chunks this decoder reads, every CRC in a permitted stream is
+fatal and there is no ancillary-versus-consumed line left to draw. An earlier revision drew one —
+ignoring bad CRCs on chunks like `tEXt`, because the specification permits that and refusing them
+would have made this the strict engine and every browser the lenient one. That reasoning was right
+and is now moot: `tEXt` is not permitted at all.
+
+**`IHDR`'s compression and filter method bytes must both be `0`.** The specification defines exactly
+one of each, so a decoder that ignores them inflates ordinary-looking scanlines and reaches a *gate
+verdict* where a conforming decoder reaches `decode-failed`. Same class as an interlaced file, and
+the same token.
+
+**`v1` decodes a subset of PNG — 8-bit, non-interlaced — and anything outside it is `decode-failed`.**
+This is a *shared* restriction on both artifacts rather than a property of one decoder, and it has to
+be said here or it is not shared at all: a valid interlaced or 16-bit accepted candidate decodes
+perfectly in a browser, so an engine that simply refuses what its own library declines produces a
+refusal where the other reaches a gate verdict. The alternative was to implement Adam7 and the
+1/2/4/16-bit depths in both engines, which buys nothing an authoring tool cannot trivially avoid and
+adds a large new surface to disagree on — 16-bit reduction alone is a rounding decision. Restricting
+rather than answering is what this contract already does with the mask's encoding and with animation.
+Both halves are fixtures.
+
+**`v1` permits exactly five chunks — `IHDR`, `PLTE`, `IDAT`, `tRNS`, `IEND` — and refuses every
+other, critical or ancillary, known or invented.** An allowlist rather than a list of things to
+reject, and the difference is the point. The specification already requires stopping on an
+unrecognized *critical* chunk, and a browser obeys; but the expensive cases are ancillary.
+`gAMA`, `sRGB` and `iCCP` are not inert metadata — a colour-managed decoder transforms the samples
+through them and an unmanaged one returns them unchanged, so the same hash-valid accepted candidate
+yields different candidate and resolution verdicts on the two sides of this contract. Implementing
+colour management identically in two engines is exactly the question this document refuses to answer
+elsewhere. Enumerating what is understood makes the whole class finite and closed in one rule
+instead of one rule per feature, and every permitted chunk is a chunk this decoder reads, so every
+CRC is fatal and the earlier consumed-versus-ancillary distinction dissolves. The cost is that a
+producer must not emit ancillary chunks, which is one line in any encoder — and these artifacts are
+machine-generated crops of an already-composited render, not photographs carrying provenance.
+`acTL` keeps its own token: it is caught in the preflight, and `animated-png` says far more than
+"chunk not permitted".
+
+**Permitted is not the same as well-placed.** A duplicate `IHDR`, a `PLTE` or `tRNS` after the image
+data, a non-contiguous `IDAT` run, a non-empty `IEND` — each is built entirely from allowed chunks
+and each is rejected by a conforming decoder, so admitting them on membership alone reaches a gate
+verdict where the other side refuses. `v1` therefore constrains placement as well as vocabulary:
+`IHDR` first, once, and 13 bytes; `PLTE` and `tRNS` at most once and before any `IDAT`, with `tRNS`
+after `PLTE` whenever both are present — truecolor's optional suggested palette included, not only
+indexed images; the `IDAT` run contiguous; `IEND` empty. **Placement is only half
+of it** — a chunk can sit exactly where it belongs and still be illegal *for this image*: `PLTE` in a
+greyscale file, `tRNS` beside colour type 4 or 6 which already carry alpha, a `tRNS` whose length
+does not match the colour type it describes, a `PLTE` whose length is not a multiple of three, a
+palette `tRNS` with no entries at all. **`tRNS` samples are range-checked too**: they are stored as
+16-bit values whatever the bit depth, so at depth 8 a non-zero high byte names a sample no pixel can
+hold — and reading the low half alone (`0x01ff` → 255) makes a real pixel transparent where a decoder
+honouring the range leaves it opaque. Two rasters from one hash-valid file, landing in the candidate
+gate. The
+specification forbids each, so those are refused too. There are only five chunks to
+constrain, which is what the allowlist buys — the structural rules are finite because the vocabulary
+is.
+
+**The `IDAT` run is exactly one zlib datastream, consumed whole.** An inflater stops at the end of
+the first stream and ignores what follows, so a second compressed stream — or any bytes at all — can
+ride inside a permitted `IDAT` with a correct length and a correct CRC and still decode to the
+declared image, while a strict decoder refuses the file. The decode must assert that inflation
+consumed the entire concatenated payload; otherwise `decode-failed`. Same shape as the rule below,
+one level down: the allowlist stops applying wherever the reader stops reading.
+
+**And `IEND` must end the file — a reversal.** An earlier draft of this section tolerated bytes after
+`IEND` on the grounds that nothing reads them and policing them would add a rule with no divergence
+behind it. That was wrong, and wrong in the way the allowlist exists to prevent: *nothing reads them*
+is exactly the problem. A decoder that stops at `IEND` stops applying the allowlist, the placement
+rules and the CRCs one byte past where it was looking, so an artifact can carry a second `IHDR`, an
+`acTL`, or a kilobyte of anything at all, reach a gate verdict here, and be refused as a malformed
+datastream by a stricter decoder. `IEND` terminates the PNG datastream, so anything after it is
+`decode-failed`. The fixtures' own oversize artifacts were built by appending zeros there and are now
+padded **inside** the compressed stream instead — empty stored deflate blocks and zero-length `IDAT`
+chunks, which are inert, legal, and decode to the same image.
+
+**`tRNS` is refused on `mask.png` specifically.** It is permitted on the accepted candidate and is
+the one place the allowlist and the mask's own encoding rule pull against each other — the mask is
+greyscale with **no alpha**, and `tRNS` is how a greyscale PNG carries alpha anyway. Left admitted,
+the decode gives a matching sample alpha `0` while coverage reads only the grey channel: a
+transparent white pixel would suppress a comparison on one consumer and refuse the mask on another
+enforcing the no-alpha rule as written. Caught in the same `IHDR` preflight that already decides the
+encoding, and `mask-encoding-invalid` for the same reason the bit depth and colour type are.
+
+**`IEND` is required.** A stream truncated after a complete `IDAT` decodes to *something*, and how
+much depends on where the truncation landed — a consumer-dependent answer this contract cannot have.
+Deliberately stricter than a browser, which will paint the partial raster: a committed artifact
+missing its terminator is broken rather than partial.
+
+**There is no `degenerate-dimensions` token, and its absence is deliberate.** An earlier draft listed
+one for an artifact that "decodes to zero or negative dimensions". PNG dimensions are unsigned, so
+negative cannot occur, and zero is declared in the `IHDR` and caught by the preflight as
+`header-invalid` — which left a token in the ordering that no artifact could ever reach. A dead token
+in a shared contract is not harmless: it is a verdict two engines can each believe they implement, on
+inputs neither can produce, and no fixture can tell them apart.
+
+**`tRNS` is decoded, for palette, greyscale and RGB alike.** `accepted-candidate.png` is an ordinary
+colour raster and carries no encoding rule, so a palette file with a transparency chunk is legal —
+and a decoder that hardcodes alpha to `255` reads its pixels as opaque while a browser reads them as
+transparent, which is a *candidate-gate* disagreement rather than a cosmetic one. Restricting the
+accepted candidate's encoding instead was the alternative and is worse: it constrains producers to
+avoid a question that has a single correct answer in the PNG specification. Its fixture is
+discriminating on purpose — the acceptance is `invalidated: [candidate-changed]` under a correct
+decoder and `valid` under one that ignores the chunk.
+
 **Preflight a record completely before it contributes anything.** An acceptance has two rasters, and
 if one has an oversized-but-readable header while the other's is unreadable, the outcome would
 depend on which was read first — oversized first rejects the document, unreadable first excludes the
@@ -991,6 +1246,13 @@ necessarily per-acceptance anyway, since it is only detectable after the budget 
 `document-too-large`
 is then checked alongside the duplicate-id scan, both whole-document verdicts reached before any
 pixel buffer is allocated.
+
+**A canonical integer is not a usable `id` either**, for the same reason and one step further out:
+JavaScript orders array-index keys ahead of every other key and numerically among themselves, so a
+document listing `10` before `2` serialises them the other way round while an ordered-map consumer
+keeps the input order. `statuses` is a map and this contract promises it no ordering — so nothing is
+*wrong* today, and that is precisely why it is worth refusing now rather than discovering later that
+a consumer relied on the order. Only canonical integers are affected; `2024-fix` is not.
 
 **The `id` must also be safe as a map key, which is not the same constraint.** `__proto__` is a
 perfectly good path segment and a catastrophic object key: `statuses[id] = value` in the browser
@@ -1021,6 +1283,25 @@ the two names outright is cheaper than reasoning about what they normalise to; t
 an `id` of `.` reaching a sibling's `mask.png`, since that is the case a `..`-only check lets
 through.
 
+**Two obligations belong to whoever reads the artifact, not to this grammar, and the contract has to
+say so or nobody discharges them.** The rules below are *lexical*: they constrain the text of a path,
+which is all a schema can do.
+
+- **Containment must be resolved, not spelled.** A path can satisfy every rule here and still leave
+  the root through a symlink inside an acceptance directory. Whether the *resolved* target stays
+  under `known-differences/` is a fact about the filesystem or the URL space the reader serves from,
+  and only the reader can establish it — before it opens anything. An escape is
+  `path-not-contained`.
+- **The byte cap must bound the read, not describe it.** Handing back a whole oversized file so the
+  caller can measure its length exhausts the process through the guard meant to prevent that. Every
+  other budget here is enforced from a bounded header read for exactly this reason; this one is the
+  reader's because only the reader knows the size before the bytes exist. Over the cap is
+  `artifact-too-large`.
+
+Both are reported without materialising the file, and only those two tokens are honoured from a
+reader — anything else it claims is treated as an unreadable artifact rather than trusted into the
+result.
+
 **Artifact paths resolve against the known-difference directory, and may not leave it.** `mask` and
 `acceptedCandidate` are relative to the acceptance's own directory under `.design-parity/
 known-differences/<id>/` — not the repo root, not the JSON file's location, not an implicit
@@ -1044,6 +1325,103 @@ backslashes, no `#`, `?` or `%`, and no whitespace. Anything else is `path-not-c
 committed artifact path has no need of the rest of Unicode, and the restriction removes the encoding
 question instead of answering it.
 
+**The character class is not the whole of portability, either.** `artifacts/CON.png` satisfies every
+rule above, commits fine, and cannot be created under that name on Windows at all — reserved device
+names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`) apply whatever extension follows
+them. A segment ending in a dot or a space is the same class: Windows strips it silently, so two
+distinct committed names collapse onto one file there. Either way the offline engine reads a file the
+serving host reports as `artifact-unreadable`, which is the divergence this rule exists to close, so
+both are refused — for artifact segments **and** for the `id`, which is doing double duty as a
+directory name.
+
+**And a segment is capped at 255 bytes.** Every filesystem a checkout of this repository plausibly
+lands on — ext4, APFS, NTFS — caps a path *component* at 255, so a 256-character `id` is a record a
+URL-backed consumer fetches and evaluates happily while `git checkout` cannot create the directory it
+names. That is the same host-versus-checkout divergence, so it takes the same tokens: `id-not-safe`
+for an `id`, `path-not-contained` for an artifact segment. The character class is ASCII-only, so
+counting characters counts bytes. The cap is **per segment and not per path**, deliberately:
+`PATH_MAX` is a property of the reader's working directory rather than of the document, so a
+total-length rule would make identical committed bytes legal in one checkout and refused in another
+— which is the divergence, not a fix for it. Inclusive as everywhere else: 255 is legal, 256 refuses.
+
+**A repeated JSON member name refuses the whole document.** RFC 8259 leaves the behaviour undefined
+and runtimes genuinely differ — V8 keeps the last value, several keep the first, strict parsers
+refuse the input — so an acceptance carrying both `"id": "safe"` and `"id": ".."` addresses one
+artifact directory here and a different one under another engine, from byte-identical committed
+bytes. That is precisely the outcome a contract two engines are written against exists to prevent, so
+the document is refused rather than disambiguated: there is no reading of those bytes both engines
+would agree on. `document-unreadable`, for the reason the unknown document-level property gets it —
+there is no record to attribute it to. It must be detected **on the text**, before or alongside the
+parse: by the time there is an object, the evidence is gone, which is why an engine that trusts its
+deserializer walks straight past this one.
+
+**An integer-valued field must be written as a canonical JSON integer** — no fraction, no exponent —
+and this too is checked **on the text**, `document-unreadable`. `Number.isSafeInteger` cannot see the
+difference: `9007199254740991.1` has already been rounded to `…991` by the time any check runs, and
+so has `2.00000000000000000001` to `2`, so a double-parsing engine accepts what a lossless validator
+or a Kotlin `Int` decoder refuses. The far-edge rule made the coordinate case reachable from *inside*
+the safe range rather than only beyond it. No bound closes the hole — at every magnitude some
+fractional literal sits nearer an integer than the spacing of doubles there — so the only honest
+check is on the token as committed.
+
+**Overflow counts as hidden too.** `1e999` parses to `Infinity`, which is not an integer, so a check
+asking only "did this round onto an integer" refuses `2e0` and lets the largest exponent spellings
+through — the same defect, decided by how big the exponent happened to be. Both spellings are
+unrecoverable after the parse, so both are `document-unreadable`. A token that survives as an
+ordinary fractional number is *not* hidden and keeps its attributed record-level refusal.
+
+**`element.tolerance` gets the same treatment on its own terms.** It is the one field `v1` bounds
+without requiring an integer, so the canonical-integer rule cannot carry it — and the hole is the
+same shape: `0.25000000000000000001` is `0.25` by the time a range check can look. Its **range** is
+therefore checked on the token, as an exact decimal, without ever forming the double.
+
+Where an exponent is *legal*, though — and it is legal here, since this field is a real number —
+overflow is a **range** failure and not a structural one. `element.tolerance: 1e999` is a well-formed
+number outside `[0, 0.25]`, so it is `tolerance-out-of-range`, attributed to its record, exactly as
+`0.3` is. Treating non-finite as a shape failure would report `schema-invalid` for a magnitude
+problem, and a consumer that never forms the double would disagree. The same holds for
+`candidateTolerance` reached without the text walk. `NaN` has no JSON literal and cannot arrive from
+a parse.
+
+Exactly as an exact decimal, which is narrower than it sounds — both endpoints are reachable from
+the wrong side by an engine that approximates it, and each has a fixture:
+
+- **Trailing zeroes are not a remainder.** A comparison that truncates a long mantissa before
+  comparing — which it must, since a million-digit token is legal — has to ask whether any digit it
+  *discarded* was non-zero, not whether it discarded any. `0.25` followed by a hundred zeroes is the
+  declared maximum, not a hair over it.
+- **A magnitude too small to represent still has a sign.** `-1e-999999` is strictly below a minimum
+  of `0` and is `-0` once parsed, so an engine that decides a far-below-scale token from its
+  magnitude alone puts it inside every range spanning zero. Below scale and negative is out of range
+  at a minimum of `0`; below scale and positive is not.
+
+Two things keep these checks from doing damage of their own, and both are pinned:
+
+- **It is scoped by containing object, never by member name.** The paths are a box's `x`, `y`,
+  `width`, `height` (`plane.box` and `element.bounds`) and an acceptance's `candidateTolerance`. An
+  acceptance carrying the *unknown* property `"x"` is `schema-invalid` for that record, and answering
+  `document-unreadable` for it would drop the `statuses` entry of every well-formed sibling — a
+  different result from a schema-first consumer, which is the divergence this rule exists to prevent
+  rather than to cause.
+- **It catches only the tokens the parse hides** — a fractional token that *rounds onto* an integer,
+  or a real that rounds back inside its range. A value still fractional after parsing — `candidateTolerance: 0.5`, a box `x: 0.5` — is
+  caught by the ordinary record-level check, which names the record and picks the better token
+  (`tolerance-out-of-range`, `schema-invalid`). Trading those for a blunt document-level refusal
+  would lose attribution for no gain.
+
+`element.tolerance` is a real number by design and is untouched.
+
+**A second `60` is legal only at the leap-second instant.** RFC 3339 admits it for exactly one
+reading of the clock — `23:59:60` **UTC** — so `2026-01-01T12:00:60Z` matches the grammar, is not a
+date-time, and is `schema-invalid`. The offset is applied before the check, since
+`2017-01-01T08:59:60+09:00` is the same instant written in Tokyo time. Deliberately **not** a check
+that a leap second was really inserted then: that needs the IERS table, which grows by international
+announcement and cannot live in a committed contract, and refusing `:60` outright would reject a
+legal timestamp. This rule asks only whether the instant is one where a leap second *could* be
+inserted — a property of the clock — so every real leap second stays legal, including one announced
+after this was written. An earlier round declined the table-shaped version of this finding; the
+narrow version needs no table, and it stands.
+
 **A mask must select something.** An all-zero mask satisfies the encoding and dimension rules and
 still has no bounding box, which leaves `accepted-candidate.png`'s required dimensions undefined —
 one engine treats it as a harmless no-op, another refuses, a third throws while cropping. At least
@@ -1055,10 +1433,27 @@ bounding box exactly. Otherwise one consumer rescales, another rejects, a third 
 overlap — same acceptance, three different suppression unions. Mismatches are `refused`, with
 conformance cases for both.
 
+**Containment is per acceptance, not per tree.** The resolved path must stay inside *this*
+acceptance's `<id>/` directory, and a reader bounding only at `known-differences/` lets a symlink from
+one acceptance's directory into another's through: the record then reads bytes it does not own and is
+checked against a hash belonging to a different record. Same obligation, one level narrower than it
+first appears.
+
+**And resolution is exact-case, including the `<id>` directory.** `MASK.png` against a committed
+`mask.png` is neither a containment failure nor a grammar failure — the path is portable and
+contained. It is a *resolution* failure, and only on some hosts: a case-insensitive Windows or macOS
+filesystem opens the file and evaluates the record where a Linux checkout or a case-sensitive URL
+space cannot find it. No lexical rule can see it, because it is a fact about which bytes the reader
+actually opened — so it joins resolved containment and the bounded read as the **third obligation of
+the reader**, which must compare the resolved name against the requested one and report a mismatch as
+a failed open. `artifact-unreadable`, with its own fixture.
+
 **A path that resolves is not a file that opens.** A `mask` or `acceptedCandidate` path can be
-contained and syntactically perfect while the file is missing, unreadable, or truncated to nothing —
-at which point there are no bytes to hash, no header to parse and no decode to attempt, so none of
-the other tokens apply. Left unnamed, the browser turns a failed fetch into a local refusal while the
+contained and syntactically perfect while the file is missing, unreadable, a **directory**, or
+truncated to nothing — at which point there are no bytes to hash, no header to parse and no decode to
+attempt, so none of the other tokens apply. The directory case is worth naming because it is the one
+that tempts a containment answer: it resolved, it is inside the acceptance, and containment is
+precisely what it did not fail. Left unnamed, the browser turns a failed fetch into a local refusal while the
 offline reader throws or silently drops the record. `artifact-unreadable`, refused.
 
 **Strictly a fetch/open/read failure, though.** A file that *opens* and is merely empty or truncated
@@ -1115,8 +1510,8 @@ catalog fact to compare against. An acceptance naming an override combination no
 correct record on every catalog. Unused acceptances are a dashboard question, not a validation one.
 
 **A record that violates the schema is refused — and where the failure lands depends on whether it
-can be keyed.** Missing required fields, wrong types, an unsupported `element.kind`: none of the
-validation conditions so far covers these, so one consumer rejects at deserialization while another
+can be keyed.** Missing required fields, wrong types, an unsupported `element.kind`, **a property
+`v1` does not define**: none of the validation conditions so far covers these, so one consumer rejects at deserialization while another
 defaults the missing value and proceeds to `valid`, applying a mask whose gate never functions. The
 rule mirrors the duplicate-id logic and follows from the same constraint — a result keyed by id can
 only report what it can name:
@@ -1127,6 +1522,39 @@ only report what it can name:
   **document** is rejected, exactly as for a duplicate id.
 
 Both are conformance fixtures, since "one bad record" and "an unreadable file" are different repairs.
+
+**Unknown properties are refused at the document level too**, where the verdict is
+`document-unreadable` rather than `schema-invalid` — there is no record to attribute it to, so it is
+a property of the file, in the identifier-less `{ "reason": … }` shape. The document carries `schema`
+and `acceptances` and nothing else.
+
+**Unknown properties are refused, at every level of the record.** The published schema declares
+`additionalProperties: false`, so a consumer that validates against it rejects bytes a consumer
+checking only the required fields accepts — a cross-engine divergence manufactured by the validator
+itself, and the one this section is otherwise entirely about. It is also what keeps the two fields
+cut from `v1` cut: a record carrying `finding`, or an `element` carrying a producer's `ref`, is
+refused rather than ignored by one engine today and acted on by a later one. Nested objects are held
+to the same rule as the record, and both have fixtures — a well-kinded `element` with an extra
+property is the case an `element.kind` check alone lets through.
+
+**`variant` is the one string field that may be empty**, and it is an exception on purpose:
+`ServeIssueReport.variantFor` returns `""` for a preview id carrying no `__` axes, so "no axes" is a
+fact about the preview rather than a mangled record — see
+[which fields may be blank](#which-fields-may-be-blank-and-which-may-be-absent), which settles it for
+the locator and settles it here for the same reason. Every *other* field emptied means the record no
+longer names one component. Refusing a blank `variant` would make every default preview's acceptance
+inexpressible, with a fixture on each side.
+
+**A record need not be an object at all.** `acceptances` is third-party data and can hold `null`, a
+string or an array; all three are `id-missing` in the `{index, reason}` shape and the document is
+rejected, and **identity is decided before any artifact is opened**: an unkeyable record short-circuits
+the whole document, so nothing is fetched and nothing is preflighted. An earlier draft of this
+paragraph said the preflight ran anyway "since the pixel budget is reached from it", which was a
+stale ordering instruction — a second engine following it would perform up to 512 discarded artifact
+reads for a document it had already rejected, and would have to dereference the very non-object
+record this paragraph is about to get there. What survives from that draft is the reason it mattered:
+the preflight must never dereference what it was handed, because an engine that throws on a malformed
+third-party document turns it into a crash rather than the result this contract specifies.
 
 **The unkeyable case reports `id-missing`, and that token covers all three of its forms.** It needs
 saying, because neither neighbouring token fits: `schema-invalid` is per-acceptance and presupposes
@@ -1148,6 +1576,24 @@ token, or `acceptances` that is not an array. There is no record to name and no 
 on, so this is `document-unreadable` in the identifier-less `{ "reason": … }` shape, with `statuses`
 absent — the same shape as `document-too-large`, for the same reason. Without a token an engine is
 free to simply throw, which is not a result any fixture can compare against.
+
+**Case folding applies wherever a name becomes a path — the `id` *and* the two artifact paths.**
+`mask.png` beside `MASK.PNG` is two committed files on Linux and one file on Windows and default
+macOS, so the record either hashes the wrong bytes or cannot be checked out intact: the same failure
+as a folded `id` collision, one level down, and `path-not-contained` for it.
+
+**A collision needs two spellings.** The rule is about *distinct* strings that fold together, so a
+record naming the **same** path for both artifacts is not caught by it: one spelling of one file
+collides with nothing and escapes nowhere, and refusing it as `path-not-contained` reports a
+containment failure for a path that is contained — while taking the refusal away from whatever is
+actually wrong with the record. Fixtured: a record whose mask and accepted candidate are one RGBA
+file is refused, and refused as `mask-encoding-invalid`, because an RGBA image is not a binary mask.
+
+**Collisions are detected case-folded, and reported under the first spelling seen.** `foo` and `FOO`
+are distinct map keys and the *same directory* on Windows and on a default macOS filesystem, so a
+document carrying both evaluates cleanly on Linux and, checked out anywhere else, has two records
+reading one another's artifacts — it cannot even be checked out intact. The `id` is doing double duty
+as an identifier and a path, and the path half is what decides whether two records are really two.
 
 **Duplicate acceptance ids fail the whole document, not one record.** `statuses` is keyed by id, so
 two records sharing one have a single slot between them — and making the duplicate a *per-acceptance*
@@ -1198,17 +1644,34 @@ which acceptance it happened to.
 section.** Every acceptance evaluates to exactly one **status**, and the resolution predicate is
 part of this contract because §6 cannot override it:
 
-Evaluated strictly in this order — the first row whose condition holds wins:
+Evaluated strictly in this order — the first row whose condition holds wins, and *only* as far as
+the winning row: an acceptance already invalidated by a non-candidate gate never runs the candidate
+comparison, which on a legal mask is tens of millions of pixels computed only to be discarded.
 
 | # | Status | Condition |
 | --- | --- | --- |
-| 1 | `refused` | **any** validation condition holds — either artifact's bytes fail their recorded hash; an artifact is hash-valid but fails to decode, decodes to zero/negative dimensions, carries a non-binary mask encoding, selects no pixels, or does not match its required dimensions; the targeted reference publishes no `sha256`; either tolerance is out of range; the `id` is not a safe single path segment; or an artifact path does not resolve inside the known-differences root. The acceptance is never evaluated, and the `reasons` token set below is the complete list |
-| 2 | `invalidated: [causes]` | **any gate other than `candidate-changed`** fires — `reference-changed`, `plane-changed`, `element-ambiguous`, `element-moved` |
-| 3 | `resolved` | the candidate gate **fired** *and* the masked region now agrees with the **reference** (see below) |
-| 4 | `invalidated: [candidate-changed]` | the candidate gate fired and the region did not converge |
-| 5 | `valid` | nothing fired |
+| 1 | `refused` | **any** validation condition holds — either artifact's bytes fail their recorded hash; an artifact is hash-valid but fails to decode, carries a non-binary mask encoding, selects no pixels, or does not match its required dimensions; the targeted reference publishes no `sha256`; either tolerance is out of range; the `id` is not a safe single path segment; an artifact path does not resolve inside the known-differences root; the record's target no longer resolves in the catalog (`orphaned-target`); or the stored candidate already agrees with the reference (`acceptance-is-noop`, and only once the fingerprint gate has passed). The acceptance is never evaluated, and the `reasons` token set below is the complete list |
+| 2 | `out-of-scope` | the record is well-formed but its recorded scope does not match **this** comparison. No gate runs and nothing is suppressed |
+| 3 | `invalidated: [causes]` | **any gate other than `candidate-changed`** fires — `reference-changed`, `plane-changed`, `element-ambiguous`, `element-moved` |
+| 4 | `resolved` | the candidate gate **fired** *and* the masked region now agrees with the **reference** (see below) |
+| 5 | `invalidated: [candidate-changed]` | the candidate gate fired and the region did not converge |
+| 6 | `valid` | nothing fired |
 
-**`resolved` outranks `candidate-changed` only, and only after the other gates pass** — rows 2 and 3
+**`out-of-scope` is the fifth status, and it exists because two other promises in this contract are
+otherwise incompatible.** `statuses` carries one entry per member of `acceptances[]`, and a
+comparison reaches only the acceptances whose *entire* recorded scope matches it — #42's three
+acceptances share one document and no comparison reaches more than one of them. Without a token for
+"well-formed, but not about this comparison" an engine must either invent a status, omit the entry,
+or misreport it as `valid`, and all three are choices two engines make differently. It suppresses
+nothing, contributes no `validationFailures`, and is not a finding.
+
+**Refusal outranks scope, and that ordering is deliberate.** A broken artifact is broken on every
+page, so a build gate's `validationFailures` must not depend on which comparison happened to run —
+which makes the refusal set comparison-independent and reproducible. The two exceptions are the two
+refusals a comparison genuinely decides, `reference-hash-missing` and `acceptance-is-noop`; both are
+reachable only in scope, and both have their own fixture.
+
+**`resolved` outranks `candidate-changed` only, and only after the other gates pass** — rows 3 and 4
 are in that order deliberately. If the pinned reference changed and the *new* reference happens to
 agree with the candidate inside the mask, that is not a resolution: it is an acceptance measured
 against a different spec, and closing the issue on it would discard a review nobody performed. The
@@ -1228,7 +1691,27 @@ separate groups, and a group that looks fully resolved then closes an issue a si
 still holding open — the precise failure the aggregation rule below exists to prevent, reintroduced
 by string equality. Parse to `owner`, `repo`, `number` first and aggregate on those, exactly as the
 issue index's own trust boundary already validates them; a URL that does not parse is
-`schema-invalid` rather than its own group of one.
+`schema-invalid` rather than its own group of one. **Parsed as a URL, not matched as a string** — the
+host is compared case-insensitively and the path segments are percent-decoded before comparison,
+because `%79schimke` and `yschimke` are the same owner and a regex over the raw text keys them
+separately, which is exactly the split this rule exists to prevent.
+
+**`acceptedAt`, when present, is an RFC 3339 date-time — in shape *and* in meaning.**
+`2026-99-99T99:99:99Z` matches the punctuation and the digit counts and is not a date, so a validator
+asserting the format refuses what a pattern check accepts. The `T` and the `Z` are **case-insensitive**
+— RFC 3339 says so — so an uppercase-only pattern refuses a legal timestamp, which is the same
+divergence pointed the other way and the one a tightening is likeliest to introduce.
+
+**A leap second is legal only at the instant one could be inserted** — `23:59:60` UTC, with the
+offset applied first. The rule and its reasoning are stated once, above; it is named again here only
+so this list of `acceptedAt` traps is not read as permitting `:60` anywhere the grammar does.
+
+**And the `issue` URL is not trimmed before parsing.** The schema's `format: "uri"` rejects
+surrounding whitespace and a permissive URL parser accepts it, so trimming would let this module
+accept bytes a schema-first consumer refuses. The schema declares `format: "date-time"`,
+and JSON Schema treats `format` as an annotation by default — so a consumer with assertion enabled
+refuses a document a type-only check accepts. It is a recorded fact either way: a string that is not
+a timestamp is a producer bug.
 
 **Closing the issue is an issue-level decision, not an acceptance-level one.** The tracking issue is
 mandatory per acceptance but not *unique* to one — the same glyph-colour delta legitimately spans a
@@ -1251,12 +1734,17 @@ is editing. A run that cannot establish that — because it has no way to know w
 reference the issue — deletes its resolved records and leaves the issue open for a human, which is
 the safe half of the operation and the one that never needs global knowledge.
 
+**And the API must not promise what it cannot know.** The local aggregation is exposed as
+`locallyResolvedIssues` — issues every acceptance of which resolved *in this document* — rather than
+as anything named for closure, because a caller reaching for a function called "closable" has already
+been told the wrong thing. Ownership is established separately by the closing step, or not at all.
+
 Nothing offline can *enforce* single ownership, which is worth stating plainly rather than implying:
 it is a convention the closing step depends on, and the honest fallback is that closure is a
 reviewed PR rather than an automatic action. Aggregating every referencing document before closing
 is the real fix and a `v2` conversation — it needs an inventory that does not exist yet.
 
-**`resolved` requires the candidate to have actually changed.** Row 3 is guarded on
+**`resolved` requires the candidate to have actually changed.** Row 4 is guarded on
 `candidate-changed` having fired, which looks redundant and is not: the resolution metric is
 permitted to be tolerant, so an *unchanged* candidate can agree with `accepted-candidate.png` **and**
 with the reference whenever the accepted delta was itself within that tolerance. Without the guard
@@ -1307,13 +1795,11 @@ and conflating them is the easy mistake:
 | resolution test | canonical candidate inside the mask ↔ **the reference** | "has it converged on the spec?" |
 
 So `resolved` is *not* "the candidate gate failed in a nice direction" — it is its own comparison,
-against the reference, over the masked region only. That much is a design decision and is settled
-here. What is **not** settled here is the metric and threshold it uses, or how it behaves at the
-mask edge: exact channel equality, `candidateTolerance`, the scorer's `LUMA_TOLERANCE` floor, and a
-regional score all classify a near-miss differently, and picking one blind would be the same error
-as picking a resampling kernel blind. It joins the pixel-semantics **open problems** above, with one
-constraint from this contract: whatever the resolution test uses, it must be the *same* metric the
-candidate gate uses, so the two cannot disagree about whether two images match.
+against the reference, over the masked region only. Its metric is D5 answer 6 above, which is the
+*same* metric the candidate gate uses, against the same `candidateTolerance`: the two comparisons
+differ only in what they compare against, which is precisely why they may not differ in how they
+compare. The mask is strictly binary, so the mask edge is not a case — a canonical pixel is masked
+or it is not.
 
 **`plane-changed` short-circuits the element gates, which is what makes one index sufficient.** Two
 acceptances on the same comparison can record *different* canonical planes — one authored either
@@ -1326,14 +1812,23 @@ manufacture a false `element-moved` cause on top of a correct `plane-changed` �
 causes. The index is therefore always in the plane of every acceptance still being gated, and the
 `causes` list stays comparable across engines.
 
-**The index publishes bounds in canonical coordinates, already transformed.** `boundsInRoot` is
-render-pixel space (I8), the fixtures expect canonical, and nothing said who converts — so one
-implementation would compare raw bounds against a canonical baseline, another transform once, and a
-third double-transform bounds the server had already converted, each giving different `element-moved`
-verdicts on the same tree. The **server transforms once**, using the render→canonical row of the
-table above, and consumers use the values as-is; a consumer that transforms again is wrong. That
-placement follows the same logic as the index itself — the authoritative work stays where the whole
-tree and the resolved plane already are.
+**The index publishes bounds in render pixels, and the comparison transforms them.** `boundsInRoot`
+is render-pixel space (I8), the gates need canonical, and nothing originally said who converts — so
+one implementation would compare raw bounds against a canonical baseline, another transform once, and
+a third double-transform bounds it believed were already converted, each giving a different
+`element-moved` verdict on the same tree. An earlier draft of this paragraph assigned the transform to
+the **server**; [D1](parity-batches/00-decisions.md#d1--which-plane-the-element-tag-index-reports-bounds-in)
+settled it the other way, and this text now follows it.
+
+**The transform belongs to the comparison**, using the render→canonical row of the table above,
+because *a plane is a property of a comparison and the index is a property of a render*. The canonical
+plane is resolved per comparison, from a reference raster and an acceptance record; neither producer
+can see one. `ServeSemanticsTags` sees a single daemon render and `scripts/design-artifacts/tag-index.mjs`
+a single packed bundle, so both emit `boundsInRoot` and declare `space: "render-pixels"` on the wire,
+and `ServeTagIndexStore` refuses an entry claiming anything else. Making the index comparison-scoped
+instead would make the published `tags/index.json` depend on the acceptances, and it would have to be
+regenerated whenever one changed — breaking the "publishing must not require a re-render" property
+batches 02 and 05 both rely on.
 
 **The tag index and the scored PNG must come from one render.** Semantics move with overrides,
 conditional composition and animation, so an index computed by a different render than the frame
@@ -1353,7 +1848,7 @@ serialise different results — which is the one thing a cross-engine contract e
 {
   "raw": 90.2,
   "unaccepted": 95.1,
-  "accepted": 4.9,
+  "accepted": 61.8,
   "statuses": {
     "m3-iconbutton-tonal-glyph": { "status": "valid" },
     "m3-fab-shadow":             { "status": "resolved" },
@@ -1361,7 +1856,8 @@ serialise different results — which is the one thing a cross-engine contract e
                                    "causes": ["reference-changed", "element-ambiguous"] },
     "m3-chip-border":            { "status": "refused",
                                    "reasons": ["mask-hash-mismatch",
-                                               "accepted-candidate-hash-mismatch"] }
+                                               "accepted-candidate-hash-mismatch"] },
+    "m3-card-elevated-shadow":   { "status": "out-of-scope" }
   },
   "validationFailures": [
     { "id": "m3-chip-border", "reason": "mask-hash-mismatch" },
@@ -1370,8 +1866,15 @@ serialise different results — which is the one thing a cross-engine contract e
 }
 ```
 
+All three numbers are **match percentages on one scale** — `raw` over the whole comparison,
+`unaccepted` over it minus the surviving union, `accepted` over the surviving union alone (D5
+answer 4). `accepted` is deliberately **not** `unaccepted - raw`: that subtraction goes legitimately
+negative under a scorable-coordinate denominator, and an earlier revision's `4.9` presented a signed
+score *effect* as though it were an additive contribution. A reader who wants the effect reads
+`unaccepted` against `raw` and gets it, signed, which is what that quantity honestly is.
+
 Every value is an object, never a bare string, so a consumer never has to branch on type. `status`
-is one of `valid` / `resolved` / `invalidated` / `refused`. `causes` is present **only** for
+is one of `valid` / `resolved` / `invalidated` / `refused` / `out-of-scope`. `causes` is present **only** for
 `invalidated`, always an array even for one cause, ordered as the gate table lists them — that fixed
 order is what makes the multi-cause fixture comparable. `reasons` is present **only** for `refused`, and is an
 **array** for the same reason `causes` is — both artifacts can fail at once, and a single-value
@@ -1381,8 +1884,7 @@ field would leave two engines free to pick different ones. Same fixed ordering r
 
 `document-unreadable`, `document-too-large`, `duplicate-id`, `id-missing`, `id-not-safe`,
 `schema-invalid`, `orphaned-target`, `path-not-contained`, `artifact-too-large`, `header-invalid`,
-`decode-failed`,
-`degenerate-dimensions`, `dimension-mismatch`, `mask-encoding-invalid`, `animated-png`, `mask-empty`,
+`decode-failed`, `dimension-mismatch`, `mask-encoding-invalid`, `animated-png`, `mask-empty`,
 `artifact-unreadable`, `mask-hash-mismatch`, `accepted-candidate-hash-mismatch`,
 `reference-hash-missing`, `tolerance-out-of-range`, `acceptance-is-noop`.
 
@@ -1402,6 +1904,13 @@ fields are not alternatives: `statuses` answers "what happened to this acceptanc
 `validationFailures` is the flat list a build gate reports and fails on, without walking the map.
 An earlier revision showed a `refused` status beside an empty `validationFailures`, which left both
 readings implementable and would have produced different fixture results.
+
+**A record's reason set never depends on its sibling artifact.** Both headers are preflighted, and
+every header that *parsed* is inspected — so an unreadable mask beside a detectable animated
+candidate reports `header-invalid` **and** `animated-png`, not the first alone. Short-circuiting on
+the first failed header drops evidence already in hand, and which token survives then depends on
+the order the two artifacts happened to be read. The tokens are deduplicated per `(record, reason)`,
+so two unreadable headers are still one `header-invalid`.
 
 `validationFailures` is a list whose entries take one of **three** shapes, chosen by how precisely
 the failure can be attributed:
@@ -1475,7 +1984,7 @@ plane:
 | --- | --- | --- |
 | Reference annotation `bounds` | the **full reference raster** (`DesignAnnotation` KDoc: "the annotated image's own pixel space") | subtract `(referenceBox.x, referenceBox.y)`; scale 1; clip |
 | Drag rectangle on the reference panel | CSS/display pixels of the `<img>` | scale by `rasterWidth / displayWidth` and `rasterHeight / displayHeight`, then subtract the box origin; clip |
-| Render-side annotation `bounds` (**not** the tag index, which the server already publishes canonical — see below; transforming it again is the mistake this row invites) | **render** pixel space (`boundsInRoot`) | subtract `(candidateBox.x, candidateBox.y)`, then scale **x and y independently** — `plane.width / candidateBox.width` for x, `plane.height / candidateBox.height` for y, where `plane` is the acceptance's **recorded** canonical plane (I9), not `referenceBox`, which is only the same thing outside the `full-canvas` fallback; clip |
+| Render-side annotation `bounds`, **and the tag index** (which publishes `boundsInRoot` in render pixels and names that space on the wire — [D1](parity-batches/00-decisions.md#d1--which-plane-the-element-tag-index-reports-bounds-in); an earlier draft of this row said the server had already converted it, and skipping the transform on that basis is the mistake it invited) | **render** pixel space (`boundsInRoot`) | subtract `(candidateBox.x, candidateBox.y)`, then scale **x and y independently** — `plane.width / candidateBox.width` for x, `plane.height / candidateBox.height` for y, where `plane` is the acceptance's **recorded** canonical plane (I9), not `referenceBox`, which is only the same thing outside the `full-canvas` fallback; clip |
 
 **The two axes scale independently, and that is not a rounding detail.** `boxCanvas` stretches each
 source box onto the target width and height separately, and the comparison explicitly *supports*
@@ -1613,16 +2122,13 @@ with these requirements:
    divergence fails as a resampler divergence instead of surfacing as an unexplained score drift
    months later.
 
-**These are requirements on a deliverable, not the specification itself — deliberately.** Picking
-the exact kernel, the rounding and edge rules, and the concrete channel/alpha/gray formulas is
-Phase 3's first task, not this document's. Two engines could both satisfy the list above and still
-diverge on, say, a translucent pixel at a non-integer scale ratio; that is a real gap, and closing
-it here would mean choosing constants with no implementation to validate them against and no
-fixtures to catch the choice being wrong. The mechanism that actually forces convergence is the
-intermediate-plane fixtures, which fail at the diverging stage — so the sequencing is: choose the
-kernel and semantics as Phase 3 step 1, land the fixtures with them, and treat any later engine
-disagreement as a fixture gap. A planning document that guessed the constants would produce a
-number both engines cite and neither validates.
+**Requirements 1, 2 and 3 are now met by D5's answers, and requirement 4 by the fixture tree.** The
+sequencing that got them there is the one this section called for and is worth keeping on the
+record: choose the kernel and the semantics *with* an implementation and a fixture set in the same
+change, never in prose alone. A planning document that guessed the constants would have produced a
+number both engines cite and neither validates — which is exactly what the three discarded pipelines
+were. What Phase 3 still owns is the **scoring** path those planes feed, and any later engine
+disagreement is now a fixture gap rather than an open question.
 
 This is a meaningful increase in Phase 3's cost, and it is load-bearing: without it, "the same
 acceptance semantics are used by design-parity and the preview server" — an explicit acceptance
@@ -1649,6 +2155,25 @@ things depending on which tool you asked. Options considered:
 **Recommended: the third.** It is the same device already used for `parity-activity.mjs` ↔
 `ServeParityActivityStore` (one committed fixture, two languages, both tests load it), it is cheap,
 and it fails loudly.
+
+***Delivered.*** The contract's rules are implemented in
+[`scripts/design-artifacts/known-differences.mjs`](../../scripts/design-artifacts/known-differences.mjs),
+its document shape in
+[`known-differences.schema.json`](../../scripts/design-artifacts/known-differences.schema.json), and
+the fixtures in
+[`fixtures/known-differences/`](../../scripts/design-artifacts/fixtures/known-differences/) — one
+case per pilot site, one rejecting case for every rule, and a group pinning the resampler on its own.
+The suite runs as `known-differences.test.mjs` in the design-artifacts driver's `node --test` job.
+Two things about it are load-bearing for the runners that follow:
+
+- **The fixtures are generated, and the suite proves it.** `build-known-difference-fixtures.mjs`
+  writes every byte, and one test regenerates the tree into a scratch directory and compares
+  digests. A hand-edited case would otherwise survive indefinitely, pinning bytes nobody can
+  re-derive — which is precisely the state the other two runners cannot audit from their own
+  repositories.
+- **Expected values are declared, never harvested.** Writing `expected.json` from a run of the
+  implementation would make every fixture agree with whatever that implementation happens to do,
+  bugs included; the suite would then pin the implementation rather than this contract.
 
 **A fixture must pin the intermediate planes, not only the final numbers.** Expecting just
 `{raw, accepted, unaccepted, invalidations}` is what the portable-comparison-path requirement above

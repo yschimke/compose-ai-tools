@@ -1,0 +1,8 @@
+{
+  "title": "A geometry coordinate written as a non-integer",
+  "site": null,
+  "why": "`9007199254740991.1` is already `…991` by the time any check can look at it, so an `isSafeInteger` gate accepts a coordinate a lossless consumer refuses as fractional — and the far-edge rule made that reachable from *inside* the safe range rather than beyond it. No bound closes the hole: at every magnitude some fractional literal sits nearer an integer than the spacing of doubles there, so the token is checked as written and `x`, `y`, `width` and `height` must be canonical JSON integers — no fraction, no exponent. `element.tolerance` is a real number by design and is untouched.",
+  "comparison": null,
+  "catalog": null,
+  "synthesize": []
+}

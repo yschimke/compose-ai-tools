@@ -1,0 +1,41 @@
+{
+  "title": "An acceptance authored under overrides applies at the frame carrying the same ones",
+  "site": null,
+  "why": "The matching half of the override rule, and the half that actually gates. With only the mismatch pinned, an engine that treats *any* acceptance carrying overrides as `out-of-scope` — never comparing pixels at all — passes the whole suite while suppressing nothing. Here the two maps are equal and the acceptance must reach its gate verdict. The two sides spell the keys in opposite orders on purpose: matching is over the set of key/value pairs, not over a serialisation, so a consumer comparing rendered JSON rather than entries fails exactly this case.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {
+      "knob.density": "compact",
+      "fontScale": "1.5"
+    },
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

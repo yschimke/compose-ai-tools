@@ -1,0 +1,38 @@
+{
+  "title": "A `candidateTolerance` whose exponent overflows the double",
+  "site": null,
+  "why": "Its sibling `document-unreadable-fractional-candidate-tolerance` covers the spelling that *rounds onto* an integer; this covers the one that overflows past every integer. Both are an exponent where `v1` requires canonical digits, and both are unrecoverable once parsed — so answering `document-unreadable` for one and an attributed `schema-invalid` for the other makes the verdict turn on how large the exponent happened to be.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

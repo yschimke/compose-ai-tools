@@ -1,0 +1,38 @@
+{
+  "title": "An `element.tolerance` negative by a magnitude too small to survive the parse",
+  "site": null,
+  "why": "`-1e-999999` is a legal JSON number strictly below the declared minimum of `0`, and it is `-0` by the time any range check can look — so the sign, the only thing that makes it invalid, is exactly what the parse destroys. It is the mirror of the over-the-ceiling case at the other bound, and it needs the *sign* carried through a magnitude test that has already discarded the digits: an engine deciding a far-below-scale token from its magnitude alone puts it inside any range that spans zero and gates a record a lossless validator refuses.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

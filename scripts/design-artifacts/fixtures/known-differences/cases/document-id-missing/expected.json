@@ -1,0 +1,25 @@
+{
+  "pins": [
+    "statusesAbsent",
+    "validationFailures"
+  ],
+  "statusesAbsent": true,
+  "validationFailures": [
+    {
+      "index": 0,
+      "reason": "id-missing"
+    },
+    {
+      "index": 1,
+      "reason": "id-missing"
+    },
+    {
+      "index": 2,
+      "reason": "id-missing"
+    },
+    {
+      "index": 3,
+      "reason": "id-missing"
+    }
+  ]
+}

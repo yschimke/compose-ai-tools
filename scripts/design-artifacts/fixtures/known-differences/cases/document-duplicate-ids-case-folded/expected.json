@@ -1,0 +1,13 @@
+{
+  "pins": [
+    "statusesAbsent",
+    "validationFailures"
+  ],
+  "statusesAbsent": true,
+  "validationFailures": [
+    {
+      "id": "m3-Glyph",
+      "reason": "duplicate-id"
+    }
+  ]
+}

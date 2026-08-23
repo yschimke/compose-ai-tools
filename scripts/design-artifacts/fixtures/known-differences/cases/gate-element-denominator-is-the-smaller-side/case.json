@@ -1,0 +1,38 @@
+{
+  "title": "A rectangular baseline, displaced between the two possible thresholds",
+  "site": null,
+  "why": "Every other one-match case uses a **square** baseline, where `min` and `max` are the same number — so an engine normalising by the larger dimension passes all of them while granting five times the movement here. `0.25 × min(40, 8) = 2` and `0.25 × max(40, 8) = 10`; the displacement is 4, which fires under the contract's denominator and passes under the other.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 12,
+          "y": 8,
+          "width": 40,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

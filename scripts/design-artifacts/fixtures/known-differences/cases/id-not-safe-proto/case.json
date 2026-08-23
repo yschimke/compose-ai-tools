@@ -1,0 +1,38 @@
+{
+  "title": "An `id` of `__proto__`",
+  "site": null,
+  "why": "`__proto__` is a perfectly good path segment and a catastrophic object key: `statuses[id] = …` in the browser mutates the prototype instead of creating the own-property the contract requires, while the offline map stores it normally. Two defences — the reserved names are rejected, **and** the browser builds `statuses` as a `Map` or a null-prototype object — and this fixture makes an implementation using `{}` fail visibly rather than silently.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

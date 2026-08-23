@@ -1,0 +1,38 @@
+{
+  "title": "An artifact carrying an ancillary chunk",
+  "site": null,
+  "why": "`v1` permits exactly five chunks — `IHDR`, `PLTE`, `IDAT`, `tRNS`, `IEND` — and refuses anything else, critical or ancillary, known or invented. An allowlist rather than a growing list of things to reject, because every PNG feature is another place a lenient decoder and a colour-managed browser disagree about the pixels a gate then compares, and each one caught individually is one more round of the same argument. The cost is that a producer must not emit ancillary chunks, which is one line in any encoder.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

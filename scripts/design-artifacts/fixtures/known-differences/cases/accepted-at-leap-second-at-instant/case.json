@@ -1,0 +1,38 @@
+{
+  "title": "A real leap second, and one reached through an offset",
+  "site": null,
+  "why": "The accepting half, and it has to be here or the rule above becomes 'refuse `60`' by accident — which would reject a legal timestamp, the failure mode the case-insensitive `T` and `Z` fix already had to undo once. `2016-12-31T23:59:60Z` is a leap second that happened. The offset arithmetic is what makes the rule non-trivial: `2017-01-01T08:59:60+09:00` is the same instant written in Tokyo time, so the check has to convert before it looks.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

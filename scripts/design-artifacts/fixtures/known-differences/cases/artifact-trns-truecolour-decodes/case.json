@@ -1,0 +1,38 @@
+{
+  "title": "A truecolour accepted candidate whose `tRNS` names its own colour",
+  "site": null,
+  "why": "A truecolour `tRNS` is three 16-bit samples, so it is six bytes at any bit depth — the shape a length check keyed on the colour type has to know. The acceptance is `valid` only if the chunk is honoured: the glyph decodes to alpha `0` — and to `0,0,0` RGB, since a fully transparent pixel is normalised at decode — which is exactly what the canonical candidate holds there. An engine that applies `tRNS` to palette images alone decodes an opaque colour and reports `candidate-changed`.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

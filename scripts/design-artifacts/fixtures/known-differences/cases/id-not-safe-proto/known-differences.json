@@ -1,0 +1,42 @@
+{
+  "schema": "compose-preview-known-differences/v1",
+  "acceptances": [
+    {
+      "id": "__proto__",
+      "issue": "https://github.com/yschimke/m3-catalog/issues/40",
+      "system": "m3",
+      "component": "IconButton/Tonal",
+      "previewId": "iconbutton-tonal__ideal__default__light",
+      "referenceId": "iconbutton-tonal-ideal-light",
+      "variant": "ideal/default/light",
+      "mask": "mask.png",
+      "acceptedCandidate": "accepted-candidate.png",
+      "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+      "maskSha256": "7827b73582027ac016d1120aa43ec9c2599d17971608a6e9e75fa7c903e26eee",
+      "acceptedCandidateSha256": "0d37467a035a313727618eb5ef1ec544979f83ee43960493e5440b6e5188d08b",
+      "plane": {
+        "plane": "content-box",
+        "box": {
+          "x": 4,
+          "y": 4,
+          "width": 24,
+          "height": 24
+        }
+      },
+      "candidateTolerance": 2,
+      "element": {
+        "kind": "tag",
+        "tag": "iconbutton-tonal-glyph",
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        },
+        "tolerance": 0.1
+      },
+      "note": "Tonal icon button draws its glyph in onSurfaceVariant; the kit uses onSecondaryContainer.",
+      "acceptedAt": "2026-08-22T00:00:00Z"
+    }
+  ]
+}

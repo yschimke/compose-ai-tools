@@ -1,0 +1,31 @@
+{
+  "schema": "compose-preview-known-differences/v1",
+  "acceptances": [
+    {
+      "id": "m3-navigationbar-short-items",
+      "issue": "https://github.com/yschimke/m3-catalog/issues/41",
+      "system": "m3",
+      "component": "NavigationBar/Short",
+      "previewId": "navigationbar-short__ideal__compact__light",
+      "referenceId": "navigationbar-short-ideal-light",
+      "variant": "ideal/compact/light",
+      "mask": "mask.png",
+      "acceptedCandidate": "accepted-candidate.png",
+      "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+      "maskSha256": "c5abcc2eb40bce1f499d4df1745645cdc4a895aed44100ef7a7b38f90376d64b",
+      "acceptedCandidateSha256": "1f63059e08e2081476e8baf1e6393f8decc4b8326ffdb305879a5cc59a64067d",
+      "plane": {
+        "plane": "content-box",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "width": 48,
+          "height": 12
+        }
+      },
+      "candidateTolerance": 2,
+      "note": "ShortNavigationBar measures its items at full bar width. No element is tagged yet, so this is geometric.",
+      "acceptedAt": "2026-08-22T00:00:00Z"
+    }
+  ]
+}

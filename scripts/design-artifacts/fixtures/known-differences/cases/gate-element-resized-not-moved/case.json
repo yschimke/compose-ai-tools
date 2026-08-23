@@ -1,0 +1,38 @@
+{
+  "title": "The element kept its origin and changed size",
+  "site": null,
+  "why": "Every other one-match case *translates* the element, so an engine comparing only `x` and `y` passes them all and leaves a resized element `valid` — still suppressing pixels of something that is no longer the shape it was. Here the origin is untouched and only the far edges move: `0.1 × min(8, 8) = 0.8` against a far-edge displacement of 2.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 10,
+          "height": 10
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

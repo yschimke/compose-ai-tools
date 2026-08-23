@@ -1,0 +1,38 @@
+{
+  "title": "A document past the 1 MiB ceiling",
+  "site": null,
+  "why": "Bounded **before** parsing, for the reason the artifact reader is bounded before opening: every other budget fires after something has already been materialised unless it is checked first, and `JSON.parse` allocates the whole payload before the acceptance and raster caps can see it. A document with one enormous string and a single acceptance reaches none of them. The reader should refuse to fetch past the ceiling for the same reason `readArtifact` must; this is the defence in depth behind it.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

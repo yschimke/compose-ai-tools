@@ -1,0 +1,38 @@
+{
+  "title": "Every channel exactly at `candidateTolerance`",
+  "site": null,
+  "why": "Maximum-channel distance is exactly 2 and the comparison is `>`, so this is legal — the inclusive boundary, from the accepting side. A summed distance (8) or a Euclidean one (4) would call it changed, which is how this case tells those two apart from the settled metric. Alpha moves the other way so the case cannot be satisfied by an implementation that only looks at RGB.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

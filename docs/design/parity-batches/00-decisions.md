@@ -126,6 +126,43 @@ before they are settled either encodes a guess or cannot be produced at all, and
 fixtures. A decision made in code and not written down is how the previous three pipelines went
 wrong.
 
+> **Answered, all six, in §4 of the contract** — see
+> [The pixel semantics, settled](../COMPONENT_PARITY_WORKFLOW.md#the-normative-contract), which is
+> normative; this is the index into it.
+>
+> 1. **The resampler** is an area average over exact source footprints, per channel, on
+>    non-premultiplied 8-bit RGBA, rounded half-up once at the end. No kernel radius and no
+>    edge-extension rule, and it reduces to a box filter at integer ratios and to nearest-neighbour
+>    on integer upscale — the three cases an implementation would otherwise special-case are one.
+> 2. **Mask pixels do not participate in `edgeMask`.** Edge classification runs within each
+>    separated region and an out-of-region neighbour contributes *no gradient term* rather than a
+>    filler value, which is what stops the fill manufacturing or suppressing an edge at the
+>    boundary. Same exclusion from `contentMask`'s dilation.
+> 3. **The denominator is the scorer's own** — content-or-disagreeing coordinates — restricted to
+>    unmasked ones. The all-masked case is already defined by `scorePlanes` returning `100` when it
+>    measures nothing, and reusing that answer is what stops two engines picking two conventions.
+> 4. **"Accepted contribution" is the accepted region's own regional match**, on the same scale as
+>    `raw` and `unaccepted`, and explicitly not their difference — that subtraction goes legitimately
+>    negative, which is the defect the old `accepted: 4.9` example encoded.
+> 5. **Sub-pixel geometry rounds outward** to the enclosing integer box, at every transform, after
+>    the arithmetic and never during it. Inward rounding is the direction that silently stops
+>    covering pixels.
+> 6. **The match metric is max absolute per-channel difference over R, G, B, A, per pixel**,
+>    compared with `>` against `candidateTolerance`. Per-pixel rather than aggregate, because an
+>    aggregate needs a second constant. The candidate gate and the resolution test share it.
+>
+> Answered against the measured population — six sites, only #40 glyph-sized — rather than against
+> #40 alone, which is how §4 previously accumulated three wrong pipelines. Each answer is exercised
+> by fixtures in
+> [`fixtures/known-differences/`](../../../scripts/design-artifacts/fixtures/known-differences/), and
+> the resampler has a group of its own so a kernel divergence fails *as* a kernel divergence.
+>
+> **What is still open is the score, and only the score.** These settle the gates, which is the half
+> that has to be settled first because every gate resolves before any score is computed (I1). The
+> separated-plane scoring path is batch 05's, measured against the same cases: each `expected.json`
+> is a *partial* pin whose `pins` array names the keys a runner must check, and the score keys are
+> the ones 05 adds.
+
 ---
 
 ## D6 — the render generation a selection is allowed to describe

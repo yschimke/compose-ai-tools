@@ -1,0 +1,8 @@
+{
+  "title": "Three pixels into two — partial footprints",
+  "why": "The case a box filter at integer ratios never reaches, and the reason the kernel is defined as an **area average over exact source footprints**: destination 0 covers `[0, 1.5)`, so pixel 1 contributes half its area — `(0 × 1 + 90 × 0.5) / 1.5 = 30` — and destination 1 covers `[1.5, 3)` for `(90 × 0.5 + 240 × 1) / 1.5 = 190`. No kernel radius, no edge-extension rule: a footprint is clipped to the source rectangle and never samples outside it.",
+  "target": {
+    "width": 2,
+    "height": 1
+  }
+}

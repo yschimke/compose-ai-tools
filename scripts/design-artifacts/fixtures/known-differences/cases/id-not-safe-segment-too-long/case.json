@@ -1,0 +1,38 @@
+{
+  "title": "An `id` longer than a filesystem component",
+  "site": null,
+  "why": "256 allowed ASCII characters, and every filesystem a checkout plausibly lands on caps a *path component* at 255 — ext4, APFS and NTFS alike. So a URL-backed consumer fetches and evaluates this record happily while a normal `git checkout` cannot create the directory it names, and the offline engine reports `artifact-unreadable` for bytes the serving host just validated. Same host-versus-checkout divergence as the reserved names and the trailing dot, so it gets the same token rather than a new one. 255 is legal and 256 refuses — the inclusive convention the budget caps and the tolerance ranges already use.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

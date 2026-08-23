@@ -1,0 +1,32 @@
+{
+  "title": "The tag resolves to exactly one node that carries no bounds at all",
+  "site": null,
+  "why": "Uniqueness is necessary and not sufficient: without usable bounds there is nothing to measure a displacement *from*, so the element cannot be shown to have stayed put and the acceptance must not keep suppressing its pixels. Zero-area is included because it is the shape a projector emits for a node it laid out but never placed — structurally a box, measurably nothing.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

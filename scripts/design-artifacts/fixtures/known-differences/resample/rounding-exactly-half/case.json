@@ -1,0 +1,8 @@
+{
+  "title": "An average landing exactly on .5",
+  "why": "`(100 + 101) / 2 = 100.5`. Half-up gives `101`; banker's rounding gives `100`. Both are defensible and only one of them can be the contract, so the fixture names it.",
+  "target": {
+    "width": 1,
+    "height": 1
+  }
+}

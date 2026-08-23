@@ -1,0 +1,16 @@
+{
+  "pins": [
+    "statuses",
+    "validationFailures",
+    "locallyResolvedIssues"
+  ],
+  "statuses": {
+    "m3-iconbutton-tonal-glyph": {
+      "status": "resolved"
+    }
+  },
+  "validationFailures": [],
+  "locallyResolvedIssues": [
+    "yschimke/m3-catalog#40"
+  ]
+}

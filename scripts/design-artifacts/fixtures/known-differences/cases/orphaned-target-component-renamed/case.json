@@ -1,0 +1,50 @@
+{
+  "title": "The component was renamed while its ids stayed put",
+  "site": null,
+  "why": "The one case an id-existence walk passes. Scope matching uses the full locator, so *any* recorded field diverging from the catalog makes the acceptance permanently unreachable: it produces no status, appears in no dashboard, and survives every cleanup pass by being invisible to all of them. The walk therefore resolves the preview **within its system**, requires the resolved preview's component and axes to match, and requires the reference to hang off *that* preview.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": {
+    "previews": [
+      {
+        "system": "m3",
+        "id": "iconbutton-tonal__ideal__default__light",
+        "component": "IconButton/Filled",
+        "variant": "ideal/default/light",
+        "referenceIds": [
+          "iconbutton-tonal-ideal-light"
+        ]
+      }
+    ]
+  },
+  "synthesize": []
+}

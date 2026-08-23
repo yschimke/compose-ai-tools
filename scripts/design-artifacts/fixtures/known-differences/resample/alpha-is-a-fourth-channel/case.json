@@ -1,0 +1,8 @@
+{
+  "title": "Alpha averaged without premultiplication",
+  "why": "Premultiplying and un-premultiplying introduces a rounding step each way that two engines would have to agree on for no benefit. `(64 + 255) / 2 = 159.5 → 160` on alpha, and the colour channels average independently of it — under premultiplied arithmetic they would be weighted by it instead. The partly-transparent pixel is deliberate: a **fully** transparent one cannot reach the resampler, because decoding normalises its RGB to zero (a browser cannot recover colour it premultiplied away), so a fixture built on one would be testing a state no decoded raster holds.",
+  "target": {
+    "width": 1,
+    "height": 1
+  }
+}

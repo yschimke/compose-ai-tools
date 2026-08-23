@@ -1,0 +1,10 @@
+{
+  "title": "A box whose origin is negative",
+  "why": "A transform can put a selection's origin outside the plane before clipping, and `floor` is not truncation there — `Math.trunc(-0.5)` is `0` and moves the edge *inward*. Languages differ on which one their integer cast performs, so the fixture pins the one this contract means.",
+  "box": {
+    "x": -0.5,
+    "y": -2.5,
+    "width": 4,
+    "height": 4
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "title": "An unknown record property that shares a geometry field's name",
+  "site": null,
+  "why": "The scoping half of the integer-token rule. Coordinates are checked as *written*, on the text, and a check keyed on the member **name** would answer `document-unreadable` here — dropping the `statuses` entry of every well-formed sibling acceptance, where a schema-first consumer reports `schema-invalid` for this record alone. So the token check is keyed on the containing object's path (`plane.box`, `element.bounds`, the acceptance itself), never on the name, and an unknown property called `x` is an unknown property like any other. The token is the one that *does* round onto an integer, so a name-keyed check fires on it for certain.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

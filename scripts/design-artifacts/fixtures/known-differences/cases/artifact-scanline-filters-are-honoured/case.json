@@ -1,0 +1,38 @@
+{
+  "title": "An artifact whose scanlines use filters 1–4",
+  "site": null,
+  "why": "Every other PNG in this tree is written with filter `0` on every row, so the whole committed suite could be decoded by an engine implementing none of Sub, Up, Average or Paeth — and those are ordinary PNG that any encoder emits, so that engine then refuses or mis-decodes a perfectly legal accepted candidate in the field. This mask decodes to exactly the same samples as its unfiltered twin and the acceptance is `valid`; an engine that ignores the filter byte reads different pixels and cannot reach that verdict. The rows cycle through all four so no single filter can be the one that happens to be implemented.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

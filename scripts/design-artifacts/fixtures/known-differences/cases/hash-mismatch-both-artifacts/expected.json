@@ -1,0 +1,25 @@
+{
+  "pins": [
+    "statuses",
+    "validationFailures"
+  ],
+  "statuses": {
+    "m3-iconbutton-tonal-glyph": {
+      "status": "refused",
+      "reasons": [
+        "mask-hash-mismatch",
+        "accepted-candidate-hash-mismatch"
+      ]
+    }
+  },
+  "validationFailures": [
+    {
+      "id": "m3-iconbutton-tonal-glyph",
+      "reason": "mask-hash-mismatch"
+    },
+    {
+      "id": "m3-iconbutton-tonal-glyph",
+      "reason": "accepted-candidate-hash-mismatch"
+    }
+  ]
+}

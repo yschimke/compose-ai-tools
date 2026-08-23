@@ -1,0 +1,8 @@
+{
+  "title": "A document carrying a property `v1` does not define",
+  "site": null,
+  "why": "The document level gets the same rule the record level does, and for the same reason: the published schema declares `additionalProperties: false` at both, so a schema-first consumer rejects bytes a required-fields-only consumer evaluates normally. `document-unreadable` rather than `schema-invalid` because there is no record to attribute it to — this is a property of the file.",
+  "comparison": null,
+  "catalog": null,
+  "synthesize": []
+}

@@ -1,0 +1,8 @@
+{
+  "title": "257 acceptances — one past the cap",
+  "site": null,
+  "why": "The count cap is checked alongside the duplicate-id scan, before any pixel buffer is allocated. **Exceeds, not reaches**: its sibling sits on exactly 256 and is evaluated normally, and a `>=` check would reject both and leave two engines free to disagree about the case in between.",
+  "comparison": null,
+  "catalog": null,
+  "synthesize": []
+}

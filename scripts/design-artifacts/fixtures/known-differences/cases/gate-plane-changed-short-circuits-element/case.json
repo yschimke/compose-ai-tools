@@ -1,0 +1,38 @@
+{
+  "title": "A changed plane short-circuits the element gates",
+  "site": null,
+  "why": "The tag is deliberately ambiguous in this comparison's index. Only `plane-changed` may be reported: the index carries bounds in the comparison's plane, so running the element gate against a plane the acceptance was not authored in manufactures a false cause on top of a correct one.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "full-canvas",
+      "box": {
+        "x": 0,
+        "y": 0,
+        "width": 32,
+        "height": 32
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 3,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

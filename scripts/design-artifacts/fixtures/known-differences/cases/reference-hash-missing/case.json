@@ -1,0 +1,38 @@
+{
+  "title": "The targeted reference publishes no `sha256`",
+  "site": null,
+  "why": "Refused, not `invalidated: reference-changed`. The fingerprint gate compares a recorded hash against a served one; with nothing to compare, the gate cannot run, and an acceptance whose primary safety check is inoperable is a broken configuration rather than a stale one. `reference-changed` reads as 'the design moved' — a fact about the world — while this is 'we cannot tell', which needs a different fix and a different message.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

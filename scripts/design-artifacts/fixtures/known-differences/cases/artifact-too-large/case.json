@@ -1,0 +1,44 @@
+{
+  "title": "A mask one byte past 8 MiB encoded",
+  "site": null,
+  "why": "Dimensions do not bound file size: PNG compression varies by orders of magnitude with content, and an acceptance's rasters are exactly the noisy sub-regions that compress worst. The cap sits comfortably under `ServeCatalogStore`'s own 25 MB fetch limit, so the two engines agree well before the host's fetch would fail, and far above a real mask or crop.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": [
+    {
+      "path": "artifacts/m3-iconbutton-tonal-glyph/mask.png",
+      "from": "artifacts/m3-iconbutton-tonal-glyph/mask.base.png",
+      "padTo": 8388609
+    }
+  ]
+}
