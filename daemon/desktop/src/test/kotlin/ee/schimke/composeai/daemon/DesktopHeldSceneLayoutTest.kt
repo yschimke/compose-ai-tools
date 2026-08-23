@@ -21,7 +21,8 @@ import org.junit.rules.TemporaryFolder
  *    jumps it back on the next real frame — a large forward delta to every in-flight animation,
  *    followed by an equally large negative one.
  * 2. **The ordering.** In live mode the reverse map that turns a pixel click into a stable handle
- *    has to run against the screen the user clicked, not the screen the click produced.
+ *    has to run against the screen the user clicked, not the screen the click produced — and a
+ *    cached projection has to be invalidated when a dispatch renders, which a press does.
  */
 class DesktopHeldSceneLayoutTest {
 
@@ -100,6 +101,42 @@ class DesktopHeldSceneLayoutTest {
         SOME_LATE_FRAME_NANOS,
         state.lastRenderedFrameNanos,
       )
+    } finally {
+      engine.tearDown(state)
+    }
+  }
+
+  @Test
+  fun `a render bumps the generation a cached projection is keyed on`() {
+    // A projected semantics tree is a snapshot of one layout pass. The live tick loop reuses one
+    // across queued inputs, which is only sound while the scene hasn't re-rendered — and a
+    // dispatch CAN render (`ScenePointerDispatch.press` settles a frame). This counter is what
+    // makes that detectable instead of assumed.
+    val engine = RenderEngine(outputDir = tempFolder.newFolder("generation-renders"))
+    val state =
+      engine.setUp(
+        RenderSpec(
+          className = FIXTURE_CLASS,
+          functionName = "TristateClickSquare",
+          widthPx = 120,
+          heightPx = 60,
+          density = 1.0f,
+          outputBaseName = "generation",
+        ),
+        classLoader = javaClass.classLoader,
+      )
+    try {
+      val start = state.renderGeneration
+      engine.layOutForSemantics(state)
+      val afterLayout = state.renderGeneration
+      assertTrue("a layout pass is a render", afterLayout > start)
+      // …and it is the generation that moves, not the clock. Both properties are load-bearing:
+      // the timestamp keeps animations still, the generation invalidates stale projections.
+      assertEquals(0L, state.lastRenderedFrameNanos)
+
+      // A settling frame — what a press dispatches mid-drain — must invalidate too.
+      engine.renderSettlingFrame(state, nanoTime = state.lastRenderedFrameNanos)
+      assertTrue("a settling frame is a render", state.renderGeneration > afterLayout)
     } finally {
       engine.tearDown(state)
     }

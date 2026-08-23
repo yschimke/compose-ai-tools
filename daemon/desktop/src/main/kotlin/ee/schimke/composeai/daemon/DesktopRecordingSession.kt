@@ -873,22 +873,25 @@ class DesktopRecordingSession(
         // [stop] result carries `scriptEvents`); the dispatch's side effects on the held scene
         // are what live mode cares about.
         val ctx = SimpleRecordingDispatchContext(tNanos = tNanos, tMs = tMs)
-        // Projected ONCE per tick, and *before* any dispatch. Two reasons, both from the #4470
-        // review. Correctness: the reverse map has to answer "what was under the pointer on the
-        // screen the user clicked", so a click that navigates away, or a scroll that slides a
-        // different item under the pointer, must not be mapped against the screen its own dispatch
-        // produced. Cost: laying out per event would put a full `scene.render()` between every
-        // queued pointer move, and a burst of them would push the recorder past its frame cadence.
-        // One projection is enough for the whole drain — nothing re-renders until the frame below,
-        // so the screen genuinely has not changed between these events.
+        // Projected *before* each dispatch, and reused for as long as it stays current. The
+        // reverse map has to answer "what was under the pointer on the screen the user clicked",
+        // so a click that navigates away, or a scroll that slides a different item under the
+        // pointer, must not be mapped against the screen its own dispatch produced.
+        //
+        // Keyed on `renderGeneration` rather than projected once per tick: a dispatch can render.
+        // `ScenePointerDispatch.press` settles a frame of its own, so after the first click of a
+        // drain the layout really has moved and a cached projection would name a node from the
+        // previous screen. A burst of pointer *moves* renders nothing, so those still share one
+        // projection — which is the case worth saving, since laying out per event would put a full
+        // `scene.render()` between every move and push the recorder past its frame cadence.
         var tickRoot: ComposeSemanticsNode? = null
-        var tickRootProjected = false
+        var tickRootGeneration = -1L
         while (true) {
           val next = liveInputs.poll() ?: break
           val scriptEvent = next.toScriptEvent(tMs)
-          if (!tickRootProjected) {
+          if (tickRoot == null || tickRootGeneration != state.renderGeneration) {
             tickRoot = engine.laidOutSemanticsRoot(state)
-            tickRootProjected = true
+            tickRootGeneration = state.renderGeneration
           }
           scriptHandlers.dispatch(scriptEvent, ctx)
           captureLiveEvent(scriptEvent, tickRoot)
