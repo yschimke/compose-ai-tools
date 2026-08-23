@@ -869,32 +869,38 @@ class RenderEngine(
             // can't do this job: the dialog is centred, not at (0,0), and `measuredContent`
             // measures the *activity's* (empty) content.
             val dialogWindow = resolvedSemanticsRoot.shownDialogWindow()
+            // The dialog's own rect BEFORE the gutter expanded it, kept so the fixed-axis resize
+            // below can scale the guttered capture by the same factor the un-guttered one takes.
+            // Null when this render didn't crop to a dialog window.
+            var dialogBaseSize: android.util.Size? = null
             if (dialogWindow != null) {
-              cropPngToDialogWindow(
-                file = outputFile,
-                root = resolvedSemanticsRoot,
-                window = dialogWindow,
-                gutterLeftPx =
-                  ee.schimke.composeai.renderer.captureGutterEdgePx(
-                    spec.gutterStartDp,
-                    spec.density,
-                  ),
-                gutterTopPx =
-                  ee.schimke.composeai.renderer.captureGutterEdgePx(
-                    spec.gutterTopDp,
-                    spec.density,
-                  ),
-                gutterRightPx =
-                  ee.schimke.composeai.renderer.captureGutterEdgePx(
-                    spec.gutterEndDp,
-                    spec.density,
-                  ),
-                gutterBottomPx =
-                  ee.schimke.composeai.renderer.captureGutterEdgePx(
-                    spec.gutterBottomDp,
-                    spec.density,
-                  ),
-              )
+              // `start`/`end` are layout edges; this crop rect is in already-rendered pixels, where
+              // an RTL capture has been mirrored — so the leading edge is on the right. Same swap
+              // the content box makes in layout coordinates, and the same one the batch renderer's
+              // `dialogCropGutter` makes.
+              val rtl = ee.schimke.composeai.renderer.previewRendersRtl(spec.localeTag)
+              val leadingDp = if (rtl) spec.gutterEndDp else spec.gutterStartDp
+              val trailingDp = if (rtl) spec.gutterStartDp else spec.gutterEndDp
+              dialogBaseSize =
+                cropPngToDialogWindow(
+                  file = outputFile,
+                  root = resolvedSemanticsRoot,
+                  window = dialogWindow,
+                  gutterLeftPx =
+                    ee.schimke.composeai.renderer.captureGutterEdgePx(leadingDp, spec.density),
+                  gutterTopPx =
+                    ee.schimke.composeai.renderer.captureGutterEdgePx(
+                      spec.gutterTopDp,
+                      spec.density,
+                    ),
+                  gutterRightPx =
+                    ee.schimke.composeai.renderer.captureGutterEdgePx(trailingDp, spec.density),
+                  gutterBottomPx =
+                    ee.schimke.composeai.renderer.captureGutterEdgePx(
+                      spec.gutterBottomDp,
+                      spec.density,
+                    ),
+                )
             } else if (spec.wrapWidth || spec.wrapHeight) {
               WrappedFrameCrop.cropTopLeft(
                 file = outputFile,
@@ -911,8 +917,18 @@ class RenderEngine(
             // inside. Same arithmetic as the batch renderer's `resizeGutter` branch.
             resizeFixedAxesPng(
               file = outputFile,
-              targetWidth = if (spec.wrapWidth) null else spec.widthPx + spec.gutterHorizontalPx(),
-              targetHeight = if (spec.wrapHeight) null else spec.heightPx + spec.gutterVerticalPx(),
+              targetWidth =
+                if (spec.wrapWidth) null
+                else
+                  fixedAxisTargetPx(spec.widthPx, spec.gutterHorizontalPx(), dialogBaseSize?.width),
+              targetHeight =
+                if (spec.wrapHeight) null
+                else
+                  fixedAxisTargetPx(
+                    spec.heightPx,
+                    spec.gutterVerticalPx(),
+                    dialogBaseSize?.height,
+                  ),
             )
 
             // Pull per-node theme facts while the composition is still alive so theme consumer
@@ -2101,6 +2117,27 @@ class RenderEngine(
     return (px / density).toInt().coerceAtLeast(1)
   }
 
+  /**
+   * The fixed-axis resize target for one axis.
+   *
+   * Off the dialog path ([dialogBasePx] null) the capture is already `frame + gutter` — the window
+   * grew by the gutter and the content box placed the composable inset — so that is the target and
+   * the resize is a no-op.
+   *
+   * On the dialog path it is not. This daemon deliberately rescales a fixed-size dialog capture
+   * back to its declared Studio frame (pinned by `DialogWindowRenderTest`), and what it rescales is
+   * `dialog + gutter`. Targeting `frame + gutter` there would scale by `(frame + gutter) /
+   * (dialog + gutter)` instead of the un-guttered `frame / dialog`, so merely adding the annotation
+   * would change the component's rendered size — the one thing a gutter promises never to do.
+   * Scaling the grown crop by the *un-guttered* factor leaves the component exactly where it was
+   * and lets the gutter ride along at the same scale.
+   */
+  internal fun fixedAxisTargetPx(framePx: Int, gutterPx: Int, dialogBasePx: Int?): Int {
+    if (dialogBasePx == null || dialogBasePx <= 0) return framePx + gutterPx
+    val scaled = (dialogBasePx + gutterPx).toDouble() * framePx / dialogBasePx
+    return Math.round(scaled).toInt().coerceAtLeast(1)
+  }
+
   private fun resizeFixedAxesPng(file: File, targetWidth: Int?, targetHeight: Int?) {
     if (targetWidth == null && targetHeight == null) return
     if (!file.exists()) return
@@ -2177,9 +2214,9 @@ class RenderEngine(
     gutterTopPx: Int = 0,
     gutterRightPx: Int = 0,
     gutterBottomPx: Int = 0,
-  ) {
-    if (!file.exists()) return
-    val original = runCatching { javax.imageio.ImageIO.read(file) }.getOrNull() ?: return
+  ): android.util.Size? {
+    if (!file.exists()) return null
+    val original = runCatching { javax.imageio.ImageIO.read(file) }.getOrNull() ?: return null
     val width = root.size.width.coerceIn(1, original.width)
     val height = root.size.height.coerceIn(1, original.height)
     val placed = android.graphics.Rect()
@@ -2201,11 +2238,14 @@ class RenderEngine(
     if (
       cropLeft == 0 && cropTop == 0 && cropRight == original.width && cropBottom == original.height
     ) {
-      return
+      // Still the dialog's own rect, even though it needed no crop — the caller's resize maths
+      // wants the pre-gutter extent either way.
+      return android.util.Size(width, height)
     }
     val cropped =
       original.getSubimage(cropLeft, cropTop, cropRight - cropLeft, cropBottom - cropTop)
     runCatching { javax.imageio.ImageIO.write(cropped, "PNG", file) }
+    return android.util.Size(width, height)
   }
 
   private data class RenderEnvironment(
@@ -2280,17 +2320,9 @@ class RenderEngine(
     // a pixel of the very shadow the gutter exists to keep. Mirrors `RobolectricRenderTest`, which
     // is the whole point — the two Android lanes must not disagree about the canvas.
     val gutterQualifierWidthDp =
-      ee.schimke.composeai.renderer.captureGutterAxisDp(
-        spec.gutterStartDp,
-        spec.gutterEndDp,
-        spec.density,
-      )
+      gutterQualifierDp(sandboxWidthPx, spec.gutterHorizontalPx(), spec.density)
     val gutterQualifierHeightDp =
-      ee.schimke.composeai.renderer.captureGutterAxisDp(
-        spec.gutterTopDp,
-        spec.gutterBottomDp,
-        spec.density,
-      )
+      gutterQualifierDp(sandboxHeightPx, spec.gutterVerticalPx(), spec.density)
     applyPreviewQualifiers(
       widthDp = pxToDp(sandboxWidthPx, spec.density) + gutterQualifierWidthDp,
       heightDp = pxToDp(sandboxHeightPx, spec.density) + gutterQualifierHeightDp,
@@ -2325,6 +2357,26 @@ class RenderEngine(
       sandboxWidthPx = sandboxWidthPx,
       sandboxHeightPx = sandboxHeightPx,
     )
+  }
+
+  /**
+   * Extra dp the viewport qualifier needs so the window holds `basePx + gutterPx` on one axis.
+   *
+   * Derived from the **combined** pixel extent rather than by adding an independently-ceilinged
+   * gutter dp to an independently-truncated base dp. Those two disagree whenever the spec carries
+   * an exact `widthPx` the density doesn't divide: 101 px at density 2 truncates to 50 dp, and
+   * adding a 4+4 dp gutter (8 dp) gives 58 dp = 116 px — one short of the 117 px the content plus
+   * its gutter needs, so the layout clamps a gutter pixel away and the fixed-axis resize stretches
+   * the capture back. Ceiling the whole extent and subtracting the base the qualifier already
+   * carries closes that gap.
+   *
+   * `0` for an un-guttered render, byte-for-byte the pre-gutter qualifier — this must not start
+   * rounding frames up for previews that never asked for a gutter.
+   */
+  internal fun gutterQualifierDp(basePx: Int, gutterPx: Int, density: Float): Int {
+    if (gutterPx <= 0 || density <= 0f) return 0
+    val combinedDp = kotlin.math.ceil((basePx + gutterPx) / density).toInt()
+    return (combinedDp - pxToDp(basePx, density)).coerceAtLeast(0)
   }
 
   /**

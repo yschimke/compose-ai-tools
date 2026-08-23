@@ -132,6 +132,37 @@ class AndroidCaptureGutterLaneTest {
     assertEquals(41, guttered.height)
   }
 
+  @Test
+  fun `a guttered dialog capture keeps the component at its un-guttered scale`() {
+    // A fixed-size dialog preview is deliberately rescaled back to its declared Studio frame on
+    // this lane (`DialogWindowRenderTest` pins it), and what gets rescaled is the dialog crop. Once
+    // that crop carries a gutter, targeting `frame + gutter` would scale the capture by
+    // `(frame + gutter) / (dialog + gutter)` rather than the un-guttered `frame / dialog` — so
+    // adding the annotation would resize the component. The target has to grow with the crop.
+    val engine = RenderEngine(outputDir = tempFolder.newFolder("unused"))
+    // The `DialogWindowSurface` fixture is a 64 dp dialog; declared frame 96 px at density 1.
+    assertEquals(96, engine.fixedAxisTargetPx(96, 0, 64))
+    // 4+4 dp across ⇒ crop 72, scaled by the same 96/64 ⇒ 108. 4+5 dp down ⇒ crop 73 ⇒ 109.5 ⇒ 110.
+    assertEquals(108, engine.fixedAxisTargetPx(96, 8, 64))
+    assertEquals(110, engine.fixedAxisTargetPx(96, 9, 64))
+    // Off the dialog path the capture is already `frame + gutter`, so the resize is a no-op.
+    assertEquals(104, engine.fixedAxisTargetPx(96, 8, null))
+  }
+
+  @Test
+  fun `the viewport qualifier grows by the combined pixel extent, not by quantized dp`() {
+    val engine = RenderEngine(outputDir = tempFolder.newFolder("unused-qualifier"))
+    // An un-guttered render must not move at all — the qualifier stays what it was.
+    assertEquals(0, engine.gutterQualifierDp(101, 0, 2.0f))
+    // 101 px at density 2 truncates to 50 dp for the base. The content plus a 4+4 dp gutter needs
+    // 117 px, i.e. 59 dp — so the gutter must contribute 9 dp, not the 8 dp an independently
+    // ceilinged gutter would give (58 dp = 116 px leaves the window a pixel short and the layout
+    // clamps a gutter pixel away).
+    assertEquals(9, engine.gutterQualifierDp(101, 16, 2.0f))
+    // The exactly-divisible case is unchanged: 100 px + 16 px = 116 px = 58 dp, base 50 dp ⇒ 8 dp.
+    assertEquals(8, engine.gutterQualifierDp(100, 16, 2.0f))
+  }
+
   /**
    * Renders the fixed-size red fixture through the real router → `RenderEngine` path, which is what
    * a `renderNow` from the VS Code panel takes.

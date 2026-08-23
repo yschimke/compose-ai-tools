@@ -2160,7 +2160,11 @@ abstract class RobolectricRenderTestBase(
                       outputFile,
                       root,
                       window,
-                      dialogCropGutter(params.captureGutter, params.density ?: 2.0f),
+                      dialogCropGutter(
+                        params.captureGutter,
+                        params.density ?: 2.0f,
+                        previewRendersRtl(params.locale),
+                      ),
                     )
                   }
                 }
@@ -2553,19 +2557,37 @@ fun captureGutterAxisDp(edgeADp: Int, edgeBDp: Int, density: Float): Int {
  *
  * Left/right rather than start/end because the crop is applied to already-rendered pixels: an RTL
  * capture has already been mirrored by the time the rect is computed, so the leading edge is on the
- * right of the image. That is [DialogWindowCapture]'s own frame of reference, not layout's.
+ * right of the image. That is [DialogWindowCapture]'s own frame of reference, not layout's — which
+ * is why [rtl] has to swap the horizontal pair here. The wrap box does the same swap in layout
+ * coordinates (`leftPx = if (Rtl) endPx else startPx`); a dialog crop that mapped `start` onto
+ * `left` regardless would add an asymmetric gutter to the wrong side of a mirrored capture and
+ * leave the overhang it was sized for clipped.
  */
 internal fun dialogCropGutter(
   gutter: CaptureGutterDp?,
   density: Float,
+  rtl: Boolean = false,
 ): DialogWindowCapture.DialogCropGutter {
   if (gutter == null) return DialogWindowCapture.DialogCropGutter()
+  val leadingDp = if (rtl) gutter.end else gutter.start
+  val trailingDp = if (rtl) gutter.start else gutter.end
   return DialogWindowCapture.DialogCropGutter(
-    leftPx = captureGutterEdgePx(gutter.start, density),
+    leftPx = captureGutterEdgePx(leadingDp, density),
     topPx = captureGutterEdgePx(gutter.top, density),
-    rightPx = captureGutterEdgePx(gutter.end, density),
+    rightPx = captureGutterEdgePx(trailingDp, density),
     bottomPx = captureGutterEdgePx(gutter.bottom, density),
   )
+}
+
+/**
+ * Whether a capture at [localeTag] renders right-to-left — a pseudolocale's own direction (`ar-XB`)
+ * or a real RTL language (`ar`, `he`, `fa`, …). Same decision `applyPreviewQualifiers` makes when
+ * it emits `ldrtl`, pulled out so the dialog crop can agree with the layout it is cropping.
+ */
+fun previewRendersRtl(localeTag: String?): Boolean {
+  val pseudo = ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(localeTag)
+  if (pseudo != null) return pseudo.isRtl
+  return ee.schimke.composeai.data.pseudolocale.LocaleDirection.isRtl(localeTag)
 }
 
 /**

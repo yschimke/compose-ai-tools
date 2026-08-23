@@ -101,9 +101,19 @@ class DesktopRecordingSession(
 
   private var result: RecordingResult? = null
 
-  private val frameWidthPx: Int = (state.spec.widthPx * scale).toInt().coerceAtLeast(1)
+  // The scene's own natural size, gutter included. A `@CaptureGutter` preview composes into a scene
+  // grown by the gutter (issue #4443), so deriving the frame from `spec.widthPx` alone would make
+  // every guttered fixed-size recording take the resample path even at `scale = 1` and shrink the
+  // component back to its un-guttered box — defeating the annotation in exactly the lane it was
+  // just extended to. `PreviewCaptureGutter.None` for every preview without one, so this is the
+  // pre-gutter arithmetic verbatim there.
+  private val naturalWidthPx: Int = state.spec.widthPx + state.spec.captureGutterPx().horizontalPx
 
-  private val frameHeightPx: Int = (state.spec.heightPx * scale).toInt().coerceAtLeast(1)
+  private val naturalHeightPx: Int = state.spec.heightPx + state.spec.captureGutterPx().verticalPx
+
+  private val frameWidthPx: Int = (naturalWidthPx * scale).toInt().coerceAtLeast(1)
+
+  private val frameHeightPx: Int = (naturalHeightPx * scale).toInt().coerceAtLeast(1)
 
   // Live mode bookkeeping: wall-clock anchor + frame counter. Both written only by the tick
   // thread (with frameCount also read by stop() after the join).
