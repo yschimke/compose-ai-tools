@@ -305,6 +305,41 @@ class HostOptimizerAdmissionTest {
   }
 
   @Test
+  fun `pressure after a window has elapsed does not re-arm the cap again`() {
+    var now = 0L
+    var sample =
+      HostResourceSample(loadPerCpu = 0.17, cpuUtilization = 0.03, memoryAvailableFraction = 0.14)
+    val gate =
+      OptimizerPressureGate(
+        sample = { sample },
+        thresholds =
+          OptimizerPressureThresholds(
+            sampleIntervalMillis = 0,
+            starvationCapMillis = 10_000,
+            dutyCycleMillis = 1_000,
+          ),
+        clock = { now },
+      )
+    assertTrue(gate.snapshot().constrained)
+    now = 10_000
+    assertFalse(gate.snapshot().constrained, "window open, scheduled to end at 11s")
+    now = 11_000
+    assertTrue(gate.snapshot().constrained, "and elapsed, having been served in full")
+
+    // A CPU trip four seconds later is cutting nothing short — the window is long over — so it must
+    // not push the next concession out from 21s to 25s.
+    now = 15_000
+    sample = sample.copy(cpuUtilization = 0.95)
+    assertTrue(gate.snapshot().constrained)
+    sample = sample.copy(cpuUtilization = 0.03)
+
+    now = 20_999
+    assertTrue(gate.snapshot().constrained)
+    now = 21_000
+    assertFalse(gate.snapshot().constrained, "still due 10s after the window that was served")
+  }
+
+  @Test
   fun `an expiry noticed late still re-arms from the scheduled window end`() {
     var now = 0L
     var readable = true

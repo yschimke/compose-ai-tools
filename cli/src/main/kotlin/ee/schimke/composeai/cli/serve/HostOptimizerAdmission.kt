@@ -363,6 +363,11 @@ class OptimizerPressureGate(
     // A zero-length window admits nothing, so it is not a duty cycle — counting one would leave
     // `/status.json` reporting concessions the gate never made. Both knobs disable the cap.
     if (thresholds.starvationCapMillis <= 0L || thresholds.dutyCycleMillis <= 0L) return false
+    // `dutyCycleUntil` means "a window is live", and it has to be retired the moment one elapses:
+    // the two early closes below anchor at `now` because they are cutting a live window short, and
+    // a stale marker makes them do that to a window that already ran its course — re-anchoring a
+    // cap that was correctly anchored at the window's end when it opened.
+    if (dutyCycleUntil != Long.MIN_VALUE && now >= dutyCycleUntil) closeWindow(at = dutyCycleUntil)
     // An unknown memory reading is not a safe one. `LinuxHostResourceSampler` returns a partial
     // sample when `/proc/meminfo` is unreadable but load and CPU are not, and a load hold would
     // then earn a concession with the OOM floor unverified. A host that never reports memory keeps
