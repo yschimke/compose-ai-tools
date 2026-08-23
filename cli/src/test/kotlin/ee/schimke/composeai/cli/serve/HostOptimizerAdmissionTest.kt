@@ -305,6 +305,79 @@ class HostOptimizerAdmissionTest {
   }
 
   @Test
+  fun `a window cut short re-arms the cap from when it actually closed`() {
+    var now = 0L
+    var sample =
+      HostResourceSample(loadPerCpu = 0.17, cpuUtilization = 0.03, memoryAvailableFraction = 0.14)
+    val gate =
+      OptimizerPressureGate(
+        sample = { sample },
+        thresholds =
+          OptimizerPressureThresholds(
+            sampleIntervalMillis = 0,
+            starvationCapMillis = 10_000,
+            dutyCycleMillis = 1_000,
+          ),
+        clock = { now },
+      )
+    assertTrue(gate.snapshot().constrained)
+    now = 10_000
+    assertFalse(gate.snapshot().constrained)
+
+    // Cut short 100ms in. The next concession is owed 10s from *here*, not 10s from the end the
+    // window never reached — otherwise the cap silently becomes cap + window.
+    now = 10_100
+    sample = sample.copy(cpuUtilization = 0.95)
+    assertTrue(gate.snapshot().constrained)
+    sample = sample.copy(cpuUtilization = 0.03)
+
+    now = 20_099
+    assertTrue(gate.snapshot().constrained)
+    now = 20_100
+    assertFalse(gate.snapshot().constrained, "the cap runs from the early close")
+  }
+
+  @Test
+  fun `a hold closed while sampling is broken keeps reporting how long it has held`() {
+    var now = 0L
+    var readable = true
+    val gate =
+      OptimizerPressureGate(
+        sample = {
+          if (readable) {
+            HostResourceSample(
+              loadPerCpu = 0.17,
+              cpuUtilization = 0.03,
+              memoryAvailableFraction = 0.14,
+            )
+          } else {
+            null
+          }
+        },
+        thresholds =
+          OptimizerPressureThresholds(
+            sampleIntervalMillis = 0,
+            starvationCapMillis = 10_000,
+            dutyCycleMillis = 1_000,
+          ),
+        clock = { now },
+      )
+    assertTrue(gate.snapshot().constrained)
+    assertEquals(0, gate.snapshot().heldMillis)
+    now = 10_000
+    assertFalse(gate.snapshot().constrained)
+    // The hold is still on during the window, and it started at t=0 — the cap bookkeeping moving
+    // its own anchor to the window end must not make the reported duration collapse to zero.
+    assertEquals(10_000, gate.snapshot().heldMillis)
+
+    readable = false
+    now = 3_600_000
+    val stale = gate.snapshot()
+    assertTrue(stale.constrained)
+    assertEquals(3_600_000, stale.heldMillis, "an hour held must not report as zero: $stale")
+  }
+
+  @Test
   fun `a zero-length window is not counted as a duty cycle`() {
     var now = 0L
     val sample =

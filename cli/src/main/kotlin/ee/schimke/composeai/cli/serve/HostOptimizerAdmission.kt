@@ -184,8 +184,14 @@ class OptimizerPressureGate(
   /** Whether the pressure logic itself wants to hold, before the starvation cap has its say. */
   private var held = false
 
-  /** When the current uninterrupted hold began — the [starvationCapMillis] anchor. */
-  private var heldSince = Long.MIN_VALUE
+  /**
+   * When the next concession is measured from — moved to the end of each window the cap opens, and
+   * to the moment a window is cut short, so the cap always means "at most this long without one".
+   */
+  private var capAnchor = Long.MIN_VALUE
+
+  /** When the current uninterrupted hold began. Reporting only — `heldMillis` on `/status.json`. */
+  private var holdStartedAt = Long.MIN_VALUE
 
   /** End of the window the starvation cap has opened, or [Long.MIN_VALUE] when not duty-cycling. */
   private var dutyCycleUntil = Long.MIN_VALUE
@@ -252,12 +258,16 @@ class OptimizerPressureGate(
           !quiet && !recoveryExhausted
         }
       if (holding) {
-        if (!held) heldSince = now
+        if (!held) {
+          holdStartedAt = now
+          capAnchor = now
+        }
       } else {
         trippedBy = emptySet()
         safeSince = Long.MIN_VALUE
         recoveringSince = Long.MIN_VALUE
-        heldSince = Long.MIN_VALUE
+        holdStartedAt = Long.MIN_VALUE
+        capAnchor = Long.MIN_VALUE
         dutyCycleUntil = Long.MIN_VALUE
       }
       held = holding
@@ -275,7 +285,7 @@ class OptimizerPressureGate(
           cpuUtilization = current.cpuUtilization,
           memoryAvailableFraction = current.memoryAvailableFraction,
           sampledAtEpochMillis = now,
-          heldMillis = if (holding) (now - heldSince).coerceAtLeast(0L) else null,
+          heldMillis = heldMillis(now, holding),
           dutyCycleUntilEpochMillis = dutyCycleUntil.takeIf { it > now },
           dutyCycles = dutyCycles,
         )
@@ -294,9 +304,35 @@ class OptimizerPressureGate(
    */
   private fun cachedClosingExpiredDutyCycle(now: Long): OptimizerPressureSnapshot {
     if (!held || dutyCycleUntil == Long.MIN_VALUE || now < dutyCycleUntil) return cached
-    dutyCycleUntil = Long.MIN_VALUE
-    cached = cached.copy(constrained = true, dutyCycleUntilEpochMillis = null)
+    closeWindow(now)
+    // `heldMillis` is recomputed rather than carried over: the cached value was taken while the
+    // window was open, and republishing it would report a gate that has been shut for hours as
+    // having withheld admission for however long it had at the moment the sampler died.
+    cached =
+      cached.copy(
+        constrained = true,
+        dutyCycleUntilEpochMillis = null,
+        heldMillis = heldMillis(now, holding = true),
+      )
     return cached
+  }
+
+  /** How long the current hold has withheld admission, or null when the gate is not holding. */
+  private fun heldMillis(now: Long, holding: Boolean): Long? =
+    if (holding && holdStartedAt != Long.MIN_VALUE) (now - holdStartedAt).coerceAtLeast(0L)
+    else null
+
+  /**
+   * Ends the open window, if any, and re-arms the cap from [now].
+   *
+   * A window cut short — by new pressure, or by memory dropping under the floor — must not leave
+   * the next concession measured from the end it never reached: that would withhold admission for
+   * up to `starvationCapMillis + dutyCycleMillis`, which is not what the cap says it does.
+   */
+  private fun closeWindow(now: Long) {
+    if (dutyCycleUntil == Long.MIN_VALUE) return
+    dutyCycleUntil = Long.MIN_VALUE
+    capAnchor = now
   }
 
   /**
@@ -328,21 +364,21 @@ class OptimizerPressureGate(
     // the permanent latch, which is the conservative half of that trade.
     val headroom = sample.memoryAvailableFraction
     if (headroom == null || headroom < thresholds.dutyCycleFloorMemoryAvailableFraction) {
-      dutyCycleUntil = Long.MIN_VALUE
+      closeWindow(now)
       return false
     }
     // "A high reading stops admission immediately" is the gate's contract, and an open window must
     // not buy a *different* signal up to `dutyCycleMillis` of grace. The signal that earned the
     // concession may stay over its threshold — that is the whole point — but a new one closes it.
     if (newlyTripped.isNotEmpty()) {
-      dutyCycleUntil = Long.MIN_VALUE
+      closeWindow(now)
       return false
     }
     if (now < dutyCycleUntil) return true
-    if (heldSince == Long.MIN_VALUE) return false
-    if (now - heldSince < thresholds.starvationCapMillis) return false
+    if (capAnchor == Long.MIN_VALUE) return false
+    if (now - capAnchor < thresholds.starvationCapMillis) return false
     dutyCycleUntil = now + thresholds.dutyCycleMillis
-    heldSince = dutyCycleUntil
+    capAnchor = dutyCycleUntil
     dutyCycles++
     return true
   }

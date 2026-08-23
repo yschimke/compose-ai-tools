@@ -15,6 +15,7 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import ee.schimke.composeai.data.render.IrSidecarChannel
 import ee.schimke.composeai.data.render.extensions.IrReplayComposableProvider
+import java.lang.reflect.Modifier
 
 /**
  * Replays a Remote Compose preview from a bundle's captured IR (schema v5): the serialized
@@ -160,11 +161,25 @@ internal fun embeddedPlayerEntryPointPresent(classLoader: ClassLoader?): Boolean
 }
   .getOrDefault(false)
 
-/** Whether [facade] declares [EMBEDDED_PLAYER_ENTRY_POINT] taking exactly [parameters]. */
+/**
+ * Whether [facade] declares [EMBEDDED_PLAYER_ENTRY_POINT] in the exact shape the call site links
+ * against: `public static void` taking exactly [parameters].
+ *
+ * The modifiers and return type are checked alongside the signature because they are separately
+ * load-bearing — the compiled call is an `invokestatic …(…)V`, so a same-named method that is
+ * non-static, non-public or returns something else fails to link just as hard, with
+ * `IncompatibleClassChangeError` / `IllegalAccessError` / `NoSuchMethodError` respectively. A
+ * Kotlin top-level `@Composable fun` always compiles to `public static void` on its `…Kt` facade,
+ * so this costs nothing today; it is here so the predicate answers the question it appears to
+ * answer rather than a near neighbour of it.
+ */
 internal fun declaresEntryPoint(facade: Class<*>, parameters: List<String>): Boolean =
   facade.declaredMethods.any { method ->
     method.name == EMBEDDED_PLAYER_ENTRY_POINT &&
-      method.parameterTypes.map { it.name } == parameters
+      method.parameterTypes.map { it.name } == parameters &&
+      method.returnType == Void.TYPE &&
+      Modifier.isStatic(method.modifiers) &&
+      Modifier.isPublic(method.modifiers)
   }
 
 /**

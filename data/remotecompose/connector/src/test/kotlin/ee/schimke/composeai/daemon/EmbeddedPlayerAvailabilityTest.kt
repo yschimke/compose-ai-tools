@@ -49,6 +49,21 @@ class EmbeddedPlayerAvailabilityTest {
     assertFalse(declaresEntryPoint(FakeFacade::class.java, fakeParameters.dropLast(1)))
   }
 
+  /** Same name and parameters, but not the `public static void` an `invokestatic …(…)V` needs. */
+  @Suppress("FunctionNaming", "unused")
+  object WrongShapeFacade {
+    @JvmStatic
+    fun ExperimentalRemoteDocumentPlayer(document: String, theme: Int, flags: Long): String = ""
+
+    @JvmStatic private fun ExperimentalRemoteDocumentPlayer(document: String, theme: Int) = Unit
+  }
+
+  @Test
+  fun `rejects a facade whose entry point is not public static void`() {
+    assertFalse(declaresEntryPoint(WrongShapeFacade::class.java, fakeParameters))
+    assertFalse(declaresEntryPoint(WrongShapeFacade::class.java, listOf("java.lang.String", "int")))
+  }
+
   @Test
   fun `absent facade is unavailable rather than an error`() {
     // A loader with no classpath and no parent sees none of the Remote Compose artifacts, which is
