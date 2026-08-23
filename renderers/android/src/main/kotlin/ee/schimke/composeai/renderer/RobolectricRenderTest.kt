@@ -2272,27 +2272,16 @@ abstract class RobolectricRenderTestBase(
               )
             }
 
-            // `@ScrollingPreview(END)` is a scroll product like LONG and GIF, and the contract
-            // excludes all three from the gutter — CMP Desktop routes END through the gutterless
-            // `renderScrollPreview` for exactly this reason. Unlike its siblings it has no scroll
-            // handler of its own; it is an ordinary still, driven to content end. So its trim
-            // lands here, after the wrap crop / fixed resize have framed the guttered capture.
-            // TOP is deliberately NOT trimmed: it is the undriven first viewport, which desktop
-            // routes through `renderPreview` — a still, which does carry the gutter.
-            if (
-              scroll != null &&
-                scroll.mode == ScrollMode.END &&
-                capturedDialogWindow == null &&
-                !productFellThrough &&
-                !motionCaptureFellThrough &&
-                !longHandled &&
-                !gifHandled &&
-                !animationHandled &&
-                !focusGifHandled &&
-                !interactionHandled
-            ) {
-              scrollGutterTrim.applyTo(outputFile)
-            }
+            // `@ScrollingPreview(END)` is deliberately NOT trimmed here, even though the contract
+            // excludes it and CMP Desktop routes it through the gutterless `renderScrollPreview`.
+            // END is the one scroll mode whose product is an ordinary still, so it shares every
+            // still post-process below — the focus overlay draws in the hosting window's
+            // coordinates, the a11y / semantics / layout-inspector products describe that same
+            // window, and a round device's mask is already baked into the capture. Moving the PNG
+            // origin underneath all of them buys the right frame size at the cost of every other
+            // product agreeing with it. Getting END right means composing it in an un-grown window
+            // (a second `renderDefault` pass, the way `settledStillNeedsOwnPass` splits), which is
+            // a bigger change than this one — tracked in issue #4467.
 
             // `@FocusedPreview(overlay = true)`: post-process the captured PNG with a
             // stroke + label drawn over the currently-focused element. Implementation
@@ -3453,8 +3442,19 @@ private fun handleGifCaptureInternal(
 
   // Per-frame crop matches END mode: each GIF frame should look like a
   // normal single capture, circle-clipped on round devices included.
+  //
+  // Except when a `@CaptureGutter` has to be trimmed off afterwards. Roborazzi bakes the circular
+  // mask into the capture, so cropping that already-masked bitmap would leave an oversized — and,
+  // for an asymmetric gutter, off-centre — circle instead of the watch shape. Defer the mask to
+  // after the trim, which is the order LONG has always used (per-slice crop off, capsule clip
+  // after stitching). `applyWearPillClip` on a square frame degenerates to exactly the inscribed
+  // circle Roborazzi would have drawn.
+  val reclipRoundAfterTrim = isRound && !gutterTrim.isEmpty()
   val frameRoborazziOptions =
-    RoborazziOptions(recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = isRound))
+    RoborazziOptions(
+      recordOptions =
+        RoborazziOptions.RecordOptions(applyDeviceCrop = isRound && !reclipRoundAfterTrim)
+    )
 
   val frameIntervalMs =
     if (scroll.frameIntervalMs > 0) scroll.frameIntervalMs
@@ -3468,6 +3468,9 @@ private fun handleGifCaptureInternal(
     captureDecodableFrame(frameFile, role = "scroll GIF") { f ->
       stableDialogCrop.captureFrame(rule = rule, file = f, roborazziOptions = frameRoborazziOptions)
     }
+    // After the decode check rather than inside the capture lambda: a validated frame is the one
+    // worth masking, and a clip that threw on a transient encode glitch would escape the retry.
+    if (reclipRoundAfterTrim) applyWearPillClip(frameFile)
     frameFiles += frameFile
     frameDelays += delayMs
   }

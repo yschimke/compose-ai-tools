@@ -66,20 +66,26 @@ package ee.schimke.composeai.preview
  * around a scroll strip would be decorative padding wearing this annotation's name. A scroll drive
  * that declines falls through to an ordinary still, which does carry the gutter.
  *
- * Every lane implements that exclusion, by whichever means it can. CMP Desktop simply hands its
- * scroll renderer no gutter. Android cannot: it grows **one** hosting window per preview and
- * captures every job for that preview inside it, so its scroll products trim the gutter back off
- * after capture instead — LONG's slices and GIF's frames as they are taken, and `END` (whose
- * product is an ordinary still) after the still framing. `TOP` is untouched: it is the undriven
- * first viewport, which is a still and does carry the gutter.
+ * CMP Desktop implements that exclusion by simply handing its scroll renderer no gutter. Android
+ * cannot: it grows **one** hosting window per preview and captures every job for that preview
+ * inside it, so its `LONG` slices and `GIF` frames trim the gutter back off after capture instead.
+ * `TOP` is untouched either way: it is the undriven first viewport, which is a still and does carry
+ * the gutter.
  *
- * Two caveats are still open. A fixed-axis Android **motion** product is trimmed to the hosting
- * window rather than to `frame + gutter` in pixels, so at a fractional density it can differ from
- * the still by a pixel. And a held **desktop recording** of a *wrapped* preview is sized from the
- * sandbox bound rather than the measured content — that one predates gutters entirely, so the
- * gutter term merely rides on top of a frame that was already the wrong size. Both are tracked in
- * compose-ai-tools#4467 — read them as the current limits of the contract above, not as licence to
- * rely on them.
+ * `END` is the exception on Android, and knowingly so. It is the one scroll mode whose product is
+ * an ordinary still, so it shares the whole still post-capture chain — the focus overlay, the a11y
+ * / semantics / layout-inspector products, a round device's baked-in mask — all of which describe
+ * the hosting window. Trimming the PNG underneath them would buy the right frame size and lose
+ * every other product's agreement with it, so an Android `END` capture keeps the gutter while the
+ * CMP Desktop one does not.
+ *
+ * Three caveats are still open. That Android `END` divergence is one. A fixed-axis Android
+ * **motion** product is trimmed to the hosting window rather than to `frame + gutter` in pixels, so
+ * at a fractional density it can differ from the still by a pixel. And a held **desktop recording**
+ * of a *wrapped* preview is sized from the sandbox bound rather than the measured content — that
+ * one predates gutters entirely, so the gutter term merely rides on top of a frame that was already
+ * the wrong size. All three are tracked in compose-ai-tools#4467 — read them as the current limits
+ * of the contract above, not as licence to rely on them.
  *
  * A **rotated** capture (`orientation = landscape`, which the daemon reduces to a width↔height
  * swap) keeps the declared edges verbatim: a gutter edge names a direction the component draws in —

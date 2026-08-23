@@ -931,24 +931,13 @@ class RenderEngine(
                   ),
             )
 
-            // `@ScrollingPreview(END)` is a scroll product, and the contract excludes every scroll
-            // product from the gutter: a scrolled viewport's bounds are the viewport's, not the
-            // component's, so there is no edge for a gutter to sit on. CMP Desktop implements the
-            // exclusion by routing END through the gutterless `renderScrollPreview`; this lane
-            // shares one grown window with the still, so the trim happens after the framing above
-            // instead. TOP is deliberately untouched — it is the undriven first viewport, which is
-            // an ordinary still and does carry the gutter. Twin of the batch renderer's
-            // `scrollGutterTrim` (issue #4467).
-            if (
-              environment.staticScroll != null && spec.hasCaptureGutter() && dialogWindow == null
-            ) {
-              trimCaptureGutter(
-                file = outputFile,
-                spec = spec,
-                fixedWidthPx = if (spec.wrapWidth) null else spec.widthPx,
-                fixedHeightPx = if (spec.wrapHeight) null else spec.heightPx,
-              )
-            }
+            // `@ScrollingPreview(END)` keeps the gutter on this lane. The contract excludes it —
+            // and LONG / GIF, which run in `runScrollScenario` and never grow the window, honour
+            // that — but END's product is an ordinary still that shares this whole post-capture
+            // chain: the a11y / semantics / layout-inspector / figma-svg products below all
+            // describe the hosting window, and a round device's mask is baked into the capture.
+            // Cropping the PNG here would buy the right frame size and lose every other product's
+            // agreement with it. Twin of the batch renderer's decision; tracked in issue #4467.
 
             // Pull per-node theme facts while the composition is still alive so theme consumer
             // attribution (#1847) can run after the rule tears the scene down.
@@ -2217,48 +2206,6 @@ class RenderEngine(
    * A `ModalBottomSheet`'s window fills the screen, so its rect covers the whole frame and this is
    * a no-op; a centred `Dialog`/`AlertDialog` crops to the dialog itself.
    */
-  /**
-   * Removes a declared `@CaptureGutter` from a capture the contract excludes it from — on this lane
-   * that is `@ScrollingPreview(END)`, the one scroll mode whose product is an ordinary still and so
-   * shares the still path (LONG / GIF run in [runScrollScenario], which never grows the window for
-   * a gutter in the first place).
-   *
-   * Duplicated from the batch renderer's `DialogWindowCapture.GutterTrim` for the reason this whole
-   * engine is duplicated (see the file kdoc): the daemon takes no compile-time dependency on that
-   * module's render internals. A change here needs the same change there.
-   *
-   * [fixedWidthPx] / [fixedHeightPx] name an axis's exact un-guttered pixel frame where the spec
-   * declared one; a wrapped axis has none and simply loses its two gutter edges. Left/right rather
-   * than start/end because the rect is over already-rendered pixels, where an RTL capture has been
-   * mirrored — the same swap the dialog crop makes.
-   */
-  internal fun trimCaptureGutter(
-    file: File,
-    spec: RenderSpec,
-    fixedWidthPx: Int?,
-    fixedHeightPx: Int?,
-  ) {
-    if (!file.exists()) return
-    val original = runCatching { javax.imageio.ImageIO.read(file) }.getOrNull() ?: return
-    val rtl = ee.schimke.composeai.renderer.previewRendersRtl(spec.localeTag)
-    val leadingDp = if (rtl) spec.gutterEndDp else spec.gutterStartDp
-    val trailingDp = if (rtl) spec.gutterStartDp else spec.gutterEndDp
-    val leftPx = ee.schimke.composeai.renderer.captureGutterEdgePx(leadingDp, spec.density)
-    val rightPx = ee.schimke.composeai.renderer.captureGutterEdgePx(trailingDp, spec.density)
-    val topPx = ee.schimke.composeai.renderer.captureGutterEdgePx(spec.gutterTopDp, spec.density)
-    val bottomPx =
-      ee.schimke.composeai.renderer.captureGutterEdgePx(spec.gutterBottomDp, spec.density)
-    val left = leftPx.coerceIn(0, original.width)
-    val top = topPx.coerceIn(0, original.height)
-    val width =
-      (fixedWidthPx ?: (original.width - leftPx - rightPx)).coerceIn(1, original.width - left)
-    val height =
-      (fixedHeightPx ?: (original.height - topPx - bottomPx)).coerceIn(1, original.height - top)
-    if (left == 0 && top == 0 && width == original.width && height == original.height) return
-    val cropped = original.getSubimage(left, top, width, height)
-    runCatching { javax.imageio.ImageIO.write(cropped, "PNG", file) }
-  }
-
   private fun cropPngToDialogWindow(
     file: File,
     root: SemanticsNode,
