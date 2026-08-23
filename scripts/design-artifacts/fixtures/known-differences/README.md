@@ -6,8 +6,12 @@ it was built rather than a hex dump.
 
 The contract these pin is
 [`COMPONENT_PARITY_WORKFLOW.md` §4](../../../../docs/design/COMPONENT_PARITY_WORKFLOW.md#the-normative-contract).
-Three runtimes consume this tree — this repo's `known-differences.test.mjs`, `design-parity`'s own
-suite, and the server projector's Kotlin tests — so nothing in the layout assumes a language.
+**One runtime reads it today** — this repo's `known-differences.test.mjs`. Two more are *intended*
+consumers, and neither exists yet: `design-parity`'s own suite and the server projector's Kotlin
+tests, both batch 05's work. The layout assumes no language so those two can be written against it
+unchanged, but until they exist this tree has single-runtime coverage, and a divergence only the
+Kotlin engine would show is caught by nothing here. Saying so is the point: a README describing
+three live runners would let exactly that drift pass for cross-runtime agreement.
 
 ## A case
 
@@ -72,6 +76,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `set-overlapping-masks` | Two acceptances whose masks overlap |
 | `set-mixed-validity` | One acceptance survives while its sibling is invalidated |
 | `scope-other-system` | A `wear-m3` acceptance must not suppress pixels in `m3` |
+| `scope-overrides-match` | An acceptance authored under overrides applies at the frame carrying the same ones |
 | `scope-overrides-differ` | An acceptance authored at `fontScale=1.5` does not apply at the default frame |
 | `scope-refusal-is-comparison-independent` | A record that is out of scope *and* broken is still `refused` |
 | `document-over-byte-cap` | A document past the 1 MiB ceiling |
@@ -143,6 +148,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `orphaned-target-reference-detached` | The reference now hangs off a different preview |
 | `orphaned-target-variant-disagrees-with-preview-id` | A recorded `variant` that disagrees with its own `previewId` |
 | `document-duplicate-ids-case-folded` | Two ids differing only in case |
+| `document-unreadable-fractional-coordinate` | A geometry coordinate written as a non-integer |
 | `document-unreadable-duplicate-member` | An acceptance repeating a member name |
 | `document-unreadable-unknown-property` | A document carrying a property `v1` does not define |
 | `document-non-object-acceptances` | `acceptances` holding `null`, a string and an array |

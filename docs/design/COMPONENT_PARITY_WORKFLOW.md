@@ -1301,6 +1301,17 @@ there is no record to attribute it to. It must be detected **on the text**, befo
 parse: by the time there is an object, the evidence is gone, which is why an engine that trusts its
 deserializer walks straight past this one.
 
+**A geometry coordinate must be written as a canonical JSON integer** — `x`, `y`, `width`, `height`,
+with no fraction and no exponent — and this too is checked **on the text**, `document-unreadable`.
+`Number.isSafeInteger` cannot see the difference: `9007199254740991.1` has already been rounded to
+`…991` by the time any check runs, so a double-parsing engine accepts a coordinate a lossless one
+refuses as fractional, and the far-edge rule made that reachable from *inside* the safe range rather
+than only beyond it. No bound closes the hole — at every magnitude some fractional literal sits
+nearer an integer than the spacing of doubles there — so the only honest check is on the token as
+committed. It is deliberately narrow: those four fields are where a large legal magnitude and an
+integrality requirement meet. `element.tolerance` is a real number by design, and `candidateTolerance`
+is small enough that no fractional literal rounds onto one of its legal values.
+
 **A mask must select something.** An all-zero mask satisfies the encoding and dimension rules and
 still has no bounding box, which leaves `accepted-candidate.png`'s required dimensions undefined —
 one engine treats it as a harmless no-op, another refuses, a third throws while cropping. At least

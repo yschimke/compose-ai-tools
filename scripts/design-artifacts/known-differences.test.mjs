@@ -496,6 +496,16 @@ test("ids and artifact paths refuse the shapes the contract names", () => {
     assert.equal(isSafeId(bad), false, `\`${bad}\` must not be a safe id`);
   }
   assert.equal(isSafeId("m3-iconbutton-tonal-glyph"), true);
+  // Only *canonical integers* are the map-key hazard, so only they are refused.
+  for (const bad of ["0", "10", "-3"]) {
+    assert.equal(isSafeId(bad), false, `\`${bad}\` is a canonical integer and must not be a safe id`);
+  }
+  // `NaN` and `Infinity` round-trip through `Number` unchanged, which an earlier
+  // `String(Number(id)) !== id` spelling mistook for integer-like. Neither is an array-index
+  // property nor a reserved key, and a leading-zero spelling is not canonical either.
+  for (const fine of ["NaN", "Infinity", "-Infinity", "007", "2024-fix", "1e3", "1.5"]) {
+    assert.equal(isSafeId(fine), true, `\`${fine}\` is not a canonical integer and must be a safe id`);
+  }
   for (const bad of ["../x.png", "/x.png", "a\\b.png", "a#b.png", "a?b.png", "a%20b.png", "a b.png", "./x.png"]) {
     assert.equal(isSafeArtifactPath(bad), false, `\`${bad}\` must not be a safe artifact path`);
   }

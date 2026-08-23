@@ -87,6 +87,11 @@
       "site": null
     },
     {
+      "id": "scope-overrides-match",
+      "title": "An acceptance authored under overrides applies at the frame carrying the same ones",
+      "site": null
+    },
+    {
       "id": "scope-overrides-differ",
       "title": "An acceptance authored at `fontScale=1.5` does not apply at the default frame",
       "site": null
@@ -439,6 +444,11 @@
     {
       "id": "document-duplicate-ids-case-folded",
       "title": "Two ids differing only in case",
+      "site": null
+    },
+    {
+      "id": "document-unreadable-fractional-coordinate",
+      "title": "A geometry coordinate written as a non-integer",
       "site": null
     },
     {

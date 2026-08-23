@@ -902,6 +902,36 @@ function pairComparison(world, extra = {}) {
 
 {
   const world = glyphWorld();
+  // Authored and compared under the *same* non-empty overrides, spelled in opposite key orders.
+  const record = glyphRecord(world, {
+    overrides: { fontScale: "1.5", "knob.density": "compact" },
+  });
+  addCase({
+    id: "scope-overrides-match",
+    title: "An acceptance authored under overrides applies at the frame carrying the same ones",
+    why:
+      "The matching half of the override rule, and the half that actually gates. With only the " +
+      "mismatch pinned, an engine that treats *any* acceptance carrying overrides as " +
+      "`out-of-scope` — never comparing pixels at all — passes the whole suite while suppressing " +
+      "nothing. Here the two maps are equal and the acceptance must reach its gate verdict. The " +
+      "two sides spell the keys in opposite orders on purpose: matching is over the set of " +
+      "key/value pairs, not over a serialisation, so a consumer comparing rendered JSON rather " +
+      "than entries fails exactly this case.",
+    document: document([record]),
+    files: glyphFiles(world, record),
+    comparison: glyphComparison(world, {
+      overrides: { "knob.density": "compact", fontScale: "1.5" },
+    }),
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+      validationFailures: [],
+    },
+  });
+}
+
+{
+  const world = glyphWorld();
   const record = glyphRecord(world, { overrides: { fontScale: "1.5" } });
   addCase({
     id: "scope-overrides-differ",
@@ -2253,6 +2283,30 @@ glyphValidation({
 }
 
 addCase({
+  id: "document-unreadable-fractional-coordinate",
+  title: "A geometry coordinate written as a non-integer",
+  why:
+    "`9007199254740991.1` is already `…991` by the time any check can look at it, so an " +
+    "`isSafeInteger` gate accepts a coordinate a lossless consumer refuses as fractional — and the " +
+    "far-edge rule made that reachable from *inside* the safe range rather than beyond it. No bound " +
+    "closes the hole: at every magnitude some fractional literal sits nearer an integer than the " +
+    "spacing of doubles there, so the token is checked as written and `x`, `y`, `width` and " +
+    "`height` must be canonical JSON integers — no fraction, no exponent. `element.tolerance` is a " +
+    "real number by design and is untouched.",
+  documentText:
+    '{"schema":"compose-preview-known-differences/v1","acceptances":[{"id":"a","element":' +
+    '{"kind":"tag","tag":"t","bounds":{"x":9007199254740991.1,"y":8,"width":3,"height":8},' +
+    '"tolerance":0.1}}]}',
+  document: null,
+  files: {},
+  expected: {
+    pins: ["statusesAbsent", "validationFailures"],
+    statusesAbsent: true,
+    validationFailures: [{ reason: "document-unreadable" }],
+  },
+});
+
+addCase({
   id: "document-unreadable-duplicate-member",
   title: "An acceptance repeating a member name",
   why:
@@ -3115,8 +3169,12 @@ write(
     "",
     "The contract these pin is",
     "[`COMPONENT_PARITY_WORKFLOW.md` §4](../../../../docs/design/COMPONENT_PARITY_WORKFLOW.md#the-normative-contract).",
-    "Three runtimes consume this tree — this repo's `known-differences.test.mjs`, `design-parity`'s own",
-    "suite, and the server projector's Kotlin tests — so nothing in the layout assumes a language.",
+    "**One runtime reads it today** — this repo's `known-differences.test.mjs`. Two more are *intended*",
+    "consumers, and neither exists yet: `design-parity`'s own suite and the server projector's Kotlin",
+    "tests, both batch 05's work. The layout assumes no language so those two can be written against it",
+    "unchanged, but until they exist this tree has single-runtime coverage, and a divergence only the",
+    "Kotlin engine would show is caught by nothing here. Saying so is the point: a README describing",
+    "three live runners would let exactly that drift pass for cross-runtime agreement.",
     "",
     "## A case",
     "",

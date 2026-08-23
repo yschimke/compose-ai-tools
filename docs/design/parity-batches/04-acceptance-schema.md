@@ -72,6 +72,10 @@ Each exists because two engines would otherwise diverge on identical bytes.
   256-character `id` cannot be checked out at all while a URL-backed consumer evaluates it happily.
   Per segment, never per path: `PATH_MAX` belongs to the reader's working directory, so a total-length
   rule would make identical bytes legal in one checkout and refused in another.
+- **Geometry coordinates are checked as written.** `x`, `y`, `width`, `height` must be canonical
+  JSON integers — no fraction, no exponent — because `9007199254740991.1` is already `…991` by the
+  time `isSafeInteger` can look, and no bound closes that: at every magnitude some fractional literal
+  is nearer an integer than the spacing of doubles there.
 - **A repeated JSON member name refuses the document.** RFC 8259 leaves it undefined and runtimes
   differ — last value, first value, or a hard refusal — so `{"id":"safe","id":".."}` addresses two
   different artifact directories from one committed file. Detected **on the text**: by the time there
@@ -120,7 +124,10 @@ what either job wants, since a library decode allocates the oversized raster to 
 refuses to write the APNG, palette mask and lying header the suite is worthless without.
 
 **The seam.** This batch pins every *verdict*: the refusals, the five gates, the resolution test, the
-status precedence, and the exact ordering of `statuses` and `validationFailures`. It does not compute
+status precedence, the one entry per acceptance in `statuses`, and the exact ordering of
+`validationFailures`. **Not** an ordering for `statuses` — §4 defines it as an unordered map and
+gives it no ordering rule, so an implementer who read an ordering into this summary would build a
+wire-order requirement other runtimes cannot preserve. It does not compute
 `raw` / `accepted` / `unaccepted` — that is 05's separated-plane scoring path, and inventing numbers
 here would pin a scorer nobody has written. The seam is expressed in the fixtures rather than left to
 be remembered: each `expected.json` is a **partial** pin whose `pins` array names the keys a runner

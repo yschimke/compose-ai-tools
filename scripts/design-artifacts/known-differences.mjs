@@ -51,6 +51,9 @@ export const BUDGET = {
 export const CANDIDATE_TOLERANCE_RANGE = [0, 8];
 export const ELEMENT_TOLERANCE_RANGE = [0, 0.25];
 
+/** The exact spellings JavaScript treats as integer keys — no leading zeros, no `+`, no fraction. */
+const CANONICAL_INTEGER = /^-?(0|[1-9][0-9]*)$/;
+
 /** Ids that are fine as path segments and catastrophic as map keys. */
 const RESERVED_IDS = new Set(["__proto__", "constructor", "prototype"]);
 
@@ -295,7 +298,12 @@ export function isSafeId(id) {
   // so nothing is wrong today — but the `id` is doing double duty as an identifier and a key, and a
   // key whose behaviour depends on the host language's property semantics is not one this schema
   // should mint. Only canonical integers are affected; `2024-fix` is not.
-  return String(Number(id)) !== id;
+  //
+  // Spelled as a pattern rather than as `String(Number(id)) !== id`, which also refused `NaN`,
+  // `Infinity` and `-Infinity`: those round-trip through `Number` unchanged and are neither
+  // array-index properties nor reserved keys, so refusing them was the check disagreeing with the
+  // rule it implements. A leading-zero spelling like `007` is not canonical either, and is fine.
+  return !CANONICAL_INTEGER.test(id);
 }
 
 /**
@@ -547,60 +555,87 @@ function pushOnce(list, entry) {
 }
 
 /**
- * Does any object in this document repeat a member name?
+ * The refusals only the document *text* can carry, in one left-to-right walk.
  *
- * A single left-to-right walk, run only on text `JSON.parse` has already accepted — so bracket
- * balance and string termination are given and this does not need to be a validating parser. A
- * string token is a member name exactly when the next non-whitespace character is `:`; names are
- * unescaped through `JSON.parse` before comparison, because `"id"` and `"\u0069d"` are the same
- * member and only one of the two spellings looks like a duplicate.
+ * Run on text `JSON.parse` has already accepted, so bracket balance and string termination are
+ * given and this does not need to be a validating parser. It answers two questions the parsed
+ * object can no longer be asked:
+ *
+ * 1. **Does any object repeat a member name?** RFC 8259 leaves that undefined and runtimes genuinely
+ *    differ — V8 keeps the last value, several keep the first, strict parsers refuse the input — so
+ *    `{"id":"safe","id":".."}` addresses two different artifact directories from one committed file.
+ *    Names are unescaped through `JSON.parse` before comparison, because `"id"` and `"\u0069d"` are
+ *    the same member and only one of the two spellings looks like a duplicate.
+ * 2. **Is a geometry coordinate written as a non-integer?** `Number.isSafeInteger` cannot see it:
+ *    `9007199254740991.1` has already been rounded to `…991` by the time it reaches a check, so this
+ *    engine accepts a coordinate a lossless consumer refuses as fractional. The far-edge rule made
+ *    that reachable from *inside* the safe range rather than beyond it, and no bound closes the hole
+ *    — at any magnitude some fractional literal is nearer to an integer than the spacing of doubles
+ *    there — so the token is checked as written. Only `x`, `y`, `width` and `height` are checked:
+ *    they are the fields where a large legal magnitude and an integrality requirement meet.
+ *    `element.tolerance` is a real number by design.
  */
-function hasDuplicateMemberNames(documentText) {
+const GEOMETRY_KEYS = new Set(["x", "y", "width", "height"]);
+
+function documentTextRefusal(documentText) {
   const scopes = [];
+  let pendingKey = null;
   let index = 0;
   while (index < documentText.length) {
     const character = documentText[index];
-    if (character === "{") {
-      scopes.push(new Set());
-      index += 1;
-      continue;
-    }
-    if (character === "[") {
-      scopes.push(null);
+    if (character === "{" || character === "[") {
+      scopes.push(character === "{" ? new Set() : null);
+      pendingKey = null;
       index += 1;
       continue;
     }
     if (character === "}" || character === "]") {
       scopes.pop();
+      pendingKey = null;
       index += 1;
       continue;
     }
-    if (character !== '"') {
-      index += 1;
+    if (character === '"') {
+      let end = index + 1;
+      while (end < documentText.length && documentText[end] !== '"') {
+        end += documentText[end] === "\\" ? 2 : 1;
+      }
+      const raw = documentText.slice(index, end + 1);
+      index = end + 1;
+      let after = index;
+      while (after < documentText.length && /\s/.test(documentText[after])) after += 1;
+      if (documentText[after] !== ":") {
+        pendingKey = null;
+        continue;
+      }
+      index = after + 1;
+      const names = scopes[scopes.length - 1];
+      if (!names) continue;
+      let name;
+      try {
+        name = JSON.parse(raw);
+      } catch {
+        return "document-unreadable";
+      }
+      if (names.has(name)) return "document-unreadable";
+      names.add(name);
+      pendingKey = name;
       continue;
     }
-    let end = index + 1;
-    while (end < documentText.length && documentText[end] !== '"') {
-      end += documentText[end] === "\\" ? 2 : 1;
+    if (character === "-" || (character >= "0" && character <= "9")) {
+      let end = index;
+      while (end < documentText.length && /[-+0-9.eE]/.test(documentText[end])) end += 1;
+      const token = documentText.slice(index, end);
+      index = end;
+      if (pendingKey !== null && GEOMETRY_KEYS.has(pendingKey) && !CANONICAL_INTEGER.test(token)) {
+        return "document-unreadable";
+      }
+      pendingKey = null;
+      continue;
     }
-    const raw = documentText.slice(index, end + 1);
-    index = end + 1;
-    let after = index;
-    while (after < documentText.length && /\s/.test(documentText[after])) after += 1;
-    if (documentText[after] !== ":") continue;
-    index = after + 1;
-    const names = scopes[scopes.length - 1];
-    if (!names) continue;
-    let name;
-    try {
-      name = JSON.parse(raw);
-    } catch {
-      return true;
-    }
-    if (names.has(name)) return true;
-    names.add(name);
+    index += 1;
   }
-  return false;
+  return null;
 }
 
 function parseDocument(documentText) {
@@ -622,15 +657,13 @@ function parseDocument(documentText) {
   } catch {
     return { failure: { reason: "document-unreadable" } };
   }
-  // **A repeated member name is not a readable document**, whatever `JSON.parse` did with it. RFC
-  // 8259 leaves the behaviour undefined and runtimes genuinely differ: V8 keeps the last value,
-  // several keep the first, and strict parsers refuse the input outright. So `{"id":"safe","id":".."}`
-  // addresses one artifact directory here and a different one under a Python or Go engine — from
-  // byte-identical committed input, which is the single outcome a contract two engines are written
-  // against cannot tolerate. Detected on the text rather than the object because by the time there
-  // *is* an object the evidence is gone. `document-unreadable` for the same reason the unknown
-  // document property is: there is no record to attribute it to.
-  if (hasDuplicateMemberNames(documentText)) return { failure: { reason: "document-unreadable" } };
+  // **The refusals only the text can carry** — a repeated member name, and a geometry coordinate
+  // written as a non-integer. Both are invisible once there is an object: the first because the
+  // parser has already chosen a winner, the second because it has already rounded. Both take
+  // `document-unreadable`, the token the unknown document-level property gets, for the same reason —
+  // the evidence is a property of the bytes and there is no record it can honestly be attributed to.
+  const textRefusal = documentTextRefusal(documentText);
+  if (textRefusal) return { failure: { reason: textRefusal } };
   if (!document || typeof document !== "object" || Array.isArray(document)) {
     return { failure: { reason: "document-unreadable" } };
   }
@@ -779,18 +812,29 @@ function decodeRecord(evaluation, readArtifact) {
   ];
   const oversized = reread.filter(([bytes]) => bytes.length > BUDGET.maxArtifactBytes);
   if (oversized.length > 0) return fail("artifact-too-large");
+  // **Both artifacts, then report.** Returning on the first one made the *order* of the pair decide
+  // which reason a reader saw: a mask that turned animated while the accepted candidate's header
+  // turned unreadable produced `animated-png` alone, and swapping the pair produced `header-invalid`
+  // alone. §4 says reasons accumulate within a validation stage and the fixtures pin the exact set,
+  // so a stage that drops a distinct reason is the contract disagreeing with itself. Duplicates are
+  // collapsed by `sortReasons`, so both artifacts failing the same way still reports one token.
+  const rereadFailures = [];
   for (const [bytes, before] of reread) {
     const now = preflightPng(bytes);
-    if (now.error) return fail("header-invalid");
-    if (now.animated) return fail("animated-png");
+    if (now.error) {
+      rereadFailures.push("header-invalid");
+      continue;
+    }
+    if (now.animated) rereadFailures.push("animated-png");
     // **Every field, not an enumerated subset.** An earlier revision compared four of them, which
     // left a second read free to add a `tRNS`, or change the compression, filter or interlace method,
     // while the fields being compared stayed put — and the mask-encoding check below reads the
     // *preflight's* header, so a swapped artifact would have been judged on the old one. Comparing
     // the whole object cannot drift out of step with what the preflight learns.
-    if (!samePreflight(now, before)) return fail("artifact-unreadable");
-    if (now.width > BUDGET.maxAxis || now.height > BUDGET.maxAxis) return fail("header-invalid");
+    if (!samePreflight(now, before)) rereadFailures.push("artifact-unreadable");
+    if (now.width > BUDGET.maxAxis || now.height > BUDGET.maxAxis) rereadFailures.push("header-invalid");
   }
+  if (rereadFailures.length > 0) return fail(...rereadFailures);
   if (maskHeader.bitDepth !== 8 || maskHeader.colourType !== 0) return fail("mask-encoding-invalid");
 
   const hashReasons = [];
