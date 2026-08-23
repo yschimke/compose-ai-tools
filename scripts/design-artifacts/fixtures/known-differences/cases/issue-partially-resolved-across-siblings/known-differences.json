@@ -3,7 +3,7 @@
   "acceptances": [
     {
       "id": "m3-button-elevated-shadow",
-      "issue": "https://github.com/yschimke/m3-catalog/issues/42",
+      "issue": "https://github.com/YSchimke/m3-catalog/issues/42/",
       "system": "m3",
       "component": "Button/Elevated",
       "previewId": "button-elevated__ideal__default__light",
