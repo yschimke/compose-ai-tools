@@ -1759,6 +1759,14 @@
     "sha256": "d88bb9171bd4a6a977db1c01cba20f496b9fd2137863be1407b498f4e64e8b7c",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/CaptureGutterPreviews.kt"
   },
+  "samples:cmp/com.example.samplecmp.CaptureGutterPreviewsKt.ShadowStickerGutteredAnimatedPreview_Shadow guttered motion": {
+    "captureLabel": "",
+    "functionName": "ShadowStickerGutteredAnimatedPreview",
+    "module": "samples:cmp",
+    "renderBasename": "ShadowStickerGutteredAnimatedPreview_Shadow_guttered_motion-3dbada81.gif",
+    "sha256": "e07bd7b026ce7aea40619988fab2038227a5ea256794bc4c5e9db6a719e7ad3f",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/CaptureGutterPreviews.kt"
+  },
   "samples:cmp/com.example.samplecmp.CaptureGutterPreviewsKt.ShadowStickerGutteredPreview_Shadow guttered": {
     "captureLabel": "",
     "functionName": "ShadowStickerGutteredPreview",

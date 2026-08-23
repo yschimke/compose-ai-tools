@@ -254,6 +254,7 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 |---------|-------|
 | `AutoDetectDurationAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/AutoDetectDurationAnimatedPreview_Animated_Auto_Detect_Duration-fa7980ab.gif" width="150" /> |
 | `ShadowStickerCroppedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ShadowStickerCroppedPreview_Shadow_cropped-bc08dd3c.png" width="150" /> |
+| `ShadowStickerGutteredAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ShadowStickerGutteredAnimatedPreview_Shadow_guttered_motion-3dbada81.gif" width="150" /> |
 | `ShadowStickerGutteredPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ShadowStickerGutteredPreview_Shadow_guttered-e26176a9.png" width="150" /> |
 | `FontScale100Preview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/FontScale100Preview_Font_scale_1_0x-966325ac.png" width="150" /> |
 | `FontScale150Preview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/FontScale150Preview_Font_scale_1_5x-8dbcc4ab.png" width="150" /> |
