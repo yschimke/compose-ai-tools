@@ -336,7 +336,16 @@ function document(acceptances) {
     paint({ x: 4, y: 4, width: 16, height: 16 }, 0);
   });
   const box = maskBox(samples, 24, 24);
+  // **The hole has to disagree, or the case proves nothing.** Cropping the candidate exactly made
+  // the *unselected* centre agree too, so an engine comparing the whole bounding rectangle — the
+  // very implementation this mask exists to catch — passed it. One pixel inside the hole is changed
+  // between the accepted crop and the candidate the comparison supplies; the ring is untouched, so
+  // the acceptance is still `valid`, and only an engine that honours the `255` samples can say so.
   const accepted = crop(candidate, box);
+  const holePixel = ((12 - box.y) * box.width + (12 - box.x)) * 4;
+  accepted.pixels[holePixel] = 7;
+  accepted.pixels[holePixel + 1] = 11;
+  accepted.pixels[holePixel + 2] = 13;
 
   const record = {
     id: "m3-checkbox-checked-ring",
@@ -514,6 +523,63 @@ function document(acceptances) {
       statuses: { "m3-iconbutton-tonal-glyph": { status: "resolved" } },
       validationFailures: [],
       locallyResolvedIssues: ["yschimke/m3-catalog#40"],
+    },
+  });
+}
+
+// **The metric itself, pinned by two cases rather than assumed.** Every gate case so far either
+// agrees exactly or disagrees by 140 in two channels at once, which *every* candidate metric —
+// maximum-channel, mean, sum, Euclidean — reports the same way. These two separate them, in the two
+// directions they can differ:
+//
+//   - one channel over by 1: maximum-channel says changed, a **mean** over four channels (0.75) says
+//     unchanged;
+//   - all four channels at exactly the tolerance: maximum-channel says unchanged, while a **sum**
+//     (8) or a **Euclidean** distance (4) says changed.
+//
+// Together they admit only "max absolute per-channel difference, compared with `>`", which is what
+// §4 answer 6 settles. The second also pins the inclusive boundary from the accepting side.
+for (const [id, title, delta, status, why] of [
+  [
+    "gate-metric-single-channel-over",
+    "One channel past `candidateTolerance`, three identical",
+    [0, 3, 0, 0],
+    { status: "invalidated", causes: ["candidate-changed"] },
+    "Maximum-channel distance is 3 against a tolerance of 2, so the gate fires. A mean over the " +
+      "four channels is 0.75 and would call this pixel unchanged — the reading this case exists to " +
+      "refuse, since it lets a single-channel colour regression sit inside an acceptance forever.",
+  ],
+  [
+    "gate-metric-every-channel-at-tolerance",
+    "Every channel exactly at `candidateTolerance`",
+    [2, 2, 2, -2],
+    { status: "valid" },
+    "Maximum-channel distance is exactly 2 and the comparison is `>`, so this is legal — the " +
+      "inclusive boundary, from the accepting side. A summed distance (8) or a Euclidean one (4) " +
+      "would call it changed, which is how this case tells those two apart from the settled metric. " +
+      "Alpha moves the other way so the case cannot be satisfied by an implementation that only " +
+      "looks at RGB.",
+  ],
+]) {
+  const world = glyphWorld();
+  // The accepted crop is the candidate's glyph, one pixel of it nudged by `delta`.
+  const accepted = raster(8, 8, RED);
+  for (let channel = 0; channel < 4; channel++) {
+    accepted.pixels[channel] = RED[channel] + delta[channel];
+  }
+  const acceptedPng = rgbaPng(accepted);
+  const record = glyphRecord(world, { acceptedCandidateSha256: sha256Hex(acceptedPng) });
+  addCase({
+    id,
+    title,
+    why,
+    document: document([record]),
+    files: { ...glyphFiles(world, record), "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": acceptedPng },
+    comparison: glyphComparison(world),
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: { "m3-iconbutton-tonal-glyph": status },
+      validationFailures: [],
     },
   });
 }
@@ -1090,6 +1156,33 @@ const refused = (reasons, recordId = "m3-iconbutton-tonal-glyph") => ({
       pins: ["statuses", "validationFailures"],
       statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
       validationFailures: [],
+    },
+  });
+}
+
+{
+  // **Bytes, not characters** — the same ceiling reached with a multibyte `note`.
+  const world = glyphWorld();
+  // `\u4e2d` is three bytes in UTF-8 and one UTF-16 code unit, so 400,000 of them are 1.2 MB
+  // encoded while the string is 400,000 characters long — comfortably inside the ceiling under
+  // either of the two wrong readings.
+  const record = glyphRecord(world, { note: "\u4e2d".repeat(400_000) });
+  addCase({
+    id: "document-over-byte-cap-multibyte",
+    title: "A document past the ceiling in bytes but not in characters",
+    why:
+      "Both other document-size cases pad with ASCII, where UTF-8 byte length, JavaScript string " +
+      "length and Kotlin string length are the same number — so an engine measuring characters or " +
+      "UTF-16 code units passes them and then accepts a document whose encoded bytes are over the " +
+      "cap. `maxDocumentBytes` is a count of **bytes**, which is what a reader has to bound before " +
+      "it fetches, and this is the case that says so.",
+    document: document([record]),
+    files: glyphFiles(world, record),
+    comparison: glyphComparison(world),
+    expected: {
+      pins: ["statusesAbsent", "validationFailures"],
+      statusesAbsent: true,
+      validationFailures: [{ reason: "document-too-large" }],
     },
   });
 }
@@ -3341,6 +3434,22 @@ addResample({
   source: rgbaFrom([[grey(10), grey(20)]]),
   target: { width: 4, height: 1 },
   expected: [grey(10), grey(10), grey(20), grey(20)],
+});
+
+addResample({
+  id: "upscale-non-integer-ratio",
+  title: "Two pixels into three — the upscale that does not reduce to nearest-neighbour",
+  why:
+    "Its sibling above cannot catch the shortcut it warns about: at an integer ratio the area " +
+    "average *is* nearest-neighbour, so an engine using the kernel for downscales and copying the " +
+    "nearest source pixel for every upscale passes it. At 2 → 3 the middle destination covers " +
+    "`[2/3, 4/3)` and takes a third of each source pixel — `(30 × 1/3 + 210 × 1/3) / (2/3) = 120` — " +
+    "while nearest-neighbour reads its centre at `1.0` and answers `210`. The outer two destinations " +
+    "sit wholly inside one source pixel each and agree under both readings, which is what makes the " +
+    "middle one the whole test.",
+  source: rgbaFrom([[grey(30), grey(210)]]),
+  target: { width: 3, height: 1 },
+  expected: [grey(30), grey(120), grey(210)],
 });
 
 addResample({

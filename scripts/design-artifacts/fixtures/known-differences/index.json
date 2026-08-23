@@ -27,6 +27,16 @@
       "site": "yschimke/m3-catalog#40 (fixed)"
     },
     {
+      "id": "gate-metric-single-channel-over",
+      "title": "One channel past `candidateTolerance`, three identical",
+      "site": null
+    },
+    {
+      "id": "gate-metric-every-channel-at-tolerance",
+      "title": "Every channel exactly at `candidateTolerance`",
+      "site": null
+    },
+    {
       "id": "gate-candidate-changed",
       "title": "The masked region is neither the accepted difference nor the reference",
       "site": null
@@ -119,6 +129,11 @@
     {
       "id": "document-at-byte-cap",
       "title": "A document of exactly 1 MiB",
+      "site": null
+    },
+    {
+      "id": "document-over-byte-cap-multibyte",
+      "title": "A document past the ceiling in bytes but not in characters",
       "site": null
     },
     {
@@ -658,6 +673,10 @@
     {
       "id": "upscale-integer-ratio",
       "title": "Two pixels into four"
+    },
+    {
+      "id": "upscale-non-integer-ratio",
+      "title": "Two pixels into three — the upscale that does not reduce to nearest-neighbour"
     },
     {
       "id": "alpha-is-a-fourth-channel",

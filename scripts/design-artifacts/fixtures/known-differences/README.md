@@ -66,6 +66,8 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `pilot-87-checkbox-checked-ring` | m3-catalog#87 — Checkbox box padding 2dp vs 4dp |
 | `pilot-42-elevated-shadow-trio` | m3-catalog#42 — Elevated shadow level, three components on one issue |
 | `gate-resolved-fixed-candidate` | The candidate gate fired and the region converged on the reference |
+| `gate-metric-single-channel-over` | One channel past `candidateTolerance`, three identical |
+| `gate-metric-every-channel-at-tolerance` | Every channel exactly at `candidateTolerance` |
 | `gate-candidate-changed` | The masked region is neither the accepted difference nor the reference |
 | `gate-reference-changed` | The served reference no longer hashes to the recorded one |
 | `gate-served-hash-uppercase` | An uppercase *served* reference hash must not report `reference-changed` |
@@ -85,6 +87,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `scope-overrides-differ` | An acceptance authored at `fontScale=1.5` does not apply at the default frame |
 | `scope-refusal-is-comparison-independent` | A record that is out of scope *and* broken is still `refused` |
 | `document-at-byte-cap` | A document of exactly 1 MiB |
+| `document-over-byte-cap-multibyte` | A document past the ceiling in bytes but not in characters |
 | `document-over-byte-cap` | A document past the 1 MiB ceiling |
 | `document-unreadable-truncated` | Truncated JSON |
 | `document-unreadable-wrong-schema-token` | A document carrying a different schema token |
@@ -198,6 +201,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `rounding-exactly-half` | An average landing exactly on .5 |
 | `downscale-non-integer-ratio` | Three pixels into two — partial footprints |
 | `upscale-integer-ratio` | Two pixels into four |
+| `upscale-non-integer-ratio` | Two pixels into three — the upscale that does not reduce to nearest-neighbour |
 | `alpha-is-a-fourth-channel` | Alpha averaged without premultiplication |
 
 ## Sub-pixel rounding
