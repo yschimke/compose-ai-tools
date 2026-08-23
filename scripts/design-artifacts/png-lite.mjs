@@ -195,27 +195,49 @@ export function decodePng(bytes) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const parts = [];
   let palette = null;
+  let transparency = null;
   let offset = 8;
   while (offset + 8 <= bytes.length) {
     const length = view.getUint32(offset);
     const type = readType(bytes, offset + 4);
     if (length > bytes.length - offset - 12) throw new Error("decode-failed: chunk overruns file");
     const data = bytes.subarray(offset + 8, offset + 8 + length);
+    // Verify the CRC of every chunk whose data this decoder consumes. The artifact's own `sha256`
+    // proves nobody edited the file in flight; it says nothing about whether the file was ever
+    // well-formed. Without this check a committed-corrupt PNG decodes here and may be rejected by a
+    // native decoder on the other side of the contract — one verdict per engine, from one set of
+    // hash-valid bytes, which is the divergence class this whole schema exists to close.
+    if (view.getUint32(offset + 8 + length) !== crc32(bytes.subarray(offset + 4, offset + 8 + length))) {
+      throw new Error("decode-failed: chunk CRC mismatch");
+    }
     if (type === "IDAT") parts.push(data);
     if (type === "PLTE") palette = data;
+    if (type === "tRNS") transparency = data;
     if (type === "IEND") break;
     offset += 12 + length;
   }
   if (parts.length === 0) throw new Error("decode-failed: no IDAT");
   if (colourType === COLOUR_PALETTE && !palette) throw new Error("decode-failed: no PLTE");
 
-  const raw = inflateSync(Buffer.concat(parts.map((p) => Buffer.from(p))));
   const channels = CHANNELS[colourType];
   const stride = width * channels;
+  const expected = height * (stride + 1);
+  let raw;
+  try {
+    // **Bounded inflation.** These artifacts are third-party and may carry up to 8 MiB of compressed
+    // data, which deflate can expand by three orders of magnitude — a small, legal `IHDR` in front of
+    // a compression bomb would otherwise exhaust the process *after* every preflight budget had
+    // passed, since none of them can see past the header. The declared scanline size is the only
+    // honest ceiling, and anything over it is a header that lied about its dimensions either way.
+    raw = inflateSync(Buffer.concat(parts.map((p) => Buffer.from(p))), { maxOutputLength: expected });
+  } catch (error) {
+    if (error?.code === "ERR_BUFFER_TOO_LARGE") throw new Error("declared-dimensions-mismatch");
+    throw new Error("decode-failed: inflate failed");
+  }
   // Strict equality, not "at least": a header that lies about its dimensions is otherwise a way to
   // walk straight past the budget cap, and the contract names that `header-invalid` rather than a
   // decode failure. Raised as its own message so the caller can tell the two verdicts apart.
-  if (raw.length !== height * (stride + 1)) throw new Error("declared-dimensions-mismatch");
+  if (raw.length !== expected) throw new Error("declared-dimensions-mismatch");
 
   const lines = new Uint8Array(height * stride);
   for (let y = 0; y < height; y++) {
@@ -224,13 +246,27 @@ export function decodePng(bytes) {
     unfilter(filter, row, lines, y * stride, stride, channels);
   }
 
+  // `tRNS` is how colour types 0, 2 and 3 carry transparency, and ignoring it is not a shortcut: a
+  // browser applies it and a decoder that hardcodes alpha to 255 does not, so the same hash-valid
+  // accepted candidate yields different pixels — and different candidate and resolution verdicts —
+  // on the two sides of this contract. Greyscale and RGB name one transparent *sample value* in
+  // 16-bit fields (the low byte is the one that matters at bit depth 8); palette carries one alpha
+  // per entry, defaulting to opaque past its end. Colour types 4 and 6 carry alpha directly and may
+  // not have a `tRNS` at all.
+  const greyTransparent =
+    colourType === COLOUR_GREY && transparency && transparency.length >= 2 ? transparency[1] : null;
+  const rgbTransparent =
+    colourType === COLOUR_RGB && transparency && transparency.length >= 6
+      ? [transparency[1], transparency[3], transparency[5]]
+      : null;
+
   const pixels = new Uint8Array(width * height * 4);
   for (let i = 0; i < width * height; i++) {
     const s = i * channels;
     const d = i * 4;
     if (colourType === COLOUR_GREY) {
       pixels[d] = pixels[d + 1] = pixels[d + 2] = lines[s];
-      pixels[d + 3] = 255;
+      pixels[d + 3] = greyTransparent !== null && lines[s] === greyTransparent ? 0 : 255;
     } else if (colourType === COLOUR_GREY_ALPHA) {
       pixels[d] = pixels[d + 1] = pixels[d + 2] = lines[s];
       pixels[d + 3] = lines[s + 1];
@@ -238,14 +274,20 @@ export function decodePng(bytes) {
       pixels[d] = lines[s];
       pixels[d + 1] = lines[s + 1];
       pixels[d + 2] = lines[s + 2];
-      pixels[d + 3] = 255;
+      pixels[d + 3] =
+        rgbTransparent &&
+        lines[s] === rgbTransparent[0] &&
+        lines[s + 1] === rgbTransparent[1] &&
+        lines[s + 2] === rgbTransparent[2]
+          ? 0
+          : 255;
     } else if (colourType === COLOUR_PALETTE) {
       const p = lines[s] * 3;
       if (p + 2 >= palette.length) throw new Error("decode-failed: palette index out of range");
       pixels[d] = palette[p];
       pixels[d + 1] = palette[p + 1];
       pixels[d + 2] = palette[p + 2];
-      pixels[d + 3] = 255;
+      pixels[d + 3] = transparency && lines[s] < transparency.length ? transparency[lines[s]] : 255;
     } else {
       pixels.set(lines.subarray(s, s + 4), d);
     }

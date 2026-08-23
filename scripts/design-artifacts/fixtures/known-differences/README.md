@@ -124,6 +124,14 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `orphaned-target-component-renamed` | The component was renamed while its ids stayed put |
 | `orphaned-target-reference-detached` | The reference now hangs off a different preview |
 | `orphaned-target-variant-disagrees-with-preview-id` | A recorded `variant` that disagrees with its own `previewId` |
+| `document-non-object-acceptances` | `acceptances` holding `null`, a string and an array |
+| `schema-invalid-unknown-property` | A record carrying the `finding` field cut from `v1` |
+| `schema-invalid-unknown-element-property` | An `element` carrying a property `v1` does not define |
+| `schema-invalid-note-wrong-type` | A numeric `note` |
+| `variant-empty-is-valid` | A default preview's empty `variant` |
+| `decode-failed-chunk-crc-mismatch` | A hash-valid artifact whose `IDAT` CRC does not verify |
+| `header-invalid-inflates-past-declared-size` | A small legal header in front of a much larger inflation |
+| `trns-transparency-is-decoded` | An accepted candidate carrying `tRNS` |
 
 ## The resampler
 

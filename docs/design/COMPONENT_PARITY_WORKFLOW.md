@@ -991,6 +991,38 @@ A file whose header is unreadable, or whose declared
 dimensions disagree with what the full decode later produces, is `header-invalid` — the second half
 matters because a lying header is otherwise a way to walk straight past the cap.
 
+**The preflight is strictly before any decode, and that is an ordering requirement rather than an
+optimisation.** A document already over its count, axis or pixel cap must be rejected before a single
+raster is decoded — otherwise a document with 257 acceptances, or with honest headers past the caps,
+has already allocated exactly what the caps exist to refuse by the time the verdict is reached, and
+the guard protects nothing. So the per-record ladder splits in two: identity, shape, catalog, paths,
+byte length and headers are the preflight; hashes, decode, mask semantics and dimensions come after
+the document's budget has passed. Nothing in the second half can change a document verdict, which is
+what makes the split safe.
+
+**And inflation itself is bounded by the declared scanline size.** The preflight cannot see past the
+header, so a small legal `IHDR` in front of a compression bomb walks through every cap and is then
+expanded in full — these artifacts are third-party and may carry 8 MiB of compressed data, which
+deflate expands by orders of magnitude. The declared `height × (stride + 1)` is the only honest
+ceiling, and anything over it is `header-invalid` either way, since a file that inflates past its
+declared size has a header that lied. A fixture pins the verdict; the bound itself is a resource
+requirement on the implementation, which no verdict-shaped fixture can express.
+
+**Critical chunk CRCs are verified during decode, and a mismatch is `decode-failed`.** The artifact's
+`sha256` proves nobody edited the file in flight; it says nothing about whether the file was ever
+well-formed. Without this a committed-corrupt PNG decodes on one side of the contract and is refused
+by a native decoder on the other — one set of hash-valid bytes, two verdicts, which is the same
+failure the mask-encoding and animation rules exist to close.
+
+**`tRNS` is decoded, for palette, greyscale and RGB alike.** `accepted-candidate.png` is an ordinary
+colour raster and carries no encoding rule, so a palette file with a transparency chunk is legal —
+and a decoder that hardcodes alpha to `255` reads its pixels as opaque while a browser reads them as
+transparent, which is a *candidate-gate* disagreement rather than a cosmetic one. Restricting the
+accepted candidate's encoding instead was the alternative and is worse: it constrains producers to
+avoid a question that has a single correct answer in the PNG specification. Its fixture is
+discriminating on purpose — the acceptance is `invalidated: [candidate-changed]` under a correct
+decoder and `valid` under one that ignores the chunk.
+
 **Preflight a record completely before it contributes anything.** An acceptance has two rasters, and
 if one has an oversized-but-readable header while the other's is unreadable, the outcome would
 depend on which was read first — oversized first rejects the document, unreadable first excludes the
@@ -1134,8 +1166,8 @@ catalog fact to compare against. An acceptance naming an override combination no
 correct record on every catalog. Unused acceptances are a dashboard question, not a validation one.
 
 **A record that violates the schema is refused — and where the failure lands depends on whether it
-can be keyed.** Missing required fields, wrong types, an unsupported `element.kind`: none of the
-validation conditions so far covers these, so one consumer rejects at deserialization while another
+can be keyed.** Missing required fields, wrong types, an unsupported `element.kind`, **a property
+`v1` does not define**: none of the validation conditions so far covers these, so one consumer rejects at deserialization while another
 defaults the missing value and proceeds to `valid`, applying a mask whose gate never functions. The
 rule mirrors the duplicate-id logic and follows from the same constraint — a result keyed by id can
 only report what it can name:
@@ -1146,6 +1178,30 @@ only report what it can name:
   **document** is rejected, exactly as for a duplicate id.
 
 Both are conformance fixtures, since "one bad record" and "an unreadable file" are different repairs.
+
+**Unknown properties are refused, at every level of the record.** The published schema declares
+`additionalProperties: false`, so a consumer that validates against it rejects bytes a consumer
+checking only the required fields accepts — a cross-engine divergence manufactured by the validator
+itself, and the one this section is otherwise entirely about. It is also what keeps the two fields
+cut from `v1` cut: a record carrying `finding`, or an `element` carrying a producer's `ref`, is
+refused rather than ignored by one engine today and acted on by a later one. Nested objects are held
+to the same rule as the record, and both have fixtures — a well-kinded `element` with an extra
+property is the case an `element.kind` check alone lets through.
+
+**`variant` is the one string field that may be empty**, and it is an exception on purpose:
+`ServeIssueReport.variantFor` returns `""` for a preview id carrying no `__` axes, so "no axes" is a
+fact about the preview rather than a mangled record — see
+[which fields may be blank](#which-fields-may-be-blank-and-which-may-be-absent), which settles it for
+the locator and settles it here for the same reason. Every *other* field emptied means the record no
+longer names one component. Refusing a blank `variant` would make every default preview's acceptance
+inexpressible, with a fixture on each side.
+
+**A record need not be an object at all.** `acceptances` is third-party data and can hold `null`, a
+string or an array; all three are `id-missing` in the `{index, reason}` shape and the document is
+rejected. Worth stating because of what it implies about *order*: the preflight below runs even for a
+document already known to be doomed, since the pixel budget is reached from it — so it must not
+dereference what it was handed on the way there. An engine that throws here turns a malformed
+third-party document into a crash rather than the result this contract specifies.
 
 **The unkeyable case reports `id-missing`, and that token covers all three of its forms.** It needs
 saying, because neither neighbouring token fits: `schema-invalid` is per-acceptance and presupposes

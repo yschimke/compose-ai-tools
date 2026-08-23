@@ -1,0 +1,38 @@
+{
+  "title": "An `element` carrying a property `v1` does not define",
+  "site": null,
+  "why": "Nested objects are held to the same rule as the record, and this is the case its sibling misses: `schema-invalid-unknown-element-kind` is caught by the `kind` discriminant alone, so it says nothing about whether a *well-kinded* element may smuggle extra fields past the validator while the schema's `additionalProperties: false` rejects the same bytes.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

@@ -345,6 +345,46 @@
       "id": "orphaned-target-variant-disagrees-with-preview-id",
       "title": "A recorded `variant` that disagrees with its own `previewId`",
       "site": null
+    },
+    {
+      "id": "document-non-object-acceptances",
+      "title": "`acceptances` holding `null`, a string and an array",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-unknown-property",
+      "title": "A record carrying the `finding` field cut from `v1`",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-unknown-element-property",
+      "title": "An `element` carrying a property `v1` does not define",
+      "site": null
+    },
+    {
+      "id": "schema-invalid-note-wrong-type",
+      "title": "A numeric `note`",
+      "site": null
+    },
+    {
+      "id": "variant-empty-is-valid",
+      "title": "A default preview's empty `variant`",
+      "site": null
+    },
+    {
+      "id": "decode-failed-chunk-crc-mismatch",
+      "title": "A hash-valid artifact whose `IDAT` CRC does not verify",
+      "site": null
+    },
+    {
+      "id": "header-invalid-inflates-past-declared-size",
+      "title": "A small legal header in front of a much larger inflation",
+      "site": null
+    },
+    {
+      "id": "trns-transparency-is-decoded",
+      "title": "An accepted candidate carrying `tRNS`",
+      "site": null
     }
   ],
   "resample": [

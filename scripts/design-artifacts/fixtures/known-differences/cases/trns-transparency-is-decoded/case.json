@@ -1,0 +1,38 @@
+{
+  "title": "An accepted candidate carrying `tRNS`",
+  "site": null,
+  "why": "`accepted-candidate.png` is an ordinary colour raster and carries no encoding rule, so a palette file with a `tRNS` chunk is legal. A decoder that hardcodes alpha to `255` reads its pixels as opaque red and the candidate gate passes; a browser applies the transparency and the gate fires. Same hash-valid bytes, two verdicts — so the decoder must apply `tRNS` for palette, greyscale and RGB alike. The expected verdict here is the one a correct decoder reaches: alpha `0` against the candidate's `255` is a per-channel distance of 255.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

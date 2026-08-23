@@ -329,10 +329,12 @@ export function evaluateKnownDifferences({ documentText, readArtifact, compariso
 
   if (records.length > BUDGET.maxAcceptances) documentFailures.push({ reason: "document-too-large" });
 
-  // Per-record work happens even when the document is already doomed, because the *pixel* budget is
-  // a document verdict reached from per-record preflights — and a preflight refusal excludes its
-  // rasters from the running total, so the two cannot be separated.
-  const evaluations = records.map((record, index) => validateRecord(record, index, readArtifact, catalog));
+  // **Preflight only.** The pixel budget is a document verdict reached from per-record header reads,
+  // so the two cannot be separated — but nothing below the header is touched yet. A document already
+  // over its count, axis or pixel cap must be rejected *before* any raster is decoded, which is the
+  // whole point of a bounded preflight: reading the headers of 257 acceptances costs a few kilobytes,
+  // decoding them first would allocate exactly what the cap exists to refuse.
+  const evaluations = records.map((record, index) => preflightRecord(record, index, readArtifact, catalog));
 
   let pixels = 0;
   for (const evaluation of evaluations) {
@@ -356,6 +358,9 @@ export function evaluateKnownDifferences({ documentText, readArtifact, compariso
   }
 
   if (documentFailures.length > 0) return { validationFailures: sortFailures(documentFailures, records) };
+
+  // Only now: hashes, decode, and everything that needs pixels.
+  for (const evaluation of evaluations) if (evaluation.preflightClean) decodeRecord(evaluation);
 
   const statuses = new Map();
   const validationFailures = [];
@@ -419,12 +424,27 @@ function parseDocument(documentText) {
  * stage runs only when every earlier one was clean, so a record with an unparseable shape is never
  * also reported for the paths that shape does not contain.
  */
-function validateRecord(record, index, readArtifact, catalog) {
-  const evaluation = { index, reasons: [], headers: [], preflightClean: false, mask: null, accepted: null };
+function preflightRecord(record, index, readArtifact, catalog) {
+  const evaluation = {
+    index,
+    record,
+    reasons: [],
+    headers: [],
+    bytes: null,
+    preflightClean: false,
+    mask: null,
+    accepted: null,
+  };
   const fail = (...reasons) => {
     evaluation.reasons.push(...reasons);
     return evaluation;
   };
+
+  // A record need not be an object at all — `acceptances` is third-party data and can hold `null`,
+  // a string, an array. Those are already `id-missing` in the identity scan and the document is
+  // rejected for them, but this function still runs first (the pixel budget needs the preflight),
+  // so it must not dereference what it was handed. Nothing further is knowable about such a record.
+  if (!record || typeof record !== "object" || Array.isArray(record)) return evaluation;
 
   if (!isSafeId(record.id)) return fail("id-not-safe");
 
@@ -466,7 +486,26 @@ function validateRecord(record, index, readArtifact, catalog) {
   if (headerReasons.length > 0) return fail(...headerReasons);
 
   evaluation.headers = [maskHeader, acceptedHeader];
+  evaluation.bytes = [maskBytes, acceptedBytes];
   evaluation.preflightClean = true;
+  return evaluation;
+}
+
+/**
+ * The half that touches pixels, run only after the document's budget has passed.
+ *
+ * Nothing here can change a *document* verdict, which is what makes the split safe: hashes, decodes,
+ * mask semantics and dimensions are all per-acceptance, and a record that fails any of them was
+ * already inside the budget it was charged against.
+ */
+function decodeRecord(evaluation) {
+  const { record, headers, bytes } = evaluation;
+  const [maskHeader, acceptedHeader] = headers;
+  const [maskBytes, acceptedBytes] = bytes;
+  const fail = (...reasons) => {
+    evaluation.reasons.push(...reasons);
+    return evaluation;
+  };
 
   const hashReasons = [];
   if (!hashesMatch(record.maskSha256, sha256Hex(maskBytes))) hashReasons.push("mask-hash-mismatch");
@@ -513,21 +552,63 @@ function validateRecord(record, index, readArtifact, catalog) {
   return evaluation;
 }
 
+/** Every property `v1` defines, so anything else is a field one engine would read and another drop. */
+const ACCEPTANCE_FIELDS = new Set([
+  "id",
+  "issue",
+  "system",
+  "component",
+  "previewId",
+  "referenceId",
+  "variant",
+  "overrides",
+  "mask",
+  "acceptedCandidate",
+  "referenceSha256",
+  "maskSha256",
+  "acceptedCandidateSha256",
+  "plane",
+  "candidateTolerance",
+  "element",
+  "note",
+  "acceptedAt",
+]);
+
 /**
  * Required fields, their types, and the two spellings this schema owns.
  *
  * Absence has to be *representable* — a language default that fills a missing field is how this epic
  * lost the same fact twice — so every required field is checked for presence explicitly rather than
  * read through a default.
+ *
+ * **Unknown properties are refused, and that is not pedantry.** `known-differences.schema.json`
+ * declares `additionalProperties: false`, so a consumer that runs the schema first rejects bytes a
+ * consumer that runs only this function accepts — the cross-runtime divergence this whole contract
+ * exists to prevent, manufactured by the validator itself. It is also what keeps the two fields cut
+ * from `v1` cut: a document carrying `finding` or a `producer` selector is refused rather than
+ * silently ignored by one engine and acted on by a later one.
+ *
+ * `variant` is the one string field that **may be empty**, and it is the exception on purpose:
+ * `ServeIssueReport.variantFor` returns `""` for a preview id carrying no `__` axes, and "no axes"
+ * is a fact about the preview rather than a mangled record. Every other field emptied means the
+ * record no longer names one component. The locator contract already settles this
+ * ([§2](../../docs/design/COMPONENT_PARITY_WORKFLOW.md#which-fields-may-be-blank-and-which-may-be-absent)),
+ * and refusing a blank `variant` here would make every default preview's acceptance inexpressible.
  */
 function schemaReasons(record) {
   const invalid = () => ["schema-invalid"];
-  for (const field of ["system", "component", "previewId", "referenceId", "variant", "mask", "acceptedCandidate"]) {
+  for (const key of Object.keys(record)) if (!ACCEPTANCE_FIELDS.has(key)) return invalid();
+
+  for (const field of ["system", "component", "previewId", "referenceId", "mask", "acceptedCandidate"]) {
     if (typeof record[field] !== "string" || record[field] === "") return invalid();
   }
+  if (typeof record.variant !== "string") return invalid();
   if (!parseIssue(record.issue)) return invalid();
   for (const field of ["referenceSha256", "maskSha256", "acceptedCandidateSha256"]) {
     if (!recordedHashValid(record[field])) return invalid();
+  }
+  for (const field of ["note", "acceptedAt"]) {
+    if (record[field] !== undefined && typeof record[field] !== "string") return invalid();
   }
   if (record.overrides !== undefined && !isStringMap(record.overrides)) return invalid();
   if (!isPlane(record.plane)) return invalid();
@@ -556,21 +637,27 @@ function isStringMap(value) {
   return Object.values(value).every((entry) => typeof entry === "string");
 }
 
+/** Exactly these keys, and no others — nested objects are held to the same rule as the record. */
+function hasExactly(value, keys) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return Object.keys(value).every((key) => keys.includes(key));
+}
+
 function isBox(value) {
-  if (!value || typeof value !== "object") return false;
+  if (!hasExactly(value, ["x", "y", "width", "height"])) return false;
   return ["x", "y", "width", "height"].every((key) => Number.isInteger(value[key])) &&
     value.width > 0 &&
     value.height > 0;
 }
 
 function isPlane(value) {
-  if (!value || typeof value !== "object") return false;
+  if (!hasExactly(value, ["plane", "box"])) return false;
   if (value.plane !== "content-box" && value.plane !== "full-canvas") return false;
   return isBox(value.box);
 }
 
 function isElement(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  if (!hasExactly(value, ["kind", "tag", "bounds", "tolerance"])) return false;
   if (value.kind !== "tag") return false;
   if (typeof value.tag !== "string" || value.tag === "") return false;
   if (!isBox(value.bounds)) return false;

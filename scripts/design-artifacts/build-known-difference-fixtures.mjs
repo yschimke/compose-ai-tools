@@ -1927,6 +1927,188 @@ glyphValidation({
   });
 }
 
+// --- shapes that are not records, and fields v1 does not define -----------------------------------
+
+{
+  const world = glyphWorld();
+  const base = glyphRecord(world);
+  addCase({
+    id: "document-non-object-acceptances",
+    title: "`acceptances` holding `null`, a string and an array",
+    why:
+      "`acceptances` is third-party data and its entries need not be objects at all. All three are " +
+      "`id-missing` — there is no usable key, so the record is identified by its position — and the " +
+      "document is rejected. The case exists because the *evaluator* must not dereference what it " +
+      "was handed on the way to that verdict: the pixel budget is reached from per-record " +
+      "preflights, so those run even for a document already known to be doomed.",
+    document: document([null, "an acceptance", [1, 2], base]),
+    files: glyphFiles(world, base),
+    comparison: glyphComparison(world),
+    expected: {
+      pins: ["statusesAbsent", "validationFailures"],
+      statusesAbsent: true,
+      validationFailures: [
+        { index: 0, reason: "id-missing" },
+        { index: 1, reason: "id-missing" },
+        { index: 2, reason: "id-missing" },
+      ],
+    },
+  });
+}
+
+glyphValidation({
+  id: "schema-invalid-unknown-property",
+  title: "A record carrying the `finding` field cut from `v1`",
+  why:
+    "`known-differences.schema.json` declares `additionalProperties: false`, so a consumer that runs " +
+    "the schema first rejects bytes a consumer that validates only the required fields accepts — the " +
+    "cross-runtime divergence manufactured by the validator itself. It is also what keeps the two " +
+    "fields cut from `v1` cut: a `finding` matcher or a `producer` selector is refused rather than " +
+    "silently ignored by one engine and acted on by a later one.",
+  record: { finding: { kind: "color", token: "onSurfaceVariant" } },
+  expected: refused(["schema-invalid"]),
+});
+
+glyphValidation({
+  id: "schema-invalid-unknown-element-property",
+  title: "An `element` carrying a property `v1` does not define",
+  why:
+    "Nested objects are held to the same rule as the record, and this is the case its sibling misses: " +
+    "`schema-invalid-unknown-element-kind` is caught by the `kind` discriminant alone, so it says " +
+    "nothing about whether a *well-kinded* element may smuggle extra fields past the validator while " +
+    "the schema's `additionalProperties: false` rejects the same bytes.",
+  record: {
+    element: {
+      kind: "tag",
+      tag: "iconbutton-tonal-glyph",
+      bounds: { x: 8, y: 8, width: 8, height: 8 },
+      tolerance: 0.1,
+      ref: "semantics:17",
+    },
+  },
+  expected: refused(["schema-invalid"]),
+});
+
+glyphValidation({
+  id: "schema-invalid-note-wrong-type",
+  title: "A numeric `note`",
+  why: "The optional fields are typed too; a schema-first consumer rejects this and a required-fields-only one does not.",
+  record: { note: 42 },
+  expected: refused(["schema-invalid"]),
+});
+
+{
+  // A preview id carrying no `__` axes has an empty variant, and that is a fact about the preview
+  // rather than a mangled record.
+  const world = glyphWorld();
+  const record = glyphRecord(world, { previewId: "iconbutton-tonal", variant: "" });
+  addCase({
+    id: "variant-empty-is-valid",
+    title: "A default preview's empty `variant`",
+    why:
+      "The locator contract settles this: **`variant` is always present and may be empty** — " +
+      "`ServeIssueReport.variantFor` returns `\"\"` for a preview id carrying no `__` axes, while " +
+      "every *other* field emptied means the record no longer names one component. Refusing a blank " +
+      "variant here would make every default preview's acceptance inexpressible, which is exactly " +
+      "the class of defect §2's blank-vs-absent rules exist to prevent.",
+    document: document([record]),
+    files: glyphFiles(world, record),
+    comparison: glyphComparison(world, { previewId: "iconbutton-tonal", variant: "" }),
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+      validationFailures: [],
+    },
+  });
+}
+
+// --- artifacts that are well-formed enough to reach a decoder, and should not survive it ----------
+
+{
+  const world = glyphWorld();
+  // A correct header, a correct hash, and one flipped byte inside `IDAT`'s stored CRC.
+  const corruptCrc = (() => {
+    const good = encodePng({
+      width: 24,
+      height: 24,
+      colourType: COLOUR_GREY,
+      samples: (() => {
+        const samples = new Uint8Array(24 * 24);
+        for (let y = 8; y < 16; y++) for (let x = 8; x < 16; x++) samples[y * 24 + x] = 255;
+        return samples;
+      })(),
+    });
+    const copy = Uint8Array.from(good);
+    copy[copy.length - 13] ^= 0xff;
+    return copy;
+  })();
+  glyphValidation({
+    id: "decode-failed-chunk-crc-mismatch",
+    title: "A hash-valid artifact whose `IDAT` CRC does not verify",
+    why:
+      "The artifact's own `sha256` proves nobody edited the file in flight; it says nothing about " +
+      "whether the file was ever well-formed. Without a CRC check a committed-corrupt PNG decodes " +
+      "on one side of the contract and is rejected by a native decoder on the other — one set of " +
+      "hash-valid bytes, two verdicts.",
+    record: { maskSha256: sha256Hex(corruptCrc) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/mask.png": corruptCrc },
+    expected: refused(["decode-failed"]),
+  });
+
+  // A legal 24×24 greyscale header in front of an `IDAT` that inflates to far more than 24 rows.
+  const bomb = (() => {
+    const rows = [];
+    for (let y = 0; y < 4096; y++) rows.push(new Uint8Array(24));
+    return buildPng([ihdr({ width: 24, height: 24, colourType: COLOUR_GREY }), idat(rows), chunk("IEND")]);
+  })();
+  glyphValidation({
+    id: "header-invalid-inflates-past-declared-size",
+    title: "A small legal header in front of a much larger inflation",
+    why:
+      "None of the preflight budgets can see past the header, so a compression bomb would otherwise " +
+      "be inflated in full *after* every cap had passed — these artifacts are third-party and may " +
+      "carry up to 8 MiB of compressed data, which deflate expands by orders of magnitude. " +
+      "Inflation is bounded by the declared scanline size, and anything over it is a header that " +
+      "lied about its dimensions either way. This fixture stays under a kilobyte because a bomb and " +
+      "an honest oversize are the same verdict.",
+    record: { maskSha256: sha256Hex(bomb) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/mask.png": bomb },
+    expected: refused(["header-invalid"]),
+  });
+
+  // A palette accepted candidate whose single entry is transparent.
+  const translucent = (() => {
+    const samples = new Uint8Array(8 * 8);
+    const rows = [];
+    for (let y = 0; y < 8; y++) rows.push(samples.subarray(y * 8, (y + 1) * 8));
+    return buildPng([
+      ihdr({ width: 8, height: 8, colourType: COLOUR_PALETTE }),
+      chunk("PLTE", Uint8Array.from([200, 60, 60])),
+      chunk("tRNS", Uint8Array.from([0])),
+      idat(rows),
+      chunk("IEND"),
+    ]);
+  })();
+  glyphValidation({
+    id: "trns-transparency-is-decoded",
+    title: "An accepted candidate carrying `tRNS`",
+    why:
+      "`accepted-candidate.png` is an ordinary colour raster and carries no encoding rule, so a " +
+      "palette file with a `tRNS` chunk is legal. A decoder that hardcodes alpha to `255` reads its " +
+      "pixels as opaque red and the candidate gate passes; a browser applies the transparency and " +
+      "the gate fires. Same hash-valid bytes, two verdicts — so the decoder must apply `tRNS` for " +
+      "palette, greyscale and RGB alike. The expected verdict here is the one a correct decoder " +
+      "reaches: alpha `0` against the candidate's `255` is a per-channel distance of 255.",
+    record: { acceptedCandidateSha256: sha256Hex(translucent) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": translucent },
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: { "m3-iconbutton-tonal-glyph": { status: "invalidated", causes: ["candidate-changed"] } },
+      validationFailures: [],
+    },
+  });
+}
+
 // --------------------------------------------------------------------------------------------
 // 5. The portable resampler, pinned on its own.
 //
