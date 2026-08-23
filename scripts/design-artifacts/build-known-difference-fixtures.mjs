@@ -2635,6 +2635,33 @@ glyphValidation({
     idat([new Uint8Array(32)]),
     chunk("IEND"),
   ]);
+  // **Both headers were read, so both get to speak.** Gating the animation and mask-encoding checks
+  // on *both* headers parsing makes a record's reason set depend on its sibling artifact: the APNG
+  // here is perfectly detectable, its header parsed, and an engine that reports only
+  // `header-invalid` has dropped evidence it already held. No other fixture pairs a header failure
+  // with a *different* header-stage failure, so every one of them passes either way.
+  {
+    const truncatedMask = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13]);
+    glyphValidation({
+      id: "header-invalid-beside-animated-sibling",
+      title: "An unreadable mask header beside an animated accepted candidate",
+      why:
+        "The reason set is exact and deduplicated per `(record, reason)` pair, and the second-read " +
+        "stage already accumulates across both artifacts. This pins that the first preflight does " +
+        "too — an engine short-circuiting on the first failed header reports one token where the " +
+        "contract names two, and which one it drops depends on the order it happened to read them.",
+      record: {
+        maskSha256: sha256Hex(truncatedMask),
+        acceptedCandidateSha256: sha256Hex(animatedColour),
+      },
+      files: {
+        "artifacts/m3-iconbutton-tonal-glyph/mask.png": truncatedMask,
+        "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": animatedColour,
+      },
+      expected: refused(["header-invalid", "animated-png"]),
+    });
+  }
+
   glyphValidation({
     id: "animated-png-accepted-candidate",
     title: "An animated accepted candidate",
@@ -3293,6 +3320,65 @@ glyphValidation({
       statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
       validationFailures: [],
     },
+  });
+}
+
+{
+  // **An exponent that overflows the double is still an exponent.** `1e999` is a legal JSON number,
+  // and at a path requiring a *canonical integer* it is the same defect as `2e0` — which the tree
+  // already refuses as `document-unreadable`. It escaped only because `Number("1e999")` is
+  // `Infinity`, so a check asking "did this round onto an integer" answers no. The parse has
+  // destroyed the spelling either way, which is the whole test.
+  const world = glyphWorld();
+  const text = `${JSON.stringify(document([glyphRecord(world)]), null, 2)}\n`;
+  const marker = /"candidateTolerance": -?\d+/;
+  if (!marker.test(text)) throw new Error("`candidateTolerance` is no longer a plain integer token");
+  glyphValidation({
+    id: "document-unreadable-candidate-tolerance-exponent-overflow",
+    title: "A `candidateTolerance` whose exponent overflows the double",
+    why:
+      "Its sibling `document-unreadable-fractional-candidate-tolerance` covers the spelling that " +
+      "*rounds onto* an integer; this covers the one that overflows past every integer. Both are " +
+      "an exponent where `v1` requires canonical digits, and both are unrecoverable once parsed — " +
+      "so answering `document-unreadable` for one and an attributed `schema-invalid` for the other " +
+      "makes the verdict turn on how large the exponent happened to be.",
+    documentText: text.replace(marker, '"candidateTolerance": 1e999'),
+    expected: {
+      pins: ["statusesAbsent", "validationFailures"],
+      statusesAbsent: true,
+      validationFailures: [{ reason: "document-unreadable" }],
+    },
+  });
+}
+
+{
+  // **The same token, at the one field where an exponent is legal.** `element.tolerance` is a real
+  // number, so `1e999` is well-formed there and no text rule touches it — it simply parses to
+  // `Infinity`, which is unambiguously outside `[0, 0.25]`. That is a *range* failure, and it has an
+  // attributed token; reporting `schema-invalid` would call a magnitude problem a shape problem, and
+  // a lossless consumer that never forms the double would disagree.
+  const world = glyphWorld();
+  const element = {
+    kind: "tag",
+    tag: "iconbutton-tonal-glyph",
+    bounds: { x: 8, y: 8, width: 8, height: 8 },
+    tolerance: 0.25,
+  };
+  const text = `${JSON.stringify(document([glyphRecord(world, { element })]), null, 2)}\n`;
+  const marker = '"tolerance": 0.25';
+  if (text.split(marker).length !== 2) {
+    throw new Error("the element tolerance is no longer a single token spelled `0.25`");
+  }
+  glyphValidation({
+    id: "tolerance-element-exponent-overflow",
+    title: "An `element.tolerance` whose exponent overflows the double",
+    why:
+      "The pair to the integer-path case above, and the reason the two need separate fixtures: an " +
+      "exponent is illegal at an integer path and legal here, so the *same token* earns a " +
+      "document-level refusal in one place and a precise, attributed record-level one in the other. " +
+      "An engine treating non-finite as structurally invalid collapses that distinction.",
+    documentText: text.replace(marker, '"tolerance": 1e999'),
+    expected: refused(["tolerance-out-of-range"]),
   });
 }
 

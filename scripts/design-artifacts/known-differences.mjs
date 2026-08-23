@@ -803,11 +803,18 @@ function documentTextRefusal(documentText) {
       // attributed refusal for a blunt one and drop every sibling's `statuses` entry. What no
       // value-level check can see is a fractional token that *rounds onto* an integer, so that is
       // exactly what this catches.
+      //
+      // **Overflow destroys the evidence just as thoroughly as rounding does.** `1e999` parses to
+      // `Infinity`, which is not an integer — so a test asking only "did this round onto an integer"
+      // lets the largest exponent spellings through while refusing `2e0`, for the same defect. Both
+      // are an exponent at a path that requires a canonical integer, and both are unrecoverable
+      // after the parse, so both are decided here. A token that survives as an ordinary fractional
+      // number still keeps its attributed record-level refusal.
       if (
         pendingKey !== null &&
         integerKeys?.has(pendingKey) &&
         !CANONICAL_INTEGER.test(token) &&
-        Number.isInteger(Number(token))
+        (Number.isInteger(Number(token)) || !Number.isFinite(Number(token)))
       ) {
         return "document-unreadable";
       }
@@ -944,17 +951,24 @@ function preflightRecord(record, index, readArtifact, catalog) {
   const headerReasons = [];
   if (maskHeader.error) headerReasons.push("header-invalid");
   if (acceptedHeader.error) headerReasons.push("header-invalid");
-  if (headerReasons.length === 0) {
-    if (maskHeader.animated) headerReasons.push("animated-png");
-    if (acceptedHeader.animated) headerReasons.push("animated-png");
-    // The mask is greyscale with **no alpha**, and `tRNS` is how a greyscale PNG carries alpha
-    // anyway. Permitted on the accepted candidate, refused here: the decode would give a matching
-    // sample alpha `0` while `maskCoverage` reads only the grey channel, so a transparent white
-    // pixel suppresses a comparison on one consumer and refuses the mask on another that enforces
-    // the no-alpha rule as written.
-    if (maskHeader.bitDepth !== 8 || maskHeader.colourType !== 0 || maskHeader.hasTransparency) {
-      headerReasons.push("mask-encoding-invalid");
-    }
+  // **Each header that parsed is inspected, whichever one failed.** Gating these on *both* headers
+  // being readable makes the reason set depend on its siblings: an unreadable mask beside a
+  // detectable APNG candidate would report `header-invalid` alone and silently drop `animated-png`,
+  // even though that header was read and the evidence was in hand. The reason set is exact and
+  // deduplicated per record — the second-read stage already accumulates this way, and there is no
+  // reason for the first to differ.
+  if (!maskHeader.error && maskHeader.animated) headerReasons.push("animated-png");
+  if (!acceptedHeader.error && acceptedHeader.animated) headerReasons.push("animated-png");
+  // The mask is greyscale with **no alpha**, and `tRNS` is how a greyscale PNG carries alpha
+  // anyway. Permitted on the accepted candidate, refused here: the decode would give a matching
+  // sample alpha `0` while `maskCoverage` reads only the grey channel, so a transparent white
+  // pixel suppresses a comparison on one consumer and refuses the mask on another that enforces
+  // the no-alpha rule as written.
+  if (
+    !maskHeader.error &&
+    (maskHeader.bitDepth !== 8 || maskHeader.colourType !== 0 || maskHeader.hasTransparency)
+  ) {
+    headerReasons.push("mask-encoding-invalid");
   }
   if (headerReasons.length > 0) return fail(...headerReasons);
 
@@ -1134,7 +1148,11 @@ function schemaReasons(record) {
   if (record.acceptedAt !== undefined && !isRfc3339(record.acceptedAt)) return invalid();
   if (record.overrides !== undefined && !isStringMap(record.overrides)) return invalid();
   if (!isPlane(record.plane)) return invalid();
-  if (!Number.isFinite(record.candidateTolerance)) return invalid();
+  // Same reasoning as `element.tolerance`: a non-finite number is out of range, and the integer test
+  // below already refuses it as such. Structural invalidity is about *shape*, not magnitude.
+  if (typeof record.candidateTolerance !== "number" || Number.isNaN(record.candidateTolerance)) {
+    return invalid();
+  }
   if (record.element !== undefined && !isElement(record.element)) return invalid();
 
   const ranges = [];
@@ -1192,7 +1210,12 @@ function isElement(value) {
   if (value.kind !== "tag") return false;
   if (typeof value.tag !== "string" || value.tag === "") return false;
   if (!isBox(value.bounds)) return false;
-  return Number.isFinite(value.tolerance);
+  // **A number, finite or not.** `1e999` is a legal JSON number that parses to `Infinity`, and it is
+  // unambiguously outside `[0, 0.25]` — which is a *range* failure with its own attributed token, not
+  // a structural one. Refusing it here would report `schema-invalid` where a lossless consumer, which
+  // never forms the double at all, says `tolerance-out-of-range`. `NaN` has no JSON literal, so it
+  // cannot arrive from a parse; it is excluded anyway, because it would pass both range comparisons.
+  return typeof value.tolerance === "number" && !Number.isNaN(value.tolerance);
 }
 
 /**

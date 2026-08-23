@@ -1339,10 +1339,24 @@ the safe range rather than only beyond it. No bound closes the hole — at every
 fractional literal sits nearer an integer than the spacing of doubles there — so the only honest
 check is on the token as committed.
 
+**Overflow counts as hidden too.** `1e999` parses to `Infinity`, which is not an integer, so a check
+asking only "did this round onto an integer" refuses `2e0` and lets the largest exponent spellings
+through — the same defect, decided by how big the exponent happened to be. Both spellings are
+unrecoverable after the parse, so both are `document-unreadable`. A token that survives as an
+ordinary fractional number is *not* hidden and keeps its attributed record-level refusal.
+
 **`element.tolerance` gets the same treatment on its own terms.** It is the one field `v1` bounds
 without requiring an integer, so the canonical-integer rule cannot carry it — and the hole is the
 same shape: `0.25000000000000000001` is `0.25` by the time a range check can look. Its **range** is
 therefore checked on the token, as an exact decimal, without ever forming the double.
+
+Where an exponent is *legal*, though — and it is legal here, since this field is a real number —
+overflow is a **range** failure and not a structural one. `element.tolerance: 1e999` is a well-formed
+number outside `[0, 0.25]`, so it is `tolerance-out-of-range`, attributed to its record, exactly as
+`0.3` is. Treating non-finite as a shape failure would report `schema-invalid` for a magnitude
+problem, and a consumer that never forms the double would disagree. The same holds for
+`candidateTolerance` reached without the text walk. `NaN` has no JSON literal and cannot arrive from
+a parse.
 
 Exactly as an exact decimal, which is narrower than it sounds — both endpoints are reachable from
 the wrong side by an engine that approximates it, and each has a fixture:
@@ -1865,6 +1879,13 @@ fields are not alternatives: `statuses` answers "what happened to this acceptanc
 `validationFailures` is the flat list a build gate reports and fails on, without walking the map.
 An earlier revision showed a `refused` status beside an empty `validationFailures`, which left both
 readings implementable and would have produced different fixture results.
+
+**A record's reason set never depends on its sibling artifact.** Both headers are preflighted, and
+every header that *parsed* is inspected — so an unreadable mask beside a detectable animated
+candidate reports `header-invalid` **and** `animated-png`, not the first alone. Short-circuiting on
+the first failed header drops evidence already in hand, and which token survives then depends on
+the order the two artifacts happened to be read. The tokens are deduplicated per `(record, reason)`,
+so two unreadable headers are still one `header-invalid`.
 
 `validationFailures` is a list whose entries take one of **three** shapes, chosen by how precisely
 the failure can be attributed:

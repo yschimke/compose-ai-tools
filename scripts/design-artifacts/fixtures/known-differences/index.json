@@ -437,6 +437,11 @@
       "site": null
     },
     {
+      "id": "header-invalid-beside-animated-sibling",
+      "title": "An unreadable mask header beside an animated accepted candidate",
+      "site": null
+    },
+    {
       "id": "animated-png-accepted-candidate",
       "title": "An animated accepted candidate",
       "site": null
@@ -624,6 +629,16 @@
     {
       "id": "element-tolerance-at-ceiling-padded",
       "title": "An `element.tolerance` of `0.25` written past the digit limit",
+      "site": null
+    },
+    {
+      "id": "document-unreadable-candidate-tolerance-exponent-overflow",
+      "title": "A `candidateTolerance` whose exponent overflows the double",
+      "site": null
+    },
+    {
+      "id": "tolerance-element-exponent-overflow",
+      "title": "An `element.tolerance` whose exponent overflows the double",
       "site": null
     },
     {

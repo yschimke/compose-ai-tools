@@ -148,6 +148,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `mask-encoding-transparency` | A greyscale mask carrying `tRNS` |
 | `mask-empty` | A mask that selects nothing |
 | `animated-png-mask` | An animated mask |
+| `header-invalid-beside-animated-sibling` | An unreadable mask header beside an animated accepted candidate |
 | `animated-png-accepted-candidate` | An animated accepted candidate |
 | `dimension-mismatch-mask-against-plane` | A mask that is not the recorded plane's size |
 | `dimension-mismatch-accepted-against-mask-box` | An accepted candidate that is not the mask's bounding box |
@@ -186,6 +187,8 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `schema-invalid-unknown-property-named-like-geometry` | An unknown record property that shares a geometry field's name |
 | `document-unreadable-element-tolerance-over-by-rounding` | An `element.tolerance` just past the ceiling, rounded back inside it |
 | `element-tolerance-at-ceiling-padded` | An `element.tolerance` of `0.25` written past the digit limit |
+| `document-unreadable-candidate-tolerance-exponent-overflow` | A `candidateTolerance` whose exponent overflows the double |
+| `tolerance-element-exponent-overflow` | An `element.tolerance` whose exponent overflows the double |
 | `document-unreadable-element-tolerance-negative-underflow` | An `element.tolerance` negative by a magnitude too small to survive the parse |
 | `document-unreadable-fractional-candidate-tolerance` | A `candidateTolerance` written as a near-integer fraction |
 | `schema-invalid-unknown-element-property` | An `element` carrying a property `v1` does not define |
