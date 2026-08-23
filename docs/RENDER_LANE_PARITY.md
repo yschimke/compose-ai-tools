@@ -299,11 +299,17 @@ PNG beside it carried the gutter — the component is the same size in both, onl
   either would be padding the sheet under the annotation's name. A declined scroll drive falls
   through to an ordinary still, which does carry the gutter.
 
-  CMP Desktop implements that exclusion directly. **Android does not yet** — it grows one hosting
-  window per preview, so a scrolling product of a guttered preview inherits the gutter. That is a
-  live divergence from the rule above, tracked with two smaller ones (fixed-axis motion frames
-  trimmed to the hosting window rather than to `frame + gutter` px, and wrapped desktop recordings
-  sized from the sandbox rather than the measured content) in
+  Every lane implements that exclusion, by whichever means it can. CMP Desktop hands its scroll
+  renderer no gutter at all. Android grows **one** hosting window per preview and captures every
+  job for that preview inside it, so it cannot express the exclusion in the window — its scroll
+  products trim the gutter back off after capture instead (LONG slices and GIF frames as they are
+  taken; `END`, whose product is an ordinary still, after the still framing). `TOP` is untouched —
+  the undriven first viewport is a still, and stills carry the gutter.
+
+  Two divergences remain open: fixed-axis Android **motion** frames are trimmed to the hosting
+  window rather than to `frame + gutter` px (a pixel's disagreement with the still at a fractional
+  density), and a held **desktop recording** of a *wrapped* preview is sized from the sandbox bound
+  rather than the measured content — that one predates gutters. Both are tracked in
   [#4467](https://github.com/yschimke/compose-ai-tools/issues/4467).
 * **Rotation does not rotate the edges.** `orientation = landscape` reduces to a
   `widthPx ↔ heightPx` swap, and the routers trade the *wrap flags* with it because a wrap flag

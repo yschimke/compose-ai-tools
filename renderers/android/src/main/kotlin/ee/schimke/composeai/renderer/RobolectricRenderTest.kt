@@ -1242,6 +1242,28 @@ abstract class RobolectricRenderTestBase(
         qualifierDensity,
         previewRendersRtl(params.locale),
       )
+    // …and the removal of that same gutter from every `@ScrollingPreview` product, which the
+    // contract excludes: a LONG capture's bounds are the stitched scroll extent and a GIF frame's
+    // the declared viewport, so there is no component edge for a gutter to sit on. CMP Desktop
+    // implements the exclusion by handing `renderScrollPreview` no gutter at all; here the window
+    // is shared with the still, which does want it, so the scroll products trim back instead
+    // (issue #4467).
+    //
+    // The fixed-axis frames are named explicitly rather than left to `image - gutter` because the
+    // window grew by whole dp: LONG's stitcher plans against `heightDp * density` exactly, and a
+    // viewport off by the dp-quantized remainder would drift the seam.
+    val scrollGutterTrim =
+      DialogWindowCapture.GutterTrim(
+        gutter = motionDialogGutter,
+        fixedWidthPx =
+          if (!wrapWidth && params.device == null && params.widthDp != null)
+            (widthDp * qualifierDensity).roundHalfUpPx()
+          else null,
+        fixedHeightPx =
+          if (!wrapHeight && params.device == null && params.heightDp != null)
+            (heightDp * qualifierDensity).roundHalfUpPx()
+          else null,
+      )
     applyPreviewQualifiers(
       widthDp =
         widthDp + captureGutterAxisDp(qualifierGutter.start, qualifierGutter.end, qualifierDensity),
@@ -1845,6 +1867,7 @@ abstract class RobolectricRenderTestBase(
                     isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
                     outputFile = outputFile,
                     settleFrames = settleStillFrame,
+                    gutterTrim = scrollGutterTrim,
                   )
                 }
             if (forceLongFlatten) {
@@ -1884,13 +1907,14 @@ abstract class RobolectricRenderTestBase(
                 scroll.mode == ScrollMode.GIF &&
                 scroll.axis == ScrollAxis.VERTICAL &&
                 motionCaptureOrSidecar(outputFile, preview.id, "@ScrollingPreview(GIF)") {
-                  handleGifCapture(
+                  handleGifCaptureInternal(
                     rule = rule,
                     scroll = scroll,
                     previewId = preview.id,
                     heightDp = heightDp,
                     isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
                     outputFile = outputFile,
+                    gutterTrim = scrollGutterTrim,
                   )
                 }
             if (forceGifMotion) {
@@ -2246,6 +2270,28 @@ abstract class RobolectricRenderTestBase(
                     (heightDp * resizeDensity).roundHalfUpPx() + resizeGutterHPx
                   else null,
               )
+            }
+
+            // `@ScrollingPreview(END)` is a scroll product like LONG and GIF, and the contract
+            // excludes all three from the gutter — CMP Desktop routes END through the gutterless
+            // `renderScrollPreview` for exactly this reason. Unlike its siblings it has no scroll
+            // handler of its own; it is an ordinary still, driven to content end. So its trim
+            // lands here, after the wrap crop / fixed resize have framed the guttered capture.
+            // TOP is deliberately NOT trimmed: it is the undriven first viewport, which desktop
+            // routes through `renderPreview` — a still, which does carry the gutter.
+            if (
+              scroll != null &&
+                scroll.mode == ScrollMode.END &&
+                capturedDialogWindow == null &&
+                !productFellThrough &&
+                !motionCaptureFellThrough &&
+                !longHandled &&
+                !gifHandled &&
+                !animationHandled &&
+                !focusGifHandled &&
+                !interactionHandled
+            ) {
+              scrollGutterTrim.applyTo(outputFile)
             }
 
             // `@FocusedPreview(overlay = true)`: post-process the captured PNG with a
@@ -2775,6 +2821,12 @@ private fun handleLongCaptureInternal(
   isRound: Boolean,
   outputFile: File,
   settleFrames: Boolean,
+  /**
+   * Removal of a declared `@CaptureGutter` from this scroll product — see
+   * [DialogWindowCapture.GutterTrim]. Empty (the default, and what the public wrappers pass) for a
+   * preview that declares no gutter.
+   */
+  gutterTrim: DialogWindowCapture.GutterTrim = DialogWindowCapture.GutterTrim(),
 ): Boolean {
   val density = rule.activity.resources.displayMetrics.density
   val viewportLayoutPx = (heightDp * density).toInt().coerceAtLeast(1)
@@ -2790,7 +2842,7 @@ private fun handleLongCaptureInternal(
     RoborazziOptions(recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = false))
 
   val slices = mutableListOf<SliceCapture>()
-  val stableDialogCrop = DialogWindowCapture.StableDialogCrop()
+  val stableDialogCrop = DialogWindowCapture.StableDialogCrop(gutterTrim = gutterTrim)
   try {
     // Multi-mode annotations (e.g. END + LONG) run captures in enum
     // ordinal order against the same composition, so an earlier END
@@ -3386,6 +3438,12 @@ private fun handleGifCaptureInternal(
   heightDp: Int,
   isRound: Boolean,
   outputFile: File,
+  /**
+   * Removal of a declared `@CaptureGutter` from this scroll product — see
+   * [DialogWindowCapture.GutterTrim]. Empty (the default, and what the public wrappers pass) for a
+   * preview that declares no gutter.
+   */
+  gutterTrim: DialogWindowCapture.GutterTrim = DialogWindowCapture.GutterTrim(),
 ): Boolean {
   val density = rule.activity.resources.displayMetrics.density
   val viewportLayoutPx = (heightDp * density).toInt().coerceAtLeast(1)
@@ -3403,7 +3461,7 @@ private fun handleGifCaptureInternal(
     else ScrollGifEncoder.DEFAULT_FRAME_DELAY_MS
   val frameFiles = mutableListOf<File>()
   val frameDelays = mutableListOf<Int>()
-  val stableDialogCrop = DialogWindowCapture.StableDialogCrop()
+  val stableDialogCrop = DialogWindowCapture.StableDialogCrop(gutterTrim = gutterTrim)
 
   fun captureFrame(delayMs: Int) {
     val frameFile = File(framesDir, "frame_${frameFiles.size}.png")

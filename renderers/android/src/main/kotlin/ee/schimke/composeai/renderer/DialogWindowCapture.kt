@@ -50,7 +50,10 @@ internal object DialogWindowCapture {
    * support exists to prevent (compose-ai-tools#4452). Scroll products deliberately pass nothing: a
    * scrolling capture is documented as carrying no gutter.
    */
-  class StableDialogCrop(private val gutter: DialogCropGutter = DialogCropGutter()) {
+  class StableDialogCrop(
+    private val gutter: DialogCropGutter = DialogCropGutter(),
+    private val gutterTrim: GutterTrim = GutterTrim(),
+  ) {
     private var cropRect: android.graphics.Rect? = null
 
     @OptIn(ExperimentalRoborazziApi::class)
@@ -61,8 +64,15 @@ internal object DialogWindowCapture {
     ): CaptureRoot {
       val root = resolveCaptureRoot(rule)
       root.interaction.captureRoboImage(file = file, roborazziOptions = roborazziOptions)
-      val semanticsRoot = root.semanticsRoot ?: return root
-      val window = shownDialogWindow(semanticsRoot) ?: return root
+      val semanticsRoot = root.semanticsRoot
+      val window = semanticsRoot?.let { shownDialogWindow(it) }
+      if (semanticsRoot == null || window == null) {
+        // Not a dialog preview: the frame is the hosting window, which may have been grown by a
+        // gutter this product does not want. A dialog capture needs no equivalent — it is cropped
+        // to the dialog's own window rect below, and a scroll capture passes the crop no gutter.
+        gutterTrim.applyTo(file)
+        return root
+      }
       val rect =
         cropRect
           ?: dialogWindowCropRect(file, semanticsRoot, window, gutter)?.also { cropRect = it }
@@ -70,6 +80,78 @@ internal object DialogWindowCapture {
       return root
     }
   }
+
+  /**
+   * Removal of the `@CaptureGutter` from a product the annotation's contract **excludes** — every
+   * `@ScrollingPreview` capture (compose-ai-tools#4467).
+   *
+   * A gutter says "the component draws this far past its own bounds", and it only means anything
+   * where the capture bounds ARE the component's. A LONG capture's are the stitched scroll extent
+   * and a GIF frame's the declared viewport, so there is no edge for a gutter to sit on; extending
+   * either would be padding the sheet rather than keeping a shadow. CMP Desktop implements that by
+   * simply not offering `renderScrollPreview` a gutter.
+   *
+   * Android cannot express it the same way. `renderDefault` grows **one** hosting window per
+   * preview and captures every job for that preview inside it, so a preview declaring a gutter and
+   * a scrolling mode had the gutter baked into its scroll products — and LONG then stitched those
+   * over-tall slices against the original un-grown `heightDp`. The window stays grown (the still
+   * beside them still wants it); the scroll products trim back to the un-guttered rect here.
+   *
+   * [gutter] is the per-edge growth in **image** pixels, already RTL-swapped — the same value the
+   * dialog crop takes, since both operate on rendered pixels rather than layout edges.
+   * [fixedWidthPx] / [fixedHeightPx] give an axis its exact un-guttered pixel frame where the
+   * preview declared one; a wrapped axis has none and simply loses its two gutter edges. Naming the
+   * fixed frame matters for LONG in particular, whose stitcher plans against `heightDp * density`
+   * exactly — a viewport off by the dp-quantized remainder would drift the seam.
+   */
+  data class GutterTrim(
+    val gutter: DialogCropGutter = DialogCropGutter(),
+    val fixedWidthPx: Int? = null,
+    val fixedHeightPx: Int? = null,
+  ) {
+    fun isEmpty(): Boolean = gutter == DialogCropGutter()
+
+    internal fun applyTo(file: File) {
+      if (isEmpty()) return
+      val rect = trimRect(file) ?: return
+      val original = runCatching { javax.imageio.ImageIO.read(file) }.getOrNull() ?: return
+      val cropped = original.getSubimage(rect.left, rect.top, rect.width, rect.height)
+      runCatching { javax.imageio.ImageIO.write(cropped, "PNG", file) }
+    }
+
+    /**
+     * The un-guttered rect inside a capture of [file], or `null` when there is nothing to do.
+     *
+     * Clamped to the image: the trim is derived from what the window was grown by, so there is
+     * normally exactly that much to remove, but a capture that came back smaller than expected gets
+     * less trimmed rather than a rect that runs off the image.
+     *
+     * A plain rect rather than an `android.graphics.Rect` so the geometry is testable off-device —
+     * the framework class is a stub outside Robolectric, and its zeroed fields would silently crop
+     * every frame to a pixel.
+     */
+    internal fun trimRect(file: File): TrimRect? {
+      if (!file.exists()) return null
+      val image = runCatching { javax.imageio.ImageIO.read(file) }.getOrNull() ?: return null
+      val left = gutter.leftPx.coerceIn(0, image.width - 1)
+      val top = gutter.topPx.coerceIn(0, image.height - 1)
+      val width =
+        (fixedWidthPx ?: (image.width - gutter.leftPx - gutter.rightPx)).coerceIn(
+          1,
+          image.width - left,
+        )
+      val height =
+        (fixedHeightPx ?: (image.height - gutter.topPx - gutter.bottomPx)).coerceIn(
+          1,
+          image.height - top,
+        )
+      if (left == 0 && top == 0 && width == image.width && height == image.height) return null
+      return TrimRect(left = left, top = top, width = width, height = height)
+    }
+  }
+
+  /** The surviving rect of a [GutterTrim], in captured pixels. */
+  internal data class TrimRect(val left: Int, val top: Int, val width: Int, val height: Int)
 
   fun resolveCaptureRoot(rule: AndroidComposeTestRule<*, ComponentActivity>): CaptureRoot {
     val interactions = rule.onAllNodes(isRoot(), useUnmergedTree = true)
