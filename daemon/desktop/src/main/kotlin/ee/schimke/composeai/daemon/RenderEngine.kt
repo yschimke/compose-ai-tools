@@ -745,6 +745,36 @@ class RenderEngine(
   }
 
   /**
+   * Lay the held scene out so its semantics tree is readable, without moving the frame clock.
+   *
+   * `setUp` deliberately doesn't render, and **a scene that has never rendered has no layout**: its
+   * content nodes report `isPlaced = false` and `(0,0,0,0)` bounds. That makes the projected
+   * semantics tree useless for target resolution twice over — `SemanticsTargets` drops unplaced
+   * subtrees outright, so a `testTag` matches nothing; and even if it matched, the node's centre
+   * would be `(0,0)` rather than wherever it actually sits. Both the interactive and recording
+   * sessions can be asked to resolve a target before their first frame (a script event at `tMs =
+   * 0`), so they have to ask for this first. `driveStaticScrollToEndLocalized` has needed the same
+   * guarantee since it was written; this is that idiom, named.
+   *
+   * Renders **at the cursor's current position without advancing it**: re-rendering at the same
+   * timestamp is a no-op for the composition (see [renderFrame]), so this is idempotent and cheap
+   * to call before every resolution, and it can't hand an animation a frame delta the session
+   * didn't ask for. Zero for every preview except one a `@SettledPreview` walk already advanced.
+   *
+   * Under [withPreviewLocale] for the reason [renderSettlingFrame] documents: a frame run at the
+   * host default locale can bake default-language `stringResource(...)` text into a localized
+   * preview's resource cache.
+   */
+  @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+  internal fun layOutForSemantics(state: SceneState) {
+    withPreviewLocale(state.spec.localeTag) {
+      if (state.virtualFrameNanos > 0L)
+        state.scene.render(nanoTime = state.virtualFrameNanos).close()
+      else state.scene.render().close()
+    }
+  }
+
+  /**
    * v2 phase 2 — drive the held scene through enough frames to settle (two `scene.render()` calls,
    * same heuristic as the one-shot path) and encode the latest pixels to PNG. Reusable across
    * inputs in the interactive path; called exactly once by the [render] wrapper.

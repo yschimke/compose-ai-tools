@@ -42,6 +42,23 @@ internal fun ImageComposeScene.composeSemanticsRoot(): ComposeSemanticsNode? {
   return ComposeSemanticsDataProducer.buildPayload(node).root
 }
 
+/**
+ * [composeSemanticsRoot], preceded by the layout pass that makes it meaningful.
+ *
+ * Every held-session target resolution goes through here rather than projecting the scene directly.
+ * A scene that has not rendered has no layout, so its nodes are unplaced with `(0,0,0,0)` bounds —
+ * `SemanticsTargets` drops unplaced subtrees, so a `testTag` matches nothing and the session
+ * reports an empty candidate list. A session can be asked to resolve before its first frame (a
+ * script event at `tMs = 0`), so the projection has to guarantee layout itself. See
+ * [RenderEngine.layOutForSemantics] for why this doesn't move the frame clock.
+ */
+internal fun RenderEngine.laidOutSemanticsRoot(
+  state: RenderEngine.SceneState
+): ComposeSemanticsNode? {
+  layOutForSemantics(state)
+  return state.scene.composeSemanticsRoot()
+}
+
 /** Project a resolved/candidate node onto the slim wire candidate shape (issue #1784). */
 internal fun ComposeSemanticsNode.toTargetCandidate(): SemanticsTargetCandidate =
   SemanticsTargetCandidate(

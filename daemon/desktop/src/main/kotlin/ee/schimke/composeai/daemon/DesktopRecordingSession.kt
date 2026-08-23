@@ -423,7 +423,7 @@ class DesktopRecordingSession(
             // consecutive probes into assertions. Reuses the same projection target resolution
             // walks, so the captured testTags/text match what a generated `onNodeWith…` finder
             // targets. Null root (nothing rendered yet) leaves the snapshot absent → TODO stub.
-            val probeNodes = state.scene.composeSemanticsRoot()?.toProbeNodes()
+            val probeNodes = engine.laidOutSemanticsRoot(state)?.toProbeNodes()
             appliedEvidence(e, "probe marker reached", probeSemantics = probeNodes)
           },
         )
@@ -495,7 +495,7 @@ class DesktopRecordingSession(
           "${event.kind} requires pixelX/pixelY or a resolvable target"
         )
     val root =
-      state.scene.composeSemanticsRoot()
+      engine.laidOutSemanticsRoot(state)
         ?: return ResolvedPixels.Unresolved(
           "no semantics root available for target $target",
           semanticsTargetUnresolvedReason(
@@ -552,7 +552,7 @@ class DesktopRecordingSession(
             event,
             "${event.kind} target has no resolvable field; set ref, testTag, role, or text",
           )
-      val root = state.scene.composeSemanticsRoot()
+      val root = engine.laidOutSemanticsRoot(state)
       var matchCount = 0
       var candidates: List<ComposeSemanticsNode> = emptyList()
       if (root != null) {
@@ -617,7 +617,7 @@ class DesktopRecordingSession(
             "${event.kind} target has no resolvable field; set ref, testTag, role, or text",
           )
       val root =
-        state.scene.composeSemanticsRoot()
+        engine.laidOutSemanticsRoot(state)
           ?: return@RecordingScriptEventHandler failedEvidence(
             event,
             "${event.kind}: nothing rendered yet, so $target resolved to no node",
@@ -836,7 +836,7 @@ class DesktopRecordingSession(
     val py = event.pixelY
     val resolved =
       if (event.target == null && px != null && py != null) {
-        val handle = state.scene.composeSemanticsRoot()?.let { SemanticsTargets.nodeAt(it, px, py) }
+        val handle = engine.laidOutSemanticsRoot(state)?.let { SemanticsTargets.nodeAt(it, px, py) }
         if (handle != null)
           event.copy(target = handle.toInputTarget(), pixelX = null, pixelY = null)
         else event
