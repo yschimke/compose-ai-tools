@@ -301,10 +301,13 @@ PNG beside it carried the gutter — the component is the same size in both, onl
 
   CMP Desktop implements that exclusion directly. **Android does not yet** — it grows one hosting
   window per preview, so a scrolling product of a guttered preview inherits the gutter. That is a
-  live divergence from the rule above, tracked with two smaller ones (fixed-axis motion frames
-  trimmed to the hosting window rather than to `frame + gutter` px, and wrapped desktop recordings
-  sized from the sandbox rather than the measured content) in
+  live divergence from the rule above, tracked with one smaller one (fixed-axis motion frames
+  trimmed to the hosting window rather than to `frame + gutter` px) in
   [#4467](https://github.com/yschimke/compose-ai-tools/issues/4467).
+
+  A held **desktop recording** now sizes its frame the way the still does — the measured content on
+  a wrapped axis, the composed scene otherwise — so a wrap-content preview's recording and its PNG
+  are the same picture at the same size.
 * **Rotation does not rotate the edges.** `orientation = landscape` reduces to a
   `widthPx ↔ heightPx` swap, and the routers trade the *wrap flags* with it because a wrap flag
   names an axis of the frame. A gutter edge names a direction the component draws in — `bottom` is

@@ -101,15 +101,30 @@ class DesktopRecordingSession(
 
   private var result: RecordingResult? = null
 
-  // The scene's own natural size, gutter included. A `@CaptureGutter` preview composes into a scene
-  // grown by the gutter (issue #4443), so deriving the frame from `spec.widthPx` alone would make
-  // every guttered fixed-size recording take the resample path even at `scale = 1` and shrink the
-  // component back to its un-guttered box — defeating the annotation in exactly the lane it was
-  // just extended to. `PreviewCaptureGutter.None` for every preview without one, so this is the
-  // pre-gutter arithmetic verbatim there.
-  private val naturalWidthPx: Int = state.spec.widthPx + state.spec.captureGutterPx().horizontalPx
+  // The composable's measured intrinsic size, or `[0, 0]` on a preview with no wrapped axis.
+  // Reading it forces the held scene's first layout — `setUp` deliberately doesn't render, and the
+  // encoder needs a frame size before the first frame is taken.
+  private val measuredContentPx: IntArray = engine.measuredContentAfterLayout(state)
 
-  private val naturalHeightPx: Int = state.spec.heightPx + state.spec.captureGutterPx().verticalPx
+  // The scene the preview actually composed into: the sandbox (or declared frame) plus the gutter.
+  // A `@CaptureGutter` preview composes into a scene grown by the gutter (issue #4443), so
+  // deriving this from `spec.widthPx` alone would make every guttered fixed-size recording take
+  // the resample path even at `scale = 1` and shrink the component back to its un-guttered box.
+  private val sceneWidthPx: Int = state.spec.widthPx + state.spec.captureGutterPx().horizontalPx
+
+  private val sceneHeightPx: Int = state.spec.heightPx + state.spec.captureGutterPx().verticalPx
+
+  // What the recording is OF, in natural pixels — the component, not the sandbox it was measured
+  // in. On a wrapped axis `spec.widthPx`/`heightPx` are the generous sandbox bound (400x800 dp),
+  // not the component's natural size, so a small wrap-content preview used to record a
+  // sandbox-sized frame with itself in the corner while the still beside it was `measured +
+  // gutter` — the same picture at two different sizes (issue #4467). Frames are cropped to this
+  // before any scaling.
+  private val naturalWidthPx: Int =
+    recordingNaturalAxisPx(state.spec.wrapWidth, measuredContentPx[0], sceneWidthPx)
+
+  private val naturalHeightPx: Int =
+    recordingNaturalAxisPx(state.spec.wrapHeight, measuredContentPx[1], sceneHeightPx)
 
   private val frameWidthPx: Int = (naturalWidthPx * scale).toInt().coerceAtLeast(1)
 
@@ -1063,21 +1078,34 @@ class DesktopRecordingSession(
    * the held scene's `Image` directly; otherwise the natural-size image is drawn into a
    * `frameWidthPx × frameHeightPx` raster surface (LINEAR sampling) and that snapshot is encoded.
    */
-  private fun encodeScaledPng(image: Image): ByteArray =
-    if (scale == 1.0f && image.width == frameWidthPx && image.height == frameHeightPx) {
-      // Fast path: no scaling needed, encode the held scene's Image directly.
+  private fun encodeScaledPng(image: Image): ByteArray {
+    // The source rect is the component, not the whole scene — a wrapped preview composes in a
+    // sandbox far larger than itself, and the content is laid out at the top-left. Clamped to the
+    // image so a scene that came back smaller than expected is used whole rather than sampled off
+    // its own edge.
+    val srcWidth = minOf(image.width, naturalWidthPx)
+    val srcHeight = minOf(image.height, naturalHeightPx)
+    return if (
+      scale == 1.0f &&
+        image.width == srcWidth &&
+        image.height == srcHeight &&
+        srcWidth == frameWidthPx &&
+        srcHeight == frameHeightPx
+    ) {
+      // Fast path: nothing to crop and nothing to scale, encode the held scene's Image directly.
       image.encodePngData()?.bytes ?: error("encodePngData() returned null")
     } else {
-      // Scaled path: draw the natural-size Image onto a `frameWidthPx × frameHeightPx` raster
-      // surface and encode the snapshot. `LINEAR` sampling is the right default for both up- and
-      // down-scaling: cheaper than CATMULL_ROM, no aliasing for typical UI content, matches what
-      // browsers do for `<img>` rendering. We don't expose the sampling mode on the wire — if a
-      // caller wants pixel-perfect upscale they can pass `scale = 1.0` and resample client-side.
+      // Crop-and-scale path: draw the component's rect of the Image onto a
+      // `frameWidthPx × frameHeightPx` raster surface and encode the snapshot. `LINEAR` sampling
+      // is the right default for both up- and down-scaling: cheaper than CATMULL_ROM, no aliasing
+      // for typical UI content, matches what browsers do for `<img>` rendering. We don't expose
+      // the sampling mode on the wire — if a caller wants pixel-perfect upscale they can pass
+      // `scale = 1.0` and resample client-side.
       val surface = Surface.makeRasterN32Premul(frameWidthPx, frameHeightPx)
       try {
         surface.canvas.drawImageRect(
           image = image,
-          src = Rect.makeWH(image.width.toFloat(), image.height.toFloat()),
+          src = Rect.makeWH(srcWidth.toFloat(), srcHeight.toFloat()),
           dst = Rect.makeWH(frameWidthPx.toFloat(), frameHeightPx.toFloat()),
           samplingMode = SamplingMode.LINEAR,
           paint = null,
@@ -1093,6 +1121,7 @@ class DesktopRecordingSession(
         surface.close()
       }
     }
+  }
 
   /**
    * Composite the TalkBack focus overlay onto [image] and write the result to [outFile]. Extracts
@@ -1115,10 +1144,20 @@ class DesktopRecordingSession(
       } else {
         naturalBytes
       }
-    return if (scale == 1.0f && image.width == frameWidthPx && image.height == frameHeightPx) {
+    // Same crop-then-scale as the plain path — the overlay is drawn in natural pixel space, so
+    // cropping afterwards keeps it registered with the component it annotates.
+    val srcWidth = minOf(image.width, naturalWidthPx)
+    val srcHeight = minOf(image.height, naturalHeightPx)
+    return if (
+      scale == 1.0f &&
+        image.width == srcWidth &&
+        image.height == srcHeight &&
+        srcWidth == frameWidthPx &&
+        srcHeight == frameHeightPx
+    ) {
       overlaidNatural
     } else {
-      scalePngBytes(overlaidNatural, frameWidthPx, frameHeightPx)
+      scalePngBytes(overlaidNatural, srcWidth, srcHeight, frameWidthPx, frameHeightPx)
     }
   }
 
@@ -1133,7 +1172,13 @@ class DesktopRecordingSession(
    * Bilinear-scale PNG [bytes] to [w]×[h] via AWT (the overlay path's scaler; matches the recording
    * size).
    */
-  private fun scalePngBytes(bytes: ByteArray, w: Int, h: Int): ByteArray {
+  private fun scalePngBytes(
+    bytes: ByteArray,
+    srcWidth: Int,
+    srcHeight: Int,
+    w: Int,
+    h: Int,
+  ): ByteArray {
     val src = ImageIO.read(ByteArrayInputStream(bytes)) ?: return bytes
     val dst = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
     val g = dst.createGraphics()
@@ -1142,7 +1187,18 @@ class DesktopRecordingSession(
         RenderingHints.KEY_INTERPOLATION,
         RenderingHints.VALUE_INTERPOLATION_BILINEAR,
       )
-      g.drawImage(src, 0, 0, w, h, null)
+      g.drawImage(
+        src,
+        0,
+        0,
+        w,
+        h,
+        0,
+        0,
+        srcWidth.coerceIn(1, src.width),
+        srcHeight.coerceIn(1, src.height),
+        null,
+      )
     } finally {
       g.dispose()
     }
@@ -1159,6 +1215,22 @@ class DesktopRecordingSession(
     return androidx.compose.ui.geometry.Offset(px.toFloat(), py.toFloat())
   }
 }
+
+/**
+ * One axis of a recording's natural frame size: the composable's measured extent on a **wrapped**
+ * axis, the composed scene's own extent otherwise.
+ *
+ * Deliberately the same rule `RenderEngine.cropToMeasured` applies to a still, clause for clause,
+ * because the point is that a preview's still and its recording agree about how big the preview is
+ * (issue #4467). In particular a measured size that meets or exceeds the scene keeps the scene:
+ * that is a `fillMax*` composable, which genuinely is the sandbox, and cropping to a measurement
+ * that ran past the bound would sample off the image.
+ *
+ * [measuredPx] is `0` before the first layout and on an axis that isn't wrapped, which falls
+ * through to [scenePx] on the same clause.
+ */
+internal fun recordingNaturalAxisPx(wrapped: Boolean, measuredPx: Int, scenePx: Int): Int =
+  if (wrapped && measuredPx in 1 until scenePx) measuredPx else scenePx
 
 /**
  * Translate a typed live-mode [RecordingInputParams] into a synthetic [RecordingScriptEvent] keyed

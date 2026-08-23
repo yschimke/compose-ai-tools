@@ -69,12 +69,10 @@ package ee.schimke.composeai.preview
  * The CMP Desktop lane implements that exclusion directly — its scroll renderer takes no gutter.
  * The **Android** lane does not yet: it grows one hosting window per preview and measures every
  * capture of that preview in it, so a scrolling product of a preview that also declares a gutter
- * inherits it. Two smaller Android caveats sit alongside it: a fixed-axis motion product is trimmed
+ * inherits it. One smaller Android caveat sits alongside it: a fixed-axis motion product is trimmed
  * to the hosting window rather than to `frame + gutter` in pixels, so at a fractional density it
- * can differ from the still by a pixel; and a held desktop recording of a **wrapped** preview is
- * sized from the sandbox bound rather than the measured content, which predates gutters entirely.
- * All three are tracked in compose-ai-tools#4467 — read them as the current limits of the contract
- * above, not as licence to rely on them.
+ * can differ from the still by a pixel. Both are tracked in compose-ai-tools#4467 — read them as
+ * the current limits of the contract above, not as licence to rely on them.
  *
  * A **rotated** capture (`orientation = landscape`, which the daemon reduces to a width↔height
  * swap) keeps the declared edges verbatim: a gutter edge names a direction the component draws in —

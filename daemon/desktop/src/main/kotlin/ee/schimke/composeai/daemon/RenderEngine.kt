@@ -783,6 +783,22 @@ class RenderEngine(
   }
 
   /**
+   * The composable's measured intrinsic size on a held scene, laid out first if it has to be.
+   *
+   * `ComposePreviewContentBox` reports this from its layout pass, so on a scene that has never
+   * rendered it is still `[0, 0]` — the same "no layout yet" state [layOutForSemantics] exists to
+   * resolve, and for the same reason: `setUp` deliberately doesn't render. A held recording needs
+   * it before its first frame, because the encoder wants a fixed frame size up front.
+   *
+   * Returns a copy: the live array keeps being written by every subsequent layout, and a caller
+   * that stored the reference would silently see its "fixed" frame size move.
+   */
+  internal fun measuredContentAfterLayout(state: SceneState): IntArray {
+    layOutForSemantics(state)
+    return state.measuredContent.copyOf()
+  }
+
+  /**
    * v2 phase 2 — drive the held scene through enough frames to settle (two `scene.render()` calls,
    * same heuristic as the one-shot path) and encode the latest pixels to PNG. Reusable across
    * inputs in the interactive path; called exactly once by the [render] wrapper.
