@@ -1170,6 +1170,25 @@ the two names outright is cheaper than reasoning about what they normalise to; t
 an `id` of `.` reaching a sibling's `mask.png`, since that is the case a `..`-only check lets
 through.
 
+**Two obligations belong to whoever reads the artifact, not to this grammar, and the contract has to
+say so or nobody discharges them.** The rules below are *lexical*: they constrain the text of a path,
+which is all a schema can do.
+
+- **Containment must be resolved, not spelled.** A path can satisfy every rule here and still leave
+  the root through a symlink inside an acceptance directory. Whether the *resolved* target stays
+  under `known-differences/` is a fact about the filesystem or the URL space the reader serves from,
+  and only the reader can establish it — before it opens anything. An escape is
+  `path-not-contained`.
+- **The byte cap must bound the read, not describe it.** Handing back a whole oversized file so the
+  caller can measure its length exhausts the process through the guard meant to prevent that. Every
+  other budget here is enforced from a bounded header read for exactly this reason; this one is the
+  reader's because only the reader knows the size before the bytes exist. Over the cap is
+  `artifact-too-large`.
+
+Both are reported without materialising the file, and only those two tokens are honoured from a
+reader — anything else it claims is treated as an unreadable artifact rather than trusted into the
+result.
+
 **Artifact paths resolve against the known-difference directory, and may not leave it.** `mask` and
 `acceptedCandidate` are relative to the acceptance's own directory under `.design-parity/
 known-differences/<id>/` — not the repo root, not the JSON file's location, not an implicit
@@ -1446,7 +1465,9 @@ host is compared case-insensitively and the path segments are percent-decoded be
 because `%79schimke` and `yschimke` are the same owner and a regex over the raw text keys them
 separately, which is exactly the split this rule exists to prevent.
 
-**`acceptedAt`, when present, is an RFC 3339 date-time.** The schema declares `format: "date-time"`,
+**`acceptedAt`, when present, is an RFC 3339 date-time — in shape *and* in meaning.**
+`2026-99-99T99:99:99Z` matches the punctuation and the digit counts and is not a date, so a validator
+asserting the format refuses what a pattern check accepts. The schema declares `format: "date-time"`,
 and JSON Schema treats `format` as an annotation by default — so a consumer with assertion enabled
 refuses a document a type-only check accepts. It is a recorded fact either way: a string that is not
 a timestamp is a producer bug.

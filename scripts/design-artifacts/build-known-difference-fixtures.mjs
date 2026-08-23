@@ -1426,6 +1426,18 @@ glyphValidation({
 });
 
 glyphValidation({
+  id: "schema-invalid-accepted-at-impossible-date",
+  title: "An `acceptedAt` with the right shape and impossible values",
+  why:
+    "`2026-99-99T99:99:99Z` matches the punctuation and the digit counts and is not a date, so a " +
+    "validator asserting the schema's `date-time` format refuses what a pattern check accepts — the " +
+    "same gap the pattern was added to close, one level down. Shape is checked by the pattern; " +
+    "meaning by a round trip through the calendar.",
+  record: { acceptedAt: "2026-99-99T99:99:99Z" },
+  expected: refused(["schema-invalid"]),
+});
+
+glyphValidation({
   id: "schema-invalid-accepted-at-not-a-timestamp",
   title: "An `acceptedAt` that is a string but not a date-time",
   why:
@@ -2341,6 +2353,25 @@ glyphValidation({
       "chunk — a gate verdict against a refusal, for one set of hash-valid bytes.",
     record: { acceptedCandidateSha256: sha256Hex(trnsOnRgba) },
     files: { "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": trnsOnRgba },
+    expected: refused(["decode-failed"]),
+  });
+
+  const emptyPaletteTrns = buildPng([
+    ihdr({ width: 8, height: 8, colourType: COLOUR_PALETTE }),
+    chunk("PLTE", Uint8Array.from([200, 60, 60, 0, 0, 0])),
+    chunk("tRNS", new Uint8Array(0)),
+    idat([new Uint8Array(8)]),
+    chunk("IEND"),
+  ]);
+  glyphValidation({
+    id: "decode-failed-empty-palette-trns",
+    title: "A zero-length palette `tRNS`",
+    why:
+      "The upper bound was checked and the lower one was not: PNG requires a palette `tRNS` to carry " +
+      "at least one alpha entry, so an empty one is malformed and a conforming decoder refuses it " +
+      "while a length-ceiling check decodes the image as fully opaque.",
+    record: { acceptedCandidateSha256: sha256Hex(emptyPaletteTrns) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": emptyPaletteTrns },
     expected: refused(["decode-failed"]),
   });
 

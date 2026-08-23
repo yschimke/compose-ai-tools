@@ -84,7 +84,29 @@ const SAFE_SEGMENT = /^[A-Za-z0-9._-]+$/;
 const HEX64 = /^[0-9a-f]{64}$/;
 
 /** RFC 3339 date-time, which is what the schema's `format: "date-time"` means. */
-const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+const RFC3339 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|([+-])(\d{2}):(\d{2}))$/;
+
+/**
+ * Shape **and** meaning. `2026-99-99T99:99:99Z` matches the punctuation and the digit counts and is
+ * not a date, so a validator asserting the schema's `date-time` format refuses what a pattern check
+ * accepts — the same gap the pattern was added to close, one level down. The calendar check is a
+ * round-trip through `Date`, which is where leap years and month lengths already live.
+ */
+function isRfc3339(value) {
+  const match = RFC3339.exec(value);
+  if (!match) return false;
+  const [, year, month, day, hour, minute, second, , offsetHour, offsetMinute] = match;
+  if (Number(month) < 1 || Number(month) > 12) return false;
+  if (Number(day) < 1 || Number(day) > 31) return false;
+  if (Number(hour) > 23 || Number(minute) > 59 || Number(second) > 60) return false;
+  if (offsetHour !== undefined && (Number(offsetHour) > 23 || Number(offsetMinute) > 59)) return false;
+  const utc = new Date(`${year}-${month}-${day}T00:00:00Z`);
+  return (
+    utc.getUTCFullYear() === Number(year) &&
+    utc.getUTCMonth() + 1 === Number(month) &&
+    utc.getUTCDate() === Number(day)
+  );
+}
 
 /**
  * The authoritative ordering for `reasons` and for `validationFailures`.
@@ -333,11 +355,25 @@ export function issueKey(issue) {
  * Evaluate a known-differences document against one comparison.
  *
  * @param documentText raw JSON text — parsed here, so `document-unreadable` is reachable.
- * @param readArtifact `(path) => Uint8Array | null`, where `path` is relative to the fixed
- *   `.design-parity/known-differences/` root (`<id>/<mask>`). `null` means the fetch or open failed,
- *   which is `artifact-unreadable`; a file that opens and holds too few bytes for an `IHDR` is
- *   `header-invalid`, because the line is where the failure occurs rather than how little data there
- *   turned out to be.
+ * @param readArtifact `(path) => Uint8Array | null | { error }`, where `path` is relative to the
+ *   fixed `.design-parity/known-differences/` root (`<id>/<mask>`). `null` means the fetch or open
+ *   failed, which is `artifact-unreadable`; a file that opens and holds too few bytes for an `IHDR`
+ *   is `header-invalid`, because the line is where the failure occurs rather than how little data
+ *   there turned out to be.
+ *
+ *   **The reader carries two obligations this module cannot discharge for it**, and returns
+ *   `{ error }` to report either without materialising the file:
+ *
+ *   - `{ error: "artifact-too-large" }` — the reader must refuse to allocate more than
+ *     {@link BUDGET}`.maxArtifactBytes`. Handing back a whole oversized file so this module can
+ *     measure its `.length` exhausts the process through the very guard meant to prevent that, and
+ *     only the reader is positioned to know the size before the bytes exist. Every other budget is
+ *     enforced from a bounded header read for exactly this reason; this one had been left to a
+ *     check that arrives too late.
+ *   - `{ error: "path-not-contained" }` — the grammar here is *lexical*, so it cannot see a symlink
+ *     inside an acceptance directory pointing outside the root. Whether the resolved path stays
+ *     under `known-differences/` is a fact about the filesystem or the URL space the reader is
+ *     serving from, and it must establish it before opening anything.
  * @param comparison the comparison being evaluated, or `null` for a validation-only pass.
  * @param catalog `{ previews: [{ system, id, component, variant, referenceIds }] }` for the
  *   orphaned-target walk, or `null` to skip it.
@@ -450,6 +486,21 @@ export function evaluateKnownDifferences({ documentText, readArtifact, compariso
   };
 }
 
+/**
+ * What one `readArtifact` answer means: bytes, a refusal the reader is better placed to make, or a
+ * failure to read at all. Only the two tokens the reader can legitimately establish are honoured —
+ * anything else it invents is treated as an unreadable artifact rather than trusted into the result.
+ */
+function readReason(result) {
+  if (result instanceof Uint8Array) return null;
+  if (result && typeof result === "object" && typeof result.error === "string") {
+    return result.error === "artifact-too-large" || result.error === "path-not-contained"
+      ? result.error
+      : "artifact-unreadable";
+  }
+  return "artifact-unreadable";
+}
+
 function pushOnce(list, entry) {
   if (!list.some((existing) => existing.reason === entry.reason && existing.id === entry.id)) list.push(entry);
 }
@@ -532,13 +583,16 @@ function preflightRecord(record, index, readArtifact, catalog) {
   }
   if (pathReasons.length > 0) return fail(...pathReasons);
 
-  const maskBytes = readArtifact(`${record.id}/${record.mask}`);
-  const acceptedBytes = readArtifact(`${record.id}/${record.acceptedCandidate}`);
-  const unreadable = [];
-  if (!maskBytes) unreadable.push("artifact-unreadable");
-  if (!acceptedBytes) unreadable.push("artifact-unreadable");
-  if (unreadable.length > 0) return fail(...unreadable);
+  const maskRead = readArtifact(`${record.id}/${record.mask}`);
+  const acceptedRead = readArtifact(`${record.id}/${record.acceptedCandidate}`);
+  const readReasons = [maskRead, acceptedRead].map(readReason).filter(Boolean);
+  if (readReasons.length > 0) return fail(...readReasons);
+  const maskBytes = maskRead;
+  const acceptedBytes = acceptedRead;
 
+  // Still checked here, because a reader that hands back bytes has already made its claim about
+  // them and this is the cheap confirmation of it. The reader's obligation is not to *allocate*
+  // past the cap; this catches a reader that allocated anyway.
   const oversized = [];
   if (maskBytes.length > BUDGET.maxArtifactBytes) oversized.push("artifact-too-large");
   if (acceptedBytes.length > BUDGET.maxArtifactBytes) oversized.push("artifact-too-large");
@@ -581,8 +635,8 @@ function preflightRecord(record, index, readArtifact, catalog) {
 function decodeRecord(evaluation, readArtifact) {
   const { record, headers } = evaluation;
   const [maskHeader, acceptedHeader] = headers;
-  const maskBytes = readArtifact(`${record.id}/${record.mask}`);
-  const acceptedBytes = readArtifact(`${record.id}/${record.acceptedCandidate}`);
+  const maskRead = readArtifact(`${record.id}/${record.mask}`);
+  const acceptedRead = readArtifact(`${record.id}/${record.acceptedCandidate}`);
   const fail = (...reasons) => {
     evaluation.reasons.push(...reasons);
     return evaluation;
@@ -595,7 +649,10 @@ function decodeRecord(evaluation, readArtifact) {
   // applied to bytes nobody is decoding any more. So the per-artifact checks are re-applied, and the
   // headers must still be the ones the budget was computed from; an artifact that changed between
   // the two reads is not stable enough to evaluate, whatever it now contains.
-  if (!maskBytes || !acceptedBytes) return fail("artifact-unreadable");
+  const rereadReasons = [maskRead, acceptedRead].map(readReason).filter(Boolean);
+  if (rereadReasons.length > 0) return fail(...rereadReasons);
+  const maskBytes = maskRead;
+  const acceptedBytes = acceptedRead;
 
   const reread = [
     [maskBytes, maskHeader],
@@ -719,7 +776,7 @@ function schemaReasons(record) {
   // The schema declares `format: "date-time"`. JSON Schema treats `format` as an annotation by
   // default, so a consumer with assertion enabled rejects what a type-only check here accepts — and
   // `acceptedAt` is a recorded fact, so a string that is not a timestamp is a producer bug either way.
-  if (record.acceptedAt !== undefined && !RFC3339.test(record.acceptedAt)) return invalid();
+  if (record.acceptedAt !== undefined && !isRfc3339(record.acceptedAt)) return invalid();
   if (record.overrides !== undefined && !isStringMap(record.overrides)) return invalid();
   if (!isPlane(record.plane)) return invalid();
   if (!Number.isFinite(record.candidateTolerance)) return invalid();

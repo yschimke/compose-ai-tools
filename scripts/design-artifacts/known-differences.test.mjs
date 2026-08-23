@@ -22,10 +22,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, readdirSync, existsSync, rmSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  existsSync,
+  realpathSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { decodePng } from "./png-lite.mjs";
@@ -72,15 +80,32 @@ function artifactReader(caseDir, synthesize) {
     padded.set(base, 0);
     synthesised.set(recipe.path, padded);
   }
+  // A case with no artifacts at all has no `artifacts/` directory, so the root is resolved leniently:
+  // every path beneath a root that does not exist is a missing file, which is what the reader
+  // reports anyway.
+  const artifactsDir = join(caseDir, "artifacts");
+  const root = existsSync(artifactsDir) ? realpathSync(artifactsDir) : artifactsDir;
   return (path) => {
     const relative = join("artifacts", path);
-    if (synthesised.has(relative)) return synthesised.get(relative);
+    // The cap applies to synthesised bytes too. Exempting them would leave the reader's own bound
+    // untested — the only case big enough to reach it is the synthesised one — and the module's
+    // length check would quietly stand in for it, which is a fixture passing for the wrong reason.
+    if (synthesised.has(relative)) {
+      const bytes = synthesised.get(relative);
+      return bytes.length > BUDGET.maxArtifactBytes ? { error: "artifact-too-large" } : bytes;
+    }
     const full = join(caseDir, relative);
-    // A path that escapes the artifact tree is a missing file here, not a traversal: the contract
-    // refuses it as `path-not-contained` long before anything is opened.
-    if (!full.startsWith(join(caseDir, "artifacts"))) return null;
     if (!existsSync(full)) return null;
-    return new Uint8Array(readFileSync(full));
+    // **The reader discharges the two obligations the grammar cannot.** Containment is resolved, not
+    // lexical — a symlink inside an acceptance directory is exactly what a segment check cannot
+    // see — and the size is taken from a `stat` so an oversized file is refused *before* it is
+    // allocated, rather than measured after being read into memory.
+    const resolved = realpathSync(full);
+    if (resolved !== root && !resolved.startsWith(root + sep)) return { error: "path-not-contained" };
+    const stats = statSync(resolved);
+    if (!stats.isFile()) return { error: "path-not-contained" };
+    if (stats.size > BUDGET.maxArtifactBytes) return { error: "artifact-too-large" };
+    return new Uint8Array(readFileSync(resolved));
   };
 }
 
@@ -333,6 +358,54 @@ test("an artifact that changes between the two reads is refused, not trusted", (
   assert.deepEqual(result.statuses, {
     "m3-iconbutton-tonal-glyph": { status: "refused", reasons: ["artifact-unreadable"] },
   });
+});
+
+test("the reader's own refusals reach the result as their proper tokens", () => {
+  // The two obligations the lexical grammar cannot discharge: a resolved path that leaves the root,
+  // and a file too large to allocate. Only the reader knows either before the bytes exist, so it
+  // reports them — and this asserts they arrive as `path-not-contained` and `artifact-too-large`
+  // rather than being flattened into "could not read it".
+  const caseDir = join(CASES, "pilot-40-iconbutton-tonal-glyph");
+  const meta = readJson(join(caseDir, "case.json"));
+  const documentText = readFileSync(join(caseDir, "known-differences.json"), "utf8");
+  const honest = artifactReader(caseDir, meta.synthesize);
+
+  for (const token of ["path-not-contained", "artifact-too-large"]) {
+    const result = evaluateKnownDifferences({
+      documentText,
+      readArtifact: (path) => (path.endsWith("mask.png") ? { error: token } : honest(path)),
+      comparison: withCanonicalRasters(caseDir, meta.comparison),
+    });
+    assert.deepEqual(result.statuses, {
+      "m3-iconbutton-tonal-glyph": { status: "refused", reasons: [token] },
+    });
+  }
+
+  // A token the reader is not entitled to establish is not trusted into the result.
+  const invented = evaluateKnownDifferences({
+    documentText,
+    readArtifact: (path) => (path.endsWith("mask.png") ? { error: "valid" } : honest(path)),
+    comparison: withCanonicalRasters(caseDir, meta.comparison),
+  });
+  assert.deepEqual(invented.statuses, {
+    "m3-iconbutton-tonal-glyph": { status: "refused", reasons: ["artifact-unreadable"] },
+  });
+});
+
+test("the reference reader refuses an oversized artifact without handing back its bytes", () => {
+  // Asserted on the reader directly, because it is not distinguishable by *verdict*: the module's
+  // own length check produces the same `artifact-too-large` either way. What differs is whether the
+  // bytes were ever materialised, and the only place that is observable is the reader's return
+  // value. Same shape as the compression-bound: the guard is a resource property, so it is tested
+  // where the resource is, not through a fixture.
+  const caseDir = join(CASES, "artifact-too-large");
+  const meta = readJson(join(caseDir, "case.json"));
+  const read = artifactReader(caseDir, meta.synthesize);
+  assert.deepEqual(read("m3-iconbutton-tonal-glyph/mask.png"), { error: "artifact-too-large" });
+  assert.ok(
+    read("m3-iconbutton-tonal-glyph/accepted-candidate.png") instanceof Uint8Array,
+    "the artifact inside the cap still comes back as bytes",
+  );
 });
 
 test("the reason and cause orderings are the ones the contract lists", () => {

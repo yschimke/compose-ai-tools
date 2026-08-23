@@ -286,7 +286,7 @@ export function decodePng(bytes) {
       if (colourType === COLOUR_RGB && length !== 6) throw new Error("decode-failed: bad tRNS length");
       if (colourType === COLOUR_PALETTE) {
         if (!palette) throw new Error("decode-failed: tRNS before PLTE");
-        if (length > palette.length / 3) throw new Error("decode-failed: bad tRNS length");
+        if (length === 0 || length > palette.length / 3) throw new Error("decode-failed: bad tRNS length");
       }
     }
     if (type === "IDAT") {

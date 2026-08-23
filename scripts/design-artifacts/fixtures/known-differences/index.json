@@ -187,6 +187,11 @@
       "site": null
     },
     {
+      "id": "schema-invalid-accepted-at-impossible-date",
+      "title": "An `acceptedAt` with the right shape and impossible values",
+      "site": null
+    },
+    {
       "id": "schema-invalid-accepted-at-not-a-timestamp",
       "title": "An `acceptedAt` that is a string but not a date-time",
       "site": null
@@ -449,6 +454,11 @@
     {
       "id": "decode-failed-trns-on-alpha-colour-type",
       "title": "A `tRNS` beside a colour type that already carries alpha",
+      "site": null
+    },
+    {
+      "id": "decode-failed-empty-palette-trns",
+      "title": "A zero-length palette `tRNS`",
       "site": null
     },
     {
