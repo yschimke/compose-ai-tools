@@ -2916,6 +2916,11 @@ html:not(.cp-bg-transparent) #cp-reference-compare[data-cp-stage-clip] .cp-refer
 .cp-inspect-entry[data-level="warning"] { --cp-inspect-color: rgba(217, 119, 6, 0.95); }
 .cp-inspect-entry[data-level="error"] { --cp-inspect-color: rgba(220, 38, 38, 0.95); }
 .cp-inspect-entry-active { background: var(--md-sys-color-surface-container-high); }
+/* On a page where a pick means something, the legend row is the KEYBOARD path to selection — the
+   box over the frame is an unfocusable div, and the layout layer's interior takes no pointer at all.
+   The row already carries `tabindex`, so it only needs to say it is now an action rather than the
+   reading aid the `cursor: default` above declares it to be on the viewer. */
+.cp-inspect-entry--selectable { cursor: pointer; }
 .cp-inspect-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .cp-inspect-text strong { font-weight: 650; color: var(--cp-fg); overflow-wrap: anywhere; }
 .cp-inspect-detail { color: var(--cp-fg-muted); overflow-wrap: anywhere;

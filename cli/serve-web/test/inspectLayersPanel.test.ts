@@ -45,7 +45,7 @@ function stubFetch(): void {
     }) as unknown as typeof fetch;
 }
 
-async function mountPanel(withTag = true): Promise<void> {
+async function mountPanel(withTag = true, selectable = true): Promise<void> {
     window.history.replaceState(null, "", "/m3/compare/plain.Button?token=t");
     document.body.innerHTML = `
       <div id="cp-reference-compare">
@@ -70,7 +70,7 @@ async function mountPanel(withTag = true): Promise<void> {
         data-cp-layer="#cp-derived-layer"
         data-cp-legend="#cp-derived-legend"
         data-cp-toggles=".cp-derived-inspect"
-        data-cp-selectable="1"
+        ${selectable ? 'data-cp-selectable="1"' : ""}
         data-cp-base="/m3"></cp-inspect-layers>`
               : ""
       }`;
@@ -203,6 +203,65 @@ describe("<cp-inspect-layers> over a comparison panel", () => {
         const badge = boxes()[0].querySelector(".cp-inspect-badge")!;
         badge.dispatchEvent(new Event("click", { bubbles: true }));
         assert.equal(picks.length, 1, "the badge must reach the box's handler");
+    });
+
+    it("lets a keyboard reader pick through the legend row", async () => {
+        // The box cannot be the keyboard path: it is an unfocusable div over the frame, and the
+        // layout layer's interior takes no pointer at all. Without this the withheld-picker case —
+        // annotations published, no tag index — leaves a keyboard user no selection path whatever,
+        // since the drag is pointer-only.
+        await mountPanel();
+        await tick("typography");
+        const picks: unknown[] = [];
+        window.addEventListener("cp-element-pick", (event) =>
+            picks.push((event as CustomEvent).detail?.bounds),
+        );
+        const row = rows()[0];
+        assert.equal(row.getAttribute("role"), "button");
+        assert.ok(
+            row.classList.contains("cp-inspect-entry--selectable"),
+            "a selectable row says so, so the cursor can",
+        );
+        row.dispatchEvent(
+            new window.KeyboardEvent("keydown", { key: "Enter" }),
+        );
+        row.dispatchEvent(new window.KeyboardEvent("keydown", { key: " " }));
+        assert.deepEqual(picks, [
+            { x: 0, y: 0, width: 100, height: 50 },
+            { x: 0, y: 0, width: 100, height: 50 },
+        ]);
+    });
+
+    it("records the same bounds however the same entry was reached", async () => {
+        // A keyboard reader and a pointer reader filing different reports for one element is the
+        // kind of divergence nobody notices until the two reports disagree.
+        await mountPanel();
+        await tick("theme");
+        const picks: unknown[] = [];
+        window.addEventListener("cp-element-pick", (event) =>
+            picks.push((event as CustomEvent).detail),
+        );
+        boxes()[0].dispatchEvent(new Event("click", { bubbles: true }));
+        rows()[0].dispatchEvent(
+            new window.KeyboardEvent("keydown", { key: "Enter" }),
+        );
+        assert.equal(picks.length, 2);
+        assert.deepEqual(picks[0], picks[1]);
+    });
+
+    it("leaves the legend inert where a pick means nothing", async () => {
+        // The viewer's rows are a reading aid. Announcing a pick from them would give a page that
+        // files no reports an event nobody listens for, and a `role` that lies about it.
+        await mountPanel(true, false);
+        await tick("typography");
+        const picks: unknown[] = [];
+        window.addEventListener("cp-element-pick", () => picks.push(1));
+        const row = rows()[0];
+        assert.equal(row.getAttribute("role"), null);
+        row.dispatchEvent(
+            new window.KeyboardEvent("keydown", { key: "Enter" }),
+        );
+        assert.equal(picks.length, 0);
     });
 
     it("stays inert when the page is missing the layer it named", async () => {

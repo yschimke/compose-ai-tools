@@ -468,15 +468,29 @@ export class InspectLayers extends LitElement {
             box.addEventListener("click", (event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                window.dispatchEvent(
-                    new CustomEvent("cp-element-pick", {
-                        detail: { bounds: entry.bounds, label: entry.title },
-                    }),
-                );
+                this.announcePick(entry);
             });
         }
         this.boxes.push({ id, node: box, bounds: entry.bounds });
         return box;
+    }
+
+    /**
+     * Tell the page which part of the render was picked.
+     *
+     * One method for the box and its legend row, because they name the same element and must record
+     * the same thing — a keyboard reader and a pointer reader filing different reports for the same
+     * click target is the kind of divergence nobody would notice until the two reports disagreed.
+     *
+     * The bounds travel unconverted: every annotation source reports in the RENDER's own pixel
+     * space, which is the plane `compose-parity-locator/v1` accepts.
+     */
+    private announcePick(entry: Entry): void {
+        window.dispatchEvent(
+            new CustomEvent("cp-element-pick", {
+                detail: { bounds: entry.bounds, label: entry.title },
+            }),
+        );
     }
 
     private row(
@@ -515,6 +529,25 @@ export class InspectLayers extends LitElement {
         row.addEventListener("mouseleave", () => this.highlight(null));
         row.addEventListener("focus", () => this.highlight(id));
         row.addEventListener("blur", () => this.highlight(null));
+        // …and, where a pick means something, a keyboard path into the SELECTION as well.
+        //
+        // The box cannot be that path: it is an unfocusable `div` positioned over the frame, and
+        // the layout layer's interior does not even take a pointer. The row is already focusable
+        // and already names the thing the box outlines, so it is the affordance a keyboard reader
+        // reaches anyway. Without this, a page whose tag picker is withheld — a catalog that
+        // publishes annotations but no tag index — offers a keyboard user no way to select at all,
+        // since the drag is pointer-only.
+        if (this.host?.selectable) {
+            row.classList.add("cp-inspect-entry--selectable");
+            row.setAttribute("role", "button");
+            row.addEventListener("click", () => this.announcePick(entry));
+            row.addEventListener("keydown", (event: KeyboardEvent) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                // Space scrolls a focused element by default; a selection is not a scroll.
+                event.preventDefault();
+                this.announcePick(entry);
+            });
+        }
         return row;
     }
 }
