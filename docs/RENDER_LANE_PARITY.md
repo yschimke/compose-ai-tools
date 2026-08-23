@@ -310,8 +310,11 @@ PNG beside it carried the gutter — the component is the same size in both, onl
   into the capture, so cropping leaves an oversized — and for an asymmetric gutter, off-centre —
   circle instead of the watch shape) and **`showSystemUi`** (`SystemBarsFrame` wraps the gutter box,
   so the chrome is painted against the *grown* window's edges and trimming slices the bars). Both
-  need the scroll pass composed in an un-grown window rather than post-processed, and neither is a
-  combination any preview declares.
+  need the scroll pass composed in an un-grown window rather than post-processed. A scrollable
+  hosted in a **dialog** keeps the gutter too — those frames are cropped to the dialog's own window
+  rect and never reach the hosting-window trim, which is right for a centred `Dialog` and leaves a
+  full-screen `ModalBottomSheet` un-trimmed. None of the three is a combination any preview
+  declares.
 
   **`END` still diverges on Android**, knowingly. It is the one scroll mode whose product is an
   ordinary still, so it shares the whole still post-capture chain — the focus overlay, the a11y /
