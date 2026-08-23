@@ -1,0 +1,30 @@
+{
+  "title": "One mask, and three numbers that are each a mean anyone can check",
+  "why": "`raw` measures the pair as though nothing were accepted; `unaccepted` measures the region outside the mask; `accepted` measures the region inside it. All three are the same metric on the same stages, so they share a polarity and a scale — and none is the difference of the other two, which is D5 answer 4.",
+  "plane": {
+    "plane": "content-box",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "width": 32,
+      "height": 24
+    }
+  },
+  "referenceBox": {
+    "x": 0,
+    "y": 0,
+    "width": 32,
+    "height": 24
+  },
+  "candidateBox": {
+    "x": 0,
+    "y": 0,
+    "width": 32,
+    "height": 24
+  },
+  "reference": "reference.png",
+  "candidate": "candidate.png",
+  "masks": [
+    "masks/union.png"
+  ]
+}

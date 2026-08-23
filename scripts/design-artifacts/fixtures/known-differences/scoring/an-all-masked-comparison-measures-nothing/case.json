@@ -1,0 +1,30 @@
+{
+  "title": "A mask covering the whole plane leaves `unaccepted` measuring nothing",
+  "why": "The boundary of D5 answer 3. `unaccepted` has no coordinate left to measure and takes the answer the scorer already gives for two blank planes — 100 — while `raw` and `accepted` go on reporting the difference in full, so nothing has been hidden by being accepted.",
+  "plane": {
+    "plane": "content-box",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "width": 32,
+      "height": 24
+    }
+  },
+  "referenceBox": {
+    "x": 0,
+    "y": 0,
+    "width": 32,
+    "height": 24
+  },
+  "candidateBox": {
+    "x": 0,
+    "y": 0,
+    "width": 32,
+    "height": 24
+  },
+  "reference": "reference.png",
+  "candidate": "candidate.png",
+  "masks": [
+    "masks/union.png"
+  ]
+}

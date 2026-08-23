@@ -926,5 +926,31 @@
       "id": "negative-origin",
       "title": "A box whose origin is negative"
     }
+  ],
+  "scoring": [
+    {
+      "id": "masked-and-unmasked-are-scored-apart",
+      "title": "One mask, and three numbers that are each a mean anyone can check"
+    },
+    {
+      "id": "a-regression-beside-the-mask-is-still-charged",
+      "title": "A regression three pixels outside the mask edge, charged in full"
+    },
+    {
+      "id": "a-straddling-footprint-keeps-both-signals",
+      "title": "An accepted difference beside an opposite unaccepted one, reported as both"
+    },
+    {
+      "id": "an-all-masked-comparison-measures-nothing",
+      "title": "A mask covering the whole plane leaves `unaccepted` measuring nothing"
+    },
+    {
+      "id": "an-empty-union-leaves-raw-untouched",
+      "title": "With nothing accepted, `unaccepted` is `raw` bit for bit"
+    },
+    {
+      "id": "overlapping-masks-suppress-the-seam-once",
+      "title": "Two masks sharing four columns, whose union is one region"
+    }
   ]
 }

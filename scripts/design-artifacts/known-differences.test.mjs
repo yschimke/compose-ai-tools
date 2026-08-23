@@ -222,6 +222,10 @@ test("every case directory is listed in index.json, and vice versa", () => {
     readdirSync(ROUNDING).sort(),
     index.rounding.map((entry) => entry.id).sort(),
   );
+  assert.deepEqual(
+    readdirSync(join(ROOT, "scoring")).sort(),
+    index.scoring.map((entry) => entry.id).sort(),
+  );
 });
 
 for (const id of caseIds) {
@@ -253,6 +257,17 @@ for (const id of caseIds) {
           break;
         case "validationFailures":
           assert.deepEqual(result.validationFailures, expected.validationFailures);
+          break;
+        case "survivingMaskIds":
+          // The seam between the gates and the score. `survivingMasks` is the union
+          // `known-difference-score.mjs` suppresses, and "survivor" means status `valid` — not
+          // "reached the end of the gates", which is the reading that leaves a `resolved` mask
+          // suppressing its neighbours. Pinned as ids here and as pixels in the `scoring/` group,
+          // so neither fixture asserts the other's half.
+          assert.deepEqual(
+            result.survivingMasks.map((entry) => entry.id),
+            expected.survivingMaskIds,
+          );
           break;
         case "validationFailureCount":
           assert.equal(result.validationFailures.length, expected.validationFailureCount);

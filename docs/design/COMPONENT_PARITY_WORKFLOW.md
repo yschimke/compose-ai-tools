@@ -791,15 +791,46 @@ and the fixtures are
    resolution test use **this** metric, which is what stops them disagreeing about whether two
    images match.
 
-**What stays open is the score, and only the score.** These six settle the gates — what a mask is
-permitted to suppress — which is the half that has to be settled first, because every gate resolves
-before any score is computed (I1). The separated-plane scoring path that turns them into `raw`,
-`accepted` and `unaccepted` is Phase 3's deliverable, measured against these same fixtures: the
-`expected.json` in each case is a **partial** pin whose `pins` array names the keys a runner must
-check, and the score keys are the ones Phase 3 adds.
+**The score is settled too, now — see [the scoring path](#the-scoring-path-settled) below.** These
+six answers settle the *gates* — what a mask is permitted to suppress — which is the half that had
+to be settled first, because every gate resolves before any score is computed (I1). What turns them
+into `raw`, `accepted` and `unaccepted` is the separated-plane path, and it is implemented in
+[`known-difference-score.mjs`](../../scripts/design-artifacts/known-difference-score.mjs) and pinned
+by the `scoring/` fixture group. The `expected.json` in a gate case remains a **partial** pin whose
+`pins` array names the keys a runner must check; the score keys live in their own group rather than
+on every gate case, because a gate case is handed canonical planes and no source rasters and so has
+nothing to score.
 
 The gates and their invalidation causes below are design decisions and stand as written; the pixel
-mechanics above are now settled alongside them, and only the scoring path is deferred.
+mechanics above are settled alongside them.
+
+#### The scoring path, settled
+
+Three things the six answers above do not cover, because they are properties of the score rather
+than of a gate. Each is stated here for the same reason the gate constants are: a rule two engines
+pick for themselves is not a rule.
+
+1. **Everything is IEEE-754 binary64, end to end.** The luminance planes, the per-pixel costs and
+   the accumulated sum are all doubles, summed in raster order. The browser's `scorePlanes` stores
+   both in `Float32Array`, which quantises every cost to about seven significant digits and moves a
+   768-pixel mean by ~4 × 10⁻⁷ — small, and far larger than the agreement two engines can otherwise
+   reach, since a Kotlin or Rust port would naturally use `Double` and land somewhere else. Single
+   precision here is an accident of a browser array type rather than a decision, and it is being
+   corrected inside the one-off rebaseline the kernel change already requires (D3), so it costs
+   nothing extra.
+2. **A region's absent coordinates are absent, not zero, and a coordinate is scored only where
+   **both** sides are present.** Separation makes a straddling footprint present in both regions —
+   each carrying only its own contributions — but it can also leave a footprint present on one side
+   and absent on the other, wherever the two content boxes disagree about proportion. Scoring such a
+   coordinate would compare a real luminance against a fill, which is the invented pixel separation
+   exists to avoid. So the scored set is the intersection, and the fixtures pin it as a count.
+3. **`accepted` is the *accepted* region's own regional match** (D5 answer 4), measured over the
+   union of `valid` masks alone with the same metric, the same stages and the same denominator rule
+   as the other two. It shares their scale and polarity and is **not** comparable to them by
+   subtraction. A reader wanting "what did acceptance buy" reads `unaccepted` against `raw`, which
+   is a signed effect that can legitimately go either way — a small accepted delta removed from a
+   badly-regressed image raises the average, so `unaccepted` above `raw` is a valid acceptance
+   rather than a bug.
 
 **Selector contract.** An acceptance's `element` carries an explicit `kind`. **`v1` defines exactly
 one identifying kind**, deliberately:
@@ -2173,6 +2204,13 @@ its document shape in
 the fixtures in
 [`fixtures/known-differences/`](../../scripts/design-artifacts/fixtures/known-differences/) — one
 case per pilot site, one rejecting case for every rule, and a group pinning the resampler on its own.
+The **score** is
+[`known-difference-score.mjs`](../../scripts/design-artifacts/known-difference-score.mjs), pinned by
+the `scoring/` group. The two meet at `survivingMasks`: the gate evaluator hands out the masks of the
+acceptances that reached `valid`, and the scorer suppresses exactly those. Which acceptances survive
+is pinned by `cases/` (the `survivingMaskIds` pin), what the survivors suppress by `scoring/` — so
+"a `resolved` mask suppresses nothing" is established by two fixtures that meet rather than by one
+asserting its own premise.
 The suite runs as `known-differences.test.mjs` in the design-artifacts driver's `node --test` job.
 Two things about it are load-bearing for the runners that follow:
 

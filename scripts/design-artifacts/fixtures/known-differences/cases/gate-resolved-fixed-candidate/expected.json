@@ -2,7 +2,8 @@
   "pins": [
     "statuses",
     "validationFailures",
-    "locallyResolvedIssues"
+    "locallyResolvedIssues",
+    "survivingMaskIds"
   ],
   "statuses": {
     "m3-iconbutton-tonal-glyph": {
@@ -12,5 +13,6 @@
   "validationFailures": [],
   "locallyResolvedIssues": [
     "yschimke/m3-catalog#40"
-  ]
+  ],
+  "survivingMaskIds": []
 }

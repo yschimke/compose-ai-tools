@@ -28,7 +28,10 @@ cases/<case-id>/
 
 `expected.json` is a **partial** pin: its `pins` array names the keys a runner must check. A key
 listed there must match exactly; a key that is absent is not pinned by any batch *yet*. The score
-stages — `raw`, `accepted`, `unaccepted` — are the ones batch 05 adds, over these same cases.
+stages — `raw`, `accepted`, `unaccepted` — live in their own `scoring/` group rather than on every
+case here: a gate case is handed canonical planes and no source rasters, so it has nothing to
+score, and spreading the scoring path across sixty gate cases would report a scorer divergence as
+sixty wrong verdicts.
 
 The canonical-plane rasters arrive **already resampled**, deliberately. The portable kernel has its
 own group under `resample/`, so a resampler divergence fails there rather than surfacing as a wrong
@@ -262,3 +265,36 @@ and still pass the whole suite.
 | `fractional-far-edge-ceils` | A fractional far edge |
 | `fractional-both-ends` | Fractional at both ends |
 | `negative-origin` | A box whose origin is negative |
+
+## The separated-plane score
+
+Batch 05's half. A scoring case starts from the **surviving union** — the masks of the
+acceptances that reached `valid` — because which ones survive is the gates' answer and `cases/`
+already pins it. The two halves meet at the `survivingMaskIds` pin, which is what makes
+"a `resolved` mask suppresses nothing" a property two fixtures establish between them rather
+than one that asserts its own premise.
+
+```
+scoring/<case-id>/
+  case.json                  # the two boxes, the recorded plane, and the surviving masks
+  reference.png              # the full SOURCE rasters — the score resamples from these (I10),
+  candidate.png              # not from the canonical plane, which is for the gates
+  masks/*.png                # one per surviving acceptance, in the canonical plane
+  expected.json              # scorePlane, presence, samples, scores — and which are normative
+```
+
+Every case is built from flat rectangles, so the metric collapses to `pixelCost(|Δluma|)` per
+coordinate over a denominator that can be counted — which is what lets `expected.json` state each
+number as arithmetic rather than as whatever the implementation produced. `epsilon` is there
+because a luminance is a float dot product: an engine agreeing on the algorithm lands within a
+double's rounding of the declared decimal, and an engine disagreeing about the algorithm misses
+by orders of magnitude more.
+
+| Case | What it pins |
+| --- | --- |
+| `masked-and-unmasked-are-scored-apart` | One mask, and three numbers that are each a mean anyone can check |
+| `a-regression-beside-the-mask-is-still-charged` | A regression three pixels outside the mask edge, charged in full |
+| `a-straddling-footprint-keeps-both-signals` | An accepted difference beside an opposite unaccepted one, reported as both |
+| `an-all-masked-comparison-measures-nothing` | A mask covering the whole plane leaves `unaccepted` measuring nothing |
+| `an-empty-union-leaves-raw-untouched` | With nothing accepted, `unaccepted` is `raw` bit for bit |
+| `overlapping-masks-suppress-the-seam-once` | Two masks sharing four columns, whose union is one region |

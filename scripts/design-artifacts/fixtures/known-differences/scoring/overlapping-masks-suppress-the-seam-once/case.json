@@ -1,0 +1,31 @@
+{
+  "title": "Two masks sharing four columns, whose union is one region",
+  "why": "Same rasters and same three numbers as the single-mask case, reached through two overlapping acceptances. A coverage count rather than a set union changes nothing about which pixels are suppressed and everything about how often the seam is charged.",
+  "plane": {
+    "plane": "content-box",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "width": 32,
+      "height": 24
+    }
+  },
+  "referenceBox": {
+    "x": 0,
+    "y": 0,
+    "width": 32,
+    "height": 24
+  },
+  "candidateBox": {
+    "x": 0,
+    "y": 0,
+    "width": 32,
+    "height": 24
+  },
+  "reference": "reference.png",
+  "candidate": "candidate.png",
+  "masks": [
+    "masks/left.png",
+    "masks/right.png"
+  ]
+}
