@@ -300,10 +300,12 @@ PNG beside it carried the gutter — the component is the same size in both, onl
   Rather than honour the pair per lane — which meant a thicket of divergences (a baked-in round
   mask, a displaced focus overlay, sidecars keyed to a grown window, and an `END` frame that came
   out `frame + gutter` on Android but `frame` on CMP Desktop) — **discovery rejects the combination**
-  (`PreviewDiscovery`): a function with both annotations is skipped with a warning naming it and
-  never reaches `previews.json`, so no lane ever has to reconcile them. This closes the scroll items
-  of [#4467](https://github.com/yschimke/compose-ai-tools/issues/4467) by removing the case, not by
-  making every lane agree on it.
+  (`PreviewDiscovery`): a function that declares a *non-zero* gutter alongside `@ScrollingPreview` is
+  skipped with a warning naming it and never reaches `previews.json`, so no lane ever has to
+  reconcile them. (An all-zero `@CaptureGutter()` is equivalent to no annotation, so it does not trip
+  the rejection and the scroll capture stands — both discovery paths agree on that.) This closes the
+  scroll items of [#4467](https://github.com/yschimke/compose-ai-tools/issues/4467) by removing the
+  case, not by making every lane agree on it.
 
   Fixed-axis Android **motion** frames (an `@AnimatedPreview` / `@InteractionPreview`, which *do*
   combine with a gutter) used to disagree with the still by a pixel at fractional densities, because
