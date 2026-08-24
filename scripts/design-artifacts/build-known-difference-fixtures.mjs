@@ -5706,26 +5706,53 @@ function json(value) {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
+const canonicalRasters = new Map();
+
+function hoistCanonicalRaster(files, path) {
+  if (!path) return path;
+  const bytes = files[path];
+  if (!bytes) throw new Error(`canonical raster is not present in the case files: ${path}`);
+
+  const name = `${sha256Hex(bytes).slice(0, 16)}.png`;
+  const existing = canonicalRasters.get(name);
+  if (existing && !Buffer.from(existing).equals(Buffer.from(bytes))) {
+    throw new Error(`canonical raster digest-prefix collision: ${name}`);
+  }
+  canonicalRasters.set(name, bytes);
+  delete files[path];
+  return `rasters/${name}`;
+}
+
 rmSync(ROOT, { recursive: true, force: true });
 mkdirSync(ROOT, { recursive: true });
 
 for (const entry of cases) {
   const dir = `cases/${entry.id}`;
+  const files = { ...entry.files };
+  const comparison = entry.comparison
+    ? {
+        ...entry.comparison,
+        canonicalReference: hoistCanonicalRaster(files, entry.comparison.canonicalReference),
+        canonicalCandidate: hoistCanonicalRaster(files, entry.comparison.canonicalCandidate),
+      }
+    : null;
   write(
     `${dir}/case.json`,
     json({
       title: entry.title,
       site: entry.site ?? null,
       why: entry.why,
-      comparison: entry.comparison,
+      comparison,
       catalog: entry.catalog,
       synthesize: entry.synthesize,
     }),
   );
   write(`${dir}/known-differences.json`, entry.documentText ?? json(entry.document));
-  for (const [path, bytes] of Object.entries(entry.files)) write(`${dir}/${path}`, Buffer.from(bytes));
+  for (const [path, bytes] of Object.entries(files)) write(`${dir}/${path}`, Buffer.from(bytes));
   write(`${dir}/expected.json`, json(entry.expected));
 }
+
+for (const [name, bytes] of canonicalRasters) write(`rasters/${name}`, Buffer.from(bytes));
 
 for (const entry of roundingCases) {
   const dir = `rounding/${entry.id}`;
@@ -5838,9 +5865,8 @@ write(
     "  known-differences.json     # the document under test (raw text, so `document-unreadable` is reachable)",
     "  artifacts/<id>/mask.png    # `.design-parity/known-differences/<id>/` stands in here",
     "  artifacts/<id>/accepted-candidate.png",
-    "  canonical-reference.png    # the comparison's canonical-plane rasters, already resampled",
-    "  canonical-candidate.png",
     "  expected.json              # the verdict, and which of its keys are normative",
+    "rasters/<sha-prefix>.png     # shared canonical-plane inputs named by each case's comparison",
     "```",
     "",
     "`expected.json` is a **partial** pin: its `pins` array names the keys a runner must check. A key",
@@ -5850,8 +5876,11 @@ write(
     "score, and spreading the scoring path across sixty gate cases would report a scorer divergence as",
     "sixty wrong verdicts.",
     "",
-    "The canonical-plane rasters arrive **already resampled**, deliberately. The portable kernel has its",
-    "own group under `resample/`, so a resampler divergence fails there rather than surfacing as a wrong",
+    "Canonical-plane rasters are shared under `rasters/`; their paths in `case.json` are relative to",
+    "this fixture root, while artifact paths remain relative to their acceptance's case directory",
+    "because artifact path resolution is part of the contract under test. The canonical rasters still",
+    "arrive **already resampled**, deliberately. The portable kernel has its own group under `resample/`,",
+    "so a resampler divergence fails there rather than surfacing as a wrong",
     "verdict in sixty gate cases at once — which is the entire reason for pinning intermediate stages.",
     "",
     "`synthesize` is how a case expresses a file too big to commit: pad the named base file to `padTo`",
