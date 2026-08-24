@@ -662,8 +662,38 @@
       "site": null
     },
     {
-      "id": "element-tolerance-at-ceiling-padded",
-      "title": "An `element.tolerance` of `0.25` written past the digit limit",
+      "id": "gate-element-moved-past-safe-integer-products",
+      "title": "A displacement whose scaled products exceed the safe-integer range",
+      "site": null
+    },
+    {
+      "id": "document-unreadable-element-tolerance-padded",
+      "title": "An `element.tolerance` written with `0.25` followed by a hundred zeroes",
+      "site": null
+    },
+    {
+      "id": "document-unreadable-element-tolerance-seven-digits",
+      "title": "An `element.tolerance` written with a seventh fraction digit",
+      "site": null
+    },
+    {
+      "id": "document-unreadable-element-tolerance-exponent",
+      "title": "An `element.tolerance` written with an exponent instead of plain digits",
+      "site": null
+    },
+    {
+      "id": "document-unreadable-element-tolerance-hidden-precision",
+      "title": "An `element.tolerance` written with a token that parses onto a shorter one",
+      "site": null
+    },
+    {
+      "id": "element-tolerance-trailing-zeros",
+      "title": "An `element.tolerance` carrying a trailing zero",
+      "site": null
+    },
+    {
+      "id": "element-tolerance-at-digit-cap",
+      "title": "An `element.tolerance` using exactly six fraction digits",
       "site": null
     },
     {

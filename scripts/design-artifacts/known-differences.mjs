@@ -659,86 +659,30 @@ const INTEGER_TOKEN_PATHS = new Map([
 ]);
 
 /**
- * Where a *real* number has a range, and the range is checked on the token.
+ * The canonical spelling of `element.tolerance` — the one bounded field that is not an integer.
  *
- * `element.tolerance` is the one field this contract bounds without requiring an integer, so the
- * integer rule above cannot carry it — and the same rounding hole is open: `0.25000000000000000001`
- * is `0.25` by the time a range check can look, so this engine gates a record a lossless validator
- * refuses as over the declared maximum. Compared as an exact decimal, without ever forming a double.
+ * **Plain decimal, at most six fraction digits.** The range is `[0, 0.25]`, so the integer part is
+ * always `0`, and JSON's own grammar already forbids `.1`, `+0.1` and a leading `+`.
+ *
+ * This is a *grammar*, deliberately, and not "the shortest decimal that round-trips". That phrasing
+ * cannot be implemented identically in two languages — `0.0000001` prints as `1e-7` from JavaScript
+ * and `1.0E-7` from Kotlin — so a rule defined by a runtime's formatter would refuse different
+ * documents on each side, which is the divergence this contract exists to prevent, reintroduced by
+ * the fix for one.
+ *
+ * The cap is what makes the element gate exact. Every legal tolerance is an exact multiple of
+ * `1 / ELEMENT_TOLERANCE_SCALE`, so the comparison against a displacement ratio is integer
+ * arithmetic and neither engine ever forms a float — see {@link elementCauses}. At `1e-6` on a
+ * 200 px baseline the granularity is 0.0002 px, orders of magnitude below anything a gate can
+ * observe, so nothing expressible is lost.
+ *
+ * Trailing zeros are **legal**: `0.10` and `0.1` scale to the same integer and so cannot produce
+ * different verdicts. The cap alone closes the hole, and banning them would cost a legal spelling
+ * for no correctness gain.
  */
-const REAL_TOKEN_RANGES = new Map([["/acceptances/[]/element", { tolerance: [0, 0.25] }]]);
-
-/**
- * Is a JSON number token within `[low, high]`, decided exactly and **without ever building a number
- * proportional to the token**?
- *
- * The token is a decimal — digits and a power of ten — and the bounds are short decimals, so the
- * comparison is integer arithmetic over a common scale. Two things must never be materialised on the
- * way there, because this input is third-party and bounded only by the document's byte ceiling:
- *
- * - **the power of ten.** `1e999999999999999999999` is a legal JSON number, and `10n ** 10n**21n`
- *   throws `RangeError: Maximum BigInt size exceeded` — turning a short malformed record into a crash
- *   of the evaluator, and of whatever build or server is hosting it. So the decimal *magnitude* is
- *   compared first, from digit counts alone, and the scaling only runs inside a window where it is
- *   known to be small.
- * - **the digit string.** A million-digit mantissa is equally legal and equally cheap to write. Only
- *   the leading digits can decide a comparison against a two-digit bound, so the mantissa is
- *   truncated, and the truncation remembers whether anything non-zero followed — which is exactly
- *   what decides the tie when the visible digits are equal.
- */
-const RANGE_DIGIT_LIMIT = 64;
-const RANGE_EXPONENT_WINDOW = 32;
-
-function tokenWithinRange(token, low, high) {
-  const match = /^(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(token);
-  if (!match) return false;
-  const [, sign, whole, fraction = "", exponentText = "0"] = match;
-
-  // Safe on its own: the exponent is a run of digits, and one too large to represent becomes
-  // `Infinity`, which the magnitude test rejects without any arithmetic.
-  const exponent = Number(exponentText);
-  const significant = `${whole}${fraction}`.replace(/^0+/, "");
-  if (significant === "") return low <= 0 && high >= 0;
-
-  const kept = significant.slice(0, RANGE_DIGIT_LIMIT);
-  const discarded = significant.slice(RANGE_DIGIT_LIMIT);
-  // Whether digits were dropped sets the *scale*; whether any of them was non-zero is a different
-  // question, and it is the one that breaks a tie. `0.25` written with a hundred trailing zeroes is
-  // exactly the maximum, not a hair over it.
-  const remainder = /[1-9]/.test(discarded);
-  const scale = exponent - fraction.length + discarded.length;
-  // The value lies in `[10^(magnitude - 1), 10^magnitude)`, which is all the magnitude test needs.
-  const magnitude = kept.length + scale;
-  const negative = sign === "-";
-
-  if (!Number.isFinite(magnitude) || Math.abs(magnitude) > RANGE_EXPONENT_WINDOW) {
-    // Far outside any short bound, so the digits no longer matter — but the *sign* still does, and
-    // it decides two different questions. An enormous magnitude is beyond either bound whichever way
-    // it points. A tiny one is a non-zero value pressed right up against zero without ever reaching
-    // it, so it clears a bound of zero on one side and fails it on the other: `-1e-999999` is
-    // strictly below a minimum of `0`, however much it looks like `-0` once parsed.
-    if (magnitude > 0) return false;
-    return negative ? low < 0 && high >= 0 : low <= 0 && high > 0;
-  }
-
-  const value = BigInt(kept);
-  const compare = (bound) => {
-    const boundText = bound.toFixed(20);
-    const boundNegative = boundText.startsWith("-");
-    const [boundWhole, boundFraction = ""] = boundText.replace("-", "").split(".");
-    const boundScale = -boundFraction.length;
-    const boundValue = BigInt(`${boundWhole}${boundFraction}`);
-    const common = Math.min(scale, boundScale);
-    const left = (negative ? -value : value) * 10n ** BigInt(scale - common);
-    const right = (boundNegative ? -boundValue : boundValue) * 10n ** BigInt(boundScale - common);
-    if (left !== right) return left < right ? -1 : 1;
-    // Equal on the digits kept: anything non-zero beyond them makes the magnitude strictly larger.
-    // Discarded zeroes change nothing, so they must not be mistaken for a remainder.
-    if (!remainder) return 0;
-    return negative ? -1 : 1;
-  };
-  return compare(low) >= 0 && compare(high) <= 0;
-}
+export const ELEMENT_TOLERANCE_SCALE = 1_000_000;
+const CANONICAL_TOLERANCE = /^0(\.[0-9]{1,6})?$/;
+const TOLERANCE_TOKEN_PATHS = new Map([["/acceptances/[]/element", new Set(["tolerance"])]]);
 
 function documentTextRefusal(documentText) {
   const scopes = [];
@@ -797,15 +741,18 @@ function documentTextRefusal(documentText) {
       index = end;
       const scope = path.slice(1).map((step) => `/${step}`).join("");
       const integerKeys = INTEGER_TOKEN_PATHS.get(scope);
-      const realRange = pendingKey === null ? undefined : REAL_TOKEN_RANGES.get(scope)?.[pendingKey];
-      // Only where the parse *hides* it, exactly as for the integer fields: a token already outside
-      // the range after parsing keeps its precise, attributed refusal (`tolerance-out-of-range`,
-      // naming the record) rather than being traded for a blunt document-level one.
+      const toleranceKeys = TOLERANCE_TOKEN_PATHS.get(scope);
+      // Only where the parse *hides* it, exactly as for the integer fields: a token whose parsed
+      // value is *already* outside the range keeps its precise, attributed refusal
+      // (`tolerance-out-of-range`, naming the record) rather than being traded for a blunt
+      // document-level one. `0.3000000` has too many digits and is also out of range, so it stays
+      // attributed; `0.144999999999999999999` is in range once parsed and is only visible here.
       if (
-        realRange &&
-        !tokenWithinRange(token, realRange[0], realRange[1]) &&
-        Number(token) >= realRange[0] &&
-        Number(token) <= realRange[1]
+        pendingKey !== null &&
+        toleranceKeys?.has(pendingKey) &&
+        !CANONICAL_TOLERANCE.test(token) &&
+        Number(token) >= ELEMENT_TOLERANCE_RANGE[0] &&
+        Number(token) <= ELEMENT_TOLERANCE_RANGE[1]
       ) {
         return "document-unreadable";
       }
@@ -1372,7 +1319,33 @@ function elementCauses(element, tagIndex) {
   // is: `29 / 200` and the literal `0.145` are the same double, because both are the nearest double
   // to the same real number.
   const minDimension = Math.min(baseline.width, baseline.height);
-  return displacement / minDimension > element.tolerance ? ["element-moved"] : [];
+  // **Exact integer arithmetic, in `BigInt`.** `element.tolerance` is spelled as a plain decimal
+  // with at most six fraction digits, so it is an exact multiple of `1 / SCALE` and scaling recovers
+  // that multiple exactly. The comparison is then a product on each side, and those products are
+  // *not* safely representable as doubles — which is the whole reason they are `BigInt` here.
+  //
+  // An earlier revision of this line asserted they were, on the grounds that `minDimension` is
+  // bounded by the 8192 axis cap. **That was wrong.** The axis cap constrains raster headers;
+  // `$defs.box` permits an element baseline up to `9007199254740991`, and nothing ties the two
+  // together. With `tolerance: 0.000011`, `minDimension: 9007199254727272` and a displacement of
+  // `99079191802`, the exact left side exceeds the right by 8 — but both products round to the same
+  // double, so the comparison answered `valid` for an element that had moved. That is worse than
+  // the ratio form it replaced, which answers `element-moved` on the same input.
+  //
+  // The magnitudes are bounded by the safe-integer range on the way in (`isBox` checks the fields
+  // *and* the far edges), so these `BigInt`s are small and fixed-width; nothing here is proportional
+  // to a token, and there is no exponent to bomb.
+  //
+  // The ratio form that preceded both is exact only where the double happens to be: `0.145 × 200`
+  // is `28.999999999999996`, so a displacement of exactly 29 — the inclusive boundary — reported
+  // `element-moved` under a scaled tolerance and `valid` under a decimal consumer. And it made the
+  // verdict depend on a spelling the parse had destroyed: `0.144999999999999999999` is strictly
+  // below `0.145` as a decimal and exactly `0.145` as a double. The grammar removes that spelling;
+  // this removes the arithmetic that could not represent the comparison.
+  const micros = Math.round(element.tolerance * ELEMENT_TOLERANCE_SCALE);
+  const left = BigInt(displacement) * BigInt(ELEMENT_TOLERANCE_SCALE);
+  const right = BigInt(micros) * BigInt(minDimension);
+  return left > right ? ["element-moved"] : [];
 }
 
 /**

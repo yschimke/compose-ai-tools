@@ -1,0 +1,38 @@
+{
+  "title": "A displacement whose scaled products exceed the safe-integer range",
+  "site": null,
+  "why": "The exact answer is `element-moved` and **both** floating-point forms this contract has used answer `valid` — a ratio `displacement / minDimension` against the tolerance, and a product `displacement × 1000000` against `micros × minDimension`. So the verdict depends entirely on the comparison being exact, and the failure is in the unsafe direction: the mask goes on suppressing an element that moved. Nothing else in the tree reaches these magnitudes — every other element case uses catalog-sized boxes — so an engine using either float form passes the whole suite and is wrong here. The far edges stay inside the safe-integer range, so the record is schema-valid and the only thing under test is the arithmetic.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 1739524363118952,
+          "y": 0,
+          "width": 7267674890834177,
+          "height": 9007199253953129
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

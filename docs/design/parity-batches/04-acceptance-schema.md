@@ -94,12 +94,18 @@ Each exists because two engines would otherwise diverge on identical bytes.
   to a gate verdict here and a `decode-failed` elsewhere. Reverses an earlier "tolerated, nothing
   reads them" note; *nothing reads them* was the problem. The suite's oversize artifacts are padded
   inside the compressed stream instead (empty stored deflate blocks, zero-length `IDAT` chunks).
-- **`element.tolerance`'s range is checked on the token too**, as an exact decimal — it is the one
-  bounded field that is not an integer, and `0.25000000000000000001` is `0.25` after parsing. Both
-  endpoints are reachable from the wrong side by an approximation of that rule, so both are pinned:
-  a truncated mantissa must ask whether a *discarded* digit was non-zero (`0.25` plus a hundred
-  zeroes is the maximum, not past it), and a magnitude below any representable scale keeps its sign
-  (`-1e-999999` is below a minimum of `0`, though it parses to `-0`).
+- **`element.tolerance` is spelled canonically** — `"0"` or `"0."` plus one to six digits, plain
+  decimal, no exponent. It is the one bounded field that is not an integer, and the hole is not only
+  a range one: `0.144999999999999999999` is strictly below `0.145` as a decimal and *exactly* `0.145`
+  as a double, so the inclusive gate boundary landed on the wrong side for a legal document. A
+  grammar rather than "the shortest decimal that round-trips", because that phrasing is spelled
+  differently by each language's formatter (`1e-7` vs `1.0E-7`) and would refuse different documents
+  on each side. The six-digit cap makes every tolerance an exact multiple of `1e-6`, so the gate
+  compares `displacement × 1000000` against `micros × min(width, height)` in **arbitrary-precision**
+  integers — those products exceed the safe-integer range *and* `Long`, because the axis cap bounds
+  raster headers and not `$defs.box`, so `BigInt` / `BigInteger` rather than a machine integer.
+  Trailing zeros stay legal because they cannot change a verdict. **Reverses an
+  earlier decision** that `0.25` followed by a hundred zeroes stays valid.
 - **A repeated JSON member name refuses the document.** RFC 8259 leaves it undefined and runtimes
   differ — last value, first value, or a hard refusal — so `{"id":"safe","id":".."}` addresses two
   different artifact directories from one committed file. Detected **on the text**: by the time there

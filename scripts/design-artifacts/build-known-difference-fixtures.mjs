@@ -3442,14 +3442,70 @@ glyphValidation({
 });
 
 {
-  // **Exactly `0.25`, spelled with a hundred trailing zeroes** — the accepting half of the range
-  // walk, and the case its refusing sibling cannot stand in for. The walk truncates the mantissa
-  // before comparing, because a million-digit token is legal and only the leading digits can decide
-  // a comparison against a two-digit bound; the question that decides a tie is then whether any
-  // *discarded* digit was non-zero, not whether digits were discarded at all. An engine that
-  // conflates the two refuses this document — a value that is the declared maximum and passes the
-  // schema — and still passes every case above it. The text is built from the worked example and
-  // patched, so the padding cannot quietly stop landing on the token it is meant to pad.
+  // **A baseline large enough that the scaled products leave the safe-integer range.** The gate
+  // multiplies `displacement` and `micros × minDimension`; both fit a double comfortably at catalog
+  // sizes and neither does here. The 8192 axis cap constrains raster *headers* — `$defs.box` permits
+  // an element baseline up to `9007199254740991`, and nothing ties the two together, so a
+  // schema-valid record can reach magnitudes where a `Number` product is no longer exact.
+  //
+  // These numbers are chosen so the two sides differ by exactly **8** and round to the same double:
+  // the exact answer is `element-moved` and a double-product answers `valid`, still suppressing an
+  // element that moved. The ratio form this replaced also answers `element-moved`, so the case is a
+  // regression test in both directions — it fails an engine using doubles *and* would have caught
+  // the intermediate version of this contract that claimed the products were safe integers.
+  const world = glyphWorld();
+  const span = 9007199253953129;
+  const shift = 1739524363118952;
+  const bounds = { x: 0, y: 0, width: span, height: span };
+  const record = glyphRecord(world, {
+    element: { kind: "tag", tag: "iconbutton-tonal-glyph", bounds, tolerance: 0.193126 },
+  });
+  addCase({
+    id: "gate-element-moved-past-safe-integer-products",
+    title: "A displacement whose scaled products exceed the safe-integer range",
+    why:
+      "The exact answer is `element-moved` and **both** floating-point forms this contract has used " +
+      "answer `valid` — a ratio `displacement / minDimension` against the tolerance, and a product " +
+      "`displacement × 1000000` against `micros × minDimension`. So the verdict depends entirely on " +
+      "the comparison being exact, and the failure is in the unsafe direction: the mask goes on " +
+      "suppressing an element that moved. Nothing else in the tree reaches these magnitudes — every " +
+      "other element case uses catalog-sized boxes — so an engine using either float form passes " +
+      "the whole suite and is wrong here. The far edges stay inside the safe-integer range, so the " +
+      "record is schema-valid and the only thing under test is the arithmetic.",
+    document: document([record]),
+    files: glyphFiles(world, record),
+    comparison: glyphComparison(world, {
+      tagIndex: {
+        "iconbutton-tonal-glyph": {
+          count: 1,
+          bounds: { x: shift, y: 0, width: span - shift, height: span },
+        },
+      },
+    }),
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: {
+        "m3-iconbutton-tonal-glyph": { status: "invalidated", causes: ["element-moved"] },
+      },
+      validationFailures: [],
+    },
+  });
+}
+
+{
+  // **The canonical-spelling rule for `element.tolerance`, from both sides.** `v1` requires a plain
+  // decimal with at most six fraction digits — a *grammar*, not "the shortest decimal that
+  // round-trips", because that phrasing cannot be implemented identically in two languages
+  // (`0.0000001` prints as `1e-7` from JavaScript and `1.0E-7` from Kotlin, so a rule defined by a
+  // formatter would refuse different documents on each side).
+  //
+  // The cap is what makes the element gate exact: every legal tolerance is an exact multiple of
+  // 1e-6, so the gate compares integers and neither engine forms a float.
+  //
+  // **This reverses an earlier decision, deliberately.** `0.25` followed by a hundred zeroes was
+  // previously accepted, on the argument that staying legal must not depend on how many zeroes
+  // follow. Under a digit cap it is refused, and the argument it answered is answered instead by
+  // making the comparison exact rather than by making long tokens legal.
   const world = glyphWorld();
   const element = {
     kind: "tag",
@@ -3462,15 +3518,77 @@ glyphValidation({
   if (text.split(marker).length !== 2) {
     throw new Error("the element tolerance is no longer a single token spelled `0.25`");
   }
+
+  for (const [suffix, title, spelling, why] of [
+    [
+      "padded",
+      "`0.25` followed by a hundred zeroes",
+      `${marker}${"0".repeat(100)}`,
+      "102 fraction digits. The value is the declared maximum and the trailing zeroes change " +
+        "nothing about it — which is exactly why an engine may not be asked to compare it. The cap " +
+        "refuses the spelling so the comparison never has to be exact-decimal.",
+    ],
+    [
+      "seven-digits",
+      "a seventh fraction digit",
+      '"tolerance": 0.1234567',
+      "One digit past the cap, and in range once parsed — so nothing downstream can see it and the " +
+        "refusal has to come from the token. This is the boundary case: `0.123456` is legal.",
+    ],
+    [
+      "exponent",
+      "an exponent instead of plain digits",
+      '"tolerance": 2.5e-1',
+      "`2.5e-1` *is* `0.25` and is refused anyway. Scientific notation is what makes 'canonical' " +
+        "un-spellable across languages, so `v1` bans the form rather than defining a winner.",
+    ],
+    [
+      "hidden-precision",
+      "a token that parses onto a shorter one",
+      '"tolerance": 0.144999999999999999999',
+      "The defect this rule exists for. Strictly below `0.145` as a decimal and exactly `0.145` as " +
+        "a double, so a 29 px displacement over a 200 px baseline reported `valid` — the mask still " +
+        "suppressing an element that had, by its own recorded tolerance, moved.",
+    ],
+  ]) {
+    glyphValidation({
+      id: `document-unreadable-element-tolerance-${suffix}`,
+      title: `An \`element.tolerance\` written with ${title}`,
+      why,
+      documentText: text.replace(marker, spelling),
+      expected: {
+        pins: ["statusesAbsent", "validationFailures"],
+        statusesAbsent: true,
+        validationFailures: [{ reason: "document-unreadable" }],
+      },
+    });
+  }
+
   glyphValidation({
-    id: "element-tolerance-at-ceiling-padded",
-    title: "An `element.tolerance` of `0.25` written past the digit limit",
+    id: "element-tolerance-trailing-zeros",
+    title: "An `element.tolerance` carrying a trailing zero",
     why:
-      "The maximum is legal, and staying legal must not depend on how many zeroes follow it. This " +
-      "is the accepting half of the exact-decimal range rule: the refusing sibling " +
-      "(`0.25000000000000000001`) is satisfied by *any* engine that treats a long token as over " +
-      "the ceiling, so it alone would ratify one that refuses the ceiling itself.",
-    documentText: text.replace(marker, `${marker}${"0".repeat(100)}`),
+      "The accepting half, and the one that pins that the cap is doing the work rather than a " +
+      "one-spelling-per-value rule. `0.10` and `0.1` scale to the same integer and so cannot " +
+      "produce different verdicts, so banning it would cost a legal spelling for no correctness " +
+      "gain. An engine that reads 'canonical' as 'shortest' refuses this and passes every refusing " +
+      "case above.",
+    documentText: text.replace(marker, '"tolerance": 0.10'),
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
+      validationFailures: [],
+    },
+  });
+
+  glyphValidation({
+    id: "element-tolerance-at-digit-cap",
+    title: "An `element.tolerance` using exactly six fraction digits",
+    why:
+      "The cap is inclusive, like every other cap in `v1`, and its sibling one digit longer is " +
+      "refused — so an engine comparing with `>=` refuses what the contract calls legal and still " +
+      "passes the refusing cases.",
+    documentText: text.replace(marker, '"tolerance": 0.123456'),
     expected: {
       pins: ["statuses", "validationFailures"],
       statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },

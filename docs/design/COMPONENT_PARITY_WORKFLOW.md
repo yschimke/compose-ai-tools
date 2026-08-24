@@ -751,10 +751,19 @@ and the fixtures are
    footprints put `4 → 3` destination 0 on `0.49999999999999994` for a true `0.5`, delivering
    half-*down* from a rule that says half-up. The element gate has the same problem from the other
    direction: `0.145 × 200` is `28.999999999999996`, so a displacement of exactly 29 — the inclusive
-   boundary — is `element-moved` under a scaled tolerance and `valid` under a decimal consumer.
-   Comparing `displacement / min(width, height)` against the recorded tolerance is exact wherever the
-   tolerance is, because `29 / 200` and the literal `0.145` are the same double. Both have fixtures
-   whose numbers are derivable by hand.
+   boundary — is `element-moved` under a scaled tolerance and `valid` under a decimal consumer. The
+   gate therefore compares **arbitrary-precision integers**: `element.tolerance` is spelled as a
+   plain decimal with at most six fraction digits, so it is an exact multiple of `1e-6`, and
+   `displacement × 1000000` against `micros × min(width, height)` is exact by construction. Those
+   products exceed both the safe-integer range and `Long`, so this means `BigInt` / `BigInteger` and
+   not a machine integer — see §4 for why the axis cap does not bound them.
+
+   An earlier revision justified a *ratio* form here — dividing and comparing against the parsed
+   double — on the grounds that "`29 / 200` and the literal `0.145` are the same double". That is
+   true of the canonical spelling and silently assumed the token was one: `0.144999999999999999999`
+   is also `0.145` as a double while being strictly below it as a decimal, which put the inclusive
+   boundary on the wrong side for a legal document. The grammar removes that spelling and the integer
+   comparison removes the assumption. Both have fixtures whose numbers are derivable by hand.
 
 5. **Sub-pixel geometry rounds outward, at every transform.** A real-valued box becomes the
    **enclosing** integer box — `floor` the origin, `ceil` the far edge — applied after the
@@ -1370,46 +1379,52 @@ through — the same defect, decided by how big the exponent happened to be. Bot
 unrecoverable after the parse, so both are `document-unreadable`. A token that survives as an
 ordinary fractional number is *not* hidden and keeps its attributed record-level refusal.
 
-**`element.tolerance` gets the same treatment on its own terms.** It is the one field `v1` bounds
-without requiring an integer, so the canonical-integer rule cannot carry it — and the hole is the
-same shape: `0.25000000000000000001` is `0.25` by the time a range check can look. Its **range** is
-therefore checked on the token, as an exact decimal, without ever forming the double.
+**`element.tolerance` is spelled canonically, and that is what makes the gate exact.** It is the one
+bounded field `v1` does not require to be an integer, so the canonical-integer rule cannot carry it —
+and the hole it leaves is not merely a range one. `0.144999999999999999999` is strictly below `0.145`
+as a decimal and *exactly* `0.145` as a double, so a 29 px displacement over a 200 px baseline is
+`valid` under a double comparison and `element-moved` under an exact one. `valid` means the mask goes
+on suppressing an element that has, by its own recorded tolerance, moved — the failure the element
+gate exists to prevent.
 
-Where an exponent is *legal*, though — and it is legal here, since this field is a real number —
-overflow is a **range** failure and not a structural one. `element.tolerance: 1e999` is a well-formed
-number outside `[0, 0.25]`, so it is `tolerance-out-of-range`, attributed to its record, exactly as
-`0.3` is. Treating non-finite as a shape failure would report `schema-invalid` for a magnitude
-problem, and a consumer that never forms the double would disagree. The same holds for
-`candidateTolerance` reached without the text walk. `NaN` has no JSON literal and cannot arrive from
-a parse.
+The rule is a **grammar on the token**:
 
-Exactly as an exact decimal, which is narrower than it sounds — both endpoints are reachable from
-the wrong side by an engine that approximates it, and each has a fixture:
+    element.tolerance  ::=  "0"  |  "0." digit{1,6}
 
-- **Trailing zeroes are not a remainder.** A comparison that truncates a long mantissa before
-  comparing — which it must, since a million-digit token is legal — has to ask whether any digit it
-  *discarded* was non-zero, not whether it discarded any. `0.25` followed by a hundred zeroes is the
-  declared maximum, not a hair over it.
-- **A magnitude too small to represent still has a sign.** `-1e-999999` is strictly below a minimum
-  of `0` and is `-0` once parsed, so an engine that decides a far-below-scale token from its
-  magnitude alone puts it inside every range spanning zero. Below scale and negative is out of range
-  at a minimum of `0`; below scale and positive is not.
+The integer part is always `0` because the range is `[0, 0.25]`, and JSON's own grammar already
+forbids `.1`, `+0.1` and a leading `+`.
 
-Two things keep these checks from doing damage of their own, and both are pinned:
+**A grammar, deliberately, and not "the shortest decimal that round-trips."** That phrasing cannot be
+implemented identically in two languages — `0.0000001` prints as `1e-7` from JavaScript and `1.0E-7`
+from Kotlin — so a rule defined by a runtime's formatter would refuse different documents on each
+side, which is the divergence this contract exists to prevent, reintroduced by the fix for one.
 
-- **It is scoped by containing object, never by member name.** The paths are a box's `x`, `y`,
-  `width`, `height` (`plane.box` and `element.bounds`) and an acceptance's `candidateTolerance`. An
-  acceptance carrying the *unknown* property `"x"` is `schema-invalid` for that record, and answering
-  `document-unreadable` for it would drop the `statuses` entry of every well-formed sibling — a
-  different result from a schema-first consumer, which is the divergence this rule exists to prevent
-  rather than to cause.
-- **It catches only the tokens the parse hides** — a fractional token that *rounds onto* an integer,
-  or a real that rounds back inside its range. A value still fractional after parsing — `candidateTolerance: 0.5`, a box `x: 0.5` — is
-  caught by the ordinary record-level check, which names the record and picks the better token
-  (`tolerance-out-of-range`, `schema-invalid`). Trading those for a blunt document-level refusal
-  would lose attribution for no gain.
+**Trailing zeros are legal.** `0.10` and `0.1` scale to the same integer and cannot produce different
+verdicts, so the cap alone closes the hole and banning them would cost a legal spelling for no
+correctness gain.
 
-`element.tolerance` is a real number by design and is untouched.
+The cap is what buys the exactness: every legal tolerance is an exact multiple of `1e-6`, so the gate
+compares `displacement × 1000000` against `micros × min(width, height)`, with no float on either
+side. At `1e-6` on a 200 px baseline the granularity is 0.0002 px, far below anything a gate can
+observe.
+
+**Those products require arbitrary-precision integers, and this is normative.** They are *not* safe
+integers and they do not fit a 64-bit signed integer either. The 8192 axis cap constrains raster
+headers; `$defs.box` permits an element baseline up to `9007199254740991`, and nothing ties the two
+together — so the left side reaches `9007199254740991000000`, about 10³ times `Long.MAX_VALUE`. A
+`Number` product loses precision and a `Long` product silently overflows, and both recreate the
+`valid`-for-a-moved-element divergence this rule exists to remove. `BigInt` in JavaScript,
+`BigInteger` in Kotlin. The inputs are bounded — `isBox` checks the fields *and* the far edges — so
+the values are fixed-width and small; nothing here is proportional to a token.
+
+An earlier revision of this passage claimed the products were safe integers, reasoning from the axis
+cap. That was wrong, and the fixture below exists because of it.
+
+A token failing this grammar is refused **only where the parse hides it**, as everywhere else: a
+value already outside `[0, 0.25]` once parsed keeps its attributed `tolerance-out-of-range`, while
+one that lands back inside the range — `0.1234567`, `2.5e-1`, `0.25` followed by a hundred zeroes —
+is `document-unreadable`, because no record-level check can see it. Both halves are fixtured, along
+with the inclusive boundary at exactly six digits.
 
 **A second `60` is legal only at the leap-second instant.** RFC 3339 admits it at the end of a UTC
 **month** — `23:59:60` on the last day — so both `2026-01-01T12:00:60Z` (wrong time of day) and
