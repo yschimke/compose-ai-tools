@@ -247,6 +247,15 @@ data class KnownDifferenceContext(
   val referenceUrl: String,
   val candidateUrl: String,
   val scope: KnownDifferenceScope,
+  /** Positive issue-state evidence for the lifecycle join; an absent row remains `unknown`. */
+  val issues: List<KnownDifferenceIssue> = emptyList(),
+)
+
+@Serializable
+data class KnownDifferenceIssue(
+  val repository: String,
+  val number: Int,
+  val state: String,
 )
 
 /**

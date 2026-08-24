@@ -50,6 +50,7 @@ import {
   CAUSE_ORDER,
   ELEMENT_TOLERANCE_RANGE,
   REASON_ORDER,
+  acceptanceLifecycles,
   enclosingBox,
   evaluateKnownDifferences,
   isSafeArtifactPath,
@@ -798,6 +799,48 @@ test("an issue arriving in several spellings is one group", () => {
   );
   assert.equal(parseIssue("https://github.com.evil.test/yschimke/m3-catalog/issues/42"), null);
   assert.equal(parseIssue("https://github.com/yschimke/m3-catalog/issues/0"), null);
+});
+
+test("issue lifecycle is a separate, positive-evidence axis", () => {
+  const records = [
+    {
+      id: "live",
+      issue: "https://WWW.GITHUB.COM/YSchimke/M3-Catalog/issues/40/#issuecomment-1",
+    },
+    { id: "fixed", issue: "https://github.com/yschimke/m3-catalog/issues/41" },
+    { id: "unindexed", issue: "https://github.com/yschimke/m3-catalog/issues/42" },
+    { id: "open", issue: "https://github.com/yschimke/m3-catalog/issues/43" },
+  ];
+  const joined = acceptanceLifecycles(
+    records,
+    {
+      live: { status: "valid" },
+      fixed: { status: "resolved" },
+      unindexed: { status: "invalidated", causes: ["candidate-changed"] },
+      open: { status: "refused", reasons: ["schema-invalid"] },
+    },
+    [
+      { repository: "yschimke/m3-catalog", number: 40, state: "closed" },
+      { url: "https://github.com/yschimke/m3-catalog/issues/41", state: "closed" },
+      { repository: "yschimke/m3-catalog", number: 43, state: "open" },
+    ],
+  );
+  assert.deepEqual({ ...joined }, {
+    live: { issue: "yschimke/m3-catalog#40", lifecycle: "closed", stale: true },
+    fixed: { issue: "yschimke/m3-catalog#41", lifecycle: "closed", stale: false },
+    unindexed: { issue: "yschimke/m3-catalog#42", lifecycle: "unknown", stale: false },
+    open: { issue: "yschimke/m3-catalog#43", lifecycle: "open", stale: false },
+  });
+
+  // A damaged or lagging index cannot manufacture closure. Even a contradictory duplicate is not
+  // positive evidence in either direction, so it degrades to unknown rather than stale.
+  const conflict = acceptanceLifecycles(records.slice(0, 1), { live: { status: "valid" } }, [
+    { repository: "yschimke/m3-catalog", number: 40, state: "closed" },
+    { repository: "YSCHIMKE/M3-CATALOG", number: 40, state: "open" },
+  ]);
+  assert.deepEqual({ ...conflict }, {
+    live: { issue: "yschimke/m3-catalog#40", lifecycle: "unknown", stale: false },
+  });
 });
 
 test("ids and artifact paths refuse the shapes the contract names", () => {

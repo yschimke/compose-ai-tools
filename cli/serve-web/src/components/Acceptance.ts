@@ -37,6 +37,11 @@ interface Payload {
     artifactQuery: string;
     referenceUrl: string;
     candidateUrl: string;
+    issues: Array<{
+        repository: string;
+        number: number;
+        state: "open" | "closed";
+    }>;
     scope: {
         system: string;
         component: string;
@@ -119,6 +124,7 @@ export class Acceptance extends LitElement {
                 },
                 payload.scope,
                 payload.scope.tagIndex,
+                payload.issues ?? [],
             );
         } catch {
             // An engine that threw has said nothing about the catalog, so the band says nothing
@@ -279,11 +285,27 @@ export class Acceptance extends LitElement {
         // what an author greps for, and a friendlier paraphrase would be a second vocabulary for the
         // same set.
         const detail = [...(entry.causes ?? []), ...(entry.reasons ?? [])];
-        return html`<li class="cp-acceptance-row" data-status=${entry.status}>
+        const lifecycle = this.report?.lifecycles[id];
+        const lifecycleLabel = lifecycle?.stale
+            ? "stale configuration — the issue is closed while this acceptance is still live"
+            : lifecycle?.lifecycle === "closed" && entry.status === "resolved"
+              ? "verified; issue closed; remove the acceptance"
+              : lifecycle?.lifecycle === "closed"
+                ? "issue closed"
+                : lifecycle?.lifecycle === "open"
+                  ? "issue open"
+                  : "issue state unknown";
+        return html`<li
+            class="cp-acceptance-row"
+            data-status=${entry.status}
+            data-lifecycle=${lifecycle?.lifecycle ?? "unknown"}
+            ?data-stale=${lifecycle?.stale ?? false}
+        >
             <code>${id}</code> —
             ${label}${
                 detail.length > 0 ? html` (${detail.join(", ")})` : nothing
             }
+            · ${lifecycleLabel}
         </li>`;
     }
 

@@ -9738,6 +9738,16 @@ ${if (annotationsSelectable) "          data-cp-selectable=\"1\"\n" else ""}    
           referenceUrl = raster,
           candidateUrl = actual,
           scope = scope,
+          issues =
+            parityIssues
+              .map { issue ->
+                KnownDifferenceIssue(
+                  repository = issue.repository,
+                  number = issue.number,
+                  state = issue.state,
+                )
+              }
+              .distinctBy { Triple(it.repository, it.number, it.state) },
         )
       )
     }

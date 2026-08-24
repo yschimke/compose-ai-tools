@@ -153,10 +153,24 @@ describe("evaluateComparison", () => {
         const scene = world();
         const report = await withFetch(
             catalogRoutes(scene, knownDifferencesJson(scene)),
-            () => evaluateComparison(SOURCES, scope(scene), {}),
+            () =>
+                evaluateComparison(SOURCES, scope(scene), {}, [
+                    {
+                        repository: "YSCHIMKE/M3-CATALOG",
+                        number: 40,
+                        state: "closed",
+                    },
+                ]),
         );
         assert.equal(report.state, "evaluated");
         assert.deepEqual(report.statuses, { glyph: { status: "valid" } });
+        assert.deepEqual({ ...report.lifecycles }, {
+            glyph: {
+                issue: "yschimke/m3-catalog#40",
+                lifecycle: "closed",
+                stale: true,
+            },
+        });
         assert.deepEqual(report.suppressing, ["glyph"]);
         assert.ok(report.scores, "a decodable pair must be scored");
         // The raw finding survives acceptance — the whole reason this is not an ignore rectangle.
