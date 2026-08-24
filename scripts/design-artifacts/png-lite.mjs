@@ -1,5 +1,15 @@
 /**
- * A dependency-free PNG reader and writer, sized to exactly what the known-difference contract needs.
+ * A dependency-free, **host-free** PNG reader, sized to exactly what the known-difference contract
+ * needs.
+ *
+ * Host-free since batch 05: no `node:zlib`, no `node:crypto`, nothing a browser lacks — see
+ * [`inflate-lite.mjs`](./inflate-lite.mjs) and [`sha256-lite.mjs`](./sha256-lite.mjs). That is not
+ * tidiness. The acceptance engine in `format-compare.js` and the offline one must decode the same
+ * bytes the same way, and the browser's only other decode path is an `<img>` onto a canvas, which
+ * normalises every colour type to 8-bit RGBA and so cannot see the encoding rules
+ * [§4](../../docs/design/COMPONENT_PARITY_WORKFLOW.md#the-normative-contract) spends a section on.
+ * The **writer** lives in [`png-write.mjs`](./png-write.mjs), which does need a compressor and is
+ * Node-only; only the fixture generator writes a PNG.
  *
  * `pngjs` is already a driver dependency and is *not* what this is for. Two reasons, both from
  * [`COMPONENT_PARITY_WORKFLOW.md` §4](../../docs/design/COMPONENT_PARITY_WORKFLOW.md#the-normative-contract):
@@ -12,14 +22,14 @@
  * 2. **The fixtures need files a well-behaved encoder refuses to write** — an APNG, a palette mask
  *    with strictly binary samples, a header that lies about its dimensions, a truncated file. Those
  *    are the cases a sample-only or decode-only check accepts, so the suite is worthless without
- *    them, and {@link buildPng} exists to author them deliberately.
+ *    them, and {@link buildPng} plus `png-write.mjs` exist to author them deliberately.
  *
  * Scope is deliberately narrow: bit depth 8, no interlacing, single `IDAT`. Anything else is a
  * decode failure rather than a feature, which is also the verdict the contract wants for it.
  */
 
-import { deflateSync, inflateSync } from "node:zlib";
-import { createHash } from "node:crypto";
+import { inflateZlib } from "./inflate-lite.mjs";
+import { sha256Hex as digest } from "./sha256-lite.mjs";
 
 const SIGNATURE = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
@@ -204,81 +214,6 @@ export function ihdr({
   data[11] = filter;
   data[12] = interlace;
   return chunk("IHDR", data);
-}
-
-/** Scanlines with filter byte 0, deflated — the only `IDAT` shape this module writes. */
-/**
- * `IDAT` whose scanlines carry a **non-zero** filter type — one per row, cycling `1…4`.
- *
- * Every other artifact this generator writes uses filter `0`, so the whole committed tree could be
- * decoded by an engine that implements none of Sub, Up, Average or Paeth. Those four are ordinary
- * PNG that any encoder emits, and a decoder missing them refuses or mis-decodes a perfectly legal
- * accepted candidate, so the suite needs at least one artifact that exercises them.
- *
- * The filters are applied here rather than left to a library, for the same reason the rest of this
- * file exists: the fixture has to state which filter each row carries, not hope one was chosen.
- */
-export function filteredIdat(rows, channels) {
-  const stride = rows[0].length;
-  const raw = new Uint8Array(rows.length * (stride + 1));
-  const previous = new Uint8Array(stride);
-  let offset = 0;
-  rows.forEach((row, y) => {
-    const filter = (y % 4) + 1;
-    raw[offset++] = filter;
-    for (let i = 0; i < stride; i++) {
-      const left = i >= channels ? row[i - channels] : 0;
-      const up = previous[i];
-      const upLeft = i >= channels ? previous[i - channels] : 0;
-      let delta;
-      if (filter === 1) delta = row[i] - left;
-      else if (filter === 2) delta = row[i] - up;
-      else if (filter === 3) delta = row[i] - ((left + up) >> 1);
-      else delta = row[i] - paethPredictor(left, up, upLeft);
-      raw[offset + i] = delta & 0xff;
-    }
-    offset += stride;
-    previous.set(row);
-  });
-  return chunk("IDAT", new Uint8Array(deflateSync(raw, { level: 9 })));
-}
-
-function paethPredictor(a, b, c) {
-  const p = a + b - c;
-  const pa = Math.abs(p - a);
-  const pb = Math.abs(p - b);
-  const pc = Math.abs(p - c);
-  if (pa <= pb && pa <= pc) return a;
-  return pb <= pc ? b : c;
-}
-
-export function idat(rows) {
-  const raw = new Uint8Array(rows.reduce((sum, row) => sum + row.length + 1, 0));
-  let offset = 0;
-  for (const row of rows) {
-    raw[offset++] = 0;
-    raw.set(row, offset);
-    offset += row.length;
-  }
-  return chunk("IDAT", new Uint8Array(deflateSync(raw, { level: 9 })));
-}
-
-/**
- * Encode an image whose samples are already laid out per its colour type.
- *
- * `samples` is row-major with `CHANNELS[colourType]` bytes per pixel — RGBA for {@link COLOUR_RGBA},
- * one grey byte per pixel for {@link COLOUR_GREY}.
- */
-export function encodePng({ width, height, colourType = COLOUR_RGBA, samples, extraChunks = [] }) {
-  const stride = width * CHANNELS[colourType];
-  const rows = [];
-  for (let y = 0; y < height; y++) rows.push(samples.subarray(y * stride, (y + 1) * stride));
-  return buildPng([
-    ihdr({ width, height, colourType }),
-    ...extraChunks,
-    idat(rows),
-    chunk("IEND"),
-  ]);
 }
 
 /**
@@ -477,19 +412,20 @@ export function decodePng(bytes) {
     // a compression bomb would otherwise exhaust the process *after* every preflight budget had
     // passed, since none of them can see past the header. The declared scanline size is the only
     // honest ceiling, and anything over it is a header that lied about its dimensions either way.
-    const compressed = Buffer.concat(parts.map((p) => Buffer.from(p)));
-    const result = inflateSync(compressed, { maxOutputLength: expected, info: true });
-    raw = result.buffer;
-    // **The `IDAT` run is exactly one zlib datastream, and it must be consumed whole.** `inflateSync`
-    // stops at the end of the first stream and silently ignores whatever follows, so an artifact can
-    // append a second compressed stream — or any bytes at all — inside a permitted `IDAT` and still
-    // decode here while a strict decoder refuses it. The same shape as the bytes-after-`IEND` case,
-    // one level down: the allowlist stops applying wherever the reader stops reading.
-    if (result.engine.bytesWritten !== compressed.length) {
+    const compressed = concatenate(parts);
+    const result = inflateZlib(compressed, { maxOutputLength: expected });
+    raw = result.data;
+    // **The `IDAT` run is exactly one zlib datastream, and it must be consumed whole.** A decoder
+    // that stops at the end of the first stream and silently ignores whatever follows lets an
+    // artifact append a second compressed stream — or any bytes at all — inside a permitted `IDAT`
+    // and still decode here while a strict decoder refuses it. The same shape as the
+    // bytes-after-`IEND` case, one level down: the allowlist stops applying wherever the reader
+    // stops reading.
+    if (result.bytesRead !== compressed.length) {
       throw new Error("decode-failed: bytes follow the IDAT zlib stream");
     }
   } catch (error) {
-    if (error?.code === "ERR_BUFFER_TOO_LARGE") throw new Error("declared-dimensions-mismatch");
+    if (error?.code === "output-too-large") throw new Error("declared-dimensions-mismatch");
     if (error?.message?.startsWith("decode-failed:")) throw error;
     throw new Error("decode-failed: inflate failed");
   }
@@ -591,5 +527,16 @@ function paeth(a, b, c) {
 
 /** The lowercase hex digest the schema's three hash fields are spelled in. */
 export function sha256Hex(bytes) {
-  return createHash("sha256").update(bytes).digest("hex");
+  return digest(bytes);
+}
+
+/** Concatenate the `IDAT` run into the one datastream the inflater reads. */
+function concatenate(parts) {
+  const out = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
+  let offset = 0;
+  for (const part of parts) {
+    out.set(part, offset);
+    offset += part.length;
+  }
+  return out;
 }

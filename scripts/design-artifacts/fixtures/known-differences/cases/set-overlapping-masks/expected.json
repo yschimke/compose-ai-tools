@@ -1,7 +1,8 @@
 {
   "pins": [
     "statuses",
-    "validationFailures"
+    "validationFailures",
+    "survivingMaskIds"
   ],
   "statuses": {
     "m3-pair-first": {
@@ -11,5 +12,9 @@
       "status": "valid"
     }
   },
-  "validationFailures": []
+  "validationFailures": [],
+  "survivingMaskIds": [
+    "m3-pair-first",
+    "m3-pair-second"
+  ]
 }

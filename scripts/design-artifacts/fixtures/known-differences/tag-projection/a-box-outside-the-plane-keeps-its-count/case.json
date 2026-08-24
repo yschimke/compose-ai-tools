@@ -1,0 +1,30 @@
+{
+  "title": "A tagged node that clips away entirely",
+  "why": "The tag is still in the tree, so its `count` survives and only its geometry is lost — the gate's own rule for a resolved node with no usable bounds takes over from there. Dropping the entry would say the tag had *vanished*, which is a different verdict about a different fact.",
+  "candidateBox": {
+    "x": 0,
+    "y": 0,
+    "width": 40,
+    "height": 30
+  },
+  "plane": {
+    "plane": "content-box",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "width": 40,
+      "height": 30
+    }
+  },
+  "tagIndex": {
+    "glyph": {
+      "count": 2,
+      "bounds": {
+        "x": 60,
+        "y": 60,
+        "width": 8,
+        "height": 8
+      }
+    }
+  }
+}

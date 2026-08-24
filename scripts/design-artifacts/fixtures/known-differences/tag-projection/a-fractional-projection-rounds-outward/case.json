@@ -1,0 +1,30 @@
+{
+  "title": "A scale that lands the box off the integer grid",
+  "why": "Outward at both ends (D5 answer 5): the index's own box first, the transformed one second. Rounding inward would report an element as having shrunk, and rounding to nearest would let it drift by half a pixel in either direction — both measured as movement by the gate.",
+  "candidateBox": {
+    "x": 0,
+    "y": 0,
+    "width": 30,
+    "height": 30
+  },
+  "plane": {
+    "plane": "content-box",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "width": 10,
+      "height": 10
+    }
+  },
+  "tagIndex": {
+    "glyph": {
+      "count": 1,
+      "bounds": {
+        "x": 7,
+        "y": 7,
+        "width": 4,
+        "height": 4
+      }
+    }
+  }
+}

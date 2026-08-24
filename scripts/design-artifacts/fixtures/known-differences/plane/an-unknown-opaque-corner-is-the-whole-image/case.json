@@ -1,0 +1,6 @@
+{
+  "title": "An opaque backdrop that is not a sheet the renderer paints",
+  "why": "A uniform border around an interior region is the *same picture* whether the border is a scaffold sheet with a card inset on it or a card that bleeds to the artboard edge with text inset on it. Guessing gets the second one backwards — it strips the component's own surface — so an unrecognised corner means the whole image, which errs toward comparing too much.",
+  "reference": "reference.png",
+  "candidate": "candidate.png"
+}

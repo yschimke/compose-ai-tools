@@ -956,5 +956,83 @@
       "id": "negative-origin",
       "title": "A box whose origin is negative"
     }
+  ],
+  "scoring": [
+    {
+      "id": "masked-and-unmasked-are-scored-apart",
+      "title": "One mask, and three numbers that are each a mean anyone can check"
+    },
+    {
+      "id": "a-regression-beside-the-mask-is-still-charged",
+      "title": "A regression three pixels outside the mask edge, charged in full"
+    },
+    {
+      "id": "a-straddling-footprint-keeps-both-signals",
+      "title": "An accepted difference beside an opposite unaccepted one, reported as both"
+    },
+    {
+      "id": "an-all-masked-comparison-measures-nothing",
+      "title": "A mask covering the whole plane leaves `unaccepted` measuring nothing"
+    },
+    {
+      "id": "an-empty-union-leaves-raw-untouched",
+      "title": "With nothing accepted, `unaccepted` is `raw` bit for bit"
+    },
+    {
+      "id": "overlapping-masks-suppress-the-seam-once",
+      "title": "Two masks sharing four columns, whose union is one region"
+    }
+  ],
+  "plane": [
+    {
+      "id": "an-opaque-sheet-crops-to-its-mark",
+      "title": "A white scaffold sheet with a mark inset on it"
+    },
+    {
+      "id": "an-unknown-opaque-corner-is-the-whole-image",
+      "title": "An opaque backdrop that is not a sheet the renderer paints"
+    },
+    {
+      "id": "alpha-decides-wherever-there-is-any",
+      "title": "A transparent capture, measured by its alpha"
+    },
+    {
+      "id": "a-blank-capture-has-no-box",
+      "title": "A capture with nothing drawn on it"
+    },
+    {
+      "id": "a-sliver-falls-back-to-the-full-canvas",
+      "title": "One side below `MIN_BOX_COVERAGE`, and both fall back"
+    },
+    {
+      "id": "the-sampling-downscale-is-the-portable-kernel",
+      "title": "A capture large enough to be downscaled before it is sampled"
+    }
+  ],
+  "tagProjection": [
+    {
+      "id": "an-uncropped-plane-is-the-identity",
+      "title": "A candidate box at the origin, the same size as the plane"
+    },
+    {
+      "id": "the-candidate-box-origin-is-subtracted",
+      "title": "A cropped candidate, whose content box does not start at the origin"
+    },
+    {
+      "id": "the-two-axes-scale-independently",
+      "title": "A candidate box whose proportion differs from the plane's"
+    },
+    {
+      "id": "a-fractional-projection-rounds-outward",
+      "title": "A scale that lands the box off the integer grid"
+    },
+    {
+      "id": "a-negative-origin-clips-to-the-plane",
+      "title": "A tagged node reaching above and left of the content box"
+    },
+    {
+      "id": "a-box-outside-the-plane-keeps-its-count",
+      "title": "A tagged node that clips away entirely"
+    }
   ]
 }

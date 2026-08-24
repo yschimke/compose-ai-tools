@@ -1,0 +1,6 @@
+{
+  "title": "One side below `MIN_BOX_COVERAGE`, and both fall back",
+  "why": "An empty-state preview whose only mark is a heading yields a box of a few percent of the canvas, and stretching that sliver across its partner turns one line of text into the entire comparison. The fallback depends on the *candidate's* coverage, which the reference's `sha256` does not pin — which is exactly why the discriminant is a recorded field rather than something re-derived at evaluation time.",
+  "reference": "reference.png",
+  "candidate": "candidate.png"
+}

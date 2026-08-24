@@ -1,0 +1,30 @@
+{
+  "title": "A tagged node reaching above and left of the content box",
+  "why": "`boundsInRoot` may legitimately be negative — `ServeSemanticsTags` and `tag-index.mjs` both emit that — and the plane's coordinates are plane-local, so the part outside it is clipped rather than carried as a negative origin the mask has no pixels for.",
+  "candidateBox": {
+    "x": 10,
+    "y": 10,
+    "width": 40,
+    "height": 30
+  },
+  "plane": {
+    "plane": "content-box",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "width": 40,
+      "height": 30
+    }
+  },
+  "tagIndex": {
+    "glyph": {
+      "count": 1,
+      "bounds": {
+        "x": 4,
+        "y": 4,
+        "width": 12,
+        "height": 12
+      }
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "title": "An accepted difference beside an opposite unaccepted one, reported as both",
+  "why": "Separation precedes the resample (I3/I4), so the straddling destination pixel is present in **both** regions, each averaging only its own contributions: 130 in the accepted plane, 230 in the unaccepted one. Averaging first gives 180 — the reference exactly — and cancels two opposite findings into a clean pixel.",
+  "plane": {
+    "plane": "content-box",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "width": 384,
+      "height": 288
+    }
+  },
+  "referenceBox": {
+    "x": 0,
+    "y": 0,
+    "width": 384,
+    "height": 288
+  },
+  "candidateBox": {
+    "x": 0,
+    "y": 0,
+    "width": 384,
+    "height": 288
+  },
+  "reference": "reference.png",
+  "candidate": "candidate.png",
+  "masks": [
+    "masks/union.png"
+  ]
+}

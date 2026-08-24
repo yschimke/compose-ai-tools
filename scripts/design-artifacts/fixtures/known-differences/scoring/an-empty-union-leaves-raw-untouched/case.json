@@ -1,0 +1,28 @@
+{
+  "title": "With nothing accepted, `unaccepted` is `raw` bit for bit",
+  "why": "The comparison every catalog page runs, since most components have no acceptance at all. `accepted` measures nothing and answers 100 for the same reason the all-masked case does.",
+  "plane": {
+    "plane": "content-box",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "width": 32,
+      "height": 24
+    }
+  },
+  "referenceBox": {
+    "x": 0,
+    "y": 0,
+    "width": 32,
+    "height": 24
+  },
+  "candidateBox": {
+    "x": 0,
+    "y": 0,
+    "width": 32,
+    "height": 24
+  },
+  "reference": "reference.png",
+  "candidate": "candidate.png",
+  "masks": []
+}

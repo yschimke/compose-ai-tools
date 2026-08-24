@@ -2698,6 +2698,25 @@ html:not(.cp-bg-transparent) #cp-reference-compare[data-cp-stage-clip] .cp-refer
   background: repeating-conic-gradient(var(--cp-surface-2) 0% 25%, var(--cp-surface) 0% 50%)
     50% / 14px 14px; }
 .cp-reference-result { font-weight: 650; font-variant-numeric: tabular-nums; }
+/* The acceptance band: what this catalog has accepted about the pair, and what that leaves. Server
+   emits it empty and `hidden`; `<cp-acceptance>` fills it once the engine has run, because the
+   numbers are the browser's and a band that appeared before they existed would be asserting
+   something nobody had measured. */
+.cp-acceptance { margin: 0.35rem 0 0.6rem; font-size: 0.92rem; }
+/* Each on its own line. The three numbers and the sentence explaining which kernel measured them
+   ran together as one paragraph inline, and read as a single garbled claim. */
+.cp-acceptance-scores { display: block; font-variant-numeric: tabular-nums; }
+.cp-acceptance-note { display: block; color: var(--cp-fg-muted); font-size: 0.88rem; }
+.cp-acceptance-list { list-style: none; margin: 0.3rem 0 0; padding: 0;
+  display: flex; flex-direction: column; gap: 0.15rem; }
+/* An accepted row is quiet and a broken one is not. `invalidated` and `refused` are the rows worth
+   reading — a known difference that has stopped matching what was recorded — and `resolved` is the
+   one that asks for the acceptance to be deleted, so all three carry the accent rather than the
+   muted tone a satisfied acceptance gets. */
+.cp-acceptance-row { color: var(--cp-fg-muted); }
+.cp-acceptance-row[data-status="invalidated"],
+.cp-acceptance-row[data-status="refused"],
+.cp-acceptance-row[data-status="resolved"] { color: var(--cp-fg); font-weight: 600; }
 /* Annotation layers. The layer is absolutely positioned over its panel's image and sized in JS from
    the image's rendered box, because annotation bounds arrive in the source frame's pixel space and
    the reference and actual frames are routinely different sizes. */

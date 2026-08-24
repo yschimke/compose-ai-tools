@@ -73,6 +73,28 @@ interface ServeHost : AutoCloseable {
   fun parityIssues(): ParityIssues? = null
 
   /**
+   * This catalog's committed known-difference document, **verbatim**, or null when it publishes
+   * none — the common case, and the one every host defaults to.
+   *
+   * Raw text on purpose. Unlike every other carried artifact, the host does not parse this one:
+   * `compose-preview-known-differences/v1`'s verdicts belong to the engine, which runs from one
+   * shared implementation in the browser and in `design-parity`, and a host that pre-parsed it
+   * would be a third implementation of the same rules with no conformance suite behind it. See
+   * [ServeKnownDifferences].
+   */
+  fun knownDifferences(): ServeKnownDifferences.Document? = null
+
+  /**
+   * One of that document's artifacts, addressed as the document addresses it (`<id>/<path>`).
+   *
+   * The default is [ServeKnownDifferences.Artifact.Unreadable] rather than a null, because a host
+   * with no artifact tree and a path that resolves to no file are the same answer to the consumer:
+   * the record's bytes could not be read.
+   */
+  fun knownDifferenceArtifact(relativePath: String): ServeKnownDifferences.Artifact =
+    ServeKnownDifferences.Artifact.Unreadable
+
+  /**
    * The app's declared `@ThemeCatalog` themes — module-global, so the viewer's Theme selector can
    * offer "render this preview under Brand Dark". Non-empty only for a daemon-backed host
    * ([ServeRenderHost]) whose module declares them; a static bundle carries no theme-apply lane

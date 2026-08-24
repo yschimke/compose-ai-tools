@@ -1,0 +1,64 @@
+{
+  "pins": [
+    "scorePlane",
+    "presence",
+    "samples",
+    "scores"
+  ],
+  "epsilon": 1e-9,
+  "scorePlane": {
+    "width": 192,
+    "height": 144
+  },
+  "presence": {
+    "whole": 27648,
+    "accepted": 13968,
+    "unaccepted": 13824
+  },
+  "samples": [
+    {
+      "region": "accepted",
+      "side": "candidate",
+      "x": 96,
+      "y": 0,
+      "present": true,
+      "rgba": [
+        130,
+        130,
+        130,
+        255
+      ]
+    },
+    {
+      "region": "unaccepted",
+      "side": "candidate",
+      "x": 96,
+      "y": 0,
+      "present": true,
+      "rgba": [
+        230,
+        230,
+        230,
+        255
+      ]
+    },
+    {
+      "region": "whole",
+      "side": "candidate",
+      "x": 96,
+      "y": 0,
+      "present": true,
+      "rgba": [
+        180,
+        180,
+        180,
+        255
+      ]
+    }
+  ],
+  "scores": {
+    "raw": 69.80096726190477,
+    "accepted": 69.64285714285714,
+    "unaccepted": 69.64285714285714
+  }
+}

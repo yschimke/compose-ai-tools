@@ -1,0 +1,6 @@
+{
+  "title": "A transparent capture, measured by its alpha",
+  "why": "A transparent pixel is unambiguously not artwork, so alpha is read before colour and the backdrop is never guessed. Same mark and same box as the sheet case, reached down the other branch — which is what makes the two comparable at all.",
+  "reference": "reference.png",
+  "candidate": "candidate.png"
+}

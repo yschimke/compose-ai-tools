@@ -8,6 +8,58 @@ against one definition), [03](03-element-selection.md) (element gates must not b
 selection path), [00](00-decisions.md) **D1, D3, D5 and D6**.
 **Ships:** **yes.** Accepted and unaccepted scores reported separately, on a real catalog.
 
+> **Status — 5b and 5c landed, 5a outstanding.** What is in `main`:
+>
+> - **The separated-plane score**, in
+>   [`known-difference-score.mjs`](../../../scripts/design-artifacts/known-difference-score.mjs),
+>   with the `scoring/` fixture group. The seam to the gates is `survivingMasks` — the `valid`
+>   acceptances' masks and no other status — pinned from the gate side by the `survivingMaskIds`
+>   pin and from the score side by the group.
+> - **The canonical plane, measured portably**
+>   ([`known-difference-plane.mjs`](../../../scripts/design-artifacts/known-difference-plane.mjs)),
+>   with the `plane/` group. It was pinned by nothing before: every gate case is *handed* its plane.
+> - **The browser engine** — and it is the **same module**, not a port. `png-lite.mjs` stopped
+>   needing `node:zlib` and `node:crypto` (`inflate-lite.mjs`, `sha256-lite.mjs`), so
+>   `known-differences.js` bundles the reference implementation itself. Two engines that cannot
+>   disagree, rather than two that a fixture suite has to keep honest; the fixtures go on doing that
+>   job against `design-parity`, which is a genuine second implementation.
+> - **The host carriage**: `parity/known-differences.json` and its artifacts, served verbatim, with
+>   the three reader obligations discharged as status codes (403 / 413 / 404). The host deliberately
+>   does not parse — a third implementation of the contract with no conformance suite behind it is
+>   exactly what this batch exists to avoid.
+> - **The acceptance band** on the focused comparison: `raw`, `unaccepted`, `accepted`, and a row per
+>   acceptance, because a single aggregate cannot express a mixed-validity set.
+>
+> - **The publish path**, in `design-parity`'s `@design-parity/catalog-export`:
+>   `.design-parity/known-differences*` → `parity/known-differences*`, copied as bytes and never
+>   parsed, refusing only what a *copier* legitimately can — a name a checkout cannot create, and an
+>   artifact past the 8 MiB ceiling — and reporting both in `skipped` rather than throwing or
+>   dropping silently.
+>
+> **The no-rerender question below is answered: acceptances land on the next render.** The
+> alternative — an index-style one-file committer — needs a *second* carry-forward exception on the
+> delivery branch, and this one would carry binary artifacts rather than a single JSON file, where
+> §3's asymmetry argument says a second exception is where the two orderings start disagreeing. The
+> granularity also differs from the case that motivated the committer: relabelling an issue is a
+> click, while authoring an acceptance means producing a mask and a crop and recording three hashes.
+>
+> `scope-systems.sh` needs no change, checked rather than assumed: `SHARED_RE` already covers
+> `scripts/design-artifacts/` (the export driver), and a `.design-parity/` committed inside a sample
+> catalog is matched by that system's own pattern.
+>
+> What is **not** done, and is what the rest of this document still describes:
+>
+> - **5a, the offline engine** in `design-parity` — cross-repo, and the second implementation the
+>   fixtures exist for. It is the largest remaining piece and a batch's worth of work on its own:
+>   the contract's whole ladder in a second language, plus a runner over the committed fixture tree,
+>   which also needs a decision about how that tree reaches another repository.
+> - **The host-level catalog walk** is written (`walkCatalog` in `src/parity/acceptance.ts`) and not
+>   yet mounted on the dashboard, so `orphaned-target` is still browser-invisible.
+> - **The D3 rebaseline.** The portable kernel is not yet the live scorer: the legacy `scoreImages`
+>   path still measures the number on the chip. The band's three scores come from the portable path,
+>   so the two are measured differently *on the same page* until the rebaseline lands — which is why
+>   the band names `raw` rather than restating the result line's percentage.
+
 **Read first:** [`../COMPONENT_PARITY_WORKFLOW.md`](../COMPONENT_PARITY_WORKFLOW.md) §4 — the ten
 invariants **and** the open-problems list; `format-compare.js`'s `scorePlanes` **in full** before
 touching a line of it; and

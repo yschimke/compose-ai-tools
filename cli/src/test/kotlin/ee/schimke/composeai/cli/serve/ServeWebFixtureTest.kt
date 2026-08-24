@@ -1787,6 +1787,34 @@ class ServeWebFixtureTest {
         // misses: a uniquely tagged node carrying neither typography nor container tokens produces
         // no annotation at all, so nothing on this page draws a box for it.
         tagIndexAvailable = true,
+        // A catalog that has accepted something, so the acceptance band and its payload are in a
+        // golden. The band is filled by the engine at runtime — a fixture opened as a file has
+        // nothing to fetch, so the screenshot shows it collapsed — which is the honest split: this
+        // golden covers the markup and the payload the server writes, and the engine's own output
+        // is covered by `cli/serve-web/test/acceptance.test.ts` end to end.
+        //
+        // The tag index is non-empty here because `tagIndexAvailable` is: an element-scoped
+        // acceptance whose gate cannot run suppresses nothing, so the two must agree or the page
+        // would offer a tag picker while telling the engine there are no tags.
+        knownDifferences =
+          KnownDifferenceScope(
+            system = "compose-m3",
+            component = ServeIssueReport.componentIdFor(themedPreviews.first()),
+            previewId = themedPreviews.first().id,
+            referenceId = comparisonReferences.first().id,
+            variant = ServeIssueReport.variantFor(themedPreviews.first()),
+            overrides = mapOf("fontScale" to "1.5", "knob.label" to "Send;now=x"),
+            referenceSha256 = "b7d3f1".repeat(10) + "0123",
+            tagIndex =
+              mapOf(
+                "button-filled-label" to
+                  WireTagEntry(
+                    count = 1,
+                    bounds = AnnotationBounds(x = 46, y = 26, width = 128, height = 20),
+                    space = ServeSemanticsTags.RENDER_PIXELS,
+                  )
+              ),
+          ),
         // Both panels annotated, so the fixture covers the case the layers exist for: reading the
         // reference's spec against the actual's. The layout boxes agree here and the type styles
         // don't, which is what the page is meant to make obvious.

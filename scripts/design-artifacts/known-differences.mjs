@@ -14,11 +14,11 @@
  * **What this module decides, and what it deliberately does not.** It decides every *verdict*: the
  * validation refusals, the five gates, the resolution test, the status precedence, and the exact
  * ordering of `validationFailures` (`statuses` is a *map* — it promises one entry per acceptance,
- * not an order). It does **not** compute `raw` / `accepted` /
- * `unaccepted` — those need the separated-plane scoring path that is batch 05's deliverable, and
- * inventing numbers here would pin a scorer nobody has written. The gates are what a mask is allowed
- * to suppress, so they are the half that has to be settled first (I1: every gate resolves before any
- * score is computed).
+ * not an order). It does **not** compute `raw` / `accepted` / `unaccepted`: those are the separated
+ * plane path in [`known-difference-score.mjs`](./known-difference-score.mjs), and the split is the
+ * contract's own (I1 — every gate resolves before any score is computed). The seam between the two
+ * is `survivingMasks`, the union of the `valid` acceptances' masks: it cannot be formed until the
+ * gates have run, and it is the only thing the scorer needs from here.
  *
  * The canonical-plane rasters arrive **already resampled**, as inputs. That is the same seam: the
  * portable resampler is specified (see {@link resampleArea}) and pinned by its own fixture group,
@@ -486,9 +486,13 @@ export function issueKey(issue) {
  * @param comparison the comparison being evaluated, or `null` for a validation-only pass.
  * @param catalog `{ previews: [{ system, id, component, variant, referenceIds }] }` for the
  *   orphaned-target walk, or `null` to skip it.
- * @returns `{ statuses, validationFailures }`. `statuses` is **absent** for a document-level
- *   rejection — "no acceptance was evaluated" and "every acceptance was valid" must not serialise
- *   the same way.
+ * @returns `{ statuses, survivingMasks, validationFailures }`. `statuses` is **absent** for a
+ *   document-level rejection — "no acceptance was evaluated" and "every acceptance was valid" must
+ *   not serialise the same way — and `survivingMasks` is absent with it. `survivingMasks` carries
+ *   the decoded canonical-plane mask of every acceptance whose status is `valid`, in input order:
+ *   it is the union
+ *   [`known-difference-score.mjs`](./known-difference-score.mjs) suppresses, and forming it is the
+ *   one thing that has to happen after the gates and before the score (I5).
  */
 export function evaluateKnownDifferences({ documentText, readArtifact, comparison = null, catalog = null }) {
   const parsed = parseDocument(documentText);
@@ -596,8 +600,21 @@ export function evaluateKnownDifferences({ documentText, readArtifact, compariso
     statuses.set(record.id, runGates(record, evaluation, comparison));
   });
 
+  // **The surviving union, formed only now** (I5). "Survivor" means status `valid`, not "reached the
+  // end of the gates": `resolved`, `invalidated` and `refused` all suppress nothing, and a
+  // `resolved` mask left in the union would remove its pixels as neighbourhood candidates for the
+  // pixels *around* it — hiding a regression sitting next to the thing that was just fixed. This is
+  // handed out rather than left inside because the union cannot be built before the gates have run
+  // and the scorer cannot run before it exists, so the two batches meet exactly here.
+  const survivingMasks = [];
+  evaluations.forEach((evaluation, index) => {
+    if (statuses.get(records[index].id)?.status !== "valid") return;
+    survivingMasks.push({ id: records[index].id, mask: evaluation.mask });
+  });
+
   return {
     statuses: Object.fromEntries(statuses),
+    survivingMasks,
     validationFailures: sortFailures(validationFailures, records),
   };
 }
@@ -795,7 +812,11 @@ function parseDocument(documentText) {
   // and this is the defence in depth: the *reader* should refuse to fetch past the ceiling, exactly
   // as `readArtifact` must, since only it knows the size before the bytes exist.
   if (typeof documentText !== "string") return { failure: { reason: "document-unreadable" } };
-  if (Buffer.byteLength(documentText, "utf8") > BUDGET.maxDocumentBytes) {
+  // `TextEncoder` rather than `Buffer.byteLength`, because this module is bundled into
+  // `format-compare.js` and a browser has no `Buffer` — see `png-lite.mjs`'s header. Both count
+  // UTF-8 bytes, which is what the ceiling is in: a document past it in bytes and inside it in
+  // *characters* is the case the `document-over-byte-cap-multibyte` fixture exists for.
+  if (new TextEncoder().encode(documentText).length > BUDGET.maxDocumentBytes) {
     return { failure: { reason: "document-too-large" } };
   }
 

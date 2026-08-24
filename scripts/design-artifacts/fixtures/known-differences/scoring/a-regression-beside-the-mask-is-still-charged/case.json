@@ -1,0 +1,30 @@
+{
+  "title": "A regression three pixels outside the mask edge, charged in full",
+  "why": "Masked coordinates are excluded in **both** roles and in **both** directions — as scored sources and as neighbourhood candidates. Skipping only the sources is the reading that looks correct and lets an accepted region hide the regression next to it, and no legible case distinguishes the two.",
+  "plane": {
+    "plane": "content-box",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "width": 32,
+      "height": 24
+    }
+  },
+  "referenceBox": {
+    "x": 0,
+    "y": 0,
+    "width": 32,
+    "height": 24
+  },
+  "candidateBox": {
+    "x": 0,
+    "y": 0,
+    "width": 32,
+    "height": 24
+  },
+  "reference": "reference.png",
+  "candidate": "candidate.png",
+  "masks": [
+    "masks/union.png"
+  ]
+}

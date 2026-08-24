@@ -1,0 +1,6 @@
+{
+  "title": "A capture with nothing drawn on it",
+  "why": "No drawn pixel means no content box, and whole-image is the only meaningful answer. A min/max scan that forgot this returns an inverted rectangle, which every later stage would carry as a negative width.",
+  "reference": "reference.png",
+  "candidate": "candidate.png"
+}

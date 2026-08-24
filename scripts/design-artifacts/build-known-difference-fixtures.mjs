@@ -29,13 +29,13 @@ import {
   COLOUR_RGBA,
   buildPng,
   chunk,
-  encodePng,
-  idat,
-  filteredIdat,
   ihdr,
   padPngTo,
   sha256Hex,
 } from "./png-lite.mjs";
+// The writer is a separate module because it needs a compressor and `png-lite.mjs` no longer does —
+// see its header. This generator runs on Node and is the only thing in the tree that writes a PNG.
+import { encodePng, filteredIdat, idat } from "./png-write.mjs";
 
 // Overridable so the conformance suite can regenerate into a scratch directory and prove the
 // committed tree still matches its recipe. "Generated" is only true while something enforces it.
@@ -246,9 +246,12 @@ function document(acceptances) {
     files: glyphFiles(world, record),
     comparison: glyphComparison(world),
     expected: {
-      pins: ["statuses", "validationFailures"],
+      pins: ["statuses", "validationFailures", "survivingMaskIds"],
       statuses: { "m3-iconbutton-tonal-glyph": { status: "valid" } },
       validationFailures: [],
+      // The positive side of the gate/score seam: a `valid` acceptance is the only status whose mask
+      // reaches the scoring union.
+      survivingMaskIds: ["m3-iconbutton-tonal-glyph"],
     },
   });
 }
@@ -633,10 +636,14 @@ function document(acceptances) {
     files: glyphFiles(world, record),
     comparison: glyphComparison(world),
     expected: {
-      pins: ["statuses", "validationFailures", "locallyResolvedIssues"],
+      pins: ["statuses", "validationFailures", "locallyResolvedIssues", "survivingMaskIds"],
       statuses: { "m3-iconbutton-tonal-glyph": { status: "resolved" } },
       validationFailures: [],
       locallyResolvedIssues: ["yschimke/m3-catalog#40"],
+      // The half this case could not state before: `resolved` reached the end of the gates and is
+      // still not a survivor, so its mask suppresses nothing and the adjacent regression two pixels
+      // outside the mask edge stays in the neighbourhood search of everything around it.
+      survivingMaskIds: [],
     },
   });
 }
@@ -1237,12 +1244,15 @@ function pairComparison(world, extra = {}) {
     files: pairFiles(world),
     comparison: pairComparison(world),
     expected: {
-      pins: ["statuses", "validationFailures"],
+      pins: ["statuses", "validationFailures", "survivingMaskIds"],
       statuses: {
         "m3-pair-first": { status: "valid" },
         "m3-pair-second": { status: "valid" },
       },
       validationFailures: [],
+      // Both masks reach the union, and `scoring/overlapping-masks-suppress-the-seam-once` is where
+      // what they then suppress is pinned. Neither fixture asserts the other's half.
+      survivingMaskIds: ["m3-pair-first", "m3-pair-second"],
     },
   });
 }
@@ -1274,12 +1284,15 @@ function pairComparison(world, extra = {}) {
     files: pairFiles(world),
     comparison: pairComparison(world),
     expected: {
-      pins: ["statuses", "validationFailures"],
+      pins: ["statuses", "validationFailures", "survivingMaskIds"],
       statuses: {
         "m3-pair-first": { status: "valid" },
         "m3-pair-second": { status: "invalidated", causes: ["element-moved"] },
       },
       validationFailures: [],
+      // The failure mode this case exists for, stated as data: an invalidated acceptance must not
+      // leave its mask in the union. A single aggregate status cannot express that.
+      survivingMaskIds: ["m3-pair-first"],
     },
   });
 }
@@ -4995,6 +5008,545 @@ addRounding({
 });
 
 // --------------------------------------------------------------------------------------------
+// 5c. The separated-plane score, pinned on its own.
+//
+// Batch 05's half of the contract. Its own group for the same reason the resampler has one: a
+// divergence in the scoring path should fail *as* a scoring divergence rather than surfacing as a
+// wrong verdict spread across sixty gate cases, and the gate cases are handed canonical planes
+// precisely so they never exercise this.
+//
+// **The masks here are the surviving union, given.** Which acceptances survive is the gates' answer
+// and is pinned by `cases/`; what the survivors suppress is this group's. The seam between the two —
+// `survivingMasks` — is pinned from the other side by the `survivingMaskIds` pin on
+// `gate-resolved-fixed-candidate`, `set-mixed-validity` and `set-overlapping-masks`, so "a resolved
+// mask does not suppress its neighbours" is a property of two fixtures that meet rather than of one
+// that asserts both halves at once.
+//
+// **Every expected number below is derived by hand from the geometry**, which is why each case is
+// built out of flat rectangles: with no gradients anywhere, the metric collapses to
+// `pixelCost(|Δluma|)` per coordinate and a denominator that can be counted. Two of the constructions
+// are deliberately awkward — a regression parked three pixels outside a mask edge, and a mask edge
+// that does not land on the score-plane grid — because those are the two places an implementation
+// can be wrong while every legible case still passes.
+// --------------------------------------------------------------------------------------------
+
+const scoringCases = [];
+
+function addScoring(entry) {
+  scoringCases.push(entry);
+}
+
+/** `pixelCost` restated from the tuning constants, so the expectations are arithmetic, not a call. */
+function cost(delta) {
+  return Math.min(1, Math.max(0, delta - 16) / (128 - 16));
+}
+
+function scoreOf(costSum, measured) {
+  return measured === 0 ? 100 : 100 * (1 - costSum / measured);
+}
+
+{
+  // The base case: one mask, one flat difference inside it and a different flat difference outside.
+  // Both regions are uniform once separated, so neither carries an edge and the metric is a plain
+  // mean — which is what makes `raw`, `accepted` and `unaccepted` three sums anyone can check.
+  const reference = raster(32, 24, WHITE);
+  const candidate = raster(32, 24, grey(205));
+  const box = { x: 8, y: 4, width: 8, height: 8 };
+  fillRect(candidate, box, grey(155));
+  const { png: mask } = maskPng(32, 24, (paint) => paint(box));
+
+  addScoring({
+    id: "masked-and-unmasked-are-scored-apart",
+    title: "One mask, and three numbers that are each a mean anyone can check",
+    why:
+      "`raw` measures the pair as though nothing were accepted; `unaccepted` measures the region " +
+      "outside the mask; `accepted` measures the region inside it. All three are the same metric on " +
+      "the same stages, so they share a polarity and a scale — and none is the difference of the " +
+      "other two, which is D5 answer 4.",
+    plane: { plane: "content-box", box: { x: 0, y: 0, width: 32, height: 24 } },
+    referenceBox: { x: 0, y: 0, width: 32, height: 24 },
+    candidateBox: { x: 0, y: 0, width: 32, height: 24 },
+    reference,
+    candidate,
+    masks: { "union.png": mask },
+    expected: {
+      pins: ["scorePlane", "presence", "scores"],
+      epsilon: 1e-9,
+      scorePlane: { width: 32, height: 24 },
+      // 64 masked coordinates, and the 704 that are not. Identity scale, so a source pixel is a
+      // score-plane pixel and no footprint straddles anything.
+      presence: { whole: 768, accepted: 64, unaccepted: 704 },
+      scores: {
+        raw: scoreOf(64 * cost(100) + 704 * cost(50), 768),
+        accepted: scoreOf(64 * cost(100), 64),
+        unaccepted: scoreOf(704 * cost(50), 704),
+      },
+    },
+  });
+}
+
+{
+  // The named case §4 demands: a regression within `EDGE_SEARCH_RADIUS` of a mask edge.
+  //
+  // The reference carries a dark bar at x=14..15, *inside* the mask; the candidate carries one at
+  // x=18..19, three pixels outside it. An engine that excludes masked coordinates as scored sources
+  // but leaves them as search *candidates* lets the candidate's bar find the reference's bar three
+  // pixels away — `|155-155| + 3×10 = 30`, which is under the full-difference delta and costs almost
+  // nothing — and the regression scores as very nearly clean.
+  const reference = raster(32, 24, WHITE);
+  fillRect(reference, { x: 14, y: 8, width: 2, height: 8 }, grey(155));
+  const candidate = raster(32, 24, WHITE);
+  fillRect(candidate, { x: 18, y: 8, width: 2, height: 8 }, grey(155));
+  const { png: mask } = maskPng(32, 24, (paint) => paint({ x: 8, y: 8, width: 8, height: 8 }));
+
+  addScoring({
+    id: "a-regression-beside-the-mask-is-still-charged",
+    title: "A regression three pixels outside the mask edge, charged in full",
+    why:
+      "Masked coordinates are excluded in **both** roles and in **both** directions — as scored " +
+      "sources and as neighbourhood candidates. Skipping only the sources is the reading that looks " +
+      "correct and lets an accepted region hide the regression next to it, and no legible case " +
+      "distinguishes the two.",
+    plane: { plane: "content-box", box: { x: 0, y: 0, width: 32, height: 24 } },
+    referenceBox: { x: 0, y: 0, width: 32, height: 24 },
+    candidateBox: { x: 0, y: 0, width: 32, height: 24 },
+    reference,
+    candidate,
+    masks: { "union.png": mask },
+    expected: {
+      pins: ["scorePlane", "presence", "scores"],
+      epsilon: 1e-9,
+      scorePlane: { width: 32, height: 24 },
+      presence: { whole: 768, accepted: 64, unaccepted: 704 },
+      scores: {
+        // Outside the mask: 16 bar coordinates at full price, over a denominator of the 68
+        // coordinates the content mask reaches — the bar's own pixels, its edge ring, and one
+        // pixel of dilation around both. The reference is blank out here, so nothing displaced is
+        // available and the same-coordinate cost stands.
+        unaccepted: scoreOf(16 * cost(100), 68),
+        // Inside it: the reference's bar against a blank candidate, over the 32 coordinates the
+        // dilated edge columns 13–14 reach. The candidate side is flat, so again nothing displaced.
+        accepted: scoreOf(16 * cost(100), 32),
+      },
+    },
+  });
+}
+
+{
+  // The other named case: a mask edge that does not land on the score-plane grid.
+  //
+  // 384 source columns cap to 192, so each score-plane pixel is a 2×1 footprint, and a mask ending
+  // after column 192 puts destination column 96 half in and half out. The two sides of that
+  // footprint are equal and *opposite* — the masked half is 50 below the reference, the unmasked
+  // half 50 above — so a pre-averaged composite lands exactly on the reference and reports a
+  // perfect pixel where there are two real differences.
+  const reference = raster(384, 288, grey(180));
+  const candidate = raster(384, 288, grey(230));
+  fillRect(candidate, { x: 0, y: 0, width: 193, height: 288 }, grey(130));
+  const { png: mask } = maskPng(384, 288, (paint) => paint({ x: 0, y: 0, width: 193, height: 288 }));
+
+  addScoring({
+    id: "a-straddling-footprint-keeps-both-signals",
+    title: "An accepted difference beside an opposite unaccepted one, reported as both",
+    why:
+      "Separation precedes the resample (I3/I4), so the straddling destination pixel is present in " +
+      "**both** regions, each averaging only its own contributions: 130 in the accepted plane, 230 " +
+      "in the unaccepted one. Averaging first gives 180 — the reference exactly — and cancels two " +
+      "opposite findings into a clean pixel.",
+    plane: { plane: "content-box", box: { x: 0, y: 0, width: 384, height: 288 } },
+    referenceBox: { x: 0, y: 0, width: 384, height: 288 },
+    candidateBox: { x: 0, y: 0, width: 384, height: 288 },
+    reference,
+    candidate,
+    masks: { "union.png": mask },
+    expected: {
+      pins: ["scorePlane", "presence", "samples", "scores"],
+      epsilon: 1e-9,
+      scorePlane: { width: 192, height: 144 },
+      // Destination column 96 is the straddle, so it is present in both regions and the two counts
+      // overlap by one column rather than partitioning the plane.
+      presence: { whole: 27648, accepted: 97 * 144, unaccepted: 96 * 144 },
+      samples: [
+        { region: "accepted", side: "candidate", x: 96, y: 0, present: true, rgba: grey(130) },
+        { region: "unaccepted", side: "candidate", x: 96, y: 0, present: true, rgba: grey(230) },
+        // The whole-plane stage is where the averaging genuinely happens, and it is *correct* there:
+        // nothing has been separated, so 180 is what that footprint contains. Pinned so the two
+        // readings sit side by side.
+        { region: "whole", side: "candidate", x: 96, y: 0, present: true, rgba: grey(180) },
+      ],
+      scores: {
+        // 191 of 192 columns differ by 50; column 96 averages back onto the reference and costs
+        // nothing, while the content mask still reaches it through the two edges beside it.
+        raw: scoreOf(191 * 144 * cost(50), 192 * 144),
+        accepted: scoreOf(97 * 144 * cost(50), 97 * 144),
+        unaccepted: scoreOf(96 * 144 * cost(50), 96 * 144),
+      },
+    },
+  });
+}
+
+{
+  // The all-masked case. `scorePlanes` returns 100 when it measures nothing, and reusing that answer
+  // is what stops two engines picking two conventions for an empty denominator.
+  const reference = raster(32, 24, WHITE);
+  const candidate = raster(32, 24, grey(155));
+  const { png: mask } = maskPng(32, 24, (paint) => paint({ x: 0, y: 0, width: 32, height: 24 }));
+
+  addScoring({
+    id: "an-all-masked-comparison-measures-nothing",
+    title: "A mask covering the whole plane leaves `unaccepted` measuring nothing",
+    why:
+      "The boundary of D5 answer 3. `unaccepted` has no coordinate left to measure and takes the " +
+      "answer the scorer already gives for two blank planes — 100 — while `raw` and `accepted` go " +
+      "on reporting the difference in full, so nothing has been hidden by being accepted.",
+    plane: { plane: "content-box", box: { x: 0, y: 0, width: 32, height: 24 } },
+    referenceBox: { x: 0, y: 0, width: 32, height: 24 },
+    candidateBox: { x: 0, y: 0, width: 32, height: 24 },
+    reference,
+    candidate,
+    masks: { "union.png": mask },
+    expected: {
+      pins: ["scorePlane", "presence", "scores"],
+      epsilon: 1e-9,
+      scorePlane: { width: 32, height: 24 },
+      presence: { whole: 768, accepted: 768, unaccepted: 0 },
+      scores: {
+        raw: scoreOf(768 * cost(100), 768),
+        accepted: scoreOf(768 * cost(100), 768),
+        unaccepted: 100,
+      },
+    },
+  });
+}
+
+{
+  // I6, as a fixture: with nothing suppressed, `unaccepted` is `raw` **bit for bit**, not merely
+  // close. Filtering is not associative, so an implementation that gave `raw` a shortcut path — the
+  // obvious optimisation, since separating against an empty union is a no-op — manufactures a delta
+  // out of nothing and does it on every comparison in the catalog, where there is no acceptance to
+  // blame it on.
+  const reference = raster(32, 24, WHITE);
+  const candidate = raster(32, 24, grey(205));
+  fillRect(candidate, { x: 8, y: 4, width: 8, height: 8 }, grey(155));
+
+  addScoring({
+    id: "an-empty-union-leaves-raw-untouched",
+    title: "With nothing accepted, `unaccepted` is `raw` bit for bit",
+    why:
+      "The comparison every catalog page runs, since most components have no acceptance at all. " +
+      "`accepted` measures nothing and answers 100 for the same reason the all-masked case does.",
+    plane: { plane: "content-box", box: { x: 0, y: 0, width: 32, height: 24 } },
+    referenceBox: { x: 0, y: 0, width: 32, height: 24 },
+    candidateBox: { x: 0, y: 0, width: 32, height: 24 },
+    reference,
+    candidate,
+    masks: {},
+    expected: {
+      pins: ["scorePlane", "presence", "scores", "rawEqualsUnaccepted"],
+      epsilon: 1e-9,
+      scorePlane: { width: 32, height: 24 },
+      presence: { whole: 768, accepted: 0, unaccepted: 768 },
+      scores: {
+        raw: scoreOf(64 * cost(100) + 704 * cost(50), 768),
+        accepted: 100,
+        unaccepted: scoreOf(64 * cost(100) + 704 * cost(50), 768),
+      },
+      rawEqualsUnaccepted: true,
+    },
+  });
+}
+
+{
+  // Two acceptances whose masks overlap. The union is a set union, so the seam is suppressed once —
+  // an implementation accumulating coverage would double-charge it, which is invisible with a single
+  // acceptance and is why the contract calls for an overlapping pair by name. The construction is
+  // `masked-and-unmasked-are-scored-apart`'s, split across two masks that share four columns, so the
+  // three expected numbers are that case's unchanged.
+  const reference = raster(32, 24, WHITE);
+  const candidate = raster(32, 24, grey(205));
+  fillRect(candidate, { x: 8, y: 4, width: 8, height: 8 }, grey(155));
+  const { png: left } = maskPng(32, 24, (paint) => paint({ x: 8, y: 4, width: 4, height: 8 }));
+  const { png: right } = maskPng(32, 24, (paint) => paint({ x: 10, y: 4, width: 6, height: 8 }));
+
+  addScoring({
+    id: "overlapping-masks-suppress-the-seam-once",
+    title: "Two masks sharing four columns, whose union is one region",
+    why:
+      "Same rasters and same three numbers as the single-mask case, reached through two overlapping " +
+      "acceptances. A coverage count rather than a set union changes nothing about which pixels are " +
+      "suppressed and everything about how often the seam is charged.",
+    plane: { plane: "content-box", box: { x: 0, y: 0, width: 32, height: 24 } },
+    referenceBox: { x: 0, y: 0, width: 32, height: 24 },
+    candidateBox: { x: 0, y: 0, width: 32, height: 24 },
+    reference,
+    candidate,
+    masks: { "left.png": left, "right.png": right },
+    expected: {
+      pins: ["scorePlane", "presence", "scores"],
+      epsilon: 1e-9,
+      scorePlane: { width: 32, height: 24 },
+      presence: { whole: 768, accepted: 64, unaccepted: 704 },
+      scores: {
+        raw: scoreOf(64 * cost(100) + 704 * cost(50), 768),
+        accepted: scoreOf(64 * cost(100), 64),
+        unaccepted: scoreOf(704 * cost(50), 704),
+      },
+    },
+  });
+}
+
+// --------------------------------------------------------------------------------------------
+// 5d. The canonical plane, pinned on its own.
+//
+// The plane gate compares a **recomputed** plane against the recorded one, so a one-pixel
+// disagreement about a content box is not a rounding difference in a score — it is `plane-changed`
+// on one engine and `valid` on the other, from identical bytes. Every gate case is handed its plane
+// as an input precisely so it tests the gate rather than the measurement, which leaves the
+// measurement pinned by nothing at all without this group.
+//
+// Each expected box is derived by hand from `boxFromSamples`'s two rules — the drawn extent, then
+// widened by one sample cell each way and clamped — over rectangles chosen so no sample is partially
+// covered. The one case that does downscale is aligned to its ratio for the same reason: the kernel
+// has its own group, and a plane case that also exercised a partial footprint would fail for two
+// reasons at once.
+// --------------------------------------------------------------------------------------------
+
+const planeCases = [];
+
+function addPlane(entry) {
+  planeCases.push(entry);
+}
+
+{
+  const reference = fillRect(raster(32, 24, WHITE), { x: 10, y: 8, width: 8, height: 8 }, BLACK);
+  addPlane({
+    id: "an-opaque-sheet-crops-to-its-mark",
+    title: "A white scaffold sheet with a mark inset on it",
+    why:
+      "The ordinary case, and the one the widening rule is visible in: the mark spans x 10–17, and " +
+      "the box is x 9–18 because a downscale can shave a partially-covered edge pixel. At this size " +
+      "the sampling scale is 1, so nothing is shaved and the widening is pure margin — which is the " +
+      "point, since the rule must not depend on whether it was needed.",
+    reference,
+    candidate: reference,
+    expected: {
+      pins: ["referenceContentBox", "plane"],
+      referenceContentBox: { x: 9, y: 7, width: 10, height: 10 },
+      plane: { plane: "content-box", box: { x: 9, y: 7, width: 10, height: 10 } },
+    },
+  });
+}
+
+{
+  const reference = fillRect(raster(32, 24, GREY), { x: 10, y: 8, width: 8, height: 8 }, BLACK);
+  addPlane({
+    id: "an-unknown-opaque-corner-is-the-whole-image",
+    title: "An opaque backdrop that is not a sheet the renderer paints",
+    why:
+      "A uniform border around an interior region is the *same picture* whether the border is a " +
+      "scaffold sheet with a card inset on it or a card that bleeds to the artboard edge with text " +
+      "inset on it. Guessing gets the second one backwards — it strips the component's own surface " +
+      "— so an unrecognised corner means the whole image, which errs toward comparing too much.",
+    reference,
+    candidate: reference,
+    expected: {
+      pins: ["referenceContentBox", "plane"],
+      referenceContentBox: { x: 0, y: 0, width: 32, height: 24 },
+      // Whole-image on both sides still covers the canvas, so this is `content-box` with a box that
+      // happens to be everything — not the `full-canvas` fallback, which is about coverage.
+      plane: { plane: "content-box", box: { x: 0, y: 0, width: 32, height: 24 } },
+    },
+  });
+}
+
+{
+  const reference = fillRect(raster(32, 24, [0, 0, 0, 0]), { x: 10, y: 8, width: 8, height: 8 }, BLACK);
+  addPlane({
+    id: "alpha-decides-wherever-there-is-any",
+    title: "A transparent capture, measured by its alpha",
+    why:
+      "A transparent pixel is unambiguously not artwork, so alpha is read before colour and the " +
+      "backdrop is never guessed. Same mark and same box as the sheet case, reached down the other " +
+      "branch — which is what makes the two comparable at all.",
+    reference,
+    candidate: reference,
+    expected: {
+      pins: ["referenceContentBox"],
+      referenceContentBox: { x: 9, y: 7, width: 10, height: 10 },
+    },
+  });
+}
+
+{
+  const reference = raster(32, 24, WHITE);
+  addPlane({
+    id: "a-blank-capture-has-no-box",
+    title: "A capture with nothing drawn on it",
+    why:
+      "No drawn pixel means no content box, and whole-image is the only meaningful answer. A " +
+      "min/max scan that forgot this returns an inverted rectangle, which every later stage would " +
+      "carry as a negative width.",
+    reference,
+    candidate: reference,
+    expected: {
+      pins: ["referenceContentBox"],
+      referenceContentBox: { x: 0, y: 0, width: 32, height: 24 },
+    },
+  });
+}
+
+{
+  // 16 px of 768 is 2.08%, under the 5% floor — so BOTH sides fall back, including the candidate
+  // whose own box is perfectly usable. Cropping one and not the other would be worse than not
+  // cropping, and this is the case that records `full-canvas` on the wire.
+  const reference = fillRect(raster(32, 24, WHITE), { x: 10, y: 8, width: 2, height: 2 }, BLACK);
+  const candidate = fillRect(raster(32, 24, WHITE), { x: 6, y: 4, width: 20, height: 16 }, BLACK);
+  addPlane({
+    id: "a-sliver-falls-back-to-the-full-canvas",
+    title: "One side below `MIN_BOX_COVERAGE`, and both fall back",
+    why:
+      "An empty-state preview whose only mark is a heading yields a box of a few percent of the " +
+      "canvas, and stretching that sliver across its partner turns one line of text into the entire " +
+      "comparison. The fallback depends on the *candidate's* coverage, which the reference's " +
+      "`sha256` does not pin — which is exactly why the discriminant is a recorded field rather " +
+      "than something re-derived at evaluation time.",
+    reference,
+    candidate,
+    expected: {
+      pins: ["referenceContentBox", "candidateContentBox", "plane", "boxes"],
+      referenceContentBox: { x: 9, y: 7, width: 4, height: 4 },
+      candidateContentBox: { x: 5, y: 3, width: 22, height: 18 },
+      plane: { plane: "full-canvas", box: { x: 0, y: 0, width: 32, height: 24 } },
+      boxes: {
+        reference: { x: 0, y: 0, width: 32, height: 24 },
+        candidate: { x: 0, y: 0, width: 32, height: 24 },
+      },
+    },
+  });
+}
+
+{
+  // The only case whose sampling scale is not 1: 512 px on its long side halves to the 256-px
+  // sample grid, so each sample is a 2×2 average. The mark is aligned to that grid, so every sample
+  // is either wholly background or wholly mark and the expected box is exact integer arithmetic.
+  const reference = fillRect(raster(512, 256, WHITE), { x: 100, y: 60, width: 20, height: 20 }, BLACK);
+  addPlane({
+    id: "the-sampling-downscale-is-the-portable-kernel",
+    title: "A capture large enough to be downscaled before it is sampled",
+    why:
+      "`contentBox` samples a downscale rather than the full raster, and that downscale is the one " +
+      "host-dependent step in the measurement. Through `drawImage` it is a filter no offline engine " +
+      "can reproduce; here it is the portable area average, so the two engines measure the same box. " +
+      "Samples 50–59 carry the mark, widened to 49–61 and mapped back by the inverse scale.",
+    reference,
+    candidate: reference,
+    expected: {
+      pins: ["referenceContentBox"],
+      referenceContentBox: { x: 98, y: 58, width: 24, height: 24 },
+    },
+  });
+}
+
+// --------------------------------------------------------------------------------------------
+// 5e. The tag index projected into the canonical plane.
+//
+// The index publishes render pixels and says so; an acceptance's `element.bounds` is canonical. The
+// element gate compares the two directly, so the comparison must convert — and §4 names the failure
+// for not converting: "an engine that expects canonical bounds from the index either compares raw
+// render coordinates or transforms an already-transformed box, and both report `element-moved` for
+// an element that never moved". A false invalidation with a plausible explanation attached, which
+// nothing surfaces.
+//
+// Pure geometry, like `rounding/`, so every expectation is derivable by hand.
+// --------------------------------------------------------------------------------------------
+
+const tagProjectionCases = [];
+
+function addTagProjection(entry) {
+  tagProjectionCases.push(entry);
+}
+
+addTagProjection({
+  id: "an-uncropped-plane-is-the-identity",
+  title: "A candidate box at the origin, the same size as the plane",
+  why:
+    "The case that hides the bug. With a zero origin and a 1:1 scale the raw index is already " +
+    "canonical, so an engine that skips the transform passes this and fails everything below it.",
+  candidateBox: { x: 0, y: 0, width: 40, height: 30 },
+  plane: { plane: "content-box", box: { x: 0, y: 0, width: 40, height: 30 } },
+  tagIndex: { glyph: { count: 1, bounds: { x: 8, y: 6, width: 10, height: 12 } } },
+  expected: { glyph: { count: 1, bounds: { x: 8, y: 6, width: 10, height: 12 } } },
+});
+
+addTagProjection({
+  id: "the-candidate-box-origin-is-subtracted",
+  title: "A cropped candidate, whose content box does not start at the origin",
+  why:
+    "The ordinary case on any preview with a scaffold sheet around it. The index measures from the " +
+    "render root; the plane starts at the content box, so the box's origin comes off first.",
+  candidateBox: { x: 10, y: 20, width: 40, height: 30 },
+  plane: { plane: "content-box", box: { x: 4, y: 4, width: 40, height: 30 } },
+  tagIndex: { glyph: { count: 1, bounds: { x: 18, y: 26, width: 8, height: 6 } } },
+  expected: { glyph: { count: 1, bounds: { x: 8, y: 6, width: 8, height: 6 } } },
+});
+
+addTagProjection({
+  id: "the-two-axes-scale-independently",
+  title: "A candidate box whose proportion differs from the plane's",
+  why:
+    "`boxCanvas` stretches width and height separately, and the comparison *supports* the two " +
+    "content boxes disagreeing about proportion — `aspectDelta` reports it as a finding rather " +
+    "than normalising it away. A single-ratio projection lands the box at the right x and the " +
+    "wrong y, which is the shape an acceptance is most likely to be sitting on.",
+  // x halves (80 → 40), y doubles (30 → 60).
+  candidateBox: { x: 0, y: 0, width: 80, height: 30 },
+  plane: { plane: "content-box", box: { x: 0, y: 0, width: 40, height: 60 } },
+  tagIndex: { glyph: { count: 1, bounds: { x: 20, y: 6, width: 16, height: 5 } } },
+  expected: { glyph: { count: 1, bounds: { x: 10, y: 12, width: 8, height: 10 } } },
+});
+
+addTagProjection({
+  id: "a-fractional-projection-rounds-outward",
+  title: "A scale that lands the box off the integer grid",
+  why:
+    "Outward at both ends (D5 answer 5): the index's own box first, the transformed one second. " +
+    "Rounding inward would report an element as having shrunk, and rounding to nearest would let " +
+    "it drift by half a pixel in either direction — both measured as movement by the gate.",
+  // A third: 30 → 10 on x, 30 → 10 on y.
+  candidateBox: { x: 0, y: 0, width: 30, height: 30 },
+  plane: { plane: "content-box", box: { x: 0, y: 0, width: 10, height: 10 } },
+  // 7/3 = 2.33 → floor 2; far edge 11/3 = 3.66 → ceil 4. Width 4 - 2 = 2.
+  tagIndex: { glyph: { count: 1, bounds: { x: 7, y: 7, width: 4, height: 4 } } },
+  expected: { glyph: { count: 1, bounds: { x: 2, y: 2, width: 2, height: 2 } } },
+});
+
+addTagProjection({
+  id: "a-negative-origin-clips-to-the-plane",
+  title: "A tagged node reaching above and left of the content box",
+  why:
+    "`boundsInRoot` may legitimately be negative — `ServeSemanticsTags` and `tag-index.mjs` both " +
+    "emit that — and the plane's coordinates are plane-local, so the part outside it is clipped " +
+    "rather than carried as a negative origin the mask has no pixels for.",
+  candidateBox: { x: 10, y: 10, width: 40, height: 30 },
+  plane: { plane: "content-box", box: { x: 0, y: 0, width: 40, height: 30 } },
+  tagIndex: { glyph: { count: 1, bounds: { x: 4, y: 4, width: 12, height: 12 } } },
+  expected: { glyph: { count: 1, bounds: { x: 0, y: 0, width: 6, height: 6 } } },
+});
+
+addTagProjection({
+  id: "a-box-outside-the-plane-keeps-its-count",
+  title: "A tagged node that clips away entirely",
+  why:
+    "The tag is still in the tree, so its `count` survives and only its geometry is lost — the " +
+    "gate's own rule for a resolved node with no usable bounds takes over from there. Dropping the " +
+    "entry would say the tag had *vanished*, which is a different verdict about a different fact.",
+  candidateBox: { x: 0, y: 0, width: 40, height: 30 },
+  plane: { plane: "content-box", box: { x: 0, y: 0, width: 40, height: 30 } },
+  tagIndex: { glyph: { count: 2, bounds: { x: 60, y: 60, width: 8, height: 8 } } },
+  expected: { glyph: { count: 2 } },
+});
+
+// --------------------------------------------------------------------------------------------
 // 6. Write the tree.
 // --------------------------------------------------------------------------------------------
 
@@ -5052,6 +5604,55 @@ for (const entry of resampleCases) {
   );
 }
 
+for (const entry of tagProjectionCases) {
+  const dir = `tag-projection/${entry.id}`;
+  write(
+    `${dir}/case.json`,
+    json({
+      title: entry.title,
+      why: entry.why,
+      candidateBox: entry.candidateBox,
+      plane: entry.plane,
+      tagIndex: entry.tagIndex,
+    }),
+  );
+  write(`${dir}/expected.json`, json(entry.expected));
+}
+
+for (const entry of planeCases) {
+  const dir = `plane/${entry.id}`;
+  write(`${dir}/reference.png`, Buffer.from(rgbaPng(entry.reference)));
+  write(`${dir}/candidate.png`, Buffer.from(rgbaPng(entry.candidate)));
+  write(
+    `${dir}/case.json`,
+    json({ title: entry.title, why: entry.why, reference: "reference.png", candidate: "candidate.png" }),
+  );
+  write(`${dir}/expected.json`, json(entry.expected));
+}
+
+for (const entry of scoringCases) {
+  const dir = `scoring/${entry.id}`;
+  write(`${dir}/reference.png`, Buffer.from(rgbaPng(entry.reference)));
+  write(`${dir}/candidate.png`, Buffer.from(rgbaPng(entry.candidate)));
+  for (const [name, bytes] of Object.entries(entry.masks)) write(`${dir}/masks/${name}`, Buffer.from(bytes));
+  write(
+    `${dir}/case.json`,
+    json({
+      title: entry.title,
+      why: entry.why,
+      plane: entry.plane,
+      referenceBox: entry.referenceBox,
+      candidateBox: entry.candidateBox,
+      reference: "reference.png",
+      candidate: "candidate.png",
+      // The surviving union, given. Which acceptances reached `valid` is the gates' answer and is
+      // pinned by `cases/`; a runner here starts from the masks that survived.
+      masks: Object.keys(entry.masks).map((name) => `masks/${name}`),
+    }),
+  );
+  write(`${dir}/expected.json`, json(entry.expected));
+}
+
 write(
   "index.json",
   json({
@@ -5059,6 +5660,9 @@ write(
     cases: cases.map((entry) => ({ id: entry.id, title: entry.title, site: entry.site ?? null })),
     resample: resampleCases.map((entry) => ({ id: entry.id, title: entry.title })),
     rounding: roundingCases.map((entry) => ({ id: entry.id, title: entry.title })),
+    scoring: scoringCases.map((entry) => ({ id: entry.id, title: entry.title })),
+    plane: planeCases.map((entry) => ({ id: entry.id, title: entry.title })),
+    tagProjection: tagProjectionCases.map((entry) => ({ id: entry.id, title: entry.title })),
   }),
 );
 
@@ -5095,7 +5699,10 @@ write(
     "",
     "`expected.json` is a **partial** pin: its `pins` array names the keys a runner must check. A key",
     "listed there must match exactly; a key that is absent is not pinned by any batch *yet*. The score",
-    "stages — `raw`, `accepted`, `unaccepted` — are the ones batch 05 adds, over these same cases.",
+    "stages — `raw`, `accepted`, `unaccepted` — live in their own `scoring/` group rather than on every",
+    "case here: a gate case is handed canonical planes and no source rasters, so it has nothing to",
+    "score, and spreading the scoring path across sixty gate cases would report a scorer divergence as",
+    "sixty wrong verdicts.",
     "",
     "The canonical-plane rasters arrive **already resampled**, deliberately. The portable kernel has its",
     "own group under `resample/`, so a resampler divergence fails there rather than surfacing as a wrong",
@@ -5146,10 +5753,63 @@ write(
     "| --- | --- |",
     ...roundingCases.map((entry) => `| \`${entry.id}\` | ${entry.title} |`),
     "",
+    "## The separated-plane score",
+    "",
+    "Batch 05's half. A scoring case starts from the **surviving union** — the masks of the",
+    "acceptances that reached `valid` — because which ones survive is the gates' answer and `cases/`",
+    "already pins it. The two halves meet at the `survivingMaskIds` pin, which is what makes",
+    "\"a `resolved` mask suppresses nothing\" a property two fixtures establish between them rather",
+    "than one that asserts its own premise.",
+    "",
+    "```",
+    "scoring/<case-id>/",
+    "  case.json                  # the two boxes, the recorded plane, and the surviving masks",
+    "  reference.png              # the full SOURCE rasters — the score resamples from these (I10),",
+    "  candidate.png              # not from the canonical plane, which is for the gates",
+    "  masks/*.png                # one per surviving acceptance, in the canonical plane",
+    "  expected.json              # scorePlane, presence, samples, scores — and which are normative",
+    "```",
+    "",
+    "Every case is built from flat rectangles, so the metric collapses to `pixelCost(|Δluma|)` per",
+    "coordinate over a denominator that can be counted — which is what lets `expected.json` state each",
+    "number as arithmetic rather than as whatever the implementation produced. `epsilon` is there",
+    "because a luminance is a float dot product: an engine agreeing on the algorithm lands within a",
+    "double's rounding of the declared decimal, and an engine disagreeing about the algorithm misses",
+    "by orders of magnitude more.",
+    "",
+    "| Case | What it pins |",
+    "| --- | --- |",
+    ...scoringCases.map((entry) => `| \`${entry.id}\` | ${entry.title} |`),
+    "",
+    "## The canonical plane",
+    "",
+    "Content-box detection is part of the portable path, not a host detail: the plane gate compares a",
+    "**recomputed** plane against the recorded one, so a one-pixel disagreement about a box is",
+    "`plane-changed` on one engine and `valid` on the other. Every gate case is handed its plane as an",
+    "input — deliberately, so it tests the gate — which leaves the measurement pinned by nothing at all",
+    "without this group.",
+    "",
+    "| Case | What it pins |",
+    "| --- | --- |",
+    ...planeCases.map((entry) => `| \`${entry.id}\` | ${entry.title} |`),
+    "",
+    "## The tag index, projected",
+    "",
+    "The index publishes `boundsInRoot` in **render pixels** and names that space on the wire; an",
+    "acceptance's `element.bounds` is its authoring-time baseline in the **canonical plane**. The",
+    "element gate compares the two directly, so the comparison converts — and §4 names the failure for",
+    "not converting: an engine that expects canonical bounds from the index reports `element-moved` for",
+    "an element that never moved. Pure geometry, so every expectation is derivable by hand.",
+    "",
+    "| Case | What it pins |",
+    "| --- | --- |",
+    ...tagProjectionCases.map((entry) => `| \`${entry.id}\` | ${entry.title} |`),
+    "",
   ].join("\n"),
 );
 
 process.stdout.write(
   `known-differences fixtures: ${cases.length} cases, ${resampleCases.length} resample cases, ` +
-    `${roundingCases.length} rounding cases\n`,
+    `${roundingCases.length} rounding cases, ${scoringCases.length} scoring cases, ` +
+    `${planeCases.length} plane cases, ${tagProjectionCases.length} tag-projection cases\n`,
 );

@@ -1,0 +1,11 @@
+{
+  "pins": [
+    "referenceContentBox"
+  ],
+  "referenceContentBox": {
+    "x": 98,
+    "y": 58,
+    "width": 24,
+    "height": 24
+  }
+}

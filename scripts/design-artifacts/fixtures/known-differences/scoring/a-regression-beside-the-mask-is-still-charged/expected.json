@@ -1,0 +1,21 @@
+{
+  "pins": [
+    "scorePlane",
+    "presence",
+    "scores"
+  ],
+  "epsilon": 1e-9,
+  "scorePlane": {
+    "width": 32,
+    "height": 24
+  },
+  "presence": {
+    "whole": 768,
+    "accepted": 64,
+    "unaccepted": 704
+  },
+  "scores": {
+    "unaccepted": 82.35294117647058,
+    "accepted": 62.5
+  }
+}

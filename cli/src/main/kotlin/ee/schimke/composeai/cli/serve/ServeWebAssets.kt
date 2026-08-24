@@ -50,6 +50,12 @@ internal object ServeWebAssets {
       "report-capture.js" to "text/javascript; charset=utf-8",
       "viewer.js" to "text/javascript; charset=utf-8",
       "format-compare.js" to "text/javascript; charset=utf-8",
+      // The acceptance band and the engine behind it: the known-difference contract's whole
+      // reference implementation, shared verbatim with `scripts/design-artifacts/` so the browser
+      // and the offline driver cannot disagree about what an acceptance means. Its own bundle, and
+      // emitted only by a focused comparison on a catalog that has actually published a document —
+      // it is the heaviest asset on that page and there is nothing for it to do anywhere else.
+      "known-differences.js" to "text/javascript; charset=utf-8",
     )
 
   private val cache = java.util.concurrent.ConcurrentHashMap<String, Asset>()

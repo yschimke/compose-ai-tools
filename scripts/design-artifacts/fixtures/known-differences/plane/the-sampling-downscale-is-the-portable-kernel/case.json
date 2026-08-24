@@ -1,0 +1,6 @@
+{
+  "title": "A capture large enough to be downscaled before it is sampled",
+  "why": "`contentBox` samples a downscale rather than the full raster, and that downscale is the one host-dependent step in the measurement. Through `drawImage` it is a filter no offline engine can reproduce; here it is the portable area average, so the two engines measure the same box. Samples 50–59 carry the mark, widened to 49–61 and mapped back by the inverse scale.",
+  "reference": "reference.png",
+  "candidate": "candidate.png"
+}
