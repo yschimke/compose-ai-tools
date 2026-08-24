@@ -470,7 +470,12 @@ async function prefetch(
                     entry.totalKnown = true;
                     if (headerEarnsFullRead(entry.header)) entry.full = measured;
                 } else {
-                    entry.header = measured;
+                    // **The header round succeeded; only the measurement failed.** Replacing the good
+                    // header with this refusal would move the record's rejection *ahead of* the
+                    // aggregate pixel budget: its two headers would stop being charged, so a document
+                    // that is `document-too-large` on the reference reader would come back with
+                    // per-record statuses instead. The refusal belongs to the phase that established
+                    // it, which is the full read.
                     entry.full = measured;
                 }
                 return;
@@ -576,10 +581,26 @@ function totalBytesFromHeaders(response: Response): number | null {
         if (total) return Number(total[1]);
     }
     if (response.status !== 206) {
+        // **`Content-Length` describes the bytes on the wire, and `fetch` hands over decoded ones.**
+        // A proxy that gzips the artifact reports the compressed size while the body arrives
+        // expanded, so taking the header at face value states a length shorter than the prefix
+        // already in hand — which the engine's reader guard rejects outright as `artifact-unreadable`,
+        // for an artifact that is merely compressed in transit. Unknown is the truthful answer, and
+        // the measurement pass then reads the decoded body and gets it right.
+        if (isReEncoded(response)) return null;
         const length = response.headers.get("Content-Length");
         if (length !== null && /^\d+$/.test(length)) return Number(length);
     }
     return null;
+}
+
+/** Whether the body was transfer-encoded, so its declared length describes bytes we never see. */
+function isReEncoded(response: Response): boolean {
+    const encoding = response.headers.get("Content-Encoding");
+    if (encoding === null) return false;
+    return encoding
+        .split(",")
+        .some((token) => token.trim().toLowerCase() !== "identity" && token.trim() !== "");
 }
 
 /** Read a response body until `limit` bytes, then cancel the stream so the rest is never allocated. */
@@ -587,9 +608,14 @@ async function readAtMost(response: Response, limit: number): Promise<Uint8Array
     if (!response.body) {
         // No stream to bound — take the buffer and cut it, the one path where the full body is briefly
         // held. A fetch implementation without a readable body is the fallback, not the norm.
+        //
+        // **`slice`, not `subarray`.** A subarray is a *view*: it keeps the entire `arrayBuffer()`
+        // alive as its backing store, so a 4 KiB prefix retained in the prefetch map would pin the
+        // whole eight-megabyte body — rebuilding the peak this path exists to prevent, and doing it
+        // invisibly, since the prefix reports a length of 4096 either way. `slice` copies.
         try {
             const buffer = new Uint8Array(await response.arrayBuffer());
-            return buffer.subarray(0, limit);
+            return buffer.slice(0, limit);
         } catch {
             return null;
         }
