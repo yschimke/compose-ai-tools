@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.34.0](https://github.com/yschimke/compose-ai-tools/compare/v1.33.0...v1.34.0) (2026-08-24)
+
+
+### Features
+
+* **discovery:** reject @CaptureGutter combined with @ScrollingPreview ([#4488](https://github.com/yschimke/compose-ai-tools/issues/4488)) ([53d6716](https://github.com/yschimke/compose-ai-tools/commit/53d67165c0c08529c11b5ac4c97534599eed24b7))
+* **parity:** score scoped acceptances, in both hosts of one engine ([#4480](https://github.com/yschimke/compose-ai-tools/issues/4480)) ([ef8492c](https://github.com/yschimke/compose-ai-tools/commit/ef8492c9d9158ff0899423b4b2d42d867f06ff4b))
+* **rc-compare:** compare both AndroidX embedded players ([#4490](https://github.com/yschimke/compose-ai-tools/issues/4490)) ([92988d3](https://github.com/yschimke/compose-ai-tools/commit/92988d3fb99c0b1ecfb69407c19840d8f8ef899e))
+
+
+### Bug Fixes
+
+* **ci:** restore Gradle 9.7.0 and serialize rename e2e ([#4491](https://github.com/yschimke/compose-ai-tools/issues/4491)) ([b9fc479](https://github.com/yschimke/compose-ai-tools/commit/b9fc479c93cd2046557a14a0314ffdcc8f851030))
+* **ci:** unpin Gradle after serializing cancellation repair ([#4487](https://github.com/yschimke/compose-ai-tools/issues/4487)) ([47243aa](https://github.com/yschimke/compose-ai-tools/commit/47243aa900e4ff371f820eb51107cb383ca25542))
+* **parity:** serve the header preflight a prefix, not the whole artifact ([#4484](https://github.com/yschimke/compose-ai-tools/issues/4484)) ([e42fb33](https://github.com/yschimke/compose-ai-tools/commit/e42fb33a4e18a3b5459ec2571664a843f0e2ddbf))
+* **parity:** spell element.tolerance canonically, and compare the element gate in integers ([#4482](https://github.com/yschimke/compose-ai-tools/issues/4482)) ([abbd3d1](https://github.com/yschimke/compose-ai-tools/commit/abbd3d15aec691657e1bf347e049b85dd64325c7))
+* **parity:** tell an unevaluated comparison from an empty one ([#4489](https://github.com/yschimke/compose-ai-tools/issues/4489)) ([bcf621b](https://github.com/yschimke/compose-ai-tools/commit/bcf621bf9b3888bf04e31e8e1290abfc1b0e1c71))
+* **recording:** correct backdrop, missing frames and scaling in held recordings ([#4481](https://github.com/yschimke/compose-ai-tools/issues/4481)) ([d67f1ee](https://github.com/yschimke/compose-ai-tools/commit/d67f1ee370f6c956f86bb10747dcccd28b89977e))
+* **release:** avoid long-path fixtures in Windows XR checkout ([#4485](https://github.com/yschimke/compose-ai-tools/issues/4485)) ([f359845](https://github.com/yschimke/compose-ai-tools/commit/f359845bf0d63078d3f1fb8945015677bc7bf843))
+* **renderer:** preserve dark theme on CMP 1.12 ([#4486](https://github.com/yschimke/compose-ai-tools/issues/4486)) ([8431175](https://github.com/yschimke/compose-ai-tools/commit/8431175b8ea8128a79d59ea16fca01ae44cfc4f4))
+
 ## [1.33.0](https://github.com/yschimke/compose-ai-tools/compare/v1.32.0...v1.33.0) (2026-08-24)
 
 
