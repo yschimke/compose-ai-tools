@@ -20,13 +20,15 @@ import {
     catalogRoutes,
     fillRect,
     knownDifferencesJson,
+    maskPng,
     png,
     raster,
     scope,
     withFetch,
     world,
 } from "./support/knownDifferences.js";
-import { sha256Hex } from "../../../scripts/design-artifacts/png-lite.mjs";
+import { chunk, sha256Hex } from "../../../scripts/design-artifacts/png-lite.mjs";
+import { encodePng } from "../../../scripts/design-artifacts/png-write.mjs";
 import { evaluateComparison } from "../src/parity/acceptance.js";
 
 /** One recorded request: the path asked for, and the `Range` header if the caller sent one. */
@@ -124,6 +126,28 @@ function pngWithOversizedPlte(): Uint8Array {
     out.set(tail, signatureAndIhdr.length + plte.length);
     return out;
 }
+
+/**
+ * A PNG whose `IHDR` **declares** `width x height` without carrying the pixels for it.
+ *
+ * The budget is computed from declared dimensions during the header pass, so a case about the budget
+ * needs a header that claims a large raster and a file that stays a few hundred bytes. Rebuilt through
+ * `chunk`, which recomputes the CRC — a hand-patched length would fail the preflight for the wrong
+ * reason and the test would pass without exercising anything.
+ */
+function pngDeclaring(base: Uint8Array, width: number, height: number): Uint8Array {
+    const ihdrData = base.slice(16, 16 + 13);
+    const view = new DataView(ihdrData.buffer, ihdrData.byteOffset, ihdrData.byteLength);
+    view.setUint32(0, width);
+    view.setUint32(4, height);
+    const rebuilt = chunk("IHDR", ihdrData);
+    const out = new Uint8Array(8 + rebuilt.length + (base.length - 33));
+    out.set(base.subarray(0, 8), 0);
+    out.set(rebuilt, 8);
+    out.set(base.subarray(33), 8 + rebuilt.length);
+    return out;
+}
+
 describe("evaluateComparison", () => {
     it("says nothing at all when the catalog publishes no document", async () => {
         const report = await withFetch({}, () =>
@@ -399,6 +423,127 @@ describe("evaluateComparison", () => {
         assert.deepEqual(report.statuses, {
             glyph: { status: "refused", reasons: ["header-invalid"] },
         });
+    });
+
+    it("charges a readable header to the budget even when the measurement read is refused", async () => {
+        // A prefix that filled its 4096 bytes without a declared size has to be read again just to be
+        // measured. If *that* read is refused, the refusal belongs to the full-read phase — not to the
+        // header, which succeeded.
+        //
+        // Overwriting the header with it moves the record's rejection ahead of the aggregate pixel
+        // budget, and the budget is a *document* verdict: these two artifacts declare 8192x8192 each,
+        // so together they are 134 MP against a 128 MP ceiling and the whole document is
+        // `document-too-large` with no statuses at all. Drop one header from the charge and the
+        // document fits, so the browser reports a per-record status for a document the reference
+        // reader rejects outright.
+        const scene = world();
+        // Two constraints pull against each other here, and both matter.
+        //
+        // The mask keeps its **greyscale** encoding, or `mask-encoding-invalid` refuses the record in
+        // the preflight and its headers never reach the budget — passing the test for the wrong reason.
+        //
+        // And each file must be **larger than the prefix**, or the short read proves the size on its
+        // own and the unknown-size path this case is about is never taken. A flat raster deflates to a
+        // few hundred bytes, so the samples are noise.
+        // A deterministic LCG rather than a sawtooth: `(i * k) % m` is periodic and deflate finds the
+        // period, which took an earlier attempt back under the prefix.
+        let seed = 12345;
+        const next = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) >>> 16;
+        const greySamples = new Uint8Array(128 * 128);
+        for (let i = 0; i < greySamples.length; i++) greySamples[i] = next() & 0xff;
+        const hugeMask = pngDeclaring(
+            encodePng({ width: 128, height: 128, colourType: 0, samples: greySamples }) as Uint8Array,
+            8192,
+            8192,
+        );
+        const noisy = raster(64, 64, WHITE);
+        for (let i = 0; i < noisy.pixels.length; i += 4) {
+            noisy.pixels[i] = next() & 0xff;
+            noisy.pixels[i + 1] = next() & 0xff;
+            noisy.pixels[i + 2] = next() & 0xff;
+        }
+        const hugeCandidate = pngDeclaring(png(noisy), 8192, 8192);
+        assert.ok(hugeMask.length > 4096, "the prefix must be filled, or the size is known from a short read");
+        assert.ok(hugeCandidate.length > 4096, "same for the candidate");
+        const routes = catalogRoutes(
+            scene,
+            knownDifferencesJson(scene, {
+                maskSha256: sha256Hex(hugeMask),
+                acceptedCandidateSha256: sha256Hex(hugeCandidate),
+            }),
+        );
+        routes["/m3/parity/known-differences/glyph/mask.png"] = hugeMask;
+        routes["/m3/parity/known-differences/glyph/accepted-candidate.png"] = hugeCandidate;
+
+        const base = recordingFetch(routes, { honourRange: false, declareSize: false });
+        const original = globalThis.fetch;
+        globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const ranged = new Headers(init?.headers ?? {}).get("Range") !== null;
+            // The prefix is served; only the measurement re-read of the mask is forbidden.
+            if (url.endsWith("/glyph/mask.png") && !ranged) {
+                return Promise.resolve(new Response("no", { status: 403 }));
+            }
+            return base.impl(input, init);
+        }) as typeof fetch;
+        try {
+            const report = await evaluateComparison(SOURCES, scope(scene), {});
+            assert.deepEqual(
+                report.validationFailures,
+                [{ reason: "document-too-large" }],
+                "both headers are charged, so the document is over budget",
+            );
+            assert.deepEqual(report.statuses, {}, "a document-level rejection carries no statuses");
+        } finally {
+            globalThis.fetch = original;
+        }
+    });
+
+    it("does not trust a declared length that describes re-encoded bytes", async () => {
+        // `Content-Length` counts the bytes on the wire; `fetch` hands over decoded ones. A proxy that
+        // gzips the artifact therefore declares a length shorter than the prefix already in hand, and
+        // the engine's reader guard refuses a `byteLength` below the bytes handed over — reporting
+        // `artifact-unreadable` for an artifact whose only sin is being compressed in transit.
+        const scene = world();
+        const noisy = raster(64, 64, WHITE);
+        for (let i = 0; i < noisy.pixels.length; i += 4) {
+            noisy.pixels[i] = (i * 41) % 251;
+            noisy.pixels[i + 1] = (i * 97) % 241;
+            noisy.pixels[i + 2] = (i * 157) % 239;
+        }
+        const big = png(noisy);
+        assert.ok(big.length > 4096, "the artifact has to outgrow the prefix");
+        const routes = catalogRoutes(
+            scene,
+            knownDifferencesJson(scene, { acceptedCandidateSha256: sha256Hex(big) }),
+        );
+        const original = globalThis.fetch;
+        const base = recordingFetch(routes, { honourRange: false });
+        globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            if (url.endsWith("/glyph/accepted-candidate.png")) {
+                return Promise.resolve(
+                    new Response(big as unknown as BodyInit, {
+                        headers: {
+                            // The compressed size, which is what a gzipping proxy reports.
+                            "Content-Length": "512",
+                            "Content-Encoding": "gzip",
+                        },
+                    }),
+                );
+            }
+            return base.impl(input, init);
+        }) as typeof fetch;
+        try {
+            const report = await evaluateComparison(SOURCES, scope(scene), {});
+            const reasons = report.statuses.glyph?.reasons ?? [];
+            assert.ok(
+                !reasons.includes("artifact-unreadable"),
+                `a compressed artifact must not read as unreadable, got ${JSON.stringify(report.statuses.glyph)}`,
+            );
+        } finally {
+            globalThis.fetch = original;
+        }
     });
 
     it("reads an empty artifact as a short header, not as an unopenable file", async () => {
