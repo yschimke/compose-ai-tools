@@ -151,26 +151,36 @@ class IncrementalDiscovery(
       if (!matchesFile) continue
       for (method in classInfo.methodInfo) {
         val annotations = method.annotationInfo?.toList().orEmpty()
+        val direct = collectDirectPreviews(annotations)
+        val expansions =
+          if (direct.isNotEmpty()) direct
+          else annotations.flatMap { resolveMultiPreview(it, scanResult, mutableSetOf()) }
+        if (expansions.isEmpty()) continue
+
         // Mirror the authoritative pass's rejection of `@CaptureGutter` + `@ScrollingPreview`
-        // (PreviewDiscovery). Without this, a full pass correctly drops the combination from
+        // (PreviewDiscovery). Without it, a full pass correctly drops the combination from
         // `previews.json`, but the first source edit re-adds the function here — the diff sees a
         // previously-absent id and treats it as an addition — so the daemon would expose an
         // unguttered, unscrolled preview until the next full discovery. `@CaptureGutter` may be
-        // hoisted onto a multi-preview annotation, so the check walks the meta-annotation closure
-        // the same way `resolveMultiPreview` does.
-        if (declaresGutterAndScrolling(annotations, scanResult)) continue
-        val direct = collectDirectPreviews(annotations)
-        if (direct.isNotEmpty()) {
-          for (ann in direct) {
-            results.add(toDto(classInfo, method, ann, sourceKey))
-          }
+        // hoisted onto a multi-preview annotation, so the check walks the meta-annotation closure.
+        //
+        // Best-effort, like the rest of this path: it resolves the closure through the scoped scan,
+        // so a `@CaptureGutter` hoisted onto a *dependency-JAR* annotation (outside the narrowed
+        // classpath) is not seen here and slips through until the next full discovery corrects it;
+        // and once a rejected function is out of the index, a fix that removes one annotation may
+        // not re-trip `cheapPrefilter` (its regex carries only the known preview FQNs), so recovery
+        // likewise waits for a full pass. Both match the incremental path's standing v1 contract
+        // (see [scanForFile] / the class kdoc), where identity is authoritative and details settle
+        // on the next full discovery.
+        if (declaresGutterAndScrolling(annotations, scanResult)) {
+          System.err.println(
+            "compose-ai-daemon: IncrementalDiscovery skipping '${classInfo.name}.${method.name}'" +
+              " — @CaptureGutter cannot be combined with @ScrollingPreview; remove one annotation."
+          )
           continue
         }
-        for (ann in annotations) {
-          val resolved = resolveMultiPreview(ann, scanResult, mutableSetOf())
-          for (resolvedAnn in resolved) {
-            results.add(toDto(classInfo, method, resolvedAnn, sourceKey))
-          }
+        for (ann in expansions) {
+          results.add(toDto(classInfo, method, ann, sourceKey))
         }
       }
     }

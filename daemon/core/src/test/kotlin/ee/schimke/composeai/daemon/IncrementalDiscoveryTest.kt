@@ -170,7 +170,18 @@ class IncrementalDiscoveryTest {
     // The authoritative pass (PreviewDiscovery) rejects that combination; the incremental scan must
     // too, or a source edit re-adds the rejected preview to the index (issue #4467 / #4488 review).
     val syntheticKt = Path.of(System.getProperty("java.io.tmpdir"), "GutterScrollFixtures.kt")
-    val results = discovery.scanForFile(syntheticKt)
+    // Capture stderr so the rejection diagnostic (which the full pass emits as a warning) can be
+    // asserted — the incremental path must name the function it drops, not remove it silently.
+    val savedErr = System.err
+    val captured = java.io.ByteArrayOutputStream()
+    val results =
+      try {
+        System.setErr(java.io.PrintStream(captured, true, "UTF-8"))
+        discovery.scanForFile(syntheticKt)
+      } finally {
+        System.setErr(savedErr)
+      }
+    val diagnostics = captured.toString("UTF-8")
     val methods = results.map { it.methodName }.toSet()
 
     // Both contradictory combinations are dropped — the direct one and the one whose gutter is
@@ -192,6 +203,12 @@ class IncrementalDiscoveryTest {
     assertTrue(
       "zero-gutter + scroll must survive; got $methods",
       "zeroGutterScrollingPreview" in methods,
+    )
+    // The drop is announced, not silent: the diagnostic names the rejected function(s).
+    assertTrue(
+      "rejection must be reported to stderr; got: $diagnostics",
+      "gutteredScrollingPreview" in diagnostics &&
+        "@CaptureGutter cannot be combined with @ScrollingPreview" in diagnostics,
     )
   }
 
