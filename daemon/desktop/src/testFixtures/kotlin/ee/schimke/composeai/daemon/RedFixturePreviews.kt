@@ -64,9 +64,11 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
 
 /**
  * Test fixtures for [RenderEngineTest] / [JsonRpcDesktopIntegrationTest]. Lives in the test source
@@ -948,6 +950,23 @@ fun TristateClickSquare() {
 @Composable
 fun HalfSandboxBlock() {
   Box(modifier = Modifier.size(width = 400.dp, height = 800.dp).background(Color(0xFFEF5350)))
+}
+
+/**
+ * Static wrap-content block with a **popup** reaching the sandbox bounds (issue #4467 review).
+ *
+ * The content box never changes size; the popup paints into a semantics owner of its own, well
+ * outside it. That is the case that separates the *crop* extent — which must fold the popup in, or
+ * the dropdown gets cut off — from the *growth* range, which must not: reading this recording as
+ * grown would flood the transparent sandbox around the popup with the opaque preview background.
+ */
+@Composable
+fun PopupBesideStaticBlock() {
+  Box(modifier = Modifier.size(width = 60.dp, height = 30.dp).background(Color(0xFFEF5350))) {
+    Popup(offset = IntOffset(300, 700)) {
+      Box(modifier = Modifier.size(20.dp).background(Color(0xFF1E88E5)))
+    }
+  }
 }
 
 /**

@@ -34,6 +34,9 @@ import kotlin.math.ceil
 import okio.FileSystem
 import okio.Path.Companion.toPath
 import org.jetbrains.skia.Image
+import org.jetbrains.skia.Rect
+import org.jetbrains.skia.SamplingMode
+import org.jetbrains.skia.Surface
 
 /**
  * Desktop concrete [RecordingSession] driving a virtual frame clock against a held
@@ -128,6 +131,34 @@ class DesktopRecordingSession(
   @Volatile private var maxMeasuredWidthPx: Int = 0
 
   @Volatile private var maxMeasuredHeightPx: Int = 0
+
+  /**
+   * The smallest and largest **content-box** size measured over the recording — the range that
+   * answers "did this component grow?", which decides whether the earlier frames need the backdrop
+   * laid under them: a frame taken while the component was smaller is transparent everywhere it had
+   * not reached, whatever the final size turns out to be. Without it the wholesale no-op skips the
+   * fill exactly when growth happens to end on the scene's own bounds (issue #4467).
+   *
+   * Deliberately NOT [maxMeasuredWidthPx]: that one is the *crop* extent, folded with every
+   * semantics owner so a popup outside the content box is not cut off. Comparing a content-box
+   * minimum against a popup-inflated maximum would read a static component with a dropdown reaching
+   * the scene bounds as grown, and fill the whole scene with the opaque background — so the growth
+   * test compares like with like.
+   *
+   * [contentBoundsObserved] is the "nothing measured yet" sentinel rather than a zero minimum: a
+   * wrapped layout can legitimately measure an axis to zero (a collapsed `AnimatedVisibility`, a
+   * zero-sized placeholder), and dropping that leaves a later expansion looking like it was always
+   * its final size.
+   */
+  @Volatile private var contentBoundsObserved: Boolean = false
+
+  @Volatile private var minContentWidthPx: Int = 0
+
+  @Volatile private var minContentHeightPx: Int = 0
+
+  @Volatile private var maxContentWidthPx: Int = 0
+
+  @Volatile private var maxContentHeightPx: Int = 0
 
   /**
    * The size the scene actually rendered at, observed rather than recomputed.
@@ -548,6 +579,13 @@ class DesktopRecordingSession(
     val measured = state.measuredContent
     if (measured[0] > maxMeasuredWidthPx) maxMeasuredWidthPx = measured[0]
     if (measured[1] > maxMeasuredHeightPx) maxMeasuredHeightPx = measured[1]
+    // The content-box range, kept apart from the crop extent below — see [minContentWidthPx]. A
+    // measured zero is a real measurement here, so the first frame seeds both ends of the range.
+    if (!contentBoundsObserved || measured[0] < minContentWidthPx) minContentWidthPx = measured[0]
+    if (!contentBoundsObserved || measured[1] < minContentHeightPx) minContentHeightPx = measured[1]
+    if (!contentBoundsObserved || measured[0] > maxContentWidthPx) maxContentWidthPx = measured[0]
+    if (!contentBoundsObserved || measured[1] > maxContentHeightPx) maxContentHeightPx = measured[1]
+    contentBoundsObserved = true
     // Every semantics owner, not just the content box. A `DropdownMenu`, tooltip or dialog paints
     // into an owner of its own, outside the box entirely — so a crop taken from the box alone would
     // cut the popup off, which is a regression against recording the whole scene. The batch motion
@@ -1166,15 +1204,55 @@ class DesktopRecordingSession(
    * encode.
    */
   private fun frameBytes(image: Image, frameIndex: Int): ByteArray {
-    val natural =
-      if (state.spec.overrides?.talkBack == true) talkBackFrameBytes(image, frameIndex)
-      else encodeNaturalPng(image)
-    // Scaled here only when the framing cannot change — see [framingKnownUpFront]. A wrapped
-    // preview's frames stay at scene size until `stop()` knows how big the component ever got.
-    if (!framingKnownUpFront || scale == 1.0f) return natural
+    // Scaling happens here only when the framing cannot change — see [framingKnownUpFront]. A
+    // wrapped preview's frames stay at scene size until `stop()` knows how big the component
+    // ever got.
+    val scaleNow = framingKnownUpFront && scale != 1.0f
     val scaledWidth = (image.width * scale).toInt().coerceAtLeast(1)
     val scaledHeight = (image.height * scale).toInt().coerceAtLeast(1)
-    return scalePngBytes(natural, image.width, image.height, scaledWidth, scaledHeight)
+
+    if (state.spec.overrides?.talkBack == true) {
+      // The overlay is drawn onto finished PNG bytes, so this path has no `Image` left to scale
+      // from and takes the raster scaler.
+      val overlaid = talkBackFrameBytes(image, frameIndex)
+      return if (!scaleNow) overlaid
+      else scalePngBytes(overlaid, image.width, image.height, scaledWidth, scaledHeight)
+    }
+    if (!scaleNow) return encodeNaturalPng(image)
+    // Scaled in Skia and encoded once, rather than encoded, decoded and re-encoded. A live 4K
+    // recording at `scale = 0.25` would otherwise pay full-resolution PNG compression AND
+    // decompression on every tick, which costs capture cadence for nothing (issue #4467).
+    return encodeScaledPng(image, scaledWidth, scaledHeight)
+  }
+
+  /**
+   * [image] drawn into a `width x height` raster surface and encoded once.
+   *
+   * `LINEAR` sampling is the right default for both up- and down-scaling: cheaper than CATMULL_ROM,
+   * no aliasing for typical UI content, and what browsers do for `<img>`. The sampling mode is not
+   * exposed on the wire — a caller wanting a pixel-perfect upscale passes `scale = 1.0` and
+   * resamples client-side.
+   */
+  private fun encodeScaledPng(image: Image, width: Int, height: Int): ByteArray {
+    val surface = Surface.makeRasterN32Premul(width, height)
+    return try {
+      surface.canvas.drawImageRect(
+        image = image,
+        src = Rect.makeWH(image.width.toFloat(), image.height.toFloat()),
+        dst = Rect.makeWH(width.toFloat(), height.toFloat()),
+        samplingMode = SamplingMode.LINEAR,
+        paint = null,
+        strict = true,
+      )
+      val snapshot = surface.makeImageSnapshot()
+      try {
+        snapshot.encodePngData()?.bytes ?: error("encodePngData() returned null (scaled)")
+      } finally {
+        snapshot.close()
+      }
+    } finally {
+      surface.close()
+    }
   }
 
   /**
@@ -1209,6 +1287,23 @@ class DesktopRecordingSession(
    * A no-op for anything already the right size, which is every fixed-size preview at `scale = 1`:
    * those frames are neither re-decoded nor rewritten.
    */
+  /**
+   * Every frame this recording claims to have written is still on disk, by index — not a glob of
+   * [framesDir], for the reasons the rewrite loop below spells out.
+   *
+   * Missing is a failure, exactly as unreadable is. Skipping would let `stop()` report the original
+   * frame count and the finalized dimensions over a set with a hole in it — which the encoder
+   * either rejects, or (ffmpeg's numbered input) silently truncates at the gap.
+   */
+  private fun requireContiguousFrames(frameCount: Int) {
+    for (index in 0 until frameCount) {
+      val name = "frame-${"%05d".format(index)}.png"
+      if (!File(framesDir, name).isFile) {
+        error("recording '$recordingId': frame $name is missing at finalization")
+      }
+    }
+  }
+
   private fun finalizeFrames(
     pendingPixels: List<PendingPixelAssert>,
     frameCount: Int,
@@ -1229,7 +1324,25 @@ class DesktopRecordingSession(
     val sceneHeight = if (renderedSceneHeightPx > 0) renderedSceneHeightPx else sceneHeightPx
     val nothingToCrop = naturalWidth == sceneWidth && naturalHeight == sceneHeight
     val nothingToScale = frameWidth == naturalWidth && frameHeight == naturalHeight
-    if (framingKnownUpFront || (nothingToCrop && nothingToScale)) return frameWidth to frameHeight
+    // "Nothing to crop, nothing to scale" is not the whole test. An opaque-background component
+    // that GREW still needs the backdrop laid under its earlier frames, and growth that happens to
+    // finish on the scene's own bounds satisfies both clauses while leaving exactly that work
+    // undone — the case the fill was added for (issue #4467).
+    val grew =
+      contentBoundsObserved &&
+        ((state.spec.wrapWidth && minContentWidthPx < maxContentWidthPx) ||
+          (state.spec.wrapHeight && minContentHeightPx < maxContentHeightPx))
+    val backdropOwed =
+      grew && !overlayFramedAgainstScene && (previewBackgroundArgb(state.spec) ushr 24) == 0xFF
+    // Ahead of the fast path, not inside the rewrite loop: a hole in the frame set is a failure for
+    // EVERY recording, and the recordings that take the no-op return — fixed-size ones above all —
+    // would otherwise have `stop()` report success and the original frame count over a set with a
+    // gap in it. `isFile` per index costs a stat and no decode, so the no-decode/no-rewrite
+    // optimization survives intact.
+    requireContiguousFrames(frameCount)
+    if (framingKnownUpFront || (nothingToCrop && nothingToScale && !backdropOwed)) {
+      return frameWidth to frameHeight
+    }
 
     fun framed(bytes: ByteArray): ByteArray =
       scalePngBytes(bytes, naturalWidth, naturalHeight, frameWidth, frameHeight)
@@ -1246,7 +1359,6 @@ class DesktopRecordingSession(
     // evidence disagreeing with the frame on disk.
     for (index in 0 until frameCount) {
       val file = File(framesDir, "frame-${"%05d".format(index)}.png")
-      if (!file.isFile) continue
       val bytes = file.readBytes()
       val framedBytes = framed(bytes)
       if (!framedBytes.contentEquals(bytes)) {
@@ -1316,7 +1428,10 @@ class DesktopRecordingSession(
       w,
       h,
       "recording '$recordingId'",
-      backdropArgb = previewBackgroundArgb(state.spec),
+      // No backdrop for a scene-framed recording: nothing is being padded there — the whole
+      // scene is kept precisely so the TalkBack caption stays where it was drawn — and filling
+      // would turn its transparent sandbox opaque merely because a scale was requested.
+      backdropArgb = if (overlayFramedAgainstScene) 0 else previewBackgroundArgb(state.spec),
     )
 
   private fun sceneOffset(px: Int, py: Int): androidx.compose.ui.geometry.Offset {
