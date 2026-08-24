@@ -29,6 +29,7 @@ import {
     projectTagIndex,
     resolvePlane,
     scoreComparison,
+    sha256Hex,
     type ArtifactAnswer,
     type Catalog,
     type Raster,
@@ -75,8 +76,30 @@ export interface AcceptanceReport {
      * document, so absence at this point is already surprising.
      */
     state: "absent" | "unavailable" | "evaluated";
+    /**
+     * Whether the engine refused the **document** rather than judging its records.
+     *
+     * The engine says this by omitting `statuses` entirely, and it is not recoverable from the
+     * failures: `duplicate-id` is deliberately attributed to the first spelling seen and so carries
+     * an `id`, exactly like a per-record refusal that does have a row. A reader that told the two
+     * apart by that `id` would drop the loudest document-level verdict there is and leave the band
+     * showing scores above an empty list — "this catalog accepts nothing here" and "this catalog's
+     * document was refused" are the same picture with opposite meanings.
+     */
+    documentRejected: boolean;
+    /**
+     * What happened to the two rasters this comparison is scored from.
+     *
+     * `unavailable` is the one worth carrying: with no pair the engine runs its validation-only
+     * pass, which reports every in-scope acceptance as `out-of-scope` — the token that ordinarily
+     * means "authored for another comparison" and that a band therefore hides. A transient 503 on
+     * the render lane would then be indistinguishable from a catalog that accepts nothing here.
+     * `none` is a walk that never sought a pair at all.
+     */
+    pair: "scored" | "unavailable" | "none";
     statuses: Record<string, AcceptanceStatus>;
-    validationFailures: Array<{ id?: string; reason: string }>;
+    /** `index` rather than `id` on a record too broken to have one — see `sortFailures`. */
+    validationFailures: Array<{ id?: string; index?: number; reason: string }>;
     /** The three scores, or null when the pair could not be decoded. */
     scores: { raw: number; accepted: number; unaccepted: number } | null;
     /** Ids whose mask reached the scoring union — status `valid`, and no other. */
@@ -87,7 +110,15 @@ function empty(state: AcceptanceReport["state"]): AcceptanceReport {
     // A function rather than a shared frozen object: the report is handed to a component that reads
     // it and could reasonably sort or filter it, and two pages sharing one array is the kind of
     // aliasing that only shows up once someone does.
-    return { state, statuses: {}, validationFailures: [], scores: null, suppressing: [] };
+    return {
+        state,
+        documentRejected: false,
+        pair: "none",
+        statuses: {},
+        validationFailures: [],
+        scores: null,
+        suppressing: [],
+    };
 }
 
 /**
@@ -110,7 +141,10 @@ export async function evaluateComparison(
     // needed before any gate can run: the plane gate samples their pixels, and the candidate gate
     // compares inside the mask at canonical resolution.
     const pair = await fetchPair(sources);
-    if (!pair) {
+    if (
+        !pair ||
+        !currentGeneration(pair.referenceBytes, scope.referenceSha256)
+    ) {
         // Nothing here is a verdict about the *document*, so the evaluation still runs — with no
         // comparison, which is the validation-only pass. An acceptance is then `out-of-scope` rather
         // than falsely invalidated by a comparison that could not be measured.
@@ -122,6 +156,8 @@ export async function evaluateComparison(
         });
         return {
             state: "evaluated",
+            documentRejected: result.statuses === undefined,
+            pair: "unavailable",
             statuses: result.statuses ?? {},
             validationFailures: result.validationFailures,
             scores: null,
@@ -155,7 +191,11 @@ export async function evaluateComparison(
             // reports `element-moved` for an element that never moved — a false invalidation with a
             // plausible explanation attached, which nothing surfaces. The transform belongs to the
             // comparison (D1), and this is the comparison.
-            tagIndex: projectTagIndex(tagIndex, resolved.boxes.candidate, resolved.plane),
+            tagIndex: projectTagIndex(
+                tagIndex,
+                resolved.boxes.candidate,
+                resolved.plane,
+            ),
         },
     });
 
@@ -174,6 +214,8 @@ export async function evaluateComparison(
 
     return {
         state: "evaluated",
+        documentRejected: result.statuses === undefined,
+        pair: "scored",
         statuses: result.statuses ?? {},
         validationFailures: result.validationFailures,
         scores: {
@@ -183,6 +225,35 @@ export async function evaluateComparison(
         },
         suppressing: survivingMasks.map((entry) => entry.id),
     };
+}
+
+/**
+ * Whether the reference bytes just fetched are the ones the page's metadata describes.
+ *
+ * The fingerprint gate is a string comparison between the record's `referenceSha256` and the
+ * comparison's, and the comparison's comes from the catalog **as the page was assembled** — while
+ * the reference raster is fetched separately from a stable URL that a browser cache may answer for
+ * up to five minutes (`private, max-age=300`), and the render lane longer still. A catalog that
+ * republishes in place therefore has a window in which fresh metadata and stale pixels meet: the
+ * gate passes against a digest describing bytes nobody scored, and a mask suppresses a region of a
+ * generation it was never gated against. Silent suppression is the one failure this contract exists
+ * to prevent, so the two are bound together here rather than trusted to agree.
+ *
+ * A mismatch is `pair: "unavailable"`, not an acceptance verdict: which generation is the stale one
+ * is not knowable from here, and neither side's pixels are evidence about a record. The band says
+ * the comparison could not be evaluated, and a reload — past the cache window, or forced — resolves
+ * it.
+ *
+ * A catalog that publishes **no** digest is passed straight through, so `reference-hash-missing`
+ * stays the engine's verdict to reach rather than being pre-empted by a check that had nothing to
+ * compare.
+ */
+function currentGeneration(
+    referenceBytes: Uint8Array,
+    published?: string | null,
+): boolean {
+    if (typeof published !== "string" || published === "") return true;
+    return sha256Hex(referenceBytes) === published.toLowerCase();
 }
 
 /**
@@ -214,6 +285,8 @@ export async function walkCatalog(
     });
     return {
         state: "evaluated",
+        documentRejected: result.statuses === undefined,
+        pair: "none",
         statuses: result.statuses ?? {},
         validationFailures: result.validationFailures,
         scores: null,
@@ -261,27 +334,36 @@ async function fetchDocument(url: string): Promise<DocumentFetch> {
     }
 }
 
-async function fetchPair(
-    sources: AcceptanceSources,
-): Promise<{ reference: Raster; candidate: Raster } | null> {
+/** The decoded pair, plus the reference's own bytes so its digest can be checked against. */
+async function fetchPair(sources: AcceptanceSources): Promise<{
+    reference: Raster;
+    candidate: Raster;
+    referenceBytes: Uint8Array;
+} | null> {
     try {
         const [reference, candidate] = await Promise.all([
             fetchRaster(sources.referenceUrl),
             fetchRaster(sources.candidateUrl),
         ]);
         if (!reference || !candidate) return null;
-        return { reference, candidate };
+        return {
+            reference: reference.raster,
+            candidate: candidate.raster,
+            referenceBytes: reference.bytes,
+        };
     } catch {
         return null;
     }
 }
 
-async function fetchRaster(url: string): Promise<Raster | null> {
+async function fetchRaster(
+    url: string,
+): Promise<{ raster: Raster; bytes: Uint8Array } | null> {
     const response = await fetch(url, { credentials: "same-origin" });
     if (!response.ok) return null;
     const bytes = new Uint8Array(await response.arrayBuffer());
     try {
-        return decodePng(bytes);
+        return { raster: decodePng(bytes), bytes };
     } catch {
         // A comparison side this reader cannot decode is not an acceptance verdict — it is a
         // comparison that cannot be measured, and the caller falls back to the validation-only pass.

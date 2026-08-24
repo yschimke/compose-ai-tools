@@ -14,176 +14,24 @@
 
 import assert from "node:assert/strict";
 import {
-    encodePng,
-} from "../../../scripts/design-artifacts/png-write.mjs";
-import { sha256Hex } from "../../../scripts/design-artifacts/png-lite.mjs";
-import { resolvePlane } from "../../../scripts/design-artifacts/known-difference-plane.mjs";
-import { decodePng } from "../../../scripts/design-artifacts/png-lite.mjs";
+    MARK,
+    SOURCES,
+    WHITE,
+    catalogRoutes,
+    fillRect,
+    knownDifferencesJson,
+    png,
+    raster,
+    scope,
+    withFetch,
+    world,
+} from "./support/knownDifferences.js";
 import { evaluateComparison } from "../src/parity/acceptance.js";
-
-const WHITE = [255, 255, 255, 255];
-const BLACK = [0, 0, 0, 255];
-const RED = [200, 60, 60, 255];
-
-function raster(width: number, height: number, fill: number[]) {
-    const pixels = new Uint8Array(width * height * 4);
-    for (let i = 0; i < width * height; i++) pixels.set(fill, i * 4);
-    return { width, height, pixels };
-}
-
-function fillRect(
-    image: { width: number; height: number; pixels: Uint8Array },
-    box: { x: number; y: number; width: number; height: number },
-    colour: number[],
-) {
-    for (let y = box.y; y < box.y + box.height; y++) {
-        for (let x = box.x; x < box.x + box.width; x++) {
-            image.pixels.set(colour, (y * image.width + x) * 4);
-        }
-    }
-    return image;
-}
-
-function png(image: { width: number; height: number; pixels: Uint8Array }) {
-    return encodePng({
-        width: image.width,
-        height: image.height,
-        samples: image.pixels,
-    }) as Uint8Array;
-}
-
-/** An 8-bit greyscale mask: `0` unmasked, `255` masked, as the contract fixes it. */
-function maskPng(
-    width: number,
-    height: number,
-    box: { x: number; y: number; width: number; height: number },
-) {
-    const samples = new Uint8Array(width * height);
-    for (let y = box.y; y < box.y + box.height; y++) {
-        for (let x = box.x; x < box.x + box.width; x++) samples[y * width + x] = 255;
-    }
-    return encodePng({ width, height, colourType: 0, samples }) as Uint8Array;
-}
-
-const MARK = { x: 10, y: 8, width: 8, height: 8 };
-
-/**
- * A catalog with one acceptance over a glyph the render draws in the wrong colour.
- *
- * The plane is resolved the way the adapter will resolve it, from the two rasters, rather than
- * declared — this is a plumbing test, and a hand-declared plane would be testing the measurement
- * that `plane/` already pins.
- */
-function world() {
-    const reference = fillRect(raster(32, 24, WHITE), MARK, BLACK);
-    const candidate = fillRect(raster(32, 24, WHITE), MARK, RED);
-    const referencePng = png(reference);
-    const candidatePng = png(candidate);
-    const { plane, boxes } = resolvePlane(
-        decodePng(referencePng),
-        decodePng(candidatePng),
-    ) as {
-        plane: { plane: string; box: { x: number; y: number; width: number; height: number } };
-        boxes: { reference: { x: number; y: number; width: number; height: number } };
-    };
-
-    // The mask is authored in the canonical plane, so the mark's box moves by the plane's origin.
-    const local = {
-        x: MARK.x - plane.box.x,
-        y: MARK.y - plane.box.y,
-        width: MARK.width,
-        height: MARK.height,
-    };
-    const mask = maskPng(plane.box.width, plane.box.height, local);
-    const accepted = png(raster(MARK.width, MARK.height, RED));
-
-    return { referencePng, candidatePng, mask, accepted, plane, boxes, local };
-}
-
-function document(
-    scene: ReturnType<typeof world>,
-    overrides: Record<string, unknown> = {},
-) {
-    return JSON.stringify({
-        schema: "compose-preview-known-differences/v1",
-        acceptances: [
-            {
-                id: "glyph",
-                issue: "https://github.com/yschimke/m3-catalog/issues/40",
-                system: "m3",
-                component: "IconButton/Tonal",
-                previewId: "iconbutton-tonal__ideal__default__light",
-                referenceId: "iconbutton-tonal-ideal-light",
-                variant: "ideal/default/light",
-                mask: "mask.png",
-                acceptedCandidate: "accepted-candidate.png",
-                referenceSha256: "a1b2c3d4e5f60718".repeat(4),
-                maskSha256: sha256Hex(scene.mask),
-                acceptedCandidateSha256: sha256Hex(scene.accepted),
-                plane: scene.plane,
-                candidateTolerance: 2,
-                acceptedAt: "2026-08-23T00:00:00Z",
-                ...overrides,
-            },
-        ],
-    });
-}
-
-const SCOPE = {
-    system: "m3",
-    component: "IconButton/Tonal",
-    previewId: "iconbutton-tonal__ideal__default__light",
-    referenceId: "iconbutton-tonal-ideal-light",
-    variant: "ideal/default/light",
-    overrides: {},
-    referenceSha256: "a1b2c3d4e5f60718".repeat(4),
-};
-
-/** A `fetch` that serves one synthetic catalog, and whatever failures a case asks for. */
-function serve(routes: Record<string, Uint8Array | string | number>) {
-    return (input: RequestInfo | URL) => {
-        const url = String(input);
-        const body = routes[url];
-        if (body === undefined) {
-            return Promise.resolve(new Response("not found", { status: 404 }));
-        }
-        if (typeof body === "number") {
-            return Promise.resolve(new Response("no", { status: body }));
-        }
-        if (typeof body === "string") return Promise.resolve(new Response(body));
-        return Promise.resolve(new Response(body as unknown as BodyInit));
-    };
-}
-
-const SOURCES = {
-    documentUrl: "/m3/parity/known-differences.json",
-    artifactUrl: (path: string) => `/m3/parity/known-differences/${path}`,
-    referenceUrl: "/m3/reference/ref.png",
-    candidateUrl: "/m3/render/preview.png",
-};
-
-function withFetch<T>(routes: Record<string, Uint8Array | string | number>, body: () => Promise<T>) {
-    const original = globalThis.fetch;
-    globalThis.fetch = serve(routes) as typeof fetch;
-    return body().finally(() => {
-        globalThis.fetch = original;
-    });
-}
-
-function catalogRoutes(scene: ReturnType<typeof world>, doc: string) {
-    return {
-        [SOURCES.documentUrl]: doc,
-        [SOURCES.referenceUrl]: scene.referencePng,
-        [SOURCES.candidateUrl]: scene.candidatePng,
-        "/m3/parity/known-differences/glyph/mask.png": scene.mask,
-        "/m3/parity/known-differences/glyph/accepted-candidate.png": scene.accepted,
-    };
-}
 
 describe("evaluateComparison", () => {
     it("says nothing at all when the catalog publishes no document", async () => {
         const report = await withFetch({}, () =>
-            evaluateComparison(SOURCES, SCOPE, {}),
+            evaluateComparison(SOURCES, scope(world()), {}),
         );
         assert.equal(report.state, "absent");
         assert.deepEqual(report.statuses, {});
@@ -196,10 +44,10 @@ describe("evaluateComparison", () => {
         // health for a comparison nobody measured.
         const scene = world();
         for (const status of [401, 500, 503] as const) {
-            const routes = catalogRoutes(scene, document(scene));
+            const routes = catalogRoutes(scene, knownDifferencesJson(scene));
             routes[SOURCES.documentUrl] = status;
             const report = await withFetch(routes, () =>
-                evaluateComparison(SOURCES, SCOPE, {}),
+                evaluateComparison(SOURCES, scope(scene), {}),
             );
             assert.equal(report.state, "unavailable", `HTTP ${status}`);
         }
@@ -207,8 +55,9 @@ describe("evaluateComparison", () => {
 
     it("accepts the recorded difference and reports three separate numbers", async () => {
         const scene = world();
-        const report = await withFetch(catalogRoutes(scene, document(scene)), () =>
-            evaluateComparison(SOURCES, SCOPE, {}),
+        const report = await withFetch(
+            catalogRoutes(scene, knownDifferencesJson(scene)),
+            () => evaluateComparison(SOURCES, scope(scene), {}),
         );
         assert.equal(report.state, "evaluated");
         assert.deepEqual(report.statuses, { glyph: { status: "valid" } });
@@ -229,31 +78,112 @@ describe("evaluateComparison", () => {
             [413, "artifact-too-large"],
             [404, "artifact-unreadable"],
         ] as const) {
-            const routes = catalogRoutes(scene, document(scene));
+            const routes = catalogRoutes(scene, knownDifferencesJson(scene));
             routes["/m3/parity/known-differences/glyph/mask.png"] = status;
             const report = await withFetch(routes, () =>
-                evaluateComparison(SOURCES, SCOPE, {}),
+                evaluateComparison(SOURCES, scope(scene), {}),
             );
             assert.deepEqual(
                 report.validationFailures,
                 [{ id: "glyph", reason }],
                 `HTTP ${status}`,
             );
-            assert.deepEqual(report.suppressing, [], "a refused record suppresses nothing");
+            assert.deepEqual(
+                report.suppressing,
+                [],
+                "a refused record suppresses nothing",
+            );
         }
     });
 
     it("still reaches the document's own verdict when the pair cannot be decoded", async () => {
         const scene = world();
-        const routes = catalogRoutes(scene, document(scene));
+        const routes = catalogRoutes(scene, knownDifferencesJson(scene));
         routes[SOURCES.candidateUrl] = 404;
         const report = await withFetch(routes, () =>
-            evaluateComparison(SOURCES, SCOPE, {}),
+            evaluateComparison(SOURCES, scope(scene), {}),
         );
         // No comparison means no gate has fired, so the acceptance is out of scope rather than
         // invalidated — a comparison that could not be measured is not evidence against a record.
-        assert.deepEqual(report.statuses, { glyph: { status: "out-of-scope" } });
+        assert.deepEqual(report.statuses, {
+            glyph: { status: "out-of-scope" },
+        });
         assert.equal(report.scores, null);
+        assert.deepEqual(report.suppressing, []);
+        // And it says WHY there are no scores. Without this the band cannot tell a comparison it
+        // could not fetch from one the catalog has nothing to say about: both are a set of
+        // `out-of-scope` rows and a null score, and only one of them is a clean bill of health.
+        assert.equal(report.pair, "unavailable");
+    });
+
+    it("refuses to score reference bytes the page's own digest does not describe", async () => {
+        // The digest comes from the catalog as the page was assembled; the raster comes from a
+        // stable URL a browser cache may answer for five minutes. A catalog that republishes in
+        // place therefore has a window where fresh metadata meets stale pixels — and the
+        // fingerprint gate, being a string comparison against that metadata, passes. A mask would
+        // then suppress a region of a generation nobody gated it against, which is precisely the
+        // silent suppression the contract exists to prevent.
+        const scene = world();
+        const stale = fillRect(raster(32, 24, WHITE), MARK, [10, 90, 190, 255]);
+        const routes = catalogRoutes(scene, knownDifferencesJson(scene));
+        routes[SOURCES.referenceUrl] = png(stale);
+        const report = await withFetch(routes, () =>
+            evaluateComparison(SOURCES, scope(scene), {}),
+        );
+        assert.equal(report.pair, "unavailable");
+        assert.equal(report.scores, null);
+        // Not an acceptance verdict either way: which generation is the stale one is not knowable
+        // from here, so neither side's pixels are evidence about the record.
+        assert.deepEqual(report.statuses, {
+            glyph: { status: "out-of-scope" },
+        });
+        assert.deepEqual(report.suppressing, []);
+    });
+
+    it("scores a catalog that publishes no digest rather than pre-empting the engine", async () => {
+        // `reference-hash-missing` is the engine's verdict to reach. A generation check that fired
+        // on a null digest would turn every such catalog into an unevaluated page, replacing a
+        // record-level refusal with a comparison-level one.
+        const scene = world();
+        const report = await withFetch(
+            catalogRoutes(scene, knownDifferencesJson(scene)),
+            () =>
+                evaluateComparison(
+                    SOURCES,
+                    scope(scene, { referenceSha256: null }),
+                    {},
+                ),
+        );
+        assert.equal(report.pair, "scored");
+        assert.deepEqual(report.statuses, {
+            glyph: { status: "refused", reasons: ["reference-hash-missing"] },
+        });
+        assert.deepEqual(
+            report.suppressing,
+            [],
+            "a refused record suppresses nothing",
+        );
+    });
+
+    it("marks a wholesale document rejection as such, not as an empty verdict", async () => {
+        // `duplicate-id` is attributed to the first spelling seen, so it carries an `id` exactly
+        // like a per-record refusal — while `statuses` is absent, because no record was judged. A
+        // reader that told the two apart by that `id` would show scores over an empty list and
+        // explain nothing.
+        const scene = world();
+        const doc = JSON.parse(knownDifferencesJson(scene)) as {
+            acceptances: unknown[];
+        };
+        doc.acceptances.push({ ...(doc.acceptances[0] as object) });
+        const report = await withFetch(
+            catalogRoutes(scene, JSON.stringify(doc)),
+            () => evaluateComparison(SOURCES, scope(scene), {}),
+        );
+        assert.equal(report.documentRejected, true);
+        assert.deepEqual(report.statuses, {});
+        assert.deepEqual(report.validationFailures, [
+            { id: "glyph", reason: "duplicate-id" },
+        ]);
         assert.deepEqual(report.suppressing, []);
     });
 
@@ -264,8 +194,11 @@ describe("evaluateComparison", () => {
         // the acceptance only stays `valid` if the projection happened.
         const scene = world();
         const plane = scene.plane;
-        assert.ok(plane.box.x > 0 || plane.box.y > 0, "the fixture must exercise a cropped plane");
-        const doc = document(scene, {
+        assert.ok(
+            plane.box.x > 0 || plane.box.y > 0,
+            "the fixture must exercise a cropped plane",
+        );
+        const doc = knownDifferencesJson(scene, {
             element: {
                 kind: "tag",
                 tag: "glyph",
@@ -278,7 +211,7 @@ describe("evaluateComparison", () => {
         // full raster.
         const renderBounds = MARK;
         const report = await withFetch(catalogRoutes(scene, doc), () =>
-            evaluateComparison(SOURCES, SCOPE, {
+            evaluateComparison(SOURCES, scope(scene), {
                 glyph: { count: 1, bounds: renderBounds },
             }),
         );
@@ -288,25 +221,33 @@ describe("evaluateComparison", () => {
 
     it("refuses an acceptance authored for another system", async () => {
         const scene = world();
-        const doc = document(scene, { system: "wear-m3" });
+        const doc = knownDifferencesJson(scene, { system: "wear-m3" });
         const report = await withFetch(catalogRoutes(scene, doc), () =>
-            evaluateComparison(SOURCES, SCOPE, {}),
+            evaluateComparison(SOURCES, scope(scene), {}),
         );
         // Served preview and reference ids are unique only *within* a system, so scope matching uses
         // every recorded field. Dropping `system` would let this mask suppress pixels in a catalog
         // nobody accepted anything for.
-        assert.deepEqual(report.statuses, { glyph: { status: "out-of-scope" } });
+        assert.deepEqual(report.statuses, {
+            glyph: { status: "out-of-scope" },
+        });
         assert.deepEqual(report.suppressing, []);
     });
 
     it("reports a document past the ceiling as too large, not as absent", async () => {
         const scene = world();
-        const routes = catalogRoutes(scene, document(scene));
+        const routes = catalogRoutes(scene, knownDifferencesJson(scene));
         routes[SOURCES.documentUrl] = 413;
         const report = await withFetch(routes, () =>
-            evaluateComparison(SOURCES, SCOPE, {}),
+            evaluateComparison(SOURCES, scope(scene), {}),
         );
-        assert.equal(report.state, "evaluated", "a refused document is not an absent one");
-        assert.deepEqual(report.validationFailures, [{ reason: "document-too-large" }]);
+        assert.equal(
+            report.state,
+            "evaluated",
+            "a refused document is not an absent one",
+        );
+        assert.deepEqual(report.validationFailures, [
+            { reason: "document-too-large" },
+        ]);
     });
 });
