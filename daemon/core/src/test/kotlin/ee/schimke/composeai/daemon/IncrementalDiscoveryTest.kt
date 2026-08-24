@@ -166,6 +166,29 @@ class IncrementalDiscoveryTest {
   }
 
   @Test
+  fun `scanForFile drops a function that combines @CaptureGutter with @ScrollingPreview`() {
+    // The authoritative pass (PreviewDiscovery) rejects that combination; the incremental scan must
+    // too, or a source edit re-adds the rejected preview to the index (issue #4467 / #4488 review).
+    val syntheticKt = Path.of(System.getProperty("java.io.tmpdir"), "GutterScrollFixtures.kt")
+    val results = discovery.scanForFile(syntheticKt)
+    val methods = results.map { it.methodName }.toSet()
+
+    // Both contradictory combinations are dropped — the direct one and the one whose gutter is
+    // hoisted onto a multi-preview annotation, which the guard's meta-closure walk has to catch.
+    assertFalse(
+      "the direct gutter+scroll combination must be skipped; got $methods",
+      "gutteredScrollingPreview" in methods,
+    )
+    assertFalse(
+      "the hoisted gutter+scroll combination must be skipped; got $methods",
+      "hoistedGutterScrollingPreview" in methods,
+    )
+    // Either annotation on its own still surfaces.
+    assertTrue("gutter-only must survive; got $methods", "gutterOnlyPreview" in methods)
+    assertTrue("scroll-only must survive; got $methods", "scrollOnlyPreview" in methods)
+  }
+
+  @Test
   fun `scanForFile returns emptySet when no class on classpath sources to the saved file`() {
     val syntheticKt = Path.of(System.getProperty("java.io.tmpdir"), "DefinitelyNotAFixture.kt")
     val results = discovery.scanForFile(syntheticKt)

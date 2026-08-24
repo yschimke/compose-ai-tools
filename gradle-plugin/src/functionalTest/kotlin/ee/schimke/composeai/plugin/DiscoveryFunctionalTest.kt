@@ -2863,6 +2863,16 @@ class DiscoveryFunctionalTest {
           Box(modifier = Modifier.size(50.dp).background(Color.Red))
       }
 
+      // Even the degenerate empty-modes form is rejected: it declares @ScrollingPreview, which is
+      // what the contract forbids alongside a gutter, even though it produces no scroll specs.
+      @CaptureGutter(all = 4, bottom = 5)
+      @ScrollingPreview(modes = [])
+      @Preview(name = "Empty-modes guttered scroll")
+      @Composable
+      fun EmptyModesGutteredScrollPreview() {
+          Box(modifier = Modifier.size(50.dp).background(Color.Yellow))
+      }
+
       // Control: gutter alone is still discovered with its gutter intact.
       @CaptureGutter(all = 4, bottom = 5)
       @Preview(name = "Gutter only")
@@ -2892,6 +2902,7 @@ class DiscoveryFunctionalTest {
     // Warn-and-skip, not a hard build failure — matches every other unsupported-combination skip.
     assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
     assertThat(result.output).contains("test.PreviewsKt.GutteredScrollPreview")
+    assertThat(result.output).contains("test.PreviewsKt.EmptyModesGutteredScrollPreview")
     assertThat(result.output).contains("@CaptureGutter cannot be combined with @ScrollingPreview")
 
     val manifest =
@@ -2899,8 +2910,10 @@ class DiscoveryFunctionalTest {
         File(projectDir, "build/compose-previews/previews.json").readText()
       )
 
-    // The offending function contributes nothing — no still, no scroll product.
-    assertThat(manifest.previews.map { it.functionName }).doesNotContain("GutteredScrollPreview")
+    // The offending functions contribute nothing — no still, no scroll product. The empty-modes
+    // form is rejected on the annotation's presence, not on it having produced any scroll spec.
+    assertThat(manifest.previews.map { it.functionName })
+      .containsNoneOf("GutteredScrollPreview", "EmptyModesGutteredScrollPreview")
 
     // Both controls survive with their respective intent intact, proving the guard is scoped to
     // the combination rather than to either annotation on its own.

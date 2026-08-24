@@ -2083,7 +2083,13 @@ object PreviewDiscovery {
     // actionable message, the same way an unsupported `@XrSubspacePreview` parameter is handled
     // above, so the author removes one annotation rather than shipping a gutter that some products
     // keep and others drop.
-    if (captureGutter != null && scrollSpecs.isNotEmpty()) {
+    //
+    // Keyed on the *presence* of `@ScrollingPreview`, not on `scrollSpecs` being non-empty: a
+    // degenerate `@ScrollingPreview(modes = [])` produces no specs yet still declares the
+    // combination the contract forbids, and the author who wrote both annotations should hear about
+    // it rather than have the empty-modes case quietly keep its gutter.
+    val declaresScrollingPreview = annotations.any { it.name == SCROLLING_PREVIEW_FQN }
+    if (captureGutter != null && declaresScrollingPreview) {
       warnings.add(
         "composePreview: skipping '${classInfo.name}.${method.name}' — @CaptureGutter cannot be " +
           "combined with @ScrollingPreview. A scroll capture has no component edge for a gutter " +

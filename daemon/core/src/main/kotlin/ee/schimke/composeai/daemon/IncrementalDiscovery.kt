@@ -151,6 +151,14 @@ class IncrementalDiscovery(
       if (!matchesFile) continue
       for (method in classInfo.methodInfo) {
         val annotations = method.annotationInfo?.toList().orEmpty()
+        // Mirror the authoritative pass's rejection of `@CaptureGutter` + `@ScrollingPreview`
+        // (PreviewDiscovery). Without this, a full pass correctly drops the combination from
+        // `previews.json`, but the first source edit re-adds the function here — the diff sees a
+        // previously-absent id and treats it as an addition — so the daemon would expose an
+        // unguttered, unscrolled preview until the next full discovery. `@CaptureGutter` may be
+        // hoisted onto a multi-preview annotation, so the check walks the meta-annotation closure
+        // the same way `resolveMultiPreview` does.
+        if (declaresGutterAndScrolling(annotations, scanResult)) continue
         val direct = collectDirectPreviews(annotations)
         if (direct.isNotEmpty()) {
           for (ann in direct) {
@@ -167,6 +175,37 @@ class IncrementalDiscovery(
       }
     }
     return results
+  }
+
+  /**
+   * True when a method declares both `@CaptureGutter` and `@ScrollingPreview` — a contradiction the
+   * authoritative discovery pass rejects (see `PreviewDiscovery`). `@ScrollingPreview` targets
+   * FUNCTION only, so it is always a direct method annotation; `@CaptureGutter` also targets
+   * ANNOTATION_CLASS, so it can be hoisted onto a multi-preview annotation and has to be found by
+   * walking the meta-annotation closure.
+   */
+  private fun declaresGutterAndScrolling(
+    annotations: List<AnnotationInfo>,
+    scanResult: ScanResult,
+  ): Boolean {
+    val fqns = mutableSetOf<String>()
+    collectAnnotationFqns(annotations, scanResult, mutableSetOf(), fqns)
+    return CAPTURE_GUTTER_FQN in fqns && SCROLLING_PREVIEW_FQN in fqns
+  }
+
+  /** Every annotation FQN reachable from [annotations], transitively through annotation classes. */
+  private fun collectAnnotationFqns(
+    annotations: List<AnnotationInfo>,
+    scanResult: ScanResult,
+    visited: MutableSet<String>,
+    out: MutableSet<String>,
+  ) {
+    for (ann in annotations) {
+      if (!visited.add(ann.name)) continue
+      out.add(ann.name)
+      val annClass = scanResult.getClassInfo(ann.name) ?: continue
+      collectAnnotationFqns(annClass.annotationInfo.toList(), scanResult, visited, out)
+    }
   }
 
   private fun collectDirectPreviews(annotations: List<AnnotationInfo>): List<AnnotationInfo> {
@@ -287,6 +326,14 @@ class IncrementalDiscovery(
         "androidx.compose.desktop.ui.tooling.preview.Preview",
         "androidx.wear.tiles.tooling.preview.Preview",
       )
+
+    /**
+     * `@CaptureGutter` / `@ScrollingPreview` FQNs, mirrored from `:gradle-plugin`'s
+     * `PreviewDiscovery` for the same layering reason as [DEFAULT_PREVIEW_ANNOTATION_FQNS]: the two
+     * cannot be combined, and this path must reject the pair to match the authoritative pass.
+     */
+    private const val CAPTURE_GUTTER_FQN = "ee.schimke.composeai.preview.CaptureGutter"
+    private const val SCROLLING_PREVIEW_FQN = "ee.schimke.composeai.preview.ScrollingPreview"
 
     /** Synthesised `@Repeatable` containers; same FQN set as the gradle plugin. */
     private val CONTAINER_FQNS: Set<String> =

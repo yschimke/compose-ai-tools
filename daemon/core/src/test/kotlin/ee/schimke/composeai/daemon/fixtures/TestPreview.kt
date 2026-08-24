@@ -10,7 +10,7 @@ package ee.schimke.composeai.daemon.fixtures
  * `IncrementalDiscovery.toDto` has something to read.
  */
 @Retention(AnnotationRetention.RUNTIME)
-@Target(AnnotationTarget.FUNCTION)
+@Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)
 annotation class TestPreview(val name: String = "", val group: String = "")
 
 /**
