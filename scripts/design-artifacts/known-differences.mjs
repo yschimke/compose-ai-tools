@@ -462,6 +462,59 @@ export function issueKey(issue) {
   return `${issue.owner}/${issue.repo}#${issue.number}`;
 }
 
+/**
+ * Join comparison verdicts to the issue index without changing either wire contract.
+ *
+ * `statuses` is the comparison axis. `issueRows` is the independently-published lifecycle axis,
+ * and absence from it is deliberately `unknown`: only a row that positively says `closed` is
+ * evidence of closure. Duplicate rows are ordinary (one issue can carry several locator blocks),
+ * but contradictory states are not evidence either way and therefore also collapse to `unknown`.
+ *
+ * Both sides are canonicalised to `owner/repo#number`. Acceptance URLs are hand-authored and may
+ * use `www.`, mixed case, a trailing slash or a fragment; joining their raw strings to the index's
+ * rebuilt URLs silently loses exactly the closed row stale detection needs.
+ */
+export function acceptanceLifecycles(documentRecords, statuses, issueRows = []) {
+  const indexed = new Map();
+  for (const row of issueRows ?? []) {
+    const issue = indexedIssue(row);
+    const state = row?.state === "open" || row?.state === "closed" ? row.state : null;
+    if (!issue || !state) continue;
+    const key = issueKey(issue);
+    const previous = indexed.get(key);
+    if (previous === undefined) indexed.set(key, state);
+    else if (previous !== state) indexed.set(key, null);
+  }
+
+  const joined = Object.create(null);
+  for (const record of documentRecords ?? []) {
+    if (typeof record?.id !== "string" || statuses?.[record.id] === undefined) continue;
+    const issue = parseIssue(record.issue);
+    const key = issue ? issueKey(issue) : null;
+    const lifecycle = key === null ? "unknown" : indexed.get(key) ?? "unknown";
+    const status = statuses[record.id].status;
+    joined[record.id] = {
+      issue: key,
+      lifecycle,
+      stale: lifecycle === "closed" && status !== "resolved",
+    };
+  }
+  return joined;
+}
+
+function indexedIssue(row) {
+  if (typeof row?.repository === "string" && Number.isSafeInteger(row?.number) && row.number > 0) {
+    const parts = row.repository.split("/");
+    if (
+      parts.length === 2 &&
+      parts.every((part) => /^[A-Za-z0-9._-]+$/.test(part))
+    ) {
+      return { owner: parts[0].toLowerCase(), repo: parts[1].toLowerCase(), number: row.number };
+    }
+  }
+  return parseIssue(row?.url);
+}
+
 // ---------------------------------------------------------------------------------------------
 // Evaluation
 // ---------------------------------------------------------------------------------------------

@@ -32,6 +32,11 @@ let net: ReturnType<typeof installFetch> | null = null;
 async function mount(
     routes: Record<string, Uint8Array | string | number>,
     payloadScope: Record<string, unknown>,
+    issues: Array<{
+        repository: string;
+        number: number;
+        state: "open" | "closed";
+    }> = [],
 ): Promise<HTMLElement> {
     const payload = {
         documentUrl: SOURCES.documentUrl,
@@ -39,6 +44,7 @@ async function mount(
         artifactQuery: "",
         referenceUrl: SOURCES.referenceUrl,
         candidateUrl: SOURCES.candidateUrl,
+        issues,
         scope: { ...payloadScope, tagIndex: {} },
     };
     net = installFetch(routes);
@@ -87,6 +93,53 @@ describe("<cp-acceptance>", () => {
         assert.match(text(band), /over the accepted region/);
         assert.equal(band.querySelectorAll("li.cp-acceptance-row").length, 1);
         assert.match(text(band), /glyph — accepted/);
+        assert.match(text(band), /issue state unknown/);
+    });
+
+    it("marks closed issue plus a live acceptance as stale using canonical identity", async () => {
+        const scene = world();
+        const document_ = knownDifferencesJson(scene, {
+            issue: "https://WWW.GITHUB.COM/YSchimke/M3-Catalog/issues/40/#issuecomment-1",
+        });
+        const band = await mount(
+            catalogRoutes(scene, document_),
+            scope(scene),
+            [
+                {
+                    repository: "yschimke/m3-catalog",
+                    number: 40,
+                    state: "closed",
+                },
+            ],
+        );
+        const row = band.querySelector("li.cp-acceptance-row") as HTMLElement;
+        assert.equal(row.dataset.lifecycle, "closed");
+        assert.equal(row.hasAttribute("data-stale"), true);
+        assert.match(text(row), /stale configuration/);
+    });
+
+    it("renders resolved plus closed as completion rather than stale", async () => {
+        const scene = world();
+        const routes = catalogRoutes(scene, knownDifferencesJson(scene));
+        // The accepted red glyph now matches the black reference: the engine's own precedence calls
+        // this resolved, and the issue axis must not turn the completed loop back into a warning.
+        routes[SOURCES.candidateUrl] = scene.referencePng;
+        const band = await mount(routes, scope(scene), [
+            {
+                repository: "yschimke/m3-catalog",
+                number: 40,
+                state: "closed",
+            },
+        ]);
+        const row = band.querySelector("li.cp-acceptance-row") as HTMLElement;
+        assert.equal(row.dataset.status, "resolved");
+        assert.equal(row.dataset.lifecycle, "closed");
+        assert.equal(row.hasAttribute("data-stale"), false);
+        assert.match(
+            text(row),
+            /verified; issue closed; remove the acceptance/,
+        );
+        assert.doesNotMatch(text(row), /stale configuration/);
     });
 
     it("says nothing on a comparison every acceptance was authored elsewhere for", async () => {

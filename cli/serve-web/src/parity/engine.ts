@@ -19,6 +19,7 @@
 
 import {
     BUDGET as BudgetJs,
+    acceptanceLifecycles as acceptanceLifecyclesJs,
     evaluateKnownDifferences as evaluateJs,
 } from "../../../../scripts/design-artifacts/known-differences.mjs";
 import {
@@ -85,6 +86,25 @@ export interface EngineResult {
     survivingMasks?: Array<{ id: string; mask: Raster }>;
     validationFailures: Array<{ id?: string; reason: string }>;
 }
+
+export interface IssueIndexRow {
+    repository?: string;
+    number?: number;
+    url?: string;
+    state: "open" | "closed";
+}
+
+export interface AcceptanceLifecycle {
+    issue: string | null;
+    lifecycle: "open" | "closed" | "unknown";
+    stale: boolean;
+}
+
+export const acceptanceLifecycles = acceptanceLifecyclesJs as unknown as (
+    documentRecords: unknown[],
+    statuses: Record<string, EngineStatus>,
+    issueRows?: IssueIndexRow[],
+) => Record<string, AcceptanceLifecycle>;
 
 /** `testTag → {count, bounds}`. Bounds are render-pixel on the wire and canonical after projection. */
 export type TagIndex = Record<string, { count: number; bounds?: unknown }>;

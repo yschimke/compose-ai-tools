@@ -2716,7 +2716,8 @@ html:not(.cp-bg-transparent) #cp-reference-compare[data-cp-stage-clip] .cp-refer
 .cp-acceptance-row { color: var(--cp-fg-muted); }
 .cp-acceptance-row[data-status="invalidated"],
 .cp-acceptance-row[data-status="refused"],
-.cp-acceptance-row[data-status="resolved"] { color: var(--cp-fg); font-weight: 600; }
+.cp-acceptance-row[data-status="resolved"],
+.cp-acceptance-row[data-stale] { color: var(--cp-fg); font-weight: 600; }
 /* Annotation layers. The layer is absolutely positioned over its panel's image and sized in JS from
    the image's rendered box, because annotation bounds arrive in the source frame's pixel space and
    the reference and actual frames are routinely different sizes. */

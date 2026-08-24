@@ -24,6 +24,7 @@
 
 import {
     BUDGET,
+    acceptanceLifecycles,
     canonicalRaster,
     decodePng,
     evaluateKnownDifferences,
@@ -33,7 +34,9 @@ import {
     scoreComparison,
     sha256Hex,
     type ArtifactAnswer,
+    type AcceptanceLifecycle,
     type Catalog,
+    type IssueIndexRow,
     type Raster,
     type ReadOptions,
     type TagIndex,
@@ -101,6 +104,8 @@ export interface AcceptanceReport {
      */
     pair: "scored" | "unavailable" | "none";
     statuses: Record<string, AcceptanceStatus>;
+    /** Issue-index lifecycle joined separately from the comparison verdict. */
+    lifecycles: Record<string, AcceptanceLifecycle>;
     /** `index` rather than `id` on a record too broken to have one — see `sortFailures`. */
     validationFailures: Array<{ id?: string; index?: number; reason: string }>;
     /** The three scores, or null when the pair could not be decoded. */
@@ -118,6 +123,7 @@ function empty(state: AcceptanceReport["state"]): AcceptanceReport {
         documentRejected: false,
         pair: "none",
         statuses: {},
+        lifecycles: {},
         validationFailures: [],
         scores: null,
         suppressing: [],
@@ -135,6 +141,7 @@ export async function evaluateComparison(
     sources: AcceptanceSources,
     scope: AcceptanceScope,
     tagIndex: TagIndex,
+    issueRows: IssueIndexRow[] = [],
 ): Promise<AcceptanceReport> {
     const document = await fetchDocument(sources.documentUrl);
     if (document.state === "absent") return empty("absent");
@@ -162,6 +169,7 @@ export async function evaluateComparison(
             documentRejected: result.statuses === undefined,
             pair: "unavailable",
             statuses: result.statuses ?? {},
+            lifecycles: joinLifecycles(document.text, result.statuses ?? {}, issueRows),
             validationFailures: result.validationFailures,
             scores: null,
             suppressing: (result.survivingMasks ?? []).map((entry) => entry.id),
@@ -220,6 +228,7 @@ export async function evaluateComparison(
         documentRejected: result.statuses === undefined,
         pair: "scored",
         statuses: result.statuses ?? {},
+        lifecycles: joinLifecycles(document.text, result.statuses ?? {}, issueRows),
         validationFailures: result.validationFailures,
         scores: {
             raw: scores.raw,
@@ -275,6 +284,7 @@ function currentGeneration(
 export async function walkCatalog(
     sources: Pick<AcceptanceSources, "documentUrl" | "artifactUrl">,
     catalog: Catalog,
+    issueRows: IssueIndexRow[] = [],
 ): Promise<AcceptanceReport> {
     const document = await fetchDocument(sources.documentUrl);
     if (document.state === "absent") return empty("absent");
@@ -291,10 +301,28 @@ export async function walkCatalog(
         documentRejected: result.statuses === undefined,
         pair: "none",
         statuses: result.statuses ?? {},
+        lifecycles: joinLifecycles(document.text, result.statuses ?? {}, issueRows),
         validationFailures: result.validationFailures,
         scores: null,
         suppressing: (result.survivingMasks ?? []).map((entry) => entry.id),
     };
+}
+
+/** Best-effort metadata extraction for the lifecycle join; verdict parsing remains in the engine. */
+function joinLifecycles(
+    documentText: string,
+    statuses: Record<string, AcceptanceStatus>,
+    issueRows: IssueIndexRow[],
+): Record<string, AcceptanceLifecycle> {
+    let records: unknown[] = [];
+    try {
+        const parsed = JSON.parse(documentText) as { acceptances?: unknown };
+        if (Array.isArray(parsed?.acceptances)) records = parsed.acceptances;
+    } catch {
+        // The engine owns `document-unreadable`. With no trustworthy records there is nothing to
+        // join, and in particular no absence that may be inferred as closure.
+    }
+    return acceptanceLifecycles(records, statuses, issueRows);
 }
 
 /**
