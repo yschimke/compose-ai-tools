@@ -196,16 +196,16 @@ function artifactReader(caseDir, synthesize) {
 /**
  * Decode the comparison's canonical-plane rasters.
  *
- * `case.json` names them by filename rather than embedding them, which is what keeps the tree
- * language-neutral: every runtime resolves the name against the case directory and decodes it with
- * whatever it has. They arrive at the evaluator **already resampled** — the portable kernel is
- * pinned by its own fixture group, so a resampler divergence fails there rather than surfacing here
- * as a wrong verdict.
+ * `case.json` names them by fixture-root-relative path rather than embedding them, which is what
+ * keeps the tree language-neutral: every runtime resolves the path against the fixture root and
+ * decodes it with whatever it has. They arrive at the evaluator **already resampled** — the
+ * portable kernel is pinned by its own fixture group, so a resampler divergence fails there rather
+ * than surfacing here as a wrong verdict.
  */
-function withCanonicalRasters(caseDir, comparison) {
+function withCanonicalRasters(comparison) {
   if (!comparison) return null;
   const load = (name) =>
-    name ? decodePng(new Uint8Array(readFileSync(join(caseDir, name)))) : null;
+    name ? decodePng(new Uint8Array(readFileSync(join(ROOT, name)))) : null;
   return {
     ...comparison,
     canonicalReference: load(comparison.canonicalReference),
@@ -278,7 +278,7 @@ for (const id of caseIds) {
     const result = evaluateKnownDifferences({
       documentText,
       readArtifact: artifactReader(caseDir, meta.synthesize),
-      comparison: withCanonicalRasters(caseDir, meta.comparison),
+      comparison: withCanonicalRasters(meta.comparison),
       catalog: meta.catalog,
     });
 
@@ -372,7 +372,7 @@ test("`statuses` never reaches the prototype, even for a reserved id", () => {
   const result = evaluateKnownDifferences({
     documentText,
     readArtifact: artifactReader(join(CASES, "id-not-safe-proto"), meta.synthesize),
-    comparison: withCanonicalRasters(join(CASES, "id-not-safe-proto"), meta.comparison),
+    comparison: withCanonicalRasters(meta.comparison),
   });
   assert.ok(Object.hasOwn(result.statuses, "__proto__"), "the id must be an own property");
   assert.equal({}.polluted, undefined);
@@ -479,7 +479,7 @@ test("an artifact that changes between the two reads is refused, not trusted", (
   const result = evaluateKnownDifferences({
     documentText,
     readArtifact: unstable,
-    comparison: withCanonicalRasters(caseDir, meta.comparison),
+    comparison: withCanonicalRasters(meta.comparison),
   });
   assert.deepEqual(result.statuses, {
     "m3-iconbutton-tonal-glyph": { status: "refused", reasons: ["artifact-unreadable"] },
@@ -500,7 +500,7 @@ test("the reader's own refusals reach the result as their proper tokens", () => 
     const result = evaluateKnownDifferences({
       documentText,
       readArtifact: (path) => (path.endsWith("mask.png") ? { error: token } : honest(path)),
-      comparison: withCanonicalRasters(caseDir, meta.comparison),
+      comparison: withCanonicalRasters(meta.comparison),
     });
     assert.deepEqual(result.statuses, {
       "m3-iconbutton-tonal-glyph": { status: "refused", reasons: [token] },
@@ -511,7 +511,7 @@ test("the reader's own refusals reach the result as their proper tokens", () => 
   const invented = evaluateKnownDifferences({
     documentText,
     readArtifact: (path) => (path.endsWith("mask.png") ? { error: "valid" } : honest(path)),
-    comparison: withCanonicalRasters(caseDir, meta.comparison),
+    comparison: withCanonicalRasters(meta.comparison),
   });
   assert.deepEqual(invented.statuses, {
     "m3-iconbutton-tonal-glyph": { status: "refused", reasons: ["artifact-unreadable"] },
@@ -547,7 +547,7 @@ test("a reader that ignores the prefix reaches the same verdict on every case", 
     const result = evaluateKnownDifferences({
       documentText: readFileSync(join(caseDir, "known-differences.json"), "utf8"),
       readArtifact: wholeFileReader(caseDir, meta.synthesize),
-      comparison: withCanonicalRasters(caseDir, meta.comparison),
+      comparison: withCanonicalRasters(meta.comparison),
       catalog: meta.catalog,
     });
     if (expected.pins.includes("statuses")) {
@@ -603,7 +603,7 @@ test("a prefix answer is judged on the artifact's length, not on how much of it 
   const over = evaluateKnownDifferences({
     documentText,
     readArtifact: counting(BUDGET.maxArtifactBytes + 1),
-    comparison: withCanonicalRasters(caseDir, meta.comparison),
+    comparison: withCanonicalRasters(meta.comparison),
   });
   assert.deepEqual(over.statuses, {
     "m3-iconbutton-tonal-glyph": { status: "refused", reasons: ["artifact-too-large"] },
@@ -614,7 +614,7 @@ test("a prefix answer is judged on the artifact's length, not on how much of it 
   const exactly = evaluateKnownDifferences({
     documentText,
     readArtifact: withReportedSize(BUDGET.maxArtifactBytes),
-    comparison: withCanonicalRasters(caseDir, meta.comparison),
+    comparison: withCanonicalRasters(meta.comparison),
   });
   assert.deepEqual(exactly.statuses, {
     "m3-iconbutton-tonal-glyph": { status: "valid" },
@@ -627,7 +627,7 @@ test("a prefix answer is judged on the artifact's length, not on how much of it 
     const nonsense = evaluateKnownDifferences({
       documentText,
       readArtifact: withReportedSize(byteLength),
-      comparison: withCanonicalRasters(caseDir, meta.comparison),
+      comparison: withCanonicalRasters(meta.comparison),
     });
     assert.deepEqual(
       nonsense.statuses,
