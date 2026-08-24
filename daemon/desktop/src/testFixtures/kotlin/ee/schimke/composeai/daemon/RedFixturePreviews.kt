@@ -938,6 +938,49 @@ fun TristateClickSquare() {
 }
 
 /**
+ * Wrap-content block measuring exactly half the 800x1600 px sandbox at density 1.
+ *
+ * Sized so that `measured * scale` lands precisely on the scene's own dimensions at `scale = 2` —
+ * the collision that makes a size-only no-op check wrong. Such a recording publishes at 800x1600,
+ * the scene's size, while still owing both a crop (to 400x800) and a scale (back up to 800x1600).
+ * Skipping it would leave the component in the corner of a sandbox-sized frame.
+ */
+@Composable
+fun HalfSandboxBlock() {
+  Box(modifier = Modifier.size(width = 400.dp, height = 800.dp).background(Color(0xFFEF5350)))
+}
+
+/**
+ * Growing wrap-content fixture: a click **expands** the component (issue #4467).
+ *
+ * A closed 60x30 block that opens to 60x90 on the first press. The point is that a recording's crop
+ * cannot be taken from the opening measurement — the revealed rows appear after frame 0, and
+ * cropping to the closed size would slice off exactly the thing the recording exists to show. The
+ * real-world shape of this is `ExpandableMenuInteractionPreview` in `samples/cmp`.
+ */
+@Composable
+fun ExpandingClickBlock() {
+  var expanded by remember { mutableStateOf(false) }
+  Column(
+    modifier =
+      Modifier.width(60.dp).pointerInput(Unit) {
+        awaitPointerEventScope {
+          while (true) {
+            awaitFirstDown()
+            expanded = true
+          }
+        }
+      }
+  ) {
+    Box(modifier = Modifier.size(width = 60.dp, height = 30.dp).background(Color(0xFFEF5350)))
+    if (expanded) {
+      Box(modifier = Modifier.size(width = 60.dp, height = 30.dp).background(Color(0xFF66BB6A)))
+      Box(modifier = Modifier.size(width = 60.dp, height = 30.dp).background(Color(0xFF42A5F5)))
+    }
+  }
+}
+
+/**
  * Live-recording reverse-map fixture: the click **replaces** the node it landed on.
  *
  * `before-click` fills the frame until it is pressed, after which the same rect is `after-click`.

@@ -2233,14 +2233,18 @@ internal fun previewResourceReader(classLoader: ClassLoader): ResourceReader =
  * Precedence and the light/dark default live in [PreviewBackground] so both backends and both
  * renderers agree; in particular `showBackground = true` on a dark preview is not white.
  */
-internal fun previewBackgroundColor(spec: RenderSpec): Color =
-  Color(
-    PreviewBackground.resolveArgb(
-      showBackground = spec.showBackground,
-      backgroundColor = spec.backgroundColor,
-      night = spec.uiMode == RenderSpec.SpecUiMode.DARK,
-      clearBackground = spec.clearBackground,
-    )
+internal fun previewBackgroundColor(spec: RenderSpec): Color = Color(previewBackgroundArgb(spec))
+
+/**
+ * [previewBackgroundColor] as a raw `#AARRGGBB` int, for the AWT / raster paths that never want a
+ * Compose `Color`. Same resolution, so the two cannot disagree about what a preview's backdrop is.
+ */
+internal fun previewBackgroundArgb(spec: RenderSpec): Int =
+  PreviewBackground.resolveArgb(
+    showBackground = spec.showBackground,
+    backgroundColor = spec.backgroundColor,
+    night = spec.uiMode == RenderSpec.SpecUiMode.DARK,
+    clearBackground = spec.clearBackground,
   )
 
 /**
