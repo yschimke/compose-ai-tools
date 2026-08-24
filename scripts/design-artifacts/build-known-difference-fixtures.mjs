@@ -3442,6 +3442,57 @@ glyphValidation({
 });
 
 {
+  // **A baseline large enough that the scaled products leave the safe-integer range.** The gate
+  // multiplies `displacement` and `micros × minDimension`; both fit a double comfortably at catalog
+  // sizes and neither does here. The 8192 axis cap constrains raster *headers* — `$defs.box` permits
+  // an element baseline up to `9007199254740991`, and nothing ties the two together, so a
+  // schema-valid record can reach magnitudes where a `Number` product is no longer exact.
+  //
+  // These numbers are chosen so the two sides differ by exactly **8** and round to the same double:
+  // the exact answer is `element-moved` and a double-product answers `valid`, still suppressing an
+  // element that moved. The ratio form this replaced also answers `element-moved`, so the case is a
+  // regression test in both directions — it fails an engine using doubles *and* would have caught
+  // the intermediate version of this contract that claimed the products were safe integers.
+  const world = glyphWorld();
+  const span = 9007199253953129;
+  const shift = 1739524363118952;
+  const bounds = { x: 0, y: 0, width: span, height: span };
+  const record = glyphRecord(world, {
+    element: { kind: "tag", tag: "iconbutton-tonal-glyph", bounds, tolerance: 0.193126 },
+  });
+  addCase({
+    id: "gate-element-moved-past-safe-integer-products",
+    title: "A displacement whose scaled products exceed the safe-integer range",
+    why:
+      "The exact answer is `element-moved` and **both** floating-point forms this contract has used " +
+      "answer `valid` — a ratio `displacement / minDimension` against the tolerance, and a product " +
+      "`displacement × 1000000` against `micros × minDimension`. So the verdict depends entirely on " +
+      "the comparison being exact, and the failure is in the unsafe direction: the mask goes on " +
+      "suppressing an element that moved. Nothing else in the tree reaches these magnitudes — every " +
+      "other element case uses catalog-sized boxes — so an engine using either float form passes " +
+      "the whole suite and is wrong here. The far edges stay inside the safe-integer range, so the " +
+      "record is schema-valid and the only thing under test is the arithmetic.",
+    document: document([record]),
+    files: glyphFiles(world, record),
+    comparison: glyphComparison(world, {
+      tagIndex: {
+        "iconbutton-tonal-glyph": {
+          count: 1,
+          bounds: { x: shift, y: 0, width: span - shift, height: span },
+        },
+      },
+    }),
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: {
+        "m3-iconbutton-tonal-glyph": { status: "invalidated", causes: ["element-moved"] },
+      },
+      validationFailures: [],
+    },
+  });
+}
+
+{
   // **The canonical-spelling rule for `element.tolerance`, from both sides.** `v1` requires a plain
   // decimal with at most six fraction digits — a *grammar*, not "the shortest decimal that
   // round-trips", because that phrasing cannot be implemented identically in two languages

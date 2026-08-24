@@ -193,6 +193,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `schema-invalid-unknown-property` | A record carrying the `finding` field cut from `v1` |
 | `schema-invalid-unknown-property-named-like-geometry` | An unknown record property that shares a geometry field's name |
 | `document-unreadable-element-tolerance-over-by-rounding` | An `element.tolerance` just past the ceiling, rounded back inside it |
+| `gate-element-moved-past-safe-integer-products` | A displacement whose scaled products exceed the safe-integer range |
 | `document-unreadable-element-tolerance-padded` | An `element.tolerance` written with `0.25` followed by a hundred zeroes |
 | `document-unreadable-element-tolerance-seven-digits` | An `element.tolerance` written with a seventh fraction digit |
 | `document-unreadable-element-tolerance-exponent` | An `element.tolerance` written with an exponent instead of plain digits |

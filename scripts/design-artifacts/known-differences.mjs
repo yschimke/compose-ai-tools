@@ -1319,34 +1319,33 @@ function elementCauses(element, tagIndex) {
   // is: `29 / 200` and the literal `0.145` are the same double, because both are the nearest double
   // to the same real number.
   const minDimension = Math.min(baseline.width, baseline.height);
-  // **Integer arithmetic, not a ratio against a double.** `element.tolerance` is spelled as a plain
-  // decimal with at most six fraction digits, so it is an exact multiple of `1 / SCALE` and scaling
-  // it recovers that multiple exactly. Both sides are then safe integers — `minDimension` is at most
-  // the axis cap, `micros` at most 250000, `displacement` at most the axis cap — so nothing here
-  // forms a float and the two engines cannot disagree.
+  // **Exact integer arithmetic, in `BigInt`.** `element.tolerance` is spelled as a plain decimal
+  // with at most six fraction digits, so it is an exact multiple of `1 / SCALE` and scaling recovers
+  // that multiple exactly. The comparison is then a product on each side, and those products are
+  // *not* safely representable as doubles — which is the whole reason they are `BigInt` here.
   //
-  // The earlier form divided and compared against the parsed double, which made the verdict depend
-  // on a spelling the parse had already destroyed: `0.144999999999999999999` is strictly below
-  // `0.145` as a decimal and exactly `0.145` as a double, so a displacement of 29 over a 200 px
-  // baseline reported `valid` — the mask still suppressing an element that had, by its own recorded
-  // tolerance, moved.
+  // An earlier revision of this line asserted they were, on the grounds that `minDimension` is
+  // bounded by the 8192 axis cap. **That was wrong.** The axis cap constrains raster headers;
+  // `$defs.box` permits an element baseline up to `9007199254740991`, and nothing ties the two
+  // together. With `tolerance: 0.000011`, `minDimension: 9007199254727272` and a displacement of
+  // `99079191802`, the exact left side exceeds the right by 8 — but both products round to the same
+  // double, so the comparison answered `valid` for an element that had moved. That is worse than
+  // the ratio form it replaced, which answers `element-moved` on the same input.
   //
-  // **The grammar alone closes that hole, and no fixture distinguishes this form from the ratio.**
-  // Said plainly rather than left implied: reverting this line to `displacement / minDimension >
-  // element.tolerance` fails nothing in the suite. It cannot, and the reason is a bound rather than
-  // luck — two distinct rationals `d/m` and `micros/1e6` with `m` at most the axis cap differ by at
-  // least `1 / (8192 × 1e6)` ≈ `1.2e-10`, while the double rounding error on either side of a value
-  // under `0.25` is at most about `2.8e-17`. The gap dwarfs the error, so the two forms agree on
-  // every legal input. An exhaustive search of the equality boundary and 20M sampled triples found
-  // no disagreement, as expected.
+  // The magnitudes are bounded by the safe-integer range on the way in (`isBox` checks the fields
+  // *and* the far edges), so these `BigInt`s are small and fixed-width; nothing here is proportional
+  // to a token, and there is no exponent to bomb.
   //
-  // It is kept anyway, for two reasons worth more than a passing fixture: the integer form is exact
-  // *by construction* where the ratio is exact only by that error argument — which silently breaks
-  // if either the axis cap or the digit cap ever moves — and a second engine implementing this in
-  // Kotlin would otherwise have to re-derive the same analysis to convince itself. Belt and braces,
-  // labelled as such.
+  // The ratio form that preceded both is exact only where the double happens to be: `0.145 × 200`
+  // is `28.999999999999996`, so a displacement of exactly 29 — the inclusive boundary — reported
+  // `element-moved` under a scaled tolerance and `valid` under a decimal consumer. And it made the
+  // verdict depend on a spelling the parse had destroyed: `0.144999999999999999999` is strictly
+  // below `0.145` as a decimal and exactly `0.145` as a double. The grammar removes that spelling;
+  // this removes the arithmetic that could not represent the comparison.
   const micros = Math.round(element.tolerance * ELEMENT_TOLERANCE_SCALE);
-  return displacement * ELEMENT_TOLERANCE_SCALE > micros * minDimension ? ["element-moved"] : [];
+  const left = BigInt(displacement) * BigInt(ELEMENT_TOLERANCE_SCALE);
+  const right = BigInt(micros) * BigInt(minDimension);
+  return left > right ? ["element-moved"] : [];
 }
 
 /**

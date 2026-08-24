@@ -662,6 +662,11 @@
       "site": null
     },
     {
+      "id": "gate-element-moved-past-safe-integer-products",
+      "title": "A displacement whose scaled products exceed the safe-integer range",
+      "site": null
+    },
+    {
       "id": "document-unreadable-element-tolerance-padded",
       "title": "An `element.tolerance` written with `0.25` followed by a hundred zeroes",
       "site": null
