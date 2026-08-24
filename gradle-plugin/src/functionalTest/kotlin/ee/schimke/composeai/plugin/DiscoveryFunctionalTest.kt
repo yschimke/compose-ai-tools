@@ -2888,6 +2888,16 @@ class DiscoveryFunctionalTest {
       fun ScrollOnlyPreview() {
           Box(modifier = Modifier.size(50.dp).background(Color.Green))
       }
+
+      // Control: an all-zero gutter is equivalent to no annotation, so this is NOT the forbidden
+      // combination — it survives as an ordinary scroll product.
+      @CaptureGutter(all = 0)
+      @ScrollingPreview(modes = [ScrollMode.LONG])
+      @Preview(name = "Zero gutter scroll")
+      @Composable
+      fun ZeroGutterScrollPreview() {
+          Box(modifier = Modifier.size(50.dp).background(Color.Gray))
+      }
       """
         .trimIndent()
     )
@@ -2922,6 +2932,12 @@ class DiscoveryFunctionalTest {
       .isEqualTo(CaptureGutterDp(start = 4, top = 4, end = 4, bottom = 5))
     val scrollOnly = manifest.previews.single { it.functionName == "ScrollOnlyPreview" }
     assertThat(scrollOnly.dataProducts.single().kind).isEqualTo("render/scroll/long")
+
+    // An all-zero gutter is equivalent to no annotation, so scroll + zero-gutter is kept — the
+    // rejection is scoped to an *effective* gutter, not the annotation's bare presence.
+    val zeroGutterScroll = manifest.previews.single { it.functionName == "ZeroGutterScrollPreview" }
+    assertThat(zeroGutterScroll.params.captureGutter).isNull()
+    assertThat(zeroGutterScroll.dataProducts.single().kind).isEqualTo("render/scroll/long")
   }
 
   @Test

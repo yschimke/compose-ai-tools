@@ -22,6 +22,13 @@ class GutterScrollFixtures {
   @TestPreview(name = "gutter-only") @CaptureGutter(all = 4) fun gutterOnlyPreview() {}
 
   @TestPreview(name = "scroll-only") @ScrollingPreview fun scrollOnlyPreview() {}
+
+  // An all-zero gutter is equivalent to no annotation (PreviewDiscovery drops it), so this is NOT
+  // the forbidden combination — it must survive, exactly as the full pass keeps it.
+  @TestPreview(name = "zero-gutter-scroll")
+  @CaptureGutter(all = 0)
+  @ScrollingPreview
+  fun zeroGutterScrollingPreview() {}
 }
 
 /** A multi-preview annotation carrying a hoisted gutter — the meta-closure the guard must walk. */

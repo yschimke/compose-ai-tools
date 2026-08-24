@@ -186,6 +186,13 @@ class IncrementalDiscoveryTest {
     // Either annotation on its own still surfaces.
     assertTrue("gutter-only must survive; got $methods", "gutterOnlyPreview" in methods)
     assertTrue("scroll-only must survive; got $methods", "scrollOnlyPreview" in methods)
+    // An all-zero gutter is equivalent to no annotation, so scroll + zero-gutter is NOT the
+    // forbidden combination — it must survive, matching the authoritative pass rather than being
+    // dropped on the annotation's bare presence.
+    assertTrue(
+      "zero-gutter + scroll must survive; got $methods",
+      "zeroGutterScrollingPreview" in methods,
+    )
   }
 
   @Test

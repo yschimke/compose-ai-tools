@@ -178,34 +178,53 @@ class IncrementalDiscovery(
   }
 
   /**
-   * True when a method declares both `@CaptureGutter` and `@ScrollingPreview` — a contradiction the
-   * authoritative discovery pass rejects (see `PreviewDiscovery`). `@ScrollingPreview` targets
-   * FUNCTION only, so it is always a direct method annotation; `@CaptureGutter` also targets
-   * ANNOTATION_CLASS, so it can be hoisted onto a multi-preview annotation and has to be found by
-   * walking the meta-annotation closure.
+   * True when a method declares `@ScrollingPreview` together with an **effective** `@CaptureGutter`
+   * — the contradiction the authoritative pass rejects (see `PreviewDiscovery`).
+   *
+   * Must match that pass clause for clause, or a source save diverges from the full
+   * `previews.json`: an all-zero gutter (`@CaptureGutter()`, or edges that all clamp to `0`) is
+   * equivalent to no annotation there (`extractCaptureGutter` returns `null`), so such a function
+   * is KEPT — checking the annotation's mere presence would wrongly drop it here and make the live
+   * daemon shed a preview the full pass emitted.
+   *
+   * `@ScrollingPreview` targets FUNCTION only, so it is always a direct method annotation;
+   * `@CaptureGutter` also targets ANNOTATION_CLASS, so it can be hoisted onto a multi-preview
+   * annotation and is found by walking the meta-annotation closure.
    */
   private fun declaresGutterAndScrolling(
     annotations: List<AnnotationInfo>,
     scanResult: ScanResult,
   ): Boolean {
-    val fqns = mutableSetOf<String>()
-    collectAnnotationFqns(annotations, scanResult, mutableSetOf(), fqns)
-    return CAPTURE_GUTTER_FQN in fqns && SCROLLING_PREVIEW_FQN in fqns
+    var hasScrolling = false
+    var gutter: AnnotationInfo? = null
+    val visited = mutableSetOf<String>()
+    fun walk(anns: List<AnnotationInfo>) {
+      for (ann in anns) {
+        if (ann.name == SCROLLING_PREVIEW_FQN) hasScrolling = true
+        if (ann.name == CAPTURE_GUTTER_FQN && gutter == null) gutter = ann
+        if (!visited.add(ann.name)) continue
+        val annClass = scanResult.getClassInfo(ann.name) ?: continue
+        walk(annClass.annotationInfo.toList())
+      }
+    }
+    walk(annotations)
+    return hasScrolling && gutter?.let { hasEffectiveGutter(it) } == true
   }
 
-  /** Every annotation FQN reachable from [annotations], transitively through annotation classes. */
-  private fun collectAnnotationFqns(
-    annotations: List<AnnotationInfo>,
-    scanResult: ScanResult,
-    visited: MutableSet<String>,
-    out: MutableSet<String>,
-  ) {
-    for (ann in annotations) {
-      if (!visited.add(ann.name)) continue
-      out.add(ann.name)
-      val annClass = scanResult.getClassInfo(ann.name) ?: continue
-      collectAnnotationFqns(annClass.annotationInfo.toList(), scanResult, visited, out)
+  /**
+   * Whether a `@CaptureGutter` resolves to a non-zero gutter — mirrors `PreviewDiscovery`'s
+   * `extractCaptureGutter` / `CaptureGutterDp.isEmpty()`: a per-edge `INHERIT_GUTTER` (`-1`) takes
+   * `all`, negatives clamp to `0`, and an all-zero result is "no gutter".
+   */
+  private fun hasEffectiveGutter(ann: AnnotationInfo): Boolean {
+    val pv = ann.parameterValues
+    val all = (pv.getValue("all") as? Int) ?: 0
+    fun edge(name: String): Int {
+      val raw = (pv.getValue(name) as? Int) ?: INHERIT_GUTTER
+      val resolved = if (raw == INHERIT_GUTTER) all else raw
+      return resolved.coerceIn(0, MAX_CAPTURE_GUTTER_DP)
     }
+    return edge("start") > 0 || edge("top") > 0 || edge("end") > 0 || edge("bottom") > 0
   }
 
   private fun collectDirectPreviews(annotations: List<AnnotationInfo>): List<AnnotationInfo> {
@@ -334,6 +353,13 @@ class IncrementalDiscovery(
      */
     private const val CAPTURE_GUTTER_FQN = "ee.schimke.composeai.preview.CaptureGutter"
     private const val SCROLLING_PREVIEW_FQN = "ee.schimke.composeai.preview.ScrollingPreview"
+
+    /**
+     * Mirrors `preview.INHERIT_GUTTER` / `MAX_CAPTURE_GUTTER_DP` (a per-edge "take `all`" sentinel,
+     * and the per-edge dp ceiling). Duplicated for the same layering reason as the FQNs above.
+     */
+    private const val INHERIT_GUTTER = -1
+    private const val MAX_CAPTURE_GUTTER_DP = 64
 
     /** Synthesised `@Repeatable` containers; same FQN set as the gradle plugin. */
     private val CONTAINER_FQNS: Set<String> =

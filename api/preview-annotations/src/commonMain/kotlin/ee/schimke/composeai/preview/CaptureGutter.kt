@@ -65,10 +65,11 @@ package ee.schimke.composeai.preview
  * screen, not a component with an edge for the gutter to sit on. Adding transparent dp around a
  * scroll strip would be decorative padding wearing this annotation's name, and honouring it per
  * lane meant a thicket of divergences — a baked-in round mask, a displaced focus overlay, sidecars
- * keyed to a grown window (compose-ai-tools#4467). So a function that declares both annotations is
- * **rejected at discovery**: it is skipped with an actionable warning naming the function, and
- * contributes nothing to `previews.json`. Remove one annotation — the two describe different things
- * and a preview cannot be both at once.
+ * keyed to a grown window (compose-ai-tools#4467). So a function that declares a (non-zero) gutter
+ * alongside `@ScrollingPreview` is **rejected at discovery**: it is skipped with an actionable
+ * warning naming the function, and contributes nothing to `previews.json`. Remove one annotation —
+ * the two describe different things and a preview cannot be both at once. (An all-zero gutter is
+ * equivalent to no annotation, per [all], so it does not trip this and the scroll capture stands.)
  *
  * A **rotated** capture (`orientation = landscape`, which the daemon reduces to a width↔height
  * swap) keeps the declared edges verbatim: a gutter edge names a direction the component draws in —
