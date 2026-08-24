@@ -186,7 +186,7 @@ interface RecordedRequest {
  */
 function recordingFetch(
     routes: Record<string, Uint8Array | string | number>,
-    { honourRange }: { honourRange: boolean },
+    { honourRange, declareSize = true }: { honourRange: boolean; declareSize?: boolean },
 ) {
     const requests: RecordedRequest[] = [];
     const impl = (input: RequestInfo | URL, init?: RequestInit) => {
@@ -212,14 +212,28 @@ function recordingFetch(
                 }),
             );
         }
-        return Promise.resolve(new Response(bytes as unknown as BodyInit));
+        if (!declareSize) {
+            // A chunked response: the body arrives as a stream and no header names its size.
+            const stream = new ReadableStream({
+                start(controller) {
+                    controller.enqueue(bytes);
+                    controller.close();
+                },
+            });
+            return Promise.resolve(new Response(stream as unknown as BodyInit, { status: 200 }));
+        }
+        return Promise.resolve(
+            new Response(bytes as unknown as BodyInit, {
+                headers: { "Content-Length": String(bytes.length) },
+            }),
+        );
     };
     return { requests, impl };
 }
 
 function withRecordingFetch<T>(
     routes: Record<string, Uint8Array | string | number>,
-    options: { honourRange: boolean },
+    options: { honourRange: boolean; declareSize?: boolean },
     body: (requests: RecordedRequest[]) => Promise<T>,
 ) {
     const original = globalThis.fetch;
@@ -444,6 +458,68 @@ describe("evaluateComparison", () => {
         assert.deepEqual(report.statuses, {
             glyph: { status: "refused", reasons: ["header-invalid"] },
         });
+    });
+
+    it("keeps its requests inside a fixed concurrency, however many records there are", async () => {
+        // `Promise.all` over a 256-record catalog opens 512 requests at once, and the repository's own
+        // route holds a whole artifact in memory for each — four gigabytes on the *server* to return
+        // four kilobytes apiece. A pool bounds that peak on both sides. It is a rate and not a budget:
+        // every request that would have been made is still made, and every answer is unchanged, which
+        // is why no verdict here moves.
+        const scene = world();
+        const routes = catalogRoutes(scene, document(scene));
+        let inFlight = 0;
+        let peak = 0;
+        const original = globalThis.fetch;
+        const base = recordingFetch(routes, { honourRange: true });
+        globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+            inFlight += 1;
+            peak = Math.max(peak, inFlight);
+            return base.impl(input, init).finally(() => {
+                inFlight -= 1;
+            });
+        }) as typeof fetch;
+        try {
+            const report = await evaluateComparison(SOURCES, SCOPE, {});
+            assert.deepEqual(report.statuses, { glyph: { status: "valid" } });
+        } finally {
+            globalThis.fetch = original;
+        }
+        assert.ok(peak <= 8, `at most eight artifact requests in flight, saw ${peak}`);
+    });
+
+    it("keeps an artifact's true size when the response never declares one", async () => {
+        // A chunked `200` carries no `Content-Length`, and a server that ignores `Range` sends one for
+        // every artifact. The prefix is then all this adapter has seen, and recording *its* length as
+        // the artifact's makes the header pass disagree with the decode pass about the same
+        // unchanged file — which the engine reads as an artifact that changed underneath the
+        // evaluation and refuses as `artifact-unreadable`.
+        //
+        // Invisible to every other test here because their artifacts are smaller than the prefix, so
+        // the truncated length and the real one coincide. This one is deliberately past 4096 bytes.
+        const scene = world();
+        // Deterministic noise, because a flat raster deflates to well under the prefix and the whole
+        // point of this case is an artifact that outgrows it.
+        const noisy = raster(64, 64, WHITE);
+        for (let i = 0; i < noisy.pixels.length; i += 4) {
+            noisy.pixels[i] = (i * 37) % 251;
+            noisy.pixels[i + 1] = (i * 89) % 241;
+            noisy.pixels[i + 2] = (i * 151) % 239;
+        }
+        const big = png(noisy);
+        assert.ok(big.length > 4096, "the artifact has to outgrow the prefix to show the bug");
+        const routes = catalogRoutes(scene, document(scene, { acceptedCandidateSha256: sha256Hex(big) }));
+        routes["/m3/parity/known-differences/glyph/accepted-candidate.png"] = big;
+
+        const report = await withRecordingFetch(routes, { honourRange: false, declareSize: false }, () =>
+            evaluateComparison(SOURCES, SCOPE, {}),
+        );
+        // Whatever the record's verdict is on its merits, it must not be "the file changed".
+        const reasons = report.statuses.glyph?.reasons ?? [];
+        assert.ok(
+            !reasons.includes("artifact-unreadable"),
+            `an unchanged artifact must not read as changed, got ${JSON.stringify(report.statuses.glyph)}`,
+        );
     });
 
     it("reaches the same verdict from a server that ignores Range entirely", async () => {

@@ -303,6 +303,9 @@ interface PrefetchedArtifact {
      *  full-reads a record it already cleared through preflight, so this is never missing for one it
      *  actually asks to decode. */
     full?: Uint8Array;
+    /** Whether the header round learned the artifact's real size from the response, or only from how
+     *  much of it arrived. False forces a full read purely to measure the file — see `prefetch`. */
+    totalKnown: boolean;
 }
 
 /**
@@ -361,25 +364,67 @@ async function prefetch(
     }
 
     // Round one: a bounded prefix of everything.
-    await Promise.all(
-        [...paths].map(async (path) => {
-            artifacts.set(path, { header: await fetchPrefix(artifactUrl(path), BUDGET.maxPreflightBytes) });
-        }),
-    );
+    await pooled([...paths], ARTIFACT_CONCURRENCY, async (path) => {
+        artifacts.set(path, await fetchPrefix(artifactUrl(path), BUDGET.maxPreflightBytes));
+    });
 
-    // Round two: the full body of only the prefixes that earned it.
-    await Promise.all(
-        [...artifacts].map(async ([path, entry]) => {
+    // Round two: the full body of the prefixes that earned it — and of the ones whose size the
+    // response never declared, which must be read to be measured. See `totalKnown`.
+    await pooled([...artifacts], ARTIFACT_CONCURRENCY, async ([path, entry]) => {
+        {
+            if (!entry.totalKnown) {
+                const measured = await fetchArtifact(artifactUrl(path));
+                if (measured instanceof Uint8Array) {
+                    // The real size at last. Correcting the header answer here is what stops the two
+                    // passes disagreeing about an unchanged file: left at the prefix's length, the
+                    // decode pass reports the whole body's length, `samePreflight` sees two different
+                    // numbers and the engine refuses a file that never changed as
+                    // `artifact-unreadable`.
+                    const header = entry.header;
+                    if ("bytes" in header) entry.header = { bytes: header.bytes, byteLength: measured.length };
+                    entry.totalKnown = true;
+                    if (headerEarnsFullRead(entry.header)) entry.full = measured;
+                } else {
+                    entry.header = measured;
+                }
+                return;
+            }
             if (!headerEarnsFullRead(entry.header)) return;
             const full = await fetchArtifact(artifactUrl(path));
             if (full instanceof Uint8Array) entry.full = full;
             // A body that turned unreadable between the two rounds is left without `full`; the engine
             // re-reads and reaches `artifact-unreadable` on the decode pass, the same as the
             // reference reader when a tree moves under a long evaluation.
-        }),
-    );
+        }
+    });
 
     return artifacts;
+}
+
+/**
+ * How many artifact requests may be in flight at once.
+ *
+ * `Promise.all` over a 256-record catalog opens 512 requests simultaneously, and each one the server
+ * answers costs it a whole artifact in memory — the repository's own route reads the file after
+ * checking its size, so 512 concurrent near-cap artifacts is four gigabytes on the *server* to return
+ * four kilobytes apiece. The client pays a matching peak. A pool caps both at
+ * `ARTIFACT_CONCURRENCY x maxArtifactBytes` in flight without changing which requests are made or
+ * what any of them answer: it is a rate, not a budget, so no record's verdict depends on it.
+ *
+ * Eight is the usual browser per-host connection ceiling, so a larger number mostly queues in the
+ * network stack anyway, where it is invisible instead of bounded.
+ */
+const ARTIFACT_CONCURRENCY = 8;
+
+/** Run `work` over `items` with at most `limit` in flight, preserving nothing but the side effects. */
+async function pooled<T>(items: T[], limit: number, work: (item: T) => Promise<void>): Promise<void> {
+    let next = 0;
+    const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+        for (let index = next++; index < items.length; index = next++) {
+            await work(items[index]);
+        }
+    });
+    await Promise.all(workers);
 }
 
 /** True when a prefix's header is clean enough that the engine might decode the record — the
@@ -400,7 +445,8 @@ function headerEarnsFullRead(header: ArtifactAnswer): boolean {
  * from `Content-Length` otherwise; a file the server will not size is read to its (bounded) end and
  * measured by what arrived.
  */
-async function fetchPrefix(url: string, limit: number): Promise<ArtifactAnswer> {
+async function fetchPrefix(url: string, limit: number): Promise<PrefetchedArtifact> {
+    const failed = (error: string): PrefetchedArtifact => ({ header: { error }, totalKnown: true });
     let response: Response;
     try {
         response = await fetch(url, {
@@ -408,19 +454,25 @@ async function fetchPrefix(url: string, limit: number): Promise<ArtifactAnswer> 
             headers: { Range: `bytes=0-${limit - 1}` },
         });
     } catch {
-        return { error: "artifact-unreadable" };
+        return failed("artifact-unreadable");
     }
-    if (response.status === 403) return { error: "path-not-contained" };
-    if (response.status === 413) return { error: "artifact-too-large" };
-    if (!response.ok && response.status !== 206) return { error: "artifact-unreadable" };
+    if (response.status === 403) return failed("path-not-contained");
+    if (response.status === 413) return failed("artifact-too-large");
+    if (!response.ok && response.status !== 206) return failed("artifact-unreadable");
 
     const total = totalBytesFromHeaders(response);
     const bytes = await readAtMost(response, limit);
-    if (!bytes) return { error: "artifact-unreadable" };
-    // Absent a server-declared size, the artifact is at least what we read; the header preflight only
-    // needs `byteLength` to enforce the byte cap, and understating it there is caught by the reader's
-    // own guard, which refuses a `byteLength` shorter than the bytes handed over.
-    return { bytes, byteLength: total ?? bytes.length };
+    if (!bytes) return failed("artifact-unreadable");
+    // **A short read is its own proof of size.** Fewer bytes than asked for means the file ended, so
+    // the artifact is exactly what arrived however silent the headers were. Only a response that
+    // filled the prefix leaves the real size unknown, and that is the one worth a second read: the
+    // prefix's length is *not* the artifact's, and recording it as though it were makes the header
+    // and decode passes disagree about a file that never changed.
+    const ranTooLongToTell = total === null && bytes.length >= limit;
+    return {
+        header: { bytes, byteLength: total ?? bytes.length },
+        totalKnown: !ranTooLongToTell,
+    };
 }
 
 /** The whole-file size a range response advertises, or `null` when the server declared none. */
@@ -475,7 +527,7 @@ async function readAtMost(response: Response, limit: number): Promise<Uint8Array
     return out;
 }
 
-async function fetchArtifact(url: string): Promise<ArtifactAnswer> {
+async function fetchArtifact(url: string): Promise<Uint8Array | { error: string }> {
     let response: Response;
     try {
         response = await fetch(url, { credentials: "same-origin" });
@@ -488,7 +540,15 @@ async function fetchArtifact(url: string): Promise<ArtifactAnswer> {
     if (response.status === 403) return { error: "path-not-contained" };
     if (response.status === 413) return { error: "artifact-too-large" };
     if (!response.ok) return { error: "artifact-unreadable" };
-    return new Uint8Array(await response.arrayBuffer());
+    // **Bounded at the cap, not at whatever the server sends.** `arrayBuffer()` allocates the entire
+    // response, so a server answering with far more than `maxArtifactBytes` exhausted the tab through
+    // the very read the cap governs. One byte past the ceiling is enough to *know* it is past —
+    // §4's caps are inclusive — so the read stops there and the record is refused on its size, which
+    // is the verdict the reference reader reaches from a `stat` without allocating anything.
+    const bytes = await readAtMost(response, BUDGET.maxArtifactBytes + 1);
+    if (!bytes) return { error: "artifact-unreadable" };
+    if (bytes.length > BUDGET.maxArtifactBytes) return { error: "artifact-too-large" };
+    return bytes;
 }
 
 /**
