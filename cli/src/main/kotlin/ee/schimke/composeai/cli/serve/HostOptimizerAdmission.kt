@@ -58,8 +58,16 @@ data class OptimizerPressureThresholds(
    * stays permanent is a genuine emergency — see [dutyCycleFloorMemoryAvailableFraction].
    */
   val starvationCapMillis: Long = 30 * 60_000L,
-  /** How long the gate stays open once [starvationCapMillis] is exhausted. `0` disables the cap. */
-  val dutyCycleMillis: Long = 60_000L,
+  /**
+   * How long the gate stays open once [starvationCapMillis] is exhausted. `0` disables the cap.
+   *
+   * This must be comfortably longer than one cold Android daemon warm (34-68s in production). The
+   * old one-minute window was commonly spent entirely in that warm: the next per-batch gate check
+   * saw the window closed and yielded with zero cache entries written. Five minutes matches the
+   * optimizer's normal lane slice, so a concession can pay for the warm and still do useful work
+   * without turning the pressure backstop into an unbounded admission.
+   */
+  val dutyCycleMillis: Long = 5 * 60_000L,
   /**
    * Memory headroom below which the duty cycle never opens, whatever the hold has cost.
    *

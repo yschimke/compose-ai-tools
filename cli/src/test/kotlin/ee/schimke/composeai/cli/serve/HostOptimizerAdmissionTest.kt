@@ -175,6 +175,37 @@ class HostOptimizerAdmissionTest {
   }
 
   @Test
+  fun `the default duty cycle outlives a cold daemon warm`() {
+    var now = 0L
+    val gate =
+      OptimizerPressureGate(
+        sample = {
+          HostResourceSample(
+            loadPerCpu = 0.17,
+            cpuUtilization = 0.03,
+            memoryAvailableFraction = 0.14,
+          )
+        },
+        thresholds = OptimizerPressureThresholds(sampleIntervalMillis = 0),
+        clock = { now },
+      )
+    assertTrue(gate.snapshot().constrained)
+
+    now = 30 * 60_000L
+    assertFalse(gate.snapshot().constrained, "the starvation cap opens a bounded work window")
+
+    // The deployed Android lanes take up to about 68 seconds merely to warm. The old 60-second
+    // default had already closed here, so a pass reached its first render gate with no work done.
+    now += 70_000L
+    val afterWarm = gate.snapshot()
+    assertFalse(afterWarm.constrained, "the concession must leave time to render after warming")
+    assertNotNull(afterWarm.dutyCycleUntilEpochMillis)
+
+    now = 35 * 60_000L
+    assertTrue(gate.snapshot().constrained, "the longer concession remains bounded")
+  }
+
+  @Test
   fun `an expired duty cycle closes even when sampling has stopped working`() {
     var now = 0L
     var readable = true

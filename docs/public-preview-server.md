@@ -979,8 +979,11 @@ keep a shut gate from turning the feature off:
   simply never runs — `/status.json` reporting `paused · memory available 15%` with `wear-m3` warmed
   to 5 of its 170 entries over a 15-hour uptime. A steady-state reading is the host's baseline
   rather than an emergency, so after `-Dcomposeai.serve.optimizerStarvationCapMillis` (30 minutes)
-  the gate opens for `…optimizerDutyCycleMillis` (60 seconds), then holds again: hold, admit a
-  slice, hold. The exception is a genuine emergency — memory available under
+  the gate opens for `…optimizerDutyCycleMillis` (5 minutes), then holds again: hold, admit a
+  slice, hold. The window matches the normal optimizer slice and comfortably outlives a cold
+  Android daemon warm (34-68s); the former 60-second window was often spent entirely warming, so
+  its first per-batch pressure check closed the pass before it wrote one cache entry. The exception
+  is a genuine emergency — memory available under
   `…optimizerDutyCycleFloorMemoryAvailableFraction` (`0.05`) never duty-cycles, because slow
   progress is not worth an OOM-killed replica — and neither does a host whose memory reading is
   *missing* (`/proc/meminfo` unreadable while load and CPU still are), since an unverified floor is
