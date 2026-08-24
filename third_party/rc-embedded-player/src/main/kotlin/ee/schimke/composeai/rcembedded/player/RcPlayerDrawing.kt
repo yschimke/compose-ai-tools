@@ -906,7 +906,7 @@ internal fun DrawScope.executeOperations(
         val color = data.color
         if (mainCanvas == null) mainCanvas = drawContext.canvas
         if (bitmapId == 0) {
-          drawContext.canvas = mainCanvas!!
+          drawContext.canvas = mainCanvas
         } else {
           // The mutable-copy + erase dance lives in the image seam so this op names no
           // framework bitmap; it hands back the ImageBitmap view to point the canvas at

@@ -60,12 +60,13 @@ kotlin {
     // (`PreviewSlots.SLOT_TAG_PREFIX`); a test asserts this module's copy agrees so the two can't
     // drift. JVM-only (the reader + junit are JVM), so it lives in the JVM test source set and the
     // marker's common runtime classpath stays serialization-free.
-    val jvmTest by getting {
-      dependencies {
-        implementation(project(":data-layoutinspector-core"))
-        implementation(libs.junit)
+    val jvmTest =
+      getByName("jvmTest") {
+        dependencies {
+          implementation(project(":data-layoutinspector-core"))
+          implementation(libs.junit)
+        }
       }
-    }
   }
 }
 

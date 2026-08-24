@@ -168,7 +168,7 @@ class ServeImageRoutingTest {
     val accepted =
       upload().use { response ->
         assertEquals(201, response.code)
-        Json.parseToJsonElement(response.body!!.string()).jsonObject
+        Json.parseToJsonElement(response.body.string()).jsonObject
       }
     val id = accepted["id"]!!.jsonPrimitive.content
     val path = accepted["path"]!!.jsonPrimitive.content
@@ -189,7 +189,7 @@ class ServeImageRoutingTest {
       assertEquals(200, response.code)
       assertTrue(response.header("Content-Type")!!.startsWith("image/png"))
       assertEquals("nosniff", response.header("X-Content-Type-Options"))
-      assertTrue(response.body!!.bytes().contentEquals(ServeImageFixtures.png()))
+      assertTrue(response.body.bytes().contentEquals(ServeImageFixtures.png()))
     }
   }
 
@@ -199,7 +199,7 @@ class ServeImageRoutingTest {
     upload(bearer = null).use { response ->
       assertEquals(401, response.code)
       assertNotNull(response.header("WWW-Authenticate"))
-      val body = response.body!!.string()
+      val body = response.body.string()
       assertTrue(body.contains("yschimke/compose-ai-tools"), body)
     }
     assertEquals(before, imageStore.occupancy().count)
@@ -209,7 +209,7 @@ class ServeImageRoutingTest {
   fun `a real github account without access to the gating repo is refused`() {
     upload(bearer = FakeAuth.OUTSIDER_TOKEN).use { response ->
       assertEquals(403, response.code)
-      assertTrue(response.body!!.string().contains("does not have access"))
+      assertTrue(response.body.string().contains("does not have access"))
     }
     upload(bearer = "gho_madeup").use { response -> assertEquals(401, response.code) }
   }
@@ -218,7 +218,7 @@ class ServeImageRoutingTest {
   fun `an upload that is not an image is refused`() {
     upload(name = "evil.png", bytes = "<html><script>alert(1)</script></html>".toByteArray()).use {
       assertEquals(400, it.code)
-      assertTrue(it.body!!.string().contains("unrecognised"))
+      assertTrue(it.body.string().contains("unrecognised"))
     }
   }
 
@@ -226,7 +226,7 @@ class ServeImageRoutingTest {
   fun `a link 404s once expired, and under a suffix that is not its own`() {
     val path =
       upload().use {
-        Json.parseToJsonElement(it.body!!.string()).jsonObject["path"]!!.jsonPrimitive.content
+        Json.parseToJsonElement(it.body.string()).jsonObject["path"]!!.jsonPrimitive.content
       }
     val id = path.removePrefix("/i/").removeSuffix(".png")
 
@@ -239,7 +239,7 @@ class ServeImageRoutingTest {
       assertEquals(404, response.code)
       // An expired id and one that never existed answer the same way — the 404 says nothing about
       // whether there was ever anything here.
-      assertEquals("not found", response.body!!.string())
+      assertEquals("not found", response.body.string())
     }
   }
 
@@ -274,7 +274,7 @@ class ServeImageRoutingTest {
   @Test
   fun `the presented token is never echoed back`() {
     upload().use { response ->
-      val body = response.body!!.string()
+      val body = response.body.string()
       assertFalse(body.contains(FakeAuth.TOKEN), body)
     }
   }

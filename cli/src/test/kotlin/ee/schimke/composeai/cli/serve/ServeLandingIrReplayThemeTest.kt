@@ -105,7 +105,7 @@ class ServeLandingIrReplayThemeTest {
     val request = Request.Builder().url("http://127.0.0.1:${server.port}/$system/").build()
     return client.newCall(request).execute().use { response ->
       assertEquals(200, response.code, "landing for $system")
-      response.body?.string().orEmpty()
+      response.body.string().orEmpty()
     }
   }
 

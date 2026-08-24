@@ -142,7 +142,7 @@ object FigmaLayeredSvg {
       sb.append("""<g transform="translate(${model.tx}, ${model.ty})">""").append('\n')
       sb
         .append("  ")
-        .append(backgroundRectSvg(model.backgroundRect!!, model.deviceBackground!!))
+        .append(backgroundRectSvg(model.backgroundRect, model.deviceBackground))
         .append('\n')
       sb.append("</g>\n")
     }

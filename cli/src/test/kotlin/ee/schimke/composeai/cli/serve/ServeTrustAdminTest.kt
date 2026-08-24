@@ -37,7 +37,7 @@ class ServeTrustAdminTest {
       )
 
     assertTrue(result is ServeTrustAdmin.Result.Ok)
-    assertNull((result as ServeTrustAdmin.Result.Ok).warning)
+    assertNull(result.warning)
     // The point of the change: in force on the running server, no restart.
     assertTrue(store.get().trustsBranch("yschimke/horologist", "design-artifacts/horologist"))
     // ...and durable, so it survives the next roll.
@@ -162,8 +162,7 @@ class ServeTrustAdminTest {
       admin.add(AdminTrustEntry(kind = "branch", repo = "a/one", branch = "design-artifacts/*"))
 
     val ok = result as ServeTrustAdmin.Result.Ok
-    assertNotNull(ok.warning)
-    assertTrue(ok.warning!!.contains("not persisted"))
+    assertTrue(assertNotNull(ok.warning).contains("not persisted"))
     assertTrue(store.get().trustsBranch("a/one", "design-artifacts/x"))
   }
 

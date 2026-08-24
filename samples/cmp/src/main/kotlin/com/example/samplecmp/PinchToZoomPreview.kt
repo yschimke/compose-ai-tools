@@ -36,7 +36,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun PinchToZoomPreview() {
   var scale by remember { mutableStateOf(1f) }
-  val transformableState = rememberTransformableState { zoomChange, _, _ ->
+  val transformableState = rememberTransformableState { _, zoomChange, _, _ ->
     scale = (scale * zoomChange).coerceIn(MIN_SCALE, MAX_SCALE)
   }
   Box(

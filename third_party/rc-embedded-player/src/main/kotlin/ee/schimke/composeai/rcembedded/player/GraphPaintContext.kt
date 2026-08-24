@@ -49,7 +49,7 @@ import androidx.compose.remote.core.operations.paint.PaintBundle
  */
 internal class GraphPaintContext(context: RemoteContext) : PaintContext(context) {
 
-  override fun getText(id: Int): String? = mContext?.getText(id)
+  override fun getText(id: Int): String? = mContext.getText(id)
 
   override fun layoutComplexText(
     textId: Int,

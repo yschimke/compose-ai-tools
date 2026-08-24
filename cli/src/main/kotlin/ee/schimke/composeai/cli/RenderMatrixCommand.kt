@@ -68,7 +68,7 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
     val fontScales = fontScaleRaw?.map { it.toFloatOrNull() }
     if (fontScales?.any { it == null } == true) {
       System.err.println(
-        "render-matrix: --font-scale must be numbers, got '${fontScaleRaw!!.joinToString(",")}'"
+        "render-matrix: --font-scale must be numbers, got '${fontScaleRaw.joinToString(",")}'"
       )
       exitProcess(64)
     }

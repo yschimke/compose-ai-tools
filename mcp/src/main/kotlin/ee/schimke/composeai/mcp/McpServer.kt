@@ -113,7 +113,7 @@ class McpSession(
               }
               configure(session)
               session.connect(
-                StdioServerTransport(input.asSource().buffered(), output.asSink().buffered())
+                StdioServerTransport(input.asSource().buffered(), output.asSink().buffered()) {}
               )
               while (!closed.isDone) {
                 delay(100)

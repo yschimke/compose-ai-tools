@@ -88,15 +88,13 @@ class LiveSeatLimiterTest {
   @Test
   fun `desktop-weight sessions fill the budget then the next is refused`() {
     val limiter = LiveSeatLimiter(2, perPreviewReserve = 0)
-    val a = limiter.acquire(1)
-    val b = limiter.acquire(1)
-    assertNotNull(a)
-    assertNotNull(b)
+    val a = assertNotNull(limiter.acquire(1))
+    assertNotNull(limiter.acquire(1))
     assertEquals(0, limiter.availablePermits())
     // Third desktop session over budget → refused (caller closes WS 1013).
     assertNull(limiter.acquire(1))
     // Freeing one reopens a seat.
-    a!!.close()
+    a.close()
     assertEquals(1, limiter.availablePermits())
     val c = limiter.acquire(1)
     assertNotNull(c)
@@ -106,9 +104,8 @@ class LiveSeatLimiterTest {
   fun `an Android session costs its heavier weight and blocks a concurrent desktop one`() {
     val limiter = LiveSeatLimiter(2, perPreviewReserve = 0)
     // Weight 2 (Android) consumes the whole budget of 2.
-    val android = limiter.acquire(ServeBundleDaemon.ANDROID_LIVE_SEAT_WEIGHT)
-    assertNotNull(android)
-    assertEquals(2, android!!.permits)
+    val android = assertNotNull(limiter.acquire(ServeBundleDaemon.ANDROID_LIVE_SEAT_WEIGHT))
+    assertEquals(2, android.permits)
     assertEquals(0, limiter.availablePermits())
     // A cheap desktop session can't squeeze in while the heavy one holds both permits.
     assertNull(limiter.acquire(1))
@@ -124,9 +121,8 @@ class LiveSeatLimiterTest {
     // (its weight exceeds the ceiling). Coerce to the budget so it runs solo instead of
     // deadlocking.
     val limiter = LiveSeatLimiter(1)
-    val android = limiter.acquire(ServeBundleDaemon.ANDROID_LIVE_SEAT_WEIGHT)
-    assertNotNull(android)
-    assertEquals(1, android!!.permits)
+    val android = assertNotNull(limiter.acquire(ServeBundleDaemon.ANDROID_LIVE_SEAT_WEIGHT))
+    assertEquals(1, android.permits)
     assertEquals(0, limiter.availablePermits())
     // …but it does hold the whole box: nothing else runs concurrently.
     assertNull(limiter.acquire(1))
@@ -137,9 +133,8 @@ class LiveSeatLimiterTest {
   @Test
   fun `releasing a ticket is idempotent — a double close returns permits only once`() {
     val limiter = LiveSeatLimiter(2, perPreviewReserve = 0)
-    val a = limiter.acquire(1)
-    assertNotNull(a)
-    a!!.close()
+    val a = assertNotNull(limiter.acquire(1))
+    a.close()
     a.close() // second close is a no-op
     assertEquals(2, limiter.availablePermits())
     // Sanity: the budget didn't inflate past its total.

@@ -120,7 +120,7 @@ internal object ServeStartupBundles {
     return runCatching {
       httpClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
         if (!response.isSuccessful) return@use null
-        val body = response.body ?: return@use null
+        val body = response.body
         readCapped(body.byteStream(), maxBytes)
       }
     }

@@ -377,7 +377,7 @@ class ServeCatalogStoreTest {
         },
       )
       .load("compose-m3")
-    val host = registered.getValue("compose-m3") as ServeBundleHost
+    val host = registered.getValue("compose-m3")
     val afterPublish = requested.count { it.endsWith(".png") }
 
     host.previews.forEach { host.contentCrop(it.id) }

@@ -142,7 +142,7 @@ class RenderCircuitBreaker(
   fun peekReason(): String? = synchronized(lock) { openReason }
 
   /** A render succeeded. Closes a rate-tripped breaker; a fatal one stays open. */
-  fun recordOk() =
+  fun recordOk(): Unit =
     synchronized(lock) {
       push(false)
       if (fatal) return
@@ -153,7 +153,7 @@ class RenderCircuitBreaker(
     }
 
   /** A render failed with [reason]; trips the breaker when fatal or when the rate says so. */
-  fun recordFailure(reason: String) =
+  fun recordFailure(reason: String): Unit =
     synchronized(lock) {
       push(true)
       if (fatal) return

@@ -20,6 +20,7 @@ class ServeParityActivityStoreTest {
   private val fileSystem = FakeFileSystem()
   private val root = "/bundle".toPath()
   private val json = Json { prettyPrint = true }
+  private val wireJson = Json { ignoreUnknownKeys = true }
 
   private val sha = "4e73ec2b9f0a1c3d5e7f9a1b3c5d7e9f0a1b3c5d"
 
@@ -243,21 +244,23 @@ class ServeParityActivityStoreTest {
     val loaded =
       assertNotNull(
         ServeParityActivityStore.sanitize(
-          Json { ignoreUnknownKeys = true }.decodeFromString<ParityActivity>(fixture.readText())
+          wireJson.decodeFromString<ParityActivity>(fixture.readText())
         ),
         "the emitter's output must survive the reader's validation",
       )
 
-    assertEquals("yschimke/m3-catalog", loaded.code?.repo)
-    assertEquals(1, loaded.code?.events?.size)
+    val code = assertNotNull(loaded.code)
+    val figma = assertNotNull(loaded.figma)
+    assertEquals("yschimke/m3-catalog", code.repo)
+    assertEquals(1, code.events.size)
     // `+00:00` offsets, not just `Z` — git's `%aI` emits the former and the reader must take it.
-    assertEquals("2026-08-05T10:00:00+00:00", loaded.code?.events?.single()?.at)
-    assertEquals("ocdacdEsnHipMJD3egzxKb", loaded.figma?.fileKey)
-    assertEquals(1, loaded.figma?.versions?.size)
+    assertEquals("2026-08-05T10:00:00+00:00", code.events.single().at)
+    assertEquals("ocdacdEsnHipMJD3egzxKb", figma.fileKey)
+    assertEquals(1, figma.versions.size)
     // The comment resolved to the preview it specifies, which is what makes the page a parity view.
     assertEquals(
       listOf("switch-on__ideal__default__light"),
-      loaded.figma?.comments?.single()?.previewIds,
+      figma.comments.single().previewIds,
     )
     assertEquals(MappingGap.Kind.UNMAPPED_DESIGN_NODE, loaded.gaps.single().kind)
 
@@ -268,8 +271,7 @@ class ServeParityActivityStoreTest {
     // `ServeParityDashboard` just filters unknown ids out and renders a row with no target. So
     // assert the *shape*, not only the value: a discovery id here is a bug even if it parses.
     val eventPreviewIds =
-      loaded.code!!.events.flatMap { it.previewIds } +
-        loaded.figma!!.comments.flatMap { it.previewIds }
+      code.events.flatMap { it.previewIds } + figma.comments.flatMap { it.previewIds }
     assertTrue(eventPreviewIds.isNotEmpty(), "the fixture must exercise the join")
     for (id in eventPreviewIds) {
       assertFalse(
@@ -289,13 +291,11 @@ class ServeParityActivityStoreTest {
       "the published feed must produce inbound links against a catalog serving those ids",
     )
     // …and every outbound link the page will build from it resolves.
-    assertNotNull(
-      ServeParityActivityStore.commitUrl(loaded.code?.repo, loaded.code!!.events.single().sha)
-    )
+    assertNotNull(ServeParityActivityStore.commitUrl(code.repo, code.events.single().sha))
     assertNotNull(
       ServeParityActivityStore.nodeUrl(
-        loaded.figma?.fileKey,
-        loaded.figma?.comments?.single()?.nodeId,
+        figma.fileKey,
+        figma.comments.single().nodeId,
       )
     )
   }

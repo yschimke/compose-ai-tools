@@ -2254,7 +2254,9 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
               PlaygroundMode.ANDROID,
               PlaygroundMode.REMOTE_COMPOSE -> androidBundle
             }
-          (source as? PlaygroundBundleSource.ServedCatalog)?.system
+          (source?.let { PlaygroundBundleSource.parse(it) }
+              as? PlaygroundBundleSource.ServedCatalog)
+            ?.system
         },
         captureRemoteDocument = { snippet -> rcCapture?.capture(snippet) },
         publishRemoteDocument = { name, bytes, checked ->

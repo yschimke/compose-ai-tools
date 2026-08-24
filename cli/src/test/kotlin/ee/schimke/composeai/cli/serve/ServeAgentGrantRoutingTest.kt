@@ -70,7 +70,7 @@ class ServeAgentGrantRoutingTest {
         .apply { token?.let { header(tokenHeader, it) } }
         .build()
     client.newCall(request).execute().use {
-      return it.code to (it.body?.string() ?: "")
+      return it.code to it.body.string()
     }
   }
 
@@ -81,7 +81,7 @@ class ServeAgentGrantRoutingTest {
         .apply { token?.let { header(ServeHttpServer.TOKEN_HEADER, it) } }
         .build()
     client.newCall(request).execute().use {
-      return it.code to (it.body?.string() ?: "")
+      return it.code to it.body.string()
     }
   }
 
@@ -381,7 +381,7 @@ class ServeAgentGrantRoutingTest {
   /** Open the viewer socket with [token] and return the reason it was closed with (or "open"). */
   private fun socketCloseReason(token: String): String {
     val latch = java.util.concurrent.CountDownLatch(1)
-    val reason = java.util.concurrent.atomic.AtomicReference("open")
+    val closeReason = java.util.concurrent.atomic.AtomicReference("open")
     val request =
       Request.Builder()
         .url("ws://127.0.0.1:${server.port}/ws/AnyPreview?session=demo")
@@ -391,13 +391,13 @@ class ServeAgentGrantRoutingTest {
       client.newWebSocket(
         request,
         object : okhttp3.WebSocketListener() {
-          override fun onClosed(webSocket: okhttp3.WebSocket, code: Int, text: String) {
-            reason.set(text)
+          override fun onClosed(webSocket: okhttp3.WebSocket, code: Int, reason: String) {
+            closeReason.set(reason)
             latch.countDown()
           }
 
-          override fun onClosing(webSocket: okhttp3.WebSocket, code: Int, text: String) {
-            reason.set(text)
+          override fun onClosing(webSocket: okhttp3.WebSocket, code: Int, reason: String) {
+            closeReason.set(reason)
             latch.countDown()
           }
 
@@ -406,14 +406,14 @@ class ServeAgentGrantRoutingTest {
             t: Throwable,
             response: okhttp3.Response?,
           ) {
-            reason.set("failure: ${t.message}")
+            closeReason.set("failure: ${t.message}")
             latch.countDown()
           }
         },
       )
     latch.await(15, java.util.concurrent.TimeUnit.SECONDS)
     socket.cancel()
-    return reason.get()
+    return closeReason.get()
   }
 
   @Test

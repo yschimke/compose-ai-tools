@@ -34,6 +34,7 @@ import java.io.ByteArrayInputStream
  *   recolors a monochrome icon. Defaults to `null` (draw the SVG's own colors).
  */
 @Composable
+@Suppress("DEPRECATION") // The resources API cannot construct a Painter from caller-supplied bytes.
 fun SvgPreview(
   asset: String,
   modifier: Modifier = Modifier,

@@ -93,7 +93,7 @@ object ServeUrlFetch {
         return Hop.Redirect(resolved.toString())
       }
       if (!response.isSuccessful) return Hop.Failed
-      val body = response.body ?: return Hop.Failed
+      val body = response.body
       val bytes = readCapped(body.byteStream(), maxBytes) ?: return Hop.Failed
       return Hop.Body(bytes)
     }

@@ -103,16 +103,17 @@ dependencies {
 // configuration that produces a single text-file artifact listing the absolute paths of every
 // JAR on its `debugRuntimeClasspath` + `debugTestFixturesRuntimeClasspath`. Plain-text artefact
 // — no AGP variants on the consumer side. See that module's `writeDaemonClasspath` task.
-val androidDaemonClasspath: Configuration by configurations.creating {
-  isCanBeConsumed = false
-  isCanBeResolved = true
-  attributes {
-    attribute(
-      Attribute.of("ee.schimke.composeai.daemon.harness.classpath", String::class.java),
-      "android",
-    )
+val androidDaemonClasspath =
+  configurations.create("androidDaemonClasspath") {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    attributes {
+      attribute(
+        Attribute.of("ee.schimke.composeai.daemon.harness.classpath", String::class.java),
+        "android",
+      )
+    }
   }
-}
 
 dependencies { androidDaemonClasspath(project(":daemon:android")) }
 
@@ -180,75 +181,80 @@ tasks.register<JavaExec>("runFakeDaemonMain") {
 // Configuration-cache discipline: a dedicated `classloaderForensicsLib` configuration captures the
 // `:daemon:core` jars at configuration time so the doLast lambda doesn't reach through
 // `project(...)` at execution time (cross-project task references aren't config-cache-safe).
-val classloaderForensicsLib: Configuration by configurations.creating {
-  isCanBeConsumed = false
-  isCanBeResolved = true
-  description = "Resolved JARs for the ClassloaderForensics library (used by dumpClassloaderDiff)."
-}
+val classloaderForensicsLib =
+  configurations.create("classloaderForensicsLib") {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    description =
+      "Resolved JARs for the ClassloaderForensics library (used by dumpClassloaderDiff)."
+  }
 
 dependencies { classloaderForensicsLib(project(":daemon:core")) }
 
-val dumpClassloaderDiff by tasks.registering {
-  description =
-    "Diff the standalone (:renderer-android) and daemon (:daemon:android) classloader " +
-      "forensics dumps. Writes daemon/harness/build/reports/classloader-forensics/diff.{md,json}. v1 — " +
-      "developer-invoked diagnostic, not a CI gate."
-  group = "verification"
-  // Reference the sibling modules' forensics dumps by path anchored at the build root — Isolated
-  // Projects forbids reaching into another project's `layout`. Dev-only diagnostic inputs.
-  val standaloneJson =
-    layout.settingsDirectory.file(
-      "renderers/android/build/reports/classloader-forensics/standalone.json"
-    )
-  val daemonJson =
-    layout.settingsDirectory.file("daemon/android/build/reports/classloader-forensics/daemon.json")
-  val diffMdFile = layout.buildDirectory.file("reports/classloader-forensics/diff.md")
-  val diffJsonFile = layout.buildDirectory.file("reports/classloader-forensics/diff.json")
-  inputs.file(standaloneJson)
-  inputs.file(daemonJson)
-  outputs.file(diffMdFile)
-  outputs.file(diffJsonFile)
+val dumpClassloaderDiff =
+  tasks.register("dumpClassloaderDiff") {
+    description =
+      "Diff the standalone (:renderer-android) and daemon (:daemon:android) classloader " +
+        "forensics dumps. Writes daemon/harness/build/reports/classloader-forensics/diff.{md,json}. v1 — " +
+        "developer-invoked diagnostic, not a CI gate."
+    group = "verification"
+    // Reference the sibling modules' forensics dumps by path anchored at the build root — Isolated
+    // Projects forbids reaching into another project's `layout`. Dev-only diagnostic inputs.
+    val standaloneJson =
+      layout.settingsDirectory.file(
+        "renderers/android/build/reports/classloader-forensics/standalone.json"
+      )
+    val daemonJson =
+      layout.settingsDirectory.file(
+        "daemon/android/build/reports/classloader-forensics/daemon.json"
+      )
+    val diffMdFile = layout.buildDirectory.file("reports/classloader-forensics/diff.md")
+    val diffJsonFile = layout.buildDirectory.file("reports/classloader-forensics/diff.json")
+    inputs.file(standaloneJson)
+    inputs.file(daemonJson)
+    outputs.file(diffMdFile)
+    outputs.file(diffJsonFile)
 
-  // Snapshot the resolved JAR list at configuration time — Provider<Set<FileSystemLocation>> is
-  // configuration-cache-safe; cross-project task references aren't.
-  val libFiles = classloaderForensicsLib.elements
+    // Snapshot the resolved JAR list at configuration time — Provider<Set<FileSystemLocation>> is
+    // configuration-cache-safe; cross-project task references aren't.
+    val libFiles = classloaderForensicsLib.elements
 
-  doLast {
-    val standalone = standaloneJson.asFile
-    val daemon = daemonJson.asFile
-    require(standalone.exists()) {
-      "Configuration A dump missing — run :renderer-android:test --tests \"*ClassloaderForensicsTest\" first.\n" +
-        "Expected: ${standalone.absolutePath}"
+    doLast {
+      val standalone = standaloneJson.asFile
+      val daemon = daemonJson.asFile
+      require(standalone.exists()) {
+        "Configuration A dump missing — run :renderer-android:test --tests \"*ClassloaderForensicsTest\" first.\n" +
+          "Expected: ${standalone.absolutePath}"
+      }
+      require(daemon.exists()) {
+        "Configuration B dump missing — run :daemon:android:test --tests \"*ClassloaderForensicsDaemonTest\" first.\n" +
+          "Expected: ${daemon.absolutePath}"
+      }
+      val urls = libFiles.get().map { it.asFile.toURI().toURL() }.toTypedArray()
+      val parentLoader: ClassLoader =
+        Thread.currentThread().contextClassLoader ?: ClassLoader.getSystemClassLoader()
+      val cl: ClassLoader = URLClassLoader(urls, parentLoader)
+      val forensics =
+        Class.forName("ee.schimke.composeai.daemon.forensics.ClassloaderForensics", true, cl)
+      val instance = forensics.getField("INSTANCE").get(null)
+      val fileClass = File::class.java
+      val diffMethod = forensics.getMethod("diff", fileClass, fileClass, fileClass, fileClass)
+      val diffMd = diffMdFile.get().asFile
+      val diffJson = diffJsonFile.get().asFile
+      diffMd.parentFile.mkdirs()
+      diffMethod.invoke(instance, standalone, daemon, diffMd, diffJson)
+      logger.lifecycle("Classloader forensics diff written to: ${diffMd.absolutePath}")
+      logger.lifecycle("                                  + : ${diffJson.absolutePath}")
     }
-    require(daemon.exists()) {
-      "Configuration B dump missing — run :daemon:android:test --tests \"*ClassloaderForensicsDaemonTest\" first.\n" +
-        "Expected: ${daemon.absolutePath}"
-    }
-    val urls = libFiles.get().map { it.asFile.toURI().toURL() }.toTypedArray()
-    val parentLoader: ClassLoader =
-      Thread.currentThread().contextClassLoader ?: ClassLoader.getSystemClassLoader()
-    val cl: ClassLoader = URLClassLoader(urls, parentLoader)
-    val forensics =
-      Class.forName("ee.schimke.composeai.daemon.forensics.ClassloaderForensics", true, cl)
-    val instance = forensics.getField("INSTANCE").get(null)
-    val fileClass = File::class.java
-    val diffMethod = forensics.getMethod("diff", fileClass, fileClass, fileClass, fileClass)
-    val diffMd = diffMdFile.get().asFile
-    val diffJson = diffJsonFile.get().asFile
-    diffMd.parentFile.mkdirs()
-    diffMethod.invoke(instance, standalone, daemon, diffMd, diffJson)
-    logger.lifecycle("Classloader forensics diff written to: ${diffMd.absolutePath}")
-    logger.lifecycle("                                  + : ${diffJson.absolutePath}")
   }
-}
 
 // D-harness.v1.5b — regenerate the in-repo PNG baselines under
 // `daemon/harness/baselines/desktop/<scenario>/`. Runs every real-mode scenario in
 // "capture" mode: pixel-diffs are skipped and the captured PNG always overwrites the baseline.
 // See `daemon/harness/CONTRIBUTING.md` for when to run this. Two runs in a row should
 // produce byte-identical PNGs; if they don't, the renderer has a non-determinism worth chasing.
-val regenerateBaselines by
-  tasks.registering(Test::class) {
+val regenerateBaselines =
+  tasks.register<Test>("regenerateBaselines") {
     description =
       "Run every harness scenario in capture mode; overwrites in-repo baseline PNGs " +
         "(D-harness.v1.5b + v2). Pick target with `-Ptarget=desktop|android`; defaults to " +

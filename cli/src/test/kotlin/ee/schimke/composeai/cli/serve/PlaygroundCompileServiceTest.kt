@@ -239,8 +239,8 @@ class PlaygroundCompileServiceTest {
 
     val resp = svc.run(request(), isSecurityChecked = true)
 
-    assertNotNull(resp.previewToken)
-    assertEquals("/pg/${resp.previewToken}", resp.previewUrl)
+    val previewToken = assertNotNull(resp.previewToken)
+    assertEquals("/pg/$previewToken", resp.previewUrl)
     assertNull(resp.exception)
     assertEquals(
       listOf("/catalog/app.jar".toPath()),
@@ -248,7 +248,7 @@ class PlaygroundCompileServiceTest {
       "compiled against the catalog classpath",
     )
 
-    val token = tokenStore.get(resp.previewToken!!)!!
+    val token = assertNotNull(tokenStore.get(previewToken))
     assertEquals("com.example.SnippetPreview", token.snippet.previewId)
     assertEquals(PlaygroundMode.CMP, token.snippet.mode)
     // The render classpath carries the catalog jars plus the snippet's own compiled classes.
@@ -305,8 +305,7 @@ class PlaygroundCompileServiceTest {
     val resp = svc.run(request(), isSecurityChecked = true)
 
     assertNull(resp.previewToken)
-    assertNotNull(resp.exception)
-    assertTrue(resp.exception!!.contains("@Preview"))
+    assertTrue(assertNotNull(resp.exception).contains("@Preview"))
     assertFalse(fs.exists("/work/run1".toPath()))
   }
 
@@ -379,8 +378,7 @@ class PlaygroundCompileServiceTest {
 
     assertNull(resp.documentUrl)
     assertNull(resp.previewToken)
-    assertNotNull(resp.exception)
-    assertTrue(resp.exception!!.contains("RemoteDocument"))
+    assertTrue(assertNotNull(resp.exception).contains("RemoteDocument"))
     assertTrue(tokenStore.snapshot().isEmpty())
     assertFalse(fs.exists("/work/run1".toPath()), "a capture-less RC run deletes its own work dir")
   }
@@ -393,8 +391,7 @@ class PlaygroundCompileServiceTest {
 
     assertNull(resp.documentUrl)
     assertNull(resp.previewToken)
-    assertNotNull(resp.exception)
-    assertTrue(resp.exception!!.contains("not accepted"))
+    assertTrue(assertNotNull(resp.exception).contains("not accepted"))
     assertTrue(tokenStore.snapshot().isEmpty())
     assertFalse(fs.exists("/work/run1".toPath()))
   }
@@ -573,19 +570,19 @@ class PlaygroundCompileServiceTest {
 
     val alice = svc.acquireEditLease("alice")
     assertTrue(alice.acquired)
-    assertNotNull(alice.lease)
+    val aliceLease = assertNotNull(alice.lease)
     assertEquals(6_000L, alice.expiresAtEpochMs)
 
     val bob = svc.acquireEditLease("bob")
     assertFalse(bob.acquired)
     assertNull(bob.lease, "a busy response never discloses the capability")
-    assertFalse(svc.releaseEditLease("bob", alice.lease!!), "ownership is checked")
+    assertFalse(svc.releaseEditLease("bob", aliceLease), "ownership is checked")
 
     now = 2_000L
     val renewed = svc.acquireEditLease("alice")
     assertEquals(alice.lease, renewed.lease)
     assertEquals(7_000L, renewed.expiresAtEpochMs)
-    assertTrue(svc.releaseEditLease("alice", alice.lease!!))
+    assertTrue(svc.releaseEditLease("alice", aliceLease))
     assertTrue(svc.acquireEditLease("bob").acquired, "release makes the single slot available")
     now = 8_000L
     assertFalse(svc.editLeaseHealth().active, "status observes idle expiry without taking the lock")
@@ -618,13 +615,14 @@ class PlaygroundCompileServiceTest {
     val svc = service(editLeasesEnabled = true)
     val first = svc.acquireEditLease("alice", client = "tab-a")
     val second = svc.acquireEditLease("alice", client = "tab-b")
+    val lease = assertNotNull(first.lease)
 
     assertEquals(first.lease, second.lease)
-    assertTrue(svc.releaseEditLease("alice", first.lease!!, client = "tab-a"))
+    assertTrue(svc.releaseEditLease("alice", lease, client = "tab-a"))
     assertTrue(svc.editLeaseHealth().active)
     assertTrue(fs.metadataOrNull("/work/run1".toPath())?.isDirectory == true)
 
-    assertTrue(svc.releaseEditLease("alice", first.lease!!, client = "tab-b"))
+    assertTrue(svc.releaseEditLease("alice", lease, client = "tab-b"))
     assertFalse(svc.editLeaseHealth().active)
     assertNull(fs.metadataOrNull("/work/run1".toPath()))
   }
@@ -632,7 +630,7 @@ class PlaygroundCompileServiceTest {
   @Test
   fun `reattaching a tab reports the accepted server revision`() {
     val svc = service(editLeasesEnabled = true)
-    val lease = svc.acquireEditLease("alice", client = "tab-a").lease!!
+    val lease = assertNotNull(svc.acquireEditLease("alice", client = "tab-a").lease)
     val response =
       svc.run(
         request().copy(editLease = lease, revision = 7),
@@ -655,7 +653,7 @@ class PlaygroundCompileServiceTest {
         editLeaseTtlMillis = 5_000L,
         nowMillis = { now },
       )
-    val alice = svc.acquireEditLease("alice").lease!!
+    val alice = assertNotNull(svc.acquireEditLease("alice").lease)
     val response =
       svc.run(
         request().copy(editLease = alice, revision = 7),
@@ -665,7 +663,7 @@ class PlaygroundCompileServiceTest {
     assertNotNull(response.previewToken)
 
     now = 6_001L
-    val bob = svc.acquireEditLease("bob").lease!! // Purges Alice's expired lease.
+    val bob = assertNotNull(svc.acquireEditLease("bob").lease) // Purges Alice's expired lease.
     assertEquals(7, svc.editLeaseHealth().lastRevision)
 
     assertTrue(svc.releaseEditLease("bob", bob))

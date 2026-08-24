@@ -55,8 +55,7 @@ class SpatialSceneTest {
     // The top panel sits above the bottom one — the genuine SpatialColumn stacking.
     assertTrue(top.poseInRoot.translation.y > bottom.poseInRoot.translation.y)
 
-    assertNotNull(scene.environment)
-    assertEquals("color", scene.environment!!.kind)
+    assertEquals("color", assertNotNull(scene.environment).kind)
   }
 
   @Test

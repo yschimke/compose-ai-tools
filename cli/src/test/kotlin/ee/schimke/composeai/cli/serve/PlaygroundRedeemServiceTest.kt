@@ -31,7 +31,7 @@ class PlaygroundRedeemServiceTest {
       clock = { now },
     )
 
-  private lateinit var service: PlaygroundRedeemService
+  private var service: PlaygroundRedeemService
   private var materializeCount = 0
 
   private val store =

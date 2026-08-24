@@ -661,6 +661,7 @@ internal object ModifierTokenResolver {
   private fun unpackFloat2(packed: Long): Float = Float.fromBits((packed and 0xFFFFFFFFL).toInt())
 
   /** The `GraphicsLayerScope.() -> Unit` a lambda-form `graphicsLayer` element holds, if any. */
+  @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
   private fun layerBlock(modifier: Any): Any? =
     generateSequence(modifier.javaClass as Class<*>?) { it.superclass }
       .flatMap { it.declaredFields.asSequence() }

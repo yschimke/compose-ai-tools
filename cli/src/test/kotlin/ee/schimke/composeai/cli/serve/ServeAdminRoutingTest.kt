@@ -180,7 +180,7 @@ class ServeAdminRoutingTest {
         .build()
     val http = if (followRedirects) client else client.newBuilder().followRedirects(false).build()
     http.newCall(req).execute().use { r ->
-      return r.code to (r.headers["Location"] ?: r.body?.string() ?: "")
+      return r.code to (r.headers["Location"] ?: r.body.string())
     }
   }
 
@@ -282,7 +282,7 @@ class ServeAdminRoutingTest {
 
     val home =
       Request.Builder().url(url("/")).build().let { req ->
-        client.newCall(req).execute().use { it.body?.string() ?: "" }
+        client.newCall(req).execute().use { it.body.string() }
       }
 
     assertTrue(home.contains("href=\"/newcat/\""), "the new catalog is indexed: $home")

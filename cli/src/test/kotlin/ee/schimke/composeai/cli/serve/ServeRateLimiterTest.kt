@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli.serve
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -74,14 +75,13 @@ class ServeRateLimiterTest {
     // The issue's actual complaint: two clients issuing back-to-back long compiles hold both host
     // slots indefinitely. A per-caller concurrency of 1 is what stops one of them doing it alone.
     val l = limiter(permits = 100, maxConcurrent = 1)
-    val held = l.take("gh:alice")
-    assertTrue(held != null)
+    val held = assertNotNull(l.take("gh:alice"))
     val second = l.tryAcquire("gh:alice")
     assertIs<ServeRateLimiter.Decision.Throttled>(second)
     assertTrue(second.reason.contains("in flight"), second.reason)
     // …while a different caller is unaffected — this bounds one caller, not the host.
     assertTrue(l.cycle("gh:bob"))
-    held!!.release()
+    held.release()
     assertTrue(l.cycle("gh:alice"), "the slot frees when their own work finishes")
   }
 
@@ -130,16 +130,15 @@ class ServeRateLimiterTest {
   fun `a new caller is refused rather than growing the map past its cap`() {
     val l = limiter(permits = 2, maxKeys = 2)
     // Both slots held by callers with work in flight — nothing is sweepable, by construction.
-    val a = l.take("ip:10.0.0.1")
-    val b = l.take("ip:10.0.0.2")
-    assertTrue(a != null && b != null)
+    val a = assertNotNull(l.take("ip:10.0.0.1"))
+    val b = assertNotNull(l.take("ip:10.0.0.2"))
     val refused = l.tryAcquire("ip:10.0.0.3")
     assertIs<ServeRateLimiter.Decision.Throttled>(refused)
     assertTrue(refused.reason.contains("active callers"), refused.reason)
     assertEquals(2, l.trackedCallers())
     // …and the space is reclaimable once those callers go quiet.
-    a!!.release()
-    b!!.release()
+    a.release()
+    b.release()
     now += 60_000
     assertTrue(l.cycle("ip:10.0.0.3"))
   }

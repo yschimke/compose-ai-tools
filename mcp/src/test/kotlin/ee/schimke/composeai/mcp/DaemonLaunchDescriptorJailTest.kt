@@ -12,6 +12,8 @@ import org.junit.Test
  */
 class DaemonLaunchDescriptorJailTest {
 
+  private val descriptorJson = Json { encodeDefaults = true }
+
   private val plain =
     DaemonLaunchDescriptor(
       schemaVersion = 2,
@@ -49,7 +51,7 @@ class DaemonLaunchDescriptorJailTest {
 
     val parsed =
       DaemonLaunchDescriptor.parse(
-        Json { encodeDefaults = true }.encodeToString(DaemonLaunchDescriptor.serializer(), jailed)
+        descriptorJson.encodeToString(DaemonLaunchDescriptor.serializer(), jailed)
       )
 
     assertThat(parsed.jailCommand).containsExactly("unshare", "--net").inOrder()

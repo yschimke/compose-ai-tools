@@ -1583,7 +1583,7 @@ data class FigmaSvgModel(
         // hairline).
         strokeWidthPx =
           if (stroke != null || strokeGradient != null) {
-            val dp = tokens?.borderWidth?.removeSuffix("dp")?.toDoubleOrNull()
+            val dp = tokens.borderWidth?.removeSuffix("dp")?.toDoubleOrNull()
             ((dp?.let { it * ctx.density } ?: ctx.density.toDouble()) * scaleMean).coerceAtLeast(
               1.0
             )

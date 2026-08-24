@@ -93,7 +93,7 @@ class ServeKnownDifferencesTest {
     assertTrue(artifact is ServeKnownDifferences.Artifact.Bytes)
     assertEquals(
       "not really a png",
-      String((artifact as ServeKnownDifferences.Artifact.Bytes).bytes),
+      String(artifact.bytes),
     )
   }
 

@@ -63,7 +63,7 @@ dependencies {
 // which the runtime plugin owns — both jars can share a buildscript classpath, so the resource
 // paths
 // must not collide). Read back by `ConfigPluginVersion`.
-val generateConfigPluginVersionResource by tasks.registering {
+val generateConfigPluginVersionResource = tasks.register("generateConfigPluginVersionResource") {
   val outputDir = layout.buildDirectory.dir("generated/config-plugin-version-resource")
   val pluginVersion = project.version.toString()
   inputs.property("version", pluginVersion)

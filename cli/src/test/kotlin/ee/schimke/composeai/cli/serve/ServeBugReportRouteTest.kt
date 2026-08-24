@@ -86,7 +86,7 @@ class ServeBugReportRouteTest {
     val req = Request.Builder().url(url)
     if (token != null) req.header(ServeHttpServer.TOKEN_HEADER, token)
     client.newCall(req.build()).execute().use { r ->
-      return r.code to (r.body?.string() ?: "")
+      return r.code to r.body.string()
     }
   }
 

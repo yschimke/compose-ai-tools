@@ -131,5 +131,5 @@ class ServeStatusLiveFramesTest {
     client
       .newCall(Request.Builder().url("http://127.0.0.1:${server.port}$path").build())
       .execute()
-      .use { it.code to (it.body?.string() ?: "") }
+      .use { it.code to it.body.string() }
 }

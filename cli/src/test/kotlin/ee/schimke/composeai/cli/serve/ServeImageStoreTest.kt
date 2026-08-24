@@ -72,7 +72,7 @@ class ServeImageStoreTest {
     val notAnImage = store.put(bytes = "<html>nope</html>".toByteArray())
     assertTrue(notAnImage is ServeImageStore.Result.Failed)
     assertTrue(
-      (notAnImage as ServeImageStore.Result.Failed).reason.contains("unrecognised"),
+      notAnImage.reason.contains("unrecognised"),
       notAnImage.reason,
     )
     assertTrue(store.put(bytes = ByteArray(0)) is ServeImageStore.Result.Failed)
