@@ -18,9 +18,10 @@ both lets `rc-compare` diff them against the same baked PNG.
 - Commit: `c8e7d738d7c76df3a87281ba8c3b880622df6282` (`androidx-main`, 2026-07-29)
 - License: Apache-2.0
 
-There is **no published artifact** for this player. Upstream declares the module as
-`SoftwareType.TEST_APPLICATION` — an integration-test app — so the player ships only as sources
-inside it. Vendoring is the only way to depend on it.
+At the pinned commit the player lived only in a `SoftwareType.TEST_APPLICATION` integration-test
+module. Newer androidx.dev snapshots publish the upstream implementation inside
+`androidx.compose.remote:remote-player-compose`; the vendored copy remains useful as a pinned,
+locally patched baseline that can be loaded alongside it.
 
 ### That premise has expired — so the vendored player left upstream's package
 

@@ -31,6 +31,8 @@ class ServeRcCompareTest {
           "width": 640, "height": 480, "note": null, "referenceBlank": false,
           "embeddedRendered": true, "embeddedMismatchPct": 0.007, "embeddedMismatchPx": 24,
           "embeddedNote": null,
+          "androidxEmbeddedRendered": true, "androidxEmbeddedMismatchPct": 0.5,
+          "androidxEmbeddedMismatchPx": 1700, "androidxEmbeddedNote": null,
           "cmpWasmRendered": false, "cmpWasmMismatchPct": null, "cmpWasmMismatchPx": null,
           "cmpWasmNote": "Unsupported operation at byte 110"
         },
@@ -40,6 +42,8 @@ class ServeRcCompareTest {
           "width": 400, "height": 400, "note": null, "referenceBlank": true,
           "embeddedRendered": true, "embeddedMismatchPct": null, "embeddedMismatchPx": null,
           "embeddedNote": null,
+          "androidxEmbeddedRendered": false, "androidxEmbeddedMismatchPct": null,
+          "androidxEmbeddedMismatchPx": null, "androidxEmbeddedNote": "upstream render failed",
           "cmpWasmRendered": false, "cmpWasmNote": "no render"
         },
         {
@@ -82,7 +86,10 @@ class ServeRcCompareTest {
   fun `keeps only the lanes the run actually covered`() {
     // The published run had no cmp-jvm player, so that column does not exist at all — an empty
     // column would read as "the player rendered nothing", which is a different claim.
-    assertEquals(listOf("baked", "js", "embedded", "cmp-wasm"), plan().manifest.lanes.map { it.id })
+    assertEquals(
+      listOf("baked", "js", "embedded", "androidx-embedded", "cmp-wasm"),
+      plan().manifest.lanes.map { it.id },
+    )
   }
 
   @Test
@@ -102,6 +109,9 @@ class ServeRcCompareTest {
     val wasm = plan.manifest.rows[0].lanes.getValue("cmp-wasm")
     assertFalse(wasm.rendered)
     assertEquals("Unsupported operation at byte 110", wasm.note)
+    val upstream = plan.manifest.rows[1].lanes.getValue("androidx-embedded")
+    assertFalse(upstream.rendered)
+    assertEquals("upstream render failed", upstream.note)
   }
 
   @Test

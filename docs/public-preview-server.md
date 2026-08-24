@@ -1870,7 +1870,8 @@ all three are post-processing steps over one render.
 
 A catalog that ships Remote Compose documents gets a **Remote Compose players** lane on the same
 compare page: one column per player — the baked PNG, the vendored TypeScript `RcdPlayer`, AndroidX's
-Compose-embedded `RcPlayer`, the Compose Desktop / Skiko player, the CMP/Wasm player — showing every
+vendored/local-patch Compose-embedded `RcPlayer`, the current embedded `RcPlayer` from the pinned
+androidx.dev snapshot, the Compose Desktop / Skiko player, and the CMP/Wasm player — showing every
 player's render of the same document, with nothing diffed until you pick a column as the reference.
 Picking the **baked PNG** replays the offline run's exact `pixelmatch` diffs; picking a *player*
 diffs in the browser, which is the only way to ask "how far is cmp-wasm from cmp-jvm?".

@@ -12,6 +12,7 @@ import { test } from "node:test";
 import { BG } from "./rc-compare-pixels.mjs";
 import {
   activeLanes,
+  hasAndroidxEmbeddedLane,
   hasCmpWasmLane,
   hasEmbeddedJvmLane,
   hasEmbeddedLane,
@@ -24,6 +25,21 @@ function clientModel(html) {
   const match = html.match(/<script type="application\/json" id="rc-model">([\s\S]*?)<\/script>/);
   assert.ok(match, "the page must inline its row model");
   return JSON.parse(match[1].replace(/\\u003c/g, "<"));
+}
+
+/** The same rows rendered by the embedded player published from androidx.dev. */
+function withAndroidxEmbedded(base) {
+  return {
+    ...base,
+    rows: base.rows.map((r, index) => ({
+      ...r,
+      androidxEmbeddedRendered: true,
+      androidxEmbeddedMismatchPct: 4 + index,
+      androidxEmbeddedMismatchPx: 11_000 + index,
+      androidxEmbedded: `rc-androidx-embedded/${r.id}.png`,
+      androidxEmbeddedDiff: `rc-androidx-embedded-diff/${r.id}.png`,
+    })),
+  };
 }
 
 /** The `Diff against` picker's option values, in order. */
@@ -181,12 +197,15 @@ test("the client-side scorer flattens onto the diff neutral before reading pixel
 });
 
 test("nothing is diffed by default: no diff images, no score chips, picker on 'none'", () => {
-  const html = renderRcCompareHtml(withCmpWasm(withEmbeddedJvm(withEmbedded(model))));
+  const html = renderRcCompareHtml(
+    withCmpWasm(withEmbeddedJvm(withAndroidxEmbedded(withEmbedded(model)))),
+  );
   // No diff column, and no diff image anywhere in the emitted markup — the diff slots are empty
   // placeholders the client fills only once a reference is picked.
   assert.doesNotMatch(html, /<th>pixel diff<\/th>/);
   assert.doesNotMatch(html, /<img[^>]*src="rc-diff\//);
   assert.doesNotMatch(html, /<img[^>]*src="rc-embedded-diff\//);
+  assert.doesNotMatch(html, /<img[^>]*src="rc-androidx-embedded-diff\//);
   assert.doesNotMatch(html, /<img[^>]*src="rc-cmp-wasm-diff\//);
   assert.match(html, /<div class="diffslot" hidden><\/div>/);
   // Score chips are a property of a chosen reference, so the server renders none.
@@ -224,8 +243,12 @@ test("the reference picker offers every lane the run produced, and only those", 
     "embedded",
   ]);
   assert.deepEqual(
-    referenceOptions(renderRcCompareHtml(withCmpWasm(withEmbeddedJvm(withEmbedded(model))))),
-    ["none", "baked", "js", "embedded", "cmp-jvm", "cmp-wasm"],
+    referenceOptions(
+      renderRcCompareHtml(
+        withCmpWasm(withEmbeddedJvm(withAndroidxEmbedded(withEmbedded(model)))),
+      ),
+    ),
+    ["none", "baked", "js", "embedded", "androidx-embedded", "cmp-jvm", "cmp-wasm"],
   );
   assert.deepEqual(
     activeLanes(model.rows).map((l) => l.id),
@@ -257,8 +280,9 @@ test("the inlined row model carries each lane's render, build-time diff and scor
 test("a model with no embedded results renders the JS-only page — no empty embedded columns", () => {
   const html = renderRcCompareHtml(model);
   assert.equal(hasEmbeddedLane(model.rows), false);
-  assert.doesNotMatch(html, /AndroidX Embedded · harness/);
-  assert.doesNotMatch(html, /AndroidX Embedded · harness:<\/strong>/);
+  assert.equal(hasAndroidxEmbeddedLane(model.rows), false);
+  assert.doesNotMatch(html, /AndroidX Embedded · vendored Android/);
+  assert.doesNotMatch(html, /AndroidX Embedded · androidx.dev/);
   // exactly the baked + JS columns
   assert.match(
     html,
@@ -289,14 +313,33 @@ test("an unrenderable row shows its note instead of an image and omits the rc/di
 
 test("the embedded lane adds one column and its own summary line", () => {
   const html = renderRcCompareHtml(withEmbedded(model));
-  assert.match(html, /AndroidX Embedded · harness/);
-  assert.match(html, /<strong>AndroidX Embedded · harness:<\/strong>/);
+  assert.match(html, /AndroidX Embedded · vendored Android/);
+  assert.match(html, /<strong>AndroidX Embedded · vendored Android:<\/strong>/);
   // One column per player — the embedded lane no longer drags a diff column along with it.
-  assert.equal((html.match(/<th>AndroidX Embedded · harness<\/th>/g) || []).length, 1);
+  assert.equal((html.match(/<th>AndroidX Embedded · vendored Android<\/th>/g) || []).length, 1);
   // Both players are diffable references, and both are in the client model.
   const client = clientModel(html);
   assert.ok(client.lanes.some((l) => l.id === "js"));
   assert.ok(client.lanes.some((l) => l.id === "embedded"));
+});
+
+test("the vendored and androidx.dev Android embedded players are independent lanes", () => {
+  const both = withAndroidxEmbedded(withEmbedded(model));
+  const html = renderRcCompareHtml(both);
+  assert.equal(hasEmbeddedLane(both.rows), true);
+  assert.equal(hasAndroidxEmbeddedLane(both.rows), true);
+  assert.deepEqual(referenceOptions(html), [
+    "none",
+    "baked",
+    "js",
+    "embedded",
+    "androidx-embedded",
+  ]);
+  assert.equal((html.match(/<th>AndroidX Embedded · vendored Android<\/th>/g) || []).length, 1);
+  assert.equal((html.match(/<th>AndroidX Embedded · androidx.dev<\/th>/g) || []).length, 1);
+  assert.match(html, /<strong>AndroidX Embedded · androidx.dev:<\/strong>/);
+  assert.match(html, /pinned and locally patched/);
+  assert.match(html, /independently compiled player published by the pinned AndroidX snapshot/);
 });
 
 test("the cmp-jvm lane adds one column, a picker entry and its own summary line", () => {
@@ -315,12 +358,12 @@ test("the cmp-jvm lane adds one column, a picker entry and its own summary line"
 
 test("the cmp-jvm and embedded lanes coexist, each its own column and summary", () => {
   const html = renderRcCompareHtml(withEmbeddedJvm(withEmbedded(model)));
-  assert.match(html, /AndroidX Embedded · harness/);
+  assert.match(html, /AndroidX Embedded · vendored Android/);
   assert.match(html, /RC · cmp-jvm player/);
   assert.match(html, /\(JS \+ embedded \+ cmp-jvm players\)/);
   // The lede names all three players and the worst-scoring sort, not just JS + embedded.
   assert.match(html, /<strong>JS player<\/strong>/);
-  assert.match(html, /<strong>AndroidX Embedded · harness<\/strong>/);
+  assert.match(html, /<strong>AndroidX Embedded · vendored Android<\/strong>/);
   assert.match(html, /<strong>cmp-jvm player<\/strong>/);
   assert.match(html, /Rows sort worst-match-first on the worst-scoring player/);
 });
@@ -345,8 +388,10 @@ test("the cmp-wasm lane adds one folded-diff column and independent parity stats
 });
 
 test("all rc-compare lanes can coexist without hiding the cmp-wasm result", () => {
-  const html = renderRcCompareHtml(withCmpWasm(withEmbeddedJvm(withEmbedded(model))));
-  assert.match(html, /\(JS \+ embedded \+ cmp-jvm \+ cmp-wasm players\)/);
+  const html = renderRcCompareHtml(
+    withCmpWasm(withEmbeddedJvm(withAndroidxEmbedded(withEmbedded(model)))),
+  );
+  assert.match(html, /\(JS \+ embedded \+ androidx.dev embedded \+ cmp-jvm \+ cmp-wasm players\)/);
   assert.equal((html.match(/<th>RC · cmp-wasm player<\/th>/g) || []).length, 1);
   assert.match(html, /data-cmp-wasm-pct=/);
 });

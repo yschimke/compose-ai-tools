@@ -28,7 +28,7 @@
  *
  * * **JS player** — the vendored TypeScript `RC.RcdPlayer` on a `<canvas>`, the
  *   browser render lane.
- * * **AndroidX Embedded · harness** — the vendored AndroidX `RcPlayer`
+ * * **AndroidX Embedded · vendored Android** — the vendored AndroidX `RcPlayer`
  *   (`:third-party-rc-embedded-player`), a pure-Compose interpreter of the same
  *   document. This is the lane that differs from `remote-player-view`'s
  *   `RemoteComposePlayer` (an Android `View` painting to a framework `Canvas`),
@@ -59,6 +59,9 @@
  *       embeddedMismatchPx,  // integer, null when !embeddedRendered
  *       embedded,            // out-relative path to the embedded render ('' when absent)
  *       embeddedDiff,        // out-relative path to its diff ('' when absent)
+ *       androidxEmbeddedRendered, androidxEmbeddedNote,
+ *       androidxEmbeddedMismatchPct, androidxEmbeddedMismatchPx,
+ *       androidxEmbedded, androidxEmbeddedDiff, // same fields for the androidx.dev player
  *     }],
  *   }
  *
@@ -88,6 +91,11 @@ function esc(s) {
 /** True when any row carries an embedded-player result, i.e. the lane ran at all. */
 export function hasEmbeddedLane(rows = []) {
   return rows.some((r) => r.embeddedRendered !== undefined || r.embedded);
+}
+
+/** True when the androidx.dev embedded-player harness ran. */
+export function hasAndroidxEmbeddedLane(rows = []) {
+  return rows.some((r) => r.androidxEmbeddedRendered !== undefined || r.androidxEmbedded);
 }
 
 /** True when any row carries a cmp-jvm result, i.e. the desktop lane ran at all. */
@@ -142,8 +150,8 @@ const LANES = [
     // AndroidX's `RcPlayer`, vendored here as `:third-party-rc-embedded-player`, rasterized by
     // this repo's own Robolectric harness rather than by the catalog's capture. Same player as the
     // baked lane now draws with, so this column is a harness-vs-harness check on that player.
-    label: "AndroidX Embedded · harness",
-    short: "embedded",
+    label: "AndroidX Embedded · vendored Android",
+    short: "vendored",
     present: hasEmbeddedLane,
     src: (r) => r.embedded,
     diff: (r) => r.embeddedDiff,
@@ -151,6 +159,18 @@ const LANES = [
     pct: (r) => r.embeddedMismatchPct,
     px: (r) => r.embeddedMismatchPx,
     note: (r) => r.embeddedNote,
+  },
+  {
+    id: "androidx-embedded",
+    label: "AndroidX Embedded · androidx.dev",
+    short: "androidx.dev",
+    present: hasAndroidxEmbeddedLane,
+    src: (r) => r.androidxEmbedded,
+    diff: (r) => r.androidxEmbeddedDiff,
+    rendered: (r) => Boolean(r.androidxEmbeddedRendered),
+    pct: (r) => r.androidxEmbeddedMismatchPct,
+    px: (r) => r.androidxEmbeddedMismatchPx,
+    note: (r) => r.androidxEmbeddedNote,
   },
   {
     id: "cmp-jvm",
@@ -214,6 +234,14 @@ export function summarizeRcCompare(rows = []) {
       ? null
       : embScored.reduce((s, r) => s + (r.embeddedMismatchPct ?? 0), 0) / embScored.length;
 
+  const androidxEmbRendered = rows.filter((r) => r.androidxEmbeddedRendered);
+  const androidxEmbScored = androidxEmbRendered.filter((r) => !r.referenceBlank);
+  const androidxEmbMeanPct =
+    androidxEmbScored.length === 0
+      ? null
+      : androidxEmbScored.reduce((s, r) => s + (r.androidxEmbeddedMismatchPct ?? 0), 0) /
+        androidxEmbScored.length;
+
   // cmp-jvm lane, summarized the same independent way as the embedded lane.
   const jvmRendered = rows.filter((r) => r.embeddedJvmRendered);
   const jvmScored = jvmRendered.filter((r) => !r.referenceBlank);
@@ -240,6 +268,12 @@ export function summarizeRcCompare(rows = []) {
     embeddedScored: embScored.length,
     embeddedUnsupported: hasEmbeddedLane(rows) ? rows.length - embRendered.length : 0,
     embeddedMeanPct: embMeanPct,
+    androidxEmbeddedRendered: androidxEmbRendered.length,
+    androidxEmbeddedScored: androidxEmbScored.length,
+    androidxEmbeddedUnsupported: hasAndroidxEmbeddedLane(rows)
+      ? rows.length - androidxEmbRendered.length
+      : 0,
+    androidxEmbeddedMeanPct: androidxEmbMeanPct,
     embeddedJvmRendered: jvmRendered.length,
     embeddedJvmScored: jvmScored.length,
     embeddedJvmUnsupported: hasEmbeddedJvmLane(rows) ? rows.length - jvmRendered.length : 0,
@@ -263,6 +297,7 @@ function worstPct(r) {
   const scores = [];
   if (r.rendered) scores.push(r.mismatchPct ?? 0);
   if (r.embeddedRendered) scores.push(r.embeddedMismatchPct ?? 0);
+  if (r.androidxEmbeddedRendered) scores.push(r.androidxEmbeddedMismatchPct ?? 0);
   if (r.embeddedJvmRendered) scores.push(r.embeddedJvmMismatchPct ?? 0);
   if (r.cmpWasmRendered) scores.push(r.cmpWasmMismatchPct ?? 0);
   return scores.length ? Math.max(...scores) : null;
@@ -309,6 +344,8 @@ function rowHtml(r, lanes, index) {
     r.referenceBlank ? " blank-reference" : ""
   }" data-row="${index}" data-pct="${scorable && r.rendered ? (r.mismatchPct ?? 0) : ""}" data-embedded-pct="${
     scorable && r.embeddedRendered ? (r.embeddedMismatchPct ?? 0) : ""
+  }" data-androidx-embedded-pct="${
+    scorable && r.androidxEmbeddedRendered ? (r.androidxEmbeddedMismatchPct ?? 0) : ""
   }" data-embedded-jvm-pct="${
     scorable && r.embeddedJvmRendered ? (r.embeddedJvmMismatchPct ?? 0) : ""
   }" data-cmp-wasm-pct="${
@@ -647,6 +684,7 @@ export function renderRcCompareHtml(model, opts = {}) {
   const threshold = opts.threshold ?? 0.1;
 
   const withEmbedded = hasEmbeddedLane(allRows);
+  const withAndroidxEmbedded = hasAndroidxEmbeddedLane(allRows);
   const withEmbeddedJvm = hasEmbeddedJvmLane(allRows);
   const withCmpWasm = hasCmpWasmLane(allRows);
   const lanes = activeLanes(allRows);
@@ -654,12 +692,17 @@ export function renderRcCompareHtml(model, opts = {}) {
   const laneNames = [
     "JS",
     withEmbedded && "embedded",
+    withAndroidxEmbedded && "androidx.dev embedded",
     withEmbeddedJvm && "cmp-jvm",
     withCmpWasm && "cmp-wasm",
   ].filter(Boolean);
   const laneLabel = `${laneNames.join(" + ")} player${laneNames.length > 1 ? "s" : ""}`;
   const embMeanTxt =
     stats.embeddedMeanPct == null ? "n/a" : `${stats.embeddedMeanPct.toFixed(2)}%`;
+  const androidxEmbMeanTxt =
+    stats.androidxEmbeddedMeanPct == null
+      ? "n/a"
+      : `${stats.androidxEmbeddedMeanPct.toFixed(2)}%`;
   const jvmMeanTxt =
     stats.embeddedJvmMeanPct == null ? "n/a" : `${stats.embeddedJvmMeanPct.toFixed(2)}%`;
   const wasmMeanTxt =
@@ -676,8 +719,15 @@ export function renderRcCompareHtml(model, opts = {}) {
     (stats.unsupported ? ` · ${stats.unsupported} not decodable` : "") +
     blankTxt +
     (withEmbedded
-      ? `<br><strong>AndroidX Embedded · harness:</strong> ${stats.embeddedScored} scored · mean mismatch <strong>${embMeanTxt}</strong>` +
+      ? `<br><strong>AndroidX Embedded · vendored Android:</strong> ${stats.embeddedScored} scored · mean mismatch <strong>${embMeanTxt}</strong>` +
         (stats.embeddedUnsupported ? ` · ${stats.embeddedUnsupported} not rendered` : "") +
+        blankTxt
+      : "") +
+    (withAndroidxEmbedded
+      ? `<br><strong>AndroidX Embedded · androidx.dev:</strong> ${stats.androidxEmbeddedScored} scored · mean mismatch <strong>${androidxEmbMeanTxt}</strong>` +
+        (stats.androidxEmbeddedUnsupported
+          ? ` · ${stats.androidxEmbeddedUnsupported} not rendered`
+          : "") +
         blankTxt
       : "") +
     (withEmbeddedJvm
@@ -796,7 +846,9 @@ preview pins the view-backed lane) next to the same
 ${[
   `The <strong>JS player</strong> is the vendored TypeScript <code>RC.RcdPlayer</code> on a <code>&lt;canvas&gt;</code>`,
   withEmbedded &&
-    `<strong>AndroidX Embedded · harness</strong> is this repo's own Robolectric rasterization of AndroidX's <code>RcPlayer</code> — the same player the baked capture goes through, so the two columns check that the capture and the harness agree`,
+    `<strong>AndroidX Embedded · vendored Android</strong> is this repo's pinned and locally patched <code>RcPlayer</code>, rasterized by Robolectric`,
+  withAndroidxEmbedded &&
+    `<strong>AndroidX Embedded · androidx.dev</strong> is the independently compiled player published by the pinned AndroidX snapshot`,
   withEmbeddedJvm &&
     `the <strong>cmp-jvm player</strong> runs that same <code>RcPlayer</code> draw path on Compose Desktop / Skiko, rasterizing offscreen`,
   withCmpWasm &&
