@@ -23,6 +23,8 @@ import ee.schimke.composeai.daemon.DeviceFrameDataProducer
 import ee.schimke.composeai.daemon.DisplayFilterConfig
 import ee.schimke.composeai.daemon.DisplayFilterDataProducer
 import ee.schimke.composeai.data.render.LinkBufferComposer
+import ee.schimke.composeai.data.render.extensions.compose.PreviewSystemTheme
+import ee.schimke.composeai.data.render.extensions.compose.previewSystemThemeValue
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.preview.lottie.LottiePreview
 import ee.schimke.composeai.preview.svg.SvgPreview
@@ -1135,17 +1137,16 @@ private fun loadProviderValues(providerFqn: String, limit: Int): List<Any?> {
 }
 
 /**
- * Maps a `@Preview(uiMode = …)` int to the [androidx.compose.ui.SystemTheme] to provide as
+ * Maps a `@Preview(uiMode = …)` int to the renderer-owned system theme to provide as
  * `LocalSystemTheme`, which Compose Desktop's `isSystemInDarkTheme()` reads. Only the
  * `UI_MODE_NIGHT_*` bits (`0x30` mask) matter: `0x20` (`UI_MODE_NIGHT_YES`) → dark, `0x10`
  * (`UI_MODE_NIGHT_NO`) → light, `UI_MODE_NIGHT_UNDEFINED` → `Unknown` (leaves the JVM's own probe).
  */
-@OptIn(androidx.compose.ui.InternalComposeUiApi::class)
-internal fun systemThemeFromUiMode(uiMode: Int): androidx.compose.ui.SystemTheme =
+internal fun systemThemeFromUiMode(uiMode: Int): PreviewSystemTheme =
   when (uiMode and 0x30) {
-    0x20 -> androidx.compose.ui.SystemTheme.Dark
-    0x10 -> androidx.compose.ui.SystemTheme.Light
-    else -> androidx.compose.ui.SystemTheme.Unknown
+    0x20 -> PreviewSystemTheme.Dark
+    0x10 -> PreviewSystemTheme.Light
+    else -> PreviewSystemTheme.Unknown
   }
 
 /**
@@ -1207,7 +1208,6 @@ internal fun rendersRightToLeft(localeTag: String?): Boolean {
   return ee.schimke.composeai.data.pseudolocale.LocaleDirection.isRtl(effectiveLocaleTag(localeTag))
 }
 
-@OptIn(androidx.compose.ui.InternalComposeUiApi::class)
 internal fun renderPreview(
   className: String,
   functionName: String,
@@ -1342,13 +1342,14 @@ internal fun renderPreview(
     // night bit — otherwise a dark `@Preview` renders its content in light colours (the cover PNG
     // disagreed with the daemon's figma-svg/semantics, which already do this in RenderEngine).
     val systemTheme = systemThemeFromUiMode(uiMode)
+    val systemThemeValue = previewSystemThemeValue(systemTheme)
     scene.setContent {
       val baseProviders: @Composable (@Composable () -> Unit) -> Unit = { inner ->
         if (rtl) {
           CompositionLocalProvider(
             LocalInspectionMode provides true,
             LocalDensity provides sceneDensity,
-            androidx.compose.ui.LocalSystemTheme provides systemTheme,
+            systemThemeValue,
             androidx.compose.ui.platform.LocalLayoutDirection provides
               androidx.compose.ui.unit.LayoutDirection.Rtl,
           ) {
@@ -1358,7 +1359,7 @@ internal fun renderPreview(
           CompositionLocalProvider(
             LocalInspectionMode provides true,
             LocalDensity provides sceneDensity,
-            androidx.compose.ui.LocalSystemTheme provides systemTheme,
+            systemThemeValue,
           ) {
             inner()
           }

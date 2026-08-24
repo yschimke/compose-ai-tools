@@ -59,7 +59,8 @@ interface Payload {
  */
 const STATUS_LABELS: Record<string, string> = {
     valid: "accepted",
-    resolved: "appears resolved — the difference is gone and the acceptance can be removed",
+    resolved:
+        "appears resolved — the difference is gone and the acceptance can be removed",
     invalidated: "no longer matches — needs review",
     refused: "refused",
     "out-of-scope": "authored for another comparison",
@@ -159,8 +160,9 @@ export class Acceptance extends LitElement {
         // clean bill of health for a comparison nobody evaluated.
         if (report.state === "unavailable") {
             return html`<span class="cp-acceptance-note"
-                >This catalog publishes known differences, and they could not be fetched — nothing on
-                this comparison has been evaluated against them.</span
+                >This catalog publishes known differences, and they could not be
+                fetched — nothing on this comparison has been evaluated against
+                them.</span
             >`;
         }
         if (report.state === "absent") return nothing;
@@ -168,15 +170,27 @@ export class Acceptance extends LitElement {
         const rows = Object.entries(report.statuses).filter(
             ([, entry]) => entry.status !== "out-of-scope",
         );
+        // **A stalled comparison is not an empty one.** With no pair the engine runs its
+        // validation-only pass and every in-scope acceptance comes back `out-of-scope` — the same
+        // token a record authored elsewhere gets, and the one filtered out just above. So a
+        // transient 503 on the render lane, or a reference whose bytes no longer match the digest
+        // this page was built from, would otherwise hide the band exactly as if the catalog had
+        // nothing to say here. It has; it could not be asked.
+        const stalled =
+            report.pair === "unavailable" &&
+            Object.keys(report.statuses).length > 0;
         // Every acceptance in the document belongs to some other comparison: this page has nothing
         // to say, and saying "0 accepted" on it would be noise on every comparison in the catalog.
-        if (rows.length === 0 && report.validationFailures.length === 0) {
+        if (
+            rows.length === 0 &&
+            report.validationFailures.length === 0 &&
+            !stalled
+        ) {
             return nothing;
         }
 
         return html`
-            ${this.scores(report)}
-            ${this.documentFailures(report)}
+            ${this.scores(report)} ${this.documentFailures(report)}
             <ul class="cp-acceptance-list">
                 ${rows.map(([id, entry]) => this.row(id, entry))}
             </ul>
@@ -192,24 +206,49 @@ export class Acceptance extends LitElement {
      * "this catalog accepts nothing here" rather than "this catalog's acceptance document was
      * refused" — and those are the same picture with opposite meanings.
      *
-     * Only the rows with no `id` are document-level; a per-record refusal already has its own row.
+     * **Which failures those are is the engine's own answer, not a guess from their shape.** A
+     * document-level rejection is the one that omits `statuses`, and `duplicate-id` — the loudest of
+     * them — is deliberately attributed to the first spelling seen, so it carries an `id` exactly
+     * like a per-record refusal does. Selecting on that `id` dropped it, and a duplicated document
+     * then showed scores over an empty list with nothing explaining that none of it had been
+     * applied.
      */
-    private documentFailures(report: AcceptanceReport): TemplateResult | typeof nothing {
-        const reasons = report.validationFailures
-            .filter((failure) => failure.id === undefined)
-            .map((failure) => failure.reason);
+    private documentFailures(
+        report: AcceptanceReport,
+    ): TemplateResult | typeof nothing {
+        if (!report.documentRejected) return nothing;
+        // Attributed where the engine attributed it: `duplicate-id (glyph)` names the spelling to go
+        // and look at, and `id-missing (#2)` the record that has no name to be called by.
+        const reasons = report.validationFailures.map((failure) => {
+            if (failure.id !== undefined)
+                return `${failure.reason} (${failure.id})`;
+            if (failure.index !== undefined)
+                return `${failure.reason} (#${failure.index})`;
+            return failure.reason;
+        });
         if (reasons.length === 0) return nothing;
         return html`<span class="cp-acceptance-row" data-status="refused"
-            >This catalog's known-difference document was refused (${reasons.join(", ")}), so nothing
-            in it is being applied.</span
+            >This catalog's known-difference document was refused
+            (${reasons.join(", ")}), so nothing in it is being applied.</span
         >`;
     }
 
     private scores(report: AcceptanceReport): TemplateResult | typeof nothing {
         const scores = report.scores;
         if (!scores) {
+            // Said plainly, because the alternative reading is the dangerous one: no scores here
+            // means nothing on this comparison was measured against the catalog's known differences,
+            // not that there was nothing to measure.
             return html`<span class="cp-acceptance-note"
-                >This pair could not be scored, so only the acceptance verdicts are shown.</span
+                >${
+                    report.pair === "unavailable"
+                        ? html`The rendered pair could not be read as this page
+                          describes it, so nothing on this comparison has been
+                          evaluated against this catalog's known differences.
+                          Reloading usually resolves it.`
+                        : html`This pair could not be scored, so only the
+                          acceptance verdicts are shown.`
+                }</span
             >`;
         }
         // `raw` first and always, because it is the number that must never be hidden.
@@ -224,10 +263,12 @@ export class Acceptance extends LitElement {
             <span class="cp-acceptance-scores">
                 <strong>${scores.raw.toFixed(1)}%</strong> raw ·
                 <strong>${scores.unaccepted.toFixed(1)}%</strong> unaccepted ·
-                <strong>${scores.accepted.toFixed(1)}%</strong> over the accepted region
+                <strong>${scores.accepted.toFixed(1)}%</strong> over the
+                accepted region
             </span>
             <span class="cp-acceptance-note">
-                Scored with the portable kernel, so these differ slightly from the match above.
+                Scored with the portable kernel, so these differ slightly from
+                the match above.
             </span>
         `;
     }
@@ -238,13 +279,11 @@ export class Acceptance extends LitElement {
         // what an author greps for, and a friendlier paraphrase would be a second vocabulary for the
         // same set.
         const detail = [...(entry.causes ?? []), ...(entry.reasons ?? [])];
-        return html`<li
-            class="cp-acceptance-row"
-            data-status=${entry.status}
-        >
-            <code>${id}</code> — ${label}${detail.length > 0
-                ? html` (${detail.join(", ")})`
-                : nothing}
+        return html`<li class="cp-acceptance-row" data-status=${entry.status}>
+            <code>${id}</code> —
+            ${label}${
+                detail.length > 0 ? html` (${detail.join(", ")})` : nothing
+            }
         </li>`;
     }
 

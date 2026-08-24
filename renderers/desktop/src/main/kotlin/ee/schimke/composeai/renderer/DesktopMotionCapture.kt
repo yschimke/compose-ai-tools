@@ -14,6 +14,7 @@ import androidx.compose.ui.test.SkikoComposeUiTest
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
+import ee.schimke.composeai.data.render.extensions.compose.previewSystemThemeValue
 import ee.schimke.composeai.motion.ApngEncoder
 import ee.schimke.composeai.motion.apngDelayFor
 import ee.schimke.composeai.scroll.ScrollGifEncoder
@@ -159,11 +160,6 @@ internal fun motionFormatArg(raw: String?, default: MotionFormatKind): MotionFor
  * disagreeing with the daemon over exactly this, but the animation path never did, so until this
  * became shared code a dark `@AnimatedPreview` on desktop silently captured the light theme.
  */
-// `LocalSystemTheme` is `@InternalComposeUiApi` — opted into here for the same reason the
-// single-frame path does at `DesktopRendererMain`: it is the only seam Compose Desktop's
-// `isSystemInDarkTheme()` reads, so a renderer that must honour `@Preview(uiMode = …)` has no
-// public alternative.
-@OptIn(androidx.compose.ui.InternalComposeUiApi::class)
 @Composable
 internal fun MotionPreviewProviders(
   rtl: Boolean,
@@ -172,11 +168,12 @@ internal fun MotionPreviewProviders(
   content: @Composable () -> Unit,
 ) {
   val systemTheme = systemThemeFromUiMode(uiMode)
+  val systemThemeValue = previewSystemThemeValue(systemTheme)
   if (rtl) {
     CompositionLocalProvider(
       LocalInspectionMode provides false,
       LocalDensity provides sceneDensity,
-      androidx.compose.ui.LocalSystemTheme provides systemTheme,
+      systemThemeValue,
       androidx.compose.ui.platform.LocalLayoutDirection provides
         androidx.compose.ui.unit.LayoutDirection.Rtl,
       content = content,
@@ -185,7 +182,7 @@ internal fun MotionPreviewProviders(
     CompositionLocalProvider(
       LocalInspectionMode provides false,
       LocalDensity provides sceneDensity,
-      androidx.compose.ui.LocalSystemTheme provides systemTheme,
+      systemThemeValue,
       content = content,
     )
   }

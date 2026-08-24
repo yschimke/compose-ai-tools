@@ -451,6 +451,12 @@ jobs:
         with:
           ref: ${{ env.TAG_NAME }}
           persist-credentials: false
+          # This job only builds the native compositor. Keep unrelated conformance fixtures out of
+          # the Windows checkout: one intentionally exercises a 255-character path segment, whose
+          # full repository path exceeds the runner's legacy MAX_PATH limit.
+          sparse-checkout: |
+            .github/actions/build-xr-composite
+            renderers/xr-composite
       - name: Derive plugin version from tag
         shell: bash
         run: echo "PLUGIN_VERSION=${TAG_NAME#v}" >> "$GITHUB_ENV"

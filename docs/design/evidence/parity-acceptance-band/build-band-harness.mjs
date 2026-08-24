@@ -1,5 +1,18 @@
 // Build a self-contained page that runs the real `known-differences.js` bundle against a synthetic
 // catalog, so the acceptance band can be photographed as it actually renders.
+//
+// Usage: node build-band-harness.mjs [variant] [bundlePath] [outFile]
+//
+// The variants are the three shapes a reader can meet, and the two beyond the default exist because
+// each is reported by an *absence* the band has to notice:
+//
+//   band     — two acceptances, one still matching and one that has stopped. The ordinary case.
+//   refused  — a duplicated id, so the engine rejects the DOCUMENT and returns no statuses at all.
+//   stalled  — the render lane answers 503, so there is no pair and every acceptance comes back
+//              `out-of-scope`: the same token a record authored elsewhere gets.
+//
+// `bundlePath` lets the same harness photograph an older bundle, which is how a before/after for a
+// rendering change is produced without checking the tree out twice.
 import { writeFileSync, readFileSync } from "node:fs";
 import { encodePng } from "/home/user/compose-ai-tools/scripts/design-artifacts/png-write.mjs";
 import { decodePng, sha256Hex } from "/home/user/compose-ai-tools/scripts/design-artifacts/png-lite.mjs";
@@ -44,13 +57,20 @@ function maskPng(box) {
   return encodePng({ width: plane.box.width, height: plane.box.height, colourType: 0, samples });
 }
 
+const [VARIANT = "band", BUNDLE = "/home/user/compose-ai-tools/cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/known-differences.js", OUT = "/tmp/claude-0/-home-user/a80ed2f7-16cc-5418-810d-c29ddab48aca/scratchpad/band/band.html"] =
+  process.argv.slice(2);
+
 const glyphMask = maskPng(GLYPH);
 const glyphAccepted = png(raster(GLYPH.width, GLYPH.height, RED));
 const otherMask = maskPng(OTHER);
 // Deliberately stale: the recorded crop is what the render used to draw, and it no longer matches.
 const otherAccepted = png(raster(OTHER.width, OTHER.height, [90, 90, 200, 255]));
 
-const REF_SHA = "a1b2c3d4e5f60718".repeat(4);
+// The REAL digest of the reference bytes this page serves, not a placeholder. The adapter checks
+// what it fetched against the digest the page hands it — a catalog that republishes in place would
+// otherwise let fresh metadata meet cached pixels and gate against a generation nobody scored — so
+// a harness declaring a digest that describes nothing photographs the stalled band, not the band.
+const REF_SHA = sha256Hex(referencePng);
 const scope = {
   system: "m3",
   component: "IconButton/Tonal",
@@ -80,14 +100,16 @@ const strip = (r) => {
   const { tagIndex, ...rest } = r;
   return rest;
 };
+const acceptances = [
+  strip(record("m3-iconbutton-tonal-glyph", "https://github.com/yschimke/m3-catalog/issues/40", glyphMask, glyphAccepted, "Tonal icon button draws its glyph in onSurfaceVariant.")),
+  strip(record("m3-iconbutton-tonal-badge", "https://github.com/yschimke/m3-catalog/issues/41", otherMask, otherAccepted, "Badge colour, recorded before the render changed again.")),
+];
+// Two records under one id. The engine rejects the whole document and reports `duplicate-id`
+// attributed to the FIRST spelling seen — so the failure carries an id, exactly like a per-record
+// refusal, while `statuses` is absent because nothing was judged.
+if (VARIANT === "refused") acceptances.push({ ...acceptances[0] });
 const document = JSON.stringify(
-  {
-    schema: "compose-preview-known-differences/v1",
-    acceptances: [
-      strip(record("m3-iconbutton-tonal-glyph", "https://github.com/yschimke/m3-catalog/issues/40", glyphMask, glyphAccepted, "Tonal icon button draws its glyph in onSurfaceVariant.")),
-      strip(record("m3-iconbutton-tonal-badge", "https://github.com/yschimke/m3-catalog/issues/41", otherMask, otherAccepted, "Badge colour, recorded before the render changed again.")),
-    ],
-  },
+  { schema: "compose-preview-known-differences/v1", acceptances },
   null,
   2,
 );
@@ -95,7 +117,9 @@ const document = JSON.stringify(
 const routes = {
   "/m3/parity/known-differences.json": { text: document },
   "/m3/reference/ref.png": { b64: b64(referencePng) },
-  "/m3/render/preview.png": { b64: b64(candidatePng) },
+  // A comparison whose render lane is down: no pair, so nothing can be scored and every acceptance
+  // falls back to the validation-only pass.
+  "/m3/render/preview.png": VARIANT === "stalled" ? { status: 503 } : { b64: b64(candidatePng) },
   "/m3/parity/known-differences/m3-iconbutton-tonal-glyph/mask.png": { b64: b64(glyphMask) },
   "/m3/parity/known-differences/m3-iconbutton-tonal-glyph/accepted-candidate.png": { b64: b64(glyphAccepted) },
   "/m3/parity/known-differences/m3-iconbutton-tonal-badge/mask.png": { b64: b64(otherMask) },
@@ -103,7 +127,7 @@ const routes = {
 };
 
 const css = readFileSync("/home/user/compose-ai-tools/cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/serve.css", "utf8");
-const bundle = readFileSync("/home/user/compose-ai-tools/cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/known-differences.js", "utf8");
+const bundle = readFileSync(BUNDLE, "utf8");
 
 const context = {
   documentUrl: "/m3/parity/known-differences.json",
@@ -129,6 +153,7 @@ const ROUTES = ${JSON.stringify(routes)};
 window.fetch = (input) => {
   const route = ROUTES[String(input)];
   if (!route) return Promise.resolve(new Response("not found", { status: 404 }));
+  if (route.status) return Promise.resolve(new Response("no", { status: route.status }));
   if (route.text) return Promise.resolve(new Response(route.text));
   const raw = atob(route.b64);
   const bytes = new Uint8Array(raw.length);
@@ -140,5 +165,5 @@ window.fetch = (input) => {
 <cp-acceptance></cp-acceptance>
 </body></html>`;
 
-writeFileSync("/tmp/claude-0/-home-user/a80ed2f7-16cc-5418-810d-c29ddab48aca/scratchpad/band/band.html", page);
-console.log("plane", JSON.stringify(plane));
+writeFileSync(OUT, page);
+console.log(VARIANT, "->", OUT, "plane", JSON.stringify(plane));
