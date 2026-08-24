@@ -2542,6 +2542,20 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
     *Cross-repo; sequence after 8 so both sides build against a settled schema and the shared
     fixtures.*
 
+    ***Publishing is delivered.*** `@design-parity/catalog-export` carries a source repo's
+    `.design-parity/known-differences*` into `parity/known-differences*` as **bytes**, refusing only
+    what a copier legitimately can — a path segment a checkout cannot create, and an artifact past
+    the 8 MiB ceiling — and reporting both rather than dropping them silently. **Acceptances land on
+    the next render**, deliberately: an index-style one-file committer would need a second
+    carry-forward exception on the delivery branch, this one for binary artifacts, where §3's
+    asymmetry argument says the second exception is where the two orderings begin to disagree — and
+    authoring an acceptance is a deliberate act measured in review rounds, not the click that
+    relabelling an issue is.
+
+    Applying the same semantics in `design-parity` is what remains. The **browser** side of step 9
+    is delivered by running the reference implementation itself rather than a port (see *Two engines,
+    one semantics* above), so the fixtures' whole remaining job is holding `design-parity` honest.
+
 ### Phase 4 — Resolution
 
 11. **Surface** the statuses Phase 3 already computes — `resolved`, `invalidated`, `refused` — plus

@@ -8,7 +8,7 @@ against one definition), [03](03-element-selection.md) (element gates must not b
 selection path), [00](00-decisions.md) **D1, D3, D5 and D6**.
 **Ships:** **yes.** Accepted and unaccepted scores reported separately, on a real catalog.
 
-> **Status — 5b landed, 5a and 5c outstanding.** What is in `main`:
+> **Status — 5b and 5c landed, 5a outstanding.** What is in `main`:
 >
 > - **The separated-plane score**, in
 >   [`known-difference-score.mjs`](../../../scripts/design-artifacts/known-difference-score.mjs),
@@ -30,13 +30,29 @@ selection path), [00](00-decisions.md) **D1, D3, D5 and D6**.
 > - **The acceptance band** on the focused comparison: `raw`, `unaccepted`, `accepted`, and a row per
 >   acceptance, because a single aggregate cannot express a mixed-validity set.
 >
+> - **The publish path**, in `design-parity`'s `@design-parity/catalog-export`:
+>   `.design-parity/known-differences*` → `parity/known-differences*`, copied as bytes and never
+>   parsed, refusing only what a *copier* legitimately can — a name a checkout cannot create, and an
+>   artifact past the 8 MiB ceiling — and reporting both in `skipped` rather than throwing or
+>   dropping silently.
+>
+> **The no-rerender question below is answered: acceptances land on the next render.** The
+> alternative — an index-style one-file committer — needs a *second* carry-forward exception on the
+> delivery branch, and this one would carry binary artifacts rather than a single JSON file, where
+> §3's asymmetry argument says a second exception is where the two orderings start disagreeing. The
+> granularity also differs from the case that motivated the committer: relabelling an issue is a
+> click, while authoring an acceptance means producing a mask and a crop and recording three hashes.
+>
+> `scope-systems.sh` needs no change, checked rather than assumed: `SHARED_RE` already covers
+> `scripts/design-artifacts/` (the export driver), and a `.design-parity/` committed inside a sample
+> catalog is matched by that system's own pattern.
+>
 > What is **not** done, and is what the rest of this document still describes:
 >
 > - **5a, the offline engine** in `design-parity` — cross-repo, and the second implementation the
->   fixtures exist for.
-> - **5c, publishing** through `@design-parity/catalog-export`, including the no-rerender decision
->   below. Until it lands, the serving host reads a document no publisher writes, so the band is
->   reachable only on a hand-placed `parity/known-differences.json`.
+>   fixtures exist for. It is the largest remaining piece and a batch's worth of work on its own:
+>   the contract's whole ladder in a second language, plus a runner over the committed fixture tree,
+>   which also needs a decision about how that tree reaches another repository.
 > - **The host-level catalog walk** is written (`walkCatalog` in `src/parity/acceptance.ts`) and not
 >   yet mounted on the dashboard, so `orphaned-target` is still browser-invisible.
 > - **The D3 rebaseline.** The portable kernel is not yet the live scorer: the legacy `scoreImages`
