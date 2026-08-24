@@ -67,6 +67,9 @@ compose-bom-compat = "2025.11.01"
 # ref is therefore a SERVE-HOST RELEASE concern, not just a build-hygiene one — see
 # `docs/RENDERER_COMPATIBILITY.md`.
 compose-multiplatform = "1.11.1"
+# Consumer runtime used by renderer forward-compatibility tests. Keep this on the newest CMP line
+# that catalogs are expected to adopt; it intentionally does not affect production compilation.
+compose-multiplatform-forward = "1.12.0-rc01"
 # The Compose M3 design catalog (`:samples:design-catalog-m3`) pins material3
 # FORWARD of `compose-bom-stable` (which carries 1.4.0) solely for the Material 3
 # **inset focus ring** APIs — `LocalRippleThemeConfiguration` +

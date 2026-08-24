@@ -21,7 +21,6 @@ import androidx.compose.runtime.tooling.CompositionData
 import androidx.compose.runtime.tooling.LocalInspectionTables
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.SystemTheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
@@ -49,7 +48,9 @@ import ee.schimke.composeai.data.render.extensions.PostCaptureProcessor
 import ee.schimke.composeai.data.render.extensions.RecordingDataProductStore
 import ee.schimke.composeai.data.render.extensions.compose.ComposeDataExtensionPipeline
 import ee.schimke.composeai.data.render.extensions.compose.CompositionTracing
+import ee.schimke.composeai.data.render.extensions.compose.PreviewSystemTheme
 import ee.schimke.composeai.data.render.extensions.compose.RecordingExtensionCompositionSink
+import ee.schimke.composeai.data.render.extensions.compose.previewSystemThemeValue
 import ee.schimke.composeai.data.render.extensions.isStructuralPreviewWrapper
 import ee.schimke.composeai.data.render.extensions.loadPreviewWrapperClass
 import ee.schimke.composeai.data.render.extensions.provides
@@ -293,7 +294,7 @@ class RenderEngine(
    * inspection branch. Interactive sessions pass `false` so `pointerInput` modifiers fire and the
    * preview shows its real, click-aware behaviour.
    */
-  @OptIn(androidx.compose.ui.InternalComposeUiApi::class, ExperimentalResourceApi::class)
+  @OptIn(ExperimentalResourceApi::class)
   fun setUp(
     spec: RenderSpec,
     classLoader: ClassLoader =
@@ -532,10 +533,11 @@ class RenderEngine(
             // probe.
             val systemTheme =
               when (spec.uiMode) {
-                RenderSpec.SpecUiMode.DARK -> SystemTheme.Dark
-                RenderSpec.SpecUiMode.LIGHT -> SystemTheme.Light
-                null -> SystemTheme.Unknown
+                RenderSpec.SpecUiMode.DARK -> PreviewSystemTheme.Dark
+                RenderSpec.SpecUiMode.LIGHT -> PreviewSystemTheme.Light
+                null -> PreviewSystemTheme.Unknown
               }
+            val systemThemeValue = previewSystemThemeValue(systemTheme)
             val previewResources = remember(classLoader) { previewResourceReader(classLoader) }
             CompositionLocalProvider(
               LocalInspectionMode provides inspectionMode,
@@ -555,7 +557,7 @@ class RenderEngine(
               // it to match the transparent harness background below. Defaults false.
               ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
                 spec.clearBackground,
-              androidx.compose.ui.LocalSystemTheme provides systemTheme,
+              systemThemeValue,
               LocalDensity provides density,
               // Interactive Lottie scrubbing: a non-null progress lands the captured frame at that
               // timeline position, winning over the composable's authored progress (file-discovered

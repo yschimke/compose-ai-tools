@@ -27,6 +27,7 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.runSkikoComposeUiTest
 import androidx.compose.ui.unit.Density
+import ee.schimke.composeai.data.render.extensions.compose.previewSystemThemeValue
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.scroll.DEFAULT_LONG_SCROLL_STEP_FRACTION
 import ee.schimke.composeai.scroll.HOLD_END_MS
@@ -87,9 +88,7 @@ enum class DesktopScrollMode {
  * keeping a shadow, and the annotation's KDoc says exactly that. A declined drive falls back to
  * [renderPreview], which is a still and does apply the gutter.
  */
-// `InternalComposeUiApi` for `LocalSystemTheme`, the same opt-in [renderPreview] carries for the
-// same local — it is how Compose Desktop's `isSystemInDarkTheme()` is driven.
-@OptIn(ExperimentalTestApi::class, androidx.compose.ui.InternalComposeUiApi::class)
+@OptIn(ExperimentalTestApi::class)
 fun renderScrollPreview(
   className: String,
   functionName: String,
@@ -185,6 +184,7 @@ fun renderScrollPreview(
     // `LocalSystemTheme.current`, so a scroll capture that never provided it rendered a dark
     // preview's content in light colours.
     val systemTheme = systemThemeFromUiMode(uiMode)
+    val systemThemeValue = previewSystemThemeValue(systemTheme)
     setContent {
       // Shared with [renderPreview] via `PreviewBackground` so both paths agree — in particular
       // `showBackground = true` on a night preview is NOT white, which is what the local
@@ -202,7 +202,7 @@ fun renderScrollPreview(
           CompositionLocalProvider(
             LocalInspectionMode provides true,
             LocalDensity provides sceneDensity,
-            androidx.compose.ui.LocalSystemTheme provides systemTheme,
+            systemThemeValue,
             androidx.compose.ui.platform.LocalLayoutDirection provides
               androidx.compose.ui.unit.LayoutDirection.Rtl,
           ) {
@@ -212,7 +212,7 @@ fun renderScrollPreview(
           CompositionLocalProvider(
             LocalInspectionMode provides true,
             LocalDensity provides sceneDensity,
-            androidx.compose.ui.LocalSystemTheme provides systemTheme,
+            systemThemeValue,
           ) {
             inner()
           }

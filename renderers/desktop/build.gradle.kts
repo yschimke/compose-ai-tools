@@ -24,6 +24,21 @@ val skikoEncodeProbe: Configuration by configurations.creating {
   description = "A skiko resolved for reflection only, never on a compile or runtime classpath."
 }
 
+/**
+ * The newest Compose line catalogs are allowed to run on, used only by the theme regression test.
+ *
+ * Extending the ordinary test runtime keeps this module's own compiled output and non-Compose
+ * dependencies, while the explicit newer desktop distribution wins Gradle conflict resolution for
+ * Compose and Skiko. This is the consumer shape that exposed the erased LocalSystemTheme enum
+ * change; running only against [libs.versions.compose.multiplatform] would miss it.
+ */
+val composeForwardTestRuntime: Configuration by configurations.creating {
+  isCanBeConsumed = false
+  isCanBeResolved = true
+  description = "Renderer tests running on the forward Compose Multiplatform 1.12 runtime."
+  extendsFrom(configurations.testRuntimeClasspath.get())
+}
+
 dependencies {
   implementation(compose.desktop.currentOs)
   implementation(libs.jetbrains.compose.ui)
@@ -59,6 +74,10 @@ dependencies {
   implementation(project(":common-io"))
   // PreviewBackground — the shared showBackground/backgroundColor/uiMode resolution.
   implementation(project(":data-render-core"))
+  // Runtime-aware LocalSystemTheme binding. CMP 1.12 changed the local from the androidx enum to
+  // the Skiko enum without changing its erased JVM getter, so a direct provider silently breaks
+  // dark previews when this 1.11-compiled renderer runs inside a 1.12 catalog.
+  implementation(project(":data-render-compose"))
   // `kind=LOTTIE` previews: DesktopRendererMain inflates a discovered Lottie asset via the
   // `LottiePreview` helper (brings Compottie + Compose foundation transitively).
   implementation(project(":lottie-preview-runtime"))
@@ -93,6 +112,13 @@ dependencies {
   // the test runtime classpath instead would let conflict resolution pick ONE skiko for the whole
   // module, which is precisely the mechanism being guarded against.
   skikoEncodeProbe(libs.skiko.awt.encode.probe)
+
+  // Keep this explicit rather than deriving it from the production pin: the point of the task is
+  // to preserve a second, forward runtime line. `currentOs` chooses the correct native Skiko
+  // artifact on macOS/Linux/Windows; the strict version upgrades that distribution from 1.11.1.
+  composeForwardTestRuntime(compose.desktop.currentOs) {
+    version { strictly(libs.versions.compose.multiplatform.forward.get()) }
+  }
 }
 
 tasks.withType<Test>().configureEach {
@@ -106,6 +132,19 @@ tasks.withType<Test>().configureEach {
     .withNormalizer(ClasspathNormalizer::class)
   doFirst { systemProperty("composeai.test.skikoEncodeProbe", probeJars.asPath) }
 }
+
+val forwardComposeSystemThemeTest by
+  tasks.registering(Test::class) {
+    group = "verification"
+    description = "Runs the light/dark renderer invariant on Compose Multiplatform 1.12.0-rc01."
+    val testSourceSet = sourceSets.test.get()
+    testClassesDirs = testSourceSet.output.classesDirs
+    classpath = testSourceSet.output + sourceSets.main.get().output + composeForwardTestRuntime
+    filter { includeTestsMatching("ee.schimke.composeai.renderer.UiModeSystemThemeTest") }
+    shouldRunAfter(tasks.test)
+  }
+
+tasks.check { dependsOn(forwardComposeSystemThemeTest) }
 
 composeAiMavenPublishing {
   coordinates(
