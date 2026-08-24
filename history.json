@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "17318ead2343865191488986b0c3105c90b2d28f",
+    "generatedFrom": "58734253dd65378a0db1a0e064047e3c65da025d",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -5371,6 +5371,13 @@
             "path": "renders/samples:design-catalog-m3/SwitchOn_Dark-d0f22b72.apng",
             "versions": [
                 {
+                    "blob": "dcea94bf901f6c15befb4017b564e2249a242fce",
+                    "commit": "58734253dd65378a0db1a0e064047e3c65da025d",
+                    "date": "2026-08-24T18:01:20Z",
+                    "sourceSha": "991097f3",
+                    "commits": 1
+                },
+                {
                     "blob": "3b88e4c02dcff48a95c80f77801234525175172f",
                     "commit": "20aa4fd35dc7c1dc314d942369d0abf908933324",
                     "date": "2026-08-16T14:20:29Z",
@@ -5392,7 +5399,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 3,
+            "observations": 4,
             "unstable": false,
             "flapCount": 0
         },
@@ -5430,6 +5437,13 @@
             "path": "renders/samples:design-catalog-m3/SwitchOn_Light-c16813d5.apng",
             "versions": [
                 {
+                    "blob": "927c4344f83664b23776faab55e74e89d3718c1b",
+                    "commit": "58734253dd65378a0db1a0e064047e3c65da025d",
+                    "date": "2026-08-24T18:01:20Z",
+                    "sourceSha": "991097f3",
+                    "commits": 1
+                },
+                {
                     "blob": "aafe128ad9f0ebdae3461ccf781c45ad4d6968bd",
                     "commit": "20aa4fd35dc7c1dc314d942369d0abf908933324",
                     "date": "2026-08-16T14:20:29Z",
@@ -5451,7 +5465,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 3,
+            "observations": 4,
             "unstable": false,
             "flapCount": 0
         },
