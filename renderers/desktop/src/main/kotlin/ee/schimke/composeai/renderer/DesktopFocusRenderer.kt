@@ -29,6 +29,7 @@ import ee.schimke.composeai.daemon.FocusOverlayDesktop
 import ee.schimke.composeai.daemon.FocusOverrideExtension
 import ee.schimke.composeai.daemon.protocol.FocusDirection
 import ee.schimke.composeai.daemon.protocol.FocusOverride
+import ee.schimke.composeai.data.render.extensions.compose.previewSystemThemeValue
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.scroll.ScrollAxis
 import java.awt.Rectangle
@@ -130,9 +131,7 @@ data class DesktopFocusIntent(
  * Returns `true` when [outputFile] was written, `false` when the walk found nothing focusable — the
  * caller falls back to the ordinary single-frame render so a misuse still produces a capture.
  */
-// `InternalComposeUiApi` for `LocalSystemTheme` — the same opt-in [renderPreview] carries, and how
-// Compose Desktop's `isSystemInDarkTheme()` is driven.
-@OptIn(ExperimentalTestApi::class, androidx.compose.ui.InternalComposeUiApi::class)
+@OptIn(ExperimentalTestApi::class)
 fun renderFocusPreview(
   className: String,
   functionName: String,
@@ -239,13 +238,14 @@ fun renderFocusPreview(
       mainClock.autoAdvance = false
 
       val systemTheme = systemThemeFromUiMode(uiMode)
+      val systemThemeValue = previewSystemThemeValue(systemTheme)
       setContent {
         val baseProviders: @Composable (@Composable () -> Unit) -> Unit = { inner ->
           if (rtl) {
             CompositionLocalProvider(
               LocalInspectionMode provides true,
               LocalDensity provides sceneDensity,
-              androidx.compose.ui.LocalSystemTheme provides systemTheme,
+              systemThemeValue,
               androidx.compose.ui.platform.LocalLayoutDirection provides
                 androidx.compose.ui.unit.LayoutDirection.Rtl,
             ) {
@@ -255,7 +255,7 @@ fun renderFocusPreview(
             CompositionLocalProvider(
               LocalInspectionMode provides true,
               LocalDensity provides sceneDensity,
-              androidx.compose.ui.LocalSystemTheme provides systemTheme,
+              systemThemeValue,
             ) {
               inner()
             }
