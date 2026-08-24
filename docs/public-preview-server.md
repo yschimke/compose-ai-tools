@@ -896,6 +896,13 @@ When enabled, it yields twice over — both learned from `preview.coo.ee`:
   take turns instead of occupying every live seat, and a visitor's render is never queued behind
   more than one background one. The permit is taken per render, so a catalog that parks for traffic
   hands it straight to the next one.
+- **Background slices leave a cold catalog primary cold.** Theme batches prefer the shared pool's
+  disposable replicas, whose one-minute idle sweep closes their subprocesses and returns their
+  memory between slices. The primary joins a batch only after foreground traffic has already
+  warmed it, or when no background seat exists to open the first replica. Previously the fair
+  scheduler eventually warmed one non-reapable primary per catalog: the public box reached 17
+  resident daemons with no traffic, and that idle RAM kept the pressure gate closed against the
+  optimizer that created it.
 
 **When it isn't running, `/status` says which gate is holding it.** A pass must clear a quiet gate
 before it starts: the whole server has to have been untouched for

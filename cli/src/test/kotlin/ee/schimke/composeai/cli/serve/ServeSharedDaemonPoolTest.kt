@@ -17,6 +17,39 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ServeSharedDaemonPoolTest {
+  private class LazyHost(private val name: String) : ServeHost {
+    override val previews: List<ServePreview> = emptyList()
+    override val label: String = name
+    private var started = false
+    override val daemonProcessCount: Int
+      get() = if (started) 1 else 0
+
+    override val daemonStarted: Boolean
+      get() = started
+
+    var closed = false
+
+    override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
+      started = true
+      return RenderOutcome.Ok(name.encodeToByteArray())
+    }
+
+    override fun subscribeStream(
+      previewId: String,
+      overrides: PreviewOverrides,
+      codec: StreamCodec?,
+      maxFps: Int?,
+      onUnavailable: ((String) -> Unit)?,
+      onFrame: (StreamFrameParams) -> Unit,
+    ): StreamHandle? = null
+
+    override fun activeStreamCount(): Int = 0
+
+    override fun close() {
+      closed = true
+    }
+  }
+
   private class BlockingHost(
     private val name: String,
     private val entered: CountDownLatch,
@@ -111,6 +144,31 @@ class ServeSharedDaemonPoolTest {
 
     assertEquals(4, replicas.count { it.closed })
     assertEquals(false, primary.closed, "the composite owns the primary daemon")
+  }
+
+  @Test
+  fun `background optimization leaves a cold primary idle and reaps its replica`() {
+    var now = 0L
+    val primary = LazyHost("primary")
+    val replicas = mutableListOf<LazyHost>()
+    val pool =
+      ServeSharedDaemonPool(primary = primary, capacity = 2, clock = { now }) {
+        LazyHost("replica").also(replicas::add)
+      }
+    try {
+      assertEquals(1, pool.backgroundCapacity())
+      assertTrue(pool.render("preview", PreviewOverrides(), background = true) is RenderOutcome.Ok)
+      assertEquals(0, primary.daemonProcessCount, "prefetch must not make the primary resident")
+      assertEquals(1, pool.replicaProcessCount())
+
+      now = ServeSessionRegistry.DEFAULT_DAEMON_IDLE_MILLIS
+      assertEquals(1, pool.reapIdle(ServeSessionRegistry.DEFAULT_DAEMON_IDLE_MILLIS))
+      assertTrue(replicas.single().closed)
+      assertEquals(0, pool.replicaProcessCount(), "quiet time returns the optimizer RAM")
+    } finally {
+      pool.close()
+    }
+    assertFalse(primary.closed, "the composite still owns the untouched primary")
   }
 
   /**

@@ -134,7 +134,21 @@ class ServeSharedDaemonPool(
     try {
       borrowed = lock.withLock {
         check(!closed) { "shared daemon pool is closed" }
-        val host = available.removeFirstOrNull() ?: openSeatedReplica(background)
+        val host =
+          if (background && !primary.daemonStarted && capacity > 1) {
+            // Do not turn an idle optimizer slice into another permanently-resident catalog
+            // primary. Replicas are owned here and reaped after the burst; the primary is owned by
+            // the catalog host and otherwise survives every optimizer rotation. Production reached
+            // 17 primaries with no traffic that way, and their RAM kept the pressure gate closed.
+            available.firstOrNull { it !== primary }?.also { available.remove(it) }
+              ?: if (replicas.size < capacity - 1) {
+                openSeatedReplica(background = true, avoidPrimaryFallback = replicas.isNotEmpty())
+              } else {
+                awaitAvailableReplica()
+              }
+          } else {
+            available.removeFirstOrNull() ?: openSeatedReplica(background)
+          }
         // Claimed under the lock so exactly one borrow times the cold start.
         cold = coldReplicas.remove(host)
         if (cold) coldStartFrom = clock()
@@ -196,7 +210,10 @@ class ServeSharedDaemonPool(
    * [background] takes the seat from the background remainder instead, so prefetch residency can
    * never occupy the stream reserve — see [render].
    */
-  private fun openSeatedReplica(background: Boolean): ServeHost {
+  private fun openSeatedReplica(
+    background: Boolean,
+    avoidPrimaryFallback: Boolean = false,
+  ): ServeHost {
     var ticket: LiveSeatLimiter.Ticket? = null
     if (liveSeats != null) {
       // countRefusal = false: a miss here does NOT refuse the render. The burst simply narrows
@@ -209,6 +226,7 @@ class ServeSharedDaemonPool(
         if (background) liveSeats.acquireBackground(seatWeight(), dedicatedSlice = false)
         else liveSeats.acquire(seatWeight(), countRefusal = false)
       if (ticket == null) {
+        if (avoidPrimaryFallback) return awaitAvailableReplica()
         while (available.isEmpty() && !closed) hostReturned.await()
         check(!closed) { "shared daemon pool is closed" }
         return available.removeFirst()
@@ -232,6 +250,20 @@ class ServeSharedDaemonPool(
     ticket?.let { seatTickets[replica] = it }
     return replica
   }
+
+  /** Wait for a reapable replica without consuming the idle primary. Caller holds [lock]. */
+  private fun awaitAvailableReplica(): ServeHost {
+    while (available.none { it !== primary } && !closed) hostReturned.await()
+    check(!closed) { "shared daemon pool is closed" }
+    return available.first { it !== primary }.also { available.remove(it) }
+  }
+
+  /**
+   * Width background prefetch may use without waking a cold primary. A visitor-warmed primary is
+   * already resident and can participate; otherwise reserve that slot and use reapable replicas.
+   */
+  fun backgroundCapacity(): Int =
+    if (!primary.daemonStarted && capacity > 1) capacity - 1 else capacity
 
   /**
    * Close every **replica** idle for [idleMillis], returning how many were closed. The primary is
