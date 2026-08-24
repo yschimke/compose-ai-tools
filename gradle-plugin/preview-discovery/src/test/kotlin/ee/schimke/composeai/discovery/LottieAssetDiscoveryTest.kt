@@ -80,7 +80,7 @@ class LottieAssetDiscoveryTest {
   }
 
   @Test
-  fun `asset preview cannot mask empty compiled outputs`() {
+  fun `asset preview cannot mask empty compiled outputs when failOnEmpty is false`() {
     val project = tempDir.newFolder("empty-compile")
     val classes = project.resolve("classes").apply { mkdirs() }
     val source =
@@ -103,10 +103,12 @@ class LottieAssetDiscoveryTest {
           failOnEmpty = false,
           resourceDirs = listOf(resources),
         )
-      ) as PreviewDiscovery.Outcome.Success
+      )
 
-    assertThat(outcome.manifest.previews).hasSize(1)
-    val warning = outcome.warnings.joinToString("\n")
+    assertThat(outcome).isInstanceOf(PreviewDiscovery.Outcome.Failure::class.java)
+    val failure = outcome as PreviewDiscovery.Outcome.Failure
+    assertThat(failure.reason).contains("empty compiled outputs")
+    val warning = failure.warnings.joinToString("\n")
     assertThat(warning).contains("active class outputs contain 0 .class files")
     assertThat(warning).contains("--no-build-cache --rerun-tasks")
     assertThat(warning).contains("classFiles=0")
@@ -201,7 +203,7 @@ class LottieAssetDiscoveryTest {
           failOnEmpty = false,
           resourceDirs = listOf(resources),
         )
-      ) as PreviewDiscovery.Outcome.Success
+      ) as PreviewDiscovery.Outcome.Failure
 
     val warning = outcome.warnings.joinToString("\n")
     assertThat(warning).contains("active class outputs contain 0 .class files")
@@ -271,7 +273,7 @@ class LottieAssetDiscoveryTest {
               failOnEmpty = false,
               resourceDirs = listOf(resources),
             )
-          ) as PreviewDiscovery.Outcome.Success
+          ) as PreviewDiscovery.Outcome.Failure
 
         assertThat(outcome.warnings.joinToString("\n"))
           .contains("active class outputs contain 0 .class files")

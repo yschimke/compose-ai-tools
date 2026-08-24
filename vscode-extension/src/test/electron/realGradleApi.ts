@@ -195,6 +195,17 @@ export class RealGradleApi implements GradleApi {
      */
     private readonly unvettedModules = new Set<string>();
 
+    /**
+     * Cancellation repairs currently rebuilding a module's class output.
+     *
+     * Gradle 9.7.1 made the race this guards deterministic: terminating the wrapper client can
+     * return before daemon-side output cleanup has completely settled. Starting the repair and a
+     * save-triggered compile together then lets one invocation snapshot/cache the other's empty
+     * output directory. Keep every later invocation for that module behind the one cache-bypassing
+     * repair; unrelated modules remain free to build in parallel.
+     */
+    private readonly moduleRepairs = new Map<string, Promise<void>>();
+
     /** @see invocations */
     get gradleInvocations(): ReadonlyArray<GradleInvocationRecord> {
         return this.invocations;
@@ -250,7 +261,6 @@ export class RealGradleApi implements GradleApi {
     ): ReadonlyArray<string> {
         const moduleDir = moduleDirForTask(taskName);
         if (!moduleDir || !this.unvettedModules.has(moduleDir)) return [];
-        this.unvettedModules.delete(moduleDir);
         if (!hasEmptyClassOutputs(projectFolder, moduleDir)) return [];
         this.onLog(
             `[realGradleApi] ${moduleDir} has compiled output directories with no .class files ` +
@@ -270,6 +280,16 @@ export class RealGradleApi implements GradleApi {
         }) => void;
         cancellationKey?: string;
     }): Promise<void> {
+        const moduleDir = moduleDirForTask(opts.taskName);
+        const repairInFlight = moduleDir
+            ? this.moduleRepairs.get(moduleDir)
+            : undefined;
+        if (repairInFlight) {
+            this.onLog(
+                `[realGradleApi] ${moduleDir} cancellation repair is still running — queueing ${opts.taskName}`,
+            );
+            return repairInFlight.then(() => this.runTask(opts));
+        }
         const gradlewPath =
             process.platform === "win32"
                 ? path.join(this.gradlewDir, "gradlew.bat")
@@ -312,7 +332,7 @@ export class RealGradleApi implements GradleApi {
         const diagE2e = process.env.COMPOSE_PREVIEW_E2E_EXTERNAL === "1";
         const stdoutDiagRe =
             /BUILD\s+(SUCCESSFUL|FAILED)|composePreviewApplied|FAILURE|^Configuring |Could not resolve|Exception/m;
-        return new Promise((resolve, reject) => {
+        const invocation = new Promise<void>((resolve, reject) => {
             const child = spawn(gradlewPath, gradleArgs, {
                 cwd: opts.projectFolder,
                 env: { ...process.env },
@@ -400,6 +420,22 @@ export class RealGradleApi implements GradleApi {
                     );
                 }
             });
+        });
+        if (repairArgs.length === 0 || !moduleDir) return invocation;
+
+        const repair = invocation.then(() => {
+            if (hasEmptyClassOutputs(opts.projectFolder, moduleDir)) {
+                throw new Error(
+                    `gradlew ${gradleArgs.join(" ")} completed but ${moduleDir} still has no .class files`,
+                );
+            }
+            this.unvettedModules.delete(moduleDir);
+        });
+        this.moduleRepairs.set(moduleDir, repair);
+        return repair.finally(() => {
+            if (this.moduleRepairs.get(moduleDir) === repair) {
+                this.moduleRepairs.delete(moduleDir);
+            }
         });
     }
 

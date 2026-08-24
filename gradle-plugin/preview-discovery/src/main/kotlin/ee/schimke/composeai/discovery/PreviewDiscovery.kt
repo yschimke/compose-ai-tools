@@ -800,10 +800,12 @@ object PreviewDiscovery {
     // breaking on it.
     val previewAnnotationsMissing = scanClassCount > 0 && reachablePreviewFqns.isEmpty()
     val codePreviewCount = allPreviews.count { it.params.kind !in ASSET_PREVIEW_KINDS }
-    // Preserve asset-only modules as valid: the stricter failure applies only when the original
-    // zero-preview contract fires, or when the source/output invariant above proves compilation is
-    // empty. This catches #3600 without making --fail-on-empty reject intentional asset catalogs.
-    if ((normalized.isEmpty() || emptyCompiledOutputs) && input.failOnEmpty) {
+    // Preserve intentional asset-only modules as valid, but never accept a module whose source
+    // declares @Preview while its compiled outputs are empty. That state is a broken/cancelled
+    // compilation, not "zero previews", and writing an assets-only manifest over the previous
+    // healthy one hides the actual fault (#4364). failOnEmpty continues to control only the
+    // legitimate zero-preview case.
+    if (emptyCompiledOutputs || (normalized.isEmpty() && input.failOnEmpty)) {
       val failureSummary =
         if (emptyCompiledOutputs) {
           "empty compiled outputs ($codePreviewCount code previews; ${allPreviews.size} total)"
@@ -812,7 +814,7 @@ object PreviewDiscovery {
         }
       val diagnostics =
         buildEmptyDiagnostics(
-          header = "composePreview: failOnEmpty diagnostics ($failureSummary):",
+          header = "composePreview: discovery failure diagnostics ($failureSummary):",
           existingClassDirs = existingClassDirs,
           allClassDirs = input.classDirs,
           projectJars = existingProjectJars,
@@ -829,7 +831,11 @@ object PreviewDiscovery {
           "the @Preview annotation class is not on the ClassGraph classpath " +
             "(dependency-jar filter dropped every jar carrying it)"
         } else {
-          "with failOnEmpty=true"
+          if (emptyCompiledOutputs) {
+            "compiled outputs are empty; rerun with --no-build-cache --rerun-tasks"
+          } else {
+            "with failOnEmpty=true"
+          }
         }
       return Outcome.Failure(
         reason =
