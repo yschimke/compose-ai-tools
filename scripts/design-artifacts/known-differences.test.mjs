@@ -518,6 +518,51 @@ test("the reader's own refusals reach the result as their proper tokens", () => 
   });
 });
 
+test("a reader that ignores the prefix reaches the same verdict on every case", () => {
+  // **The prefix is a resource optimisation, never a verdict.** `{ prefix: N }` is a request, and a
+  // host may not be able to honour it — the browser host in `cli/serve-web/` fetches whole artifacts
+  // and hands them straight over, because `readArtifact` is synchronous and its prefetch cannot know
+  // which records will survive the preflight. Left to the reader alone that host would walk a chunk
+  // the prefix stops at and reach `decode-failed` where this runner reaches `header-invalid`: one
+  // contract, two engines, different answers on the same bytes — the exact divergence this whole
+  // document exists to prevent, reintroduced by the mechanism meant to bound a read.
+  //
+  // So the engine caps the header pass's view itself, and this asserts the property that buys: every
+  // committed case reaches its pinned verdict through a reader that ignores the option entirely.
+  // Caught in review rather than here, which is why it is a whole-tree sweep and not two cases.
+  const wholeFileReader = (caseDir, synthesize) => {
+    const honest = artifactReader(caseDir, synthesize);
+    return (path) => {
+      // No second argument passed on, so the reader takes its whole-file branch — the shape a host
+      // that predates the option, or cannot range-request, would return for both passes.
+      const answer = honest(path);
+      return answer;
+    };
+  };
+
+  for (const id of caseIds) {
+    const caseDir = join(CASES, id);
+    const meta = readJson(join(caseDir, "case.json"));
+    const expected = readJson(join(caseDir, "expected.json"));
+    const result = evaluateKnownDifferences({
+      documentText: readFileSync(join(caseDir, "known-differences.json"), "utf8"),
+      readArtifact: wholeFileReader(caseDir, meta.synthesize),
+      comparison: withCanonicalRasters(caseDir, meta.comparison),
+      catalog: meta.catalog,
+    });
+    if (expected.pins.includes("statuses")) {
+      assert.deepEqual(result.statuses, expected.statuses, `${id} diverges without a prefix read`);
+    }
+    if (expected.pins.includes("validationFailures")) {
+      assert.deepEqual(
+        result.validationFailures,
+        expected.validationFailures,
+        `${id} diverges without a prefix read`,
+      );
+    }
+  }
+});
+
 test("a prefix answer is judged on the artifact's length, not on how much of it was served", () => {
   // The reason `{ prefix: N }` can coexist with an 8 MiB cap at all: the reader reports the size of
   // the *whole* file alongside the bytes it served, so the cap is still enforced on the artifact.

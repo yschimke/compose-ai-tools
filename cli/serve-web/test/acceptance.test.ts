@@ -170,6 +170,88 @@ function withFetch<T>(routes: Record<string, Uint8Array | string | number>, body
     });
 }
 
+/** One recorded request: the path asked for, and the `Range` header if the caller sent one. */
+interface RecordedRequest {
+    url: string;
+    range: string | null;
+}
+
+/**
+ * A `fetch` that records every request and, optionally, honours `Range` the way a real static server
+ * would — `206` with a `Content-Range` naming the whole size.
+ *
+ * The default `serve` above deliberately ignores `Range` and answers `200` with the entire body,
+ * which is the *other* case worth covering: a host that cannot range-request must still be bounded,
+ * because the adapter cuts the stream itself rather than trusting the status.
+ */
+function recordingFetch(
+    routes: Record<string, Uint8Array | string | number>,
+    { honourRange }: { honourRange: boolean },
+) {
+    const requests: RecordedRequest[] = [];
+    const impl = (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const headers = new Headers(init?.headers ?? {});
+        const range = headers.get("Range");
+        requests.push({ url, range });
+
+        const body = routes[url];
+        if (body === undefined) return Promise.resolve(new Response("not found", { status: 404 }));
+        if (typeof body === "number") return Promise.resolve(new Response("no", { status: body }));
+        if (typeof body === "string") return Promise.resolve(new Response(body));
+
+        const bytes = body as Uint8Array;
+        const match = range ? /^bytes=0-(\d+)$/.exec(range) : null;
+        if (honourRange && match) {
+            const end = Math.min(Number(match[1]), bytes.length - 1);
+            const slice = bytes.subarray(0, end + 1);
+            return Promise.resolve(
+                new Response(slice as unknown as BodyInit, {
+                    status: 206,
+                    headers: { "Content-Range": `bytes 0-${end}/${bytes.length}` },
+                }),
+            );
+        }
+        return Promise.resolve(new Response(bytes as unknown as BodyInit));
+    };
+    return { requests, impl };
+}
+
+function withRecordingFetch<T>(
+    routes: Record<string, Uint8Array | string | number>,
+    options: { honourRange: boolean },
+    body: (requests: RecordedRequest[]) => Promise<T>,
+) {
+    const original = globalThis.fetch;
+    const { requests, impl } = recordingFetch(routes, options);
+    globalThis.fetch = impl as typeof fetch;
+    return body(requests).finally(() => {
+        globalThis.fetch = original;
+    });
+}
+
+/**
+ * A PNG whose `PLTE` declares far more data than the header prefix can hold.
+ *
+ * The chunk is well-formed except for its length, which is the point: a reader that walks it reaches
+ * `IDAT` and decodes, while one bounded to a prefix runs out first. It is the artifact the whole
+ * prefix mechanism is measured against, so it is built by hand rather than by the encoder.
+ */
+function pngWithOversizedPlte(): Uint8Array {
+    const base = png(raster(4, 4, WHITE));
+    const signatureAndIhdr = base.subarray(0, 8 + 25);
+    const declared = 8000;
+    const plte = new Uint8Array(12 + declared);
+    new DataView(plte.buffer).setUint32(0, declared);
+    plte.set([0x50, 0x4c, 0x54, 0x45], 4);
+    const tail = base.subarray(8 + 25);
+    const out = new Uint8Array(signatureAndIhdr.length + plte.length + tail.length);
+    out.set(signatureAndIhdr, 0);
+    out.set(plte, signatureAndIhdr.length);
+    out.set(tail, signatureAndIhdr.length + plte.length);
+    return out;
+}
+
 function catalogRoutes(scene: ReturnType<typeof world>, doc: string) {
     return {
         [SOURCES.documentUrl]: doc,
@@ -308,5 +390,77 @@ describe("evaluateComparison", () => {
         );
         assert.equal(report.state, "evaluated", "a refused document is not an absent one");
         assert.deepEqual(report.validationFailures, [{ reason: "document-too-large" }]);
+    });
+
+    it("reads a bounded prefix of every artifact before reading any of them whole", async () => {
+        // The reference reader bounds its memory by reading a header, then reading the whole file
+        // again only inside the decode of a record the preflight already cleared. A browser reader is
+        // synchronous and must have every answer in hand first, so the naive adapter fetched all of
+        // them in full up front — reintroducing the four gigabytes of simultaneously-held bytes the
+        // reference design exists to avoid, *before* a single preflight could refuse anything.
+        //
+        // This pins the two rounds: every declared path is asked for with a bounded `Range` first.
+        const scene = world();
+        const routes = catalogRoutes(scene, document(scene));
+        const report = await withRecordingFetch(routes, { honourRange: true }, async (requests) => {
+            const result = await evaluateComparison(SOURCES, SCOPE, {});
+            const artifactRequests = requests.filter((request) =>
+                request.url.startsWith("/m3/parity/known-differences/"),
+            );
+            const ranged = artifactRequests.filter((request) => request.range !== null);
+            assert.equal(ranged.length, 2, "both artifacts are asked for as a bounded prefix");
+            for (const request of ranged) {
+                assert.equal(request.range, "bytes=0-4095", "the prefix is the named budget");
+            }
+            // And each is then read whole exactly once, because both preflight cleanly here.
+            const whole = artifactRequests.filter((request) => request.range === null);
+            assert.equal(whole.length, 2, "a clean header earns one full read");
+            return result;
+        });
+        // The verdict is unchanged by any of it — the prefix is a resource bound, never a verdict.
+        assert.deepEqual(report.statuses, { glyph: { status: "valid" } });
+    });
+
+    it("never reads an artifact whole when its prefix already refuses it", async () => {
+        // The property the whole mechanism is for. A `PLTE` declaring eight kilobytes runs off the end
+        // of a four-kilobyte prefix, so the header pass refuses it — and the body, which a hostile
+        // catalog would make as large as the byte cap allows, is never fetched at all. Without the
+        // two rounds this artifact is downloaded in full and *then* refused, which is the resource
+        // exhaustion reached through the guard meant to prevent it.
+        const scene = world();
+        const oversized = pngWithOversizedPlte();
+        const routes = catalogRoutes(scene, document(scene, { maskSha256: sha256Hex(oversized) }));
+        routes["/m3/parity/known-differences/glyph/mask.png"] = oversized;
+
+        const report = await withRecordingFetch(routes, { honourRange: true }, async (requests) => {
+            const result = await evaluateComparison(SOURCES, SCOPE, {});
+            const maskRequests = requests.filter((request) =>
+                request.url.endsWith("/glyph/mask.png"),
+            );
+            assert.equal(maskRequests.length, 1, "the refused mask is fetched once, not twice");
+            assert.equal(maskRequests[0].range, "bytes=0-4095", "and only as a prefix");
+            return result;
+        });
+        assert.deepEqual(report.statuses, {
+            glyph: { status: "refused", reasons: ["header-invalid"] },
+        });
+    });
+
+    it("reaches the same verdict from a server that ignores Range entirely", async () => {
+        // `Range` is a request, and a static host may answer `200` with the whole body regardless.
+        // That must cost bytes, never a different answer: the adapter cuts the stream itself, and the
+        // engine caps its own header view to the same constant whatever a reader hands over. So the
+        // oversized `PLTE` is `header-invalid` here too, rather than walking through to a decode.
+        const scene = world();
+        const oversized = pngWithOversizedPlte();
+        const routes = catalogRoutes(scene, document(scene, { maskSha256: sha256Hex(oversized) }));
+        routes["/m3/parity/known-differences/glyph/mask.png"] = oversized;
+
+        const report = await withRecordingFetch(routes, { honourRange: false }, () =>
+            evaluateComparison(SOURCES, SCOPE, {}),
+        );
+        assert.deepEqual(report.statuses, {
+            glyph: { status: "refused", reasons: ["header-invalid"] },
+        });
     });
 });

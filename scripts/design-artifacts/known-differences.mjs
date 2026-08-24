@@ -975,11 +975,21 @@ function preflightRecord(record, index, readArtifact, catalog) {
   if (acceptedRead.byteLength > BUDGET.maxArtifactBytes) oversized.push("artifact-too-large");
   if (oversized.length > 0) return fail(...oversized);
 
+  // **Truncated here as well, whatever the reader served.** `{ prefix: N }` is a request, and a host
+  // may not be in a position to honour it — a `fetch` that cannot range-request, a reader that
+  // predates the option and ignores its second argument. Left to the reader alone, that host would
+  // walk a chunk this one refuses and reach `decode-failed` where this one reaches `header-invalid`:
+  // the prefix would be a *verdict* that varies by host, which is the one thing this contract exists
+  // to prevent. Capping the header pass's view here makes the prefix a resource optimisation and
+  // nothing more — a host that ignores it agrees on every verdict and merely pays for the bytes.
+  // The reader's `byteLength` is untouched by this, so the 8 MiB cap still measures the artifact.
+  const headerBytes = (answer) => answer.bytes.subarray(0, BUDGET.maxPreflightBytes);
+
   // Both headers are read and validated before either raster joins the running total, so the budget
   // is order-independent: an oversized-but-readable header beside an unreadable one must not give a
   // different verdict depending on which was read first.
-  const maskHeader = preflightPng(maskRead.bytes, { byteLength: maskRead.byteLength });
-  const acceptedHeader = preflightPng(acceptedRead.bytes, { byteLength: acceptedRead.byteLength });
+  const maskHeader = preflightPng(headerBytes(maskRead), { byteLength: maskRead.byteLength });
+  const acceptedHeader = preflightPng(headerBytes(acceptedRead), { byteLength: acceptedRead.byteLength });
   const headerReasons = [];
   if (maskHeader.error) headerReasons.push("header-invalid");
   if (acceptedHeader.error) headerReasons.push("header-invalid");
@@ -1058,7 +1068,9 @@ function decodeRecord(evaluation, readArtifact) {
     // reader disagree with itself: the header pass reported the artifact's size, the decode pass
     // reported the size of the whole file it happened to hand over, and every prefix read looked
     // like an artifact that had changed underneath the evaluation.
-    const now = preflightPng(answer.bytes, { byteLength: answer.byteLength });
+    const now = preflightPng(answer.bytes.subarray(0, BUDGET.maxPreflightBytes), {
+      byteLength: answer.byteLength,
+    });
     if (now.error) {
       rereadFailures.push("header-invalid");
       continue;
