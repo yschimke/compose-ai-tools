@@ -23,6 +23,7 @@
  *   node rc-compare.mjs --bundle <bundle.png> --player <rc-player bundle.js> \
  *     --out <dir> [--system <id>] [--title <t>] [--threshold 0.1] [--theme light] \
  *     [--fonts <dir>] [--cmp-wasm <rc-player-wasm distribution>] \
+ *     [--embedded <vendored Android renders>] [--androidx-embedded <androidx.dev renders>] \
  *     [--require-cmp-wasm] [--cmp-wasm-allowlist <json>] \
  *     [--cmp-wasm-max-cold-first-frame-ms <ms>] [--cmp-wasm-max-warm-first-frame-ms <ms>]
  *
@@ -92,6 +93,10 @@ const FONTS = arg("fonts", DEFAULT_FONTS_DIR);
 // Omitting both keeps the JS-only page exactly as before.
 const STAGE_EMBEDDED = arg("stage-embedded");
 const EMBEDDED = arg("embedded");
+// AndroidX's current embedded player, resolved from androidx.dev as part of
+// `androidx.compose.remote:remote-player-compose`. Kept separate from `--embedded`, which is this
+// repo's vendored and locally patched Android player.
+const ANDROIDX_EMBEDDED = arg("androidx-embedded");
 // The cmp-jvm (desktop Skiko embedded player) lane. It reuses the same staged inputs as the
 // embedded lane (`--stage-embedded` writes `<id>.rc` + `manifest.json` that both harnesses read), so
 // there is no separate stage flag — only a separate output dir to read PNGs back from.
@@ -199,6 +204,8 @@ const dirs = {
   diff: path.join(OUT, "rc-diff"),
   embedded: path.join(OUT, "rc-embedded"),
   embeddedDiff: path.join(OUT, "rc-embedded-diff"),
+  androidxEmbedded: path.join(OUT, "rc-androidx-embedded"),
+  androidxEmbeddedDiff: path.join(OUT, "rc-androidx-embedded-diff"),
   embeddedJvm: path.join(OUT, "rc-embedded-jvm"),
   embeddedJvmDiff: path.join(OUT, "rc-embedded-jvm-diff"),
   cmpWasm: path.join(OUT, "rc-cmp-wasm"),
@@ -242,6 +249,17 @@ if (EMBEDDED) {
     for (const line of fs.readFileSync(errorsFile, "utf8").split("\n")) {
       const [id, ...rest] = line.split("\t");
       if (id && rest.length) embeddedErrors.set(id, rest.join("\t"));
+    }
+  }
+}
+
+const androidxEmbeddedErrors = new Map();
+if (ANDROIDX_EMBEDDED) {
+  const errorsFile = path.join(ANDROIDX_EMBEDDED, "errors.txt");
+  if (fs.existsSync(errorsFile)) {
+    for (const line of fs.readFileSync(errorsFile, "utf8").split("\n")) {
+      const [id, ...rest] = line.split("\t");
+      if (id && rest.length) androidxEmbeddedErrors.set(id, rest.join("\t"));
     }
   }
 }
@@ -319,6 +337,59 @@ function embeddedFor(id, baked, bakedUnflattened, width, height, referenceBlank)
     embeddedMismatchPx: referenceBlank ? null : px,
     embedded: `rc-embedded/${id}.png`,
     embeddedDiff: `rc-embedded-diff/${id}.png`,
+  };
+}
+
+/** Diff the embedded player published by the pinned androidx.dev snapshot. */
+function androidxEmbeddedFor(id, baked, bakedUnflattened, width, height, referenceBlank) {
+  if (!ANDROIDX_EMBEDDED) return {};
+  const png = path.join(ANDROIDX_EMBEDDED, `${id}.png`);
+  if (!fs.existsSync(png)) {
+    return {
+      androidxEmbeddedRendered: false,
+      androidxEmbeddedNote:
+        androidxEmbeddedErrors.get(id) ??
+        (fs.existsSync(path.join(ANDROIDX_EMBEDDED, `${id}.error`))
+          ? fs.readFileSync(path.join(ANDROIDX_EMBEDDED, `${id}.error`), "utf8").trim().slice(0, 200)
+          : "no androidx.dev embedded render"),
+      androidxEmbeddedMismatchPct: null,
+      androidxEmbeddedMismatchPx: null,
+      androidxEmbedded: "",
+      androidxEmbeddedDiff: "",
+    };
+  }
+  const bytes = fs.readFileSync(png);
+  const raw = PNG.sync.read(bytes);
+  const coverage =
+    raw.width === width && raw.height === height
+      ? splitCoverage(bakedUnflattened, raw.data, width, height)
+      : null;
+  const flattened = flattenedCopy(raw, BG);
+  if (flattened.width !== width || flattened.height !== height) {
+    return {
+      androidxEmbeddedRendered: false,
+      androidxEmbeddedNote: `size ${flattened.width}×${flattened.height} ≠ baked ${width}×${height}`,
+      androidxEmbeddedMismatchPct: null,
+      androidxEmbeddedMismatchPx: null,
+      androidxEmbedded: "",
+      androidxEmbeddedDiff: "",
+    };
+  }
+  const diff = new PNG({ width, height });
+  const px = pixelmatch(baked.data, flattened.data, diff.data, width, height, {
+    threshold: THRESHOLD,
+  });
+  fs.writeFileSync(path.join(dirs.androidxEmbedded, `${id}.png`), bytes);
+  fs.writeFileSync(path.join(dirs.androidxEmbeddedDiff, `${id}.png`), PNG.sync.write(diff));
+  return {
+    androidxEmbeddedRendered: true,
+    androidxEmbeddedMismatchPct: referenceBlank ? null : (100 * px) / (width * height),
+    androidxEmbeddedCoverageDeltaPct: referenceBlank ? null : (coverage?.coverageDeltaPct ?? null),
+    androidxEmbeddedContentMismatchPct:
+      referenceBlank ? null : (coverage?.contentMismatchPct ?? null),
+    androidxEmbeddedMismatchPx: referenceBlank ? null : px,
+    androidxEmbedded: `rc-androidx-embedded/${id}.png`,
+    androidxEmbeddedDiff: `rc-androidx-embedded-diff/${id}.png`,
   };
 }
 
@@ -665,6 +736,14 @@ for (const id of rcIds) {
   // Embedded lane, computed independently of whether the JS player managed this document — either
   // player can render one the other chokes on, and the page scores them separately.
   const embedded = embeddedFor(id, baked, bakedUnflattened, width, height, referenceBlank);
+  const androidxEmbedded = androidxEmbeddedFor(
+    id,
+    baked,
+    bakedUnflattened,
+    width,
+    height,
+    referenceBlank,
+  );
   const embeddedJvm = embeddedJvmFor(id, baked, bakedUnflattened, width, height, referenceBlank);
   const cmpWasm = await cmpWasmFor(
     id,
@@ -693,6 +772,7 @@ for (const id of rcIds) {
       diff: "",
       referenceBlank,
       ...embedded,
+      ...androidxEmbedded,
       ...embeddedJvm,
       ...cmpWasm,
     });
@@ -737,6 +817,7 @@ for (const id of rcIds) {
     diff: `rc-diff/${id}.png`,
     referenceBlank,
     ...embedded,
+    ...androidxEmbedded,
     ...embeddedJvm,
     ...cmpWasm,
   });
@@ -758,6 +839,12 @@ for (const id of rcIds) {
       : embeddedJvm.embeddedJvmRendered
         ? `  |  cmp-jvm ${embeddedJvm.embeddedJvmMismatchPct.toFixed(2)}%`
         : `  |  cmp-jvm NOT RENDERED`;
+  const androidxEmbNote =
+    androidxEmbedded.androidxEmbeddedRendered === undefined
+      ? ""
+      : androidxEmbedded.androidxEmbeddedRendered
+        ? `  |  androidx.dev embedded ${androidxEmbedded.androidxEmbeddedMismatchPct.toFixed(2)}%`
+        : `  |  androidx.dev embedded NOT RENDERED`;
   const cmpWasmNote =
     cmpWasm.cmpWasmRendered === undefined
       ? ""
@@ -767,7 +854,7 @@ for (const id of rcIds) {
           `${cmpWasm.cmpWasmViewport}@${cmpWasm.cmpWasmDensity})`
         : `  |  cmp-wasm NOT RENDERED`;
   console.log(
-    `  ${name}: ${mismatchPct.toFixed(2)}% (${mismatchPx} px, ${width}×${height})${embNote}${embJvmNote}${cmpWasmNote}`,
+    `  ${name}: ${mismatchPct.toFixed(2)}% (${mismatchPx} px, ${width}×${height})${embNote}${androidxEmbNote}${embJvmNote}${cmpWasmNote}`,
   );
 }
 
@@ -841,6 +928,19 @@ fs.writeFileSync(
             ...laneSplitFor(rows, "embedded"),
           }
         : null,
+      androidxEmbedded: ANDROIDX_EMBEDDED
+        ? {
+            rendered: rows.filter((r) => r.androidxEmbeddedRendered).length,
+            scored: rows.filter((r) => r.androidxEmbeddedRendered && !r.referenceBlank).length,
+            meanMismatchPct: (() => {
+              const ok = rows.filter((r) => r.androidxEmbeddedRendered && !r.referenceBlank);
+              return ok.length
+                ? ok.reduce((s, r) => s + r.androidxEmbeddedMismatchPct, 0) / ok.length
+                : null;
+            })(),
+            ...laneSplitFor(rows, "androidxEmbedded"),
+          }
+        : null,
       embeddedJvm: EMBEDDED_JVM
         ? {
             rendered: rows.filter((r) => r.embeddedJvmRendered).length,
@@ -910,6 +1010,12 @@ fs.writeFileSync(
         embeddedContentMismatchPct: r.embeddedContentMismatchPct ?? null,
         embeddedMismatchPx: r.embeddedMismatchPx ?? null,
         embeddedNote: r.embeddedNote ?? null,
+        androidxEmbeddedRendered: r.androidxEmbeddedRendered ?? null,
+        androidxEmbeddedMismatchPct: r.androidxEmbeddedMismatchPct ?? null,
+        androidxEmbeddedCoverageDeltaPct: r.androidxEmbeddedCoverageDeltaPct ?? null,
+        androidxEmbeddedContentMismatchPct: r.androidxEmbeddedContentMismatchPct ?? null,
+        androidxEmbeddedMismatchPx: r.androidxEmbeddedMismatchPx ?? null,
+        androidxEmbeddedNote: r.androidxEmbeddedNote ?? null,
         embeddedJvmRendered: r.embeddedJvmRendered ?? null,
         embeddedJvmMismatchPct: r.embeddedJvmMismatchPct ?? null,
         embeddedJvmCoverageDeltaPct: r.embeddedJvmCoverageDeltaPct ?? null,

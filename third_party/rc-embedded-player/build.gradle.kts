@@ -19,9 +19,10 @@
 // that hosts it upstream (`compose/remote/integration-tests/player-compose-embedded`). See
 // `PROVENANCE.md` for the pinned upstream commit and our local deltas.
 //
-// Why vendor it: upstream ships this player only as `SoftwareType.TEST_APPLICATION` sources inside
-// an integration-test module — there is no published `androidx.compose.remote:remote-player-compose
-// -embedded` artifact to depend on. To offer it as a *render lane* next to the existing
+// Why vendor it: upstream originally shipped this player only as integration-test sources. The
+// current implementation is now included in androidx.dev's `remote-player-compose` snapshot, but
+// this pinned copy carries local fixes and provides a stable, independently selectable baseline.
+// To offer it as a *render lane* next to the existing
 // `RemoteDocumentPlayer` (the `remote-player-view` path `RemoteComposeIrReplay` uses today) we need
 // the sources in our own build.
 //
@@ -38,27 +39,31 @@
 
 plugins {
   id("composeai.base-conventions")
-  // NOT PUBLISHED. It used to apply `composeai.maven-publishing`, so it joined the root
-  // `publishAndReleaseToMavenCentral` aggregation — and it exposes `libs.compose.remote.core` and
-  // `libs.compose.remote.player.core` through `api`. Those moved to `1.0.0-SNAPSHOT` on
-  // androidx.dev, so the next release POM would have required
-  // `androidx.compose.remote:*:1.0.0-SNAPSHOT`: coordinates a consumer cannot resolve (the
-  // androidx.dev repository is declared in this project's `settings.gradle.kts` and cannot be
-  // inherited), absent from Google Maven and Central, and eventually swept from androidx.dev
-  // altogether. A published artifact nobody can resolve is worse than no artifact.
-  //
-  // Unpublishing rather than pinning, because there is nothing to pin to — upstream ships this
-  // player only as integration-test sources — and because nothing consumed the coordinates: every
-  // user in this repo (`:samples:remotecompose`, `:samples:design-catalog-remote-m3`,
-  // `:data-remotecompose-connector`, and the JVM sibling via `:cli`) depends on the PROJECT. The
-  // module's own note already called it "a testing artifact ... not intended for external use".
-  //
-  // `composeai.maven-publishing` also applied `composeai.android-conventions`, so that is named
-  // directly now.
-  id("composeai.android-conventions")
+  // Published for TESTING only — see `composeAiMavenPublishing` below. This is the repo's pinned,
+  // locally patched AndroidX player, not a supported API. Publishing it lets consumers and parity
+  // jobs select the vendored implementation independently from the newer embedded player now
+  // shipped inside androidx.dev's `remote-player-compose` snapshot.
+  id("composeai.maven-publishing")
   alias(libs.plugins.android.library)
   alias(libs.plugins.compose.compiler)
   alias(libs.plugins.kotlin.serialization)
+}
+
+// Deliberately published under the compose-ai-tools group, not `androidx.*`: this is the vendored
+// and locally patched implementation. Its public API exposes AndroidX Remote Compose snapshot
+// types, so consumers must also use the matching androidx.dev repository/build recorded by this
+// release. The coordinate is intended for player experiments and parity testing, not as a stable
+// library API.
+composeAiMavenPublishing {
+  coordinates(
+    artifactId = "third-party-rc-embedded-player",
+    displayName = "Compose Preview — AndroidX Embedded Player (vendored, Android)",
+    description =
+      "Vendored and locally patched Android implementation of AndroidX's experimental Compose " +
+        "embedded Remote Compose player. Published for parity testing alongside the upstream " +
+        "androidx.dev implementation; not a supported API.",
+  )
+  inceptionYear.set("2026")
 }
 
 android {
@@ -105,6 +110,8 @@ tasks.withType<Test>().configureEach {
     listOf(
       "rc.embedded.input",
       "rc.embedded.output",
+      "rc.androidx.embedded.input",
+      "rc.androidx.embedded.output",
       "rc.view.output",
       "rc.semantics.report",
       // `composeai.fonts.*` are what turn a document's `google:` family into the real face: with a

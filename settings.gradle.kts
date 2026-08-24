@@ -29,7 +29,7 @@ val matrixRobolectricVersion: String? =
 
 // androidx-main post-submit build the Remote Compose / Glance Wear artifacts resolve from. See the
 // repository declaration below; bump this one line to move all three groups to a newer snapshot.
-val androidxSnapshotBuildId = "16130474"
+val androidxSnapshotBuildId = "16155060"
 
 dependencyResolutionManagement {
   // Kotlin's wasmJs toolchain resolves Node.js from an Ivy repository that the Kotlin Gradle
@@ -627,10 +627,9 @@ project(":data-permissions-connector").projectDir = file("data/permissions/conne
 // modules at compileSdk 36 can still consume the AAR. The Compose API surface (composition local,
 // data product, override planner) registers on `:daemon:android` only.
 // Vendored snapshot of AndroidX's experimental Compose *embedded* Remote Compose player
-// (`RcPlayer`). Upstream ships it only as sources inside an integration-test application, so there
-// is no artifact to depend on — see `third_party/rc-embedded-player/PROVENANCE.md`. It backs the
-// `embedded` render lane that `RemoteComposeIrReplay` can select instead of the `remote-player-view`
-// -backed `RemoteDocumentPlayer`.
+// (`RcPlayer`). AndroidX now also publishes its current implementation inside the androidx.dev
+// `remote-player-compose` snapshot; this independently packaged, locally patched copy backs the
+// vendored Android comparison lane. See `third_party/rc-embedded-player/PROVENANCE.md`.
 include(":third-party-rc-embedded-player")
 
 project(":third-party-rc-embedded-player").projectDir = file("third_party/rc-embedded-player")

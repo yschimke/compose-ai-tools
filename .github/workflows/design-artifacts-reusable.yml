@@ -158,7 +158,7 @@ on:
         type: boolean
         default: false
       rc-embedded-lane:
-        description: "Add the embedded-player lane to rc-compare.html, making it a three-way page: baked PNG vs the vendored TypeScript RcdPlayer vs AndroidX's Compose-embedded RcPlayer. ON by default: scoring the same document through two players is what makes a divergence attributable — a row where only the JS player is off is a JS-player bug, one where only the embedded player is off is an embedded-player bug — and a catalog that ships ir/*.rc should get that for free rather than by remembering an input. It stages the bundle's ir/*.rc, renders them through :third-party-rc-embedded-player (Robolectric), and diffs the result; it needs a Gradle/Android toolchain, and a runner without one (or a harness failure) degrades to the usual two-lane page rather than failing the render. Entirely skipped — no Gradle, no Chromium — for a catalog that ships no ir/*.rc. Set false to keep the page two-lane, e.g. on a runner where the extra Gradle build is not worth its minutes."
+        description: "Add both Android embedded-player lanes to rc-compare.html: the vendored/local-patch player from :third-party-rc-embedded-player and the upstream player published in androidx.dev's remote-player-compose snapshot. ON by default: rendering the same document through both independently compiled players makes upstream-vs-vendored drift visible. It needs a Gradle/Android toolchain, and either harness may fail-soft independently so the other lane still publishes. Entirely skipped for a catalog that ships no ir/*.rc."
         required: false
         type: boolean
         default: true
@@ -1716,7 +1716,9 @@ jobs:
               --stage-embedded "$RC_IN"
           fi
 
-          # Robolectric (Android) embedded lane.
+          # Robolectric (Android) embedded lanes. The first is the vendored/local-patch artifact;
+          # the second imports AndroidX's implementation from the pinned androidx.dev snapshot.
+          # Separate Gradle invocations make the lanes fail-soft independently.
           if [ "$INPUT_RC_EMBEDDED_LANE" = "true" ]; then
             RC_OUT="$RUNNER_TEMP/rc-embedded-out"
             rm -rf "$RC_OUT"
@@ -1728,6 +1730,7 @@ jobs:
             # hit it, but `runs-on` is an input, so self-hosted callers would.
             if (cd "$GITHUB_WORKSPACE/compose-ai-tools" && \
                 ./gradlew :third-party-rc-embedded-player:testDebugUnitTest --no-daemon --rerun --quiet \
+                  --tests ee.schimke.composeai.rcembedded.RcEmbeddedRenderHarness \
                   -Prc.embedded.input="$RC_IN" -Prc.embedded.output="$RC_OUT" \
                   -Pcomposeai.fonts.cacheDir="$FONTS_CACHE") \
                && [ -n "$(find "$RC_OUT" -maxdepth 1 -name '*.png' -print -quit 2>/dev/null)" ]; then
@@ -1736,7 +1739,21 @@ jobs:
               # Belt and braces: the PNG check above is what actually decides, so any cause of an
               # empty RC_OUT — a skipped task, a harness that died before writing, a wiped temp dir
               # — falls back to a page without the column instead of publishing empty cells.
-              echo "::warning::embedded-player lane produced no renders; publishing rc-compare without the embedded column"
+              echo "::warning::vendored embedded-player lane produced no renders; publishing rc-compare without its column"
+            fi
+
+            RC_ANDROIDX_OUT="$RUNNER_TEMP/rc-androidx-embedded-out"
+            rm -rf "$RC_ANDROIDX_OUT"
+            if (cd "$GITHUB_WORKSPACE/compose-ai-tools" && \
+                ./gradlew :third-party-rc-embedded-player:testDebugUnitTest --no-daemon --rerun --quiet \
+                  --tests ee.schimke.composeai.rcembedded.RcAndroidxEmbeddedRenderHarness \
+                  -Prc.androidx.embedded.input="$RC_IN" \
+                  -Prc.androidx.embedded.output="$RC_ANDROIDX_OUT" \
+                  -Pcomposeai.fonts.cacheDir="$FONTS_CACHE") \
+               && [ -n "$(find "$RC_ANDROIDX_OUT" -maxdepth 1 -name '*.png' -print -quit 2>/dev/null)" ]; then
+              EMBEDDED_ARGS+=(--androidx-embedded "$RC_ANDROIDX_OUT")
+            else
+              echo "::warning::androidx.dev embedded-player lane produced no renders; publishing rc-compare without its column"
             fi
           fi
 
