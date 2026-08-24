@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
@@ -410,6 +411,191 @@ class DesktopRecordingWrappedFrameTest {
       translucent,
       img.getRGB(0, 0),
     )
+  }
+
+  @Test
+  fun `a growing recording is padded even when growth lands on the scene bounds`() {
+    // The trap in "nothing to crop, nothing to scale": growth that finishes exactly on the
+    // sandbox satisfies both clauses while still owing the backdrop under every earlier frame.
+    // The fixture is 60 dp wide in a 60 dp sandbox, growing 30 -> 90 dp tall in a 90 dp one, so
+    // the final size IS the scene and the wholesale skip would fire.
+    val outputDir = tempFolder.newFolder("renders-grow-to-bounds")
+    val recordingsRoot = tempFolder.newFolder("recordings-grow-to-bounds")
+    savedRecordingsDir = System.getProperty(DesktopHost.RECORDINGS_DIR_PROP)
+    System.setProperty(DesktopHost.RECORDINGS_DIR_PROP, recordingsRoot.absolutePath)
+
+    val host =
+      DesktopHost(
+        engine = RenderEngine(outputDir = outputDir),
+        previewSpecResolver = { previewId ->
+          if (previewId == GROWTH_PREVIEW_ID)
+            RenderSpec(
+              className = STICKER_CLASS,
+              functionName = "ExpandingClickBlock",
+              widthPx = 60,
+              heightPx = 90,
+              wrapWidth = true,
+              wrapHeight = true,
+              density = 1.0f,
+              showBackground = true,
+              backgroundColor = 0xFFFFFFFF,
+              outputBaseName = "grow-to-bounds",
+            )
+          else null
+        },
+      )
+    host.start()
+    try {
+      host
+        .acquireRecordingSession(
+          GROWTH_PREVIEW_ID,
+          "rec-grow-bounds",
+          javaClass.classLoader ?: ClassLoader.getSystemClassLoader(),
+          FPS,
+          1.0f,
+          null,
+        )
+        .use { session ->
+          session.postScript(
+            listOf(
+              RecordingScriptEvent(tMs = 0L, kind = "recording.probe"),
+              RecordingScriptEvent(tMs = 100L, kind = "input.click", pixelX = 30, pixelY = 15),
+              RecordingScriptEvent(tMs = 400L, kind = "recording.probe"),
+            )
+          )
+          val result = session.stop()
+          assertEquals(60 to 90, result.frameWidthPx to result.frameHeightPx)
+          // Frame 0 was taken while the block was 60x30, so everything below it was bare scene.
+          // With the backdrop laid under it that area is white; without, it stays transparent.
+          val first = ImageIO.read(File(result.framesDir, "frame-00000.png"))
+          assertEquals(
+            "space the component had not grown into must carry the backdrop",
+            0xFFFFFFFF.toInt(),
+            first.getRGB(30, 85),
+          )
+        }
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
+  fun `a missing frame fails finalization rather than truncating the recording`() {
+    // Skipping would let stop() report the original count and finalized dimensions over a set
+    // with a hole in it — which the encoder rejects, or ffmpeg's numbered input truncates at.
+    val outputDir = tempFolder.newFolder("renders-missing")
+    val recordingsRoot = tempFolder.newFolder("recordings-missing")
+    savedRecordingsDir = System.getProperty(DesktopHost.RECORDINGS_DIR_PROP)
+    System.setProperty(DesktopHost.RECORDINGS_DIR_PROP, recordingsRoot.absolutePath)
+
+    val host =
+      DesktopHost(
+        engine = RenderEngine(outputDir = outputDir),
+        previewSpecResolver = { previewId ->
+          if (previewId == FIXTURE_PREVIEW_ID)
+            RenderSpec(
+              className = STICKER_CLASS,
+              functionName = "WrapContentStickerPreview",
+              widthPx = SANDBOX_WIDTH_PX,
+              heightPx = SANDBOX_HEIGHT_PX,
+              wrapWidth = true,
+              wrapHeight = true,
+              density = 2.0f,
+              showBackground = true,
+              outputBaseName = "missing-frame",
+            )
+          else null
+        },
+      )
+    host.start()
+    try {
+      host
+        .acquireRecordingSession(
+          FIXTURE_PREVIEW_ID,
+          "rec-missing",
+          javaClass.classLoader ?: ClassLoader.getSystemClassLoader(),
+          FPS,
+          1.0f,
+          null,
+          live = true,
+        )
+        .use { session ->
+          // Live mode, because scripted playback writes its frames INSIDE `stop()` — deleting one
+          // beforehand would prove nothing. The tick thread writes as it goes, so a frame really
+          // can vanish between being written and being reframed.
+          Thread.sleep(250L)
+          val frame0 = File(recordingsRoot, "frames/rec-missing/frame-00000.png")
+          assertTrue("the tick thread should have written frames by now", frame0.isFile)
+          assertTrue("could not delete the frame under test", frame0.delete())
+          val thrown = runCatching { session.stop() }.exceptionOrNull()
+          assertTrue("expected finalization to fail, got $thrown", thrown is IllegalStateException)
+        }
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
+  fun `a scene-framed TalkBack recording is not given a backdrop`() {
+    // A TalkBack recording keeps the whole scene so its caption stays where it was drawn — nothing
+    // is being padded, so nothing should be filled. Passing the preview background in anyway would
+    // turn the transparent sandbox around the component opaque merely because a scale was asked
+    // for, which the scene-framing exists to avoid.
+    val outputDir = tempFolder.newFolder("renders-tb-backdrop")
+    val recordingsRoot = tempFolder.newFolder("recordings-tb-backdrop")
+    savedRecordingsDir = System.getProperty(DesktopHost.RECORDINGS_DIR_PROP)
+    System.setProperty(DesktopHost.RECORDINGS_DIR_PROP, recordingsRoot.absolutePath)
+
+    val host =
+      DesktopHost(
+        engine = RenderEngine(outputDir = outputDir),
+        previewSpecResolver = { previewId ->
+          if (previewId == FIXTURE_PREVIEW_ID)
+            RenderSpec(
+              className = STICKER_CLASS,
+              functionName = "WrapContentStickerPreview",
+              widthPx = 200,
+              heightPx = 200,
+              wrapWidth = true,
+              wrapHeight = true,
+              density = 1.0f,
+              showBackground = true,
+              backgroundColor = 0xFFFFFFFF,
+              outputBaseName = "tb-backdrop",
+              overrides = PreviewOverrides(talkBack = true),
+            )
+          else null
+        },
+      )
+    host.start()
+    try {
+      host
+        .acquireRecordingSession(
+          FIXTURE_PREVIEW_ID,
+          "rec-tb-backdrop",
+          javaClass.classLoader ?: ClassLoader.getSystemClassLoader(),
+          FPS,
+          2.0f,
+          null,
+        )
+        .use { session ->
+          session.postScript(listOf(RecordingScriptEvent(tMs = 0L, kind = "recording.probe")))
+          val result = session.stop()
+          // Scene kept whole (200x200) and scaled by 2 — the scale is honoured, the crop is not
+          // taken.
+          assertEquals(400 to 400, result.frameWidthPx to result.frameHeightPx)
+          val img = ImageIO.read(File(result.framesDir, "frame-00000.png"))
+          // The sticker is far smaller than its 200 dp sandbox, so the far corner is sandbox. It
+          // must still be transparent: filling it would be the defect.
+          assertEquals(
+            "a scene-framed recording's sandbox must not be filled",
+            0,
+            img.getRGB(390, 390) ushr 24,
+          )
+        }
+    } finally {
+      host.shutdown()
+    }
   }
 
   /** The still of the same fixture through the same engine, for the comparison above. */

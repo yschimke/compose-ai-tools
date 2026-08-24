@@ -34,6 +34,9 @@ import kotlin.math.ceil
 import okio.FileSystem
 import okio.Path.Companion.toPath
 import org.jetbrains.skia.Image
+import org.jetbrains.skia.Rect
+import org.jetbrains.skia.SamplingMode
+import org.jetbrains.skia.Surface
 
 /**
  * Desktop concrete [RecordingSession] driving a virtual frame clock against a held
@@ -128,6 +131,19 @@ class DesktopRecordingSession(
   @Volatile private var maxMeasuredWidthPx: Int = 0
 
   @Volatile private var maxMeasuredHeightPx: Int = 0
+
+  /**
+   * The smallest content size measured over the recording, or `0` before anything was measured.
+   *
+   * The maximum alone cannot answer "did this component grow?", and that question decides whether
+   * the earlier frames need the backdrop laid under them: a frame taken while the component was
+   * smaller is transparent everywhere it had not reached, whatever the final size turns out to be.
+   * Without this the wholesale no-op skips the fill exactly when growth happens to end on the
+   * scene's own bounds (issue #4467).
+   */
+  @Volatile private var minMeasuredWidthPx: Int = 0
+
+  @Volatile private var minMeasuredHeightPx: Int = 0
 
   /**
    * The size the scene actually rendered at, observed rather than recomputed.
@@ -548,6 +564,13 @@ class DesktopRecordingSession(
     val measured = state.measuredContent
     if (measured[0] > maxMeasuredWidthPx) maxMeasuredWidthPx = measured[0]
     if (measured[1] > maxMeasuredHeightPx) maxMeasuredHeightPx = measured[1]
+    // Zero is "not measured yet", not a size — latching it would make every recording look grown.
+    if (measured[0] > 0 && (minMeasuredWidthPx == 0 || measured[0] < minMeasuredWidthPx)) {
+      minMeasuredWidthPx = measured[0]
+    }
+    if (measured[1] > 0 && (minMeasuredHeightPx == 0 || measured[1] < minMeasuredHeightPx)) {
+      minMeasuredHeightPx = measured[1]
+    }
     // Every semantics owner, not just the content box. A `DropdownMenu`, tooltip or dialog paints
     // into an owner of its own, outside the box entirely — so a crop taken from the box alone would
     // cut the popup off, which is a regression against recording the whole scene. The batch motion
@@ -1166,15 +1189,55 @@ class DesktopRecordingSession(
    * encode.
    */
   private fun frameBytes(image: Image, frameIndex: Int): ByteArray {
-    val natural =
-      if (state.spec.overrides?.talkBack == true) talkBackFrameBytes(image, frameIndex)
-      else encodeNaturalPng(image)
-    // Scaled here only when the framing cannot change — see [framingKnownUpFront]. A wrapped
-    // preview's frames stay at scene size until `stop()` knows how big the component ever got.
-    if (!framingKnownUpFront || scale == 1.0f) return natural
+    // Scaling happens here only when the framing cannot change — see [framingKnownUpFront]. A
+    // wrapped preview's frames stay at scene size until `stop()` knows how big the component
+    // ever got.
+    val scaleNow = framingKnownUpFront && scale != 1.0f
     val scaledWidth = (image.width * scale).toInt().coerceAtLeast(1)
     val scaledHeight = (image.height * scale).toInt().coerceAtLeast(1)
-    return scalePngBytes(natural, image.width, image.height, scaledWidth, scaledHeight)
+
+    if (state.spec.overrides?.talkBack == true) {
+      // The overlay is drawn onto finished PNG bytes, so this path has no `Image` left to scale
+      // from and takes the raster scaler.
+      val overlaid = talkBackFrameBytes(image, frameIndex)
+      return if (!scaleNow) overlaid
+      else scalePngBytes(overlaid, image.width, image.height, scaledWidth, scaledHeight)
+    }
+    if (!scaleNow) return encodeNaturalPng(image)
+    // Scaled in Skia and encoded once, rather than encoded, decoded and re-encoded. A live 4K
+    // recording at `scale = 0.25` would otherwise pay full-resolution PNG compression AND
+    // decompression on every tick, which costs capture cadence for nothing (issue #4467).
+    return encodeScaledPng(image, scaledWidth, scaledHeight)
+  }
+
+  /**
+   * [image] drawn into a `width x height` raster surface and encoded once.
+   *
+   * `LINEAR` sampling is the right default for both up- and down-scaling: cheaper than CATMULL_ROM,
+   * no aliasing for typical UI content, and what browsers do for `<img>`. The sampling mode is not
+   * exposed on the wire — a caller wanting a pixel-perfect upscale passes `scale = 1.0` and
+   * resamples client-side.
+   */
+  private fun encodeScaledPng(image: Image, width: Int, height: Int): ByteArray {
+    val surface = Surface.makeRasterN32Premul(width, height)
+    return try {
+      surface.canvas.drawImageRect(
+        image = image,
+        src = Rect.makeWH(image.width.toFloat(), image.height.toFloat()),
+        dst = Rect.makeWH(width.toFloat(), height.toFloat()),
+        samplingMode = SamplingMode.LINEAR,
+        paint = null,
+        strict = true,
+      )
+      val snapshot = surface.makeImageSnapshot()
+      try {
+        snapshot.encodePngData()?.bytes ?: error("encodePngData() returned null (scaled)")
+      } finally {
+        snapshot.close()
+      }
+    } finally {
+      surface.close()
+    }
   }
 
   /**
@@ -1229,7 +1292,18 @@ class DesktopRecordingSession(
     val sceneHeight = if (renderedSceneHeightPx > 0) renderedSceneHeightPx else sceneHeightPx
     val nothingToCrop = naturalWidth == sceneWidth && naturalHeight == sceneHeight
     val nothingToScale = frameWidth == naturalWidth && frameHeight == naturalHeight
-    if (framingKnownUpFront || (nothingToCrop && nothingToScale)) return frameWidth to frameHeight
+    // "Nothing to crop, nothing to scale" is not the whole test. An opaque-background component
+    // that GREW still needs the backdrop laid under its earlier frames, and growth that happens to
+    // finish on the scene's own bounds satisfies both clauses while leaving exactly that work
+    // undone — the case the fill was added for (issue #4467).
+    val grew =
+      (state.spec.wrapWidth && minMeasuredWidthPx in 1 until maxMeasuredWidthPx) ||
+        (state.spec.wrapHeight && minMeasuredHeightPx in 1 until maxMeasuredHeightPx)
+    val backdropOwed =
+      grew && !overlayFramedAgainstScene && (previewBackgroundArgb(state.spec) ushr 24) == 0xFF
+    if (framingKnownUpFront || (nothingToCrop && nothingToScale && !backdropOwed)) {
+      return frameWidth to frameHeight
+    }
 
     fun framed(bytes: ByteArray): ByteArray =
       scalePngBytes(bytes, naturalWidth, naturalHeight, frameWidth, frameHeight)
@@ -1246,7 +1320,12 @@ class DesktopRecordingSession(
     // evidence disagreeing with the frame on disk.
     for (index in 0 until frameCount) {
       val file = File(framesDir, "frame-${"%05d".format(index)}.png")
-      if (!file.isFile) continue
+      // Missing is a failure, exactly as unreadable is. Skipping would let `stop()` report the
+      // original frame count and the finalized dimensions over a set with a hole in it — which the
+      // encoder either rejects, or (ffmpeg's numbered input) silently truncates at the gap.
+      if (!file.isFile) {
+        error("recording '$recordingId': frame ${file.name} is missing at finalization")
+      }
       val bytes = file.readBytes()
       val framedBytes = framed(bytes)
       if (!framedBytes.contentEquals(bytes)) {
@@ -1316,7 +1395,10 @@ class DesktopRecordingSession(
       w,
       h,
       "recording '$recordingId'",
-      backdropArgb = previewBackgroundArgb(state.spec),
+      // No backdrop for a scene-framed recording: nothing is being padded there — the whole
+      // scene is kept precisely so the TalkBack caption stays where it was drawn — and filling
+      // would turn its transparent sandbox opaque merely because a scale was requested.
+      backdropArgb = if (overlayFramedAgainstScene) 0 else previewBackgroundArgb(state.spec),
     )
 
   private fun sceneOffset(px: Int, py: Int): androidx.compose.ui.geometry.Offset {
