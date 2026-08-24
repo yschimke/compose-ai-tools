@@ -598,6 +598,114 @@ class DesktopRecordingWrappedFrameTest {
     }
   }
 
+  @Test
+  fun `a missing frame fails a fixed-size recording too`() {
+    // The frame check has to run BEFORE the no-op fast path, or every recording that takes that
+    // path — fixed-size ones above all — reports success and the original count over a set with a
+    // hole in it (#4481 review).
+    val outputDir = tempFolder.newFolder("renders-missing-fixed")
+    val recordingsRoot = tempFolder.newFolder("recordings-missing-fixed")
+    savedRecordingsDir = System.getProperty(DesktopHost.RECORDINGS_DIR_PROP)
+    System.setProperty(DesktopHost.RECORDINGS_DIR_PROP, recordingsRoot.absolutePath)
+
+    val host =
+      DesktopHost(
+        engine = RenderEngine(outputDir = outputDir),
+        previewSpecResolver = { previewId ->
+          if (previewId == FIXTURE_PREVIEW_ID)
+            RenderSpec(
+              className = STICKER_CLASS,
+              functionName = "TristateClickSquare",
+              widthPx = FIXED_WIDTH_PX,
+              heightPx = FIXED_HEIGHT_PX,
+              density = 1.0f,
+              outputBaseName = "missing-frame-fixed",
+            )
+          else null
+        },
+      )
+    host.start()
+    try {
+      host
+        .acquireRecordingSession(
+          FIXTURE_PREVIEW_ID,
+          "rec-missing-fixed",
+          javaClass.classLoader ?: ClassLoader.getSystemClassLoader(),
+          FPS,
+          1.0f,
+          null,
+          live = true,
+        )
+        .use { session ->
+          Thread.sleep(250L)
+          val frame0 = File(recordingsRoot, "frames/rec-missing-fixed/frame-00000.png")
+          assertTrue("the tick thread should have written frames by now", frame0.isFile)
+          assertTrue("could not delete the frame under test", frame0.delete())
+          val thrown = runCatching { session.stop() }.exceptionOrNull()
+          assertTrue("expected finalization to fail, got $thrown", thrown is IllegalStateException)
+        }
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
+  fun `a popup reaching the scene bounds is not mistaken for content growth`() {
+    // The crop extent folds every semantics owner in so a popup is not cut off; the growth range
+    // must not, or a static component with a dropdown out at the sandbox edge reads as grown and
+    // the backdrop floods the transparent sandbox around the popup (#4481 review).
+    val outputDir = tempFolder.newFolder("renders-popup")
+    val recordingsRoot = tempFolder.newFolder("recordings-popup")
+    savedRecordingsDir = System.getProperty(DesktopHost.RECORDINGS_DIR_PROP)
+    System.setProperty(DesktopHost.RECORDINGS_DIR_PROP, recordingsRoot.absolutePath)
+
+    val host =
+      DesktopHost(
+        engine = RenderEngine(outputDir = outputDir),
+        previewSpecResolver = { previewId ->
+          if (previewId == FIXTURE_PREVIEW_ID)
+            RenderSpec(
+              className = STICKER_CLASS,
+              functionName = "PopupBesideStaticBlock",
+              widthPx = 400,
+              heightPx = 800,
+              wrapWidth = true,
+              wrapHeight = true,
+              density = 1.0f,
+              showBackground = true,
+              outputBaseName = "popup-static",
+            )
+          else null
+        },
+      )
+    host.start()
+    try {
+      host
+        .acquireRecordingSession(
+          FIXTURE_PREVIEW_ID,
+          "rec-popup",
+          javaClass.classLoader ?: ClassLoader.getSystemClassLoader(),
+          FPS,
+          1.0f,
+          null,
+        )
+        .use { session ->
+          session.postScript(listOf(RecordingScriptEvent(tMs = 0L, kind = "recording.probe")))
+          val result = session.stop()
+          val frame = File(result.framesDir, "frame-00000.png")
+          val img =
+            ByteArrayInputStream(frame.readBytes()).use { ImageIO.read(it) }
+              ?: error("frame failed to decode")
+          // Between the 60x30 block and the popup out at (300, 700): sandbox, and it should stay
+          // transparent. A false growth reading fills this with the opaque preview background.
+          val alpha = img.getRGB(200, 400) ushr 24
+          assertEquals("sandbox around the popup must stay transparent", 0, alpha)
+        }
+    } finally {
+      host.shutdown()
+    }
+  }
+
   /** The still of the same fixture through the same engine, for the comparison above. */
   private fun renderStill(label: String): Pair<Int, Int> {
     val engine = RenderEngine(outputDir = tempFolder.newFolder("renders-$label"))

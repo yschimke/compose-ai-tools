@@ -133,17 +133,32 @@ class DesktopRecordingSession(
   @Volatile private var maxMeasuredHeightPx: Int = 0
 
   /**
-   * The smallest content size measured over the recording, or `0` before anything was measured.
+   * The smallest and largest **content-box** size measured over the recording — the range that
+   * answers "did this component grow?", which decides whether the earlier frames need the backdrop
+   * laid under them: a frame taken while the component was smaller is transparent everywhere it had
+   * not reached, whatever the final size turns out to be. Without it the wholesale no-op skips the
+   * fill exactly when growth happens to end on the scene's own bounds (issue #4467).
    *
-   * The maximum alone cannot answer "did this component grow?", and that question decides whether
-   * the earlier frames need the backdrop laid under them: a frame taken while the component was
-   * smaller is transparent everywhere it had not reached, whatever the final size turns out to be.
-   * Without this the wholesale no-op skips the fill exactly when growth happens to end on the
-   * scene's own bounds (issue #4467).
+   * Deliberately NOT [maxMeasuredWidthPx]: that one is the *crop* extent, folded with every
+   * semantics owner so a popup outside the content box is not cut off. Comparing a content-box
+   * minimum against a popup-inflated maximum would read a static component with a dropdown reaching
+   * the scene bounds as grown, and fill the whole scene with the opaque background — so the growth
+   * test compares like with like.
+   *
+   * [contentBoundsObserved] is the "nothing measured yet" sentinel rather than a zero minimum: a
+   * wrapped layout can legitimately measure an axis to zero (a collapsed `AnimatedVisibility`, a
+   * zero-sized placeholder), and dropping that leaves a later expansion looking like it was always
+   * its final size.
    */
-  @Volatile private var minMeasuredWidthPx: Int = 0
+  @Volatile private var contentBoundsObserved: Boolean = false
 
-  @Volatile private var minMeasuredHeightPx: Int = 0
+  @Volatile private var minContentWidthPx: Int = 0
+
+  @Volatile private var minContentHeightPx: Int = 0
+
+  @Volatile private var maxContentWidthPx: Int = 0
+
+  @Volatile private var maxContentHeightPx: Int = 0
 
   /**
    * The size the scene actually rendered at, observed rather than recomputed.
@@ -564,13 +579,13 @@ class DesktopRecordingSession(
     val measured = state.measuredContent
     if (measured[0] > maxMeasuredWidthPx) maxMeasuredWidthPx = measured[0]
     if (measured[1] > maxMeasuredHeightPx) maxMeasuredHeightPx = measured[1]
-    // Zero is "not measured yet", not a size — latching it would make every recording look grown.
-    if (measured[0] > 0 && (minMeasuredWidthPx == 0 || measured[0] < minMeasuredWidthPx)) {
-      minMeasuredWidthPx = measured[0]
-    }
-    if (measured[1] > 0 && (minMeasuredHeightPx == 0 || measured[1] < minMeasuredHeightPx)) {
-      minMeasuredHeightPx = measured[1]
-    }
+    // The content-box range, kept apart from the crop extent below — see [minContentWidthPx]. A
+    // measured zero is a real measurement here, so the first frame seeds both ends of the range.
+    if (!contentBoundsObserved || measured[0] < minContentWidthPx) minContentWidthPx = measured[0]
+    if (!contentBoundsObserved || measured[1] < minContentHeightPx) minContentHeightPx = measured[1]
+    if (!contentBoundsObserved || measured[0] > maxContentWidthPx) maxContentWidthPx = measured[0]
+    if (!contentBoundsObserved || measured[1] > maxContentHeightPx) maxContentHeightPx = measured[1]
+    contentBoundsObserved = true
     // Every semantics owner, not just the content box. A `DropdownMenu`, tooltip or dialog paints
     // into an owner of its own, outside the box entirely — so a crop taken from the box alone would
     // cut the popup off, which is a regression against recording the whole scene. The batch motion
@@ -1272,6 +1287,23 @@ class DesktopRecordingSession(
    * A no-op for anything already the right size, which is every fixed-size preview at `scale = 1`:
    * those frames are neither re-decoded nor rewritten.
    */
+  /**
+   * Every frame this recording claims to have written is still on disk, by index — not a glob of
+   * [framesDir], for the reasons the rewrite loop below spells out.
+   *
+   * Missing is a failure, exactly as unreadable is. Skipping would let `stop()` report the original
+   * frame count and the finalized dimensions over a set with a hole in it — which the encoder
+   * either rejects, or (ffmpeg's numbered input) silently truncates at the gap.
+   */
+  private fun requireContiguousFrames(frameCount: Int) {
+    for (index in 0 until frameCount) {
+      val name = "frame-${"%05d".format(index)}.png"
+      if (!File(framesDir, name).isFile) {
+        error("recording '$recordingId': frame $name is missing at finalization")
+      }
+    }
+  }
+
   private fun finalizeFrames(
     pendingPixels: List<PendingPixelAssert>,
     frameCount: Int,
@@ -1297,10 +1329,17 @@ class DesktopRecordingSession(
     // finish on the scene's own bounds satisfies both clauses while leaving exactly that work
     // undone — the case the fill was added for (issue #4467).
     val grew =
-      (state.spec.wrapWidth && minMeasuredWidthPx in 1 until maxMeasuredWidthPx) ||
-        (state.spec.wrapHeight && minMeasuredHeightPx in 1 until maxMeasuredHeightPx)
+      contentBoundsObserved &&
+        ((state.spec.wrapWidth && minContentWidthPx < maxContentWidthPx) ||
+          (state.spec.wrapHeight && minContentHeightPx < maxContentHeightPx))
     val backdropOwed =
       grew && !overlayFramedAgainstScene && (previewBackgroundArgb(state.spec) ushr 24) == 0xFF
+    // Ahead of the fast path, not inside the rewrite loop: a hole in the frame set is a failure for
+    // EVERY recording, and the recordings that take the no-op return — fixed-size ones above all —
+    // would otherwise have `stop()` report success and the original frame count over a set with a
+    // gap in it. `isFile` per index costs a stat and no decode, so the no-decode/no-rewrite
+    // optimization survives intact.
+    requireContiguousFrames(frameCount)
     if (framingKnownUpFront || (nothingToCrop && nothingToScale && !backdropOwed)) {
       return frameWidth to frameHeight
     }
@@ -1320,12 +1359,6 @@ class DesktopRecordingSession(
     // evidence disagreeing with the frame on disk.
     for (index in 0 until frameCount) {
       val file = File(framesDir, "frame-${"%05d".format(index)}.png")
-      // Missing is a failure, exactly as unreadable is. Skipping would let `stop()` report the
-      // original frame count and the finalized dimensions over a set with a hole in it — which the
-      // encoder either rejects, or (ffmpeg's numbered input) silently truncates at the gap.
-      if (!file.isFile) {
-        error("recording '$recordingId': frame ${file.name} is missing at finalization")
-      }
       val bytes = file.readBytes()
       val framedBytes = framed(bytes)
       if (!framedBytes.contentEquals(bytes)) {
