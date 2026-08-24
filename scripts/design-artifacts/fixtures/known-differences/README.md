@@ -44,6 +44,15 @@ exactly the image its base does, and the only thing the recipe changes is the en
 Appending bytes after `IEND` would be cheaper and wrong: `IEND` ends the datastream, so anything
 after it bypasses the chunk allowlist, the placement rules and every CRC.
 
+**The artifact reader has to serve a prefix.** The header pass asks for at most the first 4096
+bytes of each artifact and expects those bytes plus the *whole* file's length back; the decode
+pass asks for the file. A runner that ignores the request and returns whole files passes almost
+everything here — `header-invalid-chunk-longer-than-the-prefix` is the case that catches it, and
+`artifact-header-region-at-the-conforming-maximum` is the one that catches a prefix sized too
+small. The full length matters as much as the prefix: it is what the 8 MiB cap is measured
+against, so a runner substituting the length it happened to serve has a cap that no longer
+applies to anything.
+
 ## The pilot population
 
 Measured rather than assumed, and smaller and more awkward than a dozen known differences
@@ -158,6 +167,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `mask-encoding-transparency` | A greyscale mask carrying `tRNS` |
 | `mask-empty` | A mask that selects nothing |
 | `animated-png-mask` | An animated mask |
+| `animated-png-with-frame-control` | An APNG carrying the frame control its default image needs |
 | `header-invalid-beside-animated-sibling` | An unreadable mask header beside an animated accepted candidate |
 | `animated-png-accepted-candidate` | An animated accepted candidate |
 | `dimension-mismatch-mask-against-plane` | A mask that is not the recorded plane's size |
@@ -215,9 +225,12 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `decode-failed-bytes-after-idat-stream` | Bytes after the end of the `IDAT` zlib stream |
 | `header-invalid-inflates-past-declared-size` | A small legal header in front of a much larger inflation |
 | `decode-failed-bytes-after-iend` | An artifact carrying a chunk after `IEND` |
-| `decode-failed-chunk-not-permitted` | An artifact carrying an ancillary chunk |
-| `decode-failed-colour-space-chunk` | An artifact carrying a colour-space chunk |
-| `decode-failed-duplicate-ihdr` | A second `IHDR` |
+| `header-invalid-chunk-not-permitted` | An artifact carrying an ancillary chunk before the image data |
+| `header-invalid-colour-space-chunk` | An artifact carrying a colour-space chunk |
+| `header-invalid-duplicate-ihdr` | A second `IHDR` |
+| `artifact-header-region-at-the-conforming-maximum` | An accepted candidate whose header region is as long as `v1` allows |
+| `header-invalid-chunk-longer-than-the-prefix` | A `PLTE` that runs past the header prefix |
+| `decode-failed-chunk-within-the-prefix` | An overlong `PLTE` that still fits inside the header prefix |
 | `decode-failed-trns-after-idat` | A `tRNS` after the image data |
 | `decode-failed-non-empty-iend` | A non-empty `IEND` |
 | `decode-failed-trns-on-alpha-colour-type` | A `tRNS` beside a colour type that already carries alpha |
@@ -241,7 +254,7 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `decode-failed-unsupported-compression-method` | An `IHDR` declaring a compression method the specification does not define |
 | `decode-failed-interlaced-accepted-candidate` | An interlaced accepted candidate |
 | `decode-failed-16-bit-accepted-candidate` | A 16-bit accepted candidate |
-| `decode-failed-unrecognized-critical-chunk` | An unrecognized **critical** chunk with a valid CRC |
+| `header-invalid-unrecognized-critical-chunk` | An unrecognized **critical** chunk with a valid CRC |
 | `trns-transparency-is-decoded` | An accepted candidate carrying `tRNS` |
 
 ## The resampler

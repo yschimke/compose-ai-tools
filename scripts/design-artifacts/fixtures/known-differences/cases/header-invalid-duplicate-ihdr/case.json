@@ -1,7 +1,7 @@
 {
-  "title": "An artifact carrying an ancillary chunk",
+  "title": "A second `IHDR`",
   "site": null,
-  "why": "`v1` permits exactly five chunks — `IHDR`, `PLTE`, `IDAT`, `tRNS`, `IEND` — and refuses anything else, critical or ancillary, known or invented. An allowlist rather than a growing list of things to reject, because every PNG feature is another place a lenient decoder and a colour-managed browser disagree about the pixels a gate then compares, and each one caught individually is one more round of the same argument. The cost is that a producer must not emit ancillary chunks, which is one line in any encoder.",
+  "why": "**Permitted is not the same as well-placed.** Every chunk here is on the allowlist and the file is still malformed — a conforming decoder rejects it, so admitting it on membership alone reaches a gate verdict where the other side reaches `decode-failed`. There are only five chunks to constrain, which is what the allowlist bought: the structural rules are finite because the vocabulary is.\n\nThe second `IHDR` sits before the image data, so the preflight reaches it first and refuses it as `header-invalid` — a repeat of a chunk that may appear once, at a position where the prefix walk admits only `PLTE` and `tRNS`. `decode-failed-trns-after-idat` is the same placement rule on the far side of `IDAT`, where the decoder is the one that catches it.",
   "comparison": {
     "system": "m3",
     "component": "IconButton/Tonal",

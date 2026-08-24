@@ -27,7 +27,7 @@
  * intermediate stages at all.
  */
 
-import { decodePng, preflightPng, sha256Hex } from "./png-lite.mjs";
+import { MAX_CONFORMING_HEADER_BYTES, decodePng, preflightPng, sha256Hex } from "./png-lite.mjs";
 
 /** The schema token a document must carry, exactly. */
 export const KNOWN_DIFFERENCES_SCHEMA = "compose-preview-known-differences/v1";
@@ -35,9 +35,17 @@ export const KNOWN_DIFFERENCES_SCHEMA = "compose-preview-known-differences/v1";
 /**
  * The budget, versioned with the schema.
  *
- * All five are *inclusive* ceilings — a document at exactly 256 acceptances, exactly 128 megapixels,
+ * The five ceilings are *inclusive* — a document at exactly 256 acceptances, exactly 128 megapixels,
  * exactly 8192 px on a side or exactly 8 MiB per artifact is legal, and one unit past refuses. A
  * `>=` check would reject both and leave two engines free to disagree about the case in between.
+ *
+ * `maxPreflightBytes` is the odd one out and is not a ceiling on anything a document may declare: it
+ * is how much of an artifact the reader must serve so the header preflight can reach a verdict. It
+ * still has to be *named* for the same reason the others do — a prefix each engine sizes for itself
+ * is a prefix two engines disagree about, and they would disagree precisely on the files that put
+ * the most in front of their image data. {@link MAX_CONFORMING_HEADER_BYTES} is the proof that 4 KiB
+ * is enough: a conforming artifact resolves the preflight within 1089 bytes, so the constant is
+ * chosen with room to spare rather than fitted to the fixtures.
  */
 export const BUDGET = {
   maxDocumentBytes: 1024 * 1024,
@@ -45,7 +53,16 @@ export const BUDGET = {
   maxPixels: 128_000_000,
   maxAxis: 8192,
   maxArtifactBytes: 8 * 1024 * 1024,
+  maxPreflightBytes: 4096,
 };
+
+// Not a comment's promise — the one relationship between those two constants, checked where it
+// cannot rot. Shrinking the prefix below what a conforming header can occupy would turn legal
+// palette artifacts into `header-invalid` at preflight, and the fixtures that would catch it are the
+// ones a future edit is least likely to run.
+if (BUDGET.maxPreflightBytes < MAX_CONFORMING_HEADER_BYTES) {
+  throw new Error("maxPreflightBytes cannot be smaller than a conforming PNG header region");
+}
 
 /** `candidateTolerance` is an 8-bit channel distance and an integer; `element.tolerance` is real. */
 export const CANDIDATE_TOLERANCE_RANGE = [0, 8];
@@ -453,14 +470,28 @@ export function issueKey(issue) {
  * Evaluate a known-differences document against one comparison.
  *
  * @param documentText raw JSON text — parsed here, so `document-unreadable` is reachable.
- * @param readArtifact `(path) => Uint8Array | null | { error }`, where `path` is relative to the
- *   fixed `.design-parity/known-differences/` root (`<id>/<mask>`). `null` means the fetch or open
- *   failed, which is `artifact-unreadable`; a file that opens and holds too few bytes for an `IHDR`
- *   is `header-invalid`, because the line is where the failure occurs rather than how little data
- *   there turned out to be.
+ * @param readArtifact `(path, options) => Uint8Array | { bytes, byteLength } | null | { error }`,
+ *   where `path` is relative to the fixed `.design-parity/known-differences/` root (`<id>/<mask>`).
+ *   `null` means the fetch or open failed, which is `artifact-unreadable`; a file that opens and
+ *   holds too few bytes for an `IHDR` is `header-invalid`, because the line is where the failure
+ *   occurs rather than how little data there turned out to be.
  *
- *   **The reader carries three obligations this module cannot discharge for it**, and returns
- *   `{ error }` to report the first two without materialising the file:
+ *   **`options` is `{ prefix: N }` on the header pass and absent on the decode pass**, and the
+ *   difference is the whole reason the preflight can be called bounded. Asked for a prefix, the
+ *   reader serves **at most** the first `N` bytes as `{ bytes, byteLength }`, where `byteLength` is
+ *   the size of the whole file — which it knows from a `stat` or a `Content-Length` before any bytes
+ *   exist. Serving the entire artifact and letting this module read only the front of it satisfies
+ *   the letter of "walk chunk headers" while allocating the 8 MiB the budget exists to avoid, twice
+ *   per record, for every record that reaches the preflight. A reader may serve fewer than `N` bytes
+ *   only because the file is shorter; it may never serve more.
+ *
+ *   `byteLength` rather than `bytes.length` is what the byte cap and the second-read comparison are
+ *   both measured against, so both keep asking a question about the artifact instead of a question
+ *   about how much of it was read. A plain `Uint8Array` is still accepted — for the decode pass,
+ *   where the whole file is the answer — and its length stands in for both.
+ *
+ *   **The reader carries three further obligations this module cannot discharge for it**, and
+ *   returns `{ error }` to report the first two without materialising the file:
  *
  *   - `{ error: "artifact-too-large" }` — the reader must refuse to allocate more than
  *     {@link BUDGET}`.maxArtifactBytes`. Handing back a whole oversized file so this module can
@@ -623,15 +654,31 @@ export function evaluateKnownDifferences({ documentText, readArtifact, compariso
  * What one `readArtifact` answer means: bytes, a refusal the reader is better placed to make, or a
  * failure to read at all. Only the two tokens the reader can legitimately establish are honoured —
  * anything else it invents is treated as an unreadable artifact rather than trusted into the result.
+ *
+ * Returns `{ reason }` or `{ bytes, byteLength }`. A prefix answer must carry a `byteLength` that is
+ * a plain integer and **at least** the bytes handed over; a reader claiming a file is smaller than
+ * what it just served is not describing anything, and trusting it would let a prefix answer walk
+ * past the byte cap by understating the artifact. That is `artifact-unreadable` rather than
+ * `artifact-too-large`: nothing about the size has been established, which is the problem.
  */
-function readReason(result) {
-  if (result instanceof Uint8Array) return null;
+function readAnswer(result) {
+  if (result instanceof Uint8Array) return { bytes: result, byteLength: result.length };
   if (result && typeof result === "object" && typeof result.error === "string") {
-    return result.error === "artifact-too-large" || result.error === "path-not-contained"
-      ? result.error
-      : "artifact-unreadable";
+    return {
+      reason:
+        result.error === "artifact-too-large" || result.error === "path-not-contained"
+          ? result.error
+          : "artifact-unreadable",
+    };
   }
-  return "artifact-unreadable";
+  if (result && typeof result === "object" && result.bytes instanceof Uint8Array) {
+    const { bytes, byteLength } = result;
+    if (!Number.isSafeInteger(byteLength) || byteLength < bytes.length) {
+      return { reason: "artifact-unreadable" };
+    }
+    return { bytes, byteLength };
+  }
+  return { reason: "artifact-unreadable" };
 }
 
 function pushOnce(list, entry) {
@@ -909,26 +956,40 @@ function preflightRecord(record, index, readArtifact, catalog) {
   }
   if (pathReasons.length > 0) return fail(...pathReasons);
 
-  const maskRead = readArtifact(`${record.id}/${record.mask}`);
-  const acceptedRead = readArtifact(`${record.id}/${record.acceptedCandidate}`);
-  const readReasons = [maskRead, acceptedRead].map(readReason).filter(Boolean);
+  // **A prefix, not the file.** This pass reads nothing but chunk headers, so asking for the whole
+  // artifact would allocate 8 MiB per raster to look at its first kilobyte — the budget defeated by
+  // the pass that enforces it. `maxPreflightBytes` is provably enough for every conforming header.
+  const prefix = { prefix: BUDGET.maxPreflightBytes };
+  const maskRead = readAnswer(readArtifact(`${record.id}/${record.mask}`, prefix));
+  const acceptedRead = readAnswer(readArtifact(`${record.id}/${record.acceptedCandidate}`, prefix));
+  const readReasons = [maskRead, acceptedRead].map((answer) => answer.reason).filter(Boolean);
   if (readReasons.length > 0) return fail(...readReasons);
-  const maskBytes = maskRead;
-  const acceptedBytes = acceptedRead;
 
-  // Still checked here, because a reader that hands back bytes has already made its claim about
-  // them and this is the cheap confirmation of it. The reader's obligation is not to *allocate*
-  // past the cap; this catches a reader that allocated anyway.
+  // Still checked here, because a reader that answers at all has already made its claim about the
+  // size and this is the cheap confirmation of it. The reader's obligation is not to *allocate* past
+  // the cap; this catches a reader that reported past it anyway — and it is measured against the
+  // artifact's own length rather than the prefix, which is the only reason a prefix read can enforce
+  // this cap at all.
   const oversized = [];
-  if (maskBytes.length > BUDGET.maxArtifactBytes) oversized.push("artifact-too-large");
-  if (acceptedBytes.length > BUDGET.maxArtifactBytes) oversized.push("artifact-too-large");
+  if (maskRead.byteLength > BUDGET.maxArtifactBytes) oversized.push("artifact-too-large");
+  if (acceptedRead.byteLength > BUDGET.maxArtifactBytes) oversized.push("artifact-too-large");
   if (oversized.length > 0) return fail(...oversized);
+
+  // **Truncated here as well, whatever the reader served.** `{ prefix: N }` is a request, and a host
+  // may not be in a position to honour it — a `fetch` that cannot range-request, a reader that
+  // predates the option and ignores its second argument. Left to the reader alone, that host would
+  // walk a chunk this one refuses and reach `decode-failed` where this one reaches `header-invalid`:
+  // the prefix would be a *verdict* that varies by host, which is the one thing this contract exists
+  // to prevent. Capping the header pass's view here makes the prefix a resource optimisation and
+  // nothing more — a host that ignores it agrees on every verdict and merely pays for the bytes.
+  // The reader's `byteLength` is untouched by this, so the 8 MiB cap still measures the artifact.
+  const headerBytes = (answer) => answer.bytes.subarray(0, BUDGET.maxPreflightBytes);
 
   // Both headers are read and validated before either raster joins the running total, so the budget
   // is order-independent: an oversized-but-readable header beside an unreadable one must not give a
   // different verdict depending on which was read first.
-  const maskHeader = preflightPng(maskBytes);
-  const acceptedHeader = preflightPng(acceptedBytes);
+  const maskHeader = preflightPng(headerBytes(maskRead), { byteLength: maskRead.byteLength });
+  const acceptedHeader = preflightPng(headerBytes(acceptedRead), { byteLength: acceptedRead.byteLength });
   const headerReasons = [];
   if (maskHeader.error) headerReasons.push("header-invalid");
   if (acceptedHeader.error) headerReasons.push("header-invalid");
@@ -982,16 +1043,17 @@ function decodeRecord(evaluation, readArtifact) {
   // applied to bytes nobody is decoding any more. So the per-artifact checks are re-applied, and the
   // headers must still be the ones the budget was computed from; an artifact that changed between
   // the two reads is not stable enough to evaluate, whatever it now contains.
-  const rereadReasons = [maskRead, acceptedRead].map(readReason).filter(Boolean);
+  const rereadAnswers = [readAnswer(maskRead), readAnswer(acceptedRead)];
+  const rereadReasons = rereadAnswers.map((answer) => answer.reason).filter(Boolean);
   if (rereadReasons.length > 0) return fail(...rereadReasons);
-  const maskBytes = maskRead;
-  const acceptedBytes = acceptedRead;
+  const maskBytes = rereadAnswers[0].bytes;
+  const acceptedBytes = rereadAnswers[1].bytes;
 
   const reread = [
-    [maskBytes, maskHeader],
-    [acceptedBytes, acceptedHeader],
+    [rereadAnswers[0], maskHeader],
+    [rereadAnswers[1], acceptedHeader],
   ];
-  const oversized = reread.filter(([bytes]) => bytes.length > BUDGET.maxArtifactBytes);
+  const oversized = reread.filter(([answer]) => answer.byteLength > BUDGET.maxArtifactBytes);
   if (oversized.length > 0) return fail("artifact-too-large");
   // **Both artifacts, then report.** Returning on the first one made the *order* of the pair decide
   // which reason a reader saw: a mask that turned animated while the accepted candidate's header
@@ -1000,8 +1062,15 @@ function decodeRecord(evaluation, readArtifact) {
   // so a stage that drops a distinct reason is the contract disagreeing with itself. Duplicates are
   // collapsed by `sortReasons`, so both artifacts failing the same way still reports one token.
   const rereadFailures = [];
-  for (const [bytes, before] of reread) {
-    const now = preflightPng(bytes);
+  for (const [answer, before] of reread) {
+    // **The reader's `byteLength` is carried into this preflight too.** It is one of the fields
+    // `samePreflight` compares, so leaving it to default to `bytes.length` here made an honest
+    // reader disagree with itself: the header pass reported the artifact's size, the decode pass
+    // reported the size of the whole file it happened to hand over, and every prefix read looked
+    // like an artifact that had changed underneath the evaluation.
+    const now = preflightPng(answer.bytes.subarray(0, BUDGET.maxPreflightBytes), {
+      byteLength: answer.byteLength,
+    });
     if (now.error) {
       rereadFailures.push("header-invalid");
       continue;

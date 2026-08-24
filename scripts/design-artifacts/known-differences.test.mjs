@@ -23,8 +23,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
+  closeSync,
   cpSync,
   mkdirSync,
+  openSync,
+  readSync,
   mkdtempSync,
   symlinkSync,
   writeFileSync,
@@ -40,7 +43,7 @@ import { createHash } from "node:crypto";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { decodePng, padPngTo } from "./png-lite.mjs";
+import { MAX_CONFORMING_HEADER_BYTES, decodePng, padPngTo } from "./png-lite.mjs";
 import {
   BUDGET,
   CANDIDATE_TOLERANCE_RANGE,
@@ -89,7 +92,13 @@ function artifactReader(caseDir, synthesize) {
   // reports anyway.
   const artifactsDir = join(caseDir, "artifacts");
   const root = existsSync(artifactsDir) ? realpathSync(artifactsDir) : artifactsDir;
-  return (path) => {
+  return (path, options) => {
+    // **The prefix is served, not simulated.** Slicing a `readFileSync` would satisfy every
+    // assertion in this file while allocating exactly the bytes the prefix exists to avoid, and the
+    // one place that is observable is here — the same reason the byte cap is asserted on the reader
+    // rather than on the verdict. `openSync` + `readSync` reads `prefix` bytes and no more, and the
+    // full size comes from the `stat` that was already being taken for the cap.
+    const prefix = options?.prefix;
     // **POSIX-separated, deliberately.** `join` would emit backslashes on Windows, and this string is
     // used three ways that all assume `/`: as the key into the synthesised map (whose keys come from
     // `case.json`, which is POSIX by definition), as the argument to `join` below (which normalises
@@ -103,7 +112,14 @@ function artifactReader(caseDir, synthesize) {
     // length check would quietly stand in for it, which is a fixture passing for the wrong reason.
     if (synthesised.has(relative)) {
       const bytes = synthesised.get(relative);
-      return bytes.length > BUDGET.maxArtifactBytes ? { error: "artifact-too-large" } : bytes;
+      if (bytes.length > BUDGET.maxArtifactBytes) return { error: "artifact-too-large" };
+      // Synthesised bytes are already in memory, so there is nothing to avoid allocating — but the
+      // *answer* still has to have the shape a prefix read promises, or the byte-cap fixtures would
+      // be the only ones handing the evaluator a whole file where every other case hands it a
+      // prefix, and the difference would be invisible.
+      return prefix === undefined
+        ? bytes
+        : { bytes: bytes.subarray(0, prefix), byteLength: bytes.length };
     }
     const full = join(caseDir, relative);
     if (!existsSync(full)) return null;
@@ -157,7 +173,23 @@ function artifactReader(caseDir, synthesize) {
     // than containment's: containment is exactly what it did *not* fail.
     if (!stats.isFile()) return null;
     if (stats.size > BUDGET.maxArtifactBytes) return { error: "artifact-too-large" };
-    return new Uint8Array(readFileSync(resolved));
+    if (prefix === undefined) return new Uint8Array(readFileSync(resolved));
+    const buffer = Buffer.alloc(Math.min(prefix, stats.size));
+    const handle = openSync(resolved, "r");
+    try {
+      let read = 0;
+      // `readSync` may return short of the buffer without being at EOF, so it is looped rather than
+      // called once — a partial first read would otherwise hand back a prefix of the prefix and turn
+      // a legal palette artifact into `header-invalid` on whichever platform happened to do it.
+      while (read < buffer.length) {
+        const n = readSync(handle, buffer, read, buffer.length - read, read);
+        if (n === 0) break;
+        read += n;
+      }
+      return { bytes: new Uint8Array(buffer.subarray(0, read)), byteLength: stats.size };
+    } finally {
+      closeSync(handle);
+    }
   };
 }
 
@@ -486,6 +518,125 @@ test("the reader's own refusals reach the result as their proper tokens", () => 
   });
 });
 
+test("a reader that ignores the prefix reaches the same verdict on every case", () => {
+  // **The prefix is a resource optimisation, never a verdict.** `{ prefix: N }` is a request, and a
+  // host may not be able to honour it — the browser host in `cli/serve-web/` fetches whole artifacts
+  // and hands them straight over, because `readArtifact` is synchronous and its prefetch cannot know
+  // which records will survive the preflight. Left to the reader alone that host would walk a chunk
+  // the prefix stops at and reach `decode-failed` where this runner reaches `header-invalid`: one
+  // contract, two engines, different answers on the same bytes — the exact divergence this whole
+  // document exists to prevent, reintroduced by the mechanism meant to bound a read.
+  //
+  // So the engine caps the header pass's view itself, and this asserts the property that buys: every
+  // committed case reaches its pinned verdict through a reader that ignores the option entirely.
+  // Caught in review rather than here, which is why it is a whole-tree sweep and not two cases.
+  const wholeFileReader = (caseDir, synthesize) => {
+    const honest = artifactReader(caseDir, synthesize);
+    return (path) => {
+      // No second argument passed on, so the reader takes its whole-file branch — the shape a host
+      // that predates the option, or cannot range-request, would return for both passes.
+      const answer = honest(path);
+      return answer;
+    };
+  };
+
+  for (const id of caseIds) {
+    const caseDir = join(CASES, id);
+    const meta = readJson(join(caseDir, "case.json"));
+    const expected = readJson(join(caseDir, "expected.json"));
+    const result = evaluateKnownDifferences({
+      documentText: readFileSync(join(caseDir, "known-differences.json"), "utf8"),
+      readArtifact: wholeFileReader(caseDir, meta.synthesize),
+      comparison: withCanonicalRasters(caseDir, meta.comparison),
+      catalog: meta.catalog,
+    });
+    if (expected.pins.includes("statuses")) {
+      assert.deepEqual(result.statuses, expected.statuses, `${id} diverges without a prefix read`);
+    }
+    if (expected.pins.includes("validationFailures")) {
+      assert.deepEqual(
+        result.validationFailures,
+        expected.validationFailures,
+        `${id} diverges without a prefix read`,
+      );
+    }
+  }
+});
+
+test("a prefix answer is judged on the artifact's length, not on how much of it was served", () => {
+  // The reason `{ prefix: N }` can coexist with an 8 MiB cap at all: the reader reports the size of
+  // the *whole* file alongside the bytes it served, so the cap is still enforced on the artifact.
+  // Not expressible as a fixture, and for a specific reason — the reference reader discharges its own
+  // obligation and refuses an oversized file before this module ever sees it, so the module's
+  // backstop is only reachable through a reader that reported past the cap anyway. Left untested it
+  // was measurable: rewriting the check to read `bytes.length` instead of `byteLength` passed all
+  // 183 cases, which is a cap that has quietly stopped applying to every prefix read.
+  const caseDir = join(CASES, "pilot-40-iconbutton-tonal-glyph");
+  const meta = readJson(join(caseDir, "case.json"));
+  const documentText = readFileSync(join(caseDir, "known-differences.json"), "utf8");
+  const honest = artifactReader(caseDir, meta.synthesize);
+
+  // Reported on **both** passes, deliberately. `samePreflight` compares every header field, and the
+  // reader's `byteLength` is one of them — so a reader that claims one size for the header pass and
+  // another for the decode pass is an artifact that changed between the two reads, which is
+  // `artifact-unreadable` before any of this is reached. Faking it on one pass alone would test that
+  // rule over again instead of the cap.
+  const withReportedSize = (byteLength) => (path, options) => {
+    const answer = honest(path, options);
+    const bytes = answer instanceof Uint8Array ? answer : answer?.bytes;
+    if (!path.endsWith("mask.png") || !bytes) return answer;
+    return { bytes, byteLength };
+  };
+
+  // **Counted, not just asserted on the verdict.** The token alone does not pin this: a check that
+  // reads `bytes.length` in the header pass still refuses the record in the *decode* pass, with the
+  // same `artifact-too-large`, so the mutation survives an assertion on `statuses`. What differs is
+  // the phase — and therefore whether the oversized raster was charged against the pixel budget
+  // before being refused. A record refused in the header pass is never re-read, so the read count is
+  // where the phase is observable.
+  const reads = [];
+  const counting = (byteLength) => (path, options) => {
+    reads.push(path);
+    return withReportedSize(byteLength)(path, options);
+  };
+
+  const over = evaluateKnownDifferences({
+    documentText,
+    readArtifact: counting(BUDGET.maxArtifactBytes + 1),
+    comparison: withCanonicalRasters(caseDir, meta.comparison),
+  });
+  assert.deepEqual(over.statuses, {
+    "m3-iconbutton-tonal-glyph": { status: "refused", reasons: ["artifact-too-large"] },
+  });
+  assert.equal(reads.length, 2, "refused in the header pass, so neither artifact is read a second time");
+
+  // Inclusive, like every other ceiling in the budget: exactly the cap is legal.
+  const exactly = evaluateKnownDifferences({
+    documentText,
+    readArtifact: withReportedSize(BUDGET.maxArtifactBytes),
+    comparison: withCanonicalRasters(caseDir, meta.comparison),
+  });
+  assert.deepEqual(exactly.statuses, {
+    "m3-iconbutton-tonal-glyph": { status: "valid" },
+  });
+
+  // A reader claiming the file is smaller than the bytes it just served is not describing anything,
+  // and trusting it is how a prefix answer would walk past the cap by understating the artifact.
+  // `artifact-unreadable` rather than `artifact-too-large`: nothing about the size was established.
+  for (const byteLength of [0, -1, 1.5, "8", null]) {
+    const nonsense = evaluateKnownDifferences({
+      documentText,
+      readArtifact: withReportedSize(byteLength),
+      comparison: withCanonicalRasters(caseDir, meta.comparison),
+    });
+    assert.deepEqual(
+      nonsense.statuses,
+      { "m3-iconbutton-tonal-glyph": { status: "refused", reasons: ["artifact-unreadable"] } },
+      `a byteLength of ${byteLength} establishes nothing`,
+    );
+  }
+});
+
 test("the reference reader refuses an oversized artifact without handing back its bytes", () => {
   // Asserted on the reader directly, because it is not distinguishable by *verdict*: the module's
   // own length check produces the same `artifact-too-large` either way. What differs is whether the
@@ -600,7 +751,14 @@ test("the budget constants are the ones `v1` names", () => {
     maxPixels: 128_000_000,
     maxAxis: 8192,
     maxArtifactBytes: 8 * 1024 * 1024,
+    maxPreflightBytes: 4096,
   });
+  // The prefix is a fixed constant because two engines choosing their own would disagree exactly on
+  // the files that put the most in front of their image data. This asserts the number *and* the
+  // property that licenses it: it is chosen with room to spare over what a conforming header can
+  // occupy, not fitted to whatever the fixtures happen to contain.
+  assert.equal(MAX_CONFORMING_HEADER_BYTES, 1089);
+  assert.ok(BUDGET.maxPreflightBytes > MAX_CONFORMING_HEADER_BYTES);
   assert.deepEqual(CANDIDATE_TOLERANCE_RANGE, [0, 8]);
   assert.deepEqual(ELEMENT_TOLERANCE_RANGE, [0, 0.25]);
 });

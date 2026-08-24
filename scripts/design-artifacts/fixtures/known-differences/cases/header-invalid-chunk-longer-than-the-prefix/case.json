@@ -1,0 +1,38 @@
+{
+  "title": "A `PLTE` that runs past the header prefix",
+  "site": null,
+  "why": "The refusing half of the same bound. This `PLTE` declares 8000 bytes, so the first `IDAT` does not begin within the 4096 the preflight is served and the walk stops without ever reaching it — `header-invalid`, because that is precisely what happened: the header region could not be read. An engine reading whole artifacts steps over the chunk, preflights the file cleanly, charges its pixels against the budget, and only then reaches `decode-failed` for a palette longer than 768 bytes. Two tokens and two answers to whether the record was inside the budget, from one set of hash-valid bytes.\n\nPaired deliberately with `decode-failed-chunk-within-the-prefix`, which is the same malformation at a length the prefix does hold: the preflight steps over it and the decoder owns the verdict. The preflight does not re-implement the 768-byte rule — it refuses on the bound and nothing else, which is the only rule a prefix walk is in a position to enforce.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

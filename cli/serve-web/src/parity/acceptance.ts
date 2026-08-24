@@ -23,9 +23,11 @@
 //   sides are gated in.
 
 import {
+    BUDGET,
     canonicalRaster,
     decodePng,
     evaluateKnownDifferences,
+    preflightPng,
     projectTagIndex,
     resolvePlane,
     scoreComparison,
@@ -33,6 +35,7 @@ import {
     type ArtifactAnswer,
     type Catalog,
     type Raster,
+    type ReadOptions,
     type TagIndex,
 } from "./engine.js";
 
@@ -371,27 +374,69 @@ async function fetchRaster(
     }
 }
 
+/** What the two-round prefetch keeps for one path: a bounded header prefix, and the full file only
+ *  once the prefix has earned it. */
+interface PrefetchedArtifact {
+    /** The header-pass answer: a prefix and the whole file's size, or the reader token that stands
+     *  in for it. Always present — every declared path gets a header read. */
+    header: ArtifactAnswer;
+    /** The decode-pass answer, present only for a path whose header preflight came back clean —
+     *  the bytes, **or the refusal the second read established**. `path-not-contained` and
+     *  `artifact-too-large` are verdicts only the server can reach, so a body refused between the two
+     *  rounds has to carry its own token: flattening it to a missing entry reports
+     *  `artifact-unreadable`, where the reference reader stats the file again and names the reason.
+     *  Absent entirely is `artifact-unreadable`, which is safe — the engine only full-reads a record
+     *  its preflight already cleared, so this is never missing for one it actually asks to decode. */
+    full?: Uint8Array | { error: string };
+    /** Whether the header round learned the artifact's real size from the response, or only from how
+     *  much of it arrived. False forces a full read purely to measure the file — see `prefetch`. */
+    totalKnown: boolean;
+}
+
 /**
- * Fetch every artifact the document names, before the synchronous evaluation begins.
+ * Fetch what the document names, in two rounds, before the synchronous evaluation begins.
  *
- * The paths are discovered by parsing the document leniently — a parse that fails here changes
- * nothing, because the engine parses it again and owns the `document-unreadable` verdict. What this
- * must not do is *filter*: a record whose path is illegal is still fetched-and-refused rather than
- * skipped, so the engine sees the reader's answer instead of an absence this file invented.
+ * The reference reader in `known-differences.mjs` bounds its memory not by fetching little but by
+ * reading one record at a time and **retaining nothing** — the header preflight reads a few dozen
+ * bytes, and the whole file is read again, and dropped again, only inside the decode of a record the
+ * preflight already cleared. A browser reader is synchronous, so it cannot fetch mid-ladder and must
+ * have every answer in hand before the engine starts; the naive way to satisfy that — fetch every
+ * artifact in full up front — reintroduces exactly the four gigabytes of simultaneously-held bytes
+ * the reference design spends a paragraph avoiding, and does it *before* a single preflight has had
+ * the chance to refuse a record.
+ *
+ * So this mirrors the reference reader's two phases instead of collapsing them:
+ *
+ * 1. A bounded **prefix** of every declared path — `maxPreflightBytes`, streamed and cut off rather
+ *    than allocated whole, so a hostile eight-megabyte artifact costs four kilobytes here. That is
+ *    the read the header preflight runs on, and it is enough for it: a conforming header resolves
+ *    within {@link MAX_CONFORMING_HEADER_BYTES}, and one that does not is `header-invalid` — which is
+ *    the same verdict on the same bytes the reference reader reaches, because the engine caps its own
+ *    view to the same constant regardless of what a reader hands over.
+ * 2. The **full body** of only the paths whose prefix preflights cleanly and sits within the byte
+ *    cap. That set is a superset of the records the engine will actually decode — it drops the
+ *    mask-encoding and pixel-budget filters, which only ever *remove* records — so the engine never
+ *    asks to decode a path this round skipped, while a flood of malformed, oversized, animated, or
+ *    non-PNG artifacts is refused on its prefix alone and never fetched in full.
+ *
+ * What this must not do is *filter the header round*: a record whose path is illegal is still
+ * fetched-and-refused rather than skipped, so the engine sees the reader's answer instead of an
+ * absence this file invented. The paths are discovered by parsing the document leniently — a parse
+ * that fails here changes nothing, because the engine parses it again and owns `document-unreadable`.
  */
 async function prefetch(
     documentText: string,
     artifactUrl: (path: string) => string,
-): Promise<Map<string, ArtifactAnswer>> {
-    const answers = new Map<string, ArtifactAnswer>();
+): Promise<Map<string, PrefetchedArtifact>> {
+    const artifacts = new Map<string, PrefetchedArtifact>();
     let parsed: unknown;
     try {
         parsed = JSON.parse(documentText);
     } catch {
-        return answers;
+        return artifacts;
     }
     const acceptances = (parsed as { acceptances?: unknown })?.acceptances;
-    if (!Array.isArray(acceptances)) return answers;
+    if (!Array.isArray(acceptances)) return artifacts;
 
     const paths = new Set<string>();
     for (const record of acceptances) {
@@ -403,15 +448,179 @@ async function prefetch(
         }
     }
 
-    await Promise.all(
-        [...paths].map(async (path) => {
-            answers.set(path, await fetchArtifact(artifactUrl(path)));
-        }),
-    );
-    return answers;
+    // Round one: a bounded prefix of everything.
+    await pooled([...paths], ARTIFACT_CONCURRENCY, async (path) => {
+        artifacts.set(path, await fetchPrefix(artifactUrl(path), BUDGET.maxPreflightBytes));
+    });
+
+    // Round two: the full body of the prefixes that earned it — and of the ones whose size the
+    // response never declared, which must be read to be measured. See `totalKnown`.
+    await pooled([...artifacts], ARTIFACT_CONCURRENCY, async ([path, entry]) => {
+        {
+            if (!entry.totalKnown) {
+                const measured = await fetchArtifact(artifactUrl(path));
+                if (measured instanceof Uint8Array) {
+                    // The real size at last. Correcting the header answer here is what stops the two
+                    // passes disagreeing about an unchanged file: left at the prefix's length, the
+                    // decode pass reports the whole body's length, `samePreflight` sees two different
+                    // numbers and the engine refuses a file that never changed as
+                    // `artifact-unreadable`.
+                    const header = entry.header;
+                    if ("bytes" in header) entry.header = { bytes: header.bytes, byteLength: measured.length };
+                    entry.totalKnown = true;
+                    if (headerEarnsFullRead(entry.header)) entry.full = measured;
+                } else {
+                    entry.header = measured;
+                    entry.full = measured;
+                }
+                return;
+            }
+            if (!headerEarnsFullRead(entry.header)) return;
+            // Stored whatever it is. A body refused between the rounds keeps the token the server
+            // established, rather than being flattened into "nothing was fetched".
+            entry.full = await fetchArtifact(artifactUrl(path));
+        }
+    });
+
+    return artifacts;
 }
 
-async function fetchArtifact(url: string): Promise<ArtifactAnswer> {
+/**
+ * How many artifact requests may be in flight at once.
+ *
+ * `Promise.all` over a 256-record catalog opens 512 requests simultaneously, and each one the server
+ * answers costs it a whole artifact in memory — the repository's own route reads the file after
+ * checking its size, so 512 concurrent near-cap artifacts is four gigabytes on the *server* to return
+ * four kilobytes apiece. The client pays a matching peak. A pool caps both at
+ * `ARTIFACT_CONCURRENCY x maxArtifactBytes` in flight without changing which requests are made or
+ * what any of them answer: it is a rate, not a budget, so no record's verdict depends on it.
+ *
+ * Eight is the usual browser per-host connection ceiling, so a larger number mostly queues in the
+ * network stack anyway, where it is invisible instead of bounded.
+ */
+const ARTIFACT_CONCURRENCY = 8;
+
+/** Run `work` over `items` with at most `limit` in flight, preserving nothing but the side effects. */
+async function pooled<T>(items: T[], limit: number, work: (item: T) => Promise<void>): Promise<void> {
+    let next = 0;
+    const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+        for (let index = next++; index < items.length; index = next++) {
+            await work(items[index]);
+        }
+    });
+    await Promise.all(workers);
+}
+
+/** True when a prefix's header is clean enough that the engine might decode the record — the
+ *  superset test that keeps round two from ever under-fetching a body the engine will ask for. */
+function headerEarnsFullRead(header: ArtifactAnswer): boolean {
+    if (!("bytes" in header)) return false;
+    if (header.byteLength > BUDGET.maxArtifactBytes) return false;
+    const preflight = preflightPng(header.bytes, { byteLength: header.byteLength });
+    return !("error" in preflight) && !preflight.animated;
+}
+
+/**
+ * Fetch at most `limit` bytes of `url`, and the whole file's size, without allocating the rest.
+ *
+ * A `Range` request is the ask, but a server that ignores it and answers `200` must not defeat the
+ * bound — so the body is streamed and cancelled once `limit` bytes are in hand rather than trusting
+ * the status. `byteLength` comes from `Content-Range`'s total when the server honoured the range, and
+ * from `Content-Length` otherwise; a file the server will not size is read to its (bounded) end and
+ * measured by what arrived.
+ */
+async function fetchPrefix(url: string, limit: number): Promise<PrefetchedArtifact> {
+    const failed = (error: string): PrefetchedArtifact => ({ header: { error }, totalKnown: true });
+    let response: Response;
+    try {
+        response = await fetch(url, {
+            credentials: "same-origin",
+            headers: { Range: `bytes=0-${limit - 1}` },
+        });
+    } catch {
+        return failed("artifact-unreadable");
+    }
+    if (response.status === 403) return failed("path-not-contained");
+    if (response.status === 413) return failed("artifact-too-large");
+    // **An unsatisfiable range is a statement about the file, not a failure to read it.** The request
+    // starts at byte zero, which no resource with any bytes in it can fail to satisfy — so `416` means
+    // the artifact is empty, and a range-honouring server is required to say so that way. Relaying it
+    // as a failed fetch reports `artifact-unreadable` for a file the filesystem reader opens without
+    // complaint, where the engine refuses its too-short header as `header-invalid`. Handing the
+    // preflight an empty prefix lets it reach that same verdict from the same facts.
+    if (response.status === 416) {
+        return { header: { bytes: new Uint8Array(0), byteLength: 0 }, totalKnown: true };
+    }
+    if (!response.ok && response.status !== 206) return failed("artifact-unreadable");
+
+    const total = totalBytesFromHeaders(response);
+    const bytes = await readAtMost(response, limit);
+    if (!bytes) return failed("artifact-unreadable");
+    // **A short read is its own proof of size.** Fewer bytes than asked for means the file ended, so
+    // the artifact is exactly what arrived however silent the headers were. Only a response that
+    // filled the prefix leaves the real size unknown, and that is the one worth a second read: the
+    // prefix's length is *not* the artifact's, and recording it as though it were makes the header
+    // and decode passes disagree about a file that never changed.
+    const ranTooLongToTell = total === null && bytes.length >= limit;
+    return {
+        header: { bytes, byteLength: total ?? bytes.length },
+        totalKnown: !ranTooLongToTell,
+    };
+}
+
+/** The whole-file size a range response advertises, or `null` when the server declared none. */
+function totalBytesFromHeaders(response: Response): number | null {
+    const contentRange = response.headers.get("Content-Range");
+    if (contentRange) {
+        const total = /\/(\d+)\s*$/.exec(contentRange);
+        if (total) return Number(total[1]);
+    }
+    if (response.status !== 206) {
+        const length = response.headers.get("Content-Length");
+        if (length !== null && /^\d+$/.test(length)) return Number(length);
+    }
+    return null;
+}
+
+/** Read a response body until `limit` bytes, then cancel the stream so the rest is never allocated. */
+async function readAtMost(response: Response, limit: number): Promise<Uint8Array | null> {
+    if (!response.body) {
+        // No stream to bound — take the buffer and cut it, the one path where the full body is briefly
+        // held. A fetch implementation without a readable body is the fallback, not the norm.
+        try {
+            const buffer = new Uint8Array(await response.arrayBuffer());
+            return buffer.subarray(0, limit);
+        } catch {
+            return null;
+        }
+    }
+    const chunks: Uint8Array[] = [];
+    let held = 0;
+    const streamReader = response.body.getReader();
+    try {
+        while (held < limit) {
+            const { done, value } = await streamReader.read();
+            if (done) break;
+            chunks.push(value);
+            held += value.length;
+        }
+    } catch {
+        return null;
+    } finally {
+        await streamReader.cancel().catch(() => {});
+    }
+    const out = new Uint8Array(Math.min(held, limit));
+    let offset = 0;
+    for (const chunk of chunks) {
+        if (offset >= out.length) break;
+        const slice = chunk.subarray(0, out.length - offset);
+        out.set(slice, offset);
+        offset += slice.length;
+    }
+    return out;
+}
+
+async function fetchArtifact(url: string): Promise<Uint8Array | { error: string }> {
     let response: Response;
     try {
         response = await fetch(url, { credentials: "same-origin" });
@@ -424,15 +633,33 @@ async function fetchArtifact(url: string): Promise<ArtifactAnswer> {
     if (response.status === 403) return { error: "path-not-contained" };
     if (response.status === 413) return { error: "artifact-too-large" };
     if (!response.ok) return { error: "artifact-unreadable" };
-    return new Uint8Array(await response.arrayBuffer());
+    // **Bounded at the cap, not at whatever the server sends.** `arrayBuffer()` allocates the entire
+    // response, so a server answering with far more than `maxArtifactBytes` exhausted the tab through
+    // the very read the cap governs. One byte past the ceiling is enough to *know* it is past —
+    // §4's caps are inclusive — so the read stops there and the record is refused on its size, which
+    // is the verdict the reference reader reaches from a `stat` without allocating anything.
+    const bytes = await readAtMost(response, BUDGET.maxArtifactBytes + 1);
+    if (!bytes) return { error: "artifact-unreadable" };
+    if (bytes.length > BUDGET.maxArtifactBytes) return { error: "artifact-too-large" };
+    return bytes;
 }
 
 /**
  * The synchronous reader the engine calls, over what `prefetch` already has.
  *
- * A path the prefetch never saw — one a record spells but no acceptance declared, or one a lenient
- * parse missed — is `artifact-unreadable`, which is what a reader that could not open it would say.
+ * The header pass passes `{ prefix }` and gets the bounded prefix answer; the decode pass passes no
+ * options and gets the full body. A path the prefetch never saw — one a record spells but no
+ * acceptance declared, or one a lenient parse missed — is `artifact-unreadable`, which is what a
+ * reader that could not open it would say. So is a full read of a path whose header never earned a
+ * body: the engine only reaches that for a record its own preflight cleared, so it never happens for
+ * one the engine actually decodes, and answering `artifact-unreadable` for the rest is the truthful
+ * "nothing was fetched" rather than a truncated prefix masquerading as the whole file.
  */
-function reader(answers: Map<string, ArtifactAnswer>) {
-    return (path: string): ArtifactAnswer | null => answers.get(path) ?? null;
+function reader(artifacts: Map<string, PrefetchedArtifact>) {
+    return (path: string, options?: ReadOptions): ArtifactAnswer | null => {
+        const entry = artifacts.get(path);
+        if (!entry) return null;
+        if (options?.prefix !== undefined) return entry.header;
+        return entry.full ?? { error: "artifact-unreadable" };
+    };
 }

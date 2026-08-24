@@ -2798,6 +2798,33 @@ glyphValidation({
     expected: refused(["animated-png"]),
   });
 
+  // A real APNG, rather than the minimal `acTL` above.
+  const apngWithFrameControl = buildPng([
+    ihdr({ width: 24, height: 24, colourType: COLOUR_GREY }),
+    chunk("acTL", Uint8Array.from([0, 0, 0, 2, 0, 0, 0, 0])),
+    chunk("fcTL", new Uint8Array(26)),
+    idat([new Uint8Array(24)]),
+    chunk("IEND"),
+  ]);
+  glyphValidation({
+    id: "animated-png-with-frame-control",
+    title: "An APNG carrying the frame control its default image needs",
+    why:
+      "`animated-png-mask` carries an `acTL` and nothing else, which no encoder actually emits: an " +
+      "APNG whose default image is part of the animation puts an `fcTL` between the `acTL` and the " +
+      "first `IDAT`, and that is the file a producer will really hand over. It matters because the " +
+      "preflight walks a *prefix* and therefore admits only an enumerated set of chunks before the " +
+      "image data — an engine that treated `acTL` as one more chunk to step over would meet the " +
+      "`fcTL`, find it on no list, and report `header-invalid` for a file whose animation it had " +
+      "already seen.\n\n" +
+      "So `acTL` ends the walk where it is found. Nothing later in the file can make an animated PNG " +
+      "acceptable, the verdict is already decided, and stopping there is also what keeps the walk's " +
+      "bound the same on this path as on the ordinary one.",
+    record: { maskSha256: sha256Hex(apngWithFrameControl) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/mask.png": apngWithFrameControl },
+    expected: refused(["animated-png"]),
+  });
+
   const animatedColour = buildPng([
     ihdr({ width: 8, height: 8 }),
     chunk("acTL", Uint8Array.from([0, 0, 0, 2, 0, 0, 0, 0])),
@@ -3929,18 +3956,26 @@ glyphValidation({
   });
 
   glyphValidation({
-    id: "decode-failed-chunk-not-permitted",
-    title: "An artifact carrying an ancillary chunk",
+    id: "header-invalid-chunk-not-permitted",
+    title: "An artifact carrying an ancillary chunk before the image data",
     why:
       "`v1` permits exactly five chunks — `IHDR`, `PLTE`, `IDAT`, `tRNS`, `IEND` — and refuses " +
       "anything else, critical or ancillary, known or invented. An allowlist rather than a growing " +
       "list of things to reject, because every PNG feature is another place a lenient decoder and a " +
       "colour-managed browser disagree about the pixels a gate then compares, and each one caught " +
       "individually is one more round of the same argument. The cost is that a producer must not " +
-      "emit ancillary chunks, which is one line in any encoder.",
+      "emit ancillary chunks, which is one line in any encoder.\n\n" +
+      "**And it is refused before the image data, not at the decode.** The bounded header preflight " +
+      "is served a *prefix* of the artifact, which is only a bound if the bytes it must step over " +
+      "are bounded too — so the chunks permitted between `IHDR` and the first `IDAT` are enumerated " +
+      "(`PLTE`, `tRNS`, and `acTL` as the animation signal) and anything else stops the walk where " +
+      "it stands. The verdict is therefore `header-invalid` rather than the `decode-failed` a " +
+      "whole-file decode reaches for the same bytes: nothing was decoded, the header region simply " +
+      "could not be read. Sibling cases keep `decode-failed` covered for the same rule applied " +
+      "*after* the image data, where the preflight has already returned and the decoder owns it.",
     record: { maskSha256: sha256Hex(withText) },
     files: { "artifacts/m3-iconbutton-tonal-glyph/mask.png": withText },
-    expected: refused(["decode-failed"]),
+    expected: refused(["header-invalid"]),
   });
 
   // The case that motivated the allowlist rather than a sixth individual rule.
@@ -3957,7 +3992,7 @@ glyphValidation({
     ]);
   })();
   glyphValidation({
-    id: "decode-failed-colour-space-chunk",
+    id: "header-invalid-colour-space-chunk",
     title: "An artifact carrying a colour-space chunk",
     why:
       "`gAMA`, `sRGB` and `iCCP` are not inert metadata: a colour-managed decoder transforms the " +
@@ -3965,10 +4000,18 @@ glyphValidation({
       "accepted candidate yields different candidate and resolution verdicts on the two sides of " +
       "the contract. Implementing colour management identically in two engines is precisely the " +
       "kind of question this contract refuses to answer, so the chunk is refused instead — which " +
-      "the allowlist already does, without needing a rule of its own.",
+      "the allowlist already does, without needing a rule of its own.\n\n" +
+      "**And it is refused before the image data, not at the decode.** The bounded header preflight " +
+      "is served a *prefix* of the artifact, which is only a bound if the bytes it must step over " +
+      "are bounded too — so the chunks permitted between `IHDR` and the first `IDAT` are enumerated " +
+      "(`PLTE`, `tRNS`, and `acTL` as the animation signal) and anything else stops the walk where " +
+      "it stands. The verdict is therefore `header-invalid` rather than the `decode-failed` a " +
+      "whole-file decode reaches for the same bytes: nothing was decoded, the header region simply " +
+      "could not be read. Sibling cases keep `decode-failed` covered for the same rule applied " +
+      "*after* the image data, where the preflight has already returned and the decoder owns it.",
     record: { acceptedCandidateSha256: sha256Hex(colourManaged) },
     files: { "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": colourManaged },
-    expected: refused(["decode-failed"]),
+    expected: refused(["header-invalid"]),
   });
 
   // Allowed chunks, disallowed placement.
@@ -3986,16 +4029,118 @@ glyphValidation({
     chunk("IEND"),
   ]);
   glyphValidation({
-    id: "decode-failed-duplicate-ihdr",
+    id: "header-invalid-duplicate-ihdr",
     title: "A second `IHDR`",
     why:
       "**Permitted is not the same as well-placed.** Every chunk here is on the allowlist and the " +
       "file is still malformed — a conforming decoder rejects it, so admitting it on membership " +
       "alone reaches a gate verdict where the other side reaches `decode-failed`. There are only " +
       "five chunks to constrain, which is what the allowlist bought: the structural rules are finite " +
-      "because the vocabulary is.",
+      "because the vocabulary is.\n\n" +
+      "The second `IHDR` sits before the image data, so the preflight reaches it first and refuses " +
+      "it as `header-invalid` — a repeat of a chunk that may appear once, at a position where the " +
+      "prefix walk admits only `PLTE` and `tRNS`. `decode-failed-trns-after-idat` is the same " +
+      "placement rule on the far side of `IDAT`, where the decoder is the one that catches it.",
     record: { maskSha256: sha256Hex(duplicateHeader) },
     files: { "artifacts/m3-iconbutton-tonal-glyph/mask.png": duplicateHeader },
+    expected: refused(["header-invalid"]),
+  });
+
+  // The bound the prefix read rests on, pinned from both sides. `PLTE` and `tRNS` are the only two
+  // chunks that may take up room before the image data, so the largest header region a conforming
+  // artifact can have is 8 + 25 + 780 + 268 + 8 = 1089 bytes — and the prefix is 4096. These three
+  // cases are what stop that arithmetic from being a comment nobody checks.
+  const paletteRows = () => {
+    const samples = new Uint8Array(8 * 8);
+    const rows = [];
+    for (let y = 0; y < 8; y++) rows.push(samples.subarray(y * 8, (y + 1) * 8));
+    return rows;
+  };
+  // Entry 0 is the opaque red the sibling `trns-transparency-is-decoded` uses and `tRNS` makes it
+  // transparent, so this decodes to exactly the raster that case decodes to. The remaining 255
+  // entries are never indexed; they are here to make the chunk the maximum length the format allows.
+  const fullPalette = new Uint8Array(768);
+  fullPalette.set([200, 60, 60], 0);
+  const maximalHeader = buildPng([
+    ihdr({ width: 8, height: 8, colourType: COLOUR_PALETTE }),
+    chunk("PLTE", fullPalette),
+    chunk("tRNS", new Uint8Array(256)),
+    idat(paletteRows()),
+    chunk("IEND"),
+  ]);
+  glyphValidation({
+    id: "artifact-header-region-at-the-conforming-maximum",
+    title: "An accepted candidate whose header region is as long as `v1` allows",
+    why:
+      "The accepting half of the prefix bound, and the one a wrong implementation passes everything " +
+      "else without. The header preflight is served the first 4096 bytes of an artifact rather than " +
+      "the whole of it — otherwise the pass that enforces the byte cap allocates 8 MiB per raster to " +
+      "read a kilobyte — and that is a bound only if the bytes it steps over are bounded. This file " +
+      "carries a 256-entry `PLTE` and a 256-entry `tRNS`, which is the most any conforming artifact " +
+      "can put in front of its image data: 1089 bytes counting the signature, the `IHDR`, and the " +
+      "eight-byte header of the `IDAT` the walk stops at.\n\n" +
+      "An engine that sized its prefix to the fixtures rather than to the format would refuse this " +
+      "as `header-invalid` while passing every other case in the tree. It decodes to the same raster " +
+      "as `trns-transparency-is-decoded` — index 0 is the same red, `tRNS` makes it transparent, and " +
+      "the other 255 entries are never indexed — so it reaches the same verdict by the same " +
+      "arithmetic: alpha `0` against the candidate's `255` is a per-channel distance of 255.",
+    record: { acceptedCandidateSha256: sha256Hex(maximalHeader) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": maximalHeader },
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: { "m3-iconbutton-tonal-glyph": { status: "invalidated", causes: ["candidate-changed"] } },
+      validationFailures: [],
+    },
+  });
+
+  const overlongPalette = buildPng([
+    ihdr({ width: 8, height: 8, colourType: COLOUR_PALETTE }),
+    chunk("PLTE", new Uint8Array(8000)),
+    idat(paletteRows()),
+    chunk("IEND"),
+  ]);
+  glyphValidation({
+    id: "header-invalid-chunk-longer-than-the-prefix",
+    title: "A `PLTE` that runs past the header prefix",
+    why:
+      "The refusing half of the same bound. This `PLTE` declares 8000 bytes, so the first `IDAT` " +
+      "does not begin within the 4096 the preflight is served and the walk stops without ever " +
+      "reaching it — `header-invalid`, because that is precisely what happened: the header region " +
+      "could not be read. An engine reading whole artifacts steps over the chunk, preflights the " +
+      "file cleanly, charges its pixels against the budget, and only then reaches `decode-failed` " +
+      "for a palette longer than 768 bytes. Two tokens and two answers to whether the record was " +
+      "inside the budget, from one set of hash-valid bytes.\n\n" +
+      "Paired deliberately with `decode-failed-chunk-within-the-prefix`, which is the same " +
+      "malformation at a length the prefix does hold: the preflight steps over it and the decoder " +
+      "owns the verdict. The preflight does not re-implement the 768-byte rule — it refuses on the " +
+      "bound and nothing else, which is the only rule a prefix walk is in a position to enforce.",
+    record: { acceptedCandidateSha256: sha256Hex(overlongPalette) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": overlongPalette },
+    expected: refused(["header-invalid"]),
+  });
+
+  const overlongWithinPrefix = buildPng([
+    ihdr({ width: 8, height: 8, colourType: COLOUR_PALETTE }),
+    chunk("PLTE", new Uint8Array(3000)),
+    idat(paletteRows()),
+    chunk("IEND"),
+  ]);
+  glyphValidation({
+    id: "decode-failed-chunk-within-the-prefix",
+    title: "An overlong `PLTE` that still fits inside the header prefix",
+    why:
+      "The same illegal chunk 5000 bytes shorter, and the verdict moves. 3000 bytes of `PLTE` still " +
+      "leaves the first `IDAT` inside the 4096-byte prefix, so the preflight steps over the chunk " +
+      "exactly as it steps over a legal one and reaches a readable header; the 768-byte limit is a " +
+      "rule about the palette's *contents*, and the decoder is the phase that reads contents. " +
+      "`decode-failed`.\n\n" +
+      "Recorded as a pair with `header-invalid-chunk-longer-than-the-prefix` because the split looks " +
+      "arbitrary until you see what it protects: the preflight enforces one thing, that it could " +
+      "resolve the header within the bytes it was given, and an engine that instead duplicated the " +
+      "decoder's length rules there would refuse this case a phase early — before the budget, with " +
+      "the wrong token.",
+    record: { acceptedCandidateSha256: sha256Hex(overlongWithinPrefix) },
+    files: { "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": overlongWithinPrefix },
     expected: refused(["decode-failed"]),
   });
 
@@ -4736,17 +4881,18 @@ glyphValidation({
     ]);
   })();
   glyphValidation({
-    id: "decode-failed-unrecognized-critical-chunk",
+    id: "header-invalid-unrecognized-critical-chunk",
     title: "An unrecognized **critical** chunk with a valid CRC",
     why:
       "The PNG specification requires a decoder to stop on a critical chunk it does not recognise, " +
       "and a browser obeys it. `v1` goes further and refuses every chunk outside its allowlist, so " +
-      "this case and `decode-failed-chunk-not-permitted` reach the same verdict by the same rule — " +
+      "this case and `header-invalid-chunk-not-permitted` reach the same verdict by the same rule — " +
       "kept separate because a reader looking for the specification's requirement should find it " +
-      "covered, not inferred.",
+      "covered, not inferred. Both sit before the image data, so both are the *preflight's* refusal: " +
+      "the prefix walk does not distinguish critical from ancillary any more than the allowlist does.",
     record: { maskSha256: sha256Hex(unknownCritical) },
     files: { "artifacts/m3-iconbutton-tonal-glyph/mask.png": unknownCritical },
-    expected: refused(["decode-failed"]),
+    expected: refused(["header-invalid"]),
   });
 
   // A palette accepted candidate whose single entry is transparent.
@@ -5714,6 +5860,15 @@ write(
     "exactly the image its base does, and the only thing the recipe changes is the encoded byte length.",
     "Appending bytes after `IEND` would be cheaper and wrong: `IEND` ends the datastream, so anything",
     "after it bypasses the chunk allowlist, the placement rules and every CRC.",
+    "",
+    "**The artifact reader has to serve a prefix.** The header pass asks for at most the first 4096",
+    "bytes of each artifact and expects those bytes plus the *whole* file's length back; the decode",
+    "pass asks for the file. A runner that ignores the request and returns whole files passes almost",
+    "everything here — `header-invalid-chunk-longer-than-the-prefix` is the case that catches it, and",
+    "`artifact-header-region-at-the-conforming-maximum` is the one that catches a prefix sized too",
+    "small. The full length matters as much as the prefix: it is what the 8 MiB cap is measured",
+    "against, so a runner substituting the length it happened to serve has a cap that no longer",
+    "applies to anything.",
     "",
     "## The pilot population",
     "",

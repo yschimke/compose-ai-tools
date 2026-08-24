@@ -58,7 +58,13 @@ Each exists because two engines would otherwise diverge on identical bytes.
   engines different pixels — a decoder reads `IDAT`, an `<img>` advances the animation. Reject on
   `acTL`.
 - **Budget before decode**: 256 acceptances, 128 megapixels, 8192 px per axis, 8 MiB encoded per
-  artifact — all versioned. The area cap does **not** imply the axis cap (`1 × 128,000,000` is inside
+  artifact — all versioned. The header pass reads a **4096-byte prefix** of each artifact rather than
+  the whole of it, so the byte cap is enforced by something that has not already allocated past it;
+  the reader reports the artifact's full length alongside, and that is what the cap is measured
+  against. 4096 is provably enough: only `PLTE` and `tRNS` may precede the first `IDAT`, which bounds
+  a conforming header region at 1089 bytes. A chunk before the image data that is neither is
+  `header-invalid` (the preflight's refusal), where the same chunk after `IDAT` is `decode-failed`
+  (the decoder's). The area cap does **not** imply the axis cap (`1 × 128,000,000` is inside
   the budget and undecodable in every browser), and neither implies the byte cap (`ServeCatalogStore`
   refuses any catalog asset over 25 MB). **Compare as you go and short-circuit** — never accumulate a
   total that can overflow differently in Kotlin and JavaScript.

@@ -1,0 +1,38 @@
+{
+  "title": "An accepted candidate whose header region is as long as `v1` allows",
+  "site": null,
+  "why": "The accepting half of the prefix bound, and the one a wrong implementation passes everything else without. The header preflight is served the first 4096 bytes of an artifact rather than the whole of it — otherwise the pass that enforces the byte cap allocates 8 MiB per raster to read a kilobyte — and that is a bound only if the bytes it steps over are bounded. This file carries a 256-entry `PLTE` and a 256-entry `tRNS`, which is the most any conforming artifact can put in front of its image data: 1089 bytes counting the signature, the `IHDR`, and the eight-byte header of the `IDAT` the walk stops at.\n\nAn engine that sized its prefix to the fixtures rather than to the format would refuse this as `header-invalid` while passing every other case in the tree. It decodes to the same raster as `trns-transparency-is-decoded` — index 0 is the same red, `tRNS` makes it transparent, and the other 255 entries are never indexed — so it reaches the same verdict by the same arithmetic: alpha `0` against the candidate's `255` is a per-channel distance of 255.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

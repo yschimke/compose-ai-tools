@@ -472,6 +472,11 @@
       "site": null
     },
     {
+      "id": "animated-png-with-frame-control",
+      "title": "An APNG carrying the frame control its default image needs",
+      "site": null
+    },
+    {
       "id": "header-invalid-beside-animated-sibling",
       "title": "An unreadable mask header beside an animated accepted candidate",
       "site": null
@@ -757,18 +762,33 @@
       "site": null
     },
     {
-      "id": "decode-failed-chunk-not-permitted",
-      "title": "An artifact carrying an ancillary chunk",
+      "id": "header-invalid-chunk-not-permitted",
+      "title": "An artifact carrying an ancillary chunk before the image data",
       "site": null
     },
     {
-      "id": "decode-failed-colour-space-chunk",
+      "id": "header-invalid-colour-space-chunk",
       "title": "An artifact carrying a colour-space chunk",
       "site": null
     },
     {
-      "id": "decode-failed-duplicate-ihdr",
+      "id": "header-invalid-duplicate-ihdr",
       "title": "A second `IHDR`",
+      "site": null
+    },
+    {
+      "id": "artifact-header-region-at-the-conforming-maximum",
+      "title": "An accepted candidate whose header region is as long as `v1` allows",
+      "site": null
+    },
+    {
+      "id": "header-invalid-chunk-longer-than-the-prefix",
+      "title": "A `PLTE` that runs past the header prefix",
+      "site": null
+    },
+    {
+      "id": "decode-failed-chunk-within-the-prefix",
+      "title": "An overlong `PLTE` that still fits inside the header prefix",
       "site": null
     },
     {
@@ -887,7 +907,7 @@
       "site": null
     },
     {
-      "id": "decode-failed-unrecognized-critical-chunk",
+      "id": "header-invalid-unrecognized-critical-chunk",
       "title": "An unrecognized **critical** chunk with a valid CRC",
       "site": null
     },
