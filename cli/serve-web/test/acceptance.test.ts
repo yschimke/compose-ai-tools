@@ -460,6 +460,46 @@ describe("evaluateComparison", () => {
         });
     });
 
+    it("reads an empty artifact as a short header, not as an unopenable file", async () => {
+        // A zero-byte artifact makes `bytes=0-4095` unsatisfiable, and a range-honouring server answers
+        // `416` with `Content-Range: bytes */0`. Treating that as a failed fetch reports
+        // `artifact-unreadable`, while the filesystem reader opens the empty file happily and the
+        // engine refuses its too-short header as `header-invalid` — two engines, one committed file,
+        // different verdicts.
+        //
+        // `416` is only reachable here because the range starts at zero, which no non-empty resource
+        // can fail to satisfy. So it is not an error to relay: it is the server saying the artifact is
+        // empty, which is a fact the preflight is entitled to judge for itself.
+        const scene = world();
+        const routes = catalogRoutes(scene, document(scene));
+        const base = recordingFetch(routes, { honourRange: true });
+        const original = globalThis.fetch;
+        globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            if (url.endsWith("/glyph/mask.png")) {
+                const ranged = new Headers(init?.headers ?? {}).get("Range") !== null;
+                if (ranged) {
+                    return Promise.resolve(
+                        new Response("range not satisfiable", {
+                            status: 416,
+                            headers: { "Content-Range": "bytes */0" },
+                        }),
+                    );
+                }
+                return Promise.resolve(new Response(new Uint8Array(0) as unknown as BodyInit));
+            }
+            return base.impl(input, init);
+        }) as typeof fetch;
+        try {
+            const report = await evaluateComparison(SOURCES, SCOPE, {});
+            assert.deepEqual(report.statuses, {
+                glyph: { status: "refused", reasons: ["header-invalid"] },
+            });
+        } finally {
+            globalThis.fetch = original;
+        }
+    });
+
     it("keeps the full read's own refusal token when an artifact changes between the rounds", async () => {
         // The header round can succeed and the body round still be refused — the tree moves, or a file
         // is swapped for an oversized one. `path-not-contained` and `artifact-too-large` are verdicts

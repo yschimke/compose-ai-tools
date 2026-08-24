@@ -460,6 +460,15 @@ async function fetchPrefix(url: string, limit: number): Promise<PrefetchedArtifa
     }
     if (response.status === 403) return failed("path-not-contained");
     if (response.status === 413) return failed("artifact-too-large");
+    // **An unsatisfiable range is a statement about the file, not a failure to read it.** The request
+    // starts at byte zero, which no resource with any bytes in it can fail to satisfy — so `416` means
+    // the artifact is empty, and a range-honouring server is required to say so that way. Relaying it
+    // as a failed fetch reports `artifact-unreadable` for a file the filesystem reader opens without
+    // complaint, where the engine refuses its too-short header as `header-invalid`. Handing the
+    // preflight an empty prefix lets it reach that same verdict from the same facts.
+    if (response.status === 416) {
+        return { header: { bytes: new Uint8Array(0), byteLength: 0 }, totalKnown: true };
+    }
     if (!response.ok && response.status !== 206) return failed("artifact-unreadable");
 
     const total = totalBytesFromHeaders(response);
