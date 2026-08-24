@@ -460,6 +460,43 @@ describe("evaluateComparison", () => {
         });
     });
 
+    it("keeps the full read's own refusal token when an artifact changes between the rounds", async () => {
+        // The header round can succeed and the body round still be refused — the tree moves, or a file
+        // is swapped for an oversized one. `path-not-contained` and `artifact-too-large` are verdicts
+        // only the server establishes, and dropping them here degrades the record to
+        // `artifact-unreadable`, where the reference reader (which stats the file on its own second
+        // read) reports the specific token. Same divergence class as the prefix itself: one contract,
+        // two engines, different answers.
+        const scene = world();
+        for (const [status, token] of [
+            [413, "artifact-too-large"],
+            [403, "path-not-contained"],
+        ] as const) {
+            const routes = catalogRoutes(scene, document(scene));
+            const base = recordingFetch(routes, { honourRange: true });
+            const original = globalThis.fetch;
+            globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+                const url = String(input);
+                const ranged = new Headers(init?.headers ?? {}).get("Range") !== null;
+                // The prefix is served honestly; only the whole-body read is refused.
+                if (url.endsWith("/glyph/mask.png") && !ranged) {
+                    return Promise.resolve(new Response("no", { status }));
+                }
+                return base.impl(input, init);
+            }) as typeof fetch;
+            try {
+                const report = await evaluateComparison(SOURCES, SCOPE, {});
+                assert.deepEqual(
+                    report.statuses,
+                    { glyph: { status: "refused", reasons: [token] } },
+                    `a ${status} on the full read must keep its own token`,
+                );
+            } finally {
+                globalThis.fetch = original;
+            }
+        }
+    });
+
     it("keeps its requests inside a fixed concurrency, however many records there are", async () => {
         // `Promise.all` over a 256-record catalog opens 512 requests at once, and the repository's own
         // route holds a whole artifact in memory for each — four gigabytes on the *server* to return

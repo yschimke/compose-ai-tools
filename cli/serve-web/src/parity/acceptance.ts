@@ -298,11 +298,14 @@ interface PrefetchedArtifact {
     /** The header-pass answer: a prefix and the whole file's size, or the reader token that stands
      *  in for it. Always present — every declared path gets a header read. */
     header: ArtifactAnswer;
-    /** The decode-pass answer, present only for a path whose header preflight came back clean. A
-     *  full read of a path without this is `artifact-unreadable`, which is safe: the engine only
-     *  full-reads a record it already cleared through preflight, so this is never missing for one it
-     *  actually asks to decode. */
-    full?: Uint8Array;
+    /** The decode-pass answer, present only for a path whose header preflight came back clean —
+     *  the bytes, **or the refusal the second read established**. `path-not-contained` and
+     *  `artifact-too-large` are verdicts only the server can reach, so a body refused between the two
+     *  rounds has to carry its own token: flattening it to a missing entry reports
+     *  `artifact-unreadable`, where the reference reader stats the file again and names the reason.
+     *  Absent entirely is `artifact-unreadable`, which is safe — the engine only full-reads a record
+     *  its preflight already cleared, so this is never missing for one it actually asks to decode. */
+    full?: Uint8Array | { error: string };
     /** Whether the header round learned the artifact's real size from the response, or only from how
      *  much of it arrived. False forces a full read purely to measure the file — see `prefetch`. */
     totalKnown: boolean;
@@ -386,15 +389,14 @@ async function prefetch(
                     if (headerEarnsFullRead(entry.header)) entry.full = measured;
                 } else {
                     entry.header = measured;
+                    entry.full = measured;
                 }
                 return;
             }
             if (!headerEarnsFullRead(entry.header)) return;
-            const full = await fetchArtifact(artifactUrl(path));
-            if (full instanceof Uint8Array) entry.full = full;
-            // A body that turned unreadable between the two rounds is left without `full`; the engine
-            // re-reads and reaches `artifact-unreadable` on the decode pass, the same as the
-            // reference reader when a tree moves under a long evaluation.
+            // Stored whatever it is. A body refused between the rounds keeps the token the server
+            // established, rather than being flattened into "nothing was fetched".
+            entry.full = await fetchArtifact(artifactUrl(path));
         }
     });
 
