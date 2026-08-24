@@ -72,6 +72,18 @@ export function moduleDirForTask(taskName: string): string | undefined {
     return path.join(...segments.slice(0, -1));
 }
 
+/** Module directories owned by every task in a combined Gradle invocation. */
+export function moduleDirsForInvocation(
+    taskName: string,
+    args: ReadonlyArray<string> = [],
+): ReadonlyArray<string> {
+    return [taskName, ...args].reduce<string[]>((modules, task) => {
+        const moduleDir = moduleDirForTask(task);
+        if (moduleDir && !modules.includes(moduleDir)) modules.push(moduleDir);
+        return modules;
+    }, []);
+}
+
 /** Directories a module's compiled classes can land in, relative to its project dir. */
 const CLASS_OUTPUT_ROOTS = [
     path.join("build", "classes"),
@@ -206,6 +218,12 @@ export class RealGradleApi implements GradleApi {
      */
     private readonly moduleRepairs = new Map<string, Promise<void>>();
 
+    /** Runs waiting for a module repair, keyed so cancellation can stop them before they spawn. */
+    private readonly queuedRuns = new Map<
+        string,
+        { taskName: string; cancelled: boolean }
+    >();
+
     /** @see invocations */
     get gradleInvocations(): ReadonlyArray<GradleInvocationRecord> {
         return this.invocations;
@@ -255,18 +273,22 @@ export class RealGradleApi implements GradleApi {
      * walk. Either way the module stops being suspect — this is the build that either repairs it
      * or proves it was fine.
      */
-    private repairArgsFor(
+    private repairModulesFor(
         projectFolder: string,
-        taskName: string,
+        moduleDirs: ReadonlyArray<string>,
     ): ReadonlyArray<string> {
-        const moduleDir = moduleDirForTask(taskName);
-        if (!moduleDir || !this.unvettedModules.has(moduleDir)) return [];
-        if (!hasEmptyClassOutputs(projectFolder, moduleDir)) return [];
-        this.onLog(
-            `[realGradleApi] ${moduleDir} has compiled output directories with no .class files ` +
-                `after a cancelled build — rerunning with ${CANCELLATION_REPAIR_ARGS.join(" ")}`,
-        );
-        return CANCELLATION_REPAIR_ARGS;
+        return moduleDirs.filter((moduleDir) => {
+            if (!this.unvettedModules.has(moduleDir)) return false;
+            if (!hasEmptyClassOutputs(projectFolder, moduleDir)) {
+                this.unvettedModules.delete(moduleDir);
+                return false;
+            }
+            this.onLog(
+                `[realGradleApi] ${moduleDir} has compiled output directories with no .class files ` +
+                    `after a cancelled build — rerunning with ${CANCELLATION_REPAIR_ARGS.join(" ")}`,
+            );
+            return true;
+        });
     }
 
     runTask(opts: {
@@ -280,24 +302,54 @@ export class RealGradleApi implements GradleApi {
         }) => void;
         cancellationKey?: string;
     }): Promise<void> {
-        const moduleDir = moduleDirForTask(opts.taskName);
-        const repairInFlight = moduleDir
-            ? this.moduleRepairs.get(moduleDir)
-            : undefined;
-        if (repairInFlight) {
+        const moduleDirs = moduleDirsForInvocation(opts.taskName, opts.args);
+        const repairsInFlight = [
+            ...new Set(
+                moduleDirs
+                    .map((moduleDir) => this.moduleRepairs.get(moduleDir))
+                    .filter((repair): repair is Promise<void> => !!repair),
+            ),
+        ];
+        if (repairsInFlight.length > 0) {
             this.onLog(
-                `[realGradleApi] ${moduleDir} cancellation repair is still running — queueing ${opts.taskName}`,
+                `[realGradleApi] cancellation repair is still running for ${moduleDirs.join(", ")} — queueing ${opts.taskName}`,
             );
-            return repairInFlight.then(() => this.runTask(opts));
+            const queued = { taskName: opts.taskName, cancelled: false };
+            if (opts.cancellationKey) {
+                this.queuedRuns.set(opts.cancellationKey, queued);
+            }
+            const afterRepairs = () => {
+                if (queued.cancelled) {
+                    throw new Error(
+                        `gradlew ${opts.taskName} cancelled before start`,
+                    );
+                }
+                return this.runTask(opts);
+            };
+            return Promise.all(repairsInFlight)
+                .then(afterRepairs, (error) => {
+                    if (queued.cancelled) return afterRepairs();
+                    throw error;
+                })
+                .finally(() => {
+                    if (
+                        opts.cancellationKey &&
+                        this.queuedRuns.get(opts.cancellationKey) === queued
+                    ) {
+                        this.queuedRuns.delete(opts.cancellationKey);
+                    }
+                });
         }
         const gradlewPath =
             process.platform === "win32"
                 ? path.join(this.gradlewDir, "gradlew.bat")
                 : path.join(this.gradlewDir, "gradlew");
-        const repairArgs = this.repairArgsFor(
+        const repairModules = this.repairModulesFor(
             opts.projectFolder,
-            opts.taskName,
+            moduleDirs,
         );
+        const repairArgs =
+            repairModules.length > 0 ? CANCELLATION_REPAIR_ARGS : [];
         const gradleArgs = [
             opts.taskName,
             ...(opts.args ?? []),
@@ -421,20 +473,26 @@ export class RealGradleApi implements GradleApi {
                 }
             });
         });
-        if (repairArgs.length === 0 || !moduleDir) return invocation;
+        if (repairModules.length === 0) return invocation;
 
         const repair = invocation.then(() => {
-            if (hasEmptyClassOutputs(opts.projectFolder, moduleDir)) {
-                throw new Error(
-                    `gradlew ${gradleArgs.join(" ")} completed but ${moduleDir} still has no .class files`,
-                );
+            for (const moduleDir of repairModules) {
+                if (hasEmptyClassOutputs(opts.projectFolder, moduleDir)) {
+                    throw new Error(
+                        `gradlew ${gradleArgs.join(" ")} completed but ${moduleDir} still has no .class files`,
+                    );
+                }
+                this.unvettedModules.delete(moduleDir);
             }
-            this.unvettedModules.delete(moduleDir);
         });
-        this.moduleRepairs.set(moduleDir, repair);
+        for (const moduleDir of repairModules) {
+            this.moduleRepairs.set(moduleDir, repair);
+        }
         return repair.finally(() => {
-            if (this.moduleRepairs.get(moduleDir) === repair) {
-                this.moduleRepairs.delete(moduleDir);
+            for (const moduleDir of repairModules) {
+                if (this.moduleRepairs.get(moduleDir) === repair) {
+                    this.moduleRepairs.delete(moduleDir);
+                }
             }
         });
     }
@@ -448,6 +506,17 @@ export class RealGradleApi implements GradleApi {
         // keyed by `cancellationKey`. Without a key there's nothing
         // specific to cancel (gradleService always supplies one).
         const key = opts.cancellationKey;
+        const queued = key ? this.queuedRuns.get(key) : undefined;
+        if (queued) {
+            if (!queued.cancelled) {
+                queued.cancelled = true;
+                this.cancelledTaskNames.push(queued.taskName);
+                this.onLog(
+                    `[realGradleApi] cancel ${queued.taskName} (key=${key}) — dropping queued run`,
+                );
+            }
+            return;
+        }
         const child = key ? this.liveChildren.get(key) : undefined;
         if (!child || child.pid === undefined || child.exitCode !== null) {
             return;

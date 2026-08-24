@@ -7,6 +7,7 @@ import {
     RealGradleApi,
     hasEmptyClassOutputs,
     moduleDirForTask,
+    moduleDirsForInvocation,
     parseTaskOutcomes,
 } from "./electron/realGradleApi";
 
@@ -184,6 +185,14 @@ describe("RealGradleApi cancellation repair", () => {
             undefined,
         );
         assert.strictEqual(moduleDirForTask(":help"), undefined);
+        assert.deepStrictEqual(
+            moduleDirsForInvocation("composePreviewApplied", [
+                ":samples:cmp:composePreviewDaemonStart",
+                ":samples:cmp:composePreviewDiscover",
+                "--no-build-cache",
+            ]),
+            [path.join("samples", "cmp")],
+        );
     });
 
     it("calls a module with output roots but no class files empty", () => {
@@ -313,6 +322,73 @@ describe("RealGradleApi cancellation repair", () => {
         assert.strictEqual(api.gradleInvocations.length, 3);
         assert.strictEqual(api.gradleInvocations[1].repaired, true);
         assert.strictEqual(api.gradleInvocations[2].repaired, undefined);
+    });
+
+    it("keeps a bundled module task queued and cancellable during repair", async () => {
+        const output = classOutputDir("kotlin", "jvm", "main");
+        const classFile = path.join(output, "PreviewsKt.class");
+        fs.writeFileSync(
+            path.join(tmp, "gradlew"),
+            [
+                "#!/bin/sh",
+                'case " $* " in',
+                '  *" --rerun-tasks "*)',
+                "    sleep 0.2",
+                `    touch ${JSON.stringify(classFile)}`,
+                "    exit 0",
+                "    ;;",
+                "esac",
+                "sleep 10",
+                "",
+            ].join("\n"),
+            { mode: 0o755 },
+        );
+        const api = new RealGradleApi(tmp);
+
+        const damaged = api.runTask({
+            projectFolder: tmp,
+            taskName: ":samples:cmp:composePreviewRenderAll",
+            showOutputColors: false,
+            cancellationKey: "key-1",
+        });
+        await api.cancelRunTask({
+            projectFolder: tmp,
+            taskName: ":samples:cmp:composePreviewRenderAll",
+            cancellationKey: "key-1",
+        });
+        await damaged.catch(() => {
+            /* expected */
+        });
+
+        const repair = api.runTask({
+            projectFolder: tmp,
+            taskName: ":samples:cmp:composePreviewRenderAll",
+            showOutputColors: false,
+            cancellationKey: "key-2",
+        });
+        const queued = api.runTask({
+            projectFolder: tmp,
+            taskName: "composePreviewApplied",
+            args: [":samples:cmp:composePreviewDiscover"],
+            showOutputColors: false,
+            cancellationKey: "key-3",
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        assert.strictEqual(api.gradleInvocations.length, 2);
+        await api.cancelRunTask({
+            projectFolder: tmp,
+            taskName: "composePreviewApplied",
+            cancellationKey: "key-3",
+        });
+        await assert.rejects(queued, /cancelled before start/);
+        await repair;
+        assert.strictEqual(
+            api.gradleInvocations.length,
+            2,
+            "the cancelled bundled invocation still spawned",
+        );
+        assert.ok(api.cancelledTasks.includes("composePreviewApplied"));
     });
 
     it("leaves a healthy module's next build alone after a cancellation", async () => {

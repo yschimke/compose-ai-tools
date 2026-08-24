@@ -67,10 +67,10 @@ object PreviewDiscovery {
     /**
      * Source files belonging to the compilation represented by [activeClassDirs]. [sourceFiles] can
      * contain every source set so discovery can map class metadata back to source paths, but
-     * inactive source sets must not trigger the empty-compile integrity guard. Empty falls back to
-     * [sourceFiles] for non-Gradle callers.
+     * inactive source sets must not trigger the empty-compile integrity guard. `null` falls back to
+     * [sourceFiles] for callers that do not model compilations; an empty list is authoritative.
      */
-    val activeSourceFiles: List<File> = emptyList(),
+    val activeSourceFiles: List<File>? = null,
     /**
      * Logical module name surfaced via [PreviewManifest.module]. Bazel rules use the target label;
      * Gradle uses the project path.
@@ -488,7 +488,7 @@ object PreviewDiscovery {
     // Check only the active compilation output. [Input.classDirs] deliberately contains fallback
     // layouts for discovery compatibility; stale classes in an inactive target must not hide an
     // empty cache restore in the compilation that just ran.
-    val integritySourceFiles = input.activeSourceFiles.ifEmpty { input.sourceFiles }
+    val integritySourceFiles = input.activeSourceFiles ?: input.sourceFiles
     val previewSourceFiles = integritySourceFiles.filter {
       it.isFile && !it.isTestSourceSetFile() && it.declaresPreviewAnnotation()
     }
