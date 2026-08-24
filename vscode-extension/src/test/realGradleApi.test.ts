@@ -7,6 +7,7 @@ import {
     RealGradleApi,
     hasEmptyClassOutputs,
     moduleDirForTask,
+    moduleDirsForInvocation,
     parseTaskOutcomes,
 } from "./electron/realGradleApi";
 
@@ -184,6 +185,14 @@ describe("RealGradleApi cancellation repair", () => {
             undefined,
         );
         assert.strictEqual(moduleDirForTask(":help"), undefined);
+        assert.deepStrictEqual(
+            moduleDirsForInvocation("composePreviewApplied", [
+                ":samples:cmp:composePreviewDaemonStart",
+                ":samples:cmp:composePreviewDiscover",
+                "--no-build-cache",
+            ]),
+            [path.join("samples", "cmp")],
+        );
     });
 
     it("calls a module with output roots but no class files empty", () => {
@@ -199,7 +208,7 @@ describe("RealGradleApi cancellation repair", () => {
     });
 
     it("reruns the next build for a module a cancellation left with no classes", async () => {
-        classOutputDir("kotlin", "jvm", "main");
+        const output = classOutputDir("kotlin", "jvm", "main");
         const api = new RealGradleApi(tmp);
 
         const running = api.runTask({
@@ -216,6 +225,17 @@ describe("RealGradleApi cancellation repair", () => {
         await running.catch(() => {
             /* cancellation rejects by contract */
         });
+        fs.writeFileSync(
+            path.join(tmp, "gradlew"),
+            [
+                "#!/bin/sh",
+                `touch ${JSON.stringify(path.join(output, "PreviewsKt.class"))}`,
+                'echo "> Task :samples:cmp:composePreviewRender"',
+                "exit 0",
+                "",
+            ].join("\n"),
+            { mode: 0o755 },
+        );
 
         await api.runTask({
             projectFolder: tmp,
@@ -242,6 +262,133 @@ describe("RealGradleApi cancellation repair", () => {
             cancellationKey: "key-3",
         });
         assert.strictEqual(api.gradleInvocations[2].repaired, undefined);
+    });
+
+    it("queues same-module builds behind an in-flight cancellation repair", async () => {
+        const output = classOutputDir("kotlin", "jvm", "main");
+        const classFile = path.join(output, "PreviewsKt.class");
+        const script = [
+            "#!/bin/sh",
+            `if [ -f ${JSON.stringify(classFile)} ]; then exit 0; fi`,
+            'case " $* " in',
+            '  *" --rerun-tasks "*)',
+            "    sleep 0.2",
+            `    touch ${JSON.stringify(classFile)}`,
+            "    exit 0",
+            "    ;;",
+            "esac",
+            "sleep 10",
+        ].join("\n");
+        fs.writeFileSync(path.join(tmp, "gradlew"), `${script}\n`, {
+            mode: 0o755,
+        });
+        const api = new RealGradleApi(tmp);
+
+        const damaged = api.runTask({
+            projectFolder: tmp,
+            taskName: ":samples:cmp:composePreviewRenderAll",
+            showOutputColors: false,
+            cancellationKey: "key-1",
+        });
+        await api.cancelRunTask({
+            projectFolder: tmp,
+            taskName: ":samples:cmp:composePreviewRenderAll",
+            cancellationKey: "key-1",
+        });
+        await damaged.catch(() => {
+            /* expected */
+        });
+
+        const repair = api.runTask({
+            projectFolder: tmp,
+            taskName: ":samples:cmp:composePreviewRenderAll",
+            showOutputColors: false,
+            cancellationKey: "key-2",
+        });
+        const queued = api.runTask({
+            projectFolder: tmp,
+            taskName: ":samples:cmp:composePreviewCompile",
+            showOutputColors: false,
+            cancellationKey: "key-3",
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        assert.strictEqual(
+            api.gradleInvocations.length,
+            2,
+            "the compile spawned before the repair completed",
+        );
+        await Promise.all([repair, queued]);
+        assert.strictEqual(api.gradleInvocations.length, 3);
+        assert.strictEqual(api.gradleInvocations[1].repaired, true);
+        assert.strictEqual(api.gradleInvocations[2].repaired, undefined);
+    });
+
+    it("keeps a bundled module task queued and cancellable during repair", async () => {
+        const output = classOutputDir("kotlin", "jvm", "main");
+        const classFile = path.join(output, "PreviewsKt.class");
+        fs.writeFileSync(
+            path.join(tmp, "gradlew"),
+            [
+                "#!/bin/sh",
+                'case " $* " in',
+                '  *" --rerun-tasks "*)',
+                "    sleep 0.2",
+                `    touch ${JSON.stringify(classFile)}`,
+                "    exit 0",
+                "    ;;",
+                "esac",
+                "sleep 10",
+                "",
+            ].join("\n"),
+            { mode: 0o755 },
+        );
+        const api = new RealGradleApi(tmp);
+
+        const damaged = api.runTask({
+            projectFolder: tmp,
+            taskName: ":samples:cmp:composePreviewRenderAll",
+            showOutputColors: false,
+            cancellationKey: "key-1",
+        });
+        await api.cancelRunTask({
+            projectFolder: tmp,
+            taskName: ":samples:cmp:composePreviewRenderAll",
+            cancellationKey: "key-1",
+        });
+        await damaged.catch(() => {
+            /* expected */
+        });
+
+        const repair = api.runTask({
+            projectFolder: tmp,
+            taskName: ":samples:cmp:composePreviewRenderAll",
+            showOutputColors: false,
+            cancellationKey: "key-2",
+        });
+        const queued = api.runTask({
+            projectFolder: tmp,
+            taskName: "composePreviewApplied",
+            args: [":samples:cmp:composePreviewDiscover"],
+            showOutputColors: false,
+            cancellationKey: "key-3",
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        assert.strictEqual(api.gradleInvocations.length, 2);
+        await api.cancelRunTask({
+            projectFolder: tmp,
+            taskName: "composePreviewApplied",
+            cancellationKey: "key-3",
+        });
+        await assert.rejects(queued, /cancelled before start/);
+        await repair;
+        assert.strictEqual(
+            api.gradleInvocations.length,
+            2,
+            "the cancelled bundled invocation still spawned",
+        );
+        assert.ok(api.cancelledTasks.includes("composePreviewApplied"));
     });
 
     it("leaves a healthy module's next build alone after a cancellation", async () => {

@@ -80,7 +80,7 @@ class LottieAssetDiscoveryTest {
   }
 
   @Test
-  fun `asset preview cannot mask empty compiled outputs`() {
+  fun `asset preview cannot mask empty compiled outputs when failOnEmpty is false`() {
     val project = tempDir.newFolder("empty-compile")
     val classes = project.resolve("classes").apply { mkdirs() }
     val source =
@@ -103,10 +103,12 @@ class LottieAssetDiscoveryTest {
           failOnEmpty = false,
           resourceDirs = listOf(resources),
         )
-      ) as PreviewDiscovery.Outcome.Success
+      )
 
-    assertThat(outcome.manifest.previews).hasSize(1)
-    val warning = outcome.warnings.joinToString("\n")
+    assertThat(outcome).isInstanceOf(PreviewDiscovery.Outcome.Failure::class.java)
+    val failure = outcome as PreviewDiscovery.Outcome.Failure
+    assertThat(failure.reason).contains("empty compiled outputs")
+    val warning = failure.warnings.joinToString("\n")
     assertThat(warning).contains("active class outputs contain 0 .class files")
     assertThat(warning).contains("--no-build-cache --rerun-tasks")
     assertThat(warning).contains("classFiles=0")
@@ -201,7 +203,7 @@ class LottieAssetDiscoveryTest {
           failOnEmpty = false,
           resourceDirs = listOf(resources),
         )
-      ) as PreviewDiscovery.Outcome.Success
+      ) as PreviewDiscovery.Outcome.Failure
 
     val warning = outcome.warnings.joinToString("\n")
     assertThat(warning).contains("active class outputs contain 0 .class files")
@@ -246,6 +248,38 @@ class LottieAssetDiscoveryTest {
   }
 
   @Test
+  fun `explicitly empty active sources do not fall back to inactive preview sources`() {
+    val project = tempDir.newFolder("empty-active-source-set")
+    val classes = project.resolve("classes/kotlin/desktop/main").apply { mkdirs() }
+    val inactiveSource =
+      project.resolve("src/androidMain/kotlin/AndroidPreview.kt").apply {
+        parentFile.mkdirs()
+        writeText("@NotificationPreview\nfun preview() = Unit")
+      }
+    val resources = project.resolve("resources").apply { mkdirs() }
+    resources.resolve("spin.json").writeText("""{"v":"5.7.0","layers":[]}""")
+
+    val outcome =
+      PreviewDiscovery.discover(
+        PreviewDiscovery.Input(
+          classDirs = listOf(classes),
+          activeClassDirs = listOf(classes),
+          dependencyJars = emptyList(),
+          sourceFiles = listOf(inactiveSource),
+          activeSourceFiles = emptyList(),
+          moduleName = ":app",
+          variantName = "desktop",
+          projectDirectory = project,
+          failOnEmpty = false,
+          resourceDirs = listOf(resources),
+        )
+      ) as PreviewDiscovery.Outcome.Success
+
+    assertThat(outcome.warnings.joinToString("\n")).doesNotContain("empty build-cache entry")
+    assertThat(outcome.manifest.previews).hasSize(1)
+  }
+
+  @Test
   fun `supported preview annotation names flag empty compiled outputs`() {
     val project = tempDir.newFolder("supported-preview-names")
     val classes = project.resolve("classes").apply { mkdirs() }
@@ -271,7 +305,7 @@ class LottieAssetDiscoveryTest {
               failOnEmpty = false,
               resourceDirs = listOf(resources),
             )
-          ) as PreviewDiscovery.Outcome.Success
+          ) as PreviewDiscovery.Outcome.Failure
 
         assertThat(outcome.warnings.joinToString("\n"))
           .contains("active class outputs contain 0 .class files")
