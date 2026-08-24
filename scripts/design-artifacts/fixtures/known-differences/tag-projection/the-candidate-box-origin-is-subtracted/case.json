@@ -1,0 +1,30 @@
+{
+  "title": "A cropped candidate, whose content box does not start at the origin",
+  "why": "The ordinary case on any preview with a scaffold sheet around it. The index measures from the render root; the plane starts at the content box, so the box's origin comes off first.",
+  "candidateBox": {
+    "x": 10,
+    "y": 20,
+    "width": 40,
+    "height": 30
+  },
+  "plane": {
+    "plane": "content-box",
+    "box": {
+      "x": 4,
+      "y": 4,
+      "width": 40,
+      "height": 30
+    }
+  },
+  "tagIndex": {
+    "glyph": {
+      "count": 1,
+      "bounds": {
+        "x": 18,
+        "y": 26,
+        "width": 8,
+        "height": 6
+      }
+    }
+  }
+}

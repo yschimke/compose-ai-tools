@@ -26,9 +26,9 @@
  * number that is about to move once.
  */
 
-// The resampler lives with the rest of the reference implementation of the contract; this file is a
-// second consumer of it rather than a second copy.
-import { resampleArea } from "./known-differences.mjs";
+// The resampler and the outward-rounding rule live with the rest of the reference implementation of
+// the contract; this file is a second consumer of them rather than a second copy.
+import { enclosingBox, resampleArea } from "./known-differences.mjs";
 
 /**
  * Detection tuning, mirroring `cli/serve-web/src/scorer/tuning.ts` for the reason
@@ -196,4 +196,73 @@ export function canonicalRaster(image, box, plane) {
   }
   if (cropped.width === plane.box.width && cropped.height === plane.box.height) return cropped;
   return resampleArea(cropped, plane.box.width, plane.box.height);
+}
+
+/**
+ * Project the published tag index into the canonical plane.
+ *
+ * **The index publishes `boundsInRoot` in render pixels and says so on the wire**
+ * ([D1](parity-batches/00-decisions.md#d1--which-plane-the-element-tag-index-reports-bounds-in)),
+ * while an acceptance's `element.bounds` is its authoring-time baseline in *canonical* coordinates.
+ * The element gate compares the two directly, so somebody has to convert — and D1 settled who: a
+ * plane is a property of a comparison and the index is a property of a render, so the transform is a
+ * step of **the comparison**, which is this function.
+ *
+ * §4 states the mistake this exists to prevent, in as many words: *"an engine that expects canonical
+ * bounds from the index either compares raw render coordinates or transforms an already-transformed
+ * box, and both report `element-moved` for an element that never moved."* A false invalidation with
+ * a plausible explanation attached is worse than a missing check, because nothing surfaces it.
+ *
+ * The transform, exactly as §4's table gives it: subtract the candidate box's origin, then scale
+ * **x and y independently** — `plane.width / candidateBox.width` for x, `plane.height /
+ * candidateBox.height` for y. Independently because `boxCanvas` stretches width and height
+ * separately and the comparison explicitly *supports* the two content boxes disagreeing about
+ * proportion, which is exactly the case an acceptance is most likely to be sitting on; a
+ * single-ratio projection would land the box at the right x and the wrong y.
+ *
+ * Rounding is outward at both ends (D5 answer 5) — the index's own render-pixel box first, then the
+ * transformed one — so displacement is measured between two integer boxes. Outward rounding is
+ * idempotent on a box that is already integral, so an already-integer index is not inflated.
+ *
+ * A box that clips to nothing keeps its `count` and loses its `bounds`: the tag still exists in the
+ * tree, and the gate's own rule for a resolved node carrying no usable geometry takes over from
+ * there. Dropping the entry entirely would say the tag had *vanished*, which is a different verdict.
+ */
+export function projectTagIndex(tagIndex, candidateBox, plane) {
+  const projected = {};
+  for (const [tag, entry] of Object.entries(tagIndex ?? {})) {
+    if (!entry || typeof entry !== "object") continue;
+    const bounds = projectRenderBox(entry.bounds, candidateBox, plane);
+    projected[tag] = bounds ? { count: entry.count, bounds } : { count: entry.count };
+  }
+  return projected;
+}
+
+/**
+ * One render-pixel box into the canonical plane, or null when it clips to nothing.
+ *
+ * The plane's coordinates are **plane-local** — a mask is authored at `(0, 0)` whatever the box's
+ * origin in the reference raster is — so the clip is against `plane.box`'s *dimensions* rather than
+ * against its position.
+ */
+export function projectRenderBox(box, candidateBox, plane) {
+  if (!box || !Number.isFinite(box.x) || !Number.isFinite(box.y)) return null;
+  if (!(box.width > 0) || !(box.height > 0)) return null;
+  // The index's own box first. A producer publishes integers, so this is normally the identity — but
+  // rounding at both ends is what makes the rule true of any producer rather than of ours.
+  const source = enclosingBox(box);
+  const scaleX = plane.box.width / candidateBox.width;
+  const scaleY = plane.box.height / candidateBox.height;
+  const transformed = enclosingBox({
+    x: (source.x - candidateBox.x) * scaleX,
+    y: (source.y - candidateBox.y) * scaleY,
+    width: source.width * scaleX,
+    height: source.height * scaleY,
+  });
+  const x0 = Math.max(0, transformed.x);
+  const y0 = Math.max(0, transformed.y);
+  const x1 = Math.min(plane.box.width, transformed.x + transformed.width);
+  const y1 = Math.min(plane.box.height, transformed.y + transformed.height);
+  if (x1 <= x0 || y1 <= y0) return null;
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
 }

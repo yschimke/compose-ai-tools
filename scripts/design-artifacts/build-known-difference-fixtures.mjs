@@ -5330,6 +5330,105 @@ function addPlane(entry) {
 }
 
 // --------------------------------------------------------------------------------------------
+// 5e. The tag index projected into the canonical plane.
+//
+// The index publishes render pixels and says so; an acceptance's `element.bounds` is canonical. The
+// element gate compares the two directly, so the comparison must convert — and §4 names the failure
+// for not converting: "an engine that expects canonical bounds from the index either compares raw
+// render coordinates or transforms an already-transformed box, and both report `element-moved` for
+// an element that never moved". A false invalidation with a plausible explanation attached, which
+// nothing surfaces.
+//
+// Pure geometry, like `rounding/`, so every expectation is derivable by hand.
+// --------------------------------------------------------------------------------------------
+
+const tagProjectionCases = [];
+
+function addTagProjection(entry) {
+  tagProjectionCases.push(entry);
+}
+
+addTagProjection({
+  id: "an-uncropped-plane-is-the-identity",
+  title: "A candidate box at the origin, the same size as the plane",
+  why:
+    "The case that hides the bug. With a zero origin and a 1:1 scale the raw index is already " +
+    "canonical, so an engine that skips the transform passes this and fails everything below it.",
+  candidateBox: { x: 0, y: 0, width: 40, height: 30 },
+  plane: { plane: "content-box", box: { x: 0, y: 0, width: 40, height: 30 } },
+  tagIndex: { glyph: { count: 1, bounds: { x: 8, y: 6, width: 10, height: 12 } } },
+  expected: { glyph: { count: 1, bounds: { x: 8, y: 6, width: 10, height: 12 } } },
+});
+
+addTagProjection({
+  id: "the-candidate-box-origin-is-subtracted",
+  title: "A cropped candidate, whose content box does not start at the origin",
+  why:
+    "The ordinary case on any preview with a scaffold sheet around it. The index measures from the " +
+    "render root; the plane starts at the content box, so the box's origin comes off first.",
+  candidateBox: { x: 10, y: 20, width: 40, height: 30 },
+  plane: { plane: "content-box", box: { x: 4, y: 4, width: 40, height: 30 } },
+  tagIndex: { glyph: { count: 1, bounds: { x: 18, y: 26, width: 8, height: 6 } } },
+  expected: { glyph: { count: 1, bounds: { x: 8, y: 6, width: 8, height: 6 } } },
+});
+
+addTagProjection({
+  id: "the-two-axes-scale-independently",
+  title: "A candidate box whose proportion differs from the plane's",
+  why:
+    "`boxCanvas` stretches width and height separately, and the comparison *supports* the two " +
+    "content boxes disagreeing about proportion — `aspectDelta` reports it as a finding rather " +
+    "than normalising it away. A single-ratio projection lands the box at the right x and the " +
+    "wrong y, which is the shape an acceptance is most likely to be sitting on.",
+  // x halves (80 → 40), y doubles (30 → 60).
+  candidateBox: { x: 0, y: 0, width: 80, height: 30 },
+  plane: { plane: "content-box", box: { x: 0, y: 0, width: 40, height: 60 } },
+  tagIndex: { glyph: { count: 1, bounds: { x: 20, y: 6, width: 16, height: 5 } } },
+  expected: { glyph: { count: 1, bounds: { x: 10, y: 12, width: 8, height: 10 } } },
+});
+
+addTagProjection({
+  id: "a-fractional-projection-rounds-outward",
+  title: "A scale that lands the box off the integer grid",
+  why:
+    "Outward at both ends (D5 answer 5): the index's own box first, the transformed one second. " +
+    "Rounding inward would report an element as having shrunk, and rounding to nearest would let " +
+    "it drift by half a pixel in either direction — both measured as movement by the gate.",
+  // A third: 30 → 10 on x, 30 → 10 on y.
+  candidateBox: { x: 0, y: 0, width: 30, height: 30 },
+  plane: { plane: "content-box", box: { x: 0, y: 0, width: 10, height: 10 } },
+  // 7/3 = 2.33 → floor 2; far edge 11/3 = 3.66 → ceil 4. Width 4 - 2 = 2.
+  tagIndex: { glyph: { count: 1, bounds: { x: 7, y: 7, width: 4, height: 4 } } },
+  expected: { glyph: { count: 1, bounds: { x: 2, y: 2, width: 2, height: 2 } } },
+});
+
+addTagProjection({
+  id: "a-negative-origin-clips-to-the-plane",
+  title: "A tagged node reaching above and left of the content box",
+  why:
+    "`boundsInRoot` may legitimately be negative — `ServeSemanticsTags` and `tag-index.mjs` both " +
+    "emit that — and the plane's coordinates are plane-local, so the part outside it is clipped " +
+    "rather than carried as a negative origin the mask has no pixels for.",
+  candidateBox: { x: 10, y: 10, width: 40, height: 30 },
+  plane: { plane: "content-box", box: { x: 0, y: 0, width: 40, height: 30 } },
+  tagIndex: { glyph: { count: 1, bounds: { x: 4, y: 4, width: 12, height: 12 } } },
+  expected: { glyph: { count: 1, bounds: { x: 0, y: 0, width: 6, height: 6 } } },
+});
+
+addTagProjection({
+  id: "a-box-outside-the-plane-keeps-its-count",
+  title: "A tagged node that clips away entirely",
+  why:
+    "The tag is still in the tree, so its `count` survives and only its geometry is lost — the " +
+    "gate's own rule for a resolved node with no usable bounds takes over from there. Dropping the " +
+    "entry would say the tag had *vanished*, which is a different verdict about a different fact.",
+  candidateBox: { x: 0, y: 0, width: 40, height: 30 },
+  plane: { plane: "content-box", box: { x: 0, y: 0, width: 40, height: 30 } },
+  tagIndex: { glyph: { count: 2, bounds: { x: 60, y: 60, width: 8, height: 8 } } },
+  expected: { glyph: { count: 2 } },
+});
+
+// --------------------------------------------------------------------------------------------
 // 6. Write the tree.
 // --------------------------------------------------------------------------------------------
 
@@ -5387,6 +5486,21 @@ for (const entry of resampleCases) {
   );
 }
 
+for (const entry of tagProjectionCases) {
+  const dir = `tag-projection/${entry.id}`;
+  write(
+    `${dir}/case.json`,
+    json({
+      title: entry.title,
+      why: entry.why,
+      candidateBox: entry.candidateBox,
+      plane: entry.plane,
+      tagIndex: entry.tagIndex,
+    }),
+  );
+  write(`${dir}/expected.json`, json(entry.expected));
+}
+
 for (const entry of planeCases) {
   const dir = `plane/${entry.id}`;
   write(`${dir}/reference.png`, Buffer.from(rgbaPng(entry.reference)));
@@ -5430,6 +5544,7 @@ write(
     rounding: roundingCases.map((entry) => ({ id: entry.id, title: entry.title })),
     scoring: scoringCases.map((entry) => ({ id: entry.id, title: entry.title })),
     plane: planeCases.map((entry) => ({ id: entry.id, title: entry.title })),
+    tagProjection: tagProjectionCases.map((entry) => ({ id: entry.id, title: entry.title })),
   }),
 );
 
@@ -5560,11 +5675,23 @@ write(
     "| --- | --- |",
     ...planeCases.map((entry) => `| \`${entry.id}\` | ${entry.title} |`),
     "",
+    "## The tag index, projected",
+    "",
+    "The index publishes `boundsInRoot` in **render pixels** and names that space on the wire; an",
+    "acceptance's `element.bounds` is its authoring-time baseline in the **canonical plane**. The",
+    "element gate compares the two directly, so the comparison converts — and §4 names the failure for",
+    "not converting: an engine that expects canonical bounds from the index reports `element-moved` for",
+    "an element that never moved. Pure geometry, so every expectation is derivable by hand.",
+    "",
+    "| Case | What it pins |",
+    "| --- | --- |",
+    ...tagProjectionCases.map((entry) => `| \`${entry.id}\` | ${entry.title} |`),
+    "",
   ].join("\n"),
 );
 
 process.stdout.write(
   `known-differences fixtures: ${cases.length} cases, ${resampleCases.length} resample cases, ` +
     `${roundingCases.length} rounding cases, ${scoringCases.length} scoring cases, ` +
-    `${planeCases.length} plane cases\n`,
+    `${planeCases.length} plane cases, ${tagProjectionCases.length} tag-projection cases\n`,
 );

@@ -3683,45 +3683,66 @@ class ServeHttpServer(
           // page would also carry the engine's bundle — the heaviest asset on it — to evaluate
           // nothing.
           //
+          // **And never on a pinned revision.** Both panels take the pin, so the pixels are
+          // historical — while the document, and the `referenceSha256` below, come from the catalog
+          // as it is *now*. The fingerprint gate would then be comparing today's metadata against
+          // yesterday's bytes: it can pass, and an acceptance authored long after that revision
+          // would be reported as `valid` and suppress pixels on a comparison it was never published
+          // for. A historical revision's acceptances are not published, so there is nothing correct
+          // to show here and the honest answer is to show nothing. The other layers on this page
+          // are withheld on a pin for the same reason.
+          //
           // The scope fields are read from the SAME `reportContext` the locator is written from,
           // not derived a second time. An acceptance matches on every recorded field, `system` and
           // `component` included, so two spellings of one identity would let a record miss the very
           // comparison it was authored on.
           knownDifferences =
-            renderHost.knownDifferences()?.let {
-              val system = reportContext.system
-              val component = reportContext.componentId
-              // Both are optional on a report — a page-scoped one names neither — and **required**
-              // by an acceptance's scope, which matches on every recorded field. A comparison that
-              // cannot name its system or its component can therefore never match a record, so the
-              // band and its bundle are left off rather than evaluating a document that has nothing
-              // to say about this page.
-              if (system == null || component == null) return@let null
-              KnownDifferenceScope(
-                system = system,
-                component = component,
-                previewId = preview.id,
-                referenceId = reference.id,
-                variant = reportContext.variant,
-                overrides = overrideParams,
-                // Null when the reference publishes no digest, which is `reference-hash-missing`
-                // and a **refusal**: the fingerprint gate has nothing to compare against, and a
-                // gate
-                // that cannot have fired must not be reported as having passed.
-                referenceSha256 = reference.raster.sha256,
-                // Empty unless the published index describes the frame on screen. That is the same
-                // gate the element *picker* is behind, and for a stronger reason here: an
-                // element-scoped acceptance whose gate cannot run suppresses nothing, so handing
-                // over an index measured on a different render would report an element that never
-                // moved as moved — a false invalidation with a plausible explanation attached.
-                tagIndex =
-                  if (!tagsDescribeFrame) emptyMap()
-                  else
-                    tagIndex.mapValues { (_, entry) ->
-                      WireTagEntry(count = entry.count, bounds = entry.bounds, space = entry.space)
-                    },
-              )
-            },
+            renderHost
+              .knownDifferences()
+              ?.takeIf { !pinned }
+              ?.let {
+                val system = reportContext.system
+                val component = reportContext.componentId
+                // Both are optional on a report — a page-scoped one names neither — and
+                // **required**
+                // by an acceptance's scope, which matches on every recorded field. A comparison
+                // that
+                // cannot name its system or its component can therefore never match a record, so
+                // the
+                // band and its bundle are left off rather than evaluating a document that has
+                // nothing
+                // to say about this page.
+                if (system == null || component == null) return@let null
+                KnownDifferenceScope(
+                  system = system,
+                  component = component,
+                  previewId = preview.id,
+                  referenceId = reference.id,
+                  variant = reportContext.variant,
+                  overrides = overrideParams,
+                  // Null when the reference publishes no digest, which is `reference-hash-missing`
+                  // and a **refusal**: the fingerprint gate has nothing to compare against, and a
+                  // gate
+                  // that cannot have fired must not be reported as having passed.
+                  referenceSha256 = reference.raster.sha256,
+                  // Empty unless the published index describes the frame on screen. That is the
+                  // same
+                  // gate the element *picker* is behind, and for a stronger reason here: an
+                  // element-scoped acceptance whose gate cannot run suppresses nothing, so handing
+                  // over an index measured on a different render would report an element that never
+                  // moved as moved — a false invalidation with a plausible explanation attached.
+                  tagIndex =
+                    if (!tagsDescribeFrame) emptyMap()
+                    else
+                      tagIndex.mapValues { (_, entry) ->
+                        WireTagEntry(
+                          count = entry.count,
+                          bounds = entry.bounds,
+                          space = entry.space,
+                        )
+                      },
+                )
+              },
           parityIssues =
             renderHost.parityIssues()?.issues.orEmpty().filter { issue ->
               preview.id in issue.previewIds ||

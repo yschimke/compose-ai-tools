@@ -315,3 +315,20 @@ without this group.
 | `a-blank-capture-has-no-box` | A capture with nothing drawn on it |
 | `a-sliver-falls-back-to-the-full-canvas` | One side below `MIN_BOX_COVERAGE`, and both fall back |
 | `the-sampling-downscale-is-the-portable-kernel` | A capture large enough to be downscaled before it is sampled |
+
+## The tag index, projected
+
+The index publishes `boundsInRoot` in **render pixels** and names that space on the wire; an
+acceptance's `element.bounds` is its authoring-time baseline in the **canonical plane**. The
+element gate compares the two directly, so the comparison converts — and §4 names the failure for
+not converting: an engine that expects canonical bounds from the index reports `element-moved` for
+an element that never moved. Pure geometry, so every expectation is derivable by hand.
+
+| Case | What it pins |
+| --- | --- |
+| `an-uncropped-plane-is-the-identity` | A candidate box at the origin, the same size as the plane |
+| `the-candidate-box-origin-is-subtracted` | A cropped candidate, whose content box does not start at the origin |
+| `the-two-axes-scale-independently` | A candidate box whose proportion differs from the plane's |
+| `a-fractional-projection-rounds-outward` | A scale that lands the box off the integer grid |
+| `a-negative-origin-clips-to-the-plane` | A tagged node reaching above and left of the content box |
+| `a-box-outside-the-plane-keeps-its-count` | A tagged node that clips away entirely |

@@ -1,0 +1,30 @@
+{
+  "title": "A candidate box at the origin, the same size as the plane",
+  "why": "The case that hides the bug. With a zero origin and a 1:1 scale the raw index is already canonical, so an engine that skips the transform passes this and fails everything below it.",
+  "candidateBox": {
+    "x": 0,
+    "y": 0,
+    "width": 40,
+    "height": 30
+  },
+  "plane": {
+    "plane": "content-box",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "width": 40,
+      "height": 30
+    }
+  },
+  "tagIndex": {
+    "glyph": {
+      "count": 1,
+      "bounds": {
+        "x": 8,
+        "y": 6,
+        "width": 10,
+        "height": 12
+      }
+    }
+  }
+}

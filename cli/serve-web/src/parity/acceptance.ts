@@ -26,11 +26,13 @@ import {
     canonicalRaster,
     decodePng,
     evaluateKnownDifferences,
+    projectTagIndex,
     resolvePlane,
     scoreComparison,
     type ArtifactAnswer,
     type Catalog,
     type Raster,
+    type TagIndex,
 } from "./engine.js";
 
 /** The identity half of the comparison, straight off the page's locator. */
@@ -61,8 +63,18 @@ export interface AcceptanceStatus {
 }
 
 export interface AcceptanceReport {
-    /** Absent when the catalog publishes no document at all — not the same as an empty one. */
-    published: boolean;
+    /**
+     * Three outcomes, not two.
+     *
+     * `absent` is a catalog that has accepted nothing — the ordinary case, and the one the band says
+     * nothing about. `unavailable` is a catalog that has, and whose document this page could not
+     * fetch: an auth failure, a server error, a network drop. Folding the second into the first
+     * would hide the band on exactly the pages where an acceptance exists and went unevaluated,
+     * which reads to a viewer as "nothing is accepted here" — a clean bill of health for a page that
+     * measured nothing. The page only carries this evaluator at all because the *server* found a
+     * document, so absence at this point is already surprising.
+     */
+    state: "absent" | "unavailable" | "evaluated";
     statuses: Record<string, AcceptanceStatus>;
     validationFailures: Array<{ id?: string; reason: string }>;
     /** The three scores, or null when the pair could not be decoded. */
@@ -71,13 +83,12 @@ export interface AcceptanceReport {
     suppressing: string[];
 }
 
-const NOT_PUBLISHED: AcceptanceReport = {
-    published: false,
-    statuses: {},
-    validationFailures: [],
-    scores: null,
-    suppressing: [],
-};
+function empty(state: AcceptanceReport["state"]): AcceptanceReport {
+    // A function rather than a shared frozen object: the report is handed to a component that reads
+    // it and could reasonably sort or filter it, and two pages sharing one array is the kind of
+    // aliasing that only shows up once someone does.
+    return { state, statuses: {}, validationFailures: [], scores: null, suppressing: [] };
+}
 
 /**
  * Evaluate this catalog's acceptances against one comparison, and score it.
@@ -89,10 +100,11 @@ const NOT_PUBLISHED: AcceptanceReport = {
 export async function evaluateComparison(
     sources: AcceptanceSources,
     scope: AcceptanceScope,
-    tagIndex: Record<string, { count: number; bounds?: unknown }>,
+    tagIndex: TagIndex,
 ): Promise<AcceptanceReport> {
     const document = await fetchDocument(sources.documentUrl);
-    if (document === null) return NOT_PUBLISHED;
+    if (document.state === "absent") return empty("absent");
+    if (document.state === "unavailable") return empty("unavailable");
 
     // The two rasters, decoded by the contract's own reader rather than by the browser's. Both are
     // needed before any gate can run: the plane gate samples their pixels, and the candidate gate
@@ -109,7 +121,7 @@ export async function evaluateComparison(
             comparison: null,
         });
         return {
-            published: true,
+            state: "evaluated",
             statuses: result.statuses ?? {},
             validationFailures: result.validationFailures,
             scores: null,
@@ -136,7 +148,14 @@ export async function evaluateComparison(
                 resolved.boxes.candidate,
                 resolved.plane,
             ),
-            tagIndex,
+            // **Projected, not passed through.** The index publishes `boundsInRoot` in render
+            // pixels and says so on the wire; an acceptance's `element.bounds` is its baseline in
+            // the canonical plane, and the element gate compares the two directly. §4 names the
+            // failure for skipping this: an engine that expects canonical bounds from the index
+            // reports `element-moved` for an element that never moved — a false invalidation with a
+            // plausible explanation attached, which nothing surfaces. The transform belongs to the
+            // comparison (D1), and this is the comparison.
+            tagIndex: projectTagIndex(tagIndex, resolved.boxes.candidate, resolved.plane),
         },
     });
 
@@ -154,7 +173,7 @@ export async function evaluateComparison(
     });
 
     return {
-        published: true,
+        state: "evaluated",
         statuses: result.statuses ?? {},
         validationFailures: result.validationFailures,
         scores: {
@@ -184,7 +203,8 @@ export async function walkCatalog(
     catalog: Catalog,
 ): Promise<AcceptanceReport> {
     const document = await fetchDocument(sources.documentUrl);
-    if (document === null) return NOT_PUBLISHED;
+    if (document.state === "absent") return empty("absent");
+    if (document.state === "unavailable") return empty("unavailable");
     const artifacts = await prefetch(document.text, sources.artifactUrl);
     const result = evaluateKnownDifferences({
         documentText: document.text,
@@ -193,7 +213,7 @@ export async function walkCatalog(
         catalog,
     });
     return {
-        published: true,
+        state: "evaluated",
         statuses: result.statuses ?? {},
         validationFailures: result.validationFailures,
         scores: null,
@@ -202,28 +222,43 @@ export async function walkCatalog(
 }
 
 /**
- * The document's text, `null` when the catalog publishes none.
+ * The document's text, or which of the two ways there isn't one.
  *
- * A 413 is turned into the text the engine would refuse rather than reported as absent: the host
+ * **A 404 is the only absence.** Anything else — 401, 500, a network drop — means the catalog has a
+ * document this page could not read, and reporting that as "nothing accepted" would hide the band on
+ * exactly the pages where an acceptance exists and went unevaluated. The page only carries this
+ * evaluator because the *server* already found a document, so even the 404 is a surprise; it is
+ * still the honest reading of one, because the document can be deleted between the page render and
+ * the fetch.
+ *
+ * A 413 is turned into the text the engine would refuse rather than reported either way: the host
  * refuses an oversized document from its length, so nothing has allocated it, and the consumer that
- * owns `document-too-large` still needs to be able to say so. Any other failure is treated as
- * absence — a network error is not a verdict about a catalog.
+ * owns `document-too-large` still needs to be able to say so.
  */
-async function fetchDocument(url: string): Promise<{ text: string } | null> {
+type DocumentFetch =
+    | { state: "absent" }
+    | { state: "unavailable" }
+    | { state: "text"; text: string };
+
+async function fetchDocument(url: string): Promise<DocumentFetch> {
     let response: Response;
     try {
         response = await fetch(url, { credentials: "same-origin" });
     } catch {
-        return null;
+        return { state: "unavailable" };
     }
-    if (response.status === 404) return null;
+    if (response.status === 404) return { state: "absent" };
     if (response.status === 413) {
         // A string the engine measures as over the ceiling, without transferring one. The ceiling is
         // in UTF-8 bytes and this is ASCII, so its length is its byte length.
-        return { text: "x".repeat(1024 * 1024 + 1) };
+        return { state: "text", text: "x".repeat(1024 * 1024 + 1) };
     }
-    if (!response.ok) return null;
-    return { text: await response.text() };
+    if (!response.ok) return { state: "unavailable" };
+    try {
+        return { state: "text", text: await response.text() };
+    } catch {
+        return { state: "unavailable" };
+    }
 }
 
 async function fetchPair(

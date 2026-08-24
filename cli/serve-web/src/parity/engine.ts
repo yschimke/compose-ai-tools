@@ -20,6 +20,7 @@
 import { evaluateKnownDifferences as evaluateJs } from "../../../../scripts/design-artifacts/known-differences.mjs";
 import {
     canonicalRaster as canonicalRasterJs,
+    projectTagIndex as projectTagIndexJs,
     resolvePlane as resolvePlaneJs,
 } from "../../../../scripts/design-artifacts/known-difference-plane.mjs";
 import { scoreComparison as scoreComparisonJs } from "../../../../scripts/design-artifacts/known-difference-score.mjs";
@@ -62,6 +63,9 @@ export interface EngineResult {
     validationFailures: Array<{ id?: string; reason: string }>;
 }
 
+/** `testTag → {count, bounds}`. Bounds are render-pixel on the wire and canonical after projection. */
+export type TagIndex = Record<string, { count: number; bounds?: unknown }>;
+
 export interface Comparison {
     system: string;
     component: string;
@@ -73,7 +77,7 @@ export interface Comparison {
     plane: Plane;
     canonicalReference: Raster;
     canonicalCandidate: Raster;
-    tagIndex: Record<string, { count: number; bounds?: unknown }>;
+    tagIndex: TagIndex;
 }
 
 export interface Catalog {
@@ -114,3 +118,10 @@ export const canonicalRaster = canonicalRasterJs as unknown as (
 ) => Raster;
 
 export const decodePng = decodePngJs as unknown as (bytes: Uint8Array) => Raster;
+
+/** The published tag index, render-pixel, projected into the comparison's canonical plane. */
+export const projectTagIndex = projectTagIndexJs as unknown as (
+    tagIndex: TagIndex,
+    candidateBox: Box,
+    plane: Plane,
+) => TagIndex;

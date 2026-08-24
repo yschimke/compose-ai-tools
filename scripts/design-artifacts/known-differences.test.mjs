@@ -230,6 +230,10 @@ test("every case directory is listed in index.json, and vice versa", () => {
     readdirSync(join(ROOT, "plane")).sort(),
     index.plane.map((entry) => entry.id).sort(),
   );
+  assert.deepEqual(
+    readdirSync(join(ROOT, "tag-projection")).sort(),
+    index.tagProjection.map((entry) => entry.id).sort(),
+  );
 });
 
 for (const id of caseIds) {

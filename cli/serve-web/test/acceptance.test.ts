@@ -185,9 +185,24 @@ describe("evaluateComparison", () => {
         const report = await withFetch({}, () =>
             evaluateComparison(SOURCES, SCOPE, {}),
         );
-        assert.equal(report.published, false);
+        assert.equal(report.state, "absent");
         assert.deepEqual(report.statuses, {});
         assert.equal(report.scores, null);
+    });
+
+    it("tells a document it could not fetch apart from one that is not there", async () => {
+        // Folding a 401 or a 500 into "absent" hides the band on exactly the pages where an
+        // acceptance exists and went unevaluated — which reads to a viewer as a clean bill of
+        // health for a comparison nobody measured.
+        const scene = world();
+        for (const status of [401, 500, 503] as const) {
+            const routes = catalogRoutes(scene, document(scene));
+            routes[SOURCES.documentUrl] = status;
+            const report = await withFetch(routes, () =>
+                evaluateComparison(SOURCES, SCOPE, {}),
+            );
+            assert.equal(report.state, "unavailable", `HTTP ${status}`);
+        }
     });
 
     it("accepts the recorded difference and reports three separate numbers", async () => {
@@ -195,7 +210,7 @@ describe("evaluateComparison", () => {
         const report = await withFetch(catalogRoutes(scene, document(scene)), () =>
             evaluateComparison(SOURCES, SCOPE, {}),
         );
-        assert.equal(report.published, true);
+        assert.equal(report.state, "evaluated");
         assert.deepEqual(report.statuses, { glyph: { status: "valid" } });
         assert.deepEqual(report.suppressing, ["glyph"]);
         assert.ok(report.scores, "a decodable pair must be scored");
@@ -242,6 +257,35 @@ describe("evaluateComparison", () => {
         assert.deepEqual(report.suppressing, []);
     });
 
+    it("projects the tag index into the canonical plane before gating on it", async () => {
+        // The index publishes render pixels; `element.bounds` is canonical. Handing the raw index to
+        // the engine compares two coordinate systems, and §4 names the result: an element that never
+        // moved is reported as moved. Here the plane's origin is non-zero, so the two differ — and
+        // the acceptance only stays `valid` if the projection happened.
+        const scene = world();
+        const plane = scene.plane;
+        assert.ok(plane.box.x > 0 || plane.box.y > 0, "the fixture must exercise a cropped plane");
+        const doc = document(scene, {
+            element: {
+                kind: "tag",
+                tag: "glyph",
+                // The mark's box in CANONICAL coordinates — what an author records.
+                bounds: scene.local,
+                tolerance: 0.1,
+            },
+        });
+        // …and the index reports the same node in RENDER pixels, which is the mark's box in the
+        // full raster.
+        const renderBounds = MARK;
+        const report = await withFetch(catalogRoutes(scene, doc), () =>
+            evaluateComparison(SOURCES, SCOPE, {
+                glyph: { count: 1, bounds: renderBounds },
+            }),
+        );
+        assert.deepEqual(report.statuses, { glyph: { status: "valid" } });
+        assert.deepEqual(report.suppressing, ["glyph"]);
+    });
+
     it("refuses an acceptance authored for another system", async () => {
         const scene = world();
         const doc = document(scene, { system: "wear-m3" });
@@ -262,7 +306,7 @@ describe("evaluateComparison", () => {
         const report = await withFetch(routes, () =>
             evaluateComparison(SOURCES, SCOPE, {}),
         );
-        assert.equal(report.published, true, "a refused document is not an absent one");
+        assert.equal(report.state, "evaluated", "a refused document is not an absent one");
         assert.deepEqual(report.validationFailures, [{ reason: "document-too-large" }]);
     });
 });

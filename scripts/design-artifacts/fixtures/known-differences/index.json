@@ -978,5 +978,31 @@
       "id": "the-sampling-downscale-is-the-portable-kernel",
       "title": "A capture large enough to be downscaled before it is sampled"
     }
+  ],
+  "tagProjection": [
+    {
+      "id": "an-uncropped-plane-is-the-identity",
+      "title": "A candidate box at the origin, the same size as the plane"
+    },
+    {
+      "id": "the-candidate-box-origin-is-subtracted",
+      "title": "A cropped candidate, whose content box does not start at the origin"
+    },
+    {
+      "id": "the-two-axes-scale-independently",
+      "title": "A candidate box whose proportion differs from the plane's"
+    },
+    {
+      "id": "a-fractional-projection-rounds-outward",
+      "title": "A scale that lands the box off the integer grid"
+    },
+    {
+      "id": "a-negative-origin-clips-to-the-plane",
+      "title": "A tagged node reaching above and left of the content box"
+    },
+    {
+      "id": "a-box-outside-the-plane-keeps-its-count",
+      "title": "A tagged node that clips away entirely"
+    }
   ]
 }

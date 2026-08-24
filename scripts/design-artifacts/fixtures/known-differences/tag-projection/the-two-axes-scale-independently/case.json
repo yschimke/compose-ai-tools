@@ -1,0 +1,30 @@
+{
+  "title": "A candidate box whose proportion differs from the plane's",
+  "why": "`boxCanvas` stretches width and height separately, and the comparison *supports* the two content boxes disagreeing about proportion — `aspectDelta` reports it as a finding rather than normalising it away. A single-ratio projection lands the box at the right x and the wrong y, which is the shape an acceptance is most likely to be sitting on.",
+  "candidateBox": {
+    "x": 0,
+    "y": 0,
+    "width": 80,
+    "height": 30
+  },
+  "plane": {
+    "plane": "content-box",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "width": 40,
+      "height": 60
+    }
+  },
+  "tagIndex": {
+    "glyph": {
+      "count": 1,
+      "bounds": {
+        "x": 20,
+        "y": 6,
+        "width": 16,
+        "height": 5
+      }
+    }
+  }
+}

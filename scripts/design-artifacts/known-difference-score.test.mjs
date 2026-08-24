@@ -20,12 +20,18 @@ import { fileURLToPath } from "node:url";
 
 import { decodePng } from "./png-lite.mjs";
 import { SCORE_TUNING } from "./known-difference-tuning.mjs";
-import { PLANE_TUNING, contentBox, resolvePlane } from "./known-difference-plane.mjs";
+import {
+  PLANE_TUNING,
+  contentBox,
+  projectTagIndex,
+  resolvePlane,
+} from "./known-difference-plane.mjs";
 import { REGIONS, scoreComparison } from "./known-difference-score.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCORING = join(HERE, "fixtures", "known-differences", "scoring");
 const PLANE = join(HERE, "fixtures", "known-differences", "plane");
+const TAG_PROJECTION = join(HERE, "fixtures", "known-differences", "tag-projection");
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
@@ -133,6 +139,16 @@ for (const id of readdirSync(PLANE).sort()) {
           assert.fail(`unknown pin \`${pin}\` in plane/${id}/expected.json`);
       }
     }
+  });
+}
+
+for (const id of readdirSync(TAG_PROJECTION).sort()) {
+  const dir = join(TAG_PROJECTION, id);
+  const meta = readJson(join(dir, "case.json"));
+  const expected = readJson(join(dir, "expected.json"));
+
+  test(`tag projection: ${id} — ${meta.title}`, () => {
+    assert.deepEqual(projectTagIndex(meta.tagIndex, meta.candidateBox, meta.plane), expected);
   });
 }
 

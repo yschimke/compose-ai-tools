@@ -153,7 +153,17 @@ export class Acceptance extends LitElement {
             >`;
         }
         const report = this.report;
-        if (!report || !report.published) return nothing;
+        if (!report) return nothing;
+        // **`unavailable` is not `absent`.** A document the page could not fetch is a page that
+        // measured nothing, and hiding the band there would read as "nothing is accepted here" — a
+        // clean bill of health for a comparison nobody evaluated.
+        if (report.state === "unavailable") {
+            return html`<span class="cp-acceptance-note"
+                >This catalog publishes known differences, and they could not be fetched — nothing on
+                this comparison has been evaluated against them.</span
+            >`;
+        }
+        if (report.state === "absent") return nothing;
 
         const rows = Object.entries(report.statuses).filter(
             ([, entry]) => entry.status !== "out-of-scope",
@@ -166,10 +176,33 @@ export class Acceptance extends LitElement {
 
         return html`
             ${this.scores(report)}
+            ${this.documentFailures(report)}
             <ul class="cp-acceptance-list">
                 ${rows.map(([id, entry]) => this.row(id, entry))}
             </ul>
         `;
+    }
+
+    /**
+     * The failures that belong to the **document** rather than to any acceptance.
+     *
+     * A document that is malformed, carries a duplicated id, or is past its size ceiling is rejected
+     * wholesale: the engine returns no `statuses` at all and reports the reason only through
+     * `validationFailures`. Without this the band showed scores above an empty list, which reads as
+     * "this catalog accepts nothing here" rather than "this catalog's acceptance document was
+     * refused" — and those are the same picture with opposite meanings.
+     *
+     * Only the rows with no `id` are document-level; a per-record refusal already has its own row.
+     */
+    private documentFailures(report: AcceptanceReport): TemplateResult | typeof nothing {
+        const reasons = report.validationFailures
+            .filter((failure) => failure.id === undefined)
+            .map((failure) => failure.reason);
+        if (reasons.length === 0) return nothing;
+        return html`<span class="cp-acceptance-row" data-status="refused"
+            >This catalog's known-difference document was refused (${reasons.join(", ")}), so nothing
+            in it is being applied.</span
+        >`;
     }
 
     private scores(report: AcceptanceReport): TemplateResult | typeof nothing {
