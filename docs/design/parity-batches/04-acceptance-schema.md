@@ -101,7 +101,10 @@ Each exists because two engines would otherwise diverge on identical bytes.
   grammar rather than "the shortest decimal that round-trips", because that phrasing is spelled
   differently by each language's formatter (`1e-7` vs `1.0E-7`) and would refuse different documents
   on each side. The six-digit cap makes every tolerance an exact multiple of `1e-6`, so the gate
-  compares integers; trailing zeros stay legal because they cannot change a verdict. **Reverses an
+  compares `displacement × 1000000` against `micros × min(width, height)` in **arbitrary-precision**
+  integers — those products exceed the safe-integer range *and* `Long`, because the axis cap bounds
+  raster headers and not `$defs.box`, so `BigInt` / `BigInteger` rather than a machine integer.
+  Trailing zeros stay legal because they cannot change a verdict. **Reverses an
   earlier decision** that `0.25` followed by a hundred zeroes stays valid.
 - **A repeated JSON member name refuses the document.** RFC 8259 leaves it undefined and runtimes
   differ — last value, first value, or a hard refusal — so `{"id":"safe","id":".."}` addresses two

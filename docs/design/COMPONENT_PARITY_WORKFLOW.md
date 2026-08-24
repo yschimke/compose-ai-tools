@@ -752,9 +752,11 @@ and the fixtures are
    half-*down* from a rule that says half-up. The element gate has the same problem from the other
    direction: `0.145 × 200` is `28.999999999999996`, so a displacement of exactly 29 — the inclusive
    boundary — is `element-moved` under a scaled tolerance and `valid` under a decimal consumer. The
-   gate therefore compares **integers**: `element.tolerance` is spelled as a plain decimal with at
-   most six fraction digits, so it is an exact multiple of `1e-6`, and `displacement × 1000000`
-   against `micros × min(width, height)` is exact by construction with no float on either side.
+   gate therefore compares **arbitrary-precision integers**: `element.tolerance` is spelled as a
+   plain decimal with at most six fraction digits, so it is an exact multiple of `1e-6`, and
+   `displacement × 1000000` against `micros × min(width, height)` is exact by construction. Those
+   products exceed both the safe-integer range and `Long`, so this means `BigInt` / `BigInteger` and
+   not a machine integer — see §4 for why the axis cap does not bound them.
 
    An earlier revision justified a *ratio* form here — dividing and comparing against the parsed
    double — on the grounds that "`29 / 200` and the literal `0.145` are the same double". That is
@@ -1402,9 +1404,21 @@ verdicts, so the cap alone closes the hole and banning them would cost a legal s
 correctness gain.
 
 The cap is what buys the exactness: every legal tolerance is an exact multiple of `1e-6`, so the gate
-compares `displacement × 1000000` against `micros × min(width, height)` — safe integers on both
-sides, no float anywhere, and no error analysis for a second engine to re-derive. At `1e-6` on a
-200 px baseline the granularity is 0.0002 px, far below anything a gate can observe.
+compares `displacement × 1000000` against `micros × min(width, height)`, with no float on either
+side. At `1e-6` on a 200 px baseline the granularity is 0.0002 px, far below anything a gate can
+observe.
+
+**Those products require arbitrary-precision integers, and this is normative.** They are *not* safe
+integers and they do not fit a 64-bit signed integer either. The 8192 axis cap constrains raster
+headers; `$defs.box` permits an element baseline up to `9007199254740991`, and nothing ties the two
+together — so the left side reaches `9007199254740991000000`, about 10³ times `Long.MAX_VALUE`. A
+`Number` product loses precision and a `Long` product silently overflows, and both recreate the
+`valid`-for-a-moved-element divergence this rule exists to remove. `BigInt` in JavaScript,
+`BigInteger` in Kotlin. The inputs are bounded — `isBox` checks the fields *and* the far edges — so
+the values are fixed-width and small; nothing here is proportional to a token.
+
+An earlier revision of this passage claimed the products were safe integers, reasoning from the axis
+cap. That was wrong, and the fixture below exists because of it.
 
 A token failing this grammar is refused **only where the parse hides it**, as everywhere else: a
 value already outside `[0, 0.25]` once parsed keeps its attributed `tolerance-out-of-range`, while
