@@ -1072,8 +1072,8 @@
     "serve-motion-index-motion-index-playing.dark.png": {
       "fixture": "serve-motion-index-motion-index-playing",
       "theme": "dark",
-      "sha256": "d04b17ad266c89b2f3b160991a6203d810f99b46d38eea0746e1c8dfd89bd396",
-      "size": 126200
+      "sha256": "3a79b35408e6b44fa709dcff44f8bb02338212a985b73515d931b7c5adb16d8c",
+      "size": 126198
     },
     "serve-motion-index-motion-index-playing.light.png": {
       "fixture": "serve-motion-index-motion-index-playing",
@@ -1492,14 +1492,14 @@
     "serve-viewer-exploded-controls.dark.png": {
       "fixture": "serve-viewer-exploded-controls",
       "theme": "dark",
-      "sha256": "fa200c431ca92b97bdf33ab3f74d575effed7cea138603c860b64d623d525d0c",
-      "size": 113353
+      "sha256": "2bc91e912ce911c7980e7eb8e57894a1de1a3177de658b8fecb7c6b5a5669ca1",
+      "size": 113463
     },
     "serve-viewer-exploded-controls.light.png": {
       "fixture": "serve-viewer-exploded-controls",
       "theme": "light",
-      "sha256": "9b08465f5c8c9c6bba75042040b207d66ef1e18a46a69ea17c6e41930c56bfdd",
-      "size": 112718
+      "sha256": "57b8358496cf367d836faed146beb49f8b3406718862b0011a86361b5b55adb0",
+      "size": 112779
     },
     "serve-viewer-exploded.dark.png": {
       "fixture": "serve-viewer-exploded",
