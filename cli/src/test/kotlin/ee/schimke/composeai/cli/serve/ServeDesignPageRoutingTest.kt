@@ -117,7 +117,7 @@ class ServeDesignPageRoutingTest {
       return Triple(
         response.code,
         response.header("Content-Type").orEmpty(),
-        response.body?.string() ?: "",
+        response.body.string(),
       )
     }
   }

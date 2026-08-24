@@ -141,7 +141,7 @@ class ServeThemeReplayLaneTest {
       .execute()
       .use {
         assertEquals(200, it.code, path)
-        it.body?.string().orEmpty()
+        it.body.string().orEmpty()
       }
 
   private fun themeOption(theme: ServeTheme) = "\"theme:${theme.providerFqn}\""

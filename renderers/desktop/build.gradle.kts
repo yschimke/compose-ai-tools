@@ -18,11 +18,12 @@ plugins {
  * beside it without letting it near anything that runs, so the shape can be read off the real
  * artifact rather than off a hand-written stand-in.
  */
-val skikoEncodeProbe: Configuration by configurations.creating {
-  isCanBeConsumed = false
-  isCanBeResolved = true
-  description = "A skiko resolved for reflection only, never on a compile or runtime classpath."
-}
+val skikoEncodeProbe =
+  configurations.create("skikoEncodeProbe") {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    description = "A skiko resolved for reflection only, never on a compile or runtime classpath."
+  }
 
 /**
  * The newest Compose line catalogs are allowed to run on, used only by the theme regression test.
@@ -32,12 +33,13 @@ val skikoEncodeProbe: Configuration by configurations.creating {
  * Compose and Skiko. This is the consumer shape that exposed the erased LocalSystemTheme enum
  * change; running only against [libs.versions.compose.multiplatform] would miss it.
  */
-val composeForwardTestRuntime: Configuration by configurations.creating {
-  isCanBeConsumed = false
-  isCanBeResolved = true
-  description = "Renderer tests running on the forward Compose Multiplatform 1.12 runtime."
-  extendsFrom(configurations.testRuntimeClasspath.get())
-}
+val composeForwardTestRuntime =
+  configurations.create("composeForwardTestRuntime") {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    description = "Renderer tests running on the forward Compose Multiplatform 1.12 runtime."
+    extendsFrom(configurations.testRuntimeClasspath.get())
+  }
 
 dependencies {
   implementation(compose.desktop.currentOs)
@@ -133,8 +135,8 @@ tasks.withType<Test>().configureEach {
   doFirst { systemProperty("composeai.test.skikoEncodeProbe", probeJars.asPath) }
 }
 
-val forwardComposeSystemThemeTest by
-  tasks.registering(Test::class) {
+val forwardComposeSystemThemeTest =
+  tasks.register<Test>("forwardComposeSystemThemeTest") {
     group = "verification"
     description = "Runs the light/dark renderer invariant on Compose Multiplatform 1.12.0-rc01."
     val testSourceSet = sourceSets.test.get()

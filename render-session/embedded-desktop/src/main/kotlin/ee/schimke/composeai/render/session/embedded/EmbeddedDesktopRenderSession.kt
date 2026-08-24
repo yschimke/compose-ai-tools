@@ -75,15 +75,9 @@ object EmbeddedDesktopRenderSessions : RenderSessionFactory {
       System.setProperty(k, v)
       val restore: () -> Unit =
         if (previous == null) {
-          {
-            System.clearProperty(k)
-            Unit
-          }
+          { System.clearProperty(k) }
         } else {
-          {
-            System.setProperty(k, previous)
-            Unit
-          }
+          { System.setProperty(k, previous) }
         }
       restores += restore
     }

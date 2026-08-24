@@ -59,9 +59,9 @@ kotlin {
       // sees `Rc_player_runtimeRcPlayerEvent` and `Rc_player_protocolRcDocument` in the callbacks
       // and parameters it actually has to name. Exporting is only legal because each module already
       // depends on the next with `api`, which is what those declarations were for.
-      export(project(":rc-player-runtime"))
-      export(project(":rc-player-protocol"))
-      export(project(":rc-player-trace"))
+      export(project.dependencies.project(":rc-player-runtime"))
+      export(project.dependencies.project(":rc-player-protocol"))
+      export(project.dependencies.project(":rc-player-trace"))
       xcframework.add(this)
     }
   }

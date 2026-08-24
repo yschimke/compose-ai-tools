@@ -128,7 +128,7 @@ class BundleSigningTest {
     val trust = TrustStore(keys = listOf(TrustedKey("ci", keys.publicKeyB64, "Test CI")))
     val verdict = BundleVerifier.verify(file, trust)
     assertTrue(verdict is BundleVerifier.Verdict.Trusted, "expected trusted, got $verdict")
-    val basis = (verdict as BundleVerifier.Verdict.Trusted).primary
+    val basis = verdict.primary
     assertTrue(basis is BundleVerifier.Basis.Signature && basis.keyId == "ci")
   }
 
@@ -181,7 +181,7 @@ class BundleSigningTest {
   fun `unsigned bundle is unverified`() {
     val verdict = BundleVerifier.verify(sampleBundle(), TrustStore.EMPTY)
     assertTrue(verdict is BundleVerifier.Verdict.Unverified)
-    assertEquals("unsigned bundle", (verdict as BundleVerifier.Verdict.Unverified).reason)
+    assertEquals("unsigned bundle", verdict.reason)
   }
 
   @Test
@@ -198,7 +198,7 @@ class BundleSigningTest {
         BundleVerifier.Origin("yschimke/compose-ai-tools", "design-artifacts/compose-m3"),
       )
     assertTrue(verdict is BundleVerifier.Verdict.Trusted)
-    assertTrue((verdict as BundleVerifier.Verdict.Trusted).primary is BundleVerifier.Basis.Branch)
+    assertTrue(verdict.primary is BundleVerifier.Basis.Branch)
   }
 
   /**
@@ -266,7 +266,7 @@ class BundleSigningTest {
       )
     val verdict = BundleVerifier.verify(file, trust)
     assertTrue(verdict is BundleVerifier.Verdict.Trusted)
-    val bases = (verdict as BundleVerifier.Verdict.Trusted).bases
+    val bases = verdict.bases
     // The cryptographic signature is the trust basis; provenance rides along as context.
     assertTrue(bases.first() is BundleVerifier.Basis.Signature)
     assertTrue(bases.any { it is BundleVerifier.Basis.Provenance })

@@ -163,6 +163,7 @@ object FigmaSvgFidelity {
   }
 
   /** Skia fallback: renders shapes/paths (no SVG text) at native size via [loadSvgPainter]. */
+  @Suppress("DEPRECATION") // The resources API cannot load the generated in-memory SVG text.
   private fun rasterizeWithSkia(svgText: String, w: Int, h: Int): BufferedImage? {
     val density = Density(1f)
     val painter = loadSvgPainter(ByteArrayInputStream(svgText.toByteArray()), density)

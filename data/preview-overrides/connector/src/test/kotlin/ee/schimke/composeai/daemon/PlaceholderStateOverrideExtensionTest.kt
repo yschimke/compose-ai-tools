@@ -34,7 +34,7 @@ class PlaceholderStateOverrideExtensionTest {
     // it carries this marker. `serve` (the consumer this override exists for) never calls
     // `extensions/enable`, so without it `?placeholderActive=` would parse, cache, and advertise
     // while silently rendering the preview's own state.
-    assertTrue(extension is AlwaysOnPreviewOverrideExtension)
+    assertTrue(AlwaysOnPreviewOverrideExtension::class.java.isAssignableFrom(extension.javaClass))
     // Always-on planners are also handed an empty bag on a no-override render; abstaining there is
     // what keeps an unforced render byte-identical.
     assertNull(extension.plan(PreviewOverrides()))

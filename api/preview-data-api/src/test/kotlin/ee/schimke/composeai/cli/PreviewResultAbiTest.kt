@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
+@Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
 class PreviewResultAbiTest {
   @Test
   fun `retains the constructor descriptor from before project directory`() {

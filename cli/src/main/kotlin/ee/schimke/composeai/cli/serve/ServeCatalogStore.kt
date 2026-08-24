@@ -2773,8 +2773,7 @@ class ServeCatalogStore(
             )
           } else {
             val body = response.body
-            if (body == null) BranchFetch.Unavailable(response.code)
-            else BranchFetch.Ok(readCapped(body.byteStream(), maxBytes))
+            BranchFetch.Ok(readCapped(body.byteStream(), maxBytes))
           }
         }
       } catch (e: java.io.IOException) {

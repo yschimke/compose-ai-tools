@@ -188,9 +188,7 @@ internal fun RcPlayerComponent(component: Component, modifier: Modifier = Modifi
     }
   } else {
     // Non-LayoutComponent component reached dispatch — skip gracefully instead of crashing.
-    println(
-      "Warning: unsupported component ${component?.let { it::class.java.simpleName }}; rendering nothing"
-    )
+    println("Warning: unsupported component ${component::class.java.simpleName}; rendering nothing")
   }
 }
 

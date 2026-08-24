@@ -25,6 +25,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -508,7 +509,7 @@ class ServeHttpRoutingTest {
   private fun get(path: String): Pair<Int, String> {
     val req = Request.Builder().url("http://127.0.0.1:${server.port}$path").build()
     client.newCall(req).execute().use { r ->
-      return r.code to (r.body?.string() ?: "")
+      return r.code to r.body.string()
     }
   }
 
@@ -524,7 +525,7 @@ class ServeHttpRoutingTest {
   private fun getFull(path: String): Triple<Int, String, okhttp3.Headers> {
     val req = Request.Builder().url("http://127.0.0.1:${server.port}$path").build()
     client.newCall(req).execute().use { r ->
-      return Triple(r.code, r.body?.string() ?: "", r.headers)
+      return Triple(r.code, r.body.string(), r.headers)
     }
   }
 
@@ -532,7 +533,7 @@ class ServeHttpRoutingTest {
   private fun getFullBytes(path: String): Triple<Int, ByteArray, okhttp3.Headers> {
     val req = Request.Builder().url("http://127.0.0.1:${server.port}$path").build()
     client.newCall(req).execute().use { r ->
-      return Triple(r.code, r.body?.bytes() ?: ByteArray(0), r.headers)
+      return Triple(r.code, r.body.bytes(), r.headers)
     }
   }
 
@@ -543,7 +544,7 @@ class ServeHttpRoutingTest {
         .post(ByteArray(0).toRequestBody())
         .build()
     client.newCall(req).execute().use { r ->
-      return r.code to (r.body?.string() ?: "")
+      return r.code to r.body.string()
     }
   }
 
@@ -706,16 +707,15 @@ class ServeHttpRoutingTest {
     val home = get("/")
     assertEquals(200, home.first)
     val cardPath =
-      Regex("<meta property=\"og:image\" content=\"[^\"]*(/social/[0-9a-f]+\\.png)\">")
-        .find(home.second)
-        ?.groupValues
-        ?.get(1)
-    assertTrue(
-      cardPath != null,
-      "the front door advertises a drawn card: ${home.second.take(2000)}",
-    )
+      assertNotNull(
+        Regex("<meta property=\"og:image\" content=\"[^\"]*(/social/[0-9a-f]+\\.png)\">")
+          .find(home.second)
+          ?.groupValues
+          ?.get(1),
+        "the front door advertises a drawn card: ${home.second.take(2000)}",
+      )
 
-    val (code, _, headers) = getFull(cardPath!!)
+    val (code, _, headers) = getFull(cardPath)
     assertEquals(200, code)
     assertTrue(
       headers["Content-Type"].orEmpty().startsWith("image/png"),
@@ -1258,7 +1258,7 @@ class ServeHttpRoutingTest {
           .build()
       client.newCall(req).execute().use { r ->
         assertEquals(200, r.code, "a suspended catalog must resume to serve its capture")
-        assertEquals("capture", r.body?.string())
+        assertEquals("capture", r.body.string())
       }
     } finally {
       suspendedServer.stop()
@@ -1408,7 +1408,7 @@ class ServeHttpRoutingTest {
       var response = 503 to "warming"
       for (attempt in 0 until 50) {
         val req = Request.Builder().url("http://127.0.0.1:${partialServer.port}/readyz").build()
-        client.newCall(req).execute().use { r -> response = r.code to (r.body?.string() ?: "") }
+        client.newCall(req).execute().use { r -> response = r.code to r.body.string() }
         if (response.first == 200) break
         Thread.sleep(100)
       }
@@ -1458,7 +1458,7 @@ class ServeHttpRoutingTest {
       var response = 503 to "warming"
       for (attempt in 0 until 50) {
         val req = Request.Builder().url("http://127.0.0.1:${catalogServer.port}/readyz").build()
-        client.newCall(req).execute().use { r -> response = r.code to (r.body?.string() ?: "") }
+        client.newCall(req).execute().use { r -> response = r.code to r.body.string() }
         if (response.first == 200) break
         Thread.sleep(100)
       }
@@ -1499,7 +1499,7 @@ class ServeHttpRoutingTest {
       Request.Builder().url("http://127.0.0.1:${catalogServer.port}/readyz").build().let { req ->
         client.newCall(req).execute().use { r ->
           assertEquals(503, r.code)
-          assertEquals("warming", r.body?.string())
+          assertEquals("warming", r.body.string())
         }
       }
 
@@ -1509,7 +1509,7 @@ class ServeHttpRoutingTest {
       var response = 503 to "warming"
       for (attempt in 0 until 50) {
         val req = Request.Builder().url("http://127.0.0.1:${catalogServer.port}/readyz").build()
-        client.newCall(req).execute().use { r -> response = r.code to (r.body?.string() ?: "") }
+        client.newCall(req).execute().use { r -> response = r.code to r.body.string() }
         if (response.first == 200) break
         Thread.sleep(100)
       }
@@ -1541,7 +1541,7 @@ class ServeHttpRoutingTest {
       val req = Request.Builder().url("http://127.0.0.1:${brokenServer.port}/readyz").build()
       client.newCall(req).execute().use { r ->
         assertEquals(503, r.code)
-        assertEquals("warming", r.body?.string())
+        assertEquals("warming", r.body.string())
       }
     } finally {
       brokenServer.stop()
@@ -1574,7 +1574,7 @@ class ServeHttpRoutingTest {
     fun fetch(path: String): Pair<Int, String> {
       val req = Request.Builder().url("http://127.0.0.1:${lateServer.port}$path").build()
       client.newCall(req).execute().use { r ->
-        return r.code to (r.body?.string() ?: "")
+        return r.code to r.body.string()
       }
     }
     try {
@@ -1614,7 +1614,7 @@ class ServeHttpRoutingTest {
     fun fetch(path: String): Pair<Int, String> {
       val req = Request.Builder().url("http://127.0.0.1:${privateServer.port}$path").build()
       client.newCall(req).execute().use { response ->
-        return response.code to (response.body?.string() ?: "")
+        return response.code to response.body.string()
       }
     }
     try {
@@ -1649,7 +1649,7 @@ class ServeHttpRoutingTest {
         .build()
     client.newCall(renderReq).execute().use { r ->
       assertEquals(200, r.code)
-      assertEquals("image/png", r.body?.contentType()?.let { "${it.type}/${it.subtype}" })
+      assertEquals("image/png", r.body.contentType()?.let { "${it.type}/${it.subtype}" })
     }
 
     val (apiCode, api) = get("/compose-m3/api/previews")
@@ -1730,7 +1730,7 @@ class ServeHttpRoutingTest {
 
     client.newCall(request).execute().use { response ->
       assertEquals(200, response.code)
-      val html = response.body?.string().orEmpty()
+      val html = response.body.string().orEmpty()
       assertTrue(
         html.contains(
           "<meta property=\"og:url\" content=\"https://preview.coo.ee/compose-m3/p/" +
@@ -1931,9 +1931,9 @@ class ServeHttpRoutingTest {
       assertEquals(200, r.code)
       assertEquals(
         "application/octet-stream",
-        r.body?.contentType()?.let { "${it.type}/${it.subtype}" },
+        r.body.contentType()?.let { "${it.type}/${it.subtype}" },
       )
-      assertTrue(rcDocBytes.contentEquals(r.body?.bytes()), "rc bytes served verbatim")
+      assertTrue(rcDocBytes.contentEquals(r.body.bytes()), "rc bytes served verbatim")
     }
   }
 
@@ -1973,11 +1973,11 @@ class ServeHttpRoutingTest {
       Request.Builder().url("http://127.0.0.1:${server.port}/rc-player-wasm/rcPlayer.wasm").build()
     client.newCall(req).execute().use { response ->
       assertEquals(200, response.code)
-      assertEquals("application/wasm", response.body?.contentType().toString())
+      assertEquals("application/wasm", response.body.contentType().toString())
       assertEquals("no-cache", response.header("Cache-Control"))
       assertTrue(response.header("ETag")?.isNotBlank() == true, "wasm response carries an ETag")
       assertTrue(
-        byteArrayOf(0x00, 0x61, 0x73, 0x6d).contentEquals(response.body?.bytes()),
+        byteArrayOf(0x00, 0x61, 0x73, 0x6d).contentEquals(response.body.bytes()),
         "wasm bytes served verbatim",
       )
     }
@@ -2012,8 +2012,8 @@ class ServeHttpRoutingTest {
     val req = Request.Builder().url("http://127.0.0.1:${server.port}/rc-player/bundle.js").build()
     client.newCall(req).execute().use { r ->
       assertEquals(200, r.code)
-      assertEquals("text/javascript", r.body?.contentType()?.let { "${it.type}/${it.subtype}" })
-      val body = r.body?.string() ?: ""
+      assertEquals("text/javascript", r.body.contentType()?.let { "${it.type}/${it.subtype}" })
+      val body = r.body.string()
       assertTrue(body.contains("RcdPlayer"), "the bundle exposes the RcdPlayer entry point")
       etag = r.header("ETag") ?: ""
       assertTrue(etag.isNotEmpty(), "carries a content-hash ETag")
@@ -2038,8 +2038,8 @@ class ServeHttpRoutingTest {
     val css =
       client.newCall(cssReq).execute().use { r ->
         assertEquals(200, r.code)
-        assertEquals("text/css", r.body?.contentType()?.let { "${it.type}/${it.subtype}" })
-        r.body?.string() ?: ""
+        assertEquals("text/css", r.body.contentType()?.let { "${it.type}/${it.subtype}" })
+        r.body.string()
       }
     for (face in ServeRcFonts.FACES) {
       assertTrue(css.contains("font-family:\"${face.family}\""), "declares ${face.family}: $css")
@@ -2052,8 +2052,8 @@ class ServeHttpRoutingTest {
       Request.Builder().url("http://127.0.0.1:${server.port}/rc-fonts/${face.file}").build()
     client.newCall(faceReq).execute().use { r ->
       assertEquals(200, r.code)
-      assertEquals("font/ttf", r.body?.contentType()?.let { "${it.type}/${it.subtype}" })
-      assertTrue((r.body?.contentLength() ?: 0) > 1024, "the face carries its bytes")
+      assertEquals("font/ttf", r.body.contentType()?.let { "${it.type}/${it.subtype}" })
+      assertTrue(r.body.contentLength() > 1024, "the face carries its bytes")
       etag = r.header("ETag") ?: ""
       assertTrue(etag.isNotEmpty(), "carries a content-hash ETag")
     }
@@ -2078,7 +2078,7 @@ class ServeHttpRoutingTest {
     val req = Request.Builder().url("http://127.0.0.1:${server.port}$versionedPath").build()
     client.newCall(req).execute().use { r ->
       assertEquals(200, r.code)
-      assertEquals("text/javascript", r.body?.contentType()?.let { "${it.type}/${it.subtype}" })
+      assertEquals("text/javascript", r.body.contentType()?.let { "${it.type}/${it.subtype}" })
       assertEquals("public, max-age=31536000, immutable", r.header("Cache-Control"))
       etag = r.header("ETag") ?: ""
       assertEquals(asset.etag, etag)
@@ -2209,14 +2209,14 @@ class ServeHttpRoutingTest {
         .also { it.start() }
     try {
       val request = Request.Builder().url("http://127.0.0.1:${localServer.port}/").build()
-      val body = client.newCall(request).execute().use { it.body?.string().orEmpty() }
+      val body = client.newCall(request).execute().use { it.body.string().orEmpty() }
       assertTrue(body.contains("href=\"/shared%3Aui/\""), body)
       assertTrue(body.contains("burst"), body)
       assertTrue(body.contains("class=\"cp-component-browser\""), body)
 
       val devRequest =
         Request.Builder().url("http://127.0.0.1:${localServer.port}/?chrome=dev").build()
-      val devBody = client.newCall(devRequest).execute().use { it.body?.string().orEmpty() }
+      val devBody = client.newCall(devRequest).execute().use { it.body.string().orEmpty() }
       assertFalse(devBody.contains("class=\"cp-component-browser\""), devBody)
       assertTrue(
         devBody.contains("data-cp-interface-mode=\"dev\" aria-pressed=\"true\""),
@@ -2234,7 +2234,7 @@ class ServeHttpRoutingTest {
    * request's presentation without changing what the visitor is in afterwards.
    */
   @Test
-  fun `the interface mode comes from a cookie, and ?chrome= outranks it`() {
+  fun `the interface mode comes from a cookie, and the chrome query outranks it`() {
     val localRegistry = ServeSessionRegistry(open = { null })
     localRegistry.register("shared:ui", host = burstHost, pinned = true)
     val localServer =
@@ -2257,7 +2257,7 @@ class ServeHttpRoutingTest {
           .apply { cookie?.let { header("Cookie", it) } }
           .build()
       return client.newCall(request).execute().use {
-        it.body?.string().orEmpty() to it.headers("Vary")
+        it.body.string().orEmpty() to it.headers("Vary")
       }
     }
 
@@ -2323,7 +2323,7 @@ class ServeHttpRoutingTest {
 
     fun get(path: String): Pair<Int, String> {
       val request = Request.Builder().url("http://127.0.0.1:${localServer.port}$path").build()
-      return client.newCall(request).execute().use { it.code to it.body?.string().orEmpty() }
+      return client.newCall(request).execute().use { it.code to it.body.string().orEmpty() }
     }
 
     try {
@@ -2589,7 +2589,7 @@ class ServeHttpRoutingTest {
           r.header("Cache-Control"),
           "the content-hashed hero URL can be cached forever",
         )
-        assertTrue((r.body?.bytes()?.size ?: 0) > 0, "hero bytes are served")
+        assertTrue(r.body.bytes().isNotEmpty(), "hero bytes are served")
         r.header("ETag") ?: error("hero carries no ETag")
       }
     // A conditional request (a cache that chose to revalidate anyway) costs bytes, not a render.
@@ -2720,7 +2720,7 @@ class ServeHttpRoutingTest {
     client.newCall(request).execute().use { response ->
       assertEquals(200, response.code)
       assertEquals("image/png", response.header("Content-Type")?.substringBefore(';'))
-      assertTrue((response.body?.bytes()?.size ?: 0) > 0)
+      assertTrue(response.body.bytes().isNotEmpty())
     }
     assertEquals(404, get("/compose-m3/reference/missing.png").first)
     assertEquals(404, get("/compose-m3/compare/$previewId?reference=missing").first)
@@ -2806,7 +2806,7 @@ class ServeHttpRoutingTest {
     try {
       fun localGet(path: String): Pair<Int, String> {
         val request = Request.Builder().url("http://127.0.0.1:${localServer.port}$path").build()
-        return client.newCall(request).execute().use { it.code to (it.body?.string() ?: "") }
+        return client.newCall(request).execute().use { it.code to it.body.string() }
       }
 
       val (pageCode, page) = localGet("/local/p/$localId")
@@ -2850,8 +2850,8 @@ class ServeHttpRoutingTest {
         .build()
     client.newCall(req).execute().use { r ->
       assertEquals(200, r.code)
-      assertEquals("text/html", r.body?.contentType()?.let { "${it.type}/${it.subtype}" })
-      val body = r.body?.string() ?: ""
+      assertEquals("text/html", r.body.contentType()?.let { "${it.type}/${it.subtype}" })
+      val body = r.body.string()
       assertTrue(body.startsWith("<!doctype html>"), "is an html document: $body")
       assertTrue(body.contains("src=\"data:image/png;base64,"), "embeds the render png: $body")
     }

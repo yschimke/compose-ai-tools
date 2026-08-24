@@ -663,8 +663,7 @@ class PlaygroundSeedResolver(
     fun httpFetch(url: String, maxBytes: Int = DEFAULT_MAX_BYTES): ByteArray? =
       try {
         httpClient.newCall(okhttp3.Request.Builder().url(url).build()).execute().use { response ->
-          if (!response.isSuccessful) null
-          else response.body?.byteStream()?.readNBytes(maxBytes + 1)
+          if (!response.isSuccessful) null else response.body.byteStream().readNBytes(maxBytes + 1)
         }
       } catch (_: Exception) {
         null

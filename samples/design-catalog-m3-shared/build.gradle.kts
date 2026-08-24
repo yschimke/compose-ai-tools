@@ -80,23 +80,25 @@ kotlin {
     // it can only back the desktop `actual`s of the `catalogOverride*` wrappers (the `wasmJs`
     // actuals return the author default). Desktop is the target the renderer / daemon builds, so
     // that's exactly where the knobs resolve against real daemon seeds.
-    val desktopMain by getting {
-      dependencies { implementation(project(":data-preview-overrides-runtime")) }
-    }
+    val desktopMain =
+      getByName("desktopMain") {
+        dependencies { implementation(project(":data-preview-overrides-runtime")) }
+      }
 
     // JVM-runnable unit tests for the pure-Kotlin theme-choice logic (the `theme.colors` serialized
     // app-palette round-trip). Desktop is the JVM target the renderer builds, so `desktopTest` runs
     // under `check` without dragging a wasmJs test toolchain in.
-    val desktopTest by getting {
-      dependencies {
-        implementation(kotlin("test"))
-        // `runComposeUiTest` — drives a real composition and dispatches real clicks, so
-        // `CatalogInteractivityTest` can assert the thing a static render can never show: that a
-        // click actually moves the UI, and that it does so identically on both render lanes.
-        implementation(libs.jetbrains.compose.ui.test)
-        @Suppress("DEPRECATION") implementation(compose.desktop.currentOs)
+    val desktopTest =
+      getByName("desktopTest") {
+        dependencies {
+          implementation(kotlin("test"))
+          // `runComposeUiTest` — drives a real composition and dispatches real clicks, so
+          // `CatalogInteractivityTest` can assert the thing a static render can never show: that a
+          // click actually moves the UI, and that it does so identically on both render lanes.
+          implementation(libs.jetbrains.compose.ui.test)
+          @Suppress("DEPRECATION") implementation(compose.desktop.currentOs)
+        }
       }
-    }
   }
 }
 

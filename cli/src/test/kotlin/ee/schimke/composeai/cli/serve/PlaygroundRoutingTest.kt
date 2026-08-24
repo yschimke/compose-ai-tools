@@ -199,7 +199,7 @@ class PlaygroundRoutingTest {
       """{"files":[{"name":"Snippet.kt","text":"@Preview @Composable fun P(){}"}],"confType":"compose-cmp"}"""
     postRun(body, server.port).use { resp ->
       assertEquals(200, resp.code)
-      val json = Json.parseToJsonElement(resp.body!!.string()).jsonObject
+      val json = Json.parseToJsonElement(resp.body.string()).jsonObject
       assertTrue(
         json["previewToken"]?.jsonPrimitive?.content?.startsWith("pg_") == true,
         "a clean compile mints a pg_ token: $json",
@@ -245,7 +245,7 @@ class PlaygroundRoutingTest {
       assertTrue(retryAfter != null && retryAfter >= 1, "Retry-After should be set: $retryAfter")
       // Answered in the run route's own JSON shape, so the editor surfaces it as a status line
       // rather than as an unparseable body.
-      val json = Json.parseToJsonElement(resp.body!!.string()).jsonObject
+      val json = Json.parseToJsonElement(resp.body.string()).jsonObject
       assertTrue(
         json["exception"]?.jsonPrimitive?.content?.contains("Too many requests") == true,
         "the refusal rides the run response contract: $json",
@@ -294,7 +294,7 @@ class PlaygroundRoutingTest {
         resp.header("Content-Type")?.contains("text/html") == true,
         "the editor page is served as HTML",
       )
-      val html = resp.body!!.string()
+      val html = resp.body.string()
       assertTrue(
         html.contains("id=\"pg-source\"") &&
           html.contains("id=\"pg-run\"") &&
@@ -310,7 +310,7 @@ class PlaygroundRoutingTest {
     get("/playground", githubNoRepoServer.port, cookie).use { resp ->
       assertEquals(403, resp.code)
       assertTrue(
-        resp.body!!.string().contains("Playground requires access to yschimke/compose-ai-tools"),
+        resp.body.string().contains("Playground requires access to yschimke/compose-ai-tools"),
         "playground explains the repo-rights gate",
       )
     }
@@ -321,7 +321,7 @@ class PlaygroundRoutingTest {
     val cookie = githubSessionCookie(githubRepoServer.port)
     get("/playground", githubRepoServer.port, cookie).use { resp ->
       assertEquals(200, resp.code)
-      val html = resp.body!!.string()
+      val html = resp.body.string()
       assertTrue(html.contains("id=\"pg-source\""))
       assertTrue(html.contains("id=\"pg-edit-lease\""))
     }
@@ -339,14 +339,14 @@ class PlaygroundRoutingTest {
         )
         .use { resp ->
           assertEquals(200, resp.code)
-          Json.parseToJsonElement(resp.body!!.string()).jsonObject["lease"]!!.jsonPrimitive.content
+          Json.parseToJsonElement(resp.body.string()).jsonObject["lease"]!!.jsonPrimitive.content
         }
     val body =
       """{"files":[{"name":"Snippet.kt","text":"@Preview fun P(){}"}],"confType":"compose-cmp","editLease":"$lease","revision":1}"""
 
     post("/api/1/compiler/run", body, githubRepoServer.port, cookie).use { resp ->
       assertEquals(200, resp.code)
-      val json = Json.parseToJsonElement(resp.body!!.string()).jsonObject
+      val json = Json.parseToJsonElement(resp.body.string()).jsonObject
       assertEquals("1", json["revision"]?.jsonPrimitive?.content)
       assertEquals(lease, json["editLease"]?.jsonPrimitive?.content)
       assertTrue(json["previewToken"]?.jsonPrimitive?.content?.startsWith("pg_") == true)
@@ -360,7 +360,7 @@ class PlaygroundRoutingTest {
       )
       .use { resp ->
         assertEquals(200, resp.code)
-        val json = Json.parseToJsonElement(resp.body!!.string()).jsonObject
+        val json = Json.parseToJsonElement(resp.body.string()).jsonObject
         assertEquals(lease, json["lease"]?.jsonPrimitive?.content)
         assertEquals("1", json["revision"]?.jsonPrimitive?.content)
       }
@@ -378,7 +378,7 @@ class PlaygroundRoutingTest {
       )
       .use { resp ->
         assertEquals(413, resp.code)
-        assertTrue(resp.body!!.string().contains("exceeds 256KB"))
+        assertTrue(resp.body.string().contains("exceeds 256KB"))
       }
   }
 
@@ -388,7 +388,7 @@ class PlaygroundRoutingTest {
       assertEquals(503, resp.code)
       assertEquals("no-store", resp.header("Cache-Control"))
       assertTrue(
-        resp.body!!.string().contains("Playground unavailable"),
+        resp.body.string().contains("Playground unavailable"),
         "the reserved playground path explains the missing server config",
       )
     }
@@ -410,7 +410,7 @@ class PlaygroundRoutingTest {
         .execute()
         .use { resp ->
           assertEquals(200, resp.code)
-          Json.parseToJsonElement(resp.body!!.string())
+          Json.parseToJsonElement(resp.body.string())
             .jsonObject["previewUrl"]!!
             .jsonPrimitive
             .content

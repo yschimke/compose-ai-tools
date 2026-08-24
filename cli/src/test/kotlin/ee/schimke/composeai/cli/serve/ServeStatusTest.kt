@@ -138,7 +138,7 @@ class ServeStatusTest {
     val req = Request.Builder().url(url)
     if (token != null) req.header(ServeHttpServer.TOKEN_HEADER, token)
     client.newCall(req.build()).execute().use { r ->
-      return r.code to (r.body?.string() ?: "")
+      return r.code to r.body.string()
     }
   }
 
@@ -689,7 +689,7 @@ class ServeStatusTest {
       fun statusJson(): String {
         val url = "http://127.0.0.1:${srv.port}/status.json"
         client.newCall(Request.Builder().url(url).build()).execute().use {
-          return it.body?.string() ?: ""
+          return it.body.string()
         }
       }
       // Resident: a live read, not a snapshot.
@@ -707,9 +707,7 @@ class ServeStatusTest {
 
       val homeUrl = "http://127.0.0.1:${srv.port}/"
       val home =
-        client.newCall(Request.Builder().url(homeUrl).build()).execute().use {
-          it.body?.string() ?: ""
-        }
+        client.newCall(Request.Builder().url(homeUrl).build()).execute().use { it.body.string() }
       assertTrue(home.contains("href=\"/confetti-wear/\""), home)
       assertTrue(home.contains("Confetti Wear"), home)
       assertEquals(
@@ -740,9 +738,7 @@ class ServeStatusTest {
       // document even though its facts are now a snapshot rather than a live read.
       val htmlUrl = "http://127.0.0.1:${srv.port}/status"
       val html =
-        client.newCall(Request.Builder().url(htmlUrl).build()).execute().use {
-          it.body?.string() ?: ""
-        }
+        client.newCall(Request.Builder().url(htmlUrl).build()).execute().use { it.body.string() }
       assertFalse(
         html.contains("untrusted"),
         "a suspended trusted catalog is not downgraded: $html",

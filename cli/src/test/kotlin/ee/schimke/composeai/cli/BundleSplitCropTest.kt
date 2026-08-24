@@ -45,9 +45,8 @@ class BundleSplitCropTest {
   @Test
   fun `crops the sticker PNG to its component box`() {
     val png = renderPng(x = 144, y = 159, w = 166, h = 136)
-    val cropped = cropPngToContentBox(png, figmaSvg(144, 159, 166, 136))
-    assertNotNull(cropped)
-    assertEquals(166 to 136, dims(cropped!!.png), "cropped to the figma-svg content box")
+    val cropped = assertNotNull(cropPngToContentBox(png, figmaSvg(144, 159, 166, 136)))
+    assertEquals(166 to 136, dims(cropped.png), "cropped to the figma-svg content box")
     assertEquals(
       144 to 159,
       cropped.cropX to cropped.cropY,
@@ -60,9 +59,8 @@ class BundleSplitCropTest {
     // The layout-derived figma box (144,159,166,136) under-covers a variant whose focus ring is
     // drawn a few px outside it — here opaque pixels span (140,155)…(315,300).
     val png = renderPng(x = 140, y = 155, w = 175, h = 145)
-    val cropped = cropPngToContentBox(png, figmaSvg(144, 159, 166, 136))
-    assertNotNull(cropped)
-    assertEquals(175 to 145, dims(cropped!!.png), "grown to cover the ring's actual pixels")
+    val cropped = assertNotNull(cropPngToContentBox(png, figmaSvg(144, 159, 166, 136)))
+    assertEquals(175 to 145, dims(cropped.png), "grown to cover the ring's actual pixels")
     assertEquals(140 to 155, cropped.cropX to cropped.cropY, "crop origin is the unioned top-left")
   }
 
@@ -83,9 +81,8 @@ class BundleSplitCropTest {
   fun `a box overrunning the image edge is clamped, not thrown`() {
     // A padded box whose origin+size exceeds the 454 canvas still crops safely to the edge.
     val png = renderPng(x = 400, y = 400, w = 60, h = 60)
-    val cropped = cropPngToContentBox(png, figmaSvg(400, 400, 80, 80))
-    assertNotNull(cropped)
-    assertEquals(54 to 54, dims(cropped!!.png), "clamped to the 454 edge (454-400)")
+    val cropped = assertNotNull(cropPngToContentBox(png, figmaSvg(400, 400, 80, 80)))
+    assertEquals(54 to 54, dims(cropped.png), "clamped to the 454 edge (454-400)")
   }
 
   private fun sheetZip(png: ByteArray, svg: String): ByteArray {

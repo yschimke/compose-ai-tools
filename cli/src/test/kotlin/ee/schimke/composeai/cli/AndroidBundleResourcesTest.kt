@@ -7,6 +7,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -136,9 +137,8 @@ class AndroidBundleResourcesTest {
       """<manifest $androidNs package="ee.schimke.meshcore.app">
            <application android:name=".MeshcoreApp" android:theme="@style/T"/>
          </manifest>"""
-    val out = AndroidBundleResources.stripApplicationName(xml)
-    assertTrue(out != null, "expected a rewrite")
-    assertTrue(!out!!.contains("MeshcoreApp"), out)
+    val out = assertNotNull(AndroidBundleResources.stripApplicationName(xml), "expected a rewrite")
+    assertTrue(!out.contains("MeshcoreApp"), out)
     // The theme (and every other attribute) survives — only android:name is removed.
     assertTrue(out.contains("@style/T"), out)
   }

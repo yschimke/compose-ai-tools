@@ -128,7 +128,7 @@ class ServeBundleHostTest {
 
     val ok = host.bakedRender("com.example.Red", PreviewOverrides())
     assertTrue(ok != null, "local pixels must be servable without admission")
-    assertTrue(byteArrayOf(4, 2).contentEquals(ok!!.png))
+    assertTrue(byteArrayOf(4, 2).contentEquals(ok.png))
     assertEquals(RenderOutcome.Generation.BAKED, ok.generation)
     // Nested ids resolve the same way.
     val nested = ServeBundleHost(bundle("group/com.example.Blue" to byteArrayOf(7)), label = "b")

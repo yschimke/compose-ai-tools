@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli.serve
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -63,7 +64,8 @@ class BranchFetchStatsTest {
     val snap = stats.snapshot()!!
     assertEquals(1, snap.unavailable)
     assertEquals(42L, snap.lastFailureAtEpochMillis)
-    assertTrue(snap.lastFailureReason!!.contains("503"), snap.lastFailureReason!!)
+    val reason = assertNotNull(snap.lastFailureReason)
+    assertTrue(reason.contains("503"), reason)
     assertNull(snap.lastThrottleAtEpochMillis, "a 503 is not a rate limit")
   }
 

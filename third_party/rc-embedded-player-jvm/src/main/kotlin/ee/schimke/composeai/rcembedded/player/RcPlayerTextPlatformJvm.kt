@@ -20,7 +20,7 @@ import androidx.compose.remote.core.RemoteContext
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asSkiaPath
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.skiaCanvas
 import ee.schimke.composeai.rcembedded.jvm.GoogleFontTypefaceResolver
 import kotlin.math.roundToInt
 import org.jetbrains.skia.Font
@@ -273,7 +273,7 @@ internal fun DrawScope.drawTextAtOriginPlatform(
   blob.use {
     // The blob's first baseline sits an ascent below its own origin, so shifting up by that puts
     // the baseline on `y` — the same origin `measureTextInkBounds` reports against.
-    drawContext.canvas.nativeCanvas.drawTextBlob(it, x, y - it.firstBaseline, spec.toSkiaPaint())
+    drawContext.canvas.skiaCanvas.drawTextBlob(it, x, y - it.firstBaseline, spec.toSkiaPaint())
   }
 }
 
@@ -417,7 +417,7 @@ internal fun DrawScope.drawTextOnPathPlatform(
     index++
   }
 
-  val canvas = drawContext.canvas.nativeCanvas
+  val canvas = drawContext.canvas.skiaCanvas
   val paint = spec.toSkiaPaint()
   for ((font, placed) in placements) {
     if (placed.isEmpty()) continue

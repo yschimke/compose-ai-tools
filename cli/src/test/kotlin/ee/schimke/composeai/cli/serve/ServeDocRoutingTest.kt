@@ -84,7 +84,7 @@ class ServeDocRoutingTest {
     val accepted =
       upload("loading.json", bytes).use { response ->
         assertEquals(201, response.code)
-        Json.parseToJsonElement(response.body!!.string()).jsonObject
+        Json.parseToJsonElement(response.body.string()).jsonObject
       }
     val id = accepted["id"]!!.jsonPrimitive.content
     val path = accepted["url"]!!.jsonPrimitive.content
@@ -95,7 +95,7 @@ class ServeDocRoutingTest {
 
     get(path).use { response ->
       assertEquals(200, response.code)
-      val html = response.body!!.string()
+      val html = response.body.string()
       // The page mounts the format's vendored player against the document's raw bytes…
       assertTrue(html.contains("/doc-player/lottie/bundle.js"), html.take(400))
       assertTrue(html.contains("$path/raw"), "the page points the player at the raw document")
@@ -107,9 +107,9 @@ class ServeDocRoutingTest {
 
     get("$path/raw").use { response ->
       assertEquals(200, response.code)
-      assertTrue(response.body!!.contentType().toString().startsWith("application/json"))
+      assertTrue(response.body.contentType().toString().startsWith("application/json"))
       assertEquals("nosniff", response.header("X-Content-Type-Options"))
-      assertEquals(bytes.toList(), response.body!!.bytes().toList())
+      assertEquals(bytes.toList(), response.body.bytes().toList())
     }
 
     // Past the TTL both lanes stop answering — the page as a styled 404, the raw bytes as a plain
@@ -125,18 +125,18 @@ class ServeDocRoutingTest {
     val path =
       upload("watchface.rc", bytes, "application/octet-stream").use { response ->
         assertEquals(201, response.code)
-        Json.parseToJsonElement(response.body!!.string()).jsonObject["url"]!!.jsonPrimitive.content
+        Json.parseToJsonElement(response.body.string()).jsonObject["url"]!!.jsonPrimitive.content
       }
 
     get(path).use { response ->
-      val html = response.body!!.string()
+      val html = response.body.string()
       assertTrue(html.contains("/doc-player/remotecompose/bundle.js"))
       // The stage is sized from the document's declared header size before the player loads.
       assertTrue(html.contains("width=\"320\" height=\"320\""), html.take(400))
     }
     get("$path/raw").use { response ->
-      assertEquals("application/octet-stream", response.body!!.contentType().toString())
-      assertEquals(bytes.toList(), response.body!!.bytes().toList())
+      assertEquals("application/octet-stream", response.body.contentType().toString())
+      assertEquals(bytes.toList(), response.body.bytes().toList())
     }
   }
 
@@ -144,7 +144,7 @@ class ServeDocRoutingTest {
   fun `an upload that is not a known document is refused`() {
     upload("evil.rc", "<html><script>alert(1)</script></html>".toByteArray(), "text/html").use {
       assertEquals(400, it.code)
-      assertTrue(it.body!!.string().contains("unrecognised document format"))
+      assertTrue(it.body.string().contains("unrecognised document format"))
     }
   }
 
@@ -160,7 +160,7 @@ class ServeDocRoutingTest {
       .execute()
       .use {
         assertEquals(400, it.code)
-        assertTrue(it.body!!.string().contains("allowlist"))
+        assertTrue(it.body.string().contains("allowlist"))
       }
   }
 
@@ -168,7 +168,7 @@ class ServeDocRoutingTest {
   fun `an unknown or malformed permalink is a styled 404`() {
     get("/d/aaaaaaaaaaaaaaaaaaaaaa").use { response ->
       assertEquals(404, response.code)
-      assertTrue(response.body!!.string().contains("expired"))
+      assertTrue(response.body.string().contains("expired"))
     }
     get("/d/..%2F..%2Fetc").use { assertEquals(404, it.code) }
   }
@@ -177,7 +177,7 @@ class ServeDocRoutingTest {
   fun `the upload page and each format's player are served`() {
     get("/docs").use { response ->
       assertEquals(200, response.code)
-      val html = response.body!!.string()
+      val html = response.body.string()
       assertTrue(html.contains("Share a document"))
       // Uploads only: with no allowlisted host the URL field is not rendered (the script still
       // carries its inert wiring, so the check is on the markup).
@@ -194,8 +194,8 @@ class ServeDocRoutingTest {
     for (format in ServeDocFormats.ALL) {
       get(format.playerPath).use { response ->
         assertEquals(200, response.code, "${format.id} player")
-        assertTrue(response.body!!.contentType().toString().startsWith("text/javascript"))
-        assertTrue(response.body!!.bytes().size > 1000, "${format.id} bundle is vendored")
+        assertTrue(response.body.contentType().toString().startsWith("text/javascript"))
+        assertTrue(response.body.bytes().size > 1000, "${format.id} bundle is vendored")
       }
     }
     get("/doc-player/nope/bundle.js").use { assertEquals(404, it.code) }

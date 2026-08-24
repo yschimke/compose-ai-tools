@@ -59,5 +59,10 @@ kotlin {
       @Suppress("DEPRECATION") implementation(compose.material3)
       implementation("org.jetbrains.compose.ui:ui-tooling-preview:1.10.3")
     }
+
+    // This regression fixture intentionally has no test compilation. KMP creates commonTest by
+    // default even though the Android-only target cannot consume it, so remove that unused source
+    // set instead of emitting a configuration warning on every build.
+    remove(getByName("commonTest"))
   }
 }

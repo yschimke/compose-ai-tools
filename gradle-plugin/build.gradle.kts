@@ -68,18 +68,21 @@ dependencies {
 }
 
 // Functional tests use Gradle TestKit
-val functionalTest by sourceSets.creating {
-  compileClasspath += sourceSets.main.get().output
-  runtimeClasspath += sourceSets.main.get().output
-}
+val functionalTest =
+  sourceSets.create("functionalTest") {
+    compileClasspath += sourceSets.main.get().output
+    runtimeClasspath += sourceSets.main.get().output
+  }
 
-val functionalTestImplementation by configurations.getting {
-  extendsFrom(configurations.testImplementation.get())
-}
+val functionalTestImplementation =
+  configurations.getByName("functionalTestImplementation") {
+    extendsFrom(configurations.testImplementation.get())
+  }
 
-val functionalTestRuntimeOnly by configurations.getting {
-  extendsFrom(configurations.testRuntimeOnly.get())
-}
+val functionalTestRuntimeOnly =
+  configurations.getByName("functionalTestRuntimeOnly") {
+    extendsFrom(configurations.testRuntimeOnly.get())
+  }
 
 val functionalTestTask =
   tasks.register<Test>("functionalTest") {
@@ -208,38 +211,41 @@ fun resolveAndroidSdk(rootDir: java.io.File): String {
 // Bake the plugin's own version into a resource so it can resolve a matching
 // `renderer-android` AAR at runtime for external consumers (who apply the
 // plugin via Maven Central rather than includeBuild).
-val generatePluginVersionResource by tasks.registering {
-  val outputDir = layout.buildDirectory.dir("generated/plugin-version-resource")
-  val pluginVersion = project.version.toString()
-  // XR `*-testing` fake versions the plugin injects onto a consumer's
-  // `composePreviewRenderXr` classpath (see AndroidPreviewSupport). Baked from the
-  // catalog so the render-path injection can't drift from `:renderer-xr` / the XR
-  // samples — bump once in `gradle/libs.versions.toml` and all sites follow.
-  val xrCompose = libs.versions.xr.compose.get()
-  val xrRuntimeTesting = libs.versions.xr.runtime.testing.get()
-  val xrScenecoreTesting = libs.versions.xr.scenecore.testing.get()
-  val xrArcoreTesting = libs.versions.xr.arcore.testing.get()
-  inputs.property("version", pluginVersion)
-  inputs.property("xrCompose", xrCompose)
-  inputs.property("xrRuntimeTesting", xrRuntimeTesting)
-  inputs.property("xrScenecoreTesting", xrScenecoreTesting)
-  inputs.property("xrArcoreTesting", xrArcoreTesting)
-  outputs.dir(outputDir)
-  doLast {
-    val base = outputDir.get().file("ee/schimke/composeai/plugin/plugin-version.properties").asFile
-    base.parentFile.mkdirs()
-    base.writeText("version=$pluginVersion\n")
-    val xr = outputDir.get().file("ee/schimke/composeai/plugin/xr-fake-versions.properties").asFile
-    xr.writeText(
-      buildString {
-        append("compose=$xrCompose\n")
-        append("runtimeTesting=$xrRuntimeTesting\n")
-        append("scenecoreTesting=$xrScenecoreTesting\n")
-        append("arcoreTesting=$xrArcoreTesting\n")
-      }
-    )
+val generatePluginVersionResource =
+  tasks.register("generatePluginVersionResource") {
+    val outputDir = layout.buildDirectory.dir("generated/plugin-version-resource")
+    val pluginVersion = project.version.toString()
+    // XR `*-testing` fake versions the plugin injects onto a consumer's
+    // `composePreviewRenderXr` classpath (see AndroidPreviewSupport). Baked from the
+    // catalog so the render-path injection can't drift from `:renderer-xr` / the XR
+    // samples — bump once in `gradle/libs.versions.toml` and all sites follow.
+    val xrCompose = libs.versions.xr.compose.get()
+    val xrRuntimeTesting = libs.versions.xr.runtime.testing.get()
+    val xrScenecoreTesting = libs.versions.xr.scenecore.testing.get()
+    val xrArcoreTesting = libs.versions.xr.arcore.testing.get()
+    inputs.property("version", pluginVersion)
+    inputs.property("xrCompose", xrCompose)
+    inputs.property("xrRuntimeTesting", xrRuntimeTesting)
+    inputs.property("xrScenecoreTesting", xrScenecoreTesting)
+    inputs.property("xrArcoreTesting", xrArcoreTesting)
+    outputs.dir(outputDir)
+    doLast {
+      val base =
+        outputDir.get().file("ee/schimke/composeai/plugin/plugin-version.properties").asFile
+      base.parentFile.mkdirs()
+      base.writeText("version=$pluginVersion\n")
+      val xr =
+        outputDir.get().file("ee/schimke/composeai/plugin/xr-fake-versions.properties").asFile
+      xr.writeText(
+        buildString {
+          append("compose=$xrCompose\n")
+          append("runtimeTesting=$xrRuntimeTesting\n")
+          append("scenecoreTesting=$xrScenecoreTesting\n")
+          append("arcoreTesting=$xrArcoreTesting\n")
+        }
+      )
+    }
   }
-}
 
 sourceSets.main.get().resources.srcDir(generatePluginVersionResource)
 

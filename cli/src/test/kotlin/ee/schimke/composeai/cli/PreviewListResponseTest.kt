@@ -89,11 +89,7 @@ class PreviewListResponseTest {
           ),
         counts = PreviewCounts(total = 1, changed = 1, unchanged = 0, missing = 0),
       )
-    val brief = Json {
-      prettyPrint = false
-      encodeDefaults = false
-    }
-      .encodeToString(BriefPreviewListResponse.serializer(), response)
+    val brief = Json.encodeToString(BriefPreviewListResponse.serializer(), response)
 
     // Schema and core fields are present.
     assertTrue(""""schema":"$SHOW_LIST_BRIEF_SCHEMA"""" in brief)

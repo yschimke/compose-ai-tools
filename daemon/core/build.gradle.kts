@@ -91,17 +91,19 @@ dependencies {
 // real release back to VS Code instead of the `0.0.0-dev` fallback. Mirrors
 // `gradle-plugin/build.gradle.kts`'s `generatePluginVersionResource` and `cli/build.gradle.kts`'s
 // `generateCliVersionResource`.
-val generateDaemonVersionResource by tasks.registering {
-  val outputDir = layout.buildDirectory.dir("generated/daemon-version-resource")
-  val daemonVersion = project.version.toString()
-  inputs.property("version", daemonVersion)
-  outputs.dir(outputDir)
-  doLast {
-    val file = outputDir.get().file("ee/schimke/composeai/daemon/daemon-version.properties").asFile
-    file.parentFile.mkdirs()
-    file.writeText("version=$daemonVersion\n")
+val generateDaemonVersionResource =
+  tasks.register("generateDaemonVersionResource") {
+    val outputDir = layout.buildDirectory.dir("generated/daemon-version-resource")
+    val daemonVersion = project.version.toString()
+    inputs.property("version", daemonVersion)
+    outputs.dir(outputDir)
+    doLast {
+      val file =
+        outputDir.get().file("ee/schimke/composeai/daemon/daemon-version.properties").asFile
+      file.parentFile.mkdirs()
+      file.writeText("version=$daemonVersion\n")
+    }
   }
-}
 
 sourceSets.main.get().resources.srcDir(generateDaemonVersionResource)
 

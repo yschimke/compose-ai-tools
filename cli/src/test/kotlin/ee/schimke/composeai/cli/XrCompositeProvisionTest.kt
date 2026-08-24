@@ -6,6 +6,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -114,8 +115,9 @@ class XrCompositeProvisionTest {
       return
     }
     assertEquals(1, fetches)
-    assertTrue(binary != null && binary.isFile, "binary should be unpacked: $logs")
-    assertTrue(File(binary!!.parentFile, "materials/m.txt").isFile, "materials should unpack")
+    val unpacked = assertNotNull(binary, "binary should be unpacked: $logs")
+    assertTrue(unpacked.isFile, "binary should be unpacked: $logs")
+    assertTrue(File(unpacked.parentFile, "materials/m.txt").isFile, "materials should unpack")
   }
 
   @Test
@@ -207,8 +209,9 @@ class XrCompositeProvisionTest {
         log = {},
       )
     assertEquals(1, fetches, "a partial cache must NOT short-circuit — it re-provisions")
-    assertTrue(result != null && result.isFile)
-    assertTrue(File(result!!.parentFile, "materials").isDirectory, "materials/ is now present")
+    val unpacked = assertNotNull(result)
+    assertTrue(unpacked.isFile)
+    assertTrue(File(unpacked.parentFile, "materials").isDirectory, "materials/ is now present")
   }
 
   @Test

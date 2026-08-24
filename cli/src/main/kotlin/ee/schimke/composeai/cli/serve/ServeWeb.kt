@@ -11959,8 +11959,7 @@ $cards
         val disabled =
           if (pinned == null) "" else " disabled aria-describedby=\"cp-pinned-controls-note\""
         val usageSrc =
-          if (pinned == null) " data-usage-src=\"${WebEscaping.htmlEscape(usageHref ?: "")}\""
-          else ""
+          if (pinned == null) " data-usage-src=\"${WebEscaping.htmlEscape(usageHref)}\"" else ""
         val button =
           "<button type=\"button\" id=\"cp-source-chip\" class=\"cp-spec-chip cp-source-chip$tabClass\"$tabAttrs " +
             "aria-pressed=\"false\" aria-controls=\"cp-source-panel\" " +

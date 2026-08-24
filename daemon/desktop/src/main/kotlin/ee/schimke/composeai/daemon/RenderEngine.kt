@@ -1782,7 +1782,7 @@ class RenderEngine(
       return
     }
 
-    val cap = intent.maxScrollPx?.takeIf { it > 0 }?.toFloat() ?: Float.POSITIVE_INFINITY
+    val cap = intent.maxScrollPx.takeIf { it > 0 }?.toFloat() ?: Float.POSITIVE_INFINITY
     val startPx = initial.value()
     var scrolledPx = 0f
     for (step in 0 until END_DRIVE_MAX_STEPS) {

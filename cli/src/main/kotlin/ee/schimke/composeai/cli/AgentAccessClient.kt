@@ -142,7 +142,7 @@ internal class AgentAccessClient(
               "credential in the request"
           )
         }
-        val text = response.body?.string().orEmpty()
+        val text = response.body.string()
         if (!response.isSuccessful) {
           val retryAfter = response.header("Retry-After")?.trim()?.toLongOrNull()?.takeIf { it > 0 }
           val retry = retryAfter?.let { " (retry after ${it}s)" }.orEmpty()

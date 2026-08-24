@@ -78,8 +78,9 @@ class FigmaSvgPaddedIconTest {
     assertEquals(63, icon.bottom - icon.top)
     // The layout slot handed to the emitter is that same drawn rect, so the fit is 63/24 — not the
     // 105/24 the node box would have given.
-    assertEquals(63, icon.vector!!.layoutWidth)
-    assertEquals(63, icon.vector!!.layoutHeight)
+    val vector = requireNotNull(icon.vector)
+    assertEquals(63, vector.layoutWidth)
+    assertEquals(63, vector.layoutHeight)
   }
 
   @Test

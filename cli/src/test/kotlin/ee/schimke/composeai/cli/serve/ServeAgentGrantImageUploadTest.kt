@@ -92,13 +92,13 @@ class ServeAgentGrantImageUploadTest {
         .post(body.toRequestBody(contentType.toMediaType()))
         .build()
     client.newCall(request).execute().use {
-      return it.code to (it.body?.string() ?: "")
+      return it.code to it.body.string()
     }
   }
 
   private fun get(path: String, port: Int = server.port): Pair<Int, String> {
     client.newCall(Request.Builder().url(url(path, port)).build()).execute().use {
-      return it.code to (it.body?.string() ?: "")
+      return it.code to it.body.string()
     }
   }
 
@@ -173,7 +173,7 @@ class ServeAgentGrantImageUploadTest {
     val token = grantedToken()
     upload(token).use { response ->
       assertEquals(201, response.code)
-      val body = response.body!!.string()
+      val body = response.body.string()
       // The finished markdown is the thing the agent came for.
       assertTrue(str(body, "markdown").startsWith("![after.png](http"), body)
       // Attribution names the grant and the human behind it — never a borrowed login.
@@ -186,7 +186,7 @@ class ServeAgentGrantImageUploadTest {
   @Test
   fun `the uploaded image is then fetchable at the url it handed back`() {
     val token = grantedToken()
-    val path = upload(token).use { str(it.body!!.string(), "path") }
+    val path = upload(token).use { str(it.body.string(), "path") }
     // Ungated, exactly like a collaborator's upload: GitHub's proxy fetches a PR body's images
     // anonymously, so a gated URL would never paint.
     client.newCall(Request.Builder().url(url(path)).build()).execute().use {
@@ -202,7 +202,7 @@ class ServeAgentGrantImageUploadTest {
     val token = grantedToken(scope = "live", ask = emptyList())
     upload(token).use { response ->
       assertEquals(401, response.code)
-      assertTrue(response.body!!.string().contains("GitHub token"))
+      assertTrue(response.body.string().contains("GitHub token"))
     }
   }
 
@@ -228,7 +228,7 @@ class ServeAgentGrantImageUploadTest {
         .header(ServeHttpServer.TOKEN_HEADER, token)
         .build()
     client.newCall(request).execute().use {
-      val body = it.body!!.string()
+      val body = it.body.string()
       assertTrue(body.contains("\"capabilities\":[\"images\"]"), body)
       // Never the token, on any surface that describes it.
       assertFalse(body.contains(token), body)

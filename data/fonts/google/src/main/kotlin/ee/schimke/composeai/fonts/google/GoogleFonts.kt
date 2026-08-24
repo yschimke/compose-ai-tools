@@ -382,7 +382,7 @@ private fun httpGet(url: String, userAgent: String): String? =
 private fun httpGetBytes(url: String, userAgent: String): ByteArray? = runCatching {
   val request = Request.Builder().url(url).header("User-Agent", userAgent).build()
   fontHttpClient.newCall(request).execute().use { response ->
-    if (response.isSuccessful) response.body?.bytes() else null
+    if (response.isSuccessful) response.body.bytes() else null
   }
 }
   .getOrNull()

@@ -105,7 +105,7 @@ class DiscoverPreviewModulesActionTest {
             "must not query GradleProject — that realizes the whole task graph (#1620)",
           )
           if (type == ComposePreviewModel::class.java) {
-            findModelFor(args!![0] as BasicGradleProject)
+            findModelFor(args[0] as BasicGradleProject)
           } else error("unexpected findModel($type)")
         }
         "toString" -> "FakeBuildController"

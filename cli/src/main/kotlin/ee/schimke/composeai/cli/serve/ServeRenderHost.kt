@@ -1182,7 +1182,7 @@ internal constructor(
         svgPath
           ?.takeIf { fileSystem.exists(it) }
           ?.let { p -> fileSystem.read(p) { readByteArray() } }
-      if (raw == null || svgPath == null) {
+      if (raw == null) {
         val reason = "render produced no SVG"
         onLog(reason)
         return@withLock SvgOutcome.Failed(reason)
@@ -1256,7 +1256,7 @@ internal constructor(
         svgPath
           ?.takeIf { fileSystem.exists(it) }
           ?.let { p -> fileSystem.read(p) { readByteArray() } }
-      if (raw == null || svgPath == null) {
+      if (raw == null) {
         val reason = "render produced no full-page SVG"
         onLog(reason)
         return@withLock SvgOutcome.Failed(reason)

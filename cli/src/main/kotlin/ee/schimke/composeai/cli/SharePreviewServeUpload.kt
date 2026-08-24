@@ -97,7 +97,7 @@ internal class ServeImageUploader(
                 "travel to a host you did not name."
             )
           !response.isSuccessful -> {
-            val detail = response.body?.string()?.trim()?.take(400).orEmpty()
+            val detail = response.body.string().trim().take(400)
             Result.Failed(
               "$base answered ${response.code}${if (detail.isEmpty()) "" else ": $detail"}" +
                 // A bodyless 404 — or 405 — is what a host WITHOUT `--accept-images` gives: the
@@ -110,7 +110,7 @@ internal class ServeImageUploader(
                 if (response.code in LANE_ABSENT_CODES && detail.isEmpty()) IMAGE_LANE_OFF else ""
             )
           }
-          else -> parse(response.body?.string().orEmpty())
+          else -> parse(response.body.string())
         }
       }
     } catch (e: Exception) {

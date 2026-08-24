@@ -131,7 +131,7 @@ class ServeTopLevelSiteTest {
     cookie: String? = null,
   ): Triple<Int, String, String?> {
     client.newCall(request(path, host, cookie)).execute().use { r ->
-      return Triple(r.code, r.body?.string() ?: "", r.header("Location"))
+      return Triple(r.code, r.body.string(), r.header("Location"))
     }
   }
 
@@ -763,7 +763,7 @@ class ServeTopLevelSiteTest {
     val result = admin.unregister("compose-m3")
     assertTrue(result is ServeCatalogAdmin.Result.Conflict, "$result")
     assertTrue(
-      (result as ServeCatalogAdmin.Result.Conflict).reason.contains(siteHost),
+      result.reason.contains(siteHost),
       result.reason,
     )
     // A catalog no site names retires as before.

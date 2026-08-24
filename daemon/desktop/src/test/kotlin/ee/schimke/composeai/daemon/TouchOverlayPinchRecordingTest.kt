@@ -295,7 +295,7 @@ class TouchOverlayPinchRecordingTest {
 @Composable
 fun PinchableSquare() {
   var scale by remember { mutableStateOf(1f) }
-  val transformableState = rememberTransformableState { zoomChange, _, _ ->
+  val transformableState = rememberTransformableState { _, zoomChange, _, _ ->
     scale = (scale * zoomChange).coerceIn(0.5f, 3.0f)
   }
   Box(

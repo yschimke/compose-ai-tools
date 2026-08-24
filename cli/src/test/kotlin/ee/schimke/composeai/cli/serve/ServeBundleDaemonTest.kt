@@ -461,8 +461,7 @@ class ServeBundleDaemonTest {
         outcome is AnnotationsOutcome.Ok,
         "typography inspection for ${target.id} should succeed, got $outcome",
       )
-      val payload =
-        Json.parseToJsonElement((outcome as AnnotationsOutcome.Ok).json.decodeToString()).jsonObject
+      val payload = Json.parseToJsonElement(outcome.json.decodeToString()).jsonObject
       val annotations =
         Json.decodeFromJsonElement(
           ListSerializer(DesignAnnotation.serializer()),
@@ -611,10 +610,11 @@ class ServeBundleDaemonTest {
       return
     }
     // Sanity: the descriptor really is the android launch (Robolectric flags present).
-    val parsed = Json {
-      ignoreUnknownKeys = true
-    }
-      .decodeFromString(DaemonLaunchDescriptor.serializer(), state.descriptor.readText())
+    val parsed =
+      descriptorJson.decodeFromString(
+        DaemonLaunchDescriptor.serializer(),
+        state.descriptor.readText(),
+      )
     assertEquals("android", parsed.variant, "wear-m3 bundle should materialize an android daemon")
     assertTrue(
       parsed.systemProperties["robolectric.graphicsMode"] == "NATIVE",
@@ -690,8 +690,8 @@ class ServeBundleDaemonTest {
         val b = host.renderSvg(bId, PreviewOverrides())
         assertTrue(a is SvgOutcome.Ok, "SVG render of $aId should succeed, got $a")
         assertTrue(b is SvgOutcome.Ok, "SVG render of $bId should succeed, got $b")
-        val aBytes = (a as SvgOutcome.Ok).svg
-        val bBytes = (b as SvgOutcome.Ok).svg
+        val aBytes = a.svg
+        val bBytes = b.svg
         assertTrue(aBytes.isNotEmpty() && bBytes.isNotEmpty(), "SVGs must be non-empty")
         // Optional: dump the rendered vectors so a human can eyeball the per-variant difference.
         System.getProperty("composeai.test.svgDumpDir")

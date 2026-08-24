@@ -22,6 +22,7 @@ import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.fail
@@ -2268,11 +2269,13 @@ class ServeWebFixtureTest {
     // fixture carries several renderable nodes, so an existence check stays green while this
     // particular overlay regresses to a span or points somewhere else.
     val manifestNode =
-      Regex("""<(\w+) class="cp-page-node" [^>]*data-cp-node="1:1"[^>]*>""").find(designPageHtml)
-    assertTrue(manifestNode != null, "the manifest-linked node 1:1 is emitted at all")
+      assertNotNull(
+        Regex("""<(\w+) class="cp-page-node" [^>]*data-cp-node="1:1"[^>]*>""").find(designPageHtml),
+        "the manifest-linked node 1:1 is emitted at all",
+      )
     assertEquals(
       "a",
-      manifestNode!!.groupValues[1],
+      manifestNode.groupValues[1],
       "a node with a renderable preview is emitted as an anchor",
     )
     // The whole final segment, not a prefix: `/p/com.example.ProfileCardPreviewLegacy` contains
@@ -2282,8 +2285,11 @@ class ServeWebFixtureTest {
     // anchor for scripted navigation — precisely the inert-destination regression this is here to
     // catch — would keep it green.
     val hrefOf = { tag: String -> Regex("""\shref="([^"]*)"""").find(tag)?.groupValues?.get(1) }
-    val manifestHref = hrefOf(manifestNode.value)
-    assertTrue(manifestHref != null, "the manifest node carries a real href attribute")
+    val manifestHref =
+      assertNotNull(
+        hrefOf(manifestNode.value),
+        "the manifest node carries a real href attribute",
+      )
     // Matched through the route delimiter. `substringAfterLast` returns the WHOLE string when the
     // delimiter is absent, so a bare `href="com.example.ProfileCardPreview"` — which resolves
     // relative to the current page and navigates nowhere near the preview — would have passed.
@@ -2291,7 +2297,7 @@ class ServeWebFixtureTest {
       "com.example.ProfileCardPreview",
       // The capture must be the FINAL segment. Unanchored, `/p/<id>/other` still yields `<id>` —
       // and the server registers only the exact `/p/{name}` routes, so that URL navigates nowhere.
-      Regex("""/p/([^/?#]+)(?:[?#]|$)""").find(manifestHref!!)?.groupValues?.get(1),
+      Regex("""/p/([^/?#]+)(?:[?#]|$)""").find(manifestHref)?.groupValues?.get(1),
       "…and its destination is THAT preview, on the preview route",
     )
     // …and one WITHOUT code is still a link, to the design file — the only destination it has. The
@@ -2302,11 +2308,13 @@ class ServeWebFixtureTest {
     // exists and no span does": the renderable nodes satisfy a bare existence check on their own,
     // so this one could regress to a div and go unnoticed.
     val unlinkedNode =
-      Regex("""<(\w+) class="cp-page-node" [^>]*data-cp-node="1:6"[^>]*>""").find(designPageHtml)
-    assertTrue(unlinkedNode != null, "the unlinked node 1:6 is emitted at all")
+      assertNotNull(
+        Regex("""<(\w+) class="cp-page-node" [^>]*data-cp-node="1:6"[^>]*>""").find(designPageHtml),
+        "the unlinked node 1:6 is emitted at all",
+      )
     assertEquals(
       "a",
-      unlinkedNode!!.groupValues[1],
+      unlinkedNode.groupValues[1],
       "an unlinked node stays an anchor rather than becoming inert",
     )
     // The WHOLE href, compared as one string. Checking parts independently loses whatever part is

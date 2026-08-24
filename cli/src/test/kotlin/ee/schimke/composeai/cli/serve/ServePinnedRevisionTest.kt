@@ -350,7 +350,7 @@ class ServePinnedRevisionTest {
     val ogImage =
       Regex("<meta property=\"og:image\" content=\"([^\"]+)\"").find(pinned)?.groupValues?.get(1)
     assertTrue(ogImage?.contains("at=$oldCommit") == true, pinned)
-    assertFalse(ogImage?.contains("themeProvider") == true, pinned)
+    assertFalse(ogImage.contains("themeProvider"), pinned)
     assertFalse(pinned.contains("data-usage-src="), pinned)
     assertFalse(pinned.contains("try in playground"), pinned)
     // An id that still exists uses the same canonical name on Current and pinned pages.
@@ -761,7 +761,7 @@ class ServePinnedRevisionTest {
 
   private fun get(url: String): Pair<Int, ByteArray> =
     client.newCall(Request.Builder().url(url).build()).execute().use { response ->
-      response.code to (response.body?.bytes() ?: ByteArray(0))
+      response.code to response.body.bytes()
     }
 
   private fun bytes(url: String): ByteArray {

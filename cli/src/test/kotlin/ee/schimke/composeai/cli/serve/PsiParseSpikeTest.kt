@@ -17,7 +17,6 @@ import org.jetbrains.kotlin.psi.KtDestructuringDeclaration
 import org.jetbrains.kotlin.psi.KtDotQualifiedExpression
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtNamedFunction
-import org.jetbrains.kotlin.psi.KtValueArgument
 import org.jetbrains.kotlin.psi.psiUtil.collectDescendantsOfType
 
 /**
@@ -131,7 +130,7 @@ class PsiParseSpikeTest {
           val callNodes = ktFile.collectDescendantsOfType<KtCallExpression>()
           calls += callNodes.size
           namedArgs += callNodes.sumOf { call ->
-            call.valueArguments.count { (it as? KtValueArgument)?.getArgumentName() != null }
+            call.valueArguments.count { it.getArgumentName() != null }
           }
           qualified += ktFile.collectDescendantsOfType<KtDotQualifiedExpression>().size
         }
@@ -195,14 +194,12 @@ class PsiParseSpikeTest {
       //    placeholder like `${default}`. Worth knowing before anyone bets a redesign on it.
       val overrides = byName["previewOverrideString"].orEmpty()
       val labelled = overrides.filter { call ->
-        call.valueArguments.any { (it as? KtValueArgument)?.getArgumentName() != null }
+        call.valueArguments.any { it.getArgumentName() != null }
       }
       val positional = overrides - labelled.toSet()
       val defaults = labelled.mapNotNull { call ->
         call.valueArguments
-          .firstOrNull {
-            (it as? KtValueArgument)?.getArgumentName()?.asName?.asString() == "default"
-          }
+          .firstOrNull { it.getArgumentName()?.asName?.asString() == "default" }
           ?.getArgumentExpression()
           ?.text
       }
@@ -216,9 +213,7 @@ class PsiParseSpikeTest {
       // Two of them: the bare `("subtitle", "Basket")` and the package-qualified `("k", "v")`.
       assertTrue(positional.size == 2, "expected two positional calls, got ${positional.size}")
       assertTrue(
-        positional.all { call ->
-          call.valueArguments.all { (it as? KtValueArgument)?.getArgumentName() == null }
-        },
+        positional.all { call -> call.valueArguments.all { it.getArgumentName() == null } },
         "a positional call must carry no argument names — that is the whole point",
       )
 

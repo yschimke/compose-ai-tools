@@ -304,14 +304,15 @@ val daemonRuntimeClasspathFile = layout.buildDirectory.file("daemon-harness/runt
 // finished registering its variants. The descriptor task itself is registered eagerly so
 // `:daemon:harness`'s `androidDaemonClasspath` configuration can wire up `dependsOn`
 // without needing afterEvaluate semantics.
-val writeDaemonClasspath by tasks.registering {
-  description =
-    "Resolves :daemon:android's debug runtime classpath + testFixtures into a text " +
-      "file the harness's RealAndroidHarnessLauncher reads at test time. (D-harness.v2)"
-  group = "verification"
-  val outputFileProvider = daemonRuntimeClasspathFile
-  outputs.file(outputFileProvider)
-}
+val writeDaemonClasspath =
+  tasks.register("writeDaemonClasspath") {
+    description =
+      "Resolves :daemon:android's debug runtime classpath + testFixtures into a text " +
+        "file the harness's RealAndroidHarnessLauncher reads at test time. (D-harness.v2)"
+    group = "verification"
+    val outputFileProvider = daemonRuntimeClasspathFile
+    outputs.file(outputFileProvider)
+  }
 
 // AGP's SDK android.jar — needed on the spawned daemon's classpath so JUnit / Robolectric can
 // introspect annotations referencing `android.app.Application` etc. before sandbox bootstrap. The
@@ -395,16 +396,17 @@ afterEvaluate {
 // Consumable configuration that surfaces the classpath text file as an artifact. The harness
 // declares a counterpart `androidDaemonClasspath` configuration with matching attributes and
 // reads `it.singleFile`. Plain-text content; no AGP transforms involved on the consumer side.
-val daemonHarnessClasspathFile by configurations.creating {
-  isCanBeConsumed = true
-  isCanBeResolved = false
-  attributes {
-    attribute(
-      Attribute.of("ee.schimke.composeai.daemon.harness.classpath", String::class.java),
-      "android",
-    )
+val daemonHarnessClasspathFile =
+  configurations.create("daemonHarnessClasspathFile") {
+    isCanBeConsumed = true
+    isCanBeResolved = false
+    attributes {
+      attribute(
+        Attribute.of("ee.schimke.composeai.daemon.harness.classpath", String::class.java),
+        "android",
+      )
+    }
   }
-}
 
 // AGP `testFixtures { enable = true }` ships `daemon-android-<version>-test-fixtures.aar` as
 // part of the published `release` component. The fixture composables (`RedSquare`/`BlueSquare`/

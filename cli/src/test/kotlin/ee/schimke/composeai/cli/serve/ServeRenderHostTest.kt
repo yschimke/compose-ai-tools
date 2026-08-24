@@ -295,7 +295,7 @@ class ServeRenderHostTest {
     host(session).use { h ->
       val out = h.renderSvg(previewId, PreviewOverrides(uiMode = UiMode.DARK))
       assertTrue(out is SvgOutcome.Ok)
-      assertEquals("svg:DARK:null:null", (out as SvgOutcome.Ok).svg.decodeToString())
+      assertEquals("svg:DARK:null:null", out.svg.decodeToString())
     }
   }
 
@@ -307,7 +307,7 @@ class ServeRenderHostTest {
       assertTrue(out is SvgOutcome.Ok)
       assertEquals(
         "svg-long:$previewId:null:null:null",
-        (out as SvgOutcome.Ok).svg.decodeToString(),
+        out.svg.decodeToString(),
       )
       // The fetch carries the force flag + a serialized overrides bag (default here).
       val params = session.lastScrollFetchParams as JsonObject
@@ -341,11 +341,11 @@ class ServeRenderHostTest {
       assertTrue(dark is SvgOutcome.Ok && light is SvgOutcome.Ok)
       assertEquals(
         "svg-long:$previewId:DARK:null:null",
-        (dark as SvgOutcome.Ok).svg.decodeToString(),
+        dark.svg.decodeToString(),
       )
       assertEquals(
         "svg-long:$previewId:LIGHT:null:null",
-        (light as SvgOutcome.Ok).svg.decodeToString(),
+        light.svg.decodeToString(),
       )
       assertEquals(2, session.scrollFetchCount.get(), "each distinct override re-renders")
       // Re-requesting the dark capsule is a cache hit — no third fetch, and its bytes are intact.
@@ -432,7 +432,7 @@ class ServeRenderHostTest {
       // A dark SVG request must re-render dark, not return the shared file's stale light SVG.
       val out = h.renderSvg(previewId, PreviewOverrides(uiMode = UiMode.DARK))
       assertTrue(out is SvgOutcome.Ok)
-      assertEquals("svg:DARK:null:null", (out as SvgOutcome.Ok).svg.decodeToString())
+      assertEquals("svg:DARK:null:null", out.svg.decodeToString())
     }
   }
 
@@ -445,7 +445,7 @@ class ServeRenderHostTest {
       val payload =
         Json.decodeFromString(
           PreviewSlotsPayload.serializer(),
-          (out as SlotsOutcome.Ok).json.decodeToString(),
+          out.json.decodeToString(),
         )
       assertEquals(previewId, payload.previewId)
       assertEquals(listOf("leadingIcon", "supporting"), payload.slots.map { it.name })
@@ -474,8 +474,7 @@ class ServeRenderHostTest {
     host(session).use { h ->
       val out = h.renderAnnotations(previewId, PreviewOverrides(uiMode = UiMode.DARK))
       assertTrue(out is AnnotationsOutcome.Ok)
-      val payload =
-        Json.parseToJsonElement((out as AnnotationsOutcome.Ok).json.decodeToString()).jsonObject
+      val payload = Json.parseToJsonElement(out.json.decodeToString()).jsonObject
       assertEquals(previewId, payload["previewId"]?.jsonPrimitive?.content)
       val annotations =
         Json.decodeFromJsonElement(
@@ -617,8 +616,7 @@ class ServeRenderHostTest {
     host(session).use { h ->
       val out = h.renderA11y(previewId, PreviewOverrides(uiMode = UiMode.DARK))
       assertTrue(out is A11yOutcome.Ok)
-      val payload =
-        Json.parseToJsonElement((out as A11yOutcome.Ok).json.decodeToString()).jsonObject
+      val payload = Json.parseToJsonElement(out.json.decodeToString()).jsonObject
       assertEquals(previewId, payload["previewId"]?.jsonPrimitive?.content)
       assertEquals(1, payload.getValue("nodes").jsonArray.size)
       assertEquals(1, payload.getValue("findings").jsonArray.size)
@@ -647,8 +645,7 @@ class ServeRenderHostTest {
     host(session).use { h ->
       val out = h.renderA11y(previewId, PreviewOverrides())
       assertTrue(out is A11yOutcome.Ok)
-      val payload =
-        Json.parseToJsonElement((out as A11yOutcome.Ok).json.decodeToString()).jsonObject
+      val payload = Json.parseToJsonElement(out.json.decodeToString()).jsonObject
       assertEquals(1, payload.getValue("nodes").jsonArray.size)
       assertTrue(payload.getValue("findings").jsonArray.isEmpty())
       assertTrue(payload.getValue("touchTargets").jsonArray.isEmpty())
@@ -779,7 +776,7 @@ class ServeRenderHostTest {
     host(session).use { h ->
       val out = h.renderSvg(previewId, PreviewOverrides())
       assertTrue(out is SvgOutcome.Ok)
-      val svg = (out as SvgOutcome.Ok).svg.decodeToString()
+      val svg = out.svg.decodeToString()
       val expected = java.util.Base64.getEncoder().encodeToString(byteArrayOf(1, 2, 3))
       assertTrue(svg.contains("data:image/png;base64,$expected"), "raster inlined: $svg")
       assertTrue(!svg.contains("figma-raster/"), "no dangling external ref remains: $svg")
