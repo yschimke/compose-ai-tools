@@ -1,7 +1,7 @@
 {
-  "title": "An `element.tolerance` of `0.25` written past the digit limit",
+  "title": "An `element.tolerance` written with a seventh fraction digit",
   "site": null,
-  "why": "The maximum is legal, and staying legal must not depend on how many zeroes follow it. This is the accepting half of the exact-decimal range rule: the refusing sibling (`0.25000000000000000001`) is satisfied by *any* engine that treats a long token as over the ceiling, so it alone would ratify one that refuses the ceiling itself.",
+  "why": "One digit past the cap, and in range once parsed — so nothing downstream can see it and the refusal has to come from the token. This is the boundary case: `0.123456` is legal.",
   "comparison": {
     "system": "m3",
     "component": "IconButton/Tonal",
