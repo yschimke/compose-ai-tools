@@ -54,6 +54,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # A long-path conformance fixture exceeds the default Windows checkout limit, and this
+          # native build does not consume it. Limit checkout to the shared action and its sources.
+          sparse-checkout: |
+            .github/actions/build-xr-composite
+            renderers/xr-composite
 
       # Build + stage into dist/ via the shared composite action (also used by
       # the release asset job in release.yml).
