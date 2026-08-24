@@ -2072,6 +2072,31 @@ object PreviewDiscovery {
     // COMPONENT draws past its bounds, so it holds for every `@Preview` expansion of the function
     // — light and dark, every size cell, every override variant — not for one of them.
     val captureGutter = extractCaptureGutter(annotations)
+    // `@CaptureGutter` and `@ScrollingPreview` on one function is a contradiction, not a
+    // combination. A gutter says "the component draws this far past its own bounds"; a scroll
+    // capture has no such bounds — a LONG stitch's are the scrolled extent, a GIF's the declared
+    // viewport, and an END/TOP still is one settled frame of a screen, not a component with an
+    // edge for the gutter to sit on. CMP Desktop already renders scroll products with no gutter at
+    // all, and the per-lane divergences of trying to honour both (issue #4467) — a baked-in round
+    // mask, a displaced focus overlay, sidecars keyed to the grown window — are exactly why the
+    // combination is unsupported rather than silently half-applied. Skip the whole function with an
+    // actionable message, the same way an unsupported `@XrSubspacePreview` parameter is handled
+    // above, so the author removes one annotation rather than shipping a gutter that some products
+    // keep and others drop.
+    //
+    // Keyed on the *presence* of `@ScrollingPreview`, not on `scrollSpecs` being non-empty: a
+    // degenerate `@ScrollingPreview(modes = [])` produces no specs yet still declares the
+    // combination the contract forbids, and the author who wrote both annotations should hear about
+    // it rather than have the empty-modes case quietly keep its gutter.
+    val declaresScrollingPreview = annotations.any { it.name == SCROLLING_PREVIEW_FQN }
+    if (captureGutter != null && declaresScrollingPreview) {
+      warnings.add(
+        "composePreview: skipping '${classInfo.name}.${method.name}' — @CaptureGutter cannot be " +
+          "combined with @ScrollingPreview. A scroll capture has no component edge for a gutter " +
+          "to sit on (see @CaptureGutter's kdoc and RENDER_LANE_PARITY.md). Remove one annotation."
+      )
+      return
+    }
     val firstNewPreviewIndex = previews.size
     fun tagFunctionLevel() {
       if (catalogEntry == null && captureGutter == null) return

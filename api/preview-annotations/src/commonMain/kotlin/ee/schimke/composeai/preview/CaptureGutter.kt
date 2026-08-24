@@ -59,45 +59,17 @@ package ee.schimke.composeai.preview
  *   there, and a component that declares one publishes its still and its recording on the same
  *   canvas rather than two artefacts disagreeing about its bounds.
  *
- * It is **not meant to apply** to a `@ScrollingPreview` capture, and that is a decision rather than
- * a gap. A LONG capture's bounds are the stitched scroll extent — many viewports of a list, not a
- * component — and a scroll GIF's are the declared viewport. Neither is "the component plus what it
- * draws outside itself", so there is no edge for a gutter to sit on, and adding transparent dp
- * around a scroll strip would be decorative padding wearing this annotation's name. A scroll drive
- * that declines falls through to an ordinary still, which does carry the gutter.
- *
- * CMP Desktop implements that exclusion by simply handing its scroll renderer no gutter. Android
- * cannot: it grows **one** hosting window per preview and captures every job for that preview
- * inside it, so its `LONG` slices and `GIF` frames trim the gutter back off after capture instead.
- * `TOP` is untouched either way: it is the undriven first viewport, which is a still and does carry
- * the gutter.
- *
- * Two Android frame shapes are **unsupported** in combination with a scrolling mode, and keep the
- * gutter on their scroll products rather than taking a trim that would be worse than none: a
- * **round device**, whose circular mask is baked into the capture (cropping it leaves an oversized,
- * and for an asymmetric gutter off-centre, circle rather than the watch shape), and
- * **`showSystemUi`**, whose synthetic status and nav bars are painted against the edges of the
- * grown window (trimming those edges slices the chrome rather than the gutter). Making either work
- * means composing the scroll pass in an un-grown window rather than post-processing it. A
- * scrollable hosted in a **full-screen** dialog — a `ModalBottomSheet` — keeps it as well. Those
- * frames are cropped to the dialog's own window rect instead of reaching the hosting-window trim,
- * and for a centred `Dialog` that rect *is* the component, so the gutter is excluded correctly
- * there; a full-screen window's rect is the whole grown frame, so nothing is removed. None of the
- * three is a combination worth the machinery: a gutter exists to keep a component's shadow, and a
- * scroll product has no component edge to keep one on.
- *
- * `END` is the exception on Android, and knowingly so. It is the one scroll mode whose product is
- * an ordinary still, so it shares the whole still post-capture chain — the focus overlay, the a11y
- * / semantics / layout-inspector products, a round device's baked-in mask — all of which describe
- * the hosting window. Trimming the PNG underneath them would buy the right frame size and lose
- * every other product's agreement with it, so an Android `END` capture keeps the gutter while the
- * CMP Desktop one does not.
- *
- * Two caveats are still open. That Android `END` divergence is one. The other is a held **desktop
- * recording** of a *wrapped* preview, which is sized from the sandbox bound rather than the
- * measured content — that one predates gutters entirely, so the gutter term merely rides on top of
- * a frame that was already the wrong size. Both are tracked in compose-ai-tools#4467 — read them as
- * the current limits of the contract above, not as licence to rely on them.
+ * It **cannot be combined with** a `@ScrollingPreview`, and that is a decision rather than a gap. A
+ * LONG capture's bounds are the stitched scroll extent — many viewports of a list, not a component
+ * — and a scroll GIF's are the declared viewport; even a settled END/TOP frame is one viewport of a
+ * screen, not a component with an edge for the gutter to sit on. Adding transparent dp around a
+ * scroll strip would be decorative padding wearing this annotation's name, and honouring it per
+ * lane meant a thicket of divergences — a baked-in round mask, a displaced focus overlay, sidecars
+ * keyed to a grown window (compose-ai-tools#4467). So a function that declares a (non-zero) gutter
+ * alongside `@ScrollingPreview` is **rejected at discovery**: it is skipped with an actionable
+ * warning naming the function, and contributes nothing to `previews.json`. Remove one annotation —
+ * the two describe different things and a preview cannot be both at once. (An all-zero gutter is
+ * equivalent to no annotation, per [all], so it does not trip this and the scroll capture stands.)
  *
  * A **rotated** capture (`orientation = landscape`, which the daemon reduces to a width↔height
  * swap) keeps the declared edges verbatim: a gutter edge names a direction the component draws in —

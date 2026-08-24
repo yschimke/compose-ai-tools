@@ -152,21 +152,89 @@ class IncrementalDiscovery(
       for (method in classInfo.methodInfo) {
         val annotations = method.annotationInfo?.toList().orEmpty()
         val direct = collectDirectPreviews(annotations)
-        if (direct.isNotEmpty()) {
-          for (ann in direct) {
-            results.add(toDto(classInfo, method, ann, sourceKey))
-          }
+        val expansions =
+          if (direct.isNotEmpty()) direct
+          else annotations.flatMap { resolveMultiPreview(it, scanResult, mutableSetOf()) }
+        if (expansions.isEmpty()) continue
+
+        // Mirror the authoritative pass's rejection of `@CaptureGutter` + `@ScrollingPreview`
+        // (PreviewDiscovery). Without it, a full pass correctly drops the combination from
+        // `previews.json`, but the first source edit re-adds the function here — the diff sees a
+        // previously-absent id and treats it as an addition — so the daemon would expose an
+        // unguttered, unscrolled preview until the next full discovery. `@CaptureGutter` may be
+        // hoisted onto a multi-preview annotation, so the check walks the meta-annotation closure.
+        //
+        // Best-effort, like the rest of this path: it resolves the closure through the scoped scan,
+        // so a `@CaptureGutter` hoisted onto a *dependency-JAR* annotation (outside the narrowed
+        // classpath) is not seen here and slips through until the next full discovery corrects it;
+        // and once a rejected function is out of the index, a fix that removes one annotation may
+        // not re-trip `cheapPrefilter` (its regex carries only the known preview FQNs), so recovery
+        // likewise waits for a full pass. Both match the incremental path's standing v1 contract
+        // (see [scanForFile] / the class kdoc), where identity is authoritative and details settle
+        // on the next full discovery.
+        if (declaresGutterAndScrolling(annotations, scanResult)) {
+          System.err.println(
+            "compose-ai-daemon: IncrementalDiscovery skipping '${classInfo.name}.${method.name}'" +
+              " — @CaptureGutter cannot be combined with @ScrollingPreview; remove one annotation."
+          )
           continue
         }
-        for (ann in annotations) {
-          val resolved = resolveMultiPreview(ann, scanResult, mutableSetOf())
-          for (resolvedAnn in resolved) {
-            results.add(toDto(classInfo, method, resolvedAnn, sourceKey))
-          }
+        for (ann in expansions) {
+          results.add(toDto(classInfo, method, ann, sourceKey))
         }
       }
     }
     return results
+  }
+
+  /**
+   * True when a method declares `@ScrollingPreview` together with an **effective** `@CaptureGutter`
+   * — the contradiction the authoritative pass rejects (see `PreviewDiscovery`).
+   *
+   * Must match that pass clause for clause, or a source save diverges from the full
+   * `previews.json`: an all-zero gutter (`@CaptureGutter()`, or edges that all clamp to `0`) is
+   * equivalent to no annotation there (`extractCaptureGutter` returns `null`), so such a function
+   * is KEPT — checking the annotation's mere presence would wrongly drop it here and make the live
+   * daemon shed a preview the full pass emitted.
+   *
+   * `@ScrollingPreview` targets FUNCTION only, so it is always a direct method annotation;
+   * `@CaptureGutter` also targets ANNOTATION_CLASS, so it can be hoisted onto a multi-preview
+   * annotation and is found by walking the meta-annotation closure.
+   */
+  private fun declaresGutterAndScrolling(
+    annotations: List<AnnotationInfo>,
+    scanResult: ScanResult,
+  ): Boolean {
+    var hasScrolling = false
+    var gutter: AnnotationInfo? = null
+    val visited = mutableSetOf<String>()
+    fun walk(anns: List<AnnotationInfo>) {
+      for (ann in anns) {
+        if (ann.name == SCROLLING_PREVIEW_FQN) hasScrolling = true
+        if (ann.name == CAPTURE_GUTTER_FQN && gutter == null) gutter = ann
+        if (!visited.add(ann.name)) continue
+        val annClass = scanResult.getClassInfo(ann.name) ?: continue
+        walk(annClass.annotationInfo.toList())
+      }
+    }
+    walk(annotations)
+    return hasScrolling && gutter?.let { hasEffectiveGutter(it) } == true
+  }
+
+  /**
+   * Whether a `@CaptureGutter` resolves to a non-zero gutter — mirrors `PreviewDiscovery`'s
+   * `extractCaptureGutter` / `CaptureGutterDp.isEmpty()`: a per-edge `INHERIT_GUTTER` (`-1`) takes
+   * `all`, negatives clamp to `0`, and an all-zero result is "no gutter".
+   */
+  private fun hasEffectiveGutter(ann: AnnotationInfo): Boolean {
+    val pv = ann.parameterValues
+    val all = (pv.getValue("all") as? Int) ?: 0
+    fun edge(name: String): Int {
+      val raw = (pv.getValue(name) as? Int) ?: INHERIT_GUTTER
+      val resolved = if (raw == INHERIT_GUTTER) all else raw
+      return resolved.coerceIn(0, MAX_CAPTURE_GUTTER_DP)
+    }
+    return edge("start") > 0 || edge("top") > 0 || edge("end") > 0 || edge("bottom") > 0
   }
 
   private fun collectDirectPreviews(annotations: List<AnnotationInfo>): List<AnnotationInfo> {
@@ -287,6 +355,21 @@ class IncrementalDiscovery(
         "androidx.compose.desktop.ui.tooling.preview.Preview",
         "androidx.wear.tiles.tooling.preview.Preview",
       )
+
+    /**
+     * `@CaptureGutter` / `@ScrollingPreview` FQNs, mirrored from `:gradle-plugin`'s
+     * `PreviewDiscovery` for the same layering reason as [DEFAULT_PREVIEW_ANNOTATION_FQNS]: the two
+     * cannot be combined, and this path must reject the pair to match the authoritative pass.
+     */
+    private const val CAPTURE_GUTTER_FQN = "ee.schimke.composeai.preview.CaptureGutter"
+    private const val SCROLLING_PREVIEW_FQN = "ee.schimke.composeai.preview.ScrollingPreview"
+
+    /**
+     * Mirrors `preview.INHERIT_GUTTER` / `MAX_CAPTURE_GUTTER_DP` (a per-edge "take `all`" sentinel,
+     * and the per-edge dp ceiling). Duplicated for the same layering reason as the FQNs above.
+     */
+    private const val INHERIT_GUTTER = -1
+    private const val MAX_CAPTURE_GUTTER_DP = 64
 
     /** Synthesised `@Repeatable` containers; same FQN set as the gradle plugin. */
     private val CONTAINER_FQNS: Set<String> =

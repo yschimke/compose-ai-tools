@@ -2790,6 +2790,157 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
+  fun `composePreviewDiscover rejects @CaptureGutter combined with @ScrollingPreview`() {
+    val projectDir = createCmpTestProject()
+
+    // Both annotations stubbed at their canonical FQNs — discovery matches by FQN, same as the
+    // single-annotation tests above.
+    val fqnDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    fqnDir.mkdirs()
+    File(fqnDir, "CaptureGutter.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)
+        annotation class CaptureGutter(
+          val all: Int = 0,
+          val start: Int = -1,
+          val top: Int = -1,
+          val end: Int = -1,
+          val bottom: Int = -1,
+        )
+        """
+          .trimIndent()
+      )
+    File(fqnDir, "ScrollingPreview.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        enum class ScrollMode { TOP, END, LONG, GIF }
+        enum class ScrollAxis { VERTICAL, HORIZONTAL }
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION)
+        annotation class ScrollingPreview(
+            val modes: Array<ScrollMode> = [ScrollMode.END],
+            val maxScrollPx: Int = 0,
+            val reduceMotion: Boolean = true,
+            val axis: ScrollAxis = ScrollAxis.VERTICAL,
+            val frameIntervalMs: Int = 80,
+        )
+        """
+          .trimIndent()
+      )
+
+    val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
+    srcFile.writeText(
+      """
+      package test
+
+      import androidx.compose.foundation.background
+      import androidx.compose.foundation.layout.Box
+      import androidx.compose.foundation.layout.size
+      import androidx.compose.runtime.Composable
+      import androidx.compose.ui.Modifier
+      import androidx.compose.ui.graphics.Color
+      import androidx.compose.ui.tooling.preview.Preview
+      import androidx.compose.ui.unit.dp
+      import ee.schimke.composeai.preview.CaptureGutter
+      import ee.schimke.composeai.preview.ScrollMode
+      import ee.schimke.composeai.preview.ScrollingPreview
+
+      // The contradiction: a gutter says "the component draws past its own bounds", a scroll
+      // capture has no such bounds. Rejected at discovery so the author removes one rather than
+      // shipping a gutter some products keep and others drop.
+      @CaptureGutter(all = 4, bottom = 5)
+      @ScrollingPreview(modes = [ScrollMode.END])
+      @Preview(name = "Guttered scroll")
+      @Composable
+      fun GutteredScrollPreview() {
+          Box(modifier = Modifier.size(50.dp).background(Color.Red))
+      }
+
+      // Even the degenerate empty-modes form is rejected: it declares @ScrollingPreview, which is
+      // what the contract forbids alongside a gutter, even though it produces no scroll specs.
+      @CaptureGutter(all = 4, bottom = 5)
+      @ScrollingPreview(modes = [])
+      @Preview(name = "Empty-modes guttered scroll")
+      @Composable
+      fun EmptyModesGutteredScrollPreview() {
+          Box(modifier = Modifier.size(50.dp).background(Color.Yellow))
+      }
+
+      // Control: gutter alone is still discovered with its gutter intact.
+      @CaptureGutter(all = 4, bottom = 5)
+      @Preview(name = "Gutter only")
+      @Composable
+      fun GutterOnlyPreview() {
+          Box(modifier = Modifier.size(50.dp).background(Color.Blue))
+      }
+
+      // Control: scroll alone is still discovered as a scroll product.
+      @ScrollingPreview(modes = [ScrollMode.LONG])
+      @Preview(name = "Scroll only")
+      @Composable
+      fun ScrollOnlyPreview() {
+          Box(modifier = Modifier.size(50.dp).background(Color.Green))
+      }
+
+      // Control: an all-zero gutter is equivalent to no annotation, so this is NOT the forbidden
+      // combination — it survives as an ordinary scroll product.
+      @CaptureGutter(all = 0)
+      @ScrollingPreview(modes = [ScrollMode.LONG])
+      @Preview(name = "Zero gutter scroll")
+      @Composable
+      fun ZeroGutterScrollPreview() {
+          Box(modifier = Modifier.size(50.dp).background(Color.Gray))
+      }
+      """
+        .trimIndent()
+    )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+
+    // Warn-and-skip, not a hard build failure — matches every other unsupported-combination skip.
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    assertThat(result.output).contains("test.PreviewsKt.GutteredScrollPreview")
+    assertThat(result.output).contains("test.PreviewsKt.EmptyModesGutteredScrollPreview")
+    assertThat(result.output).contains("@CaptureGutter cannot be combined with @ScrollingPreview")
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+
+    // The offending functions contribute nothing — no still, no scroll product. The empty-modes
+    // form is rejected on the annotation's presence, not on it having produced any scroll spec.
+    assertThat(manifest.previews.map { it.functionName })
+      .containsNoneOf("GutteredScrollPreview", "EmptyModesGutteredScrollPreview")
+
+    // Both controls survive with their respective intent intact, proving the guard is scoped to
+    // the combination rather than to either annotation on its own.
+    val gutterOnly = manifest.previews.single { it.functionName == "GutterOnlyPreview" }
+    assertThat(gutterOnly.params.captureGutter)
+      .isEqualTo(CaptureGutterDp(start = 4, top = 4, end = 4, bottom = 5))
+    val scrollOnly = manifest.previews.single { it.functionName == "ScrollOnlyPreview" }
+    assertThat(scrollOnly.dataProducts.single().kind).isEqualTo("render/scroll/long")
+
+    // An all-zero gutter is equivalent to no annotation, so scroll + zero-gutter is kept — the
+    // rejection is scoped to an *effective* gutter, not the annotation's bare presence.
+    val zeroGutterScroll = manifest.previews.single { it.functionName == "ZeroGutterScrollPreview" }
+    assertThat(zeroGutterScroll.params.captureGutter).isNull()
+    assertThat(zeroGutterScroll.dataProducts.single().kind).isEqualTo("render/scroll/long")
+  }
+
+  @Test
   fun `composePreviewDiscover records @PreviewParameter provider FQN`() {
     val projectDir = createCmpTestProject()
 

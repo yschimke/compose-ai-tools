@@ -293,45 +293,23 @@ PNG beside it carried the gutter — the component is the same size in both, onl
   frame of a recording shares one canvas, exactly as a still does, so the gutter is as well-defined
   there; the desktop GIF row above is the fixture that pins it
   ([#4452](https://github.com/yschimke/compose-ai-tools/issues/4452)).
-* **Scrolling captures — no, by decision.** A `@ScrollingPreview` LONG capture's bounds are the
-  stitched scroll extent and a scroll GIF's are the declared viewport. Neither is "the component
-  plus what it draws outside itself", so there is no edge for a gutter to sit on and extending
-  either would be padding the sheet under the annotation's name. A declined scroll drive falls
-  through to an ordinary still, which does carry the gutter.
+* **Scrolling captures — rejected outright.** A gutter and a `@ScrollingPreview` on one function
+  are a contradiction, not a combination: a LONG capture's bounds are the stitched scroll extent, a
+  GIF's the declared viewport, and even a settled END/TOP frame is one viewport of a screen — none
+  is "the component plus what it draws outside itself", so there is no edge for a gutter to sit on.
+  Rather than honour the pair per lane — which meant a thicket of divergences (a baked-in round
+  mask, a displaced focus overlay, sidecars keyed to a grown window, and an `END` frame that came
+  out `frame + gutter` on Android but `frame` on CMP Desktop) — **discovery rejects the combination**
+  (`PreviewDiscovery`): a function that declares a *non-zero* gutter alongside `@ScrollingPreview` is
+  skipped with a warning naming it and never reaches `previews.json`, so no lane ever has to
+  reconcile them. (An all-zero `@CaptureGutter()` is equivalent to no annotation, so it does not trip
+  the rejection and the scroll capture stands — both discovery paths agree on that.) This closes the
+  scroll items of [#4467](https://github.com/yschimke/compose-ai-tools/issues/4467) by removing the
+  case, not by making every lane agree on it.
 
-  CMP Desktop hands its scroll renderer no gutter at all. Android grows **one** hosting window per
-  preview and captures every job for that preview inside it, so it cannot express the exclusion in
-  the window — its `LONG` slices and `GIF` frames trim the gutter back off after capture instead.
-  `TOP` is untouched on both lanes: the undriven first viewport is a still, and stills carry the
-  gutter.
-
-  Two Android frame shapes are **unsupported** with a gutter and keep it on their scroll products,
-  because trimming would be worse than not trimming: a **round device** (the circular mask is baked
-  into the capture, so cropping leaves an oversized — and for an asymmetric gutter, off-centre —
-  circle instead of the watch shape) and **`showSystemUi`** (`SystemBarsFrame` wraps the gutter box,
-  so the chrome is painted against the *grown* window's edges and trimming slices the bars). Both
-  need the scroll pass composed in an un-grown window rather than post-processed. A scrollable
-  hosted in a **full-screen** dialog (`ModalBottomSheet`) keeps it too: those frames are cropped to
-  the dialog's own window rect rather than reaching the hosting-window trim, and a full-screen
-  window's rect is the whole grown frame. A centred `Dialog` is fine — its rect *is* the component,
-  so the gutter is excluded correctly. None of the three is a combination any preview declares.
-
-  **`END` still diverges on Android**, knowingly. It is the one scroll mode whose product is an
-  ordinary still, so it shares the whole still post-capture chain — the focus overlay, the a11y /
-  semantics / layout-inspector products, a round device's baked-in mask — every one of which
-  describes the hosting window. Trimming the PNG underneath them would buy the right frame size and
-  lose every other product's agreement with it. Composing `END` in an un-grown window (a second
-  render pass, the way a settled still already splits) is the fix; until then a guttered `END`
-  capture is `frame + gutter` on Android and `frame` on CMP Desktop.
-
-  One further divergence remains open: a held **desktop recording** of a *wrapped* preview is sized
-  from the sandbox bound rather than the measured content — that one predates gutters. Tracked, with
-  the `END` divergence above, in
-  [#4467](https://github.com/yschimke/compose-ai-tools/issues/4467).
-
-  Fixed-axis Android **motion** frames used to disagree with the still by a pixel at fractional
-  densities, because the hosting window can only grow in whole dp; both now derive from one
-  `fixedAxisTargetPx`
+  Fixed-axis Android **motion** frames (an `@AnimatedPreview` / `@InteractionPreview`, which *do*
+  combine with a gutter) used to disagree with the still by a pixel at fractional densities, because
+  the hosting window can only grow in whole dp; both now derive from one `fixedAxisTargetPx`
   ([#4471](https://github.com/yschimke/compose-ai-tools/pull/4471)).
 * **Rotation does not rotate the edges.** `orientation = landscape` reduces to a
   `widthPx ↔ heightPx` swap, and the routers trade the *wrap flags* with it because a wrap flag

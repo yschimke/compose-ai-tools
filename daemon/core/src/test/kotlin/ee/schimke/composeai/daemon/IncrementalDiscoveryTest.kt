@@ -166,6 +166,53 @@ class IncrementalDiscoveryTest {
   }
 
   @Test
+  fun `scanForFile drops a function that combines @CaptureGutter with @ScrollingPreview`() {
+    // The authoritative pass (PreviewDiscovery) rejects that combination; the incremental scan must
+    // too, or a source edit re-adds the rejected preview to the index (issue #4467 / #4488 review).
+    val syntheticKt = Path.of(System.getProperty("java.io.tmpdir"), "GutterScrollFixtures.kt")
+    // Capture stderr so the rejection diagnostic (which the full pass emits as a warning) can be
+    // asserted — the incremental path must name the function it drops, not remove it silently.
+    val savedErr = System.err
+    val captured = java.io.ByteArrayOutputStream()
+    val results =
+      try {
+        System.setErr(java.io.PrintStream(captured, true, "UTF-8"))
+        discovery.scanForFile(syntheticKt)
+      } finally {
+        System.setErr(savedErr)
+      }
+    val diagnostics = captured.toString("UTF-8")
+    val methods = results.map { it.methodName }.toSet()
+
+    // Both contradictory combinations are dropped — the direct one and the one whose gutter is
+    // hoisted onto a multi-preview annotation, which the guard's meta-closure walk has to catch.
+    assertFalse(
+      "the direct gutter+scroll combination must be skipped; got $methods",
+      "gutteredScrollingPreview" in methods,
+    )
+    assertFalse(
+      "the hoisted gutter+scroll combination must be skipped; got $methods",
+      "hoistedGutterScrollingPreview" in methods,
+    )
+    // Either annotation on its own still surfaces.
+    assertTrue("gutter-only must survive; got $methods", "gutterOnlyPreview" in methods)
+    assertTrue("scroll-only must survive; got $methods", "scrollOnlyPreview" in methods)
+    // An all-zero gutter is equivalent to no annotation, so scroll + zero-gutter is NOT the
+    // forbidden combination — it must survive, matching the authoritative pass rather than being
+    // dropped on the annotation's bare presence.
+    assertTrue(
+      "zero-gutter + scroll must survive; got $methods",
+      "zeroGutterScrollingPreview" in methods,
+    )
+    // The drop is announced, not silent: the diagnostic names the rejected function(s).
+    assertTrue(
+      "rejection must be reported to stderr; got: $diagnostics",
+      "gutteredScrollingPreview" in diagnostics &&
+        "@CaptureGutter cannot be combined with @ScrollingPreview" in diagnostics,
+    )
+  }
+
+  @Test
   fun `scanForFile returns emptySet when no class on classpath sources to the saved file`() {
     val syntheticKt = Path.of(System.getProperty("java.io.tmpdir"), "DefinitelyNotAFixture.kt")
     val results = discovery.scanForFile(syntheticKt)
