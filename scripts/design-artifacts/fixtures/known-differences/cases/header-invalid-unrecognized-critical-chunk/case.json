@@ -1,7 +1,7 @@
 {
   "title": "An unrecognized **critical** chunk with a valid CRC",
   "site": null,
-  "why": "The PNG specification requires a decoder to stop on a critical chunk it does not recognise, and a browser obeys it. `v1` goes further and refuses every chunk outside its allowlist, so this case and `decode-failed-chunk-not-permitted` reach the same verdict by the same rule — kept separate because a reader looking for the specification's requirement should find it covered, not inferred.",
+  "why": "The PNG specification requires a decoder to stop on a critical chunk it does not recognise, and a browser obeys it. `v1` goes further and refuses every chunk outside its allowlist, so this case and `header-invalid-chunk-not-permitted` reach the same verdict by the same rule — kept separate because a reader looking for the specification's requirement should find it covered, not inferred. Both sit before the image data, so both are the *preflight's* refusal: the prefix walk does not distinguish critical from ancillary any more than the allowlist does.",
   "comparison": {
     "system": "m3",
     "component": "IconButton/Tonal",

@@ -7,14 +7,14 @@
     "m3-iconbutton-tonal-glyph": {
       "status": "refused",
       "reasons": [
-        "decode-failed"
+        "animated-png"
       ]
     }
   },
   "validationFailures": [
     {
       "id": "m3-iconbutton-tonal-glyph",
-      "reason": "decode-failed"
+      "reason": "animated-png"
     }
   ]
 }

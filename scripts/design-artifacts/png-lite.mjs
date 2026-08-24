@@ -16,9 +16,11 @@
  *
  * 1. **The contract's preflight is a header walk, not a decode.** It reads `IHDR`, takes
  *    `width × height` from it, checks the two bytes after them, and walks chunk *headers* to the
- *    first `IDAT` looking for `acTL` — never a chunk's data, never an allocation sized by the file.
- *    A library decode allocates the oversized raster to measure it, which defeats the budget at the
- *    moment it is supposed to fire. {@link preflightPng} is that walk and nothing more.
+ *    first `IDAT` looking for `acTL` — never a chunk's data, never an allocation sized by the file,
+ *    and over a 4 KiB *prefix* of the artifact rather than the whole of it. A library decode
+ *    allocates the oversized raster to measure it, which defeats the budget at the moment it is
+ *    supposed to fire — and so, more quietly, does reading the whole file to look at its first
+ *    kilobyte. {@link preflightPng} is that walk and nothing more.
  * 2. **The fixtures need files a well-behaved encoder refuses to write** — an APNG, a palette mask
  *    with strictly binary samples, a header that lies about its dimensions, a truncated file. Those
  *    are the cases a sample-only or decode-only check accepts, so the suite is worthless without
@@ -217,17 +219,65 @@ export function ihdr({
 }
 
 /**
+ * The **complete** set of chunks that may sit between `IHDR` and the first `IDAT`.
+ *
+ * A subset of {@link PERMITTED_CHUNKS}, and the reason it is separate is what makes the preflight's
+ * bound provable rather than hopeful. The preflight is served a *prefix* of the file — it never sees
+ * the whole artifact — so "walk chunk headers to the first `IDAT`" is only a bounded read if the
+ * bytes it must skip over are bounded. Enumerating what may appear there makes that arithmetic
+ * finite: `PLTE` is at most 768 bytes of data, `tRNS` at most 256, and nothing else is allowed to
+ * take up room before the image data starts.
+ *
+ * `acTL` is not on this list and is not a violation of it either: it is the animation signal, and
+ * {@link preflightPng} returns on sight of it rather than skipping past it, so it costs the eight
+ * bytes of its own header and nothing more. That also means a real APNG — which carries `acTL`,
+ * then an `fcTL`, then `IDAT` — reports `animated-png` rather than tripping over the `fcTL` it never
+ * reaches.
+ */
+const PRE_IDAT_CHUNKS = new Set(["PLTE", "tRNS"]);
+
+/**
+ * The most bytes a **conforming** artifact can put before the first `IDAT`'s type field, so that a
+ * prefix at least this long always resolves the preflight.
+ *
+ * Signature 8, `IHDR` 12 + 13 = 25, `PLTE` 12 + 768 = 780, `tRNS` 12 + 256 = 268, and the eight-byte
+ * length-and-type of the first `IDAT` = **1089**. An `acTL` standing where that `IDAT` header would
+ * be costs the same eight bytes, because the walk returns on reading its *type* and never skips its
+ * data — so the animated path is bounded by the same number rather than a longer one.
+ *
+ * This is an assertion about the format, not a budget knob: it is what licenses `maxPreflightBytes`
+ * in `known-differences.mjs` being a fixed constant instead of "however much the file wants".
+ * The prefix that constant names is roughly 3.7x this, which is margin for a future chunk rather
+ * than slack this arithmetic needs.
+ */
+export const MAX_CONFORMING_HEADER_BYTES = 8 + 25 + 780 + 268 + 8;
+
+/**
  * The contract's bounded header preflight: `IHDR` plus a walk of chunk *headers* to the first
  * `IDAT`.
  *
  * Returns `{ width, height, bitDepth, colourType, interlace, animated, hasTransparency, byteLength }`,
  * or
  * `{ error: "header-invalid" }` for anything it cannot read — a wrong signature, a file too short to
- * hold an `IHDR`, a chunk length that runs past the end, a missing `IDAT`. Never reads chunk data,
- * never allocates anything sized by the file, so an 8192-cap breach costs the same handful of bytes
- * as a legal header.
+ * hold an `IHDR`, a chunk length that runs past what it was given, a chunk that has no business
+ * sitting before the image data, a missing `IDAT`. Never reads chunk data, never allocates anything
+ * sized by the file, so an 8192-cap breach costs the same handful of bytes as a legal header.
+ *
+ * **`bytes` may be a prefix of the artifact rather than the whole of it**, which is the point:
+ * a reader that must materialise 8 MiB to have its header read has defeated the budget at the moment
+ * it is supposed to fire. `byteLength` is the size of the *whole* file — the reader knows it from a
+ * `stat` or a `Content-Length` before any bytes exist — and defaults to what was handed over for a
+ * caller holding the complete artifact. It is reported back untouched so the second-read comparison
+ * still sees a fact about the file rather than a fact about how much of it was read.
+ *
+ * A prefix that runs out before the first `IDAT` is `header-invalid`, and by
+ * {@link MAX_CONFORMING_HEADER_BYTES} that can only happen to a file that was going to be refused
+ * anyway: a `PLTE` claiming more than its 768 bytes, an ancillary chunk parked in front of the image
+ * data, an `IHDR` followed by nothing. The token differs from the `decode-failed` those files reach
+ * on a whole-file decode, and deliberately — the preflight is not decoding them, it is failing to
+ * read their header, which is what `header-invalid` says.
  */
-export function preflightPng(bytes) {
+export function preflightPng(bytes, { byteLength = bytes?.length } = {}) {
   const fail = { error: "header-invalid" };
   if (!bytes || bytes.length < SIGNATURE.length + 12 + 13) return fail;
   for (let i = 0; i < SIGNATURE.length; i++) if (bytes[i] !== SIGNATURE[i]) return fail;
@@ -238,27 +288,8 @@ export function preflightPng(bytes) {
   const height = view.getUint32(20);
   if (width === 0 || height === 0) return fail;
 
-  let animated = false;
   let hasTransparency = false;
-  let offset = 8;
-  let sawIdat = false;
-  // Chunk lengths are unsigned 32-bit, so a hostile file can name a length that overflows the
-  // buffer. Every step is bounds-checked against `bytes.length` rather than trusted.
-  while (offset + 8 <= bytes.length) {
-    const length = view.getUint32(offset);
-    const type = readType(bytes, offset + 4);
-    if (length > bytes.length - offset - 12) return fail;
-    if (type === "acTL") animated = true;
-    if (type === "tRNS") hasTransparency = true;
-    if (type === "IDAT") {
-      sawIdat = true;
-      break;
-    }
-    offset += 12 + length;
-  }
-  if (!sawIdat) return fail;
-
-  return {
+  const header = (animated) => ({
     width,
     height,
     bitDepth: bytes[24],
@@ -268,8 +299,39 @@ export function preflightPng(bytes) {
     interlace: bytes[28],
     animated,
     hasTransparency,
-    byteLength: bytes.length,
-  };
+    byteLength,
+  });
+
+  // The walk starts *past* `IHDR`, which the four checks above have already validated in full — its
+  // position, its length and its type. Re-entering the loop at offset 8 would put it up against the
+  // allowlist that exists to keep everything else out, and refuse every conforming file.
+  let offset = 8 + 12 + 13;
+  // Chunk lengths are unsigned 32-bit, so a hostile file can name a length that overflows what we
+  // hold. Every step is bounds-checked against `bytes.length` rather than trusted — and since
+  // `bytes` may be a prefix, "runs past the end" and "runs past the prefix" are the same check and
+  // the same verdict. There is no third answer available to a reader that stopped at 4 KiB.
+  while (offset + 8 <= bytes.length) {
+    const length = view.getUint32(offset);
+    const type = readType(bytes, offset + 4);
+    // **`IDAT` ends the walk before its length is consulted.** The whole point of stopping here is
+    // that the image data is never read, so requiring it to *fit* would make the preflight fail on
+    // every prefix of every real file — the first `IDAT` of an 8 MiB artifact does not fit in 4 KiB
+    // and never needed to. A length that lies about the data behind it is caught by the decoder,
+    // which is the phase that has the data.
+    if (type === "IDAT") return header(false);
+    // **`acTL` ends it too, with the verdict already decided.** Nothing later in the file can make
+    // an animated PNG acceptable, so there is no reason to keep walking — and walking on would run
+    // into the `fcTL` that a real APNG puts next, which is not a chunk this list admits.
+    if (type === "acTL") return header(true);
+    if (!PRE_IDAT_CHUNKS.has(type)) return fail;
+    if (type === "tRNS") hasTransparency = true;
+    // Skipping a chunk means its data must actually be in hand. This is the check that bounds the
+    // walk: a `PLTE` declaring 8000 bytes runs past a 4 KiB prefix and is refused here, exactly as a
+    // conforming reader would refuse it for exceeding 768 one phase later.
+    if (length > bytes.length - offset - 12) return fail;
+    offset += 12 + length;
+  }
+  return fail;
 }
 
 function readType(bytes, offset) {

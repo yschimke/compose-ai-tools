@@ -1,0 +1,38 @@
+{
+  "title": "An APNG carrying the frame control its default image needs",
+  "site": null,
+  "why": "`animated-png-mask` carries an `acTL` and nothing else, which no encoder actually emits: an APNG whose default image is part of the animation puts an `fcTL` between the `acTL` and the first `IDAT`, and that is the file a producer will really hand over. It matters because the preflight walks a *prefix* and therefore admits only an enumerated set of chunks before the image data — an engine that treated `acTL` as one more chunk to step over would meet the `fcTL`, find it on no list, and report `header-invalid` for a file whose animation it had already seen.\n\nSo `acTL` ends the walk where it is found. Nothing later in the file can make an animated PNG acceptable, the verdict is already decided, and stopping there is also what keeps the walk's bound the same on this path as on the ordinary one.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

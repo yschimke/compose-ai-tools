@@ -1035,10 +1035,44 @@ an `<img>` or `createImageBitmap` may advance through. A mask that changes betwe
 suppression union that changes while you look at it. So the preflight rejects any file carrying an
 `acTL` chunk, for **both** rasters, with `animated-png`. That widens the preflight from "read the
 `IHDR`" to "walk chunk *headers* — the length and type of each, never its data — until the first
-`IDAT`", which `acTL` must precede: still a bounded read of a fixed number of bytes per chunk, still
-nothing decoded. Rejecting is right rather than pinning "decode frame zero":
-a static acceptance artifact has no use for frames, so the file is a mistake or an attack either way,
-and "we defined which frame counts" is a rule two engines can still implement differently.
+`IDAT`", which `acTL` must precede — still nothing decoded. Rejecting is right rather than pinning
+"decode frame zero": a static acceptance artifact has no use for frames, so the file is a mistake or
+an attack either way, and "we defined which frame counts" is a rule two engines can still implement
+differently.
+
+**And "bounded" is a claim about the read, so the reader serves a prefix.** An engine that fetches
+the whole artifact and then looks only at its first kilobyte has satisfied every word of "walk chunk
+headers" while allocating up to 8 MiB per raster, twice per record, in the pass whose entire job is
+to stop that from happening — the byte cap enforced by the thing it was meant to bound. So the
+header pass asks its reader for **at most the first 4096 bytes**, and the reader answers with those
+bytes plus the size of the whole file, which it knows from a `stat` or a `Content-Length` before any
+bytes exist. The size is what the 8 MiB cap and the second-read comparison are both measured
+against, so both keep asking a question about the artifact rather than about how much of it was
+read.
+
+4096 is a named constant for the reason every other budget number is: a prefix each engine sizes for
+itself is a prefix two engines disagree about, and they would disagree precisely on the files that
+put the most in front of their image data. It is also provably enough, which is what makes it a
+constant rather than a guess. **Between `IHDR` and the first `IDAT`, `v1` permits `PLTE` and `tRNS`
+and nothing else** — a subset of the five-chunk allowlist, and the rule that makes the arithmetic
+finite: signature 8, `IHDR` 12 + 13 = 25, `PLTE` at most 12 + 768 = 780, `tRNS` at most 12 + 256 =
+268, and the eight-byte length-and-type of the `IDAT` the walk stops at. **1089 bytes**, against a
+prefix of 4096. `acTL` is not on that list and is not a violation of it either: the walk returns the
+moment it reads that type, because nothing later in the file can make an animated PNG acceptable.
+That is also what lets a *real* APNG report `animated-png` — it carries `acTL`, then an `fcTL`, then
+`IDAT`, and an engine that stepped over the `acTL` instead of returning on it would trip over the
+`fcTL` and report `header-invalid` for a file whose animation it had already seen.
+
+Two consequences worth stating, because both move a token. A chunk that is not `PLTE` or `tRNS`
+sitting before the image data is **`header-invalid`**, not the `decode-failed` a whole-file decode
+reaches for the same bytes: nothing was decoded, the header region simply could not be read. The
+same chunk *after* `IDAT` keeps `decode-failed`, because there the preflight has already returned and
+the decoder owns it. And a chunk whose declared length runs past the prefix is `header-invalid` too —
+which, by the arithmetic above, can only happen to an artifact that was going to be refused anyway.
+The preflight enforces one thing there and deliberately not more: that it could resolve the header
+within the bytes it was given. It does not re-implement the decoder's length rules, so an overlong
+`PLTE` that still fits inside the prefix is stepped over here and refused as `decode-failed` one
+phase later, where the contents are actually read.
 
 **The acceptance set is bounded before anything is decoded.** Every record costs two more raster
 decodes plus several intermediate planes on both engines, and a catalog is third-party data — so a
@@ -1061,7 +1095,9 @@ them with the ordinary decoder would allocate the oversized raster to measure it
 protection at the moment it fires. So the budget is enforced after a **bounded header preflight**:
 read each PNG's `IHDR` (the first handful of bytes after the signature), take `width × height` from
 it, and walk the chunk headers to the first `IDAT` for the animation check below. Bounded throughout
-— chunk lengths and types only, never chunk data, and never a decode.
+— chunk lengths and types only, never chunk data, and never a decode. **Bounded at the reader too**:
+the pass is served the first 4096 bytes of each artifact rather than the whole of it, which the
+preflight passage above works out is always enough and states the consequences of.
 
 **Compare as you go; never accumulate a total that can overflow.** Summing `width × height` across a
 third-party set is exactly where the two engines diverge silently: several PNGs with large but
@@ -1092,7 +1128,8 @@ still be evaluated offline, where it is read off disk, and refused on the servin
 fetch never completes and becomes `artifact-unreadable`. Dimensions do not bound file size: PNG
 compression varies by orders of magnitude with content, and an acceptance's rasters are exactly the
 noisy sub-regions that compress worst. So `v1` caps each artifact at **8 MiB encoded**, checked from
-the byte length the preflight already has in hand, refused as `artifact-too-large` — comfortably
+the artifact's length, which the reader reports alongside the prefix it serves (measuring the prefix
+instead would be a cap that has quietly stopped applying), refused as `artifact-too-large` — comfortably
 under the host's own limit so the two engines agree well before the host's fetch would fail, and far
 above a real mask or crop. Per-artifact rather than per-document, and excluded from the pixel budget
 like every other preflight refusal, so the order-independence rule still holds.

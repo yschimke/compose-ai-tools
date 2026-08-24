@@ -1,0 +1,38 @@
+{
+  "title": "An overlong `PLTE` that still fits inside the header prefix",
+  "site": null,
+  "why": "The same illegal chunk 5000 bytes shorter, and the verdict moves. 3000 bytes of `PLTE` still leaves the first `IDAT` inside the 4096-byte prefix, so the preflight steps over the chunk exactly as it steps over a legal one and reaches a readable header; the 768-byte limit is a rule about the palette's *contents*, and the decoder is the phase that reads contents. `decode-failed`.\n\nRecorded as a pair with `header-invalid-chunk-longer-than-the-prefix` because the split looks arbitrary until you see what it protects: the preflight enforces one thing, that it could resolve the header within the bytes it was given, and an engine that instead duplicated the decoder's length rules there would refuse this case a phase early — before the budget, with the wrong token.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "canonical-reference.png",
+    "canonicalCandidate": "canonical-candidate.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}
