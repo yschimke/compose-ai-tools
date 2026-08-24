@@ -35,17 +35,59 @@ many words. The two converge when the versioned rebaseline
 portable path the live scorer, which is a change of its own with regenerated baselines and a release
 note.
 
+## The two states that are reported by an absence
+
+The band's hard cases are not the ones with a verdict in them — they are the ones where the engine
+answers by *leaving something out*, and a reader that takes an absence for "nothing to say" hides
+the finding while looking perfectly healthy. Both of these shipped wrong and are shown here before
+and after, because the "before" is the argument for the state existing at all.
+
+### A document refused wholesale
+
+A duplicated id rejects the **document**: the engine returns no `statuses`, and reports
+`duplicate-id` attributed to the first spelling seen — so the failure carries an id, exactly like a
+per-record refusal that does have a row to appear in.
+
+| Before | After |
+| --- | --- |
+| ![scores over an empty list](refused-before-light.png) | ![the refusal, explained](refused-after-light.png) |
+
+Read the "before" carefully: `100.0% over the accepted region` above an empty list. Every number is
+correct and the picture is a lie — it is what a comparison whose acceptances all applied cleanly
+looks like, on a comparison where **nothing** was applied.
+
+### A comparison that could not be fetched
+
+With no pair the engine runs its validation-only pass, and every in-scope acceptance comes back
+`out-of-scope` — the same token a record authored for another comparison gets, and the one the band
+hides itself for.
+
+| Before | After |
+| --- | --- |
+| ![no band at all](stalled-before-light.png) | ![the stall, named](stalled-after-light.png) |
+
+So a transient 503 on the render lane, or a reference whose bytes no longer match the digest the
+page was built from, was indistinguishable from a catalog that has accepted nothing here.
+
+Dark-theme shots of all four sit beside these as `*-dark.png`.
+
 ## How these were made
 
 ```
-node build-band-harness.mjs   # writes band.html into the scratchpad: synthetic catalog + real bundle
-node shoot-band.mjs           # screenshots it in both themes
+# variant ∈ {band, refused, stalled}; the bundle and output path are both overridable, which is how
+# the "before" halves above were shot against the previously committed bundle.
+node build-band-harness.mjs band /path/to/known-differences.js /tmp/band.html
+node shoot-band.mjs /tmp/band.html /tmp/band     # writes /tmp/band-light.png and -dark.png
 ```
 
 `build-band-harness.mjs` generates the four rasters, resolves the canonical plane with the same
 `resolvePlane` the page uses, hashes the artifacts, and writes a page carrying the committed
 `serve.css` and the committed `known-differences.js` with a `fetch` stub in front of them. Nothing
 about the engine is stubbed — the numbers in the picture were computed by the bundle that ships.
+
+`referenceSha256` in the harness is the **real** digest of the reference bytes the page serves. It
+has to be: the adapter hashes what it fetched and checks it against the digest the page hands it, so
+a harness declaring a placeholder photographs the stalled band rather than the band.
 
 A live server would have done as well and costs far more to stand up here: the band only renders on a
 catalog that has published a `parity/known-differences.json`, and no catalog has yet, because the
