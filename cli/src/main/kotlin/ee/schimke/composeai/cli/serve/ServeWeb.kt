@@ -9703,42 +9703,51 @@ ${if (annotationsSelectable) "          data-cp-selectable=\"1\"\n" else ""}    
     // The band renders empty and `hidden`: the numbers are the browser's, computed from the same
     // rasters the diff uses, and the server has no scorer to write them with. What the server does
     // decide is whether the engine may run at all, which is the payload's presence.
+    // The acceptance band and its payload. Both are absent together on a catalog that has accepted
+    // nothing — an empty band would say "0 accepted" on every comparison in every catalog, which is
+    // noise rather than information, and the page would also carry the engine's bundle to evaluate
+    // nothing.
+    //
+    // The band renders empty and `hidden`: the numbers are the browser's, computed from the same
+    // rasters the diff uses, and the server has no scorer to write them with. What the server
+    // decides is whether the engine may run at all, which is the payload's presence.
+    //
+    // Both strings carry their own leading newline and sit at column zero, like every other
+    // interpolated block on this page. That is not cosmetic: `trimIndent()` runs *after*
+    // interpolation, so a block indented to match the template would drag the whole page's
+    // indentation with it — and an empty one on its own template line would leave a blank line on
+    // every catalog that has accepted nothing, which is exactly the golden drift this shape avoids.
     val acceptanceBand =
       if (knownDifferences == null) ""
-      else
-        """
-        <div class="cp-acceptance" id="cp-acceptance" role="status" hidden></div>
-        """
-          .trimIndent()
+      else "\n" + """<div class="cp-acceptance" id="cp-acceptance" role="status" hidden></div>"""
+    val acceptanceContext = knownDifferences?.let { scope ->
+      encodeKnownDifferenceContext(
+        KnownDifferenceContext(
+          // The document and the artifacts are published catalog files, not render output, so
+          // they take the session keys and nothing else — no overrides, no `reference=`. The pin
+          // is deliberately absent too: a historical revision's acceptances are not published, and
+          // quoting today's against yesterday's pixels would gate a comparison nobody accepted
+          // anything for.
+          documentUrl =
+            "$basePath/parity/known-differences.json" +
+              querySuffix(linkQuery(token, linkSessionId, basePath, isPublic)),
+          artifactBase = "$basePath/parity/known-differences/",
+          artifactQuery = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic)),
+          // The two panels' own URLs, so the engine decodes the very frames the diff drew rather
+          // than re-deriving a pair from the ids.
+          referenceUrl = raster,
+          candidateUrl = actual,
+          scope = scope,
+        )
+      )
+    }
     val acceptanceScript =
-      if (knownDifferences == null) ""
+      if (acceptanceContext == null) ""
       else
-        """
-        <script type="application/json" id="cp-known-differences">${
-          encodeKnownDifferenceContext(
-            KnownDifferenceContext(
-              // The document and the artifacts are published catalog files, not render output, so
-              // they take the session keys and nothing else — no overrides, no `reference=`. The
-              // pin is deliberately absent too: a historical revision's acceptances are not
-              // published, and quoting today's against yesterday's pixels would gate a comparison
-              // nobody accepted anything for.
-              documentUrl =
-                "$basePath/parity/known-differences.json" +
-                  querySuffix(linkQuery(token, linkSessionId, basePath, isPublic)),
-              artifactBase = "$basePath/parity/known-differences/",
-              artifactQuery = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic)),
-              // The two panels' own URLs, so the engine decodes the very frames the diff drew
-              // rather than re-deriving a pair from the ids.
-              referenceUrl = raster,
-              candidateUrl = actual,
-              scope = knownDifferences,
-            )
-          )
-        }</script>
-        ${scriptTag("known-differences.js")}
-        <cp-acceptance></cp-acceptance>
-        """
-          .trimIndent()
+        "\n" +
+          """<script type="application/json" id="cp-known-differences">$acceptanceContext</script>
+${scriptTag("known-differences.js")}
+<cp-acceptance></cp-acceptance>"""
     val source = WebEscaping.htmlEscape(reference.source.provider)
     val revision =
       reference.source.revision
@@ -9809,8 +9818,7 @@ ${if (annotationsSelectable) "          data-cp-selectable=\"1\"\n" else ""}    
           </div>
           $annotationControls
           $derivedControls
-          <p class="cp-reference-result" role="status">comparing…</p>
-          $acceptanceBand
+          <p class="cp-reference-result" role="status">comparing…</p>$acceptanceBand
           $selectionControls$report
           <label class="cp-overlay-control">Overlay <input class="cp-overlay-range" type="range" min="0" max="100" value="50"><span>50%</span></label>
           <div class="cp-reference-overlay"><img src="$raster" alt=""><img src="$actual" alt=""></div>
@@ -9822,8 +9830,7 @@ ${if (annotationsSelectable) "          data-cp-selectable=\"1\"\n" else ""}    
              order. -->
         ${scriptTag("serve-components.js")}
         ${scriptTag("format-compare.js")}
-        <cp-reference-compare></cp-reference-compare>
-        $acceptanceScript
+        <cp-reference-compare></cp-reference-compare>$acceptanceScript
         """
           .trimIndent(),
     )

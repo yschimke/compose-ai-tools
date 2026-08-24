@@ -2703,8 +2703,10 @@ html:not(.cp-bg-transparent) #cp-reference-compare[data-cp-stage-clip] .cp-refer
    numbers are the browser's and a band that appeared before they existed would be asserting
    something nobody had measured. */
 .cp-acceptance { margin: 0.35rem 0 0.6rem; font-size: 0.92rem; }
-.cp-acceptance-scores { font-variant-numeric: tabular-nums; }
-.cp-acceptance-note { color: var(--cp-fg-muted); }
+/* Each on its own line. The three numbers and the sentence explaining which kernel measured them
+   ran together as one paragraph inline, and read as a single garbled claim. */
+.cp-acceptance-scores { display: block; font-variant-numeric: tabular-nums; }
+.cp-acceptance-note { display: block; color: var(--cp-fg-muted); font-size: 0.88rem; }
 .cp-acceptance-list { list-style: none; margin: 0.3rem 0 0; padding: 0;
   display: flex; flex-direction: column; gap: 0.15rem; }
 /* An accepted row is quiet and a broken one is not. `invalidated` and `refused` are the rows worth
