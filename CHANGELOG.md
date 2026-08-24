@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.33.0](https://github.com/yschimke/compose-ai-tools/compare/v1.32.0...v1.33.0) (2026-08-24)
+
+
+### Features
+
+* **gutter:** carry @CaptureGutter into the motion products and the live daemon lane ([#4466](https://github.com/yschimke/compose-ai-tools/issues/4466)) ([fda77f6](https://github.com/yschimke/compose-ai-tools/commit/fda77f6a0771b4dde49707e7cd3c6e4ee9c74df9))
+* **parity:** define compose-preview-known-differences/v1 and its conformance fixtures ([#4463](https://github.com/yschimke/compose-ai-tools/issues/4463)) ([1722ef3](https://github.com/yschimke/compose-ai-tools/commit/1722ef3ffdd1af1e8f3a2cbf7b06f7c78bc37d36))
+* **parity:** select an element on the focused comparison, and report that element ([#4465](https://github.com/yschimke/compose-ai-tools/issues/4465)) ([532bebd](https://github.com/yschimke/compose-ai-tools/commit/532bebdbf0ccb1bf11efbeaaf435177162f9bbb3))
+
+
+### Bug Fixes
+
+* **daemon:** invalidate the live projection when a dispatch renders ([#4475](https://github.com/yschimke/compose-ai-tools/issues/4475)) ([936f9cd](https://github.com/yschimke/compose-ai-tools/commit/936f9cd9df38e924c6ba0a204ab80c6bbb2c943c))
+* **daemon:** lay the held scene out before projecting its semantics ([#4470](https://github.com/yschimke/compose-ai-tools/issues/4470)) ([dfca59d](https://github.com/yschimke/compose-ai-tools/commit/dfca59dc5572fa28b2aaf77c08fa6c1b790db1b6))
+* **gutter:** exclude Android LONG and GIF scroll products from @CaptureGutter ([#4473](https://github.com/yschimke/compose-ai-tools/issues/4473)) ([5ccd14c](https://github.com/yschimke/compose-ai-tools/commit/5ccd14c31ba8de636e05c99df047aeccb3529e80))
+* **gutter:** trim fixed-axis Android motion frames to the still's pixel target ([#4471](https://github.com/yschimke/compose-ai-tools/issues/4471)) ([567a4d6](https://github.com/yschimke/compose-ai-tools/commit/567a4d6f1f3b55a46936942f116e423f9aaeb70d))
+* **parity:** a leap second needs a month end, and three rules the fixtures endorsed either way ([#4477](https://github.com/yschimke/compose-ai-tools/issues/4477)) ([e791015](https://github.com/yschimke/compose-ai-tools/commit/e791015d5d53e69b96b94691528c6405d3b17656))
+* **parity:** pin the CMP/Wasm parity lane's wall clock ([#4462](https://github.com/yschimke/compose-ai-tools/issues/4462)) ([5a56589](https://github.com/yschimke/compose-ai-tools/commit/5a56589417ba4ee19760f4765314d15061231f57))
+* **recording:** size a desktop recording from its measured content ([#4474](https://github.com/yschimke/compose-ai-tools/issues/4474)) ([8635530](https://github.com/yschimke/compose-ai-tools/commit/863553033f9393af8588b5ecaaa9dd3711f5a368))
+* **serve:** survive a shadowed embedded player, and stop starving theme optimization ([#4464](https://github.com/yschimke/compose-ai-tools/issues/4464)) ([c3300b1](https://github.com/yschimke/compose-ai-tools/commit/c3300b1b46524ae2da7421cc3f6c586ccbfce566))
+
 ## [1.32.0](https://github.com/yschimke/compose-ai-tools/compare/v1.31.0...v1.32.0) (2026-08-22)
 
 
