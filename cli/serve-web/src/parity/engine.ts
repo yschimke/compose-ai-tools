@@ -24,7 +24,10 @@ import {
     resolvePlane as resolvePlaneJs,
 } from "../../../../scripts/design-artifacts/known-difference-plane.mjs";
 import { scoreComparison as scoreComparisonJs } from "../../../../scripts/design-artifacts/known-difference-score.mjs";
-import { decodePng as decodePngJs } from "../../../../scripts/design-artifacts/png-lite.mjs";
+import {
+    decodePng as decodePngJs,
+    sha256Hex as sha256HexJs,
+} from "../../../../scripts/design-artifacts/png-lite.mjs";
 
 /** A decoded raster, in the shape `png-lite.mjs` hands one over. */
 export interface Raster {
@@ -109,7 +112,11 @@ export const scoreComparison = scoreComparisonJs as unknown as (options: {
 export const resolvePlane = resolvePlaneJs as unknown as (
     reference: Raster,
     candidate: Raster,
-) => { plane: Plane; boxes: { reference: Box; candidate: Box }; geometry: number };
+) => {
+    plane: Plane;
+    boxes: { reference: Box; candidate: Box };
+    geometry: number;
+};
 
 export const canonicalRaster = canonicalRasterJs as unknown as (
     image: Raster,
@@ -117,7 +124,14 @@ export const canonicalRaster = canonicalRasterJs as unknown as (
     plane: Plane,
 ) => Raster;
 
-export const decodePng = decodePngJs as unknown as (bytes: Uint8Array) => Raster;
+export const decodePng = decodePngJs as unknown as (
+    bytes: Uint8Array,
+) => Raster;
+
+/** Lowercase hex SHA-256 of the given bytes, from the contract's own FIPS 180-4 implementation. */
+export const sha256Hex = sha256HexJs as unknown as (
+    bytes: Uint8Array,
+) => string;
 
 /** The published tag index, render-pixel, projected into the comparison's canonical plane. */
 export const projectTagIndex = projectTagIndexJs as unknown as (
