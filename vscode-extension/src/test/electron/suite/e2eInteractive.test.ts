@@ -1224,19 +1224,17 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         let renamePhaseError: Error | null = null;
         try {
             api.resetMessages();
-            assertRefreshRendered(
-                api,
-                await refreshWithinBudget(
-                    ":samples:cmp render",
-                    budgetWithin(deadlineAt, REFRESH_BUDGET_MS),
-                    api.triggerRefresh(cmpFile, true, "full"),
-                    describeCmpPanelState,
-                ),
-                ":samples:cmp render",
-            );
+            // The file-system watcher observes the write above. Starting a
+            // separate forced refresh beside that save makes the two paths
+            // cancel each other's compile. Join the watcher through the same
+            // serialized save queue scenario B exercises; the explicit batch
+            // refresh below runs only after rename discovery has settled.
+            // Scenario B owns the live-daemon image assertion; E owns batch
+            // PNG replacement and previewModuleIndex pruning.
+            api.triggerSave(cmpFile);
             const afterRename = await waitFor(
                 "setPreviews after rename (new id present, old id gone)",
-                budgetWithin(deadlineAt, PANEL_UPDATE_BUDGET_MS),
+                budgetWithin(deadlineAt, RENDER_ROUND_TRIP_BUDGET_MS),
                 500,
                 () => {
                     const msgs = api.getPostedMessages();
@@ -1293,49 +1291,9 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                 "stale RedBoxPreview id survived the rename in setPreviews",
             );
 
-            // Invariant E2: the new render PNG is on disk.
-            const newRenderOutputs = (renamedPreview.captures ?? []).map((c) =>
-                fullRenderPath(repoRoot, afterRename.moduleDir, c.renderOutput),
-            );
-            observations.newRenderOutputs = newRenderOutputs;
-            assert.ok(
-                newRenderOutputs.length > 0,
-                "renamed preview arrived with 0 captures",
-            );
-            // E2 is the one disk check in this suite that races the render
-            // pipeline: the renamed preview is rendered fresh, so its
-            // `setPreviews` metadata (already carrying the capture's
-            // `renderOutput` path) can be published a beat before the PNG bytes
-            // are flushed to disk. Poll for the file rather than asserting once
-            // — every other PNG check here reads a pre-existing render, so only
-            // this freshly-rendered one needs the wait. A genuine "never
-            // written" regression still fails, just via waitFor's timeout.
-            await waitFor(
-                `renamed preview render PNG(s) on disk: ${newRenderOutputs.join(", ")}`,
-                budgetWithin(deadlineAt, PANEL_UPDATE_BUDGET_MS),
-                500,
-                () =>
-                    newRenderOutputs.every((p) => fs.existsSync(p))
-                        ? true
-                        : undefined,
-                describeCmpPanelState,
-            );
-
-            // Invariant E3: the stale PNG no longer exists on disk. The
-            // gradle-level repro proved the renderer sanitises these; this
-            // pins the behaviour at the panel-driven layer.
-            const survivingOld = oldRenderOutputs.filter((p) =>
-                fs.existsSync(p),
-            );
-            observations.survivingOldRenderOutputs = survivingOld;
-            assert.deepStrictEqual(
-                survivingOld,
-                [],
-                `stale RedBoxPreview PNG(s) survived on disk after rename: ${survivingOld.join(", ")}`,
-            );
-
-            // Invariant E4: the pruned id stays pruned. A second refresh plus a
-            // module round-trip must not resurrect RedBoxPreview from a stale
+            // Invariants E2–E4: after the serialized edit's discovery has settled,
+            // a full batch refresh writes the renamed PNG, removes the stale
+            // one, and proves the pruned id cannot return from a stale
             // `previewModuleIndex` entry.
             api.resetMessages();
             assertRefreshRendered(
@@ -1361,6 +1319,45 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                 },
                 describeCmpPanelState,
             );
+            const reRefreshedRenamed = reRefreshed.previews.find((p) =>
+                NEW.test(p.id),
+            );
+            assert.ok(
+                reRefreshedRenamed,
+                "renamed preview id disappeared on the verification refresh",
+            );
+            const newRenderOutputs = (reRefreshedRenamed.captures ?? []).map(
+                (c) =>
+                    fullRenderPath(
+                        repoRoot,
+                        reRefreshed.moduleDir,
+                        c.renderOutput,
+                    ),
+            );
+            observations.newRenderOutputs = newRenderOutputs;
+            assert.ok(
+                newRenderOutputs.length > 0,
+                "renamed preview arrived with 0 captures",
+            );
+            await waitFor(
+                `renamed preview render PNG(s) on disk: ${newRenderOutputs.join(", ")}`,
+                budgetWithin(deadlineAt, PANEL_UPDATE_BUDGET_MS),
+                500,
+                () =>
+                    newRenderOutputs.every((p) => fs.existsSync(p))
+                        ? true
+                        : undefined,
+                describeCmpPanelState,
+            );
+            const survivingOld = oldRenderOutputs.filter((p) =>
+                fs.existsSync(p),
+            );
+            observations.survivingOldRenderOutputs = survivingOld;
+            assert.deepStrictEqual(
+                survivingOld,
+                [],
+                `stale RedBoxPreview PNG(s) survived on disk after rename: ${survivingOld.join(", ")}`,
+            );
             assert.deepStrictEqual(
                 reRefreshed.previews
                     .filter((p) => OLD.test(p.id))
@@ -1377,19 +1374,13 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
 
         // --- Revert: the original RedBoxPreview must come back, renamed gone ---
         api.resetMessages();
-        assertRefreshRendered(
-            api,
-            await refreshWithinBudget(
-                ":samples:cmp render",
-                budgetWithin(deadlineAt, REFRESH_BUDGET_MS),
-                api.triggerRefresh(cmpFile, true, "full"),
-                describeCmpPanelState,
-            ),
-            ":samples:cmp render",
-        );
+        // The restore write in `finally` has its own watcher event. Join it
+        // through the save queue too, otherwise cleanup recreates the same
+        // double-refresh race as the rename.
+        api.triggerSave(cmpFile);
         const afterRevert = await waitFor(
             "setPreviews after reverting the rename",
-            budgetWithin(deadlineAt, PANEL_UPDATE_BUDGET_MS),
+            budgetWithin(deadlineAt, RENDER_ROUND_TRIP_BUDGET_MS),
             500,
             () => {
                 const msgs = api.getPostedMessages();
