@@ -3733,7 +3733,7 @@ class DiscoveryFunctionalTest {
     // Diagnostics block: classDirs listing (directory existence + class counts)
     // and the ClassGraph summary. These are the two lines users need to see to
     // disambiguate "wrong class dir" from "wrong @Preview FQN".
-    assertThat(result.output).contains("composePreview: failOnEmpty diagnostics")
+    assertThat(result.output).contains("composePreview: discovery failure diagnostics")
     assertThat(result.output).contains("classDirs (")
     assertThat(result.output).contains("ClassGraph scan:")
     // The sample had Compose classes but no @Preview — we should see the
