@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.35.0](https://github.com/yschimke/compose-ai-tools/compare/v1.34.0...v1.35.0) (2026-08-25)
+
+
+### Features
+
+* **parity:** surface acceptance lifecycle states ([#4494](https://github.com/yschimke/compose-ai-tools/issues/4494)) ([d051805](https://github.com/yschimke/compose-ai-tools/commit/d051805cc50400195d7cf348a1f18d8bad488590))
+
+
+### Bug Fixes
+
+* **serve:** give theme optimization a useful idle window ([#4493](https://github.com/yschimke/compose-ai-tools/issues/4493)) ([a1415da](https://github.com/yschimke/compose-ai-tools/commit/a1415da8bb4c500960ed4ad1eb8983f4bf626847))
+* **serve:** reap optimizer daemons while idle ([#4498](https://github.com/yschimke/compose-ai-tools/issues/4498)) ([958d73b](https://github.com/yschimke/compose-ai-tools/commit/958d73b9b04df8cd811174e24744cd8dc6eeed94))
+
 ## [1.34.0](https://github.com/yschimke/compose-ai-tools/compare/v1.33.0...v1.34.0) (2026-08-24)
 
 
