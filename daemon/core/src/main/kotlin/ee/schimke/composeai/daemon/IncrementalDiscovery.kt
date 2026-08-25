@@ -117,8 +117,7 @@ class IncrementalDiscovery(
    * Fail-safe: returns `emptySet` on any scan failure (and writes a stderr diagnostic).
    */
   fun scanForFile(file: Path): Set<PreviewInfoDto> {
-    val target = classpathElementForFile(file)
-    val scanRoots = if (target != null) listOf(target) else classpath
+    val scanRoots = scanRootsForFile(file)
     return try {
       ClassGraph()
         .enableMethodInfo()
@@ -135,6 +134,23 @@ class IncrementalDiscovery(
       )
       emptySet()
     }
+  }
+
+  internal fun scanRootsForFile(file: Path): List<Path> {
+    val target = classpathElementForFile(file)
+    // Keep the changed module's class output scoped, but retain dependency JARs: a method can use a
+    // dependency-provided multi-preview annotation whose meta-annotation carries @CaptureGutter.
+    // Scanning only `target` makes that annotation class unresolvable and re-adds a combination the
+    // authoritative pass rejected. Other module output directories stay excluded, preserving the
+    // cheap one-file scan this path exists for.
+    return if (target != null)
+      buildList {
+        add(target)
+        classpath.filterTo(this) { root ->
+          root != target && root.fileName?.toString()?.endsWith(".jar", ignoreCase = true) == true
+        }
+      }
+    else classpath
   }
 
   private fun collectPreviews(scanResult: ScanResult, file: Path): Set<PreviewInfoDto> {
@@ -164,14 +180,11 @@ class IncrementalDiscovery(
         // unguttered, unscrolled preview until the next full discovery. `@CaptureGutter` may be
         // hoisted onto a multi-preview annotation, so the check walks the meta-annotation closure.
         //
-        // Best-effort, like the rest of this path: it resolves the closure through the scoped scan,
-        // so a `@CaptureGutter` hoisted onto a *dependency-JAR* annotation (outside the narrowed
-        // classpath) is not seen here and slips through until the next full discovery corrects it;
-        // and once a rejected function is out of the index, a fix that removes one annotation may
-        // not re-trip `cheapPrefilter` (its regex carries only the known preview FQNs), so recovery
-        // likewise waits for a full pass. Both match the incremental path's standing v1 contract
-        // (see [scanForFile] / the class kdoc), where identity is authoritative and details settle
-        // on the next full discovery.
+        // Best-effort, like the rest of this path: once a rejected function is out of the index, a
+        // fix that removes one annotation may not re-trip `cheapPrefilter` (its regex carries only
+        // the known preview FQNs), so recovery can wait for a full pass. That matches the
+        // incremental path's standing v1 contract (see [scanForFile] / the class kdoc), where
+        // identity is authoritative and details settle on the next full discovery.
         if (declaresGutterAndScrolling(annotations, scanResult)) {
           System.err.println(
             "compose-ai-daemon: IncrementalDiscovery skipping '${classInfo.name}.${method.name}'" +

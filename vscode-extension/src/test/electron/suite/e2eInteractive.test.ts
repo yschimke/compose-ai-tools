@@ -1222,6 +1222,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         fs.writeFileSync(cmpFile, renamed, "utf-8");
 
         let renamePhaseError: Error | null = null;
+        let newRenderOutputs: string[] = [];
         try {
             api.resetMessages();
             // The file-system watcher observes the write above. Starting a
@@ -1326,13 +1327,8 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                 reRefreshedRenamed,
                 "renamed preview id disappeared on the verification refresh",
             );
-            const newRenderOutputs = (reRefreshedRenamed.captures ?? []).map(
-                (c) =>
-                    fullRenderPath(
-                        repoRoot,
-                        reRefreshed.moduleDir,
-                        c.renderOutput,
-                    ),
+            newRenderOutputs = (reRefreshedRenamed.captures ?? []).map((c) =>
+                fullRenderPath(repoRoot, reRefreshed.moduleDir, c.renderOutput),
             );
             observations.newRenderOutputs = newRenderOutputs;
             assert.ok(
@@ -1402,6 +1398,31 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
             afterRevert.previews.map((p) => p.id).sort(),
             baselineIds,
             "id set after reverting the rename diverged from the pre-edit baseline",
+        );
+
+        // The daemon save above restores discovery state, but batch renders are owned by
+        // composePreviewRenderAll. Refresh once more after the save queue settles so a focused E
+        // run cannot leave the original PNG deleted and the temporary renamed PNG behind.
+        assertRefreshRendered(
+            api,
+            await refreshWithinBudget(
+                ":samples:cmp cleanup render",
+                budgetWithin(deadlineAt, REFRESH_BUDGET_MS),
+                api.triggerRefresh(cmpFile, true, "full"),
+                describeCmpPanelState,
+            ),
+            ":samples:cmp cleanup render",
+        );
+        await waitFor(
+            "batch artifacts after reverting the rename",
+            budgetWithin(deadlineAt, PANEL_UPDATE_BUDGET_MS),
+            500,
+            () =>
+                oldRenderOutputs.every((p) => fs.existsSync(p)) &&
+                newRenderOutputs.every((p) => !fs.existsSync(p))
+                    ? true
+                    : undefined,
+            describeCmpPanelState,
         );
 
         dumpTranscript(repoRoot, "scenario-E-rename-preview", observations);

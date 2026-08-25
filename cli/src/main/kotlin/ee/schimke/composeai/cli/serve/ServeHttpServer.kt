@@ -3621,6 +3621,7 @@ class ServeHttpServer(
           tagIndex.isEmpty() -> "This catalog publishes no element tag index for this preview."
           else -> null
         }
+      val allParityIssues = renderHost.parityIssues()?.issues.orEmpty()
       markGeneration("static-page", pageCacheControl())
       call.respondText(
         ServeWeb.referenceComparisonPage(
@@ -3744,11 +3745,12 @@ class ServeHttpServer(
                 )
               },
           parityIssues =
-            renderHost.parityIssues()?.issues.orEmpty().filter { issue ->
+            allParityIssues.filter { issue ->
               preview.id in issue.previewIds ||
                 reference.id in issue.referenceIds ||
                 (preview.componentId != null && issue.component == preview.componentId)
             },
+          acceptanceIssues = allParityIssues,
           revisions = revisions,
           overrides = overrideParams,
           reportIssue = reportIssue,

@@ -2248,15 +2248,13 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         // local file has no system id and answers null, which is correct: nothing on the site can
         // claim to be that bundle's catalog.
         pinnedCatalogSystem = { mode ->
-          val source =
+          val supplier =
             when (mode) {
-              PlaygroundMode.CMP -> cmpBundle
+              PlaygroundMode.CMP -> cmpSupplier
               PlaygroundMode.ANDROID,
-              PlaygroundMode.REMOTE_COMPOSE -> androidBundle
+              PlaygroundMode.REMOTE_COMPOSE -> androidSupplier
             }
-          (source?.let { PlaygroundBundleSource.parse(it) }
-              as? PlaygroundBundleSource.ServedCatalog)
-            ?.system
+          supplier?.servedCatalogSystem
         },
         captureRemoteDocument = { snippet -> rcCapture?.capture(snippet) },
         publishRemoteDocument = { name, bytes, checked ->

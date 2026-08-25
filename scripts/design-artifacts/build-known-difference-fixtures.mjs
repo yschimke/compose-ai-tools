@@ -1065,9 +1065,9 @@ for (const [id, title, delta, status, why] of [
       "Its sibling above sits on `0.25 × 8 = 2`, which double arithmetic gets exactly right, so it " +
       "says nothing about how the boundary is computed. `0.145 × 200` is `28.999999999999996`, so a " +
       "displacement of exactly 29 — the inclusive boundary — is `element-moved` under a scaled " +
-      "tolerance and `valid` under a decimal or ratio consumer: the same bytes, two verdicts, from " +
-      "the last binary digit. Comparing `displacement / min(width, height)` against the recorded " +
-      "tolerance is exact here, because `29 / 200` and the literal `0.145` are the same double.",
+      "floating-point tolerance but `valid` under the required exact cross-product comparison: the " +
+      "same bytes, two verdicts, from the last binary digit. The tolerance's canonical decimal is " +
+      "an integer number of millionths, so both sides can be compared losslessly as integers.",
     document: document([record]),
     files: glyphFiles(world, record),
     comparison: glyphComparison(world, {

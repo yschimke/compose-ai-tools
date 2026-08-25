@@ -146,7 +146,11 @@ describe("RealGradleApi task ledger", () => {
     });
 });
 
-describe("RealGradleApi cancellation repair", () => {
+describe("RealGradleApi cancellation repair", function () {
+    // These tests intentionally wait on real child processes. CI hosts can suspend the Node event
+    // loop while Gradle workers contend for CPU, so Mocha's wall-clock timeout is not meaningful;
+    // every individual wait is bounded by the child scripts and cancellation path instead.
+    this.timeout(0);
     let tmp: string;
 
     beforeEach(() => {
@@ -322,6 +326,124 @@ describe("RealGradleApi cancellation repair", () => {
         assert.strictEqual(api.gradleInvocations.length, 3);
         assert.strictEqual(api.gradleInvocations[1].repaired, true);
         assert.strictEqual(api.gradleInvocations[2].repaired, undefined);
+    });
+
+    it("cancels the child after a queued run starts", async () => {
+        const output = classOutputDir("kotlin", "jvm", "main");
+        const classFile = path.join(output, "PreviewsKt.class");
+        fs.writeFileSync(
+            path.join(tmp, "gradlew"),
+            [
+                "#!/bin/sh",
+                'case " $* " in',
+                '  *" --rerun-tasks "*)',
+                "    sleep 0.1",
+                `    touch ${JSON.stringify(classFile)}`,
+                "    exit 0",
+                "    ;;",
+                "esac",
+                "sleep 10",
+                "",
+            ].join("\n"),
+            { mode: 0o755 },
+        );
+        const api = new RealGradleApi(tmp);
+
+        const damaged = api.runTask({
+            projectFolder: tmp,
+            taskName: ":samples:cmp:composePreviewRenderAll",
+            showOutputColors: false,
+            cancellationKey: "damage",
+        });
+        await api.cancelRunTask({
+            projectFolder: tmp,
+            taskName: ":samples:cmp:composePreviewRenderAll",
+            cancellationKey: "damage",
+        });
+        await damaged.catch(() => undefined);
+
+        const repair = api.runTask({
+            projectFolder: tmp,
+            taskName: ":samples:cmp:composePreviewRenderAll",
+            showOutputColors: false,
+            cancellationKey: "repair",
+        });
+        const queued = api.runTask({
+            projectFolder: tmp,
+            taskName: ":samples:cmp:composePreviewCompile",
+            showOutputColors: false,
+            cancellationKey: "queued",
+        });
+
+        for (let i = 0; i < 40 && api.gradleInvocations.length < 3; i++) {
+            await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        assert.strictEqual(
+            api.gradleInvocations.length,
+            3,
+            "queued child never started",
+        );
+        await api.cancelRunTask({
+            projectFolder: tmp,
+            taskName: ":samples:cmp:composePreviewCompile",
+            cancellationKey: "queued",
+        });
+
+        await repair;
+        await assert.rejects(queued, /cancelled/);
+        assert.strictEqual(api.gradleInvocations[2].status, "cancelled");
+    });
+
+    it("adds a compile-capable task when repairing a daemon bootstrap", async () => {
+        const output = classOutputDir("kotlin", "jvm", "main");
+        const classFile = path.join(output, "PreviewsKt.class");
+        fs.writeFileSync(path.join(tmp, "gradlew"), "#!/bin/sh\nsleep 10\n", {
+            mode: 0o755,
+        });
+        const api = new RealGradleApi(tmp);
+
+        const damaged = api.runTask({
+            projectFolder: tmp,
+            taskName: ":samples:cmp:composePreviewRenderAll",
+            showOutputColors: false,
+            cancellationKey: "damage",
+        });
+        await api.cancelRunTask({
+            projectFolder: tmp,
+            taskName: ":samples:cmp:composePreviewRenderAll",
+            cancellationKey: "damage",
+        });
+        await damaged.catch(() => undefined);
+
+        fs.writeFileSync(
+            path.join(tmp, "gradlew"),
+            [
+                "#!/bin/sh",
+                'case " $* " in',
+                '  *" :samples:cmp:composePreviewDiscover "*)',
+                `    touch ${JSON.stringify(classFile)}`,
+                "    exit 0",
+                "    ;;",
+                "esac",
+                "exit 1",
+                "",
+            ].join("\n"),
+            { mode: 0o755 },
+        );
+
+        await api.runTask({
+            projectFolder: tmp,
+            taskName: ":samples:cmp:composePreviewDaemonStart",
+            showOutputColors: false,
+            cancellationKey: "bootstrap",
+        });
+
+        assert.ok(
+            api.gradleInvocations[1].args.includes(
+                ":samples:cmp:composePreviewDiscover",
+            ),
+        );
+        assert.strictEqual(api.gradleInvocations[1].repaired, true);
     });
 
     it("keeps a bundled module task queued and cancellable during repair", async () => {

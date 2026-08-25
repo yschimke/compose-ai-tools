@@ -230,4 +230,28 @@ class IncrementalDiscoveryTest {
     val results = brokenDiscovery.scanForFile(syntheticKt)
     assertEquals(emptySet<PreviewInfoDto>(), results)
   }
+
+  @Test
+  fun `scoped scan keeps dependency jars but excludes other class directories`() {
+    val root = Files.createTempDirectory("incremental-roots")
+    try {
+      val target = Files.createDirectories(root.resolve("target/com/example"))
+      val targetRoot = target.parent.parent
+      val other = Files.createDirectories(root.resolve("other/com/example"))
+      val otherRoot = other.parent.parent
+      val dependencyJar = Files.createFile(root.resolve("annotations.jar"))
+      val source = root.resolve("project/src/main/kotlin/com/example/Preview.kt")
+      Files.createDirectories(source.parent)
+
+      val scoped =
+        IncrementalDiscovery(
+          classpath = listOf(targetRoot, otherRoot, dependencyJar),
+          knownPreviewAnnotationFqns = setOf(testPreviewFqn),
+        )
+
+      assertEquals(listOf(targetRoot, dependencyJar), scoped.scanRootsForFile(source))
+    } finally {
+      root.toFile().deleteRecursively()
+    }
+  }
 }

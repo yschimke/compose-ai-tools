@@ -318,12 +318,24 @@ export class RealGradleApi implements GradleApi {
             if (opts.cancellationKey) {
                 this.queuedRuns.set(opts.cancellationKey, queued);
             }
+            const forgetQueued = () => {
+                if (
+                    opts.cancellationKey &&
+                    this.queuedRuns.get(opts.cancellationKey) === queued
+                ) {
+                    this.queuedRuns.delete(opts.cancellationKey);
+                }
+            };
             const afterRepairs = () => {
                 if (queued.cancelled) {
                     throw new Error(
                         `gradlew ${opts.taskName} cancelled before start`,
                     );
                 }
+                // From this point cancellation must target the child registered by the recursive
+                // run. Keeping the queued marker until that child exits makes cancelRunTask return
+                // after marking an already-started queue entry and leaves the Gradle process alive.
+                forgetQueued();
                 return this.runTask(opts);
             };
             return Promise.all(repairsInFlight)
@@ -331,14 +343,7 @@ export class RealGradleApi implements GradleApi {
                     if (queued.cancelled) return afterRepairs();
                     throw error;
                 })
-                .finally(() => {
-                    if (
-                        opts.cancellationKey &&
-                        this.queuedRuns.get(opts.cancellationKey) === queued
-                    ) {
-                        this.queuedRuns.delete(opts.cancellationKey);
-                    }
-                });
+                .finally(forgetQueued);
         }
         const gradlewPath =
             process.platform === "win32"
@@ -350,9 +355,20 @@ export class RealGradleApi implements GradleApi {
         );
         const repairArgs =
             repairModules.length > 0 ? CANCELLATION_REPAIR_ARGS : [];
+        // A daemon bootstrap and several other module-owned tasks do not compile consumer sources.
+        // A repair invocation must include a task that can actually recreate the missing classes,
+        // otherwise the postcondition below turns a successful bootstrap into a permanent failure.
+        const requestedTasks = [opts.taskName, ...(opts.args ?? [])];
+        const repairCompileTasks = repairModules
+            .map(
+                (moduleDir) =>
+                    `:${moduleDir.split(path.sep).join(":")}:composePreviewDiscover`,
+            )
+            .filter((task) => !requestedTasks.includes(task));
         const gradleArgs = [
             opts.taskName,
             ...(opts.args ?? []),
+            ...repairCompileTasks,
             ...this.extraArgs,
             ...repairArgs,
         ];
