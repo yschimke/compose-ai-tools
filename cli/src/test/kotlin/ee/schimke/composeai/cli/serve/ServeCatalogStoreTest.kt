@@ -7,7 +7,7 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
-import java.util.Collections
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.zip.ZipInputStream
 import javax.imageio.ImageIO
 import kotlin.test.Test
@@ -202,7 +202,7 @@ class ServeCatalogStoreTest {
 
   @Test
   fun `a catalog publishes every declared preview before its images are fetched`() {
-    val requested = Collections.synchronizedList(mutableListOf<String>())
+    val requested = CopyOnWriteArrayList<String>()
     val fetcher: (String) -> ByteArray? = { url ->
       requested += url
       when {
@@ -261,7 +261,7 @@ class ServeCatalogStoreTest {
 
   @Test
   fun `a published capture is offered on its card and fetched only when watched`() {
-    val requested = Collections.synchronizedList(mutableListOf<String>())
+    val requested = CopyOnWriteArrayList<String>()
     val fetcher: (String) -> ByteArray? = { url ->
       requested += url
       when {
@@ -321,7 +321,7 @@ class ServeCatalogStoreTest {
     // Publishing must not wait for them: the catalog serves (uncropped, briefly) and the pass fills
     // them behind it. Captured rather than run so the assertion is about ordering, not timing.
     val deferred = mutableListOf<Runnable>()
-    val requested = Collections.synchronizedList(mutableListOf<String>())
+    val requested = CopyOnWriteArrayList<String>()
     val result =
       store(
           TrustStore.EMPTY,
@@ -363,7 +363,7 @@ class ServeCatalogStoreTest {
     // The landing page computes a crop for EVERY card while building its HTML. If that filled
     // missing pixels, the first page request would serially download a whole cold catalog on the
     // request thread — reintroducing the stall this lazy path exists to remove, just moved.
-    val requested = Collections.synchronizedList(mutableListOf<String>())
+    val requested = CopyOnWriteArrayList<String>()
     store(
         TrustStore.EMPTY,
         fetch = { url ->
@@ -450,7 +450,7 @@ class ServeCatalogStoreTest {
     val referencePng = png()
     // Assets are fetched on a pool (ASSET_FETCH_CONCURRENCY), so this capture is written from
     // several threads at once — a plain ArrayList throws ConcurrentModificationException here.
-    val requested = Collections.synchronizedList(mutableListOf<String>())
+    val requested = CopyOnWriteArrayList<String>()
     val catalog =
       """
       {"schema":"design-parity-catalog/v1","system":"compose-m3",
@@ -510,7 +510,7 @@ class ServeCatalogStoreTest {
     val root = tempRoot()
     // Assets are fetched on a pool (ASSET_FETCH_CONCURRENCY), so this capture is written from
     // several threads at once — a plain ArrayList throws ConcurrentModificationException here.
-    val requested = Collections.synchronizedList(mutableListOf<String>())
+    val requested = CopyOnWriteArrayList<String>()
     val catalog =
       """
       {"schema":"design-parity-catalog/v1","system":"compose-m3",
@@ -561,7 +561,7 @@ class ServeCatalogStoreTest {
   @Test
   fun `catalog stages the published parity issue index`() {
     val root = tempRoot()
-    val requested = Collections.synchronizedList(mutableListOf<String>())
+    val requested = CopyOnWriteArrayList<String>()
     val catalog =
       """
       {"schema":"design-parity-catalog/v1","system":"compose-m3",
@@ -2139,7 +2139,7 @@ class ServeCatalogStoreTest {
     // Catalog vectors continue fetching on the background executor after load() publishes the
     // host. Keep the recorder safe while that pass appends, then assert against one locked
     // snapshot rather than iterating a list that can still be changing.
-    val urls = Collections.synchronizedList(mutableListOf<String>())
+    val urls = CopyOnWriteArrayList<String>()
     val trust =
       TrustStore(branches = listOf(TrustedBranch("yschimke/meshcore-mobile", "design-artifacts/*")))
     val store =

@@ -741,7 +741,15 @@ class ServeCatalogLiveHost(
       val previewDaemonId = alias[previewId]
       // Await a cold warm ONCE per preview rather than letting each theme rediscover it. The
       // old per-job loop spent retry budget on this; here it is a precondition of the batch.
-      if (previewDaemonId != null && !warmDaemonIds.contains(previewDaemonId)) {
+      // A shared-pool optimizer deliberately leaves the catalog primary cold. Its background
+      // renders use reapable replicas, so RAM returns between slices instead of accumulating one
+      // permanent primary for every catalog the fair scheduler visits. Without the pool there is
+      // no disposable lane, so retain the ordinary one-time warm.
+      if (
+        (sharedDaemonPool == null || !sharedDaemonRenders) &&
+          previewDaemonId != null &&
+          !warmDaemonIds.contains(previewDaemonId)
+      ) {
         daemonWarmOrScheduling(previewDaemonId)
         // A cold warm is real render work and can run to minutes. Excluding it from both
         // buckets shrank the rate's denominator, so a cold catalog reported a rate it was
@@ -868,7 +876,7 @@ class ServeCatalogLiveHost(
     // all but one would come back Busy — `themeRenderBurstCapacity` is 5 there because different
     // *previews* can run in parallel, which is not what this batch is.
     if (sharedDaemonRenders && sharedDaemonPool != null) {
-      sharedDaemonPool.capacity.coerceIn(1, MAX_OPTIMIZER_BATCH)
+      sharedDaemonPool.backgroundCapacity().coerceIn(1, MAX_OPTIMIZER_BATCH)
     } else {
       1
     }
