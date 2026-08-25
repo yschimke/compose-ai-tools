@@ -1492,14 +1492,14 @@
     "serve-viewer-exploded-controls.dark.png": {
       "fixture": "serve-viewer-exploded-controls",
       "theme": "dark",
-      "sha256": "275b28ba65dd2f8e120b12863afe0ad167ab2c0ab20ca7b87519e71beb366355",
-      "size": 113671
+      "sha256": "2bc91e912ce911c7980e7eb8e57894a1de1a3177de658b8fecb7c6b5a5669ca1",
+      "size": 113463
     },
     "serve-viewer-exploded-controls.light.png": {
       "fixture": "serve-viewer-exploded-controls",
       "theme": "light",
-      "sha256": "15d559549e9c946e8d2e11549d4f7010b85bf401382f4d9600342d24651c0d8a",
-      "size": 111020
+      "sha256": "9b08465f5c8c9c6bba75042040b207d66ef1e18a46a69ea17c6e41930c56bfdd",
+      "size": 112718
     },
     "serve-viewer-exploded.dark.png": {
       "fixture": "serve-viewer-exploded",
