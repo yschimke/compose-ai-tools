@@ -1978,7 +1978,8 @@ class ServeCatalogStore(
    * will refuse whole — past [ServeKnownDifferences.MAX_DOCUMENT_BYTES], or past
    * [ServeKnownDifferences.MAX_ACCEPTANCES] records — contributes no paths at all rather than the
    * first 256; an artifact that cannot be written is skipped rather than failing the refresh; and
-   * the fetches run in the same bounded waves the rasters use.
+   * the artifacts stream to disk through the same bounded helper every other bulk lane here uses,
+   * so a refresh holds one artifact per worker rather than a whole wave.
    */
   private fun writeKnownDifferences(base: String, staging: File) {
     val dirName = ServeKnownDifferences.DIRECTORY
@@ -1988,26 +1989,28 @@ class ServeCatalogStore(
       }
         .getOrNull() ?: return
 
-    val paths = knownDifferenceArtifactPaths(documentBytes)
     val artifactRoot = "$dirName/${ServeKnownDifferences.ARTIFACT_DIRECTORY}"
-    paths.chunked(ASSET_FETCH_CONCURRENCY).forEach { wave ->
-      val fetched = fetchCatalogAssets(wave.map { "$base$artifactRoot/$it" })
-      wave.forEach { path ->
-        val bytes = fetched["$base$artifactRoot/$path"] ?: return@forEach
-        // An over-sized artifact is staged too, for the reason the over-sized document is: the
-        // reader refuses it from the file's length, the route serves 413, and the engine reaches
-        // `artifact-too-large`. Dropping it would leave a missing file behind, which is
-        // `artifact-unreadable` — a different verdict, and one that hides why.
-        val file = File(staging, "$artifactRoot/$path")
-        // A path every segment of which is portable can still be longer than the serving
-        // filesystem allows, since the lexical rule bounds no total. One unwriteable artifact is
-        // an artifact the engine will call unreadable, not a reason to abandon the refresh.
-        runCatching {
-          file.parentFile?.mkdirs()
-          file.writeBytes(bytes)
-        }
+    // **Streamed to disk, never accumulated.** Each worker holds only the artifact it is writing,
+    // which is what [fetchCatalogAssetsToFiles] exists for and why every other bulk lane in this
+    // file goes through it. Collecting a wave into a map first would retain
+    // [ASSET_FETCH_CONCURRENCY] whole artifacts at once — and the transport's own ceiling is far
+    // above the contract's, so a wave of the 8–25 MiB files this writer now deliberately stages
+    // (so the reader can answer `TooLarge` rather than 404) is hundreds of megabytes of heap held
+    // to write bytes it already has. A refresh that ran the server out of memory instead of
+    // eventually serving 413 would be the cap defeated by the code staging it.
+    //
+    // An over-sized artifact is still staged, for the reason the over-sized document is: the reader
+    // refuses it from the file's length, the route serves 413, and the engine reaches
+    // `artifact-too-large`. Dropping it would leave a missing file behind, which is
+    // `artifact-unreadable` — a different verdict, and one that hides why. And a path whose
+    // segments are all portable can still exceed what the serving filesystem will take: the helper
+    // guards each write, so one unwriteable artifact is an artifact the engine calls unreadable
+    // rather than a reason to abandon the refresh.
+    fetchCatalogAssetsToFiles(
+      knownDifferenceArtifactPaths(documentBytes).map { path ->
+        "$base$artifactRoot/$path" to File(staging, "$artifactRoot/$path")
       }
-    }
+    )
 
     File(staging, dirName).mkdirs()
     File(staging, "$dirName/${ServeKnownDifferences.DOCUMENT_FILE}").writeBytes(documentBytes)
