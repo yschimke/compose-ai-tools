@@ -1,7 +1,7 @@
 # Catalog navigation: a tree, not a row of tabs
 
 Before/after of the sectioned catalog landing, captured from the committed page fixture
-(`vscode-extension/preview-harness/fixtures/pages/serve-landing-sections.html`) with
+(`preview-server/preview-harness/fixtures/pages/serve-landing-sections.html`) with
 
 ```sh
 npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot -g serve-landing-sections

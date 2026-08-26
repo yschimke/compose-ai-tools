@@ -51,7 +51,7 @@ source.
 ## What keeps this covered from now on
 
 These two are a one-off. The standing coverage is the preview-harness state
-`serve-format-compare-reference-lane` (`vscode-extension/preview-harness/pages-snapshot.spec.mjs`),
+`serve-format-compare-reference-lane` (`preview-server/preview-harness/pages-snapshot.spec.mjs`),
 which drives the committed `serve-format-compare` fixture onto the reference lane and shoots it in
 both themes. The harness stubs the two lanes with *different* placeholders, so that baseline carries
 a real magenta map over a real mismatch — every future change to this column is diffed by the CI bot

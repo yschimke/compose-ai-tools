@@ -19,7 +19,7 @@ import { test, expect } from "@playwright/test";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { readdirSync, readFileSync } from "node:fs";
-import { listThemes } from "./_fixtures.mjs";
+import { listThemes } from "./_themes.mjs";
 
 const harnessDir = dirname(fileURLToPath(import.meta.url));
 const outDir = resolve(harnessDir, "out");

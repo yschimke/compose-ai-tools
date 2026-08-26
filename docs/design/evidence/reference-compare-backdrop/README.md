@@ -18,7 +18,7 @@ drop one onto any Figma canvas), so the panel's ground is the only thing making 
 — and the checkerboard is the one ground that makes both light and dark content hard to read.
 
 Both shots are the committed dark-first page fixture
-(`vscode-extension/preview-harness/fixtures/pages/serve-reference-compare-dark-first.html`, light
+(`preview-server/preview-harness/fixtures/pages/serve-reference-compare-dark-first.html`, light
 theme, production CSS + JS), captured with Playwright through the page harness:
 
 ```sh
@@ -56,7 +56,7 @@ which is the point of never baking any of this into the PNG.
 The dark-first fixture is new, and exists because the light-first one cannot catch a regression
 here: its content is dark either way, so it looks identical whether the stage resolves or falls
 through. It is registered in
-[`pages-snapshot.spec.mjs`](../../../vscode-extension/preview-harness/pages-snapshot.spec.mjs), so
+[`pages-snapshot.spec.mjs`](../../../preview-server/preview-harness/pages-snapshot.spec.mjs), so
 every later change to this page is diffed on both.
 
 ## What this costs each kind of surface

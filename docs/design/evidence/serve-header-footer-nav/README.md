@@ -1,7 +1,7 @@
 # The header drops "Catalogs" and the repo link; GitHub moves to the footer
 
 Before/after crops of the `serve` site chrome, captured from the committed page fixtures
-(`vscode-extension/preview-harness/fixtures/pages/serve-landing-public.html`) served statically and
+(`preview-server/preview-harness/fixtures/pages/serve-landing-public.html`) served statically and
 shot with Playwright (light theme, 2× DPR; the dark shots are the same markup).
 
 | Pair | Shot | What changed |

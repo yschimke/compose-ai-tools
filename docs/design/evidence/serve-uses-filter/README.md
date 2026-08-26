@@ -1,7 +1,7 @@
 # `uses:` — an operator, not a control
 
 Three states of the landing filter box, captured from the committed page fixture
-`vscode-extension/preview-harness/fixtures/pages/serve-landing.html` by the two
+`preview-server/preview-harness/fixtures/pages/serve-landing.html` by the two
 `serve-landing-uses-*` entries in `pages-snapshot.spec.mjs`, so they show exactly what the server
 emits.
 

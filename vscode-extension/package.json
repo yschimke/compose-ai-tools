@@ -134,7 +134,7 @@
             },
             {
                 "command": "composePreview.openBundle",
-                "title": "Open Preview Bundle…",
+                "title": "Open Preview Bundle\u2026",
                 "category": "Compose Preview",
                 "icon": "$(package)",
                 "enablement": "config.composePreview.earlyFeatures.enabled"
@@ -209,7 +209,7 @@
                         "full"
                     ],
                     "default": "full",
-                    "markdownDescription": "Backend mode for the preview pipeline.\n\n- **`full`** _(default)_ — daemon backend with data extensions (a11y overlays, hierarchy, focus-mode inspector layers) and live/interactive previews. The bundled `--init-script` makes this work on any workspace that applies `com.android.application`, `com.android.library`, or `org.jetbrains.compose` — no edit to `build.gradle.kts` required.\n- **`minimal`** — drive only the Gradle plugin. The preview daemon, data extensions, and live/interactive previews are all disabled, and renders do not run automatically on save — click the refresh button (or run `Compose Preview: Refresh Previews` / `Render All Previews`) to render.\n\nLegacy `auto` values from older versions of this extension fall back to `full`. Requires a window reload to take effect.",
+                    "markdownDescription": "Backend mode for the preview pipeline.\n\n- **`full`** _(default)_ \u2014 daemon backend with data extensions (a11y overlays, hierarchy, focus-mode inspector layers) and live/interactive previews. The bundled `--init-script` makes this work on any workspace that applies `com.android.application`, `com.android.library`, or `org.jetbrains.compose` \u2014 no edit to `build.gradle.kts` required.\n- **`minimal`** \u2014 drive only the Gradle plugin. The preview daemon, data extensions, and live/interactive previews are all disabled, and renders do not run automatically on save \u2014 click the refresh button (or run `Compose Preview: Refresh Previews` / `Render All Previews`) to render.\n\nLegacy `auto` values from older versions of this extension fall back to `full`. Requires a window reload to take effect.",
                     "enumDescriptions": [
                         "Force minimal mode: gradle-only, manual renders.",
                         "Force full mode: daemon + data extensions + live previews."
@@ -240,7 +240,7 @@
                     "type": "string",
                     "default": "",
                     "scope": "machine-overridable",
-                    "markdownDescription": "Absolute path to the `compose-preview` CLI launcher used by `Compose Preview: Open Preview Bundle…`. Empty (default) falls back to `$COMPOSE_PREVIEW_CLI` and then `compose-preview` on PATH (the install script's default landing spot is `~/.local/bin/compose-preview`)."
+                    "markdownDescription": "Absolute path to the `compose-preview` CLI launcher used by `Compose Preview: Open Preview Bundle\u2026`. Empty (default) falls back to `$COMPOSE_PREVIEW_CLI` and then `compose-preview` on PATH (the install script's default landing spot is `~/.local/bin/compose-preview`)."
                 },
                 "composePreview.androidSdkPath": {
                     "type": "string",
@@ -257,7 +257,7 @@
                     ],
                     "default": "normal",
                     "enumDescriptions": [
-                        "Errors and BUILD outcomes only — no per-task progress.",
+                        "Errors and BUILD outcomes only \u2014 no per-task progress.",
                         "Errors, summaries, and per-Gradle-task lines, with daemon boot diagnostics and repeated Roborazzi/Robolectric warnings deduped.",
                         "Show every line from Gradle and the daemon, including UP-TO-DATE tasks, configuration-cache bookkeeping, kotlin-dsl warnings, and the full Roborazzi ActionBar block per capture."
                     ],
@@ -282,12 +282,8 @@
         "test:e2e-editloop": "npm run compile && COMPOSE_PREVIEW_E2E_EXTERNAL=1 COMPOSE_PREVIEW_E2E_EDITLOOP=1 COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1 node ./out/test/electron/runTest.js",
         "lint": "eslint src --ext ts",
         "package": "npm run compile && vsce package --no-dependencies",
-        "harness:snapshot": "node esbuild.webview.mjs && playwright test -c preview-harness/playwright.config.mjs snapshot",
-        "harness:contract": "node esbuild.webview.mjs && playwright test -c preview-harness/playwright.config.mjs contract",
-        "harness:compare": "playwright test -c preview-harness/playwright.config.mjs format-compare-scorer.spec.mjs",
-        "harness:serve-lanes": "playwright test -c preview-harness/serve-lanes.config.mjs",
-        "harness:playground": "playwright test -c preview-harness/playground.config.mjs",
-        "harness:bundle-upload": "playwright test -c preview-harness/bundle-upload.config.mjs"
+        "harness:snapshot": "node esbuild.webview.mjs && playwright test -c preview-harness/playwright.config.mjs snapshot.spec.mjs",
+        "harness:contract": "node esbuild.webview.mjs && playwright test -c preview-harness/playwright.config.mjs contract"
     },
     "devDependencies": {
         "@happy-dom/global-registrator": "^20.9.0",

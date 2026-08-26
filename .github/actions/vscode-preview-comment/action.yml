@@ -39,7 +39,9 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
         cache: npm
-        cache-dependency-path: vscode-extension/package-lock.json
+        cache-dependency-path: |
+          vscode-extension/package-lock.json
+          preview-server/preview-harness/package-lock.json
 
     - name: Install extension dependencies
       shell: bash
@@ -68,10 +70,36 @@ runs:
       working-directory: vscode-extension
       run: npm run harness:contract
 
+    - name: Install preview-server harness dependencies
+      shell: bash
+      working-directory: preview-server/preview-harness
+      run: npm ci
+
+    # The serve page captures. They used to run inside `harness:snapshot` above — 167 of that
+    # command's 205 tests were these — and moved out with the harness. They still write
+    # `<name>.<theme>.png`, and both harnesses' `out/` dirs are merged below, so the baselines on
+    # `vscode-preview/main` keep matching by name and nothing needs rebaselining.
+    - name: Capture serve page snapshots
+      shell: bash
+      working-directory: preview-server/preview-harness
+      run: npm run harness:pages
+
     - name: Test comparison scoring and annotation matching
       shell: bash
-      working-directory: vscode-extension
+      working-directory: preview-server/preview-harness
       run: npm run harness:compare
+
+    # One diff surface, two producers. The diff script takes a single directory, and the capture
+    # names are unique across the two harnesses, so merging is enough — and it keeps the bot's
+    # comment a single table rather than two half-tables a reviewer has to read together.
+    - name: Merge harness captures
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p _harness_out
+        cp -a vscode-extension/preview-harness/out/. _harness_out/ 2>/dev/null || true
+        cp -a preview-server/preview-harness/out/. _harness_out/ 2>/dev/null || true
+        echo "merged captures: $(ls _harness_out | wc -l)"
 
     - name: Fetch baselines
       shell: bash
@@ -133,7 +161,7 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
       run: |
         python3 "$ACTION_PATH/../lib/vscode-preview-diff.py" copy-changed \
-          vscode-extension/preview-harness/out \
+          _harness_out \
           --baselines _vscode_baselines/baselines.json \
           --baseline-renders _vscode_baselines/renders \
           --output-dir _vscode_pr_renders
@@ -213,7 +241,7 @@ runs:
         fi
 
         python3 "$ACTION_PATH/../lib/vscode-preview-diff.py" compare \
-          vscode-extension/preview-harness/out \
+          _harness_out \
           --baselines _vscode_baselines/baselines.json \
           --baseline-renders _vscode_baselines/renders \
           --repo "$REPO" \

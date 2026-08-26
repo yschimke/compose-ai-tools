@@ -1,7 +1,7 @@
 # The about box is gone; catalog details moved into the footer, expanded
 
 Before/after crops of the bottom of the `serve` web surfaces, captured from the committed page
-fixtures (`vscode-extension/preview-harness/fixtures/pages/*.html`) served statically and shot with
+fixtures (`preview-server/preview-harness/fixtures/pages/*.html`) served statically and shot with
 Playwright (light theme, 1000px viewport, 2× DPR; the dark shots are the same markup).
 
 | Pair | Fixture | What changed |

@@ -4,6 +4,7 @@
     "site/**",
     "renders/**",
     "vscode-extension/**",
+    "preview-server/preview-harness/**",
     "**/*.md",
     "**/*.png",
     "**/*.jpg",
@@ -118,7 +119,10 @@
       ".github/actions/lib/**"
     ],
     "preview_server_contracts": [
-      "preview-server/**",
+      "preview-server/contract-probe/**",
+      "preview-server/settings.gradle.kts",
+      "preview-server/build.gradle.kts",
+      "preview-server/gradle.properties",
       "scripts/check-preview-server-contracts.sh",
       "daemon/core/**",
       "api/preview-data-api/**",

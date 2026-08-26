@@ -34,6 +34,6 @@ registration is what gives a weight-500 request a real Medium file instead of ma
 
 Both numbers are re-checked on every CI run rather than left as a claim here — see the
 `a Remote Compose document plays in the vendored typefaces, not the visitor's` case in
-[`serve-lanes.spec.mjs`](../../../../vscode-extension/preview-harness/serve-lanes.spec.mjs), which
+[`serve-lanes.spec.mjs`](../../../../preview-server/preview-harness/serve-lanes.spec.mjs), which
 loads the same page twice (served, and with `/rc-fonts/**` blocked) and fails if the faces aren't
 loaded or the two renderings agree.

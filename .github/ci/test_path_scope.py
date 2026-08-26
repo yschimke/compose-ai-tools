@@ -103,7 +103,7 @@ class RepositoryConfigsTest(unittest.TestCase):
 
     def test_playground_harness_runs_only_playground_lane(self):
         result = mod.decide(
-            ["vscode-extension/preview-harness/playground.spec.mjs"],
+            ["preview-server/preview-harness/playground.spec.mjs"],
             self.load("serve-lanes-paths.json"),
         )
         self.assertEqual(
@@ -113,7 +113,7 @@ class RepositoryConfigsTest(unittest.TestCase):
 
     def test_bundle_upload_harness_runs_only_bundle_lane(self):
         result = mod.decide(
-            ["vscode-extension/preview-harness/bundle-upload.spec.mjs"],
+            ["preview-server/preview-harness/bundle-upload.spec.mjs"],
             self.load("serve-lanes-paths.json"),
         )
         self.assertEqual(

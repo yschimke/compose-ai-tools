@@ -115,86 +115,23 @@ To preview interactively, serve the extension root and open
 npx --yes http-server -c-1 .       # from vscode-extension/
 ```
 
-## Page fixtures (standalone HTML surfaces)
+## The serve harness moved
 
-Some web surfaces aren't the `<preview-app>` panel — e.g. the
-`compose-preview serve` landing + viewer pages, which are self-contained HTML
-documents produced by `ServeWeb` in `:cli`. Those are captured by
-[`pages-snapshot.spec.mjs`](pages-snapshot.spec.mjs), which reuses the same
-approach (Playwright + `_server.mjs` + `out/<fixture>.<theme>.png` → the generic
-`vscode-preview-diff.py` bot) but a different invocation: it navigates straight
-to the committed HTML and drives theme via `prefers-color-scheme` emulation
-rather than booting `scenario.html` and replaying messages.
+The `compose-preview serve` specs — the standalone page captures, the daemon-backed render lanes,
+the playground end-to-end and the bundle-upload flow — used to live here and now live in
+[`preview-server/preview-harness/`](../../preview-server/preview-harness/). They were never the
+panel's: they drive the server's web surfaces, and having them here made 167 of `harness:snapshot`'s
+205 tests somebody else's. See that directory's README, and
+[docs/design/PREVIEW_SERVER_SPLIT.md](../../docs/design/PREVIEW_SERVER_SPLIT.md) for why.
 
-- Fixtures live in [`fixtures/pages/`](fixtures/pages/) as committed `*.html`
-  (plus `_render-placeholder.png`, served for the daemon's `/render` endpoint
-  which has no backend here). They're auto-discovered — drop a `.html` in and
-  it's captured.
-- The serve pages are generated from production `ServeWeb` by the Kotlin golden
-  test `ServeWebFixtureTest`, which also fails CI if the committed HTML drifts
-  from `ServeWeb`. Refresh after a serve-UI change with:
+What that means for this harness:
 
-    ```sh
-    UPDATE_SERVE_WEB_FIXTURES=true ./gradlew :cli:test --tests '*ServeWebFixtureTest*'
-    ```
-
-The `snapshot` path filter in `harness:snapshot` matches this spec too, so these
-land in `out/` alongside the panel fixtures and need no separate CI wiring.
-
-## Serve render lanes (daemon-backed, both backends)
-
-[`serve-lanes.spec.mjs`](serve-lanes.spec.mjs) is the odd one out: it drives a
-**real, daemon-backed `compose-preview serve`** rather than the static harness
-server, and asserts every render lane (PNG, SVG, Live `/ws/`, Wasm) actually
-honours a `?knob.…` override. Point it at a running serve with `SERVE_URL` and
-name the session with `SERVE_SYSTEM`:
-
-```sh
-SERVE_URL=http://127.0.0.1:8725 SERVE_SYSTEM=compose-m3 npm run harness:serve-lanes
-```
-
-Two boot scripts stand one up, one per render backend — both are what
-[`serve-lanes-e2e.yml`](../../.github/workflows/serve-lanes-e2e.yml) runs:
-
-- [`serve-lanes-boot.sh`](serve-lanes-boot.sh) — the **desktop CMP/Skiko** daemon,
-  live-rendering the fetched `compose-m3` catalog under xvfb + software GL. Same
-  shape preview.coo.ee runs.
-- [`serve-android-lane-boot.sh`](serve-android-lane-boot.sh) — the
-  **Android/Robolectric** daemon, live-rendering a locally packed
-  `:samples:android-live-lane` bundle (signed with a throwaway key so it verifies
-  `Trusted` and earns the live lane). Needs `:cli:stageDaemonAndroidLibs`' output
-  via `LIB_DAEMON_ANDROID_DIR` and an Android SDK for `android.jar`; no xvfb.
-
-The Android script deliberately **fails instead of degrading**: the Robolectric
-lane's historical failure mode (#2669) was fail-soft — a sandbox that aborts at
-bootstrap leaves the catalog serving baked PNGs with no error — so the script
-gates on the session registering `LIVE`, on a real `200` render, and on the log
-being free of `ClassNotFoundException`. The fixture's manifest names an
-`Application` the render classpath doesn't carry precisely to keep that gate
-honest.
-
-## Playground, end to end (compile → first frame → live redemption)
-
-[`playground.spec.mjs`](playground.spec.mjs) drives the Kotlin **playground**
-(`docs/design/PLAYGROUND.md`) the whole way through in a browser: the editor
-compiles a Compose snippet on the server (`POST /api/1/compiler/run`, BTA), gets a
-first-frame still back, and the returned `/pg/<token>` capability redeems into the
-ordinary live viewer. The playground's seams are unit-tested against fakes; this is
-the only thing that exercises the real wiring with a daemon behind it.
-
-```sh
-SERVE_URL=http://127.0.0.1:8727 SERVE_TOKEN=playground-e2e npm run harness:playground
-```
-
-[`playground-boot.sh`](playground-boot.sh) stands one up (also run by
-[`serve-lanes-e2e.yml`](../../.github/workflows/serve-lanes-e2e.yml)). It reuses the
-Android/Robolectric backend — the default editor snippet declares an Android
-`@Preview` — booting serve with `--playground-android-bundle` over a locally packed
-`:samples:android-live-lane`. The lane compiles and runs user code in-process, so it
-is refused under `--public`: the boot is **token-gated** (`SERVE_TOKEN`, which the
-spec carries as `?token=`), and the script fails loud unless the log shows
-`playground enabled`. Same `LIB_DAEMON_ANDROID_DIR` + Android-SDK prerequisites as
-the Android render lane above.
+- `harness:snapshot` now names `snapshot.spec.mjs` rather than filtering on `snapshot`, which used
+  to sweep `pages-snapshot.spec.mjs` in too.
+- The captures still land in one diff surface: `vscode-preview-comment` merges this directory's
+  `out/` with the server harness's before diffing, so a reviewer reads one table.
+- **Keep `@playwright/test` here and there in step.** Both harnesses feed the same baseline branch,
+  so a version skew moves pixels for reasons no PR explains.
 
 ## Wire-side contract
 
@@ -445,8 +382,11 @@ separate directories and compare:
 cd vscode-extension
 for i in 1 2; do
   rm -rf preview-harness/out
-  npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot
+  npm run harness:snapshot
   cp -r preview-harness/out /tmp/run$i
 done
 diff -rq /tmp/run1 /tmp/run2   # must be silent
 ```
+
+The same check for the serve page captures runs from
+`preview-server/preview-harness/` with `npm run harness:pages`.

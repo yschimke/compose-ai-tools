@@ -1,7 +1,7 @@
 # Catalog nav: one action per comparison, and the design spec at top level
 
 Before/after crops of the `serve` web surfaces whose navigation changed, captured from the
-committed page fixtures (`vscode-extension/preview-harness/fixtures/pages/*.html`) with
+committed page fixtures (`preview-server/preview-harness/fixtures/pages/*.html`) with
 
 ```sh
 npm --prefix vscode-extension run harness:snapshot   # or: npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot

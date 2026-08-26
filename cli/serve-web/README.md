@@ -20,8 +20,9 @@ npm run verify      # typecheck + test + build + assert the bundle is committed
 `vscode-extension/src/webview` is already Lit 3 + esbuild + TypeScript, with
 mocha + happy-dom for unit tests and Playwright for visual capture. Reusing that
 stack here means one set of idioms, one decorator mode, one test runner, and
-`vscode-extension/preview-harness` already screenshots these pages — so the
-capture pipeline needed no new machinery at all.
+the serve `preview-harness` (now at `preview-server/preview-harness`, split
+out of the extension's) already screenshots these pages — so the capture
+pipeline needed no new machinery at all.
 
 The pinned versions deliberately match the extension's. Two Lit majors in one
 repo would be two component models to hold in your head for no benefit.
@@ -36,7 +37,7 @@ and must not:
   the HTML and nothing else.
 - The **committed page fixtures are the regression net.** `ServeWebFixtureTest`
   renders `ServeWeb`'s pages to
-  `vscode-extension/preview-harness/fixtures/pages/*.html`, and
+  `preview-server/preview-harness/fixtures/pages/*.html`, and
   `pages-snapshot.spec.mjs` screenshots them per theme for the visual-diff bot.
   Move rendering to the client and those fixtures become empty shells — the net
   goes away in the same change that most needs it.

@@ -1,7 +1,7 @@
 # Typography inspection on a catalog + live-daemon viewer
 
 Visual evidence for issue #4254. Both shots are the committed
-`vscode-extension/preview-harness/fixtures/pages/serve-viewer-inspect.html` fixture — the
+`preview-server/preview-harness/fixtures/pages/serve-viewer-inspect.html` fixture — the
 production viewer page, the production `<cp-inspect-layers>` bundle, and the
 production-shaped `.annotations` payload the harness already stubs — driven with Playwright:
 open the Overrides drawer, expand **Overlays**, tick **Typography**.

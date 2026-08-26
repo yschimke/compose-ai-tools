@@ -1,7 +1,7 @@
 # Catalog / Dev is a cookie, not a URL parameter
 
 The two presentations the header switch selects, captured from the committed page fixtures
-(`vscode-extension/preview-harness/fixtures/pages/*.html`) so they show exactly what the server
+(`preview-server/preview-harness/fixtures/pages/*.html`) so they show exactly what the server
 emits for each mode:
 
 | File | Fixture | Mode |

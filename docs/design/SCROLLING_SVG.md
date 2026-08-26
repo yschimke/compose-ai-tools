@@ -256,7 +256,7 @@ lands on the rect the render actually painted.)*
     A round preview that turns out not to be scrollable falls back to the grow-tall /
     inscribed-circle export.
   - **CI visual diff:** the capsule is registered with the vscode preview-harness as a self-contained
-    page fixture (`vscode-extension/preview-harness/fixtures/pages/serve-wear-scroll-long-capsule.html`),
+    page fixture (`preview-server/preview-harness/fixtures/pages/serve-wear-scroll-long-capsule.html`),
     so the `vscode-preview-diff` bot screenshots + diffs the actual rendered SVG on every PR — the
     `?scroll=long` surface had no committed capture path before (the compose-preview bot diffs the
     raster LONG PNG, but nothing diffed the vector capsule). `WearScrollSvgGrowthTest` regenerates the

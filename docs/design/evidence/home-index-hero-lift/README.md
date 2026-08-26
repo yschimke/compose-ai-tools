@@ -1,7 +1,7 @@
 # Front door: the hero lifts off the card
 
 Before/after crops of one hovered card on the `serve` front door (`/`), captured from the committed
-page fixture (`vscode-extension/preview-harness/fixtures/pages/serve-home-index.html`) at
+page fixture (`preview-server/preview-harness/fixtures/pages/serve-home-index.html`) at
 `deviceScaleFactor: 2` with transitions disabled, so the shot lands on the settled hover state
 rather than racing the ease.
 
