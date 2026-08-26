@@ -3626,6 +3626,10 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         maxImages = catalogMaxImages,
         blobs = catalogBlobPool,
         serverSideRenderEnabled = allowRenderTrusted,
+        // The vector fills and the rc-compare pull run after the catalog is published, so a
+        // throttle there lands after the head was recorded. Un-settle the revision so the next
+        // poll re-reads it, exactly as a trust revocation and a retirement do.
+        onPostPublishIncomplete = { system -> activeRefresher?.forgetHeads(listOf(system)) },
         registerWasm = { system, wasmDir ->
           // A local `--wasm-dir` is the operator's explicit override, so a published app never
           // displaces it — including on a later branch refresh, which re-runs this callback.
@@ -3726,6 +3730,11 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
           // `--wasm-dir` the operator configured, which isn't the catalog's to remove.
           if (system !in localWasm) wasmCatalogs.remove(system)
         }
+        // And forget its branch head, for the reason a trust revocation does: the poller
+        // short-circuits on an unchanged SHA, so a system retired and later republished at the
+        // same commit would keep the head recorded from before it was retired — and the republished
+        // copy would never be re-read, however it loaded.
+        activeRefresher?.forgetHeads(listOf(system))
       },
     )
 

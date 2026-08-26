@@ -984,6 +984,61 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `a throttled post-publish vector fill un-settles the revision`() {
+    // `incomplete` can only speak for what the load itself read. The vector fills run on
+    // `figmaExecutor` AFTER the catalog is published, so a throttle there lands once the result has
+    // been handed back and the branch head recorded — and without this the missing vectors would
+    // wait for the next commit, which is the permanence this whole change exists to end.
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png",
+         "figma":{"nodeId":"1:2"}}]}]}
+      """
+        .trimIndent()
+    val unsettled = CopyOnWriteArrayList<String>()
+    val deferred = mutableListOf<Runnable>()
+    // The publish path itself takes one or two vectors inline (see `scheduleFigmaSvgFetch`) and
+    // leaves the rest to the deferred lane. Throttling only after the load has returned is what
+    // isolates the case under test: a failure the load could not possibly have counted.
+    var published = false
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        // Deferred, so the load returns before the lane runs — which is the whole point.
+        figmaExecutor = java.util.concurrent.Executor { deferred += it },
+        onPostPublishIncomplete = { unsettled += it },
+        networkFetch = { url, _ ->
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") ->
+              BranchFetch.Ok(catalog.encodeToByteArray())
+            url.endsWith(".png") -> BranchFetch.Ok(png())
+            url.endsWith(".svg") ->
+              if (published) BranchFetch.Throttled(retryAfterSeconds = 5)
+              else BranchFetch.Ok("<svg/>".encodeToByteArray())
+            else -> BranchFetch.NotFound
+          }
+        },
+      )
+
+    val result = store.load("compose-m3") as ServeCatalogStore.Result.Ok
+    // The load itself read everything it needed: the vectors are not its business.
+    assertTrue(!result.incomplete, "the publish path itself was complete")
+    assertEquals(emptyList(), unsettled.toList(), "nothing is reported before the lane runs")
+
+    published = true
+    deferred.forEach { it.run() }
+
+    assertEquals(
+      listOf("compose-m3"),
+      unsettled.toList(),
+      "a throttled vector fill must un-settle the revision so the next tick re-reads it",
+    )
+  }
+
+  @Test
   fun `an over-sized artifact is staged, so the reader can refuse it as too large`() {
     // Dropping it would leave a missing file, and a missing file is `artifact-unreadable`/404 — a
     // different verdict from the contract's `artifact-too-large`/413, and one that hides why.

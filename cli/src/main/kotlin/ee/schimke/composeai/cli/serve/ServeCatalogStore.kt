@@ -92,6 +92,21 @@ class ServeCatalogStore(
    * catalog** — a deployed public server needs no local `--wasm-dir` build, just `--catalogs`.
    */
   private val registerWasm: (system: String, dir: File) -> Unit = { _, _ -> },
+  /**
+   * Invoked when a **post-publish** lane finished with a transient failure of its own.
+   *
+   * [Result.Ok.incomplete] can only speak for what the load itself read: the vector fills and the
+   * rc-compare pull run on [figmaExecutor] *after* the catalog is published, so a throttle there
+   * lands long after the result was handed back and the branch head recorded. This is how they say
+   * so — the caller wires it to `ServeCatalogRefresher.forgetHeads`, which un-settles the revision
+   * so the next tick re-reads it.
+   *
+   * After the fact rather than before, and deliberately: there is a small window between the load
+   * returning and the head being recorded in which an invalidation would be a no-op, but these
+   * lanes are doing network I/O and finish far later than that. The cost of losing that race is one
+   * missed retry, which is exactly the status quo this exists to improve on.
+   */
+  private val onPostPublishIncomplete: (system: String) -> Unit = {},
   private val serverSideRenderEnabled: Boolean = false,
   /**
    * Trusted server-side re-render from a carried **executable bundle** (opt-in,
@@ -1833,10 +1848,13 @@ class ServeCatalogStore(
   ) {
     figmaExecutor.execute {
       if (generations[system] != generation) return@execute
+      val before = branchFetchStats.transientFailures()
       runCatching {
         fetchFigmaSvgs(slugs, variantPaths, base, dir) { generations[system] == generation }
       }
         .onFailure { System.err.println("serve: catalog $system figma vectors: ${it.message}") }
+      // This lane runs after the result was handed back, so it reports its own incompleteness.
+      if (fetchedIncompletely(before)) onPostPublishIncomplete(system)
     }
   }
 
@@ -1850,8 +1868,11 @@ class ServeCatalogStore(
     if (!ServeRcCompare.stagesFor(alias)) return
     figmaExecutor.execute {
       if (generations[system] != generation) return@execute
+      val before = branchFetchStats.transientFailures()
       runCatching { fetchRcCompare(alias, base, dir) { generations[system] == generation } }
         .onFailure { System.err.println("serve: catalog $system rc-compare: ${it.message}") }
+      // Post-publish like the vector fills beside it — see [onPostPublishIncomplete].
+      if (fetchedIncompletely(before)) onPostPublishIncomplete(system)
     }
   }
 
