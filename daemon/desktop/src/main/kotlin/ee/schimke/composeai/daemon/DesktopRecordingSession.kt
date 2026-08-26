@@ -75,7 +75,6 @@ class DesktopRecordingSession(
   override val live: Boolean = false,
   private val engine: RenderEngine,
   private val state: RenderEngine.SceneState,
-  private val sandboxStats: SandboxLifecycleStats,
   private val framesDir: File,
   private val encodedDir: File,
   private val fileSystem: FileSystem = SystemFileSystem,

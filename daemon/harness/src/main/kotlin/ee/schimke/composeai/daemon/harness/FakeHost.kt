@@ -47,13 +47,6 @@ class FakeHost(
 ) : RenderHost {
 
   /**
-   * Tracks the next "internal request id" the host would assign if anyone called the legacy
-   * `RenderHost.Companion.nextRequestId()` path. Unused for the v0 scenarios but kept so future
-   * fakes can mimic real-host bookkeeping if needed.
-   */
-  private val internalIdSource = AtomicLong(1)
-
-  /**
    * Cache of decoded `<previewId>.error` / `<previewId>.delay-ms` / `<previewId>.metrics.json`
    * sidecar files. Lazy because most fixtures only set one or two of them.
    *

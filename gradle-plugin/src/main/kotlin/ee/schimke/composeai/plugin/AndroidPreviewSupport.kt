@@ -1516,146 +1516,65 @@ internal object AndroidPreviewSupport {
         "testImplementation",
         "androidx.compose.ui:ui-test-junit4:$RENDERER_COMPOSE_FLOOR_VERSION",
       )
-      // Pin `androidx.core:core` to the floor that compose-ui 1.10+ requires.
-      // The renderer's test classpath gets compose-ui via roborazzi-compose's
-      // transitive deps regardless of what the consumer declares, and
+      // Main-variant floor pins for tile-only / non-Compose-UI consumers.
+      //
+      // AGP builds the merged unit-test resource APK (`apk-for-local-test.ap_`) from the
+      // consumer's MAIN variant, while the renderer's compose-ui arrives on the JVM *test*
+      // classpath via roborazzi-compose. A consumer whose main variant carries neither compose-ui
+      // nor its resource dependencies (e.g. wear-os-samples' WearTilesKotlin) is therefore missing
+      // R classes the renderer's classes read, and Robolectric dies at class-init. Each pin below
+      // adds the missing artifact to `${variantName}Implementation` so AGP merges its R class.
+      // All are floors only — Gradle's conflict resolution picks the max, so they are no-ops for
+      // Compose-app consumers already on their own BOM.
+      //
+      // The `reason` strings on the matching `recordInjectedDependency` calls below are the
+      // user-facing version of this (surfaced by `composePreviewDoctor`); the notes here add the
+      // exact failure each pin prevents.
+
       // compose-ui 1.10+'s `InsetsListener.onViewAttachedToWindow` reads
-      // `androidx.core.R.id.tag_compat_insets_dispatch` (added in core
-      // 1.16.0). The merged unit-test resource APK is built from the
-      // consumer's MAIN variant, so on tile-only / older-Compose consumers
-      // (e.g. WearTilesKotlin: no compose-ui in main, transitive core is
-      // pre-1.16) the field is missing and Robolectric crashes the moment
-      // `AndroidComposeView.onAttachedToWindow` runs:
-      //
-      //   `NoSuchFieldError: Class androidx.core.R$id does not have member
-      //   field 'int tag_compat_insets_dispatch'`
-      //
-      // Adding the floor to `${variantName}Implementation` is the same
-      // pattern used for `tiles-renderer` below — a main-variant dep so AGP
-      // includes the R class in the merged test APK. Acts as a floor only:
-      // Gradle picks the higher version when consumers already pin core
-      // >= 1.16 via their own deps (compose-bom 2026.x, etc.), so it's
-      // non-destructive for the common case.
+      // `androidx.core.R.id.tag_compat_insets_dispatch`, added in core 1.16.0:
+      //   NoSuchFieldError: androidx.core.R$id … 'int tag_compat_insets_dispatch'
       project.dependencies.add("${variantName}Implementation", "androidx.core:core:1.16.0")
-      // Pin `androidx.customview:customview-poolingcontainer` for the same
-      // reason as `androidx.core:core` above. compose-ui's
-      // `ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool`
-      // reads `androidx.customview.poolingcontainer.R.id.*` from
-      // `PoolingContainer.<clinit>`, so the merged unit-test resource APK
-      // needs that R class. Tile-only consumers without compose-ui in main
-      // (e.g. WearTilesKotlin) carry no transitive customview-poolingcontainer
-      // on the main variant, so the field lookup crashes Robolectric the
-      // moment `AbstractComposeView.<init>` installs the strategy:
-      //
-      //   `NoClassDefFoundError: Could not initialize class
-      //   androidx.customview.poolingcontainer.PoolingContainer`
-      //   caused by `NoClassDefFoundError:
-      //   androidx/customview/poolingcontainer/R$id`
-      //
-      // 1.0.0 is the only published version (compose-ui 1.9.x → 1.11.x all
-      // depend on it unchanged); the floor here is a no-op for Compose-app
-      // consumers that already get it transitively, and a fix for tile-only
-      // consumers that don't.
+
+      // compose-ui's `ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool` reads
+      // `androidx.customview.poolingcontainer.R.id.*` from `PoolingContainer.<clinit>`:
+      //   NoClassDefFoundError: androidx/customview/poolingcontainer/R$id
+      // 1.0.0 is the only published version (compose-ui 1.9.x → 1.11.x all depend on it unchanged).
       project.dependencies.add(
         "${variantName}Implementation",
         "androidx.customview:customview-poolingcontainer:1.0.0",
       )
-      // Pin `androidx.activity:activity` to a floor that exposes the
-      // `view_tree_on_back_pressed_dispatcher_owner` resource id. The
-      // renderer's test classpath pulls activity-compose ≥ 1.13 transitively
-      // (via roborazzi-compose), whose `ComponentActivity.initializeViewTreeOwners`
-      // → `ViewTreeOnBackPressedDispatcherOwner.set` reads
-      // `androidx.activity.R.id.view_tree_on_back_pressed_dispatcher_owner`
-      // (added in `androidx.activity:activity:1.5.0`). The merged unit-test
-      // resource APK is built from the consumer's MAIN variant, so on
-      // tile-only consumers whose main pulls only a legacy activity (e.g.
-      // wear-os-samples' WearTilesKotlin resolves `activity:1.1.0` via old
-      // transitives) the field is missing and Robolectric crashes the
-      // moment `createAndroidComposeRule<ComponentActivity>().setContent {}`
-      // runs:
-      //
-      //   `NoSuchFieldError: Class androidx.activity.R$id does not have
-      //   member field 'int view_tree_on_back_pressed_dispatcher_owner'`
-      //
-      // Same `${variantName}Implementation` floor pattern as the
-      // `androidx.core:core` and `customview-poolingcontainer` entries
-      // above — Gradle picks the max with consumer-aligned versions, so
-      // this is a no-op for Compose-app consumers that already get a
-      // newer activity transitively, and a fix for tile-only consumers
-      // that don't.
+
+      // `ComponentActivity.initializeViewTreeOwners` → `ViewTreeOnBackPressedDispatcherOwner.set`
+      // reads `androidx.activity.R.id.view_tree_on_back_pressed_dispatcher_owner`, added in
+      // activity 1.5.0 (WearTilesKotlin resolves 1.1.0 via old transitives):
+      //   NoSuchFieldError: androidx.activity.R$id … 'view_tree_on_back_pressed_dispatcher_owner'
       project.dependencies.add("${variantName}Implementation", "androidx.activity:activity:1.10.0")
-      // Pin `androidx.compose.ui:ui` on the main variant for tile-only /
-      // non-Compose-UI consumers. compose-ui's
-      // `AndroidComposeViewAccessibilityDelegateCompat.<clinit>` reads
-      // `androidx.compose.ui.R.id.*` (via `accessibility_custom_action_*`
-      // / `compose_view_root_id` lookups), so the merged unit-test resource
-      // APK needs the compose-ui R class. The renderer's test classpath
-      // brings compose-ui transitively (via roborazzi-compose / ui-test-*)
-      // — but that's the JVM test classpath only; AGP builds the merged
-      // `apk-for-local-test.ap_` from the consumer's MAIN variant, so on
-      // tile-only consumers without compose-ui in main (e.g. WearTilesKotlin)
-      // the R class is missing and Robolectric crashes the moment
-      // `AndroidComposeView.<init>` triggers the accessibility delegate's
-      // class init:
+
+      // compose-ui's `AndroidComposeViewAccessibilityDelegateCompat.<clinit>` reads
+      // `androidx.compose.ui.R.id.*`:
+      //   NoClassDefFoundError: androidx/compose/ui/R$id
       //
-      //   `NoClassDefFoundError: Could not initialize class
-      //   androidx.compose.ui.platform.AndroidComposeViewAccessibilityDelegateCompat`
-      //   caused by `NoClassDefFoundError: androidx/compose/ui/R$id`
+      // Version, unlike the pins above, is NOT the renderer's compile floor: the merged APK's R
+      // class has to agree with the compose-ui CLASSES on the render classpath. A Compose consumer
+      // keeps Rule 3, so its own BOM wins and both come from it; a Compose-less consumer runs on
+      // OUR compose-ui (the CMP runtime), and pinning main at the 1.9.5 floor mismatches by two
+      // minors — `ui-android` 1.9.5's `R.txt` has no
+      // `androidx_compose_ui_view_compose_view_context`, which the newer classes read.
       //
-      // Same `${variantName}Implementation` floor pattern as the
-      // `androidx.core:core`, `customview-poolingcontainer`, and
-      // `androidx.activity:activity` entries above — Gradle picks the max
-      // with consumer-aligned versions, so this is a no-op for Compose-app
-      // consumers that already get a newer ui via their BOM, and a fix for
-      // tile-only consumers that don't.
-      //
-      // The VERSION is not the same for both, though. This pin decides the R
-      // class in the merged unit-test resource APK, and that has to agree with
-      // the compose-ui CLASSES on the render classpath:
-      //
-      //  * A Compose consumer keeps Rule 3, so its own Compose is what runs and
-      //    its BOM wins over this floor. Classes and resources are both theirs.
-      //  * A Compose-less consumer has Rule 3 off, so the render classpath's
-      //    compose-ui is OURS — the one Compose Multiplatform brings. Pinning
-      //    the main variant at the 1.9.5 floor there mismatches by two minor
-      //    versions, and the merged APK's R class is missing ids the newer
-      //    classes read:
-      //
-      //      NoSuchFieldError: Class androidx.compose.ui.R$id does not have
-      //        member field 'int androidx_compose_ui_view_compose_view_context'
-      //          at ComposeView_androidKt.getComposeViewContext
-      //
-      //    (Verified against the published artifacts: `ui-android` 1.9.5's
-      //    `R.txt` has no such id; [RENDERER_COMPOSE_CMP_RUNTIME_VERSION]'s
-      //    has it.) So a Compose-less consumer gets the CMP runtime version,
-      //    keeping its resources and our classes on the same line.
-      //
-      // Resolved once and reused for the `foundation` pin below AND for both
-      // `recordInjectedDependency` entries: `composePreviewDoctor` exists to
-      // explain this exact compatibility scenario, so reporting the floor while
-      // injecting the CMP runtime version would misreport precisely where the
-      // report is load-bearing.
+      // Resolved once and reused for `foundation` below and for both `recordInjectedDependency`
+      // entries, so `composePreviewDoctor` reports the version actually injected.
       val mainComposeVersion = mainVariantComposeVersion(project, variantName)
       addPluginDependency(
         project,
         "${variantName}Implementation",
         "androidx.compose.ui:ui:$mainComposeVersion",
       )
-      // Pin `androidx.compose.foundation:foundation` on the main variant for
-      // the same reason as compose-ui above — but for class-loading rather
-      // than R.id lookup. `TilePreviewRenderer.TilePreviewComposable` calls
-      // `Modifier.fillMaxSize()` (from `androidx.compose.foundation.layout.SizeKt`)
-      // to fill the renderer's host AndroidView. On tile-only consumers
-      // without compose-foundation in main (e.g. WearTilesKotlin), the class
-      // isn't on the user-classpath component of the merged test APK and
-      // Robolectric crashes the first time the tile compose-tree runs:
-      //
-      //   `NoClassDefFoundError: androidx/compose/foundation/layout/SizeKt`
-      //   at `TilePreviewRendererKt.TilePreviewComposable`
-      //
-      // Same `${variantName}Implementation` floor pattern as compose-ui, and
-      // versioned by the same rule — foundation and ui have to stay on one
-      // line, so this uses [mainVariantComposeVersion] too.
+
+      // Class-loading rather than R.id lookup: `TilePreviewRenderer.TilePreviewComposable` calls
+      // `Modifier.fillMaxSize()` from `androidx.compose.foundation.layout.SizeKt`:
+      //   NoClassDefFoundError: androidx/compose/foundation/layout/SizeKt
+      // Versioned with compose-ui above — foundation and ui have to stay on one line.
       addPluginDependency(
         project,
         "${variantName}Implementation",

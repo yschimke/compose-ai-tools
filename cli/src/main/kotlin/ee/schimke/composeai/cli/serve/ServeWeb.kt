@@ -189,36 +189,6 @@ object ServeWeb {
   private fun viewerViewCountHtml(views: Long): String =
     if (views <= 0) "" else "<span class=\"cp-viewer-engage\">${formatViews(views)}</span>"
 
-  /**
-   * A title-bar disclosure toggle: a [label] naming the axis it folds, plus the [value] that axis
-   * currently holds. Both halves matter. A bare "State" would make the reader open the row to learn
-   * what they are looking at — the very cost the fold was meant to remove — so a closed toggle
-   * reads "State · M wide" and the row underneath is genuinely optional.
-   *
-   * Shares `.cp-drawer-toggle` with the two drawer toggles it now sits beside, so the four
-   * disclosures on this page cannot drift apart visually; `aria-expanded` + `aria-controls` are
-   * what make it a disclosure rather than four buttons that happen to look alike.
-   *
-   * [valueId] labels the value span when something client-side has to keep it current (the theme,
-   * which changes without a page load).
-   */
-  private fun disclosureToggleHtml(
-    id: String,
-    controls: String,
-    label: String,
-    value: String,
-    open: Boolean,
-    valueId: String? = null,
-  ): String {
-    val valueIdAttr = valueId?.let { " id=\"${WebEscaping.htmlEscape(it)}\"" } ?: ""
-    return "<button type=\"button\" class=\"cp-drawer-toggle cp-axis-toggle\"" +
-      " id=\"${WebEscaping.htmlEscape(id)}\" aria-expanded=\"$open\"" +
-      " aria-controls=\"${WebEscaping.htmlEscape(controls)}\">" +
-      "<span class=\"cp-toggle-label\">${WebEscaping.htmlEscape(label)}</span>" +
-      "<span class=\"cp-toggle-value\"$valueIdAttr>${WebEscaping.htmlEscape(value)}</span>" +
-      "</button>"
-  }
-
   private fun formatViews(views: Long): String =
     "${formatCount(views)} ${if (views == 1L) "view" else "views"}"
 
@@ -290,18 +260,6 @@ object ServeWeb {
    * public links).
    */
   private fun querySuffix(query: String): String = if (query.isEmpty()) "" else "?$query"
-
-  /**
-   * Producer-trust badge for a bundle/catalog session ([BundleVerifier.summary]); empty for a live
-   * daemon-backed module (trust applies to detached bundles/catalogs, not the operator's own served
-   * module). Positive trust is intentionally silent; only an unverified producer earns a visible
-   * warning badge.
-   */
-  private fun trustBadge(trust: String?): String {
-    if (trust != "unverified") return ""
-    return " <span class=\"cp-badge cp-badge--unverified\" " +
-      "title=\"producer trust: unverified\">⚠ untrusted</span>"
-  }
 
   /**
    * The viewer's compact producer warning. Trusted catalogs carry no badge; an unverified one is
@@ -581,15 +539,6 @@ object ServeWeb {
    */
   private const val INTERFACE_MODE_COOKIE_ATTRS =
     "; path=/; max-age=$INTERFACE_MODE_COOKIE_MAX_AGE; samesite=lax"
-
-  /**
-   * How many rows the viewer's component subtree shows inline before folding behind its title-bar
-   * toggle — counting the component row, which is itself a render (the default one), not just its
-   * children. Lower than the chip rows this replaced needed, because a tree spends a whole line per
-   * render where a chip row wrapped several onto one: four rows is about the point past which the
-   * list costs more of the fold than the render it sits above.
-   */
-  private const val AXIS_ROWS_INLINE = 4
 
   /**
    * How many theme chips the viewer bar shows inline before folding. Lower than [AXIS_CHIPS_INLINE]
@@ -2888,19 +2837,6 @@ ${captureControlsHtml().prependIndent("          ")}
       TreeVariant(variantLabel(p, axis, crossProduct), href(p), axis)
     }
   }
-
-  /**
-   * Whether this component varies on [axis] (`"state"` or `"props"`), which is what lets the folded
-   * disclosure name the axes it put away. Derived from [componentRenderRows] rather than
-   * re-deriving the axis rules, so the toggle can never claim an axis the subtree underneath it
-   * does not offer.
-   */
-  private fun componentHasAxis(
-    preview: ServePreview,
-    siblings: List<ServePreview>,
-    darkFirst: Boolean,
-    axis: String,
-  ): Boolean = componentRenderRows(preview, siblings, darkFirst) { it.id }.any { it.axis == axis }
 
   private fun componentSubtreeHtml(
     preview: ServePreview,

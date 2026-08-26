@@ -3570,38 +3570,22 @@ class ServeHttpServer(
         )
       val revisions = catalogRevisions(renderHost, preview.id)
       val pinned = revisions.pinned != null
-      // Whether a TAG selection would describe the frame on screen. All three conditions are about
-      // the same thing: `tagIndexForPreview` is the published static index, measured in CI over the
-      // baked render, and both live host wrappers delegate it to their baked host. So it describes
-      // the frame here when the frame is the baked one — no overrides re-rendering it, no pin
-      // replaying a different commit's pixels — and a host that publishes no index at all has
-      // nothing to offer either way.
-      //
-      // **This is a necessary condition, not a sufficient one, and the gap is caching.** On a
-      // public server an override-free baked `/render/<id>.png` is served
-      // `STATIC_RESOURCE_CACHE_CONTROL` while this index is `no-store`, so within that window a
-      // client can pair pixels from the previous catalog generation with a freshly-fetched index —
-      // the same-frame invariant broken by a republish rather than by an override. Closing it needs
-      // the image and the index to carry a shared generation, which is the coupling batch 05 has to
-      // build before an element gate may read this at all; recording a slightly wrong baseline is
-      // latent until a gate measures against it. Tracked, not fixed here: it changes the render
-      // lane's URL and caching contract, which is more than this batch should move on its own.
-      //
-      // Getting this wrong is not a missing feature, it is a wrong record: a tag selection persists
-      // the index's bounds into the locator as the acceptance's baseline, so bounds from another
-      // frame survive into a record that later reports an unchanged element as moved. The element
-      // gates in batch 05 need a shared render generation before they can do better than this;
-      // until then the honest answer on a re-rendered frame is to offer the drag and say why.
       // Whether the frame on screen is the catalog's BAKED render, replayed rather than produced
-      // for this request. Everything a selection records as an authoring-time baseline has to come
-      // from the same frame the reporter is looking at, and this is the one condition under which
-      // the server can promise that for a product fetched by a SEPARATE request.
-      //
+      // for this request — the one condition under which the server can promise that a product
+      // fetched by a SEPARATE request (`.png` vs `.annotations`) describes the same frame.
       // `canApplyOverrides` is false exactly for the hosts that replay baked pixels for an
-      // override-free browse (a static bundle, and a live-catalog wrapper whose browsing lane is
-      // baked); a daemon-backed host renders per request, so its `.png` and its `.annotations` are
-      // two renders and may disagree wherever output varies — animation, conditional composition,
-      // live data. A pin or an override re-renders on any host.
+      // override-free browse; a daemon-backed host renders per request, so its two products may
+      // disagree wherever output varies (animation, conditional composition, live data). A pin or
+      // an override re-renders on any host, and `tagIndexForPreview` is the published static index
+      // measured in CI over the baked render.
+      //
+      // Necessary but NOT sufficient, and the gap is caching: an override-free baked
+      // `/render/<id>.png` is served `STATIC_RESOURCE_CACHE_CONTROL` while this index is
+      // `no-store`, so a client can pair previous-generation pixels with a freshly-fetched index.
+      // Closing it needs the image and the index to carry a shared generation — batch 05's
+      // coupling, which also moves the render lane's URL and caching contract. It matters because
+      // a tag selection persists the index's bounds as the acceptance baseline, so bounds from
+      // another frame survive into a record that later reports an unchanged element as moved.
       val frameIsReplayedBaked =
         !pinned && overrideParams.isEmpty() && !renderHost.canApplyOverrides
       val tagIndex = renderHost.tagIndexForPreview(preview.id)

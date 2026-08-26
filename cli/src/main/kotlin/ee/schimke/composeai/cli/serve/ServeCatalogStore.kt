@@ -2680,13 +2680,6 @@ class ServeCatalogStore(
     private const val ASSET_FETCH_CONCURRENCY = 12
 
     /**
-     * Images planned per fetch wave. Each wave is additionally clamped to the images still needed,
-     * so the `maxImages` ceiling keeps counting *successes* — a wave that comes back short is
-     * followed by another rather than truncating the catalog.
-     */
-    private const val IMAGE_FETCH_WAVE = 64
-
-    /**
      * Images fetched before a catalog publishes: its hero (which the front door paints) plus a
      * couple of others, so "the branch can serve pixels" is proven without one missing file being
      * able to fail the catalog. Everything else arrives on first use.

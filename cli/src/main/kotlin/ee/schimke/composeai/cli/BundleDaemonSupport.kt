@@ -44,7 +44,7 @@ internal fun extractBundleClassesAndManifest(
         }
         "classes/app.jar" -> {
           val appJarBytes = zin.readBytes()
-          expandBundleJarBytesSafely(appJarBytes, classesDir, fileSystem)
+          expandZipBytesSafely(appJarBytes, classesDir, fileSystem, "bundle: app jar entry")
           sawAppJar = true
         }
       }
@@ -99,26 +99,25 @@ internal fun extractBundleIrArtifacts(
 }
 
 /**
- * Unpack an app jar's bytes into [targetDir], rejecting Zip Slip. Shares its containment-check
- * shape with `BundleCommand`'s `safeExtractZip` (a bundle's own zip) — duplicated rather than
- * reused since this one unpacks an in-memory *jar's* bytes, a different call shape.
+ * Unpack a zip or jar's [bytes] into [targetDir], rejecting Zip Slip. Resolve + normalize +
+ * `Path.startsWith` is the containment check CodeQL's `java/zipslip` recognizes as sanitization; an
+ * equally safe `canonicalFile` + `String.startsWith` guard is reported as a false positive.
+ *
+ * [what] names the offending entry in the rejection message ("bundle entry", "app jar entry", …).
  */
-internal fun expandBundleJarBytesSafely(
-  appJarBytes: ByteArray,
+internal fun expandZipBytesSafely(
+  bytes: ByteArray,
   targetDir: File,
   fileSystem: FileSystem = SystemFileSystem,
+  what: String = "bundle entry",
 ) {
   val targetPath = targetDir.canonicalFile.toPath()
-  ZipInputStream(ByteArrayInputStream(appJarBytes)).use { zin ->
+  ZipInputStream(ByteArrayInputStream(bytes)).use { zin ->
     while (true) {
       val entry = zin.nextEntry ?: break
-      // Resolve + normalize the entry against the target and verify containment via
-      // Path.startsWith — the form CodeQL's java/zipslip recognizes as sanitization.
       val resolved = targetPath.resolve(entry.name).normalize()
       if (!resolved.startsWith(targetPath)) {
-        throw SecurityException(
-          "bundle: app jar entry escapes target dir: ${entry.name} → $resolved"
-        )
+        throw SecurityException("$what escapes target dir: ${entry.name} → $resolved")
       }
       val candidate = resolved.toFile()
       if (entry.isDirectory) {

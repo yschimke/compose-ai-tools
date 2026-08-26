@@ -812,7 +812,6 @@ abstract class RenderPreviewsTask : DefaultTask() {
       jvmArgs = workerJvmArgs(),
       maxWorkers = DesktopRenderWorkerPool.configuredWorkers(),
       maxRendersPerWorker = DesktopRenderWorkerPool.configuredMaxRenders(),
-      renderTimeoutSeconds = DesktopRenderWorkerPool.RENDER_GUARD_SECONDS,
       // `javaexec` defaulted the working directory to the task's project, so a preview reading a
       // relative path resolved it against that subproject. A worker must start there too, or the
       // warm and forked lanes would disagree about what `File("src/main/resources/…")` means.

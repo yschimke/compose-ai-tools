@@ -1034,10 +1034,6 @@ private fun CatalogSectionHeader(label: String) {
   BasicText(text = label.uppercase(Locale.ROOT), style = CATALOG_SECTION_STYLE)
 }
 
-/** Cell for a colour role. Fixed geometry: the 40dp swatch plus its row padding and the row gap. */
-private fun swatchCell(label: String, color: Color) =
-  SpecimenCell(CATALOG_SWATCH_ROW_HEIGHT) { CatalogSwatchRow(label = label, color = color) }
-
 /**
  * A colour role drawn as a chip that **sets its own name in the role it pairs with** — `primary`
  * lettered in `onPrimary`, `surfaceContainer` in `onSurface`.

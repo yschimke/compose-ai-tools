@@ -6,7 +6,6 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.TimeUnit
-import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -16,8 +15,6 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okio.FileSystem
-import okio.Path.Companion.toPath
-import okio.source
 
 /**
  * Re-renders a packed `.png` (PNG+ZIP polyglot bundle) outside of any Gradle project: extract the
@@ -417,40 +414,10 @@ class BundleRenderer(
     // from `ir/` rather than from reflected consumer bytecode. Expand the consumer classes only
     // when the bundle carries them; the caller validates that a class-backed preview isn't left
     // without its jar.
-    appJarBytes?.let { expandJarBytes(it, classesDir) }
-    return Triple(bundleJsonNonNull, previewsJsonNonNull, appJarBytes != null)
-  }
-
-  /**
-   * Unpack [appJarBytes] (a JAR-format zip) into [targetDir]. Each entry's resolved path is
-   * verified to live inside [targetDir] — defeats Zip Slip on a malformed/hostile bundle, same
-   * defense as `safeExtractZip` in BundleCommand.
-   */
-  private fun expandJarBytes(appJarBytes: ByteArray, targetDir: File) {
-    val targetPath = targetDir.canonicalFile.toPath()
-    ZipInputStream(ByteArrayInputStream(appJarBytes)).use { zin ->
-      while (true) {
-        val entry: ZipEntry = zin.nextEntry ?: break
-        // Resolve + normalize the entry against the target and verify containment via
-        // Path.startsWith — the form CodeQL's java/zipslip recognizes as sanitization (the prior
-        // canonicalFile + String.startsWith guard was equally safe but flagged as a false
-        // positive).
-        val resolved = targetPath.resolve(entry.name).normalize()
-        if (!resolved.startsWith(targetPath)) {
-          throw SecurityException(
-            "bundle render: app jar entry escapes target dir: ${entry.name} → $resolved"
-          )
-        }
-        val candidate = resolved.toFile()
-        if (entry.isDirectory) {
-          candidate.mkdirs()
-        } else {
-          candidate.parentFile?.mkdirs()
-          fileSystem.write(candidate.path.toPath()) { writeAll(zin.source()) }
-        }
-        zin.closeEntry()
-      }
+    appJarBytes?.let {
+      expandZipBytesSafely(it, classesDir, fileSystem, "bundle render: app jar entry")
     }
+    return Triple(bundleJsonNonNull, previewsJsonNonNull, appJarBytes != null)
   }
 
   private fun spawnRenderer(

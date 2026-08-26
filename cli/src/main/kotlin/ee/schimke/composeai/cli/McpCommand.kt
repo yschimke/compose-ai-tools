@@ -482,13 +482,6 @@ internal class McpCommand(
     if (updated != text) fileSystem.write(path) { writeUtf8(updated) }
   }
 
-  private fun parseDescriptor(file: File): JsonObject? =
-    try {
-      JSON.parseToJsonElement(fileSystem.read(file.path.toPath()) { readUtf8() }).jsonObject
-    } catch (_: Exception) {
-      null
-    }
-
   private fun defaultAntigravityConfig(): File =
     File(System.getProperty("user.home"), ".gemini/antigravity/mcp_config.json")
 

@@ -198,7 +198,6 @@ class DesktopRenderWorkerPoolTest {
       jvmArgs = listOf("-Dstub.mode=$mode"),
       maxWorkers = 1,
       maxRendersPerWorker = maxRendersPerWorker,
-      renderTimeoutSeconds = 60,
       workingDir = workingDir,
       stderrSink = stderrSink,
       workerMainClass = workerMainClass,
