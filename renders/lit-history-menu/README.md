@@ -9,7 +9,7 @@ and dark — so the images below are simultaneously the before and the after:
 
 ```
 cd preview-server/preview-harness
-rm -rf preview-harness/out
+rm -rf out
 HARNESS_FIXTURE=serve-viewer-history \
   npx playwright test -c playwright.config.mjs pages-snapshot
 

@@ -55,7 +55,7 @@ HARNESS_FIXTURE=serve-viewer-theme-overflow \
 ```
 
 Before this change that fixture was captured only SHUT. The stylesheet was
-never the missing half — `preview-harness/_server.mjs` serves
+never the missing half — `preview-server/preview-harness/_server.mjs` serves
 `/assets/serve/*` to every page fixture, so the page was already painted —
 but with the menu closed the panel is off-screen, and both faults live
 entirely inside it. Neither would have moved a baseline. (That is also why
