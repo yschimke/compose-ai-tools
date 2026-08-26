@@ -121,6 +121,38 @@ class RepositoryConfigsTest(unittest.TestCase):
             {"desktop": False, "android": False, "bundle": True, "playground": False},
         )
 
+    def test_serve_harness_manifests_survive_an_ignore_of_the_harness_tree(self):
+        # Every lane job runs `npm ci` and then its `harness:*` script out of the serve harness's
+        # own manifest, so a Playwright bump or a renamed lane script lands entirely in these two
+        # files, which match none of the per-lane globs.
+        #
+        # Today they still run every lane without being listed, because `decide` fails open on an
+        # unrecognised path — so asserting that on the config as it stands would pass with the
+        # globalPaths entries removed, and guard nothing. What the entries actually buy is
+        # survival of an ignore: `ci-paths.json` legitimately carries
+        # `preview-server/preview-harness/**` in its ignorePaths (harness edits skip the Gradle
+        # CI), and mirroring that here would take these manifests off fail-open and select no lane
+        # at all. globalPaths is checked before ignorePaths, so the entries hold. Pin that.
+        config = self.load("serve-lanes-paths.json")
+        config["ignorePaths"] = [
+            *config.get("ignorePaths", []),
+            "preview-server/preview-harness/**",
+        ]
+        for changed in (
+            "preview-server/preview-harness/package.json",
+            "preview-server/preview-harness/package-lock.json",
+        ):
+            with self.subTest(changed=changed):
+                self.assertEqual(
+                    mod.decide([changed], config),
+                    {
+                        "desktop": True,
+                        "android": True,
+                        "bundle": True,
+                        "playground": True,
+                    },
+                )
+
     def test_wasm_distribution_resources_run_the_rc_player_jobs(self):
         # `wasmPlayerDist` syncs these two paths straight into the shipped player (see
         # rc-player/wasm/build.gradle.kts), so a font swap or a fonts.json edit changes production

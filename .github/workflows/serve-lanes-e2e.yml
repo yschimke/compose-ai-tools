@@ -47,6 +47,15 @@ on:
       # The playground e2e (editor → compile → first-frame → /pg live redemption).
       - "preview-server/preview-harness/playground.*"
       - "preview-server/preview-harness/playground-boot.sh"
+      # Every lane job runs `npm ci` and then its `harness:*` script out of the serve harness's
+      # own manifest, so a Playwright bump or a renamed lane script lands entirely in these two
+      # files and matches none of the globs above — the workflow never triggered, and the scope
+      # job that would have selected the lanes never got to run. They are also globalPaths in
+      # serve-lanes-paths.json: that changes nothing today (`decide` fails open on an
+      # unrecognised path) but keeps them selecting every lane if the harness tree is ever
+      # ignored there the way it is in ci-paths.json.
+      - "preview-server/preview-harness/package.json"
+      - "preview-server/preview-harness/package-lock.json"
       # The Android lane's fixture and the detached-render Application pin it guards.
       - "samples/android-live-lane/**"
       - "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleResources.kt"
@@ -81,6 +90,15 @@ on:
       # The playground e2e (editor → compile → first-frame → /pg live redemption).
       - "preview-server/preview-harness/playground.*"
       - "preview-server/preview-harness/playground-boot.sh"
+      # Every lane job runs `npm ci` and then its `harness:*` script out of the serve harness's
+      # own manifest, so a Playwright bump or a renamed lane script lands entirely in these two
+      # files and matches none of the globs above — the workflow never triggered, and the scope
+      # job that would have selected the lanes never got to run. They are also globalPaths in
+      # serve-lanes-paths.json: that changes nothing today (`decide` fails open on an
+      # unrecognised path) but keeps them selecting every lane if the harness tree is ever
+      # ignored there the way it is in ci-paths.json.
+      - "preview-server/preview-harness/package.json"
+      - "preview-server/preview-harness/package-lock.json"
       # The Android lane's fixture and the detached-render Application pin it guards.
       - "samples/android-live-lane/**"
       - "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleResources.kt"

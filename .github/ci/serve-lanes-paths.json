@@ -12,7 +12,9 @@
     "daemon/core/**",
     "render-session/**",
     "render-session-subprocess/**",
-    "gradle/libs.versions.toml"
+    "gradle/libs.versions.toml",
+    "preview-server/preview-harness/package.json",
+    "preview-server/preview-harness/package-lock.json"
   ],
   "groups": {
     "desktop": [
