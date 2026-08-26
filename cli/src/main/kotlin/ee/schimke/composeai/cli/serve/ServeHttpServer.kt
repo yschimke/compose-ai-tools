@@ -3148,7 +3148,14 @@ class ServeHttpServer(
       val hasReference = { id: String -> renderHost.designReferencesFor(id).isNotEmpty() }
       val mapped = renderHost.previews.any { hasReference(it.id) }
       val issues = renderHost.parityIssues()?.issues.orEmpty()
-      if (activity == null && !mapped && issues.isEmpty()) {
+      // A published known-difference document keeps the page reachable on its own, alongside the
+      // three lanes that already do. It is the one lane whose *interesting* state is a catalog with
+      // nothing else left: every acceptance in it may name a preview or reference this session no
+      // longer serves, which is exactly `orphaned-target` — and 404ing here would withhold the
+      // panel
+      // from the only catalog whose whole document is the finding.
+      val accepts = renderHost.knownDifferences() != null
+      if (activity == null && !mapped && issues.isEmpty() && !accepts) {
         if (json) call.respond(HttpStatusCode.NotFound)
         else
           respondNotFoundHtml(
@@ -3171,7 +3178,20 @@ class ServeHttpServer(
         )
         return@withLeasedSession
       }
-      markGeneration("static-page", pageCacheControl())
+      // **The audit-bearing page is not cacheable**, the way an `rcComparePending` comparison is
+      // not.
+      // The walk joins two things of different lifetimes: the preview inventory and the issue rows
+      // are baked into this HTML, while the document it walks is fetched live at `no-store`. Served
+      // from cache after an in-place catalog refresh, a *fresh* document would be resolved against
+      // a
+      // *stale* inventory — and a preview added or renamed in between reads as `orphaned-target`,
+      // which is a false finding of exactly the kind this panel exists to make trustworthy. The
+      // comparison band has no such gap: it is generation-bound by `referenceSha256`, and there is
+      // no equivalent anchor for a walk over the whole catalog.
+      markGeneration(
+        "static-page",
+        if (accepts) DYNAMIC_RESOURCE_CACHE_CONTROL else pageCacheControl(),
+      )
       call.respondText(
         ServeWeb.parityPage(
           moduleLabel = renderHost.label,

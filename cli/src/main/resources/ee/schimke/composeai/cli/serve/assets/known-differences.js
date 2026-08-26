@@ -61,11 +61,13 @@
                 the document, not the verdict.
             </p>
             ${this.problems(s)} ${this.closed(i,n)}
-            ${s.length===0&&i.length===0?S`<p class="cp-muted">
-                          Every accepted difference names a component this
-                          catalog still has, and every tracking issue is open.
-                      </p>`:E}
-        `}problems(n){return n.length===0?E:S`
+            ${s.length===0&&i.length===0?this.allClear(r,n):E}
+        `}allClear(n,r){let s=n.filter(([i])=>(r.lifecycles[i]?.lifecycle??"unknown")!=="open").length;return S`<p class="cp-muted">
+            Every accepted difference names a component this catalog still has,
+            and no tracking issue is reported
+            closed.${s>0?S` The issue index says nothing about ${s} of
+                      them, so their issues are unknown rather than open.`:E}
+        </p>`}problems(n){return n.length===0?E:S`
             <h3 class="cp-parity-sub">Needs attention (${n.length})</h3>
             <ul class="cp-acceptance-list">
                 ${n.map(([r,s])=>{let i=[...s.causes??[],...s.reasons??[]],o=i.includes(pn),a=i.filter(c=>c!==pn);return S`<li

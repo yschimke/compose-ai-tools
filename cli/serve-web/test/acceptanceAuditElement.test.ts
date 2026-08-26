@@ -103,6 +103,19 @@ describe("<cp-acceptance-audit>", () => {
         assert.doesNotMatch(text(band), /Needs attention/);
         assert.doesNotMatch(text(band), /Closed issue/);
         assert.match(text(band), /Known differences \(1\)/);
+        assert.match(text(band), /no tracking issue is reported closed/);
+        // Nothing is unknown here, so the all-clear line carries no caveat.
+        assert.doesNotMatch(text(band), /unknown rather than open/);
+    });
+
+    it("does not report an unknown lifecycle as an open issue", async () => {
+        // The index is fail-soft and capped, so an acceptance it never mentions is missing evidence.
+        // Saying \"every tracking issue is open\" over it would turn a file that failed to parse into
+        // a clean bill of health for acceptances that may every one of them be stale.
+        const band = await mount(routes(knownDifferencesJson(SCENE)), PREVIEWS);
+        assert.match(text(band), /no tracking issue is reported closed/);
+        assert.match(text(band), /says nothing about 1 of them/);
+        assert.doesNotMatch(text(band), /every tracking issue is open/);
     });
 
     it("lists an acceptance whose tracking issue has closed", async () => {

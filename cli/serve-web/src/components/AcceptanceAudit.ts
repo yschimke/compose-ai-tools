@@ -194,13 +194,39 @@ export class AcceptanceAudit extends LitElement {
             ${this.problems(problems)} ${this.closed(closed, report)}
             ${
                 problems.length === 0 && closed.length === 0
-                    ? html`<p class="cp-muted">
-                          Every accepted difference names a component this
-                          catalog still has, and every tracking issue is open.
-                      </p>`
+                    ? this.allClear(entries, report)
                     : nothing
             }
         `;
+    }
+
+    /**
+     * The nothing-to-do line — and it says only as much as the evidence supports.
+     *
+     * **An unknown lifecycle is not an open one.** The index is fail-soft, capped, and can lag; an
+     * acceptance it does not mention stays `unknown`, and that is missing evidence, not a live
+     * issue. Reporting "every tracking issue is open" over a set containing one would turn an index
+     * that failed to parse into a clean bill of health for a catalog whose acceptances might all be
+     * stale — the same inference-from-absence the join itself refuses to make one level down.
+     */
+    private allClear(
+        entries: Array<[string, AcceptanceReport["statuses"][string]]>,
+        report: AcceptanceReport,
+    ): TemplateResult {
+        const unknown = entries.filter(
+            ([id]) =>
+                (report.lifecycles[id]?.lifecycle ?? "unknown") !== "open",
+        ).length;
+        return html`<p class="cp-muted">
+            Every accepted difference names a component this catalog still has,
+            and no tracking issue is reported
+            closed.${
+                unknown > 0
+                    ? html` The issue index says nothing about ${unknown} of
+                      them, so their issues are unknown rather than open.`
+                    : nothing
+            }
+        </p>`;
     }
 
     /**
