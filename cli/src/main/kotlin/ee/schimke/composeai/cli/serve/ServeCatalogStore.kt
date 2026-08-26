@@ -18,7 +18,9 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
@@ -722,6 +724,7 @@ class ServeCatalogStore(
     writeParityActivity(base, staging)
     writeParityIssues(base, staging)
     writeDesignPages(base, staging)
+    writeKnownDifferences(base, staging)
 
     // The staged catalog is usable — atomically replace the live dir with it. The delete + rename
     // is near-instant (same filesystem), so the window where `dir` is absent is microseconds, not
@@ -1937,6 +1940,181 @@ class ServeCatalogStore(
     File(dir, ServeTagIndexStore.INDEX_FILE)
       .writeText(json.encodeToString(TagIndexManifest.serializer(), manifest))
   }
+
+  /**
+   * Stage the catalog's committed known differences: the document, verbatim, plus the artifacts it
+   * names.
+   *
+   * Without this the whole acceptance surface is dead on every *published* catalog — which is every
+   * catalog the feature is for. [ServeBundleHost.knownDifferences] reads the staging tree, so a
+   * file nobody copies here is a catalog that "accepts nothing" as far as the comparison band, the
+   * dashboard's audit, the `/parity` availability lane and the landing's link are concerned. That
+   * failure is silent by construction: absence and "nothing accepted" are the same answer
+   * downstream, which is why this went unnoticed until someone looked for the panel in production.
+   *
+   * **The document is copied byte for byte, and not parsed for judgement.** Its verdicts belong to
+   * the engine, which runs from one shared implementation in the browser and in `design-parity`; a
+   * stager that validated records would be a third implementation of the contract with no
+   * conformance suite behind it. What this *does* parse is the one thing a copier cannot avoid
+   * knowing — which artifact paths to fetch — and it does that leniently, exactly as the browser
+   * adapter's prefetch does: a document this cannot read stages alone, and the engine still reaches
+   * `document-unreadable` from the bytes.
+   *
+   * **An over-sized document — or artifact — is staged anyway**, because `document-too-large` and
+   * `artifact-too-large` are verdicts the contract requires a consumer to be able to reach:
+   * [ServeKnownDifferences.document] and [ServeKnownDifferences.artifact] answer `TooLarge` from
+   * the file's length, the route serves 413, and the engine says so. Dropping either here would
+   * substitute silence — a missing file, which is the *different* verdict `unreadable` — for a
+   * refusal the reader already knows how to voice.
+   *
+   * Each artifact path is checked with the reader's own lexical rule before anything is fetched or
+   * written ([ServeKnownDifferences.isLookupPath]), so a path the host would refuse to look up
+   * never lands in the staging tree — and, since the rule admits only portable segments, cannot
+   * escape the artifact root while being written. The paths are the document's own: unlike a design
+   * page, an artifact cannot be re-rooted to a server-chosen name, because the record's hash is
+   * bound to the path it names.
+   *
+   * Fail-soft like every writer beside it, and bounded like the contract: a document the reader
+   * will refuse whole — past [ServeKnownDifferences.MAX_DOCUMENT_BYTES], or past
+   * [ServeKnownDifferences.MAX_ACCEPTANCES] records — contributes no paths at all rather than the
+   * first 256; an artifact that cannot be written is skipped rather than failing the refresh; and
+   * the artifacts stream to disk through the same bounded helper every other bulk lane here uses,
+   * so a refresh holds one artifact per worker rather than a whole wave.
+   */
+  private fun writeKnownDifferences(base: String, staging: File) {
+    val dirName = ServeKnownDifferences.DIRECTORY
+    val documentBytes =
+      runCatching {
+        fetchCatalogAsset("$base$dirName/${ServeKnownDifferences.DOCUMENT_FILE}")
+      }
+        .getOrNull() ?: return
+
+    val artifactRoot = "$dirName/${ServeKnownDifferences.ARTIFACT_DIRECTORY}"
+    // **Streamed to disk, never accumulated.** Each worker holds only the artifact it is writing,
+    // which is what [fetchCatalogAssetsToFiles] exists for and why every other bulk lane in this
+    // file goes through it. Collecting a wave into a map first would retain
+    // [ASSET_FETCH_CONCURRENCY] whole artifacts at once — and the transport's own ceiling is far
+    // above the contract's, so a wave of the 8–25 MiB files this writer now deliberately stages
+    // (so the reader can answer `TooLarge` rather than 404) is hundreds of megabytes of heap held
+    // to write bytes it already has. A refresh that ran the server out of memory instead of
+    // eventually serving 413 would be the cap defeated by the code staging it.
+    //
+    // An over-sized artifact is still staged, for the reason the over-sized document is: the reader
+    // refuses it from the file's length, the route serves 413, and the engine reaches
+    // `artifact-too-large`. Dropping it would leave a missing file behind, which is
+    // `artifact-unreadable` — a different verdict, and one that hides why. And a path whose
+    // segments are all portable can still exceed what the serving filesystem will take: the helper
+    // guards each write, so one unwriteable artifact is an artifact the engine calls unreadable
+    // rather than a reason to abandon the refresh.
+    fetchCatalogAssetsToFiles(
+      knownDifferenceArtifactPaths(documentBytes).map { path ->
+        "$base$artifactRoot/$path" to File(staging, "$artifactRoot/$path")
+      }
+    )
+
+    File(staging, dirName).mkdirs()
+    File(staging, "$dirName/${ServeKnownDifferences.DOCUMENT_FILE}").writeBytes(documentBytes)
+  }
+
+  /**
+   * The `<id>/<file>` paths a known-difference document names — none, when the engine will reject
+   * the document whole.
+   *
+   * Two questions, and only the second is lenient.
+   *
+   * **Will the engine read anything at all?** A document-level rejection carries no `statuses` and
+   * reads not one artifact, so every byte fetched for one is a byte fetched for no verdict — and at
+   * the caps that is 256 × 2 × 8 MiB of individually legal files, on every refresh, which is the
+   * resource exhaustion the caps exist to prevent reached through the guard itself. The document is
+   * still staged: that is what lets the consumer voice the refusal. It simply names nothing to
+   * fetch. [rejectsWholeDocument] is that question.
+   *
+   * **Which paths does it name?** Lenient, and the same shape the browser adapter's prefetch uses:
+   * this is a fetch list, not a verdict. A record whose artifact field is not a string contributes
+   * no path and the engine refuses it on its own terms once the document is served.
+   */
+  private fun knownDifferenceArtifactPaths(documentBytes: ByteArray): List<String> {
+    if (documentBytes.size > ServeKnownDifferences.MAX_DOCUMENT_BYTES) return emptyList()
+    val parsed =
+      runCatching { json.parseToJsonElement(documentBytes.decodeToString()) }.getOrNull()
+        as? JsonObject ?: return emptyList()
+    val acceptances = parsed["acceptances"] as? JsonArray ?: return emptyList()
+    if (rejectsWholeDocument(parsed, acceptances)) return emptyList()
+
+    val paths = LinkedHashSet<String>()
+    for (record in acceptances) {
+      val fields = record as? JsonObject ?: continue
+      val id = recordId(fields) ?: continue
+      for (key in listOf("mask", "acceptedCandidate")) {
+        val value = (fields[key] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: continue
+        val path = "$id/$value"
+        if (ServeKnownDifferences.isLookupPath(path)) paths += path
+      }
+    }
+    return paths.toList()
+  }
+
+  /**
+   * Whether the engine refuses this document before reading a single artifact.
+   *
+   * **A deliberate mirror of `known-differences.mjs`'s `parseDocument` + `identityFailures`**, and
+   * the only place this host reads the document for meaning rather than for paths. It is not a
+   * second opinion about any record: every branch below is a rejection of the *whole file*, which
+   * is the one class of verdict a fetch planner has to know in advance, because the alternative is
+   * fetching four gigabytes for a result that names nothing.
+   *
+   * **Wrong in only one direction, on purpose.** Saying "rejected" for a document the engine would
+   * evaluate starves legal records of their artifacts and turns them into `artifact-unreadable` — a
+   * changed verdict. Saying "not rejected" for one it refuses merely wastes a fetch.
+   *
+   * So the line is drawn at a property of the **file**. Those rules are few, stable, and exactly
+   * decidable from the parsed JSON, and they are mirrored here. Three families of pre-read refusal
+   * are deliberately **not**, and the next reader should not take their absence for an oversight:
+   * - `documentTextRefusal` — a repeated member name, a non-integer geometry coordinate. Read off
+   *   the bytes rather than the tree, so mirroring it means a third implementation of a JSON text
+   *   scanner in a host that is not supposed to be parsing at all.
+   * - `isSafeId`, and the case-folded `mask`/`acceptedCandidate` collision.
+   * - `schemaReasons` — the field allow-list, the required strings, the tolerance ranges, the
+   *   element block, the locator scope.
+   *
+   * The last two are per-**record** verdicts, and mirroring them would make this file a third
+   * implementation of `compose-preview-known-differences/v1` with no conformance suite behind it —
+   * the thing "two engines, one semantics" exists to prevent. Over that much detailed validation,
+   * drifting stricter than the engine somewhere is not a risk but a matter of time, and stricter is
+   * the direction that changes a verdict.
+   *
+   * What their absence costs is a wasted fetch, bounded by the ceiling a fully-populated *valid*
+   * document already permits — 256 × 2 × 8 MiB is what the contract allows and what the engine
+   * genuinely reads. Issue #4520 closes the waste properly, by having the producer publish the
+   * artifact list it already knows so nothing here has to derive one.
+   */
+  private fun rejectsWholeDocument(document: JsonObject, acceptances: JsonArray): Boolean {
+    // The schema and the shape. `acceptances` is already known to be an array by the caller.
+    val schema = (document["schema"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    if (schema != ServeKnownDifferences.SCHEMA) return true
+    // `additionalProperties: false` at the document level: an unknown key is `document-unreadable`,
+    // for the same reason an unknown record-level one is refused — a schema-first consumer rejects
+    // bytes a required-fields-only consumer would evaluate normally.
+    if (document.keys.any { it != "schema" && it != "acceptances" }) return true
+    if (acceptances.size > ServeKnownDifferences.MAX_ACCEPTANCES) return true
+
+    val seen = HashSet<String>()
+    for (record in acceptances) {
+      // A record with no usable key cannot be reported at all, so it rejects the document rather
+      // than being skipped — which is what this used to do, leaving every other record's artifacts
+      // to be fetched for a result that names none of them.
+      val fields = record as? JsonObject ?: return true
+      val id = recordId(fields) ?: return true
+      // Case-folded, because `foo` and `FOO` are two map keys and one directory on Windows and on a
+      // default macOS filesystem: a document carrying both cannot even be checked out intact.
+      if (!seen.add(id.lowercase())) return true
+    }
+    return false
+  }
+
+  /** A record's `id` as the engine keys it: a non-blank string, or nothing. */
+  private fun recordId(fields: JsonObject): String? =
+    (fields["id"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
 
   /**
    * Stage the published design-parity activity feed, if the catalog has one.

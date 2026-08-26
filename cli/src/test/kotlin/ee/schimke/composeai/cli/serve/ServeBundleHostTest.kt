@@ -32,6 +32,37 @@ class ServeBundleHostTest {
     return dir
   }
 
+  @Test
+  fun `the known-difference document a host serves is the one its generation was built on`() {
+    // A catalog refresh swaps the staged directory over `bundleDir` and finishes its post-swap work
+    // — the Wasm app, vectors, themes, live bundles — before it registers a rebuilt host. Every
+    // other thing this host serves (`previews`, `parityIssues`, the design references) was read
+    // when the host was built, so a per-call read of this one file would put a NEW document beside
+    // an OLD inventory for that whole window. The dashboard's walk joins the two, so an acceptance
+    // naming a preview the new catalog has and the old host does not would read as
+    // `orphaned-target` — a problem reported that does not exist. A false finding is worse than a
+    // late one, and nothing is lost: a refresh rebuilds the host, so a fresh document still lands
+    // within one tick.
+    val dir = bundle("com.example.Red" to byteArrayOf(4, 2))
+    val file =
+      File(dir, "${ServeKnownDifferences.DIRECTORY}/${ServeKnownDifferences.DOCUMENT_FILE}")
+    file.parentFile?.mkdirs()
+    val built = """{"schema":"${ServeKnownDifferences.SCHEMA}","acceptances":[]}"""
+    file.writeText(built)
+
+    val host = ServeBundleHost(dir, label = "generation")
+    // The directory is swapped underneath a live host on every refresh; this stands in for that.
+    file.writeText(
+      """{"schema":"${ServeKnownDifferences.SCHEMA}","acceptances":[
+        {"id":"glyph","issue":"https://github.com/yschimke/m3-catalog/issues/40",
+         "mask":"mask.png"}]}"""
+    )
+
+    val served = host.knownDifferences()
+    assertTrue(served is ServeKnownDifferences.Document.Text)
+    assertEquals(built, served.text, "the host serves its own generation's document")
+  }
+
   private val typographyRecord =
     """{"kind":"typography","bounds":{"x":4,"y":6,"width":40,"height":12},
        "label":"bodyMedium 14sp/20","role":"Label"}"""

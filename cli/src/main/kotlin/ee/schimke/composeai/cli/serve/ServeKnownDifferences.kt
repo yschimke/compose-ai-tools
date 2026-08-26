@@ -67,6 +67,16 @@ object ServeKnownDifferences {
   const val ARTIFACT_DIRECTORY = "known-differences"
 
   /**
+   * The document's schema token, mirrored for the same one job the record cap is: the staging path
+   * has to know whether the engine will read *anything* before it fetches a document's artifacts,
+   * and a document declaring another schema is one the engine refuses whole.
+   *
+   * Not a licence to interpret the document — nothing here decides a record's verdict. Pinned to
+   * the contract by [ServeKnownDifferencesTest] like the ceilings beside it.
+   */
+  const val SCHEMA = "compose-preview-known-differences/v1"
+
+  /**
    * The two ceilings, versioned with the schema and **not** per-catalog settings.
    *
    * Restated from the contract rather than imported, because Kotlin cannot import a JavaScript
@@ -77,6 +87,16 @@ object ServeKnownDifferences {
    */
   const val MAX_DOCUMENT_BYTES = 1024 * 1024
   const val MAX_ARTIFACT_BYTES = 8 * 1024 * 1024
+
+  /**
+   * The record cap, mirrored for the one job the host has that needs it: the staging path
+   * enumerates a document's artifact paths to fetch them, and a document past this cap is one the
+   * engine rejects wholesale — so reading further would fetch bytes no consumer will ever evaluate.
+   *
+   * It bounds a fetch list, never a verdict. Checked against `BUDGET.maxAcceptances` by the same
+   * mirror test the two byte ceilings use.
+   */
+  const val MAX_ACCEPTANCES = 256
 
   /**
    * §4's portable path grammar, restated: the character class, the length, and the three shapes a
@@ -173,6 +193,24 @@ object ServeKnownDifferences {
     relativePath: String,
     fileSystem: FileSystem = FileSystem.SYSTEM,
   ): Artifact = artifact(bundleDir.toOkioPath(), relativePath, fileSystem)
+
+  /**
+   * The **lexical** half of [artifact]: a path this consumer will look up at all.
+   *
+   * Exposed because the catalog staging path needs the same answer *before* it writes a byte — a
+   * producer's document names where its artifacts live, and a path the reader would refuse is a
+   * path that must never reach the staging tree either. Deliberately the same predicate rather than
+   * a second one: a stager stricter than the reader silently drops records the engine calls legal,
+   * and a stager looser than it writes files nothing will ever open.
+   *
+   * The filesystem half — containment inside the record's own directory, exact case, the byte cap —
+   * stays in [artifact], where there is a resolved path to ask about.
+   */
+  fun isLookupPath(relativePath: String): Boolean {
+    val segments = relativePath.split('/')
+    if (segments.size < 2) return false
+    return segments.all { isPortableSegment(it) }
+  }
 
   fun artifact(bundleRoot: Path, relativePath: String, fileSystem: FileSystem): Artifact {
     val segments = relativePath.split('/')
