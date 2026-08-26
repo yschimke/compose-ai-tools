@@ -15,10 +15,11 @@ into two-repo, two-release round trips.
 Because the measurement is only actionable if the seam is real. Every number in #3824 is a proxy for
 one question — *what would break on the day of the move?* — and today nobody can answer it, because:
 
-- `serve` is a **package**, not a module. There is no boundary, so coupling accrues invisibly. 148
+- `serve` is a **package**, not a module. There is no boundary, so coupling accrues invisibly. 151
   symbols cross it today; that number was not knowable before this work.
-- The contracts the server needs are **assumed** to be publishable. Some are not: `:daemon:bta-host`
-  (the playground's compiler) is not published at all.
+- The contracts the server needs are **assumed** to be publishable, and which module publishes a
+  given package is assumed from its name. Both assumptions were wrong somewhere until they were
+  checked — see the correction below.
 - The contracts that are published carry things a server should never see — an MCP server, an XR
   renderer client — through transitive dependencies nobody looks at.
 
@@ -140,12 +141,22 @@ wider, and that two of the entries drag things a server should not carry.
 | `data-remotecompose-core` | **not in #3824's six** — payload schema the viewer renders |
 | `data-theme-core` | **not in #3824's six** — payload schema the viewer renders |
 | `data-render-core` | **not in #3824's six** — payload schema the viewer renders |
-| `:daemon:bta-host` (`BtaCompileSession`, `DiagnosticCollector`) | **not published at all** — the playground's compile path has no contract; recorded under `unpublishedContracts` |
+| `daemon-core` again, via `daemon.bta` (`BtaCompileSession`, `DiagnosticCollector`) | published — see the correction below |
 | `:cli`'s bundle format | **not a module at all** — preparation item 5 |
 
 The three payload schemas are the same kind of thing as the six (a `-core` module, a wire shape, no
-renderer), so they are contracts rather than leaks. `:daemon:bta-host` and the bundle format are
-genuine blockers: neither can be named by an extracted server today.
+renderer), so they are contracts rather than leaks. The bundle format is the one genuine blocker in
+this table: it is not a module at all, so an extracted server cannot name it.
+
+> **Correction.** An earlier revision of this document listed `:daemon:bta-host` as unpublished and
+> therefore a split blocker, because serve imports `BtaCompileSession` and `DiagnosticCollector`
+> from `ee.schimke.composeai.daemon.bta`. That was wrong, and wrong in an instructive way: the
+> package is declared by **both** `:daemon:core` and `:daemon:bta-host`, and the two types serve
+> actually uses are the `:daemon:core` ones — `:cli` has no dependency on `:daemon:bta-host` at all.
+> A package name is not a module name. The mapping was accepted because the coverage check matched
+> packages by *prefix* and nobody checked which module declares the type; `test_check_serve_seam.py`
+> now resolves every imported type to its declaring module and fails if the mapping disagrees.
+> There is no unpublished blocker today.
 
 ### Recorded leaks — must shrink
 

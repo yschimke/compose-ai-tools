@@ -286,6 +286,80 @@ class Ratchet(unittest.TestCase):
         self.assertEqual(mod.diff({"A": {"a.kt"}}, ["A"]), ([], []))
 
 
+class MappingOwnership(unittest.TestCase):
+    """A mapping must name the module that actually declares the type (PR #4512 review).
+
+    Prefix matching alone accepted `ee.schimke.composeai.daemon.bta -> daemon-bta-host` purely
+    because the package name resembled the module name. It does not: that package is declared by
+    BOTH `:daemon:core` and `:daemon:bta-host`, and the two types serve imports from it
+    (`BtaCompileSession`, `DiagnosticCollector`) are the `daemon-core` ones. The wrong mapping
+    invented a split blocker that does not exist, and prefix matching would have hidden a genuinely
+    new `daemon.*` package owned by a different module the same way.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.artifacts = {}
+        for build_file in mod.REPO_ROOT.rglob("build.gradle.kts"):
+            if "/build/" in str(build_file):
+                continue
+            found = re.search(r'artifactId\s*=\s*"([^"]+)"', build_file.read_text(errors="ignore"))
+            if found:
+                cls.artifacts[build_file.parent] = found.group(1)
+
+        cls.declared_by = {}
+        for module_dir, artifact in cls.artifacts.items():
+            src = module_dir / "src"
+            if not src.is_dir():
+                continue
+            for kt in src.rglob("*.kt"):
+                if "/test/" in str(kt):
+                    continue
+                text = kt.read_text(errors="ignore")
+                package = re.search(r"^package\s+([\w.]+)", text, re.M)
+                if not package:
+                    continue
+                for name in re.findall(
+                    r"^(?:public |internal |abstract |sealed |open |data |value |fun )*"
+                    r"(?:class|interface|object|typealias)\s+(\w+)",
+                    text,
+                    re.M,
+                ):
+                    cls.declared_by.setdefault(f"{package.group(1)}.{name}", set()).add(artifact)
+
+    def mapped_module(self, package, mapping):
+        best = ""
+        for prefix in mapping:
+            if (package == prefix or package.startswith(prefix + ".")) and len(prefix) > len(best):
+                best = prefix
+        return mapping.get(best)
+
+    def test_each_imported_type_is_mapped_to_a_module_that_declares_it(self):
+        mapping = mod.load_allowlist()["contractPackages"]
+        mismatches = []
+        for source_set in mod.SOURCE_SETS:
+            for path in mod.kotlin_files(mod.serve_root(source_set)):
+                for fqn in mod.IMPORT_ANY_RE.findall(path.read_text(encoding="utf-8")):
+                    if fqn.startswith(mod.CLI_PKG + "."):
+                        continue
+                    owners = self.declared_by.get(fqn)
+                    if not owners:  # a function or a type this crude scan misses
+                        continue
+                    want = self.mapped_module(mod.package_of(fqn), mapping)
+                    if want not in owners:
+                        mismatches.append(f"{fqn}: mapped to {want}, declared by {sorted(owners)}")
+        self.assertEqual(mismatches, [], "\n".join(mismatches))
+
+    def test_the_bta_types_come_from_daemon_core(self):
+        """The specific error this test exists to prevent."""
+        for name in ("BtaCompileSession", "DiagnosticCollector"):
+            fqn = f"ee.schimke.composeai.daemon.bta.{name}"
+            self.assertEqual(self.declared_by.get(fqn), {"daemon-core"}, fqn)
+
+    def test_there_is_no_unpublished_blocker_today(self):
+        self.assertEqual(mod.load_allowlist()["unpublishedContracts"], {})
+
+
 class ContractCoverage(unittest.TestCase):
     """The probe's coordinate list is hand-maintained; serve's imports are not (PR #4512 review).
 
@@ -315,12 +389,6 @@ class ContractCoverage(unittest.TestCase):
                     f"{package} maps to {module}, which is neither in the probe's `contracts` "
                     "nor recorded in `unpublishedContracts`",
                 )
-
-    def test_the_unpublished_blocker_is_still_the_bta_host(self):
-        """If this fails, either it got published (good — update the docs) or a new one appeared."""
-        self.assertEqual(
-            set(mod.load_allowlist().get("unpublishedContracts", {})), {"daemon-bta-host"}
-        )
 
     def test_package_of_strips_the_type(self):
         self.assertEqual(

@@ -22,7 +22,13 @@
     "it, and must agree with `contracts` in preview-server/contract-probe/build.gradle.kts \u2014",
     "that is what stops a hand-maintained coordinate list from silently missing a module serve",
     "has started using. unpublishedContracts records a mapped module that cannot be resolved",
-    "as an artifact yet; each one is a split blocker, not an exemption."
+    "as an artifact yet; each one is a split blocker, not an exemption.",
+    "unpublishedContracts records a mapped module that cannot be resolved as an artifact yet;",
+    "each one is a split blocker, not an exemption. It is empty today: every module serve",
+    "imports from is published. `daemon.bta` maps to `daemon-core`, not to `:daemon:bta-host` \u2014",
+    "the package is declared by BOTH modules and the types serve uses (BtaCompileSession,",
+    "DiagnosticCollector) are the `daemon-core` ones. A package name is not a module name; the",
+    "test asserts each mapping against the module that actually declares the imported type."
   ],
   "forbiddenPackages": [
     "ee.schimke.composeai.renderer",
@@ -42,11 +48,9 @@
     "ee.schimke.composeai.data.remotecompose": "data-remotecompose-core",
     "ee.schimke.composeai.data.theme": "data-theme-core",
     "ee.schimke.composeai.data.render": "data-render-core",
-    "ee.schimke.composeai.daemon.bta": "daemon-bta-host"
+    "ee.schimke.composeai.daemon.bta": "daemon-core"
   },
-  "unpublishedContracts": {
-    "daemon-bta-host": "`:daemon:bta-host` has no maven-publishing block, so an extracted server cannot depend on it at all. serve reaches it for the playground's compile path (BtaCompileSession, DiagnosticCollector). Publishing it, or moving the compile session behind a published contract, is a split blocker \u2014 see docs/design/PREVIEW_SERVER_SPLIT.md."
-  },
+  "unpublishedContracts": {},
   "main": {
     "cliInternalsUsedByServe": [
       "AndroidBundleLaunch",
