@@ -316,9 +316,31 @@ def git(*args: str) -> str:
     ).stdout
 
 
+def files_in(body: str) -> list[str]:
+    """Every path a commit touched, both sides of a rename included.
+
+    `--name-only` reports only a rename's *destination*, and git detects renames by default. A PR
+    that moves a file from core into serve — the single most architecturally interesting kind of
+    change this script measures — would then show one component, and would not count as crossing
+    at all. `--name-status` carries both names on `R`/`C` records, so the move is counted on both
+    sides and an architectural move cannot make the gate look greener than it is.
+    """
+    files: list[str] = []
+    for line in body.split("\n"):
+        if not line.strip():
+            continue
+        parts = line.split("\t")
+        status = parts[0]
+        if status[:1] in ("R", "C") and len(parts) >= 3:
+            files.extend(parts[1:3])  # old path AND new path
+        elif len(parts) >= 2:
+            files.append(parts[1])
+    return files
+
+
 def load_prs(rev: str, limit: int | None, since: str | None) -> list[Pr]:
     sep = "\x1e"
-    args = ["log", "--no-merges", f"--format={sep}%H%x1f%cI%x1f%s", "--name-only"]
+    args = ["log", "--no-merges", f"--format={sep}%H%x1f%cI%x1f%s", "--name-status"]
     if since:
         args.append(f"{since}..{rev}")
     else:
@@ -334,8 +356,7 @@ def load_prs(rev: str, limit: int | None, since: str | None) -> list[Pr]:
         date, _, subject = rest.partition("\x1f")
         if RELEASE_SUBJECT.match(subject):
             continue
-        files = [line for line in body.split("\n") if line.strip()]
-        prs.append(Pr(sha[:9], subject, date, files))
+        prs.append(Pr(sha[:9], subject, date, files_in(body)))
         if limit and len(prs) >= limit:
             break
     return prs

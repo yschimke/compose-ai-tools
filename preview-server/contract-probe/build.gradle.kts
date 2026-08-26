@@ -30,6 +30,9 @@ kotlin { jvmToolchain(21) }
 
 val probeVersion: String = rootProject.extra["contractVersion"] as String
 
+/** This repo's own publishing group. Anything else on the graph is a third-party dependency. */
+val INTERNAL_GROUP = "ee.schimke.composeai"
+
 /**
  * The contracts an extracted preview server is allowed to depend on.
  *
@@ -90,33 +93,28 @@ abstract class CheckContractSurface : DefaultTask() {
   /** Artifact name -> why it is still here. Must shrink; see `contractLeaks` above. */
   @get:Input abstract val leaks: MapProperty<String, String>
 
-  /** The probe version the contracts were published under — how they are told apart on disk. */
-  @get:Input abstract val contractVersion: Property<String>
+  /** The group whose artifacts are this repo's own — everything else is third-party. */
+  @get:Input abstract val internalGroup: Property<String>
 
   /**
-   * The resolved runtime classpath, transitives included. Files rather than a resolution result so
-   * the task stays configuration-cache-safe: a `ee.schimke.composeai` artifact is exactly one
-   * published at [contractVersion], and a Maven artifact's file name is `<name>-<version>.jar`.
+   * The resolved runtime classpath as component *identities*, transitives included.
    *
-   * `NAME_ONLY`, deliberately not `@Classpath`. Classpath normalization hashes jar *contents* and
-   * ignores file names — and the file name is precisely what this task reads. Under `@Classpath` a
-   * contract renamed (or a leak appearing under a new coordinate at identical content) would
-   * normalize to an unchanged input and the check would report UP-TO-DATE without ever looking.
+   * Identities, not file names. The first version of this task recognised an internal artifact by
+   * its file name ending in `-<probeVersion>.jar`, which quietly assumed every internal artifact on
+   * the graph resolves at the probe version. A contract POM that pulled an `ee.schimke.composeai`
+   * module at some *other* version — a released coordinate, say — would fail that suffix test, drop
+   * out of `seen`, and the dependency-floor check would stay green while the extracted server had
+   * gained exactly the kind of artifact this task exists to catch. Group and module come off the
+   * resolution result now, so the version cannot decide whether something is seen.
+   *
+   * Resolved into a plain `Set<String>` at configuration time so the task holds no Gradle model
+   * objects and stays configuration-cache-safe.
    */
-  @get:InputFiles
-  @get:PathSensitive(PathSensitivity.NAME_ONLY)
-  abstract val classpath: ConfigurableFileCollection
+  @get:Input abstract val resolvedModules: SetProperty<String>
 
   @TaskAction
   fun check() {
-    val suffix = "-${contractVersion.get()}.jar"
-    val seen =
-      classpath.files
-        .map { it.name }
-        .filter { it.endsWith(suffix) }
-        .map { it.removeSuffix(suffix) }
-        .toSet()
-
+    val seen = resolvedModules.get()
     val allowedNames = allowed.get()
     val recordedLeaks = leaks.get()
     val unexpected = (seen - allowedNames - recordedLeaks.keys).sorted()
@@ -150,7 +148,7 @@ abstract class CheckContractSurface : DefaultTask() {
       }
       if (seen.isEmpty()) {
         add(
-          "No contract artifacts resolved at all. Run this build through " +
+          "No ${internalGroup.get()} artifacts resolved at all. Run this build through " +
             "scripts/check-preview-server-contracts.sh, which publishes them first."
         )
       }
@@ -176,8 +174,16 @@ tasks.register<CheckContractSurface>("checkContractSurface") {
   group = "verification"
   allowed.set(contracts)
   leaks.set(contractLeaks)
-  contractVersion.set(probeVersion)
-  classpath.from(configurations.named("runtimeClasspath"))
+  internalGroup.set(INTERNAL_GROUP)
+  resolvedModules.set(
+    configurations.named("runtimeClasspath").map { configuration ->
+      configuration.incoming.resolutionResult.allComponents
+        .mapNotNull { it.moduleVersion }
+        .filter { it.group == INTERNAL_GROUP }
+        .map { it.name }
+        .toSet()
+    }
+  )
 }
 
 tasks.named("check") { dependsOn("checkContractSurface") }

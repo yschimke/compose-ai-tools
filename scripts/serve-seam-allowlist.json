@@ -17,13 +17,36 @@
     "MCP server, or the gradle plugin, and there is nothing here to grandfather. `\u2026composeai.plugin`",
     "is the plugin's real namespace (`plugin`, `plugin.daemon`, `plugin.tooling`) \u2014 an earlier",
     "`\u2026composeai.gradle` entry named nothing at all and enforced nothing, while `plugin.tooling`",
-    "types sit on the CLI compile classpath via `:gradle-preview-driver`, ready to be reached for."
+    "types sit on the CLI compile classpath via `:gradle-preview-driver`, ready to be reached for.",
+    "contractPackages maps each non-`cli` package serve imports to the module that publishes",
+    "it, and must agree with `contracts` in preview-server/contract-probe/build.gradle.kts \u2014",
+    "that is what stops a hand-maintained coordinate list from silently missing a module serve",
+    "has started using. unpublishedContracts records a mapped module that cannot be resolved",
+    "as an artifact yet; each one is a split blocker, not an exemption."
   ],
   "forbiddenPackages": [
     "ee.schimke.composeai.renderer",
     "ee.schimke.composeai.mcp",
     "ee.schimke.composeai.plugin"
   ],
+  "contractPackages": {
+    "ee.schimke.composeai.daemon.protocol": "daemon-core",
+    "ee.schimke.composeai.daemon.devices": "daemon-core",
+    "ee.schimke.composeai.daemon": "daemon-core",
+    "ee.schimke.composeai.designpages": "preview-data-api",
+    "ee.schimke.composeai.io": "common-io",
+    "ee.schimke.composeai.render.session.subprocess": "render-session-subprocess",
+    "ee.schimke.composeai.render.session": "render-session-api",
+    "ee.schimke.composeai.data.layoutinspector": "data-layoutinspector-core",
+    "ee.schimke.composeai.data.overrides": "data-preview-overrides-core",
+    "ee.schimke.composeai.data.remotecompose": "data-remotecompose-core",
+    "ee.schimke.composeai.data.theme": "data-theme-core",
+    "ee.schimke.composeai.data.render": "data-render-core",
+    "ee.schimke.composeai.daemon.bta": "daemon-bta-host"
+  },
+  "unpublishedContracts": {
+    "daemon-bta-host": "`:daemon:bta-host` has no maven-publishing block, so an extracted server cannot depend on it at all. serve reaches it for the playground's compile path (BtaCompileSession, DiagnosticCollector). Publishing it, or moving the compile session behind a published contract, is a split blocker \u2014 see docs/design/PREVIEW_SERVER_SPLIT.md."
+  },
   "main": {
     "cliInternalsUsedByServe": [
       "AndroidBundleLaunch",

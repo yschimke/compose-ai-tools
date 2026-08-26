@@ -66,26 +66,115 @@ IMPORT_RE = re.compile(
 # to see.
 QUALIFIED_RE = re.compile(r"(?<![\w.])(ee\.schimke\.composeai\.cli\.[A-Za-z0-9_.]+)")
 
-_BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
-_LINE_COMMENT_RE = re.compile(r"//[^\n]*")
-_PACKAGE_OR_IMPORT_RE = re.compile(r"^\s*(package|import)\s+[^\n]*", re.MULTILINE)
-
+# Every import of this repo's own code, `cli` or not — the contract-coverage check below needs the
+# ones the seam register deliberately ignores.
+IMPORT_ANY_RE = re.compile(
+    r"^import\s+(ee\.schimke\.composeai\.[A-Za-z0-9_.]+)", re.MULTILINE
+)
 
 def kotlin_files(root: Path) -> list[Path]:
     return sorted(p for p in root.rglob("*.kt")) if root.is_dir() else []
 
 
-def code_body(text: str) -> str:
-    """`text` with comments, the package line and the import block removed.
+_PACKAGE_OR_IMPORT_RE = re.compile(r"^\s*(package|import)\s+[^\n]*", re.MULTILINE)
 
-    Comments go first: a KDoc that *links* to `ee.schimke.composeai.renderer.Foo` documents a
+RAW_QUOTE = '"' * 3
+
+
+def strip_comments_and_strings(text: str) -> str:
+    """Blank out Kotlin comments and string literals, preserving newlines.
+
+    A regex cannot do this. `"Disallow: /*/p/"` — a real literal in `ServeHttpRoutingTest.kt` —
+    opens a block comment as far as a `/*.*?*/` pattern is concerned, and the blanking then runs
+    to the next `*/` anywhere in the file, taking any qualified reference in between with it. That
+    is a hole in the check rather than a cosmetic problem: it hides exactly what the check exists
+    to find.
+
+    So: a small state machine instead. Line comments, block comments (which nest in Kotlin),
+    escapes, char literals, and raw triple-quoted strings.
+
+    String *contents* are blanked along with comments. A fully qualified name inside a literal is
+    not a compile-time dependency — it is text — and the alternative reads `"Disallow: /*?"` as a
+    reference to something. The gap that leaves is a reflective `Class.forName("...mcp.X")`, which
+    no import-graph check can see either; the resolved-classpath checks are what catch that.
+    """
+    out: list[str] = []
+    i, n = 0, len(text)
+    depth = 0  # block-comment nesting
+
+    def blank(count: int) -> None:
+        out.append(" " * count)
+
+    while i < n:
+        ch = text[i]
+        two = text[i : i + 2]
+
+        if depth:
+            if two == "/*":
+                depth += 1
+                blank(2)
+                i += 2
+            elif two == "*/":
+                depth -= 1
+                blank(2)
+                i += 2
+            else:
+                out.append("\n" if ch == "\n" else " ")
+                i += 1
+            continue
+
+        if two == "/*":
+            depth = 1
+            blank(2)
+            i += 2
+            continue
+
+        if two == "//":
+            while i < n and text[i] != "\n":
+                blank(1)
+                i += 1
+            continue
+
+        if text[i : i + 3] == RAW_QUOTE:
+            blank(3)
+            i += 3
+            while i < n and text[i : i + 3] != RAW_QUOTE:
+                out.append("\n" if text[i] == "\n" else " ")
+                i += 1
+            blank(3)
+            i += 3
+            continue
+
+        if ch == '"' or ch == "'":
+            quote = ch
+            blank(1)
+            i += 1
+            while i < n and text[i] != quote:
+                if text[i] == "\\":  # escape: the next character is literal, skip both
+                    blank(2)
+                    i += 2
+                    continue
+                out.append("\n" if text[i] == "\n" else " ")
+                i += 1
+            blank(1)
+            i += 1
+            continue
+
+        out.append(ch)
+        i += 1
+
+    return "".join(out)
+
+
+def code_body(text: str) -> str:
+    """`text` reduced to code: no comments, no string contents, no package/import lines.
+
+    Comments go because a KDoc that *links* to `ee.schimke.composeai.renderer.Foo` documents a
     relationship, it does not create one, and failing a build over a doc reference would train
     people to stop writing them. The package line goes because it would otherwise register as a
     reference to the file's own package.
     """
-    text = _BLOCK_COMMENT_RE.sub(" ", text)
-    text = _LINE_COMMENT_RE.sub(" ", text)
-    return _PACKAGE_OR_IMPORT_RE.sub(" ", text)
+    return _PACKAGE_OR_IMPORT_RE.sub(" ", strip_comments_and_strings(text))
 
 
 def imports_in(path: Path) -> list[str]:
@@ -167,6 +256,53 @@ def forbidden_hits(forbidden: list[str]) -> list[str]:
 # ---------------------------------------------------------------------------
 # Diffing against the allowlist
 # ---------------------------------------------------------------------------
+
+
+EXTERNAL_RE = re.compile(r"(?<![\w.])(ee\.schimke\.composeai\.[A-Za-z0-9_.]+)")
+
+
+def external_packages() -> dict[str, set[str]]:
+    """Every non-`cli` `ee.schimke.composeai` package serve reaches for, and where.
+
+    This is the other half of the contract probe. `preview-server/contract-probe` compiles against
+    a hand-maintained list of coordinates, and a hand-maintained list cannot notice that serve has
+    started importing a *new* published module — the probe would resolve the same ten coordinates
+    and pass while the extracted server's dependency floor had grown underneath it. Reading the
+    packages straight out of serve's sources closes that loop: a new one fails here, naming the
+    module that has to be added to the probe.
+    """
+    found: dict[str, set[str]] = {}
+    for source_set in SOURCE_SETS:
+        for path in kotlin_files(serve_root(source_set)):
+            rel = path.relative_to(REPO_ROOT).as_posix()
+            text = path.read_text(encoding="utf-8")
+            for fqn in IMPORT_ANY_RE.findall(text) + EXTERNAL_RE.findall(code_body(text)):
+                if fqn.startswith(CLI_PKG + "."):
+                    continue
+                found.setdefault(package_of(fqn), set()).add(rel)
+    return found
+
+
+def package_of(fqn: str) -> str:
+    """`…data.layoutinspector.ComposeSemanticsNode` -> `…data.layoutinspector`."""
+    parts = fqn.split(".")
+    while parts and parts[-1][:1].isupper():
+        parts.pop()
+    return ".".join(parts)
+
+
+def unmapped_contract_packages(allowlist: dict) -> dict[str, set[str]]:
+    """Packages serve imports that no contract in the probe accounts for."""
+    mapped = allowlist.get("contractPackages", {})
+    forbidden = tuple(allowlist["forbiddenPackages"])
+    unmapped: dict[str, set[str]] = {}
+    for package, files in external_packages().items():
+        if package.startswith(forbidden):
+            continue  # reported by the forbidden-package rule, with a better message
+        if any(package == prefix or package.startswith(prefix + ".") for prefix in mapped):
+            continue
+        unmapped[package] = files
+    return unmapped
 
 
 def diff(observed: dict[str, set[str]], allowed: list[str]) -> tuple[list[str], list[str]]:
@@ -253,6 +389,22 @@ def check(write: bool, allow_growth: bool) -> int:
                     "`python3 scripts/check-serve-seam.py --write`):\n"
                     + "".join(f"    - {name}\n" for name in stale)
                 )
+
+    unmapped = unmapped_contract_packages(allowlist)
+    if unmapped:
+        failures.append(
+            "\nserve imports a package that no contract in the preview-server probe accounts "
+            "for. The extracted server's dependency floor has grown:\n"
+            + "".join(
+                f"    {package}\n" + "".join(f"        {f}\n" for f in sorted(files))
+                for package, files in sorted(unmapped.items())
+            )
+            + "  Add the module that publishes it to `contracts` in\n"
+            "  preview-server/contract-probe/build.gradle.kts, name it in `contractPackages` in\n"
+            "  scripts/serve-seam-allowlist.json, and say in the PR why the server needs it.\n"
+            "  If it is NOT publishable, that is a split blocker — record it under\n"
+            "  `unpublishedContracts` and in docs/design/PREVIEW_SERVER_SPLIT.md."
+        )
 
     hits = forbidden_hits(allowlist["forbiddenPackages"])
     if hits:

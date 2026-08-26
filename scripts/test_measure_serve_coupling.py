@@ -182,6 +182,44 @@ class Crossing(unittest.TestCase):
         self.assertFalse(today.crosses(mod.SERVE))  # already classified as serve
 
 
+class RenameRecords(unittest.TestCase):
+    """A rename carries two paths; `--name-only` shows one (PR #4512 review).
+
+    A PR that moves a file from core into serve is the most architecturally interesting change this
+    script measures, and it is exactly the one that would have been counted as serve-only.
+    """
+
+    def test_plain_records_take_the_path(self):
+        self.assertEqual(
+            mod.files_in("M\tcli/a.kt\nA\tcli/b.kt\nD\tcli/c.kt\n"),
+            ["cli/a.kt", "cli/b.kt", "cli/c.kt"],
+        )
+
+    def test_rename_records_take_both_paths(self):
+        self.assertEqual(
+            mod.files_in("R051\tcli/serve-web/src/spec/x.ts\tcli/serve-web/src/dom/x.ts\n"),
+            ["cli/serve-web/src/spec/x.ts", "cli/serve-web/src/dom/x.ts"],
+        )
+
+    def test_copy_records_too(self):
+        self.assertEqual(mod.files_in("C100\told.kt\tnew.kt\n"), ["old.kt", "new.kt"])
+
+    def test_a_move_out_of_serve_counts_as_crossing(self):
+        moved = mod.Pr(
+            "abc",
+            "refactor: hoist a helper out of serve",
+            "2026-08-01T00:00:00+00:00",
+            mod.files_in(
+                "R090\tcli/src/main/kotlin/ee/schimke/composeai/cli/serve/Helper.kt"
+                "\tcli/src/main/kotlin/ee/schimke/composeai/cli/Helper.kt\n"
+            ),
+        )
+        self.assertTrue(moved.crosses(mod.SERVE))
+
+    def test_blank_and_malformed_lines_are_ignored(self):
+        self.assertEqual(mod.files_in("\n\nM\ta.kt\nR051\n"), ["a.kt"])
+
+
 class MixedTimezones(unittest.TestCase):
     """Commits carry the committer's UTC offset (PR #4512 review).
 

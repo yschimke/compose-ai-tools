@@ -61,8 +61,13 @@ scanner was widened). It fails when
 - a listed crossing is gone — the allowlist must shrink as extraction proceeds, or it stops
   describing anything. Prune it with `python3 scripts/check-serve-seam.py --write`.
 
-It also enforces one non-negotiable rule that is not a ratchet: `serve` never imports a renderer, an
-MCP server, or the gradle plugin. There is nothing to grandfather there.
+It also enforces two rules that are not ratchets. `serve` never imports a renderer, an MCP server,
+or the gradle plugin — there is nothing to grandfather there. And every non-`cli`
+`ee.schimke.composeai` package serve imports must map to a module the contract probe knows about
+(`contractPackages` in the allowlist). That second rule is what ties serve's real imports to the
+probe's hand-maintained coordinate list: without it, serve could start importing a new published
+module and the probe would resolve the same coordinates and pass while the dependency floor had
+grown underneath it.
 
 Today's register: **21 + 102** crossings in `main` (serve→cli, cli→serve) and **9 + 19** in `test`.
 The `serve→cli` direction is dominated by the bundle format (`BundleReader`, `BundleSigning`,
@@ -119,7 +124,7 @@ wider, and that two of the entries drag things a server should not carry.
 | `data-remotecompose-core` | **not in #3824's six** — payload schema the viewer renders |
 | `data-theme-core` | **not in #3824's six** — payload schema the viewer renders |
 | `data-render-core` | **not in #3824's six** — payload schema the viewer renders |
-| `:daemon:bta-host` (`BtaCompileSession`, `DiagnosticCollector`) | **not published at all** — the playground's compile path has no contract |
+| `:daemon:bta-host` (`BtaCompileSession`, `DiagnosticCollector`) | **not published at all** — the playground's compile path has no contract; recorded under `unpublishedContracts` |
 | `:cli`'s bundle format | **not a module at all** — preparation item 5 |
 
 The three payload schemas are the same kind of thing as the six (a `-core` module, a wire shape, no
