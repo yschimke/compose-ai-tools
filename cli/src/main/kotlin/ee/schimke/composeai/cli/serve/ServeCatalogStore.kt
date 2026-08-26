@@ -1960,10 +1960,12 @@ class ServeCatalogStore(
    * adapter's prefetch does: a document this cannot read stages alone, and the engine still reaches
    * `document-unreadable` from the bytes.
    *
-   * **An over-sized document is staged anyway**, because `document-too-large` is a verdict the
-   * contract requires a consumer to be able to reach: [ServeKnownDifferences.document] answers
-   * `TooLarge` from the file's length, the route serves 413, and the engine says so. Dropping it
-   * here would substitute silence for a refusal the reader already knows how to voice.
+   * **An over-sized document — or artifact — is staged anyway**, because `document-too-large` and
+   * `artifact-too-large` are verdicts the contract requires a consumer to be able to reach:
+   * [ServeKnownDifferences.document] and [ServeKnownDifferences.artifact] answer `TooLarge` from
+   * the file's length, the route serves 413, and the engine says so. Dropping either here would
+   * substitute silence — a missing file, which is the *different* verdict `unreadable` — for a
+   * refusal the reader already knows how to voice.
    *
    * Each artifact path is checked with the reader's own lexical rule before anything is fetched or
    * written ([ServeKnownDifferences.isLookupPath]), so a path the host would refuse to look up
@@ -1972,10 +1974,11 @@ class ServeCatalogStore(
    * page, an artifact cannot be re-rooted to a server-chosen name, because the record's hash is
    * bound to the path it names.
    *
-   * Fail-soft like every writer beside it, and bounded like the contract: at most
-   * [ServeKnownDifferences.MAX_ACCEPTANCES] records contribute paths, each artifact is dropped
-   * above [ServeKnownDifferences.MAX_ARTIFACT_BYTES], and the fetches run in the same bounded waves
-   * the rasters use.
+   * Fail-soft like every writer beside it, and bounded like the contract: a document past
+   * [ServeKnownDifferences.MAX_ACCEPTANCES] records is one the engine refuses whole, so it
+   * contributes no paths at all rather than the first 256; an artifact that cannot be written is
+   * skipped rather than failing the refresh; and the fetches run in the same bounded waves the
+   * rasters use.
    */
   private fun writeKnownDifferences(base: String, staging: File) {
     val dirName = ServeKnownDifferences.DIRECTORY
@@ -1991,13 +1994,18 @@ class ServeCatalogStore(
       val fetched = fetchCatalogAssets(wave.map { "$base$artifactRoot/$it" })
       wave.forEach { path ->
         val bytes = fetched["$base$artifactRoot/$path"] ?: return@forEach
-        // The reader refuses an over-sized artifact from the file's length; writing one anyway
-        // would
-        // put bytes on disk that every consumer is already required to decline.
-        if (bytes.size > ServeKnownDifferences.MAX_ARTIFACT_BYTES) return@forEach
+        // An over-sized artifact is staged too, for the reason the over-sized document is: the
+        // reader refuses it from the file's length, the route serves 413, and the engine reaches
+        // `artifact-too-large`. Dropping it would leave a missing file behind, which is
+        // `artifact-unreadable` — a different verdict, and one that hides why.
         val file = File(staging, "$artifactRoot/$path")
-        file.parentFile?.mkdirs()
-        file.writeBytes(bytes)
+        // A path every segment of which is portable can still be longer than the serving
+        // filesystem allows, since the lexical rule bounds no total. One unwriteable artifact is
+        // an artifact the engine will call unreadable, not a reason to abandon the refresh.
+        runCatching {
+          file.parentFile?.mkdirs()
+          file.writeBytes(bytes)
+        }
       }
     }
 
@@ -2020,8 +2028,14 @@ class ServeCatalogStore(
         ?: return emptyList()
     val acceptances =
       (parsed as? JsonObject)?.get("acceptances") as? JsonArray ?: return emptyList()
+    // Past the cap the engine refuses the whole document before it reads a single artifact, so
+    // every byte fetched for one is held for a result that names no record. Truncating the list to
+    // the cap would fetch the first 256 records' artifacts — up to 4 GiB of legal, individually
+    // capped files — for a document nothing will evaluate. Stage the document alone and let
+    // `too-many-acceptances` be voiced by the consumer that owns it.
+    if (acceptances.size > ServeKnownDifferences.MAX_ACCEPTANCES) return emptyList()
     val paths = LinkedHashSet<String>()
-    for (record in acceptances.take(ServeKnownDifferences.MAX_ACCEPTANCES)) {
+    for (record in acceptances) {
       val fields = record as? JsonObject ?: continue
       val id = (fields["id"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: continue
       for (key in listOf("mask", "acceptedCandidate")) {

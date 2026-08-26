@@ -669,6 +669,98 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `a document past the acceptance cap stages alone, fetching none of its artifacts`() {
+    // Past `maxAcceptances` the engine refuses the whole document before it reads one artifact, so
+    // every byte fetched for one is held for a result that names no record. Truncating to the cap
+    // would pull the first 256 records' artifacts — up to 4 GiB of individually legal files — on
+    // every refresh, for a document nothing will ever evaluate.
+    val root = tempRoot()
+    val requested = CopyOnWriteArrayList<String>()
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png"}]}]}
+      """
+        .trimIndent()
+    val records =
+      (0..ServeKnownDifferences.MAX_ACCEPTANCES).joinToString(",") { index ->
+        """{"id":"glyph-$index","issue":"https://github.com/yschimke/m3-catalog/issues/40",""" +
+          """"mask":"mask.png"}"""
+      }
+    val document = """{"schema":"compose-preview-known-differences/v1","acceptances":[$records]}"""
+    val store =
+      ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        fetch = { url ->
+          requested += url
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.encodeToByteArray()
+            url.endsWith("/parity/known-differences.json") -> document.encodeToByteArray()
+            url.contains("/parity/known-differences/") -> "mask".encodeToByteArray()
+            url.endsWith("/images/button.png") -> png()
+            else -> null
+          }
+        },
+      )
+
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+    assertTrue(
+      requested.none { it.contains("/parity/known-differences/") },
+      "artifacts were fetched for a document the engine refuses whole: $requested",
+    )
+    // The document itself is still staged: `too-many-acceptances` is the consumer's verdict to
+    // voice, and it needs the bytes to voice it.
+    assertTrue(
+      registered.getValue("compose-m3").knownDifferences() is ServeKnownDifferences.Document.Text
+    )
+  }
+
+  @Test
+  fun `an over-sized artifact is staged, so the reader can refuse it as too large`() {
+    // Dropping it would leave a missing file, and a missing file is `artifact-unreadable`/404 — a
+    // different verdict from the contract's `artifact-too-large`/413, and one that hides why.
+    val root = tempRoot()
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png"}]}]}
+      """
+        .trimIndent()
+    val document =
+      """
+      {"schema":"compose-preview-known-differences/v1","acceptances":[
+        {"id":"glyph","issue":"https://github.com/yschimke/m3-catalog/issues/40",
+         "mask":"mask.png"}]}
+      """
+        .trimIndent()
+    val oversized = ByteArray(ServeKnownDifferences.MAX_ARTIFACT_BYTES + 1)
+    val store =
+      ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        fetch = { url ->
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.encodeToByteArray()
+            url.endsWith("/parity/known-differences.json") -> document.encodeToByteArray()
+            url.endsWith("/parity/known-differences/glyph/mask.png") -> oversized
+            url.endsWith("/images/button.png") -> png()
+            else -> null
+          }
+        },
+      )
+
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+    val artifact = registered.getValue("compose-m3").knownDifferenceArtifact("glyph/mask.png")
+    assertTrue(
+      artifact is ServeKnownDifferences.Artifact.TooLarge,
+      "the reader refuses it from the file's length: $artifact",
+    )
+  }
+
+  @Test
   fun `a catalog publishing no known differences serves without them`() {
     val root = tempRoot()
     val catalog =
