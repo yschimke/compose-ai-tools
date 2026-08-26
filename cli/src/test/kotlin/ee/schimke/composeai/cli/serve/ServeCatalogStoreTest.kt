@@ -833,6 +833,99 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `an id blank only to the JVM does not cost the other records their artifacts`() {
+    // The mirror's one forbidden direction: claiming a rejection the engine would not make starves
+    // legal records of their artifacts and turns them into `artifact-unreadable`.
+    //
+    // `String.isBlank()` delegates to `Character.isWhitespace`, which counts U+001C..U+001F as
+    // whitespace; ECMAScript's `trim()` does not. So this id is keyable to the engine — that record
+    // fails on its own as `id-not-safe` while the rest of the document is read normally — and using
+    // the JVM's definition here would have rejected the whole document and skipped `glyph`'s
+    // artifacts along with it.
+    val root = tempRoot()
+    val requested = CopyOnWriteArrayList<String>()
+    val document =
+      """{"schema":"${ServeKnownDifferences.SCHEMA}","acceptances":[
+        {"id":"\u001C","mask":"m.png"},
+        {"id":"glyph","issue":"https://github.com/yschimke/m3-catalog/issues/40",
+         "mask":"mask.png"}]}"""
+    val store =
+      ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        fetch = { url ->
+          requested += url
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") ->
+              """
+              {"schema":"design-parity-catalog/v1","system":"compose-m3",
+               "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png"}]}]}
+              """
+                .trimIndent()
+                .encodeToByteArray()
+            url.endsWith("/parity/known-differences.json") -> document.encodeToByteArray()
+            url.endsWith("/parity/known-differences/glyph/mask.png") -> "mask".encodeToByteArray()
+            url.endsWith("/images/button.png") -> png()
+            else -> null
+          }
+        },
+      )
+
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+    assertTrue(
+      requested.any { it.endsWith("/parity/known-differences/glyph/mask.png") },
+      "the legal record's artifact was skipped: $requested",
+    )
+    assertTrue(
+      registered.getValue("compose-m3").knownDifferenceArtifact("glyph/mask.png")
+        is ServeKnownDifferences.Artifact.Bytes
+    )
+  }
+
+  @Test
+  fun `an id blank to JavaScript still rejects the document`() {
+    // The other side of the same definition: `trim()` removes the non-breaking U+00A0, which
+    // `Character.isWhitespace` does not. The engine calls this id unkeyable and rejects the
+    // document, so nothing here is worth fetching for.
+    val root = tempRoot()
+    val requested = CopyOnWriteArrayList<String>()
+    val document =
+      """{"schema":"${ServeKnownDifferences.SCHEMA}","acceptances":[
+        {"id":"\u00A0","mask":"m.png"},
+        {"id":"glyph","issue":"https://github.com/yschimke/m3-catalog/issues/40",
+         "mask":"mask.png"}]}"""
+    val store =
+      ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        fetch = { url ->
+          requested += url
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") ->
+              """
+              {"schema":"design-parity-catalog/v1","system":"compose-m3",
+               "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png"}]}]}
+              """
+                .trimIndent()
+                .encodeToByteArray()
+            url.endsWith("/parity/known-differences.json") -> document.encodeToByteArray()
+            url.contains("/parity/known-differences/") -> "mask".encodeToByteArray()
+            url.endsWith("/images/button.png") -> png()
+            else -> null
+          }
+        },
+      )
+
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+    assertTrue(
+      requested.none { it.contains("/parity/known-differences/") },
+      "artifacts were fetched for a document the engine refuses whole: $requested",
+    )
+  }
+
+  @Test
   fun `an over-sized artifact is staged, so the reader can refuse it as too large`() {
     // Dropping it would leave a missing file, and a missing file is `artifact-unreadable`/404 — a
     // different verdict from the contract's `artifact-too-large`/413, and one that hides why.

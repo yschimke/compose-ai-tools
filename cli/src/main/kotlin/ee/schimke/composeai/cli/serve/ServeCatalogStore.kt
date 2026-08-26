@@ -2112,9 +2112,47 @@ class ServeCatalogStore(
     return false
   }
 
-  /** A record's `id` as the engine keys it: a non-blank string, or nothing. */
+  /**
+   * A record's `id` as the engine keys it: a string that is not blank *to JavaScript*, or nothing.
+   */
   private fun recordId(fields: JsonObject): String? =
-    (fields["id"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
+    (fields["id"] as? JsonPrimitive)
+      ?.takeIf { it.isString }
+      ?.content
+      ?.takeIf { !isEcmaScriptBlank(it) }
+
+  /**
+   * Whether `String.prototype.trim()` would empty this string — the engine's own test for an
+   * unkeyable id, spelled out rather than borrowed from the JVM.
+   *
+   * `String.isBlank()` is the obvious Kotlin answer and it is the wrong one, in the direction this
+   * mirror must never be wrong in. It delegates to `Character.isWhitespace`, which counts the four
+   * separators U+001C..U+001F and U+0085 as whitespace; ECMAScript's `TrimString` does not. So an
+   * id of a single U+001C is *keyable* to the engine — the record fails on its own as `id-not-safe`
+   * while every other record in the document is read normally — and would have rejected the whole
+   * document here, skipping the artifacts of every legal record beside it and turning them into
+   * `artifact-unreadable`. That is a changed verdict on legal records, which is the one failure
+   * direction [rejectsWholeDocument] exists to avoid.
+   *
+   * (It differs the other way too — `Character.isWhitespace` excludes the non-breaking U+00A0,
+   * U+2007, U+202F and U+FEFF that `trim()` removes — but that direction only costs a fetch.)
+   *
+   * The set is `WhiteSpace` ∪ `LineTerminator` from the specification: the three format controls
+   * below, the four line terminators, the Unicode `Zs` category, and the byte-order mark.
+   */
+  private fun isEcmaScriptBlank(value: String): Boolean = value.all {
+    when (it) {
+      '\u0009',
+      '\u000B',
+      '\u000C',
+      '\uFEFF' -> true
+      '\u000A',
+      '\u000D',
+      '\u2028',
+      '\u2029' -> true
+      else -> Character.getType(it) == Character.SPACE_SEPARATOR.toInt()
+    }
+  }
 
   /**
    * Stage the published design-parity activity feed, if the catalog has one.
