@@ -1,8 +1,8 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.daemon.DaemonLaunchDescriptor
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.mcp.DaemonClientFactory
-import ee.schimke.composeai.mcp.DaemonLaunchDescriptor
 import ee.schimke.composeai.mcp.RegisteredProject
 import ee.schimke.composeai.mcp.SubprocessDaemonClientFactory
 import ee.schimke.composeai.mcp.WorkspaceId

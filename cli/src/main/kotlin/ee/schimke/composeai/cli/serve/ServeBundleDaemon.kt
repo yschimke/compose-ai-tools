@@ -9,9 +9,9 @@ import ee.schimke.composeai.cli.bundleSidecarSearchDescription
 import ee.schimke.composeai.cli.extractBundleClassesAndManifest
 import ee.schimke.composeai.cli.extractBundleIrArtifacts
 import ee.schimke.composeai.cli.locateBundleSidecarJars
+import ee.schimke.composeai.daemon.DaemonLaunchDescriptor
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.io.composeAiCacheDir
-import ee.schimke.composeai.mcp.DaemonLaunchDescriptor
 import java.io.File
 import kotlinx.serialization.json.Json
 import okio.FileSystem

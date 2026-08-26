@@ -1,5 +1,6 @@
 package ee.schimke.composeai.mcp
 
+import ee.schimke.composeai.daemon.DaemonLaunchDescriptor
 import ee.schimke.composeai.io.classpathArgFile
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import java.io.File

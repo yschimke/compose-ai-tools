@@ -1,10 +1,10 @@
 package ee.schimke.composeai.render.session.subprocess
 
+import ee.schimke.composeai.daemon.DaemonLaunchDescriptor
 import ee.schimke.composeai.daemon.protocol.InitializeResult
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.mcp.DaemonClient
 import ee.schimke.composeai.mcp.DaemonClientFactory
-import ee.schimke.composeai.mcp.DaemonLaunchDescriptor
 import ee.schimke.composeai.mcp.RegisteredProject
 import ee.schimke.composeai.mcp.SubprocessDaemonClientFactory
 import ee.schimke.composeai.mcp.WorkspaceId
