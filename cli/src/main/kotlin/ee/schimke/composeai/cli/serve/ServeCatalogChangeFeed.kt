@@ -574,6 +574,7 @@ internal data class CatalogSnapshot(
                 )
                 .joinToString("\u001f"),
             match = match.number("percent"),
+            matchVersion = match.number("scoreVersion")?.toInt(),
             order = references.size,
           ),
         )
@@ -604,10 +605,50 @@ internal data class SnapshotReference(
   val previewId: String,
   val specFingerprint: String,
   val match: Double?,
+  /**
+   * Which pixel path [match] was minted by — see `ServeDesignReferenceStore.SCORE_VERSION`.
+   *
+   * Carried because the feed's job is to say what *changed between two revisions*, and two numbers
+   * from two kernels are not a change in the design. The scorer moved once, deliberately; a feed
+   * that compared across that move would report every reference in the catalog as having shifted,
+   * in the one batch where none of them had.
+   */
+  val matchVersion: Int?,
   val order: Int,
 )
 
 internal object CatalogFeedDiff {
+  /**
+   * Whether the two revisions' scores are two readings of one instrument.
+   *
+   * Only when **both** sides actually published a score. An absent score is not a rival kernel: the
+   * publish-time scorer is optional (no Playwright, no Chromium, an undecodable pair ⇒ no `match`
+   * at all), so a score appearing or going away is an ordinary, observable catalog change and was
+   * reported as one long before versions existed. Reading a null version as a mismatched kernel
+   * would silence exactly that.
+   */
+  private fun crossKernel(old: SnapshotReference?, new: SnapshotReference?): Boolean =
+    old?.match != null && new?.match != null && old.matchVersion != new.matchVersion
+
+  /**
+   * Whether the published score actually moved between two revisions of the same reference.
+   *
+   * Two numbers minted by different kernels are not a move. The scorer's pixel path changed once,
+   * deliberately, and every published number changed with it; a feed that compared across that
+   * boundary would report every reference in the catalog as having shifted, in the one batch where
+   * none of them had. What it still reports across it is everything it can actually see — a moved
+   * raster, a renamed label, a reference that appeared or went away, and a score that arrived or
+   * stopped being published.
+   */
+  private fun matchMoved(old: SnapshotReference, new: SnapshotReference): Boolean =
+    !crossKernel(old, new) && old.match != new.match
+
+  /** The two scores to print, or nothing when they are not each other's units. */
+  private fun reportedMatch(
+    old: SnapshotReference?,
+    new: SnapshotReference?,
+  ): Pair<Double?, Double?> = if (crossKernel(old, new)) null to null else old?.match to new?.match
+
   fun between(
     beforeRevision: CatalogFeedRevision,
     before: CatalogSnapshot,
@@ -690,7 +731,7 @@ internal object CatalogFeedDiff {
               old.label == new.label &&
               old.previewId == new.previewId &&
               old.specFingerprint == new.specFingerprint &&
-              old.match == new.match
+              !matchMoved(old, new)
           )
             return@mapNotNull null
           CatalogReferenceChange(
@@ -703,8 +744,8 @@ internal object CatalogFeedDiff {
                 old?.previewId != new?.previewId ||
                 old == null ||
                 new == null,
-            beforeMatch = old?.match,
-            afterMatch = new?.match,
+            beforeMatch = reportedMatch(old, new).first,
+            afterMatch = reportedMatch(old, new).second,
             order = new?.order ?: old!!.order,
             beforePresent = old != null,
             afterPresent = new != null,

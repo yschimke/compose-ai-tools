@@ -76,6 +76,23 @@ data class DesignReferenceMatch(
   val percent: Double,
   val changedPercent: Double? = null,
   val geometry: Double? = null,
+  /**
+   * Which pixel path minted these numbers, mirrored from `SCORE_VERSION` in
+   * `cli/serve-web/src/scorer/tuning.ts` and checked against it by a test.
+   *
+   * A match that does not carry [SCORE_VERSION] is dropped rather than printed. The scorer's kernel
+   * changed once, deliberately — `drawImage`'s implementation-defined smoothing gave way to the
+   * portable area average both engines run — and every published number moved with it. A delivery
+   * branch is regenerated on its own schedule, so a viewer will inevitably meet a catalog baked
+   * before the change; printing that chip would put a number from the old kernel beside a readout
+   * the lane computes with the new one, and the two disagreeing at a glance is the exact failure a
+   * baked number cannot survive. Dropped, the lane scores live on entry — which is what a chip with
+   * no verdict has always fallen back to.
+   *
+   * Null on every catalog published before the version existed, which is the same case and is
+   * treated the same way.
+   */
+  val scoreVersion: Int? = null,
 )
 
 @Serializable
@@ -148,6 +165,18 @@ private constructor(
   companion object {
     const val DIRECTORY = "references"
     const val INDEX_FILE = "index.json"
+
+    /**
+     * The pixel path this build's scorer implements — mirrored from `SCORE_VERSION` in
+     * `cli/serve-web/src/scorer/tuning.ts`, which is where the rationale for the number lives, and
+     * pinned to it by `ServeDesignReferenceStoreTest`.
+     *
+     * Two copies of a constant are fine while something fails when they disagree, and this is the
+     * pair that has to agree: the browser mints the number and the host decides whether to print
+     * it, so a host reading the wrong version would either discard every current match or trust
+     * every stale one.
+     */
+    const val SCORE_VERSION = 2
     private val SAFE_ID = Regex("[A-Za-z0-9._-]{1,160}")
     private val SHA256 = Regex("[a-f0-9]{64}")
     private val PNG_SIGNATURE = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)
@@ -194,14 +223,18 @@ private constructor(
     }
 
     /**
-     * Whether a published match is a number a chip can print. Dropped rather than clamped, and
-     * dropped WITHOUT taking the reference with it: a nonsense percentage is a producer bug, and
-     * the lane's live scoring still answers the same question on entry — so the cost of ignoring it
-     * is a chip with no verdict, where the cost of trusting it is a chip stating a falsehood and
-     * the cost of dropping the record is a page with no design spec at all.
+     * Whether a published match is a number a chip can print — minted by the kernel this build
+     * scores with, and in range.
+     *
+     * Dropped rather than clamped, and dropped WITHOUT taking the reference with it: a nonsense
+     * percentage is a producer bug, and the lane's live scoring still answers the same question on
+     * entry — so the cost of ignoring it is a chip with no verdict, where the cost of trusting it
+     * is a chip stating a falsehood and the cost of dropping the record is a page with no design
+     * spec at all.
      */
     private fun isSaneMatch(match: DesignReferenceMatch): Boolean =
-      match.percent.isFinite() &&
+      match.scoreVersion == SCORE_VERSION &&
+        match.percent.isFinite() &&
         match.percent in 0.0..100.0 &&
         (match.changedPercent?.let { it.isFinite() && it in 0.0..100.0 } ?: true) &&
         (match.geometry?.let { it.isFinite() && it >= 0.0 } ?: true)
