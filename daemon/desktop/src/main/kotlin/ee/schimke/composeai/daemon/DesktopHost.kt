@@ -554,7 +554,6 @@ open class DesktopHost(
       live = live,
       engine = engine,
       state = state,
-      sandboxStats = sandboxStats,
       framesDir = framesDir,
       encodedDir = encodedDir,
     )

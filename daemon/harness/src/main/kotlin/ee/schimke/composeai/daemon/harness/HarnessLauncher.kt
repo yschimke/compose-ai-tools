@@ -117,8 +117,6 @@ class FakeHarnessLauncher(
           add("-Dcomposeai.daemon.history.autoPruneIntervalMs=$pruneAutoIntervalMs")
         addHistorySyspropsIfSet()
         addAll(extraJvmArgs)
-        // @argfile so a large harness classpath can't overflow the OS arg limit — see
-        // classpathArgFile.
         add(classpathArgFile(classpath.map { it.absolutePath }))
         add(mainClass)
       }
@@ -193,8 +191,6 @@ class RealDesktopHarnessLauncher(
         add("-Dcomposeai.daemon.discoveryWatchdogMs=500")
         addHistorySyspropsIfSet()
         addAll(extraJvmArgs)
-        // @argfile so a large harness classpath can't overflow the OS arg limit — see
-        // classpathArgFile.
         add(classpathArgFile(fullClasspath.map { it.absolutePath }))
         add("ee.schimke.composeai.daemon.DaemonMain")
       }
@@ -338,8 +334,6 @@ class RealAndroidHarnessLauncher(
         add("-Dcomposeai.daemon.idleTimeoutMs=2000")
         addHistorySyspropsIfSet()
         addAll(extraJvmArgs)
-        // @argfile so a large harness classpath can't overflow the OS arg limit — see
-        // classpathArgFile.
         add(classpathArgFile(fullClasspath.map { it.absolutePath }))
         add("ee.schimke.composeai.daemon.DaemonMain")
       }

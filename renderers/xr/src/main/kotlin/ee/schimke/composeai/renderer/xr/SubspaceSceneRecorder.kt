@@ -212,8 +212,6 @@ public object SubspaceSceneRecorder {
   private fun subspaceRootOf(panelNodes: List<SpatialSemanticsNode>): SpatialSemanticsNode =
     SpatialSemanticsTrees.subspaceRoot(panelNodes)
 
-  private fun identityPose(): SpatialPose = SpatialSemanticsTrees.identityPose()
-
   /** First [RootForTest] (the Compose `AndroidComposeView`) in this view's subtree, or null. */
   private fun View.findRootForTest(): RootForTest? {
     if (this is RootForTest) return this

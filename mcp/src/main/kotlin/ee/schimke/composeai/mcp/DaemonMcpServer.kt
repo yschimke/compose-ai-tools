@@ -3015,28 +3015,6 @@ class DaemonMcpServer(
     return CallToolResult(content = listOf(ContentBlock.Text(payload.toString())))
   }
 
-  /**
-   * Resolves the (workspaceId, module) pair the history tools need plus the live daemon — the
-   * daemon owns the configured `HistoryManager`, so every history call goes through it.
-   */
-  private fun resolveHistoryDaemon(
-    args: JsonObject,
-    toolName: String,
-  ): Pair<SupervisedDaemon, String>? {
-    val ws =
-      args["workspaceId"]?.jsonPrimitive?.contentOrNull
-        ?: return null.also {
-          // Caller wraps this null into an errorCallToolResult; we surface the missing-field
-          // message there.
-        }
-    val workspaceId = WorkspaceId(ws)
-    if (supervisor.project(workspaceId) == null) return null
-    val module = args["module"]?.jsonPrimitive?.contentOrNull ?: return null
-    val daemon =
-      runCatching { supervisor.daemonFor(workspaceId, module) }.getOrNull() ?: return null
-    return daemon to module
-  }
-
   private fun toolSetVisible(args: JsonObject): CallToolResult =
     forwardVisibilityCall(args, "set_visible") { daemon, ids -> daemon.client.setVisible(ids) }
 

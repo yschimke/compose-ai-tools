@@ -833,7 +833,7 @@ private class ExtractSubcommand(private val args: List<String>) {
         .absoluteFile
     target.mkdirs()
     val zipBytes = BundleReader.extractZipBytes(file)
-    safeExtractZip(zipBytes, target)
+    expandZipBytesSafely(zipBytes, target)
     println("extracted ${file.name} → ${target.path}")
   }
 }
@@ -1889,40 +1889,6 @@ internal fun resolveInBundleTarget(
     sourceIsUrl -> null
     else -> inputPath
   }
-
-/**
- * Extracts a zip safely — every entry's resolved target path is verified to live inside [target].
- * Defeats Zip Slip (`../../etc/passwd`-style entry names) reported by CodeQL / Codex on the v1
- * extract path; same call site is shared by `extract` and `render`.
- */
-private fun safeExtractZip(
-  zipBytes: ByteArray,
-  target: File,
-  fileSystem: FileSystem = SystemFileSystem,
-) {
-  val targetPath = target.canonicalFile.toPath()
-  ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
-    while (true) {
-      val entry = zin.nextEntry ?: break
-      // Resolve + normalize the entry against the target and verify containment via
-      // Path.startsWith — rejects "../" traversal and absolute entry names alike, and is the form
-      // CodeQL's java/zipslip recognizes as sanitization (the prior canonicalFile +
-      // String.startsWith guard was equally safe but flagged as a false positive).
-      val resolved = targetPath.resolve(entry.name).normalize()
-      if (!resolved.startsWith(targetPath)) {
-        throw SecurityException("bundle entry escapes target dir: ${entry.name} → $resolved")
-      }
-      val candidate = resolved.toFile()
-      if (entry.isDirectory) {
-        candidate.mkdirs()
-      } else {
-        candidate.parentFile?.mkdirs()
-        fileSystem.write(candidate.path.toPath()) { writeAll(zin.source()) }
-      }
-      zin.closeEntry()
-    }
-  }
-}
 
 /**
  * In-CLI mirror of the bundle's on-disk schema. We re-declare the data classes here (rather than

@@ -77,7 +77,6 @@ internal class DesktopRenderWorkerPool(
   private val jvmArgs: List<String>,
   private val maxWorkers: Int,
   private val maxRendersPerWorker: Int,
-  private val renderTimeoutSeconds: Long,
   /**
    * Working directory for every worker, which must be the **task project's** directory:
    * `ExecOperations.javaexec` defaulted to it, so a preview reading a relative path resolved it
