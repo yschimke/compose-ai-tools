@@ -145,6 +145,21 @@ describe("<cp-acceptance-audit>", () => {
         assert.doesNotMatch(text(band), /Closed issue/);
     });
 
+    it("never issues a request a traversal path would have redirected", async () => {
+        // `fetch` normalises `..` before the request, so a document naming one would reach some other
+        // same-origin route — with the session credential attached — instead of the artifact route
+        // that owns containment. The answer is the host's own 403 token, computed without asking.
+        const document = knownDifferencesJson(SCENE, {
+            mask: "../../../../status",
+        });
+        const band = await mount(routes(document), PREVIEWS);
+        assert.ok(
+            !(net?.asked ?? []).some((url) => url.includes("status")),
+            `no request escaped the artifact route: ${net?.asked.join(", ")}`,
+        );
+        assert.match(text(band), /path-not-contained/);
+    });
+
     it("reports a refused document rather than an empty audit", async () => {
         const broken = JSON.stringify({
             schema: "compose-preview-known-differences/v1",
