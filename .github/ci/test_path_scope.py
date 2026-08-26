@@ -145,5 +145,26 @@ class RepositoryConfigsTest(unittest.TestCase):
         self.assertFalse(result["rc_player_tests"])
 
 
+    def test_contract_module_change_runs_the_preview_server_probe(self):
+        # `preview-server/` is a separate Gradle build that nothing in the root build includes, so
+        # this job is the only thing that notices when a contract module stops resolving for it.
+        # A change to a contract must reach it (issue #3824).
+        for changed in (
+            "daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/DaemonLaunchDescriptor.kt",
+            "render-session/subprocess/build.gradle.kts",
+            "preview-server/contract-probe/build.gradle.kts",
+            "scripts/check-preview-server-contracts.sh",
+        ):
+            with self.subTest(changed=changed):
+                result = mod.decide([changed], self.load("ci-paths.json"))
+                self.assertTrue(result["preview_server_contracts"])
+
+    def test_unrelated_change_skips_the_preview_server_probe(self):
+        result = mod.decide(
+            ["samples/android/src/main/kotlin/App.kt"], self.load("ci-paths.json")
+        )
+        self.assertFalse(result["preview_server_contracts"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
