@@ -254,13 +254,23 @@ class ServeBundleHost(
 
   override fun parityIssues(): ParityIssues? = parityIssues
 
-  // Read per call rather than cached like the feeds above, and for the opposite reason: this is the
-  // one carried artifact the host does not parse, so there is no parsed form to cache — and the
-  // document is bounded at 1 MiB, read only by a page that is about to evaluate it, and answered by
-  // a `no-store` route. Caching the *text* would buy a file read and cost the property that a
-  // delivery-branch commit reaches a serving host within one refresh tick.
-  override fun knownDifferences(): ServeKnownDifferences.Document? =
-    ServeKnownDifferences.document(bundleDir, fileSystem)
+  // Read once at load, like the feeds above — and for a sharper reason than saving a file read.
+  //
+  // A catalog refresh swaps the staged directory over `bundleDir` and only *then* finishes its
+  // post-swap work (the Wasm app, vectors, themes, live bundles) before registering a rebuilt host.
+  // Everything else this host serves — `previews`, `parityIssues`, the design references — was read
+  // when the host was built, so a per-call read of this one file would put a **new** document
+  // beside an **old** inventory for the whole of that window. That is not a stale number: the
+  // dashboard's walk joins the two, so an acceptance naming a preview the new catalog has and the
+  // old host does not reads as `orphaned-target`, and the panel reports a problem that does not
+  // exist. A false finding is worse than a late one.
+  //
+  // Nothing is lost by caching it. A refresh rebuilds this host from the swapped directory, so a
+  // delivery-branch commit still reaches a serving host within one refresh tick; the per-call read
+  // only ever differed from that inside the window where it was wrong.
+  private val knownDifferences = ServeKnownDifferences.document(bundleDir, fileSystem)
+
+  override fun knownDifferences(): ServeKnownDifferences.Document? = knownDifferences
 
   override fun knownDifferenceArtifact(relativePath: String): ServeKnownDifferences.Artifact =
     ServeKnownDifferences.artifact(bundleDir, relativePath, fileSystem)
