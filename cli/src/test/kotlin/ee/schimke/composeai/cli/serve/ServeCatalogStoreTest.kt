@@ -984,6 +984,58 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `a transient failure on a request-time read does not un-settle a concurrent load`() {
+    // `incomplete` speaks for the operation that issued the read, not for the store. Lazy
+    // request-time reads — a capture somebody opened, a pinned asset — run continuously against
+    // the same branch host, so a store-wide signal would let one reader retrying an unavailable
+    // capture keep every complete revision unsettled and force a full reload every polling
+    // interval. That is traffic amplification precisely while the host is unwell, which is the
+    // condition the mechanism exists to survive.
+    val requested = CopyOnWriteArrayList<String>()
+    var host: ServeBundleHost? = null
+    val watched = java.util.concurrent.atomic.AtomicBoolean(false)
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        networkFetch = { url, _ ->
+          requested += url
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> {
+              // Once the host exists, drive one lazy capture read from a thread that is inside no
+              // load at all, and let it finish before this load continues.
+              val h = host
+              if (h != null && watched.compareAndSet(false, true)) {
+                val t = Thread { h.motionBytes("switch-on__ideal__default__dark", ".apng") }
+                t.start()
+                t.join()
+              }
+              BranchFetch.Ok(motionCatalogJson.toByteArray())
+            }
+            url.endsWith(".png") -> BranchFetch.Ok(png())
+            // The capture is the unwell asset. It is never staged at registration, so only the
+            // request-time read below ever touches it.
+            url.endsWith(".apng") -> BranchFetch.Throttled(retryAfterSeconds = 5)
+            else -> BranchFetch.NotFound
+          }
+        },
+      )
+
+    assertTrue((store.load("compose-m3") as ServeCatalogStore.Result.Ok).incomplete.not())
+    host = registered.getValue("compose-m3")
+
+    val second = store.load("compose-m3") as ServeCatalogStore.Result.Ok
+    assertTrue(watched.get(), "the request-time read ran during the second load")
+    assertTrue(requested.any { it.endsWith(".apng") }, "and it really was throttled: $requested")
+    assertFalse(
+      second.incomplete,
+      "a throttled read issued outside this load must not un-settle the revision it loaded",
+    )
+    assertNull(host.motionBytes("switch-on__ideal__default__dark", ".apng"))
+  }
+
+  @Test
   fun `a throttled post-publish vector fill un-settles the revision`() {
     // `incomplete` can only speak for what the load itself read. The vector fills run on
     // `figmaExecutor` AFTER the catalog is published, so a throttle there lands once the result has

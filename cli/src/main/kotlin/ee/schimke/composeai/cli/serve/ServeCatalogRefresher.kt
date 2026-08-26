@@ -55,6 +55,21 @@ internal class ServeCatalogRefresher(
   data class Entry(val system: String, val repo: String, val branch: String)
 
   private val lastHead = ConcurrentHashMap<String, String>()
+
+  /**
+   * Systems whose revision has been declared unsettled since their head was last considered.
+   *
+   * A *pending* mark rather than only a removal, because an invalidation can arrive before there is
+   * anything to remove. The post-publish lanes run on their own executor, so a throttled vector
+   * fill for one catalog lands while the startup loader is still working through the others — and
+   * [seedInitialHeads] runs only once every load has finished. Removing a head that is not there
+   * yet is a no-op, and the seed that follows would record the very revision the lane was reporting
+   * as incomplete. The same window exists on the poller between [checkOne] handing off to `reload`
+   * and recording the head afterwards.
+   *
+   * So a mark is left instead, and both places that would record a head consume it first.
+   */
+  private val unsettled = ConcurrentHashMap.newKeySet<String>()
   private val exec: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { r ->
     Thread(r, "serve-catalog-refresh").apply { isDaemon = true }
   }
@@ -72,7 +87,10 @@ internal class ServeCatalogRefresher(
    */
   fun seedInitialHeads(systems: Set<String> = entries().mapTo(linkedSetOf()) { it.system }) {
     for (e in entries()) {
-      if (e.system in systems) {
+      // `unsettled` is consumed either way: the mark answers "since the head was last considered",
+      // and this is that consideration.
+      val invalidated = unsettled.remove(e.system)
+      if (e.system in systems && !invalidated) {
         headResolver(e.repo, e.branch)?.let { lastHead[e.system] = it }
       }
     }
@@ -88,7 +106,10 @@ internal class ServeCatalogRefresher(
    * indefinitely.
    */
   fun forgetHeads(systems: Collection<String>) {
-    for (system in systems) lastHead.remove(system)
+    for (system in systems) {
+      unsettled += system
+      lastHead.remove(system)
+    }
   }
 
   /** Start the daemon poller. Idempotent-safe to call once after [seedInitialHeads]. */
@@ -138,6 +159,9 @@ internal class ServeCatalogRefresher(
     onLog(
       "serve: catalog ${e.system} (${e.branch}) moved ${prev?.take(7) ?: "?"}→${head.take(7)} — re-fetching"
     )
+    // Cleared before the reload, not after: a mark left *during* it belongs to this attempt, and
+    // this is what closes the window between the load returning and the head being recorded.
+    unsettled.remove(e.system)
     val loaded =
       runCatching { reload(e.system, e.repo) }.getOrNull() as? ServeCatalogStore.Result.Ok
     if (loaded == null) {
@@ -148,7 +172,9 @@ internal class ServeCatalogRefresher(
     // registered either way — it genuinely IS this revision, which is why both arms report
     // `UPDATED`. What an incomplete read withholds is the recorded head, so the next tick re-reads
     // what the branch would not give us this time instead of short-circuiting on an unmoved sha.
-    if (loaded.incomplete) {
+    // A post-publish lane that failed while this reload ran counts the same as the load itself
+    // coming back incomplete — the revision is serving and it is not settled.
+    if (loaded.incomplete || unsettled.remove(e.system)) {
       onLog(
         "serve: catalog ${e.system} refreshed to ${head.take(7)}, but some assets could not be " +
           "fetched — will re-read next tick"

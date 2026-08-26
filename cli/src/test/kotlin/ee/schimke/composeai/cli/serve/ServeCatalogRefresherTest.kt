@@ -248,4 +248,33 @@ class ServeCatalogRefresherTest {
     assertEquals(CatalogRefreshResult.UPDATED, r.refresh("compose-m3"))
     r.close()
   }
+
+  @Test
+  fun `an invalidation arriving before the startup seed survives it`() {
+    // The post-publish lanes run on their own executor while the startup loader is still working
+    // through the other catalogs, and `seedInitialHeads` only runs once every load has finished.
+    // So the invalidation lands on an empty head map — nothing to forget — and the seed that
+    // follows would record exactly the revision the lane just said it could not finish reading.
+    val reloads = AtomicInteger(0)
+    val r =
+      ServeCatalogRefresher(
+        entries = { listOf(entry()) },
+        reload = { _, _ ->
+          reloads.incrementAndGet()
+          ok()
+        },
+        intervalMillis = 1_000,
+        headResolver = { _, _ -> "stable-sha" },
+        onLog = {},
+      )
+    // A vector fill for this catalog was throttled while the startup loader was still going.
+    r.forgetHeads(listOf("compose-m3"))
+    r.seedInitialHeads()
+
+    r.tick()
+    assertEquals(1, reloads.get(), "the invalidated catalog is re-read despite an unmoved head")
+    r.tick()
+    assertEquals(1, reloads.get(), "and the complete re-read settles it again")
+    r.close()
+  }
 }
