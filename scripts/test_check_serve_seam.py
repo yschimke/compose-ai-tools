@@ -173,6 +173,73 @@ class CommentAndStringStripping(unittest.TestCase):
         self.assertGreater(survived, 118_000)
 
 
+class StringInterpolation(unittest.TestCase):
+    """`${...}` is executable Kotlin, not text (PR #4512 review)."""
+
+    def test_an_interpolated_qualified_reference_survives(self):
+        body = mod.strip_comments_and_strings(
+            'val s = "${ee.schimke.composeai.mcp.Factory.create()}"\n'
+        )
+        self.assertIn("ee.schimke.composeai.mcp.Factory", body)
+
+    def test_the_surrounding_text_is_still_blanked(self):
+        body = mod.strip_comments_and_strings('val s = "hidden ${ee.x.Kept} hidden"\n')
+        self.assertNotIn("hidden", body)
+        self.assertIn("ee.x.Kept", body)
+
+    def test_nested_braces_inside_an_interpolation(self):
+        body = mod.strip_comments_and_strings(
+            'val s = "${list.map { ee.schimke.composeai.mcp.Factory.of(it) }}"\n'
+        )
+        self.assertIn("ee.schimke.composeai.mcp.Factory", body)
+
+    def test_raw_strings_interpolate_too(self):
+        q = '"' * 3
+        body = mod.strip_comments_and_strings(f"val s = {q}a ${{ee.x.Kept}} b{q}\n")
+        self.assertIn("ee.x.Kept", body)
+
+    def test_a_bare_dollar_name_is_not_treated_as_an_opener(self):
+        body = mod.strip_comments_and_strings('val s = "cost: $amount"\nSeen\n')
+        self.assertNotIn("amount", body)
+        self.assertIn("Seen", body)
+
+    def test_a_forbidden_package_reached_through_interpolation_is_caught(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "cli/src/main/kotlin/ee/schimke/composeai/cli/serve"
+            root.mkdir(parents=True)
+            (root / "A.kt").write_text(
+                "package ee.schimke.composeai.cli.serve\n\n"
+                'val s = "${ee.schimke.composeai.mcp.Factory.create()}"\n'
+            )
+            original, mod.REPO_ROOT = mod.REPO_ROOT, Path(tmp)
+            try:
+                hits = mod.forbidden_hits(["ee.schimke.composeai.mcp"])
+            finally:
+                mod.REPO_ROOT = original
+        self.assertEqual(len(hits), 1)
+
+
+class WriteMode(unittest.TestCase):
+    """`--write` must not delete the data the check depends on (PR #4512 review)."""
+
+    def test_rewrite_keeps_every_top_level_key(self):
+        import json
+        import shutil
+
+        path = mod.ALLOWLIST
+        before = json.loads(path.read_text(encoding="utf-8"))
+        backup = path.with_suffix(".json.testbak")
+        shutil.copy(path, backup)
+        try:
+            self.assertEqual(mod.check(write=True, allow_growth=False), 0)
+            after = json.loads(path.read_text(encoding="utf-8"))
+        finally:
+            shutil.move(backup, path)
+        self.assertEqual(set(before), set(after))
+        for key in ("contractPackages", "unpublishedContracts", "forbiddenPackages", "_doc"):
+            self.assertEqual(before[key], after[key], key)
+
+
 class Ratchet(unittest.TestCase):
     def test_new_crossing_is_an_addition(self):
         added, stale = mod.diff({"BundleReader": {"a.kt"}, "New": {"b.kt"}}, ["BundleReader"])

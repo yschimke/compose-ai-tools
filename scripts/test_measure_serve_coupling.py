@@ -301,6 +301,53 @@ class Aggregate(unittest.TestCase):
         self.assertTrue(mod.gate(s)[1]["caveat_low_volume"])
 
 
+class ZeroDurationWindow(unittest.TestCase):
+    """A rate needs a duration (PR #4512 review).
+
+    `--since HEAD^`, or any window whose commits share a timestamp, has no span. Reporting
+    `0.0/wk` there reads as "no deep traffic" — the passing answer — for a window that may be full
+    of it.
+    """
+
+    def deep_pr(self, date):
+        return pr(
+            [
+                "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/A.kt",
+                "daemon/core/src/main/kotlin/P.kt",
+            ],
+            date=date,
+        )
+
+    def test_rate_is_undefined_not_zero(self):
+        s = mod.measure([self.deep_pr("2026-08-01T00:00:00+00:00")], mod.SERVE)
+        self.assertEqual(s["deep"], 1)
+        self.assertIsNone(s["deep_per_week"])
+
+    def test_an_undefined_rate_with_deep_traffic_does_not_pass(self):
+        s = mod.measure([self.deep_pr("2026-08-01T00:00:00+00:00")], mod.SERVE)
+        depth = [c for c in mod.gate(s) if c["id"] == 3][0]
+        self.assertFalse(depth["pass"])
+        self.assertIn("undefined", depth["value"])
+
+    def test_an_undefined_rate_with_no_deep_traffic_passes(self):
+        s = mod.measure([pr(["cli/src/main/kotlin/ee/schimke/composeai/cli/serve/A.kt"])], mod.SERVE)
+        depth = [c for c in mod.gate(s) if c["id"] == 3][0]
+        self.assertTrue(depth["pass"])
+
+    def test_identical_timestamps_are_a_zero_duration_window(self):
+        same = "2026-08-01T00:00:00+00:00"
+        s = mod.measure([self.deep_pr(same), self.deep_pr(same)], mod.SERVE)
+        self.assertIsNone(s["deep_per_week"])
+        self.assertFalse(mod.gate_is_green(s))
+
+    def test_a_real_window_still_produces_a_number(self):
+        s = mod.measure(
+            [self.deep_pr("2026-08-01T00:00:00+00:00"), pr(["x.kt"], date="2026-08-15T00:00:00+00:00")],
+            mod.SERVE,
+        )
+        self.assertAlmostEqual(s["deep_per_week"], 0.5, places=6)
+
+
 class GateExitStatus(unittest.TestCase):
     """`--gate` is an exit-status contract, not an output format (PR #4512 review).
 

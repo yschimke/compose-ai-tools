@@ -207,7 +207,12 @@ def measure(prs: list[Pr], side: str) -> dict:
         "weeks": weeks,
         "pct_of_all": pct(len(crossing), total),
         "pct_of_touching": pct(len(crossing), len(touching)),
-        "deep_per_week": (len(deep) / weeks) if weeks else 0.0,
+        # `None`, not 0.0, when the window has no duration — a single commit, or `--since HEAD^`.
+        # Zero deep crossings per week is the *passing* answer, and reporting it for a window that
+        # simply cannot express a rate would show the load-bearing condition as PASS over a window
+        # containing deep traffic. An undefined rate fails: the gate has to be earned over a real
+        # window, not derived from one instant.
+        "deep_per_week": (len(deep) / weeks) if weeks else None,
         "deep_paths": Counter(
             top_dir(f) for p in deep for f in p.deep_files
         ).most_common(10),
@@ -277,9 +282,18 @@ def gate(stats: dict) -> list[dict]:
         {
             "id": 3,
             "name": "Depth — deep crossings per week (load-bearing)",
-            "value": f"{stats['deep_per_week']:.1f}/wk",
+            "value": (
+                f"{stats['deep_per_week']:.1f}/wk"
+                if stats["deep_per_week"] is not None
+                else f"undefined ({stats['deep']} deep crossing(s) over a zero-duration window)"
+            ),
             "target": f"<= {GATE_DEEP_PER_WEEK:.0f}/wk",
-            "pass": stats["deep_per_week"] <= GATE_DEEP_PER_WEEK,
+            # An undefined rate passes only when there is nothing to rate.
+            "pass": (
+                stats["deep_per_week"] <= GATE_DEEP_PER_WEEK
+                if stats["deep_per_week"] is not None
+                else stats["deep"] == 0
+            ),
         },
     ]
 
@@ -399,7 +413,11 @@ def render(prs: list[Pr], sides: list[str], want_gate: bool) -> bool:
         print(
             f"{side:<12}{s['touching']:>10}{s['crossing']:>10}"
             f"{s['pct_of_all']:>8.1f}%{s['pct_of_touching']:>9.1f}%"
-            f"{s['deep_per_week']:>10.1f}"
+            + (
+                f"{s['deep_per_week']:>10.1f}"
+                if s["deep_per_week"] is not None
+                else f"{'n/a':>10}"
+            )
         )
     print()
 

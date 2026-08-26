@@ -81,6 +81,46 @@ _PACKAGE_OR_IMPORT_RE = re.compile(r"^\s*(package|import)\s+[^\n]*", re.MULTILIN
 RAW_QUOTE = '"' * 3
 
 
+def _scan_string(text: str, i: int, n: int, out: list, terminator: str) -> int:
+    """Blank a string literal from `i`, but emit `${...}` interpolations as code.
+
+    A `${...}` interpolation is executable Kotlin: `"${ee.schimke.composeai.mcp.Factory.create()}"`
+    creates exactly the dependency an ordinary expression would. Blanking the whole literal — the
+    first shape of this scanner — hid that from both the ratchet and the forbidden-package rule.
+    Simple `$name` interpolation needs no special handling: a bare identifier cannot be a qualified
+    reference.
+
+    Returns the index just past the closing quote.
+    """
+    out.append(" " * len(terminator))
+    i += len(terminator)
+    while i < n and text[i : i + len(terminator)] != terminator:
+        if terminator == '"' and text[i] == "\\":  # escapes only apply outside raw strings
+            out.append("  ")
+            i += 2
+            continue
+        if text[i : i + 2] == "${":
+            out.append("  ")
+            i += 2
+            depth = 1
+            while i < n and depth:
+                if text[i] == "{":
+                    depth += 1
+                elif text[i] == "}":
+                    depth -= 1
+                    if not depth:
+                        out.append(" ")
+                        i += 1
+                        break
+                out.append(text[i])  # inside the interpolation: this is code, keep it
+                i += 1
+            continue
+        out.append("\n" if text[i] == "\n" else " ")
+        i += 1
+    out.append(" " * len(terminator))
+    return i + len(terminator)
+
+
 def strip_comments_and_strings(text: str) -> str:
     """Blank out Kotlin comments and string literals, preserving newlines.
 
@@ -93,10 +133,11 @@ def strip_comments_and_strings(text: str) -> str:
     So: a small state machine instead. Line comments, block comments (which nest in Kotlin),
     escapes, char literals, and raw triple-quoted strings.
 
-    String *contents* are blanked along with comments. A fully qualified name inside a literal is
-    not a compile-time dependency — it is text — and the alternative reads `"Disallow: /*?"` as a
-    reference to something. The gap that leaves is a reflective `Class.forName("...mcp.X")`, which
-    no import-graph check can see either; the resolved-classpath checks are what catch that.
+    String *contents* are blanked along with comments — a fully qualified name inside a literal is
+    text, not a compile-time dependency, and the alternative reads `"Disallow: /*?"` as a reference
+    to something. `${...}` interpolations are the exception: those are executable Kotlin and are
+    kept as code. The gap that leaves is a reflective `Class.forName("...mcp.X")`, which no
+    import-graph check can see either; the resolved-classpath checks are what catch that.
     """
     out: list[str] = []
     i, n = 0, len(text)
@@ -136,28 +177,11 @@ def strip_comments_and_strings(text: str) -> str:
             continue
 
         if text[i : i + 3] == RAW_QUOTE:
-            blank(3)
-            i += 3
-            while i < n and text[i : i + 3] != RAW_QUOTE:
-                out.append("\n" if text[i] == "\n" else " ")
-                i += 1
-            blank(3)
-            i += 3
+            i = _scan_string(text, i, n, out, RAW_QUOTE)
             continue
 
         if ch == '"' or ch == "'":
-            quote = ch
-            blank(1)
-            i += 1
-            while i < n and text[i] != quote:
-                if text[i] == "\\":  # escape: the next character is literal, skip both
-                    blank(2)
-                    i += 2
-                    continue
-                out.append("\n" if text[i] == "\n" else " ")
-                i += 1
-            blank(1)
-            i += 1
+            i = _scan_string(text, i, n, out, ch)
             continue
 
         out.append(ch)
@@ -345,9 +369,13 @@ def check(write: bool, allow_growth: bool) -> int:
     allowlist = load_allowlist()
     observed = observed_all()
     failures: list[str] = []
-    # `_`-prefixed keys are prose (JSON has no comments) — carry them through --write.
-    updated = {k: v for k, v in allowlist.items() if k.startswith("_")}
-    updated["forbiddenPackages"] = allowlist["forbiddenPackages"]
+    # Start from the whole file and replace only the two direction blocks below. Listing the keys
+    # to keep was the earlier shape and it silently dropped `contractPackages` and
+    # `unpublishedContracts` when they were added — a `--write` would have deleted the contract
+    # mapping and the recorded split blocker, and the next run would have reported every external
+    # import as unmapped. A rewrite that loses data the tool itself depends on is worse than no
+    # rewrite, so it copies by default and edits by exception.
+    updated = dict(allowlist)
 
     for source_set in SOURCE_SETS:
         updated[source_set] = {}
