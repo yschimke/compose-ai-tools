@@ -160,6 +160,20 @@ describe("<cp-acceptance-audit>", () => {
         assert.match(text(band), /path-not-contained/);
     });
 
+    it("recognises a dot segment the way the URL parser does, not by spelling", async () => {
+        // `%2e%2e` is a double-dot segment to the WHATWG path state, so it normalises away exactly
+        // like `..`: `new URL(base + "glyph/%2e%2e/%2e%2e/status").pathname` is `/parity/status`.
+        const document = knownDifferencesJson(SCENE, {
+            mask: "%2e%2e/%2E%2e/status",
+        });
+        const band = await mount(routes(document), PREVIEWS);
+        assert.ok(
+            !(net?.asked ?? []).some((url) => url.includes("status")),
+            `no request escaped the artifact route: ${net?.asked.join(", ")}`,
+        );
+        assert.match(text(band), /path-not-contained/);
+    });
+
     it("reports a refused document rather than an empty audit", async () => {
         const broken = JSON.stringify({
             schema: "compose-preview-known-differences/v1",

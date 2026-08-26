@@ -581,9 +581,24 @@ const ARTIFACT_CONCURRENCY = 8;
  */
 function rewritesTheUrl(path: string): boolean {
     if (/[\\?#]/.test(path)) return true;
-    return path
-        .split("/")
-        .some((segment) => segment === "." || segment === "..");
+    return path.split("/").some((segment) => isDotSegment(segment));
+}
+
+/**
+ * A single- or double-dot path segment, **as the URL parser recognises one**.
+ *
+ * Not a string comparison against `.` and `..`: the WHATWG path state spells a dot segment with
+ * either literal dots or `%2e` in ASCII-case-insensitive form, so `%2e%2e`, `%2E%2e` and `.%2e`
+ * normalise away exactly like `..` does — measurably, the pathname of
+ * `new URL(base + "glyph/%2e%2e/%2e%2e/status")` is `/parity/status`. A literal-only check catches
+ * the obvious spelling and lets the encoded one through, which is the same request by another name.
+ *
+ * The decode is one pass and not recursive, because the parser's is: `%252e` stays `%252e`, reaches
+ * the host, and is refused on the grammar like any other odd segment.
+ */
+function isDotSegment(segment: string): boolean {
+    const decoded = segment.replace(/%2e/gi, ".");
+    return decoded === "." || decoded === "..";
 }
 
 /** Run `work` over `items` with at most `limit` in flight, preserving nothing but the side effects. */
