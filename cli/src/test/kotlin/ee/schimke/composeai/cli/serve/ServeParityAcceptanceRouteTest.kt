@@ -94,4 +94,17 @@ class ServeParityAcceptanceRouteTest {
       }
     }
   }
+
+  @Test
+  fun `the json view still 404s, because it cannot represent what keeps the page alive`() {
+    // `compose-preview-serve/parity/v1` carries coverage, drift, activity and gaps — every one of
+    // them empty here — and nothing about acceptances, since the host does not parse that document.
+    // A 200 would answer a CI check with a dashboard of zeroes whose one real fact is missing.
+    serve { server ->
+      for (path in listOf("/accepts-only/parity.json", "/accepts-only/parity?format=json")) {
+        val request = Request.Builder().url("http://127.0.0.1:${server.port}$path").build()
+        client.newCall(request).execute().use { response -> assertEquals(404, response.code, path) }
+      }
+    }
+  }
 }

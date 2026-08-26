@@ -3154,8 +3154,16 @@ class ServeHttpServer(
       // longer serves, which is exactly `orphaned-target` — and 404ing here would withhold the
       // panel
       // from the only catalog whose whole document is the finding.
+      // **The HTML page only.** `ParityResponse` carries coverage, drift, activity and gaps — all
+      // of
+      // which are empty for such a catalog — and nothing about acceptances, because the host does
+      // not
+      // parse that document and the verdicts are the browser's. Admitting `?format=json` here would
+      // answer 200 with a dashboard of zeroes whose one interesting fact is unrepresentable in the
+      // schema, which reads as "this catalog is fine" to exactly the CI check that shape exists
+      // for.
       val accepts = renderHost.knownDifferences() != null
-      if (activity == null && !mapped && issues.isEmpty() && !accepts) {
+      if (activity == null && !mapped && issues.isEmpty() && (json || !accepts)) {
         if (json) call.respond(HttpStatusCode.NotFound)
         else
           respondNotFoundHtml(
