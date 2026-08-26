@@ -187,11 +187,15 @@ classpath — so it is staging, not a blocker.
 
 | Leak | Why it is on the classpath | Fix |
 | --- | --- | --- |
-| `renderer-xr-client` | `:daemon:core` api-exposes it: `JsonRpcServer`'s constructor takes an `XrRenderServerFactory?`, so it is part of the published compile ABI | item 4 |
 | `mcp` | `:render-session-subprocess` builds its transport on `:mcp`'s `DaemonClient` / `SubprocessDaemonClientFactory` | item 3 |
 
-Both are recorded in `preview-server/contract-probe/build.gradle.kts`. The protocol contract should
-not ship a renderer client, and the render-session library should not ship an MCP server.
+It is recorded in `preview-server/contract-probe/build.gradle.kts`. The render-session library
+should not ship an MCP server.
+
+`renderer-xr-client` came off this table with item 4: `JsonRpcServer` now takes an `XrSessions`
+port that `:daemon:core` owns, and `:daemon:desktop` adapts `XrSessionManager` onto it, so the
+renderer client is no longer on the protocol contract's compile ABI — or on the classpath of a
+preview server that never renders XR.
 
 ## Preparation order
 
@@ -211,7 +215,15 @@ From #3824's follow-up investigation, with what has landed marked.
 3. **Extract the subprocess daemon client from `:mcp`** into its own published module, so
    `:render-session-subprocess` stops dragging an MCP server onto every consumer's classpath.
 4. **Remove the renderer-XR implementation dependency from `:daemon:core`** through an injected
-   port, so the protocol contract stops shipping a renderer client.
+   port, so the protocol contract stops shipping a renderer client. — *done.* `JsonRpcServer` takes
+   an `XrSessions?` (with `XrFrame`, a structural re-declaration of the client's `StreamFrame`)
+   instead of an `XrRenderServerFactory?`, and `:daemon:core` no longer depends on
+   `:renderer-xr-client` at all — not as `api`, not as `implementation`. The adapter,
+   `XrManagerSessions`, lives in `:daemon:desktop`, which is where the native renderer actually is;
+   XR is host-native, so no other daemon wired it anyway. Each test now sits with its subject: the
+   RPC surface against a fake port in `:daemon:core`, the multiplexer's own scene-merge and respawn
+   behaviour in `:renderer-xr-client`'s `XrSessionManagerTest`, and the mapping between them in
+   `XrManagerSessionsTest`.
 5. **Extract the bundle schema / read / sign / hydrate / extract path into a published module.**
    `bundle.json` is an external, versioned format that is currently a `:cli` internal, and it is
    most of the `serve→cli` half of the seam register.

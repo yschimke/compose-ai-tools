@@ -79,9 +79,6 @@ import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
 import ee.schimke.composeai.data.layoutinspector.SemanticsDiff
 import ee.schimke.composeai.io.SystemFileSystem
-import ee.schimke.composeai.renderer.xr.client.StreamFrame as XrStreamFrame
-import ee.schimke.composeai.renderer.xr.client.XrRenderServerFactory
-import ee.schimke.composeai.renderer.xr.client.XrSessionManager
 import java.io.ByteArrayOutputStream
 import java.io.EOFException
 import java.io.IOException
@@ -282,14 +279,17 @@ class JsonRpcServer(
    */
   private val onExit: (Int) -> Unit,
   /**
-   * Factory for the native XR render server (see the "XR render service" section in
+   * The daemon's XR renderer, if it has one (see the "XR render service" section in
    * `protocol/Messages.kt`). When non-null the daemon advertises `capabilities.xr` and serves
-   * `xr/start` / `xr/updatePanels` / `xr/stop`, spawning one `xr-composite --serve` child per
-   * session. When null (the in-process integration tests, fake-mode harness, daemons whose host has
-   * no XR binary) the `xr/…` methods reply `MethodNotFound` — the one-shot composite path is
-   * unaffected.
+   * `xr/start` / `xr/updatePanels` / `xr/structure` / `xr/stop`. When null (the in-process
+   * integration tests, fake-mode harness, daemons whose host has no XR binary) the `xr/…` methods
+   * reply `MethodNotFound` — the one-shot composite path is unaffected.
+   *
+   * A port rather than the renderer client itself, so this module's compile ABI does not carry
+   * `:renderer-xr-client` to every consumer of the daemon protocol; `:daemon:desktop` adapts the
+   * real `XrSessionManager` onto it. See [XrSessions].
    */
-  private val xrServerFactory: XrRenderServerFactory? = null,
+  private val xrSessions: XrSessions? = null,
 ) {
 
   private val json = Json {
@@ -550,13 +550,6 @@ class JsonRpcServer(
    * `interactive/start` is also using; each surface owns its own lifecycle.
    */
   private val streamSessions = ConcurrentHashMap<String, InteractiveSession>()
-
-  /**
-   * Held native XR render sessions, one per `frameStreamId`, present only when [xrServerFactory]
-   * was wired. The daemon's `xr/…` handlers drive it and feed each returned frame out as a
-   * `streamFrame` notification.
-   */
-  private val xrSessions: XrSessionManager? = xrServerFactory?.let { XrSessionManager(it) }
 
   // ----------------------------------------------------------------------
   // Recording (scripted screen-record) state — see docs/daemon/RECORDING.md.
@@ -854,7 +847,7 @@ class JsonRpcServer(
             // held-scene recording driver (DesktopHost). `false` keeps `recording/start` behind a
             // `MethodNotFound` reply so clients can grey out the toggle.
             recording = host.supportsRecording,
-            // `true` when the daemon can front the native XR render server (the `xrServerFactory`
+            // `true` when the daemon can front the native XR render server (an `xrSessions` port
             // was wired). Gates the `xr/…` methods.
             xr = xrSessions != null,
             // RECORDING.md § "encoded formats" — list of wire format spellings the host can
@@ -2846,7 +2839,7 @@ class JsonRpcServer(
    * if it survives the gate, send it as a `streamFrame` notification. The native server already
    * base64-encodes the PNG, so the registry forwards the payload as-is.
    */
-  private fun emitXrFrame(frameStreamId: String, frame: XrStreamFrame) {
+  private fun emitXrFrame(frameStreamId: String, frame: XrFrame) {
     val params =
       streamRegistry.consumeForStream(frameStreamId, frame.dataBase64, frame.width, frame.height)
         ?: return

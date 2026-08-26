@@ -1,8 +1,5 @@
 package ee.schimke.composeai.daemon
 
-import ee.schimke.composeai.renderer.xr.client.StreamFrame as XrStreamFrame
-import ee.schimke.composeai.renderer.xr.client.XrRenderServerFactory
-import ee.schimke.composeai.renderer.xr.client.XrRenderServerHandle
 import java.io.File
 import java.io.PipedInputStream
 import java.io.PipedOutputStream
@@ -14,9 +11,9 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
-import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
@@ -490,7 +487,7 @@ class StreamRpcIntegrationTest {
 
   private fun bringUpServer(
     host: RenderHost,
-    xrServerFactory: XrRenderServerFactory? = null,
+    xrSessions: XrSessions? = null,
   ): ServerHarness {
     val clientToServerOut = PipedOutputStream()
     val clientToServerIn = PipedInputStream(clientToServerOut, 64 * 1024)
@@ -506,7 +503,7 @@ class StreamRpcIntegrationTest {
         daemonVersion = "test",
         interactiveFrameIntervalMs = 0,
         onExit = { _ -> exitLatch.countDown() },
-        xrServerFactory = xrServerFactory,
+        xrSessions = xrSessions,
       )
     val thread = Thread({ server.run() }, "stream-rpc-server").apply { isDaemon = true }
     thread.start()
@@ -584,9 +581,9 @@ class StreamRpcIntegrationTest {
   fun xrStart_then_updatePanels_emit_streamFrames_and_stop_closes() {
     val tmp = Files.createTempDirectory("xr-rpc-test").toFile()
     val pngFile = File(tmp, "preview-A.png").apply { writeBytes(testPngBytes(seed = 0)) }
-    val factory = FakeXrFactory()
+    val sessions = FakeXrSessions()
     val (_, serverThread, out, received, exitLatch) =
-      bringUpServer(StreamRpcFakeHost(pngFile), factory)
+      bringUpServer(StreamRpcFakeHost(pngFile), sessions)
     resourcesToClose.add(AutoCloseable { runCatching { out.close() } })
     handshake(out, received)
 
@@ -637,14 +634,14 @@ class StreamRpcIntegrationTest {
       """{"jsonrpc":"2.0","method":"xr/stop","params":{"frameStreamId":"$streamId"}}""",
     )
     teardownServer(out, received, serverThread, exitLatch)
-    assertTrue("the native session must be closed", factory.created.single().closed)
+    assertTrue("the XR sessions must be closed", sessions.closed)
   }
 
   @Test(timeout = 30_000)
   fun xrStart_replies_methodNotFound_when_xr_unavailable() {
     val tmp = Files.createTempDirectory("xr-rpc-test").toFile()
     val pngFile = File(tmp, "preview-A.png").apply { writeBytes(testPngBytes(seed = 0)) }
-    // No xrServerFactory → capability off, methods rejected.
+    // No xrSessions port → capability off, methods rejected.
     val (_, serverThread, out, received, exitLatch) = bringUpServer(StreamRpcFakeHost(pngFile))
     resourcesToClose.add(AutoCloseable { runCatching { out.close() } })
     handshake(out, received)
@@ -684,41 +681,52 @@ class StreamRpcIntegrationTest {
   }
 }
 
-/** Fake native XR render server — returns monotonically-sequenced frames, tracks stop/close. */
-private class FakeXrHandle : XrRenderServerHandle {
+/**
+ * Fake [XrSessions] port — monotonically-sequenced frames, holds the scene, tracks stop/close.
+ *
+ * A fake of the port, not of the native server: what this file tests is that `JsonRpcServer` serves
+ * the `xr/…` methods correctly against whatever renderer it is given — routing frames through the
+ * stream registry, gating the capability, closing on shutdown. The real multiplexer's own behaviour
+ * (one shared process, scene merging on `updatePanels`, respawn after a death) belongs to
+ * `XrSessionManagerTest` in `:renderer-xr-client`, which covers it directly, and the mapping
+ * between the two lives in `:daemon:desktop`'s `XrManagerSessionsTest`.
+ */
+private class FakeXrSessions : XrSessions {
   private val seq = AtomicInteger(0)
   @Volatile var closed = false
   val stopped = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
-  override val capabilities = buildJsonObject {}
+  private val scenes = java.util.concurrent.ConcurrentHashMap<String, JsonElement>()
 
   // Distinct payload per frame so the registry doesn't dedup them to heartbeats.
   private fun frame() =
-    seq.incrementAndGet().let { n -> XrStreamFrame(n.toLong(), 64, 48, "png", "data-$n") }
+    seq.incrementAndGet().let { n -> XrFrame(n.toLong(), 64, 48, "png", "data-$n") }
 
-  override fun render(
-    sessionId: String,
-    scene: kotlinx.serialization.json.JsonElement,
+  override fun open(
+    id: String,
+    scene: JsonElement,
     sceneDir: String?,
     environment: String?,
     width: Int?,
     height: Int?,
-  ) = frame()
+  ): XrFrame {
+    scenes[id] = scene
+    return frame()
+  }
 
-  override fun updatePanels(sessionId: String, panels: JsonArray) = frame()
+  override fun isOpen(id: String): Boolean = scenes.containsKey(id)
 
-  override fun stop(sessionId: String) {
-    stopped.add(sessionId)
+  override fun updatePanels(id: String, panels: JsonArray): XrFrame = frame()
+
+  override fun structure(id: String): JsonElement? = scenes[id]
+
+  override fun close(id: String) {
+    scenes.remove(id)
+    stopped.add(id)
   }
 
   override fun close() {
     closed = true
   }
-}
-
-private class FakeXrFactory : XrRenderServerFactory {
-  val created = mutableListOf<FakeXrHandle>()
-
-  override fun start(): XrRenderServerHandle = FakeXrHandle().also { created.add(it) }
 }
 
 /** Mirror of the test-only host in InteractiveRpcIntegrationTest. */
