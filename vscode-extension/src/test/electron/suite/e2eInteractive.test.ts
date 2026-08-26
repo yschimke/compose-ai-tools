@@ -1419,17 +1419,33 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                 ),
                 ":samples:cmp cleanup render",
             );
+            const missingOldRenderOutputs = () =>
+                oldRenderOutputs.filter((p) => !fs.existsSync(p));
+            const survivingNewRenderOutputs = () =>
+                newRenderOutputs.filter((p) => fs.existsSync(p));
             await waitFor(
-                "batch artifacts after reverting the rename",
+                "original render PNG(s) restored after reverting the rename",
                 budgetWithin(deadlineAt, PANEL_UPDATE_BUDGET_MS),
                 500,
                 () =>
-                    oldRenderOutputs.every((p) => fs.existsSync(p)) &&
-                    newRenderOutputs.every((p) => !fs.existsSync(p))
-                        ? true
-                        : undefined,
-                describeCmpPanelState,
+                    missingOldRenderOutputs().length === 0 ? true : undefined,
+                () =>
+                    [
+                        describeCmpPanelState(),
+                        `original PNG(s) still missing: ${missingOldRenderOutputs().join(", ") || "<none>"}`,
+                        `renamed PNG(s) still present: ${survivingNewRenderOutputs().join(", ") || "<none>"}`,
+                    ].join("\n  "),
             );
+            // Restoring the original PNGs is the renderer's job and is waited on
+            // above. Pruning the renamed one is not: the cleanup render carries a
+            // filter built from the reverted preview set, which no longer names
+            // the renamed id, so its PNG can outlive the render that would have
+            // pruned it. Delete the leftovers directly — this block exists to
+            // stop a focused E run corrupting the artifacts later scenarios read,
+            // not to assert filtered pruning.
+            for (const stale of survivingNewRenderOutputs()) {
+                fs.rmSync(stale, { force: true });
+            }
         } catch (cleanupError) {
             if (!renamePhaseError) throw cleanupError;
             console.error(
