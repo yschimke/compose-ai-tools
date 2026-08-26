@@ -730,12 +730,12 @@ class ServeCatalogStoreTest {
        "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png"}]}]}
       """
         .trimIndent()
-    // Legal in every other way — one record, one artifact — and simply too big. The padding rides
-    // in an unknown member, which the engine ignores and the ceiling does not.
+    // Legal in every other way — right schema, no unknown member, one record, one artifact — and
+    // simply too big, so the byte ceiling is the only thing refusing it.
     val padding = "x".repeat(ServeKnownDifferences.MAX_DOCUMENT_BYTES)
     val document =
-      """{"schema":"compose-preview-known-differences/v1","note":"$padding","acceptances":[
-        {"id":"glyph","issue":"https://github.com/yschimke/m3-catalog/issues/40",
+      """{"schema":"compose-preview-known-differences/v1","acceptances":[
+        {"id":"glyph","issue":"https://github.com/yschimke/m3-catalog/issues/40$padding",
          "mask":"mask.png"}]}"""
     val store =
       ServeCatalogStore(
@@ -764,6 +764,72 @@ class ServeCatalogStoreTest {
       registered.getValue("compose-m3").knownDifferences()
         is ServeKnownDifferences.Document.TooLarge
     )
+  }
+
+  @Test
+  fun `a document the engine refuses whole names nothing to fetch`() {
+    // Every one of these is a rejection of the *file*: the engine reaches it before `readArtifact`
+    // is called once, and the result carries no `statuses` at all. So a stager that read the fetch
+    // list out of one anyway would pull up to 256 × 2 × 8 MiB of individually legal artifacts, on
+    // every refresh, for a verdict that names not one record — the exhaustion the caps exist to
+    // prevent, reached through the guard itself.
+    val record =
+      """{"id":"glyph","issue":"https://github.com/yschimke/m3-catalog/issues/40","mask":"mask.png"}"""
+    val refused =
+      mapOf(
+        "another schema" to
+          """{"schema":"compose-preview-known-differences/v2","acceptances":[$record]}""",
+        "an unknown document-level member" to
+          """{"schema":"${ServeKnownDifferences.SCHEMA}","note":"hi","acceptances":[$record]}""",
+        "a record that is not an object" to
+          """{"schema":"${ServeKnownDifferences.SCHEMA}","acceptances":[$record,7]}""",
+        "an unkeyable id" to
+          """{"schema":"${ServeKnownDifferences.SCHEMA}","acceptances":[$record,{"id":"  ","mask":"m.png"}]}""",
+        "a non-string id" to
+          """{"schema":"${ServeKnownDifferences.SCHEMA}","acceptances":[$record,{"id":7,"mask":"m.png"}]}""",
+        // Case-folded: `glyph` and `GLYPH` are two map keys and one directory on Windows and on a
+        // default macOS filesystem, so a document carrying both cannot be checked out intact.
+        "a case-folded duplicate id" to
+          """{"schema":"${ServeKnownDifferences.SCHEMA}","acceptances":[$record,{"id":"GLYPH","mask":"m.png"}]}""",
+      )
+
+    for ((why, document) in refused) {
+      val root = tempRoot()
+      val requested = CopyOnWriteArrayList<String>()
+      val store =
+        ServeCatalogStore(
+          root = root,
+          register = { n, h -> registered[n] = h },
+          trust = { TrustStore.EMPTY },
+          fetch = { url ->
+            requested += url
+            when {
+              url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") ->
+                """
+                {"schema":"design-parity-catalog/v1","system":"compose-m3",
+                 "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png"}]}]}
+                """
+                  .trimIndent()
+                  .encodeToByteArray()
+              url.endsWith("/parity/known-differences.json") -> document.encodeToByteArray()
+              url.contains("/parity/known-differences/") -> "mask".encodeToByteArray()
+              url.endsWith("/images/button.png") -> png()
+              else -> null
+            }
+          },
+        )
+
+      assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok, why)
+      assertTrue(
+        requested.none { it.contains("/parity/known-differences/") },
+        "artifacts were fetched for a document refused for $why: $requested",
+      )
+      // Staged regardless: the refusal is the consumer's to voice, and it needs the bytes.
+      assertTrue(
+        registered.getValue("compose-m3").knownDifferences() is ServeKnownDifferences.Document.Text,
+        why,
+      )
+    }
   }
 
   @Test

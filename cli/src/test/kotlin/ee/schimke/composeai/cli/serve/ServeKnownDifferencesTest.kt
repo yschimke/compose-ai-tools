@@ -226,6 +226,12 @@ class ServeKnownDifferencesTest {
       Regex("maxAcceptances:\\s*([0-9 *_]+),").find(text)?.groupValues?.get(1)?.let(::evaluate)
     assertEquals(ServeKnownDifferences.MAX_DOCUMENT_BYTES.toLong(), documentBytes)
     assertEquals(ServeKnownDifferences.MAX_ARTIFACT_BYTES.toLong(), artifactBytes)
+    // The schema token travels with them, for the same reason: the staging path refuses to fetch
+    // for a document declaring anything else, so a host spelling it differently would fetch nothing
+    // for every catalog rather than everything for one.
+    val schema =
+      Regex("KNOWN_DIFFERENCES_SCHEMA\\s*=\\s*\"([^\"]+)\"").find(text)?.groupValues?.get(1)
+    assertEquals(ServeKnownDifferences.SCHEMA, schema)
     // Mirrored for the staging path's fetch list — a cap the host reads further than would fetch
     // artifacts belonging to records the engine rejects the whole document for.
     assertEquals(ServeKnownDifferences.MAX_ACCEPTANCES.toLong(), acceptances)

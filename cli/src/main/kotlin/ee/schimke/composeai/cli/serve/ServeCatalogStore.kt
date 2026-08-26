@@ -2014,36 +2014,34 @@ class ServeCatalogStore(
   }
 
   /**
-   * The `<id>/<file>` paths a known-difference document names, read leniently.
+   * The `<id>/<file>` paths a known-difference document names — none, when the engine will reject
+   * the document whole.
    *
-   * Lenient on purpose, and the same shape the browser adapter's prefetch uses: this is a fetch
-   * list, not a verdict. A record whose `id` or artifact field is not a string simply contributes
-   * no path — the engine will refuse it on its own terms once the document is served — and a
-   * document that will not parse at all contributes none, which stages the document alone and
-   * leaves `document-unreadable` to the consumer that owns it.
+   * Two questions, and only the second is lenient.
+   *
+   * **Will the engine read anything at all?** A document-level rejection carries no `statuses` and
+   * reads not one artifact, so every byte fetched for one is a byte fetched for no verdict — and at
+   * the caps that is 256 × 2 × 8 MiB of individually legal files, on every refresh, which is the
+   * resource exhaustion the caps exist to prevent reached through the guard itself. The document is
+   * still staged: that is what lets the consumer voice the refusal. It simply names nothing to
+   * fetch. [rejectsWholeDocument] is that question.
+   *
+   * **Which paths does it name?** Lenient, and the same shape the browser adapter's prefetch uses:
+   * this is a fetch list, not a verdict. A record whose artifact field is not a string contributes
+   * no path and the engine refuses it on its own terms once the document is served.
    */
   private fun knownDifferenceArtifactPaths(documentBytes: ByteArray): List<String> {
-    // Past the document ceiling the reader answers `TooLarge` from the file's length and the route
-    // serves 413 without evaluating a record, so not one of the artifacts this document names can
-    // ever be read. Same reasoning as the acceptance cap below, one ceiling earlier: the document
-    // is still staged — that is what lets `document-too-large` be voiced at all — but it names
-    // nothing to fetch.
     if (documentBytes.size > ServeKnownDifferences.MAX_DOCUMENT_BYTES) return emptyList()
     val parsed =
       runCatching { json.parseToJsonElement(documentBytes.decodeToString()) }.getOrNull()
-        ?: return emptyList()
-    val acceptances =
-      (parsed as? JsonObject)?.get("acceptances") as? JsonArray ?: return emptyList()
-    // Past the cap the engine refuses the whole document before it reads a single artifact, so
-    // every byte fetched for one is held for a result that names no record. Truncating the list to
-    // the cap would fetch the first 256 records' artifacts — up to 4 GiB of legal, individually
-    // capped files — for a document nothing will evaluate. Stage the document alone and let
-    // `too-many-acceptances` be voiced by the consumer that owns it.
-    if (acceptances.size > ServeKnownDifferences.MAX_ACCEPTANCES) return emptyList()
+        as? JsonObject ?: return emptyList()
+    val acceptances = parsed["acceptances"] as? JsonArray ?: return emptyList()
+    if (rejectsWholeDocument(parsed, acceptances)) return emptyList()
+
     val paths = LinkedHashSet<String>()
     for (record in acceptances) {
       val fields = record as? JsonObject ?: continue
-      val id = (fields["id"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: continue
+      val id = recordId(fields) ?: continue
       for (key in listOf("mask", "acceptedCandidate")) {
         val value = (fields[key] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: continue
         val path = "$id/$value"
@@ -2052,6 +2050,53 @@ class ServeCatalogStore(
     }
     return paths.toList()
   }
+
+  /**
+   * Whether the engine refuses this document before reading a single artifact.
+   *
+   * **A deliberate mirror of `known-differences.mjs`'s `parseDocument` + `identityFailures`**, and
+   * the only place this host reads the document for meaning rather than for paths. It is not a
+   * second opinion about any record: every branch below is a rejection of the *whole file*, which
+   * is the one class of verdict a fetch planner has to know in advance, because the alternative is
+   * fetching four gigabytes for a result that names nothing.
+   *
+   * **Wrong in only one direction, on purpose.** Saying "rejected" for a document the engine would
+   * evaluate starves legal records of their artifacts and turns them into `artifact-unreadable` — a
+   * changed verdict. Saying "not rejected" for one it refuses merely wastes a fetch. So this
+   * mirrors the branches that are exactly decidable from the parsed JSON and deliberately does not
+   * mirror the two textual ones — a repeated member name and a non-integer geometry coordinate,
+   * both of which `documentTextRefusal` reads off the bytes rather than the tree. Those documents
+   * are still fetched for and still refused by the consumer; the cost is a wasted fetch on a file
+   * no producer in this repo emits, and the alternative is a third implementation of a text scanner
+   * in a host that is not supposed to be parsing at all.
+   */
+  private fun rejectsWholeDocument(document: JsonObject, acceptances: JsonArray): Boolean {
+    // The schema and the shape. `acceptances` is already known to be an array by the caller.
+    val schema = (document["schema"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    if (schema != ServeKnownDifferences.SCHEMA) return true
+    // `additionalProperties: false` at the document level: an unknown key is `document-unreadable`,
+    // for the same reason an unknown record-level one is refused — a schema-first consumer rejects
+    // bytes a required-fields-only consumer would evaluate normally.
+    if (document.keys.any { it != "schema" && it != "acceptances" }) return true
+    if (acceptances.size > ServeKnownDifferences.MAX_ACCEPTANCES) return true
+
+    val seen = HashSet<String>()
+    for (record in acceptances) {
+      // A record with no usable key cannot be reported at all, so it rejects the document rather
+      // than being skipped — which is what this used to do, leaving every other record's artifacts
+      // to be fetched for a result that names none of them.
+      val fields = record as? JsonObject ?: return true
+      val id = recordId(fields) ?: return true
+      // Case-folded, because `foo` and `FOO` are two map keys and one directory on Windows and on a
+      // default macOS filesystem: a document carrying both cannot even be checked out intact.
+      if (!seen.add(id.lowercase())) return true
+    }
+    return false
+  }
+
+  /** A record's `id` as the engine keys it: a non-blank string, or nothing. */
+  private fun recordId(fields: JsonObject): String? =
+    (fields["id"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
 
   /**
    * Stage the published design-parity activity feed, if the catalog has one.

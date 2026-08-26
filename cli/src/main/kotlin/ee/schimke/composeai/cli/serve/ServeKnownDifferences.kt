@@ -67,6 +67,16 @@ object ServeKnownDifferences {
   const val ARTIFACT_DIRECTORY = "known-differences"
 
   /**
+   * The document's schema token, mirrored for the same one job the record cap is: the staging path
+   * has to know whether the engine will read *anything* before it fetches a document's artifacts,
+   * and a document declaring another schema is one the engine refuses whole.
+   *
+   * Not a licence to interpret the document — nothing here decides a record's verdict. Pinned to
+   * the contract by [ServeKnownDifferencesTest] like the ceilings beside it.
+   */
+  const val SCHEMA = "compose-preview-known-differences/v1"
+
+  /**
    * The two ceilings, versioned with the schema and **not** per-catalog settings.
    *
    * Restated from the contract rather than imported, because Kotlin cannot import a JavaScript
