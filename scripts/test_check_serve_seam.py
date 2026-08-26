@@ -49,6 +49,67 @@ class Imports(unittest.TestCase):
         )
 
 
+class QualifiedReferences(unittest.TestCase):
+    """A crossing written out in full is still a crossing (PR #4512 review).
+
+    Kotlin does not require an import, so an import-only scanner reports a green seam while code
+    reaches straight across it. Three real crossings in `:cli` were invisible until this landed.
+    """
+
+    def scan(self, body):
+        with TemporaryDirectory() as tmp:
+            f = Path(tmp) / "A.kt"
+            f.write_text(body)
+            return mod.imports_in(f)
+
+    def test_qualified_call_counts_as_a_crossing(self):
+        found = self.scan(
+            "package ee.schimke.composeai.cli.serve\n\n"
+            "val x = ee.schimke.composeai.cli.BundleReader.read(p)\n"
+        )
+        self.assertEqual([mod.short(f) for f in found], ["BundleReader"])
+
+    def test_qualified_and_imported_land_on_one_allowlist_entry(self):
+        self.assertEqual(
+            mod.short("ee.schimke.composeai.cli.serve.ServeHost.Companion.of"),
+            mod.short("ee.schimke.composeai.cli.serve.ServeHost"),
+        )
+        self.assertEqual(mod.short("ee.schimke.composeai.cli.BundleReader.read"), "BundleReader")
+
+    def test_top_level_declaration_keeps_its_whole_path(self):
+        self.assertEqual(mod.short("ee.schimke.composeai.cli.downscaleRaster"), "downscaleRaster")
+        self.assertEqual(mod.short("ee.schimke.composeai.cli.serve.clampTo"), "serve.clampTo")
+
+    def test_the_files_own_package_line_is_not_a_reference(self):
+        self.assertEqual(self.scan("package ee.schimke.composeai.cli.serve\n"), [])
+
+    def test_doc_references_do_not_count(self):
+        """A KDoc link documents a relationship; it does not create one."""
+        found = self.scan(
+            "package ee.schimke.composeai.cli.serve\n\n"
+            "/** See [ee.schimke.composeai.cli.BundleReader]. */\n"
+            "// also ee.schimke.composeai.cli.BundleSigning\n"
+            "val x = 1\n"
+        )
+        self.assertEqual(found, [])
+
+    def test_forbidden_packages_are_caught_when_written_out(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "cli/src/main/kotlin/ee/schimke/composeai/cli/serve"
+            root.mkdir(parents=True)
+            (root / "A.kt").write_text(
+                "package ee.schimke.composeai.cli.serve\n\n"
+                "val d = ee.schimke.composeai.mcp.DaemonLaunchDescriptor.parse(t)\n"
+            )
+            original, mod.REPO_ROOT = mod.REPO_ROOT, Path(tmp)
+            try:
+                hits = mod.forbidden_hits(["ee.schimke.composeai.mcp"])
+            finally:
+                mod.REPO_ROOT = original
+        self.assertEqual(len(hits), 1)
+        self.assertIn("qualified reference", hits[0])
+
+
 class Ratchet(unittest.TestCase):
     def test_new_crossing_is_an_addition(self):
         added, stale = mod.diff({"BundleReader": {"a.kt"}, "New": {"b.kt"}}, ["BundleReader"])

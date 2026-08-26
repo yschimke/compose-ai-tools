@@ -218,6 +218,38 @@ class Aggregate(unittest.TestCase):
         self.assertTrue(mod.gate(s)[1]["caveat_low_volume"])
 
 
+class GateExitStatus(unittest.TestCase):
+    """`--gate` is an exit-status contract, not an output format (PR #4512 review).
+
+    A CI consumer piping `--json --gate` must not be told a red window succeeded.
+    """
+
+    def red(self):
+        return mod.measure(
+            [pr(["cli/src/main/kotlin/ee/schimke/composeai/cli/serve/A.kt",
+                 "daemon/core/src/main/kotlin/P.kt"])],
+            mod.SERVE,
+        )
+
+    def green(self):
+        return mod.measure([pr(["README.md"])] * 100, mod.SERVE)
+
+    def test_red_serve_gate_is_not_green(self):
+        self.assertFalse(mod.gate_is_green(self.red()))
+
+    def test_gate_flag_is_honoured_for_json_output(self):
+        self.assertFalse(mod.gate_green({mod.SERVE: self.red()}, want_gate=True))
+
+    def test_without_the_flag_nothing_gates(self):
+        self.assertTrue(mod.gate_green({mod.SERVE: self.red()}, want_gate=False))
+
+    def test_a_run_that_never_measured_serve_cannot_fail_the_serve_gate(self):
+        self.assertTrue(mod.gate_green({mod.EXTENSION: self.red()}, want_gate=True))
+
+    def test_clean_window_passes(self):
+        self.assertTrue(mod.gate_green({mod.SERVE: self.green()}, want_gate=True))
+
+
 class ReleaseBots(unittest.TestCase):
     def test_release_please_subjects_are_excluded(self):
         self.assertTrue(mod.RELEASE_SUBJECT.match("chore(main): release 1.2.3"))

@@ -60,18 +60,57 @@ IMPORT_RE = re.compile(
     r"^import\s+(ee\.schimke\.composeai\.cli\.[A-Za-z0-9_.]+)", re.MULTILINE
 )
 
+# A fully qualified reference in code — `ee.schimke.composeai.cli.BundleReader.read(…)` with no
+# import at all. Kotlin allows it, and an import-only scanner would let it walk straight through
+# both the ratchet and the forbidden-package rule, which is exactly the coupling this check exists
+# to see.
+QUALIFIED_RE = re.compile(r"(?<![\w.])(ee\.schimke\.composeai\.cli\.[A-Za-z0-9_.]+)")
+
+_BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+_LINE_COMMENT_RE = re.compile(r"//[^\n]*")
+_PACKAGE_OR_IMPORT_RE = re.compile(r"^\s*(package|import)\s+[^\n]*", re.MULTILINE)
+
 
 def kotlin_files(root: Path) -> list[Path]:
     return sorted(p for p in root.rglob("*.kt")) if root.is_dir() else []
 
 
+def code_body(text: str) -> str:
+    """`text` with comments, the package line and the import block removed.
+
+    Comments go first: a KDoc that *links* to `ee.schimke.composeai.renderer.Foo` documents a
+    relationship, it does not create one, and failing a build over a doc reference would train
+    people to stop writing them. The package line goes because it would otherwise register as a
+    reference to the file's own package.
+    """
+    text = _BLOCK_COMMENT_RE.sub(" ", text)
+    text = _LINE_COMMENT_RE.sub(" ", text)
+    return _PACKAGE_OR_IMPORT_RE.sub(" ", text)
+
+
 def imports_in(path: Path) -> list[str]:
-    return IMPORT_RE.findall(path.read_text(encoding="utf-8"))
+    """Every `ee.schimke.composeai.cli.*` name a file references, imported or written out."""
+    text = path.read_text(encoding="utf-8")
+    return IMPORT_RE.findall(text) + QUALIFIED_RE.findall(code_body(text))
 
 
 def short(fqn: str) -> str:
-    """`ee.schimke.composeai.cli.serve.ServeHost` -> `serve.ServeHost`."""
-    return fqn[len(CLI_PKG) + 1 :]
+    """Normalise a reference to the symbol the allowlist names.
+
+    `ee.schimke.composeai.cli.serve.ServeHost` -> `serve.ServeHost`, and so does the qualified call
+    `ee.schimke.composeai.cli.serve.ServeHost.Companion.of(…)` — an import and a fully qualified use
+    of the same symbol have to land on the same allowlist entry, or the ratchet counts one crossing
+    twice under two names.
+
+    Trailing segments are dropped after the first capitalised one (the type). A reference with no
+    capitalised segment is a top-level declaration — `serve.clampTo`, `downscaleRaster` — and is
+    kept whole, which is also the shape its import takes.
+    """
+    rest = fqn[len(CLI_PKG) + 1 :].split(".")
+    for i, segment in enumerate(rest):
+        if segment[:1].isupper():
+            return ".".join(rest[: i + 1])
+    return ".".join(rest)
 
 
 def scan(source_set: str) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
@@ -105,18 +144,24 @@ def scan(source_set: str) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
 
 
 def forbidden_hits(forbidden: list[str]) -> list[str]:
-    """Imports of packages the extracted server must never reach into."""
+    """References to packages the extracted server must never reach into.
+
+    Imports and fully qualified uses alike — a hard rule that only inspects the import block is not
+    a hard rule.
+    """
     hits: list[str] = []
-    pattern = re.compile(
-        r"^import\s+(" + "|".join(re.escape(p) for p in forbidden) + r")[.\s]",
-        re.MULTILINE,
-    )
+    group = "|".join(re.escape(p) for p in forbidden)
+    imported = re.compile(r"^import\s+(" + group + r")[.\s]", re.MULTILINE)
+    qualified = re.compile(r"(?<![\w.])(" + group + r")\.")
     for source_set in SOURCE_SETS:
         for path in kotlin_files(serve_root(source_set)):
             rel = path.relative_to(REPO_ROOT).as_posix()
-            for match in pattern.finditer(path.read_text(encoding="utf-8")):
-                hits.append(f"{rel}: {match.group(1)}")
-    return sorted(hits)
+            text = path.read_text(encoding="utf-8")
+            for match in imported.finditer(text):
+                hits.append(f"{rel}: import {match.group(1)}")
+            for match in qualified.finditer(code_body(text)):
+                hits.append(f"{rel}: qualified reference to {match.group(1)}")
+    return sorted(set(hits))
 
 
 # ---------------------------------------------------------------------------

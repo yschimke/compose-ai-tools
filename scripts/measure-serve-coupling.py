@@ -262,6 +262,15 @@ def gate(stats: dict) -> list[dict]:
     ]
 
 
+def gate_is_green(stats: dict) -> bool:
+    """Whether every automatable condition passes for one component.
+
+    Conditions 1 and 4 are not decidable here (see the module docstring), so a
+    green return means "nothing the script can measure is red" — never "ship it".
+    """
+    return all(cond["pass"] for cond in gate(stats))
+
+
 PROTOCOL_HINT = re.compile(r"protocolVersion|protocol version", re.IGNORECASE)
 
 
@@ -348,13 +357,11 @@ def render(prs: list[Pr], sides: list[str], want_gate: bool) -> bool:
         )
     print()
 
-    green = True
     for side in sides:
         s = all_stats[side]
         print(f"Gate — {side}")
         for cond in gate(s):
             mark = "PASS" if cond["pass"] else "FAIL"
-            green &= cond["pass"] or side != SERVE
             note = ""
             if cond.get("caveat_low_volume"):
                 note = (
@@ -381,9 +388,17 @@ def render(prs: list[Pr], sides: list[str], want_gate: bool) -> bool:
                   "mentions protocolVersion")
         print()
 
+    green = SERVE not in all_stats or gate_is_green(all_stats[SERVE])
     if want_gate:
         print("GATE: " + ("GREEN" if green else "RED"))
     return green
+
+
+def gate_green(components: dict, want_gate: bool) -> bool:
+    """`--gate` judges the serve component; without it, nothing gates."""
+    if not want_gate or SERVE not in components:
+        return True
+    return gate_is_green(components[SERVE])
 
 
 def main(argv: list[str]) -> int:
@@ -420,7 +435,10 @@ def main(argv: list[str]) -> int:
         }
         payload["gate"] = {s: gate(payload["components"][s]) for s in sides}
         print(json.dumps(payload, indent=2))
-        return 0
+        # `--gate` is an exit-status contract, not an output format, so it holds
+        # here too: a CI consumer piping `--json --gate` must not be told a red
+        # window succeeded.
+        return 0 if gate_green(payload["components"], args.gate) else 1
 
     green = render(prs, sides, args.gate)
     return 0 if (green or not args.gate) else 1

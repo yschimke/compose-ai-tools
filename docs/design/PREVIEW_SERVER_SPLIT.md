@@ -51,7 +51,10 @@ Three checks, each failing in both directions so it cannot rot into decoration.
 
 `scripts/check-serve-seam.py` enumerates every symbol crossing between
 `ee.schimke.composeai.cli.serve` and the rest of `:cli`, in both directions, for `main` and `test`,
-and compares it against `scripts/serve-seam-allowlist.json`. It fails when
+and compares it against `scripts/serve-seam-allowlist.json`. Imports *and* fully qualified
+references — Kotlin needs no import to reach across a package, and an import-only scan reports a
+green seam while code walks straight through it (three real crossings were invisible until the
+scanner was widened). It fails when
 
 - a crossing appears that is not listed — new coupling, which is what the split is trying to stop
   accruing; **or**
@@ -61,7 +64,7 @@ and compares it against `scripts/serve-seam-allowlist.json`. It fails when
 It also enforces one non-negotiable rule that is not a ratchet: `serve` never imports a renderer, an
 MCP server, or the gradle plugin. There is nothing to grandfather there.
 
-Today's register: **20 + 101** crossings in `main` (serve→cli, cli→serve) and **9 + 18** in `test`.
+Today's register: **21 + 102** crossings in `main` (serve→cli, cli→serve) and **9 + 19** in `test`.
 The `serve→cli` direction is dominated by the bundle format (`BundleReader`, `BundleSigning`,
 `BundleClasspathHydration`, `extractBundle*`, `locateBundleSidecarJars`, `BUNDLE_VERSION`) —
 preparation item 5 below. The `cli→serve` direction is dominated by `ServeCommand.kt`, which #3824
@@ -141,7 +144,11 @@ From #3824's follow-up investigation, with what has landed marked.
    (`scripts/measure-serve-coupling.py`.)
 2. **Consolidate the daemon-launch schema into one published contract.** — *partly done.*
    `DaemonLaunchDescriptor` has moved from `:mcp` to `:daemon:core`, which removes serve's only
-   direct `:mcp` import and puts the reader on the right side of the boundary. Two representations
+   direct `:mcp` import and puts the reader on the right side of the boundary. A deprecated
+   typealias keeps the old name compiling for source consumers; binary compatibility for an
+   already-compiled `DaemonClientFactory` implementation is not preserved, and cannot be without
+   keeping two live classes — the duplicate the move exists to end. The `daemon-launch.json` format
+   itself is untouched. Two representations
    of the schema still exist — this one and the gradle plugin's published `daemon-launch-builder`
    writer — and they have drifted. Consolidating them is the rest of this item.
 3. **Extract the subprocess daemon client from `:mcp`** into its own published module, so
