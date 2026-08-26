@@ -28,7 +28,14 @@
     "imports from is published. `daemon.bta` maps to `daemon-core`, not to `:daemon:bta-host` \u2014",
     "the package is declared by BOTH modules and the types serve uses (BtaCompileSession,",
     "DiagnosticCollector) are the `daemon-core` ones. A package name is not a module name; the",
-    "test asserts each mapping against the module that actually declares the imported type."
+    "test asserts each mapping against the module that actually declares the imported type.",
+    "reflectiveDependencies records a module serve reaches by class name in a string literal:",
+    "subprocess main classes and classloader-loaded sidecars. No import scan can see one, and",
+    "the contract probe cannot either, because it never stages them. This is the one category",
+    "where these checks are blind by construction, so the register is manual, pinned by a test",
+    "that each literal still exists, and guarded by a test that finds unrecorded ones. Two of",
+    "the four are unpublished modules \u2014 the real split blockers, in place of the one this PR",
+    "first reported wrongly."
   ],
   "forbiddenPackages": [
     "ee.schimke.composeai.renderer",
@@ -51,6 +58,32 @@
     "ee.schimke.composeai.daemon.bta": "daemon-core"
   },
   "unpublishedContracts": {},
+  "reflectiveDependencies": {
+    "ee.schimke.composeai.usagepsi.UsageSourceAnalyzer": {
+      "file": "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/UsageSourceFacts.kt",
+      "module": "usage-source-psi",
+      "published": false,
+      "why": "The playground's source cleaner loads :usage-source-psi in an isolated classloader and calls one String->JSON method. It degrades: absent, the cleaner falls back to its text passes, so an extracted server without it loses parse-quality cleaning rather than breaking. Staged by cli/build.gradle.kts through the composePreviewUsagePsi configuration."
+    },
+    "ee.schimke.composeai.rcembedded.jvm.RcJvmRenderMainKt": {
+      "file": "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/RcJvmServerRenderer.kt",
+      "module": "third-party-rc-embedded-player-jvm",
+      "published": false,
+      "why": "Subprocess main class for the embedded Remote Compose player. #3824 already lists this module among the sidecars the CLI tarball stages; it is an in-repo project dependency today and would have to become a published artifact for the split."
+    },
+    "ee.schimke.composeai.rcembedded.jvm.RcJvmRenderWorkerMainKt": {
+      "file": "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/RcJvmWorkerPool.kt",
+      "module": "third-party-rc-embedded-player-jvm",
+      "published": false,
+      "why": "The worker-pool half of the same sidecar."
+    },
+    "ee.schimke.composeai.daemon.DaemonMain": {
+      "file": "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt",
+      "module": "daemon-desktop / daemon-android",
+      "published": true,
+      "why": "Main class of the daemon JVM serve spawns for a bundle. A process-launch string, not a compile dependency \u2014 serve never links against a daemon implementation, and checkCliDaemonLibraryBoundary still forbids it on the classpath. Both modules are published, so this is staging rather than a blocker."
+    }
+  },
   "main": {
     "cliInternalsUsedByServe": [
       "AndroidBundleLaunch",

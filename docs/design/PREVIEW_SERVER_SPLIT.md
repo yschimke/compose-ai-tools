@@ -156,7 +156,32 @@ this table: it is not a module at all, so an extracted server cannot name it.
 > A package name is not a module name. The mapping was accepted because the coverage check matched
 > packages by *prefix* and nobody checked which module declares the type; `test_check_serve_seam.py`
 > now resolves every imported type to its declaring module and fails if the mapping disagrees.
-> There is no unpublished blocker today.
+> There is no unpublished blocker *among the packages serve imports*. There are two among the ones
+> it loads reflectively — see below, which is where the real answer turned out to be.
+
+### Reflective dependencies — the checks' blind spot
+
+Every check above reads imports or a resolved classpath, so none of them can see a module reached by
+class name in a string literal. serve does this four times, and `scripts/serve-seam-allowlist.json`
+records them under `reflectiveDependencies` with tests pinning each literal to its file and failing
+on an unrecorded new one.
+
+| Reflective reference | Module | Published |
+| --- | --- | --- |
+| `usagepsi.UsageSourceAnalyzer` | `:usage-source-psi` | **no** |
+| `rcembedded.jvm.RcJvmRenderMainKt` | `:third-party-rc-embedded-player-jvm` | **no** |
+| `rcembedded.jvm.RcJvmRenderWorkerMainKt` | `:third-party-rc-embedded-player-jvm` | **no** |
+| `daemon.DaemonMain` | `:daemon:desktop` / `:daemon:android` | yes |
+
+The two unpublished ones are the genuine article. `:usage-source-psi` degrades — without it the
+playground's source cleaner falls back to its text passes, so an extracted server loses
+parse-quality cleaning rather than breaking. `:third-party-rc-embedded-player-jvm` does not; #3824
+already lists it among the sidecars the CLI tarball stages, and the split turns that staging into a
+published-artifact dependency.
+
+`daemon.DaemonMain` is a process-launch string rather than a compile dependency — serve never links
+against a daemon implementation, and `checkCliDaemonLibraryBoundary` still forbids one on the
+classpath — so it is staging, not a blocker.
 
 ### Recorded leaks — must shrink
 

@@ -286,6 +286,63 @@ class Ratchet(unittest.TestCase):
         self.assertEqual(mod.diff({"A": {"a.kt"}}, ["A"]), ([], []))
 
 
+class ReflectiveDependencies(unittest.TestCase):
+    """Dependencies reached through a string literal (PR #4512 review).
+
+    `UsageSourceFacts.kt` loads `:usage-source-psi` by class name in an isolated classloader. No
+    import scan can see that, and the contract probe cannot either — it never stages the sidecar. It
+    is the one category where these checks are blind by construction, so the register is manual and
+    this test pins it against the source.
+    """
+
+    def test_each_recorded_literal_is_still_in_the_file_that_claims_it(self):
+        for fqn, record in mod.load_allowlist()["reflectiveDependencies"].items():
+            with self.subTest(fqn=fqn):
+                path = mod.REPO_ROOT / record["file"]
+                self.assertTrue(path.is_file(), f"{record['file']} is gone; update the register")
+                self.assertIn(fqn, path.read_text(encoding="utf-8"))
+
+    def test_serve_has_no_unrecorded_reflective_composeai_literals(self):
+        """A new one must be recorded rather than discovered on the day of the split."""
+        recorded = set(mod.load_allowlist()["reflectiveDependencies"])
+        pattern = re.compile(r'"(ee\.schimke\.composeai\.[A-Za-z0-9_.]+)"')
+        found = {}
+        for source_set in mod.SOURCE_SETS:
+            for path in mod.kotlin_files(mod.serve_root(source_set)):
+                text = path.read_text(encoding="utf-8")
+                for fqn in pattern.findall(text):
+                    # serve's own classes and `:cli`'s are the seam register's business, not this
+                    # one — a subprocess main class inside serve crosses no boundary.
+                    if fqn.startswith(mod.CLI_PKG + "."):
+                        continue
+                    if fqn not in recorded and fqn[fqn.rfind(".") + 1 :][:1].isupper():
+                        found.setdefault(fqn, set()).add(
+                            path.relative_to(mod.REPO_ROOT).as_posix()
+                        )
+        self.assertEqual(
+            found,
+            {},
+            "unrecorded reflective reference(s); add to reflectiveDependencies: "
+            + str({k: sorted(v) for k, v in found.items()}),
+        )
+
+    def test_the_published_flag_matches_the_module(self):
+        """If one gets published — good news — the register and the design doc must be updated."""
+        modules = {
+            "usage-source-psi": "usage-source-psi/build.gradle.kts",
+            "third-party-rc-embedded-player-jvm": "third_party/rc-embedded-player-jvm/build.gradle.kts",
+        }
+        for record in mod.load_allowlist()["reflectiveDependencies"].values():
+            build_file = modules.get(record["module"])
+            if not build_file:
+                continue
+            with self.subTest(module=record["module"]):
+                text = (mod.REPO_ROOT / build_file).read_text(encoding="utf-8")
+                self.assertEqual(
+                    "composeai.maven-publishing" in text, record["published"], record["module"]
+                )
+
+
 class MappingOwnership(unittest.TestCase):
     """A mapping must name the module that actually declares the type (PR #4512 review).
 

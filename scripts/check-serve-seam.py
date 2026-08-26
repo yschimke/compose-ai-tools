@@ -204,6 +204,31 @@ def code_body(text: str) -> str:
     return _PACKAGE_OR_IMPORT_RE.sub(" ", strip_comments_and_strings(text))
 
 
+WILDCARD_IMPORT_RE = re.compile(
+    r"^import\s+(ee\.schimke\.composeai\.[A-Za-z0-9_.]*\*)", re.MULTILINE
+)
+
+
+def wildcard_imports() -> list[str]:
+    """Star imports across the seam, which a symbol-level ratchet cannot police.
+
+    `import ee.schimke.composeai.cli.*` names no symbol, so nothing lands in the register; and
+    `import ee.schimke.composeai.cli.serve.*` would collapse to one pseudo-entry that then licenses
+    any number of crossings without the list changing. There are none in the tree today and the
+    repo's style does not use them, so this is a guard rather than a migration.
+    """
+    hits: list[str] = []
+    for source_set in SOURCE_SETS:
+        roots = [serve_root(source_set), cli_root(source_set)]
+        for root in roots:
+            for path in kotlin_files(root):
+                rel = path.relative_to(REPO_ROOT).as_posix()
+                for fqn in WILDCARD_IMPORT_RE.findall(path.read_text(encoding="utf-8")):
+                    if fqn.startswith(CLI_PKG):
+                        hits.append(f"{rel}: import {fqn}")
+    return sorted(set(hits))
+
+
 def imports_in(path: Path) -> list[str]:
     """Every `ee.schimke.composeai.cli.*` name a file references, imported or written out."""
     text = path.read_text(encoding="utf-8")
@@ -310,6 +335,17 @@ def external_packages() -> dict[str, set[str]]:
     return found
 
 
+def under(package: str, prefix: str) -> bool:
+    """Is `package` the package `prefix`, or one nested inside it?
+
+    Matching on segment boundaries, not raw text. A bare `startswith` makes
+    `ee.schimke.composeai.mcpclient` look like it is under `ee.schimke.composeai.mcp`, which used to
+    excuse it from the contract-coverage check while `forbidden_hits` — which does match on
+    boundaries — did not report it either. A sibling package escaped both checks at once.
+    """
+    return package == prefix or package.startswith(prefix + ".")
+
+
 def package_of(fqn: str) -> str:
     """`…data.layoutinspector.ComposeSemanticsNode` -> `…data.layoutinspector`."""
     parts = fqn.split(".")
@@ -321,12 +357,12 @@ def package_of(fqn: str) -> str:
 def unmapped_contract_packages(allowlist: dict) -> dict[str, set[str]]:
     """Packages serve imports that no contract in the probe accounts for."""
     mapped = allowlist.get("contractPackages", {})
-    forbidden = tuple(allowlist["forbiddenPackages"])
+    forbidden = allowlist["forbiddenPackages"]
     unmapped: dict[str, set[str]] = {}
     for package, files in external_packages().items():
-        if package.startswith(forbidden):
+        if any(under(package, prefix) for prefix in forbidden):
             continue  # reported by the forbidden-package rule, with a better message
-        if any(package == prefix or package.startswith(prefix + ".") for prefix in mapped):
+        if any(under(package, prefix) for prefix in mapped):
             continue
         unmapped[package] = files
     return unmapped
@@ -435,6 +471,15 @@ def check(write: bool, allow_growth: bool) -> int:
             "  scripts/serve-seam-allowlist.json, and say in the PR why the server needs it.\n"
             "  If it is NOT publishable, that is a split blocker — record it under\n"
             "  `unpublishedContracts` and in docs/design/PREVIEW_SERVER_SPLIT.md."
+        )
+
+    stars = wildcard_imports()
+    if stars:
+        failures.append(
+            "\nwildcard import across the serve seam. A star import names no symbol, so the "
+            "register cannot see what crosses:\n"
+            + "".join(f"    {h}\n" for h in stars)
+            + "  Import the symbols explicitly."
         )
 
     hits = forbidden_hits(allowlist["forbiddenPackages"])
