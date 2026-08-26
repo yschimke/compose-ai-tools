@@ -13,12 +13,16 @@
     "server build with serve, or move down into a contract module the CLI can keep using. The",
     "long tail here is ServeCommand.kt, which #3824 wants reduced to a thin entry point.",
     "forbiddenPackages is NOT a ratchet: an extracted preview server never imports a renderer, an",
-    "MCP server, or the gradle plugin, and there is nothing here to grandfather."
+    "forbiddenPackages is NOT a ratchet: an extracted preview server never imports a renderer, an",
+    "MCP server, or the gradle plugin, and there is nothing here to grandfather. `\u2026composeai.plugin`",
+    "is the plugin's real namespace (`plugin`, `plugin.daemon`, `plugin.tooling`) \u2014 an earlier",
+    "`\u2026composeai.gradle` entry named nothing at all and enforced nothing, while `plugin.tooling`",
+    "types sit on the CLI compile classpath via `:gradle-preview-driver`, ready to be reached for."
   ],
   "forbiddenPackages": [
     "ee.schimke.composeai.renderer",
     "ee.schimke.composeai.mcp",
-    "ee.schimke.composeai.gradle"
+    "ee.schimke.composeai.plugin"
   ],
   "main": {
     "cliInternalsUsedByServe": [

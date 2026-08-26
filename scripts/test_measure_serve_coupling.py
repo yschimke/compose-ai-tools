@@ -182,6 +182,51 @@ class Crossing(unittest.TestCase):
         self.assertFalse(today.crosses(mod.SERVE))  # already classified as serve
 
 
+class MixedTimezones(unittest.TestCase):
+    """Commits carry the committer's UTC offset (PR #4512 review).
+
+    This history has three offsets in play, so ordering `%cI` strings lexicographically does not
+    order the commits — and both window endpoints and `deep_per_week` come off that ordering.
+    """
+
+    def test_string_order_and_instant_order_genuinely_differ(self):
+        early_but_sorts_late = "2026-08-01T09:00:00+03:00"  # 06:00Z
+        late_but_sorts_early = "2026-08-01T08:00:00+00:00"  # 08:00Z
+        self.assertGreater(early_but_sorts_late, late_but_sorts_early)  # as text
+        self.assertLess(  # as instants
+            mod.parse_instant(early_but_sorts_late),
+            mod.parse_instant(late_but_sorts_early),
+        )
+
+    def test_bounds_use_instants(self):
+        prs = [
+            pr(["a.kt"], date="2026-08-01T09:00:00+03:00"),
+            pr(["b.kt"], date="2026-08-01T08:00:00+00:00"),
+        ]
+        first, last = mod.window_bounds(prs)
+        self.assertEqual(first.isoformat(), "2026-08-01T09:00:00+03:00")
+        self.assertEqual(last.isoformat(), "2026-08-01T08:00:00+00:00")
+
+    def test_span_is_the_real_elapsed_time_not_the_wall_clock_text(self):
+        prs = [
+            pr(["a.kt"], date="2026-08-01T00:00:00+00:00"),
+            pr(["b.kt"], date="2026-08-08T01:00:00+01:00"),  # exactly 7 days later
+        ]
+        self.assertAlmostEqual(mod.span_weeks(prs), 1.0, places=6)
+
+    def test_deep_rate_is_not_distorted_by_offsets(self):
+        prs = [
+            pr(["cli/src/main/kotlin/ee/schimke/composeai/cli/serve/A.kt",
+                "daemon/core/src/main/kotlin/P.kt"], date="2026-08-01T00:00:00+00:00"),
+            pr(["b.kt"], date="2026-08-15T01:00:00+01:00"),  # 14 days later
+        ]
+        self.assertAlmostEqual(mod.measure(prs, mod.SERVE)["deep_per_week"], 0.5, places=6)
+
+    def test_unparseable_date_does_not_crash_the_window(self):
+        self.assertIsNone(mod.parse_instant("not-a-date"))
+        self.assertIsNone(mod.window_bounds([pr(["a.kt"], date="not-a-date")]))
+
+
 class Aggregate(unittest.TestCase):
     def setUp(self):
         self.prs = [

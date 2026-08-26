@@ -154,13 +154,29 @@ def is_deep(path: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def parse_instant(value: str) -> datetime | None:
+    """`%cI` -> an aware datetime, or None if git gave us something unexpected.
+
+    Committer dates carry the committer's UTC offset, and this history has three of them
+    (`+00:00`, `+01:00`, `+03:00`). Sorting the strings therefore does NOT order the commits:
+    `2026-08-01T09:00+03:00` sorts after `2026-08-01T08:00+00:00` but happened before it. Both
+    window endpoints and `deep_per_week` are derived from that ordering, so a mixed-offset window
+    could move a gate condition across its threshold. Compare instants, never text.
+    """
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
 class Pr:
-    __slots__ = ("sha", "subject", "date", "sides", "deep_files")
+    __slots__ = ("sha", "subject", "date", "instant", "sides", "deep_files")
 
     def __init__(self, sha: str, subject: str, date: str, files: list[str]):
         self.sha = sha
         self.subject = subject
         self.date = date
+        self.instant = parse_instant(date)
         counted = [f for f in files if is_counted(f)]
         self.sides = {side_of(f) for f in counted}
         self.deep_files = [f for f in counted if is_deep(f)]
@@ -210,14 +226,20 @@ def top_dir(path: str) -> str:
     return "/".join(parts[:2]) if len(parts) > 1 else path
 
 
+def window_bounds(prs: list[Pr]) -> tuple[datetime, datetime] | None:
+    """The oldest and newest commit in the window, ordered as instants."""
+    instants = sorted(p.instant for p in prs if p.instant is not None)
+    if len(instants) < 2:
+        return None
+    return instants[0], instants[-1]
+
+
 def span_weeks(prs: list[Pr]) -> float:
-    dates = sorted(p.date for p in prs if p.date)
-    if len(dates) < 2:
+    bounds = window_bounds(prs)
+    if not bounds:
         return 0.0
-    first = datetime.fromisoformat(dates[0])
-    last = datetime.fromisoformat(dates[-1])
-    days = (last - first).total_seconds() / 86400.0
-    return days / 7.0
+    first, last = bounds
+    return (last - first).total_seconds() / 86400.0 / 7.0
 
 
 # ---------------------------------------------------------------------------
@@ -340,8 +362,11 @@ def warn_if_shallow() -> None:
 
 def render(prs: list[Pr], sides: list[str], want_gate: bool) -> bool:
     weeks = span_weeks(prs)
-    print(f"Window: {len(prs)} human PRs over {weeks:.1f} weeks "
-          f"({prs[-1].date[:10] if prs else '?'} … {prs[0].date[:10] if prs else '?'})")
+    bounds = window_bounds(prs)
+    span = (
+        f"{bounds[0].date().isoformat()} … {bounds[1].date().isoformat()}" if bounds else "?"
+    )
+    print(f"Window: {len(prs)} human PRs over {weeks:.1f} weeks ({span})")
     print()
     header = f"{'component':<12}{'touching':>10}{'crossing':>10}{'% all':>9}{'% touch':>10}{'deep/wk':>10}"
     print(header)
@@ -424,12 +449,13 @@ def main(argv: list[str]) -> int:
         return 2
 
     if args.json:
+        bounds = window_bounds(prs)
         payload = {
             "window": {
                 "prs": len(prs),
                 "weeks": round(span_weeks(prs), 2),
-                "newest": prs[0].date,
-                "oldest": prs[-1].date,
+                "newest": bounds[1].isoformat() if bounds else None,
+                "oldest": bounds[0].isoformat() if bounds else None,
             },
             "components": {s: measure(prs, s) for s in sides},
         }

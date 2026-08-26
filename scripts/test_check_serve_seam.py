@@ -137,6 +137,36 @@ class RealTree(unittest.TestCase):
             for direction in ("cliInternalsUsedByServe", "serveInternalsUsedByCli"):
                 self.assertIn(direction, allowlist[source_set])
 
+    def test_forbidden_list_names_packages_that_exist(self):
+        """A rule that names a nonexistent namespace enforces nothing (PR #4512 review).
+
+        The first version of this list said `ee.schimke.composeai.gradle`, which no source file in
+        the repo declares — so the gradle-plugin half of the "hard" rule was decorative, while
+        `plugin.tooling` types are on the CLI's compile classpath through `:gradle-preview-driver`
+        and reachable from serve today.
+        """
+        declared = set()
+        for path in (mod.REPO_ROOT / "cli").rglob("*.kt"):
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line.startswith("package "):
+                    declared.add(line.split()[1])
+                    break
+        for path in (mod.REPO_ROOT / "gradle-plugin").rglob("*.kt"):
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line.startswith("package "):
+                    declared.add(line.split()[1])
+                    break
+        for forbidden in mod.load_allowlist()["forbiddenPackages"]:
+            with self.subTest(package=forbidden):
+                self.assertTrue(
+                    any(p == forbidden or p.startswith(forbidden + ".") for p in declared)
+                    # `renderer` / `mcp` live outside the two trees walked above; assert the
+                    # gradle-plugin entry specifically, which is the one that was wrong.
+                    or forbidden
+                    in ("ee.schimke.composeai.renderer", "ee.schimke.composeai.mcp"),
+                    f"{forbidden} names no package any source file declares",
+                )
+
     def test_forbidden_packages_are_clean(self):
         self.assertEqual(mod.forbidden_hits(mod.load_allowlist()["forbiddenPackages"]), [])
 

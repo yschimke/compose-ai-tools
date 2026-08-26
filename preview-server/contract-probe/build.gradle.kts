@@ -97,8 +97,15 @@ abstract class CheckContractSurface : DefaultTask() {
    * The resolved runtime classpath, transitives included. Files rather than a resolution result so
    * the task stays configuration-cache-safe: a `ee.schimke.composeai` artifact is exactly one
    * published at [contractVersion], and a Maven artifact's file name is `<name>-<version>.jar`.
+   *
+   * `NAME_ONLY`, deliberately not `@Classpath`. Classpath normalization hashes jar *contents* and
+   * ignores file names — and the file name is precisely what this task reads. Under `@Classpath` a
+   * contract renamed (or a leak appearing under a new coordinate at identical content) would
+   * normalize to an unchanged input and the check would report UP-TO-DATE without ever looking.
    */
-  @get:InputFiles abstract val classpath: ConfigurableFileCollection
+  @get:InputFiles
+  @get:PathSensitive(PathSensitivity.NAME_ONLY)
+  abstract val classpath: ConfigurableFileCollection
 
   @TaskAction
   fun check() {
