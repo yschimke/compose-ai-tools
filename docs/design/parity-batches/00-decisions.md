@@ -86,6 +86,22 @@ an old-kernel number from a rebaselined one.
 **in the same change**, and note it in the release notes. Never in a change that also alters
 acceptance semantics — a moved number and a changed verdict in one diff cannot be told apart.
 
+> **Answered, and shipped.** The carrier is `SCORE_VERSION` — declared in
+> [`cli/serve-web/src/scorer/tuning.ts`](../../../cli/serve-web/src/scorer/tuning.ts) beside the
+> constants it versions, mirrored into `known-difference-tuning.mjs` and
+> `ServeDesignReferenceStore` by the tests that already pin those mirrors, published on
+> `window.ComposePreviewCompare`, and baked onto every `match` the publish-time driver writes.
+>
+> It is a *self-describing number* rather than a document schema bump, which is what makes
+> "regenerate the baselines in the same change" achievable at all: the baselines are not in this
+> repo, they are the `references/index.json` of every delivery branch, each regenerated on its own
+> schedule. A reader therefore drops a match whose version is not the one it would compute with and
+> scores live instead — the fail-soft behaviour a chip with no verdict has always had — so there is
+> no window in which a published number and the schema disagree, whichever side updates first.
+>
+> The number moved at most 0.87pp (mean 0.28pp) over the committed `renders/lane-parity` pairs, and
+> the change carried no acceptance semantics with it.
+
 ## D4 — the frame-vs-controls race in `refreshReportLink()`
 
 **Blocks:** 01 directly — it is the difference between a correct locator and a subtly wrong one, and

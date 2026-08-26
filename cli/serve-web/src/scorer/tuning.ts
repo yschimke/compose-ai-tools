@@ -87,5 +87,41 @@ export const SHEET_TOLERANCE = 6;
  */
 export const COMPARISON_GROUNDS: ReadonlyArray<string> = ["#ffffff", "#000000"];
 
+/**
+ * The same two grounds as RGB triples, for the path that has no canvas to hand a CSS string to.
+ *
+ * The design-reference score composites in arithmetic rather than through `fillRect` — see
+ * `grayFromRaster` — so it needs the colours as numbers. Two spellings of one decision, kept
+ * adjacent so a third ground cannot be added to one and not the other; the offline mirror test
+ * compares the two engines' grounds by colour, which catches it from the other side as well.
+ */
+export const COMPARISON_GROUND_RGB: ReadonlyArray<
+    readonly [number, number, number]
+> = [
+    [255, 255, 255],
+    [0, 0, 0],
+];
+
+/**
+ * Which pixel path produced a score — the carrier D3 asks for, so a published number can be told
+ * from a rebaselined one.
+ *
+ * `1` was the browser-only era: both downscales went through `drawImage`, whose smoothing is
+ * implementation-defined, so the number could not be reproduced outside a browser at all and
+ * nothing offline could have carried a version even if it had wanted to. `2` is the portable area
+ * average — the kernel `known-difference-resample.mjs` names and both engines run.
+ *
+ * It rides on every baked `match` and the reader drops a match that does not carry the version it
+ * would compute with, rather than clamping or trusting it. That is the whole reason to have it: a
+ * catalog published before the rebaseline and served by a viewer after it would otherwise print a
+ * chip that contradicts the readout it links to, which is the one failure a number whose job is to
+ * be trusted at a glance cannot survive. Dropped, the lane simply scores live on entry — the
+ * behaviour every catalog had before the number was baked at all.
+ *
+ * **Bump it in the same change that moves the number, never in one that also changes acceptance
+ * semantics.** A moved number and a changed verdict in one diff cannot be told apart.
+ */
+export const SCORE_VERSION = 2;
+
 /** Below this per-channel delta a pixel has not moved — PNG round-tripping and resampling noise. */
 export const DIFF_CHANNEL_TOLERANCE = 3;

@@ -12,23 +12,23 @@
  *
  * The **decisions** below — sheet-or-whole-image, alpha before colour, widen by one sample cell, the
  * coverage fallback — are `cli/serve-web/src/scorer/contentBox.ts`'s, unchanged, and its comments are
- * where the reasoning for each lives. What this file changes is the one host-dependent step: the
+ * where the reasoning for each lives. What this file changed was the one host-dependent step: the
  * sampling downscale is the portable area average rather than `drawImage`, whose filter is not
  * reproducible off-browser.
  *
- * **Which means the browser's own `contentBox` and this one differ until the rebaseline.** They are
- * measuring the same picture through two kernels, so they agree on any box whose edges are not
- * within a sample cell of a partially-covered pixel and can differ by one there. That is the same
- * one-off move [D3](parity-batches/00-decisions.md#d3--the-score-rebaseline-is-versioned-and-when)
- * already covers, and it is why the acceptance path uses *this* function on both engines rather than
- * whichever one the host has: an acceptance evaluated against two different planes is the failure
- * this module exists to prevent, while a legacy score measured through `drawImage` is merely a
- * number that is about to move once.
+ * **The browser's own `contentBox` measures through the same kernel as of the D3 rebaseline.** It
+ * used not to: the two were measuring the same picture through two resamplers, so they agreed on
+ * any box whose edges were not within a sample cell of a partially-covered pixel and could differ by
+ * one there. `cli/serve-web/src/scorer/frames.ts` now samples with {@link resampleArea} too, which
+ * is what closed that gap — and the acceptance path still uses *this* function on both engines
+ * rather than whichever one the host has, because a host that later changed its mind would be the
+ * failure this module exists to prevent.
  */
 
 // The resampler and the outward-rounding rule live with the rest of the reference implementation of
 // the contract; this file is a second consumer of them rather than a second copy.
-import { enclosingBox, resampleArea } from "./known-differences.mjs";
+import { enclosingBox } from "./known-differences.mjs";
+import { cropTo, resampleArea } from "./known-difference-resample.mjs";
 
 /**
  * Detection tuning, mirroring `cli/serve-web/src/scorer/tuning.ts` for the reason
@@ -187,15 +187,7 @@ export function resolvePlane(reference, candidate) {
  * single-ratio resample would land the candidate at the right x and the wrong y.
  */
 export function canonicalRaster(image, box, plane) {
-  const cropped = { width: box.width, height: box.height, pixels: new Uint8Array(box.width * box.height * 4) };
-  for (let y = 0; y < box.height; y++) {
-    for (let x = 0; x < box.width; x++) {
-      const source = ((box.y + y) * image.width + (box.x + x)) * 4;
-      cropped.pixels.set(image.pixels.subarray(source, source + 4), (y * box.width + x) * 4);
-    }
-  }
-  if (cropped.width === plane.box.width && cropped.height === plane.box.height) return cropped;
-  return resampleArea(cropped, plane.box.width, plane.box.height);
+  return cropTo(image, box, plane.box.width, plane.box.height);
 }
 
 /**

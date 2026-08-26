@@ -180,6 +180,7 @@ test("the offline tuning constants mirror the browser's", () => {
     return Number(match[1]);
   };
   for (const name of [
+    "SCORE_VERSION",
     "MAX_SIDE",
     "EDGE_SEARCH_RADIUS",
     "EDGE_POSITION_COST",
@@ -213,6 +214,16 @@ test("the offline tuning constants mirror the browser's", () => {
     Number.parseInt(hex.slice(4, 6), 16),
   ]);
   assert.deepEqual(hexes, SCORE_TUNING.COMPARISON_GROUNDS);
+
+  // …and the browser now carries the same two grounds a second time, as triples, for the path that
+  // composites in arithmetic rather than through `fillRect`. A ground added to one spelling and not
+  // the other would score the design-reference lane and the SVG lane on different ground sets.
+  const rgb = /COMPARISON_GROUND_RGB[\s\S]*?=\s*\[([\s\S]*?)\n\];/.exec(source);
+  assert.ok(rgb, "tuning.ts no longer exports COMPARISON_GROUND_RGB");
+  const browserTriples = [...rgb[1].matchAll(/\[\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]/g)].map(
+    ([, r, g, b]) => [Number(r), Number(g), Number(b)],
+  );
+  assert.deepEqual(browserTriples, SCORE_TUNING.COMPARISON_GROUNDS);
 });
 
 test("the engine imports nothing a browser lacks", () => {
@@ -226,6 +237,7 @@ test("the engine imports nothing a browser lacks", () => {
     "known-difference-score.mjs",
     "known-difference-tuning.mjs",
     "known-difference-plane.mjs",
+    "known-difference-resample.mjs",
     "png-lite.mjs",
     "inflate-lite.mjs",
     "sha256-lite.mjs",

@@ -84,6 +84,12 @@ class DesignReferenceScorer {
    * `percent` is the structural match the lane's readout prints, `changedPercent` the share of
    * pixels the magenta delta map marks, and `geometry` the content-box proportion difference —
    * omitted below the threshold at which it is reporting the rasteriser rather than the design.
+   *
+   * `scoreVersion` says which pixel path minted them. It is read off the scorer itself rather than
+   * written here, and a scorer that cannot name its own kernel publishes no number at all: a served
+   * reader drops a match whose version is not the one it would compute with, so an unversioned
+   * number would be indistinguishable from a pre-rebaseline one and printed as though it were
+   * current.
    */
   async score(referencePng, actualPng) {
     if (!fs.existsSync(referencePng) || !fs.existsSync(actualPng)) return null;
@@ -107,14 +113,22 @@ class DesignReferenceScorer {
           percent: score.percent,
           geometry: score.geometry,
           changedPercent: pixels ? (changed * 100) / pixels : 0,
+          // Asked of the scorer that just produced the number, never restated here. A driver that
+          // carried its own copy could stamp a version the asset does not implement, which is worse
+          // than no version at all: the reader would then trust a number minted by another kernel.
+          scoreVersion: api.SCORE_VERSION,
         };
       },
       [dataUri(referencePng), dataUri(actualPng)],
     );
     if (!result || !Number.isFinite(result.percent)) return null;
+    // No version, no number. An asset too old to name its kernel is one whose numbers the reader
+    // cannot place, and publishing them unversioned is exactly the state D3 exists to end.
+    if (!Number.isInteger(result.scoreVersion)) return null;
     return {
       percent: round(result.percent, 2),
       changedPercent: round(result.changedPercent, 2),
+      scoreVersion: result.scoreVersion,
       ...(result.geometry >= GEOMETRY_REPORT_THRESHOLD
         ? { geometry: round(result.geometry, 1) }
         : {}),

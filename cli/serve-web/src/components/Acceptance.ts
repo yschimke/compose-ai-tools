@@ -259,22 +259,20 @@ export class Acceptance extends LitElement {
         }
         // `raw` first and always, because it is the number that must never be hidden.
         //
-        // And `raw` is stated rather than assumed to equal the match on the line above, because
-        // right now it does not: acceptance is measured with the portable kernel — an area average
-        // both engines can reproduce — while the result line still comes from the browser's own
-        // `drawImage` filter, which no offline engine can. The two differ slightly and will keep
-        // differing until the versioned rebaseline (D3) makes the portable path the live scorer.
-        // Saying so is cheaper than a reader discovering two numbers for one question.
+        // It used to carry a disclaimer, and no longer needs one. Acceptance has always been
+        // measured with the portable kernel — an area average both engines can reproduce — while
+        // the result line above came from the browser's own `drawImage` filter, which no offline
+        // engine can; the two differed slightly, and this band said so rather than leaving a reader
+        // to discover two numbers for one question. The rebaseline (D3) made the portable path the
+        // live scorer, so both numbers are now one pixel path: measured over the eleven committed
+        // `renders/lane-parity` pairs the two agree to 0.007pp, which is well inside the one decimal
+        // either of them prints.
         return html`
             <span class="cp-acceptance-scores">
                 <strong>${scores.raw.toFixed(1)}%</strong> raw ·
                 <strong>${scores.unaccepted.toFixed(1)}%</strong> unaccepted ·
                 <strong>${scores.accepted.toFixed(1)}%</strong> over the
                 accepted region
-            </span>
-            <span class="cp-acceptance-note">
-                Scored with the portable kernel, so these differ slightly from
-                the match above.
             </span>
         `;
     }

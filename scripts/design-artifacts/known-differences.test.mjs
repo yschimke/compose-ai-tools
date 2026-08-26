@@ -64,6 +64,7 @@ import {
   parseIssue,
   resampleArea,
 } from "./known-differences.mjs";
+import { cropTo } from "./known-difference-resample.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "known-differences");
 const CASES = join(ROOT, "cases");
@@ -955,4 +956,49 @@ test("ids and artifact paths refuse the shapes the contract names", () => {
   }
   assert.equal(isSafeArtifactPath("mask.png"), true);
   assert.equal(isSafeArtifactPath("nested/mask.png"), true);
+});
+
+// -----------------------------------------------------------------------------------------------
+// `cropTo` — the crop-and-resample every plane in this contract is built by, and now the browser's
+// score plane as well. The resampling half is pinned by the fixtures above; what is worth stating
+// here is the boundary between the two halves, because the identity case is the one a caller is
+// most likely to assume rather than check.
+// -----------------------------------------------------------------------------------------------
+
+test("cropTo crops without resampling when the box is already the target size", () => {
+  // 3×1 of distinct colours; taking the middle pixel at 1×1 must be that pixel EXACTLY. Through the
+  // resampler it would still be exact — a whole-pixel footprint is its own average — but the point
+  // is that no averaging happens at all, so a caller cropping at native size cannot be handed a
+  // rounded channel.
+  const source = {
+    width: 3,
+    height: 1,
+    pixels: new Uint8Array([1, 2, 3, 255, 40, 50, 60, 255, 7, 8, 9, 255]),
+  };
+  const out = cropTo(source, { x: 1, y: 0, width: 1, height: 1 }, 1, 1);
+  assert.deepEqual([...out.pixels], [40, 50, 60, 255]);
+});
+
+test("cropTo averages the cropped region, not the whole image", () => {
+  // The crop must happen FIRST. Resampling the whole 4×1 to 1×1 would average all four pixels and
+  // land on 128; averaging only the two the box names lands on 64 — a difference that would put the
+  // score plane's pixels somewhere the diff map never marks.
+  const source = {
+    width: 4,
+    height: 1,
+    pixels: new Uint8Array([0, 0, 0, 255, 128, 128, 128, 255, 255, 255, 255, 255, 255, 255, 255, 255]),
+  };
+  const out = cropTo(source, { x: 0, y: 0, width: 2, height: 1 }, 1, 1);
+  assert.equal(out.width, 1);
+  assert.deepEqual([...out.pixels], [64, 64, 64, 255]);
+});
+
+test("cropTo scales the two axes independently", () => {
+  // Width and height are stretched separately because the two content boxes are explicitly allowed
+  // to disagree about proportion; a single-ratio resample would land the candidate at the right x
+  // and the wrong y.
+  const source = { width: 2, height: 4, pixels: new Uint8Array(2 * 4 * 4).fill(255) };
+  const out = cropTo(source, { x: 0, y: 0, width: 2, height: 4 }, 6, 2);
+  assert.equal(out.width, 6);
+  assert.equal(out.height, 2);
 });
