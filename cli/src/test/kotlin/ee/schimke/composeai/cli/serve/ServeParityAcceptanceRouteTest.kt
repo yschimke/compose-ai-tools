@@ -96,6 +96,20 @@ class ServeParityAcceptanceRouteTest {
   }
 
   @Test
+  fun `the landing offers the view it now serves`() {
+    // The landing's chip is gated on the same condition the route serves on, so a lane added to one
+    // and not the other leaves a page reachable only by typing its URL.
+    serve { server ->
+      val request = Request.Builder().url("http://127.0.0.1:${server.port}/accepts-only").build()
+      client.newCall(request).execute().use { response ->
+        assertEquals(200, response.code)
+        val landing = response.body.string()
+        assertTrue("/accepts-only/parity" in landing, "the landing links the dashboard: $landing")
+      }
+    }
+  }
+
+  @Test
   fun `the json view still 404s, because it cannot represent what keeps the page alive`() {
     // `compose-preview-serve/parity/v1` carries coverage, drift, activity and gaps — every one of
     // them empty here — and nothing about acceptances, since the host does not parse that document.

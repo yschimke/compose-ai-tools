@@ -2823,10 +2823,14 @@ class ServeHttpServer(
           // never lands on a format the page does not offer.
           hasReferenceComparison =
             renderHost.previews.any { renderHost.designReferencesFor(it.id).isNotEmpty() },
-          // Same condition `handleParity` serves on, so the link never leads to that route's 404.
+          // Same condition `handleParity` serves on, so the link never leads to that route's 404 —
+          // and, since the acceptance lane was added there, so the page it made reachable is not
+          // reachable only by typing the URL. An orphan-only catalog is precisely the one whose
+          // dashboard has something to say and whose landing would otherwise offer no way in.
           hasParityView =
             renderHost.parityActivity() != null ||
               renderHost.parityIssues() != null ||
+              renderHost.knownDifferences() != null ||
               renderHost.previews.any { renderHost.designReferencesFor(it.id).isNotEmpty() },
           parityIssues = renderHost.parityIssues()?.issues.orEmpty(),
           // Same count `handleMotionIndex` gates on, so the chip never leads to that route's 404.
