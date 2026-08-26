@@ -76,6 +76,7 @@ jobs:
       build_cli: ${{ steps.scope.outputs.build_cli }}
       spatial_scene: ${{ steps.scope.outputs.spatial_scene }}
       actions_tests: ${{ steps.scope.outputs.actions_tests }}
+      preview_server_contracts: ${{ steps.scope.outputs.preview_server_contracts }}
       design_artifacts: ${{ steps.scope.outputs.design_artifacts }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1013,6 +1014,31 @@ jobs:
           path: samples/xr-spatial/build/compose-previews/renders/**/composite.png
           if-no-files-found: warn
 
+  # The preview server's dependency floor, compiled against PUBLISHED artifacts.
+  #
+  # `preview-server/` is a separate Gradle build that is deliberately not included in the root
+  # `settings.gradle.kts`, so nothing but this job proves it still resolves. It publishes the
+  # contract modules to Maven Local under a fixed probe version and builds against them — the same
+  # shape the split itself would have. A contract that stops being publishable, or a contract module
+  # that grows a dependency an extracted server has no business carrying, fails here months before
+  # anyone attempts the extraction. See docs/design/PREVIEW_SERVER_SPLIT.md.
+  preview-server-contracts:
+    name: Preview Server Contracts
+    needs: changes
+    if: ${{ needs.changes.outputs.preview_server_contracts == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
+          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
+      - name: Publish contracts and build the preview-server build against them
+        run: scripts/check-preview-server-contracts.sh
+
   spatial-scene-codegen:
     name: SpatialScene codegen up to date
     needs: changes
@@ -1206,6 +1232,13 @@ jobs:
         run: python3 .github/ci/test_change_scope.py -v
       - name: Run per-job path-scope classifier tests
         run: python3 .github/ci/test_path_scope.py -v
+      # The preview-server split's two committed instruments (issue #3824): the serve <-> cli
+      # symbol ratchet and the coupling gate. Both are pure-stdlib and classify real repo paths,
+      # so a layout change that would silently stop the measurement fails here.
+      - name: Run serve seam ratchet tests
+        run: python3 scripts/test_check_serve_seam.py -v
+      - name: Run serve coupling measurement tests
+        run: python3 scripts/test_measure_serve_coupling.py -v
       # The AdaptiveJetStream XR cell renders the sample's Subspaces with OUR compose-testing
       # against ITS compose. A version skew there fails only on main (the XR step is skipped on
       # PRs) and only at runtime, with a message that points nowhere near the cause.

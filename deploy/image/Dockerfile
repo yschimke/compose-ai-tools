@@ -28,7 +28,7 @@ ARG CP_VERSION=1.35.0
 # that only exists at compile time. `Profile.BWRAP` builds its argv from `Paths`
 # and binds it correctly. See deploy/image/README.md § "Containment".
 # ---------------------------------------------------------------------------
-FROM eclipse-temurin:21.0.11_10-jdk AS base
+FROM eclipse-temurin:21.0.12_8-jdk AS base
 COPY scripts/install-linux-font-fallbacks.sh /usr/local/bin/install-linux-font-fallbacks
 RUN COMPOSEAI_CLEAN_APT=1 /usr/local/bin/install-linux-font-fallbacks \
       libfreetype6 libfontconfig1 libgl1 libglx-mesa0 libgl1-mesa-dri \

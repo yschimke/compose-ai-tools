@@ -1,7 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.cli.BundleReader
-import ee.schimke.composeai.mcp.DaemonLaunchDescriptor
+import ee.schimke.composeai.daemon.DaemonLaunchDescriptor
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test

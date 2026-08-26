@@ -1,19 +1,26 @@
 import java.io.File
+import javax.inject.Inject
 import org.gradle.api.DefaultTask
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.artifacts.result.ResolvedArtifactResult
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.ClasspathNormalizer
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.OutputFile
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.Sync
 import org.gradle.api.tasks.TaskAction
 import org.gradle.process.CommandLineArgumentProvider
+import org.gradle.process.ExecOperations
 
 plugins {
   id("composeai.base-conventions")
@@ -579,6 +586,59 @@ tasks.register<CheckCliDaemonLibraryBoundary>("checkCliDaemonLibraryBoundary") {
 }
 
 tasks.named("check") { dependsOn("checkCliDaemonLibraryBoundary") }
+
+// The `serve` <-> `cli` seam, ratcheted ahead of the module extraction.
+//
+// `checkCliDaemonLibraryBoundary` above proves a *classpath* boundary. This one proves a boundary
+// that has no classpath yet: `serve` is still a package inside `:cli`, so every symbol it borrows
+// from the CLI — and every symbol the CLI borrows back — is invisible to the build and free to
+// multiply. Issue #3824 measured the cost of that drift; `scripts/serve-seam-allowlist.json`
+// writes today's crossings down, and this check fails when the list grows OR when it stops being
+// accurate because a crossing was removed and nobody pruned it.
+//
+// It becomes `checkServeModuleBoundary` — a real resolved-classpath check — when the extraction
+// lands. Until then this is the only thing standing between the split and another quarter of
+// invisible coupling. See docs/design/PREVIEW_SERVER_SPLIT.md.
+abstract class CheckServeSeam : DefaultTask() {
+  @get:InputFiles
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val serveSources: ConfigurableFileCollection
+
+  @get:InputFile
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val allowlist: RegularFileProperty
+
+  @get:InputFile
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val checker: RegularFileProperty
+
+  /** Nothing to produce — the file just lets Gradle skip the check when nothing moved. */
+  @get:OutputFile abstract val stamp: RegularFileProperty
+
+  @get:Inject abstract val execOps: ExecOperations
+
+  @TaskAction
+  fun checkSeam() {
+    execOps.exec { commandLine("python3", checker.get().asFile.absolutePath) }
+    stamp.get().asFile.writeText("ok\n")
+  }
+}
+
+tasks.register<CheckServeSeam>("checkServeSeam") {
+  description = "Fails if the serve <-> cli symbol surface grows (or its allowlist goes stale)."
+  group = "verification"
+
+  serveSources.from(
+    fileTree(layout.projectDirectory.dir("src")) {
+      include("*/kotlin/ee/schimke/composeai/cli/**/*.kt")
+    }
+  )
+  allowlist.set(rootProject.layout.projectDirectory.file("scripts/serve-seam-allowlist.json"))
+  checker.set(rootProject.layout.projectDirectory.file("scripts/check-serve-seam.py"))
+  stamp.set(layout.buildDirectory.file("check-serve-seam/ok.txt"))
+}
+
+tasks.named("check") { dependsOn("checkServeSeam") }
 
 // Bake the resolved Gradle build version into a properties resource the CLI reads at runtime
 // (see `Version.kt#BUNDLE_VERSION`). Avoids the previous hand-edited literal in source — which

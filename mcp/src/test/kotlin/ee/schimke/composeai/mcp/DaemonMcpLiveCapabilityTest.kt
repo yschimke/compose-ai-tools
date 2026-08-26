@@ -1,6 +1,7 @@
 package ee.schimke.composeai.mcp
 
 import com.google.common.truth.Truth.assertThat
+import ee.schimke.composeai.daemon.DaemonLaunchDescriptor
 import ee.schimke.composeai.daemon.JsonRpcServer
 import ee.schimke.composeai.daemon.RenderHost
 import ee.schimke.composeai.daemon.RenderRequest
