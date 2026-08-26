@@ -35,9 +35,16 @@ export const KNOWN_DIFFERENCES_SCHEMA = "compose-preview-known-differences/v1";
 /**
  * The budget, versioned with the schema.
  *
- * The five ceilings are *inclusive* — a document at exactly 256 acceptances, exactly 128 megapixels,
- * exactly 8192 px on a side or exactly 8 MiB per artifact is legal, and one unit past refuses. A
- * `>=` check would reject both and leave two engines free to disagree about the case in between.
+ * The six ceilings are *inclusive* — a document at exactly 256 acceptances, exactly 128 megapixels,
+ * exactly 8192 px on a side, exactly 8 MiB per artifact or exactly 640 MiB of peak live raster is
+ * legal, and one unit past refuses. A `>=` check would reject both and leave two engines free to
+ * disagree about the case in between.
+ *
+ * `maxRasterBytes` is the one ceiling that is about the *reader* rather than the document, and it
+ * exists because the others quietly implied it: a document inside every one of them could still
+ * oblige an engine to hold well over a gigabyte, which is a resource decision the caps were making
+ * without anyone taking it. It is measured by {@link peakRasterBytes} from the declared headers,
+ * before a single raster is allocated.
  *
  * `maxPreflightBytes` is the odd one out and is not a ceiling on anything a document may declare: it
  * is how much of an artifact the reader must serve so the header preflight can reach a verdict. It
@@ -54,7 +61,51 @@ export const BUDGET = {
   maxAxis: 8192,
   maxArtifactBytes: 8 * 1024 * 1024,
   maxPreflightBytes: 4096,
+  maxRasterBytes: 640 * 1024 * 1024,
 };
+
+/**
+ * Bytes per pixel of a decoded raster, and the buffers one decode holds at its peak.
+ *
+ * Every decode normalises to 8-bit RGBA whatever the file's colour type is, so a raster is exactly
+ * four bytes a pixel and the accounting needs no colour-type term. `DECODE_WORKING_MULTIPLE` is the
+ * transient side: at its peak a decode holds the inflated scanline bytes and the raster it is
+ * filling — for RGBA the output aliases the scanlines, for every other colour type the scanlines are
+ * *smaller* than the raster — so two raster-sized buffers is the shape, and three is a bound that
+ * covers the per-row filter byte (`h × (4w + 1)` is `4wh + h`) and every colour type at once without
+ * a case analysis. Deliberately a bound rather than a measurement: an accounting an implementation
+ * can under-shoot by being clever is one two engines disagree about.
+ */
+export const RASTER_BYTES_PER_PIXEL = 4;
+export const DECODE_WORKING_MULTIPLE = 3;
+
+/**
+ * The peak live raster bytes a document obliges an engine to hold, from its **declared** headers.
+ *
+ *     peak = 4 × Σ(w·h over every artifact)  +  4 × 3 × max(w·h over every artifact)
+ *
+ * The first term is what is *retained*: the gates need both of a record's rasters and the union
+ * needs the masks of the survivors, so every artifact's raster is live at once by the time a verdict
+ * exists. The second is the *transient* working set of the one decode in flight; decodes are
+ * sequential and each releases before the next, so charging the largest single artifact once is
+ * exact rather than conservative. Resampling a record onto its canonical plane needs no term of its
+ * own: the plane is the mask's own dimensions (`dimension-mismatch` is the verdict when it is not),
+ * so a plane raster is bounded by a raster already counted.
+ *
+ * **Why this is not a restatement of `maxPixels`.** The two caps bind on different documents, and
+ * both are reachable. 512 artifacts of 250,000 pixels total exactly 128 megapixels and peak at
+ * ~515 MB — refused by `maxPixels`, nowhere near the memory ceiling. One record holding an
+ * 8000 × 8000 mask and an 8000 × 8000 accepted candidate is *also* exactly 128 megapixels, inside
+ * every axis and byte cap, and peaks at ~1.28 GB — legal under every cap `v1` had before this one,
+ * which is the hole: the pixel cap chose a memory floor nobody had agreed to. 640 MiB is the figure
+ * that keeps the first document legal and refuses the second.
+ */
+export function peakRasterBytes(totalPixels, largestArtifactPixels) {
+  return (
+    RASTER_BYTES_PER_PIXEL * totalPixels +
+    RASTER_BYTES_PER_PIXEL * DECODE_WORKING_MULTIPLE * largestArtifactPixels
+  );
+}
 
 // Not a comment's promise — the one relationship between those two constants, checked where it
 // cannot rot. Shrinking the prefix below what a conforming header can occupy would turn legal
@@ -634,6 +685,7 @@ export function evaluateKnownDifferences({ documentText, readArtifact, compariso
   // remaining artifacts buys nothing and costs everything the cap was defending.
   const evaluations = [];
   let pixels = 0;
+  let largestArtifactPixels = 0;
   for (const [index, record] of records.entries()) {
     if (documentFailures.some((failure) => failure.reason === "document-too-large")) break;
     const evaluation = preflightRecord(record, index, readArtifact, catalog);
@@ -641,16 +693,25 @@ export function evaluateKnownDifferences({ documentText, readArtifact, compariso
     if (!evaluation.preflightClean) continue;
     for (const header of evaluation.headers) {
       const area = header.width * header.height;
+      // **The memory ceiling is checked as you go, like every other aggregate here.** Both terms of
+      // {@link peakRasterBytes} only ever grow as headers are added, so a running check refuses at
+      // the first header that puts the document over and stops reading — the same short-circuit the
+      // pixel cap gets, and for the same reason: past the ceiling nothing further about the document
+      // is knowable, and continuing to fetch costs exactly what the cap is defending.
+      const nextPixels = pixels + area;
+      const nextLargest = largestArtifactPixels > area ? largestArtifactPixels : area;
       if (
         header.width > BUDGET.maxAxis ||
         header.height > BUDGET.maxAxis ||
         area > BUDGET.maxPixels ||
-        pixels + area > BUDGET.maxPixels
+        nextPixels > BUDGET.maxPixels ||
+        peakRasterBytes(nextPixels, nextLargest) > BUDGET.maxRasterBytes
       ) {
         pushOnce(documentFailures, { reason: "document-too-large" });
         break;
       }
-      pixels += area;
+      pixels = nextPixels;
+      largestArtifactPixels = nextLargest;
     }
   }
 

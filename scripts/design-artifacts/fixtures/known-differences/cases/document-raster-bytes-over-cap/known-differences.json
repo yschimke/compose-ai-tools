@@ -1,0 +1,79 @@
+{
+  "schema": "compose-preview-known-differences/v1",
+  "acceptances": [
+    {
+      "id": "m3-iconbutton-tonal-glyph",
+      "issue": "https://github.com/yschimke/m3-catalog/issues/40",
+      "system": "m3",
+      "component": "IconButton/Tonal",
+      "previewId": "iconbutton-tonal__ideal__default__light",
+      "referenceId": "iconbutton-tonal-ideal-light",
+      "variant": "ideal/default/light",
+      "mask": "mask.png",
+      "acceptedCandidate": "accepted-candidate.png",
+      "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+      "maskSha256": "d163dd3ae81bd5bbf33c40ced155fe3a3e15971f93f04708c5fb4a4e48f088c2",
+      "acceptedCandidateSha256": "d163dd3ae81bd5bbf33c40ced155fe3a3e15971f93f04708c5fb4a4e48f088c2",
+      "plane": {
+        "plane": "content-box",
+        "box": {
+          "x": 4,
+          "y": 4,
+          "width": 24,
+          "height": 24
+        }
+      },
+      "candidateTolerance": 2,
+      "element": {
+        "kind": "tag",
+        "tag": "iconbutton-tonal-glyph",
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        },
+        "tolerance": 0.1
+      },
+      "note": "Tonal icon button draws its glyph in onSurfaceVariant; the kit uses onSecondaryContainer.",
+      "acceptedAt": "2026-08-22T00:00:00Z"
+    },
+    {
+      "id": "m3-iconbutton-tonal-glyph-2",
+      "issue": "https://github.com/yschimke/m3-catalog/issues/40",
+      "system": "m3",
+      "component": "IconButton/Tonal",
+      "previewId": "iconbutton-tonal__ideal__default__light",
+      "referenceId": "iconbutton-tonal-ideal-light",
+      "variant": "ideal/default/light",
+      "mask": "mask.png",
+      "acceptedCandidate": "accepted-candidate.png",
+      "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+      "maskSha256": "a4d4c009619311d9b83904acfd62fe3b7f918c312522bbcc6ad51cdec4fd1edf",
+      "acceptedCandidateSha256": "a4d4c009619311d9b83904acfd62fe3b7f918c312522bbcc6ad51cdec4fd1edf",
+      "plane": {
+        "plane": "content-box",
+        "box": {
+          "x": 4,
+          "y": 4,
+          "width": 24,
+          "height": 24
+        }
+      },
+      "candidateTolerance": 2,
+      "element": {
+        "kind": "tag",
+        "tag": "iconbutton-tonal-glyph",
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        },
+        "tolerance": 0.1
+      },
+      "note": "Tonal icon button draws its glyph in onSurfaceVariant; the kit uses onSecondaryContainer.",
+      "acceptedAt": "2026-08-22T00:00:00Z"
+    }
+  ]
+}

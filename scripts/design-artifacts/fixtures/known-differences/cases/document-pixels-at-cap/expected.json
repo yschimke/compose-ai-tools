@@ -9,11 +9,71 @@
       "reasons": [
         "header-invalid"
       ]
+    },
+    "m3-iconbutton-tonal-glyph-2": {
+      "status": "refused",
+      "reasons": [
+        "header-invalid"
+      ]
+    },
+    "m3-iconbutton-tonal-glyph-3": {
+      "status": "refused",
+      "reasons": [
+        "header-invalid"
+      ]
+    },
+    "m3-iconbutton-tonal-glyph-4": {
+      "status": "refused",
+      "reasons": [
+        "header-invalid"
+      ]
+    },
+    "m3-iconbutton-tonal-glyph-5": {
+      "status": "refused",
+      "reasons": [
+        "header-invalid"
+      ]
+    },
+    "m3-iconbutton-tonal-glyph-6": {
+      "status": "refused",
+      "reasons": [
+        "header-invalid"
+      ]
+    },
+    "m3-iconbutton-tonal-glyph-7": {
+      "status": "refused",
+      "reasons": [
+        "header-invalid"
+      ]
     }
   },
   "validationFailures": [
     {
       "id": "m3-iconbutton-tonal-glyph",
+      "reason": "header-invalid"
+    },
+    {
+      "id": "m3-iconbutton-tonal-glyph-2",
+      "reason": "header-invalid"
+    },
+    {
+      "id": "m3-iconbutton-tonal-glyph-3",
+      "reason": "header-invalid"
+    },
+    {
+      "id": "m3-iconbutton-tonal-glyph-4",
+      "reason": "header-invalid"
+    },
+    {
+      "id": "m3-iconbutton-tonal-glyph-5",
+      "reason": "header-invalid"
+    },
+    {
+      "id": "m3-iconbutton-tonal-glyph-6",
+      "reason": "header-invalid"
+    },
+    {
+      "id": "m3-iconbutton-tonal-glyph-7",
       "reason": "header-invalid"
     }
   ]

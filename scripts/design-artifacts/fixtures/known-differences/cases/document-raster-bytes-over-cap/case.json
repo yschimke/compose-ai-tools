@@ -1,0 +1,38 @@
+{
+  "title": "One pixel more than the memory ceiling allows",
+  "site": null,
+  "why": "**The first illegal peak, not merely an illegal one.** The first record puts the document exactly on 640 MiB, so the 1 × 1 mask that follows overshoots by a single pixel — four bytes — and a consumer whose ceiling is wrong by any amount at all fails this case. It is nowhere near any other cap: two records, 67 megapixels, four artifacts of a few hundred bytes each. The refusal is `document-too-large`, the token every budget already refuses with — a memory ceiling is a budget, and giving it a token of its own would make the same class of refusal arrive under two names in two engines.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "rasters/bb16b4247345bda7.png",
+    "canonicalCandidate": "rasters/73c291212fff39a2.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

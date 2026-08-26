@@ -12,8 +12,8 @@
       "mask": "mask.png",
       "acceptedCandidate": "accepted-candidate.png",
       "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
-      "maskSha256": "e0fdcc68359c350a4352fca586e1c2cf6ad1a4a95bf24265af819121c31e1203",
-      "acceptedCandidateSha256": "b08718e22a2e06bb48407935d23c189781c766233ff57d05ce3844c10753d23d",
+      "maskSha256": "3cf48c9c8bbe9b3c1dfd98c99b4b1480e6ea6bc87fbcb648918e2b728cda9650",
+      "acceptedCandidateSha256": "3cf48c9c8bbe9b3c1dfd98c99b4b1480e6ea6bc87fbcb648918e2b728cda9650",
       "plane": {
         "plane": "content-box",
         "box": {
@@ -39,7 +39,7 @@
       "acceptedAt": "2026-08-22T00:00:00Z"
     },
     {
-      "id": "m3-iconbutton-tonal-glyph-second",
+      "id": "m3-iconbutton-tonal-glyph-2",
       "issue": "https://github.com/yschimke/m3-catalog/issues/40",
       "system": "m3",
       "component": "IconButton/Tonal",
@@ -49,8 +49,193 @@
       "mask": "mask.png",
       "acceptedCandidate": "accepted-candidate.png",
       "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
-      "maskSha256": "0a81753f60cb943d22e61a47d14ed6592a2c27c229868ee55a3ab9e64fbf1fdd",
-      "acceptedCandidateSha256": "a4d4c009619311d9b83904acfd62fe3b7f918c312522bbcc6ad51cdec4fd1edf",
+      "maskSha256": "3cf48c9c8bbe9b3c1dfd98c99b4b1480e6ea6bc87fbcb648918e2b728cda9650",
+      "acceptedCandidateSha256": "3cf48c9c8bbe9b3c1dfd98c99b4b1480e6ea6bc87fbcb648918e2b728cda9650",
+      "plane": {
+        "plane": "content-box",
+        "box": {
+          "x": 4,
+          "y": 4,
+          "width": 24,
+          "height": 24
+        }
+      },
+      "candidateTolerance": 2,
+      "element": {
+        "kind": "tag",
+        "tag": "iconbutton-tonal-glyph",
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        },
+        "tolerance": 0.1
+      },
+      "note": "Tonal icon button draws its glyph in onSurfaceVariant; the kit uses onSecondaryContainer.",
+      "acceptedAt": "2026-08-22T00:00:00Z"
+    },
+    {
+      "id": "m3-iconbutton-tonal-glyph-3",
+      "issue": "https://github.com/yschimke/m3-catalog/issues/40",
+      "system": "m3",
+      "component": "IconButton/Tonal",
+      "previewId": "iconbutton-tonal__ideal__default__light",
+      "referenceId": "iconbutton-tonal-ideal-light",
+      "variant": "ideal/default/light",
+      "mask": "mask.png",
+      "acceptedCandidate": "accepted-candidate.png",
+      "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+      "maskSha256": "3cf48c9c8bbe9b3c1dfd98c99b4b1480e6ea6bc87fbcb648918e2b728cda9650",
+      "acceptedCandidateSha256": "3cf48c9c8bbe9b3c1dfd98c99b4b1480e6ea6bc87fbcb648918e2b728cda9650",
+      "plane": {
+        "plane": "content-box",
+        "box": {
+          "x": 4,
+          "y": 4,
+          "width": 24,
+          "height": 24
+        }
+      },
+      "candidateTolerance": 2,
+      "element": {
+        "kind": "tag",
+        "tag": "iconbutton-tonal-glyph",
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        },
+        "tolerance": 0.1
+      },
+      "note": "Tonal icon button draws its glyph in onSurfaceVariant; the kit uses onSecondaryContainer.",
+      "acceptedAt": "2026-08-22T00:00:00Z"
+    },
+    {
+      "id": "m3-iconbutton-tonal-glyph-4",
+      "issue": "https://github.com/yschimke/m3-catalog/issues/40",
+      "system": "m3",
+      "component": "IconButton/Tonal",
+      "previewId": "iconbutton-tonal__ideal__default__light",
+      "referenceId": "iconbutton-tonal-ideal-light",
+      "variant": "ideal/default/light",
+      "mask": "mask.png",
+      "acceptedCandidate": "accepted-candidate.png",
+      "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+      "maskSha256": "3cf48c9c8bbe9b3c1dfd98c99b4b1480e6ea6bc87fbcb648918e2b728cda9650",
+      "acceptedCandidateSha256": "3cf48c9c8bbe9b3c1dfd98c99b4b1480e6ea6bc87fbcb648918e2b728cda9650",
+      "plane": {
+        "plane": "content-box",
+        "box": {
+          "x": 4,
+          "y": 4,
+          "width": 24,
+          "height": 24
+        }
+      },
+      "candidateTolerance": 2,
+      "element": {
+        "kind": "tag",
+        "tag": "iconbutton-tonal-glyph",
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        },
+        "tolerance": 0.1
+      },
+      "note": "Tonal icon button draws its glyph in onSurfaceVariant; the kit uses onSecondaryContainer.",
+      "acceptedAt": "2026-08-22T00:00:00Z"
+    },
+    {
+      "id": "m3-iconbutton-tonal-glyph-5",
+      "issue": "https://github.com/yschimke/m3-catalog/issues/40",
+      "system": "m3",
+      "component": "IconButton/Tonal",
+      "previewId": "iconbutton-tonal__ideal__default__light",
+      "referenceId": "iconbutton-tonal-ideal-light",
+      "variant": "ideal/default/light",
+      "mask": "mask.png",
+      "acceptedCandidate": "accepted-candidate.png",
+      "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+      "maskSha256": "3cf48c9c8bbe9b3c1dfd98c99b4b1480e6ea6bc87fbcb648918e2b728cda9650",
+      "acceptedCandidateSha256": "3cf48c9c8bbe9b3c1dfd98c99b4b1480e6ea6bc87fbcb648918e2b728cda9650",
+      "plane": {
+        "plane": "content-box",
+        "box": {
+          "x": 4,
+          "y": 4,
+          "width": 24,
+          "height": 24
+        }
+      },
+      "candidateTolerance": 2,
+      "element": {
+        "kind": "tag",
+        "tag": "iconbutton-tonal-glyph",
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        },
+        "tolerance": 0.1
+      },
+      "note": "Tonal icon button draws its glyph in onSurfaceVariant; the kit uses onSecondaryContainer.",
+      "acceptedAt": "2026-08-22T00:00:00Z"
+    },
+    {
+      "id": "m3-iconbutton-tonal-glyph-6",
+      "issue": "https://github.com/yschimke/m3-catalog/issues/40",
+      "system": "m3",
+      "component": "IconButton/Tonal",
+      "previewId": "iconbutton-tonal__ideal__default__light",
+      "referenceId": "iconbutton-tonal-ideal-light",
+      "variant": "ideal/default/light",
+      "mask": "mask.png",
+      "acceptedCandidate": "accepted-candidate.png",
+      "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+      "maskSha256": "3cf48c9c8bbe9b3c1dfd98c99b4b1480e6ea6bc87fbcb648918e2b728cda9650",
+      "acceptedCandidateSha256": "3cf48c9c8bbe9b3c1dfd98c99b4b1480e6ea6bc87fbcb648918e2b728cda9650",
+      "plane": {
+        "plane": "content-box",
+        "box": {
+          "x": 4,
+          "y": 4,
+          "width": 24,
+          "height": 24
+        }
+      },
+      "candidateTolerance": 2,
+      "element": {
+        "kind": "tag",
+        "tag": "iconbutton-tonal-glyph",
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        },
+        "tolerance": 0.1
+      },
+      "note": "Tonal icon button draws its glyph in onSurfaceVariant; the kit uses onSecondaryContainer.",
+      "acceptedAt": "2026-08-22T00:00:00Z"
+    },
+    {
+      "id": "m3-iconbutton-tonal-glyph-7",
+      "issue": "https://github.com/yschimke/m3-catalog/issues/40",
+      "system": "m3",
+      "component": "IconButton/Tonal",
+      "previewId": "iconbutton-tonal__ideal__default__light",
+      "referenceId": "iconbutton-tonal-ideal-light",
+      "variant": "ideal/default/light",
+      "mask": "mask.png",
+      "acceptedCandidate": "accepted-candidate.png",
+      "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+      "maskSha256": "f34c225c3a47c68c261c1f2435cfa6597f1ab7e90c2aed952d7808cdfff67cdb",
+      "acceptedCandidateSha256": "21c65ec1467fa9c9b981d6c8e37ecf119d1d4f1221fe3bf421922a13664eaa23",
       "plane": {
         "plane": "content-box",
         "box": {

@@ -58,7 +58,7 @@ Each exists because two engines would otherwise diverge on identical bytes.
   engines different pixels — a decoder reads `IDAT`, an `<img>` advances the animation. Reject on
   `acTL`.
 - **Budget before decode**: 256 acceptances, 128 megapixels, 8192 px per axis, 8 MiB encoded per
-  artifact — all versioned. The header pass reads a **4096-byte prefix** of each artifact rather than
+  artifact, **640 MiB of peak live raster** — all versioned. The header pass reads a **4096-byte prefix** of each artifact rather than
   the whole of it, so the byte cap is enforced by something that has not already allocated past it;
   the reader reports the artifact's full length alongside, and that is what the cap is measured
   against. 4096 is provably enough: only `PLTE` and `tRNS` may precede the first `IDAT`, which bounds
@@ -68,6 +68,26 @@ Each exists because two engines would otherwise diverge on identical bytes.
   the budget and undecodable in every browser), and neither implies the byte cap (`ServeCatalogStore`
   refuses any catalog asset over 25 MB). **Compare as you go and short-circuit** — never accumulate a
   total that can overflow differently in Kotlin and JavaScript.
+- **The memory ceiling is its own cap, because the others implied one nobody chose.** A record
+  holding two 8000 × 8000 rasters is exactly 128 megapixels, inside every axis and byte cap, and
+  obliges a reader to hold ~1.28 GB. `v1` bounds `4 × Σ(w·h) + 12 × max(w·h)` — retained rasters at
+  four bytes a pixel, plus the transient working set of the one decode in flight — at 640 MiB,
+  computed from the declared headers in the same preflight pass and refused as `document-too-large`.
+  Not a restatement of the pixel cap: each binds on documents the other admits, and because the
+  transient term is the *largest* artifact, the same pixel total peaks at 640 MiB as two 8192 × 4096
+  rasters and 352 MiB as eight 8192 × 1024 ones. All three shapes are fixtured.
+- **Partial alpha is normalised at decode, not refused.** A browser stores canvas pixels
+  premultiplied at 8 bits, so only `a + 1` colours per channel survive a round trip at alpha `a` —
+  at alpha `1` the whole range collapses onto two, a hidden difference of up to 254 that no
+  `candidateTolerance` in `[0, 8]` can absorb and that lands straight in the candidate gate as a
+  spurious `candidate-changed`. Every decoded pixel is put on the canonical spelling of its
+  premultiplied bucket (`p = floor(c·a/255 + 0.5)`, `c' = floor(p·255/a + 0.5)`; alpha `0` is the
+  degenerate case that was already handled, alpha `255` the identity). The property that makes it
+  cross-engine is `N(host(c)) = N(c)` for any host rounding to a nearest integer — premultiplication
+  has no ties and unpremultiplication's off-by-one re-lands on the same bucket — so neither engine
+  has to reproduce the other's tie-break, and a raster lifted off a canvas must be normalised too.
+  Refusing partial alpha was the alternative: a new reason token for half a fix, since the canonical
+  rasters come from the same decode path.
 - **`id` is constrained three ways**: as a path segment, as a map key (`__proto__` is a fine path
   segment and a catastrophic object key), and against **both** dot names — `.` passes a `..`-only
   check and normalises to the `known-differences` root.

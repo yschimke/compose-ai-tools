@@ -1,7 +1,7 @@
 {
   "title": "128,000,001 declared across the set — the first total past the cap",
   "site": null,
-  "why": "**Compare as you go and short-circuit.** Summing across a third-party set is exactly where two engines diverge silently: a Kotlin accumulator can wrap into a value that sits under the cap while JavaScript keeps a large positive `Number` and rejects, and the offline consumer then allocates what the browser refused. Spread over two records and four rasters so the sum is the thing being pinned rather than any single header, and landing on **cap + 1** exactly so the fixture pins the constant rather than a neighbourhood of it.",
+  "why": "**Compare as you go and short-circuit.** Summing across a third-party set is exactly where two engines diverge silently: a Kotlin accumulator can wrap into a value that sits under the cap while JavaScript keeps a large positive `Number` and rejects, and the offline consumer then allocates what the browser refused. Spread over seven records and fourteen rasters so the sum is the thing being pinned rather than any single header, and landing on **cap + 1** exactly — the last raster is one pixel wider than the accepting case's — so the fixture pins the constant rather than a neighbourhood of it. Peak live raster is unchanged at 632,000,004 bytes, so the memory ceiling is not what refuses this.",
   "comparison": {
     "system": "m3",
     "component": "IconButton/Tonal",

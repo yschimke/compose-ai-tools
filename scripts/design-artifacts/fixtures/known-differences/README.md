@@ -83,6 +83,8 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `gate-resolved-fixed-candidate` | The candidate gate fired and the region converged on the reference |
 | `gate-metric-single-channel-over` | One channel past `candidateTolerance`, three identical |
 | `gate-metric-every-channel-at-tolerance` | Every channel exactly at `candidateTolerance` |
+| `gate-candidate-partial-alpha-normalised` | Two straight-alpha colours a premultiplied canvas cannot tell apart |
+| `gate-candidate-partial-alpha-distinguished` | One byte further, and the two colours are no longer the same pixel |
 | `gate-candidate-changed` | The masked region is neither the accepted difference nor the reference |
 | `gate-reference-changed` | The served reference no longer hashes to the recorded one |
 | `gate-served-hash-uppercase` | An uppercase *served* reference hash must not report `reference-changed` |
@@ -123,6 +125,9 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `document-combined-failures` | A duplicated id, an unkeyable record and an over-cap count at once |
 | `document-pixels-at-cap` | 128 megapixels declared across the set — exactly the cap |
 | `document-pixels-over-cap` | 128,000,001 declared across the set — the first total past the cap |
+| `document-raster-bytes-at-cap` | Peak live raster of exactly 640 MiB — the memory ceiling, inclusive |
+| `document-raster-bytes-over-cap` | One pixel more than the memory ceiling allows |
+| `document-raster-bytes-spread-under-cap` | The same 67 megapixels, spread — and legal |
 | `gate-resolution-reference-dimensions-differ` | A canonical reference whose dimensions are not the recorded plane's |
 | `document-axis-at-cap` | A raster exactly 8192 px on its long axis |
 | `document-axis-over-cap` | A raster 8193 px on its long axis |

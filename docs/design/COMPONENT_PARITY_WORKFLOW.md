@@ -790,13 +790,27 @@ and the fixtures are
    many) and a second constant is a second thing two engines pick differently. All four channels
    because the existing delta map already charges for the same four, and an alpha-only change is a
    visible change. The mask is strictly binary, so "at the mask edge" is not a case: a canonical
-   pixel is masked or it is not, and only masked pixels are compared. **A fully transparent pixel is
-   normalised to zero RGB at decode**, before the metric ever sees it: reading a canvas back commonly
-   returns `0,0,0,0` for one, because premultiplying by zero alpha destroys the colour and
-   unpremultiplying cannot recover it — so without the normalisation two encodings of *invisible*
-   compare equal in a browser and unequal offline, and the disagreement lands in this gate. It is
-   done in the decoder rather than the metric so every consumer of a decoded raster sees the same
-   pixels. The candidate gate and the
+   pixel is masked or it is not, and only masked pixels are compared. **Every pixel is normalised at
+   decode onto the one straight-alpha spelling a premultiplied canvas can hand back**, before the
+   metric ever sees it. A browser stores canvas pixels premultiplied at 8 bits and unpremultiplies
+   them on readback, so at alpha `a` only `a + 1` colours per channel survive the trip; without the
+   normalisation two committed colours compare equal in a browser and unequal offline, and the
+   disagreement lands in this gate. Alpha `1` is the extreme — the whole 0–255 range collapses onto
+   two values — and no `candidateTolerance` in `[0, 8]` can absorb a difference of that size. The
+   rule is `p = floor(c × a / 255 + 0.5)` then `c' = floor(p × 255 / a + 0.5)`, with alpha `0` its
+   degenerate case (zero RGB, since premultiplying by zero destroys the colour and unpremultiplying
+   cannot recover it) and alpha `255` the identity. What makes it cross-engine is not that a
+   normalised pixel is a fixed point of the host's round trip — it is not, if the host breaks a tie
+   the other way — but that **normalising after the host has had its turn lands where normalising
+   instead of it does**, for any host that rounds to *a* nearest integer: premultiplying has no ties
+   at all (`c × a / 255` is a half-integer only if `2ca ≡ 255 (mod 510)`, and the left side is even),
+   so every host agrees on `p`; unpremultiplying may differ by one, but that value is within `0.5` of
+   `p × 255 / a` and so re-premultiplies to the same `p` for every `a < 255`. Refusing partial alpha
+   outright was the alternative and was rejected: it needs a new reason token and only half-closes
+   the hole, since the canonical rasters come from the same decode path. The normalisation is done in
+   the decoder rather than the metric so every consumer of a decoded raster sees the same pixels —
+   which also means it must be applied to a raster lifted off a canvas, not only to one decoded from
+   a file. The candidate gate and the
    resolution test use **this** metric, which is what stops them disagreeing about whether two
    images match.
 
@@ -1133,6 +1147,46 @@ instead would be a cap that has quietly stopped applying), refused as `artifact-
 under the host's own limit so the two engines agree well before the host's fetch would fail, and far
 above a real mask or crop. Per-artifact rather than per-document, and excluded from the pixel budget
 like every other preflight refusal, so the order-independence rule still holds.
+
+**And a memory ceiling, because the other four had chosen one without saying so.** Every cap above
+is about what a document may *declare*; none of them is about what a reader must *hold*, and the
+gap between the two was large enough to be a decision in its own right. One record carrying an
+8000 × 8000 mask and an 8000 × 8000 accepted candidate is exactly 128 megapixels, exactly inside the
+axis cap, and a few hundred encoded bytes if the content is uniform — a legal document by every
+number `v1` had — and it obliges a reader to hold about **1.28 GB** of raster before a verdict
+exists. So `v1` names a fifth constant, **640 MiB of peak live raster**, and defines the quantity it
+bounds rather than leaving each engine to estimate its own:
+
+```
+peak = 4 × Σ(width × height over every artifact)  +  4 × 3 × max(width × height over every artifact)
+```
+
+Four bytes a pixel because every decode normalises to 8-bit RGBA whatever the file's colour type is.
+The first term is what is **retained**: the gates need both of a record's rasters and the surviving
+union needs the masks, so by the time there is a verdict every artifact's raster has been live at
+once. The second is the **transient** working set of the single decode in flight — the inflated
+scanlines and the raster being filled — and it charges only the largest artifact because decodes are
+sequential and each releases before the next. Three rather than two is a bound rather than a
+measurement, covering the per-row filter byte and every colour type at once: an accounting an
+implementation can under-shoot by being clever is an accounting two engines disagree about.
+Resampling a record onto its canonical plane needs no term of its own, since the plane is the mask's
+own dimensions (`dimension-mismatch` is the verdict when it is not) and a plane raster is therefore
+bounded by one already counted.
+
+It is computed from the **declared headers**, in the same preflight pass and with the same
+compare-as-you-go short-circuit as the pixel cap — both terms only grow as headers are added — so it
+refuses before anything is allocated, and it refuses as **`document-too-large`**, the token every
+budget already refuses with. A memory ceiling is a budget; giving it a token of its own would make
+one class of refusal arrive under two names in two engines. Inclusive at the boundary like every
+other cap.
+
+**The pixel cap and the memory ceiling are not two spellings of one number**, which is why both are
+named. 512 artifacts of 250,000 pixels are exactly 128 megapixels and peak at about 515 MB — refused
+by the pixel cap, nowhere near the ceiling. The 8000 × 8000 pair above is *also* exactly 128
+megapixels and peaks at 1.28 GB — refused by the ceiling alone. And 67,108,864 pixels peak at 640 MiB
+as two 8192 × 4096 rasters and at 352 MiB as eight 8192 × 1024 ones, so the ceiling is not a function
+of the total either: an engine that implements it as `4 × total` refuses ordinary large catalogs. All
+three shapes are fixtured, on both sides of each boundary.
 
 Nothing ever holds a value larger than the cap plus one raster, so
 there is nothing to overflow, and the two engines cannot disagree about arithmetic they never do.

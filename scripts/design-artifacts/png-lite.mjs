@@ -551,16 +551,65 @@ export function decodePng(bytes) {
     }
   }
 
-  // **A fully transparent pixel is normalised to zero RGB.** Reading a canvas back commonly returns
-  // `0,0,0,0` for one, because premultiplying by zero alpha destroys the colour and unpremultiplying
-  // cannot recover it — so two encodings of *invisible* compare equal in a browser and unequal under
-  // a decoder that preserves the hidden channels. The match metric charges all four channels (D5
-  // answer 6), so that difference would land directly in the candidate gate. Normalising here rather
-  // than in the metric keeps every consumer of a decoded raster on the same pixels.
-  for (let d = 0; d < pixels.length; d += 4) {
-    if (pixels[d + 3] === 0) pixels[d] = pixels[d + 1] = pixels[d + 2] = 0;
-  }
+  normaliseAlpha(pixels);
   return { width, height, colourType, pixels };
+}
+
+/**
+ * Put every pixel on the one straight-alpha spelling a premultiplied canvas can hand back.
+ *
+ * A browser stores canvas pixels **premultiplied** at 8 bits and unpremultiplies them on readback,
+ * so a straight-alpha colour is quantised to whichever of the `a + 1` premultiplied values its
+ * channel lands on and then re-expanded. Two distinct committed colours therefore compare *equal*
+ * in the browser engine and *unequal* under a decoder that preserves the channels it was given —
+ * and the match metric charges all four channels (D5 answer 6), so the difference lands straight in
+ * the candidate gate as a spurious `candidate-changed`. The extreme case is alpha `1`, where the
+ * whole 0–255 range collapses onto two representable colours: every channel below 128 reads back
+ * as `0` and every channel at or above it as `255`, a hidden difference of up to 254 that no
+ * `candidateTolerance` in `[0, 8]` can absorb.
+ *
+ * The fix `v1` takes is to define the round trip **once, here**, rather than to forbid partial alpha
+ * — refusing it would need a new reason token and would still only half-close the hole, since the
+ * canonical rasters a comparison supplies come from the same decode path.
+ *
+ *     p = floor(c × a / 255 + 0.5)            premultiply, round half-up
+ *     c' = floor(p × 255 / a + 0.5)           unpremultiply, round half-up
+ *
+ * **The property that makes it cross-engine, stated exactly.** It is *not* that a normalised pixel
+ * is a fixed point of the host's round trip — it is not, if the host breaks a tie the other way on
+ * the unpremultiply. It is that normalising **after** the host has had its turn lands on the same
+ * value as normalising instead of it: `N(host(c)) = N(c)`, for any host that rounds to *a* nearest
+ * integer in both directions, whatever it does with ties. Two steps prove it. Premultiplying has no
+ * ties at all — `c × a / 255` is a half-integer only if `2 c a ≡ 255 (mod 510)`, and the left side
+ * is even while `255` is odd — so every host agrees on `p`. Unpremultiplying may then differ by one,
+ * but the value it returns is within `0.5` of `p × 255 / a`, so premultiplying *that* is within
+ * `0.5 × a / 255 < 0.5` of `p` for every `a < 255` and re-lands on the same `p`; `a = 255` makes the
+ * whole map the identity. So the browser normalises what it read back, the offline decoder
+ * normalises what it decoded, and both arrive at the one spelling of that premultiplied bucket
+ * without either having to reproduce the other's tie-break.
+ *
+ * **So it must be applied to every raster that reaches a comparison, not only to decoded PNGs.** A
+ * canonical raster the browser lifted off a canvas has already been through `host(·)`; the same
+ * raster read from a file offline has not. Normalising both is what makes them the same pixels.
+ *
+ * Alpha `0` is the degenerate case of the same rule — `p` is `0` for every channel and nothing can
+ * be recovered from it — so it normalises to zero RGB, as it did when that was the only case
+ * handled here. Alpha `255` is the identity and is skipped rather than computed, because it is
+ * almost every pixel this contract sees.
+ */
+function normaliseAlpha(pixels) {
+  for (let d = 0; d < pixels.length; d += 4) {
+    const a = pixels[d + 3];
+    if (a === 255) continue;
+    if (a === 0) {
+      pixels[d] = pixels[d + 1] = pixels[d + 2] = 0;
+      continue;
+    }
+    for (let c = 0; c < 3; c++) {
+      const premultiplied = Math.floor((pixels[d + c] * a) / 255 + 0.5);
+      pixels[d + c] = Math.floor((premultiplied * 255) / a + 0.5);
+    }
+  }
 }
 
 function unfilter(filter, row, out, base, stride, channels) {

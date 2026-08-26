@@ -44,6 +44,9 @@ import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { MAX_CONFORMING_HEADER_BYTES, decodePng, padPngTo } from "./png-lite.mjs";
+// The writer, for the handful of tests that need bytes rather than a committed fixture. It lives
+// outside `png-lite.mjs` because that module has no compressor — see its header.
+import { encodePng } from "./png-write.mjs";
 import {
   BUDGET,
   CANDIDATE_TOLERANCE_RANGE,
@@ -51,6 +54,7 @@ import {
   ELEMENT_TOLERANCE_RANGE,
   REASON_ORDER,
   acceptanceLifecycles,
+  peakRasterBytes,
   enclosingBox,
   evaluateKnownDifferences,
   isSafeArtifactPath,
@@ -67,6 +71,13 @@ const RESAMPLE = join(ROOT, "resample");
 const ROUNDING = join(ROOT, "rounding");
 
 const index = JSON.parse(readFileSync(join(ROOT, "index.json"), "utf8"));
+
+/** One row of straight-alpha RGBA, as PNG bytes. */
+function encodeRgbaRow(pixels) {
+  const samples = new Uint8Array(pixels.length * 4);
+  pixels.forEach((pixel, slot) => samples.set(pixel, slot * 4));
+  return encodePng({ width: pixels.length, height: 1, samples });
+}
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
@@ -753,6 +764,7 @@ test("the budget constants are the ones `v1` names", () => {
     maxAxis: 8192,
     maxArtifactBytes: 8 * 1024 * 1024,
     maxPreflightBytes: 4096,
+    maxRasterBytes: 640 * 1024 * 1024,
   });
   // The prefix is a fixed constant because two engines choosing their own would disagree exactly on
   // the files that put the most in front of their image data. This asserts the number *and* the
@@ -762,6 +774,86 @@ test("the budget constants are the ones `v1` names", () => {
   assert.ok(BUDGET.maxPreflightBytes > MAX_CONFORMING_HEADER_BYTES);
   assert.deepEqual(CANDIDATE_TOLERANCE_RANGE, [0, 8]);
   assert.deepEqual(ELEMENT_TOLERANCE_RANGE, [0, 0.25]);
+});
+
+test("the memory ceiling is a different cap from the pixel one, both ways round", () => {
+  // Spelled here rather than imported for the same reason every expected value in the fixture tree
+  // is: a test that reads the module's own arithmetic agrees with whatever that arithmetic does.
+  const peak = (total, largest) => 4 * total + 12 * largest;
+  assert.equal(peakRasterBytes(67_108_864, 33_554_432), peak(67_108_864, 33_554_432));
+  assert.equal(peakRasterBytes(67_108_864, 33_554_432), BUDGET.maxRasterBytes);
+
+  // The hole this cap closes: one record of two 8000 × 8000 rasters is exactly the pixel cap, inside
+  // the axis cap and inside the byte cap, and obliges a reader to hold about 1.28 GB.
+  assert.ok(64_000_000 * 2 <= BUDGET.maxPixels);
+  assert.ok(8000 <= BUDGET.maxAxis);
+  assert.ok(peakRasterBytes(128_000_000, 64_000_000) > BUDGET.maxRasterBytes);
+
+  // And the converse, which is what stops the ceiling being a restatement of the pixel cap: the
+  // pixel cap still binds first on a document made of many ordinary rasters.
+  assert.ok(peakRasterBytes(BUDGET.maxPixels, 250_000) <= BUDGET.maxRasterBytes);
+
+  // The ceiling is not a function of the total alone — the same pixel count peaks differently
+  // depending on how it is distributed, which is the whole of the transient term.
+  assert.ok(peakRasterBytes(67_108_864, 8_388_608) < peakRasterBytes(67_108_864, 33_554_432));
+});
+
+test("a decoded pixel is the one spelling a premultiplied canvas hands back", () => {
+  // The property the two engines rely on, checked over the whole domain rather than at samples:
+  // normalising after a host round trip lands where normalising instead of it does, for any host
+  // that rounds to *a* nearest integer in either direction. Written out here rather than imported
+  // because it is the claim `png-lite.mjs` makes, not the code it makes it with.
+  const normalise = (c, a) => {
+    if (a === 0) return 0;
+    return Math.floor((Math.floor((c * a) / 255 + 0.5) * 255) / a + 0.5);
+  };
+  const roundings = [
+    (x) => Math.floor(x + 0.5),
+    (x) => Math.ceil(x - 0.5),
+    (x) => {
+      const floor = Math.floor(x);
+      const fraction = x - floor;
+      if (fraction > 0.5) return floor + 1;
+      if (fraction < 0.5) return floor;
+      return floor % 2 === 0 ? floor : floor + 1;
+    },
+  ];
+  for (const premultiply of roundings) {
+    for (const unpremultiply of roundings) {
+      for (let a = 1; a <= 255; a++) {
+        for (let c = 0; c <= 255; c++) {
+          const readBack = Math.min(255, unpremultiply((premultiply((c * a) / 255) * 255) / a));
+          assert.equal(normalise(readBack, a), normalise(c, a), `alpha ${a}, channel ${c}`);
+        }
+      }
+    }
+  }
+
+  // Exactly `a + 1` colours survive at alpha `a`, which is what makes the collapse at low alpha as
+  // severe as it is — and the decoder is what puts both engines on the same one of them.
+  for (const a of [1, 2, 64, 254, 255]) {
+    const distinct = new Set();
+    for (let c = 0; c <= 255; c++) distinct.add(normalise(c, a));
+    assert.equal(distinct.size, a + 1);
+  }
+
+  // And the decoder actually does it. Alpha 1 is the extreme: 127 and 128 are one byte apart and
+  // land on opposite ends of the range.
+  const png = encodeRgbaRow([
+    [10, 20, 30, 1],
+    [100, 90, 80, 1],
+    [127, 20, 30, 1],
+    [128, 20, 30, 1],
+    [200, 100, 50, 255],
+  ]);
+  const decoded = decodePng(png);
+  assert.deepEqual([...decoded.pixels], [
+    0, 0, 0, 1,
+    0, 0, 0, 1,
+    0, 0, 0, 1,
+    255, 0, 0, 1,
+    200, 100, 50, 255,
+  ]);
 });
 
 test("the JSON Schema and the module agree on every number `v1` fixes", () => {
