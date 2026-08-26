@@ -21,6 +21,7 @@ import {
     BUDGET as BudgetJs,
     acceptanceLifecycles as acceptanceLifecyclesJs,
     evaluateKnownDifferences as evaluateJs,
+    readsNoArtifacts as readsNoArtifactsJs,
 } from "../../../../scripts/design-artifacts/known-differences.mjs";
 import {
     canonicalRaster as canonicalRasterJs,
@@ -64,9 +65,7 @@ export interface Plane {
  * length standing in for both — the shape the decode pass takes.
  */
 export type ArtifactAnswer =
-    | Uint8Array
-    | { bytes: Uint8Array; byteLength: number }
-    | { error: string };
+    Uint8Array | { bytes: Uint8Array; byteLength: number } | { error: string };
 
 /** The header pass asks for at most `prefix` bytes; the decode pass passes no options at all. */
 export interface ReadOptions {
@@ -133,9 +132,24 @@ export interface Catalog {
     }>;
 }
 
+/**
+ * Whether the engine rejects this document before reading a single artifact.
+ *
+ * The one question a fetch-ahead consumer can ask the engine *in advance*, and the reason it is the
+ * engine's function rather than this file's: planning reads from a second copy of the rejection
+ * rules is how a consumer fetches for a document that reads nothing, or — worse — skips for one that
+ * does.
+ */
+export const readsNoArtifacts = readsNoArtifactsJs as unknown as (
+    documentText: string,
+) => boolean;
+
 export const evaluateKnownDifferences = evaluateJs as unknown as (options: {
     documentText: string;
-    readArtifact: (path: string, options?: ReadOptions) => ArtifactAnswer | null;
+    readArtifact: (
+        path: string,
+        options?: ReadOptions,
+    ) => ArtifactAnswer | null;
     comparison?: Comparison | null;
     catalog?: Catalog | null;
 }) => EngineResult;
@@ -206,7 +220,8 @@ export const BUDGET = BudgetJs as unknown as {
 };
 
 /** The most bytes a conforming header region can occupy; the prefix must be at least this. */
-export const MAX_CONFORMING_HEADER_BYTES = MaxConformingHeaderBytesJs as unknown as number;
+export const MAX_CONFORMING_HEADER_BYTES =
+    MaxConformingHeaderBytesJs as unknown as number;
 
 /** The published tag index, render-pixel, projected into the comparison's canonical plane. */
 export const projectTagIndex = projectTagIndexJs as unknown as (

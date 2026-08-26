@@ -188,6 +188,24 @@ describe("<cp-acceptance-audit>", () => {
         assert.match(text(band), /path-not-contained/);
     });
 
+    it("fetches no artifact for a document the engine rejects outright", async () => {
+        // `readArtifact` is synchronous, so the bytes must be in hand before the ladder starts — and
+        // a rejected document reads none of them, so every byte fetched for one is held for a result
+        // that carries no `statuses`. The panel must still say what happened; what it must not do is
+        // pay for it.
+        const broken = JSON.stringify({
+            schema: "compose-preview-known-differences/v1",
+            acceptances: [{ id: "glyph" }, { id: "GLYPH" }],
+        });
+        const band = await mount(routes(broken), PREVIEWS);
+        assert.ok(
+            !(net?.asked ?? []).some((url) => url.includes(".png")),
+            `no artifact was fetched: ${net?.asked.join(", ")}`,
+        );
+        assert.match(text(band), /was refused/);
+        assert.match(text(band), /duplicate-id/);
+    });
+
     it("reports a refused document rather than an empty audit", async () => {
         const broken = JSON.stringify({
             schema: "compose-preview-known-differences/v1",

@@ -30,6 +30,7 @@ import {
     evaluateKnownDifferences,
     preflightPng,
     projectTagIndex,
+    readsNoArtifacts,
     resolvePlane,
     scoreComparison,
     sha256Hex,
@@ -477,6 +478,20 @@ async function prefetch(
     }
     const acceptances = (parsed as { acceptances?: unknown })?.acceptances;
     if (!Array.isArray(acceptances)) return artifacts;
+
+    // **A document the engine rejects outright is fetched for not at all.** `readArtifact` is
+    // synchronous by design, so this file has to have the bytes in hand before the ladder starts —
+    // which means a rejected document would otherwise be paid for in full: up to 256 × 2 × 8 MiB of
+    // legal, individually-capped artifacts held for a result that carries no `statuses` and reads
+    // nothing. The engine's own preflight goes to some length to avoid exactly that (it retains no
+    // bytes and re-reads them later), and prefetching undoes it unless the same question is asked
+    // first.
+    //
+    // Asked *of the engine* rather than answered here: `readsNoArtifacts` is the same code path the
+    // evaluation takes, so the two cannot drift. A second copy of the rejection rules that skipped
+    // for a document the engine does read would turn every one of its records into
+    // `artifact-unreadable` — a verdict change, and the only failure direction that matters.
+    if (readsNoArtifacts(documentText)) return artifacts;
 
     const paths = new Set<string>();
     for (const record of acceptances) {
