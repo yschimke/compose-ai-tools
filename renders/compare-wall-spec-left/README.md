@@ -50,6 +50,6 @@ node --test scripts/design-artifacts/render-compare-html.test.mjs
 ./gradlew :cli:test --tests '*ServeWebTest*'
 ./gradlew :data-layoutinspector-connector:test --tests '*FigmaFidelityTest*'
 UPDATE_SERVE_WEB_FIXTURES=true ./gradlew :cli:test --tests '*ServeWebFixtureTest*'
-cd vscode-extension && npx playwright test -c preview-harness/playwright.config.mjs \
+cd preview-server/preview-harness && npx playwright test -c playwright.config.mjs \
   pages-snapshot --grep 'format-compare'
 ```

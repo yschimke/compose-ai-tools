@@ -19,8 +19,8 @@ Cropped from the `pages-snapshot` harness captures of
 `serve-viewer.light` and `serve-viewer-path-spec-lane.light`:
 
 ```
-cd vscode-extension
-npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot
+cd preview-server/preview-harness
+npx playwright test -c playwright.config.mjs pages-snapshot
 ```
 
 The before/after pairs are **byte-identical**, and so are 197 of the 198 page

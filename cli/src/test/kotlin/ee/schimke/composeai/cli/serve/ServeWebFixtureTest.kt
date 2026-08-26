@@ -35,7 +35,7 @@ import kotlinx.serialization.json.buildJsonObject
  *
  * `ServeWeb`'s landing + viewer pages are a *visual* surface, so — per the repo rule about wiring
  * new visual surfaces into the preview workflow — they're rendered to committed HTML fixtures under
- * `vscode-extension/preview-harness/fixtures/pages/`. The harness's `pages-snapshot.spec.mjs`
+ * `preview-server/preview-harness/fixtures/pages/`. The harness's `pages-snapshot.spec.mjs`
  * screenshots those per theme into `out/<fixture>.<theme>.png`, which the existing generic
  * `vscode-preview-diff.py` bot diffs + comments on every PR — no panel/`scenario.html` plumbing.
  *
@@ -727,7 +727,7 @@ class ServeWebFixtureTest {
 
   @Test
   fun `serve web fixtures are in sync with ServeWeb`() {
-    val pagesDir = File(repoRoot(), "vscode-extension/preview-harness/fixtures/pages")
+    val pagesDir = File(repoRoot(), "preview-server/preview-harness/fixtures/pages")
     val update =
       System.getenv("UPDATE_SERVE_WEB_FIXTURES") == "true" ||
         System.getProperty("updateServeWebFixtures") == "true"

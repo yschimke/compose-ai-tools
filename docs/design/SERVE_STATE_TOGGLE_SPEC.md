@@ -62,7 +62,7 @@ Add/extend under `cli/src/test/kotlin/ee/schimke/composeai/cli/serve/`:
 ## Required build / verify steps (need a working shell)
 1. `./gradlew :cli:compileKotlin :cli:compileTestKotlin`
 2. `./gradlew :cli:test --tests "*ServeWebTest*" --tests "*ServeCatalogStoreTest*" --tests "*ServeBundleHostTest*"`
-3. **Regenerate the golden fixtures** — the new CSS + the `$stateSwitcher` line change every rendered page, so `ServeWebFixtureTest` WILL fail until: `UPDATE_SERVE_WEB_FIXTURES=true ./gradlew :cli:test --tests '*ServeWebFixtureTest*'`, then commit the updated fixtures under `vscode-extension/preview-harness/fixtures/pages/`.
+3. **Regenerate the golden fixtures** — the new CSS + the `$stateSwitcher` line change every rendered page, so `ServeWebFixtureTest` WILL fail until: `UPDATE_SERVE_WEB_FIXTURES=true ./gradlew :cli:test --tests '*ServeWebFixtureTest*'`, then commit the updated fixtures under `preview-server/preview-harness/fixtures/pages/`.
 4. `./gradlew :cli:ktfmtFormat` (CI has a `ktfmt (Google style)` gate).
 5. Screenshots (pre-installed Chromium at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`): the grid (one card per toggle component) and the viewer (state switcher). Save under `docs/preview-embed/serve-state-grid.png` and `serve-state-viewer.png`, embed in the PR body.
 

@@ -27,7 +27,7 @@ page to read the detail against.
 ## How these were captured
 
 Both are `pages-snapshot.spec.mjs`'s new `serve-component-browser-component-daemon-connected` state,
-shot through the standard harness (`npm run harness:snapshot`). The fixture
+shot through the standard harness (`npm run harness:pages`). The fixture
 (`serve-component-browser-component.html`) now carries a `presenceUrl`, so the real poller ships on
 the page the harness shoots, and the state stubs `/api/daemons` with a running instance — the same
 technique as the Dev landing's existing `daemon-connected` shot, which could not cover this because

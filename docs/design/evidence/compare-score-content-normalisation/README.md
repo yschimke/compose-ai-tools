@@ -25,7 +25,7 @@ genuinely agree — the outlined icon button, the body text — stay where they 
 
 ## The spec lane, same page, same frames
 
-`serve-viewer-path` · `spec-diff`, captured by `npm run harness:snapshot`. Nothing about the page
+`serve-viewer-path` · `spec-diff`, captured by `npm run harness:pages`. Nothing about the page
 changed except the number the chip and readout carry.
 
 ### Before

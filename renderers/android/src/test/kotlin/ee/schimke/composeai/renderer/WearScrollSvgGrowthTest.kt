@@ -469,7 +469,7 @@ class WearScrollSvgGrowthTest {
     val fixtureHtml =
       wearScrollLongPageFixture(inlineRasters(svg, File(rootDir, "wear-slice/figma-raster")))
     val fixture =
-      File(repoRoot(), "vscode-extension/preview-harness/fixtures/pages/$WEAR_SCROLL_FIXTURE.html")
+      File(repoRoot(), "preview-server/preview-harness/fixtures/pages/$WEAR_SCROLL_FIXTURE.html")
     if (
       System.getenv("UPDATE_WEAR_SCROLL_FIXTURE") == "true" ||
         System.getProperty("updateWearScrollFixture") == "true"

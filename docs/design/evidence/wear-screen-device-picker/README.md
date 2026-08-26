@@ -12,7 +12,7 @@ the renderer already resolves for `@Preview(device = …)`, and the Orientation 
 is omitted for them. Handheld catalogs are unchanged.
 
 Captured from the committed `serve-viewer-wear-screen` page fixture
-(`vscode-extension/preview-harness/fixtures/pages/`), with the **Size** group opened
+(`preview-server/preview-harness/fixtures/pages/`), with the **Size** group opened
 and the device menu expanded inline so the whole list is visible.
 
 | before | after |

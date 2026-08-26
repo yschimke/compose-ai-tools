@@ -1,10 +1,10 @@
 # Front door: the design comparison as a card action
 
 Before/after crops of the `serve` front door (`/`), captured from the committed page fixture
-(`vscode-extension/preview-harness/fixtures/pages/serve-home-index.html`) with
+(`preview-server/preview-harness/fixtures/pages/serve-home-index.html`) with
 
 ```sh
-npm --prefix vscode-extension run harness:snapshot   # or: npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot
+npm --prefix preview-server/preview-harness run harness:pages   # or, from that directory: npx playwright test pages-snapshot
 ```
 
 and cropped to the **Design Systems** section, the only part of the page that moved.

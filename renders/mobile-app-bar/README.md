@@ -39,8 +39,8 @@ equivalents as `serve-landing-declared-themes-mobile`,
 `serve-landing-declared-themes-mobile-menu` and `serve-viewer-variants-mobile`:
 
 ```
-cd vscode-extension
-npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot
+cd preview-server/preview-harness
+npx playwright test -c playwright.config.mjs pages-snapshot
 ```
 
 All 26 desktop captures of the pages this touches are **pixel-identical** to the

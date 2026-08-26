@@ -13,12 +13,12 @@ on the pages that carry one. The comparison wall carried none — and `.cp-fab-c
 nothing and naming no repository. Pressing it did nothing, which is exactly what the report says.
 
 Both shots are the committed page fixture
-(`vscode-extension/preview-harness/fixtures/pages/serve-format-compare.html`, light theme,
+(`preview-server/preview-harness/fixtures/pages/serve-format-compare.html`, light theme,
 production CSS + JS), captured with Playwright through the page harness:
 
 ```sh
 UPDATE_SERVE_WEB_FIXTURES=true ./gradlew :cli:test --tests '*ServeWebFixtureTest*'
-HARNESS_FIXTURE=serve-format-compare npm --prefix vscode-extension run harness:snapshot
+HARNESS_FIXTURE=serve-format-compare npm --prefix preview-server/preview-harness run harness:pages
 ```
 
 | Pair | What changed |

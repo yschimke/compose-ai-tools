@@ -12,20 +12,22 @@
     "daemon/core/**",
     "render-session/**",
     "render-session-subprocess/**",
-    "gradle/libs.versions.toml"
+    "gradle/libs.versions.toml",
+    "preview-server/preview-harness/package.json",
+    "preview-server/preview-harness/package-lock.json"
   ],
   "groups": {
     "desktop": [
       "daemon/desktop/**",
       "renderers/desktop/**",
-      "vscode-extension/preview-harness/serve-lanes.*",
-      "vscode-extension/preview-harness/serve-lanes-boot.sh"
+      "preview-server/preview-harness/serve-lanes.*",
+      "preview-server/preview-harness/serve-lanes-boot.sh"
     ],
     "android": [
       "daemon/android/**",
       "renderers/android/**",
-      "vscode-extension/preview-harness/serve-lanes.*",
-      "vscode-extension/preview-harness/serve-android-lane-boot.sh",
+      "preview-server/preview-harness/serve-lanes.*",
+      "preview-server/preview-harness/serve-android-lane-boot.sh",
       "samples/android-live-lane/**",
       "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleResources.kt",
       "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleLaunch.kt"
@@ -33,14 +35,14 @@
     "bundle": [
       "cli/src/main/kotlin/ee/schimke/composeai/cli/BundleCommand.kt",
       "gradle-plugin/**",
-      "vscode-extension/preview-harness/bundle-upload.*",
-      "vscode-extension/preview-harness/bundle-upload-boot.sh"
+      "preview-server/preview-harness/bundle-upload.*",
+      "preview-server/preview-harness/bundle-upload-boot.sh"
     ],
     "playground": [
       "daemon/android/**",
       "renderers/android/**",
-      "vscode-extension/preview-harness/playground.*",
-      "vscode-extension/preview-harness/playground-boot.sh",
+      "preview-server/preview-harness/playground.*",
+      "preview-server/preview-harness/playground-boot.sh",
       "samples/android-live-lane/**",
       "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleResources.kt",
       "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleLaunch.kt"

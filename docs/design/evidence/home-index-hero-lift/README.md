@@ -1,7 +1,7 @@
 # Front door: the hero lifts off the card
 
 Before/after crops of one hovered card on the `serve` front door (`/`), captured from the committed
-page fixture (`vscode-extension/preview-harness/fixtures/pages/serve-home-index.html`) at
+page fixture (`preview-server/preview-harness/fixtures/pages/serve-home-index.html`) at
 `deviceScaleFactor: 2` with transitions disabled, so the shot lands on the settled hover state
 rather than racing the ease.
 
@@ -67,5 +67,5 @@ neighbouring column, asserting the card stays hovered and the hero does not retr
 Reproduce with:
 
 ```sh
-npm --prefix vscode-extension run harness:snapshot   # or: npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot
+npm --prefix preview-server/preview-harness run harness:pages   # or, from that directory: npx playwright test pages-snapshot
 ```

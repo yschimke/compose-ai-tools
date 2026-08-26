@@ -225,11 +225,29 @@ From #3824's follow-up investigation, with what has landed marked.
 9. **Build the server against artifacts from a build-local Maven repository.** — *done* for the
    probe (`scripts/check-preview-server-contracts.sh`); it extends to the server itself with item 7.
 10. **Move the serve Playwright fixtures into an independently installable, independently captured
-    harness.** `vscode-extension/preview-harness/`'s `serve-*`, `pages-snapshot`, `playground` and
-    `format-compare-scorer` specs are the serve viewer's harness, misfiled — 28% of the apparent
-    cross-boundary traffic in #3824's measurement. The CI visual-diff wiring has to move with them:
-    per [CLAUDE.md](../../CLAUDE.md), a surface that stops being auto-captured is a regression, not a
-    saving.
+    harness.** — *done.* They now live in `preview-server/preview-harness/` with their own
+    `package.json`, `playwright.config.mjs`, static server and `_themes.mjs`; nothing in the
+    directory imports across `vscode-extension/`.
+
+    The misfiling was larger than #3824's estimate of 28% of cross-boundary traffic. Counted from
+    the extension's side: of 72 PRs touching `vscode-extension/` in the trailing 300, **60 touched
+    only this harness** and 11 only the extension's own source. And `harness:snapshot` collected
+    **205 tests, 167 of them serve's** — the extension's flagship visual-diff job was 81% somebody
+    else's.
+
+    The capture surface is preserved rather than merely relocated, which was the constraint from
+    [CLAUDE.md](../../CLAUDE.md): a surface that stops being auto-captured is a regression, not a
+    saving. Both harnesses still write `<name>.<theme>.png`, `vscode-preview-comment` merges the two
+    `out/` directories before diffing, and capture names are unique across them — so the baselines
+    on `vscode-preview/main` matched unchanged and nothing needed regenerating. Two coverage gaps
+    were closed on the way: the diff bot now triggers on `preview-server/preview-harness/**`, and on
+    the whole of `serve/assets/**` rather than just `format-compare.js` — the fixture pages `<link>`
+    the real viewer CSS/JS, so a viewer change moves these captures and previously could land
+    without a rebaseline.
+
+    One constraint the split introduced: the two harnesses share a baseline set, so their
+    `@playwright/test` versions must stay in step. A skew would move pixels for reasons no PR
+    explains. Both READMEs say so.
 
 ## After all of that
 

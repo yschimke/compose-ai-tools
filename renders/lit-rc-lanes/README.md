@@ -61,6 +61,6 @@ has 15, including:
 
 ```
 cd cli/serve-web && npm run verify   # 297 passing
-cd vscode-extension
-npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot
+cd preview-server/preview-harness
+npx playwright test -c playwright.config.mjs pages-snapshot
 ```

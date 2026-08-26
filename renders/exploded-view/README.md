@@ -38,10 +38,10 @@ Regenerate the SVGs (and the harness's placeholder) with:
 UPDATE_SERVE_WEB_FIXTURES=true ./gradlew :cli:test --tests '*ExplodedSvgFixtureTest*' --rerun-tasks
 ```
 
-Re-shoot the viewer PNGs with the harness, then copy them out of `preview-harness/out/`:
+Re-shoot the viewer PNGs with the harness, then copy them out of `preview-server/preview-harness/out/`:
 
 ```bash
-HARNESS_FIXTURE=serve-viewer-exploded npm --prefix vscode-extension run harness:snapshot
+HARNESS_FIXTURE=serve-viewer-exploded npm --prefix preview-server/preview-harness run harness:pages
 ```
 
 The two `*.exploded.png` rasters are the committed SVGs rendered in headless Chromium at 2×; any

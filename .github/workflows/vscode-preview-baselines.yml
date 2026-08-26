@@ -11,7 +11,11 @@ on:
     branches: [main]
     paths:
       - 'vscode-extension/**'
-      - 'cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js'
+      - 'preview-server/preview-harness/**'
+      # The serve fixture pages `<link>` the real viewer CSS/JS, which the harness server resolves
+      # out of this directory — so a viewer change moves these captures. Only `format-compare.js`
+      # was listed before, which left the pages themselves able to change without a rebaseline.
+      - 'cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/**'
       - '.github/actions/vscode-preview-baselines/**'
       - '.github/actions/vscode-preview-comment/**'
       - '.github/actions/lib/vscode-preview-diff.py'

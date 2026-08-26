@@ -31,8 +31,8 @@ snapshot harness uses. The equivalent shots are now part of that harness as
 surface diffed without anyone remembering to look:
 
 ```
-cd vscode-extension
-npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot
+cd preview-server/preview-harness
+npx playwright test -c playwright.config.mjs pages-snapshot
 ```
 
 Every existing capture is byte-identical — the changes live entirely inside a

@@ -1,7 +1,7 @@
 # Catalog nav: "compare to Figma" points at the comparison, not the parity dashboard
 
 Before/after crops of the catalog landing's action chips, captured from the committed page fixture
-(`vscode-extension/preview-harness/fixtures/pages/serve-landing-path.html`) and cropped to the chip
+(`preview-server/preview-harness/fixtures/pages/serve-landing-path.html`) and cropped to the chip
 row. Light theme; the dark shots are the same markup.
 
 | Pair | Fixture | What changed |

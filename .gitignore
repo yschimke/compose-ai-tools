@@ -40,7 +40,6 @@ vscode-extension/media/webview/
 vscode-extension/preview-harness/out/
 vscode-extension/spatial-fixtures/out/
 vscode-extension/preview-harness/test-results/
-vscode-extension/preview-harness/test-results-serve-lanes/
 # Playwright writes here when run from `vscode-extension/` rather than from the
 # harness directory — the sibling entries above only cover the latter, so two
 # failure artifacts were committed and then outlived the failure by months,
@@ -52,6 +51,15 @@ vscode-extension/preview-harness/fixtures/spatial-xr-real.json
 vscode-extension/spatial-fixtures/spatial-xr-real/
 vscode-extension/preview-harness/playwright-report/
 vscode-extension/preview-harness/.last-run.json
+
+# The preview-server harness (the serve page captures + the lane/playground/bundle-upload specs),
+# moved out of the extension's harness. Same artifacts, new home.
+preview-server/preview-harness/node_modules/
+preview-server/preview-harness/out/
+preview-server/preview-harness/test-results/
+preview-server/preview-harness/test-results-serve-lanes/
+preview-server/preview-harness/playwright-report/
+preview-server/preview-harness/.last-run.json
 vscode-extension/src/version.generated.ts
 *.vsix
 

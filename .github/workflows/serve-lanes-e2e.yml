@@ -39,14 +39,23 @@ on:
       - "daemon/**"
       - "render-session/**"
       - "render-session-subprocess/**"
-      - "vscode-extension/preview-harness/serve-lanes.*"
-      - "vscode-extension/preview-harness/serve-lanes-boot.sh"
-      - "vscode-extension/preview-harness/serve-android-lane-boot.sh"
-      - "vscode-extension/preview-harness/bundle-upload.*"
-      - "vscode-extension/preview-harness/bundle-upload-boot.sh"
+      - "preview-server/preview-harness/serve-lanes.*"
+      - "preview-server/preview-harness/serve-lanes-boot.sh"
+      - "preview-server/preview-harness/serve-android-lane-boot.sh"
+      - "preview-server/preview-harness/bundle-upload.*"
+      - "preview-server/preview-harness/bundle-upload-boot.sh"
       # The playground e2e (editor → compile → first-frame → /pg live redemption).
-      - "vscode-extension/preview-harness/playground.*"
-      - "vscode-extension/preview-harness/playground-boot.sh"
+      - "preview-server/preview-harness/playground.*"
+      - "preview-server/preview-harness/playground-boot.sh"
+      # Every lane job runs `npm ci` and then its `harness:*` script out of the serve harness's
+      # own manifest, so a Playwright bump or a renamed lane script lands entirely in these two
+      # files and matches none of the globs above — the workflow never triggered, and the scope
+      # job that would have selected the lanes never got to run. They are also globalPaths in
+      # serve-lanes-paths.json: that changes nothing today (`decide` fails open on an
+      # unrecognised path) but keeps them selecting every lane if the harness tree is ever
+      # ignored there the way it is in ci-paths.json.
+      - "preview-server/preview-harness/package.json"
+      - "preview-server/preview-harness/package-lock.json"
       # The Android lane's fixture and the detached-render Application pin it guards.
       - "samples/android-live-lane/**"
       - "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleResources.kt"
@@ -73,14 +82,23 @@ on:
       - "daemon/**"
       - "render-session/**"
       - "render-session-subprocess/**"
-      - "vscode-extension/preview-harness/serve-lanes.*"
-      - "vscode-extension/preview-harness/serve-lanes-boot.sh"
-      - "vscode-extension/preview-harness/serve-android-lane-boot.sh"
-      - "vscode-extension/preview-harness/bundle-upload.*"
-      - "vscode-extension/preview-harness/bundle-upload-boot.sh"
+      - "preview-server/preview-harness/serve-lanes.*"
+      - "preview-server/preview-harness/serve-lanes-boot.sh"
+      - "preview-server/preview-harness/serve-android-lane-boot.sh"
+      - "preview-server/preview-harness/bundle-upload.*"
+      - "preview-server/preview-harness/bundle-upload-boot.sh"
       # The playground e2e (editor → compile → first-frame → /pg live redemption).
-      - "vscode-extension/preview-harness/playground.*"
-      - "vscode-extension/preview-harness/playground-boot.sh"
+      - "preview-server/preview-harness/playground.*"
+      - "preview-server/preview-harness/playground-boot.sh"
+      # Every lane job runs `npm ci` and then its `harness:*` script out of the serve harness's
+      # own manifest, so a Playwright bump or a renamed lane script lands entirely in these two
+      # files and matches none of the globs above — the workflow never triggered, and the scope
+      # job that would have selected the lanes never got to run. They are also globalPaths in
+      # serve-lanes-paths.json: that changes nothing today (`decide` fails open on an
+      # unrecognised path) but keeps them selecting every lane if the harness tree is ever
+      # ignored there the way it is in ci-paths.json.
+      - "preview-server/preview-harness/package.json"
+      - "preview-server/preview-harness/package-lock.json"
       # The Android lane's fixture and the detached-render Application pin it guards.
       - "samples/android-live-lane/**"
       - "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleResources.kt"
@@ -155,7 +173,7 @@ jobs:
         run: ./gradlew --no-daemon :cli:installDist --stacktrace
 
       - name: Install harness deps + Chromium
-        working-directory: vscode-extension
+        working-directory: preview-server/preview-harness
         shell: bash
         run: |
           npm ci
@@ -173,12 +191,12 @@ jobs:
           # Capture into a var first (not inside echo) so a boot failure trips
           # `set -e` and fails THIS step with the boot log — instead of exporting an
           # empty SERVE_URL and surfacing later as a cryptic Playwright "Invalid URL".
-          url="$(bash vscode-extension/preview-harness/serve-lanes-boot.sh)"
+          url="$(bash preview-server/preview-harness/serve-lanes-boot.sh)"
           echo "serve-lanes: SERVE_URL=$url"
           echo "SERVE_URL=$url" >> "$GITHUB_ENV"
 
       - name: Drive every render lane (Chromium)
-        working-directory: vscode-extension
+        working-directory: preview-server/preview-harness
         shell: bash
         env:
           CI: "true"
@@ -199,7 +217,7 @@ jobs:
           name: serve-lanes-artifacts
           path: |
             serve-lanes.log
-            vscode-extension/preview-harness/test-results-serve-lanes/**
+            preview-server/preview-harness/test-results-serve-lanes/**
           if-no-files-found: warn
 
   # The Android/Robolectric half of the same proof (#2675). The job above only ever stood up the
@@ -254,7 +272,7 @@ jobs:
             -o "$GITHUB_WORKSPACE/android-live-lane.png" --timeout 900
 
       - name: Install harness deps + Chromium
-        working-directory: vscode-extension
+        working-directory: preview-server/preview-harness
         shell: bash
         run: |
           npm ci
@@ -268,7 +286,7 @@ jobs:
           SERVE_BUNDLE: android-live-lane.png
           LIB_DAEMON_ANDROID_DIR: cli/build/staged-daemon-android-libs
         run: |
-          url="$(bash vscode-extension/preview-harness/serve-android-lane-boot.sh)"
+          url="$(bash preview-server/preview-harness/serve-android-lane-boot.sh)"
           echo "serve-android-lane: SERVE_URL=$url"
           echo "SERVE_URL=$url" >> "$GITHUB_ENV"
 
@@ -276,7 +294,7 @@ jobs:
       # text, the Live /ws/ frame lane, and the viewer wiring. The Wasm test self-skips — an Android
       # session has no in-browser tier.
       - name: Drive every render lane (Chromium)
-        working-directory: vscode-extension
+        working-directory: preview-server/preview-harness
         shell: bash
         env:
           CI: "true"
@@ -297,7 +315,7 @@ jobs:
           name: serve-lanes-android-artifacts
           path: |
             serve-android-lane.log
-            vscode-extension/preview-harness/test-results-serve-lanes/**
+            preview-server/preview-harness/test-results-serve-lanes/**
           if-no-files-found: warn
 
   bundle-upload-e2e:
@@ -331,7 +349,7 @@ jobs:
             -o "$GITHUB_WORKSPACE/local-e2e-bundle.png" --timeout 900
 
       - name: Install harness deps + Chromium
-        working-directory: vscode-extension
+        working-directory: preview-server/preview-harness
         shell: bash
         run: |
           npm ci
@@ -342,12 +360,12 @@ jobs:
         env:
           SERVE_TOKEN: bundle-upload-e2e
         run: |
-          url="$(bash vscode-extension/preview-harness/bundle-upload-boot.sh)"
+          url="$(bash preview-server/preview-harness/bundle-upload-boot.sh)"
           echo "bundle-upload: SERVE_URL=$url"
           echo "SERVE_URL=$url" >> "$GITHUB_ENV"
 
       - name: Upload bundle and follow returned URL
-        working-directory: vscode-extension
+        working-directory: preview-server/preview-harness
         shell: bash
         env:
           CI: "true"
@@ -370,7 +388,7 @@ jobs:
           name: bundle-upload-e2e-artifacts
           path: |
             bundle-upload.log
-            vscode-extension/preview-harness/test-results-bundle-upload/**
+            preview-server/preview-harness/test-results-bundle-upload/**
           if-no-files-found: warn
 
   # The Kotlin playground, end to end (#3015). The two lanes above prove the *render* backends honor
@@ -424,7 +442,7 @@ jobs:
             -o "$GITHUB_WORKSPACE/playground-lane.png" --timeout 900
 
       - name: Install harness deps + Chromium
-        working-directory: vscode-extension
+        working-directory: preview-server/preview-harness
         shell: bash
         run: |
           npm ci
@@ -439,12 +457,12 @@ jobs:
           LIB_DAEMON_ANDROID_DIR: cli/build/staged-daemon-android-libs
           SERVE_TOKEN: playground-e2e
         run: |
-          url="$(bash vscode-extension/preview-harness/playground-boot.sh)"
+          url="$(bash preview-server/preview-harness/playground-boot.sh)"
           echo "playground: SERVE_URL=$url"
           echo "SERVE_URL=$url" >> "$GITHUB_ENV"
 
       - name: Drive the playground (Chromium)
-        working-directory: vscode-extension
+        working-directory: preview-server/preview-harness
         shell: bash
         env:
           CI: "true"
@@ -481,5 +499,5 @@ jobs:
           name: playground-e2e-artifacts
           path: |
             playground-lane.log
-            vscode-extension/preview-harness/test-results-playground/**
+            preview-server/preview-harness/test-results-playground/**
           if-no-files-found: warn

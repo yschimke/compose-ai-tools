@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>Compose Preview — preview-server harness</title>
+    </head>
+    <body>
+        <!--
+          A blank page that exists to have an ORIGIN.
+
+          `format-compare-scorer.spec.mjs` injects the real
+          `serve/assets/format-compare.js` with `addScriptTag` and draws into a canvas it then
+          samples. Both need a document served over http:// — a `file://` or `about:blank` page
+          taints the canvas and blocks the script tag. Nothing on this page is captured, so it
+          carries no styling: anything visible here would be a pixel the scorer did not ask for.
+
+          It replaces the extension harness's `index.html`, which the spec used for the same
+          reason and which happened to be a full design-harness page.
+        -->
+    </body>
+</html>

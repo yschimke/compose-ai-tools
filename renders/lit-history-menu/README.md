@@ -8,10 +8,10 @@ byte-identical between this branch and `origin/main` — closed and open, light
 and dark — so the images below are simultaneously the before and the after:
 
 ```
-cd vscode-extension
-rm -rf preview-harness/out
+cd preview-server/preview-harness
+rm -rf out
 HARNESS_FIXTURE=serve-viewer-history \
-  npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot
+  npx playwright test -c playwright.config.mjs pages-snapshot
 
 # then the same at origin/main, and:
 cmp before/serve-viewer-history.light.png            after/serve-viewer-history.light.png

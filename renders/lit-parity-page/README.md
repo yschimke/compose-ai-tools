@@ -30,7 +30,7 @@ diffed by nothing. The new `serve-parity` · `visual-findings` state stubs
 `window.ComposePreviewCompare` with a fixed low score and replaces the element,
 which re-runs its scan the way a reload would. The metric itself is not stubbed
 away from coverage: it has its own spec in
-`preview-harness/format-compare-scorer.spec.mjs`.
+`preview-server/preview-harness/format-compare-scorer.spec.mjs`.
 
 ## What the port changed that a capture cannot show
 
@@ -54,7 +54,7 @@ though six things were wrong. `parity/findings.ts` counts them separately, and
 
 ```
 cd cli/serve-web && npm run verify          # 244 passing
-cd vscode-extension
-npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot
+cd preview-server/preview-harness
+npx playwright test -c playwright.config.mjs pages-snapshot
 # 124 passed
 ```

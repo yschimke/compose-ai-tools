@@ -19,7 +19,7 @@ import { test, expect } from "@playwright/test";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { readdirSync, readFileSync } from "node:fs";
-import { listThemes } from "./_fixtures.mjs";
+import { listThemes } from "./_themes.mjs";
 
 const harnessDir = dirname(fileURLToPath(import.meta.url));
 const outDir = resolve(harnessDir, "out");
@@ -2859,6 +2859,36 @@ const FIXTURE_STATES = [
       // the shot catches a spinner over the stage and the baseline flickers per run.
       await page.waitForFunction(
         () => !document.querySelector('.cp-stage[aria-busy="true"]'),
+      );
+      // …and then the snapshot-vs-live comparison that the re-projection restarts, which is a
+      // SECOND async pass this wait used to miss. `aria-busy` clears when the new SVG lands,
+      // but `scoreSvgUrls` is still running: the badge reads "comparing…" and the stage still
+      // carries a spinner. Whether the shot caught the settled score was pure timing.
+      //
+      // Waiting for the badge to *be* settled is not enough, and fails in a way worth naming:
+      // the fixture is a static capture of a settled viewer, so `cp-match--bad` and the real
+      // "69.2% match" are already in the committed HTML. A plain assertion passes instantly
+      // against that baked markup, before the page's own JS has booted and blanked it back to
+      // "comparing…" — a wait that is satisfied by the thing it is supposed to wait for.
+      //
+      // So require the settled state to PERSIST. Ten consecutive polls of a settled badge and
+      // an idle stage is a second of quiet, which no restart survives: a re-score blanks the
+      // modifier synchronously as it starts, resetting the counter. `--na` is the failure
+      // path, so a comparison that threw settles this too rather than hanging to the timeout.
+      await page.waitForFunction(
+        () => {
+          const badge = document.getElementById("cp-svg-match");
+          const settled =
+            badge !== null &&
+            /cp-match--(good|warn|bad|na)/.test(badge.className) &&
+            document.querySelector('.cp-stage[aria-busy="true"]') === null;
+          window.__cpSettledPolls = settled
+            ? (window.__cpSettledPolls ?? 0) + 1
+            : 0;
+          return window.__cpSettledPolls >= 10;
+        },
+        null,
+        { polling: 100 },
       );
     },
   },

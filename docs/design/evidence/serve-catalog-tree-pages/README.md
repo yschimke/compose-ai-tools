@@ -2,10 +2,10 @@
 
 Before/after of the section-less catalog landing — the shape most published design systems are in,
 m3-catalog included — captured from the committed page fixture
-(`vscode-extension/preview-harness/fixtures/pages/serve-landing-grouped.html`) with
+(`preview-server/preview-harness/fixtures/pages/serve-landing-grouped.html`) with
 
 ```sh
-npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot -g serve-landing-grouped
+npm --prefix preview-server/preview-harness run harness:pages -- -g serve-landing-grouped
 ```
 
 Full pages, 1024×720, both themes.

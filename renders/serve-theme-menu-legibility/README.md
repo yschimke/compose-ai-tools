@@ -48,14 +48,14 @@ state in `pages-snapshot.spec.mjs`, so the panel's paint is diffed rather
 than left to a report:
 
 ```
-cd vscode-extension
+cd preview-server/preview-harness
 HARNESS_FIXTURE=serve-viewer-theme-overflow \
-  npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot
+  npx playwright test -c playwright.config.mjs pages-snapshot
 # → out/serve-viewer-theme-overflow-theme-menu.{light,dark}.png
 ```
 
 Before this change that fixture was captured only SHUT. The stylesheet was
-never the missing half — `preview-harness/_server.mjs` serves
+never the missing half — `preview-server/preview-harness/_server.mjs` serves
 `/assets/serve/*` to every page fixture, so the page was already painted —
 but with the menu closed the panel is off-screen, and both faults live
 entirely inside it. Neither would have moved a baseline. (That is also why

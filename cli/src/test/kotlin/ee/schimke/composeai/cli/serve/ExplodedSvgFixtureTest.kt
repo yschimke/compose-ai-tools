@@ -39,7 +39,7 @@ import kotlin.test.assertTrue
 class ExplodedSvgFixtureTest {
 
   private companion object {
-    const val PAGES = "vscode-extension/preview-harness/fixtures/pages"
+    const val PAGES = "preview-server/preview-harness/fixtures/pages"
     const val LAYERED = "_render-placeholder-layered.svg"
     const val EXPLODED = "_render-placeholder-exploded.svg"
     const val EVIDENCE = "renders/exploded-view"

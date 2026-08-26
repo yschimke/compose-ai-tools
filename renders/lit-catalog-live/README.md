@@ -76,7 +76,7 @@ are replaced with a pointer rather than reworded.
 cd cli/serve-web && npm run verify   # 446 passing
 UPDATE_SERVE_WEB_FIXTURES=true ./gradlew :cli:test --tests '*ServeWebFixtureTest*'
 ./gradlew :cli:test --tests '*ServeWeb*' && ./gradlew ktfmtCheck
-cd vscode-extension/preview-harness
+cd preview-server/preview-harness
 HARNESS_FIXTURE=serve-landing-live npx playwright test pages-snapshot.spec.mjs
 # 10 passed on both refs; 6/8 PNGs byte-identical, 2 changed as intended
 ```

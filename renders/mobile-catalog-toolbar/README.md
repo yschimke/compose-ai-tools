@@ -43,6 +43,6 @@ equivalents as `serve-landing-declared-themes-mobile`, `-mobile-menu`,
 `-mobile-theme` and `serve-landing-sections-mobile`:
 
 ```
-cd vscode-extension
-npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot
+cd preview-server/preview-harness
+npx playwright test -c playwright.config.mjs pages-snapshot
 ```

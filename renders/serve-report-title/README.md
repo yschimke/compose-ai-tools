@@ -8,7 +8,7 @@ footer's "report a bug" already makes since
 [#4153](https://github.com/yschimke/compose-ai-tools/pull/4153).
 
 Captured from the committed page fixtures by the preview-harness
-(`npm --prefix vscode-extension run harness:snapshot`). Every state below is a registered
+(`npm --prefix preview-server/preview-harness run harness:pages`). Every state below is a registered
 `FIXTURE_STATES` entry, so later changes to this panel are diffed automatically rather than
 needing a hand-taken screenshot.
 

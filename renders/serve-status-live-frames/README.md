@@ -1,7 +1,7 @@
 # Live-lane frame counters on `/status` (#4281)
 
 `serve-status` page fixture captured through the `pages-snapshot` harness
-(`HARNESS_FIXTURE=serve-status npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot -g "serve-status"`),
+(`HARNESS_FIXTURE=serve-status npm --prefix preview-server/preview-harness run harness:pages -- -g "serve-status"`),
 `before.light.png` from `origin/main` and `after.light.png` from this branch. Nothing else on the
 page moves.
 
