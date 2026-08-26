@@ -29,7 +29,7 @@
 # rasterize on the CPU, so LIBGL_ALWAYS_SOFTWARE=1 forces Mesa's software path
 # (no GPU on the host). This mirrors what the repo's own CI installs for headless
 # desktop renders (.github/workflows/ci.yml).
-FROM eclipse-temurin:17.0.19_10-jdk AS base
+FROM eclipse-temurin:17.0.20_8-jdk AS base
 COPY scripts/install-linux-font-fallbacks.sh /usr/local/bin/install-linux-font-fallbacks
 RUN COMPOSEAI_CLEAN_APT=1 /usr/local/bin/install-linux-font-fallbacks \
       libfreetype6 libfontconfig1 libgl1 libglx-mesa0 libgl1-mesa-dri
