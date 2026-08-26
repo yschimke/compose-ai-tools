@@ -15,3 +15,7 @@
 // interface.
 
 import "./components/Acceptance.js";
+// The catalog-wide audit, which loads on the design-parity dashboard rather than on a comparison.
+// It shares this bundle because it runs the same engine: a second bundle would ship a second copy
+// of the document ladder, the gates and the PNG reader to answer a narrower question with them.
+import "./components/AcceptanceAudit.js";

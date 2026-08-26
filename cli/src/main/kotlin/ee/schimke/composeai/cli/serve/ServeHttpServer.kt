@@ -3188,6 +3188,28 @@ class ServeHttpServer(
           displayTitle = catalogBundleHost(renderHost)?.title,
           hasReferenceFor = hasReference,
           parityIssues = issues,
+          // The catalog-wide acceptance walk, offered only to a catalog that publishes a
+          // known-difference document. This is the walk's target set, and every field is spelled
+          // the
+          // way the comparison page spells it in its locator — `system` from the mount, `component`
+          // and `variant` from [ServeIssueReport] — because an acceptance matches on all of them
+          // and
+          // a second derivation here would report the whole document orphaned.
+          //
+          // The handler decides the identity; the page builds the URLs, which is the same split
+          // [KnownDifferenceScope] draws and the reason a hand-rolled query never loses its token.
+          acceptanceAudit =
+            renderHost.knownDifferences()?.let {
+              renderHost.previews.map { preview ->
+                KnownDifferenceCatalogPreview(
+                  system = basePath.trim('/').takeIf { it.isNotEmpty() } ?: sessionId,
+                  id = preview.id,
+                  component = ServeIssueReport.componentIdFor(preview),
+                  variant = ServeIssueReport.variantFor(preview),
+                  referenceIds = renderHost.designReferencesFor(preview.id).map { it.id },
+                )
+              }
+            },
           // Same derivation the landing uses to label its "compare to Figma" action, so the page a
           // visitor arrives on names the tool the same way the link that brought them here did.
           designToolLabel =
