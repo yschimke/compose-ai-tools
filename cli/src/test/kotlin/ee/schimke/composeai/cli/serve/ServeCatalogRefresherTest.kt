@@ -14,6 +14,10 @@ class ServeCatalogRefresherTest {
       branch = "design-artifacts/$system",
     )
 
+  /** What the store hands back for a catalog that registered. */
+  private fun ok(incomplete: Boolean = false) =
+    ServeCatalogStore.Result.Ok("compose-m3", 1, "trusted", incomplete = incomplete)
+
   @Test
   fun `reloads only when the branch head changes`() {
     val head = ConcurrentHashMap(mapOf("compose-m3" to "aaaaaaa"))
@@ -23,7 +27,7 @@ class ServeCatalogRefresherTest {
         entries = { listOf(entry()) },
         reload = { sys, _ ->
           reloads += sys
-          CatalogReloadOutcome.COMPLETE
+          ok()
         },
         intervalMillis = 1_000,
         headResolver = { _, _ -> head["compose-m3"] },
@@ -49,7 +53,7 @@ class ServeCatalogRefresherTest {
         entries = { listOf(entry()) },
         reload = { system, _ ->
           reloads += system
-          CatalogReloadOutcome.COMPLETE
+          ok()
         },
         intervalMillis = 1_000,
         headResolver = { _, _ -> head },
@@ -75,7 +79,7 @@ class ServeCatalogRefresherTest {
         entries = { listOf(entry()) },
         reload = { _, _ ->
           reloads.incrementAndGet()
-          if (succeed) CatalogReloadOutcome.COMPLETE else CatalogReloadOutcome.FAILED
+          if (succeed) ok() else null
         },
         intervalMillis = 1_000,
         headResolver = { _, _ -> head },
@@ -103,7 +107,7 @@ class ServeCatalogRefresherTest {
         entries = { listOf(entry()) },
         reload = { _, _ ->
           reloads.incrementAndGet()
-          CatalogReloadOutcome.COMPLETE
+          ok()
         },
         intervalMillis = 1_000,
         headResolver = { _, _ -> null },
@@ -124,7 +128,7 @@ class ServeCatalogRefresherTest {
         entries = { listOf(entry()) },
         reload = { _, _ ->
           reloads.incrementAndGet()
-          CatalogReloadOutcome.COMPLETE
+          ok()
         },
         intervalMillis = 1_000,
         headResolver = { _, _ -> "stable-sha" },
@@ -149,8 +153,7 @@ class ServeCatalogRefresherTest {
         entries = { listOf(entry("jetnews"), entry("reply")) },
         reload = { system, _ ->
           if (system == "reply") reloads.incrementAndGet()
-          if (system == "jetnews" || succeed) CatalogReloadOutcome.COMPLETE
-          else CatalogReloadOutcome.FAILED
+          if (system == "jetnews" || succeed) ok() else null
         },
         intervalMillis = 1_000,
         headResolver = { _, branch -> "stable-${branch.substringAfterLast('/')}" },
@@ -179,7 +182,7 @@ class ServeCatalogRefresherTest {
         entries = { listOf(entry("compose-m3"), entry("cadence")) },
         reload = { sys, _ ->
           reloads += sys
-          CatalogReloadOutcome.COMPLETE
+          ok()
         },
         intervalMillis = 1_000,
         headResolver = { _, branch -> heads[branch.substringAfterLast('/')] },
@@ -202,7 +205,7 @@ class ServeCatalogRefresherTest {
     // make that permanent, so one throttled request cost a catalog its issue index, or its whole
     // acceptance surface, until somebody published again.
     val reloads = AtomicInteger(0)
-    var outcome = CatalogReloadOutcome.INCOMPLETE
+    var outcome: ServeCatalogStore.Result? = ok(incomplete = true)
     val r =
       ServeCatalogRefresher(
         entries = { listOf(entry()) },
@@ -222,7 +225,7 @@ class ServeCatalogRefresherTest {
     r.tick()
     assertEquals(2, reloads.get(), "an incomplete revision is re-read on the next tick")
 
-    outcome = CatalogReloadOutcome.COMPLETE
+    outcome = ok()
     r.tick()
     assertEquals(3, reloads.get())
     r.tick()
@@ -237,7 +240,7 @@ class ServeCatalogRefresherTest {
     val r =
       ServeCatalogRefresher(
         entries = { listOf(entry()) },
-        reload = { _, _ -> CatalogReloadOutcome.INCOMPLETE },
+        reload = { _, _ -> ok(incomplete = true) },
         intervalMillis = 1_000,
         headResolver = { _, _ -> "stable-sha" },
         onLog = {},

@@ -4,7 +4,6 @@ import ee.schimke.composeai.cli.serve.BundleVerifier
 import ee.schimke.composeai.cli.serve.CatalogBlobPool
 import ee.schimke.composeai.cli.serve.CatalogLoadTracker
 import ee.schimke.composeai.cli.serve.CatalogRefreshResult
-import ee.schimke.composeai.cli.serve.CatalogReloadOutcome
 import ee.schimke.composeai.cli.serve.CatalogThemeCache
 import ee.schimke.composeai.cli.serve.DaemonStartupLog
 import ee.schimke.composeai.cli.serve.FileOptimizerHostCoordinator
@@ -3774,16 +3773,12 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
             result
           }
         }
-        if (result == null) {
-          CatalogReloadOutcome.FAILED
-        } else if (result is ServeCatalogStore.Result.Failed) {
+        // Handed back as-is: what a result means for the recorded head is the refresher's to
+        // decide, and saying it twice is how the two would drift.
+        if (result is ServeCatalogStore.Result.Failed) {
           System.err.println("serve: catalog $system refresh failed: ${result.reason}")
-          CatalogReloadOutcome.FAILED
-        } else if (result is ServeCatalogStore.Result.Ok && result.incomplete) {
-          CatalogReloadOutcome.INCOMPLETE
-        } else {
-          CatalogReloadOutcome.COMPLETE
         }
+        result
       },
       intervalMillis = catalogRefreshSeconds * 1000,
     )
