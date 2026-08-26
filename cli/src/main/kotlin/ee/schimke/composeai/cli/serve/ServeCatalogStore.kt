@@ -18,7 +18,9 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
@@ -722,6 +724,7 @@ class ServeCatalogStore(
     writeParityActivity(base, staging)
     writeParityIssues(base, staging)
     writeDesignPages(base, staging)
+    writeKnownDifferences(base, staging)
 
     // The staged catalog is usable — atomically replace the live dir with it. The delete + rename
     // is near-instant (same filesystem), so the window where `dir` is absent is microseconds, not
@@ -1936,6 +1939,98 @@ class ServeCatalogStore(
     dir.mkdirs()
     File(dir, ServeTagIndexStore.INDEX_FILE)
       .writeText(json.encodeToString(TagIndexManifest.serializer(), manifest))
+  }
+
+  /**
+   * Stage the catalog's committed known differences: the document, verbatim, plus the artifacts it
+   * names.
+   *
+   * Without this the whole acceptance surface is dead on every *published* catalog — which is every
+   * catalog the feature is for. [ServeBundleHost.knownDifferences] reads the staging tree, so a
+   * file nobody copies here is a catalog that "accepts nothing" as far as the comparison band, the
+   * dashboard's audit, the `/parity` availability lane and the landing's link are concerned. That
+   * failure is silent by construction: absence and "nothing accepted" are the same answer
+   * downstream, which is why this went unnoticed until someone looked for the panel in production.
+   *
+   * **The document is copied byte for byte, and not parsed for judgement.** Its verdicts belong to
+   * the engine, which runs from one shared implementation in the browser and in `design-parity`; a
+   * stager that validated records would be a third implementation of the contract with no
+   * conformance suite behind it. What this *does* parse is the one thing a copier cannot avoid
+   * knowing — which artifact paths to fetch — and it does that leniently, exactly as the browser
+   * adapter's prefetch does: a document this cannot read stages alone, and the engine still reaches
+   * `document-unreadable` from the bytes.
+   *
+   * **An over-sized document is staged anyway**, because `document-too-large` is a verdict the
+   * contract requires a consumer to be able to reach: [ServeKnownDifferences.document] answers
+   * `TooLarge` from the file's length, the route serves 413, and the engine says so. Dropping it
+   * here would substitute silence for a refusal the reader already knows how to voice.
+   *
+   * Each artifact path is checked with the reader's own lexical rule before anything is fetched or
+   * written ([ServeKnownDifferences.isLookupPath]), so a path the host would refuse to look up
+   * never lands in the staging tree — and, since the rule admits only portable segments, cannot
+   * escape the artifact root while being written. The paths are the document's own: unlike a design
+   * page, an artifact cannot be re-rooted to a server-chosen name, because the record's hash is
+   * bound to the path it names.
+   *
+   * Fail-soft like every writer beside it, and bounded like the contract: at most
+   * [ServeKnownDifferences.MAX_ACCEPTANCES] records contribute paths, each artifact is dropped
+   * above [ServeKnownDifferences.MAX_ARTIFACT_BYTES], and the fetches run in the same bounded waves
+   * the rasters use.
+   */
+  private fun writeKnownDifferences(base: String, staging: File) {
+    val dirName = ServeKnownDifferences.DIRECTORY
+    val documentBytes =
+      runCatching {
+        fetchCatalogAsset("$base$dirName/${ServeKnownDifferences.DOCUMENT_FILE}")
+      }
+        .getOrNull() ?: return
+
+    val paths = knownDifferenceArtifactPaths(documentBytes)
+    val artifactRoot = "$dirName/${ServeKnownDifferences.ARTIFACT_DIRECTORY}"
+    paths.chunked(ASSET_FETCH_CONCURRENCY).forEach { wave ->
+      val fetched = fetchCatalogAssets(wave.map { "$base$artifactRoot/$it" })
+      wave.forEach { path ->
+        val bytes = fetched["$base$artifactRoot/$path"] ?: return@forEach
+        // The reader refuses an over-sized artifact from the file's length; writing one anyway
+        // would
+        // put bytes on disk that every consumer is already required to decline.
+        if (bytes.size > ServeKnownDifferences.MAX_ARTIFACT_BYTES) return@forEach
+        val file = File(staging, "$artifactRoot/$path")
+        file.parentFile?.mkdirs()
+        file.writeBytes(bytes)
+      }
+    }
+
+    File(staging, dirName).mkdirs()
+    File(staging, "$dirName/${ServeKnownDifferences.DOCUMENT_FILE}").writeBytes(documentBytes)
+  }
+
+  /**
+   * The `<id>/<file>` paths a known-difference document names, read leniently.
+   *
+   * Lenient on purpose, and the same shape the browser adapter's prefetch uses: this is a fetch
+   * list, not a verdict. A record whose `id` or artifact field is not a string simply contributes
+   * no path — the engine will refuse it on its own terms once the document is served — and a
+   * document that will not parse at all contributes none, which stages the document alone and
+   * leaves `document-unreadable` to the consumer that owns it.
+   */
+  private fun knownDifferenceArtifactPaths(documentBytes: ByteArray): List<String> {
+    val parsed =
+      runCatching { json.parseToJsonElement(documentBytes.decodeToString()) }.getOrNull()
+        ?: return emptyList()
+    val acceptances =
+      (parsed as? JsonObject)?.get("acceptances") as? JsonArray ?: return emptyList()
+    val paths = LinkedHashSet<String>()
+    for (record in acceptances.take(ServeKnownDifferences.MAX_ACCEPTANCES)) {
+      val fields = record as? JsonObject ?: continue
+      val id = (fields["id"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: continue
+      for (key in listOf("mask", "acceptedCandidate")) {
+        val value = (fields[key] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: continue
+        val path = "$id/$value"
+        if (ServeKnownDifferences.isLookupPath(path)) paths += path
+      }
+    }
+    return paths.toList()
   }
 
   /**

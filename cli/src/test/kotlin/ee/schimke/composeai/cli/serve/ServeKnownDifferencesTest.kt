@@ -222,8 +222,13 @@ class ServeKnownDifferencesTest {
       Regex("maxDocumentBytes:\\s*([0-9 *_]+),").find(text)?.groupValues?.get(1)?.let(::evaluate)
     val artifactBytes =
       Regex("maxArtifactBytes:\\s*([0-9 *_]+),").find(text)?.groupValues?.get(1)?.let(::evaluate)
+    val acceptances =
+      Regex("maxAcceptances:\\s*([0-9 *_]+),").find(text)?.groupValues?.get(1)?.let(::evaluate)
     assertEquals(ServeKnownDifferences.MAX_DOCUMENT_BYTES.toLong(), documentBytes)
     assertEquals(ServeKnownDifferences.MAX_ARTIFACT_BYTES.toLong(), artifactBytes)
+    // Mirrored for the staging path's fetch list — a cap the host reads further than would fetch
+    // artifacts belonging to records the engine rejects the whole document for.
+    assertEquals(ServeKnownDifferences.MAX_ACCEPTANCES.toLong(), acceptances)
   }
 
   /**

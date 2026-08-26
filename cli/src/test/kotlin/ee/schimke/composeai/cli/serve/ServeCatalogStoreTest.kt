@@ -603,6 +603,101 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `catalog stages the published known differences, document and artifacts`() {
+    // The failure this guards is silent: `knownDifferences()` reads the staging tree, so a document
+    // nobody copies makes the comparison band, the dashboard audit, the `/parity` availability lane
+    // and the landing link all behave exactly as they do for a catalog that accepts nothing.
+    val root = tempRoot()
+    val requested = CopyOnWriteArrayList<String>()
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png"}]}]}
+      """
+        .trimIndent()
+    val document =
+      """
+      {"schema":"compose-preview-known-differences/v1","acceptances":[
+        {"id":"glyph","issue":"https://github.com/yschimke/m3-catalog/issues/40",
+         "mask":"mask.png","acceptedCandidate":"accepted-candidate.png"},
+        {"id":"escapes","issue":"https://github.com/yschimke/m3-catalog/issues/41",
+         "mask":"../../../secrets.png"}]}
+      """
+        .trimIndent()
+    val store =
+      ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        fetch = { url ->
+          requested += url
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.encodeToByteArray()
+            url.endsWith("/parity/known-differences.json") -> document.encodeToByteArray()
+            url.endsWith("/parity/known-differences/glyph/mask.png") -> "mask".encodeToByteArray()
+            url.endsWith("/parity/known-differences/glyph/accepted-candidate.png") ->
+              "accepted".encodeToByteArray()
+            url.endsWith("/images/button.png") -> png()
+            else -> null
+          }
+        },
+      )
+
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+    val host = registered.getValue("compose-m3")
+
+    // The document reaches the host **verbatim** — the verdicts are the engine's, so the staging
+    // path copies bytes rather than judging records.
+    val staged = host.knownDifferences()
+    assertTrue(staged is ServeKnownDifferences.Document.Text, "the document reached the host")
+    assertEquals(document, (staged as ServeKnownDifferences.Document.Text).text)
+
+    // …and so do the artifacts it names, at the paths it names them.
+    val mask = host.knownDifferenceArtifact("glyph/mask.png")
+    assertTrue(mask is ServeKnownDifferences.Artifact.Bytes, "the mask reached the host: $mask")
+    assertEquals("mask", (mask as ServeKnownDifferences.Artifact.Bytes).bytes.decodeToString())
+    assertTrue(
+      host.knownDifferenceArtifact("glyph/accepted-candidate.png")
+        is ServeKnownDifferences.Artifact.Bytes
+    )
+
+    // A path the reader would refuse to look up is never fetched, so it cannot be written either.
+    assertTrue(
+      requested.none { it.contains("secrets.png") },
+      "a traversal path was fetched: $requested",
+    )
+  }
+
+  @Test
+  fun `a catalog publishing no known differences serves without them`() {
+    val root = tempRoot()
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png"}]}]}
+      """
+        .trimIndent()
+    val store =
+      ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        fetch = { url ->
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.encodeToByteArray()
+            url.endsWith("/images/button.png") -> png()
+            else -> null
+          }
+        },
+      )
+
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+    // Null, not an empty document: "this catalog accepts nothing" is the ordinary case, and the
+    // band and the panel are both absent for it.
+    assertNull(registered.getValue("compose-m3").knownDifferences())
+  }
+
+  @Test
   fun `a catalog publishing no parity feed serves without one`() {
     val root = tempRoot()
     val catalog =
