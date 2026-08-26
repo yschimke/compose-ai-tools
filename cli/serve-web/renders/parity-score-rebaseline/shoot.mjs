@@ -29,7 +29,7 @@ const asset = before
 
 const PAIRS = [
     ["wear-m3-card-snapshot-vs-live-after.png", "wear-m3-card-snapshot-vs-live.png"],
-    ["wear-m3-edgebutton-figma-svg-scrollaway.png", "wear-m3-edgebutton-figma-svg.png"],
+    ["wear-m3-edgebutton-figma-svg-scrollaway.png", "wear-m3-edgebutton-figma-svg-scrolled.png"],
     ["compose-m3-button-snapshot-vs-wasm-after.png", "compose-m3-button-snapshot-vs-wasm.png"],
 ];
 const lane = path.join(repo, "renders/lane-parity");
