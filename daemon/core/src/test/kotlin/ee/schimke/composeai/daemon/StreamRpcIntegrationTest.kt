@@ -638,6 +638,36 @@ class StreamRpcIntegrationTest {
   }
 
   @Test(timeout = 30_000)
+  fun xrPortThatThrowsOnCloseStillLetsTheDaemonExit() {
+    // `XrSessions` is an interface, so the daemon cannot assume the renderer's close() is
+    // well-behaved — and it is called on every teardown path, twice on some. Unguarded, a throw
+    // would escape from the middle of cleanShutdown: before host.shutdown(), before the writer
+    // sentinel and thread joins, and before onExit. The daemon would hang instead of exiting.
+    val tmp = Files.createTempDirectory("xr-rpc-test").toFile()
+    val pngFile = File(tmp, "preview-A.png").apply { writeBytes(testPngBytes(seed = 0)) }
+    val sessions = ThrowingCloseXrSessions()
+    val (_, serverThread, out, received, exitLatch) =
+      bringUpServer(StreamRpcFakeHost(pngFile), sessions)
+    resourcesToClose.add(AutoCloseable { runCatching { out.close() } })
+    handshake(out, received)
+
+    writeFrame(
+      out,
+      """{"jsonrpc":"2.0","id":30,"method":"xr/start","params":{
+            "previewId":"p","sceneDir":".",
+            "scene":{"version":1,"units":"dp","camera":{"kind":"orbit"},"panels":[]}}}""",
+    )
+    assertNotNull(
+      "xr/start must respond",
+      pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 30 },
+    )
+
+    // The assertion is teardownServer's own: the exit latch must fire within 5s.
+    teardownServer(out, received, serverThread, exitLatch)
+    assertTrue("the failing close must still have been attempted", sessions.closeAttempts.get() > 0)
+  }
+
+  @Test(timeout = 30_000)
   fun xrStart_replies_methodNotFound_when_xr_unavailable() {
     val tmp = Files.createTempDirectory("xr-rpc-test").toFile()
     val pngFile = File(tmp, "preview-A.png").apply { writeBytes(testPngBytes(seed = 0)) }
@@ -678,6 +708,37 @@ class StreamRpcIntegrationTest {
     val sig = byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10)
     val payload = ByteArray(16) { i -> ((i + seed * 13) and 0xFF).toByte() }
     return sig + payload
+  }
+}
+
+/**
+ * An [XrSessions] whose `close()` always throws — the shape the daemon must survive, since the port
+ * is an interface and an implementation can fail to tear its renderer down.
+ */
+private class ThrowingCloseXrSessions : XrSessions {
+  val closeAttempts = AtomicInteger(0)
+
+  override fun open(
+    id: String,
+    scene: JsonElement,
+    sceneDir: String?,
+    environment: String?,
+    width: Int?,
+    height: Int?,
+  ): XrFrame = XrFrame(1L, 64, 48, "png", "data-1")
+
+  override fun isOpen(id: String): Boolean = true
+
+  override fun updatePanels(id: String, panels: JsonArray): XrFrame =
+    XrFrame(2L, 64, 48, "png", "data-2")
+
+  override fun structure(id: String): JsonElement? = null
+
+  override fun close(id: String) = Unit
+
+  override fun close() {
+    closeAttempts.incrementAndGet()
+    throw IllegalStateException("renderer refused to close")
   }
 }
 

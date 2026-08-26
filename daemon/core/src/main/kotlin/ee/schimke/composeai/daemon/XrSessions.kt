@@ -75,6 +75,15 @@ public interface XrSessions : AutoCloseable {
   /** Close and drop the session for [id]; no-op if none is open. */
   public fun close(id: String)
 
-  /** Close every live session and release the renderer — called on daemon shutdown. */
+  /**
+   * Close every live session and release the renderer — called on daemon shutdown.
+   *
+   * The daemon calls this **more than once** on some paths: transport EOF closes before the
+   * idle-timeout grace window, and `cleanShutdown` closes again afterwards. Implementations should
+   * make it idempotent, and should not throw — the daemon guards the call anyway, since a throw
+   * here would otherwise be raised mid-shutdown, before the host stops and before the exit hook
+   * runs, but swallowing an unexpected exception is a worse place to learn about it than handling
+   * it where the renderer is.
+   */
   override fun close()
 }

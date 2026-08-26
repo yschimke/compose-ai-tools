@@ -614,7 +614,7 @@ class JsonRpcServer(
       // [closeAllInteractiveSessions] is idempotent, so the second call inside [cleanShutdown]
       // is a safe no-op on this path.
       closeAllInteractiveSessions()
-      xrSessions?.close()
+      closeXrSessions()
       // EOF without exit notification — PROTOCOL.md § 3 idle-timeout exit.
       if (!shutdownRequested.get()) {
         try {
@@ -4099,7 +4099,7 @@ class JsonRpcServer(
     // safe no-op on this path.
     closeAllInteractiveSessions()
     closeAllRecordingSessions()
-    xrSessions?.close()
+    closeXrSessions()
     running.set(false)
     cleanShutdown()
     invokeExit(exitCode)
@@ -4114,6 +4114,32 @@ class JsonRpcServer(
    * tearing down the scene; the [InteractiveSession.close] contract pushes that responsibility to
    * the implementation.
    */
+  /**
+   * Close the XR port, best-effort. Called from every teardown path, and deliberately more than
+   * once on some of them — the EOF path closes before the idle-timeout grace window and
+   * [cleanShutdown] closes again afterwards, exactly as [closeAllInteractiveSessions] is called
+   * twice there.
+   *
+   * Guarded because [XrSessions] is an interface. The old concrete `XrSessionManager` swallowed
+   * renderer-close failures internally and was idempotent, so an unguarded call was safe by
+   * accident; a port implementation makes neither promise. An exception escaping here would be
+   * raised from the middle of [cleanShutdown] — before `host.shutdown()`, before the writer
+   * sentinel and the thread joins, and before `invokeExit` — so a renderer that failed to close
+   * would strand the daemon rather than end it. Every neighbouring teardown call in [cleanShutdown]
+   * is wrapped for the same reason.
+   */
+  private fun closeXrSessions() {
+    val sessions = xrSessions ?: return
+    try {
+      sessions.close()
+    } catch (e: Throwable) {
+      System.err.println(
+        "compose-ai-daemon: xrSessions.close failed: ${e.javaClass.simpleName}: ${e.message}; " +
+          "continuing shutdown"
+      )
+    }
+  }
+
   private fun closeAllInteractiveSessions() {
     val sessions = interactiveSessions.values.toList()
     interactiveSessions.clear()
@@ -4267,7 +4293,7 @@ class JsonRpcServer(
     }
     closeAllInteractiveSessions()
     closeAllRecordingSessions()
-    xrSessions?.close()
+    closeXrSessions()
     try {
       host.shutdown()
     } catch (e: Throwable) {
