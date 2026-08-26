@@ -549,19 +549,24 @@ function indexedIssue(row) {
  *   [`known-difference-score.mjs`](./known-difference-score.mjs) suppresses, and forming it is the
  *   one thing that has to happen after the gates and before the score (I5).
  */
-export function evaluateKnownDifferences({ documentText, readArtifact, comparison = null, catalog = null }) {
-  const parsed = parseDocument(documentText);
-  if (parsed.failure) return { validationFailures: [parsed.failure] };
-  const records = parsed.document.acceptances;
-
-  const documentFailures = [];
+/**
+ * The document-level failures decided by the records' **identity alone** — no artifact is read to
+ * reach any of them.
+ *
+ * Extracted so {@link readsNoArtifacts} and the evaluation itself cannot drift: a consumer that
+ * plans its reads from a second copy of these rules would fetch for a document the engine rejects,
+ * or skip for one it accepts, and only the second is a verdict change — which is exactly why the two
+ * must be one function rather than two that agree today.
+ */
+function identityFailures(records) {
+  const failures = [];
 
   // Identity first: a record with no usable key cannot be reported any other way, and a duplicated
   // key cannot be represented in a map at all. Both reject the document.
   const unkeyable = records
     .map((record, index) => ({ record, index }))
     .filter(({ record }) => typeof record?.id !== "string" || record.id.trim() === "");
-  for (const { index } of unkeyable) documentFailures.push({ index, reason: "id-missing" });
+  for (const { index } of unkeyable) failures.push({ index, reason: "id-missing" });
 
   // **Collisions are detected case-folded, and reported under the first spelling seen.** `foo` and
   // `FOO` are distinct map keys and the *same directory* on Windows and on a default macOS
@@ -581,9 +586,44 @@ export function evaluateKnownDifferences({ documentText, readArtifact, compariso
     .filter(([, count]) => count > 1)
     .map(([key]) => firstSeen.get(key))
     .sort((a, b) => a.index - b.index);
-  for (const { id } of duplicates) documentFailures.push({ id, reason: "duplicate-id" });
+  for (const { id } of duplicates) failures.push({ id, reason: "duplicate-id" });
 
-  if (records.length > BUDGET.maxAcceptances) documentFailures.push({ reason: "document-too-large" });
+  if (records.length > BUDGET.maxAcceptances) failures.push({ reason: "document-too-large" });
+
+  return failures;
+}
+
+/**
+ * Whether this document is rejected **before a single artifact is read**.
+ *
+ * For a consumer that must fetch ahead — a browser, where `readArtifact` is synchronous by design
+ * and the bytes have to be in hand before the ladder starts — this is the difference between
+ * prefetching a document's artifacts and prefetching nothing at all. A rejected document produces no
+ * `statuses` and reads nothing, so every byte fetched for one is a byte held for no verdict: up to
+ * 256 × 2 × 8 MiB of legal, individually-capped artifacts, which is the exhaustion the caps exist to
+ * prevent, reached through the guard itself.
+ *
+ * It answers only what the *text* decides — the size ceiling, a parse failure, a repeated member,
+ * an unkeyable or duplicated id, the record count. Everything past that needs headers, and a
+ * consumer planning reads from headers it has not fetched is planning from nothing.
+ *
+ * Deliberately not "will the engine read *this* artifact": that is a per-record question whose
+ * answer is `preflightClean`, and a caller approximating it from headers alone would over-count as
+ * often as under-count. This is the half that is exactly decidable, and it is the half that matters
+ * for a document nobody should be fetching for.
+ */
+export function readsNoArtifacts(documentText) {
+  const parsed = parseDocument(documentText);
+  if (parsed.failure) return true;
+  return identityFailures(parsed.document.acceptances).length > 0;
+}
+
+export function evaluateKnownDifferences({ documentText, readArtifact, comparison = null, catalog = null }) {
+  const parsed = parseDocument(documentText);
+  if (parsed.failure) return { validationFailures: [parsed.failure] };
+  const records = parsed.document.acceptances;
+
+  const documentFailures = identityFailures(records);
 
   // **Any document-level failure ends it here, before a single artifact is fetched.** An earlier
   // revision stopped the loop below only for `document-too-large`, so a document rejected for a
