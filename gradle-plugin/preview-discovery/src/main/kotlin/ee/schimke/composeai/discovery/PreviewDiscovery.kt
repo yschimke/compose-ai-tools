@@ -1545,8 +1545,105 @@ object PreviewDiscovery {
     )
 
   private fun File.declaresPreviewAnnotation(): Boolean = runCatching {
-    PREVIEW_SOURCE_ANNOTATION.containsMatchIn(readText())
+    PREVIEW_SOURCE_ANNOTATION.containsMatchIn(readText().kotlinCodeOnly())
   }.getOrDefault(false)
+
+  /**
+   * Blank comments and literals while preserving line breaks, so the source-level integrity guard
+   * sees annotations in Kotlin code rather than examples embedded in KDoc, block comments, or
+   * strings. Kotlin block comments nest, so a regex replacement is not sufficient here.
+   */
+  private fun String.kotlinCodeOnly(): String {
+    val out = StringBuilder(length)
+    var i = 0
+    var blockDepth = 0
+    var lineComment = false
+    var quote: Char? = null
+    var tripleQuoted = false
+    var escaped = false
+    fun blank(c: Char) {
+      out.append(if (c == '\n' || c == '\r') c else ' ')
+    }
+    while (i < length) {
+      val c = this[i]
+      val next = getOrNull(i + 1)
+      if (lineComment) {
+        blank(c)
+        if (c == '\n' || c == '\r') lineComment = false
+        i++
+        continue
+      }
+      if (blockDepth > 0) {
+        when {
+          c == '/' && next == '*' -> {
+            blank(c)
+            blank(next)
+            blockDepth++
+            i += 2
+          }
+          c == '*' && next == '/' -> {
+            blank(c)
+            blank(next)
+            blockDepth--
+            i += 2
+          }
+          else -> {
+            blank(c)
+            i++
+          }
+        }
+        continue
+      }
+      if (quote != null) {
+        if (tripleQuoted && startsWith("\"\"\"", i)) {
+          repeat(3) { blank(this[i + it]) }
+          i += 3
+          quote = null
+          tripleQuoted = false
+        } else {
+          blank(c)
+          if (!tripleQuoted) {
+            if (escaped) escaped = false
+            else if (c == '\\') escaped = true
+            else if (c == quote) quote = null
+          }
+          i++
+        }
+        continue
+      }
+      when {
+        c == '/' && next == '/' -> {
+          blank(c)
+          blank(next)
+          lineComment = true
+          i += 2
+        }
+        c == '/' && next == '*' -> {
+          blank(c)
+          blank(next)
+          blockDepth = 1
+          i += 2
+        }
+        startsWith("\"\"\"", i) -> {
+          repeat(3) { blank(this[i + it]) }
+          quote = '\"'
+          tripleQuoted = true
+          i += 3
+        }
+        c == '\"' || c == '\'' -> {
+          blank(c)
+          quote = c
+          escaped = false
+          i++
+        }
+        else -> {
+          out.append(c)
+          i++
+        }
+      }
+    }
+    return out.toString()
+  }
 
   private fun File.isTestSourceSetFile(): Boolean {
     val marker = "/src/"

@@ -1222,6 +1222,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         fs.writeFileSync(cmpFile, renamed, "utf-8");
 
         let renamePhaseError: Error | null = null;
+        let newRenderOutputs: string[] = [];
         try {
             api.resetMessages();
             // The file-system watcher observes the write above. Starting a
@@ -1326,13 +1327,8 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                 reRefreshedRenamed,
                 "renamed preview id disappeared on the verification refresh",
             );
-            const newRenderOutputs = (reRefreshedRenamed.captures ?? []).map(
-                (c) =>
-                    fullRenderPath(
-                        repoRoot,
-                        reRefreshed.moduleDir,
-                        c.renderOutput,
-                    ),
+            newRenderOutputs = (reRefreshedRenamed.captures ?? []).map((c) =>
+                fullRenderPath(repoRoot, reRefreshed.moduleDir, c.renderOutput),
             );
             observations.newRenderOutputs = newRenderOutputs;
             assert.ok(
@@ -1370,39 +1366,78 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         } finally {
             fs.writeFileSync(cmpFile, original, "utf-8");
         }
-        if (renamePhaseError) throw renamePhaseError;
 
-        // --- Revert: the original RedBoxPreview must come back, renamed gone ---
-        api.resetMessages();
-        // The restore write in `finally` has its own watcher event. Join it
-        // through the save queue too, otherwise cleanup recreates the same
-        // double-refresh race as the rename.
-        api.triggerSave(cmpFile);
-        const afterRevert = await waitFor(
-            "setPreviews after reverting the rename",
-            budgetWithin(deadlineAt, RENDER_ROUND_TRIP_BUDGET_MS),
-            500,
-            () => {
-                const msgs = api.getPostedMessages();
-                return latestSetPreviewsMatching(msgs, (m) => {
-                    if (m.previews.length === 0) return false;
-                    if (!m.moduleDir.includes(cmpNeedle)) return false;
-                    return (
-                        m.previews.some((p) => OLD.test(p.id)) &&
-                        !m.previews.some((p) => NEW.test(p.id))
-                    );
-                });
-            },
-            describeCmpPanelState,
-        );
-        observations.afterRevertIds = afterRevert.previews
-            .map((p) => p.id)
-            .sort();
-        assert.deepStrictEqual(
-            afterRevert.previews.map((p) => p.id).sort(),
-            baselineIds,
-            "id set after reverting the rename diverged from the pre-edit baseline",
-        );
+        // Revert + cleanup runs even when the rename phase threw: the source is
+        // restored above, but the batch artifacts (original PNG deleted, temporary
+        // renamed PNG present) are only put back by the cleanup render below, and a
+        // rethrow here would leave every later scenario in this serial suite reading
+        // corrupted artifacts. On a failed rename phase this is best-effort cleanup —
+        // its own errors are reported but must not mask the original failure.
+        try {
+            // --- Revert: the original RedBoxPreview must come back, renamed gone ---
+            api.resetMessages();
+            // The restore write in `finally` has its own watcher event. Join it
+            // through the save queue too, otherwise cleanup recreates the same
+            // double-refresh race as the rename.
+            api.triggerSave(cmpFile);
+            const afterRevert = await waitFor(
+                "setPreviews after reverting the rename",
+                budgetWithin(deadlineAt, RENDER_ROUND_TRIP_BUDGET_MS),
+                500,
+                () => {
+                    const msgs = api.getPostedMessages();
+                    return latestSetPreviewsMatching(msgs, (m) => {
+                        if (m.previews.length === 0) return false;
+                        if (!m.moduleDir.includes(cmpNeedle)) return false;
+                        return (
+                            m.previews.some((p) => OLD.test(p.id)) &&
+                            !m.previews.some((p) => NEW.test(p.id))
+                        );
+                    });
+                },
+                describeCmpPanelState,
+            );
+            observations.afterRevertIds = afterRevert.previews
+                .map((p) => p.id)
+                .sort();
+            assert.deepStrictEqual(
+                afterRevert.previews.map((p) => p.id).sort(),
+                baselineIds,
+                "id set after reverting the rename diverged from the pre-edit baseline",
+            );
+
+            // The daemon save above restores discovery state, but batch renders are owned by
+            // composePreviewRenderAll. Refresh once more after the save queue settles so a focused E
+            // run cannot leave the original PNG deleted and the temporary renamed PNG behind.
+            assertRefreshRendered(
+                api,
+                await refreshWithinBudget(
+                    ":samples:cmp cleanup render",
+                    budgetWithin(deadlineAt, REFRESH_BUDGET_MS),
+                    api.triggerRefresh(cmpFile, true, "full"),
+                    describeCmpPanelState,
+                ),
+                ":samples:cmp cleanup render",
+            );
+            await waitFor(
+                "batch artifacts after reverting the rename",
+                budgetWithin(deadlineAt, PANEL_UPDATE_BUDGET_MS),
+                500,
+                () =>
+                    oldRenderOutputs.every((p) => fs.existsSync(p)) &&
+                    newRenderOutputs.every((p) => !fs.existsSync(p))
+                        ? true
+                        : undefined,
+                describeCmpPanelState,
+            );
+        } catch (cleanupError) {
+            if (!renamePhaseError) throw cleanupError;
+            console.error(
+                "scenario E: rename cleanup failed after the phase error",
+                cleanupError,
+            );
+        }
+        if (renamePhaseError) throw renamePhaseError;
 
         dumpTranscript(repoRoot, "scenario-E-rename-preview", observations);
     });

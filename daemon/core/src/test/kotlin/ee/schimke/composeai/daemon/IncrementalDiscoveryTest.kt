@@ -3,6 +3,8 @@ package ee.schimke.composeai.daemon
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.jar.JarEntry
+import java.util.jar.JarOutputStream
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -229,5 +231,81 @@ class IncrementalDiscoveryTest {
     val syntheticKt = Path.of(System.getProperty("java.io.tmpdir"), "TestPreview.kt")
     val results = brokenDiscovery.scanForFile(syntheticKt)
     assertEquals(emptySet<PreviewInfoDto>(), results)
+  }
+
+  @Test
+  fun `scoped scan keeps dependency jars but excludes other class directories`() {
+    val root = Files.createTempDirectory("incremental-roots")
+    try {
+      val target = Files.createDirectories(root.resolve("target/com/example"))
+      val targetRoot = target.parent.parent
+      val other = Files.createDirectories(root.resolve("other/com/example"))
+      val otherRoot = other.parent.parent
+      val dependencyJar = Files.createFile(root.resolve("annotations.jar"))
+      val source = root.resolve("project/src/main/kotlin/com/example/Preview.kt")
+      Files.createDirectories(source.parent)
+
+      val scoped =
+        IncrementalDiscovery(
+          classpath = listOf(targetRoot, otherRoot, dependencyJar),
+          knownPreviewAnnotationFqns = setOf(testPreviewFqn),
+        )
+
+      assertEquals(listOf(targetRoot, dependencyJar), scoped.scanRootsForFile(source))
+    } finally {
+      root.toFile().deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `scoped scan does not return previews sourced from a dependency jar`() {
+    // The dependency JARs are retained so annotation metadata resolves, but a JAR class compiled
+    // from the same source basename as the edited file must not be reported under that file: two
+    // modules both having a `Previews.kt` is ordinary, and emitting the foreign previews pollutes
+    // the incremental index after a save (#4499 review).
+    val root = Files.createTempDirectory("incremental-dep-jar")
+    try {
+      val packagePath = "ee/schimke/composeai/daemon/fixtures"
+      // The module's own class output: it holds the package directory (so the source → classpath
+      // heuristic resolves to it) but none of the fixture classes.
+      val targetRoot = root.resolve("target")
+      Files.createDirectories(targetRoot.resolve(packagePath))
+      // The dependency: the compiled fixture classes, whose bytecode `SourceFile` is
+      // `TestPreview.kt` — the same basename as the file being scanned.
+      val dependencyJar = jarOfFixtureClasses(root.resolve("dependency.jar"), packagePath)
+      val source = root.resolve("project/src/main/kotlin/$packagePath/TestPreview.kt")
+      Files.createDirectories(source.parent)
+
+      val scoped =
+        IncrementalDiscovery(
+          classpath = listOf(targetRoot, dependencyJar),
+          knownPreviewAnnotationFqns = setOf(testPreviewFqn),
+        )
+
+      assertEquals(listOf(targetRoot, dependencyJar), scoped.scanRootsForFile(source))
+      assertEquals(emptySet<PreviewInfoDto>(), scoped.scanForFile(source))
+    } finally {
+      root.toFile().deleteRecursively()
+    }
+  }
+
+  /** Packages the compiled `TestPreviewFixtures` classes off the test classpath into [jar]. */
+  private fun jarOfFixtureClasses(jar: Path, packagePath: String): Path {
+    val classesDir =
+      testClasspath.firstOrNull { Files.isDirectory(it.resolve(packagePath)) }
+        ?: error("fixture classes not found on the test classpath")
+    val entries =
+      Files.list(classesDir.resolve(packagePath)).use { stream ->
+        stream.filter { it.fileName.toString().startsWith("TestPreviewFixtures") }.toList()
+      }
+    assertTrue("expected compiled fixture classes in $classesDir", entries.isNotEmpty())
+    JarOutputStream(Files.newOutputStream(jar)).use { out ->
+      for (entry in entries) {
+        out.putNextEntry(JarEntry("$packagePath/${entry.fileName}"))
+        out.write(Files.readAllBytes(entry))
+        out.closeEntry()
+      }
+    }
+    return jar
   }
 }

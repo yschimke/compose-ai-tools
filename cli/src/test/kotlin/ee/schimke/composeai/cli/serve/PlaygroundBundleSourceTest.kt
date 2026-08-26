@@ -94,6 +94,25 @@ class PlaygroundClasspathSupplierTest {
     }
 
   @Test
+  fun `the startup source classification remains available without reparsing`() {
+    val served =
+      PlaygroundClasspathSupplier(
+        source = PlaygroundBundleSource.ServedCatalog("compose-m3"),
+        locateServedBundle = { null },
+        resolve = { classpath },
+      )
+    val local =
+      PlaygroundClasspathSupplier(
+        source = PlaygroundBundleSource.LocalPath("compose-m3"),
+        locateServedBundle = { null },
+        resolve = { classpath },
+      )
+
+    assertEquals("compose-m3", served.servedCatalogSystem)
+    assertNull(local.servedCatalogSystem)
+  }
+
+  @Test
   fun `a served catalog resolves on first use, not at construction`() {
     val bundle = bundleFile()
     var located: File? = null

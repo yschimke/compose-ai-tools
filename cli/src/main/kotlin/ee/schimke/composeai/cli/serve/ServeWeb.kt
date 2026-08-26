@@ -9525,6 +9525,13 @@ $rows
     knownDifferences: KnownDifferenceScope? = null,
     parityIssues: List<ParityIssue> = emptyList(),
     /**
+     * The complete issue index used to resolve acceptance lifecycle state. [parityIssues] remains
+     * the comparison-filtered list rendered in the Issues panel; an acceptance can legitimately
+     * refer to an issue whose independently published preview/reference locators are stale, so the
+     * lifecycle join must not inherit that display filter.
+     */
+    acceptanceIssues: List<ParityIssue> = parityIssues,
+    /**
      * The catalog change feed the footer offers as **Changelog** and the head declares as this
      * page's RSS alternate. Empty when the server runs with the feed lane off. See [siteFooter].
      */
@@ -9739,7 +9746,7 @@ ${if (annotationsSelectable) "          data-cp-selectable=\"1\"\n" else ""}    
           candidateUrl = actual,
           scope = scope,
           issues =
-            parityIssues
+            acceptanceIssues
               .map { issue ->
                 KnownDifferenceIssue(
                   repository = issue.repository,

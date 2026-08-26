@@ -1454,13 +1454,11 @@ function elementCauses(element, tagIndex) {
     Math.abs(bounds.x + bounds.width - (baseline.x + baseline.width)),
     Math.abs(bounds.y + bounds.height - (baseline.y + baseline.height)),
   );
-  // **Compared as a ratio, not against a scaled tolerance.** `tolerance × min(width, height)` is a
-  // float multiplication and lands just under the true value often enough to matter: with tolerance
-  // `0.145` and a 200px baseline it gives `28.999999999999996`, so a displacement of exactly 29 —
-  // which *is* the inclusive boundary — reports `element-moved` here and `valid` in a consumer using
-  // decimals or the ratio. Dividing instead makes the boundary exact wherever the recorded tolerance
-  // is: `29 / 200` and the literal `0.145` are the same double, because both are the nearest double
-  // to the same real number.
+  // **Compared by exact cross multiplication, never floating-point ratio or product.** The
+  // tolerance grammar makes the decimal an exact multiple of `1 / ELEMENT_TOLERANCE_SCALE`, so the
+  // inclusive gate is `displacement × scale <= toleranceMicros × minDimension`. Both sides must be
+  // arbitrary-precision integers: a ratio happens to fix the familiar `0.145 × 200` boundary, but
+  // diverges again at schema-valid safe-integer bounds (pinned by the large-products fixture).
   const minDimension = Math.min(baseline.width, baseline.height);
   // **Exact integer arithmetic, in `BigInt`.** `element.tolerance` is spelled as a plain decimal
   // with at most six fraction digits, so it is an exact multiple of `1 / SCALE` and scaling recovers

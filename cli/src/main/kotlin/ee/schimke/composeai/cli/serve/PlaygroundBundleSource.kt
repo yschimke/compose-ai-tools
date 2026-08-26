@@ -115,6 +115,17 @@ class PlaygroundClasspathSupplier(
   /** How this mode's bundle was named, for `/status.json` and startup logs. */
   fun describeSource(): String = source.describe()
 
+  /**
+   * The served catalog this supplier was classified as at startup, or null for a local bundle.
+   *
+   * Classification is intentionally exposed from the supplier rather than recomputed from the raw
+   * flag: a separator-less value consults the filesystem when it is parsed, and that filesystem can
+   * change during a long-running serve process. Consumers must keep using the identity that the
+   * classpath supplier itself resolved.
+   */
+  val servedCatalogSystem: String?
+    get() = (source as? PlaygroundBundleSource.ServedCatalog)?.system
+
   fun classpath(): PlaygroundCompileService.Classpath? {
     resolved?.let {
       return it

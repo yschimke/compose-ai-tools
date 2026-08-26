@@ -280,6 +280,55 @@ class LottieAssetDiscoveryTest {
   }
 
   @Test
+  fun `preview examples in comments and strings do not flag empty compiled outputs`() {
+    val project = tempDir.newFolder("documented-asset-only")
+    val classes = project.resolve("classes").apply { mkdirs() }
+    val source =
+      project.resolve("src/main/kotlin/Examples.kt").apply {
+        parentFile.mkdirs()
+        writeText(
+          """
+          package example
+
+          /*
+          @Preview
+          fun blockExample() = Unit
+            /* @NestedPreview fun nested() = Unit */
+          */
+          /**
+           * @Preview
+           * fun kdocExample() = Unit
+           */
+          val sample = """ + "\"\"\"" + """
+          @Preview
+          fun stringExample() = Unit
+          """ + "\"\"\"" + """
+          """
+            .trimIndent()
+        )
+      }
+    val resources = project.resolve("resources").apply { mkdirs() }
+    resources.resolve("spin.json").writeText("""{"v":"5.7.0","layers":[]}""")
+
+    val outcome =
+      PreviewDiscovery.discover(
+        PreviewDiscovery.Input(
+          classDirs = listOf(classes),
+          dependencyJars = emptyList(),
+          sourceFiles = listOf(source),
+          moduleName = ":assets",
+          variantName = "desktop",
+          projectDirectory = project,
+          failOnEmpty = false,
+          resourceDirs = listOf(resources),
+        )
+      ) as PreviewDiscovery.Outcome.Success
+
+    assertThat(outcome.warnings.joinToString("\n")).doesNotContain("empty build-cache entry")
+    assertThat(outcome.manifest.previews).hasSize(1)
+  }
+
+  @Test
   fun `supported preview annotation names flag empty compiled outputs`() {
     val project = tempDir.newFolder("supported-preview-names")
     val classes = project.resolve("classes").apply { mkdirs() }
