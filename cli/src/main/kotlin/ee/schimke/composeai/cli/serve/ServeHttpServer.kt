@@ -3077,7 +3077,7 @@ class ServeHttpServer(
       val reportContext =
         ServeIssueReport.Context(
           repo = ServeIssueReport.repoFor(bundleHost?.catalogSource, bundleHost?.provenance),
-          system = basePath.trim('/').takeIf { it.isNotEmpty() } ?: sessionId,
+          system = sessionId,
           catalog = bundleHost?.provenance?.let { "${it.repo}@${it.branch}" },
           toolVersion = bundleHost?.provenance?.toolVersion,
           pageUrl = ServeIssueReport.withoutToken(externalPageUrl()),
@@ -3234,7 +3234,12 @@ class ServeHttpServer(
             renderHost.knownDifferences()?.let {
               renderHost.previews.map { preview ->
                 KnownDifferenceCatalogPreview(
-                  system = basePath.trim('/').takeIf { it.isNotEmpty() } ?: sessionId,
+                  // The **resolved session id**, not the base path's first segment. The two differ
+                  // for a catalog whose name carries a character a URL segment escapes (`@` is
+                  // legal in a session name and encodes to `%40`), and an identity that changed
+                  // spelling with the route form would report a document healthy through
+                  // `/<system>/parity` and orphaned through `?session=`, from the same bytes.
+                  system = sessionId,
                   id = preview.id,
                   component = ServeIssueReport.componentIdFor(preview),
                   variant = ServeIssueReport.variantFor(preview),
@@ -3589,7 +3594,7 @@ class ServeHttpServer(
           repo = ServeIssueReport.repoFor(bundleHost?.catalogSource, bundleHost?.provenance),
           previewId = preview.id,
           previewLabel = preview.label,
-          system = basePath.trim('/').takeIf { it.isNotEmpty() } ?: sessionId,
+          system = sessionId,
           componentId = ServeIssueReport.componentIdFor(preview),
           referenceId = reference.id,
           variant = ServeIssueReport.variantFor(preview),
@@ -6958,7 +6963,7 @@ class ServeHttpServer(
           repo = ServeIssueReport.repoFor(bundleHost?.catalogSource, bundleHost?.provenance),
           previewId = preview.id,
           previewLabel = preview.label,
-          system = basePath.trim('/').takeIf { it.isNotEmpty() } ?: sessionId,
+          system = sessionId,
           componentId = ServeIssueReport.componentIdFor(preview),
           variant = ServeIssueReport.variantFor(preview),
           overrides = requestOverrideParams(sessionId),

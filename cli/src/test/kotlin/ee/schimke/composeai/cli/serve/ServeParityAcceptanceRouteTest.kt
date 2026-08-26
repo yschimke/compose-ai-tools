@@ -110,6 +110,40 @@ class ServeParityAcceptanceRouteTest {
   }
 
   @Test
+  fun `the inventory's identity is the session id, not the escaped path segment`() {
+    // `@` is legal in a session name and escapes to `%40` in a URL segment, so an identity taken
+    // from the base path would spell the same catalog two ways depending on the route form — and an
+    // acceptance matches on every recorded field, so one of the two spellings orphans the document.
+    val registry = ServeSessionRegistry(open = { null })
+    registry.register("acc@ept", host = host, pinned = true)
+    val server =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused-in-public",
+          sessions = registry,
+          defaultSessionId = "acc@ept",
+          isPublic = true,
+          catalogSessions = listOf("acc@ept"),
+        )
+        .also { it.start() }
+    try {
+      val request =
+        Request.Builder().url("http://127.0.0.1:${server.port}/acc%40ept/parity").build()
+      client.newCall(request).execute().use { response ->
+        assertEquals(200, response.code)
+        val page = response.body.string()
+        assertTrue("\"system\":\"acc@ept\"" in page, "raw identity in the payload: $page")
+        // The URLs stay escaped — that is what a path segment is for. Only the identity is raw.
+        assertTrue("/acc%40ept/parity/known-differences.json" in page, "escaped URL: $page")
+      }
+    } finally {
+      server.stop()
+      registry.close()
+    }
+  }
+
+  @Test
   fun `the json view still 404s, because it cannot represent what keeps the page alive`() {
     // `compose-preview-serve/parity/v1` carries coverage, drift, activity and gaps — every one of
     // them empty here — and nothing about acceptances, since the host does not parse that document.
