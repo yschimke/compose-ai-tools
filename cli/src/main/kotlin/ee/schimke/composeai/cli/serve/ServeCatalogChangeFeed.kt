@@ -574,6 +574,7 @@ internal data class CatalogSnapshot(
                 )
                 .joinToString("\u001f"),
             match = match.number("percent"),
+            matchVersion = match.number("scoreVersion")?.toInt(),
             order = references.size,
           ),
         )
@@ -604,10 +605,39 @@ internal data class SnapshotReference(
   val previewId: String,
   val specFingerprint: String,
   val match: Double?,
+  /**
+   * Which pixel path [match] was minted by — see `ServeDesignReferenceStore.SCORE_VERSION`.
+   *
+   * Carried because the feed's job is to say what *changed between two revisions*, and two numbers
+   * from two kernels are not a change in the design. The scorer moved once, deliberately; a feed
+   * that compared across that move would report every reference in the catalog as having shifted,
+   * in the one batch where none of them had.
+   */
+  val matchVersion: Int?,
   val order: Int,
 )
 
 internal object CatalogFeedDiff {
+  /**
+   * Whether the published score actually moved between two revisions of the same reference.
+   *
+   * Two numbers minted by different kernels are not a move. The scorer's pixel path changed once,
+   * deliberately, and every published number changed with it; a feed that compared across that
+   * boundary would report every reference in the catalog as having shifted, in the one batch where
+   * none of them had. What it still reports across it is everything it can actually see — a moved
+   * raster, a renamed label, a reference that appeared or went away.
+   */
+  private fun matchMoved(old: SnapshotReference, new: SnapshotReference): Boolean =
+    old.matchVersion == new.matchVersion && old.match != new.match
+
+  /** The two scores to print, or nothing when they are not each other's units. */
+  private fun reportedMatch(
+    old: SnapshotReference?,
+    new: SnapshotReference?,
+  ): Pair<Double?, Double?> =
+    if (old != null && new != null && old.matchVersion != new.matchVersion) null to null
+    else old?.match to new?.match
+
   fun between(
     beforeRevision: CatalogFeedRevision,
     before: CatalogSnapshot,
@@ -690,7 +720,7 @@ internal object CatalogFeedDiff {
               old.label == new.label &&
               old.previewId == new.previewId &&
               old.specFingerprint == new.specFingerprint &&
-              old.match == new.match
+              !matchMoved(old, new)
           )
             return@mapNotNull null
           CatalogReferenceChange(
@@ -703,8 +733,8 @@ internal object CatalogFeedDiff {
                 old?.previewId != new?.previewId ||
                 old == null ||
                 new == null,
-            beforeMatch = old?.match,
-            afterMatch = new?.match,
+            beforeMatch = reportedMatch(old, new).first,
+            afterMatch = reportedMatch(old, new).second,
             order = new?.order ?: old!!.order,
             beforePresent = old != null,
             afterPresent = new != null,

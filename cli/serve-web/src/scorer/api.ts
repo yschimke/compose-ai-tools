@@ -12,16 +12,24 @@ import {
     blankMap,
     boxCanvas,
     grayFromDraw,
+    grayFromRaster,
     imageDimensions,
     loadImage,
     normalisedBoxes,
     pixelsOf,
+    rasterOf,
     svgImage,
     type Frame,
+    type Raster,
 } from "./frames.js";
 import { scorePlanes } from "./planes.js";
 import { translateOf } from "./svgTranslate.js";
-import { COMPARISON_GROUNDS, MAX_SIDE } from "./tuning.js";
+import {
+    COMPARISON_GROUNDS,
+    COMPARISON_GROUND_RGB,
+    MAX_SIDE,
+} from "./tuning.js";
+import { cropTo } from "../../../../scripts/design-artifacts/known-difference-resample.mjs";
 
 export interface Measurement {
     /** Structural match, 0–100. */
@@ -62,7 +70,9 @@ type Draw = (context: CanvasRenderingContext2D) => void;
  * The structural match of two drawings, scored once per {@link COMPARISON_GROUNDS} and reported as
  * the **worst** result.
  *
- * Every scorer here goes through this rather than compositing once, because a single opaque ground
+ * The canvas-bound scorers — the SVG lane and the Remote Compose lane, whose sources are not
+ * rasters this side can read — go through this rather than compositing once, because a single
+ * opaque ground
  * silently deletes ink that matches it and `scorePlanes` scores the resulting pair of blanks as
  * `100`. Taking the minimum is what makes that unrecoverable-looking case recoverable: content
  * annihilated on white survives on black and vice versa, so the ground that still *has* the evidence
@@ -238,7 +248,15 @@ export async function scoreImageUrls(
  * matters beyond the wasted work: an override-bearing `/render` is `no-store`, so a second request
  * is a second render, and the score could end up describing a different frame than the diff beside
  * it. The downscale still starts from the ORIGINAL images, not from the normalised canvases, so this
- * is one resample exactly as before and the numbers are unchanged.
+ * is one resample and nothing about the geometry depends on what a caller happened to draw.
+ *
+ * **The kernel is the portable area average, not `drawImage`** — the D3 rebaseline. Both sides are
+ * rasterised at their own size, cropped to their content box and resampled by `cropTo`, and the
+ * grounds are composited in arithmetic rather than by a `fillRect` underneath a draw. That is what
+ * makes this number reproducible outside a browser, and therefore the same number the acceptance
+ * band's `raw` reports: measured over the committed `renders/lane-parity` pairs the two now agree
+ * to 0.007pp, where the browser filter used to put them ~0.3pp apart. `SCORE_VERSION` says which
+ * path a published figure came from; see `tuning.ts`.
  */
 export async function scoreImages(
     referenceImage: Frame,
@@ -246,26 +264,31 @@ export async function scoreImages(
 ): Promise<Measurement> {
     const boxes = normalisedBoxes(referenceImage, candidateImage);
     const { width, height } = comparisonSize(boxes.candidate);
-    const paint =
-        (image: Frame, box: typeof boxes.candidate) =>
-        (context: CanvasRenderingContext2D) =>
-            context.drawImage(
-                image,
-                box.x,
-                box.y,
-                box.width,
-                box.height,
-                0,
-                0,
-                width,
-                height,
-            );
-    const percent = await scoreOnEveryGround(
-        paint(referenceImage, boxes.reference),
-        paint(candidateImage, boxes.candidate),
-        width,
-        height,
-    );
+    const reference = rasterOf(referenceImage);
+    const candidate = rasterOf(candidateImage);
+    if (!reference || !candidate) {
+        // Unreadable pixels — a cross-origin frame. The old path could not measure one either:
+        // every plane it scored came back through `getImageData`.
+        throw new Error("frame pixels are unreadable");
+    }
+    // ONE resample, source → score plane, at the candidate box's dimensions (I10), through the
+    // portable area average rather than `drawImage`. The geometry is exactly what it was and the
+    // kernel is not, which is the whole of the rebaseline on this side: the number moves once, here.
+    const scaled: [Raster, Raster] = [
+        cropTo(reference, boxes.reference, width, height),
+        cropTo(candidate, boxes.candidate, width, height),
+    ];
+    const grounds = COMPARISON_GROUND_RGB.map((ground) => ({
+        reference: grayFromRaster(scaled[0], ground),
+        candidate: grayFromRaster(scaled[1], ground),
+    }));
+    let percent = 100;
+    for (const plane of groundsWorthScoring(grounds)) {
+        percent = Math.min(
+            percent,
+            await scorePlanes(plane.reference, plane.candidate, width, height),
+        );
+    }
     return { percent, geometry: boxes.geometry };
 }
 

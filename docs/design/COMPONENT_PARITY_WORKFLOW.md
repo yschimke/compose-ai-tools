@@ -952,13 +952,22 @@ rebaseline**: bump the score's schema version, regenerate any committed baseline
 change, and say so in the release notes. Pretending continuity here would be the worse outcome,
 because the drift would show up later as unexplained score movement that nobody could attribute.
 
+> **Shipped.** `scoreImages` and `contentBox` measure through the portable area average as of
+> score version `2` (`SCORE_VERSION`, in `cli/serve-web/src/scorer/tuning.ts` and mirrored into
+> `known-difference-tuning.mjs` and `ServeDesignReferenceStore`). The version rides on every baked
+> `match`, and a reader drops a match minted by any other kernel rather than printing it beside a
+> number the lane computes with this one — so no revision exists where the schema and the numbers
+> disagree. Measured over the eleven committed `renders/lane-parity` pairs the move is at most
+> **0.87pp**, mean 0.28pp, and the live result line now agrees with the acceptance band's `raw` to
+> 0.007pp where it used to differ by the kernel.
+
 **The gate path and the score path are separate, and only the gates use the canonical plane.** Gates
 compare at canonical resolution because that is where a glyph is still a glyph and where the mask
 and accepted candidate are stored. Scoring does not: it draws each region straight from the source
 image into the score plane, one resample, exactly as `scoreImages` does today (I10). What that
 preserves is the **geometry**, not the value: enabling acceptance must not move a score by itself,
-and both passes stay on identical stages, which is what I6 actually requires. The *number* still
-shifts once when the portable kernel replaces `drawImage` — see the rebaseline note above; these two
+and both passes stay on identical stages, which is what I6 actually requires. The *number*
+shifted once when the portable kernel replaced `drawImage` — see the rebaseline note above; these two
 statements are only compatible if this one is read as being about geometry alone.
 
 **Scope matching uses every recorded field.** A comparison page is keyed by `(previewId,

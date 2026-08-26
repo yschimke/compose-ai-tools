@@ -41,6 +41,15 @@ export interface CompareApi {
     normaliseImageUrls: typeof normaliseImageUrls;
     /** Paint the magenta delta map into `into`; returns how many pixels differ. */
     diffCanvases: typeof diffCanvases;
+    /**
+     * Which pixel path these numbers come from — see `scorer/tuning.ts`.
+     *
+     * On the published contract because the publish-time driver bakes it beside every `match` it
+     * writes, and the served reader drops a match whose version is not the one it would compute
+     * with. A consumer that could not ask would have no way to tell an old-kernel number from a
+     * rebaselined one.
+     */
+    SCORE_VERSION: number;
 }
 
 declare global {

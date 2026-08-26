@@ -41,6 +41,52 @@ class ServeCatalogChangeFeedTest {
     )
 
   @Test
+  fun `a score minted by another kernel is not reported as a moved score`() {
+    // The scorer's pixel path changed once, deliberately, and every published number moved with it.
+    // The feed's job is to say what changed *in the catalog* between two revisions, so comparing
+    // across that boundary would announce every reference in the catalog as having shifted in the
+    // one batch where none of them had — a whole page of findings with no design behind any of
+    // them.
+    fun snapshot(percent: Double, version: Int, sha: String) =
+      CatalogSnapshot.parse(
+        catalogJson =
+          """{"title":"Demo","components":[
+            {"componentId":"Button","images":[{"path":"images/button/default.png"}]}
+          ]}""",
+        referencesJson =
+          """{"references":[{"id":"button-spec","previewId":"button__default","label":"Button spec",
+            "raster":{"path":"references/button.png","sha256":"$sha"},
+            "match":{"percent":$percent,"scoreVersion":$version}}]}""",
+        blobs = mapOf("images/button/default.png" to "2".repeat(40)),
+      )
+
+    // Same reference, same raster, same everything a reader can see — only the kernel moved.
+    val rebaselined =
+      CatalogFeedDiff.between(
+        oldRevision,
+        snapshot(percent = 80.0, version = 1, sha = "spec"),
+        newRevision,
+        snapshot(percent = 92.5, version = 2, sha = "spec"),
+      )
+    assertEquals(
+      emptyList(),
+      rebaselined.references,
+      "no design changed: ${rebaselined.references}",
+    )
+
+    // …and within one kernel the same move is exactly what the feed is for.
+    val moved =
+      CatalogFeedDiff.between(
+        oldRevision,
+        snapshot(percent = 80.0, version = 2, sha = "spec"),
+        newRevision,
+        snapshot(percent = 92.5, version = 2, sha = "spec"),
+      )
+    assertEquals(80.0, moved.references.single().beforeMatch)
+    assertEquals(92.5, moved.references.single().afterMatch)
+  }
+
+  @Test
   fun `snapshot diff reports additions deletions pixel changes metadata and figma effect`() {
     val before =
       CatalogSnapshot.parse(

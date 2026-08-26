@@ -13,6 +13,10 @@ import {
     type Size,
 } from "./contentBox.js";
 import { BOX_SAMPLE_SIDE } from "./tuning.js";
+import {
+    cropTo,
+    resampleArea,
+} from "../../../../scripts/design-artifacts/known-difference-resample.mjs";
 
 /** Anything decoded that a canvas can draw and that reports its own size. */
 export type Frame = CanvasImageSource & {
@@ -69,6 +73,76 @@ function readableContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
     }) as CanvasRenderingContext2D;
 }
 
+/** A decoded raster in the shape the portable kernel works on. */
+export interface Raster {
+    width: number;
+    height: number;
+    pixels: Uint8Array;
+}
+
+/**
+ * A frame's own pixels, at its own size — the entry point to the portable path.
+ *
+ * The draw is one-to-one, so no filter runs and nothing here is host-dependent: what comes back is
+ * the decoded image, and every downscale after it is {@link resampleArea}'s arithmetic rather than
+ * `drawImage`'s implementation-defined smoothing. That is the whole of the rebaseline
+ * ([D3](../../../../docs/design/parity-batches/00-decisions.md)) on this side — the score's geometry
+ * is unchanged, its kernel is not.
+ *
+ * `null` for a frame whose pixels cannot be read at all: a cross-origin artifact taints the canvas
+ * and `getImageData` throws. Every caller here already had that case, because the plane the score is
+ * computed from is read back the same way.
+ */
+export function rasterOf(image: Frame): Raster | null {
+    const { width, height } = imageDimensions(image);
+    if (width <= 0 || height <= 0) return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = readableContext(canvas);
+    context.drawImage(image, 0, 0);
+    try {
+        const data = context.getImageData(0, 0, width, height).data;
+        return {
+            width,
+            height,
+            pixels: new Uint8Array(
+                data.buffer,
+                data.byteOffset,
+                data.byteLength,
+            ),
+        };
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * One raster composited onto `ground`, as a luminance plane.
+ *
+ * {@link grayFromDraw}'s answer without the canvas: the same `source-over` arithmetic on
+ * non-premultiplied bytes, so a pixel with alpha `a` lands at `a·colour + (1−a)·ground`. Having it
+ * here rather than painting the raster back onto a context is what keeps the portable path portable
+ * — a `putImageData` round-trip would reintroduce the browser's own premultiplication rounding on
+ * every pixel, which is a difference between engines for no gain.
+ */
+export function grayFromRaster(
+    raster: Raster,
+    ground: readonly [number, number, number],
+): Float32Array {
+    const { width, height, pixels } = raster;
+    const gray = new Float32Array(width * height);
+    for (let i = 0; i < gray.length; i++) {
+        const alpha = pixels[i * 4 + 3] / 255;
+        const rest = 1 - alpha;
+        const r = pixels[i * 4] * alpha + ground[0] * rest;
+        const g = pixels[i * 4 + 1] * alpha + ground[1] * rest;
+        const b = pixels[i * 4 + 2] * alpha + ground[2] * rest;
+        gray[i] = 0.299 * r + 0.587 * g + 0.114 * b;
+    }
+    return gray;
+}
+
 /**
  * Whatever `draw` paints, on `ground`, as a luminance plane.
  *
@@ -116,21 +190,13 @@ export function contentBox(image: Frame): Box {
     );
     const width = Math.max(1, Math.round(size.width * scale));
     const height = Math.max(1, Math.round(size.height * scale));
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const context = readableContext(canvas);
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = "high";
-    context.drawImage(image, 0, 0, width, height);
-    let data: Uint8ClampedArray;
-    try {
-        data = context.getImageData(0, 0, width, height).data;
-    } catch {
-        // A tainted canvas (cross-origin artifact) cannot be sampled. Fall back to the whole image.
-        return wholeImage(size);
-    }
-    return boxFromSamples(data, width, height, size, scale);
+    const raster = rasterOf(image);
+    // A tainted canvas (cross-origin artifact) cannot be sampled. Fall back to the whole image.
+    if (!raster) return wholeImage(size);
+    // At `scale === 1` the resample is the identity, so a preview-sized capture is sampled at full
+    // resolution and the kernel cannot matter at all.
+    const sampled = scale === 1 ? raster : resampleArea(raster, width, height);
+    return boxFromSamples(sampled.pixels, width, height, size, scale);
 }
 
 /** Both sides measured, and the decision about whether cropping to those measurements is safe. */
@@ -162,17 +228,31 @@ export function boxCanvas(
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
-    readableContext(canvas).drawImage(
-        image,
-        box.x,
-        box.y,
-        box.width,
-        box.height,
-        0,
-        0,
-        width,
-        height,
-    );
+    const context = readableContext(canvas);
+    const raster = rasterOf(image);
+    if (!raster) {
+        // Unreadable pixels: the browser can still *draw* what it will not let anyone read back, so
+        // the visible panel stays right even though nothing downstream can measure it.
+        context.drawImage(
+            image,
+            box.x,
+            box.y,
+            box.width,
+            box.height,
+            0,
+            0,
+            width,
+            height,
+        );
+        return canvas;
+    }
+    // The same crop-and-resample the score plane is built by, so the magenta map marks the pixels
+    // the number was actually computed over rather than a second, differently-filtered rendering of
+    // the same pair.
+    const scaled = cropTo(raster, box, width, height);
+    const image_ = context.createImageData(width, height);
+    image_.data.set(scaled.pixels);
+    context.putImageData(image_, 0, 0);
     return canvas;
 }
 
