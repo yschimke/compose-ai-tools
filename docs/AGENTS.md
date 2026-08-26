@@ -113,6 +113,19 @@ Four-stage pipeline, spread across the modules:
 
 The CLI ([cli/](../cli/src/main/kotlin/ee/schimke/composeai/cli/)) and VS Code extension ([vscode-extension/](../vscode-extension/src/)) are thin drivers over the Gradle tasks — they shell out via the Tooling API (`GradleConnector.kt`, `gradleService.ts`) and read the resulting `previews.json` / PNG files. The CLI also ships a `compose-preview` binary with `installDist` for use as an agent/MCP backend.
 
+### `preview-server/` — a separate build, on purpose
+
+`compose-preview serve` is being prepared for extraction into its own repository (issue #3824). It has **not** moved, and by the repo's own gate it should not move yet — run `python3 scripts/measure-serve-coupling.py` for today's numbers.
+
+What exists is the seam. `preview-server/` is a **separate Gradle build** that is deliberately **not** included in the root `settings.gradle.kts`. Do not wire it in with `includeBuild` "for convenience": the whole value is that it can only resolve the contracts as published artifacts, exactly as it would after the split, so a contract that is unpublishable or drags an MCP server / renderer client onto the classpath fails now rather than on the day of the move. It is built by `scripts/check-preview-server-contracts.sh` (publish contracts to Maven Local at a fixed probe version, then build against them), which CI runs as `Preview Server Contracts`.
+
+Two ratchets guard the rest, and both fail in *both* directions — a new crossing fails, and so does a recorded one that has quietly gone away, so neither register can rot into decoration:
+
+- `./gradlew :cli:checkServeSeam` (`scripts/check-serve-seam.py` + `scripts/serve-seam-allowlist.json`) — the symbol surface between `cli.serve` and the rest of `:cli`, which has no build boundary to police it while `serve` is still a package.
+- `checkContractSurface` in the probe build — the extracted server's resolved dependency floor, transitives included, with its two known leaks recorded and required to shrink.
+
+Full picture, and the order the remaining work goes in: [docs/design/PREVIEW_SERVER_SPLIT.md](design/PREVIEW_SERVER_SPLIT.md).
+
 ## State seams
 
 Coordination state for the edit→render→subscribe loop lives in a handful of named, unit-tested classes rather than module-level `Map`/`Set`/AbortController fields. **When you need to add to this loop, extend the existing seam rather than introducing a parallel mutable.**

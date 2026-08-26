@@ -102,13 +102,36 @@
       ".github/workflows/**",
       "scripts/design-artifacts/**",
       "deploy/image/**",
-      "gradle/libs.versions.toml"
+      "gradle/libs.versions.toml",
+      "scripts/check-serve-seam.py",
+      "scripts/serve-seam-allowlist.json",
+      "scripts/measure-serve-coupling.py",
+      "scripts/test_check_serve_seam.py",
+      "scripts/test_measure_serve_coupling.py",
+      "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/**",
+      "cli/src/test/kotlin/ee/schimke/composeai/cli/serve/**"
     ],
     "design_artifacts": [
       "design-map/**",
       "scripts/design-artifacts/**",
       "cli/src/main/resources/rc-player/**",
       ".github/actions/lib/**"
+    ],
+    "preview_server_contracts": [
+      "preview-server/**",
+      "scripts/check-preview-server-contracts.sh",
+      "daemon/core/**",
+      "api/preview-data-api/**",
+      "common/io/**",
+      "render-session/**",
+      "data/layoutinspector/core/**",
+      "data/preview-overrides/core/**",
+      "data/remotecompose/core/**",
+      "data/theme/core/**",
+      "data/render/core/**",
+      "mcp/**",
+      "renderers/xr-client/**",
+      "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/**"
     ]
   }
 }
