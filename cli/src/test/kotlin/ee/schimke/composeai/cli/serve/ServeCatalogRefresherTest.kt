@@ -23,7 +23,7 @@ class ServeCatalogRefresherTest {
         entries = { listOf(entry()) },
         reload = { sys, _ ->
           reloads += sys
-          true
+          CatalogReloadOutcome.COMPLETE
         },
         intervalMillis = 1_000,
         headResolver = { _, _ -> head["compose-m3"] },
@@ -49,7 +49,7 @@ class ServeCatalogRefresherTest {
         entries = { listOf(entry()) },
         reload = { system, _ ->
           reloads += system
-          true
+          CatalogReloadOutcome.COMPLETE
         },
         intervalMillis = 1_000,
         headResolver = { _, _ -> head },
@@ -75,7 +75,7 @@ class ServeCatalogRefresherTest {
         entries = { listOf(entry()) },
         reload = { _, _ ->
           reloads.incrementAndGet()
-          succeed
+          if (succeed) CatalogReloadOutcome.COMPLETE else CatalogReloadOutcome.FAILED
         },
         intervalMillis = 1_000,
         headResolver = { _, _ -> head },
@@ -103,7 +103,7 @@ class ServeCatalogRefresherTest {
         entries = { listOf(entry()) },
         reload = { _, _ ->
           reloads.incrementAndGet()
-          true
+          CatalogReloadOutcome.COMPLETE
         },
         intervalMillis = 1_000,
         headResolver = { _, _ -> null },
@@ -124,7 +124,7 @@ class ServeCatalogRefresherTest {
         entries = { listOf(entry()) },
         reload = { _, _ ->
           reloads.incrementAndGet()
-          true
+          CatalogReloadOutcome.COMPLETE
         },
         intervalMillis = 1_000,
         headResolver = { _, _ -> "stable-sha" },
@@ -149,7 +149,8 @@ class ServeCatalogRefresherTest {
         entries = { listOf(entry("jetnews"), entry("reply")) },
         reload = { system, _ ->
           if (system == "reply") reloads.incrementAndGet()
-          system == "jetnews" || succeed
+          if (system == "jetnews" || succeed) CatalogReloadOutcome.COMPLETE
+          else CatalogReloadOutcome.FAILED
         },
         intervalMillis = 1_000,
         headResolver = { _, branch -> "stable-${branch.substringAfterLast('/')}" },
@@ -178,7 +179,7 @@ class ServeCatalogRefresherTest {
         entries = { listOf(entry("compose-m3"), entry("cadence")) },
         reload = { sys, _ ->
           reloads += sys
-          true
+          CatalogReloadOutcome.COMPLETE
         },
         intervalMillis = 1_000,
         headResolver = { _, branch -> heads[branch.substringAfterLast('/')] },
@@ -191,6 +192,57 @@ class ServeCatalogRefresherTest {
     heads["cadence"] = "c2"
     r.tick()
     assertEquals(listOf("cadence"), reloads, "only the changed catalog reloads")
+    r.close()
+  }
+
+  @Test
+  fun `an incomplete reload keeps being retried until it comes back complete`() {
+    // The catalog IS the new revision — it registered and it is serving. What it is not is settled:
+    // something optional could not be fetched *right now*. Recording the head here is what used to
+    // make that permanent, so one throttled request cost a catalog its issue index, or its whole
+    // acceptance surface, until somebody published again.
+    val reloads = AtomicInteger(0)
+    var outcome = CatalogReloadOutcome.INCOMPLETE
+    val r =
+      ServeCatalogRefresher(
+        entries = { listOf(entry()) },
+        reload = { _, _ ->
+          reloads.incrementAndGet()
+          outcome
+        },
+        intervalMillis = 1_000,
+        headResolver = { _, _ -> "stable-sha" },
+        onLog = {},
+      )
+    // Not seeded: this stands in for a branch that moved and was then read incompletely.
+    r.tick()
+    assertEquals(1, reloads.get())
+    // The head has not moved, and an unchanged head normally short-circuits — but the revision was
+    // never recorded, so it is re-read.
+    r.tick()
+    assertEquals(2, reloads.get(), "an incomplete revision is re-read on the next tick")
+
+    outcome = CatalogReloadOutcome.COMPLETE
+    r.tick()
+    assertEquals(3, reloads.get())
+    r.tick()
+    assertEquals(3, reloads.get(), "once complete, the unchanged head short-circuits again")
+    r.close()
+  }
+
+  @Test
+  fun `an incomplete reload still reports that the catalog was updated`() {
+    // It withholds the head, not the truth: the catalog really is the newer revision, and a manual
+    // refresh that answered FAILED would tell an operator their catalog had not moved when it had.
+    val r =
+      ServeCatalogRefresher(
+        entries = { listOf(entry()) },
+        reload = { _, _ -> CatalogReloadOutcome.INCOMPLETE },
+        intervalMillis = 1_000,
+        headResolver = { _, _ -> "stable-sha" },
+        onLog = {},
+      )
+    assertEquals(CatalogRefreshResult.UPDATED, r.refresh("compose-m3"))
     r.close()
   }
 }

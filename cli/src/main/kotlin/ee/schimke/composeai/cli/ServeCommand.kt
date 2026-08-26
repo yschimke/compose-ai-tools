@@ -4,6 +4,7 @@ import ee.schimke.composeai.cli.serve.BundleVerifier
 import ee.schimke.composeai.cli.serve.CatalogBlobPool
 import ee.schimke.composeai.cli.serve.CatalogLoadTracker
 import ee.schimke.composeai.cli.serve.CatalogRefreshResult
+import ee.schimke.composeai.cli.serve.CatalogReloadOutcome
 import ee.schimke.composeai.cli.serve.CatalogThemeCache
 import ee.schimke.composeai.cli.serve.DaemonStartupLog
 import ee.schimke.composeai.cli.serve.FileOptimizerHostCoordinator
@@ -3559,7 +3560,10 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
               is ServeCatalogStore.Result.Ok -> {
                 if (config.listed) registeredCatalogs += r.system
                 else registeredUnlistedCatalogs += r.system
-                loaded += r.system
+                // Seeded as a settled head only when the read was complete: a catalog that came up
+                // serving but could not fetch an optional artifact *right now* must be re-read on
+                // the first tick, not treated as current until someone publishes again.
+                if (!r.incomplete) loaded += r.system
                 System.err.println(
                   "serve: catalog ${r.system} → ${r.previewCount} preview(s), trust=${r.trust} " +
                     "(/${r.system}/${if (config.listed) "" else ", unlisted"})"
@@ -3771,12 +3775,14 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
           }
         }
         if (result == null) {
-          false
+          CatalogReloadOutcome.FAILED
         } else if (result is ServeCatalogStore.Result.Failed) {
           System.err.println("serve: catalog $system refresh failed: ${result.reason}")
-          false
+          CatalogReloadOutcome.FAILED
+        } else if (result is ServeCatalogStore.Result.Ok && result.incomplete) {
+          CatalogReloadOutcome.INCOMPLETE
         } else {
-          true
+          CatalogReloadOutcome.COMPLETE
         }
       },
       intervalMillis = catalogRefreshSeconds * 1000,

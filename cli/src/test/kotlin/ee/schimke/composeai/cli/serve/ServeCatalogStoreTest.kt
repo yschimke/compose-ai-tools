@@ -925,6 +925,64 @@ class ServeCatalogStoreTest {
     )
   }
 
+  /** A catalog whose only optional extra is its parity issue index, fetched through one seam. */
+  private fun loadWithIssueIndexOutcome(
+    issues: BranchFetch
+  ): Pair<ServeCatalogStore.Result, List<String>> {
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png"}]}]}
+      """
+        .trimIndent()
+    val asked = CopyOnWriteArrayList<String>()
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        networkFetch = { url, _ ->
+          asked += url
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") ->
+              BranchFetch.Ok(catalog.encodeToByteArray())
+            url.endsWith("/parity/issues.json") -> issues
+            url.endsWith(".png") -> BranchFetch.Ok(png())
+            else -> BranchFetch.NotFound
+          }
+        },
+      )
+    return store.load("compose-m3") to asked.toList()
+  }
+
+  @Test
+  fun `a throttled optional asset leaves the load incomplete`() {
+    // The load succeeds — every writer beside the required ones is fail-soft, and a catalog missing
+    // its issue index is far better than no catalog. What it must NOT do is look settled: the
+    // absence is ours, not the producer's, so `incomplete` is what stops the refresher recording
+    // this revision as current and never re-reading it.
+    val (result, asked) = loadWithIssueIndexOutcome(BranchFetch.Throttled(retryAfterSeconds = 5))
+    assertTrue(asked.any { it.endsWith("/parity/issues.json") }, "the index was asked for: $asked")
+    val ok = result as ServeCatalogStore.Result.Ok
+    assertTrue(ok.incomplete, "a throttled optional asset must not read as a settled revision")
+  }
+
+  @Test
+  fun `an optional asset the branch does not have leaves the load complete`() {
+    // The other half, and the one that must not regress into needless re-reads: `404` is an answer.
+    // Most catalogs publish no issue index at all, so treating absence as incomplete would put
+    // every one of them into a permanent re-read loop.
+    val (result, _) = loadWithIssueIndexOutcome(BranchFetch.NotFound)
+    val ok = result as ServeCatalogStore.Result.Ok
+    assertTrue(!ok.incomplete, "a genuinely absent optional asset is a settled answer")
+  }
+
+  @Test
+  fun `a transport failure on an optional asset leaves the load incomplete`() {
+    val (result, _) = loadWithIssueIndexOutcome(BranchFetch.Transport("SocketTimeoutException"))
+    assertTrue((result as ServeCatalogStore.Result.Ok).incomplete)
+  }
+
   @Test
   fun `an over-sized artifact is staged, so the reader can refuse it as too large`() {
     // Dropping it would leave a missing file, and a missing file is `artifact-unreadable`/404 — a

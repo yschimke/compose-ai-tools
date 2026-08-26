@@ -316,6 +316,21 @@ class ServeCatalogStore(
       val previewCount: Int,
       val trust: String,
       val failedRenderCount: Int = 0,
+      /**
+       * Some optional artifact could not be fetched **right now** — throttled, the branch host
+       * unwell, or no answer at all.
+       *
+       * The catalog is registered and served either way; every writer beside the required ones is
+       * fail-soft by design, and a catalog missing its activity feed is far better than no catalog.
+       * What this says is that the absence is not the producer's: asking again could answer
+       * differently, so the caller must not record this revision as settled.
+       *
+       * Without it a single throttled request drops that catalog's parity issue index — or its
+       * whole acceptance surface — until the branch head next moves, with nothing anywhere
+       * reporting it. See `ServeCatalogRefresher.checkOne`, which is what declines to advance the
+       * recorded head, and `seedInitialHeads`, which does the same at startup.
+       */
+      val incomplete: Boolean = false,
     ) : Result
 
     data class Failed(val system: String, val reason: String) : Result
@@ -338,6 +353,11 @@ class ServeCatalogStore(
     val repo = sourceRepo?.takeIf { it.isNotBlank() } ?: this.repo
     val branchPrefix = sourceBranchPrefix?.takeIf { it.isNotBlank() } ?: this.branchPrefix
     val branch = "$branchPrefix$system"
+
+    // Read now so every `Result.Ok` below can say whether anything failed *transiently* while this
+    // load ran — see [Result.Ok.incomplete]. Counted rather than threaded, because the asset lanes
+    // fetch on worker pools and a flag would have to be handed to each of them.
+    val transientFailuresBefore = branchFetchStats.transientFailures()
 
     // The branch's publish history, read BEFORE anything else — because its head decides what the
     // rest of this load reads. Its tail is what a visitor can pin back to. Best-effort: an empty
@@ -1020,6 +1040,7 @@ class ServeCatalogStore(
             count + deferredIds.size + failedIds.size,
             "${BundleVerifier.summary(verdict)} (${prepared.size} live module bundles)",
             failedIds.size,
+            incomplete = fetchedIncompletely(transientFailuresBefore),
           )
         }
         if (liveBundleFallback == null) {
@@ -1102,6 +1123,7 @@ class ServeCatalogStore(
                 count + deferredIds.size + failedIds.size,
                 "${BundleVerifier.summary(verdict)} (live bundle)",
                 failedIds.size,
+                incomplete = fetchedIncompletely(transientFailuresBefore),
               )
             }
             // Declared + fetched + rehydrated, but the builder didn't stand a daemon up — most
@@ -1147,6 +1169,7 @@ class ServeCatalogStore(
         count + deferredIds.size + failedIds.size,
         "${BundleVerifier.summary(verdict)} (live)",
         failedIds.size,
+        incomplete = fetchedIncompletely(transientFailuresBefore),
       )
     }
 
@@ -1185,7 +1208,13 @@ class ServeCatalogStore(
     // Same reasoning as the degradation: a session with no live lane lists no live-only previews.
     val host = bakedFallback(degradations, emptyList())
     register(safe, host)
-    return Result.Ok(safe, host.previews.size, BundleVerifier.summary(verdict), failedIds.size)
+    return Result.Ok(
+      safe,
+      host.previews.size,
+      BundleVerifier.summary(verdict),
+      failedIds.size,
+      incomplete = fetchedIncompletely(transientFailuresBefore),
+    )
   }
 
   /**
@@ -3102,6 +3131,18 @@ class ServeCatalogStore(
   /** [networkProbe] with its outcome counted; true only when the branch actually has the file. */
   private fun branchProbe(url: String): Boolean =
     networkProbe(url).also(branchFetchStats::record) is BranchFetch.Ok
+
+  /**
+   * Whether anything failed transiently since [before] — the value [Result.Ok.incomplete] carries.
+   *
+   * A counter comparison rather than a flag, for the reason the counter exists: every lane reaches
+   * the network through one seam, and several of them fetch on worker pools. Two concurrent loads
+   * of *different* systems can therefore make each other look incomplete. That costs one extra
+   * re-read of an unchanged branch and nothing else, which is the right way to be wrong here — the
+   * failure it exists to prevent is a catalog going quiet until someone publishes again.
+   */
+  private fun fetchedIncompletely(before: Long): Boolean =
+    branchFetchStats.transientFailures() > before
 
   /** Fetch an ordinary catalog asset using the existing tight per-file envelope. */
   private fun fetchCatalogAsset(url: String): ByteArray? = cachedBranchRead(url).bytesOrNull

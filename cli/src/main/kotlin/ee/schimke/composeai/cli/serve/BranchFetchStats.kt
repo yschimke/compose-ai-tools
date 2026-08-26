@@ -81,6 +81,23 @@ class BranchFetchStats(private val clock: () -> Long = System::currentTimeMillis
       }
     }
 
+  /**
+   * Reads that ended in a **"right now"** failure — throttled, unavailable, or no answer at all.
+   *
+   * Counted here rather than tracked per load because every lane already reaches the network
+   * through one seam, worker pools included, and a flag threaded through those pools would have to
+   * be. A caller that wants "did anything fail transiently while I was working" reads this before
+   * and after and compares.
+   *
+   * `NotFound` is deliberately absent: the branch answering "there is no such file" is an answer,
+   * and the one outcome a caller may treat as permanent. Everything counted here is a statement
+   * about now, so asking again could answer differently — which is the whole point of asking.
+   *
+   * A failure the transport's own retry rescued is not counted: the stats record one read by how it
+   * *ended*, so this reads as "failures we could not ride out".
+   */
+  fun transientFailures(): Long = synchronized(lock) { throttled + unavailable + transport }
+
   /** A snapshot for `/status.json`, or null when nothing has been read yet. */
   fun snapshot(): BranchFetchSnapshot? =
     synchronized(lock) {

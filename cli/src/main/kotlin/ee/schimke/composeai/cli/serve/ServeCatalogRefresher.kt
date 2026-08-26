@@ -14,6 +14,30 @@ enum class CatalogRefreshResult {
 }
 
 /**
+ * How one re-fetch ended, from the refresher's point of view.
+ *
+ * Three outcomes rather than two, because "the catalog is now serving" and "this revision is
+ * settled" are different questions and a boolean can only answer one of them.
+ */
+enum class CatalogReloadOutcome {
+  /** Registered, and everything it went looking for was answered. The head can be recorded. */
+  COMPLETE,
+
+  /**
+   * Registered — and something optional could not be fetched *right now*.
+   *
+   * The catalog serves; it is simply missing an artifact whose absence is ours rather than the
+   * producer's. Recording the head here is what used to make that permanent: the revision would
+   * read as current and never be re-read, so one throttled request cost a catalog its parity issue
+   * index, or its whole acceptance surface, until someone published again.
+   */
+  INCOMPLETE,
+
+  /** Not registered. The previous copy keeps serving and the head stays put. */
+  FAILED,
+}
+
+/**
  * Keeps a running `serve` fresh against routinely-changing catalog branches.
  *
  * `serve --catalogs <system>` fetches each system's `design-artifacts/<system>` branch — its
@@ -35,15 +59,15 @@ enum class CatalogRefreshResult {
  *   Evaluated per pass rather than captured, because the catalog set is runtime config: a catalog
  *   published through the admin API starts being polled on the next tick, and a retired one stops.
  * @param reload re-fetch + re-register one system; the `store.load(system, sourceRepo = repo)`
- *   seam. Its boolean result is whether the reload succeeded (a failure keeps the old head so the
- *   next tick retries).
+ *   seam. Its [CatalogReloadOutcome] decides whether the head is recorded: anything but
+ *   [CatalogReloadOutcome.COMPLETE] leaves it, so the next tick re-reads the unchanged branch.
  * @param headResolver resolve a branch's head commit sha (or null when it can't be determined).
  *   Defaults to [gitLsRemoteHead]; injected so tests drive change detection without a network.
  * @param intervalMillis poll cadence; the first tick fires one interval after [start].
  */
 internal class ServeCatalogRefresher(
   private val entries: () -> List<Entry>,
-  private val reload: (system: String, repo: String) -> Boolean,
+  private val reload: (system: String, repo: String) -> CatalogReloadOutcome,
   private val intervalMillis: Long,
   private val headResolver: (repo: String, branch: String) -> String? = ::gitLsRemoteHead,
   private val onLog: (String) -> Unit = { System.err.println(it) },
@@ -58,11 +82,15 @@ internal class ServeCatalogRefresher(
   }
 
   /**
-   * Record the current head for catalogs that loaded successfully at boot, so their first tick only
-   * reloads after a branch move. [systems] deliberately excludes startup failures: leaving their
-   * head absent makes the first tick retry the unchanged branch, then every later tick until it
-   * succeeds. Previously every configured head was seeded, permanently suppressing retries for an
-   * initial fetch/parse failure until someone happened to publish a new commit.
+   * Record the current head for catalogs that loaded **completely** at boot, so their first tick
+   * only reloads after a branch move. [systems] deliberately excludes startup failures: leaving
+   * their head absent makes the first tick retry the unchanged branch, then every later tick until
+   * it succeeds. Previously every configured head was seeded, permanently suppressing retries for
+   * an initial fetch/parse failure until someone happened to publish a new commit.
+   *
+   * It excludes an *incomplete* load for the same reason. A catalog that came up serving but could
+   * not fetch, say, its issue index because the branch host throttled us is not a settled revision
+   * — and seeding it would make that one throttled request permanent for the life of the process.
    */
   fun seedInitialHeads(systems: Set<String> = entries().mapTo(linkedSetOf()) { it.system }) {
     for (e in entries()) {
@@ -132,14 +160,28 @@ internal class ServeCatalogRefresher(
     onLog(
       "serve: catalog ${e.system} (${e.branch}) moved ${prev?.take(7) ?: "?"}→${head.take(7)} — re-fetching"
     )
-    if (runCatching { reload(e.system, e.repo) }.getOrDefault(false)) {
-      // Only advance the recorded head on success, so a failed reload retries next tick.
-      lastHead[e.system] = head
-      onLog("serve: catalog ${e.system} refreshed to ${head.take(7)}")
-      return CatalogRefreshResult.UPDATED
-    } else {
-      onLog("serve: catalog ${e.system} refresh failed — keeping the current copy, will retry")
-      return CatalogRefreshResult.FAILED
+    return when (
+      runCatching { reload(e.system, e.repo) }.getOrDefault(CatalogReloadOutcome.FAILED)
+    ) {
+      // Only record the head when the read was complete, so anything else retries next tick.
+      CatalogReloadOutcome.COMPLETE -> {
+        lastHead[e.system] = head
+        onLog("serve: catalog ${e.system} refreshed to ${head.take(7)}")
+        CatalogRefreshResult.UPDATED
+      }
+      // Serving, but not settled: the catalog IS the new revision, so this is `UPDATED` — the head
+      // is withheld only so the next tick re-reads what the branch would not give us this time.
+      CatalogReloadOutcome.INCOMPLETE -> {
+        onLog(
+          "serve: catalog ${e.system} refreshed to ${head.take(7)}, but some assets could not be " +
+            "fetched — will re-read next tick"
+        )
+        CatalogRefreshResult.UPDATED
+      }
+      CatalogReloadOutcome.FAILED -> {
+        onLog("serve: catalog ${e.system} refresh failed — keeping the current copy, will retry")
+        CatalogRefreshResult.FAILED
+      }
     }
   }
 
