@@ -1,0 +1,38 @@
+{
+  "title": "Peak live raster of exactly 640 MiB — the memory ceiling, inclusive",
+  "site": null,
+  "why": "Inclusive, like every other cap in `v1`. Nothing else refuses this document: it is 67 megapixels against a 128 megapixel budget and sits exactly on the axis cap rather than past it, so an engine that has not implemented `maxRasterBytes` evaluates it too — which is why the over-cap case beside it is the one that separates them, and why this one has to exist for the boundary to be pinned from the accepting side at all.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "rasters/bb16b4247345bda7.png",
+    "canonicalCandidate": "rasters/73c291212fff39a2.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

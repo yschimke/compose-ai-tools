@@ -1,0 +1,50 @@
+{
+  "pins": [
+    "statuses",
+    "validationFailures"
+  ],
+  "statuses": {
+    "m3-iconbutton-tonal-glyph": {
+      "status": "refused",
+      "reasons": [
+        "header-invalid"
+      ]
+    },
+    "m3-iconbutton-tonal-glyph-2": {
+      "status": "refused",
+      "reasons": [
+        "header-invalid"
+      ]
+    },
+    "m3-iconbutton-tonal-glyph-3": {
+      "status": "refused",
+      "reasons": [
+        "header-invalid"
+      ]
+    },
+    "m3-iconbutton-tonal-glyph-4": {
+      "status": "refused",
+      "reasons": [
+        "header-invalid"
+      ]
+    }
+  },
+  "validationFailures": [
+    {
+      "id": "m3-iconbutton-tonal-glyph",
+      "reason": "header-invalid"
+    },
+    {
+      "id": "m3-iconbutton-tonal-glyph-2",
+      "reason": "header-invalid"
+    },
+    {
+      "id": "m3-iconbutton-tonal-glyph-3",
+      "reason": "header-invalid"
+    },
+    {
+      "id": "m3-iconbutton-tonal-glyph-4",
+      "reason": "header-invalid"
+    }
+  ]
+}

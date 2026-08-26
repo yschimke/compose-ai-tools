@@ -42,6 +42,16 @@
       "site": null
     },
     {
+      "id": "gate-candidate-partial-alpha-normalised",
+      "title": "Two straight-alpha colours a premultiplied canvas cannot tell apart",
+      "site": null
+    },
+    {
+      "id": "gate-candidate-partial-alpha-distinguished",
+      "title": "One byte further, and the two colours are no longer the same pixel",
+      "site": null
+    },
+    {
       "id": "gate-candidate-changed",
       "title": "The masked region is neither the accepted difference nor the reference",
       "site": null
@@ -239,6 +249,21 @@
     {
       "id": "document-pixels-over-cap",
       "title": "128,000,001 declared across the set — the first total past the cap",
+      "site": null
+    },
+    {
+      "id": "document-raster-bytes-at-cap",
+      "title": "Peak live raster of exactly 640 MiB — the memory ceiling, inclusive",
+      "site": null
+    },
+    {
+      "id": "document-raster-bytes-over-cap",
+      "title": "One pixel more than the memory ceiling allows",
+      "site": null
+    },
+    {
+      "id": "document-raster-bytes-spread-under-cap",
+      "title": "The same 67 megapixels, spread — and legal",
       "site": null
     },
     {

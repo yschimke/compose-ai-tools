@@ -1,0 +1,38 @@
+{
+  "title": "Two straight-alpha colours a premultiplied canvas cannot tell apart",
+  "site": null,
+  "why": "At alpha 1 both colours premultiply to `0` in every channel, so a browser reads both back as `0, 0, 0, 1` and the region agrees. A decoder that keeps the channels it was handed sees a difference of 90 and reports `candidate-changed` — the same bytes, two verdicts, which is the divergence `v1` exists to close. The hidden difference is far past the largest legal `candidateTolerance`, so no tolerance setting could paper over it.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "rasters/bb16b4247345bda7.png",
+    "canonicalCandidate": "rasters/dd468d12ab8223c6.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": []
+}

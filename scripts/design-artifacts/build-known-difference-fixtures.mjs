@@ -134,7 +134,17 @@ function addCase({ id, title, site, why, document, documentText = null, files, c
 }
 
 /** The worked example's world, reused by most gate and validation cases. */
-function glyphWorld({ candidateGlyph = RED, acceptedGlyph = RED, adjacentRegression = false } = {}) {
+function glyphWorld({
+  candidateGlyph = RED,
+  acceptedGlyph = RED,
+  adjacentRegression = false,
+  // One pixel of the glyph, in the candidate and in the accepted crop, set to an arbitrary RGBA
+  // rather than a glyph fill. The partial-alpha cases need a pixel whose *straight* channels differ
+  // between the two rasters while the pixel a premultiplied canvas can hand back does not, and that
+  // is not expressible as a fill of either.
+  candidateGlyphPixel = null,
+  acceptedGlyphPixel = null,
+} = {}) {
   const plane = { x: 4, y: 4, width: 24, height: 24 };
   const glyph = { x: 8, y: 8, width: 8, height: 8 };
 
@@ -148,7 +158,10 @@ function glyphWorld({ candidateGlyph = RED, acceptedGlyph = RED, adjacentRegress
   // neighbourhood search — this is the regression that reading would hide.
   if (adjacentRegression) fillRect(candidate, { x: 16, y: 8, width: 2, height: 8 }, GREEN);
 
+  if (candidateGlyphPixel) candidate.pixels.set(candidateGlyphPixel, (glyph.y * 24 + glyph.x) * 4);
+
   const accepted = fillRect(crop(candidate, glyph), { x: 0, y: 0, width: 8, height: 8 }, acceptedGlyph);
+  if (acceptedGlyphPixel) accepted.pixels.set(acceptedGlyphPixel, 0);
   const { png: mask } = maskPng(24, 24, (paint) => paint(glyph));
 
   return {
@@ -696,6 +709,64 @@ for (const [id, title, delta, status, why] of [
     why,
     document: document([record]),
     files: { ...glyphFiles(world, record), "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": acceptedPng },
+    comparison: glyphComparison(world),
+    expected: {
+      pins: ["statuses", "validationFailures"],
+      statuses: { "m3-iconbutton-tonal-glyph": status },
+      validationFailures: [],
+    },
+  });
+}
+
+// **Partial alpha, pinned from both sides of one bucket.** A browser holds canvas pixels
+// premultiplied at 8 bits, so a straight-alpha colour survives a round trip only as whichever of
+// the `a + 1` representable values its channel lands on. Decoding therefore normalises every pixel
+// onto that value (see `normaliseAlpha` in `png-lite.mjs`), and these two cases are what stop an
+// engine implementing either half of that rule alone:
+//
+//   - an engine that skips the normalisation reports `candidate-changed` for the first case, on a
+//     difference no browser can see and no `candidateTolerance` in `[0, 8]` could absorb;
+//   - an engine that "handles partial alpha" by ignoring RGB wherever alpha is low reports `valid`
+//     for the second, hiding a difference that *is* visible.
+//
+// Alpha `1` is the extreme of the effect and so the sharpest place to pin it: the whole 0–255 range
+// collapses onto two values, everything below 128 to `0` and everything from 128 up to `255`. The
+// two cases are one committed byte apart in the candidate — `127` against `128` — and land on
+// opposite sides.
+for (const [id, title, candidatePixel, acceptedPixel, status, why] of [
+  [
+    "gate-candidate-partial-alpha-normalised",
+    "Two straight-alpha colours a premultiplied canvas cannot tell apart",
+    [10, 20, 30, 1],
+    [100, 90, 80, 1],
+    { status: "valid" },
+    "At alpha 1 both colours premultiply to `0` in every channel, so a browser reads both back as " +
+      "`0, 0, 0, 1` and the region agrees. A decoder that keeps the channels it was handed sees a " +
+      "difference of 90 and reports `candidate-changed` — the same bytes, two verdicts, which is " +
+      "the divergence `v1` exists to close. The hidden difference is far past the largest legal " +
+      "`candidateTolerance`, so no tolerance setting could paper over it.",
+  ],
+  [
+    "gate-candidate-partial-alpha-distinguished",
+    "One byte further, and the two colours are no longer the same pixel",
+    [127, 20, 30, 1],
+    [128, 20, 30, 1],
+    { status: "invalidated", causes: ["candidate-changed"] },
+    "`127 \u00d7 1 / 255` rounds to premultiplied `0` and `128 \u00d7 1 / 255` to `1`, which unpremultiply " +
+      "to `0` and `255`. So the accepting case above is a quantisation and not a licence to ignore " +
+      "RGB wherever alpha is small: one step in the committed byte crosses the bucket and the gate " +
+      "fires. Without this case an engine could pass the pair by discarding colour at low alpha " +
+      "altogether, and every faint-colour regression would sit inside an acceptance forever.",
+  ],
+]) {
+  const world = glyphWorld({ candidateGlyphPixel: candidatePixel, acceptedGlyphPixel: acceptedPixel });
+  const record = glyphRecord(world);
+  addCase({
+    id,
+    title,
+    why,
+    document: document([record]),
+    files: glyphFiles(world, record),
     comparison: glyphComparison(world),
     expected: {
       pins: ["statuses", "validationFailures"],
@@ -1796,77 +1867,156 @@ function lyingGreyPng(width, height) {
   ]);
 }
 
-{
-  // 8000 × 8000 twice is 128 megapixels exactly — the accepting half of the pixel boundary. The
-  // headers lie so the fixture stays a few hundred bytes, which is the point: the budget is
-  // computed from the *declared* dimensions, before anything is decoded. Past the budget the lie is
-  // caught, and `header-invalid` is the token for it.
+/**
+ * A case whose records are nothing but *declared* rasters: one record per `[mask, accepted]` pair.
+ *
+ * Every raster here is a lying header over a one-byte `IDAT`, so a case that declares hundreds of
+ * megapixels is a few hundred bytes on disk — which is the point rather than a convenience. The
+ * budget is computed from the *declared* dimensions, before anything is decoded, so a fixture that
+ * committed the pixels would be testing a decoder it never reaches. Past the budget the lie is
+ * caught, and `header-invalid` is the token for it.
+ */
+function declaredRasterCase({ id, title, why, pairs, expected }) {
   const world = glyphWorld();
-  const mask = lyingGreyPng(8000, 8000);
-  const accepted = lyingGreyPng(8000, 8000);
-  const record = glyphRecord(world, {
-    maskSha256: sha256Hex(mask),
-    acceptedCandidateSha256: sha256Hex(accepted),
+  const files = {
+    "canonical-reference.png": world.referencePngBytes,
+    "canonical-candidate.png": world.candidatePngBytes,
+  };
+  const records = pairs.map(([mask, accepted], slot) => {
+    const recordId = slot === 0 ? "m3-iconbutton-tonal-glyph" : `m3-iconbutton-tonal-glyph-${slot + 1}`;
+    files[`artifacts/${recordId}/mask.png`] = mask;
+    files[`artifacts/${recordId}/accepted-candidate.png`] = accepted;
+    return glyphRecord(world, {
+      id: recordId,
+      maskSha256: sha256Hex(mask),
+      acceptedCandidateSha256: sha256Hex(accepted),
+    });
   });
   addCase({
+    id,
+    title,
+    why,
+    document: document(records),
+    files,
+    comparison: glyphComparison(world),
+    expected: expected(records.map((record) => record.id)),
+  });
+}
+
+/** Every record refused the same way — the shape a document of lying headers reaches. */
+const everyRecordRefused = (reasons) => (ids) => ({
+  pins: ["statuses", "validationFailures"],
+  statuses: Object.fromEntries(ids.map((recordId) => [recordId, { status: "refused", reasons }])),
+  // One entry per `(record, reason)` pair, ordered by reason and then by position in `acceptances[]`.
+  validationFailures: reasons.flatMap((reason) => ids.map((recordId) => ({ id: recordId, reason }))),
+});
+
+/** The document-level refusal: no `statuses` map at all. */
+const documentTooLarge = () => ({
+  pins: ["statusesAbsent", "validationFailures"],
+  statusesAbsent: true,
+  validationFailures: [{ reason: "document-too-large" }],
+});
+
+{
+  // **Both aggregate caps, and neither one spelled by the other.** The pixel cap and the memory
+  // ceiling bind on different documents, so each pair below has to stay clear of the other cap or it
+  // pins nothing: a case that breaches both refuses under an engine that implements either.
+  //
+  // 4000 × 2500 is the size these use because it is small enough that sixteen of them peak well
+  // under 640 MiB — the 8000 × 8000 pair this case used to be built from is exactly 128 megapixels
+  // *and* peaks at about 1.28 GB, so under `maxRasterBytes` it is no longer a legal document and can
+  // no longer pin the accepting side of the pixel cap. **That is a deliberate migration**, and the
+  // memory-ceiling pair below is where that shape now lives.
+  const big = lyingGreyPng(4000, 2500); // 10,000,000
+  const tall = lyingGreyPng(4000, 1999); //  7,996,000
+  const strip = lyingGreyPng(4000, 1); //       4,000
+  const stripPlus = lyingGreyPng(4001, 1); //   4,001
+  const sixBig = Array.from({ length: 6 }, () => [big, big]);
+
+  declaredRasterCase({
     id: "document-pixels-at-cap",
     title: "128 megapixels declared across the set — exactly the cap",
     why:
-      "Inclusive, like every other cap here. The document is evaluated, and the record is then " +
-      "refused for the header that got it there.",
-    document: document([record]),
-    files: {
-      "artifacts/m3-iconbutton-tonal-glyph/mask.png": mask,
-      "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": accepted,
-      "canonical-reference.png": world.referencePngBytes,
-      "canonical-candidate.png": world.candidatePngBytes,
-    },
-    comparison: glyphComparison(world),
-    expected: refused(["header-invalid"]),
+      "Inclusive, like every other cap here: `6 × 2 × 10,000,000 + 7,996,000 + 4,000` is " +
+      "128,000,000 on the nose. The document is evaluated, and every record is then refused for the " +
+      "header that got it there. Peak live raster for this set is 632,000,000 bytes, comfortably " +
+      "inside the 640 MiB memory ceiling — so the case pins *this* cap and cannot be passed by an " +
+      "engine that only implements the other one.",
+    pairs: [...sixBig, [tall, strip]],
+    expected: everyRecordRefused(["header-invalid"]),
   });
 
-  // **The first illegal aggregate, not merely an illegal one.** 8000 × 8001 overshoots the cap by
-  // 8,000 pixels, so a consumer whose ceiling is wrong by anything up to 7,999 refuses this case and
-  // passes the suite — the constant would be pinned only to within a raster's height. These four
-  // declared rasters total 128,000,001: 64,000,000 + 63,992,000 + 8,000 + 1, one pixel past.
-  const nearlyBig = lyingGreyPng(7999, 8000);
-  const strip = lyingGreyPng(8000, 1);
-  const dot = lyingGreyPng(1, 1);
-  addCase({
+  declaredRasterCase({
     id: "document-pixels-over-cap",
     title: "128,000,001 declared across the set — the first total past the cap",
     why:
       "**Compare as you go and short-circuit.** Summing across a third-party set is exactly where " +
       "two engines diverge silently: a Kotlin accumulator can wrap into a value that sits under the " +
       "cap while JavaScript keeps a large positive `Number` and rejects, and the offline consumer " +
-      "then allocates what the browser refused. Spread over two records and four rasters so the sum " +
-      "is the thing being pinned rather than any single header, and landing on **cap + 1** exactly " +
-      "so the fixture pins the constant rather than a neighbourhood of it.",
-    document: document([
-      glyphRecord(world, {
-        maskSha256: sha256Hex(mask),
-        acceptedCandidateSha256: sha256Hex(nearlyBig),
-      }),
-      glyphRecord(world, {
-        id: "m3-iconbutton-tonal-glyph-second",
-        maskSha256: sha256Hex(strip),
-        acceptedCandidateSha256: sha256Hex(dot),
-      }),
-    ]),
-    files: {
-      "artifacts/m3-iconbutton-tonal-glyph/mask.png": mask,
-      "artifacts/m3-iconbutton-tonal-glyph/accepted-candidate.png": nearlyBig,
-      "artifacts/m3-iconbutton-tonal-glyph-second/mask.png": strip,
-      "artifacts/m3-iconbutton-tonal-glyph-second/accepted-candidate.png": dot,
-      "canonical-reference.png": world.referencePngBytes,
-      "canonical-candidate.png": world.candidatePngBytes,
-    },
-    comparison: glyphComparison(world),
-    expected: {
-      pins: ["statusesAbsent", "validationFailures"],
-      statusesAbsent: true,
-      validationFailures: [{ reason: "document-too-large" }],
-    },
+      "then allocates what the browser refused. Spread over seven records and fourteen rasters so " +
+      "the sum is the thing being pinned rather than any single header, and landing on **cap + 1** " +
+      "exactly — the last raster is one pixel wider than the accepting case's — so the fixture pins " +
+      "the constant rather than a neighbourhood of it. Peak live raster is unchanged at 632,000,004 " +
+      "bytes, so the memory ceiling is not what refuses this.",
+    pairs: [...sixBig, [tall, stripPlus]],
+    expected: documentTooLarge,
+  });
+}
+
+{
+  // **The memory ceiling, which the other caps used to imply without anyone choosing it.** A single
+  // record holding two 8192 × 4096 rasters is inside every cap `v1` had before this one — 67
+  // megapixels against a 128 megapixel budget, both axes exactly at the 8192 limit, a few hundred
+  // encoded bytes against an 8 MiB artifact cap — and obliges a reader to hold
+  // `4 × 67,108,864 + 12 × 33,554,432` bytes, which is 671,088,640: **640 MiB exactly**. That is the
+  // ceiling, so this document is legal by one byte's worth of nothing, and it is the shape that
+  // makes the ceiling visible: the same 67 megapixels spread differently peaks at little more than
+  // half of it.
+  const half = lyingGreyPng(8192, 4096); // 33,554,432 — the largest legal single raster by area
+  const quarter = lyingGreyPng(8192, 1024); //  8,388,608
+  const dot = lyingGreyPng(1, 1);
+
+  declaredRasterCase({
+    id: "document-raster-bytes-at-cap",
+    title: "Peak live raster of exactly 640 MiB — the memory ceiling, inclusive",
+    why:
+      "Inclusive, like every other cap in `v1`. Nothing else refuses this document: it is 67 " +
+      "megapixels against a 128 megapixel budget and sits exactly on the axis cap rather than past " +
+      "it, so an engine that has not implemented `maxRasterBytes` evaluates it too — which is why " +
+      "the over-cap case beside it is the one that separates them, and why this one has to exist " +
+      "for the boundary to be pinned from the accepting side at all.",
+    pairs: [[half, half]],
+    expected: everyRecordRefused(["header-invalid"]),
+  });
+
+  declaredRasterCase({
+    id: "document-raster-bytes-over-cap",
+    title: "One pixel more than the memory ceiling allows",
+    why:
+      "**The first illegal peak, not merely an illegal one.** The first record puts the document " +
+      "exactly on 640 MiB, so the 1 × 1 mask that follows overshoots by a single pixel — four " +
+      "bytes — and a consumer whose ceiling is wrong by any amount at all fails this case. It is " +
+      "nowhere near any other cap: two records, 67 megapixels, four artifacts of a few hundred " +
+      "bytes each. The refusal is `document-too-large`, the token every budget already refuses " +
+      "with — a memory ceiling is a budget, and giving it a token of its own would make the same " +
+      "class of refusal arrive under two names in two engines.",
+    pairs: [[half, half], [dot, dot]],
+    expected: documentTooLarge,
+  });
+
+  declaredRasterCase({
+    id: "document-raster-bytes-spread-under-cap",
+    title: "The same 67 megapixels, spread — and legal",
+    why:
+      "**The ceiling is not a function of the pixel total.** Eight 8192 × 1024 rasters declare " +
+      "67,108,864 pixels, exactly as many as the at-cap case's two, and peak at 369,098,752 bytes " +
+      "instead of 671,088,640 — because the transient term is the *largest single* artifact, which " +
+      "is a quarter of the size here. Without this case an engine could implement the ceiling as " +
+      "`4 × total ≤ 640 MiB` and pass both of the others; that reading refuses this document, and " +
+      "with it every ordinary catalog that happens to be large.",
+    pairs: Array.from({ length: 4 }, () => [quarter, quarter]),
+    expected: everyRecordRefused(["header-invalid"]),
   });
 }
 
@@ -5082,10 +5232,15 @@ addResample({
     "channels average independently of it — under premultiplied arithmetic they would be weighted by " +
     "it instead. The partly-transparent pixel is deliberate: a **fully** transparent one cannot reach " +
     "the resampler, because decoding normalises its RGB to zero (a browser cannot recover colour it " +
-    "premultiplied away), so a fixture built on one would be testing a state no decoded raster holds.",
-  source: rgbaFrom([[[10, 20, 30, 64], [200, 100, 50, 255]]]),
+    "premultiplied away), so a fixture built on one would be testing a state no decoded raster holds. " +
+    "For the same reason `12, 20, 32` is not an arbitrary colour: at alpha 64 a decoded raster only " +
+    "ever holds the 65 straight values a premultiplied canvas can hand back, and each of these three " +
+    "is one of them. A source the decoder would have moved would make this case pin the partial-alpha " +
+    "normalisation as well as the resampler, and a kernel divergence has to fail as a kernel " +
+    "divergence.",
+  source: rgbaFrom([[[12, 20, 32, 64], [200, 100, 50, 255]]]),
   target: { width: 1, height: 1 },
-  expected: [[105, 60, 40, 160]],
+  expected: [[106, 60, 41, 160]],
 });
 
 // --------------------------------------------------------------------------------------------
