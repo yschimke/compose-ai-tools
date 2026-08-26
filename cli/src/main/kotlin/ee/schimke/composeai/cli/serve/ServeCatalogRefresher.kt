@@ -179,7 +179,9 @@ internal class ServeCatalogRefresher(
   fun refresh(system: String, force: Boolean = false): CatalogRefreshResult {
     val entry =
       entries().firstOrNull { it.system == system } ?: return CatalogRefreshResult.NOT_FOUND
-    if (force) lastHead.remove(system)
+    // [forgetHeads] rather than a bare removal, for the reason its own doc gives: the mark is what
+    // stops a concurrent seed re-recording the head this operator just asked to be re-read.
+    if (force) forgetHeads(listOf(system))
     return checkOne(entry)
   }
 
@@ -208,6 +210,13 @@ internal class ServeCatalogRefresher(
     // A post-publish lane that failed while this reload ran counts the same as the load itself
     // coming back incomplete — the revision is serving and it is not settled.
     if (loaded.incomplete) {
+      // Recorded as an invalidation, not merely left unrecorded. `refresh()` is reachable before
+      // [seedInitialHeads] runs — the route is live while the startup loader is still working
+      // through the other catalogs — so a catalog that booted complete, was refreshed
+      // incompletely, and is therefore still in the loader's `loaded` set would otherwise be
+      // settled by the seed at exactly the sha this read could not finish. Withholding a head only
+      // outlives the operation that withheld it if something says so.
+      forgetHeads(listOf(e.system))
       onLog(
         "serve: catalog ${e.system} refreshed to ${head.take(7)}, but some assets could not be " +
           "fetched — will re-read next tick"

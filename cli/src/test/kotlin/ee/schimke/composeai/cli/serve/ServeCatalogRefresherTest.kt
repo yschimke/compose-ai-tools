@@ -351,4 +351,45 @@ class ServeCatalogRefresherTest {
     assertEquals(2, reloads.get(), "the second, uninvalidated reload settles it")
     r.close()
   }
+
+  @Test
+  fun `an incomplete refresh before the startup seed is not settled by it`() {
+    // The admin refresh route is live while `InitialCatalogLoader` is still working through the
+    // other catalogs, and the seed only runs once they all finish. So a catalog that booted
+    // complete — and is therefore still in the loader's `loaded` set — can be refreshed
+    // incompletely in between. Withholding the head is not enough on its own: the seed that
+    // follows vouches for the boot load and would record exactly the sha this refresh could not
+    // finish reading.
+    val reloads = AtomicInteger(0)
+    var outcome: ServeCatalogStore.Result? = ok(incomplete = true)
+    val r =
+      ServeCatalogRefresher(
+        entries = { listOf(entry()) },
+        reload = { _, _ ->
+          reloads.incrementAndGet()
+          outcome
+        },
+        intervalMillis = 1_000,
+        headResolver = { _, _ -> "stable-sha" },
+        onLog = {},
+      )
+
+    assertEquals(CatalogRefreshResult.UPDATED, r.refresh("compose-m3"))
+    assertEquals(1, reloads.get())
+
+    // The startup loader finishes and seeds the catalog it saw load completely at boot.
+    r.seedInitialHeads()
+
+    r.tick()
+    assertEquals(2, reloads.get(), "the incomplete refresh outlives the seed and is re-read")
+    r.tick()
+    assertEquals(3, reloads.get(), "still unsettled — an incomplete re-read withholds the head too")
+
+    outcome = ok()
+    r.tick()
+    assertEquals(4, reloads.get())
+    r.tick()
+    assertEquals(4, reloads.get(), "and a complete read settles it, so the head short-circuits")
+    r.close()
+  }
 }
