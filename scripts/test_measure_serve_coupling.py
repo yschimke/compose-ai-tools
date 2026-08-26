@@ -380,6 +380,26 @@ class GateExitStatus(unittest.TestCase):
         self.assertTrue(mod.gate_green({mod.SERVE: self.green()}, want_gate=True))
 
 
+class WindowSizeValidation(unittest.TestCase):
+    """`--prs` must be a window size, not reinterpreted (PR #4512 review).
+
+    `0` is falsey and used to disable the limit entirely — measuring all of history — while a
+    negative satisfies the loop's `>= limit` after one commit and yields a one-PR window. Both
+    silently answer a different question, and this output ends up quoted as a coupling rate.
+    """
+
+    def test_zero_is_rejected(self):
+        with self.assertRaises(Exception):
+            mod.positive_int("0")
+
+    def test_negative_is_rejected(self):
+        with self.assertRaises(Exception):
+            mod.positive_int("-5")
+
+    def test_positive_passes_through(self):
+        self.assertEqual(mod.positive_int("300"), 300)
+
+
 class ReleaseBots(unittest.TestCase):
     def test_release_please_subjects_are_excluded(self):
         self.assertTrue(mod.RELEASE_SUBJECT.match("chore(main): release 1.2.3"))

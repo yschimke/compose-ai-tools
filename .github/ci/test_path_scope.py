@@ -166,5 +166,56 @@ class RepositoryConfigsTest(unittest.TestCase):
         self.assertFalse(result["preview_server_contracts"])
 
 
+    def test_every_contract_project_reaches_the_probe_job(self):
+        """Three lists name the contracts; nothing tied the third to the other two (PR #4512).
+
+        `contracts` in the probe's build file and `CONTRACT_PROJECTS` in the driver script are
+        checked against each other by the build itself — an unpublished contract simply fails to
+        resolve. The CI path group is not: adding a contract without a path covering its source
+        means a later PR touching only that module skips `preview-server-contracts`, the sole job
+        that publishes it and resolves it from the separate build.
+
+        Asks the real classifier rather than re-implementing glob matching, so a covering pattern
+        like `render-session/**` counts for `:render-session-api` exactly as CI would treat it.
+        """
+        import re as _re
+
+        config = self.load("ci-paths.json")
+        root = HERE.parents[1]
+        script = (root / "scripts/check-preview-server-contracts.sh").read_text()
+        block = script.split("CONTRACT_PROJECTS=(", 1)[1].split(")", 1)[0]
+        projects = _re.findall(r'"(:[^"]+)"', block)
+        self.assertTrue(projects, "could not parse CONTRACT_PROJECTS")
+
+        settings = (root / "settings.gradle.kts").read_text()
+        unreachable = []
+        for project in projects:
+            remap = _re.search(
+                _re.escape(f'project("{project}").projectDir = file("') + r'([^"]+)"', settings
+            )
+            directory = remap.group(1) if remap else project.lstrip(":").replace(":", "/")
+            changed = f"{directory}/src/main/kotlin/Probe.kt"
+            if not mod.decide([changed], config)["preview_server_contracts"]:
+                unreachable.append(f"{project} ({directory})")
+        self.assertEqual(
+            unreachable,
+            [],
+            "contract project(s) whose sources do not schedule preview-server-contracts: "
+            + ", ".join(unreachable),
+        )
+
+    def test_a_contract_added_without_a_path_is_caught(self):
+        """The guard above must actually fail when the group is missing a contract."""
+        config = self.load("ci-paths.json")
+        stripped = json.loads(json.dumps(config))
+        stripped["groups"]["preview_server_contracts"] = [
+            p for p in stripped["groups"]["preview_server_contracts"] if "daemon/core" not in p
+        ]
+        self.assertFalse(
+            mod.decide(
+                ["daemon/core/src/main/kotlin/Probe.kt"], stripped
+            )["preview_server_contracts"]
+        )
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

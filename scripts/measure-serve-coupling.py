@@ -465,10 +465,29 @@ def gate_green(components: dict, want_gate: bool) -> bool:
     return gate_is_green(components[SERVE])
 
 
+def positive_int(value: str) -> int:
+    """A window size, rejected rather than reinterpreted if it is not one.
+
+    `--prs 0` is falsey and used to disable the limit entirely — measuring all of history — and a
+    negative satisfies `len(prs) >= limit` after the first commit, yielding a one-PR window. Both
+    silently answer a different question than the one asked, and this script's output ends up in
+    issue comments as a coupling rate.
+    """
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError(f"must be a positive number of PRs, got {parsed}")
+    return parsed
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--rev", default="main", help="branch or revision to walk (default: main)")
-    ap.add_argument("--prs", type=int, default=300, help="window size in human PRs (default: 300)")
+    ap.add_argument(
+        "--prs",
+        type=positive_int,
+        default=300,
+        help="window size in human PRs (default: 300)",
+    )
     ap.add_argument("--since", help="measure <since>..<rev> instead of a PR count")
     ap.add_argument(
         "--component",

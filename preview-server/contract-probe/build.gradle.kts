@@ -96,8 +96,11 @@ abstract class CheckContractSurface : DefaultTask() {
   /** The group whose artifacts are this repo's own — everything else is third-party. */
   @get:Input abstract val internalGroup: Property<String>
 
+  /** The version the contracts were published under, which allowed modules must resolve at. */
+  @get:Input abstract val expectedVersion: Property<String>
+
   /**
-   * The resolved runtime classpath as component *identities*, transitives included.
+   * The resolved runtime classpath as `name:version` pairs, transitives included.
    *
    * Identities, not file names. The first version of this task recognised an internal artifact by
    * its file name ending in `-<probeVersion>.jar`, which quietly assumed every internal artifact on
@@ -107,6 +110,13 @@ abstract class CheckContractSurface : DefaultTask() {
    * gained exactly the kind of artifact this task exists to catch. Group and module come off the
    * resolution result now, so the version cannot decide whether something is seen.
    *
+   * The version is kept, not projected away. A contract POM can pin a sibling contract to a
+   * *released* version above the probe version, and Gradle's conflict resolution will happily
+   * select it — at which point the probe compiles against stale released bytecode while reporting
+   * that it verified this PR's. Name-only matching could not see that, so the check now asserts
+   * allowed modules resolve at [expectedVersion] while still reporting unexpected modules at any
+   * version.
+   *
    * Resolved into a plain `Set<String>` at configuration time so the task holds no Gradle model
    * objects and stays configuration-cache-safe.
    */
@@ -114,11 +124,15 @@ abstract class CheckContractSurface : DefaultTask() {
 
   @TaskAction
   fun check() {
-    val seen = resolvedModules.get()
+    val resolved =
+      resolvedModules.get().associate { it.substringBefore(":") to it.substringAfter(":") }
+    val seen = resolved.keys
     val allowedNames = allowed.get()
     val recordedLeaks = leaks.get()
     val unexpected = (seen - allowedNames - recordedLeaks.keys).sorted()
     val healed = (recordedLeaks.keys - seen).sorted()
+    val wrongVersion =
+      (seen intersect allowedNames).filter { resolved[it] != expectedVersion.get() }.sorted()
 
     val problems = buildList {
       if (unexpected.isNotEmpty()) {
@@ -135,6 +149,23 @@ abstract class CheckContractSurface : DefaultTask() {
                 "`contracts` in preview-server/contract-probe/build.gradle.kts and say why in the " +
                 "PR — or a contract module grew a dependency it should not have. Post-split, every " +
                 "name on that list is a repository the server would have to depend on."
+            )
+          }
+        )
+      }
+      if (wrongVersion.isNotEmpty()) {
+        add(
+          buildString {
+            appendLine(
+              "${wrongVersion.size} contract(s) did not resolve at the probe version " +
+                "${expectedVersion.get()}, so the probe is not checking what this build published:"
+            )
+            wrongVersion.forEach { appendLine("    $it -> ${resolved[it]}") }
+            appendLine()
+            append(
+              "A contract POM pinning a sibling to a released version lets conflict resolution " +
+                "pick the release over the freshly published artifact, which would hide a removal " +
+                "or an incompatible change in the contract this PR actually touches."
             )
           }
         )
@@ -175,12 +206,13 @@ tasks.register<CheckContractSurface>("checkContractSurface") {
   allowed.set(contracts)
   leaks.set(contractLeaks)
   internalGroup.set(INTERNAL_GROUP)
+  expectedVersion.set(probeVersion)
   resolvedModules.set(
     configurations.named("runtimeClasspath").map { configuration ->
       configuration.incoming.resolutionResult.allComponents
         .mapNotNull { it.moduleVersion }
         .filter { it.group == INTERNAL_GROUP }
-        .map { it.name }
+        .map { "${it.name}:${it.version}" }
         .toSet()
     }
   )

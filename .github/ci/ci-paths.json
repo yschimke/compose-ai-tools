@@ -107,7 +107,9 @@
       "scripts/serve-seam-allowlist.json",
       "scripts/measure-serve-coupling.py",
       "scripts/test_check_serve_seam.py",
-      "scripts/test_measure_serve_coupling.py"
+      "scripts/test_measure_serve_coupling.py",
+      "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/**",
+      "cli/src/test/kotlin/ee/schimke/composeai/cli/serve/**"
     ],
     "design_artifacts": [
       "design-map/**",
