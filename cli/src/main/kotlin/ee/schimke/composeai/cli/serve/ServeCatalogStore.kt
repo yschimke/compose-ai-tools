@@ -2062,13 +2062,28 @@ class ServeCatalogStore(
    *
    * **Wrong in only one direction, on purpose.** Saying "rejected" for a document the engine would
    * evaluate starves legal records of their artifacts and turns them into `artifact-unreadable` — a
-   * changed verdict. Saying "not rejected" for one it refuses merely wastes a fetch. So this
-   * mirrors the branches that are exactly decidable from the parsed JSON and deliberately does not
-   * mirror the two textual ones — a repeated member name and a non-integer geometry coordinate,
-   * both of which `documentTextRefusal` reads off the bytes rather than the tree. Those documents
-   * are still fetched for and still refused by the consumer; the cost is a wasted fetch on a file
-   * no producer in this repo emits, and the alternative is a third implementation of a text scanner
-   * in a host that is not supposed to be parsing at all.
+   * changed verdict. Saying "not rejected" for one it refuses merely wastes a fetch.
+   *
+   * So the line is drawn at a property of the **file**. Those rules are few, stable, and exactly
+   * decidable from the parsed JSON, and they are mirrored here. Three families of pre-read refusal
+   * are deliberately **not**, and the next reader should not take their absence for an oversight:
+   * - `documentTextRefusal` — a repeated member name, a non-integer geometry coordinate. Read off
+   *   the bytes rather than the tree, so mirroring it means a third implementation of a JSON text
+   *   scanner in a host that is not supposed to be parsing at all.
+   * - `isSafeId`, and the case-folded `mask`/`acceptedCandidate` collision.
+   * - `schemaReasons` — the field allow-list, the required strings, the tolerance ranges, the
+   *   element block, the locator scope.
+   *
+   * The last two are per-**record** verdicts, and mirroring them would make this file a third
+   * implementation of `compose-preview-known-differences/v1` with no conformance suite behind it —
+   * the thing "two engines, one semantics" exists to prevent. Over that much detailed validation,
+   * drifting stricter than the engine somewhere is not a risk but a matter of time, and stricter is
+   * the direction that changes a verdict.
+   *
+   * What their absence costs is a wasted fetch, bounded by the ceiling a fully-populated *valid*
+   * document already permits — 256 × 2 × 8 MiB is what the contract allows and what the engine
+   * genuinely reads. Issue #4520 closes the waste properly, by having the producer publish the
+   * artifact list it already knows so nothing here has to derive one.
    */
   private fun rejectsWholeDocument(document: JsonObject, acceptances: JsonArray): Boolean {
     // The schema and the shape. `acceptances` is already known to be an array by the caller.
