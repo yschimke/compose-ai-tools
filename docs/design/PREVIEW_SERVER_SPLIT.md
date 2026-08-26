@@ -70,6 +70,22 @@ module and the probe would resolve the same coordinates and pass while the depen
 grown underneath it.
 
 Today's register: **21 + 102** crossings in `main` (serve→cli, cli→serve) and **9 + 19** in `test`.
+
+**Known limitation: it reads source text, not the compiler's view.** Deciding what is code and what
+is a comment or a literal means the checker carries a small Kotlin tokenizer, and review found three
+separate defects in it — a `"Disallow: /*/p/"` literal opening a phantom block comment, `${…}`
+interpolations blanked as if they were text, and `'\''` swallowing the rest of a file. Each was real,
+each is fixed and tested, and the pattern is the point: a hand-rolled tokenizer is the weak part of
+this check.
+
+The robust version does not parse anything. `:cli`'s compiled classes already record every package
+they reference, and this repo already reads bytecode that way (`:preview-discovery` uses ASM for
+`@Composable` call targets). A bytecode-driven seam check would be immune to every defect above and
+would additionally see reflective references the source scan cannot. It is not done here because the
+tokenizer is now tested and the register is stable, and because the check becomes moot at
+preparation item 7 — once serve is its own module, `checkServeModuleBoundary` reads a resolved
+classpath and no source scanning is needed at all. If this check needs substantial work again before
+then, rewrite it against bytecode rather than teaching the tokenizer another Kotlin rule.
 The `serve→cli` direction is dominated by the bundle format (`BundleReader`, `BundleSigning`,
 `BundleClasspathHydration`, `extractBundle*`, `locateBundleSidecarJars`, `BUNDLE_VERSION`) —
 preparation item 5 below. The `cli→serve` direction is dominated by `ServeCommand.kt`, which #3824
