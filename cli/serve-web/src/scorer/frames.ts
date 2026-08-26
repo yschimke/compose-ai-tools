@@ -183,16 +183,27 @@ export function grayFromDraw(
  * full-resolution scan of a 1078×2399 device shot per row is real time on the client.
  */
 export function contentBox(image: Frame): Box {
-    const size = imageDimensions(image);
+    const raster = rasterOf(image);
+    // A tainted canvas (cross-origin artifact) cannot be sampled. Fall back to the whole image.
+    if (!raster) return wholeImage(imageDimensions(image));
+    return contentBoxOf(raster);
+}
+
+/**
+ * {@link contentBox} over a raster the caller already holds.
+ *
+ * Split out because a full-resolution raster is the expensive thing on this path and a comparison
+ * needs several answers from the same one: its content box, and then its score plane. Measuring
+ * from the frame each time decoded it again per question.
+ */
+export function contentBoxOf(raster: Raster): Box {
+    const size = { width: raster.width, height: raster.height };
     const scale = Math.min(
         1,
         BOX_SAMPLE_SIDE / Math.max(size.width, size.height),
     );
     const width = Math.max(1, Math.round(size.width * scale));
     const height = Math.max(1, Math.round(size.height * scale));
-    const raster = rasterOf(image);
-    // A tainted canvas (cross-origin artifact) cannot be sampled. Fall back to the whole image.
-    if (!raster) return wholeImage(size);
     // At `scale === 1` the resample is the identity, so a preview-sized capture is sampled at full
     // resolution and the kernel cannot matter at all.
     const sampled = scale === 1 ? raster : resampleArea(raster, width, height);
@@ -212,6 +223,19 @@ export function normalisedBoxes(
     );
 }
 
+/** {@link normalisedBoxes} over two rasters the caller already holds. */
+export function normalisedBoxesOf(
+    reference: Raster,
+    candidate: Raster,
+): NormalisedBoxes {
+    return decideBoxes(
+        { width: reference.width, height: reference.height },
+        { width: candidate.width, height: candidate.height },
+        contentBoxOf(reference),
+        contentBoxOf(candidate),
+    );
+}
+
 /**
  * One image's content box redrawn into a fresh canvas of the shared comparison size.
  *
@@ -224,12 +248,12 @@ export function boxCanvas(
     box: Box,
     width: number,
     height: number,
+    raster: Raster | null = rasterOf(image),
 ): HTMLCanvasElement {
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
     const context = readableContext(canvas);
-    const raster = rasterOf(image);
     if (!raster) {
         // Unreadable pixels: the browser can still *draw* what it will not let anyone read back, so
         // the visible panel stays right even though nothing downstream can measure it.
@@ -250,9 +274,9 @@ export function boxCanvas(
     // the number was actually computed over rather than a second, differently-filtered rendering of
     // the same pair.
     const scaled = cropTo(raster, box, width, height);
-    const image_ = context.createImageData(width, height);
-    image_.data.set(scaled.pixels);
-    context.putImageData(image_, 0, 0);
+    const painted = context.createImageData(width, height);
+    painted.data.set(scaled.pixels);
+    context.putImageData(painted, 0, 0);
     return canvas;
 }
 

@@ -74,6 +74,38 @@ class ServeCatalogChangeFeedTest {
       "no design changed: ${rebaselined.references}",
     )
 
+    // A score that ARRIVES is not a rival kernel. The publish-time scorer is optional — no
+    // Playwright, no Chromium, an undecodable pair ⇒ no `match` at all — so a score appearing or
+    // going away is an ordinary catalog change and was reported as one long before versions
+    // existed. Reading the absent side's null version as a mismatch would silence exactly that.
+    fun unscored(sha: String) =
+      CatalogSnapshot.parse(
+        catalogJson =
+          """{"title":"Demo","components":[
+            {"componentId":"Button","images":[{"path":"images/button/default.png"}]}
+          ]}""",
+        referencesJson =
+          """{"references":[{"id":"button-spec","previewId":"button__default","label":"Button spec",
+            "raster":{"path":"references/button.png","sha256":"$sha"}}]}""",
+        blobs = mapOf("images/button/default.png" to "2".repeat(40)),
+      )
+    val appeared =
+      CatalogFeedDiff.between(
+        oldRevision,
+        unscored("spec"),
+        newRevision,
+        snapshot(percent = 92.5, version = 2, sha = "spec"),
+      )
+    assertEquals(92.5, appeared.references.single().afterMatch, "an arriving score is reported")
+    val vanished =
+      CatalogFeedDiff.between(
+        oldRevision,
+        snapshot(percent = 92.5, version = 2, sha = "spec"),
+        newRevision,
+        unscored("spec"),
+      )
+    assertEquals(92.5, vanished.references.single().beforeMatch, "a vanishing score is reported")
+
     // …and within one kernel the same move is exactly what the feed is for.
     val moved =
       CatalogFeedDiff.between(

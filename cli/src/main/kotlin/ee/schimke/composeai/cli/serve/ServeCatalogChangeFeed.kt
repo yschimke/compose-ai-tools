@@ -619,24 +619,35 @@ internal data class SnapshotReference(
 
 internal object CatalogFeedDiff {
   /**
+   * Whether the two revisions' scores are two readings of one instrument.
+   *
+   * Only when **both** sides actually published a score. An absent score is not a rival kernel: the
+   * publish-time scorer is optional (no Playwright, no Chromium, an undecodable pair ⇒ no `match`
+   * at all), so a score appearing or going away is an ordinary, observable catalog change and was
+   * reported as one long before versions existed. Reading a null version as a mismatched kernel
+   * would silence exactly that.
+   */
+  private fun crossKernel(old: SnapshotReference?, new: SnapshotReference?): Boolean =
+    old?.match != null && new?.match != null && old.matchVersion != new.matchVersion
+
+  /**
    * Whether the published score actually moved between two revisions of the same reference.
    *
    * Two numbers minted by different kernels are not a move. The scorer's pixel path changed once,
    * deliberately, and every published number changed with it; a feed that compared across that
    * boundary would report every reference in the catalog as having shifted, in the one batch where
    * none of them had. What it still reports across it is everything it can actually see — a moved
-   * raster, a renamed label, a reference that appeared or went away.
+   * raster, a renamed label, a reference that appeared or went away, and a score that arrived or
+   * stopped being published.
    */
   private fun matchMoved(old: SnapshotReference, new: SnapshotReference): Boolean =
-    old.matchVersion == new.matchVersion && old.match != new.match
+    !crossKernel(old, new) && old.match != new.match
 
   /** The two scores to print, or nothing when they are not each other's units. */
   private fun reportedMatch(
     old: SnapshotReference?,
     new: SnapshotReference?,
-  ): Pair<Double?, Double?> =
-    if (old != null && new != null && old.matchVersion != new.matchVersion) null to null
-    else old?.match to new?.match
+  ): Pair<Double?, Double?> = if (crossKernel(old, new)) null to null else old?.match to new?.match
 
   fun between(
     beforeRevision: CatalogFeedRevision,

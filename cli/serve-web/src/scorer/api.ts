@@ -16,6 +16,7 @@ import {
     imageDimensions,
     loadImage,
     normalisedBoxes,
+    normalisedBoxesOf,
     pixelsOf,
     rasterOf,
     svgImage,
@@ -262,8 +263,10 @@ export async function scoreImages(
     referenceImage: Frame,
     candidateImage: Frame,
 ): Promise<Measurement> {
-    const boxes = normalisedBoxes(referenceImage, candidateImage);
-    const { width, height } = comparisonSize(boxes.candidate);
+    // Rasterised ONCE per side and reused for both questions. A full-resolution raster is the
+    // expensive object on this path — it is what the portable kernel measures from, exactly as the
+    // offline engine measures from `decodePng`'s — so asking the frame for its content box and then
+    // for its score plane must not decode it twice.
     const reference = rasterOf(referenceImage);
     const candidate = rasterOf(candidateImage);
     if (!reference || !candidate) {
@@ -271,6 +274,8 @@ export async function scoreImages(
         // every plane it scored came back through `getImageData`.
         throw new Error("frame pixels are unreadable");
     }
+    const boxes = normalisedBoxesOf(reference, candidate);
+    const { width, height } = comparisonSize(boxes.candidate);
     // ONE resample, source → score plane, at the candidate box's dimensions (I10), through the
     // portable area average rather than `drawImage`. The geometry is exactly what it was and the
     // kernel is not, which is the whole of the rebaseline on this side: the number moves once, here.
@@ -310,7 +315,11 @@ export async function normaliseImageUrls(
         loadImage(referenceUrl),
         loadImage(candidateUrl),
     ])) as [HTMLImageElement, HTMLImageElement];
-    const boxes = normalisedBoxes(images[0], images[1]);
+    const rasters = [rasterOf(images[0]), rasterOf(images[1])] as const;
+    const boxes =
+        rasters[0] && rasters[1]
+            ? normalisedBoxesOf(rasters[0], rasters[1])
+            : normalisedBoxes(images[0], images[1]);
     // `maxSide` bounds the pixel space the pair is normalised INTO, for a caller that will never
     // draw the result larger than that — the compare wall, whose map lives in a 200px column. It
     // cannot move the percentage: `scoreImages` measures the decoded ORIGINALS at its own downscale,
@@ -334,8 +343,20 @@ export async function normaliseImageUrls(
             reference: boxes.reference,
             candidate: boxes.candidate,
         },
-        reference: boxCanvas(images[0], boxes.reference, width, height),
-        candidate: boxCanvas(images[1], boxes.candidate, width, height),
+        reference: boxCanvas(
+            images[0],
+            boxes.reference,
+            width,
+            height,
+            rasters[0],
+        ),
+        candidate: boxCanvas(
+            images[1],
+            boxes.candidate,
+            width,
+            height,
+            rasters[1],
+        ),
         images,
     };
 }
