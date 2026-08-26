@@ -2774,9 +2774,15 @@ class JsonRpcServer(
 
   private fun handleXrUpdatePanels(params: XrUpdatePanelsParams) {
     val manager = xrSessions ?: return
-    if (!manager.isOpen(params.frameStreamId)) return
     val frame =
       try {
+        // `isOpen` is inside the guard, not before it. Unlike the other two port calls fixed
+        // alongside this one there is no observable difference — `xr/updatePanels` is a
+        // notification, so a throw is absorbed by the outer dispatch and the read loop continues
+        // either way, and a test asserting otherwise passes with the guard removed. It is here so
+        // every call through the port is guarded uniformly, rather than leaving the next reader to
+        // re-derive which ones happen to be safe.
+        if (!manager.isOpen(params.frameStreamId)) return
         manager.updatePanels(params.frameStreamId, params.panels)
       } catch (t: Throwable) {
         System.err.println(
@@ -2805,7 +2811,19 @@ class JsonRpcServer(
         sendErrorResponse(req.id, ERR_INVALID_PARAMS, "invalid xr/structure params: ${e.message}")
         return
       }
-    val structure = manager.structure(params.frameStreamId)
+    val structure =
+      try {
+        manager.structure(params.frameStreamId)
+      } catch (t: Throwable) {
+        // A request, so silence is the worst outcome: the outer dispatch would log and continue,
+        // leaving this id unanswered until the client's own timeout. Answer it.
+        sendErrorResponse(
+          req.id,
+          ERR_INTERNAL,
+          "xr/structure failed: ${t.javaClass.simpleName}: ${t.message}",
+        )
+        return
+      }
     if (structure == null) {
       sendErrorResponse(
         req.id,
@@ -2828,7 +2846,17 @@ class JsonRpcServer(
     // registry state, then tear down the native session.
     val finalFrame = streamRegistry.finalFrameOnStop(params.frameStreamId)
     streamRegistry.unregister(params.frameStreamId)
-    xrSessions?.close(params.frameStreamId)
+    try {
+      xrSessions?.close(params.frameStreamId)
+    } catch (t: Throwable) {
+      // Guarded so the final marker below still goes out. Without this a renderer that failed to
+      // drop the session would also cost the client its `final=true` frame, and with it the
+      // decoder state this method exists to release.
+      System.err.println(
+        "compose-ai-daemon: xr/stop close failed for ${params.frameStreamId}: " +
+          "${t.javaClass.simpleName}: ${t.message}; continuing"
+      )
+    }
     if (finalFrame != null) {
       sendNotification("streamFrame", encode(StreamFrameParams.serializer(), finalFrame))
     }
