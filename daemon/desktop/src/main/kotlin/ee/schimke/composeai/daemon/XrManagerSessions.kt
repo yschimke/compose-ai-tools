@@ -17,11 +17,17 @@ import kotlinx.serialization.json.JsonElement
  *
  * The manager is owned by this adapter: [close] tears down every live session and the shared child
  * process, which is what `JsonRpcServer` calls on shutdown.
+ *
+ * `internal`, and it has to be: `:renderer-xr-client` is an `implementation` dependency of this
+ * module, so its types are absent from the compile classpath of anyone consuming the published
+ * `daemon-desktop` artifact. A public constructor taking `XrSessionManager` would name a type such
+ * a consumer cannot resolve. Nothing outside this module needs to build one — `DaemonMain` wires
+ * it, and everyone else takes the [XrSessions] port, which is the published shape.
  */
-public class XrManagerSessions(private val manager: XrSessionManager) : XrSessions {
+internal class XrManagerSessions(private val manager: XrSessionManager) : XrSessions {
 
   /** Wrap a factory directly — the shape [ee.schimke.composeai.daemon.DaemonMain] wires. */
-  public constructor(factory: XrRenderServerFactory) : this(XrSessionManager(factory))
+  constructor(factory: XrRenderServerFactory) : this(XrSessionManager(factory))
 
   override fun open(
     id: String,
