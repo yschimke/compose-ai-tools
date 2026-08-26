@@ -1863,7 +1863,10 @@ class ServeCatalogStore(
           .onFailure { System.err.println("serve: catalog $system figma vectors: ${it.message}") }
         scope.sawTransientFailure
       }
-      if (incomplete) onPostPublishIncomplete(system)
+      // Re-checked, not just checked on entry: a newer load of this system can finish while this
+      // lane is still reading, and un-settling a revision this work was never about would cost the
+      // fresh one a needless full reload. The new revision reports its own incompleteness.
+      if (incomplete && generations[system] == generation) onPostPublishIncomplete(system)
     }
   }
 
@@ -1883,7 +1886,10 @@ class ServeCatalogStore(
           .onFailure { System.err.println("serve: catalog $system rc-compare: ${it.message}") }
         scope.sawTransientFailure
       }
-      if (incomplete) onPostPublishIncomplete(system)
+      // Re-checked, not just checked on entry: a newer load of this system can finish while this
+      // lane is still reading, and un-settling a revision this work was never about would cost the
+      // fresh one a needless full reload. The new revision reports its own incompleteness.
+      if (incomplete && generations[system] == generation) onPostPublishIncomplete(system)
     }
   }
 

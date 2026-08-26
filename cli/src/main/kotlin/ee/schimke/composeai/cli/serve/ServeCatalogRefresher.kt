@@ -57,19 +57,23 @@ internal class ServeCatalogRefresher(
   private val lastHead = ConcurrentHashMap<String, String>()
 
   /**
-   * Systems whose revision has been declared unsettled since their head was last considered.
+   * How many times each system has been declared unsettled — monotonic, never consumed.
    *
-   * A *pending* mark rather than only a removal, because an invalidation can arrive before there is
-   * anything to remove. The post-publish lanes run on their own executor, so a throttled vector
-   * fill for one catalog lands while the startup loader is still working through the others — and
-   * [seedInitialHeads] runs only once every load has finished. Removing a head that is not there
-   * yet is a no-op, and the seed that follows would record the very revision the lane was reporting
-   * as incomplete. The same window exists on the poller between [checkOne] handing off to `reload`
-   * and recording the head afterwards.
+   * A *count* rather than a pending flag, because the question a head-recorder has to answer is not
+   * "is there an invalidation outstanding?" but "did one arrive since I started reading?". Those
+   * differ, and the difference is the whole bug: the post-publish lanes run on their own executor
+   * and [seedInitialHeads] only runs once every startup load has finished, so an invalidation for
+   * one catalog lands while another is still loading. Removing a head that is not there yet is a
+   * no-op; a flag consumed *before* the branch-head resolution that follows is consumed before the
+   * window it was meant to cover. Both lose the invalidation, and the seed then records exactly the
+   * revision the lane was reporting as incomplete.
    *
-   * So a mark is left instead, and both places that would record a head consume it first.
+   * So a recorder takes a [invalidationMark] before it starts and hands it back to [recordHead],
+   * which writes only if the count still matches. Reads and writes of the count happen inside
+   * [lastHead]'s per-key `compute` lock, so the check and the write are one step rather than two
+   * with a window between them — see [recordHead].
    */
-  private val unsettled = ConcurrentHashMap.newKeySet<String>()
+  private val invalidations = ConcurrentHashMap<String, Long>()
   private val exec: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { r ->
     Thread(r, "serve-catalog-refresh").apply { isDaemon = true }
   }
@@ -87,12 +91,15 @@ internal class ServeCatalogRefresher(
    */
   fun seedInitialHeads(systems: Set<String> = entries().mapTo(linkedSetOf()) { it.system }) {
     for (e in entries()) {
-      // `unsettled` is consumed either way: the mark answers "since the head was last considered",
-      // and this is that consideration.
-      val invalidated = unsettled.remove(e.system)
-      if (e.system in systems && !invalidated) {
-        headResolver(e.repo, e.branch)?.let { lastHead[e.system] = it }
-      }
+      if (e.system !in systems) continue
+      val head = headResolver(e.repo, e.branch) ?: continue
+      // The mark is `0`, not the current count: what this seed vouches for is the **boot load**,
+      // which finished before this method was even called, so *any* invalidation reported since the
+      // process started necessarily postdates it. That covers both windows at once — a lane that
+      // reported while the startup loader was still working through the other catalogs, and one
+      // that reported while this loop was blocked in `git ls-remote`, which is the widest window
+      // in this class.
+      recordHead(e.system, head, mark = 0L)
     }
   }
 
@@ -107,8 +114,33 @@ internal class ServeCatalogRefresher(
    */
   fun forgetHeads(systems: Collection<String>) {
     for (system in systems) {
-      unsettled += system
-      lastHead.remove(system)
+      // Inside `compute` so the bump and the removal are one step, and so they cannot interleave
+      // with a [recordHead] for the same system: that is what makes "did one arrive since I
+      // started?" answerable without a window. Returning null removes the entry.
+      lastHead.compute(system) { _, _ ->
+        invalidations.merge(system, 1L, Long::plus)
+        null
+      }
+    }
+  }
+
+  /**
+   * The invalidation count to hand back to [recordHead] once the work being vouched for is done.
+   */
+  private fun invalidationMark(system: String): Long = invalidations[system] ?: 0L
+
+  /**
+   * Record [head] for [system] — settling that revision — unless [forgetHeads] ran for it since
+   * [mark] was taken, in which case the invalidation wins and the head stays absent.
+   *
+   * The check and the write are one `compute` on [lastHead], against which [forgetHeads] also
+   * computes. Two statements would leave a window between them, which is the same shape of bug one
+   * level in: an invalidation landing there would be read as "none since I started" and then
+   * overwritten by the very head it was rejecting.
+   */
+  private fun recordHead(system: String, head: String, mark: Long) {
+    lastHead.compute(system) { _, current ->
+      if (invalidationMark(system) == mark) head else current
     }
   }
 
@@ -159,9 +191,10 @@ internal class ServeCatalogRefresher(
     onLog(
       "serve: catalog ${e.system} (${e.branch}) moved ${prev?.take(7) ?: "?"}→${head.take(7)} — re-fetching"
     )
-    // Cleared before the reload, not after: a mark left *during* it belongs to this attempt, and
-    // this is what closes the window between the load returning and the head being recorded.
-    unsettled.remove(e.system)
+    // Taken before the reload: an invalidation arriving *during* it belongs to this attempt, and
+    // making the head write conditional on the mark is what closes the window between the load
+    // returning and the head being recorded.
+    val mark = invalidationMark(e.system)
     val loaded =
       runCatching { reload(e.system, e.repo) }.getOrNull() as? ServeCatalogStore.Result.Ok
     if (loaded == null) {
@@ -174,15 +207,22 @@ internal class ServeCatalogRefresher(
     // what the branch would not give us this time instead of short-circuiting on an unmoved sha.
     // A post-publish lane that failed while this reload ran counts the same as the load itself
     // coming back incomplete — the revision is serving and it is not settled.
-    if (loaded.incomplete || unsettled.remove(e.system)) {
+    if (loaded.incomplete) {
       onLog(
         "serve: catalog ${e.system} refreshed to ${head.take(7)}, but some assets could not be " +
           "fetched — will re-read next tick"
       )
       return CatalogRefreshResult.UPDATED
     }
-    lastHead[e.system] = head
-    onLog("serve: catalog ${e.system} refreshed to ${head.take(7)}")
+    // A post-publish lane that failed while this reload ran counts the same, and says so by having
+    // bumped the mark — [recordHead] then leaves the head absent and the next tick re-reads.
+    recordHead(e.system, head, mark)
+    onLog(
+      if (lastHead[e.system] == head) "serve: catalog ${e.system} refreshed to ${head.take(7)}"
+      else
+        "serve: catalog ${e.system} refreshed to ${head.take(7)}, but some assets could not be " +
+          "fetched — will re-read next tick"
+    )
     return CatalogRefreshResult.UPDATED
   }
 

@@ -1091,6 +1091,69 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `a superseded post-publish lane does not un-settle the revision that replaced it`() {
+    // The lane checks the generation on entry, but it does network I/O afterwards — so a refresh
+    // can land a whole new revision while it is still reading. The entry check cannot see that;
+    // reporting anyway un-settles the *fresh* revision over a throttle belonging to the one it
+    // replaced, costing it a needless full reload. The new revision reports for itself.
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png",
+         "figma":{"nodeId":"1:2"}}]}]}
+      """
+        .trimIndent()
+    val unsettled = CopyOnWriteArrayList<String>()
+    val deferred = mutableListOf<Runnable>()
+    lateinit var store: ServeCatalogStore
+    // 0: first load. 1: the stale lane is reading. 2: the superseding load is running inside it.
+    var phase = 0
+    var superseded = false
+    store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        figmaExecutor = java.util.concurrent.Executor { deferred += it },
+        onPostPublishIncomplete = { unsettled += it },
+        networkFetch = { url, _ ->
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") ->
+              BranchFetch.Ok(catalog.encodeToByteArray())
+            url.endsWith(".png") -> BranchFetch.Ok(png())
+            url.endsWith(".svg") ->
+              if (phase != 1) BranchFetch.Ok("<svg/>".encodeToByteArray())
+              else {
+                // Mid-read, a refresh lands a whole new revision under a new generation — the
+                // thing the lane's entry check ran too early to see.
+                if (!superseded) {
+                  superseded = true
+                  phase = 2
+                  store.load("compose-m3")
+                  phase = 1
+                }
+                BranchFetch.Throttled(retryAfterSeconds = 5)
+              }
+            else -> BranchFetch.NotFound
+          }
+        },
+      )
+
+    store.load("compose-m3")
+    val stale = deferred.toList()
+    deferred.clear()
+
+    phase = 1
+    stale.forEach { it.run() }
+    assertTrue(superseded, "a newer revision really did land while the stale lane was reading")
+    assertEquals(
+      emptyList(),
+      unsettled.toList(),
+      "a lane whose revision has been superseded must not un-settle the one that replaced it",
+    )
+  }
+
+  @Test
   fun `an over-sized artifact is staged, so the reader can refuse it as too large`() {
     // Dropping it would leave a missing file, and a missing file is `artifact-unreadable`/404 — a
     // different verdict from the contract's `artifact-too-large`/413, and one that hides why.

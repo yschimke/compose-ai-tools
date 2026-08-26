@@ -4,6 +4,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class ServeCatalogRefresherTest {
 
@@ -275,6 +276,79 @@ class ServeCatalogRefresherTest {
     assertEquals(1, reloads.get(), "the invalidated catalog is re-read despite an unmoved head")
     r.tick()
     assertEquals(1, reloads.get(), "and the complete re-read settles it again")
+    r.close()
+  }
+
+  @Test
+  fun `an invalidation arriving while the seed resolves a head survives it`() {
+    // One level in from the test above: the mark is not lost because it was never left, but because
+    // it was *consumed too early*. `headResolver` is a `git ls-remote` — the widest window in this
+    // class — and a post-publish lane reporting a throttle while the seed is blocked in it must
+    // still beat the head the seed is about to write.
+    val reloads = AtomicInteger(0)
+    var refresher: ServeCatalogRefresher? = null
+    var invalidatedDuringResolve = false
+    val r =
+      ServeCatalogRefresher(
+        entries = { listOf(entry()) },
+        reload = { _, _ ->
+          reloads.incrementAndGet()
+          ok()
+        },
+        intervalMillis = 1_000,
+        headResolver = { _, _ ->
+          // Stands in for the lane finishing its network read while we are blocked here.
+          if (!invalidatedDuringResolve) {
+            invalidatedDuringResolve = true
+            refresher!!.forgetHeads(listOf("compose-m3"))
+          }
+          "stable-sha"
+        },
+        onLog = {},
+      )
+    refresher = r
+
+    r.seedInitialHeads()
+    assertTrue(invalidatedDuringResolve, "the invalidation really did land mid-resolve")
+
+    r.tick()
+    assertEquals(1, reloads.get(), "the head resolved mid-invalidation was not recorded")
+    r.tick()
+    assertEquals(1, reloads.get(), "and the complete re-read settles it")
+    r.close()
+  }
+
+  @Test
+  fun `an invalidation arriving while a reload runs is not overwritten by its head`() {
+    // The same window on the poller. The load comes back complete — it read everything it needed —
+    // but a post-publish lane for the same revision failed while it ran, so the head must not be
+    // recorded even though nothing about the load itself was incomplete.
+    val reloads = AtomicInteger(0)
+    var refresher: ServeCatalogRefresher? = null
+    var invalidatedDuringReload = false
+    val r =
+      ServeCatalogRefresher(
+        entries = { listOf(entry()) },
+        reload = { _, _ ->
+          reloads.incrementAndGet()
+          if (!invalidatedDuringReload) {
+            invalidatedDuringReload = true
+            refresher!!.forgetHeads(listOf("compose-m3"))
+          }
+          ok()
+        },
+        intervalMillis = 1_000,
+        headResolver = { _, _ -> "stable-sha" },
+        onLog = {},
+      )
+    refresher = r
+
+    r.tick()
+    assertEquals(1, reloads.get())
+    r.tick()
+    assertEquals(2, reloads.get(), "the head was withheld, so the unmoved branch is re-read")
+    r.tick()
+    assertEquals(2, reloads.get(), "the second, uninvalidated reload settles it")
     r.close()
   }
 }
