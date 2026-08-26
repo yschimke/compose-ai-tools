@@ -95,7 +95,10 @@ def _scan_string(text: str, i: int, n: int, out: list, terminator: str) -> int:
     out.append(" " * len(terminator))
     i += len(terminator)
     while i < n and text[i : i + len(terminator)] != terminator:
-        if terminator == '"' and text[i] == "\\":  # escapes only apply outside raw strings
+        # Escapes apply in both quoted forms — `'\''` is a valid char literal and mistaking its
+        # escaped apostrophe for the terminator leaves the rest of the file inside a phantom
+        # literal. Raw strings are the exception: a backslash there is a literal backslash.
+        if terminator != RAW_QUOTE and text[i] == "\\":
             out.append("  ")
             i += 2
             continue

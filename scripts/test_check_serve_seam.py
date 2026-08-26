@@ -151,6 +151,37 @@ class CommentAndStringStripping(unittest.TestCase):
         self.assertNotIn("Hidden", body)
         self.assertIn("Seen", body)
 
+    def test_an_escaped_apostrophe_does_not_end_a_char_literal(self):
+        """`'\\''` is a valid Kotlin char literal (PR #4512 review).
+
+        Honouring escapes only inside double quotes left the rest of the file in a phantom literal.
+        The committed `WebEscaping.kt` has this literal at line 31, and it hid 73% of that file's
+        code from the scanner (295 of 1082 non-space characters visible).
+        """
+        body = mod.strip_comments_and_strings(
+            "val q = '\\''\nval x = ee.schimke.composeai.cli.BundleReader\n"
+        )
+        self.assertIn("ee.schimke.composeai.cli.BundleReader", body)
+
+    def test_a_backslash_in_a_raw_string_is_literal(self):
+        """Raw strings have no escapes, so a trailing backslash must not eat the terminator."""
+        q = '"' * 3
+        body = mod.strip_comments_and_strings(f"val s = {q}a\\{q}\nval x = ee.schimke.composeai.cli.BundleReader\n")
+        self.assertIn("ee.schimke.composeai.cli.BundleReader", body)
+
+    def test_the_real_escaping_file_stays_visible(self):
+        path = (
+            mod.REPO_ROOT
+            / "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/WebEscaping.kt"
+        )
+        if not path.is_file():
+            self.skipTest("fixture file moved")
+        text = path.read_text(encoding="utf-8")
+        visible = sum(
+            1 for c in mod.strip_comments_and_strings(text) if not c.isspace()
+        )
+        self.assertGreater(visible, 900)  # 295 when the escape bug was live
+
     def test_an_escaped_quote_does_not_end_the_string(self):
         body = mod.strip_comments_and_strings('val s = "a\\"ee.schimke.composeai.mcp.Hidden"\nSeen\n')
         self.assertNotIn("Hidden", body)
