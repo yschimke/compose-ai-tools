@@ -10636,6 +10636,16 @@ $cards
     hasReferenceFor: (String) -> Boolean = { false },
     parityIssues: List<ParityIssue> = emptyList(),
     /**
+     * The catalog inventory the acceptance walk resolves its targets against — null when this
+     * catalog publishes no known-difference document, which leaves the panel and the engine's
+     * bundle off the page entirely.
+     *
+     * The identity comes from the handler and the URLs are built here, the same split
+     * [KnownDifferenceScope] draws: every link on this page goes through one query builder, and a
+     * hand-rolled query is how a credential gets dropped on a header-authorized host.
+     */
+    acceptanceAudit: List<KnownDifferenceCatalogPreview>? = null,
+    /**
      * The design tool this catalog is specified by ("Figma", …) — names the whole-catalog compare
      * link. Null keeps the neutral "design references" wording. See [designToolLabel].
      */
@@ -11033,6 +11043,37 @@ $cards
           "compare every mapped component against $against</a></div>"
       }
 
+    // The catalog-wide acceptance audit. Both the band and its payload are absent together on a
+    // catalog that has accepted nothing: an empty panel would say "0 known differences" on every
+    // dashboard, and the page would carry the contract's whole engine to evaluate nothing.
+    //
+    // The band renders empty and `hidden` for the reason the comparison band does — the verdicts
+    // are
+    // the browser's, and a panel that appeared before the walk had run would be asserting something
+    // nobody had measured.
+    val acceptanceAuditBand =
+      if (acceptanceAudit == null) ""
+      else {
+        val context =
+          KnownDifferenceAuditContext(
+            documentUrl = "$basePath/parity/known-differences.json$q",
+            artifactBase = "$basePath/parity/known-differences/",
+            artifactQuery = q,
+            previews = acceptanceAudit,
+            issues =
+              parityIssues
+                .map { KnownDifferenceIssue(it.repository, it.number, it.state) }
+                .distinctBy { Triple(it.repository, it.number, it.state) },
+          )
+        "\n" +
+          """<div class="cp-acceptance-audit" id="cp-acceptance-audit" role="status" hidden></div>
+<script type="application/json" id="cp-known-difference-audit">${
+            encodeKnownDifferenceAuditContext(context)
+          }</script>
+${scriptTag("known-differences.js")}
+<cp-acceptance-audit></cp-acceptance-audit>"""
+      }
+
     // `format-compare.js` still holds the scorer itself — `<cp-parity-scores>` calls into
     // `window.ComposePreviewCompare` — so it loads for a catalog with published references, and
     // must be defined before the components bundle upgrades the tag.
@@ -11115,7 +11156,7 @@ $cards
         <p class="cp-muted">${coverage.percent}% of ${coverage.components} component(s) carry a
           design reference.</p>
         $feedBand
-        $issueBand
+        $issueBand$acceptanceAuditBand
         $visualIssues
         $comparisonBand
         $parityScripts

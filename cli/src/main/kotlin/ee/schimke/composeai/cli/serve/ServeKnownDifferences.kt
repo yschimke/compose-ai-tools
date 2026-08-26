@@ -299,3 +299,42 @@ private val CONTEXT_JSON = Json { encodeDefaults = true }
 /** As an inline `application/json` payload, with `<` escaped so it cannot close the script tag. */
 fun encodeKnownDifferenceContext(context: KnownDifferenceContext): String =
   CONTEXT_JSON.encodeToString(context).replace("<", "\\u003c")
+
+/**
+ * Everything the browser engine needs to audit this catalog's acceptances **without a comparison**.
+ *
+ * The comparison band ([KnownDifferenceContext]) can only ever judge records scoped into the page
+ * it is on, and that leaves one finding structurally unreachable: an acceptance naming a preview,
+ * reference, component or variant the catalog no longer has is scoped into *no* comparison, so it
+ * stays invisible in the browser while `design-parity` reports `orphaned-target` for the same
+ * record. The dashboard is where the whole document can be walked, so the walk is mounted there.
+ *
+ * [previews] is the catalog inventory the walk resolves targets against, and its fields are the
+ * **locator's**, spelled exactly as the comparison page spells them ([ServeIssueReport.Context]) —
+ * an acceptance matches on every recorded field, so a second derivation of `system`, `component` or
+ * `variant` here would report every acceptance in the catalog as an orphan.
+ */
+@Serializable
+data class KnownDifferenceAuditContext(
+  val documentUrl: String,
+  val artifactBase: String,
+  val artifactQuery: String,
+  val previews: List<KnownDifferenceCatalogPreview> = emptyList(),
+  /** Positive issue-state evidence for the lifecycle join; an absent row remains `unknown`. */
+  val issues: List<KnownDifferenceIssue> = emptyList(),
+)
+
+/** One served preview, as an acceptance's scope names it. */
+@Serializable
+data class KnownDifferenceCatalogPreview(
+  val system: String,
+  val id: String,
+  /** Null when the preview declares no component — it can then match no acceptance. */
+  val component: String? = null,
+  val variant: String = "",
+  val referenceIds: List<String> = emptyList(),
+)
+
+/** As an inline `application/json` payload, with `<` escaped so it cannot close the script tag. */
+fun encodeKnownDifferenceAuditContext(context: KnownDifferenceAuditContext): String =
+  CONTEXT_JSON.encodeToString(context).replace("<", "\\u003c")

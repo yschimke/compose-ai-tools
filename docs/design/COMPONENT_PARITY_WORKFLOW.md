@@ -2722,8 +2722,17 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
     records; it just omits the keyword and says so in the body, leaving the close to whoever can see
     the other referencing documents. Deletion is always safe locally; closure is the half that needs
     knowledge this plan does not give a single run.
+    **Where this landed in the browser.** The per-comparison band (`<cp-acceptance>`) carries the
+    status and the lifecycle join for the acceptances one comparison scopes in; the dashboard panel
+    (`<cp-acceptance-audit>`, `/<system>/parity`) runs `walkCatalog` — the same engine, validation
+    only, against the catalog's preview inventory — for the two findings no comparison can reach:
+    `orphaned-target`, whose record is scoped into no comparison by definition, and the closed-issue
+    roster. It reports no verdict, because a validation-only pass has measured no pixels. The
+    offline half is `design-parity`'s acceptance evidence and `resolveKnownDifferences`.
+
 13. **Document** the reporting → triage → acceptance → verification → closure loop in
-    `docs/public-preview-server.md`, beside the existing parity view section.
+    `docs/public-preview-server.md`, beside the existing parity view section. Landed as
+    [The parity loop](../public-preview-server.md#the-parity-loop-report-accept-verify-close).
 
 ---
 

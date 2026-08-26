@@ -2823,10 +2823,14 @@ class ServeHttpServer(
           // never lands on a format the page does not offer.
           hasReferenceComparison =
             renderHost.previews.any { renderHost.designReferencesFor(it.id).isNotEmpty() },
-          // Same condition `handleParity` serves on, so the link never leads to that route's 404.
+          // Same condition `handleParity` serves on, so the link never leads to that route's 404 —
+          // and, since the acceptance lane was added there, so the page it made reachable is not
+          // reachable only by typing the URL. An orphan-only catalog is precisely the one whose
+          // dashboard has something to say and whose landing would otherwise offer no way in.
           hasParityView =
             renderHost.parityActivity() != null ||
               renderHost.parityIssues() != null ||
+              renderHost.knownDifferences() != null ||
               renderHost.previews.any { renderHost.designReferencesFor(it.id).isNotEmpty() },
           parityIssues = renderHost.parityIssues()?.issues.orEmpty(),
           // Same count `handleMotionIndex` gates on, so the chip never leads to that route's 404.
@@ -3148,7 +3152,22 @@ class ServeHttpServer(
       val hasReference = { id: String -> renderHost.designReferencesFor(id).isNotEmpty() }
       val mapped = renderHost.previews.any { hasReference(it.id) }
       val issues = renderHost.parityIssues()?.issues.orEmpty()
-      if (activity == null && !mapped && issues.isEmpty()) {
+      // A published known-difference document keeps the page reachable on its own, alongside the
+      // three lanes that already do. It is the one lane whose *interesting* state is a catalog with
+      // nothing else left: every acceptance in it may name a preview or reference this session no
+      // longer serves, which is exactly `orphaned-target` — and 404ing here would withhold the
+      // panel
+      // from the only catalog whose whole document is the finding.
+      // **The HTML page only.** `ParityResponse` carries coverage, drift, activity and gaps — all
+      // of
+      // which are empty for such a catalog — and nothing about acceptances, because the host does
+      // not
+      // parse that document and the verdicts are the browser's. Admitting `?format=json` here would
+      // answer 200 with a dashboard of zeroes whose one interesting fact is unrepresentable in the
+      // schema, which reads as "this catalog is fine" to exactly the CI check that shape exists
+      // for.
+      val accepts = renderHost.knownDifferences() != null
+      if (activity == null && !mapped && issues.isEmpty() && (json || !accepts)) {
         if (json) call.respond(HttpStatusCode.NotFound)
         else
           respondNotFoundHtml(
@@ -3171,7 +3190,20 @@ class ServeHttpServer(
         )
         return@withLeasedSession
       }
-      markGeneration("static-page", pageCacheControl())
+      // **The audit-bearing page is not cacheable**, the way an `rcComparePending` comparison is
+      // not.
+      // The walk joins two things of different lifetimes: the preview inventory and the issue rows
+      // are baked into this HTML, while the document it walks is fetched live at `no-store`. Served
+      // from cache after an in-place catalog refresh, a *fresh* document would be resolved against
+      // a
+      // *stale* inventory — and a preview added or renamed in between reads as `orphaned-target`,
+      // which is a false finding of exactly the kind this panel exists to make trustworthy. The
+      // comparison band has no such gap: it is generation-bound by `referenceSha256`, and there is
+      // no equivalent anchor for a walk over the whole catalog.
+      markGeneration(
+        "static-page",
+        if (accepts) DYNAMIC_RESOURCE_CACHE_CONTROL else pageCacheControl(),
+      )
       call.respondText(
         ServeWeb.parityPage(
           moduleLabel = renderHost.label,
@@ -3188,6 +3220,28 @@ class ServeHttpServer(
           displayTitle = catalogBundleHost(renderHost)?.title,
           hasReferenceFor = hasReference,
           parityIssues = issues,
+          // The catalog-wide acceptance walk, offered only to a catalog that publishes a
+          // known-difference document. This is the walk's target set, and every field is spelled
+          // the
+          // way the comparison page spells it in its locator — `system` from the mount, `component`
+          // and `variant` from [ServeIssueReport] — because an acceptance matches on all of them
+          // and
+          // a second derivation here would report the whole document orphaned.
+          //
+          // The handler decides the identity; the page builds the URLs, which is the same split
+          // [KnownDifferenceScope] draws and the reason a hand-rolled query never loses its token.
+          acceptanceAudit =
+            renderHost.knownDifferences()?.let {
+              renderHost.previews.map { preview ->
+                KnownDifferenceCatalogPreview(
+                  system = basePath.trim('/').takeIf { it.isNotEmpty() } ?: sessionId,
+                  id = preview.id,
+                  component = ServeIssueReport.componentIdFor(preview),
+                  variant = ServeIssueReport.variantFor(preview),
+                  referenceIds = renderHost.designReferencesFor(preview.id).map { it.id },
+                )
+              }
+            },
           // Same derivation the landing uses to label its "compare to Figma" action, so the page a
           // visitor arrives on names the tool the same way the link that brought them here did.
           designToolLabel =

@@ -169,7 +169,11 @@ export async function evaluateComparison(
             documentRejected: result.statuses === undefined,
             pair: "unavailable",
             statuses: result.statuses ?? {},
-            lifecycles: joinLifecycles(document.text, result.statuses ?? {}, issueRows),
+            lifecycles: joinLifecycles(
+                document.text,
+                result.statuses ?? {},
+                issueRows,
+            ),
             validationFailures: result.validationFailures,
             scores: null,
             suppressing: (result.survivingMasks ?? []).map((entry) => entry.id),
@@ -228,7 +232,11 @@ export async function evaluateComparison(
         documentRejected: result.statuses === undefined,
         pair: "scored",
         statuses: result.statuses ?? {},
-        lifecycles: joinLifecycles(document.text, result.statuses ?? {}, issueRows),
+        lifecycles: joinLifecycles(
+            document.text,
+            result.statuses ?? {},
+            issueRows,
+        ),
         validationFailures: result.validationFailures,
         scores: {
             raw: scores.raw,
@@ -301,7 +309,11 @@ export async function walkCatalog(
         documentRejected: result.statuses === undefined,
         pair: "none",
         statuses: result.statuses ?? {},
-        lifecycles: joinLifecycles(document.text, result.statuses ?? {}, issueRows),
+        lifecycles: joinLifecycles(
+            document.text,
+            result.statuses ?? {},
+            issueRows,
+        ),
         validationFailures: result.validationFailures,
         scores: null,
         suppressing: (result.survivingMasks ?? []).map((entry) => entry.id),
@@ -476,39 +488,58 @@ async function prefetch(
         }
     }
 
-    // Round one: a bounded prefix of everything.
+    // Round one: a bounded prefix of everything — except what a URL join would rewrite.
     await pooled([...paths], ARTIFACT_CONCURRENCY, async (path) => {
-        artifacts.set(path, await fetchPrefix(artifactUrl(path), BUDGET.maxPreflightBytes));
+        if (rewritesTheUrl(path)) {
+            artifacts.set(path, {
+                header: { error: "path-not-contained" },
+                totalKnown: true,
+            });
+            return;
+        }
+        artifacts.set(
+            path,
+            await fetchPrefix(artifactUrl(path), BUDGET.maxPreflightBytes),
+        );
     });
 
     // Round two: the full body of the prefixes that earned it — and of the ones whose size the
     // response never declared, which must be read to be measured. See `totalKnown`.
-    await pooled([...artifacts], ARTIFACT_CONCURRENCY, async ([path, entry]) => {
-        {
-            if (!entry.totalKnown) {
-                const measured = await fetchArtifact(artifactUrl(path));
-                if (measured instanceof Uint8Array) {
-                    // The real size at last. Correcting the header answer here is what stops the two
-                    // passes disagreeing about an unchanged file: left at the prefix's length, the
-                    // decode pass reports the whole body's length, `samePreflight` sees two different
-                    // numbers and the engine refuses a file that never changed as
-                    // `artifact-unreadable`.
-                    const header = entry.header;
-                    if ("bytes" in header) entry.header = { bytes: header.bytes, byteLength: measured.length };
-                    entry.totalKnown = true;
-                    if (headerEarnsFullRead(entry.header)) entry.full = measured;
-                } else {
-                    entry.header = measured;
-                    entry.full = measured;
+    await pooled(
+        [...artifacts],
+        ARTIFACT_CONCURRENCY,
+        async ([path, entry]) => {
+            {
+                if (!entry.totalKnown) {
+                    const measured = await fetchArtifact(artifactUrl(path));
+                    if (measured instanceof Uint8Array) {
+                        // The real size at last. Correcting the header answer here is what stops the two
+                        // passes disagreeing about an unchanged file: left at the prefix's length, the
+                        // decode pass reports the whole body's length, `samePreflight` sees two different
+                        // numbers and the engine refuses a file that never changed as
+                        // `artifact-unreadable`.
+                        const header = entry.header;
+                        if ("bytes" in header)
+                            entry.header = {
+                                bytes: header.bytes,
+                                byteLength: measured.length,
+                            };
+                        entry.totalKnown = true;
+                        if (headerEarnsFullRead(entry.header))
+                            entry.full = measured;
+                    } else {
+                        entry.header = measured;
+                        entry.full = measured;
+                    }
+                    return;
                 }
-                return;
+                if (!headerEarnsFullRead(entry.header)) return;
+                // Stored whatever it is. A body refused between the rounds keeps the token the server
+                // established, rather than being flattened into "nothing was fetched".
+                entry.full = await fetchArtifact(artifactUrl(path));
             }
-            if (!headerEarnsFullRead(entry.header)) return;
-            // Stored whatever it is. A body refused between the rounds keeps the token the server
-            // established, rather than being flattened into "nothing was fetched".
-            entry.full = await fetchArtifact(artifactUrl(path));
-        }
-    });
+        },
+    );
 
     return artifacts;
 }
@@ -528,14 +559,66 @@ async function prefetch(
  */
 const ARTIFACT_CONCURRENCY = 8;
 
+/**
+ * Whether joining this path onto the artifact base would produce a request somewhere else.
+ *
+ * The rule above — fetch every path and let the *server* refuse the illegal ones — assumes the
+ * request arrives at the artifact route, where containment is checked against the filesystem. A
+ * traversal never gets there: `ok/../../../../status` is normalised by the URL parser **before**
+ * `fetch` is called, so the browser issues a same-origin GET to an unrelated route, carrying the
+ * session credential in the query, and the route that owns `path-not-contained` is never consulted.
+ * Opening a page would then make requests the catalog's document chose.
+ *
+ * So the shapes a URL join can rewrite are answered here instead, with the **same token the server
+ * would have answered** (`path-not-contained`, its 403) — which keeps this from inventing a verdict:
+ * every such path is one the host refuses anyway, and a well-behaved server and this shortcut agree
+ * byte for byte. Everything else still goes to the host, whose grammar check stays the authority.
+ *
+ * `\\` is in the list because WHATWG URL parsing treats a backslash as a separator for http(s), so
+ * `..\..` traverses exactly like `../..`. `?` and `#` end the path component, which would drop the
+ * credential the query carries or re-point the request. Tab, CR and LF are there because the
+ * parser **removes** them from the URL before it resolves anything — measurably, the pathname of
+ * `new URL(base + "glyph/\\t../\\t../status")` is `/parity/status`, so a segment spelled with one
+ * is a `..` by the time it matters and something else to any check that compares strings. None of
+ * these can occur in a path this contract calls legal.
+ */
+function rewritesTheUrl(path: string): boolean {
+    if (/[\\?#\t\n\r]/.test(path)) return true;
+    return path.split("/").some((segment) => isDotSegment(segment));
+}
+
+/**
+ * A single- or double-dot path segment, **as the URL parser recognises one**.
+ *
+ * Not a string comparison against `.` and `..`: the WHATWG path state spells a dot segment with
+ * either literal dots or `%2e` in ASCII-case-insensitive form, so `%2e%2e`, `%2E%2e` and `.%2e`
+ * normalise away exactly like `..` does — measurably, the pathname of
+ * `new URL(base + "glyph/%2e%2e/%2e%2e/status")` is `/parity/status`. A literal-only check catches
+ * the obvious spelling and lets the encoded one through, which is the same request by another name.
+ *
+ * The decode is one pass and not recursive, because the parser's is: `%252e` stays `%252e`, reaches
+ * the host, and is refused on the grammar like any other odd segment.
+ */
+function isDotSegment(segment: string): boolean {
+    const decoded = segment.replace(/%2e/gi, ".");
+    return decoded === "." || decoded === "..";
+}
+
 /** Run `work` over `items` with at most `limit` in flight, preserving nothing but the side effects. */
-async function pooled<T>(items: T[], limit: number, work: (item: T) => Promise<void>): Promise<void> {
+async function pooled<T>(
+    items: T[],
+    limit: number,
+    work: (item: T) => Promise<void>,
+): Promise<void> {
     let next = 0;
-    const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-        for (let index = next++; index < items.length; index = next++) {
-            await work(items[index]);
-        }
-    });
+    const workers = Array.from(
+        { length: Math.min(limit, items.length) },
+        async () => {
+            for (let index = next++; index < items.length; index = next++) {
+                await work(items[index]);
+            }
+        },
+    );
     await Promise.all(workers);
 }
 
@@ -544,7 +627,9 @@ async function pooled<T>(items: T[], limit: number, work: (item: T) => Promise<v
 function headerEarnsFullRead(header: ArtifactAnswer): boolean {
     if (!("bytes" in header)) return false;
     if (header.byteLength > BUDGET.maxArtifactBytes) return false;
-    const preflight = preflightPng(header.bytes, { byteLength: header.byteLength });
+    const preflight = preflightPng(header.bytes, {
+        byteLength: header.byteLength,
+    });
     return !("error" in preflight) && !preflight.animated;
 }
 
@@ -557,8 +642,14 @@ function headerEarnsFullRead(header: ArtifactAnswer): boolean {
  * from `Content-Length` otherwise; a file the server will not size is read to its (bounded) end and
  * measured by what arrived.
  */
-async function fetchPrefix(url: string, limit: number): Promise<PrefetchedArtifact> {
-    const failed = (error: string): PrefetchedArtifact => ({ header: { error }, totalKnown: true });
+async function fetchPrefix(
+    url: string,
+    limit: number,
+): Promise<PrefetchedArtifact> {
+    const failed = (error: string): PrefetchedArtifact => ({
+        header: { error },
+        totalKnown: true,
+    });
     let response: Response;
     try {
         response = await fetch(url, {
@@ -577,9 +668,13 @@ async function fetchPrefix(url: string, limit: number): Promise<PrefetchedArtifa
     // complaint, where the engine refuses its too-short header as `header-invalid`. Handing the
     // preflight an empty prefix lets it reach that same verdict from the same facts.
     if (response.status === 416) {
-        return { header: { bytes: new Uint8Array(0), byteLength: 0 }, totalKnown: true };
+        return {
+            header: { bytes: new Uint8Array(0), byteLength: 0 },
+            totalKnown: true,
+        };
     }
-    if (!response.ok && response.status !== 206) return failed("artifact-unreadable");
+    if (!response.ok && response.status !== 206)
+        return failed("artifact-unreadable");
 
     const total = totalBytesFromHeaders(response);
     const bytes = await readAtMost(response, limit);
@@ -611,7 +706,10 @@ function totalBytesFromHeaders(response: Response): number | null {
 }
 
 /** Read a response body until `limit` bytes, then cancel the stream so the rest is never allocated. */
-async function readAtMost(response: Response, limit: number): Promise<Uint8Array | null> {
+async function readAtMost(
+    response: Response,
+    limit: number,
+): Promise<Uint8Array | null> {
     if (!response.body) {
         // No stream to bound — take the buffer and cut it, the one path where the full body is briefly
         // held. A fetch implementation without a readable body is the fallback, not the norm.
@@ -648,7 +746,9 @@ async function readAtMost(response: Response, limit: number): Promise<Uint8Array
     return out;
 }
 
-async function fetchArtifact(url: string): Promise<Uint8Array | { error: string }> {
+async function fetchArtifact(
+    url: string,
+): Promise<Uint8Array | { error: string }> {
     let response: Response;
     try {
         response = await fetch(url, { credentials: "same-origin" });
@@ -668,7 +768,8 @@ async function fetchArtifact(url: string): Promise<Uint8Array | { error: string 
     // is the verdict the reference reader reaches from a `stat` without allocating anything.
     const bytes = await readAtMost(response, BUDGET.maxArtifactBytes + 1);
     if (!bytes) return { error: "artifact-unreadable" };
-    if (bytes.length > BUDGET.maxArtifactBytes) return { error: "artifact-too-large" };
+    if (bytes.length > BUDGET.maxArtifactBytes)
+        return { error: "artifact-too-large" };
     return bytes;
 }
 
