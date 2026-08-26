@@ -174,6 +174,20 @@ describe("<cp-acceptance-audit>", () => {
         assert.match(text(band), /path-not-contained/);
     });
 
+    it("refuses a segment the parser strips its way into a dot segment", async () => {
+        // Tab, CR and LF are removed from a URL before it is resolved, so `\t..` is a `..` by the
+        // time it matters: `new URL(base + "glyph/\t../\t../status").pathname` is `/parity/status`.
+        const document = knownDifferencesJson(SCENE, {
+            mask: "\t../\t../status",
+        });
+        const band = await mount(routes(document), PREVIEWS);
+        assert.ok(
+            !(net?.asked ?? []).some((url) => url.includes("status")),
+            `no request escaped the artifact route: ${net?.asked.join(", ")}`,
+        );
+        assert.match(text(band), /path-not-contained/);
+    });
+
     it("reports a refused document rather than an empty audit", async () => {
         const broken = JSON.stringify({
             schema: "compose-preview-known-differences/v1",

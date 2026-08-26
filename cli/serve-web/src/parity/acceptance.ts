@@ -576,11 +576,14 @@ const ARTIFACT_CONCURRENCY = 8;
  *
  * `\\` is in the list because WHATWG URL parsing treats a backslash as a separator for http(s), so
  * `..\..` traverses exactly like `../..`. `?` and `#` end the path component, which would drop the
- * credential the query carries or re-point the request; neither can occur in a path this contract
- * calls legal.
+ * credential the query carries or re-point the request. Tab, CR and LF are there because the
+ * parser **removes** them from the URL before it resolves anything — measurably, the pathname of
+ * `new URL(base + "glyph/\\t../\\t../status")` is `/parity/status`, so a segment spelled with one
+ * is a `..` by the time it matters and something else to any check that compares strings. None of
+ * these can occur in a path this contract calls legal.
  */
 function rewritesTheUrl(path: string): boolean {
-    if (/[\\?#]/.test(path)) return true;
+    if (/[\\?#\t\n\r]/.test(path)) return true;
     return path.split("/").some((segment) => isDotSegment(segment));
 }
 
