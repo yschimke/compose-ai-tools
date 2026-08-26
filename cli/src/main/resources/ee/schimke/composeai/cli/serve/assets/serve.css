@@ -2723,7 +2723,7 @@ html:not(.cp-bg-transparent) #cp-reference-compare[data-cp-stage-clip] .cp-refer
    plus `stale`, which is a row the per-comparison band spells through `data-stale`. */
 .cp-acceptance-audit { margin: 0.4rem 0 1rem; font-size: 0.92rem; }
 .cp-acceptance-audit .cp-acceptance-list { margin: 0.3rem 0 0.6rem; }
-.cp-acceptance-row[data-status="orphaned-target"],
+.cp-acceptance-row[data-orphaned],
 .cp-acceptance-row[data-status="stale"] { color: var(--cp-fg); font-weight: 600; }
 /* Annotation layers. The layer is absolutely positioned over its panel's image and sized in JS from
    the image's rendered box, because annotation bounds arrive in the source frame's pixel space and

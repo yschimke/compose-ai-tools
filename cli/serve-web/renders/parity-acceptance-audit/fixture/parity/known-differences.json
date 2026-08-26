@@ -1,0 +1,80 @@
+{
+  "schema": "compose-preview-known-differences/v1",
+  "acceptances": [
+    {
+      "id": "m3-iconbutton-tonal-glyph",
+      "issue": "https://github.com/yschimke/m3-catalog/issues/40",
+      "system": "m3",
+      "component": "IconButton/Tonal",
+      "previewId": "iconbutton-tonal__ideal__default__light",
+      "referenceId": "iconbutton-tonal-ideal-light",
+      "variant": "ideal/default/light",
+      "mask": "mask.png",
+      "acceptedCandidate": "accepted-candidate.png",
+      "referenceSha256": "d57058ede991458547ef6c8f559d73d62761d2c09164c3f1b9d99a27cee31c20",
+      "maskSha256": "3b281cd351adb6a82dc4c97108d14e56662935b6167a2c08d7d8ae1d4f216968",
+      "acceptedCandidateSha256": "0d37467a035a313727618eb5ef1ec544979f83ee43960493e5440b6e5188d08b",
+      "plane": {
+        "plane": "content-box",
+        "box": {
+          "x": 9,
+          "y": 7,
+          "width": 10,
+          "height": 10
+        }
+      },
+      "candidateTolerance": 2,
+      "acceptedAt": "2026-08-23T00:00:00Z"
+    },
+    {
+      "id": "m3-fab-lowered-shadow",
+      "issue": "https://github.com/yschimke/m3-catalog/issues/61",
+      "system": "m3",
+      "component": "Fab/Lowered",
+      "previewId": "fab-lowered__ideal__default__light",
+      "referenceId": "fab-lowered-ideal-light",
+      "variant": "ideal/default/light",
+      "mask": "mask.png",
+      "acceptedCandidate": "accepted-candidate.png",
+      "referenceSha256": "d57058ede991458547ef6c8f559d73d62761d2c09164c3f1b9d99a27cee31c20",
+      "maskSha256": "3b281cd351adb6a82dc4c97108d14e56662935b6167a2c08d7d8ae1d4f216968",
+      "acceptedCandidateSha256": "0d37467a035a313727618eb5ef1ec544979f83ee43960493e5440b6e5188d08b",
+      "plane": {
+        "plane": "content-box",
+        "box": {
+          "x": 9,
+          "y": 7,
+          "width": 10,
+          "height": 10
+        }
+      },
+      "candidateTolerance": 2,
+      "acceptedAt": "2026-08-23T00:00:00Z"
+    },
+    {
+      "id": "m3-checkbox-checked-ring",
+      "issue": "https://github.com/yschimke/m3-catalog/issues/74",
+      "system": "m3",
+      "component": "Checkbox/Checked",
+      "previewId": "checkbox-checked__ideal__default__light",
+      "referenceId": "checkbox-checked-ideal-light",
+      "variant": "ideal/default/light",
+      "mask": "mask.png",
+      "acceptedCandidate": "accepted-candidate.png",
+      "referenceSha256": "d57058ede991458547ef6c8f559d73d62761d2c09164c3f1b9d99a27cee31c20",
+      "maskSha256": "3b281cd351adb6a82dc4c97108d14e56662935b6167a2c08d7d8ae1d4f216968",
+      "acceptedCandidateSha256": "0d37467a035a313727618eb5ef1ec544979f83ee43960493e5440b6e5188d08b",
+      "plane": {
+        "plane": "content-box",
+        "box": {
+          "x": 9,
+          "y": 7,
+          "width": 10,
+          "height": 10
+        }
+      },
+      "candidateTolerance": 2,
+      "acceptedAt": "2026-08-23T00:00:00Z"
+    }
+  ]
+}

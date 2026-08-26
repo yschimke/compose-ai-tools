@@ -2512,7 +2512,13 @@ comparison scopes in any more.
 | `resolved` | the difference is gone | delete the record — step 5 |
 | `invalidated` | the reference, plane, candidate or element changed under it | re-check by hand: either the fix landed or a *new* difference arrived |
 | `refused` | the record or an artifact is broken | fix the record; it is suppressing nothing meanwhile |
-| `orphaned-target` | it names a preview, reference, component or variant the catalog no longer has | the record outlived its subject — delete or re-scope it |
+
+`refused` carries the reason as a token — `artifact-unreadable`, `mask-encoding-invalid`,
+`tolerance-out-of-range`, and so on. One of them is worth naming here because it is what the
+dashboard panel exists for: **`orphaned-target`**, an acceptance naming a preview, reference,
+component or variant this catalog no longer has. It is scoped into no comparison by definition, so
+it appears only in that panel — the record outlived its subject, and it should be deleted or
+re-scoped.
 
 Alongside those, the dashboard joins each acceptance to its tracking issue's state and lists the ones
 whose issue is **closed while the record is still committed** — the leftover half of a loop that only

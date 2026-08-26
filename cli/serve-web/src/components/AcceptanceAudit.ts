@@ -46,13 +46,21 @@ interface Payload {
  * for this catalog's own comparisons.
  */
 const STATUS_LABELS: Record<string, string> = {
-    "orphaned-target":
-        "names a preview, reference, component or variant this catalog no longer has",
     refused: "refused",
     invalidated: "no longer matches — needs review",
     resolved: "appears resolved — the acceptance can be removed",
     valid: "accepted",
 };
+
+/**
+ * The one reason worth a sentence rather than its token.
+ *
+ * `orphaned-target` is a **reason** under `refused`, not a status of its own — and it is the reason
+ * this panel exists, so a row that spelled it as one more grep token beside `artifact-unreadable`
+ * would bury the finding no comparison can reach. The rest stay verbatim: they are what an author
+ * greps for, and a paraphrase per token would be a second vocabulary for the same set.
+ */
+const ORPHANED = "orphaned-target";
 
 @customElement("cp-acceptance-audit")
 export class AcceptanceAudit extends LitElement {
@@ -213,16 +221,19 @@ export class AcceptanceAudit extends LitElement {
                         ...(entry.causes ?? []),
                         ...(entry.reasons ?? []),
                     ];
+                    const orphaned = detail.includes(ORPHANED);
+                    const rest = detail.filter((token) => token !== ORPHANED);
                     return html`<li
                         class="cp-acceptance-row"
                         data-status=${entry.status}
+                        ?data-orphaned=${orphaned}
                     >
                         <code>${id}</code> —
-                        ${STATUS_LABELS[entry.status] ?? entry.status}${
-                            detail.length > 0
-                                ? html` (${detail.join(", ")})`
-                                : nothing
-                        }
+                        ${
+                            orphaned
+                                ? "names a preview, reference, component or variant this catalog no longer has"
+                                : (STATUS_LABELS[entry.status] ?? entry.status)
+                        }${rest.length > 0 ? html` (${rest.join(", ")})` : nothing}
                     </li>`;
                 })}
             </ul>

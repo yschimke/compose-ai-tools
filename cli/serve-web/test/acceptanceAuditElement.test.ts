@@ -90,7 +90,7 @@ describe("<cp-acceptance-audit>", () => {
         assert.equal(band.hidden, false);
         assert.match(text(band), /Needs attention \(1\)/);
         assert.match(text(band), /glyph/);
-        assert.match(text(band), /no longer has|orphaned-target/);
+        assert.match(text(band), /no longer has/);
     });
 
     it("says nothing is wrong when every target exists and the issue is open", async () => {
