@@ -25,6 +25,7 @@ import {
     scoreImages,
     scoreSvgUrls,
 } from "./scorer/api.js";
+import { SCORE_VERSION } from "./scorer/tuning.js";
 
 // Annotated rather than inferred: this is the published contract, and the annotation is what fails
 // the build if a function here stops matching what every consumer is typed against.
@@ -36,6 +37,7 @@ const api: CompareApi = {
     scoreImages,
     normaliseImageUrls,
     diffCanvases,
+    SCORE_VERSION,
 };
 
 window.ComposePreviewCompare = api;
