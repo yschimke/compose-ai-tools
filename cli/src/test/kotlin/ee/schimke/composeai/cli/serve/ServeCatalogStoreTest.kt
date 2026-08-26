@@ -718,6 +718,55 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `an over-sized document stages alone, fetching none of its artifacts`() {
+    // The ceiling one step earlier than the acceptance cap, and the same reasoning: the reader
+    // answers `TooLarge` from the file's length and the route serves 413 without evaluating a
+    // record, so not one of the artifacts this document names can ever be read.
+    val root = tempRoot()
+    val requested = CopyOnWriteArrayList<String>()
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png"}]}]}
+      """
+        .trimIndent()
+    // Legal in every other way — one record, one artifact — and simply too big. The padding rides
+    // in an unknown member, which the engine ignores and the ceiling does not.
+    val padding = "x".repeat(ServeKnownDifferences.MAX_DOCUMENT_BYTES)
+    val document =
+      """{"schema":"compose-preview-known-differences/v1","note":"$padding","acceptances":[
+        {"id":"glyph","issue":"https://github.com/yschimke/m3-catalog/issues/40",
+         "mask":"mask.png"}]}"""
+    val store =
+      ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        fetch = { url ->
+          requested += url
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.encodeToByteArray()
+            url.endsWith("/parity/known-differences.json") -> document.encodeToByteArray()
+            url.contains("/parity/known-differences/") -> "mask".encodeToByteArray()
+            url.endsWith("/images/button.png") -> png()
+            else -> null
+          }
+        },
+      )
+
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+    assertTrue(
+      requested.none { it.contains("/parity/known-differences/") },
+      "artifacts were fetched for a document the reader refuses whole: $requested",
+    )
+    // Staged anyway, because `document-too-large` is a verdict the reader has to be able to voice.
+    assertTrue(
+      registered.getValue("compose-m3").knownDifferences()
+        is ServeKnownDifferences.Document.TooLarge
+    )
+  }
+
+  @Test
   fun `an over-sized artifact is staged, so the reader can refuse it as too large`() {
     // Dropping it would leave a missing file, and a missing file is `artifact-unreadable`/404 — a
     // different verdict from the contract's `artifact-too-large`/413, and one that hides why.

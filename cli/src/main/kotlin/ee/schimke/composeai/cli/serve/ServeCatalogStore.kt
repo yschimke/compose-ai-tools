@@ -1974,11 +1974,11 @@ class ServeCatalogStore(
    * page, an artifact cannot be re-rooted to a server-chosen name, because the record's hash is
    * bound to the path it names.
    *
-   * Fail-soft like every writer beside it, and bounded like the contract: a document past
-   * [ServeKnownDifferences.MAX_ACCEPTANCES] records is one the engine refuses whole, so it
-   * contributes no paths at all rather than the first 256; an artifact that cannot be written is
-   * skipped rather than failing the refresh; and the fetches run in the same bounded waves the
-   * rasters use.
+   * Fail-soft like every writer beside it, and bounded like the contract: a document the reader
+   * will refuse whole — past [ServeKnownDifferences.MAX_DOCUMENT_BYTES], or past
+   * [ServeKnownDifferences.MAX_ACCEPTANCES] records — contributes no paths at all rather than the
+   * first 256; an artifact that cannot be written is skipped rather than failing the refresh; and
+   * the fetches run in the same bounded waves the rasters use.
    */
   private fun writeKnownDifferences(base: String, staging: File) {
     val dirName = ServeKnownDifferences.DIRECTORY
@@ -2023,6 +2023,12 @@ class ServeCatalogStore(
    * leaves `document-unreadable` to the consumer that owns it.
    */
   private fun knownDifferenceArtifactPaths(documentBytes: ByteArray): List<String> {
+    // Past the document ceiling the reader answers `TooLarge` from the file's length and the route
+    // serves 413 without evaluating a record, so not one of the artifacts this document names can
+    // ever be read. Same reasoning as the acceptance cap below, one ceiling earlier: the document
+    // is still staged — that is what lets `document-too-large` be voiced at all — but it names
+    // nothing to fetch.
+    if (documentBytes.size > ServeKnownDifferences.MAX_DOCUMENT_BYTES) return emptyList()
     val parsed =
       runCatching { json.parseToJsonElement(documentBytes.decodeToString()) }.getOrNull()
         ?: return emptyList()
