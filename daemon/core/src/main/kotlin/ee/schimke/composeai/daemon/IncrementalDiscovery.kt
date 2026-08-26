@@ -117,7 +117,8 @@ class IncrementalDiscovery(
    * Fail-safe: returns `emptySet` on any scan failure (and writes a stderr diagnostic).
    */
   fun scanForFile(file: Path): Set<PreviewInfoDto> {
-    val scanRoots = scanRootsForFile(file)
+    val target = classpathElementForFile(file)
+    val scanRoots = scanRootsForTarget(target)
     return try {
       ClassGraph()
         .enableMethodInfo()
@@ -126,7 +127,7 @@ class IncrementalDiscovery(
         .overrideClasspath(scanRoots.map { it.toAbsolutePath().toString() })
         .ignoreParentClassLoaders()
         .scan()
-        .use { scanResult -> collectPreviews(scanResult, file) }
+        .use { scanResult -> collectPreviews(scanResult, file, target) }
     } catch (t: Throwable) {
       System.err.println(
         "compose-ai-daemon: IncrementalDiscovery.scanForFile($file) failed " +
@@ -136,8 +137,10 @@ class IncrementalDiscovery(
     }
   }
 
-  internal fun scanRootsForFile(file: Path): List<Path> {
-    val target = classpathElementForFile(file)
+  internal fun scanRootsForFile(file: Path): List<Path> =
+    scanRootsForTarget(classpathElementForFile(file))
+
+  private fun scanRootsForTarget(target: Path?): List<Path> {
     // Keep the changed module's class output scoped, but retain dependency JARs: a method can use a
     // dependency-provided multi-preview annotation whose meta-annotation carries @CaptureGutter.
     // Scanning only `target` makes that annotation class unresolvable and re-adds a combination the
@@ -153,11 +156,23 @@ class IncrementalDiscovery(
     else classpath
   }
 
-  private fun collectPreviews(scanResult: ScanResult, file: Path): Set<PreviewInfoDto> {
+  private fun collectPreviews(
+    scanResult: ScanResult,
+    file: Path,
+    target: Path?,
+  ): Set<PreviewInfoDto> {
     val sourceKey = file.toString()
     val basename = file.fileName?.toString().orEmpty()
+    val targetRoot = target?.let { runCatching { it.toAbsolutePath().normalize() }.getOrNull() }
     val results = LinkedHashSet<PreviewInfoDto>()
     for (classInfo in scanResult.allClasses) {
+      // The dependency JARs in the scan roots are there to resolve annotation metadata only (see
+      // [scanRootsForFile]). A JAR class compiled from the same source basename as the edited file
+      // (both modules having a `Previews.kt` is entirely normal) would otherwise satisfy the
+      // basename match below and be emitted under this file's `sourceKey`, polluting the
+      // incremental index with foreign previews. Preview candidates therefore have to originate
+      // from the edited module's own class output.
+      if (!originatesFrom(classInfo, targetRoot)) continue
       // The bytecode SourceFile attribute is just the basename; we accept either the absolute
       // path stored on the index (when sourceFile happens to be absolute) or the bytecode
       // basename match. This mirrors the index's diff-key heuristic in [PreviewIndex.diff].
@@ -198,6 +213,23 @@ class IncrementalDiscovery(
       }
     }
     return results
+  }
+
+  /**
+   * Whether [classInfo] was loaded from [targetRoot] — the changed module's own class output.
+   *
+   * Fail-open: with no resolved target the scan is already the full classpath (no dependency-only
+   * roots were added), and a classpath element ClassGraph can't expose as a file (a `jrt:` module,
+   * say) can't be compared, so both cases keep the class as a candidate. Dropping a real preview is
+   * worse than the pollution this guard exists to prevent, and neither case is the JAR-vs-module
+   * ambiguity it targets.
+   */
+  private fun originatesFrom(classInfo: ClassInfo, targetRoot: Path?): Boolean {
+    if (targetRoot == null) return true
+    val element = runCatching { classInfo.classpathElementFile }.getOrNull() ?: return true
+    val elementPath =
+      runCatching { element.toPath().toAbsolutePath().normalize() }.getOrNull() ?: return true
+    return elementPath == targetRoot
   }
 
   /**
