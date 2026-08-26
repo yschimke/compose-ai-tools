@@ -92,6 +92,6 @@ all, so it prints once rather than twice beside itself.
 ./gradlew :cli:test --tests '*Serve*' --tests '*MotionCaptureLabelsTest*' \
   :cli:ktfmtCheck                                                           # green
 cd cli/serve-web && npm run verify                                          # 835 passing
-cd vscode-extension
-npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot  # 133 passed
+cd preview-server/preview-harness
+npx playwright test -c playwright.config.mjs pages-snapshot  # 133 passed
 ```

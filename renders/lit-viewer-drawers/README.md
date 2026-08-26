@@ -27,8 +27,8 @@ Cropped and nearest-neighbour enlarged from the `pages-snapshot` captures of
 and on `main`:
 
 ```
-cd vscode-extension
-npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot
+cd preview-server/preview-harness
+npx playwright test -c playwright.config.mjs pages-snapshot
 ```
 
 Those two are the **only** 2 of 216 captures that differ between the branch and

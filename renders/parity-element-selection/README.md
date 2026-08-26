@@ -49,7 +49,7 @@ Regenerate with:
 
 ```
 UPDATE_SERVE_WEB_FIXTURES=true ./gradlew :cli:test --tests '*ServeWebFixtureTest*'
-cd vscode-extension && npm run harness:snapshot
+npm --prefix preview-server/preview-harness run harness:pages
 ```
 
 `before.*.png` is the same shot taken at the merge base — the page has no `element-selected` state

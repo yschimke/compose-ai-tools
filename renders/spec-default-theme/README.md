@@ -45,7 +45,7 @@ CI visual-diff bot on every subsequent PR without anyone remembering to ask.
 ```
 cd cli/serve-web && npm run typecheck && npm test    # 853 passing
 ./gradlew :cli:test ktfmtCheck                       # 2,579 tests
-cd vscode-extension
-npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot
+cd preview-server/preview-harness
+npx playwright test -c playwright.config.mjs pages-snapshot
 # 138 passed
 ```

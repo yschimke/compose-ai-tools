@@ -18,7 +18,7 @@ production CSS + JS), captured with Playwright through the page harness:
 
 ```sh
 UPDATE_SERVE_WEB_FIXTURES=true ./gradlew :cli:test --tests '*ServeWebFixtureTest*'
-HARNESS_FIXTURE=serve-format-compare npm --prefix vscode-extension run harness:snapshot
+HARNESS_FIXTURE=serve-format-compare npm --prefix preview-server/preview-harness run harness:pages
 ```
 
 | Pair | What changed |

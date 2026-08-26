@@ -39,6 +39,6 @@ PR without anyone remembering to.
 
 ```
 ./gradlew :cli:test              # green
-cd vscode-extension
-npm run harness:snapshot         # 183 passed
+cd preview-server/preview-harness
+npm run harness:pages         # 183 passed
 ```

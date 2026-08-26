@@ -51,6 +51,6 @@ every capture: a ring that is never drawn cannot be missing from a baseline.
 `serve-landing-sections` · `filter-focus` draws it now.
 
 ```
-cd vscode-extension
-npm run harness:snapshot     # 158 passed
+cd preview-server/preview-harness
+npm run harness:pages     # 158 passed
 ```

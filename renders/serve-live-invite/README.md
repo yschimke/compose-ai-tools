@@ -1,7 +1,7 @@
 # Inviting the live lane from the preview itself (#4287)
 
 Page fixtures captured through the `pages-snapshot` harness
-(`npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot -g "<fixture>"`),
+(`npm --prefix preview-server/preview-harness run harness:pages -- -g "<fixture>"`),
 `before.*` from `origin/main` and `after.*` from this branch. Nothing else on either page moves.
 
 ## `serve-viewer-catalog-knobs`, light — a preview with a renderer combo

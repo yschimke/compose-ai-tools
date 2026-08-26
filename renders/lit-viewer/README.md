@@ -28,9 +28,9 @@ through the mode machine this file owns.
 ## Reproducing it
 
 ```
-rm -rf vscode-extension/preview-harness/out
+rm -rf preview-server/preview-harness/out
 HARNESS_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome \
-  npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot
+  npm --prefix preview-server/preview-harness run harness:pages
 ```
 
 Run it on both refs and `cmp` the two `out/` directories. Note that `out/`

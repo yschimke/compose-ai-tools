@@ -3,7 +3,7 @@
 Captured from the committed page fixtures with
 
 ```sh
-npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot \
+npm --prefix preview-server/preview-harness run harness:pages \
   -g "serve-landing-grouped|serve-landing-tree-depth"
 ```
 

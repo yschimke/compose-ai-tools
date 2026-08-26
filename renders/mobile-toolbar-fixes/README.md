@@ -24,6 +24,6 @@ phone is where the gesture is.
 Captured from the committed page fixtures:
 
 ```
-cd vscode-extension
-npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot
+cd preview-server/preview-harness
+npx playwright test -c playwright.config.mjs pages-snapshot
 ```

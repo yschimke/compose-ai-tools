@@ -52,7 +52,7 @@ full width of the switch's travel.
 ```
 ./gradlew :cli:test --tests '*ServeWebFixtureTest*' --tests '*ServeCatalogStoreTest*'   # green
 cd cli/serve-web && npm run verify                                                      # 151 passing
-cd vscode-extension
-npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot \
+cd preview-server/preview-harness
+npx playwright test -c playwright.config.mjs pages-snapshot \
   -g "serve-viewer(-motion)? · (light|dark)"                                            # 4 passed
 ```

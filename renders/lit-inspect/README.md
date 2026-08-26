@@ -63,7 +63,7 @@ frame, not a different render.
 cd cli/serve-web && npm run verify   # 401 passing
 UPDATE_SERVE_WEB_FIXTURES=true ./gradlew :cli:test --tests '*ServeWebFixtureTest*'
 ./gradlew :cli:test --tests '*ServeWeb*' && ./gradlew ktfmtCheck
-cd vscode-extension/preview-harness
+cd preview-server/preview-harness
 HARNESS_FIXTURE=serve-viewer-inspect npx playwright test pages-snapshot.spec.mjs
 # 10 passed on both refs; 4/4 PNGs byte-identical
 ```

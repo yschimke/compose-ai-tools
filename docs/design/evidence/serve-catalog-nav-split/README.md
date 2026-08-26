@@ -4,7 +4,7 @@ Before/after crops of the `serve` web surfaces whose navigation changed, capture
 committed page fixtures (`preview-server/preview-harness/fixtures/pages/*.html`) with
 
 ```sh
-npm --prefix vscode-extension run harness:snapshot   # or: npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot
+npm --prefix preview-server/preview-harness run harness:pages   # or, from that directory: npx playwright test pages-snapshot
 ```
 
 and cropped to the row that moved. Light theme; the dark shots are the same markup.

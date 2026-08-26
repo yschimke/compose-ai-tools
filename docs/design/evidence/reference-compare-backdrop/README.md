@@ -23,7 +23,7 @@ theme, production CSS + JS), captured with Playwright through the page harness:
 
 ```sh
 UPDATE_SERVE_WEB_FIXTURES=true ./gradlew :cli:test --tests '*ServeWebFixtureTest*'
-npm --prefix vscode-extension run harness:snapshot -- -g serve-reference-compare
+npm --prefix preview-server/preview-harness run harness:pages -- -g serve-reference-compare
 ```
 
 The "before" shot is that same fixture with the two attributes the server now emits

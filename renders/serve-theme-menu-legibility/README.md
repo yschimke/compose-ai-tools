@@ -48,9 +48,9 @@ state in `pages-snapshot.spec.mjs`, so the panel's paint is diffed rather
 than left to a report:
 
 ```
-cd vscode-extension
+cd preview-server/preview-harness
 HARNESS_FIXTURE=serve-viewer-theme-overflow \
-  npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot
+  npx playwright test -c playwright.config.mjs pages-snapshot
 # → out/serve-viewer-theme-overflow-theme-menu.{light,dark}.png
 ```
 

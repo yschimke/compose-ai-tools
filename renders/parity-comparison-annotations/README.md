@@ -38,5 +38,5 @@ change fixes. Regenerate with:
 
 ```
 UPDATE_SERVE_WEB_FIXTURES=true ./gradlew :cli:test --tests '*ServeWebFixtureTest*'
-cd vscode-extension && npm run harness:snapshot
+npm --prefix preview-server/preview-harness run harness:pages
 ```

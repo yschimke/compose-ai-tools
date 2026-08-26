@@ -35,6 +35,6 @@ benefit. `serve-landing-grouped` is the only fixture that changes.
 
 ```
 ./gradlew :cli:test              # green
-cd vscode-extension
-npm run harness:snapshot         # 159 passed
+cd preview-server/preview-harness
+npm run harness:pages         # 159 passed
 ```

@@ -54,7 +54,7 @@ though six things were wrong. `parity/findings.ts` counts them separately, and
 
 ```
 cd cli/serve-web && npm run verify          # 244 passing
-cd vscode-extension
-npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot
+cd preview-server/preview-harness
+npx playwright test -c playwright.config.mjs pages-snapshot
 # 124 passed
 ```

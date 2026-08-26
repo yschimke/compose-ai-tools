@@ -4,7 +4,7 @@ Before/after of the sectioned catalog landing, captured from the committed page 
 (`preview-server/preview-harness/fixtures/pages/serve-landing-sections.html`) with
 
 ```sh
-npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot -g serve-landing-sections
+npm --prefix preview-server/preview-harness run harness:pages -- -g serve-landing-sections
 ```
 
 Full pages, light theme, 1024×720 — the dark shots are the same markup under the M3 dark roles.

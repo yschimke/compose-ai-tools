@@ -52,7 +52,7 @@ protocol-relative host and a lookalike domain rather than trusted to a comment.
 ```
 cd cli/serve-web && npm run verify   # 349 passing
 ./gradlew :cli:test --tests '*ServeWeb*' && ./gradlew ktfmtCheck
-cd vscode-extension
-npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot
+cd preview-server/preview-harness
+npx playwright test -c playwright.config.mjs pages-snapshot
 # 124 passed, both refs
 ```

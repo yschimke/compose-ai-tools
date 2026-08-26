@@ -7,7 +7,7 @@ dark shots are the same markup and move by the same amount.
 
 ```
 HARNESS_WIDTH=1440 HARNESS_HEIGHT=1000 \
-  npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot \
+  npm --prefix preview-server/preview-harness run harness:pages -- \
   --grep "snapshot · serve-landing-grouped"
 ```
 

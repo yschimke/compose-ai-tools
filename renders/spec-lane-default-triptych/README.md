@@ -33,7 +33,7 @@ the CI visual-diff bot on every subsequent PR without anyone remembering to ask.
 cd cli/serve-web && npm run typecheck && npm test     # 953 passing
 UPDATE_SERVE_WEB_FIXTURES=true ./gradlew :cli:test --tests '*ServeWebFixtureTest*'
 ./gradlew :cli:test --tests '*ServeWeb*' --tests '*ServeBugReport*' ktfmtCheckAll
-cd vscode-extension
+cd preview-server/preview-harness
 HARNESS_FIXTURE=serve-viewer-path npx playwright test \
-  -c preview-harness/playwright.config.mjs pages-snapshot.spec.mjs --grep 'snapshot ·'
+  -c playwright.config.mjs pages-snapshot.spec.mjs --grep 'snapshot ·'
 ```

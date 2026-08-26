@@ -59,5 +59,5 @@ cli/build/install/compose-preview/bin/compose-preview serve \
 
 # the fixture pair:
 UPDATE_SERVE_WEB_FIXTURES=true ./gradlew :cli:test --tests '*ServeWebFixtureTest*'
-cd vscode-extension && HARNESS_FIXTURE=serve-rc-lanes npm run harness:snapshot
+npm --prefix preview-server/preview-harness run harness:pages  # HARNESS_FIXTURE=serve-rc-lanes
 ```

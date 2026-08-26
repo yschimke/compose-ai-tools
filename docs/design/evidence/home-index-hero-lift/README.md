@@ -67,5 +67,5 @@ neighbouring column, asserting the card stays hovered and the hero does not retr
 Reproduce with:
 
 ```sh
-npm --prefix vscode-extension run harness:snapshot   # or: npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot
+npm --prefix preview-server/preview-harness run harness:pages   # or, from that directory: npx playwright test pages-snapshot
 ```
