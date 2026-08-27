@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli
 
 import com.sun.net.httpserver.HttpServer
+import ee.schimke.composeai.bundle.BundleReader
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.InetSocketAddress

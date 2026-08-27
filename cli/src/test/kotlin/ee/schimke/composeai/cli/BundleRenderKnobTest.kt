@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.bundle.BundleReader
 import ee.schimke.composeai.cli.serve.FakeRenderSession
 import ee.schimke.composeai.cli.serve.ServePreview
 import ee.schimke.composeai.cli.serve.ServeRenderHost

@@ -1,5 +1,8 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.bundle.BundleReader
+import ee.schimke.composeai.bundle.BundleSigning
+import ee.schimke.composeai.bundle.injectRawZipEntries
 import ee.schimke.composeai.cli.serve.BundleVerifier
 import ee.schimke.composeai.cli.serve.TrustStore
 import ee.schimke.composeai.cli.serve.TrustedBranch

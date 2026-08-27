@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli
+package ee.schimke.composeai.bundle
 
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -37,7 +37,11 @@ public object AndroidBundleResources {
    * The `android/…` payload extracted from a bundle zip: the merged resource APK, the merged
    * manifest, and (optional) the generated non-final library R classes the tile renderer links.
    */
-  data class Extracted(val resourceApk: File, val mergedManifest: File, val rClassesJar: File?)
+  public data class Extracted(
+    val resourceApk: File,
+    val mergedManifest: File,
+    val rClassesJar: File?,
+  )
 
   /**
    * Extract `android/resources.ap_` + `android/AndroidManifest.xml` (+ optional
@@ -46,7 +50,7 @@ public object AndroidBundleResources {
    * `android/` resource payload (a desktop bundle, or an Android bundle packed before this carriage
    * existed): the caller then renders without an app resource table, exactly as before.
    */
-  fun extract(zipBytes: ByteArray, androidDir: File): Extracted? {
+  public fun extract(zipBytes: ByteArray, androidDir: File): Extracted? {
     androidDir.mkdirs()
     val canonical = androidDir.canonicalFile
     var apk: File? = null
@@ -86,7 +90,7 @@ public object AndroidBundleResources {
    * `-cp`; it's the only mechanism a detached bundle has to re-register a resource table with
    * Robolectric.
    */
-  fun writeTestConfig(
+  public fun writeTestConfig(
     root: File,
     resourceApk: File,
     mergedManifest: File,
@@ -121,7 +125,7 @@ public object AndroidBundleResources {
    * value any current CLI path uses), the name is stripped so bootstrap can't crash on it. Pass it
    * and the daemon `-D` from one source so the two never disagree.
    */
-  fun daemonClasspath(
+  public fun daemonClasspath(
     zipBytes: ByteArray,
     workDir: File,
     applicationPackage: String?,

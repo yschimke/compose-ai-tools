@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.bundle.extractBundleIrArtifacts
 import java.io.File
 import java.nio.file.Files
 import java.util.zip.ZipEntry

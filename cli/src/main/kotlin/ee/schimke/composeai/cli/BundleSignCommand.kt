@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.bundle.BundleSigning
 import ee.schimke.composeai.cli.serve.BundleVerifier
 import ee.schimke.composeai.cli.serve.TrustStore
 import java.io.File

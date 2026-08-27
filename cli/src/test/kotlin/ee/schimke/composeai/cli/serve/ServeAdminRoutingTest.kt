@@ -1,6 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
-import ee.schimke.composeai.cli.BundleSigning
+import ee.schimke.composeai.bundle.BundleSigning
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File

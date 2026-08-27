@@ -1,6 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
-import ee.schimke.composeai.cli.locateBundleSidecarJars
+import ee.schimke.composeai.bundle.locateBundleSidecarJars
 import java.io.File
 import java.net.URLClassLoader
 import kotlinx.serialization.SerialName

@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli
+package ee.schimke.composeai.bundle
 
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.io.composeAiCacheDir
@@ -33,7 +33,7 @@ import okio.Path.Companion.toPath
  * links a different module graph, so we re-declare them here — same pattern as [BundleReader]
  * mirroring the on-disk bundle schema. Keep them in sync if the plugin side changes.
  */
-class AndroidBundleLaunch(
+public class AndroidBundleLaunch(
   sdkLevel: Int = DEFAULT_SDK,
   /**
    * When false (default) the synthesized `robolectric.properties` pins `application=
@@ -54,7 +54,7 @@ class AndroidBundleLaunch(
 ) {
 
   /** Clamped to Robolectric 4.16.x's supported `android-all` range — see [MIN_SDK] / [MAX_SDK]. */
-  val sdkLevel: Int = sdkLevel.coerceIn(MIN_SDK, MAX_SDK)
+  public val sdkLevel: Int = sdkLevel.coerceIn(MIN_SDK, MAX_SDK)
 
   /**
    * JVM args the spawned Robolectric process needs on JDK 17+. Mirrors
@@ -62,7 +62,7 @@ class AndroidBundleLaunch(
    * also passes). Without the `--add-opens` set Robolectric's reflective access into `java.base`
    * internals fails with `IllegalAccessException` on SDK 36 sandboxes (issue #1328).
    */
-  fun jvmArgs(): List<String> =
+  public fun jvmArgs(): List<String> =
     listOf(
       "--enable-native-access=ALL-UNNAMED",
       "--add-opens=java.base/java.io=ALL-UNNAMED",
@@ -83,7 +83,7 @@ class AndroidBundleLaunch(
    * the platform default. The daemon uses just these — it routes previews via
    * `composeai.daemon.userClassDirs` / `previewsJsonPath`, not the render-batch props.
    */
-  fun robolectricSystemProperties(): Map<String, String> = buildMap {
+  public fun robolectricSystemProperties(): Map<String, String> = buildMap {
     put("robolectric.graphicsMode", "NATIVE")
     put("robolectric.looperMode", "PAUSED")
     put("robolectric.conscryptMode", "OFF")
@@ -105,7 +105,7 @@ class AndroidBundleLaunch(
    * `composeai.render.manifest` (the extracted `previews.json`) and `composeai.render.outputDir` to
    * render the whole manifest in a single subprocess.
    */
-  fun systemProperties(manifestPath: String, outputDir: String): Map<String, String> =
+  public fun systemProperties(manifestPath: String, outputDir: String): Map<String, String> =
     robolectricSystemProperties() +
       linkedMapOf(
         "composeai.render.manifest" to manifestPath,
@@ -118,7 +118,7 @@ class AndroidBundleLaunch(
    * `sdk` + `graphicsMode` + the GoogleFont shadow registration, and (unless
    * [useConsumerApplication]) the stub `application=`.
    */
-  fun robolectricPropertiesBody(): String = buildString {
+  public fun robolectricPropertiesBody(): String = buildString {
     appendLine("sdk=$sdkLevel")
     appendLine("graphicsMode=NATIVE")
     if (!useConsumerApplication) appendLine("application=android.app.Application")
@@ -131,7 +131,7 @@ class AndroidBundleLaunch(
    * Returns [root], which the caller prepends to the subprocess classpath so this config wins over
    * any copy baked into the shipped renderer jar. Creates parent dirs as needed.
    */
-  fun writeRobolectricConfig(root: File): File {
+  public fun writeRobolectricConfig(root: File): File {
     val pkgDir = File(root, RENDERER_PKG_PATH).apply { mkdirs() }
     fileSystem.write(File(pkgDir, "robolectric.properties").path.toPath()) {
       writeUtf8(robolectricPropertiesBody() + "\n")
@@ -139,22 +139,22 @@ class AndroidBundleLaunch(
     return root
   }
 
-  companion object {
+  public companion object {
     /** Floor of Robolectric 4.16.x's `android-all-instrumented` range (API 21, LOLLIPOP). */
-    const val MIN_SDK: Int = 21
+    public const val MIN_SDK: Int = 21
     /** Ceiling of the bundled Robolectric's supported range (API 36). */
-    const val MAX_SDK: Int = 36
+    public const val MAX_SDK: Int = 36
     /**
      * SDK level used when the bundle doesn't pin one. Bundles don't yet record the consumer's
      * `compileSdk` (Phase 2), so default to a recent, widely-available level; override with
      * `-Dcomposeai.bundle.androidSdk=<n>`.
      */
-    const val DEFAULT_SDK: Int = 35
+    public const val DEFAULT_SDK: Int = 35
 
     private const val RENDERER_PKG_PATH = "ee/schimke/composeai/renderer"
 
     /** `-Dcomposeai.bundle.androidSdk=<n>` override for [DEFAULT_SDK]. */
-    fun sdkLevelFromSystemProperty(
+    public fun sdkLevelFromSystemProperty(
       prop: String? = System.getProperty("composeai.bundle.androidSdk")
     ): Int = prop?.trim()?.toIntOrNull() ?: DEFAULT_SDK
 
@@ -165,7 +165,7 @@ class AndroidBundleLaunch(
      * `platforms/android-N/android.jar` under the resolved root. Returns null when no SDK is
      * reachable — the caller turns that into an actionable diagnostic rather than a crash.
      */
-    fun resolveAndroidJar(
+    public fun resolveAndroidJar(
       localPropertiesFile: File?,
       env: (String) -> String? = { System.getenv(it) },
       fileSystem: FileSystem = SystemFileSystem,

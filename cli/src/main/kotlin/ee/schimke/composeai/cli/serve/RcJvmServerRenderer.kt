@@ -16,8 +16,8 @@
 
 package ee.schimke.composeai.cli.serve
 
-import ee.schimke.composeai.cli.bundleSidecarSearchDescription
-import ee.schimke.composeai.cli.locateBundleSidecarJars
+import ee.schimke.composeai.bundle.bundleSidecarSearchDescription
+import ee.schimke.composeai.bundle.locateBundleSidecarJars
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import ee.schimke.composeai.io.composeAiCacheDir
 import java.io.File

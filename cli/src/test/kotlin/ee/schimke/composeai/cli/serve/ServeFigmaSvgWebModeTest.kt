@@ -1,6 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
-import ee.schimke.composeai.cli.downscaleRaster
+import ee.schimke.composeai.bundle.downscaleRaster
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
