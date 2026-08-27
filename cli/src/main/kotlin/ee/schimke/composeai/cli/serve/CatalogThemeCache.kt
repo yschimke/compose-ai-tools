@@ -92,6 +92,16 @@ data class ThemeOptimizationSnapshot(
    */
   val lastBatchWidth: Int = 0,
   val maxBatchWidth: Int = 0,
+  /**
+   * Cached entries carried over from an older build and still awaiting re-render.
+   *
+   * Counted inside [cached], not beside it: they are warm and they are being served. This says how
+   * much of that warmth is another build's work, which is the difference between a catalog that has
+   * converged on this renderer and one that is merely inheriting. Falling steadily is the
+   * background regeneration doing its job; stuck with `remaining` at 0 means the pass believes it
+   * has finished and is not picking the queue up.
+   */
+  val dirty: Int = 0,
 )
 
 /**
@@ -348,6 +358,34 @@ class CatalogThemeCache(
     return fromDisk
   }
 
+  /**
+   * Targets held from an older build and queued for re-render, in a stable order.
+   *
+   * Dirty entries are *warm* — [contains] reports them and, once the sample has vouched for the
+   * generation, [get] serves them — so the optimizer's "not cached yet" filter passes straight over
+   * them, which is correct: a possibly-stale preview beats a cold render, and a build whose
+   * renderer genuinely moved is caught by the sample rather than by re-rendering everything on
+   * spec. This is the second queue, worked once the gaps are filled, so the store converges on
+   * pixels this renderer actually produced instead of trusting a version boundary forever.
+   */
+  fun dirtyTargets(): List<String> {
+    val store = persistence ?: return emptyList()
+    if (store.dirtyCount() == 0) return emptyList()
+    // Walked from the TARGETS, not from the directory: the store holds hashed file names and the
+    // hash is one-way, so what is on disk cannot name itself. The declared target set is the only
+    // place the keys still exist.
+    return targetKeys.filter(store::isDirty).sorted()
+  }
+
+  /**
+   * Mark every persisted render for this catalog dirty, and report how many.
+   *
+   * The operator's "regenerate this catalog", for pixels suspected wrong by something no
+   * fingerprint sees. Deliberately not a delete: the entries keep serving while the background pass
+   * replaces them.
+   */
+  fun markPersistedDirty(): Int = persistence?.markAllDirty() ?: 0
+
   /** Whether [key] is warm in either tier, without paying to read the bytes. */
   fun contains(key: String): Boolean =
     synchronized(renderLock) { renders.containsKey(key) } || persistence?.contains(key) == true
@@ -366,8 +404,15 @@ class CatalogThemeCache(
     // While quarantined, a fresh render REPLACES the adopted copy rather than being dropped because
     // a file already sits at that key — see [ThemeCacheStore.Generation.put].
     if (key in persistableKeys)
-      persistence?.put(key, png, replaceExisting = !persistenceTrusted.get())
-    remember(key, png)
+      persistence?.put(
+        key,
+        png,
+        // Dirty as well as quarantined. A regenerated entry is the whole point of the dirty queue
+        // and it must overwrite the older build's bytes; without this the pass renders it, the
+        // store declines the write, and the flag never clears.
+        replaceExisting = !persistenceTrusted.get() || persistence.isDirty(key),
+      )
+    remember(key, png, replaceExisting = true)
     failedKeys.remove(key)
     failureCounts.remove(key)
     failureReasons.remove(key)
@@ -376,9 +421,15 @@ class CatalogThemeCache(
   }
 
   /** Hold [png] in the memory tier under the byte cap, evicting least-recently-read first. */
-  private fun remember(key: String, png: ByteArray) {
+  private fun remember(key: String, png: ByteArray, replaceExisting: Boolean = false) {
     synchronized(renderLock) {
-      if (renders.containsKey(key)) return@synchronized
+      if (renders.containsKey(key)) {
+        // A regenerated dirty entry has to displace the copy the memory window is still serving,
+        // or the read path would keep handing out the older build's pixels for as long as the LRU
+        // held them — the disk tier converged and the tier in front of it did not.
+        if (!replaceExisting) return@synchronized
+        renders.remove(key)?.let { byteCount.addAndGet(-it.size.toLong()) }
+      }
       if (png.size.toLong() > maxBytes) return@synchronized
       renders[key] = png
       byteCount.addAndGet(png.size.toLong())
@@ -436,7 +487,14 @@ class CatalogThemeCache(
       val fresh = render(key) ?: continue
       compared++
       if (!fresh.contentEquals(cached)) {
-        val discarded = store.discard()
+        // Only the DIRTY entries, where the generation knows which those are. A generation can now
+        // hold renders from two builds at once — the suspect ones this process adopted, and the
+        // ones it has produced itself since — and the sample has just *confirmed* the second kind
+        // by disagreeing with the first. Taking the lot would throw away however long this process
+        // has spent rendering, to fix a problem those renders do not have. A store with no
+        // boundary has nothing to narrow to, so it still takes everything.
+        val dropped = store.discardDirty()
+        val discarded = if (dropped >= 0) dropped > 0 || store.discard() else false
         synchronized(renderLock) {
           renders.clear()
           byteCount.set(0)
@@ -628,6 +686,7 @@ class CatalogThemeCache(
       turnsForced = turnsForced.get(),
       lastBatchWidth = lastBatchWidth.get(),
       maxBatchWidth = maxBatchWidth.get(),
+      dirty = dirtyTargets().size,
     )
   }
 
