@@ -115,11 +115,66 @@ class ThemeCacheStore(
     return Generation(dir, system)
   }
 
+  /**
+   * Write the generation's manifest, or refresh it when a **different build** has opened the same
+   * generation.
+   *
+   * The early return used to be unconditional, on the reasoning that the directory name is the
+   * decision and the manifest is only commentary. That held while the fingerprint keyed on the tool
+   * version, because a new build could never reach an existing generation. It no longer does — a
+   * release now adopts its predecessor's renders (see [ThemeCacheFingerprint]) — so leaving the
+   * manifest alone would have it name a build that has not written here since, which is precisely
+   * the question the manifest exists to answer when someone is working out whether the pixels on
+   * this volume can be trusted.
+   *
+   * [GenerationInputs.createdAtEpochMillis] is preserved across the rewrite: it is what the sweep's
+   * grace window reads to spare a generation belonging to a replica that is still serving, and
+   * restamping it on every open would make a long-lived generation permanently young.
+   */
   private fun writeManifest(dir: File, inputs: GenerationInputs) {
     val file = File(dir, MANIFEST_NAME)
-    if (file.isFile) return
-    runCatching { file.writeText(json.encodeToString(inputs.copy(createdAtEpochMillis = clock()))) }
+    val existing =
+      if (file.isFile) {
+        runCatching { json.decodeFromString(GenerationInputs.serializer(), file.readText()) }
+          .getOrNull()
+      } else {
+        null
+      }
+    // An unreadable manifest beside a live generation is rewritten rather than left: the sweep
+    // falls back to the directory's own timestamp for it, and a readable one is strictly better.
+    if (existing != null && existing.toolVersion == inputs.toolVersion) return
+    val createdAt = existing?.createdAtEpochMillis?.takeIf { it > 0 } ?: clock()
+    runCatching {
+      file.writeText(json.encodeToString(inputs.copy(createdAtEpochMillis = createdAt)))
+    }
       .onFailure { recordFailure(dir.name, "manifest: ${it.message}") }
+  }
+
+  /**
+   * Delete every generation in the store, unconditionally, and report how many went.
+   *
+   * The escape hatch for "the pixels on this volume are wrong and I already know it" — a base-image
+   * bump that changed the installed fonts, say, which no fingerprint sees and which a five-entry
+   * verification sample can miss. [sweep] cannot serve this purpose: it deliberately spares any
+   * generation inside its grace window, which is exactly the freshly-written one an operator wants
+   * gone.
+   *
+   * Called only from an explicit `--theme-cache-evict`, and only before any generation is opened,
+   * so it can never race a live [Generation]'s writes.
+   */
+  fun evictAll(): Int {
+    var deleted = 0
+    for (systemDir in root.listFiles()?.filter { it.isDirectory }.orEmpty()) {
+      for (generationDir in systemDir.listFiles()?.filter { it.isDirectory }.orEmpty()) {
+        if (generationDir.deleteRecursively()) deleted++
+        else recordFailure(systemDir.name, "could not evict ${generationDir.name}")
+      }
+      if (systemDir.listFiles()?.isEmpty() == true) systemDir.delete()
+    }
+    knownGenerations.set(0)
+    knownGenerationsBySystem.set(emptyMap())
+    knownBytes.set(0)
+    return deleted
   }
 
   /**

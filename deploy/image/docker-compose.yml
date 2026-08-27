@@ -211,6 +211,10 @@ services:
       # this is roughly 4x headroom for superseded generations awaiting their sweep — while leaving
       # the box's disk to the catalog blob pool beside it, which really does sit at its full 8 GB.
       SERVE_THEME_CACHE_MAX_BYTES: "${SERVE_THEME_CACHE_MAX_BYTES:-4294967296}"
+      # Set to 1 for ONE roll to discard every persisted generation at startup, then unset it — it
+      # fires on every start while set. Only for pixels known to be wrong (a base-image change no
+      # fingerprint sees); an ordinary renderer change is already covered by the load-time sample.
+      SERVE_THEME_CACHE_EVICT: "${SERVE_THEME_CACHE_EVICT:-}"
       # The heavy bytes a catalog FETCHES (as opposed to the pixels it renders): each live
       # catalog's executable liveBundle — ~100 MB — its per-preview split bundles, and the
       # externalised font/resource pool. Held content-addressed, so a rolled replica reads them
