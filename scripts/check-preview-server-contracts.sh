@@ -40,6 +40,7 @@ CONTRACT_PROJECTS=(
   ":data-remotecompose-core"
   ":data-theme-core"
   ":data-render-core"
+  ":data-pseudolocale-core"
 )
 
 # Recorded leaks, published only so the probe can resolve at all. Every name here is a module an
