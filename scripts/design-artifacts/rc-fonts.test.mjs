@@ -14,9 +14,12 @@ const PAINT_CONTEXT = path.resolve(
 /** The served viewer's own copy of the table, and the build wiring that gives it the files. */
 const SERVE_RC_FONTS = path.resolve(
   HERE,
-  "../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeRcFonts.kt",
+  "../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeRcFonts.kt",
 );
-const CLI_BUILD = path.resolve(HERE, "../../cli/build.gradle.kts");
+// The staging task moved to `:cli:serve` with the sources it feeds (#3824 item 7): the
+// faces are the served viewer's, so they are staged into the server module's jar rather
+// than the CLI's.
+const CLI_BUILD = path.resolve(HERE, "../../cli/serve/build.gradle.kts");
 
 test("every declared face has a vendored file", () => {
   for (const { file } of FONT_FACES) {
