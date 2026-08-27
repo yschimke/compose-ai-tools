@@ -1354,6 +1354,25 @@ class JsonRpcServerIntegrationTest {
     }
   }
 
+  private companion object {
+    /**
+     * How long a [pollUntil] waits for a message that the daemon has already been asked to produce.
+     *
+     * These tests drive a real [JsonRpcServer] over real pipes with a real dispatch thread, so
+     * every wait is on genuine scheduling rather than a fake clock, and 10s is comfortable on an
+     * unloaded machine. It is not comfortable on a shared CI runner: this job runs alongside the
+     * rest of the module matrix, and a `renderFinished` notification that takes longer than 10s to
+     * come back has not exposed a defect, only a runner with no CPU to spare. The failure then
+     * reads as an assertion about the daemon, which it is not.
+     *
+     * So the deadline is a liveness bound, not a latency assertion — nothing here checks that a
+     * render is *fast*, only that it finishes. Raising it on CI costs nothing when the code is
+     * correct (a passing test returns as soon as the message lands, not at the deadline) and only
+     * changes how long a genuinely hung daemon takes to be reported.
+     */
+    private val defaultPollTimeoutMs: Long = if (System.getenv("CI") != null) 60_000 else 10_000
+  }
+
   /** Helper: writes one Content-Length-framed JSON message. */
   private fun writeFrame(out: PipedOutputStream, json: String) {
     val payload = json.toByteArray(Charsets.UTF_8)
@@ -1364,7 +1383,7 @@ class JsonRpcServerIntegrationTest {
 
   private fun pollUntil(
     queue: LinkedBlockingQueue<JsonObject>,
-    timeoutMs: Long = 10_000,
+    timeoutMs: Long = defaultPollTimeoutMs,
     matcher: (JsonObject) -> Boolean,
   ): JsonObject? {
     val deadline = System.currentTimeMillis() + timeoutMs
