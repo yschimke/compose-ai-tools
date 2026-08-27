@@ -30,10 +30,10 @@ import kotlin.math.max
  * `diffPx = max(areaFrom, areaTo)`, `ssim = 0.0`, `markedPng = null`. The caller still gets a
  * usable "everything changed" signal.
  */
-object HistoryImageDiff {
+public object HistoryImageDiff {
 
   /** Result of [diff]. [markedPng] is null on dimension mismatch or PNG-encode failure. */
-  data class Result(val diffPx: Long, val ssim: Double, val markedPng: ByteArray?) {
+  public data class Result(val diffPx: Long, val ssim: Double, val markedPng: ByteArray?) {
     // ByteArray needs structural equals/hashCode for the data class to behave in tests/maps.
     override fun equals(other: Any?): Boolean {
       if (this === other) return true
@@ -52,13 +52,13 @@ object HistoryImageDiff {
   }
 
   /** Thrown when a frame's bytes can't be decoded as an image. */
-  class UndecodableImageException(message: String) : Exception(message)
+  public class UndecodableImageException(message: String) : Exception(message)
 
   /**
    * Diffs [fromPng] against [toPng]. Throws [UndecodableImageException] if either side can't be
    * decoded — the caller maps that onto a structured RPC error.
    */
-  fun diff(fromPng: ByteArray, toPng: ByteArray): Result {
+  public fun diff(fromPng: ByteArray, toPng: ByteArray): Result {
     val a =
       decode(fromPng) ?: throw UndecodableImageException("from frame is not a decodable image")
     val b = decode(toPng) ?: throw UndecodableImageException("to frame is not a decodable image")

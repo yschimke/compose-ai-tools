@@ -13,8 +13,8 @@ import java.util.Properties
  * baked in is the same one downstream artifacts publish, so embedders can reason about
  * compatibility without a separate compile-time literal.
  */
-object DaemonVersion {
-  val value: String by lazy {
+public object DaemonVersion {
+  public val value: String by lazy {
     val stream =
       DaemonVersion::class
         .java

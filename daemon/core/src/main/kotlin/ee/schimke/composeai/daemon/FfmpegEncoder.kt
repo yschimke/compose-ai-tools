@@ -33,7 +33,7 @@ import java.util.concurrent.TimeUnit
  * should still complete within minutes. The subprocess is `destroyForcibly()`'d on timeout to
  * prevent zombies; tests rely on this to keep the JVM clean across encode failures.
  */
-object FfmpegEncoder {
+public object FfmpegEncoder {
 
   /**
    * Encoder timeout in milliseconds. 60 s is generous enough for ~5 s of 30 fps content (libx264
@@ -41,7 +41,7 @@ object FfmpegEncoder {
    * should still complete; if not, surfacing the timeout to the caller as an exception is
    * preferable to leaving a half-written file on disk.
    */
-  const val ENCODE_TIMEOUT_MS: Long = 60_000L
+  public const val ENCODE_TIMEOUT_MS: Long = 60_000L
 
   @Volatile private var detected: Boolean? = null
 
@@ -50,7 +50,7 @@ object FfmpegEncoder {
    * is computed once per JVM. Tests can flip the cache via [resetDetectionForTesting] when they
    * need to exercise the "ffmpeg unavailable" path on a machine where it's installed.
    */
-  fun available(): Boolean {
+  public fun available(): Boolean {
     val cached = detected
     if (cached != null) return cached
     val result =
@@ -87,7 +87,7 @@ object FfmpegEncoder {
    * only meaningful for MP4 / WEBM; APNG / GIF have no audio track, so [DesktopRecordingSession]
    * passes it only down the ffmpeg path.
    */
-  fun encodeFromPngFrames(
+  public fun encodeFromPngFrames(
     framesDir: File,
     fps: Int,
     format: RecordingFormatChoice,
@@ -241,7 +241,7 @@ object FfmpegEncoder {
    * distinct so the encoder body never has to consider the APNG path (handled by [ApngEncoder]
    * inline in [DesktopRecordingSession.encode]).
    */
-  enum class RecordingFormatChoice {
+  public enum class RecordingFormatChoice {
     MP4,
     WEBM,
   }

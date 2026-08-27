@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicLong
  * desktop / Android backends serialise renders to a single thread, so contention is rare in
  * practice; the [AtomicLong] is cheap insurance for any future host that submits concurrently.
  */
-class SandboxLifecycleStats(
+public class SandboxLifecycleStats(
   /** Host-construction time in nanoseconds. Defaults to [System.nanoTime] at instantiation. */
   startNs: Long = System.nanoTime()
 ) {
@@ -29,19 +29,19 @@ class SandboxLifecycleStats(
   private val renderCount: AtomicLong = AtomicLong(0)
 
   /** Wall-clock since host construction, in milliseconds. */
-  fun ageMs(): Long = (System.nanoTime() - startNs) / 1_000_000L
+  public fun ageMs(): Long = (System.nanoTime() - startNs) / 1_000_000L
 
   /** Number of renders completed against this host so far. */
-  fun renders(): Long = renderCount.get()
+  public fun renders(): Long = renderCount.get()
 
   /** Bumps the render counter. Called from the engine after each render-body returns. */
-  fun bumpRenderCount(): Long = renderCount.incrementAndGet()
+  public fun bumpRenderCount(): Long = renderCount.incrementAndGet()
 
   /**
    * Resets both counters — wired from B2.5's recycle path once that lands. For B2.3 v1 nobody calls
    * this in production; only unit tests use it.
    */
-  fun reset() {
+  public fun reset() {
     startNs = System.nanoTime()
     renderCount.set(0)
   }
@@ -67,7 +67,7 @@ class SandboxLifecycleStats(
  * non-HotSpot JVMs where the cast fails we fall back to 0 with a one-time warn-log; clients see
  * `nativeHeapMb = 0` and that's clearer than a hand-waved heuristic.
  */
-object SandboxMeasurement {
+public object SandboxMeasurement {
 
   private val nonHotSpotWarned = AtomicBoolean(false)
 
@@ -79,7 +79,7 @@ object SandboxMeasurement {
    * The map's keys are pinned constants on [RenderMetrics.Companion] so all consumers
    * (`JsonRpcServer.renderFinishedFromResult`, the soak tests, etc.) agree on the spelling.
    */
-  fun collect(stats: SandboxLifecycleStats, tookMs: Long): Map<String, Long> {
+  public fun collect(stats: SandboxLifecycleStats, tookMs: Long): Map<String, Long> {
     // Run a single GC hint after the render body so post-render heap reflects what survived this
     // render's short-lived allocations. Yes, `System.gc()` is a hint; HotSpot mostly honours it
     // for instrumentation. We don't over-engineer.

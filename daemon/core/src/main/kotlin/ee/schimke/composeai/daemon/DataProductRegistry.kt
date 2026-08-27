@@ -20,19 +20,19 @@ import kotlinx.serialization.json.JsonElement
  * Android-side a11y producer (`renderer-android`) is the first concrete consumer in D2. They
  * register at daemon-main construction time, not here.
  */
-interface DataProductRegistry {
+public interface DataProductRegistry {
   /**
    * Kinds the daemon can produce. Surfaced via `initialize.capabilities.dataProducts` so clients
    * can grey out unavailable panels at handshake time.
    */
-  val capabilities: List<DataProductCapability>
+  public val capabilities: List<DataProductCapability>
 
   /**
    * Fast-path lookup: does the registry know this kind at all? Used by the subscribe path to reject
    * unknown kinds before bookkeeping takes any memory. Default scans [capabilities]; producers with
    * many kinds may override with a hash lookup.
    */
-  fun isKnown(kind: String): Boolean = capabilities.any { it.kind == kind }
+  public fun isKnown(kind: String): Boolean = capabilities.any { it.kind == kind }
 
   /**
    * Pull-on-demand fetch for one `(previewId, kind)` pair against the latest render. The dispatcher
@@ -43,7 +43,7 @@ interface DataProductRegistry {
    * `data/fetch.inline` flag — `true` asks the registry to inline the payload (or `bytes` for blob
    * kinds), `false` lets it return a `path` for cheap local-client read-from-disk.
    */
-  fun fetch(previewId: String, kind: String, params: JsonElement?, inline: Boolean): Outcome
+  public fun fetch(previewId: String, kind: String, params: JsonElement?, inline: Boolean): Outcome
 
   /**
    * Build the attachment list for [previewId]'s pending `renderFinished` across the supplied
@@ -54,7 +54,7 @@ interface DataProductRegistry {
    * Always called *after* the render produced the PNG, so producers can read whatever the renderer
    * wrote to disk during the same pass.
    */
-  fun attachmentsFor(previewId: String, kinds: Set<String>): List<DataProductAttachment>
+  public fun attachmentsFor(previewId: String, kinds: Set<String>): List<DataProductAttachment>
 
   /**
    * Render lifecycle hook. Called after a host returns [result] and before `renderFinished`
@@ -71,7 +71,7 @@ interface DataProductRegistry {
    * method removes the trap; [onRender] extension overloads below keep the narrow call shapes
    * available to callers (tests, mostly) without letting anyone override them.
    */
-  fun onRender(
+  public fun onRender(
     previewId: String,
     result: RenderResult,
     overrides: PreviewOverrides?,
@@ -82,7 +82,7 @@ interface DataProductRegistry {
    * Render failure lifecycle hook. Called before `renderFailed` is emitted so failure-oriented
    * producers can snapshot the throwable for a later `data/fetch`.
    */
-  fun onRenderFailed(previewId: String, cause: Throwable) {}
+  public fun onRenderFailed(previewId: String, cause: Throwable) {}
 
   /**
    * Producer-side subscription lifecycle hook. Called by the dispatcher when a client issues a
@@ -98,14 +98,14 @@ interface DataProductRegistry {
    * Idempotent on the wire: a re-subscribe (same `(previewId, kind)`) calls this again with the
    * latest `params`. Producers that need "reset on re-subscribe" semantics use that as the signal.
    */
-  fun onSubscribe(previewId: String, kind: String, params: JsonElement?) {}
+  public fun onSubscribe(previewId: String, kind: String, params: JsonElement?) {}
 
   /**
    * Producer-side subscription teardown. Fires from `data/unsubscribe`, from a `setVisible` that
    * drops [previewId] (subscriptions are sticky-while-visible per the spec), and from a daemon
    * shutdown. Default no-op; producers with per-subscription state should clear it here.
    */
-  fun onUnsubscribe(previewId: String, kind: String) {}
+  public fun onUnsubscribe(previewId: String, kind: String) {}
 
   /**
    * Renderer-mode tag the dispatcher should stamp into a render when [kind] has at least one sticky
@@ -117,26 +117,26 @@ interface DataProductRegistry {
    * return `null` for kinds whose data is harvested opportunistically without a mode switch. See
    * [JsonRpcServer.subscriptionDrivenRenderMode] for the resolution rule.
    */
-  fun renderModeFor(kind: String): String? = null
+  public fun renderModeFor(kind: String): String? = null
 
   /**
    * Tagged outcome of a [fetch]. The dispatcher maps each case to its wire-error counterpart in
    * `JsonRpcServer.handleDataFetch`.
    */
-  sealed interface Outcome {
-    data class Ok(val result: DataFetchResult) : Outcome
+  public sealed interface Outcome {
+    public data class Ok(val result: DataFetchResult) : Outcome
 
     /** Kind not advertised by this registry → `DataProductUnknown` (-32020). */
-    data object Unknown : Outcome
+    public data object Unknown : Outcome
 
     /** Preview has never rendered → `DataProductNotAvailable` (-32021). */
-    data object NotAvailable : Outcome
+    public data object NotAvailable : Outcome
 
     /** Producer-side failure → `DataProductFetchFailed` (-32022). */
-    data class FetchFailed(val message: String, val errorKind: String? = null) : Outcome
+    public data class FetchFailed(val message: String, val errorKind: String? = null) : Outcome
 
     /** Re-render budget tripped → `DataProductBudgetExceeded` (-32023). */
-    data object BudgetExceeded : Outcome
+    public data object BudgetExceeded : Outcome
 
     /**
      * D3 — the latest pass didn't compute the kind and producing it requires a fresh render in the
@@ -158,17 +158,17 @@ interface DataProductRegistry {
      * share a mode, in which case a follow-up D-step can opportunistically piggy-back fetches
      * against an already-queued re-render.
      */
-    data class RequiresRerender(val mode: String) : Outcome
+    public data class RequiresRerender(val mode: String) : Outcome
   }
 
-  companion object {
+  public companion object {
     /**
      * The pre-D2 default — daemon advertises no kinds, every `data/fetch` returns
      * [Outcome.Unknown], every `data/subscribe` short-circuits to the same. Used by in-process
      * tests, the harness's fake-mode scenarios, and the daemon-main path when no producer has been
      * wired yet (during D1 rollout).
      */
-    val Empty: DataProductRegistry =
+    public val Empty: DataProductRegistry =
       object : DataProductRegistry {
         override val capabilities: List<DataProductCapability> = emptyList()
 
@@ -194,12 +194,12 @@ interface DataProductRegistry {
  * forwarders did before. Kept because most test call sites don't care about overrides or context
  * and reading `onRender(id, result)` at those sites is clearer than four arguments of nulls.
  */
-fun DataProductRegistry.onRender(previewId: String, result: RenderResult) {
+public fun DataProductRegistry.onRender(previewId: String, result: RenderResult) {
   onRender(previewId, result, overrides = null, previewContext = result.previewContext)
 }
 
 /** @see onRender */
-fun DataProductRegistry.onRender(
+public fun DataProductRegistry.onRender(
   previewId: String,
   result: RenderResult,
   overrides: PreviewOverrides?,

@@ -20,7 +20,7 @@ import java.nio.file.Path
  * `btaCompilerClasspath` is non-null; never reconstructed (daemon recycles on classpath-dirty, Tier
  * 1).
  */
-interface BtaCompileService {
+public interface BtaCompileService {
 
   /**
    * Compile [sources] in-process. Implementations are responsible for translating BTA's
@@ -29,26 +29,26 @@ interface BtaCompileService {
    * NOT throw — the handler treats any thrown exception as "fallback with the exception message as
    * reason" and logs.
    */
-  fun compile(sources: List<Path>, changes: SourceChangeSet?): Outcome
+  public fun compile(sources: List<Path>, changes: SourceChangeSet?): Outcome
 
-  sealed class Outcome {
+  public sealed class Outcome {
     /**
      * Compile succeeded; `.class` files are on disk and the caller should swap the user
      * classloader.
      */
-    object Ok : Outcome()
+    public object Ok : Outcome()
 
     /**
      * BTA returned diagnostics that the editor can render in its existing compile-error banner. The
      * classloader was NOT swapped.
      */
-    data class CompileError(val errors: List<CompileErrorDetail>) : Outcome()
+    public data class CompileError(val errors: List<CompileErrorDetail>) : Outcome()
 
     /**
      * Implementation refused this compile and the caller should retry through stage 1 / 0. Common
      * reasons: KSP/KAPT-tainted classpath, BTA bootstrap failure, transient classpath-dirty between
      * session construction and this call.
      */
-    data class Fallback(val reason: String) : Outcome()
+    public data class Fallback(val reason: String) : Outcome()
   }
 }

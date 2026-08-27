@@ -13,16 +13,16 @@ package ee.schimke.composeai.daemon.history
  * Layout: `<historyDir>/<sanitisedPreviewDir>/.diffs/<fromId>__<toId>.png` (ids sanitised). The
  * `.diffs` subdir is dot-prefixed so the per-preview sidecar resolution never trips over it.
  */
-object HistoryDiffArtifacts {
+public object HistoryDiffArtifacts {
 
   /** Per-preview subdirectory holding marked-diff PNGs. Dot-prefixed so sidecar scans skip it. */
-  const val DIFFS_DIR_NAME: String = ".diffs"
+  public const val DIFFS_DIR_NAME: String = ".diffs"
 
   /** Filesystem-safe form of a history entry id for use in a diff filename. */
-  fun sanitiseId(id: String): String = id.replace(NON_FILENAME, "_")
+  public fun sanitiseId(id: String): String = id.replace(NON_FILENAME, "_")
 
   /** Diff filename for the ordered pair (`from`, `to`): `<from>__<to>.png` (ids sanitised). */
-  fun fileName(fromId: String, toId: String): String =
+  public fun fileName(fromId: String, toId: String): String =
     "${sanitiseId(fromId)}__${sanitiseId(toId)}.png"
 
   /**
@@ -31,7 +31,7 @@ object HistoryDiffArtifacts {
    * pruned when that entry is. Robust against ids that themselves contain `_` (it anchors on the
    * `__` separator's start/end rather than splitting).
    */
-  fun referencesEntry(diffFileName: String, sanitisedEntryId: String): Boolean {
+  public fun referencesEntry(diffFileName: String, sanitisedEntryId: String): Boolean {
     if (!diffFileName.endsWith(".png")) return false
     val stem = diffFileName.removeSuffix(".png")
     return stem.startsWith("${sanitisedEntryId}__") || stem.endsWith("__$sanitisedEntryId")

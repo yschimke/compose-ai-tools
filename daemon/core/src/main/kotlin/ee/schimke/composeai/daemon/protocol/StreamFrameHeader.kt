@@ -29,7 +29,7 @@ import java.nio.ByteOrder
  * start-pts back in. Keeping the header at 20 bytes lets a busy stream amortise the header cost
  * down to ~2% of payload for typical 1 KB+ WebP frames.
  */
-data class StreamFrameHeader(
+public data class StreamFrameHeader(
   val codec: StreamCodec?,
   val seq: Long,
   val ptsMillis: Long,
@@ -52,7 +52,7 @@ data class StreamFrameHeader(
   /**
    * Pack to the canonical 20-byte header. Use [encodeTo] when you want header+payload back-to-back.
    */
-  fun pack(): ByteArray {
+  public fun pack(): ByteArray {
     val buf = ByteBuffer.allocate(HEADER_BYTES).order(ByteOrder.LITTLE_ENDIAN)
     buf.put(MAGIC)
     buf.put(VERSION)
@@ -67,7 +67,7 @@ data class StreamFrameHeader(
   }
 
   /** Convenience: returns header bytes immediately followed by [payload]. */
-  fun encodeTo(payload: ByteArray): ByteArray {
+  public fun encodeTo(payload: ByteArray): ByteArray {
     require(payload.size == payloadLen) {
       "payload size ${payload.size} != header.payloadLen $payloadLen"
     }
@@ -78,10 +78,10 @@ data class StreamFrameHeader(
     return out
   }
 
-  companion object {
-    const val MAGIC: Byte = 0xCF.toByte()
-    const val VERSION: Byte = 1
-    const val HEADER_BYTES: Int = 20
+  public companion object {
+    public const val MAGIC: Byte = 0xCF.toByte()
+    public const val VERSION: Byte = 1
+    public const val HEADER_BYTES: Int = 20
     private const val FLAG_KEYFRAME: Int = 0x01
     private const val FLAG_FINAL: Int = 0x02
     private const val CODEC_PNG: Byte = 0
@@ -93,7 +93,7 @@ data class StreamFrameHeader(
      * [IllegalArgumentException] when the magic byte / version / codec byte don't match — caller is
      * expected to surface as a wire-protocol error.
      */
-    fun parse(bytes: ByteArray, offset: Int = 0): StreamFrameHeader {
+    public fun parse(bytes: ByteArray, offset: Int = 0): StreamFrameHeader {
       require(bytes.size - offset >= HEADER_BYTES) {
         "stream header needs $HEADER_BYTES bytes, only ${bytes.size - offset} available"
       }

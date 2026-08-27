@@ -16,7 +16,7 @@ package ee.schimke.composeai.daemon.history
  * effects"); H1+H2 only have `LocalFsHistorySource` so these are effectively no-ops, but the shape
  * lets H9+ multi-source merging plug in without re-shaping the filter.
  */
-data class HistoryFilter(
+public data class HistoryFilter(
   val previewId: String? = null,
   val since: String? = null,
   val until: String? = null,
@@ -45,7 +45,7 @@ data class HistoryFilter(
  * [totalCount] is the count of entries matching the filter BEFORE pagination, so a UI can show
  * "showing 50 of 312".
  */
-data class HistoryListPage(
+public data class HistoryListPage(
   val entries: List<HistoryEntry>,
   val nextCursor: String? = null,
   val totalCount: Int,
@@ -55,7 +55,7 @@ data class HistoryListPage(
  * Result of [HistorySource.read]. [pngPath] is the absolute path to the bytes; [pngBytes] is
  * non-null only when the caller asked for inline bytes (e.g. an MCP client over a remote stdio).
  */
-data class HistoryReadResult(
+public data class HistoryReadResult(
   val entry: HistoryEntry,
   val previewMetadata: PreviewMetadataSnapshot?,
   val pngPath: String,
@@ -98,7 +98,7 @@ data class HistoryReadResult(
  * render is a meaningful event ("we went back to A") and is kept; render history A → A → A skips
  * everything after the first.
  */
-enum class WriteResult {
+public enum class WriteResult {
   WRITTEN,
   SKIPPED_DUPLICATE,
 }
@@ -112,15 +112,15 @@ enum class WriteResult {
  * [HistoryManager.recordRender]; read is paginated; watch is reserved for future phases (a UI
  * doesn't poll, it subscribes to `historyAdded`).
  */
-interface HistorySource {
+public interface HistorySource {
   /** Stable identifier — e.g. `"fs:/abs/historyDir"`, `"git:preview/main"`, `"http:https://…"`. */
-  val id: String
+  public val id: String
 
   /** `kind` from [HistorySourceInfo] — `"fs"`, `"git"`, `"http"`. */
-  val kind: String
+  public val kind: String
 
   /** True when this source can accept [write] calls. FS=true; git/HTTP read-only sources=false. */
-  fun supportsWrites(): Boolean
+  public fun supportsWrites(): Boolean
 
   /**
    * Persists [entry] (and its associated PNG bytes) into the backing store. Throws when this source
@@ -134,13 +134,13 @@ interface HistorySource {
    * Failures here must NOT be load-bearing for the render itself — `HistoryManager.recordRender`
    * catches and logs, then continues. The render succeeded; history is observation, not state.
    */
-  fun write(entry: HistoryEntry, png: ByteArray): WriteResult
+  public fun write(entry: HistoryEntry, png: ByteArray): WriteResult
 
   /** Lists history entries newest-first, applying [filter] and paginating. */
-  fun list(filter: HistoryFilter): HistoryListPage
+  public fun list(filter: HistoryFilter): HistoryListPage
 
   /** Reads one entry by id. Returns null when the id isn't present in this source. */
-  fun read(entryId: String, includeBytes: Boolean = false): HistoryReadResult?
+  public fun read(entryId: String, includeBytes: Boolean = false): HistoryReadResult?
 
   /**
    * H4 — applies the pruning policy from [config] to this source's storage. Read-only sources
@@ -161,12 +161,13 @@ interface HistorySource {
    *
    * Each individual knob set to `0` or negative is treated as disabled — that pass is skipped.
    */
-  fun prune(config: HistoryPruneConfig, dryRun: Boolean = false): PruneResult = PruneResult.EMPTY
+  public fun prune(config: HistoryPruneConfig, dryRun: Boolean = false): PruneResult =
+    PruneResult.EMPTY
 
   /**
    * Releases any background resources and flushes pending work on daemon shutdown. Default no-op;
    * `GitRefHistorySource` overrides it to flush a debounced commit batch (#1882) and stop its
    * scheduler so nothing buffered is lost on a clean stop.
    */
-  fun close() {}
+  public fun close() {}
 }

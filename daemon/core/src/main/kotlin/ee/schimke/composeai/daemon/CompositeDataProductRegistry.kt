@@ -1,6 +1,7 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
+import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.render.PreviewContext
 import kotlinx.serialization.json.JsonElement
@@ -10,10 +11,10 @@ import kotlinx.serialization.json.JsonElement
  * Capabilities are concatenated in constructor order; kind routing uses the first registry that
  * advertises the kind.
  */
-class CompositeDataProductRegistry(private val registries: List<DataProductRegistry>) :
+public class CompositeDataProductRegistry(private val registries: List<DataProductRegistry>) :
   DataProductRegistry {
 
-  override val capabilities = registries.flatMap { it.capabilities }
+  override val capabilities: List<DataProductCapability> = registries.flatMap { it.capabilities }
 
   override fun isKnown(kind: String): Boolean = registries.any { it.isKnown(kind) }
 

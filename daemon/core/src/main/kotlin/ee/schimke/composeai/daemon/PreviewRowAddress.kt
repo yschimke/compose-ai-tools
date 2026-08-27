@@ -33,13 +33,13 @@ package ee.schimke.composeai.daemon
  * keeps `MyScreenPreview_Light_PARAM_4` addressing row 4 of the `_Light` variant rather than
  * reading `Light_PARAM_4` as a row token of the bare preview.
  */
-object PreviewRowAddress {
+public object PreviewRowAddress {
 
   /** Prefix of the index-addressed row token — `PARAM_4` names provider value 4. */
-  const val INDEX_PREFIX: String = "PARAM_"
+  public const val INDEX_PREFIX: String = "PARAM_"
 
   /** A previewId resolved against the manifest: which entry to render, and which row of it. */
-  data class Split(val baseId: String, val row: String)
+  public data class Split(val baseId: String, val row: String)
 
   /**
    * Resolves [previewId] as `<baseId>_<row>` where `baseId` satisfies [isParameterized], or `null`
@@ -53,7 +53,7 @@ object PreviewRowAddress {
    *
    * Callers check the exact id first; this is the fallback for a miss.
    */
-  fun split(previewId: String, isParameterized: (String) -> Boolean): Split? {
+  public fun split(previewId: String, isParameterized: (String) -> Boolean): Split? {
     var cut = previewId.lastIndexOf('_')
     while (cut > 0) {
       val base = previewId.substring(0, cut)
@@ -65,14 +65,14 @@ object PreviewRowAddress {
   }
 
   /** The addressable id of one row: `<baseId>_<rowToken>`, matching the fan-out's filename stem. */
-  fun rowId(baseId: String, row: String): String = "${baseId}_$row"
+  public fun rowId(baseId: String, row: String): String = "${baseId}_$row"
 
   /**
    * The index a `PARAM_<n>` token names, or `null` for a label token. Blank/negative/overflowing
    * spellings return `null` so they fall through to label matching and fail with the "no row named
    * …" diagnostic rather than an opaque parse error.
    */
-  fun indexOf(row: String): Int? =
+  public fun indexOf(row: String): Int? =
     if (row.startsWith(INDEX_PREFIX))
       row.removePrefix(INDEX_PREFIX).toIntOrNull()?.takeIf { it >= 0 }
     else null

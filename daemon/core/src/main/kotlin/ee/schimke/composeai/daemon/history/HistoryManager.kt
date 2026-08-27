@@ -37,7 +37,7 @@ import kotlinx.serialization.json.JsonElement
  * @param gitProvenance per-render provenance source. When null (e.g. fake-mode test paths), the
  *   `git` / `worktree` fields land null on entries.
  */
-class HistoryManager(
+public class HistoryManager(
   private val sources: List<HistorySource>,
   private val module: String,
   private val gitProvenance: GitProvenance?,
@@ -59,21 +59,21 @@ class HistoryManager(
 ) {
   private val pruneConfigRef: AtomicReference<HistoryPruneConfig> = AtomicReference(pruneConfig)
 
-  val pruneConfig: HistoryPruneConfig
+  public val pruneConfig: HistoryPruneConfig
     get() = pruneConfigRef.get()
 
   /**
    * Initialize-time override path for clients that cannot set daemon JVM sysprops directly. Must be
    * called before [startAutoPrune] to affect the scheduler interval for this daemon session.
    */
-  fun configurePruneConfig(config: HistoryPruneConfig) {
+  public fun configurePruneConfig(config: HistoryPruneConfig) {
     pruneConfigRef.set(config)
   }
 
   /**
    * True when at least one writable source is configured — i.e. when `recordRender` is meaningful.
    */
-  val isEnabled: Boolean
+  public val isEnabled: Boolean
     get() = sources.any { it.supportsWrites() }
 
   /**
@@ -96,7 +96,7 @@ class HistoryManager(
    * **Failure semantics.** If a source's [HistorySource.write] throws, this method logs to stderr
    * but does NOT propagate — history is observation, the render itself is unaffected.
    */
-  fun recordRender(
+  public fun recordRender(
     previewId: String,
     pngBytes: ByteArray,
     trigger: String,
@@ -218,7 +218,7 @@ class HistoryManager(
    * canonical entry (with `source.kind = "fs"`) is what surfaces; a GitRef-only render still
    * surfaces its `source.kind = "git"` entry.
    */
-  fun list(filter: HistoryFilter): HistoryListPage {
+  public fun list(filter: HistoryFilter): HistoryListPage {
     // H10-read — a `ref` request is served from a single on-demand git-ref source, bypassing the
     // configured sources entirely (the caller wants *that* branch's history, not a merge).
     filter.ref?.let { ref ->
@@ -271,7 +271,7 @@ class HistoryManager(
    * that branch (matching the routing in [list]); otherwise falls through the configured sources in
    * order until a hit.
    */
-  fun read(entryId: String, includeBytes: Boolean, ref: String? = null): HistoryReadResult? {
+  public fun read(entryId: String, includeBytes: Boolean, ref: String? = null): HistoryReadResult? {
     if (ref != null) {
       val source = gitRefSourceFactory?.invoke(ref) ?: return null
       return source.read(entryId, includeBytes = includeBytes)
@@ -305,7 +305,7 @@ class HistoryManager(
    * caller can emit a `historyPruned` JSON-RPC notification. [JsonRpcServer.runHistoryManager]
    * wires this on construction; tests pass a buffer-capturing lambda or leave it null.
    */
-  fun setPruneListener(listener: ((PruneNotification) -> Unit)?) {
+  public fun setPruneListener(listener: ((PruneNotification) -> Unit)?) {
     pruneListener = listener
   }
 
@@ -322,7 +322,7 @@ class HistoryManager(
    * @param reason controls the [PruneNotification.reason] field — `AUTO` for the scheduler,
    *   `MANUAL` for `history/prune`. Null suppresses the listener (used by dry-run probes).
    */
-  fun pruneNow(
+  public fun pruneNow(
     config: HistoryPruneConfig = pruneConfig,
     dryRun: Boolean = false,
     reason: PruneReason? = null,
@@ -388,7 +388,7 @@ class HistoryManager(
    * **Safety.** Reentrancy-guarded — second call with the scheduler already running is a no-op. The
    * scheduler thread is daemonised so the JVM can exit even if [stopAutoPrune] isn't called.
    */
-  fun startAutoPrune(initialDelayMs: Long = DEFAULT_INITIAL_DELAY_MS) {
+  public fun startAutoPrune(initialDelayMs: Long = DEFAULT_INITIAL_DELAY_MS) {
     val config = pruneConfig
     if (config.isAllOff) return
     if (config.autoPruneIntervalMs <= 0L) return
@@ -428,7 +428,7 @@ class HistoryManager(
    * pass observes the interrupt at its next syscall and exits without leaving the index in a
    * partial state (the rewrite is atomic).
    */
-  fun stopAutoPrune() {
+  public fun stopAutoPrune() {
     autoPruneStopped.set(true)
     val future = autoPruneFuture.getAndSet(null)
     future?.cancel(true)
@@ -447,7 +447,7 @@ class HistoryManager(
    * source whose close throws is logged and skipped. Called from the daemon's shutdown path
    * alongside [stopAutoPrune].
    */
-  fun closeSources() {
+  public fun closeSources() {
     for (source in sources) {
       try {
         source.close()
@@ -460,10 +460,10 @@ class HistoryManager(
     }
   }
 
-  companion object {
+  public companion object {
 
     /** Initial delay for [startAutoPrune] — a few seconds, after the sandbox is up. */
-    const val DEFAULT_INITIAL_DELAY_MS: Long = 5_000L
+    public const val DEFAULT_INITIAL_DELAY_MS: Long = 5_000L
 
     /** `yyyyMMdd-HHmmss` UTC. Pinned format — HISTORY.md § "On-disk schema" filename shape. */
     private val TIMESTAMP_FORMAT: DateTimeFormatter =
@@ -473,7 +473,7 @@ class HistoryManager(
      * Builds the default H1 manager wiring — one [LocalFsHistorySource] under [historyDir]. Pass
      * `null` historyDir to get a disabled (`isEnabled = false`) manager.
      */
-    fun forLocalFs(
+    public fun forLocalFs(
       historyDir: java.nio.file.Path?,
       module: String,
       gitProvenance: GitProvenance?,
@@ -500,7 +500,7 @@ class HistoryManager(
      *   production daemon main passes a lambda that posts a warn-level `log` notification; tests
      *   pass a buffer-capturing lambda.
      */
-    fun forLocalFsAndGitRefs(
+    public fun forLocalFsAndGitRefs(
       historyDir: java.nio.file.Path?,
       module: String,
       gitProvenance: GitProvenance?,

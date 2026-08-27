@@ -37,7 +37,7 @@ import java.util.concurrent.atomic.AtomicReference
  * @param gitRunner runs `git <args>` in a working dir and returns trimmed stdout (or null on
  *   failure); injected in tests to avoid spawning real subprocesses.
  */
-class GitProvenance(
+public class GitProvenance(
   private val workspaceRoot: Path?,
   private val env: Map<String, String> = System.getenv(),
   private val cacheTtlMs: Long = resolveGitProvenanceTtlMs(),
@@ -55,7 +55,7 @@ class GitProvenance(
    * Returns a fresh-or-cached [WorktreeInfo] / [GitInfo] pair. Within [cacheTtlMs] of the previous
    * call the cached value is returned without spawning git; otherwise it re-resolves and re-caches.
    */
-  fun snapshot(): Pair<WorktreeInfo?, GitInfo?> {
+  public fun snapshot(): Pair<WorktreeInfo?, GitInfo?> {
     if (cacheTtlMs > 0L) {
       val hit = snapshotCache.get()
       if (hit != null && nowNanos() - hit.atNanos < cacheTtlMs * NANOS_PER_MS) {
@@ -121,23 +121,23 @@ class GitProvenance(
 
   private data class CachedSnapshot(val atNanos: Long, val value: Pair<WorktreeInfo?, GitInfo?>)
 
-  companion object {
+  public companion object {
     /**
      * Environment variable populated by the harness / agent supervisor — HISTORY.md § "Agent
      * attribution".
      */
-    const val ENV_AGENT_ID: String = "COMPOSEAI_AGENT_ID"
+    public const val ENV_AGENT_ID: String = "COMPOSEAI_AGENT_ID"
 
     /**
      * Environment variable that overrides the worktree dir basename — HISTORY.md § "Worktree IDs".
      */
-    const val ENV_WORKTREE_ID: String = "COMPOSEAI_WORKTREE_ID"
+    public const val ENV_WORKTREE_ID: String = "COMPOSEAI_WORKTREE_ID"
 
     /** Sysprop overriding the per-render provenance cache TTL (ms). `0` disables caching. */
-    const val CACHE_TTL_PROP: String = "composeai.history.gitProvenanceTtlMs"
+    public const val CACHE_TTL_PROP: String = "composeai.history.gitProvenanceTtlMs"
 
     /** Default cache window — collapses a render burst's repeated provenance fetches into one. */
-    const val DEFAULT_CACHE_TTL_MS: Long = 1000L
+    public const val DEFAULT_CACHE_TTL_MS: Long = 1000L
 
     private const val NANOS_PER_MS: Long = 1_000_000L
   }

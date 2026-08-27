@@ -43,7 +43,7 @@ import okio.Path.Companion.toPath
  *
  * **Loop count.** `0` means "infinite" per APNG spec — that's the default.
  */
-object ApngEncoder {
+public object ApngEncoder {
 
   private val PNG_SIGNATURE = byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10) // 0x89 PNG\r\n SUB \n
   private const val CHUNK_TYPE_IHDR = "IHDR"
@@ -53,7 +53,7 @@ object ApngEncoder {
   private const val CHUNK_TYPE_FCTL = "fcTL"
   private const val CHUNK_TYPE_FDAT = "fdAT"
 
-  fun encodeFromPngFrames(
+  public fun encodeFromPngFrames(
     frames: List<File>,
     delayNumerator: Short,
     delayDenominator: Short,

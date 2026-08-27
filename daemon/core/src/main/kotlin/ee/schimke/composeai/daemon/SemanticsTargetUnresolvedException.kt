@@ -12,7 +12,7 @@ import ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedReason
  * reply crosses the bridge) throw and catch the same type. Pixel dispatches never raise this — a
  * bad pixel just dispatches into empty space.
  */
-class SemanticsTargetUnresolvedException(
-  val reason: SemanticsTargetUnresolvedReason,
+public class SemanticsTargetUnresolvedException(
+  public val reason: SemanticsTargetUnresolvedReason,
   message: String,
 ) : RuntimeException(message)

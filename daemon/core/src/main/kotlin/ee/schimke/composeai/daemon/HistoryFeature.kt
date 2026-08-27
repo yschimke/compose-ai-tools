@@ -22,11 +22,11 @@ package ee.schimke.composeai.daemon
  * out of history recording. `history/diff` carries its own additional experimental gate (see
  * `JsonRpcServer`), so flipping this on does not by itself enable diffing.
  */
-object HistoryFeature {
+public object HistoryFeature {
   /** Override sysprop name; default `true`. */
-  const val PROP: String = "composeai.history.enabled"
+  public const val PROP: String = "composeai.history.enabled"
 
   @JvmStatic
-  val ENABLED: Boolean
+  public val ENABLED: Boolean
     get() = System.getProperty(PROP, "true").toBoolean()
 }

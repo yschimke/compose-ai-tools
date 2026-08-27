@@ -28,7 +28,7 @@ import org.jetbrains.kotlin.buildtools.api.KotlinLogger
  * provided; null delegate silently drops them. Production wiring passes the daemon's stderr logger
  * as delegate so non-error compiler output still surfaces in daemon logs.
  */
-class DiagnosticCollector(private val delegate: KotlinLogger? = null) : KotlinLogger {
+public class DiagnosticCollector(private val delegate: KotlinLogger? = null) : KotlinLogger {
   private val collected = mutableListOf<CompileErrorDetail>()
 
   /**
@@ -36,7 +36,7 @@ class DiagnosticCollector(private val delegate: KotlinLogger? = null) : KotlinLo
    * concurrently with `error(...)` calls — implementations of `KotlinLogger.error` are invoked
    * serially from the compiler thread.
    */
-  val errors: List<CompileErrorDetail>
+  public val errors: List<CompileErrorDetail>
     get() = collected.toList()
 
   override val isDebugEnabled: Boolean
@@ -103,5 +103,5 @@ class DiagnosticCollector(private val delegate: KotlinLogger? = null) : KotlinLo
  *
  * Internal to the BTA wiring; not part of the JSON-RPC surface or the spike module.
  */
-class BtaCompileDiagnosticException(val errors: List<CompileErrorDetail>) :
+public class BtaCompileDiagnosticException(public val errors: List<CompileErrorDetail>) :
   RuntimeException("BTA compile failed with ${errors.size} diagnostic(s)")

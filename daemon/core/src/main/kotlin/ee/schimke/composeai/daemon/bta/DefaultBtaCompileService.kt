@@ -42,7 +42,7 @@ import org.jetbrains.kotlin.buildtools.api.arguments.CompilerPluginOption
  * wrapping a [BtaCompileSession]) lets unit tests stub the compile behaviour without dragging in a
  * real BTA classloader — same idea KGP's tests use for their compilation work.
  */
-class DefaultBtaCompileService(
+public class DefaultBtaCompileService(
   /**
    * The actual compile call. Production wiring captures a [BtaCompileSession] + the module's
    * resolved compile classpath + output dir + plugins; tests inject lambdas that model success /
@@ -57,8 +57,8 @@ class DefaultBtaCompileService(
    * Bound compile call — what [DefaultBtaCompileService] actually invokes on each save. Throws on
    * any unrecoverable error; the service maps the throw to [BtaCompileService.Outcome.Fallback].
    */
-  fun interface CompileBackend {
-    fun compile(sources: List<Path>, sourcesChanges: SourcesChanges)
+  public fun interface CompileBackend {
+    public fun compile(sources: List<Path>, sourcesChanges: SourcesChanges)
   }
 
   override fun compile(sources: List<Path>, changes: SourceChangeSet?): BtaCompileService.Outcome {
@@ -89,7 +89,7 @@ class DefaultBtaCompileService(
     }
   }
 
-  companion object {
+  public companion object {
     /**
      * System-property keys the gradle plugin's daemon-bootstrap task populates unconditionally
      * whenever the variant wiring resolved the BTA classpath. Mirror of `BtaCompileConfig` in the
@@ -97,23 +97,24 @@ class DefaultBtaCompileService(
      * `File.pathSeparator`-joined; an unset / empty value means "this part of the config is
      * missing" and [fromSysprops] returns null.
      */
-    const val SYSPROP_IMPL_CLASSPATH: String = "composeai.daemon.bta.implClasspath"
-    const val SYSPROP_COMPILE_CLASSPATH: String = "composeai.daemon.bta.compileClasspath"
-    const val SYSPROP_COMPILER_PLUGINS: String = "composeai.daemon.bta.compilerPlugins"
-    const val SYSPROP_MODULE_NAME: String = "composeai.daemon.bta.moduleName"
-    const val SYSPROP_OUTPUT_DIR: String = "composeai.daemon.bta.outputDir"
-    const val SYSPROP_IC_WORKING_DIR: String = "composeai.daemon.bta.icWorkingDir"
+    public const val SYSPROP_IMPL_CLASSPATH: String = "composeai.daemon.bta.implClasspath"
+    public const val SYSPROP_COMPILE_CLASSPATH: String = "composeai.daemon.bta.compileClasspath"
+    public const val SYSPROP_COMPILER_PLUGINS: String = "composeai.daemon.bta.compilerPlugins"
+    public const val SYSPROP_MODULE_NAME: String = "composeai.daemon.bta.moduleName"
+    public const val SYSPROP_OUTPUT_DIR: String = "composeai.daemon.bta.outputDir"
+    public const val SYSPROP_IC_WORKING_DIR: String = "composeai.daemon.bta.icWorkingDir"
     /**
      * Optional. Non-empty value disables stage 2 for this module with the given reason surfaced
      * verbatim in every `compileSources` result.
      */
-    const val SYSPROP_INELIGIBILITY_REASON: String = "composeai.daemon.bta.ineligibilityReason"
+    public const val SYSPROP_INELIGIBILITY_REASON: String =
+      "composeai.daemon.bta.ineligibilityReason"
 
     /**
      * Production factory — captures the [session] + its per-module compile config in a
      * [CompileBackend] lambda and constructs the service.
      */
-    fun forSession(
+    public fun forSession(
       session: BtaCompileSession,
       compileClasspath: List<Path>,
       outputDir: Path,
@@ -165,7 +166,7 @@ class DefaultBtaCompileService(
      * pass a [Map.get]-shaped lambda so the factory can be exercised without polluting JVM-wide
      * state.
      */
-    fun fromSysprops(
+    public fun fromSysprops(
       sysprops: (String) -> String? = System::getProperty
     ): DefaultBtaCompileService? {
       val implClasspath = sysprops(SYSPROP_IMPL_CLASSPATH).toPathList()

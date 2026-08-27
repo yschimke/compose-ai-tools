@@ -30,13 +30,13 @@ import javax.imageio.metadata.IIOMetadataNode
  * `java.io.File` boundaries (see docs/AGENTS.md "File/IO goes through Okio … except a hard
  * third-party boundary"). The encoder keeps `File` local to those calls.
  */
-object GifEncoder {
+public object GifEncoder {
 
   /**
    * Encode [frames] (PNG files, contiguous, sharing one size) into a looping GIF at [fps] frames
    * per second, writing to [out]. Throws when [frames] is empty or a frame can't be read.
    */
-  fun encodeFromPngFrames(frames: List<File>, fps: Int, out: File) {
+  public fun encodeFromPngFrames(frames: List<File>, fps: Int, out: File) {
     require(frames.isNotEmpty()) { "GifEncoder: at least one frame required" }
     require(fps in 1..120) { "GifEncoder: fps=$fps out of range [1, 120]" }
     val writer =

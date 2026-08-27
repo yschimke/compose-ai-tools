@@ -30,7 +30,7 @@ import ee.schimke.composeai.daemon.protocol.Orientation
  * axis was given explicitly. [orientedPx] can't see that context; the guard belongs at the call
  * site, next to the override it is guarding.
  */
-object FrameOrientation {
+public object FrameOrientation {
 
   /**
    * [widthPx] and [heightPx] rotated to satisfy [orientation], or unchanged when they already do.
@@ -38,7 +38,7 @@ object FrameOrientation {
    * Pixels rather than dp because every caller has already resolved density by this point, and a
    * swap of the two is density-independent anyway.
    */
-  fun orientedPx(widthPx: Int, heightPx: Int, orientation: Orientation?): Pair<Int, Int> =
+  public fun orientedPx(widthPx: Int, heightPx: Int, orientation: Orientation?): Pair<Int, Int> =
     if (shouldSwap(widthPx, heightPx, orientation)) heightPx to widthPx else widthPx to heightPx
 
   /**
@@ -46,11 +46,11 @@ object FrameOrientation {
    * (`portrait` / `landscape`, case-insensitive). An unrecognised token is treated as absent — the
    * payload parsers already tolerate unknown values rather than failing a render over one.
    */
-  fun orientedPx(widthPx: Int, heightPx: Int, orientation: String?): Pair<Int, Int> =
+  public fun orientedPx(widthPx: Int, heightPx: Int, orientation: String?): Pair<Int, Int> =
     orientedPx(widthPx, heightPx, parse(orientation))
 
   /** The [Orientation] a payload token names, or null when absent, blank, or unrecognised. */
-  fun parse(token: String?): Orientation? =
+  public fun parse(token: String?): Orientation? =
     when (token?.trim()?.lowercase()) {
       "portrait" -> Orientation.PORTRAIT
       "landscape" -> Orientation.LANDSCAPE

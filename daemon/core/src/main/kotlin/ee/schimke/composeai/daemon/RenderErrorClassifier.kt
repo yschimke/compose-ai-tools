@@ -16,11 +16,11 @@ import ee.schimke.composeai.daemon.protocol.RenderErrorKind
  * fine-grained kind stays additive and decode-safe for old clients (which see it as
  * [RenderErrorKind.UNKNOWN] and fall back to [Classification.suggestion] / the message).
  */
-object RenderErrorClassifier {
+public object RenderErrorClassifier {
 
-  data class Classification(val kind: RenderErrorKind, val suggestion: String? = null)
+  public data class Classification(val kind: RenderErrorKind, val suggestion: String? = null)
 
-  fun classify(cause: Throwable): Classification {
+  public fun classify(cause: Throwable): Classification {
     val diagnostic = buildString {
       var t: Throwable? = cause
       var depth = 0

@@ -34,18 +34,18 @@ import java.util.concurrent.atomic.AtomicBoolean
  * See [docs/daemon/STARTUP.md](../../../../../../docs/daemon/STARTUP.md) for the analysis of where
  * the time actually goes and the menu of options to attack each stage.
  */
-object StartupTimings {
+public object StartupTimings {
 
-  data class Mark(val elapsedMs: Long, val label: String, val thread: String)
+  public data class Mark(val elapsedMs: Long, val label: String, val thread: String)
 
   /**
    * JVM start instant via [java.lang.management.RuntimeMXBean.getStartTime]. Cheaper to read than
    * `ProcessHandle.current().info().startInstant()` and consistent across threads.
    */
-  val jvmStartMs: Long = ManagementFactory.getRuntimeMXBean().startTime
+  public val jvmStartMs: Long = ManagementFactory.getRuntimeMXBean().startTime
 
   /** Sysprop knob to suppress stderr emission. Marks are still buffered for [summary]. */
-  const val QUIET_PROP: String = "composeai.daemon.startupQuiet"
+  public const val QUIET_PROP: String = "composeai.daemon.startupQuiet"
 
   private val quiet: Boolean
     get() = System.getProperty(QUIET_PROP) == "true"
@@ -53,13 +53,13 @@ object StartupTimings {
   private val buffer = ConcurrentLinkedQueue<Mark>()
   private val summarised = AtomicBoolean(false)
 
-  fun elapsedMs(): Long = System.currentTimeMillis() - jvmStartMs
+  public fun elapsedMs(): Long = System.currentTimeMillis() - jvmStartMs
 
   /**
    * Record a labelled instant on the timeline. Thread-safe. Emits one stderr line unless
    * [QUIET_PROP] is set; always retained for [summary].
    */
-  fun mark(label: String) {
+  public fun mark(label: String) {
     val mark = Mark(elapsedMs(), label, Thread.currentThread().name)
     buffer.add(mark)
     if (!quiet) {
@@ -68,13 +68,13 @@ object StartupTimings {
   }
 
   /** All marks recorded so far, in insertion order. */
-  fun marks(): List<Mark> = buffer.toList()
+  public fun marks(): List<Mark> = buffer.toList()
 
   /**
    * Emit a multi-line summary of the timeline. Idempotent — first caller wins; subsequent calls are
    * no-ops to avoid duplicate output when multiple paths converge on "I'm warm now."
    */
-  fun summary() {
+  public fun summary() {
     if (!summarised.compareAndSet(false, true)) return
     if (quiet) return
     val ms = marks()

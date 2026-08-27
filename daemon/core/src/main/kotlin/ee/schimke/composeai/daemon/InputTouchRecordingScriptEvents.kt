@@ -26,18 +26,18 @@ import ee.schimke.composeai.data.render.extensions.RecordingScriptEventDescripto
  * per-axis split keeps the descriptors uniform across hosts and the per-host advertisement
  * trivially additive.
  */
-object InputTouchRecordingScriptEvents {
+public object InputTouchRecordingScriptEvents {
 
-  const val CLICK_EVENT: String = "input.click"
-  const val POINTER_DOWN_EVENT: String = "input.pointerDown"
-  const val POINTER_MOVE_EVENT: String = "input.pointerMove"
-  const val POINTER_UP_EVENT: String = "input.pointerUp"
+  public const val CLICK_EVENT: String = "input.click"
+  public const val POINTER_DOWN_EVENT: String = "input.pointerDown"
+  public const val POINTER_MOVE_EVENT: String = "input.pointerMove"
+  public const val POINTER_UP_EVENT: String = "input.pointerUp"
 
   /** All wired touch event ids. */
-  val WIRED_EVENTS: Set<String> =
+  public val WIRED_EVENTS: Set<String> =
     setOf(CLICK_EVENT, POINTER_DOWN_EVENT, POINTER_MOVE_EVENT, POINTER_UP_EVENT)
 
-  val descriptor: DataExtensionDescriptor =
+  public val descriptor: DataExtensionDescriptor =
     DataExtensionDescriptor(
       id = DataExtensionId("input.touch"),
       displayName = "Touch / pointer input",
@@ -73,5 +73,5 @@ object InputTouchRecordingScriptEvents {
     )
 
   /** Convenience for the host's `recordingScriptEventDescriptors()` override. */
-  val descriptors: List<DataExtensionDescriptor> = listOf(descriptor)
+  public val descriptors: List<DataExtensionDescriptor> = listOf(descriptor)
 }

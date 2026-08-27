@@ -20,7 +20,7 @@ package ee.schimke.composeai.daemon.history
  * ee.schimke.composeai.daemon.protocol.HistoryPruneParams]); the auto-prune scheduler always uses
  * the configured defaults.
  */
-data class HistoryPruneConfig(
+public data class HistoryPruneConfig(
   val maxEntriesPerPreview: Int = 50,
   val maxAgeDays: Int = 14,
   val maxTotalSizeBytes: Long = 500_000_000L,
@@ -38,17 +38,19 @@ data class HistoryPruneConfig(
         maxTotalSizeBytes <= 0L &&
         autoPruneIntervalMs <= 0L
 
-  companion object {
-    const val PROP_MAX_ENTRIES: String = "composeai.daemon.history.maxEntriesPerPreview"
-    const val PROP_MAX_AGE_DAYS: String = "composeai.daemon.history.maxAgeDays"
-    const val PROP_MAX_TOTAL_SIZE_BYTES: String = "composeai.daemon.history.maxTotalSizeBytes"
-    const val PROP_AUTO_PRUNE_INTERVAL_MS: String = "composeai.daemon.history.autoPruneIntervalMs"
+  public companion object {
+    public const val PROP_MAX_ENTRIES: String = "composeai.daemon.history.maxEntriesPerPreview"
+    public const val PROP_MAX_AGE_DAYS: String = "composeai.daemon.history.maxAgeDays"
+    public const val PROP_MAX_TOTAL_SIZE_BYTES: String =
+      "composeai.daemon.history.maxTotalSizeBytes"
+    public const val PROP_AUTO_PRUNE_INTERVAL_MS: String =
+      "composeai.daemon.history.autoPruneIntervalMs"
 
     /**
      * Builds a config from system properties, falling back to defaults for any unset / unparseable
      * value. Production daemon mains call this; tests construct [HistoryPruneConfig] directly.
      */
-    fun fromSysprops(props: (String) -> String? = System::getProperty): HistoryPruneConfig {
+    public fun fromSysprops(props: (String) -> String? = System::getProperty): HistoryPruneConfig {
       val defaults = HistoryPruneConfig()
       return HistoryPruneConfig(
         maxEntriesPerPreview =
@@ -69,9 +71,9 @@ data class HistoryPruneConfig(
  * actually got deleted — entries that surrendered their sidecar but whose PNG was retained because
  * a surviving sidecar still references it (dedup-by-hash) do NOT contribute to [freedBytes].
  */
-data class PruneResult(val removedEntryIds: List<String>, val freedBytes: Long) {
-  companion object {
-    val EMPTY: PruneResult = PruneResult(emptyList(), 0L)
+public data class PruneResult(val removedEntryIds: List<String>, val freedBytes: Long) {
+  public companion object {
+    public val EMPTY: PruneResult = PruneResult(emptyList(), 0L)
   }
 }
 
@@ -83,13 +85,13 @@ data class PruneResult(val removedEntryIds: List<String>, val freedBytes: Long) 
  * - [sourceResults] — per-source breakdown keyed by [HistorySource.id]. Read-only sources are NOT
  *   listed (they're skipped by the manager).
  */
-data class PruneAggregateResult(
+public data class PruneAggregateResult(
   val removedEntryIds: List<String>,
   val freedBytes: Long,
   val sourceResults: Map<String, PruneResult>,
 ) {
-  companion object {
-    val EMPTY: PruneAggregateResult = PruneAggregateResult(emptyList(), 0L, emptyMap())
+  public companion object {
+    public val EMPTY: PruneAggregateResult = PruneAggregateResult(emptyList(), 0L, emptyMap())
   }
 }
 
@@ -101,13 +103,13 @@ data class PruneAggregateResult(
  *
  * Empty (no-op) passes do NOT emit a notification at all (don't spam clients).
  */
-enum class PruneReason {
+public enum class PruneReason {
   AUTO,
   MANUAL,
 }
 
 /** Internal payload [HistoryManager] hands to its `pruneListener`. */
-data class PruneNotification(
+public data class PruneNotification(
   val removedIds: List<String>,
   val freedBytes: Long,
   val reason: PruneReason,

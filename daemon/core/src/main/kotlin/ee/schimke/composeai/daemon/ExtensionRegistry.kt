@@ -32,7 +32,7 @@ import kotlinx.serialization.json.JsonElement
  * lock and snapshots into an immutable view. This matches the JSON-RPC server's existing
  * concurrency shape (read thread + worker thread + watcher thread).
  */
-class ExtensionRegistry(extensions: List<Extension>) {
+public class ExtensionRegistry(extensions: List<Extension>) {
   private val byId: Map<String, Extension>
   private val lock = ReentrantReadWriteLock()
   private val publicIds = HashSet<String>()
@@ -69,26 +69,26 @@ class ExtensionRegistry(extensions: List<Extension>) {
   }
 
   /** All registered extensions, in the order they were supplied. */
-  fun all(): List<Extension> = byId.values.toList()
+  public fun all(): List<Extension> = byId.values.toList()
 
   /** True iff [id] was made public via [enable] (and not since [disable]d). */
-  fun isPubliclyEnabled(id: String): Boolean = lock.read { id in publicIds }
+  public fun isPubliclyEnabled(id: String): Boolean = lock.read { id in publicIds }
 
   /** True iff [id] is publicly enabled or pulled in transitively. */
-  fun isActive(id: String): Boolean = lock.read { id in activeIdsCache }
+  public fun isActive(id: String): Boolean = lock.read { id in activeIdsCache }
 
   /** Snapshot of publicly enabled ids. */
-  fun publicIds(): Set<String> = lock.read { publicIds.toSet() }
+  public fun publicIds(): Set<String> = lock.read { publicIds.toSet() }
 
   /** Snapshot of all ids that should run during a render (public + transitive deps). */
-  fun activeIds(): Set<String> = lock.read { activeIdsCache.toSet() }
+  public fun activeIds(): Set<String> = lock.read { activeIdsCache.toSet() }
 
   /**
    * Enable [requested] ids. Unknown ids land in [EnableOutcome.unknown] and the rest are processed.
    * Already-enabled ids are reported separately. Transitive dependencies that come online land in
    * [EnableOutcome.pulledIn].
    */
-  fun enable(requested: Iterable<String>): EnableOutcome {
+  public fun enable(requested: Iterable<String>): EnableOutcome {
     val asked = requested.toSet()
     val unknown = asked.filter { it !in byId }.sorted()
     val known = asked - unknown.toSet()
@@ -113,7 +113,7 @@ class ExtensionRegistry(extensions: List<Extension>) {
    * enabled extension still depends on them land in [DisableOutcome.stillActiveAsDependency] —
    * disabling them publicly is fine, the client just sees the dep didn't fully deactivate.
    */
-  fun disable(requested: Iterable<String>): DisableOutcome {
+  public fun disable(requested: Iterable<String>): DisableOutcome {
     val asked = requested.toSet()
     val unknown = asked.filter { it !in byId }.sorted()
     val known = asked - unknown.toSet()
@@ -149,19 +149,19 @@ class ExtensionRegistry(extensions: List<Extension>) {
   // Wire-facing snapshots — only publicly enabled extensions contribute.
   // -------------------------------------------------------------------------
 
-  fun publicDataProductCapabilities(): List<DataProductCapability> = lock.read {
+  public fun publicDataProductCapabilities(): List<DataProductCapability> = lock.read {
     publicIds.sorted().flatMap { byId.getValue(it).dataProductCapabilities }
   }
 
-  fun publicDataExtensionDescriptors(): List<DataExtensionDescriptor> = lock.read {
+  public fun publicDataExtensionDescriptors(): List<DataExtensionDescriptor> = lock.read {
     publicIds.sorted().flatMap { byId.getValue(it).dataExtensionDescriptors }
   }
 
-  fun publicPreviewExtensionDescriptors(): List<PreviewExtensionDescriptor> = lock.read {
+  public fun publicPreviewExtensionDescriptors(): List<PreviewExtensionDescriptor> = lock.read {
     publicIds.sorted().flatMap { byId.getValue(it).previewExtensionDescriptors }
   }
 
-  fun infoList(): List<ExtensionInfo> = lock.read {
+  public fun infoList(): List<ExtensionInfo> = lock.read {
     byId.values.map { ext ->
       ExtensionInfo(
         id = ext.id,
@@ -191,12 +191,12 @@ class ExtensionRegistry(extensions: List<Extension>) {
   // -------------------------------------------------------------------------
 
   /** Composite over publicly enabled extensions. */
-  fun publicDataProducts(): DataProductRegistry = ScopedDataProducts {
+  public fun publicDataProducts(): DataProductRegistry = ScopedDataProducts {
     lock.read { publicIds.toList() }
   }
 
   /** Composite over publicly enabled or transitively active extensions. */
-  fun activeDataProducts(): DataProductRegistry = ScopedDataProducts {
+  public fun activeDataProducts(): DataProductRegistry = ScopedDataProducts {
     lock.read { activeIdsCache.toList() }
   }
 
@@ -284,7 +284,7 @@ class ExtensionRegistry(extensions: List<Extension>) {
    * render without rebuilding the renderer. Active-as-dependency overrides plan too — the depending
    * extension may need them to wrap the composable correctly.
    */
-  fun activeOverrideExtensions(): PreviewOverrideExtensions {
+  public fun activeOverrideExtensions(): PreviewOverrideExtensions {
     val byOverrideId = HashMap<String, String>() // dataExtensionId -> owning extension id
     for (ext in byId.values) {
       for (over in ext.previewOverrideExtensions) {
@@ -314,8 +314,8 @@ class ExtensionRegistry(extensions: List<Extension>) {
     )
   }
 
-  companion object {
-    val Empty: ExtensionRegistry = ExtensionRegistry(emptyList())
+  public companion object {
+    public val Empty: ExtensionRegistry = ExtensionRegistry(emptyList())
   }
 }
 
@@ -324,7 +324,7 @@ class ExtensionRegistry(extensions: List<Extension>) {
  * lands in exactly one of [newlyEnabled], [alreadyEnabled], or [unknown]. [pulledIn] is additive —
  * dependencies that came online as a side effect.
  */
-data class EnableOutcome(
+public data class EnableOutcome(
   val newlyEnabled: List<String>,
   val pulledIn: List<String>,
   val alreadyEnabled: List<String>,
@@ -337,7 +337,7 @@ data class EnableOutcome(
  * public dependent); [stillActiveAsDependency] are ids that were disabled publicly but remain
  * active because another public extension still depends on them.
  */
-data class DisableOutcome(
+public data class DisableOutcome(
   val disabled: List<String>,
   val deactivated: List<String>,
   val stillActiveAsDependency: List<String>,
@@ -346,7 +346,7 @@ data class DisableOutcome(
 )
 
 /** Per-extension snapshot returned by `extensions/list`. */
-data class ExtensionInfo(
+public data class ExtensionInfo(
   val id: String,
   val displayName: String,
   val dependencies: List<String>,

@@ -50,7 +50,7 @@ import kotlinx.serialization.json.JsonElement
  *   schemas under `schema/`.
  */
 @Serializable
-data class HistoryEntry(
+public data class HistoryEntry(
   val id: String,
   val previewId: String,
   val module: String,
@@ -80,7 +80,7 @@ data class HistoryEntry(
  * Storage-backend identity. `kind` is one of `"fs"`, `"git"`, `"http"` (HISTORY.md § "Wire-format
  * effects"); `id` is the source's stable identifier (e.g. `"fs:/abs/historyDir"`).
  */
-@Serializable data class HistorySourceInfo(val kind: String, val id: String)
+public @Serializable data class HistorySourceInfo(val kind: String, val id: String)
 
 /**
  * Worktree provenance. `path` is the absolute worktree root; `id` is a human label (defaults to the
@@ -89,7 +89,7 @@ data class HistoryEntry(
  * produces a valid sidecar.
  */
 @Serializable
-data class WorktreeInfo(
+public data class WorktreeInfo(
   val path: String? = null,
   val id: String? = null,
   val agentId: String? = null,
@@ -97,7 +97,7 @@ data class WorktreeInfo(
 
 /** Git provenance captured per-render. Any subfield may be null when resolution failed. */
 @Serializable
-data class GitInfo(
+public data class GitInfo(
   val branch: String? = null,
   val commit: String? = null,
   val shortCommit: String? = null,
@@ -110,7 +110,7 @@ data class GitInfo(
  * history. The current "live" metadata for a preview lives in the daemon's `PreviewIndex`.
  */
 @Serializable
-data class PreviewMetadataSnapshot(
+public data class PreviewMetadataSnapshot(
   val displayName: String? = null,
   val group: String? = null,
   val sourceFile: String? = null,
@@ -122,7 +122,7 @@ data class PreviewMetadataSnapshot(
  * signal; H5 will populate [diffPx] / [ssim] when pixel mode lands.
  */
 @Serializable
-data class HistoryDelta(
+public data class HistoryDelta(
   val pngHashChanged: Boolean,
   val diffPx: Long? = null,
   val ssim: Double? = null,

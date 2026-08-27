@@ -31,7 +31,7 @@ import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
  * in `extensions/enable` calls); use a feature-shaped id when one extension carries several kinds
  * or pure metadata.
  */
-data class Extension(
+public data class Extension(
   val id: String,
   val displayName: String = id,
   val dependencies: List<String> = emptyList(),

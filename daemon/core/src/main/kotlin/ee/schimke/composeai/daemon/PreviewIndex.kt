@@ -42,7 +42,7 @@ import kotlinx.serialization.json.Json
  * `protocolVersion` bump.
  */
 @Serializable
-data class PreviewInfoDto(
+public data class PreviewInfoDto(
   val id: String,
   /** Fully-qualified class containing the `@Preview` function. */
   val className: String,
@@ -125,7 +125,7 @@ data class PreviewInfoDto(
  * daemon-side change.
  */
 @Serializable
-data class PreviewDataProductDto(val kind: String, val scroll: ScrollCaptureDto? = null)
+public data class PreviewDataProductDto(val kind: String, val scroll: ScrollCaptureDto? = null)
 
 /**
  * Daemon-side mirror of the gradle plugin's `Capture` — one planned render of a preview. Only
@@ -134,7 +134,7 @@ data class PreviewDataProductDto(val kind: String, val scroll: ScrollCaptureDto?
  * doesn't produce, and `ignoreUnknownKeys` drops them on parse.
  */
 @Serializable
-data class PreviewCaptureDto(
+public data class PreviewCaptureDto(
   val scroll: ScrollCaptureDto? = null,
   val settle: SettleCaptureDto? = null,
 )
@@ -146,7 +146,7 @@ data class PreviewCaptureDto(
  * publishing.
  */
 @Serializable
-data class SettleCaptureDto(val afterMs: Int = 0, val maxMs: Int = 1000) {
+public data class SettleCaptureDto(val afterMs: Int = 0, val maxMs: Int = 1000) {
   /** The longest virtual-time window this settle can consume, whichever mode it is in. */
   val windowMs: Int
     get() = if (afterMs > 0) afterMs else maxMs
@@ -159,7 +159,7 @@ data class SettleCaptureDto(val afterMs: Int = 0, val maxMs: Int = 1000) {
  * plugin's recorded state.
  */
 @Serializable
-data class ScrollCaptureDto(
+public data class ScrollCaptureDto(
   /**
    * Mirrors the gradle plugin's `ScrollMode` (`END` / `LONG` / `GIF`). String-typed so the daemon
    * doesn't depend on the plugin's enum.
@@ -207,7 +207,7 @@ data class ScrollCaptureDto(
  * today — present here so a future plugin-side addition lands without another DTO bump.
  */
 @Serializable
-data class PreviewParamsDto(
+public data class PreviewParamsDto(
   val widthDp: Int? = null,
   val heightDp: Int? = null,
   /**
@@ -313,14 +313,14 @@ data class PreviewParamsDto(
  * direction), not left/right.
  */
 @Serializable
-data class CaptureGutterDto(
+public data class CaptureGutterDto(
   val start: Int = 0,
   val top: Int = 0,
   val end: Int = 0,
   val bottom: Int = 0,
 ) {
   /** True when no edge carries a gutter — the render then keeps its pre-gutter path verbatim. */
-  fun isEmpty(): Boolean = start == 0 && top == 0 && end == 0 && bottom == 0
+  public fun isEmpty(): Boolean = start == 0 && top == 0 && end == 0 && bottom == 0
 }
 
 /**
@@ -329,7 +329,7 @@ data class CaptureGutterDto(
  * the desktop daemon's `previewIndexBackedSpecResolver` and the daemon-android side can share the
  * decode without re-importing Android's `Configuration` constants on the desktop classpath.
  */
-fun uiModeIsNight(uiMode: Int?): Boolean {
+public fun uiModeIsNight(uiMode: Int?): Boolean {
   if (uiMode == null) return false
   return (uiMode and UI_MODE_NIGHT_MASK) == UI_MODE_NIGHT_YES
 }
@@ -352,7 +352,7 @@ private data class PreviewManifestDto(val previews: List<PreviewInfoDto> = empty
  * scoped to one source file. Mirrors the wire shape of `discoveryUpdated` ([PROTOCOL.md §
  * 6](../../../../../../../docs/daemon/PROTOCOL.md)).
  */
-data class DiscoveryDiff(
+public data class DiscoveryDiff(
   /** Previews present in the new scan but not in the cached index. */
   val added: List<PreviewInfoDto>,
   /**
@@ -367,7 +367,7 @@ data class DiscoveryDiff(
 )
 
 /** True when the diff has no `added`, `removed`, or `changed` entries. */
-fun discoveryDiffEmpty(diff: DiscoveryDiff): Boolean =
+public fun discoveryDiffEmpty(diff: DiscoveryDiff): Boolean =
   diff.added.isEmpty() && diff.removed.isEmpty() && diff.changed.isEmpty()
 
 /**
@@ -385,14 +385,14 @@ fun discoveryDiffEmpty(diff: DiscoveryDiff): Boolean =
  * [PROTOCOL.md § 1](../../../../../../../docs/daemon/PROTOCOL.md)). The daemon should still come up
  * on a corrupt manifest; clients see `previewCount = 0` and can re-trigger discovery.
  */
-class PreviewIndex
+public class PreviewIndex
 internal constructor(
   /**
    * Absolute path to the file the index was loaded from. `null` when the index is the empty
    * placeholder — i.e. no `composeai.daemon.previewsJsonPath` sysprop was set, or the file didn't
    * exist / was malformed.
    */
-  val path: Path?,
+  public val path: Path?,
   initial: Map<String, PreviewInfoDto>,
 ) {
 
@@ -400,12 +400,12 @@ internal constructor(
   private val byId: MutableMap<String, PreviewInfoDto> = LinkedHashMap(initial)
 
   /** Total number of previews known to the daemon. */
-  val size: Int
+  public val size: Int
     get() = lock.read { byId.size }
 
   /** Lookup by `PreviewInfo.id`. `null` if the id is unknown. */
   /** The discovered preview [id] names, or `null`. Exact match only — see [rowResolved]. */
-  fun byId(id: String): PreviewInfoDto? = lock.read { byId[id] }
+  public fun byId(id: String): PreviewInfoDto? = lock.read { byId[id] }
 
   /**
    * [byId], widened to accept a **row-addressed** id (`<baseId>_Dark` / `<baseId>_PARAM_4`,
@@ -423,7 +423,7 @@ internal constructor(
    * silently the wrong state, which is worse than the "unknown previewId" a caller used to get.
    * That is why the row rides out here rather than being folded invisibly into [byId].
    */
-  fun rowResolved(id: String): Resolved? = lock.read {
+  public fun rowResolved(id: String): Resolved? = lock.read {
     byId[id]?.let {
       return@read Resolved(it, null)
     }
@@ -435,7 +435,7 @@ internal constructor(
   }
 
   /** A previewId resolved by [rowResolved]: the entry, and the `@PreviewParameter` row it named. */
-  data class Resolved(val info: PreviewInfoDto, val row: String?)
+  public data class Resolved(val info: PreviewInfoDto, val row: String?)
 
   /**
    * Issue #1528 — resolves the [ScrollCaptureDto] for a given `(previewId, renderMode)` pair so the
@@ -445,7 +445,7 @@ internal constructor(
    * preview has no `dataProducts` entry of that kind (typical for previews without
    * `@ScrollingPreview`).
    */
-  fun scrollCaptureFor(previewId: String, mode: String): ScrollCaptureDto? {
+  public fun scrollCaptureFor(previewId: String, mode: String): ScrollCaptureDto? {
     val kind =
       when (mode) {
         "scroll-long" -> "render/scroll/long"
@@ -484,7 +484,7 @@ internal constructor(
    * carries `@AnimatedPreview` plans a scroll-less GIF capture beside the END one, but that GIF is
    * a separate output rather than a rival static frame.
    */
-  fun staticScrollFor(previewId: String): ScrollCaptureDto? {
+  public fun staticScrollFor(previewId: String): ScrollCaptureDto? {
     // Row-aware for the same reason as [scrollCaptureFor]: without it an `END` static row silently
     // renders at the resting top instead of the scrolled-to-end frame its base asked for.
     val info = rowResolved(previewId)?.info ?: return null
@@ -504,19 +504,19 @@ internal constructor(
    * carries one carries the same one, and a disagreement means the manifest describes something the
    * daemon has no honest single answer for.
    */
-  fun staticSettleFor(previewId: String): SettleCaptureDto? {
+  public fun staticSettleFor(previewId: String): SettleCaptureDto? {
     val info = rowResolved(previewId)?.info ?: return null
     val settles = info.captures.mapNotNull { it.settle }.distinct()
     return settles.singleOrNull()
   }
 
   /** All known preview ids. Phase 2 will diff a fresh scan against this set. */
-  fun ids(): Set<String> = lock.read { byId.keys.toSet() }
+  public fun ids(): Set<String> = lock.read { byId.keys.toSet() }
 
   /**
    * Snapshot of the current `id → PreviewInfoDto` map. Not live; safe to iterate without locking.
    */
-  fun snapshot(): Map<String, PreviewInfoDto> = lock.read { LinkedHashMap(byId) }
+  public fun snapshot(): Map<String, PreviewInfoDto> = lock.read { LinkedHashMap(byId) }
 
   /**
    * Computes a [DiscoveryDiff] for one source file.
@@ -530,7 +530,7 @@ internal constructor(
    *
    * Pure — does NOT mutate the index. Call [applyDiff] separately to commit.
    */
-  fun diff(newScanForFile: Set<PreviewInfoDto>, sourceFile: Path): DiscoveryDiff {
+  public fun diff(newScanForFile: Set<PreviewInfoDto>, sourceFile: Path): DiscoveryDiff {
     val sourceKey = sourceFile.toString()
     return lock.read {
       val newById = newScanForFile.associateBy { it.id }
@@ -575,7 +575,7 @@ internal constructor(
    *
    * Holds the write lock for the duration of the merge.
    */
-  fun applyDiff(diff: DiscoveryDiff) {
+  public fun applyDiff(diff: DiscoveryDiff) {
     lock.write {
       for (id in diff.removed) byId.remove(id)
       for (dto in diff.added) byId[dto.id] = dto
@@ -611,20 +611,20 @@ internal constructor(
     }
   }
 
-  companion object {
+  public companion object {
     /**
      * The empty placeholder. Used when no `composeai.daemon.previewsJsonPath` was supplied — e.g.
      * fake-mode harness scenarios, the in-process integration tests, the pre-B2.2 default. `path =
      * null`, `size = 0`.
      */
-    fun empty(): PreviewIndex = PreviewIndex(path = null, initial = emptyMap())
+    public fun empty(): PreviewIndex = PreviewIndex(path = null, initial = emptyMap())
 
     /**
      * Constructs an index from an in-memory map. Used by the harness's `FakeDaemonMain` to seed a
      * daemon-side index from its own fixture manifest without round-tripping a JSON file. [path]
      * may be null (harness path) or absolute (production / desktop daemon path).
      */
-    fun fromMap(path: Path?, byId: Map<String, PreviewInfoDto>): PreviewIndex =
+    public fun fromMap(path: Path?, byId: Map<String, PreviewInfoDto>): PreviewIndex =
       PreviewIndex(path = path?.toAbsolutePath(), initial = byId)
 
     /**
@@ -632,7 +632,7 @@ internal constructor(
      * array. Returns [empty] (and prints a warn-level diagnostic to stderr) if the file is missing,
      * unreadable, or malformed; never throws.
      */
-    fun loadFromFile(path: Path): PreviewIndex {
+    public fun loadFromFile(path: Path): PreviewIndex {
       val absolute = path.toAbsolutePath()
       if (!Files.exists(absolute)) {
         System.err.println(
@@ -674,7 +674,7 @@ internal constructor(
      * [DaemonClasspathDescriptor.systemProperties]); when unset, the daemon comes up with [empty] —
      * preserves pre-B2.2 in-process / fake-mode behaviour.
      */
-    const val PREVIEWS_JSON_PATH_PROP: String = "composeai.daemon.previewsJsonPath"
+    public const val PREVIEWS_JSON_PATH_PROP: String = "composeai.daemon.previewsJsonPath"
 
     private val JSON: Json = Json {
       ignoreUnknownKeys = true

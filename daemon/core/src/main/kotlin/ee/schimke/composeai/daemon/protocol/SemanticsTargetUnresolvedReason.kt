@@ -20,7 +20,7 @@ import kotlinx.serialization.Serializable
  * and ignore [targetUnresolvedReason].
  */
 @Serializable
-data class SemanticsTargetUnresolvedReason(
+public data class SemanticsTargetUnresolvedReason(
   /** Coarse cause — see [SemanticsTargetUnresolvedCode]. */
   val code: SemanticsTargetUnresolvedCode,
   /** Echo of the target the agent supplied, so the failure is self-describing in a trace. */
@@ -49,7 +49,7 @@ data class SemanticsTargetUnresolvedReason(
  * [RecordingScriptEvidence.message].
  */
 @Serializable
-enum class SemanticsTargetUnresolvedCode {
+public enum class SemanticsTargetUnresolvedCode {
   /** The held session hasn't produced a semantics tree yet (nothing rendered). */
   @SerialName("noSemanticsRoot") NO_SEMANTICS_ROOT,
   /**
@@ -72,7 +72,7 @@ enum class SemanticsTargetUnresolvedCode {
  * JSON-serializable, no Compose dep; the backends map their `ComposeSemanticsNode`s onto it.
  */
 @Serializable
-data class SemanticsTargetCandidate(
+public data class SemanticsTargetCandidate(
   /** The stable handle to pass back as `{ ref }` — unique within a render, the unambiguous pick. */
   val ref: String? = null,
   val testTag: String? = null,

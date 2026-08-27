@@ -17,7 +17,7 @@ package ee.schimke.composeai.daemon
  * itself reports a dimension mismatch (different-sized baseline) as a non-`ok` result, so that path
  * also fails with a clear message.
  */
-fun pixelAssertVerdict(
+public fun pixelAssertVerdict(
   actualPng: ByteArray?,
   baselinePng: ByteArray?,
   tolerance: PixelDiffTolerance = PixelDiffTolerance.DEFAULT,

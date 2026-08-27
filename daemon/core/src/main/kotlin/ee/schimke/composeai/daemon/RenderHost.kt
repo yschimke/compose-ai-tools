@@ -26,14 +26,14 @@ import java.util.concurrent.atomic.AtomicLong
  * returns a [RenderResult]; [JsonRpcServer] already runs each `submit` on a fire-and-forget worker
  * so the JSON-RPC read loop is never blocked.
  */
-interface RenderHost {
+public interface RenderHost {
 
   /**
    * Lifecycle: must be called once before the first [submit]. After this returns the host is alive
    * and ready (though the first [submit] may still pay a cold-start cost, e.g. Robolectric sandbox
    * bootstrap).
    */
-  fun start()
+  public fun start()
 
   /**
    * Submits one render request and blocks until its [RenderResult] is available, or until
@@ -43,7 +43,7 @@ interface RenderHost {
    * @param request must be a [RenderRequest.Render]; the [RenderRequest.Shutdown] poison pill is
    *   implementation-internal and not legal here.
    */
-  fun submit(request: RenderRequest, timeoutMs: Long = 60_000): RenderResult
+  public fun submit(request: RenderRequest, timeoutMs: Long = 60_000): RenderResult
 
   /**
    * Drains in-flight renders cleanly, then stops the render thread. Never aborts a render
@@ -51,7 +51,7 @@ interface RenderHost {
    *
    * @param timeoutMs upper bound for the worker thread to exit after the poison pill is enqueued.
    */
-  fun shutdown(timeoutMs: Long = 30_000)
+  public fun shutdown(timeoutMs: Long = 30_000)
 
   /**
    * The disposable user-class [UserClassLoaderHolder] this host renders against (B2.0 — see
@@ -68,7 +68,7 @@ interface RenderHost {
    * representative holder (slot 0) so callers that only need "is this host classloader-aware?" keep
    * working; callers that mutate state should use [swapUserClassLoaders] for the broadcast.
    */
-  val userClassloaderHolder: UserClassLoaderHolder?
+  public val userClassloaderHolder: UserClassLoaderHolder?
     get() = null
 
   /**
@@ -81,7 +81,7 @@ interface RenderHost {
    * [userClassloaderHolder]?.swap() directly so the broadcast is the same call site for both
    * single-sandbox and pool modes.
    */
-  fun swapUserClassLoaders() {
+  public fun swapUserClassLoaders() {
     userClassloaderHolder?.swap()
   }
 
@@ -96,7 +96,7 @@ interface RenderHost {
    * Implementations MUST keep this in sync with their [acquireInteractiveSession] override —
    * advertising `true` while throwing is a contract violation.
    */
-  val supportsInteractive: Boolean
+  public val supportsInteractive: Boolean
     get() = false
 
   /**
@@ -114,7 +114,7 @@ interface RenderHost {
    * exposes a providable locale list. `orientation` IS advertised on desktop — reduced to a
    * `widthPx ↔ heightPx` swap by `DesktopHost` (issue #1208).
    */
-  val supportedOverrides: Set<String>
+  public val supportedOverrides: Set<String>
     get() = emptySet()
 
   /**
@@ -125,7 +125,7 @@ interface RenderHost {
    * etc. Real backends override: `RobolectricHost` returns `ANDROID`, `DesktopHost` returns
    * `DESKTOP`.
    */
-  val backendKind: ee.schimke.composeai.daemon.protocol.BackendKind?
+  public val backendKind: ee.schimke.composeai.daemon.protocol.BackendKind?
     get() = null
 
   /**
@@ -133,7 +133,7 @@ interface RenderHost {
    * `@Config(sdk = ...)` value so clients can reason about backend compatibility without scraping
    * daemon logs. Non-Android backends return `null`.
    */
-  val androidSdk: Int?
+  public val androidSdk: Int?
     get() = null
 
   /**
@@ -147,7 +147,7 @@ interface RenderHost {
    * etc.) instead of probing each kind. The default empty set is the pre-#1203 contract — clients
    * treat absent and `[]` identically and assume only pointer events are dispatchable.
    */
-  val supportedInteractiveControlKinds: Set<String>
+  public val supportedInteractiveControlKinds: Set<String>
     get() = emptySet()
 
   /**
@@ -183,7 +183,7 @@ interface RenderHost {
    *   auto-close, the JSON-RPC read thread for explicit stop, the JVM shutdown thread for
    *   `cleanShutdown` — so implementations should be cheap and thread-safe.
    */
-  fun acquireInteractiveSession(
+  public fun acquireInteractiveSession(
     previewId: String,
     classLoader: ClassLoader,
     inspectionMode: Boolean? = null,
@@ -210,7 +210,7 @@ interface RenderHost {
    *
    * Implementations MUST keep this in sync with their [acquireRecordingSession] override.
    */
-  val supportsRecording: Boolean
+  public val supportsRecording: Boolean
     get() = false
 
   /**
@@ -223,7 +223,7 @@ interface RenderHost {
    * Default empty list keeps pre-feature hosts (FakeHost, RobolectricHost today) consistent with
    * `supportsRecording = false` — clients see "no formats" and don't offer the toggle.
    */
-  val supportedRecordingFormats: List<String>
+  public val supportedRecordingFormats: List<String>
     get() = emptyList()
 
   /**
@@ -254,7 +254,7 @@ interface RenderHost {
    *   [RecordingSession.postScript] and [RecordingSession.stop] plays it back. See RECORDING.md §
    *   "live mode".
    */
-  fun acquireRecordingSession(
+  public fun acquireRecordingSession(
     previewId: String,
     recordingId: String,
     classLoader: ClassLoader,
@@ -282,7 +282,7 @@ interface RenderHost {
    * dispatch for one of them can flip just its own contribution to `supported = true` without
    * editing the global roadmap list.
    */
-  fun recordingScriptEventDescriptors(): List<DataExtensionDescriptor> = emptyList()
+  public fun recordingScriptEventDescriptors(): List<DataExtensionDescriptor> = emptyList()
 
   /**
    * The `@PreviewParameter` rows of [previewId] — the ids a client can actually render
@@ -303,13 +303,13 @@ interface RenderHost {
    * (the default) for a host that can't enumerate — [JsonRpcServer] maps those to `InvalidParams`
    * and `MethodNotFound` respectively.
    */
-  fun previewParameterRows(previewId: String): List<PreviewParameterRow> =
+  public fun previewParameterRows(previewId: String): List<PreviewParameterRow> =
     throw UnsupportedOperationException(
       "preview-parameter row enumeration unsupported by " +
         (this::class.simpleName ?: this::class.java.name)
     )
 
-  companion object {
+  public companion object {
     /**
      * Monotonic id source shared across [JsonRpcServer] (which assigns ids to incoming render
      * requests) and any host-side bookkeeping. Stays monotonic across host restarts within a single
@@ -317,14 +317,14 @@ interface RenderHost {
      */
     private val nextId: AtomicLong = AtomicLong(1)
 
-    fun nextRequestId(): Long = nextId.getAndIncrement()
+    public fun nextRequestId(): Long = nextId.getAndIncrement()
   }
 }
 
 /** Request envelope. [Shutdown] is the poison pill; everything else is a [Render]. */
-sealed interface RenderRequest {
+public sealed interface RenderRequest {
 
-  data class Render(
+  public data class Render(
     val id: Long = RenderHost.nextRequestId(),
     /**
      * Free-form payload the stub host doesn't read. Real backends will replace this with a typed
@@ -351,11 +351,13 @@ sealed interface RenderRequest {
    * The reply posted back on the per-id result queue is a `java.util.List<String>` of row labels in
    * provider order, for the same reason.
    */
-  data class ParameterRows(val id: Long = RenderHost.nextRequestId(), val payload: String = "") :
-    RenderRequest
+  public data class ParameterRows(
+    val id: Long = RenderHost.nextRequestId(),
+    val payload: String = "",
+  ) : RenderRequest
 
   /** Singleton poison pill. */
-  data object Shutdown : RenderRequest
+  public data object Shutdown : RenderRequest
 }
 
 /**
@@ -365,7 +367,7 @@ sealed interface RenderRequest {
  * [id] is the addressable previewId — `<baseId>_<label>`, the same stem the fan-out renderer writes
  * to disk — so a client lists rows and renders one without constructing ids itself.
  */
-data class PreviewParameterRow(
+public data class PreviewParameterRow(
   /** Zero-based position in the provider's value sequence. */
   val index: Int,
   /**
@@ -408,7 +410,7 @@ data class PreviewParameterRow(
  * recorder (the harness fake, sandbox-worker replies), which is exactly when `render/trace` falls
  * back to its v1 single-phase shape over `metrics["tookMs"]`.
  */
-data class RenderResult(
+public data class RenderResult(
   val id: Long,
   val classLoaderHashCode: Int,
   val classLoaderName: String,

@@ -37,7 +37,7 @@ import org.jetbrains.kotlin.buildtools.api.SourcesChanges
  * The driver mutates the edit file in place (the `warm-after-1-line-edit` scenario) and always
  * restores it in a `finally`, so a crash mid-run can't leave the working tree dirty.
  */
-fun main() {
+public fun main() {
   val sysprops: (String) -> String? = System::getProperty
   val config = BenchConfig.fromSysprops(sysprops)
   if (config == null) {

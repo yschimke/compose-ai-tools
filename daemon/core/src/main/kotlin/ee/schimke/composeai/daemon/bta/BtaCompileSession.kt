@@ -54,7 +54,7 @@ import org.jetbrains.kotlin.buildtools.api.jvm.operations.JvmCompilationOperatio
  * worker, not the read loop. The `BtaCompileSession` itself is thread-safe; concurrent compile
  * calls serialize on the underlying `KotlinToolchains.BuildSession` lifecycle.
  */
-class BtaCompileSession(
+public class BtaCompileSession(
   private val implClasspath: List<Path>,
   private val icWorkingDir: Path,
   private val moduleName: String,
@@ -75,7 +75,7 @@ class BtaCompileSession(
    * where IC isn't useful (cold-bootstrap warm-up, parity tests). Production save loops should call
    * [compileIncremental] instead.
    */
-  fun compile(
+  public fun compile(
     sources: List<Path>,
     compileClasspath: List<Path>,
     outputDir: Path,
@@ -109,7 +109,7 @@ class BtaCompileSession(
    * - The BTA IC working directory is [icWorkingDir]/`ic/`; the current API owns any reduced
    *   classpath state inside that directory rather than requiring a separate snapshot path.
    */
-  fun compileIncremental(
+  public fun compileIncremental(
     sources: List<Path>,
     compileClasspath: List<Path>,
     outputDir: Path,
