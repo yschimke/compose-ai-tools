@@ -749,7 +749,20 @@ class ServeCatalogLiveHost(
       // pulls every already-persisted PNG off disk on every slice — hundreds of megabytes for a
       // partly warmed catalog — only for the 128 MB memory window to evict most of them again
       // before the next slice repeats the whole thing.
-      jobs.filterNot { catalogThemeCache.contains(it.cacheKey) }.groupBy { it.previewId }
+      jobs
+        .filterNot { catalogThemeCache.contains(it.cacheKey) }
+        .ifEmpty {
+          // Gaps first, dirt second. Once every target is warm the pass used to report FINISHED
+          // and stop, which was the whole story while warm meant "rendered by this build". It no
+          // longer does: a generation adopted across a release is warm and inherited, and left
+          // alone it would stay another build's pixels for the life of the catalog. These are
+          // re-rendered at the same admission and the same slice as anything else — they are the
+          // lowest-value work the pass has, because unlike a gap they are already serving
+          // something.
+          val dirty = catalogThemeCache.dirtyTargets().toSet()
+          jobs.filter { it.cacheKey in dirty }
+        }
+        .groupBy { it.previewId }
     if (byPreview.isEmpty()) return PassOutcome.FINISHED
     val allPreviewIds = jobs.map { it.previewId }.distinct()
     val start = Math.floorMod(optimizerPreviewCursor.get(), allPreviewIds.size)

@@ -144,11 +144,34 @@ class ThemeCacheStore(
     // falls back to the directory's own timestamp for it, and a readable one is strictly better.
     if (existing != null && existing.toolVersion == inputs.toolVersion) return
     val createdAt = existing?.createdAtEpochMillis?.takeIf { it > 0 } ?: clock()
+    // A DIFFERENT build is opening renders another one wrote, so everything already here is dirty
+    // from this moment on. On a generation this build created there is nothing older to mark, and
+    // the boundary stays at zero.
+    val boundary = if (existing != null) clock() else 0L
     runCatching {
-      file.writeText(json.encodeToString(inputs.copy(createdAtEpochMillis = createdAt)))
+      file.writeText(
+        json.encodeToString(
+          inputs.copy(createdAtEpochMillis = createdAt, dirtyBeforeEpochMillis = boundary)
+        )
+      )
     }
       .onFailure { recordFailure(dir.name, "manifest: ${it.message}") }
   }
+
+  /**
+   * The dirty boundary recorded in [dir]'s manifest, or 0 when there is none.
+   *
+   * Read back off disk rather than carried from [writeManifest]'s caller, because the boundary
+   * belongs to the generation rather than to this process's idea of it: on a rolling update the
+   * replica that opened the directory first is the one that set it, and re-deriving it here would
+   * move a line the other replica is already regenerating against.
+   */
+  private fun dirtyBoundary(dir: File): Long = runCatching {
+    json
+      .decodeFromString(GenerationInputs.serializer(), File(dir, MANIFEST_NAME).readText())
+      .dirtyBeforeEpochMillis
+  }
+    .getOrDefault(0L)
 
   /**
    * Delete every generation in the store, unconditionally, and report how many went.
@@ -331,6 +354,62 @@ class ThemeCacheStore(
     /** This generation's directory name — the fingerprint it was opened under. */
     val fingerprint: String = dir.name
 
+    /**
+     * Renders written before this instant came from a build that is not the one running, and are
+     * **dirty**: still servable once the load-time sample has vouched for them, but queued for
+     * re-render so the store converges on pixels this renderer actually produced.
+     *
+     * Volatile because [markAllDirty] moves it while the optimizer is reading it.
+     */
+    @Volatile private var dirtyBefore: Long = dirtyBoundary(dir)
+
+    /** Whether [cacheKey] is on disk from an older build and has not been re-rendered since. */
+    fun isDirty(cacheKey: String): Boolean = isDirtyName(fileName(cacheKey))
+
+    /**
+     * The same question asked of a **file name** rather than a cache key.
+     *
+     * [present] holds hashed names, not the keys they were derived from — the store never needs to
+     * map back, and could not: the hash is one-way. So every internal walk over what is on disk
+     * goes through this, and only the caller-facing [isDirty] hashes. Routing an internal walk
+     * through that one instead hashes an already-hashed name, lands on a file that does not exist,
+     * and — since a missing file reads as dirty — quietly reports the entire generation dirty.
+     */
+    private fun isDirtyName(name: String): Boolean {
+      val boundary = dirtyBefore
+      if (boundary <= 0L) return false
+      val file = File(dir, "$name$PNG_SUFFIX")
+      val modified = file.lastModified()
+      // A file whose timestamp cannot be read (0) is treated as dirty: "I cannot tell how old this
+      // is" and "this is current" are not the same answer, and only one of them is safe to guess.
+      return !file.isFile || modified == 0L || modified < boundary
+    }
+
+    /** How many renders on disk are still an older build's work. */
+    fun dirtyCount(): Int = if (dirtyBefore <= 0L) 0 else present.count(::isDirtyName)
+
+    /**
+     * Mark every render currently on disk dirty, by moving the boundary to now.
+     *
+     * The operator's "regenerate this catalog" — for pixels suspected wrong by something no
+     * fingerprint sees, a base image that changed the installed fonts being the case that motivated
+     * it. Deliberately not a delete: the entries keep serving while the background pass replaces
+     * them, so asking for a refresh does not cost every preview a cold render.
+     */
+    fun markAllDirty(): Int {
+      val now = clock()
+      dirtyBefore = now
+      runCatching {
+        val file = File(dir, MANIFEST_NAME)
+        val existing = json.decodeFromString(GenerationInputs.serializer(), file.readText())
+        file.writeText(json.encodeToString(existing.copy(dirtyBeforeEpochMillis = now)))
+      }
+        .onFailure { recordFailure(system, "manifest: ${it.message}") }
+      // Everything on disk predates a boundary set to now, so the count is simply what is here —
+      // and asking `isDirtyName` would race the very timestamps it just invalidated.
+      return present.size
+    }
+
     // Per-generation counters. The store-wide ones next to them answer "is the volume being used";
     // these answer "is THIS catalog's cache working", which is the question an operator actually
     // has — a box serving fifteen catalogs where one has an unstable fingerprint reports healthy
@@ -392,7 +471,11 @@ class ThemeCacheStore(
       // here would leave the suspect PNG on disk, and once verification passed on OTHER sampled
       // keys
       // the read path would serve it again the moment the fresh copy fell out of memory.
-      if (name in present && !(replaceExisting && name in adopted)) return
+      // `|| isDirty` is what lets the regeneration pass actually land. A dirty entry an operator
+      // marked was written by THIS process, so it is not in `adopted`, and the adopted-only test
+      // would drop its replacement on the floor — the pass would re-render the catalog every slice
+      // and never clear a single flag.
+      if (name in present && !(replaceExisting && (name in adopted || isDirtyName(name)))) return
       // Optimizer admission prevents duplicate warming, but foreground renders can still complete
       // on two zero-downtime replicas at once. Serialize writes for the whole generation across
       // processes. This is try-lock rather than lock: persistence is best-effort and a visitor must
@@ -438,6 +521,63 @@ class ThemeCacheStore(
      * capture some input, so every entry sharing it is suspect. Keeping the rest would be trusting
      * the same broken identity that just proved untrustworthy.
      */
+    /**
+     * Delete only the **dirty** renders, keeping everything this build wrote, and report how many
+     * went.
+     *
+     * What a failed sample verification should do now that a generation can hold renders from two
+     * builds at once. [discard] takes the lot, which was right while every entry present at open
+     * came from the same suspect build — it is wrong once this process has spent an hour rendering
+     * fresh entries into the same directory, because those are the one thing the sample just
+     * *confirmed* and throwing them away is a straight hour of rendering lost.
+     *
+     * Returns -1 when the generation write lock could not be taken, matching [discard]'s "could
+     * not" so the caller can keep the entries quarantined rather than assume they are gone.
+     */
+    fun discardDirty(): Int {
+      if (dirtyBefore <= 0L) return 0
+      var generationWriteLock = tryGenerationWriteLock()
+      var attempt = 0
+      while (generationWriteLock == null && attempt < DISCARD_LOCK_ATTEMPTS) {
+        attempt++
+        runCatching { Thread.sleep(DISCARD_LOCK_BACKOFF_MILLIS) }
+        generationWriteLock = tryGenerationWriteLock()
+      }
+      if (generationWriteLock == null) return -1
+      try {
+        var removed = 0
+        for (name in present.filter(::isDirtyName)) {
+          val file = File(dir, "$name$PNG_SUFFIX")
+          val size = file.length()
+          if (runCatching { !file.exists() || file.delete() }.getOrDefault(false)) {
+            present.remove(name)
+            adopted.remove(name)
+            knownBytes.addAndGet(-size)
+            removed++
+          } else {
+            recordFailure(system, "could not discard dirty ${file.name}")
+          }
+        }
+        // Nothing older than the boundary survives, so the boundary has nothing left to mark. Left
+        // in place it would make every entry this build writes from here look dirty the moment a
+        // filesystem timestamp rounded the wrong way.
+        clearDirtyBoundary()
+        return removed
+      } finally {
+        generationWriteLock.close()
+      }
+    }
+
+    private fun clearDirtyBoundary() {
+      dirtyBefore = 0L
+      runCatching {
+        val file = File(dir, MANIFEST_NAME)
+        val existing = json.decodeFromString(GenerationInputs.serializer(), file.readText())
+        file.writeText(json.encodeToString(existing.copy(dirtyBeforeEpochMillis = 0L)))
+      }
+        .onFailure { recordFailure(system, "manifest: ${it.message}") }
+    }
+
     fun discard(): Boolean {
       // Retried, because the contended case is transient and the consequence of giving up is not.
       // The lock is held only for the length of one PNG write, so a foreground render that happens
@@ -456,6 +596,9 @@ class ThemeCacheStore(
       try {
         present.clear()
         adopted.clear()
+        // The manifest goes with everything else below, so the in-memory boundary must go too or
+        // this object would keep marking a directory it just emptied.
+        dirtyBefore = 0L
         // Measured before the delete and subtracted, or the census would carry the discarded
         // generation's bytes plus its rebuilt replacement until the next sweep — making the one
         // number an operator uses to judge occupancy roughly twice the truth.
@@ -596,6 +739,20 @@ data class GenerationInputs(
   val variant: String,
   val renderConfig: String,
   val createdAtEpochMillis: Long = 0,
+  /**
+   * When a build other than the one that wrote them last opened this generation — the line
+   * separating **dirty** renders from fresh ones.
+   *
+   * Dirtiness is derived from this and each file's own timestamp rather than tracked per entry: a
+   * render written before the boundary came from an older build, one written after came from this
+   * one, and re-rendering an entry moves its timestamp past the boundary for free. That is the
+   * whole of the bookkeeping — no parallel index to keep consistent with 18,604 files, and no write
+   * amplification on the regeneration path it exists to drive.
+   *
+   * Zero means nothing is dirty: every render here was written by a build that agrees with this
+   * one.
+   */
+  val dirtyBeforeEpochMillis: Long = 0,
 )
 
 /** What one [ThemeCacheStore.sweep] reclaimed. */
