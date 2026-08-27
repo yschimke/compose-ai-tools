@@ -124,6 +124,7 @@ internal object CliFlags {
       "--catalog-max-images",
       "--catalog-feed-idle-timeout",
       "--catalog-feed-cache",
+      "--background-renders",
       "--catalog-cache-dir",
       "--catalog-cache-max-bytes",
       "--theme-cache-dir",

@@ -149,6 +149,24 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
   private val liveSeats: Int = args.flagValue("--live-seats")?.toIntOrNull()?.coerceAtLeast(0) ?: 0
 
   /**
+   * Background renders admitted at once, server-wide, when the operator names it — otherwise
+   * [ServeBackgroundWork.renderLaneFor] derives one from the seat budget.
+   *
+   * The derivation clamps at [ServeBackgroundWork.MAX_DERIVED_CONCURRENT_RENDERS] (3), and that
+   * ceiling is reached at a seat budget of 8 — so on a box with more seats than that the lane stops
+   * widening while everything else does, and there was no way to say otherwise short of rebuilding
+   * the image: `composeai.serve.backgroundRenders` is a system property, and the prebuilt image
+   * bakes JAVA_TOOL_OPTIONS into its own ENV. Measured on preview.coo.ee, whose container is
+   * allowed 24 GB: the seat budget went 8 → 12 and the background lane stayed 3.
+   *
+   * Deliberately un-clamped. The derivation is conservative because it is guessing; an operator
+   * naming a number has looked at their own box, and the seat budget still bounds how many daemons
+   * those renders can actually occupy.
+   */
+  private val backgroundRenders: Int? =
+    args.flagValue("--background-renders")?.toIntOrNull()?.takeIf { it >= 1 }
+
+  /**
    * The one live-seat budget for this server, shared by the HTTP stream lane and by every catalog
    * daemon pool. Built here rather than inside [ServeHttpServer] so the pools — which are
    * constructed while catalogs load, before the server exists — charge the same budget. Two
@@ -905,7 +923,8 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
   private val backgroundWork by lazy {
     val pressureSampler = LinuxHostResourceSampler()
     ServeBackgroundWork(
-      maxConcurrentRenders = ServeBackgroundWork.renderLaneFor(liveSeatLimiter),
+      maxConcurrentRenders =
+        backgroundRenders ?: ServeBackgroundWork.renderLaneFor(liveSeatLimiter),
       hostCoordinator =
         optimizerCoordinationDirectory?.let {
           FileOptimizerHostCoordinator(
@@ -4828,6 +4847,13 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
                           ${ThemeCacheStore.DEFAULT_MAX_BYTES / (1024L * 1024 * 1024)} GB). Superseded
                           generations are reclaimed; generations still in use are never evicted, so
                           exceeding this is reported rather than acted on.
+        --background-renders <n>
+                          Background (theme-optimizer) renders admitted at once, server-wide.
+                          Defaults to a value derived from --live-seats, which clamps at
+                          ${ServeBackgroundWork.MAX_DERIVED_CONCURRENT_RENDERS} — a ceiling reached
+                          at 8 seats, so a bigger box stops widening this lane while everything else
+                          scales. Name it explicitly to go past that; the seat budget still bounds
+                          how many daemons the renders can occupy.
         --theme-optimizer-coordination-dir <dir>
                           Shared directory used to coordinate background optimizer lanes across
                           server replicas. Defaults to optimizer-locks beside --catalogs-file; set

@@ -122,6 +122,10 @@ services:
       # Where that optional clone lands inside the container. Empty ⇒ /catalog-src.
       SERVE_CATALOG_SOURCE_ROOT: "${SERVE_CATALOG_SOURCE_ROOT:-}"
       SERVE_LIVE_SEATS: "${SERVE_LIVE_SEATS:-}"
+      # Background theme-optimizer renders admitted at once, server-wide. Empty leaves the server's
+      # derivation from the seat budget, which clamps at 3 and reaches that at 8 seats — so raising
+      # SERVE_LIVE_SEATS alone does not widen this lane.
+      SERVE_BACKGROUND_RENDERS: "${SERVE_BACKGROUND_RENDERS:-}"
       # Playground compile lane. Off by default: it runs visitor-supplied Kotlin and needs both a
       # catalog liveBundle classpath plus a sandbox profile on public hosts. Set the bundle path(s)
       # to local files available inside the container, for example a bind mount under /config.

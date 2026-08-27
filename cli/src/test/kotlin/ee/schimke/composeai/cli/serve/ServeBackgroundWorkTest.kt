@@ -171,6 +171,15 @@ class ServeBackgroundWorkTest {
       ServeBackgroundWork.MAX_DERIVED_CONCURRENT_RENDERS,
       ServeBackgroundWork.renderLaneFor(LiveSeatLimiter(totalPermits = 64)),
     )
+    // **The cap is reached at eight permits**, which is why `--background-renders` exists. Every
+    // budget from here up derives the same lane, so on a box with more seats than that this lane
+    // stops widening while everything else scales with the budget. Measured on preview.coo.ee,
+    // whose container is allowed 24 GB: the seat budget went 8 -> 12 and the lane stayed 3.
+    assertEquals(
+      ServeBackgroundWork.renderLaneFor(LiveSeatLimiter(totalPermits = 8)),
+      ServeBackgroundWork.renderLaneFor(LiveSeatLimiter(totalPermits = 12)),
+      "8 seats already saturates the derivation, so 12 buys nothing without an explicit override",
+    )
   }
 
   @Test

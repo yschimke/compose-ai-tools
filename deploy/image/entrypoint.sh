@@ -335,6 +335,13 @@ if [[ -z "${SERVE_LIVE_SEATS:-}" ]]; then
   echo "entrypoint: auto live-seat budget ${SERVE_LIVE_SEATS} (effective mem ${eff_mb} MB)" >&2
 fi
 [[ -n "${SERVE_LIVE_SEATS}" ]] && args+=(--live-seats "${SERVE_LIVE_SEATS}")
+# Background (theme-optimizer) renders admitted at once, server-wide. Unset leaves the server's own
+# derivation from the seat budget, which clamps at 3 — a ceiling reached at 8 seats, so a box with
+# more than that stops widening this lane while everything else scales with it. The underlying knob
+# is a system property, and this image bakes JAVA_TOOL_OPTIONS into its own ENV, so without this
+# there was no way to set it short of rebuilding.
+[[ -n "${SERVE_BACKGROUND_RENDERS:-}" ]] &&
+  args+=(--background-renders "${SERVE_BACKGROUND_RENDERS}")
 if [[ "${SERVE_ACCEPT_BUNDLES:-}" == "1" || "${SERVE_ACCEPT_BUNDLES:-}" == "true" ]]; then
   args+=(--accept-bundles)
   [[ -n "${SERVE_ACCEPT_BUNDLES_FROM:-}" ]] &&
