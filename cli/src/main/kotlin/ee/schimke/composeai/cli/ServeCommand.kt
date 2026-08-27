@@ -3632,12 +3632,26 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         onPostPublishIncomplete = { system -> activeRefresher?.forgetHeads(listOf(system)) },
         registerWasm = { system, wasmDir ->
           // A local `--wasm-dir` is the operator's explicit override, so a published app never
-          // displaces it — including on a later branch refresh, which re-runs this callback.
+          // displaces it — including on a later branch refresh, which re-runs this callback, and
+          // including the withdrawal below.
           if (system !in localWasm) {
-            wasm[system] = wasmDir
-            System.err.println(
-              "serve: catalog $system carries an in-browser Wasm app (/wasm/$system/)"
-            )
+            if (wasmDir == null) {
+              // This generation carries no usable app. Withdrawn rather than left pointing at the
+              // outgoing generation's copy, which is readable until the next sweep: the toggle
+              // would otherwise run the previous catalog's code, then 404.
+              if (wasm.remove(system) != null) {
+                System.err.println(
+                  "serve: catalog $system no longer carries an in-browser Wasm app"
+                )
+              }
+            } else {
+              val fresh = wasm.put(system, wasmDir) == null
+              if (fresh) {
+                System.err.println(
+                  "serve: catalog $system carries an in-browser Wasm app (/wasm/$system/)"
+                )
+              }
+            }
           }
         },
         buildTrustedBundle = {
