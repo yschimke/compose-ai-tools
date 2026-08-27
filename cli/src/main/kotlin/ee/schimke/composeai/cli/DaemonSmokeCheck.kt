@@ -1,10 +1,10 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.daemon.DaemonLaunchDescriptor
+import ee.schimke.composeai.daemon.client.DaemonClientFactory
+import ee.schimke.composeai.daemon.client.SubprocessDaemonClientFactory
+import ee.schimke.composeai.daemon.client.WorkspaceId
 import ee.schimke.composeai.io.SystemFileSystem
-import ee.schimke.composeai.mcp.DaemonClientFactory
-import ee.schimke.composeai.mcp.SubprocessDaemonClientFactory
-import ee.schimke.composeai.mcp.WorkspaceId
 import java.io.File
 import okio.FileSystem
 import okio.Path.Companion.toPath

@@ -1,8 +1,8 @@
 package ee.schimke.composeai.cli
 
-import ee.schimke.composeai.mcp.DaemonClient
-import ee.schimke.composeai.mcp.DaemonClientFactory
-import ee.schimke.composeai.mcp.DaemonSpawn
+import ee.schimke.composeai.daemon.client.DaemonClient
+import ee.schimke.composeai.daemon.client.DaemonClientFactory
+import ee.schimke.composeai.daemon.client.DaemonSpawn
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException

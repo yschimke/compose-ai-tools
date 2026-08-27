@@ -757,6 +757,13 @@ include(":daemon:bta-host")
 // Same lifecycle as `:daemon:bta-host`; remove together with it.
 include(":daemon:bta-host-fixture")
 
+// JSON-RPC client for the preview daemon, published so the render-session library can drive a
+// daemon without dragging the MCP server onto the classpath. Lifted out of `:mcp` for exactly that
+// reason — #3824 preparation item 3, the last leak the contract probe recorded.
+include(":daemon-client")
+
+project(":daemon-client").projectDir = file("daemon/client")
+
 include(":mcp")
 
 // Public render-session library. `:render-session-api` is the pure-interface surface every

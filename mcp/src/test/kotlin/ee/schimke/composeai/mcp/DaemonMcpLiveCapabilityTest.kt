@@ -6,6 +6,10 @@ import ee.schimke.composeai.daemon.JsonRpcServer
 import ee.schimke.composeai.daemon.RenderHost
 import ee.schimke.composeai.daemon.RenderRequest
 import ee.schimke.composeai.daemon.RenderResult
+import ee.schimke.composeai.daemon.client.DaemonClient
+import ee.schimke.composeai.daemon.client.DaemonClientFactory
+import ee.schimke.composeai.daemon.client.DaemonSpawn
+import ee.schimke.composeai.daemon.client.WorkspaceId
 import ee.schimke.composeai.daemon.protocol.BackendKind
 import java.io.File
 import java.io.InputStream

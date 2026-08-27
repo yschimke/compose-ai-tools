@@ -1,12 +1,15 @@
 package ee.schimke.composeai.mcp
 
 import ee.schimke.composeai.daemon.DaemonLaunchDescriptor
+import ee.schimke.composeai.daemon.client.DaemonClient
+import ee.schimke.composeai.daemon.client.DaemonClientFactory
+import ee.schimke.composeai.daemon.client.DaemonSpawn
+import ee.schimke.composeai.daemon.client.WorkspaceId
 import ee.schimke.composeai.daemon.protocol.BackendKind
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.time.Duration
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -681,51 +684,6 @@ fun interface DescriptorProvider {
       return index
     }
   }
-}
-
-/**
- * Pluggable spawn — production [SubprocessDaemonClientFactory] forks a JVM via [ProcessBuilder];
- * tests inject an in-memory factory that wires the [DaemonClient] to a fake daemon over piped
- * streams. The factory returns a [DaemonSpawn] that owns the underlying resource (subprocess or
- * coroutine).
- *
- * [workspaceId] identifies which workspace the daemon serves; with
- * [DaemonLaunchDescriptor.modulePath] it names the daemon in logs and keys test doubles. It is
- * deliberately *not* a [RegisteredProject]: that type carries the MCP supervisor's own registry
- * ([RegisteredProject.knownModules], [RegisteredProject.daemons]), and naming it here would put the
- * supervision model in the signature of every consumer that only wants to start a daemon —
- * including the render-session library, which built a throwaway [RegisteredProject] purely to
- * satisfy this parameter. Spawning needs the identity, not the registry.
- */
-fun interface DaemonClientFactory {
-  fun spawn(workspaceId: WorkspaceId, descriptor: DaemonLaunchDescriptor): DaemonSpawn
-}
-
-/**
- * Owns the resources behind a single live [DaemonClient]: the subprocess (in production) or the
- * fake daemon side of a piped pair (in tests). The supervisor calls [client] once after spawn to
- * wire the notification + close handlers.
- */
-interface DaemonSpawn {
-  val client: DaemonClient
-
-  /**
-   * Wires the supervisor's notification + close handlers onto the underlying [client]. Called
-   * exactly once by [DaemonSupervisor.spawn] before any traffic flows. Implementations typically
-   * delay creating the [client] until this call so the handlers are baked in from the first frame.
-   */
-  fun client(
-    onNotification: (method: String, params: JsonObject?) -> Unit,
-    onClose: () -> Unit,
-  ): DaemonClient
-
-  fun shutdown()
-
-  /**
-   * Shuts down within [timeout] when the owner has a stricter lifecycle budget. Implementations
-   * that do not own a subprocess retain their ordinary shutdown behaviour.
-   */
-  fun shutdown(timeout: Duration) = shutdown()
 }
 
 // -----------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-package ee.schimke.composeai.mcp
+package ee.schimke.composeai.daemon.client
 
 import com.google.common.truth.Truth.assertThat
 import java.io.ByteArrayInputStream

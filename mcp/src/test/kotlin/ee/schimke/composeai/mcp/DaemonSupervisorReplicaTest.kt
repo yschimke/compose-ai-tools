@@ -2,6 +2,7 @@ package ee.schimke.composeai.mcp
 
 import com.google.common.truth.Truth.assertThat
 import ee.schimke.composeai.daemon.DaemonLaunchDescriptor
+import ee.schimke.composeai.daemon.client.WorkspaceId
 import ee.schimke.composeai.mcp.protocol.ReadResourceResult
 import ee.schimke.composeai.mcp.protocol.ResourceContents
 import java.io.InputStream

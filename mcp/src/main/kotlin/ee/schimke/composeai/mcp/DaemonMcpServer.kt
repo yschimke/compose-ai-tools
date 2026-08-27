@@ -1,6 +1,8 @@
 package ee.schimke.composeai.mcp
 
 import ee.schimke.composeai.daemon.RecordingTestGenerator
+import ee.schimke.composeai.daemon.client.DataProductWireException
+import ee.schimke.composeai.daemon.client.WorkspaceId
 import ee.schimke.composeai.daemon.protocol.AmbientOverride
 import ee.schimke.composeai.daemon.protocol.ChangeType
 import ee.schimke.composeai.daemon.protocol.FileKind

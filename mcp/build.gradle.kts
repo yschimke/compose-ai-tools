@@ -57,6 +57,10 @@ dependencies {
   // only and consumers resolving from POM metadata fail to compile against the MCP APIs.
   api(project(":daemon:core"))
   api(project(":render-session-api"))
+  // The daemon JSON-RPC client, lifted out of this module (#3824 item 3). `api` because it is on
+  // this module's public surface — `SupervisedDaemon.client` is a `DaemonClient`, and
+  // `DaemonSupervisor` takes a `DaemonClientFactory`.
+  api(project(":daemon-client"))
   // Semantics diff engine + payload model for the `diff_semantics` tool (issue #1785).
   implementation(project(":data-layoutinspector-core"))
 

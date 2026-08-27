@@ -31,6 +31,7 @@ PROBE_VERSION="0.0.0-contract-probe-SNAPSHOT"
 # because a contract that isn't published simply won't resolve.
 CONTRACT_PROJECTS=(
   ":daemon:core"
+  ":daemon-client"
   ":preview-data-api"
   ":render-session-api"
   ":render-session-subprocess"
@@ -48,10 +49,15 @@ CONTRACT_PROJECTS=(
 # leaks" table in docs/design/PREVIEW_SERVER_SPLIT.md. They are listed separately from the contracts
 # so this file says out loud what `checkContractSurface` enforces: contracts stay, leaks go.
 #
-#   :mcp                  reached through :render-session-subprocess's transport
-LEAK_PROJECTS=(
-  ":mcp"
-)
+# EMPTY as of #3824 preparation item 3. The last entry was `:mcp`, reached through
+# `:render-session-subprocess`'s transport; those types now live in `:daemon-client`, which is a
+# contract above rather than a leak here.
+#
+# Note this list is what gets PUBLISHED to Maven Local alongside the contracts, which is why an
+# emptied entry matters beyond bookkeeping: while `:mcp` was still listed, the probe resolved
+# against a copy this script had just installed, so it could have reported the leak gone while a
+# real edge survived. Verify a removal with the artifact deleted from ~/.m2 first.
+LEAK_PROJECTS=()
 
 skip_publish=0
 for arg in "$@"; do

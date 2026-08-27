@@ -125,6 +125,7 @@
       "preview-server/gradle.properties",
       "scripts/check-preview-server-contracts.sh",
       "daemon/core/**",
+      "daemon/client/**",
       "api/preview-data-api/**",
       "common/io/**",
       "render-session/**",
