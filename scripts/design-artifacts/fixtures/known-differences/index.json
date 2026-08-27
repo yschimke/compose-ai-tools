@@ -292,6 +292,16 @@
       "site": null
     },
     {
+      "id": "artifacts-at-total-byte-cap",
+      "title": "Eight records whose artifacts total exactly 64 MiB",
+      "site": null
+    },
+    {
+      "id": "artifacts-too-large-in-total",
+      "title": "The same eight records, one byte over 64 MiB in total",
+      "site": null
+    },
+    {
       "id": "id-not-safe-proto",
       "title": "An `id` of `__proto__`",
       "site": null

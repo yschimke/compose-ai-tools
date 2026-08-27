@@ -35,16 +35,40 @@ export const KNOWN_DIFFERENCES_SCHEMA = "compose-preview-known-differences/v1";
 /**
  * The budget, versioned with the schema.
  *
- * The six ceilings are *inclusive* — a document at exactly 256 acceptances, exactly 128 megapixels,
- * exactly 8192 px on a side, exactly 8 MiB per artifact or exactly 640 MiB of peak live raster is
- * legal, and one unit past refuses. A `>=` check would reject both and leave two engines free to
- * disagree about the case in between.
+ * The ceilings are *inclusive* — a document at exactly 256 acceptances, exactly 128 megapixels,
+ * exactly 8192 px on a side, exactly 8 MiB per artifact, exactly 64 MiB of artifacts in total or
+ * exactly 640 MiB of peak live raster is legal, and one unit past refuses. A `>=` check would reject
+ * both and leave two engines free to disagree about the case in between.
  *
- * `maxRasterBytes` is the one ceiling that is about the *reader* rather than the document, and it
- * exists because the others quietly implied it: a document inside every one of them could still
- * oblige an engine to hold well over a gigabyte, which is a resource decision the caps were making
- * without anyone taking it. It is measured by {@link peakRasterBytes} from the declared headers,
- * before a single raster is allocated.
+ * `maxRasterBytes` and `maxTotalArtifactBytes` are the two ceilings that are about the *reader*
+ * rather than the document, and they exist because the others quietly implied them: a document
+ * inside every one of them could still oblige an engine to hold well over a gigabyte, which is a
+ * resource decision the caps were making without anyone taking it.
+ *
+ * `maxRasterBytes` bounds the *decoded* side and is measured by {@link peakRasterBytes} from the
+ * declared headers, before a single raster is allocated. `maxTotalArtifactBytes` is its compressed
+ * twin, and closes the gap that left: 256 records × 2 artifacts × 8 MiB is four gigabytes of
+ * entirely legal compressed bytes, and padding inside the compressed stream is legal — the
+ * conformance fixtures do it deliberately — so a 1×1 image padded to 8 MiB contributes about sixteen
+ * bytes to `maxRasterBytes` and eight megabytes to a reader that has to hold it.
+ *
+ * The offline engine escapes that by re-reading from disk (see the preflight pass in
+ * {@link evaluateKnownDifferences}: headers one record at a time, retaining nothing). A browser
+ * cannot: `readArtifact` is synchronous by design, because the evaluation ladder is a sequence of
+ * ordering requirements and threading a promise through it would turn each into a race — so the
+ * adapter must fetch ahead and hold what it fetched. Without this ceiling the bound on what it holds
+ * was four gigabytes; with it, 64 MiB.
+ *
+ * **It is summed over every record whose two artifacts the reader answered for**, whatever any later
+ * header check says about them. That is deliberately not the `preflightClean` set the pixel budget
+ * uses, and the difference is the whole reason this ceiling can be enforced anywhere but here. An
+ * adapter deciding what to retain sees a *superset* of `preflightClean` — it has the headers but not
+ * the mask-encoding rules or either hash — so a total restricted to clean records is one an adapter
+ * can only over-estimate, and over-estimating a ceiling means skipping a body the engine then asks
+ * for, which is `artifact-unreadable`: a verdict change, from a planner. Summed over answered reads,
+ * the total is a pure function of what round one already saw, so both sides compute the same number.
+ * Counting a record the second pass will never re-read over-counts, and over-counting is the safe
+ * direction for a ceiling: it refuses a little early rather than holding a little too much.
  *
  * `maxPreflightBytes` is the odd one out and is not a ceiling on anything a document may declare: it
  * is how much of an artifact the reader must serve so the header preflight can reach a verdict. It
@@ -60,6 +84,7 @@ export const BUDGET = {
   maxPixels: 128_000_000,
   maxAxis: 8192,
   maxArtifactBytes: 8 * 1024 * 1024,
+  maxTotalArtifactBytes: 64 * 1024 * 1024,
   maxPreflightBytes: 4096,
   maxRasterBytes: 640 * 1024 * 1024,
 };
@@ -644,12 +669,23 @@ export function evaluateKnownDifferences({ documentText, readArtifact, compariso
   // is knowable — `statuses` is absent for a document-level rejection — so continuing to fetch the
   // remaining artifacts buys nothing and costs everything the cap was defending.
   const evaluations = [];
+  let artifactBytes = 0;
   let pixels = 0;
   let largestArtifactPixels = 0;
   for (const [index, record] of records.entries()) {
     if (documentFailures.some((failure) => failure.reason === "document-too-large")) break;
     const evaluation = preflightRecord(record, index, readArtifact, catalog);
     evaluations.push(evaluation);
+    // **Before the `preflightClean` gate, deliberately.** Every record the reader answered for
+    // counts, because that is the only total an adapter can compute without re-deriving
+    // `preflightRecord` — see the note on `maxTotalArtifactBytes` in {@link BUDGET}. Checked as a
+    // running total and short-circuited like the others: past the ceiling nothing further about the
+    // document is knowable, and continuing to fetch costs exactly what the cap is defending.
+    artifactBytes += evaluation.artifactBytes;
+    if (artifactBytes > BUDGET.maxTotalArtifactBytes) {
+      pushOnce(documentFailures, { reason: "document-too-large" });
+      break;
+    }
     if (!evaluation.preflightClean) continue;
     for (const header of evaluation.headers) {
       const area = header.width * header.height;
@@ -989,6 +1025,10 @@ function preflightRecord(record, index, readArtifact, catalog) {
     reasons: [],
     headers: [],
     preflightClean: false,
+    // What the reader said this record's two artifacts weigh, once both reads have answered — 0
+    // until then, and 0 forever for a record that never got as far as reading. Summed by
+    // {@link evaluateKnownDifferences} against `maxTotalArtifactBytes`.
+    artifactBytes: 0,
     mask: null,
     accepted: null,
   };
@@ -1048,6 +1088,11 @@ function preflightRecord(record, index, readArtifact, catalog) {
   if (maskRead.byteLength > BUDGET.maxArtifactBytes) oversized.push("artifact-too-large");
   if (acceptedRead.byteLength > BUDGET.maxArtifactBytes) oversized.push("artifact-too-large");
   if (oversized.length > 0) return fail(...oversized);
+
+  // Recorded here and not later: past this point every remaining check is about what the bytes
+  // *say*, and the aggregate is about what they *weigh*. An artifact already refused for busting the
+  // per-artifact cap is not carried into the total — the document is keeping neither.
+  evaluation.artifactBytes = maskRead.byteLength + acceptedRead.byteLength;
 
   // **Truncated here as well, whatever the reader served.** `{ prefix: N }` is a request, and a host
   // may not be in a position to honour it — a `fetch` that cannot range-request, a reader that
