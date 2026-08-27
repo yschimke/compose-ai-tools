@@ -48,6 +48,22 @@ class GenerateRobolectricPropertiesTaskTest {
   }
 
   @Test
+  fun `the paused-clock hwui shadow is registered for the render lane`() {
+    // Without it Robolectric 4.17-beta-3+ rewrites hwui's frame timestamps into the host's
+    // monotonic domain, so every native render-thread animation — Material's `RippleDrawable` →
+    // `RenderNodeAnimator` first among them — is paced by how long the JVM has been up rather than
+    // by the clock the render advances. A still cannot notice; a capture that samples an animation
+    // does: three renders of one commit produced three different `SwitchButtonOn.apng`s before this
+    // registration and are byte-identical after it (issue #4578). The daemon spells the same shadow
+    // onto `SandboxHoldingRunner.getExtraShadows` (`SandboxHoldingRunnerFrameInfoShadowTest`); keep
+    // the two registrations together, since a lane rendering on the other one's timing is the bug.
+    listOf(false, true).forEach { useConsumerApplication ->
+      val body = generate(useConsumerApplication, override = null, compileSdk = 36)
+      assertThat(body).contains("ee.schimke.composeai.renderer.ShadowPausedClockHardwareRenderer")
+    }
+  }
+
+  @Test
   fun `the wear clock shadow is registered with its target class instrumented`() {
     // Both lines are load-bearing together, exactly like the coil pair above: Robolectric can't
     // shadow a class it didn't rewrite, and `androidx.wear.compose.materialcore.ResourcesKt` —

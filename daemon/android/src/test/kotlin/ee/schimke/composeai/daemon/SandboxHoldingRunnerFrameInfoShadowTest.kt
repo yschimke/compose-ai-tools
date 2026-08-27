@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.renderer.ShadowPausedClockHardwareRenderer
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runners.model.FrameworkMethod

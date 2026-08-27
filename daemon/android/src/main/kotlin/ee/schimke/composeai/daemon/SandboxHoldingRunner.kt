@@ -1,6 +1,7 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.renderer.ShadowFontsContractCompat
+import ee.schimke.composeai.renderer.ShadowPausedClockHardwareRenderer
 import org.junit.runners.model.FrameworkMethod
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
