@@ -126,6 +126,32 @@ class CatalogLoadTrackerTest {
   }
 
   @Test
+  fun `re-pointing swaps provenance in place, keeping position and load state`() {
+    val tracker = tracker()
+    tracker.recordSuccess("jetnews")
+
+    assertTrue(
+      tracker.repoint("jetnews", repo = "someorg/new-home", branch = "design-artifacts/jetnews")
+    )
+
+    val jetnews = tracker.snapshot().single { it.config.system == "jetnews" }
+    assertEquals("someorg/new-home", jetnews.config.repo)
+    assertEquals("design-artifacts/jetnews", jetnews.config.branch)
+    // The registered copy is untouched — this records where the bytes came from, it does not fetch
+    // them, and [ServeCatalogAdmin] only calls it once the new source is already loaded.
+    assertTrue(jetnews.available, "a provenance change must not drop the registered copy")
+    assertEquals(listOf("jetnews", "reply"), tracker.snapshot().map { it.config.system })
+  }
+
+  @Test
+  fun `re-pointing a system that is not tracked reports it rather than adding one`() {
+    val tracker = tracker()
+
+    assertFalse(tracker.repoint("nope", repo = "someorg/nope", branch = "design-artifacts/nope"))
+    assertEquals(listOf("jetnews", "reply"), tracker.snapshot().map { it.config.system })
+  }
+
+  @Test
   fun `relisting carries the new load priority without touching load state`() {
     val tracker = tracker()
     tracker.recordSuccess("reply")

@@ -69,7 +69,7 @@ class ServeAdminRoutingTest {
     )
 
   /** Systems the stubbed "fetch" refuses, so the failure path is reachable from a request. */
-  private val unfetchable = setOf("ghost")
+  private val unfetchable = mutableSetOf("ghost")
 
   private val admin =
     ServeCatalogAdmin(
@@ -504,15 +504,50 @@ class ServeAdminRoutingTest {
   }
 
   @Test
-  fun `re-publishing from a different repo is refused rather than silently re-pointed`() {
+  fun `re-publishing from a different repo re-points it in place`() {
     send("/admin/catalogs", method = "POST", body = """{"system":"moved","repo":"someorg/one"}""")
 
     val (code, msg) =
       send("/admin/catalogs", method = "POST", body = """{"system":"moved","repo":"someorg/two"}""")
 
-    assertEquals(409, code)
-    assertTrue(msg.contains("retire"), msg)
-    assertEquals("someorg/one", tracker.configFor("moved")?.repo)
+    // This used to be a 409 telling the caller to retire it first — a two-step dance whose failure
+    // mode was a catalog published nowhere, and whose 409 read as success to the deployment
+    // reconcile that drives this route. A repo change is now one atomic swap: fetch the new source,
+    // then record where the bytes come from.
+    assertEquals(200, code, msg)
+    assertEquals("someorg/two", tracker.configFor("moved")?.repo)
+    assertTrue(send("/admin/catalogs").second.contains("someorg/two"))
+    // Still served, and still there — the swap replaced content rather than dropping a session.
+    assertEquals(
+      200,
+      Request.Builder().url(url("/moved/")).build().let { req ->
+        client.newCall(req).execute().use { it.code }
+      },
+    )
+    // And it survives a restart under the new provenance.
+    assertEquals("someorg/two", configFile.load().catalogs.single { it.system == "moved" }.repo)
+  }
+
+  @Test
+  fun `a re-point that cannot be fetched leaves the catalog on its old repo`() {
+    send("/admin/catalogs", method = "POST", body = """{"system":"stays","repo":"someorg/one"}""")
+    unfetchable += "stays"
+
+    val (code, msg) =
+      send("/admin/catalogs", method = "POST", body = """{"system":"stays","repo":"someorg/two"}""")
+
+    // The load runs BEFORE anything is dropped, so a source that cannot be fetched costs nothing
+    // but the attempt. Under retire-then-publish this is where the catalog disappeared.
+    assertEquals(502, code, msg)
+    assertTrue(msg.contains("still serving someorg/one"), msg)
+    assertEquals("someorg/one", tracker.configFor("stays")?.repo)
+    assertEquals(
+      200,
+      Request.Builder().url(url("/stays/")).build().let { req ->
+        client.newCall(req).execute().use { it.code }
+      },
+    )
+    assertEquals("someorg/one", configFile.load().catalogs.single { it.system == "stays" }.repo)
   }
 
   // --- producer trust ----------------------------------------------------------------------------

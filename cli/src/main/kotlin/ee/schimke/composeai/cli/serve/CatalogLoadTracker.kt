@@ -124,6 +124,32 @@ class CatalogLoadTracker(
       true
     }
 
+  /**
+   * Replace [system]'s **provenance** — the repository and branch its bytes come from — keeping its
+   * position and its load state. Returns false when it isn't tracked.
+   *
+   * The counterpart to [relist], and deliberately a separate call with a much narrower contract,
+   * because the two are safe at different moments. [relist] may run at any time: it moves a card on
+   * the front page and changes nothing about what is served. This one may run in exactly one
+   * situation — **after** the new source has already been loaded and registered under [system] —
+   * because until then the served content and this record would disagree about where the bytes came
+   * from, and that record is what the trust verdict and the permalinks are built from.
+   *
+   * [ServeCatalogAdmin.register] is the only caller, and it loads first for that reason: a failed
+   * load leaves the old catalog serving and never reaches here. Re-pointing by retiring and
+   * re-publishing instead — what the admin API used to require — has no such property: the retire
+   * succeeds, the publish fetches, and a fetch that fails leaves the system published nowhere.
+   */
+  fun repoint(system: String, repo: String, branch: String): Boolean =
+    synchronized(lock) {
+      val existing = states[system] ?: return false
+      val updated = existing.config.copy(repo = repo, branch = branch)
+      states[system] = existing.copy(config = updated)
+      val at = ordered.indexOfFirst { it.system == system }
+      if (at >= 0) ordered[at] = updated
+      true
+    }
+
   /** Retire a catalog. Returns false when it wasn't configured. */
   fun remove(system: String): Boolean =
     synchronized(lock) {
