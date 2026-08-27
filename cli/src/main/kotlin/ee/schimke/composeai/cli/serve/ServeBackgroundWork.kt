@@ -295,24 +295,37 @@ class ServeBackgroundWork(
   }
 
   /**
-   * Lanes nothing is holding right now — how many parked catalogs it is worth making resident
-   * again, and no more.
+   * How many parked catalogs it is worth making resident again — the lanes nothing is holding,
+   * **plus one challenger**.
    *
    * [ServeSessionRegistry.resumeIdleOptimizers] reads this because resuming costs a cold Android
-   * daemon (34-68s) and roughly a gigabyte for as long as it stays up. Resuming a catalog that then
-   * queues behind two others pays that price to sit at the door, which is the residency this whole
-   * change exists to stop paying.
+   * daemon (34-68s) and roughly a gigabyte for as long as it stays up, so it must not resume a
+   * catalog that would merely stand at the door. But bounding it at the *free* lanes alone starves
+   * every catalog that is not already resident: a pass returns its lane on a slice boundary and
+   * re-queues immediately (see `ServeCatalogLiveHost.startThemeOptimization`), so on a box with
+   * more unfinished catalogs than lanes every later sweep reads zero free lanes and the parked ones
+   * wait for an incumbent to *finish* — hours, for a 10,440-target catalog.
    *
-   * Advisory, deliberately unsynchronized: an admission landing in the same instant makes this one
-   * too high and the resumed pass simply queues, which is the ordinary case anyway.
+   * [PLUS_ONE_CHALLENGER] is what makes the rotation reach them. Admission's fairness
+   * ([acquireOptimizerLane]) orders catalogs **at the door** by who has gone longest without a
+   * lane, so a parked catalog wins its turn the moment it is standing there — but it has to be
+   * standing there. Keeping exactly one challenger queued hands it the next lane release ahead of
+   * the incumbent that just ran; the displaced incumbent then goes idle and is suspended in its
+   * turn. One extra resident buys a rotation whose period is the idle window rather than a
+   * catalog's whole backlog.
+   *
+   * Advisory, and deliberately tolerant of races: an admission landing in the same instant makes
+   * this read one too high and the resumed pass simply queues, which is what a challenger does
+   * anyway.
    */
-  fun optimizerLanesFree(): Int =
+  fun optimizerResumeSlots(): Int =
     if (optimizersPaused()) 0
     else
       admissionLock.run {
         lock()
         try {
-          (optimizerLanes - optimizerLanesInUse - optimizerQueue.size).coerceAtLeast(0)
+          (optimizerLanes + PLUS_ONE_CHALLENGER - optimizerLanesInUse - optimizerQueue.size)
+            .coerceAtLeast(0)
         } finally {
           unlock()
         }
@@ -464,6 +477,12 @@ class ServeBackgroundWork(
      * another's renders without recreating the free-for-all.
      */
     const val DEFAULT_MAX_CONCURRENT_OPTIMIZERS: Int = 2
+
+    /**
+     * The one queued challenger [optimizerResumeSlots] keeps beyond the lanes themselves, so a
+     * parked catalog can actually win a turn instead of waiting for an incumbent to finish.
+     */
+    const val PLUS_ONE_CHALLENGER: Int = 1
 
     const val HOST_COORDINATION_RETRY_MILLIS: Long = 100L
 

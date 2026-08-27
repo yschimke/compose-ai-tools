@@ -532,13 +532,69 @@ class ServeSessionRegistryTest {
         // No lane to give: resuming here would pay a cold daemon to stand at the door, which is
         // the residency the suspension just reclaimed.
         work.pauseOptimizers(10_000, "test")
-        assertEquals(0, work.optimizerLanesFree())
+        assertEquals(0, work.optimizerResumeSlots())
         assertEquals(0, registry.resumeIdleOptimizers(), "no lane free, so nothing is resumed")
 
         work.resumeOptimizers()
         val openedBefore = opener.opened.get()
         assertEquals(1, registry.resumeIdleOptimizers(), "only the unfinished catalog comes back")
         assertEquals(openedBefore + 1, opener.opened.get())
+      }
+  }
+
+  @Test
+  fun `parked catalogs rotate rather than waiting for an incumbent to finish`() {
+    val clock = AtomicLong(0)
+    // One lane, so without the challenger slot the single incumbent would hold it indefinitely: a
+    // pass re-queues the instant its slice ends, and `lanes - inUse - queued` then reads zero on
+    // every later sweep, leaving the parked catalogs to wait for someone to FINISH. That is the
+    // starvation the +1 exists to break.
+    val work = ServeBackgroundWork(maxConcurrentOptimizers = 1, clock = clock::get)
+    val reopened = java.util.Collections.synchronizedList(mutableListOf<String>())
+    val opener = Opener()
+    val recording: (ServeSessionState) -> ServeRenderHost? = { state ->
+      reopened += state.label
+      opener(state)
+    }
+    val ids = listOf("alpha", "beta", "gamma")
+    ServeSessionRegistry(
+        open = recording,
+        idleTimeoutMillis = 100,
+        reaperIntervalMillis = 0,
+        clock = clock::get,
+      )
+      .use { registry ->
+        ids.forEach { id ->
+          val cache = CatalogThemeCache().apply { configureTargets(listOf("$id|dark")) }
+          registry.register(
+            id,
+            stateFor(id).copy(catalogThemeCache = cache, backgroundWork = work),
+            host = opener(stateFor(id)),
+          )
+        }
+        clock.set(1_000)
+        assertEquals(3, registry.suspendIdle(), "all three park while none holds a lane")
+
+        // One lane and nothing queued: the budget is 1 + 1 = 2 — the lane, plus a challenger
+        // standing at the door so admission's fairness has someone to hand the next lane to.
+        assertEquals(2, work.optimizerResumeSlots())
+        reopened.clear()
+        assertEquals(2, registry.resumeIdleOptimizers(), "a lane holder AND a challenger come back")
+        val firstRound = reopened.toList()
+        assertEquals(2, firstRound.size)
+
+        // The third is not stranded. Park the two that just ran and sweep again: ordering is by
+        // suspension time, so the catalog that has been parked since the first sweep is taken
+        // first and the pair that just ran is NOT resurrected ahead of it.
+        clock.set(2_000)
+        assertEquals(2, registry.suspendIdle())
+        reopened.clear()
+        assertTrue(registry.resumeIdleOptimizers() > 0)
+        assertEquals(
+          ids.single { it !in firstRound },
+          reopened.first(),
+          "the rotation reaches the catalog that has waited longest, not the one just parked",
+        )
       }
   }
 
