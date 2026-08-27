@@ -18,6 +18,11 @@ import org.robolectric.annotation.Config
  * comes down to luck. `RippleDrawable.setForceSoftware(true)` moves it onto ordinary
  * `ValueAnimator`s, which the main looper drives and `ShadowLooper.idleFor` can settle.
  *
+ * Still required after [ee.schimke.composeai.renderer.ShadowPausedClockHardwareRenderer] (#4578)
+ * put the render lane's native animations back on the paused clock: with the shadow registered and
+ * the software force removed, `ButtonPressed` publishes the focused fill exactly — the clock was
+ * never the reason a *still*'s patterned ripple sits at progress zero. See `settlePressedRipple`.
+ *
  * The method is `@UnsupportedAppUsage`, so it is reached by reflection and could disappear under a
  * `compileSdk` or Robolectric bump. If it does, the render does not break — it silently goes back
  * to publishing whatever the shard layout happened to produce, which is exactly the regression

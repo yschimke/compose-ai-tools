@@ -3163,6 +3163,18 @@ private const val RIPPLE_HOST_VIEW_DRAWABLE_FIELD = "ripple"
  * the patterned ripple but no ripple at all. `PressedRippleSoftwarePathTest` pins the hidden API
  * this leans on so a Robolectric or `compileSdk` bump that removes it fails loudly instead of
  * quietly restoring the coin-flip.
+ *
+ * **Not made redundant by [ShadowPausedClockHardwareRenderer].** That shadow (#4578) stops
+ * Robolectric pacing native render-thread animations off host wall-clock time, and it is what makes
+ * an `@InteractionPreview` recording reproducible *with* its patterned ripple — so the obvious
+ * follow-up is to drop the software force here and let a pressed still keep the patterned ripple
+ * too. Measured, with the shadow registered and only `forceSoftwareRipple` removed: three renders
+ * of `:samples:design-catalog-wear-m3`'s `ButtonPressed` agree with each other and publish
+ * `#D4C8EC` — pixel-identical to `ButtonFocused`, i.e. no press at all, which
+ * `WearFocusedPressPixelTest` fails on with `per-channel deltas [0, 0, 0]`. Fixing the animation's
+ * *clock* does not help an animation that never runs: a still draws one frame, and the patterned
+ * enter animation has no render thread to start on. The shadow and this force answer two different
+ * halves of the same problem, and both are load-bearing.
  */
 private fun settlePressedRipple(rule: AndroidComposeTestRule<*, ComponentActivity>) {
   val looper = org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
