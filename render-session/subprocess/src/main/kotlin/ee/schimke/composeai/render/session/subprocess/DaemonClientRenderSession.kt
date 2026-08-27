@@ -1,5 +1,7 @@
 package ee.schimke.composeai.render.session.subprocess
 
+import ee.schimke.composeai.daemon.client.DaemonClient
+import ee.schimke.composeai.daemon.client.DataProductWireException
 import ee.schimke.composeai.daemon.protocol.ChangeType
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataSubscribeResult
@@ -24,8 +26,6 @@ import ee.schimke.composeai.daemon.protocol.RenderNowResult
 import ee.schimke.composeai.daemon.protocol.RenderTier
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamStartResult
-import ee.schimke.composeai.mcp.DaemonClient
-import ee.schimke.composeai.mcp.DataProductWireException
 import ee.schimke.composeai.render.session.DataProductException
 import ee.schimke.composeai.render.session.NotificationListener
 import ee.schimke.composeai.render.session.RenderSession

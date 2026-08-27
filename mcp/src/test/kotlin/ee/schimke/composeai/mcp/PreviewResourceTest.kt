@@ -1,6 +1,7 @@
 package ee.schimke.composeai.mcp
 
 import com.google.common.truth.Truth.assertThat
+import ee.schimke.composeai.daemon.client.WorkspaceId
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder

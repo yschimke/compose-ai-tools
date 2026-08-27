@@ -1,5 +1,6 @@
 package ee.schimke.composeai.mcp
 
+import ee.schimke.composeai.daemon.client.WorkspaceId
 import java.util.concurrent.ConcurrentHashMap
 
 /**

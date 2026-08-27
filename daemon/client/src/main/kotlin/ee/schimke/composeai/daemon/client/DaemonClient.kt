@@ -1,4 +1,4 @@
-package ee.schimke.composeai.mcp
+package ee.schimke.composeai.daemon.client
 
 import ee.schimke.composeai.daemon.protocol.ChangeType
 import ee.schimke.composeai.daemon.protocol.ClientCapabilities

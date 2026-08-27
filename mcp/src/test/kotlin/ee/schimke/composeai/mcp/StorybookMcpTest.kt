@@ -1,6 +1,7 @@
 package ee.schimke.composeai.mcp
 
 import com.google.common.truth.Truth.assertThat
+import ee.schimke.composeai.daemon.client.WorkspaceId
 import ee.schimke.composeai.mcp.protocol.ResourceDescriptor
 import org.junit.Test
 

@@ -1,6 +1,7 @@
 package ee.schimke.composeai.mcp
 
 import com.google.common.truth.Truth.assertThat
+import ee.schimke.composeai.daemon.client.WorkspaceId
 import java.io.File
 import java.security.MessageDigest
 import java.util.Base64

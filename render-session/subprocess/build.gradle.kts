@@ -20,9 +20,14 @@ dependencies {
   api(project(":render-session-api"))
   implementation(project(":common-io"))
 
-  // Existing JSON-RPC client + subprocess spawn infrastructure. Public surface here is the
-  // `RenderSession` contract; `:mcp` types stay internal to this module.
-  implementation(project(":mcp"))
+  // JSON-RPC client + subprocess spawn infrastructure. Public surface here is the `RenderSession`
+  // contract; the client types stay internal to this module.
+  //
+  // This used to be `implementation(project(":mcp"))`, which is what made consuming the
+  // render-session library drag an MCP server onto the classpath — the last leak the preview-server
+  // contract probe recorded. #3824 item 3 lifted the transport into `:daemon-client`; nothing here
+  // needed the MCP server, only the wire client.
+  implementation(project(":daemon-client"))
   implementation(project(":daemon:core"))
   implementation(libs.kotlinx.serialization.json)
 

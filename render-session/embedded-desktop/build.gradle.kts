@@ -45,7 +45,9 @@ dependencies {
   implementation(project(":render-session-subprocess"))
   implementation(project(":daemon:desktop"))
   implementation(project(":daemon:core"))
-  implementation(project(":mcp"))
+  // Only ever needed `DaemonClient` from here — this was `:mcp` until #3824 item 3 lifted the
+  // transport into its own module, so an embedded render session no longer resolves an MCP server.
+  implementation(project(":daemon-client"))
   implementation(libs.kotlinx.serialization.json)
 
   testImplementation(libs.junit)
