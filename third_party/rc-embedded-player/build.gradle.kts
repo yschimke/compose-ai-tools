@@ -39,31 +39,38 @@
 
 plugins {
   id("composeai.base-conventions")
-  // Published for TESTING only — see `composeAiMavenPublishing` below. This is the repo's pinned,
-  // locally patched AndroidX player, not a supported API. Publishing it lets consumers and parity
-  // jobs select the vendored implementation independently from the newer embedded player now
-  // shipped inside androidx.dev's `remote-player-compose` snapshot.
-  id("composeai.maven-publishing")
+  // NOT PUBLISHED, and it must stay that way. Applying `composeai.maven-publishing` joins the root
+  // `publishAndReleaseToMavenCentral` aggregation — and this module exposes
+  // `libs.compose.remote.core`
+  // and `libs.compose.remote.player.core` through `api`. Those sit at `1.0.0-SNAPSHOT` on
+  // androidx.dev, so the release POM requires `androidx.compose.remote:*:1.0.0-SNAPSHOT`:
+  // coordinates
+  // a consumer cannot resolve (the androidx.dev repository is declared in this project's
+  // `settings.gradle.kts` and cannot be inherited), absent from Google Maven and Central, and
+  // eventually swept from androidx.dev altogether. Central does not merely warn about this — it
+  // rejects the whole deployment with "Dependencies to SNAPSHOT versions not allowed", which fails
+  // `publish-gradle-plugin` and leaves the GitHub Release stranded as a draft, so EVERY artifact of
+  // that version goes unshipped. That is what stranded 1.34.0 and 1.35.0 after #4490 re-applied
+  // this
+  // plugin. A published artifact nobody can resolve is worse than no artifact; a published artifact
+  // that blocks the whole release is worse still.
+  //
+  // Unpublishing rather than pinning, because there is nothing to pin to — the upstream player
+  // ships
+  // only as androidx.dev snapshots — and because nothing consumes the coordinates: every user in
+  // this
+  // repo (`:samples:remotecompose`, `:samples:design-catalog-remote-m3`,
+  // `:data-remotecompose-connector`,
+  // and the JVM sibling via `:cli`) depends on the PROJECT, and the rc-compare lanes drive it
+  // through
+  // `./gradlew :third-party-rc-embedded-player:testDebugUnitTest`, not a coordinate.
+  //
+  // `composeai.maven-publishing` also applied `composeai.android-conventions`, so that is named
+  // directly.
+  id("composeai.android-conventions")
   alias(libs.plugins.android.library)
   alias(libs.plugins.compose.compiler)
   alias(libs.plugins.kotlin.serialization)
-}
-
-// Deliberately published under the compose-ai-tools group, not `androidx.*`: this is the vendored
-// and locally patched implementation. Its public API exposes AndroidX Remote Compose snapshot
-// types, so consumers must also use the matching androidx.dev repository/build recorded by this
-// release. The coordinate is intended for player experiments and parity testing, not as a stable
-// library API.
-composeAiMavenPublishing {
-  coordinates(
-    artifactId = "third-party-rc-embedded-player",
-    displayName = "Compose Preview — AndroidX Embedded Player (vendored, Android)",
-    description =
-      "Vendored and locally patched Android implementation of AndroidX's experimental Compose " +
-        "embedded Remote Compose player. Published for parity testing alongside the upstream " +
-        "androidx.dev implementation; not a supported API.",
-  )
-  inceptionYear.set("2026")
 }
 
 android {

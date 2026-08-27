@@ -8,6 +8,7 @@ import java.io.File
 import javax.inject.Inject
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.artifacts.ExternalModuleDependency
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.Property
 import org.gradle.kotlin.dsl.configure
@@ -47,6 +48,7 @@ class ComposeAiMavenPublishingPlugin : Plugin<Project> {
         ?: project.nextPatchSnapshotVersion()
 
     project.configureAndroidLibraryPublication()
+    project.rejectSnapshotDependenciesInPom()
 
     project.afterEvaluate {
       val artifactId =
@@ -119,6 +121,73 @@ private fun Project.configureAndroidLibraryPublication() {
           sourcesJar = SourcesJar.Sources(),
           variant = "release",
         )
+      )
+    }
+  }
+}
+
+/**
+ * Fail the build if a module that publishes to Maven Central declares a `-SNAPSHOT` dependency in a
+ * scope that reaches its POM.
+ *
+ * Central does not warn about this, it *rejects the whole deployment*: "Dependencies to SNAPSHOT
+ * versions not allowed for dependency: <coordinates>". Because every publishable module deploys in
+ * one bundle, a single offender fails `publish-gradle-plugin` for the entire release — and
+ * `finalize-release` then leaves the GitHub Release as an un-drafted draft, so the CLI tarball
+ * consumers download 404s and nothing of that version ships at all. 1.34.0 and 1.35.0 were stranded
+ * exactly this way after `:third-party-rc-embedded-player` re-applied `composeai.maven-publishing`
+ * while `api`-exposing `androidx.compose.remote:*:1.0.0-SNAPSHOT` (#4490).
+ *
+ * The check runs on every build, not only releases: the mistake is a *declaration*, so catching it
+ * on the PR that makes it is the whole point. Only POM-visible scopes are inspected — `compileOnly`
+ * and `testImplementation` never reach the POM, which is how `:runtimes:wear-preview` and
+ * `:data-remotecompose-connector` legitimately compile against the same androidx.dev snapshots.
+ *
+ * Declarations rather than a resolved graph, deliberately: this needs no resolution (so it costs
+ * nothing at configuration time) and it names the line a human has to edit.
+ */
+private fun Project.rejectSnapshotDependenciesInPom() {
+  // `api`/`implementation`/`runtimeOnly` are what vanniktech maps into the POM's compile and
+  // runtime scopes; the `release*` variants are AGP's per-variant buckets for the single published
+  // Android variant.
+  val pomScopes =
+    setOf(
+      "api",
+      "implementation",
+      "runtimeOnly",
+      "releaseApi",
+      "releaseImplementation",
+      "releaseRuntimeOnly",
+    )
+  afterEvaluate {
+    val offenders =
+      configurations
+        .filter { it.name in pomScopes }
+        .flatMap { configuration ->
+          configuration.dependencies.withType(ExternalModuleDependency::class.java).mapNotNull {
+            dependency ->
+            dependency.version
+              ?.takeIf { it.endsWith("-SNAPSHOT") }
+              ?.let { version ->
+                "  ${configuration.name}(\"${dependency.group}:${dependency.name}:$version\")"
+              }
+          }
+        }
+        .sorted()
+    if (offenders.isNotEmpty()) {
+      error(
+        buildString {
+          appendLine(
+            "$path publishes to Maven Central but declares SNAPSHOT dependencies that would " +
+              "reach its POM:"
+          )
+          offenders.forEach(::appendLine)
+          append(
+            "Central rejects the whole deployment for these, which strands every artifact of the " +
+              "release. Either pin them to a released version, move them to compileOnly, or stop " +
+              "applying composeai.maven-publishing to this module."
+          )
+        }
       )
     }
   }
