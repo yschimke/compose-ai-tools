@@ -19,8 +19,8 @@ import kotlinx.serialization.json.JsonObject
  * parameter. Spawning needs the identity, not the registry. Narrowing it is what made this module
  * extractable at all (#4528).
  */
-fun interface DaemonClientFactory {
-  fun spawn(workspaceId: WorkspaceId, descriptor: DaemonLaunchDescriptor): DaemonSpawn
+public fun interface DaemonClientFactory {
+  public fun spawn(workspaceId: WorkspaceId, descriptor: DaemonLaunchDescriptor): DaemonSpawn
 }
 
 /**
@@ -28,24 +28,24 @@ fun interface DaemonClientFactory {
  * fake daemon side of a piped pair (in tests). The owner calls [client] once after spawn to wire
  * the notification + close handlers.
  */
-interface DaemonSpawn {
-  val client: DaemonClient
+public interface DaemonSpawn {
+  public val client: DaemonClient
 
   /**
    * Wires the owner's notification + close handlers onto the underlying [client]. Called exactly
    * once by `DaemonSupervisor.spawn` before any traffic flows. Implementations typically delay
    * creating the [client] until this call so the handlers are baked in from the first frame.
    */
-  fun client(
+  public fun client(
     onNotification: (method: String, params: JsonObject?) -> Unit,
     onClose: () -> Unit,
   ): DaemonClient
 
-  fun shutdown()
+  public fun shutdown()
 
   /**
    * Shuts down within [timeout] when the owner has a stricter lifecycle budget. Implementations
    * that do not own a subprocess retain their ordinary shutdown behaviour.
    */
-  fun shutdown(timeout: Duration) = shutdown()
+  public fun shutdown(timeout: Duration): Unit = shutdown()
 }

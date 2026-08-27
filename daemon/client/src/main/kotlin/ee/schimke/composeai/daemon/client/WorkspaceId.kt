@@ -11,7 +11,7 @@ import java.security.MessageDigest
  * Format: `<rootProjectName>-<8-char-hash>`. The hash is **always** present (not just on
  * collisions) so the id encodes path identity unconditionally.
  */
-data class WorkspaceId(val value: String) {
+public data class WorkspaceId(val value: String) {
   init {
     require(value.isNotBlank()) { "WorkspaceId.value must not be blank" }
     require(!value.contains('/')) { "WorkspaceId.value must not contain '/' (got '$value')" }
@@ -19,13 +19,13 @@ data class WorkspaceId(val value: String) {
 
   override fun toString(): String = value
 
-  companion object {
+  public companion object {
     /**
      * Builds a deterministic id from [rootProjectName] + the canonical absolute form of [path].
      * Symlink aliases of the same physical path collapse to one id; distinct worktrees stay
      * distinct.
      */
-    fun derive(rootProjectName: String, path: File): WorkspaceId {
+    public fun derive(rootProjectName: String, path: File): WorkspaceId {
       require(rootProjectName.isNotBlank()) { "rootProjectName must not be blank" }
       val canonical = runCatching { path.canonicalFile }.getOrDefault(path.absoluteFile)
       val hash = sha256Hex(canonical.absolutePath).take(SHORT_HASH_CHARS)

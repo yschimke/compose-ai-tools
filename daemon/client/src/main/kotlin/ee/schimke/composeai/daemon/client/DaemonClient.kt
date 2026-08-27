@@ -80,7 +80,7 @@ import kotlinx.serialization.json.long
  *    → list_changed; `classpathDirty` → respawn) so we don't need the predicate-poll API the
  *    harness uses for assertions.
  */
-class DaemonClient(
+public class DaemonClient(
   private val input: InputStream,
   private val output: OutputStream,
   /** Notification sink. Called from the reader thread; handlers must not block. */
@@ -101,7 +101,7 @@ class DaemonClient(
     }
 
   /** Drives `initialize` + `initialized`. Returns the daemon's [InitializeResult]. */
-  fun initialize(
+  public fun initialize(
     workspaceRoot: String,
     moduleId: String,
     moduleProjectDir: String,
@@ -144,23 +144,23 @@ class DaemonClient(
     return result
   }
 
-  fun setVisible(ids: List<String>) =
+  public fun setVisible(ids: List<String>): Unit =
     sendNotification(
       "setVisible",
       json.encodeToJsonElement(SetVisibleParams.serializer(), SetVisibleParams(ids = ids)),
     )
 
-  fun setFocus(ids: List<String>) =
+  public fun setFocus(ids: List<String>): Unit =
     sendNotification(
       "setFocus",
       json.encodeToJsonElement(SetFocusParams.serializer(), SetFocusParams(ids = ids)),
     )
 
-  fun fileChanged(
+  public fun fileChanged(
     path: String,
     kind: FileKind = FileKind.SOURCE,
     changeType: ChangeType = ChangeType.MODIFIED,
-  ) =
+  ): Unit =
     sendNotification(
       "fileChanged",
       json.encodeToJsonElement(
@@ -170,7 +170,7 @@ class DaemonClient(
     )
 
   /** Drives `renderNow` for the given preview ids at the given [tier]. */
-  fun renderNow(
+  public fun renderNow(
     previews: List<String>,
     tier: RenderTier = RenderTier.FULL,
     reason: String? = null,
@@ -199,7 +199,7 @@ class DaemonClient(
   // ---------------------------------------------------------------------------
 
   /** Drives `history/list`. Default no-filter call returns recent entries across all previews. */
-  fun historyList(
+  public fun historyList(
     params: HistoryListParams = HistoryListParams(),
     timeout: Duration = 30.seconds,
   ): HistoryListResult {
@@ -218,7 +218,7 @@ class DaemonClient(
   }
 
   /** Drives `history/read`. With [inline] = true the daemon returns base64 PNG bytes inline. */
-  fun historyRead(
+  public fun historyRead(
     entryId: String,
     inline: Boolean = false,
     timeout: Duration = 30.seconds,
@@ -239,7 +239,7 @@ class DaemonClient(
   }
 
   /** Drives `history/diff` (metadata mode by default). */
-  fun historyDiff(
+  public fun historyDiff(
     fromId: String,
     toId: String,
     mode: HistoryDiffMode = HistoryDiffMode.METADATA,
@@ -276,7 +276,7 @@ class DaemonClient(
    * the tool result so the agent sees the exact wire-error name (`DataProductUnknown`,
    * `DataProductNotAvailable`, `DataProductFetchFailed`, `DataProductBudgetExceeded`).
    */
-  fun dataFetch(
+  public fun dataFetch(
     previewId: String,
     kind: String,
     params: kotlinx.serialization.json.JsonElement? = null,
@@ -306,14 +306,14 @@ class DaemonClient(
    * — the daemon drops them automatically when the preview leaves the most recent `setVisible` set
    * (see DATA-PRODUCTS.md). Re-subscribe when the preview returns to view.
    */
-  fun dataSubscribe(
+  public fun dataSubscribe(
     previewId: String,
     kind: String,
     timeout: Duration = 15.seconds,
   ): DataSubscribeResult = dataSubOrUnsub("data/subscribe", previewId, kind, timeout)
 
   /** Drives `data/unsubscribe`. See [dataSubscribe]. */
-  fun dataUnsubscribe(
+  public fun dataUnsubscribe(
     previewId: String,
     kind: String,
     timeout: Duration = 15.seconds,
@@ -327,7 +327,7 @@ class DaemonClient(
   // requirements). Disabling them on shutdown is unnecessary — the daemon dies with the spawn.
   // ---------------------------------------------------------------------------
 
-  fun extensionsList(timeout: Duration = 15.seconds): ExtensionsListResult {
+  public fun extensionsList(timeout: Duration = 15.seconds): ExtensionsListResult {
     val id = nextId.getAndIncrement()
     val request =
       JsonRpcRequest(id = id, method = "extensions/list", params = JsonObject(emptyMap()))
@@ -336,7 +336,10 @@ class DaemonClient(
     return json.decodeFromJsonElement(ExtensionsListResult.serializer(), resultElem)
   }
 
-  fun extensionsEnable(ids: List<String>, timeout: Duration = 15.seconds): ExtensionsEnableResult {
+  public fun extensionsEnable(
+    ids: List<String>,
+    timeout: Duration = 15.seconds,
+  ): ExtensionsEnableResult {
     val id = nextId.getAndIncrement()
     val params = ExtensionsEnableParams(ids = ids)
     val request =
@@ -350,7 +353,7 @@ class DaemonClient(
     return json.decodeFromJsonElement(ExtensionsEnableResult.serializer(), resultElem)
   }
 
-  fun extensionsDisable(
+  public fun extensionsDisable(
     ids: List<String>,
     timeout: Duration = 15.seconds,
   ): ExtensionsDisableResult {
@@ -401,7 +404,7 @@ class DaemonClient(
   // ---------------------------------------------------------------------------
 
   /** Drives `recording/start`. Returns the daemon-allocated `recordingId`. */
-  fun recordingStart(
+  public fun recordingStart(
     previewId: String,
     fps: Int? = null,
     scale: Float? = null,
@@ -428,7 +431,7 @@ class DaemonClient(
   }
 
   /** Drives `recording/script` (notification — no response). */
-  fun recordingScript(recordingId: String, events: List<RecordingScriptEvent>) =
+  public fun recordingScript(recordingId: String, events: List<RecordingScriptEvent>): Unit =
     sendNotification(
       "recording/script",
       json.encodeToJsonElement(
@@ -438,7 +441,10 @@ class DaemonClient(
     )
 
   /** Drives `recording/stop`. Blocks until the daemon's playback loop finishes writing frames. */
-  fun recordingStop(recordingId: String, timeout: Duration = 5.minutes): RecordingStopResult {
+  public fun recordingStop(
+    recordingId: String,
+    timeout: Duration = 5.minutes,
+  ): RecordingStopResult {
     val id = nextId.getAndIncrement()
     val params = RecordingStopParams(recordingId = recordingId)
     val request =
@@ -458,7 +464,7 @@ class DaemonClient(
   }
 
   /** Drives `recording/encode`. Returns `{ videoPath, mimeType, sizeBytes }`. */
-  fun recordingEncode(
+  public fun recordingEncode(
     recordingId: String,
     format: RecordingFormat = RecordingFormat.APNG,
     timeout: Duration = 60.seconds,
@@ -488,7 +494,7 @@ class DaemonClient(
    * [sendAndAwait] / the error branch) when the daemon doesn't implement streaming — callers fall
    * back to per-frame renders.
    */
-  fun streamStart(
+  public fun streamStart(
     previewId: String,
     codec: StreamCodec? = null,
     maxFps: Int? = null,
@@ -520,7 +526,7 @@ class DaemonClient(
   }
 
   /** Drives `stream/stop` (notification — no response). Tears down the held stream. */
-  fun streamStop(frameStreamId: String) =
+  public fun streamStop(frameStreamId: String): Unit =
     sendNotification(
       "stream/stop",
       json.encodeToJsonElement(StreamStopParams.serializer(), StreamStopParams(frameStreamId)),
@@ -532,7 +538,7 @@ class DaemonClient(
    * rate and — since the daemon's frame loop reads the same gate — the render rate behind it. [fps]
    * overrides the throttled rate; the daemon's default is 1 fps.
    */
-  fun streamVisibility(frameStreamId: String, visible: Boolean, fps: Int? = null) =
+  public fun streamVisibility(frameStreamId: String, visible: Boolean, fps: Int? = null): Unit =
     sendNotification(
       "stream/visibility",
       json.encodeToJsonElement(
@@ -546,7 +552,7 @@ class DaemonClient(
    * [frameStreamId]; the daemon dispatches the input into the live composition and emits the
    * resulting `streamFrame`.
    */
-  fun interactiveInput(
+  public fun interactiveInput(
     frameStreamId: String,
     kind: InteractiveInputKind,
     pixelX: Int? = null,
@@ -556,7 +562,7 @@ class DaemonClient(
     keyCode: String? = null,
     text: String? = null,
     pointerType: String? = null,
-  ) =
+  ): Unit =
     sendNotification(
       "interactive/input",
       json.encodeToJsonElement(
@@ -579,7 +585,7 @@ class DaemonClient(
    * Sends `shutdown` (drains in-flight renders) then `exit`. Does not wait for process exit — the
    * [DaemonSpawn] owner does that.
    */
-  fun shutdownAndExit(timeout: Duration = 15.seconds) {
+  public fun shutdownAndExit(timeout: Duration = 15.seconds) {
     if (closed.get()) return
     runCatching {
       val id = nextId.getAndIncrement()
@@ -702,16 +708,19 @@ class DaemonClient(
  * `-32023` DataProductBudgetExceeded. Callers (notably `DaemonMcpServer.toolGetPreviewData`) use
  * [code] to decide whether to retry — `DataProductNotAvailable` is the auto-render trigger.
  */
-class DataProductWireException(val code: Int, val wireMessage: String, val data: JsonObject?) :
-  RuntimeException("data/fetch wire error $code: $wireMessage") {
-  companion object {
-    const val UNKNOWN = -32020
-    const val NOT_AVAILABLE = -32021
-    const val FETCH_FAILED = -32022
-    const val BUDGET_EXCEEDED = -32023
+public class DataProductWireException(
+  public val code: Int,
+  public val wireMessage: String,
+  public val data: JsonObject?,
+) : RuntimeException("data/fetch wire error $code: $wireMessage") {
+  public companion object {
+    public const val UNKNOWN: Int = -32020
+    public const val NOT_AVAILABLE: Int = -32021
+    public const val FETCH_FAILED: Int = -32022
+    public const val BUDGET_EXCEEDED: Int = -32023
 
     /** Extracts the JSON-RPC error payload into a [DataProductWireException]. */
-    fun from(errorElem: JsonObject): DataProductWireException =
+    public fun from(errorElem: JsonObject): DataProductWireException =
       DataProductWireException(
         code = errorElem["code"]?.jsonPrimitive?.long?.toInt() ?: 0,
         wireMessage = errorElem["message"]?.jsonPrimitive?.contentOrNull ?: errorElem.toString(),

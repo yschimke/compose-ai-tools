@@ -23,6 +23,25 @@ plugins {
   alias(libs.plugins.kotlin.serialization)
 }
 
+kotlin {
+  // `explicitApi()` — every declaration here must state its visibility, and every public one must
+  // state its return type. This module is a published contract an extracted preview server compiles
+  // against across a repo boundary (#3824), so an implicitly-public declaration is an API decision
+  // nobody made. The compiler now asks. See docs/API_STABILITY.md and #3824 preparation item 6.
+  explicitApi()
+
+  // ABI dump gate, following `:rc-player-*`. `checkKotlinAbi` diffs the module's real public ABI
+  // against the committed dump in `api/`, so a change to the published surface shows up as a diff
+  // in review rather than as a downstream break. Ships in the Kotlin Gradle plugin itself (still
+  // `@ExperimentalAbiValidation` at 2.4), so no extra plugin on the classpath. Regenerate with
+  // `./gradlew :daemon-client:updateKotlinAbi`.
+  @OptIn(org.jetbrains.kotlin.gradle.dsl.abi.ExperimentalAbiValidation::class) abiValidation()
+}
+
+// `checkKotlinAbi` is not wired into `check` by the Kotlin Gradle plugin, so an unrecorded surface
+// change would pass CI silently. Wire it explicitly — the gate is only worth having if it runs.
+tasks.named("check") { dependsOn("checkKotlinAbi") }
+
 dependencies {
   // Protocol message types (`RenderNowParams`, `InitializeResult`, `PreviewOverrides`, …) and
   // `DaemonLaunchDescriptor` are all over this module's public surface, so `api` rather than

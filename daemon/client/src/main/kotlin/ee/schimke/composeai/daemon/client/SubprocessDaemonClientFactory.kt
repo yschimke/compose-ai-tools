@@ -11,7 +11,7 @@ import kotlinx.serialization.json.JsonObject
  * Production [DaemonClientFactory]: forks a JVM per [DaemonLaunchDescriptor] and pipes its stdio
  * into a [DaemonClient]. Mirrors `RealDesktopHarnessLauncher` from `:daemon:harness`.
  */
-class SubprocessDaemonClientFactory : DaemonClientFactory {
+public class SubprocessDaemonClientFactory : DaemonClientFactory {
   override fun spawn(workspaceId: WorkspaceId, descriptor: DaemonLaunchDescriptor): DaemonSpawn {
     require(descriptor.enabled) {
       "daemon disabled for ${descriptor.modulePath} — set composePreview { daemon { enabled = true } }"
