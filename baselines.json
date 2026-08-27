@@ -3564,7 +3564,7 @@
     "functionName": "SwitchButtonOn",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "SwitchButtonOn-3f3536cc.apng",
-    "sha256": "9df8f196c9b85548deededdd9a510d3068141dd5d6d21a252eec7f00789dc956",
+    "sha256": "8b0cbe95291c41967e167c7d49fba722467809e11ef680d837d474f786f71029",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOn_VARIANT_off": {
