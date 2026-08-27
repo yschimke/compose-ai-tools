@@ -121,7 +121,10 @@
     }
   },
   "versionStampAliases": {
-    "schemaVersion": "`DaemonBootstrapTask.schemaVersion`, an `@Input` property whose getter returns DAEMON_DESCRIPTOR_SCHEMA_VERSION. The indirection is deliberate: it puts the version into the task's up-to-date fingerprint so a bump re-runs the task."
+    "schemaVersion": {
+      "file": "gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/daemon/DaemonBootstrapTask.kt",
+      "why": "`DaemonBootstrapTask.schemaVersion`, an `@Input` property whose getter returns DAEMON_DESCRIPTOR_SCHEMA_VERSION. The indirection is deliberate: it puts the version into the task's up-to-date fingerprint so a bump re-runs the task. Scoped to this file \u2014 a bare name would let any writer's local `schemaVersion` through."
+    }
   },
   "rawKeyReaders": {
     "cli/src/main/kotlin/ee/schimke/composeai/cli/McpCommand.kt": {

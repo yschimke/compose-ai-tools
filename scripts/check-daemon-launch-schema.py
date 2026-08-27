@@ -213,6 +213,38 @@ def serial_name_renames(rel: str, name: str) -> list[str]:
     return found
 
 
+CLASS_SERIALIZABLE = re.compile(r"@Serializable\s*\(([^)]*)\)\s*(?:public\s+)?data class\s+(\w+)")
+BODY_PROPERTY = re.compile(r"^\s*(?:public|internal|private)?\s*(?:val|var)\s+(\w+)\s*[:=]", re.M)
+
+
+def class_level_serializer_overrides(rel: str) -> list[tuple[str, str]]:
+    """DTOs whose `@Serializable` names a custom serializer, which can emit any shape at all."""
+    return [
+        (m.group(2), m.group(1).strip())
+        for m in CLASS_SERIALIZABLE.finditer(stripped(rel))
+        if m.group(1).strip()
+    ]
+
+
+def body_properties(rel: str, name: str) -> list[str]:
+    """Properties declared in the class body rather than the primary constructor.
+
+    kotlinx.serialization emits an initialised body property with a backing field just like a
+    constructor parameter, but this parser reads only the constructor — so such a field would be
+    absent from the structural comparison, the annotation check and the fingerprint at once.
+    """
+    text = stripped(rel)
+    m = re.search(r"\bdata class\s+" + re.escape(name) + r"\s*\(", text)
+    if not m:
+        return []
+    after = text[m.end() - 1 :]
+    ctor_end = len(balanced(after, 0, "(", ")")) + 2
+    rest = after[ctor_end:].lstrip()
+    if not rest.startswith("{"):
+        return []  # no class body at all
+    return BODY_PROPERTY.findall(balanced(rest, 0, "{", "}"))
+
+
 def annotated_properties(rel: str, name: str) -> list[tuple[str, str]]:
     """`(field, annotation)` for every annotation on a property of `name` that is not allowed."""
     text = stripped(rel)
@@ -377,7 +409,12 @@ def check_versions(allowlist: dict, failures: list[str]) -> None:
     by_package: dict[str, set[str]] = {}
     for s in sites:
         by_package.setdefault(s["symbol"], set()).add(package_declared_in(s["file"]))
-    aliases = set(allowlist["versionStampAliases"])
+    # Scoped, not global. Binding `schemaVersionSites` by package while leaving aliases as a bare
+    # name set was an inconsistency in my own fix: any writer with a local `schemaVersion` property
+    # would have been accepted purely because `DaemonBootstrapTask` registered that spelling.
+    aliases = {
+        (spec["file"], alias) for alias, spec in allowlist["versionStampAliases"].items()
+    }
     for found_rel, expr in discover_version_stamps():
         if expr == POSITIONAL:
             failures.append(
@@ -391,7 +428,9 @@ def check_versions(allowlist: dict, failures: list[str]) -> None:
                 f"literal.\n    That is a mirror with no name, which no name-based scan can find. "
                 f"Stamp a registered constant instead."
             )
-        elif expr not in aliases and not resolves_to_registered(found_rel, expr, by_package):
+        elif (found_rel, expr) not in aliases and not resolves_to_registered(
+            found_rel, expr, by_package
+        ):
             failures.append(
                 f"  {found_rel}: a descriptor is constructed with `schemaVersion = {expr}`, which "
                 f"does not resolve to a registered schema-version constant from here.\n"
@@ -696,6 +735,17 @@ def check_reader(
 
     for field, (wtype, has_default) in writer.items():
         if field in reader:
+            # A writer-only entry claims this reader does not declare the field. Once it does, the
+            # exemption is stale and would later authorise a removal unreviewed. The unit test
+            # asserted this; `check()` did not — and `:cli:checkDaemonLaunchSchema` runs `check()`,
+            # so the gate people actually run was the one missing it.
+            tolerated = allowlist["writerOnlyFields"].get(field)
+            if tolerated and label in tolerated["invisibleTo"]:
+                failures.append(
+                    f"  {rel}: `{field}` is recorded in `writerOnlyFields` as invisible to the "
+                    f"{label} reader, but that reader now declares it.\n    Remove `{label}` from "
+                    f"its `invisibleTo` — a stale exemption licenses a later removal unreviewed."
+                )
             continue
         tolerated = allowlist["writerOnlyFields"].get(field)
         if not tolerated or label not in tolerated["invisibleTo"]:
@@ -745,6 +795,7 @@ def check_unknown_key_tolerance(allowlist: dict, failures: list[str]) -> None:
 
 JSON_CONFIG = re.compile(r"\bJson\s*\{([^}]*)\}", re.S)
 JSON_SETTING = re.compile(r"(\w+)\s*=\s*([^\s;]+)")
+ENCODE_CALL = re.compile(r"\b(\w+)\s*\.\s*encodeToString\s*\(")
 
 
 def check_writer_encoders(allowlist: dict, failures: list[str]) -> None:
@@ -759,23 +810,40 @@ def check_writer_encoders(allowlist: dict, failures: list[str]) -> None:
     required = allowlist["writerEncoders"]["requiredSettings"]
     for rel in allowlist["writerEncoders"]["declaredBy"]:
         text = stripped(rel)
-        blocks = JSON_CONFIG.findall(text)
-        if not blocks:
+        # Resolve the receiver the descriptor is actually encoded through, the same way the
+        # reader-side tolerance check resolves `parse`'s. Validating every syntactic `Json { … }`
+        # in the file was the weaker shape: switching `encodeToString` to a different encoder while
+        # leaving the compliant instance in place for something else would have kept this green.
+        call = ENCODE_CALL.search(text)
+        if not call:
             failures.append(
-                f"  {rel}: registered as declaring a descriptor `Json` encoder, but no "
-                f"`Json {{ … }}` block was found. Prune the entry or fix the matcher."
+                f"  {rel}: registered as serialising a descriptor, but no "
+                f"`<receiver>.encodeToString(…)` call was found. Prune the entry or fix the "
+                f"matcher rather than leaving the encoder unverified."
             )
             continue
-        for block in blocks:
-            settings = dict(JSON_SETTING.findall(block))
-            if settings != required:
-                failures.append(
-                    f"  {rel}: the descriptor's `Json` encoder is configured "
-                    f"{settings}, but the recorded wire contract is {required}.\n"
-                    f"    Encoder settings rename or drop keys without touching a single "
-                    f"declaration — a `namingStrategy` alone would move every key while the "
-                    f"fingerprint held steady. Both writers must agree, and with this record."
-                )
+        receiver = call.group(1)
+        declared = re.search(
+            r"\bval\s+" + re.escape(receiver) + r"\s*(?::\s*Json\s*)?=\s*Json\s*\{([^}]*)\}",
+            text,
+            re.S,
+        )
+        if not declared:
+            failures.append(
+                f"  {rel}: encodes the descriptor through `{receiver}`, which is not a "
+                f"locally-declared `Json {{ … }}`.\n    The encoder's configuration is part of "
+                f"the wire format, so it has to be visible here to be checked."
+            )
+            continue
+        settings = dict(JSON_SETTING.findall(declared.group(1)))
+        if settings != required:
+            failures.append(
+                f"  {rel}: `{receiver}`, the encoder the descriptor is serialised through, is "
+                f"configured {settings}, but the recorded wire contract is {required}.\n"
+                f"    Encoder settings rename or drop keys without touching a single declaration "
+                f"— a `namingStrategy` alone would move every key while the fingerprint held "
+                f"steady. Both writers must agree, and with this record."
+            )
 
 
 def check_mirrored_constants(allowlist: dict, failures: list[str]) -> None:
@@ -844,6 +912,16 @@ def check() -> int:
     check_writer_encoders(allowlist, failures)
     check_wire_fingerprint(writer, allowlist, failures)
 
+    # A custom serializer replaces the generated one entirely and can emit any keys and types it
+    # likes, with every parsed field and the fingerprint unmoved.
+    for dto, argument in class_level_serializer_overrides(WRITER):
+        failures.append(
+            f"  {WRITER}: `{dto}` is annotated `@Serializable({argument})`.\n    A custom "
+            f"serializer decides the wire format itself, so nothing this checker reads from the "
+            f"declaration describes what is emitted any more. Drop it, or model it here — do not "
+            f"leave it unexamined."
+        )
+
     # Annotations on these properties change what is emitted without changing the declaration that
     # every rule here reads. Refused as a class rather than one at a time.
     for dto in ("DaemonClasspathDescriptor",) + NESTED_DTOS:
@@ -853,6 +931,14 @@ def check() -> int:
                 f"matches the Kotlin identifier.\n    Every rule here compares identifiers, so a "
                 f"wire rename this way would be invisible to all of them. Either drop the "
                 f"annotation, or teach this checker to read it — do not leave it unhandled."
+            )
+        for field in body_properties(WRITER, dto):
+            failures.append(
+                f"  {WRITER}: `{dto}.{field}` is declared in the class body, not the primary "
+                f"constructor.\n    kotlinx.serialization emits an initialised body property like "
+                f"any other field, but every rule here reads the constructor — so it would be "
+                f"invisible to the structural comparison, the annotation check and the fingerprint "
+                f"at once. Move it into the constructor, or make it non-serialised."
             )
         for field, annotation in annotated_properties(WRITER, dto):
             if annotation == "SerialName":

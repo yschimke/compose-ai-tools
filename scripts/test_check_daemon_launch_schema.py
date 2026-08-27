@@ -285,6 +285,22 @@ class RealTree(unittest.TestCase):
             self.assertTrue(keys, f"{rel} exposes no raw key reads any more")
             self.assertEqual(set(), keys - set(writer), f"{rel} reads keys the writer never emits")
 
+    def test_no_dto_declares_a_serialised_body_property(self):
+        # kotlinx emits an initialised body property like any constructor field, but every rule
+        # here reads the constructor — so it would be invisible to all of them at once.
+        for dto in ("DaemonClasspathDescriptor",) + mod.NESTED_DTOS:
+            self.assertEqual([], mod.body_properties(mod.WRITER, dto), dto)
+
+    def test_no_dto_uses_a_custom_serializer(self):
+        self.assertEqual([], mod.class_level_serializer_overrides(mod.WRITER))
+
+    def test_each_version_stamp_alias_is_scoped_to_a_file(self):
+        # A bare name set would let any writer's local `schemaVersion` through purely because
+        # DaemonBootstrapTask registered that spelling.
+        for alias, spec in self.allowlist["versionStampAliases"].items():
+            self.assertIn("file", spec, alias)
+            self.assertIn((spec["file"], alias), set(mod.discover_version_stamps()), alias)
+
     def test_the_writer_version_has_an_immutable_recorded_fingerprint(self):
         writer = mod.kotlin_data_class(mod.WRITER, "DaemonClasspathDescriptor")
         version = mod.kotlin_consts(mod.WRITER)["DAEMON_DESCRIPTOR_SCHEMA_VERSION"]
