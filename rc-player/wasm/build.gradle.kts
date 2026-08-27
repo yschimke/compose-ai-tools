@@ -61,7 +61,8 @@ tasks.register<Sync>("wasmPlayerDist") {
   // bytes and took the measured distribution to 23_513_207, 13_207 over. It is a deliberate
   // payload, not drift: this lane is manifest-only and never fetches, so a named family it doesn't
   // carry fails `RcComposeSupport.fontFamilyIssue`'s availability check outright — without the
-  // face, `:samples:design-catalog-remote-m3`'s Google Sans Flex typeface theme is unrenderable
+  // face, the `remote-m3` catalog's (yschimke/wear-m3-catalog) Google Sans Flex typeface theme is
+  // unrenderable
   // here while the other four lanes resolve it. Slack is kept at roughly the ~257 KB the previous
   // value had, so an unintended jump still fails.
   inputs.property(

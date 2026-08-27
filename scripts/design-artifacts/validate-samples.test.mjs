@@ -23,7 +23,6 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SAMPLE_SPECS = [
   "samples/design-catalog-m3/catalog.spec.json",
   "samples/design-catalog-wear-m3/catalog.spec.json",
-  "samples/design-catalog-remote-m3/catalog.spec.json",
 ];
 
 for (const rel of SAMPLE_SPECS) {

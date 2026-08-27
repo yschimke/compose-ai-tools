@@ -29,24 +29,26 @@ and breakpoints that matter.
 | --- | --- | --- |
 | `samples/design-catalog-m3` | Compose Material 3 (+ Adaptive, planned) | ✅ template |
 | `samples/design-catalog-wear-m3` | Wear Compose M3 | ✅ |
-| `samples/design-catalog-remote-m3` | Remote Compose (Wear Compose Remote M3 + `remote-creation-compose`) | ✅ |
 | `samples/design-catalog-glimmer` | Glimmer (Android XR) | planned (see `samples/xr-glimmer`) |
 | `samples/design-catalog-glance` | Glance app widgets + Wear widgets | planned |
 
-The Remote Compose catalog is the sticker-sheet sibling of the
-`samples/remotecompose` demo (which shows the two *ways* to preview Remote
-Compose). Each sticker is a real `RemoteDocument` built by `RemotePreview` and
-rasterised by the Remote Compose player, and has a single primary mode (the
-document carries explicit colours, so there is no light/dark split). That one
-mode is **dark**: the colours come from `RemoteMaterialTheme`, the dark-first
-Wear Compose Material 3 scheme, so — like the Wear stickers — the captures are
-transparent with light content. The spec tags it accordingly (`modes: ["dark"]`
-+ `display.surface: "dark"`); leave the surface off and the preview server's
-fallback heuristic (a `wear`/`watch` id token, which `remote-m3` doesn't carry)
-picks the default white stage and the white `RemoteIcon` / `RemoteText` stickers
-disappear into it. It carries the alpha Remote Compose
-runtime and `compileSdk 37`, diverging from the rest of the repo; see its
-`build.gradle.kts` and `:samples:remotecompose`.
+The **Remote Compose** catalog (`remote-m3`) is no longer one of them: it lives in
+[yschimke/wear-m3-catalog](https://github.com/yschimke/wear-m3-catalog) as
+`:remote-catalog`, co-located with the Wear catalog it is paired against and the kit
+both reproduce (#4588, and "Why the Remote catalog left this repo" below). What stayed
+here is everything the sheet was built *with*: `:samples:remotecompose` (the demo of the
+two *ways* to preview Remote Compose), `:third-party-rc-embedded-player`,
+`:data-remotecompose-connector`, `rc-compare` and the CMP/Wasm lane.
+
+Its rendering contract is unchanged by the move and still worth knowing here, because
+this repo's player work is scored against it: each sticker is a real `RemoteDocument`
+built by `RemotePreview` and rasterised by the player, with a single primary mode — the
+document carries explicit colours, so there is no light/dark split. That mode is
+**dark**, from the dark-first `RemoteMaterialTheme`, so like the Wear stickers the
+captures are transparent with light content. The spec tags it (`modes: ["dark"]` +
+`display.surface: "dark"`); leave the surface off and the preview server's fallback
+heuristic (a `wear`/`watch` id token, which `remote-m3` doesn't carry) picks the default
+white stage and the white `RemoteIcon` / `RemoteText` stickers disappear into it.
 
 An **app-modelled** catalog — one whose stickers render a real app's own surfaces
 rather than a component library's widgets — lives in that app's repo instead of
@@ -66,8 +68,9 @@ preview and otherwise settles on a canonical filled button; a component-library
 catalog has no `Screens` section, so its front door ends up advertising a lone
 button — true to the inventory, useless as a shop window. Each catalog here
 therefore points its hero at its full-screen scaffold template:
-`compose-m3` → `Template/AppScaffold`, `wear-m3` → `Template/TimeText`,
-`remote-m3` → `Template/WatchScreen`. A hero that resolves to nothing is silent
+`compose-m3` → `Template/AppScaffold`, `wear-m3` → `Template/TimeText` (and
+`remote-m3`, in its own repo now, → `Template/WatchScreen`). A hero that resolves to
+nothing is silent
 (the server just falls through), so `validateSpec` resolves it against the spec's
 componentIds, the module's `@CatalogComponent` ids, and its `@Preview` names —
 and the `validate-samples` test runs that over every catalog in this repo.
@@ -764,13 +767,14 @@ declare `compareWith: "wear-m3"` and author a `parallel` into ~19 ids on the in-
 harness sheet, which pinned by-component redundancy there (`Button/Tonal`,
 `IconButton`, `CompactButton`, `AppCard`, `TitleCard`, …) purely so a *published*
 page would not silently degrade — a `parallel` naming no sibling still builds, it
-just renders an unpaired row behind a `console.warn`. It now points at the Wear
-**reference** catalog instead:
+just renders an unpaired row behind a `console.warn`. It points at the Wear
+**reference** catalog now, and since the move below the two are siblings in one
+checkout:
 
 ```jsonc
 "compareWith": {
   "system": "wear-m3-catalog",
-  "repo": "yschimke/wear-m3-catalog",
+  "spec": "../catalog.spec.json",
   "designTitle": "M3 Wear OS kit"
 }
 ```
@@ -780,55 +784,63 @@ so it is free to be scoped by the feature rule above like `compose-m3` — a sep
 change, and one that should confirm against a published `matches.html` first.
 See [`renders/remote-m3-wear-catalog-repoint/`](../../renders/remote-m3-wear-catalog-repoint/).
 
-### Why the Remote catalog itself stays in this repo
+### Why the Remote catalog left this repo
 
-The reference-catalog rule says a design system's sheet belongs in its own repo, and
-`remote-m3` is the exception that does not move yet. It is not a preference — it is a
-dependency fact, and it has a **stated trigger**:
+The reference-catalog rule says a design system's sheet belongs in its own repo.
+`remote-m3` was the standing exception, and it was never a preference — it was a
+dependency fact with a **stated trigger**. Both halves of that trigger fired, so the
+catalog moved to [yschimke/wear-m3-catalog](https://github.com/yschimke/wear-m3-catalog)
+as `:remote-catalog` (#4588). This section is the record of what was true when it left.
 
-`samples/design-catalog-remote-m3` depends on four project modules. Three are
+**The dependency half.** The sheet depended on four project modules. Three were already
 published (`:preview-annotations`, `:data-remotecompose-connector`,
-`:wear-preview-runtime`); `:third-party-rc-embedded-player` publishes under this
-repo's own group for parity testing only, and `api`-exposes `androidx.compose.remote:*`
-types, so a consumer of it inherits whatever Remote Compose line this build resolves.
+`:wear-preview-runtime`). The fourth, `:third-party-rc-embedded-player`, publishes under
+this repo's own group for parity testing and `api`-exposes `androidx.compose.remote:*`,
+so a consumer inherits whatever Remote Compose line this build resolves — which was the
+disqualifying part while that line was an androidx.dev build id that ages out after a few
+weeks. It is not any more: all three remote groups (`compose-remote`,
+`wear-compose-remote`, `glance-wear`) resolve from Google Maven on released alpha
+coordinates, including `androidx.compose.remote.foundation:foundation`, the
+`remote-material3` dependency that used to exist only on androidx-main. The snapshot
+repository is still declared in `settings.gradle.kts`, but only under
+`-Pcomposeai.remoteCompose=snapshot`; nothing resolves from it by default.
 
-**The dependency half of the trigger has now fired.** All three remote groups
-(`compose-remote`, `wear-compose-remote`, `glance-wear`) resolve from Google Maven on
-released alpha coordinates — `androidx.compose.remote.foundation:foundation`, the
-`remote-material3` dependency that used to exist only on androidx-main, publishes
-there too — so the default build no longer carries a build-id pin that ages out after
-a few weeks. The androidx.dev snapshot repository is still declared in
-`settings.gradle.kts`, but only under `-Pcomposeai.remoteCompose=snapshot`; nothing
-resolves from it by default.
+**The pipeline half.** `compareWith` used to be a bare slug and could only ever name a
+sibling *module of this project*: the driver read the sibling's spec from
+`samples/design-catalog-<slug>/catalog.spec.json` in the same checkout and baked its
+thumbnails out of *this* repository's `design-artifacts/<slug>` branch. Both assumptions
+are wrong for a sibling in another repo, and they failed differently — the spec read
+*threw*, so the catch skipped the compare page wholesale behind a one-line warning, while
+the URLs would have baked under the wrong owner and 404'd only after a publish. The
+object form fixed both, taking either a `repo` (bake from that repository's delivery
+branch) or a `spec` (an in-checkout sibling that doesn't follow the
+`../design-catalog-<slug>/` convention). A bare string still means what it always did,
+and the sibling's title falls back to its published `catalog.json` when there is no spec
+to read locally, so a cross-repo pairing degrades to a titled page rather than to no page.
 
-What that leaves is a plain scheduling decision rather than a dependency fact: moving
-the catalog to `wear-m3-catalog` co-locates it with the kit references, so a kit
-re-point fixes both sides in one PR and `compareWith` drops to
-`{ "system": …, "spec": "../catalog.spec.json" }` with no `repo`. The one thing the
-receiving repo has to take on is the embedded-player lane and the alpha runtime
-(compileSdk 37) it needs. Until the move happens this pairing stays cross-repo, which
-is exactly the shape `compareWith` was widened to express.
+**Why `wear-m3-catalog` and not a third repo.** The comparison wants three columns — the
+kit, the Wear Compose rendition, the Remote one — and two of them already lived there.
+Co-locating collapses `compareWith` to a relative spec path, so a kit re-point is one PR
+instead of two repos in lockstep. A third repo would have re-created that repo's Figma,
+parity and delivery workflows in order to preserve exactly the cross-repo seam the move
+removes.
 
-**That move is no longer blocked by the pipeline.** `compareWith` used to be a bare
-slug and could only ever name a sibling *module of this project*: the driver read the
-sibling's spec from `samples/design-catalog-<slug>/catalog.spec.json` in the same
-checkout and baked its thumbnails out of *this* repository's `design-artifacts/<slug>`
-branch. Both assumptions are wrong for a sibling that lives in its own repo, and they
-failed in different ways — the spec read *threw*, so the catch skipped the compare page
-wholesale with a one-line warning, while the URLs would have baked under the wrong owner
-and 404'd only after a publish. The object form fixes both:
+**What did not move, and what it costs us.** The player, the vendored embedded player,
+`rc-compare`, the CMP/Wasm lane and the connector all stay here; only the sticker sheet
+and its publish lane left. Two consequences are worth keeping in view:
 
-```jsonc
-"compareWith": {
-  "system": "wear-m3-catalog",
-  "repo": "yschimke/wear-m3-catalog",  // whose design-artifacts branch to bake from
-  "designTitle": "M3 Wear OS kit"      // heading for the design column, below
-}
-```
-
-A bare string still means exactly what it always did. The sibling's title now falls back
-to its published `catalog.json` when there is no spec to read locally, so a cross-repo
-pairing degrades to a titled page rather than to no page.
+- The **CMP/Wasm parity corpus** (`ci.yml`'s `rc-cmp-wasm-parity`, the PR-blocking player
+  gate) is the published `design-artifacts/remote-m3` bundle, so it is now fetched from
+  wear-m3-catalog. A catalog edit over there re-renders the corpus without this repo's CI
+  seeing the diff — a sudden shift in those numbers is worth checking against that repo's
+  history before blaming the player.
+- The receiving repo depends on the **vendored** embedded player rather than upstream's
+  published `remote-player-compose`, because `RemoteComposeIrReplay`'s gate resolves the
+  entry-point *method* and the signature it compiled against names
+  `ee.schimke.composeai.rcembedded.player.RcImageLoader`. Substituting upstream's artifact
+  makes the gate return false and the lane fall back to the View player, silently. Teaching
+  the connector a second signature is this repo's change to make, and it is what would let
+  a consumer take the player from Google Maven like any other dependency.
 
 ### The design column, and why a comparison wants three
 
@@ -1379,7 +1391,7 @@ Caveats worth knowing before reaching for it:
   a deferred mode loses that row — the completeness gate then fails the publish for that
   component, which is the loud outcome, and the renderer never empties a preview's rows.
 - **Both backends now honour every axis.** An Android/Robolectric catalog
-  (`design-catalog-wear-m3`, `design-catalog-remote-m3`, and the `pocket-casts` catalogs whose
+  (`design-catalog-wear-m3`, and the `pocket-casts` catalogs whose
   nine palettes come from a provider) renders through a `RobolectricRenderTask` that reads the
   same `composePreview.*` properties and forwards them into the render JVM as
   `composeai.preview.*`, where the shared `PreviewFilter` applies them — the entry filter and

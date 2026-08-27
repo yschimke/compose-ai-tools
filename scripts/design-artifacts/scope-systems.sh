@@ -19,11 +19,10 @@
 # Output (stable order, one per line):
 #   compose-m3=true
 #   wear-m3=false
-#   remote-m3=false
 
 set -euo pipefail
 
-SYSTEMS=(compose-m3 wear-m3 remote-m3)
+SYSTEMS=(compose-m3 wear-m3)
 
 # Inputs that change the shape of EVERY bundle: the export driver, and the
 # workflows that drive it. Any hit here fans out to all systems.
@@ -36,7 +35,6 @@ system_pattern() {
   case "$1" in
     compose-m3) echo '^samples/(design-catalog-m3(-android|-shared)?|cmp-wasm-catalog)/' ;;
     wear-m3)    echo '^samples/design-catalog-wear-m3/' ;;
-    remote-m3)  echo '^(samples/design-catalog-remote-m3/|\.github/ci/remote-m3-cmp-wasm-allowlist\.json$)' ;;
     *) echo "unknown system: $1" >&2; exit 2 ;;
   esac
 }

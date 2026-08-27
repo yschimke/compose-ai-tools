@@ -21,7 +21,6 @@
     ":samples:android",
     ":samples:android-alpha",
     ":samples:android-library",
-    ":samples:design-catalog-remote-m3",
     ":samples:remotecompose",
     ":samples:wear",
     ":samples:wear-widget",

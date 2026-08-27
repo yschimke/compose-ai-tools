@@ -21,7 +21,7 @@ plugins {
 composePreview {
   // Pin Robolectric to SDK 35; compiles against `compileSdk = 37` (glance-wear alpha raises the AAR
   // minCompileSdk) but Robolectric 4.16.1 only ships to API 36 (JDK 21+). Matches
-  // `:samples:remotecompose` / `:samples:design-catalog-remote-m3`.
+  // `:samples:remotecompose`.
   sdkVersion.set(35)
 
   // Auto-detect (not the flag) does the cropping here: the glance-wear `@PreviewParameter`
@@ -73,8 +73,8 @@ dependencies {
   implementation(libs.activity.compose)
   // `CapturingWearWidgetPreview` — the shared Wear helper that renders a widget preview AND offers
   // its encoded RemoteCompose document to `IrSidecarChannel`, so the render lands a `<stem>.rc`
-  // sidecar next to the PNG. Shared with `:samples:design-catalog-remote-m3` so both widget
-  // surfaces capture their document the same way.
+  // sidecar next to the PNG. Shared with the `remote-m3` catalog (in yschimke/wear-m3-catalog)
+  // so both widget surfaces capture their document the same way.
   implementation(project(":wear-preview-runtime"))
   // `IrSidecarChannel` itself — `:wear-preview-runtime` keeps it `implementation`-scoped, and this
   // module's `WearWidgetDocCaptureTest` asserts on the sidecar it produces.

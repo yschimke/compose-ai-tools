@@ -334,7 +334,6 @@ jobs:
               -x :samples:android:test \
               -x :samples:android-alpha:test \
               -x :samples:android-library:test \
-              -x :samples:design-catalog-remote-m3:test \
               -x :samples:remotecompose:test \
               -x :samples:wear:test \
               -x :samples:wear-widget:test \
@@ -496,7 +495,12 @@ jobs:
   # reports pixels, and the blocking question is asked here instead.
   #
   # The corpus is the published `design-artifacts/remote-m3` bundle — 27 real documents plus the
-  # baked Android references. Both the comparison base and the proposed player render those exact
+  # baked Android references. It is published by yschimke/wear-m3-catalog rather than by this repo
+  # (the catalog moved there, #4588), so the fetch names that remote explicitly. Nothing else about
+  # the comparison changes: the corpus is a fixed set of documents either way, and both the base and
+  # the proposed player render those same bytes. What DID change is who can move it — a catalog edit
+  # over there re-renders the corpus without this repo's CI seeing the diff, so a sudden shift in
+  # the numbers below is worth checking against that repo's history before blaming the player. Both the comparison base and the proposed player render those exact
   # same fixed documents. That isolates the player without trusting the summary published beside
   # the corpus: that summary can legitimately lag `main` after an accepted player change, which
   # would make every following PR inherit somebody else's pixel movement.
@@ -552,8 +556,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/corpus"
-          if ! git fetch --depth=1 origin design-artifacts/remote-m3; then
-            echo "::warning::design-artifacts/remote-m3 is not fetchable; skipping the parity comparison"
+          if ! git fetch --depth=1 https://github.com/yschimke/wear-m3-catalog.git design-artifacts/remote-m3; then
+            echo "::warning::wear-m3-catalog's design-artifacts/remote-m3 is not fetchable; skipping the parity comparison"
             echo "available=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi

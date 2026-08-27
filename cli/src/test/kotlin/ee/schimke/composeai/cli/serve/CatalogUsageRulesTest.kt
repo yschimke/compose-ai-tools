@@ -190,7 +190,6 @@ class CatalogUsageRulesTest {
 
     // The sibling catalogs published from this same repo must NOT inherit them.
     assertFalse(rules.appliesToModule("samples:design-catalog-wear-m3"))
-    assertFalse(rules.appliesToModule("samples:design-catalog-remote-m3"))
   }
 
   /**

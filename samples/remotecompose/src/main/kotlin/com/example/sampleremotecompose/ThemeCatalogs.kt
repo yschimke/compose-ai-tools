@@ -15,7 +15,7 @@ import ee.schimke.composeai.preview.WearThemeCatalog
  *
  * This is the only module in the repo that renders Remote Compose through **approach 2**:
  * `@PreviewWrapper(RemotePreviewWrapper::class)` on an ordinary `@Preview`, so the wrapper — not
- * the body — installs the capture. `:samples:design-catalog-remote-m3` pairs Remote Compose with
+ * the body — installs the capture. The `remote-m3` catalog pairs Remote Compose with
  * `@WearThemeCatalog` already, but through **approach 1** (`RemoteSticker { … }` inside the body),
  * where a theme provider composes outside the capture by construction and nothing can go wrong.
  *
@@ -41,7 +41,7 @@ import ee.schimke.composeai.preview.WearThemeCatalog
  * Where the theme is live is the synthetic specimen sheet `@WearThemeCatalog` makes the renderer
  * emit per provider: a canned Wear M3 role + type-scale grid composed inside `Wrap`, which reads
  * the scheme below and differs per theme. Re-theming a recorded document is a different mechanism
- * entirely — named-value overrides on the replay path — and `:samples:design-catalog-remote-m3`'s
+ * entirely — named-value overrides on the replay path — and the `remote-m3` catalog's
  * `RemoteThemeCatalogs.kt` is the worked example of it.
  *
  * ## Coverage this does and does not add — measured, not assumed

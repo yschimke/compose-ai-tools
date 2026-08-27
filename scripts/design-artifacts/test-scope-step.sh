@@ -97,7 +97,7 @@ print(json.dumps({'files': [{'filename': n} for n in sys.argv[1:]]}))" "$@" > "$
   fi
 }
 
-ALL='compose-m3,wear-m3,remote-m3'
+ALL='compose-m3,wear-m3'
 
 # --- ordinary merge scoping -------------------------------------------------
 run_case 'push: wear catalog only'  'wear-m3'   push '' before samples/design-catalog-wear-m3/A.kt

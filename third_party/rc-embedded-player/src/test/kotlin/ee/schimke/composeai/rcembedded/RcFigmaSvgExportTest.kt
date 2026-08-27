@@ -376,10 +376,10 @@ class RcFigmaSvgExportTest {
   }
 
   /**
-   * `TitleCardRemote` as the `design-catalog-remote-m3` sample bakes it — the same document a
-   * staged run picks, captured from `design-artifacts/remote-m3` and committed at 1 KB. Its size is
-   * in the filename because a `.rc` carries its own layout but not the frame it was captured for,
-   * and the export needs the frame to compare the canvas against.
+   * `TitleCardRemote` as the `remote-m3` catalog bakes it — the same document a staged run picks,
+   * captured from `design-artifacts/remote-m3` and committed at 1 KB. Its size is in the filename
+   * because a `.rc` carries its own layout but not the frame it was captured for, and the export
+   * needs the frame to compare the canvas against.
    */
   private fun fixtureDocument(): Doc {
     val bytes =

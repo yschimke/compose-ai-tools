@@ -43,7 +43,6 @@ on:
       - 'samples/design-catalog-*/**'
       - 'samples/cmp-wasm-catalog/**'
       - 'scripts/design-artifacts/**'
-      - '.github/ci/remote-m3-cmp-wasm-allowlist.json'
       - '.github/workflows/design-artifacts.yml'
       - '.github/workflows/design-artifacts-reusable.yml'
   # Also invoked automatically after a published release (post-release-design-artifacts.yml
@@ -101,7 +100,6 @@ jobs:
     outputs:
       compose-m3: ${{ steps.scope.outputs.compose-m3 }}
       wear-m3: ${{ steps.scope.outputs.wear-m3 }}
-      remote-m3: ${{ steps.scope.outputs.remote-m3 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -219,8 +217,9 @@ jobs:
             # folds it in (--extra-renders) so the keyboard-focus variant keeps its
             # real ring. Its previews override same-named CMP functions.
             androidExtraModule: 'samples:design-catalog-m3-android'
-          # wear-m3 and remote-m3 moved to the `wear-m3` / `remote-m3` jobs below,
-          # which delegate to the reusable workflow. compose-m3 stays here: its Wasm
+          # wear-m3 moved to the `wear-m3` job below, which delegates to the
+          # reusable workflow; remote-m3 left the repository entirely (#4588 — it is
+          # published by yschimke/wear-m3-catalog now). compose-m3 stays here: its Wasm
           # tier + released-runtime Maven-Central gate are repo-internal machinery
           # that (per DESIGN_CATALOGS.md's convention) doesn't belong in the shared
           # consumer workflow.
@@ -451,8 +450,8 @@ jobs:
           # the wasm-tier row) runs on the Skiko daemon; an Android catalog flagged
           # `androidLiveBundle` (wear-m3) runs on the Robolectric daemon a box carrying
           # the Android sidecar provides — see deploy/image. The Android-only tiers
-          # (wear-m3 / remote-m3) publish their live bundle through the reusable job
-          # below, not this matrix.
+          # (wear-m3) publishes its live bundle through the reusable job below, not
+          # this matrix.
           PUBLISH_LIVE_BUNDLE: ${{ (matrix.wasmModule != '' || matrix.androidLiveBundle == '1') && '1' || '' }}
           # Buildable source for trusted server-side re-render: catalog.json gets a
           # `source: {repo, ref, module}` so a `serve --allow-render-trusted` box can
@@ -497,7 +496,7 @@ jobs:
       # An Android tier without `androidLiveBundle` has no runnable desktop daemon, so it stays
       # `--view-only`: the re-render classpath is dropped, keeping the baked image + every captured
       # sidecar (semantics / layout / figma-svg, from the `--with-semantics` pack) at ~tens of KB.
-      # The reusable wear-m3 / remote-m3 jobs publish Android live bundles and split FULL instead.
+      # The reusable wear-m3 job publishes an Android live bundle and splits FULL instead.
       - name: Split into per-preview bundles
         env:
           SYSTEM: ${{ matrix.system }}
@@ -577,13 +576,16 @@ jobs:
             bash "$GITHUB_WORKSPACE/.github/actions/apply/lib/push-branch.sh"
 
   # ───────────────────────────────────────────────────────────────────────────
-  # wear-m3 / remote-m3 delegate to the shared reusable workflow (same one
-  # external consumers use), building the CLI from source (cli-source: build) so
-  # they still publish HEAD's renderer output. They're Android (Robolectric)
-  # renders with no Wasm tier, so they fit the common pipeline; both now carry a
-  # live bundle (shared-classpath split) — the Robolectric daemon a serve host with
-  # the Android sidecar runs re-renders either. See DESIGN_CATALOGS.md's reference-caller
-  # convention.
+  # wear-m3 delegates to the shared reusable workflow (the same one external
+  # consumers use), building the CLI from source (cli-source: build) so it still
+  # publishes HEAD's renderer output. It's an Android (Robolectric) render with no
+  # Wasm tier, so it fits the common pipeline, and it carries a live bundle
+  # (shared-classpath split) — the Robolectric daemon a serve host with the Android
+  # sidecar runs re-renders it. See DESIGN_CATALOGS.md's reference-caller convention.
+  #
+  # remote-m3 used to sit beside it with the same shape. It is published by
+  # yschimke/wear-m3-catalog now (#4588), through this very workflow's reusable half —
+  # the caller moved repositories, the pipeline did not.
   # ───────────────────────────────────────────────────────────────────────────
   wear-m3:
     name: wear-m3
@@ -608,39 +610,3 @@ jobs:
     secrets:
       buildfetch_ro_token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
 
-  remote-m3:
-    name: remote-m3
-    needs: changes
-    if: ${{ github.repository == 'yschimke/compose-ai-tools' && needs.changes.outputs.remote-m3 == 'true' }}
-    permissions:
-      contents: write
-    uses: ./.github/workflows/design-artifacts-reusable.yml
-    with:
-      system: remote-m3
-      spec: samples/design-catalog-remote-m3/catalog.spec.json
-      module: 'samples:design-catalog-remote-m3'
-      cli-source: build
-      # Remote Compose is an Android/Robolectric catalog, so the same Android
-      # daemon that re-renders wear-m3 (on a serve host carrying the Android
-      # sidecar) drives it — carry a live bundle and split it with a SHARED classpath
-      # (app.jar once in `bundle/res`, each manifest carrying a hash-verified
-      # `externalClasspath`), so the viewer's declared Remote Compose knobs still
-      # re-render live via the `rc.<name>=` override while the delivery branch stops
-      # growing with the preview count (#4211).
-      publish-live-bundle: true
-      split-per-preview: true
-      split-mode: full-shared-classpath
-      # The embedded (Robolectric) and cmp-jvm (Compose Desktop / Skiko) rc-compare lanes used to be
-      # spelled out here; they now default to true in the reusable workflow, so every catalog that
-      # ships `ir/<id>.rc` gets them — the rationale (a divergence is only attributable when the same
-      # document is scored through more than one player) never was remote-m3-specific.
-      #
-      # The CMP/Wasm implementation under development in #3201, rendered in the same browser
-      # environment visitors use. This gives it an immediate per-document parity signal beside
-      # the established JS, Android embedded, and cmp-jvm lanes. Still opt-in, and deliberately so:
-      # it is a gate, not enrichment — a document it cannot draw fails the render rather than
-      # dropping a column — so it stays where someone is watching the result.
-      rc-cmp-wasm-lane: true
-      rc-cmp-wasm-allowlist: .github/ci/remote-m3-cmp-wasm-allowlist.json
-    secrets:
-      buildfetch_ro_token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}

@@ -24,7 +24,8 @@
 // the render's `.rc` sidecar, so a bundled widget travels as data rather than compiled `@Preview`
 // bytecode. Upstream's `WearWidgetPreview` builds that document internally and keeps the bytes to
 // itself, so a preview calling it directly emits no IR. Shared by `:samples:wear-widget` and
-// `:samples:design-catalog-remote-m3`. Unlike `TlcScalingHost` it does take a real dependency on
+// the `remote-m3` catalog (yschimke/wear-m3-catalog). Unlike `TlcScalingHost` it does take a real
+// dependency on
 // `:data-render-core` (the `IrSidecarChannel` hand-off it offers into) and on coroutines — see the
 // `dependencies` block for why the latter can't be `compileOnly`.
 
@@ -80,7 +81,7 @@ dependencies {
   // Glance Wear + the Remote Compose creation API the widget document is built from. `compileOnly`
   // for the same reason as `wear-compose` above: consumers are Wear widget modules that already
   // bring these alpha artifacts themselves (`:samples:wear-widget`,
-  // `:samples:design-catalog-remote-m3`), and keeping them off the published POM avoids pinning a
+  // the `remote-m3` catalog), and keeping them off the published POM avoids pinning a
   // specific glance-wear / compose-remote alpha onto every consumer of this runtime.
   compileOnly(libs.glance.wear)
   compileOnly(libs.glance.wear.core)
