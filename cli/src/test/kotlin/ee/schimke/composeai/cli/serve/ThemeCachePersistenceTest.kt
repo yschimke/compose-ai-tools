@@ -200,6 +200,7 @@ class ThemeCachePersistenceTest {
     ageRenders(root, "m3-catalog", fp, byMillis = 10_000)
 
     assertEquals(1, generation.markAllDirty(), "the operator's regenerate marks what is there")
+    assertTrue(generation.isDirty("preview|dark"), "and the mark is visible immediately")
     assertTrue(generation.isDirty("preview|dark"))
     assertTrue(
       generation.contains("preview|dark"),
@@ -211,6 +212,72 @@ class ThemeCachePersistenceTest {
     // roll and quietly never acted on.
     val reopened = assertNotNull(store(root).open("m3-catalog", fp, inputs(fp)))
     assertTrue(reopened.isDirty("preview|dark"), "an operator's request is not forgotten by a roll")
+  }
+
+  /**
+   * The rollout case, which a timestamp comparison alone gets wrong.
+   *
+   * `deploy/image` rolls out zero-downtime: the outgoing replica keeps serving — and keeps
+   * rendering into this same directory — while the incoming one boots. A render it writes after the
+   * new build set its boundary carries a LATER timestamp, so a bare `now` boundary files an
+   * old-build render as current, and the sample cannot catch it either because the sample only
+   * examines what was present at open.
+   */
+  @Test
+  fun `a render written during the rollout overlap is not mistaken for this build's work`() {
+    val root = tempDir()
+    val fp = "fp-a"
+    val first = assertNotNull(store(root).open("m3-catalog", fp, inputs(fp)))
+    first.put("before|dark", ByteArray(8) { 1 })
+    ageRenders(root, "m3-catalog", fp, byMillis = 10_000)
+
+    // A store with a REAL grace window — the helper above uses zero, which is right for the sweep
+    // assertions and exactly wrong here: the overlap allowance IS the grace window.
+    fun rolling() =
+      ThemeCacheStore(root, maxBytes = ThemeCacheStore.DEFAULT_MAX_BYTES, graceMillis = 60_000)
+
+    // The new build opens, setting the boundary out past the overlap.
+    assertNotNull(rolling().open("m3-catalog", fp, inputs(fp).copy(toolVersion = "1.15.0")))
+    // The OUTGOING replica, still live, publishes another render now — after that boundary.
+    val outgoing = assertNotNull(store(root).open("m3-catalog", fp, inputs(fp)))
+    outgoing.put("during|dark", ByteArray(8) { 2 })
+
+    // A later restart of the new build inherits both, and must distrust both.
+    val later =
+      assertNotNull(rolling().open("m3-catalog", fp, inputs(fp).copy(toolVersion = "1.15.0")))
+    assertTrue(later.isDirty("before|dark"), "written before the boundary")
+    assertTrue(
+      later.isDirty("during|dark"),
+      "and written DURING the overlap — a bare `now` boundary would have filed this as current, " +
+        "which is the stale pixel the boundary exists to catch",
+    )
+  }
+
+  @Test
+  fun `a partly failed dirty discard keeps the quarantine rather than reporting success`() {
+    val root = tempDir()
+    val fp = "fp-a"
+    val first = assertNotNull(store(root).open("m3-catalog", fp, inputs(fp)))
+    first.put("a|dark", ByteArray(8) { 1 })
+    first.put("b|dark", ByteArray(8) { 2 })
+    ageRenders(root, "m3-catalog", fp, byMillis = 10_000)
+    val next =
+      assertNotNull(store(root).open("m3-catalog", fp, inputs(fp).copy(toolVersion = "1.15.0")))
+    assertEquals(2, next.dirtyCount())
+
+    // Make one deletion fail by replacing the PNG with a non-empty DIRECTORY, which `File.delete`
+    // refuses. Crude, but it is the one filesystem failure a test can stage portably.
+    val dir = File(File(root, "m3-catalog"), fp)
+    val victim = dir.listFiles()!!.first { it.name.endsWith(".png") }
+    assertTrue(victim.delete())
+    assertTrue(File(victim, "occupied").let { it.mkdirs() && File(it, "x").createNewFile() })
+
+    assertEquals(
+      -1,
+      next.discardDirty(),
+      "a partial discard must report failure: verifySample reads any success as licence to lift " +
+        "the read quarantine, and a PNG left behind would go from proved-stale to served",
+    )
   }
 
   @Test

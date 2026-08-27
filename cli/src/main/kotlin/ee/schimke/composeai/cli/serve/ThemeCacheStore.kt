@@ -144,10 +144,21 @@ class ThemeCacheStore(
     // falls back to the directory's own timestamp for it, and a readable one is strictly better.
     if (existing != null && existing.toolVersion == inputs.toolVersion) return
     val createdAt = existing?.createdAtEpochMillis?.takeIf { it > 0 } ?: clock()
-    // A DIFFERENT build is opening renders another one wrote, so everything already here is dirty
-    // from this moment on. On a generation this build created there is nothing older to mark, and
-    // the boundary stays at zero.
-    val boundary = if (existing != null) clock() else 0L
+    // A DIFFERENT build is opening renders another one wrote, so everything already here is dirty.
+    // On a generation this build created there is nothing older to mark, and the boundary stays at
+    // zero.
+    //
+    // `+ graceMillis`, not `clock()`, because the rollout this deployment performs is
+    // ZERO-DOWNTIME: the outgoing replica keeps serving — and keeps rendering into this same
+    // directory — while the incoming one boots. Renders it writes after this instant would carry a
+    // timestamp past a bare `clock()` boundary and be filed as this build's work, which is exactly
+    // the stale-pixel case the boundary exists to catch, and the sample cannot catch them either
+    // because it only examines what was present at open. The grace window is the same one the sweep
+    // uses to decide another replica may still be live, which is the same question.
+    //
+    // The cost is that some of this build's OWN early renders fall under the boundary and are
+    // re-rendered once. That is the right direction to be wrong in.
+    val boundary = if (existing != null) clock() + graceMillis else 0L
     runCatching {
       file.writeText(
         json.encodeToString(
@@ -363,6 +374,30 @@ class ThemeCacheStore(
      */
     @Volatile private var dirtyBefore: Long = dirtyBoundary(dir)
 
+    /**
+     * The dirty file names, resolved **once** and then maintained in memory.
+     *
+     * The boundary and each file's timestamp decide who is dirty, but only when this set is built:
+     * asking the filesystem per query turned `/status` into tens of thousands of synchronous `stat`
+     * calls, because the snapshot walks every target of every catalog and m3-catalog alone declares
+     * 10,440. A render leaves the set when this process rewrites it, which is the only way an entry
+     * becomes clean.
+     */
+    private val dirtyNames: MutableSet<String> =
+      java.util.Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>()).apply {
+        val boundary = dirtyBefore
+        if (boundary > 0L) {
+          addAll(
+            present.filter { name ->
+              val modified = File(dir, "$name$PNG_SUFFIX").lastModified()
+              // A timestamp that cannot be read is treated as dirty: "I cannot tell how old this
+              // is" and "this is current" are not the same answer, and only one is safe to guess.
+              modified == 0L || modified < boundary
+            }
+          )
+        }
+      }
+
     /** Whether [cacheKey] is on disk from an older build and has not been re-rendered since. */
     fun isDirty(cacheKey: String): Boolean = isDirtyName(fileName(cacheKey))
 
@@ -375,18 +410,10 @@ class ThemeCacheStore(
      * through that one instead hashes an already-hashed name, lands on a file that does not exist,
      * and — since a missing file reads as dirty — quietly reports the entire generation dirty.
      */
-    private fun isDirtyName(name: String): Boolean {
-      val boundary = dirtyBefore
-      if (boundary <= 0L) return false
-      val file = File(dir, "$name$PNG_SUFFIX")
-      val modified = file.lastModified()
-      // A file whose timestamp cannot be read (0) is treated as dirty: "I cannot tell how old this
-      // is" and "this is current" are not the same answer, and only one of them is safe to guess.
-      return !file.isFile || modified == 0L || modified < boundary
-    }
+    private fun isDirtyName(name: String): Boolean = name in dirtyNames
 
     /** How many renders on disk are still an older build's work. */
-    fun dirtyCount(): Int = if (dirtyBefore <= 0L) 0 else present.count(::isDirtyName)
+    fun dirtyCount(): Int = dirtyNames.size
 
     /**
      * Mark every render currently on disk dirty, by moving the boundary to now.
@@ -398,16 +425,22 @@ class ThemeCacheStore(
      */
     fun markAllDirty(): Int {
       val now = clock()
-      dirtyBefore = now
-      runCatching {
+      // Persist FIRST, and refuse to claim the mark if it did not land. The contract this action
+      // sells is that a request survives the next roll; a full or read-only volume would otherwise
+      // leave the boundary in memory only, answer the operator 200 with a queued count, and forget
+      // the whole thing at the next restart — the one failure a durable-sounding API must not have.
+      val persisted = runCatching {
         val file = File(dir, MANIFEST_NAME)
         val existing = json.decodeFromString(GenerationInputs.serializer(), file.readText())
         file.writeText(json.encodeToString(existing.copy(dirtyBeforeEpochMillis = now)))
       }
         .onFailure { recordFailure(system, "manifest: ${it.message}") }
-      // Everything on disk predates a boundary set to now, so the count is simply what is here —
-      // and asking `isDirtyName` would race the very timestamps it just invalidated.
-      return present.size
+        .isSuccess
+      if (!persisted) return -1
+      dirtyBefore = now
+      // Everything on disk predates a boundary set to now, so the whole of `present` is dirty.
+      dirtyNames.addAll(present)
+      return dirtyNames.size
     }
 
     // Per-generation counters. The store-wide ones next to them answer "is the volume being used";
@@ -475,7 +508,7 @@ class ThemeCacheStore(
       // marked was written by THIS process, so it is not in `adopted`, and the adopted-only test
       // would drop its replacement on the floor — the pass would re-render the catalog every slice
       // and never clear a single flag.
-      if (name in present && !(replaceExisting && (name in adopted || isDirtyName(name)))) return
+      if (name in present && !(replaceExisting && (name in adopted || name in dirtyNames))) return
       // Optimizer admission prevents duplicate warming, but foreground renders can still complete
       // on two zero-downtime replicas at once. Serialize writes for the whole generation across
       // processes. This is try-lock rather than lock: persistence is best-effort and a visitor must
@@ -502,6 +535,10 @@ class ThemeCacheStore(
         present += name
         // Replaced by this process, so it is no longer a candidate for verifying the previous one.
         adopted -= name
+        // ...and no longer another build's work. This is the ONLY way an entry becomes clean, which
+        // is what keeps the dirty set honest without re-reading the volume: it shrinks exactly when
+        // a render is rewritten, and nothing else touches it.
+        dirtyNames -= name
         writes.incrementAndGet()
         generationWrites.incrementAndGet()
         knownBytes.addAndGet(png.size.toLong() - previousSize)
@@ -546,18 +583,27 @@ class ThemeCacheStore(
       if (generationWriteLock == null) return -1
       try {
         var removed = 0
-        for (name in present.filter(::isDirtyName)) {
+        var failed = 0
+        for (name in dirtyNames.toList()) {
           val file = File(dir, "$name$PNG_SUFFIX")
           val size = file.length()
           if (runCatching { !file.exists() || file.delete() }.getOrDefault(false)) {
             present.remove(name)
             adopted.remove(name)
+            dirtyNames.remove(name)
             knownBytes.addAndGet(-size)
             removed++
           } else {
+            failed++
             recordFailure(system, "could not discard dirty ${file.name}")
           }
         }
+        // ALL or nothing. The caller is `verifySample`, which reads any success as licence to trust
+        // this generation and lift the read quarantine — so one PNG left behind by a failed delete
+        // would go from "proved stale" to "served", which is the single outcome this whole path
+        // exists to prevent. Reporting the failure keeps the quarantine and lets the next pass try
+        // again.
+        if (failed > 0) return -1
         // Nothing older than the boundary survives, so the boundary has nothing left to mark. Left
         // in place it would make every entry this build writes from here look dirty the moment a
         // filesystem timestamp rounded the wrong way.
@@ -570,6 +616,7 @@ class ThemeCacheStore(
 
     private fun clearDirtyBoundary() {
       dirtyBefore = 0L
+      dirtyNames.clear()
       runCatching {
         val file = File(dir, MANIFEST_NAME)
         val existing = json.decodeFromString(GenerationInputs.serializer(), file.readText())
@@ -599,6 +646,7 @@ class ThemeCacheStore(
         // The manifest goes with everything else below, so the in-memory boundary must go too or
         // this object would keep marking a directory it just emptied.
         dirtyBefore = 0L
+        dirtyNames.clear()
         // Measured before the delete and subtracted, or the census would carry the discarded
         // generation's bytes plus its rebuilt replacement until the next sweep — making the one
         // number an operator uses to judge occupancy roughly twice the truth.

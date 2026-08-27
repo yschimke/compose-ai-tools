@@ -314,23 +314,6 @@ interface ServeHost : AutoCloseable {
   /** Memory occupancy of this catalog generation's durable rendered-preview cache. */
   fun catalogRenderCacheSnapshot(): CatalogRenderCacheSnapshot? = null
 
-  /**
-   * Queue every warmed theme render for re-render, and report how many — the operator's "regenerate
-   * this catalog".
-   *
-   * Nothing is deleted: the renders keep serving while the background pass replaces them, so asking
-   * for a refresh costs no visitor a cold render. Zero for a host with no persistent cache.
-   */
-  fun regenerateThemeCache(): Int = 0
-
-  /**
-   * Discard this catalog's warmed theme renders outright, reporting whether the store agreed.
-   *
-   * The decisive half of the pair: every preview goes cold at once. [regenerateThemeCache] is the
-   * one to reach for unless the pixels are known wrong rather than suspected.
-   */
-  fun dropThemeCache(): Boolean = false
-
   /** True while low-priority work still needs this host resident. */
   val backgroundWorkActive: Boolean
     get() = false

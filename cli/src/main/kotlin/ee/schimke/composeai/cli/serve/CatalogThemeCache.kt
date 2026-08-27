@@ -102,7 +102,19 @@ data class ThemeOptimizationSnapshot(
    * has finished and is not picking the queue up.
    */
   val dirty: Int = 0,
-)
+) {
+  /**
+   * Every target warm **and** produced by the renderer that is running — the condition the pass may
+   * actually stop on.
+   *
+   * [fullyOptimized] is deliberately left meaning "nothing is missing", because that is what the
+   * status row and the completion state have always reported. It is the wrong gate for the worker:
+   * a dirty entry is cached, so a catalog that has inherited a whole generation reads as fully
+   * optimized while none of it is this build's work.
+   */
+  val converged: Boolean
+    get() = fullyOptimized && dirty == 0
+}
 
 /**
  * One catalog generation's rendered-preview cache: memory occupancy, what the reads did, and the
@@ -384,7 +396,16 @@ class CatalogThemeCache(
    * fingerprint sees. Deliberately not a delete: the entries keep serving while the background pass
    * replaces them.
    */
-  fun markPersistedDirty(): Int = persistence?.markAllDirty() ?: 0
+  fun markPersistedDirty(): Int {
+    val store = persistence ?: return 0
+    // A pass that was never given targets cannot regenerate anything. With
+    // `-Dcomposeai.serve.themeOptimization=false` the startup configures `persistableKeys` and
+    // deliberately leaves `targetKeys` empty, so marking would report a queue the optimizer has no
+    // way to work — an operator told "1,606 queued" would wait for a regeneration that is never
+    // coming. -1 says the action is unavailable here, which the route reports rather than fakes.
+    if (targetKeys.isEmpty()) return -1
+    return store.markAllDirty()
+  }
 
   /**
    * Throw this catalog's persisted renders away outright, and forget them in memory too.
@@ -397,7 +418,11 @@ class CatalogThemeCache(
    * declared wrong, from the tier in front of the one that was emptied.
    */
   fun dropPersisted(): Boolean {
-    val discarded = persistence?.discard() ?: false
+    // `true` when there is no disk tier: the memory window below is all this cache has, clearing it
+    // is the whole of the drop, and it cannot fail. Reporting false would send the caller into a
+    // retry loop against a generation write lock that does not exist — the route turns false into a
+    // 409 whose contract is "contended, try again", and every retry would answer the same.
+    val discarded = persistence?.discard() ?: true
     synchronized(renderLock) {
       renders.clear()
       byteCount.set(0)
@@ -707,7 +732,10 @@ class CatalogThemeCache(
       turnsForced = turnsForced.get(),
       lastBatchWidth = lastBatchWidth.get(),
       maxBatchWidth = maxBatchWidth.get(),
-      dirty = dirtyTargets().size,
+      // The store's own count, not `dirtyTargets().size`: `/status` snapshots every catalog on
+      // every request and m3-catalog alone declares 10,440 targets, so the filtered walk belongs on
+      // the optimizer's path — which runs per slice — and not on this one.
+      dirty = persistence?.dirtyCount() ?: 0,
     )
   }
 

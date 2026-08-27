@@ -1065,17 +1065,47 @@ class ServeHttpServer(
           post("/admin/catalogs/{system}/theme-cache/regenerate") {
             if (rejectBadAdminToken()) return@post
             val system = call.parameters["system"].orEmpty()
-            val host = sessions.peekHost(system)
-            if (host == null) {
+            // The retained STATE, not the live host. `peekHost` answers null for a suspended
+            // session, and since the optimizer residency work that is most catalogs most of the
+            // time — so peeking at hosts would 404 precisely the idle catalogs this action exists
+            // to refresh, and only for being idle. The cache hangs off the state and outlives the
+            // daemon, so this neither needs nor wakes one.
+            val cache = sessions.peekState(system)?.catalogThemeCache
+            if (cache == null) {
               call.respondText("no such catalog: $system", status = HttpStatusCode.NotFound)
               return@post
             }
-            val queued = withContext(Dispatchers.IO) { host.regenerateThemeCache() }
+            val queued = withContext(Dispatchers.IO) { cache.markPersistedDirty() }
             call.response.headers.append(HttpHeaders.CacheControl, "no-store")
+            if (queued < 0) {
+              // Two different refusals, both of which must not read as a queued regeneration: the
+              // pass has no targets to work (theme optimization switched off, so nothing would ever
+              // be re-rendered) or the mark could not be persisted (a full or read-only volume,
+              // where a restart would silently forget the request).
+              call.respondText(
+                Json.encodeToString(
+                  ThemeCacheActionDto.serializer(),
+                  ThemeCacheActionDto(
+                    system = system,
+                    action = "regenerate",
+                    entries = 0,
+                    queued = false,
+                  ),
+                ),
+                ContentType.Application.Json,
+                status = HttpStatusCode.Conflict,
+              )
+              return@post
+            }
             call.respondText(
               Json.encodeToString(
                 ThemeCacheActionDto.serializer(),
-                ThemeCacheActionDto(system = system, action = "regenerate", entries = queued),
+                ThemeCacheActionDto(
+                  system = system,
+                  action = "regenerate",
+                  entries = queued,
+                  queued = true,
+                ),
               ),
               ContentType.Application.Json,
             )
@@ -1083,12 +1113,13 @@ class ServeHttpServer(
           post("/admin/catalogs/{system}/theme-cache/drop") {
             if (rejectBadAdminToken()) return@post
             val system = call.parameters["system"].orEmpty()
-            val host = sessions.peekHost(system)
-            if (host == null) {
+            // The state, for the reason the regenerate route above gives.
+            val cache = sessions.peekState(system)?.catalogThemeCache
+            if (cache == null) {
               call.respondText("no such catalog: $system", status = HttpStatusCode.NotFound)
               return@post
             }
-            val dropped = withContext(Dispatchers.IO) { host.dropThemeCache() }
+            val dropped = withContext(Dispatchers.IO) { cache.dropPersisted() }
             call.response.headers.append(HttpHeaders.CacheControl, "no-store")
             call.respondText(
               Json.encodeToString(
@@ -10820,6 +10851,12 @@ private data class ThemeCacheActionDto(
   val action: String,
   val entries: Int = 0,
   val dropped: Boolean? = null,
+  /**
+   * Whether `regenerate` actually queued anything. False with a 409 means it could not: theme
+   * optimization is switched off for this deployment, so no pass would ever work the queue, or the
+   * mark could not be written to the volume and a restart would forget it.
+   */
+  val queued: Boolean? = null,
 )
 
 /** Reply from the optimizer pause/resume admin routes. */

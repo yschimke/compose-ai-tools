@@ -485,10 +485,6 @@ class ServeCatalogLiveHost(
   override fun catalogRenderCacheSnapshot(): CatalogRenderCacheSnapshot =
     catalogThemeCache.renderCacheSnapshot()
 
-  override fun regenerateThemeCache(): Int = catalogThemeCache.markPersistedDirty()
-
-  override fun dropThemeCache(): Boolean = catalogThemeCache.dropPersisted()
-
   override val backgroundWorkActive: Boolean
     get() = optimizationActive.get()
 
@@ -604,7 +600,12 @@ class ServeCatalogLiveHost(
                 // exactly the terms every other background render is. Cheap and once per host: a
                 // no-op when nothing was adopted from disk.
                 if (!persistenceVerified.get()) verifyPersistedRenders(jobs)
-                if (catalogThemeCache.snapshot().fullyOptimized) PassOutcome.FINISHED
+                // `converged`, NOT `fullyOptimized`. The latter asks only whether every target is
+                // cached, and a dirty entry IS cached — so on the normal state after adopting a
+                // previous build's generation, or right after an operator asks for a regenerate,
+                // this returned FINISHED and the pass never ran. The dirty queue inside
+                // `runOptimizerPass` was unreachable in exactly the case it exists for.
+                if (catalogThemeCache.snapshot().converged) PassOutcome.FINISHED
                 else runOptimizerPass(jobs, sliceUntil = clock() + optimizerSliceMillis)
               } finally {
                 optimizationActive.set(false)

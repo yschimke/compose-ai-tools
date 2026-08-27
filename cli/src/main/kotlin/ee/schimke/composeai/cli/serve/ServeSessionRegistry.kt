@@ -760,6 +760,21 @@ class ServeSessionRegistry(
    */
   fun peekHost(sessionId: String): ServeHost? = lock.withLock { sessions[sessionId]?.host }
 
+  /**
+   * The retained state for [sessionId] without resuming it — null when nothing is registered under
+   * that id.
+   *
+   * [peekHost] answers null for a session the idle reaper has suspended, which since the optimizer
+   * residency work is *most catalogs most of the time*: a caller that only peeks at hosts therefore
+   * cannot tell "no such catalog" from "that catalog is idle", and would refuse work on the ones it
+   * exists to serve. The state outlives the host by design, and the durable things hang off it —
+   * `catalogThemeCache` among them — so an operation that touches those should reach them here and
+   * leave the daemon asleep.
+   */
+  fun peekState(sessionId: String): ServeSessionState? = lock.withLock {
+    sessions[sessionId]?.state
+  }
+
   /** Total known sessions (resident + suspended). */
   fun activeCount(): Int = lock.withLock { sessions.size }
 
