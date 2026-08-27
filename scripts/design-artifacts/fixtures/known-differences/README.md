@@ -324,6 +324,8 @@ by orders of magnitude more.
 | `an-all-masked-comparison-measures-nothing` | A mask covering the whole plane leaves `unaccepted` measuring nothing |
 | `an-empty-union-leaves-raw-untouched` | With nothing accepted, `unaccepted` is `raw` bit for bit |
 | `overlapping-masks-suppress-the-seam-once` | Two masks sharing four columns, whose union is one region |
+| `two-encodings-of-one-edge-agree` | The same half-covered edge, encoded at two resolutions, is not a difference |
+| `translucent-ink-still-shows-its-ground` | Two translucent sides differ by exactly the ground they let through |
 
 ## The canonical plane
 

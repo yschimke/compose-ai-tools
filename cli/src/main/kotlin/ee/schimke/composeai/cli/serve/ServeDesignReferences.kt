@@ -176,7 +176,7 @@ private constructor(
      * it, so a host reading the wrong version would either discard every current match or trust
      * every stale one.
      */
-    const val SCORE_VERSION = 2
+    const val SCORE_VERSION = 3
     private val SAFE_ID = Regex("[A-Za-z0-9._-]{1,160}")
     private val SHA256 = Regex("[a-f0-9]{64}")
     private val PNG_SIGNATURE = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)

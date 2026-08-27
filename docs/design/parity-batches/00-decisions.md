@@ -146,10 +146,29 @@ wrong.
 > [The pixel semantics, settled](../COMPONENT_PARITY_WORKFLOW.md#the-normative-contract), which is
 > normative; this is the index into it.
 >
-> 1. **The resampler** is an area average over exact source footprints, per channel, on
->    non-premultiplied 8-bit RGBA, rounded half-up once at the end. No kernel radius and no
->    edge-extension rule, and it reduces to a box filter at integer ratios and to nearest-neighbour
->    on integer upscale — the three cases an implementation would otherwise special-case are one.
+> 1. **The resampler** is an area average over exact source footprints, per channel, rounded
+>    half-up once at the end. No kernel radius and no edge-extension rule, and it reduces to a box
+>    filter at integer ratios and to nearest-neighbour on integer upscale — the three cases an
+>    implementation would otherwise special-case are one.
+>
+>    **Amended (`SCORE_VERSION` 3): the gate path averages straight 8-bit RGBA; the score path
+>    averages premultiplied.** The original answer was straight everywhere, on the reasoning that
+>    premultiplying and un-premultiplying add a rounding step each way for no benefit — sound for the
+>    gate path, whose artifacts are opaque by construction (a mask is greyscale with no alpha, an
+>    accepted candidate is a crop of an already-composited render), and wrong for the score path,
+>    whose inputs are not. A Compose render with a transparent surround is the ordinary case, which
+>    is the whole reason `COMPARISON_GROUNDS` has two entries.
+>
+>    Averaging straight colour and compositing the ground afterwards do not commute. The same
+>    half-covered white edge on black scored `128` encoded as one pixel at alpha 128 and `64` encoded
+>    as an opaque pixel beside a transparent one, so two visually identical exports at different
+>    resolutions read as a mismatch. Both correct orderings — composite per ground then average, or
+>    average premultiplied then composite — are the one expression `mean(a·c) + g·(1 − mean(a))`; the
+>    second is taken, because it keeps one raster per region instead of one per region per ground.
+>    `drawImage` had this right by accident of the host (a canvas downscales premultiplied), so
+>    `SCORE_VERSION` 1 agreed with 3 and 2 was the regression. **No acceptance verdict moves** — the
+>    gate path is untouched — and no un-premultiplication happens anywhere: the score plane is
+>    premultiplied from the resample until the ground is added, and never converted back.
 > 2. **Mask pixels do not participate in `edgeMask`.** Edge classification runs within each
 >    separated region and an out-of-region neighbour contributes *no gradient term* rather than a
 >    filler value, which is what stops the fill manufacturing or suppressing an edge at the

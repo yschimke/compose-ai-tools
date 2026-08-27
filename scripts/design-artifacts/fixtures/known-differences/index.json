@@ -1026,6 +1026,14 @@
     {
       "id": "overlapping-masks-suppress-the-seam-once",
       "title": "Two masks sharing four columns, whose union is one region"
+    },
+    {
+      "id": "two-encodings-of-one-edge-agree",
+      "title": "The same half-covered edge, encoded at two resolutions, is not a difference"
+    },
+    {
+      "id": "translucent-ink-still-shows-its-ground",
+      "title": "Two translucent sides differ by exactly the ground they let through"
     }
   ],
   "plane": [

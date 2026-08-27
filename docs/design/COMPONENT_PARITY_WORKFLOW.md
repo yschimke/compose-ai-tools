@@ -711,17 +711,32 @@ and the fixtures are
 [`scripts/design-artifacts/fixtures/known-differences/`](../../scripts/design-artifacts/fixtures/known-differences/).
 
 1. **The portable pixel path is an area average over exact source footprints**, per channel, on
-   **non-premultiplied 8-bit RGBA**, accumulated in double precision and rounded **half-up**
-   (`floor(v + 0.5)`) exactly once at the end, clamped to `[0, 255]`. It needs no kernel radius and
-   no edge-extension rule — a destination pixel's footprint is clipped to the source rectangle and
-   never samples outside it — and it reduces to a box filter at integer ratios and to
-   nearest-neighbour when upscaling by an integer, so the three cases an implementation is most
-   likely to special-case are one rule. Not premultiplied, deliberately: premultiplying and
-   un-premultiplying adds a rounding step each way that two engines would have to agree on for no
-   benefit, and these artifacts are opaque by construction. Rounding per contribution rather than
-   once at the end is where two implementations drift, so the fixtures pin an average landing
-   exactly on `.5`. Content-box detection stays where it is — it feeds the plane gate, and the
-   recorded plane is what governs (I9).
+   **8-bit RGBA**, accumulated in double precision and rounded **half-up** (`floor(v + 0.5)`)
+   exactly once at the end, clamped to `[0, 255]`. It needs no kernel radius and no edge-extension
+   rule — a destination pixel's footprint is clipped to the source rectangle and never samples
+   outside it — and it reduces to a box filter at integer ratios and to nearest-neighbour when
+   upscaling by an integer, so the three cases an implementation is most likely to special-case are
+   one rule. Rounding per contribution rather than once at the end is where two implementations
+   drift, so the fixtures pin an average landing exactly on `.5`. Content-box detection stays where
+   it is — it feeds the plane gate, and the recorded plane is what governs (I9).
+
+   **The gate path averages straight colour; the score path averages premultiplied**
+   (`SCORE_VERSION` 3 — before it, both were straight). Straight is right for the gate path and only
+   there: premultiplying and un-premultiplying adds a rounding step each way that two engines would
+   have to agree on for no benefit, and the gate path's artifacts are opaque by construction — a
+   mask is greyscale with no alpha, and an accepted candidate is a crop of an already-composited
+   render. The score path's inputs are not opaque by construction; a render with a transparent
+   surround is the ordinary case, which is why `COMPARISON_GROUNDS` has two entries at all.
+
+   There, straight averaging is a defect, because averaging colour and compositing the ground
+   afterwards do not commute. On black, the same half-covered white edge scores `128` encoded as one
+   pixel at alpha 128 and `64` encoded as an opaque pixel beside a transparent one — two visually
+   identical exports at different resolutions, reported as a mismatch. The two correct orderings
+   agree with each other (`mean(a·c) + g·(1 − mean(a))`), and averaging premultiplied is the one
+   taken: it keeps one raster per region rather than one per region per ground. Nothing is ever
+   un-premultiplied — the score plane stays premultiplied from the resample until the ground is
+   added — so the round-trip rounding this answer originally avoided is still avoided. **No
+   acceptance verdict moves**; only the score does.
 2. **Masked coordinates do not participate in `edgeMask`, and absence is not a value.** Excluding
    them as sources and search candidates is not sufficient, because the classifier reads raw
    neighbour values and whatever fills a separated region can manufacture or suppress an edge at the

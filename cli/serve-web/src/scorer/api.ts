@@ -12,7 +12,7 @@ import {
     blankMap,
     boxCanvas,
     grayFromDraw,
-    grayFromRaster,
+    grayFromPremultipliedRaster,
     imageDimensions,
     loadImage,
     normalisedBoxes,
@@ -30,7 +30,7 @@ import {
     COMPARISON_GROUND_RGB,
     MAX_SIDE,
 } from "./tuning.js";
-import { cropTo } from "../../../../scripts/design-artifacts/known-difference-resample.mjs";
+import { cropToPremultiplied } from "../../../../scripts/design-artifacts/known-difference-resample.mjs";
 
 export interface Measurement {
     /** Structural match, 0–100. */
@@ -278,14 +278,17 @@ export async function scoreImages(
     const { width, height } = comparisonSize(boxes.candidate);
     // ONE resample, source → score plane, at the candidate box's dimensions (I10), through the
     // portable area average rather than `drawImage`. The geometry is exactly what it was and the
-    // kernel is not, which is the whole of the rebaseline on this side: the number moves once, here.
+    // kernel is not. Premultiplied, because averaging straight colour and compositing afterwards do
+    // not commute — see `resampleAreaPremultiplied`. `boxCanvas` still crops through the straight
+    // `cropTo`: the panel it paints and the delta map that walks it need displayable bytes, and
+    // premultiplied colour handed to `putImageData` renders dark.
     const scaled: [Raster, Raster] = [
-        cropTo(reference, boxes.reference, width, height),
-        cropTo(candidate, boxes.candidate, width, height),
+        cropToPremultiplied(reference, boxes.reference, width, height),
+        cropToPremultiplied(candidate, boxes.candidate, width, height),
     ];
     const grounds = COMPARISON_GROUND_RGB.map((ground) => ({
-        reference: grayFromRaster(scaled[0], ground),
-        candidate: grayFromRaster(scaled[1], ground),
+        reference: grayFromPremultipliedRaster(scaled[0], ground),
+        candidate: grayFromPremultipliedRaster(scaled[1], ground),
     }));
     let percent = 100;
     for (const plane of groundsWorthScoring(grounds)) {

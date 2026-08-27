@@ -128,7 +128,7 @@ class ServeDesignReferenceStoreTest {
               "id": "good",
               "previewId": "com.example.GoodPreview",
               "raster": { "path": "references/good.png" },
-              "match": { "percent": 98.5, "scoreVersion": 2 }
+              "match": { "percent": 98.5, "scoreVersion": ${ServeDesignReferenceStore.SCORE_VERSION} }
             }
           ]
         }
@@ -173,7 +173,7 @@ class ServeDesignReferenceStoreTest {
 
   @Test
   fun `a match minted by another kernel is dropped without dropping its reference`() {
-    // The scorer's kernel moved once, deliberately, and every published number moved with it. A
+    // The scorer's kernel moves deliberately, and every published number moves with it. A
     // delivery branch is regenerated on its own schedule, so a viewer WILL meet a catalog baked
     // before the change — and printing that chip would put an old-kernel number beside a readout
     // the lane computes with the new one. Two numbers for one comparison, disagreeing at a glance,

@@ -5596,6 +5596,101 @@ function scoreOf(costSum, measured) {
   });
 }
 
+{
+  // **The alpha case, and the reason `SCORE_VERSION` is `3`.** Two encodings of the same
+  // half-covered white edge, at two resolutions, must score as identical — they are the same
+  // picture.
+  //
+  // The reference alternates opaque-white and fully-transparent columns at 32 wide; the candidate is
+  // uniform white at alpha 128 at 16 wide. Downscaling the reference to the candidate box's 16
+  // averages each column pair, and the two agree only if the average is taken on premultiplied
+  // colour: `mean(a·c)` is `(255·255 + 0·0)/2/255 = 128` at alpha `(255 + 0)/2 = 128`, which is
+  // exactly the candidate's `255·128/255 = 128` at alpha 128.
+  //
+  // Averaging *straight* colour and compositing afterwards — what `SCORE_VERSION` 2 did — gives the
+  // reference `(128,128,128,128)` against the candidate's `(255,255,255,128)`, a luminance gap of
+  // 63.75 on either ground, and the pair scores about 57 instead of 100. Two identical exports read
+  // as a mismatch on nothing but the exporter's choice of resolution.
+  const reference = raster(32, 24, [0, 0, 0, 0]);
+  for (let x = 0; x < 32; x += 2) fillRect(reference, { x, y: 0, width: 1, height: 24 }, WHITE);
+  const candidate = raster(16, 24, [255, 255, 255, 128]);
+
+  addScoring({
+    id: "two-encodings-of-one-edge-agree",
+    title: "The same half-covered edge, encoded at two resolutions, is not a difference",
+    why:
+      "Averaging straight alpha and compositing the ground afterwards do not commute, so the same " +
+      "picture scored differently depending only on how its exporter encoded a partly covered " +
+      "pixel. The score plane averages premultiplied colour, which makes the two orderings the one " +
+      "expression `mean(a·c) + g·(1 − mean(a))` — and is what `drawImage` produced before the " +
+      "portable kernel replaced it, since a canvas downscales premultiplied.",
+    plane: { plane: "content-box", box: { x: 0, y: 0, width: 32, height: 24 } },
+    referenceBox: { x: 0, y: 0, width: 32, height: 24 },
+    candidateBox: { x: 0, y: 0, width: 16, height: 24 },
+    reference,
+    candidate,
+    masks: {},
+    expected: {
+      pins: ["scorePlane", "presence", "scores"],
+      epsilon: 1e-9,
+      // The candidate box's dimensions (I10), so the reference is the side that downscales.
+      scorePlane: { width: 16, height: 24 },
+      presence: { whole: 384, accepted: 0, unaccepted: 384 },
+      scores: { raw: 100, accepted: 100, unaccepted: 100 },
+      rawEqualsUnaccepted: true,
+    },
+  });
+}
+
+{
+  // The other half of the same seam: premultiplied colour must not be weighted by alpha *again*.
+  //
+  // Identity scale on both sides, so no resample is involved and the only step under test is the
+  // compositing one. Two translucent whites, alpha 128 against alpha 192 — both sides have to vary
+  // across the grounds or `groundsWorthScoring` scores only the first, which is the rule that keeps
+  // an opaque reference from being charged for a render's transparent surround.
+  //
+  // On white both composite to 255 and the pass is clean. On black they read their premultiplied
+  // colour straight — 128 against 192 — and the minimum over the grounds takes that one.
+  //
+  // This is the fixture that fails when a premultiplied raster reaches a straight compositor: every
+  // partly transparent pixel is dragged toward the ground, to 191.25 against 207.56 on white and
+  // 64.25 against 144.56 on black. The case above cannot catch that on its own — its two sides are
+  // equally translucent, so a doubled multiply moves them together and they still agree. Nor does
+  // this one catch the straight *average* the case above exists for: with no resample there is
+  // nothing to average. They fail on opposite mistakes, which is why both are here.
+  const reference = raster(32, 24, [255, 255, 255, 128]);
+  const candidate = raster(32, 24, [255, 255, 255, 192]);
+
+  addScoring({
+    id: "translucent-ink-still-shows-its-ground",
+    title: "Two translucent sides differ by exactly the ground they let through",
+    why:
+      "Premultiplied colour composites by *adding* the ground's share, not by weighting the colour " +
+      "again. Both sides annihilate against white and separate against black, which is why " +
+      "`COMPARISON_GROUNDS` has two entries and why the score is the minimum over them.",
+    plane: { plane: "content-box", box: { x: 0, y: 0, width: 32, height: 24 } },
+    referenceBox: { x: 0, y: 0, width: 32, height: 24 },
+    candidateBox: { x: 0, y: 0, width: 32, height: 24 },
+    reference,
+    candidate,
+    masks: {},
+    expected: {
+      pins: ["scorePlane", "presence", "scores"],
+      epsilon: 1e-9,
+      scorePlane: { width: 32, height: 24 },
+      presence: { whole: 768, accepted: 0, unaccepted: 768 },
+      // Flat on both grounds, so the metric is a plain mean of one pixel cost: |128 − 192| on black.
+      scores: {
+        raw: scoreOf(768 * cost(64), 768),
+        accepted: 100,
+        unaccepted: scoreOf(768 * cost(64), 768),
+      },
+      rawEqualsUnaccepted: true,
+    },
+  });
+}
+
 // --------------------------------------------------------------------------------------------
 // 5d. The canonical plane, pinned on its own.
 //
