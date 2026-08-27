@@ -3,7 +3,7 @@
     "The symbol surface between `ee.schimke.composeai.cli.serve` and the rest of the CLI.",
     "A debt register for the preview-server split (issue #3824), not a config file: entries",
     "only ever come off. `scripts/check-serve-seam.py` fails on a crossing that is not listed",
-    "(new coupling) AND on a listed entry that no longer crosses (prune it \u2014 that is progress).",
+    "(new coupling) AND on a listed entry that no longer crosses (prune it — that is progress).",
     "Regenerate the shrunk list with `python3 scripts/check-serve-seam.py --write`.",
     "cliInternalsUsedByServe: serve reaching into the CLI. Each entry is something the extracted",
     "server would have to get from a published contract module instead. The bundle-format cluster",
@@ -14,18 +14,18 @@
     "long tail here is ServeCommand.kt, which #3824 wants reduced to a thin entry point.",
     "forbiddenPackages is NOT a ratchet: an extracted preview server never imports a renderer, an",
     "forbiddenPackages is NOT a ratchet: an extracted preview server never imports a renderer, an",
-    "MCP server, or the gradle plugin, and there is nothing here to grandfather. `\u2026composeai.plugin`",
-    "is the plugin's real namespace (`plugin`, `plugin.daemon`, `plugin.tooling`) \u2014 an earlier",
-    "`\u2026composeai.gradle` entry named nothing at all and enforced nothing, while `plugin.tooling`",
+    "MCP server, or the gradle plugin, and there is nothing here to grandfather. `…composeai.plugin`",
+    "is the plugin's real namespace (`plugin`, `plugin.daemon`, `plugin.tooling`) — an earlier",
+    "`…composeai.gradle` entry named nothing at all and enforced nothing, while `plugin.tooling`",
     "types sit on the CLI compile classpath via `:gradle-preview-driver`, ready to be reached for.",
     "contractPackages maps each non-`cli` package serve imports to the module that publishes",
-    "it, and must agree with `contracts` in preview-server/contract-probe/build.gradle.kts \u2014",
+    "it, and must agree with `contracts` in preview-server/contract-probe/build.gradle.kts —",
     "that is what stops a hand-maintained coordinate list from silently missing a module serve",
     "has started using. unpublishedContracts records a mapped module that cannot be resolved",
     "as an artifact yet; each one is a split blocker, not an exemption.",
     "unpublishedContracts records a mapped module that cannot be resolved as an artifact yet;",
     "each one is a split blocker, not an exemption. It is empty today: every module serve",
-    "imports from is published. `daemon.bta` maps to `daemon-core`, not to `:daemon:bta-host` \u2014",
+    "imports from is published. `daemon.bta` maps to `daemon-core`, not to `:daemon:bta-host` —",
     "the package is declared by BOTH modules and the types serve uses (BtaCompileSession,",
     "DiagnosticCollector) are the `daemon-core` ones. A package name is not a module name; the",
     "test asserts each mapping against the module that actually declares the imported type.",
@@ -34,7 +34,7 @@
     "the contract probe cannot either, because it never stages them. This is the one category",
     "where these checks are blind by construction, so the register is manual, pinned by a test",
     "that each literal still exists, and guarded by a test that finds unrecorded ones. Two of",
-    "the four are unpublished modules \u2014 the real split blockers, in place of the one this PR",
+    "the four are unpublished modules — the real split blockers, in place of the one this PR",
     "first reported wrongly."
   ],
   "forbiddenPackages": [
@@ -55,7 +55,8 @@
     "ee.schimke.composeai.data.remotecompose": "data-remotecompose-core",
     "ee.schimke.composeai.data.theme": "data-theme-core",
     "ee.schimke.composeai.data.render": "data-render-core",
-    "ee.schimke.composeai.daemon.bta": "daemon-core"
+    "ee.schimke.composeai.daemon.bta": "daemon-core",
+    "ee.schimke.composeai.data.pseudolocale": "data-pseudolocale-core"
   },
   "unpublishedContracts": {},
   "reflectiveDependencies": {
@@ -81,7 +82,7 @@
       "file": "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt",
       "module": "daemon-desktop / daemon-android",
       "published": true,
-      "why": "Main class of the daemon JVM serve spawns for a bundle. A process-launch string, not a compile dependency \u2014 serve never links against a daemon implementation, and checkCliDaemonLibraryBoundary still forbids it on the classpath. Both modules are published, so this is staging rather than a blocker."
+      "why": "Main class of the daemon JVM serve spawns for a bundle. A process-launch string, not a compile dependency — serve never links against a daemon implementation, and checkCliDaemonLibraryBoundary still forbids it on the classpath. Both modules are published, so this is staging rather than a blocker."
     }
   },
   "main": {
