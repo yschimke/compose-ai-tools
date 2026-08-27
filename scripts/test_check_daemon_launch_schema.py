@@ -56,6 +56,33 @@ class StripComments(unittest.TestCase):
     def test_block_comments_nest_as_kotlin_says_they_do(self):
         self.assertEqual(mod.strip_comments("a/* x /* y */ z */b"), "ab")
 
+    def test_a_url_in_a_string_is_not_a_comment(self):
+        # The stripper walks the whole repo, where `"https://…"` is everywhere. Truncating at the
+        # slashes silently shortened declarations; a literal `/*` opened a comment that swallowed
+        # the rest of the file, which is how a mirror could hide behind an ordinary URL.
+        src = 'const val URL = "https://host/x"'
+        self.assertEqual(mod.strip_comments(src), src)
+
+    def test_a_block_comment_opener_in_a_string_does_not_open_one(self):
+        src = 'const val G = "a /* b"; const val H = 1'
+        self.assertEqual(mod.strip_comments(src), src)
+
+    def test_a_raw_string_keeps_its_slashes(self):
+        src = 'val s = """raw // not a comment"""; val t = 1'
+        self.assertEqual(mod.strip_comments(src), src)
+
+    def test_an_escaped_quote_does_not_end_the_string(self):
+        src = 'val e = "a\\"b // still string"; val f = 2'
+        self.assertEqual(mod.strip_comments(src), src)
+
+    def test_mirrored_constant_values_survive(self):
+        # Blanking string contents would have been the easy fix, and would have broken the
+        # mirrored-constant comparison outright — those constants ARE strings.
+        self.assertIn(
+            '"composeai.daemon.sandboxCount"',
+            mod.strip_comments('const val P = "composeai.daemon.sandboxCount"'),
+        )
+
     def test_a_kdoc_field_reference_does_not_become_a_field(self):
         # `@param jvmArgs` inside a KDoc must not be read as a declaration.
         src = "data class D(\n  /** see [other] and val ghost: Int */\n  val real: Int,\n)"
@@ -99,6 +126,29 @@ class Parsers(unittest.TestCase):
         t = mod.ts_interface(mod.TS_READER, "DaemonLaunchDescriptor")
         self.assertEqual(t["systemProperties"][0], "Record<string, string>")
         self.assertFalse(t["schemaVersion"][1], "schemaVersion is not declared optional")
+
+
+class WireFingerprint(unittest.TestCase):
+    def test_a_renamed_field_changes_the_digest(self):
+        a = {"variant": ("String", False)}
+        b = {"flavour": ("String", False)}
+        self.assertNotEqual(mod.wire_fingerprint(a), mod.wire_fingerprint(b))
+
+    def test_a_retyped_field_changes_the_digest(self):
+        a = {"jvmArgs": ("List<String>", False)}
+        b = {"jvmArgs": ("String", False)}
+        self.assertNotEqual(mod.wire_fingerprint(a), mod.wire_fingerprint(b))
+
+    def test_making_a_field_optional_changes_the_digest(self):
+        # Optionality is part of the wire contract: a required field becoming defaulted means a
+        # writer may stop emitting it, which an old reader experiences as a parse failure.
+        a = {"repositories": ("List<String>", False)}
+        b = {"repositories": ("List<String>", True)}
+        self.assertNotEqual(mod.wire_fingerprint(a), mod.wire_fingerprint(b))
+
+    def test_the_digest_is_stable_for_the_same_shape(self):
+        a = {"x": ("Int", False), "y": ("String", True)}
+        self.assertEqual(mod.wire_fingerprint(a), mod.wire_fingerprint(dict(a)))
 
 
 class RealTree(unittest.TestCase):
@@ -148,6 +198,41 @@ class RealTree(unittest.TestCase):
                     readers[label],
                     f"{field} is now declared by the {label} reader — prune the entry",
                 )
+
+    def test_every_construction_site_stamps_a_known_constant(self):
+        # Discovery by use, which is what caught the fifth mirror that name matching missed:
+        # `ServeBundleDaemon` calls its copy `DAEMON_LAUNCH_SCHEMA_VERSION`, not `…DESCRIPTOR…`.
+        known = {s["symbol"] for s in self.allowlist["schemaVersionSites"]} | set(
+            self.allowlist["versionStampAliases"]
+        )
+        stamps = mod.discover_version_stamps()
+        self.assertTrue(stamps, "no descriptor construction sites found — discovery went blind")
+        for rel, expr in stamps:
+            self.assertFalse(expr.isdigit(), f"{rel} stamps a bare literal {expr}")
+            self.assertIn(expr, known, f"{rel} stamps unregistered {expr}")
+
+    def test_serve_is_registered_as_a_writer(self):
+        # Pinned by name: this is the site the first cut of the check missed entirely.
+        self.assertIn(
+            (
+                "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt",
+                "DAEMON_LAUNCH_SCHEMA_VERSION",
+            ),
+            {(s["file"], s["symbol"]) for s in self.allowlist["schemaVersionSites"]},
+        )
+
+    def test_the_recorded_fingerprint_matches_the_writer(self):
+        writer = mod.kotlin_data_class(mod.WRITER, "DaemonClasspathDescriptor")
+        self.assertEqual(
+            mod.wire_fingerprint(writer), self.allowlist["wireFingerprint"]["digest"]
+        )
+
+    def test_every_raw_key_the_doctor_reads_is_a_writer_field(self):
+        writer = mod.kotlin_data_class(mod.WRITER, "DaemonClasspathDescriptor")
+        for rel in self.allowlist["rawKeyReaders"]:
+            keys = {m.group(1) for m in mod.RAW_KEY.finditer(mod.strip_comments(mod.read(rel)))}
+            self.assertTrue(keys, f"{rel} exposes no raw key reads any more")
+            self.assertEqual(set(), keys - set(writer), f"{rel} reads keys the writer never emits")
 
     def test_mirrored_constants_are_declared_where_the_register_says(self):
         for name, spec in self.allowlist["mirroredConstants"].items():

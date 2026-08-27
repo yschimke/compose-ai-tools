@@ -190,11 +190,16 @@ produced. `:render-session-subprocess` is one of the published contract modules 
 links against, so after the split that stops being a same-commit mistake and becomes cross-repo
 version skew no compiler sees.
 
-`scripts/check-daemon-launch-schema.py` enforces five things:
+`scripts/check-daemon-launch-schema.py` enforces seven things:
 
 - **version agreement** — every declared copy equals the writer's, *and* every copy is registered.
-  An unregistered `*DESCRIPTOR_SCHEMA_VERSION` anywhere in the tree fails, so a new mirror has to be
-  declared, which is the moment someone can ask whether it should exist at all;
+  An unregistered version constant anywhere in the tree fails, so a new mirror has to be declared,
+  which is the moment someone can ask whether it should exist at all. Discovery works **by use**
+  as well as by name: every `schemaVersion = …` at a descriptor construction site must be a
+  registered constant, never a bare literal. That arm exists because name matching alone was not
+  enough — `ServeBundleDaemon` calls its copy `DAEMON_LAUNCH_SCHEMA_VERSION` rather than
+  `…DESCRIPTOR_SCHEMA_VERSION`, and stamps real descriptors with it, so a fifth mirror sat outside
+  a check whose entire claim was that every mirror is registered;
 - **structural agreement** — every field a reader requires is one the writer emits, shared fields
   carry corresponding types across Kotlin and TypeScript, and a reader-only field is optional;
 - **`BtaCompileConfig` field-for-field** across the two languages, which its KDoc claimed and
@@ -202,7 +207,16 @@ version skew no compiler sees.
 - **unknown-key tolerance** — the JVM reader keeps `ignoreUnknownKeys = true`, the single line that
   makes the writer's `btaCompile` (which that reader does not declare) safe rather than fatal;
 - **mirrored constants** — sysprop keys the descriptor carries that other modules re-declare
-  privately, such as `SANDBOX_COUNT_PROP`, whose own KDoc says "both sides MUST agree".
+  privately, such as `SANDBOX_COUNT_PROP`, whose own KDoc says "both sides MUST agree";
+- **raw-key readers** — `compose-preview doctor` indexes the parsed JSON by string rather than
+  deserialising a DTO, so a renamed field leaves it asking for a key that reads as `null` and
+  reporting the daemon disabled instead of failing. Its keys are checked against the writer;
+- **a wire fingerprint** — a digest of the writer's field names, types and optionality, pinned
+  against the version it describes. Version agreement across the copies is necessary and not
+  sufficient: a PR could rename a field in the writer and every in-repo reader at once, leaving
+  all constants at v2 while a released extension accepts the new descriptor as v2 and misreads
+  it. Changing the shape fails until someone records the new digest, which is where the question
+  "is this breaking?" actually gets asked.
 
 Divergences that are correct by design live in `scripts/daemon-launch-schema-allowlist.json` with
 the reason written down — the same debt-register discipline as the seam allowlist, not an exemption
@@ -210,8 +224,23 @@ list. The three that exist today: serve's sandbox-only `jailCommand` and `hardTt
 the plugin never writes, so both must default), and the writer's `btaCompile` (which the daemon JVM
 does consume, but through flattened system properties rather than the nested block).
 
-All five rules were falsified before the check was committed — each one made to fail on purpose,
-then restored — and the gate is unit-tested by `scripts/test_check_daemon_launch_schema.py`.
+Every rule was falsified — each made to fail on purpose, then restored — and the gate is
+unit-tested by `scripts/test_check_daemon_launch_schema.py`.
+
+Two reachability notes, both of which made earlier versions of this weaker than they looked. The
+Gradle task declares **every** Kotlin/TypeScript source as its input, not just the representations:
+the repo-wide rule reads files nobody listed, so a narrower input set let Gradle call the task
+up-to-date on precisely the change that added a new mirror. And because CI runs `test` tasks rather
+than `check`, the enforcement that actually runs on a PR is `test_check_daemon_launch_schema.py` in
+the `Actions Script Tests` job — which is why `ci-paths.json` scopes that job to `**/*.kt`. A
+repo-wide claim is only worth as much as the trigger that runs it.
+
+The TypeScript side is scoped to `vscode-extension/src/daemon/**` rather than `**/*.ts`, and that
+is a deliberate limitation rather than an oversight: `test_path_scope.py` pins the rule that a
+VS Code-only change skips every Gradle CI group, and a blanket `**/*.ts` broke it. A new mirror in
+some other TypeScript file would therefore be caught on `main` rather than on the PR. Widening the
+trigger means relaxing that rule, which is a CI-cost decision worth making on its own terms rather
+than smuggling in here.
 
 The representations agreed when the gate landed. That is the point: it was written while the
 answer was still "no drift", so the first time it fails will be the first real drift.

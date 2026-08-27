@@ -8,7 +8,7 @@
     "",
     "schemaVersionSites: every place the descriptor's schema version is declared. The check fails",
     "if any disagrees with the writer, and fails again if a `*DESCRIPTOR_SCHEMA_VERSION` appears",
-    "anywhere that is not listed — a new mirror has to be declared here, which is the moment",
+    "anywhere that is not listed \u2014 a new mirror has to be declared here, which is the moment",
     "someone can ask whether it should exist at all. The right long-term number of entries is 2",
     "(the writer, and the TypeScript reader that cannot import Kotlin); the other two are Kotlin",
     "and could read the writer's constant directly if `:render-session-subprocess` and `:cli`",
@@ -24,7 +24,22 @@
     "reader's `Json { ignoreUnknownKeys = true }`.",
     "",
     "mirroredConstants: string constants carried inside the descriptor that another module",
-    "re-declares privately. Same hazard as the schema version, one level down."
+    "re-declares privately. Same hazard as the schema version, one level down.",
+    "",
+    "versionStampAliases: an identifier that appears as `schemaVersion = \u2026` at a construction site",
+    "but is not itself one of the registered constants \u2014 an indirection that forwards one. Recorded",
+    "so discovery-by-use can insist on a known name without banning the indirection.",
+    "",
+    "rawKeyReaders: a reader that indexes the parsed JSON by string instead of deserialising a typed",
+    "DTO. Invisible to the structural check, and dangerous in a specific way: a missing key reads as",
+    "null rather than throwing, so a renamed field degrades into a wrong answer rather than an error.",
+    "",
+    "wireFingerprint: a digest of the writer's field names, types and optionality, pinned against the",
+    "schema version it describes. Version agreement across the copies is necessary but not",
+    "sufficient \u2014 a PR could rename a field in the writer and every in-repo reader at once, leaving",
+    "all constants at v2 while a released consumer accepts the new descriptor as v2 and misreads it.",
+    "Changing the shape fails here until someone records the new digest, which is where the decision",
+    "'is this breaking?' actually gets made."
   ],
   "schemaVersionSites": [
     {
@@ -37,7 +52,7 @@
       "file": "vscode-extension/src/daemon/daemonProtocol.ts",
       "symbol": "DAEMON_DESCRIPTOR_SCHEMA_VERSION",
       "role": "reader",
-      "why": "The only reader that gates on the version: `daemonProcess.ts` refuses a descriptor whose `schemaVersion` differs. Cannot import the Kotlin constant, so this copy is unavoidable — which is exactly why it needs checking."
+      "why": "The only reader that gates on the version: `daemonProcess.ts` refuses a descriptor whose `schemaVersion` differs. Cannot import the Kotlin constant, so this copy is unavoidable \u2014 which is exactly why it needs checking."
     },
     {
       "file": "render-session/subprocess/src/main/kotlin/ee/schimke/composeai/render/session/subprocess/SubprocessRenderSession.kt",
@@ -46,10 +61,16 @@
       "why": "`:render-session-subprocess` writes its own descriptors for the bundle daemons it spawns, stamping this private copy. It is one of the twelve published contract modules an extracted preview server links against (#3824), so post-split a stale mirror here is cross-repo version skew no compiler sees."
     },
     {
+      "file": "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt",
+      "symbol": "DAEMON_LAUNCH_SCHEMA_VERSION",
+      "role": "second writer",
+      "why": "serve stamps this into the catalog and playground bundle descriptors it writes. Named `DAEMON_LAUNCH_\u2026` rather than `\u2026DESCRIPTOR_\u2026`, which is how it sat outside the first cut of this check \u2014 the reason discovery now also works by use (`discover_version_stamps`) and not by name alone. It moves with serve at the split, making it a cross-repo mirror of the plugin's constant."
+    },
+    {
       "file": "cli/src/main/kotlin/ee/schimke/composeai/cli/McpCommand.kt",
       "symbol": "EXPECTED_DESCRIPTOR_SCHEMA_VERSION",
       "role": "doctor",
-      "why": "`compose-preview doctor` reports a descriptor written by a mismatched plugin version. Its comment already says `Keep in sync — bump together`; this makes that enforceable."
+      "why": "`compose-preview doctor` reports a descriptor written by a mismatched plugin version. Its comment already says `Keep in sync \u2014 bump together`; this makes that enforceable."
     }
   ],
   "readerOnlyFields": {
@@ -67,8 +88,10 @@
   },
   "writerOnlyFields": {
     "btaCompile": {
-      "invisibleTo": ["jvm"],
-      "why": "The daemon JVM does read this config, but through flattened `composeai.daemon.bta*` system properties (DefaultBtaCompileService.fromSysprops()), not through the descriptor's nested block — so DaemonLaunchDescriptor has no reason to declare it. The VS Code extension reads the block directly to decide whether calling `compileSources` is worth a round-trip. Survivable only because the JVM reader ignores unknown keys."
+      "invisibleTo": [
+        "jvm"
+      ],
+      "why": "The daemon JVM does read this config, but through flattened `composeai.daemon.bta*` system properties (DefaultBtaCompileService.fromSysprops()), not through the descriptor's nested block \u2014 so DaemonLaunchDescriptor has no reason to declare it. The VS Code extension reads the block directly to decide whether calling `compileSources` is worth a round-trip. Survivable only because the JVM reader ignores unknown keys."
     }
   },
   "mirroredConstants": {
@@ -80,5 +103,18 @@
       ],
       "why": "The descriptor merges this sysprop in via `withSandboxCount()` and the daemon reads it at boot; its own KDoc says 'both sides MUST agree'. Disagreement silently gives every daemon a pool of one."
     }
+  },
+  "versionStampAliases": {
+    "schemaVersion": "`DaemonBootstrapTask.schemaVersion`, an `@Input` property whose getter returns DAEMON_DESCRIPTOR_SCHEMA_VERSION. The indirection is deliberate: it puts the version into the task's up-to-date fingerprint so a bump re-runs the task."
+  },
+  "rawKeyReaders": {
+    "cli/src/main/kotlin/ee/schimke/composeai/cli/McpCommand.kt": {
+      "why": "`compose-preview doctor` parses the descriptor to a JsonObject and indexes it by string (`enabled`, `schemaVersion`, `javaLauncher`, `manifestPath`) so it can report on a descriptor a typed reader would reject outright. A key that no longer exists reads as null, so doctor would quietly report the daemon disabled instead of failing."
+    }
+  },
+  "wireFingerprint": {
+    "digest": "5198a1ddbf878242",
+    "schemaVersion": 2,
+    "why": "The shape of DaemonClasspathDescriptor as of schema v2. Regenerate deliberately, never to make the build pass."
   }
 }

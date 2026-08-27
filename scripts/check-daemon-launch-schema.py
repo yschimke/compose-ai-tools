@@ -65,6 +65,7 @@ stdlib; unit-tested by scripts/test_check_daemon_launch_schema.py.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -84,11 +85,22 @@ def read(rel: str) -> str:
 
 
 def strip_comments(text: str) -> str:
-    """Remove block and line comments. Kotlin block comments nest; TS ones do not."""
+    """Remove comments, keeping string literals intact.
+
+    String-aware on purpose. A stripper that only looks for `//` and `/*` truncates
+    `"https://host"` at the slashes, and a literal containing `/*` opens a block comment that
+    swallows the rest of the file — which for a repo-wide scanner means a declaration can hide
+    behind an ordinary URL. It keeps the contents because mirrored constants ARE strings
+    (`"composeai.daemon.sandboxCount"`), so blanking them would defeat the comparison.
+
+    Handles Kotlin raw strings and char literals and TypeScript template literals; Kotlin block
+    comments nest, TypeScript's do not, and treating both as nesting is the safe direction (an
+    unmatched `*/` cannot then run past the end of the file).
+    """
     out: list[str] = []
     i, n, depth = 0, len(text), 0
     while i < n:
-        two = text[i : i + 2]
+        c, two, three = text[i], text[i : i + 2], text[i : i + 3]
         if depth:
             if two == "/*":
                 depth += 1
@@ -104,8 +116,20 @@ def strip_comments(text: str) -> str:
         elif two == "//":
             j = text.find("\n", i)
             i = n if j < 0 else j
+        elif three == '"""':
+            j = text.find('"""', i + 3)
+            j = n if j < 0 else j + 3
+            out.append(text[i:j])
+            i = j
+        elif c in "\"'`":
+            j = i + 1
+            while j < n and text[j] != c:
+                j += 2 if text[j] == "\\" else 1
+            j = min(j + 1, n)
+            out.append(text[i:j])
+            i = j
         else:
-            out.append(text[i])
+            out.append(c)
             i += 1
     return "".join(out)
 
@@ -282,31 +306,161 @@ def check_versions(allowlist: dict, failures: list[str]) -> None:
                 f"declaring its own."
             )
 
+    # Discovery by use. Whatever a construction site stamps must be a registered constant.
+    known_symbols = {s["symbol"] for s in sites} | set(allowlist["versionStampAliases"])
+    for found_rel, expr in discover_version_stamps():
+        if expr.isdigit():
+            failures.append(
+                f"  {found_rel}: a descriptor is constructed with `schemaVersion = {expr}`, a bare "
+                f"literal.\n    That is a mirror with no name, which no name-based scan can find. "
+                f"Stamp a registered constant instead."
+            )
+        elif expr not in known_symbols:
+            failures.append(
+                f"  {found_rel}: a descriptor is constructed with `schemaVersion = {expr}`, which "
+                f"is neither a registered site nor a recorded alias.\n    Add it to "
+                f"`schemaVersionSites` or `versionStampAliases` in {ALLOWLIST.name}."
+            )
 
-VERSION_NAME = re.compile(r"(?:const val|export const) (\w*DESCRIPTOR_SCHEMA_VERSION)\b")
+
+RAW_KEY = re.compile(r"\bobj\[\"(\w+)\"\]")
+
+
+def check_raw_key_readers(
+    writer: dict[str, tuple[str, bool]], allowlist: dict, failures: list[str]
+) -> None:
+    """Readers that pull fields out of the raw JSON instead of deserialising a typed DTO.
+
+    `compose-preview doctor` parses the descriptor into a `JsonObject` and indexes it by string.
+    Modelling only the two typed readers left it invisible: renaming a field in the writer and
+    both DTOs would keep the gate green while doctor went on asking for a key that no longer
+    exists — and, because a missing key reads as `null` rather than throwing, silently reporting
+    the daemon as disabled rather than failing loudly.
+    """
+    for rel, spec in allowlist["rawKeyReaders"].items():
+        keys = {m.group(1) for m in RAW_KEY.finditer(strip_comments(read(rel)))}
+        if not keys:
+            failures.append(
+                f"  {rel}: registered as a raw-key reader but no `obj[\"…\"]` accesses were "
+                f"found. Prune it from `rawKeyReaders`, or update the pattern if the reader "
+                f"changed shape."
+            )
+        for key in sorted(keys - set(writer)):
+            failures.append(
+                f"  {rel}: reads `{key}` straight out of the descriptor JSON, but the writer emits "
+                f"no such field.\n    {spec['why']}"
+            )
+
+
+def wire_fingerprint(writer: dict[str, tuple[str, bool]]) -> str:
+    """A digest of the writer's on-the-wire shape: field names, types, and optionality.
+
+    Version agreement between the copies is necessary and not sufficient. Nothing stopped a PR
+    from renaming a field in the writer AND both readers in one commit, leaving every constant at
+    v2 — in-repo everything agrees, while a released VS Code extension happily accepts the new
+    descriptor as v2 and then misreads it. Pinning the shape makes the wire format's identity
+    explicit: change it and this fails, which forces the version bump (or a deliberate decision
+    that the change is backwards-compatible) to be part of the same diff.
+    """
+    shape = ";".join(
+        f"{name}:{type_}{'?' if has_default else ''}" for name, (type_, has_default) in writer.items()
+    )
+    return hashlib.sha256(shape.encode("utf-8")).hexdigest()[:16]
+
+
+def check_wire_fingerprint(
+    writer: dict[str, tuple[str, bool]], allowlist: dict, failures: list[str]
+) -> None:
+    actual = wire_fingerprint(writer)
+    recorded = allowlist["wireFingerprint"]
+    if actual != recorded["digest"]:
+        failures.append(
+            f"  the descriptor's wire shape changed: fingerprint {recorded['digest']} -> {actual}, "
+            f"recorded against schema v{recorded['schemaVersion']}.\n"
+            f"    If the change is breaking for an already-released reader, bump "
+            f"`DAEMON_DESCRIPTOR_SCHEMA_VERSION` everywhere and record the new pair here. If it is "
+            f"additive and safe (a new field with a default), record the new digest against the "
+            f"same version and say so in the PR — but decide, rather than letting the shape drift "
+            f"under a version that no longer describes it."
+        )
+    writer_version = kotlin_consts(WRITER)["DAEMON_DESCRIPTOR_SCHEMA_VERSION"]
+    if str(recorded["schemaVersion"]) != writer_version:
+        failures.append(
+            f"  `wireFingerprint.schemaVersion` is {recorded['schemaVersion']} but the writer is "
+            f"at {writer_version}. Record the fingerprint against the version it describes."
+        )
+
+
+# `*DESCRIPTOR_SCHEMA_VERSION` was the original pattern and it was too narrow: `ServeBundleDaemon`
+# calls its copy `DAEMON_LAUNCH_SCHEMA_VERSION` and stamps real descriptors with it, so a fifth
+# mirror sat outside a check whose whole claim was that every mirror is registered. Name matching
+# is a heuristic either way — `discover_version_stamps` below is the one that cannot be renamed
+# out of, and this stays to catch readers that only *compare* a version without constructing one.
+VERSION_NAME = re.compile(
+    r"(?:const val|export const) (\w*(?:DESCRIPTOR|DAEMON_LAUNCH)_SCHEMA_VERSION)\b"
+)
+
+DESCRIPTOR_CTOR = re.compile(r"\b(?:DaemonLaunchDescriptor|DaemonClasspathDescriptor)\s*\(")
+SCHEMA_ARG = re.compile(r"\bschemaVersion\s*=\s*([A-Za-z_]\w*|\d+)")
+
+
+def discover_version_stamps() -> list[tuple[str, str]]:
+    """`(file, expression)` for every value stamped as a descriptor's `schemaVersion`.
+
+    Discovery by *use* rather than by name. A mirror is dangerous because it writes a version into
+    a real descriptor, not because of what it is called, and the name-based scan above missed
+    exactly that case. This finds the construction sites instead: whatever appears as
+    `schemaVersion = …` there has to be a registered constant, never a bare literal — a literal is
+    a mirror with no name at all, which is the least visible kind.
+
+    Main sources only. Tests construct deliberately-skewed descriptors (a v1 payload to prove the
+    reader rejects it), and those are the point of the test rather than drift.
+    """
+    stamps: list[tuple[str, str]] = []
+    for rel, text in walk_sources():
+        if "/src/test/" in f"/{rel}" or "/src/functionalTest/" in f"/{rel}":
+            continue
+        for m in DESCRIPTOR_CTOR.finditer(text):
+            try:
+                body = balanced(text, m.end() - 1, "(", ")")
+            except IndexError:
+                continue  # a construction split across an unbalanced fragment; nothing to read
+            for arg in SCHEMA_ARG.finditer(body):
+                stamps.append((rel, arg.group(1)))
+    return stamps
 
 
 PRUNE = {"build", "node_modules", ".git", ".gradle", "out", "dist", "scripts"}
 
 
-def discover_version_mirrors() -> list[tuple[str, str]]:
-    """Any `*DESCRIPTOR_SCHEMA_VERSION` declaration anywhere in the tree.
+def walk_sources() -> list[tuple[str, str]]:
+    """`(relative path, comment-stripped text)` for every Kotlin/TypeScript source in the repo.
 
     Prunes whole directories rather than filtering paths after the walk: `node_modules` and the
     per-module `build/` trees hold far more sources than the repo does, and descending into them
-    to discard the results cost more than every other check here put together.
+    to discard the results costs more than every other check here put together.
     """
-    found: list[tuple[str, str]] = []
+    out: list[tuple[str, str]] = []
     for dirpath, dirnames, filenames in os.walk(REPO_ROOT):
         dirnames[:] = sorted(d for d in dirnames if d not in PRUNE and not d.startswith("."))
         for filename in sorted(filenames):
             if not filename.endswith((".kt", ".ts")):
                 continue
             path = Path(dirpath) / filename
-            rel = path.relative_to(REPO_ROOT).as_posix()
-            for m in VERSION_NAME.finditer(strip_comments(path.read_text(encoding="utf-8"))):
-                found.append((rel, m.group(1)))
-    return found
+            out.append(
+                (
+                    path.relative_to(REPO_ROOT).as_posix(),
+                    strip_comments(path.read_text(encoding="utf-8")),
+                )
+            )
+    return out
+
+
+def discover_version_mirrors() -> list[tuple[str, str]]:
+    """Any descriptor schema-version constant declared anywhere in the tree."""
+    return [
+        (rel, m.group(1)) for rel, text in walk_sources() for m in VERSION_NAME.finditer(text)
+    ]
 
 
 def check_reader(
@@ -423,6 +577,8 @@ def check() -> int:
     )
     check_unknown_key_tolerance(allowlist, failures)
     check_mirrored_constants(allowlist, failures)
+    check_raw_key_readers(writer, allowlist, failures)
+    check_wire_fingerprint(writer, allowlist, failures)
 
     # `BtaCompileConfig` claims to be field-for-field across the two languages.
     kt_bta = kotlin_data_class(WRITER, "BtaCompileConfig")

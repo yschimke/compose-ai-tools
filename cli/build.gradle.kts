@@ -661,7 +661,16 @@ tasks.named("check") { dependsOn("checkServeSeam") }
 // that is in no Gradle build at all, so no single owning module exists. `:cli` runs on every PR,
 // holds one of the four sites itself, and already hosts the sibling repo-wide seam check.
 abstract class CheckDaemonLaunchSchema : DefaultTask() {
-  /** Every representation the checker compares, so Gradle re-runs when any of them moves. */
+  /**
+   * Every Kotlin/TypeScript source in the repo, not just the seven representations.
+   *
+   * The checker's strongest rule is repo-wide: it fails on a schema-version constant, or a
+   * descriptor construction stamping one, that is not registered. That rule reads files nobody
+   * listed — which is the point. Declaring only the representations let Gradle mark the task
+   * up-to-date after a mirror was added in an eighth file, so locally the one check that finds new
+   * mirrors never ran on the change that introduced one. The exclusions mirror `PRUNE` in the
+   * checker; if one list grows, so must the other.
+   */
   @get:InputFiles
   @get:PathSensitive(PathSensitivity.RELATIVE)
   abstract val representations: ConfigurableFileCollection
@@ -692,21 +701,18 @@ tasks.register<CheckDaemonLaunchSchema>("checkDaemonLaunchSchema") {
 
   val repoRoot = rootProject.layout.projectDirectory
   representations.from(
-    repoRoot.file(
-      "gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonClasspathDescriptor.kt"
-    ),
-    repoRoot.file(
-      "daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/DaemonLaunchDescriptor.kt"
-    ),
-    repoRoot.file("vscode-extension/src/daemon/daemonProtocol.ts"),
-    repoRoot.file(
-      "render-session/subprocess/src/main/kotlin/ee/schimke/composeai/render/session/subprocess/SubprocessRenderSession.kt"
-    ),
-    repoRoot.file("cli/src/main/kotlin/ee/schimke/composeai/cli/McpCommand.kt"),
-    repoRoot.file("daemon/android/src/main/kotlin/ee/schimke/composeai/daemon/DaemonMain.kt"),
-    repoRoot.file(
-      "daemon/android/src/main/kotlin/ee/schimke/composeai/daemon/pool/SandboxProcessPool.kt"
-    ),
+    rootProject.fileTree(repoRoot) {
+      include("**/*.kt", "**/*.ts")
+      exclude(
+        "**/build/**",
+        "**/node_modules/**",
+        "**/.git/**",
+        "**/.gradle/**",
+        "**/out/**",
+        "**/dist/**",
+        "scripts/**",
+      )
+    }
   )
   allowlist.set(repoRoot.file("scripts/daemon-launch-schema-allowlist.json"))
   checker.set(repoRoot.file("scripts/check-daemon-launch-schema.py"))
