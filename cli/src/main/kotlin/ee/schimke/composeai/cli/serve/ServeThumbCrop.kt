@@ -32,6 +32,17 @@ data class ContentCrop(
   /** Negative offsets that shift the render so the component's top-left meets the clip origin. */
   val left: Int,
   val top: Int,
+  /**
+   * Whether what falls outside the window is hidden.
+   *
+   * True for a content crop, whose job is to throw the surrounding canvas away — a Wear sticker's
+   * watch face is not the component. False for a capture-gutter crop, where the pixels outside the
+   * box are the component's own shadow or focus ring: the window is there to make the box line up
+   * with its gutter-less neighbours, and hiding the overflow would crop the shadow the gutter was
+   * added to keep (m3-catalog#102, then #179). It spills into the grid's gap, which is where a
+   * shadow belongs.
+   */
+  val clip: Boolean = true,
 )
 
 /** Largest edge (px) a cropped thumbnail is scaled to — mirrors the static gallery's `cap`. */
@@ -133,6 +144,59 @@ fun pngAlphaBounds(pngBytes: ByteArray, threshold: Int = 16): SvgContentBox? {
  * *grows* the box (clamped to the render), so a full-screen component whose box already fills the
  * canvas still trips the no-op guard and stays uncropped.
  */
+/**
+ * The crop that trims a declared `@CaptureGutter` off a [renderW]×[renderH] render, or `null` when
+ * there is nothing to trim (no gutter, unknown render dimensions, or a gutter that would leave
+ * nothing behind).
+ *
+ * Unlike [computeThumbCrop] this needs no vector and applies no "already close-cropped" guard: the
+ * gutter is not inferred from the pixels, it is a fact the renderer recorded when it grew the
+ * canvas for it. The remaining box is the component at exactly the size a gutter-less sibling
+ * publishes, which is the whole point — a sheet fitting canvases to a column drew the guttered one
+ * ~7% smaller until it could subtract this (m3-catalog#179).
+ *
+ * The edges are PHYSICAL — whoever published the record resolved the annotation's leading/trailing
+ * against the direction the render was composed in, so there is no direction left to guess at here.
+ */
+fun computeGutterCrop(
+  gutterLeft: Int,
+  gutterTop: Int,
+  gutterRight: Int,
+  gutterBottom: Int,
+  renderW: Int,
+  renderH: Int,
+  cap: Int = CAP,
+): ContentCrop? {
+  if (renderW <= 0 || renderH <= 0) return null
+  val left = gutterLeft.coerceAtLeast(0)
+  val top = gutterTop.coerceAtLeast(0)
+  val right = gutterRight.coerceAtLeast(0)
+  val bottom = gutterBottom.coerceAtLeast(0)
+  if (left == 0 && top == 0 && right == 0 && bottom == 0) return null
+  val boxW = renderW - left - right
+  val boxH = renderH - top - bottom
+  // A gutter wider than the render it was published against is a record that disagrees with its
+  // own image; show the image whole rather than cropping to a guess.
+  if (boxW <= 0 || boxH <= 0) return null
+  // Capped on HEIGHT alone, unlike [computeThumbCrop]'s largest edge. The card beside this one is a
+  // plain `<img>` bounded by the stylesheet's `max-height`, which scales an image on its height and
+  // lets width follow; matching that rule is what keeps the two the same size in every column
+  // width, and it is the whole point of this window. Capping the largest edge instead would shrink
+  // a wide-but-short component (a 249x126 button) that no plain sibling shrinks — the same
+  // mismatch this removes, one layer down. A window box carries `aspect-ratio`, so the cap cannot
+  // live in CSS: constraining its height there squashes the box rather than scaling it.
+  val scale = min(1.0, cap / boxH.toDouble())
+  return ContentCrop(
+    boxW = max(1, (boxW * scale).roundToInt()),
+    boxH = max(1, (boxH * scale).roundToInt()),
+    imgW = (renderW * scale).roundToInt(),
+    imgH = (renderH * scale).roundToInt(),
+    left = (-left * scale).roundToInt(),
+    top = (-top * scale).roundToInt(),
+    clip = false,
+  )
+}
+
 fun computeThumbCrop(
   svgText: String,
   renderW: Int,

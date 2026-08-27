@@ -141,11 +141,15 @@ wider, and that two of the entries drag things a server should not carry.
 | `data-remotecompose-core` | **not in #3824's six** — payload schema the viewer renders |
 | `data-theme-core` | **not in #3824's six** — payload schema the viewer renders |
 | `data-render-core` | **not in #3824's six** — payload schema the viewer renders |
+| `data-pseudolocale-core` | **not in #3824's six** — the renderer's locale-direction rule, read to resolve a published capture gutter's leading/trailing edges onto left/right (#4542) |
 | `daemon-core` again, via `daemon.bta` (`BtaCompileSession`, `DiagnosticCollector`) | published — see the correction below |
 | `:cli`'s bundle format | **not a module at all** — preparation item 5 |
 
 The three payload schemas are the same kind of thing as the six (a `-core` module, a wire shape, no
-renderer), so they are contracts rather than leaks. The bundle format is the one genuine blocker in
+renderer), so they are contracts rather than leaks. `data-pseudolocale-core` joined them for the
+same reason: a pure table of RTL languages and scripts with no renderer behind it, and the
+alternative — serve keeping its own copy of that table — is exactly the drift a contract exists to
+prevent. The bundle format is the one genuine blocker in
 this table: it is not a module at all, so an extracted server cannot name it.
 
 > **Correction.** An earlier revision of this document listed `:daemon:bta-host` as unpublished and

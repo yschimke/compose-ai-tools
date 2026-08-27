@@ -4,8 +4,11 @@ import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamFrameParams
 import ee.schimke.composeai.data.overrides.PreviewOverridesPayload
+import ee.schimke.composeai.data.pseudolocale.LocaleDirection
+import ee.schimke.composeai.data.pseudolocale.Pseudolocale
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
+import kotlin.math.roundToInt
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
@@ -1307,19 +1310,41 @@ class ServeBundleHost(
     // cropping as soon as they land rather than staying uncropped until the next catalog refresh.
     // Only a decision made against files that are actually present is cached.
     if (localBakedPng(previewId) == null && previewId in declaredBakedIds) return null
-    if (figmaDir != null && figmaSvgFileFor(previewId) == null) return null
-    val computed = java.util.Optional.ofNullable(computeContentCrop(previewId))
+    // A declared capture gutter answers on its own — it needs no vector, so a preview the figma
+    // pass hasn't reached (or never will) still gets its gutter trimmed rather than waiting on a
+    // file that decides a different question.
+    val gutter = declaredCaptureGutter(previewId)
+    val svgOutstanding = figmaDir != null && figmaSvgFileFor(previewId) == null
+    // While a vector may still be landing, a gutter crop is a provisional answer: serve it (a card
+    // that waits is a card drawn at the wrong size) but do NOT memoise it, or the vector would
+    // never be reconsidered until the host is rebuilt. Only a decision made against files that are
+    // actually present is cached — the same rule the guard above states.
+    if (svgOutstanding) return if (gutter == null) null else computeContentCrop(previewId, gutter)
+    val computed = java.util.Optional.ofNullable(computeContentCrop(previewId, gutter))
     cropCache[previewId] = computed
     return computed.orElse(null)
   }
 
+  /**
+   * The `@CaptureGutter` this preview declared, in render pixels, from whichever manifest this
+   * session has: an uploaded bundle's root `previews.json` (dp, resolved against its own density)
+   * or a published catalog's `previews/variants.json` (already pixels). Null when it declares none.
+   */
+  private fun declaredCaptureGutter(previewId: String): ServeCatalogStore.CaptureGutterPx? =
+    (previewParamsById[previewId]?.asPreviewParamsMeta() ?: variantMeta[previewId]?.previewParams)
+      ?.captureGutter
+      ?.takeUnless { it.isEmpty() }
+
   private val cropCache =
     java.util.concurrent.ConcurrentHashMap<String, java.util.Optional<ContentCrop>>()
 
-  private fun computeContentCrop(previewId: String): ContentCrop? {
+  private fun computeContentCrop(
+    previewId: String,
+    gutter: ServeCatalogStore.CaptureGutterPx?,
+  ): ContentCrop? {
     // Same per-variant-first resolution as `renderSvg` — a variant vector's viewBox reflects the
     // exact render this preview's PNG shows.
-    val svgFile = figmaSvgFileFor(previewId) ?: return null
+    val svgFile = figmaSvgFileFor(previewId)
     // Deliberately the already-local file, NOT `bakedPngFile`: the landing page computes a crop for
     // every card while building its HTML, so filling here would serially download a whole cold
     // catalog on the first page request — the exact stall lazy fetching exists to remove, moved
@@ -1327,12 +1352,29 @@ class ServeBundleHost(
     // `/render/<id>.png` request lands the file, and the next page build crops it.
     val png = localBakedPng(previewId) ?: return null
     return try {
-      val svg = fileSystem.read(svgFile) { readUtf8() }
       val bytes = fileSystem.read(png) { readByteArray() }
       val (rw, rh) = WebEscaping.pngDimensions(bytes.copyOf(PNG_HEADER_BYTES.toInt()))
       // Union the render's actual non-transparent extent into the crop box so a focus ring or
       // disabled outline drawn outside the layout-derived figma box is never clipped.
-      computeThumbCrop(svg, rw, rh, contentBounds = pngAlphaBounds(bytes))
+      val fromSvg =
+        svgFile
+          ?.let {
+            // The drawn extent is unioned in so a focus ring or disabled outline OUTSIDE the
+            // layout-derived figma box is never clipped — but on a guttered render those same
+            // pixels are the shadow the gutter reserved room for, and they are going to bleed
+            // rather than be clipped. Unioning them there would grow the window past the component
+            // and draw it smaller than its siblings, which is the whole complaint.
+            val bounds = if (gutter == null) pngAlphaBounds(bytes) else null
+            computeThumbCrop(fileSystem.read(it) { readUtf8() }, rw, rh, bounds)
+          }
+          // A vector crop on a GUTTERED render must not hide its overflow either: the box it frames
+          // is the component, and the pixels the gutter holds are that component's shadow. Clipping
+          // them is the bug the gutter exists to prevent, whichever crop decided the box.
+          ?.let { if (gutter == null) it else it.copy(clip = false) }
+      // The vector wins where it applies: it frames the component inside a canvas the render was
+      // drawn on (a Wear watch face), which is a tighter question than "how much margin did the
+      // capture add", and it already accounts for the gutter's pixels by unioning the drawn extent.
+      fromSvg ?: gutter?.let { computeGutterCrop(it.left, it.top, it.right, it.bottom, rw, rh) }
     } catch (e: Exception) {
       null
     }
@@ -1415,10 +1457,6 @@ class ServeBundleHost(
      */
     private const val PINNED_FETCH_WAIT_SECONDS = 5L
 
-    // Fallback render density for a cmp-jvm render when `previews.json` declares none — the desktop
-    // renderer's own default (a 200dp preview bakes to 525px), so an unspecified preview still
-    // renders at the density its baked PNG was captured with.
-    private const val DEFAULT_RENDER_DENSITY = 2.625f
     /** Bytes of a PNG needed to read its IHDR width/height (8 sig + 4 len + 4 tag + 4 + 4). */
     private const val PNG_HEADER_BYTES = 24L
     private const val SVG_SUFFIX = ".svg"
@@ -1453,6 +1491,28 @@ class ServeBundleHost(
   }
 }
 
+// Fallback render density for a cmp-jvm render when `previews.json` declares none — the desktop
+// renderer's own default (a 200dp preview bakes to 525px), so an unspecified preview still renders
+// at the density its baked PNG was captured with. File-level rather than on the companion because
+// the params→meta mapping below resolves a capture gutter's dp against it too.
+private const val DEFAULT_RENDER_DENSITY = 2.625f
+
+/**
+ * Whether a `@Preview(locale = …)` render was composed right-to-left — the direction the renderer
+ * resolved a capture gutter's leading / trailing edges against.
+ *
+ * The renderer's own rule, out of the renderer's own module: the bidi pseudolocale first (`ar-XB`
+ * mirrors, `en-XA` does not), then the real language table. A second copy of that table here would
+ * be a thing to drift.
+ */
+private fun rendersRightToLeft(locale: String?): Boolean {
+  if (locale.isNullOrBlank()) return false
+  Pseudolocale.fromTag(locale)?.let {
+    return it.isRtl
+  }
+  return LocaleDirection.isRtl(locale)
+}
+
 /**
  * A bundle manifest's `@Preview` params in the shape a catalog publishes them.
  *
@@ -1470,6 +1530,25 @@ private fun ee.schimke.composeai.cli.PreviewParams.asPreviewParamsMeta():
     device = device,
     widthDp = widthDp,
     heightDp = heightDp,
+    // The one field that is derived rather than copied: the annotation states dp, and every
+    // consumer of this record works in the render's pixels. `density` is on this manifest, so the
+    // bundle path resolves it here the same way the exporter resolves it for a published catalog —
+    // per edge, rounded on its own, which is what the renderer did when it grew the canvas.
+    captureGutter =
+      captureGutter?.let { gutter ->
+        val scale = density?.takeIf { it > 0f } ?: DEFAULT_RENDER_DENSITY
+        fun px(dp: Int) = (dp.coerceAtLeast(0) * scale).roundToInt()
+        // Leading/trailing → left/right against the direction this render was composed in — the
+        // same resolution the renderer performed when it placed the component inset.
+        val rtl = rendersRightToLeft(locale)
+        ServeCatalogStore.CaptureGutterPx(
+            left = px(if (rtl) gutter.end else gutter.start),
+            top = px(gutter.top),
+            right = px(if (rtl) gutter.start else gutter.end),
+            bottom = px(gutter.bottom),
+          )
+          .takeUnless { it.isEmpty() }
+      },
   )
 
 @Serializable

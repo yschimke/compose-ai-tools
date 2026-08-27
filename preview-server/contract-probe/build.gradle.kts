@@ -54,6 +54,10 @@ val contracts =
     "data-remotecompose-core",
     "data-theme-core",
     "data-render-core",
+    // The renderer's locale-direction rule. `serve` resolves a published capture gutter's
+    // leading/trailing edges onto left/right exactly as the render that produced the pixels did,
+    // and a second copy of that language table in the server would be a thing to drift.
+    "data-pseudolocale-core",
   )
 
 dependencies {

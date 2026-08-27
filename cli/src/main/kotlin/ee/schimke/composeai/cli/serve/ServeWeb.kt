@@ -5028,7 +5028,10 @@ ${captureControlsHtml().prependIndent("          ")}
     val t = cropPct(crop.top, crop.boxH)
     val cropped =
       "<img$extraImgAttrs alt=\"$alt\" src=\"$src\" style=\"width:${w}%;left:${l}%;top:${t}%\">"
-    return "<span class=\"cp-crop\" style=\"width:${crop.boxW}px;aspect-ratio:${crop.boxW}/${crop.boxH}\">$cropped</span>"
+    // A gutter window does not hide its overflow: the pixels outside the box are the component's
+    // own shadow, and the window exists to line the box up with its neighbours, not to crop it.
+    val cls = if (crop.clip) "cp-crop" else "cp-crop cp-crop--bleed"
+    return "<span class=\"$cls\" style=\"width:${crop.boxW}px;aspect-ratio:${crop.boxW}/${crop.boxH}\">$cropped</span>"
   }
 
   /**

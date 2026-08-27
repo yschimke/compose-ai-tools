@@ -6,6 +6,7 @@ import java.io.ByteArrayOutputStream
 import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
@@ -152,5 +153,73 @@ class ServeThumbCropTest {
     assertNull(computeThumbCrop(svg("0 0 120 48", "translate(-1, -1)"), 0, 454)) // renderW <= 0
     assertNull(computeThumbCrop(svg("0 0 120 48", "translate(-1, -1)"), 454, 0)) // renderH <= 0
     assertNull(computeThumbCrop(svg("0 0 0 48", "translate(-1, -1)"), 454, 454)) // vw <= 0
+  }
+
+  @Test
+  fun `a declared capture gutter is trimmed off, leaving the component's own box`() {
+    // m3-catalog's `Button/Elevated`: a 249x126 button captured with an 11/11/11/13 px gutter, so
+    // the canvas is 271x150 and the sheet drew it 7% smaller than the four siblings beside it
+    // (m3-catalog#179). Subtracting the gutter gives the sibling's box back, to the pixel.
+    val crop = computeGutterCrop(11, 11, 11, 13, 271, 150)
+    assertNotNull(crop)
+    assertEquals(249, crop.boxW)
+    assertEquals(126, crop.boxH)
+    assertEquals(271, crop.imgW)
+    assertEquals(150, crop.imgH)
+    assertEquals(-11, crop.left)
+    assertEquals(-11, crop.top)
+    // The shadow lives in those 11px, so the window lines the box up without hiding what spills.
+    assertFalse(crop.clip)
+  }
+
+  @Test
+  fun `a gutter crop is not gated by the close-cropped guard the svg path applies`() {
+    // A 392² box on a 400² render fills 98% of both axes, so the vector path reads it as a capture
+    // already tight to its component and declines. A gutter is not inferred from the pixels — the
+    // renderer recorded it when it grew the canvas — so there is nothing there to be unsure about,
+    // and those 4px a side are exactly what a sibling render does not carry.
+    assertNull(computeThumbCrop(svg("0 0 392 392", "translate(-4, -4)"), 400, 400))
+    val crop = computeGutterCrop(4, 4, 4, 4, 400, 400)
+    assertNotNull(crop)
+    // 392 tall is past the 240 cap, so the box comes back scaled — square in, square out.
+    assertEquals(240, crop.boxW)
+    assertEquals(240, crop.boxH)
+  }
+
+  @Test
+  fun `a tall gutter box is capped on its height, the way a plain image is`() {
+    // `Card/Elevated`: 945x1260 of card inside a 967x1282 canvas. The plain card beside it is an
+    // `<img>` the stylesheet caps at 240 tall, width following — so this box scales by the same
+    // rule and the two land on the same size. (The cap cannot live in CSS here: this box carries
+    // an aspect-ratio, and constraining its height there squashes it instead of scaling it.)
+    val crop = computeGutterCrop(11, 11, 11, 11, 967, 1282)
+    assertNotNull(crop)
+    assertEquals(180, crop.boxW)
+    assertEquals(240, crop.boxH)
+    assertEquals(184, crop.imgW)
+    assertEquals(244, crop.imgH)
+    assertEquals(-2, crop.left)
+    assertEquals(-2, crop.top)
+  }
+
+  @Test
+  fun `a wide but short component is not shrunk by the cap`() {
+    // 249 is past the 240 cap on the WIDTH axis, and a plain sibling image is not shrunk for that
+    // — the stylesheet caps height. Capping the largest edge here would draw the guttered button
+    // 3.6% smaller than the four beside it: the very mismatch this window removes.
+    val crop = computeGutterCrop(11, 11, 11, 13, 271, 150)
+    assertNotNull(crop)
+    assertEquals(249, crop.boxW)
+    assertEquals(126, crop.boxH)
+  }
+
+  @Test
+  fun `no gutter, an empty one, or one larger than its render yields no crop`() {
+    assertNull(computeGutterCrop(0, 0, 0, 0, 271, 150))
+    // Negative edges clamp to zero rather than growing the box past the image.
+    assertNull(computeGutterCrop(-4, -4, -4, -4, 271, 150))
+    // A record that disagrees with its own image: show the image whole rather than guess.
+    assertNull(computeGutterCrop(200, 11, 200, 13, 271, 150))
+    assertNull(computeGutterCrop(11, 11, 11, 13, 0, 0))
   }
 }

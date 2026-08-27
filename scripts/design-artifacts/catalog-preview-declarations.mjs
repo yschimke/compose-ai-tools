@@ -21,12 +21,61 @@ function sidecarDeclarations(bundle, previewId, suffix) {
 }
 
 /**
+ * Whether a `@Preview(locale = …)` render was composed right-to-left — the direction the renderer
+ * resolved a gutter's leading / trailing edges against.
+ *
+ * `Intl.Locale#textInfo` rather than a hand-kept language list: it agrees with the renderer's
+ * `LocaleDirection` on every tag that reaches here (`ar`, `iw`, `fa`, `ur`, `ckb`, `yi`, …) and on
+ * the bidi pseudolocale `ar-XB`, whose Arabic base language it reads through, while `en-XA` stays
+ * left-to-right. A second copy of that language table is a thing to drift, and this needs none.
+ */
+function rendersRightToLeft(locale) {
+  if (typeof locale !== "string" || locale.trim() === "") return false;
+  try {
+    return new Intl.Locale(locale).textInfo?.direction === "rtl";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A preview's declared `@CaptureGutter`, resolved to **physical edges in render pixels**, or null
+ * when it declares none (or every edge is zero).
+ *
+ * Two resolutions happen here, and both exist because the reader can do neither:
+ *
+ * *Pixels, not dp.* `presentationParams` deliberately drops density (it is baked into the image),
+ * and the gutter is only useful next to the image's own pixel dimensions. Each edge rounds on its
+ * own, which is the rule the renderer used when it grew the canvas — so `4dp` at 2.625 comes back
+ * as the same 11px the render actually carries.
+ *
+ * *Left/right, not start/end.* The annotation declares leading / trailing, and the renderer placed
+ * them against the layout direction of the locale it composed in — so on an RTL capture `start` is
+ * the right-hand margin. A consumer sees pixels, not a direction, so it would have to guess;
+ * resolving it here means the published record is about the image rather than about the
+ * annotation.
+ */
+export function captureGutterPx(gutter, { density, locale } = {}) {
+  if (!gutter) return null;
+  const scale = Number.isFinite(density) && density > 0 ? density : 1;
+  const px = (dp) => Math.round(Math.max(0, Number(dp) || 0) * scale);
+  const rtl = rendersRightToLeft(locale);
+  const out = {
+    left: px(rtl ? gutter.end : gutter.start),
+    top: px(gutter.top),
+    right: px(rtl ? gutter.start : gutter.end),
+    bottom: px(gutter.bottom),
+  };
+  return out.left || out.top || out.right || out.bottom ? out : null;
+}
+
+/**
  * The subset of a preview's `@Preview` params that decides how it is PRESENTED — the ground behind
  * it and the device frame around it — or null when it states none of them.
  *
  * Deliberately not the whole params record: locale, font scale and density describe how the render
  * was produced and are already baked into the pixels, so republishing them would grow every
- * catalog for no reader. These six are the ones a browse surface has to know *before* it opens
+ * catalog for no reader. These are the ones a browse surface has to know *before* it opens
  * anything, because they decide what it paints behind the image and what shape it clips it to.
  *
  * Omitting an all-defaults record keeps the catalog quiet for the ordinary preview: a component
@@ -47,6 +96,12 @@ function presentationParams(params) {
     if (Number.isFinite(params.widthDp)) out.widthDp = params.widthDp;
     if (Number.isFinite(params.heightDp)) out.heightDp = params.heightDp;
   }
+  // The seventh, and the one that changes what a sheet DRAWS rather than what it paints behind:
+  // a `@CaptureGutter` render's canvas is the component plus the gutter, so a consumer fitting the
+  // whole canvas to a column draws the component smaller than its gutter-less siblings by exactly
+  // that margin (m3-catalog#179). It can only subtract what it is told.
+  const captureGutter = captureGutterPx(params.captureGutter, params);
+  if (captureGutter) out.captureGutter = captureGutter;
   return Object.keys(out).length > 0 ? out : null;
 }
 

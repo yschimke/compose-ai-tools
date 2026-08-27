@@ -107,6 +107,23 @@ function imageLabel(image) {
  * dark-theme (or theme-less) one on the default dark check. Emitted as a `data-bg` attribute rather
  * than a class so the `.shot` / `.state-shot` class hooks stay intact.
  */
+/**
+ * The image's declared `@CaptureGutter`, in render pixels, as `data-gutter="start,top,end,bottom"`
+ * — or nothing when it declares none.
+ *
+ * A guttered render's canvas is `component + gutter`, so a card fitting the whole canvas to its
+ * column draws the component smaller than its gutter-less siblings by exactly that margin
+ * (m3-catalog#179). The client script below subtracts it. Published by
+ * `catalog-preview-declarations.mjs`, already resolved to pixels against the render's own density.
+ */
+function gutterAttr(image) {
+  const g = image?.previewParams?.captureGutter;
+  if (!g) return "";
+  const edge = (v) => Math.max(0, Number(v) || 0);
+  const edges = [edge(g.left), edge(g.top), edge(g.right), edge(g.bottom)];
+  return edges.some((v) => v > 0) ? ` data-gutter="${edges.join(",")}"` : "";
+}
+
 function bgThemeAttr(image) {
   return String(image?.theme ?? "").toLowerCase() === "light" ? ' data-bg="light"' : "";
 }
@@ -162,7 +179,7 @@ function componentCard(component, wireframeSlugs, figmaSvgSlugs) {
     ? `${failures.length} failed render${failures.length === 1 ? "" : "s"}`
     : "";
   const figure = img
-    ? `<a class="shot"${bgThemeAttr(img)} href="#d-${slug(id)}" aria-label="Zoom ${esc(id)}"><img loading="lazy" src="${esc(img.path)}" alt="${esc(id)}" /></a>`
+    ? `<a class="shot"${bgThemeAttr(img)}${gutterAttr(img)} href="#d-${slug(id)}" aria-label="Zoom ${esc(id)}"><img loading="lazy" src="${esc(img.path)}" alt="${esc(id)}" /></a>`
     : failures.length
       ? `<a class="shot shot--failed" href="#d-${slug(id)}" aria-label="Show render failure for ${esc(id)}"><span class="failure-mark">!</span><strong>${esc(errorLabel)}</strong><span>${esc(failureSummary(failures[0]))}</span></a>`
       : `<div class="shot shot--missing">no render</div>`;
@@ -370,6 +387,12 @@ export function renderIndexHtml(catalog, opts = {}) {
   .shot--framed { overflow:hidden; padding:0; min-height:0; position:relative; place-items:stretch;
     margin:16px auto; border-radius:8px; max-width:100%; }
   .shot--framed img { position:absolute; max-width:none; max-height:none; }
+  /* A gutter window shows the component at its siblings' size and lets the shadow it holds spill
+     past the box — so it must not clip, and the card must not either, or the spill dies at the card
+     edge. AFTER the .shot--framed rule on purpose: same specificity, so the later one is what
+     wins, and a bleeding shot always carries both classes. */
+  .shot--bleed { overflow:visible; }
+  .card:has(.shot--bleed) { overflow:visible; }
   .shot--missing { color:var(--muted); font-style:italic; }
   .card--failed { border-color:#7d4148; }
   .shot--failed { color:#f1b5b9; background:#26191b; text-align:center; display:flex; flex-direction:column; gap:6px; }
@@ -447,16 +470,24 @@ ${details}
     if (!v) return null;
     return { tx: t ? +t[1] : 0, ty: t ? +t[2] : 0, vw: +v[1], vh: +v[2] };
   }
-  function frame(shot, box) {
+  function frame(shot, box, gutterEdges) {
     var img = shot.querySelector("img");
     if (!img) return;
     function apply() {
       var rw = img.naturalWidth || img.width, rh = img.naturalHeight || img.height;
       if (!(rw > 0 && rh > 0)) return;
-      if (box.vw >= rw * 0.9 && box.vh >= rh * 0.9) return; // already close-cropped
+      if (box.vw >= rw * 0.9 && box.vh >= rh * 0.9) {
+        // Already close-cropped as far as the vector can tell — but a declared gutter is margin the
+        // capture added, which no bbox of the drawn pixels can distinguish from the component.
+        if (gutterEdges) frameGutter(shot, gutterEdges);
+        return;
+      }
       var cap = 240, scale = Math.min(1, cap / Math.max(box.vw, box.vh));
       var dw = Math.max(1, Math.round(box.vw * scale));
       shot.classList.add("shot--framed");
+      // A vector-framed shot on a GUTTERED render must not hide its overflow either: the box the
+      // vector describes is the component, and the pixels beyond it are that component's shadow.
+      if (gutterEdges) shot.classList.add("shot--bleed");
       // Size the window by aspect-ratio at its natural (capped) width, with max-width:100% so it
       // shrinks to a narrow grid card instead of overflowing it; frame the render in PERCENTAGES of
       // the box so the whole thing scales as one. (A fixed-px window overflowed the card and clipped
@@ -473,19 +504,64 @@ ${details}
     if (img.complete) apply();
     else img.addEventListener("load", apply);
   }
+  // A declared capture gutter needs no vector and no guard: the renderer recorded exactly how much
+  // transparent margin it added, so the box is a fact rather than an inference. Native pixels — the
+  // stylesheet caps how large a card draws, and scaling here would hand a guttered card a different
+  // display size from the plain one beside it, which is the difference being removed.
+  function frameGutter(shot, edges) {
+    var img = shot.querySelector("img");
+    if (!img) return;
+    function apply() {
+      var rw = img.naturalWidth || img.width, rh = img.naturalHeight || img.height;
+      if (!(rw > 0 && rh > 0)) return;
+      var boxW = rw - edges[0] - edges[2], boxH = rh - edges[1] - edges[3];
+      if (!(boxW > 0 && boxH > 0)) return;
+      // Capped on HEIGHT, which is the rule the stylesheet applies to a plain card image
+      // (max-height:240px, width follows) — a framed window carries an aspect-ratio, so the cap
+      // cannot come from CSS without squashing it. Capping the largest edge instead would shrink a
+      // wide-but-short component no plain sibling shrinks.
+      var scale = Math.min(1, 240 / boxH);
+      var bw = Math.max(1, Math.round(boxW * scale));
+      var bh = Math.max(1, Math.round(boxH * scale));
+      var iw = Math.round(rw * scale);
+      var offX = Math.round(edges[0] * scale), offY = Math.round(edges[1] * scale);
+      var pct = function (n, d) { return +(n / d * 100).toFixed(4); };
+      // "shot--bleed" keeps the overflow visible: what falls outside this box is the component's
+      // own shadow, which the gutter was captured to preserve. Hiding it would crop the shadow a
+      // second time, which is the bug the gutter fixed.
+      shot.classList.add("shot--framed");
+      shot.classList.add("shot--bleed");
+      shot.style.width = bw + "px";
+      shot.style.aspectRatio = bw + " / " + bh;
+      img.style.width = pct(iw, bw) + "%";
+      img.style.left = pct(-offX, bw) + "%";
+      img.style.top = pct(-offY, bh) + "%";
+    }
+    if (img.complete) apply();
+    else img.addEventListener("load", apply);
+  }
   document.querySelectorAll(".card").forEach(function (card) {
-    var link = card.querySelector('a.wf[href^="figma/"]');
-    if (!link) return;
     var hero = card.querySelector("a.shot");
     if (!hero) return;
+    var declared = hero.getAttribute("data-gutter");
+    var edges = declared
+      ? declared.split(",").map(function (v) { return Math.max(0, parseInt(v, 10) || 0); })
+      : null;
+    var link = card.querySelector('a.wf[href^="figma/"]');
+    if (!link) {
+      if (edges) frameGutter(hero, edges);
+      return;
+    }
     fetch(link.getAttribute("href"))
       .then(function (r) { return r.ok ? r.text() : null; })
       .then(function (txt) {
-        if (!txt) return;
-        var box = parseBox(txt);
-        if (box) frame(hero, box);
+        // The vector wins where it applies — it answers the tighter question of where the component
+        // sits on a canvas it was drawn on — and the gutter answers when it does not.
+        var box = txt ? parseBox(txt) : null;
+        if (box) frame(hero, box, edges);
+        else if (edges) frameGutter(hero, edges);
       })
-      .catch(function () {});
+      .catch(function () { if (edges) frameGutter(hero, edges); });
   });
 })();
 </script>

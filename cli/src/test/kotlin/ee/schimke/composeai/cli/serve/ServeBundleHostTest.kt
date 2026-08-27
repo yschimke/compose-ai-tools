@@ -547,4 +547,130 @@ class ServeBundleHostTest {
     assertTrue(host.pinnedRender(commit, previewId) is ServeBundleHost.PinnedOutcome.Missing)
     assertEquals(1, calls, "a known-absent asset is refused from memory")
   }
+
+  /** A real PNG, so the host can read its IHDR dimensions the way it does in production. */
+  private fun pngOf(width: Int, height: Int): ByteArray {
+    val image =
+      java.awt.image.BufferedImage(width, height, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+    val out = java.io.ByteArrayOutputStream()
+    javax.imageio.ImageIO.write(image, "png", out)
+    return out.toByteArray()
+  }
+
+  @Test
+  fun `a declared capture gutter is trimmed off a card's thumbnail`() {
+    // m3-catalog's `Button/Elevated`: a 249x126 button captured with `@CaptureGutter(all = 4,
+    // bottom = 5)` at 2.625, so its PNG is 271x150 and a sheet fitting whole canvases to a column
+    // drew it ~7% smaller than the four gutter-less siblings beside it (m3-catalog#179). The
+    // gutter is a fact the renderer recorded, so the crop is exact rather than inferred.
+    val dir = bundle("button-elevated__ideal__default__light" to pngOf(271, 150))
+    File(dir, "previews.json")
+      .writeText(
+        """
+        {"module":"catalog","variant":"main","previews":[
+          {"id":"button-elevated__ideal__default__light","functionName":"ElevatedButtonSticker",
+           "className":"ButtonsKt",
+           "params":{"density":2.625,"captureGutter":{"start":4,"top":4,"end":4,"bottom":5}}}
+        ]}
+        """
+          .trimIndent()
+      )
+
+    val crop =
+      ServeBundleHost(dir, label = "b").contentCrop("button-elevated__ideal__default__light")
+
+    assertEquals(
+      ContentCrop(
+        boxW = 249,
+        boxH = 126,
+        imgW = 271,
+        imgH = 150,
+        left = -11,
+        top = -11,
+        clip = false,
+      ),
+      crop,
+    )
+  }
+
+  @Test
+  fun `a preview with no capture gutter keeps the plain uncropped image`() {
+    val dir = bundle("button-filled__ideal__default__light" to pngOf(249, 126))
+    File(dir, "previews.json")
+      .writeText(
+        """
+        {"module":"catalog","variant":"main","previews":[
+          {"id":"button-filled__ideal__default__light","functionName":"FilledButton",
+           "className":"ButtonsKt","params":{"density":2.625}}
+        ]}
+        """
+          .trimIndent()
+      )
+
+    assertNull(
+      ServeBundleHost(dir, label = "b").contentCrop("button-filled__ideal__default__light")
+    )
+  }
+
+  @Test
+  fun `an RTL capture's leading gutter is published as the right-hand margin`() {
+    // The renderer placed `start` against the layout direction it composed in, so on an Arabic
+    // capture the leading margin is on the right. The crop reads pixels, not a direction — it can
+    // only be told.
+    val dir = bundle("sticker__ideal__rtl" to pngOf(200, 100))
+    File(dir, "previews.json")
+      .writeText(
+        """
+        {"module":"catalog","variant":"main","previews":[
+          {"id":"sticker__ideal__rtl","functionName":"Sticker","className":"Kt",
+           "params":{"density":1.0,"locale":"ar",
+                     "captureGutter":{"start":4,"top":1,"end":12,"bottom":5}}}
+        ]}
+        """
+          .trimIndent()
+      )
+
+    val crop = ServeBundleHost(dir, label = "b").contentCrop("sticker__ideal__rtl")
+
+    assertEquals(184, crop?.boxW) // 200 - 4 - 12, whichever way round
+    assertEquals(94, crop?.boxH)
+    // …but the render is offset by the RIGHT-hand 12, not by the declared `start`.
+    assertEquals(-12, crop?.left)
+    assertEquals(-1, crop?.top)
+  }
+
+  @Test
+  fun `a gutter crop served while a vector is still landing is not memoised`() {
+    // The figma pass fills vectors in the background. Answering with the gutter meanwhile is right
+    // — a card that waits is a card drawn at the wrong size — but caching that answer would keep
+    // the vector from ever being reconsidered.
+    val dir = bundle("sticker__ideal__default" to pngOf(200, 100))
+    File(dir, "previews.json")
+      .writeText(
+        """
+        {"module":"catalog","variant":"main","previews":[
+          {"id":"sticker__ideal__default","functionName":"Sticker","className":"Kt",
+           "params":{"density":1.0,"captureGutter":{"start":4,"top":4,"end":4,"bottom":4}}}
+        ]}
+        """
+          .trimIndent()
+      )
+    val figma = File(dir, "figma").apply { mkdirs() } // no vector for this id yet
+
+    val host = ServeBundleHost(dir, label = "b", figmaDir = figma)
+    val first = host.contentCrop("sticker__ideal__default")
+    assertEquals(192, first?.boxW)
+
+    // The vector lands: its box (not the gutter's) now decides, which could not happen if the
+    // first answer had been cached.
+    File(figma, "sticker.svg")
+      .writeText("""<svg viewBox="0 0 40 20"><g transform="translate(-80, -40)"></g></svg>""")
+    val second = host.contentCrop("sticker__ideal__default")
+    // The vector's own box, NOT unioned with the render's drawn extent: on a guttered render that
+    // extent includes the shadow the gutter reserved room for, and unioning it would grow the
+    // window past the component and draw it smaller than its siblings. It bleeds instead.
+    assertEquals(40, second?.boxW)
+    assertEquals(20, second?.boxH)
+    assertEquals(false, second?.clip)
+  }
 }

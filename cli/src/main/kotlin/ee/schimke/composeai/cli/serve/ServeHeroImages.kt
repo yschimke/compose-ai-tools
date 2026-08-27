@@ -230,7 +230,11 @@ class ServeHeroImages {
   internal fun bake(png: ByteArray, crop: ContentCrop?): Hero? {
     val src = runCatching { ImageIO.read(ByteArrayInputStream(png)) }.getOrNull() ?: return null
     if (src.width <= 0 || src.height <= 0) return null
-    val region = sourceRegion(src.width, src.height, crop)
+    // A hero bakes its crop into the pixels, and a capture-gutter window is the one crop that must
+    // not be: the pixels it leaves outside the box are the component's shadow (see
+    // [ContentCrop.clip]). A hero is one image rather than a row to line up, so it keeps its whole
+    // canvas — the size comparison this window exists for does not arise there.
+    val region = sourceRegion(src.width, src.height, crop?.takeIf { it.clip })
     // The CSS size is the region fitted into the card's cap (never upscaled) — the same size the
     // browser used to compute for itself. The baked raster is PIXEL_SCALE times that, so a 2×
     // display still gets crisp pixels, but never more than the region actually has.

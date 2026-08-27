@@ -225,6 +225,11 @@ dependencies {
   // `fonts/used` sidecar file name for `bundle pack --with-semantics` font carriage.
   implementation(project(":data-fonts-core"))
 
+  // The renderer's own locale-direction rule, so `serve` resolves a published capture gutter's
+  // leading/trailing edges onto left/right exactly as the render that produced the pixels did
+  // (pseudolocale first, then the real language table) rather than keeping a second copy of it.
+  implementation(project(":data-pseudolocale-core"))
+
   // Ktor client (OkHttp engine) for downloading a bundle when the open arg is a URL. The explicit
   // okhttp dep pins the engine to OkHttp 5.x — ktor-client-okhttp 3.0.3 only declares a transitive
   // 4.12.0, so without this the catalog's okhttp 5 version is never selected.

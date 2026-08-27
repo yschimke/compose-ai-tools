@@ -71,6 +71,28 @@ class ServeWebThumbCropTest {
   }
 
   @Test
+  fun `a gutter window is marked so its overflow is not hidden`() {
+    // The pixels outside a capture gutter's box are the component's own shadow — the reason the
+    // gutter was captured. The window lines the box up with its neighbours; it must not crop.
+    val html =
+      ServeWeb.landingPage(
+        "compose-m3",
+        previews,
+        token = "t",
+        basePath = "/compose-m3",
+        thumbCrop = { crop.copy(clip = false) },
+      )
+    assertTrue(html.contains("class=\"cp-crop cp-crop--bleed\""), "bleeding window marked")
+    val css = ServeWebAssets.load("serve.css")!!.bytes.decodeToString()
+    assertTrue(css.contains(".cp-crop--bleed { overflow: visible; }"), "and allowed to overflow")
+    // …through the card too, which otherwise clips its own content to its rounded edge.
+    assertTrue(
+      css.contains(".cp-card:has(.cp-crop--bleed) { overflow: visible; }"),
+      "the card lets a bleeding window's shadow reach the grid gap",
+    )
+  }
+
+  @Test
   fun `the crop CSS is present so the clip window actually clips`() {
     val css = ServeWebAssets.load("serve.css")!!.bytes.decodeToString()
     assertTrue(
@@ -80,6 +102,16 @@ class ServeWebThumbCropTest {
     assertTrue(
       css.contains(".cp-imgwrap .cp-crop img { position: absolute; max-width: none;"),
       "img escapes the fit-to-box cap",
+    )
+    // And deliberately NO `max-height` on the window: it carries an inline `aspect-ratio`, so
+    // constraining its height in CSS squashes the box rather than scaling it, and the render
+    // inside would sit at the wrong scale. The display cap belongs to the crop geometry, where
+    // `computeThumbCrop` and `computeGutterCrop` both apply it (m3-catalog#179).
+    assertFalse(
+      css.contains(
+        ".cp-crop { position: relative; overflow: hidden; display: block; max-width: 100%; max-height"
+      ),
+      "no CSS height cap on an aspect-ratio window",
     )
   }
 
