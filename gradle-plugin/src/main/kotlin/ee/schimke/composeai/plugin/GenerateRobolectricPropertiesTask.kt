@@ -27,7 +27,11 @@ import org.gradle.api.tasks.TaskAction
  *   replays RenderNodes correctly for `roborazzi`'s `captureRoboImage`.
  * - `shadows=…ShadowFontsContractCompat` — globally registers the GoogleFont shadow so
  *   `Font(GoogleFont(...), provider)` renders without the consumer having to add `@Config(shadows =
- *   [...])`.
+ *   [...])`, alongside the coil, Wear-clock, Wear-gesture and paused-clock-hwui shadows the render
+ *   lane needs. The last of those,
+ *   [ShadowPausedClockHardwareRenderer][ee.schimke.composeai.renderer.ShadowPausedClockHardwareRenderer],
+ *   is what makes a capture that samples an animation reproducible — see the comment at the
+ *   `shadows=` line below.
  *
  * Fields that depend on [useConsumerApplication]:
  * - Default ([useConsumerApplication] = false): the file pins
@@ -125,10 +129,22 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
     // lane reads while routing every `ContextWrapper.checkPermission` through the connector's grant
     // map, including previews with no annotation. Daemon-only by decision — issue #3698 and
     // `docs/DATA_PRODUCTS.md`; `GenerateRobolectricPropertiesTaskTest` pins the absence.
+    // `ShadowPausedClockHardwareRenderer` keeps hwui's frame timestamps in the paused clock's own
+    // domain. Robolectric 4.17-beta-3's `ShadowNativeHardwareRenderer` rewrites them by
+    // `System.nanoTime() - ShadowPausedSystemClock.uptimeNanos()` — under a paused clock that
+    // offset is "however long this JVM has been up" and grows between frames, so every native
+    // render-thread animation (Material's `RippleDrawable` → `RenderNodeAnimator` above all) is
+    // paced by host wall-clock time instead of by the clock the render advances. A still draws one
+    // frame and cannot notice; anything sampling a component mid-animation can, and did: three
+    // renders of one commit produced three different `SwitchButtonOn.apng`s, 28–31 of 114 frames
+    // apart, and are byte-identical with this registered (issue #4578). The daemon registers the
+    // same shadow in `SandboxHoldingRunner` for issue #4159 — one class, both lanes, so a capture
+    // cannot pace its animations differently depending on which one produced it.
     val shadowsLine =
       "shadows=ee.schimke.composeai.renderer.ShadowFontsContractCompat," +
         "ee.schimke.composeai.renderer.ShadowAsyncImagePainter," +
         "ee.schimke.composeai.renderer.ShadowWearTimeSource," +
+        "ee.schimke.composeai.renderer.ShadowPausedClockHardwareRenderer," +
         "ee.schimke.composeai.daemon.ShadowSdkGestureInputManager"
     // `androidx.wear.compose.materialcore.ResourcesKt` is a CLASS name, not a package: Robolectric
     // matches `instrumentedPackages` entries as plain class-name prefixes, so naming the class
