@@ -181,17 +181,32 @@ services:
       SERVE_CATALOG_FEED_IDLE: "${SERVE_CATALOG_FEED_IDLE:-}"
       # Warmed theme renders (the per-catalog theme cache) survive container recreation, which is
       # what the rolling update below performs — so a restart no longer discards hours of background
-      # warming. Set SERVE_THEME_CACHE_DIR=/theme-cache in .env to turn it on; it lands on the
-      # dedicated `preview_theme_cache` volume mounted below.
+      # warming. Points at the dedicated `preview_theme_cache` volume mounted below; set
+      # SERVE_THEME_CACHE_DIR=none in .env to go back to a memory-only cache.
       #
-      # Defaults to `none` — OFF — deliberately, on two counts. An unset value would derive a
-      # directory beside catalogs.json, which here is the durable `preview_config` volume, quietly
-      # growing an up-to-8-GB cache on the volume holding the operator's configuration. And the
-      # reuse rules are new: a generation is keyed by a fingerprint of everything that decides the
-      # pixels, and an input that fingerprint misses would serve stale renders, so the conservative
-      # first-release posture is opt-in.
-      SERVE_THEME_CACHE_DIR: "${SERVE_THEME_CACHE_DIR:-none}"
-      SERVE_THEME_CACHE_MAX_BYTES: "${SERVE_THEME_CACHE_MAX_BYTES:-}"
+      # **This defaulted to `none` — OFF — and that made theme optimization unable to finish.**
+      # Without a disk tier the warmed renders live only in the serve process's heap, so every
+      # deploy starts the whole pass again from zero. Measured on preview.coo.ee: 1,502 of 18,604
+      # entries after a 40-hour uptime on 1.35.0, then 0 again an hour later on 1.36.0, and 0 again
+      # on 1.37.0 — three releases in one morning, three resets. A pass that needs a day of quiet to
+      # complete cannot survive a deploy cadence measured in hours, and the memory tier is by design
+      # a 128 MB window onto a generation several times that size, so it was never going to hold the
+      # answer on its own.
+      #
+      # The two original reasons for opting in are both addressed rather than dismissed. An unset
+      # value would derive a directory beside catalogs.json — the durable `preview_config` volume,
+      # holding the operator's own configuration — so this names the dedicated volume explicitly
+      # instead. And a generation is keyed by a fingerprint of everything that decides the pixels,
+      # which an input nobody thought of could still miss: that is what the startup verification
+      # pass covers, re-rendering a sample of adopted entries and discarding the whole generation on
+      # any mismatch (CatalogThemeCache.verifySample), so stale pixels are caught rather than
+      # served.
+      SERVE_THEME_CACHE_DIR: "${SERVE_THEME_CACHE_DIR:-/theme-cache}"
+      # 4 GiB, not the server's own 8 GB default. A fully warmed set measures ~0.93 GiB here (1,503
+      # cached renders occupied 76.8 MiB, i.e. ~52 KiB/entry, across 18,604 declared targets), so
+      # this is roughly 4x headroom for superseded generations awaiting their sweep — while leaving
+      # the box's disk to the catalog blob pool beside it, which really does sit at its full 8 GB.
+      SERVE_THEME_CACHE_MAX_BYTES: "${SERVE_THEME_CACHE_MAX_BYTES:-4294967296}"
       # The heavy bytes a catalog FETCHES (as opposed to the pixels it renders): each live
       # catalog's executable liveBundle — ~100 MB — its per-preview split bundles, and the
       # externalised font/resource pool. Held content-addressed, so a rolled replica reads them
@@ -265,9 +280,9 @@ services:
       # The same volume carries producers.json (the trust store) for the same reasons.
       - preview_config:/config
       # Warmed theme renders, on a volume of their OWN — never on preview_config, which is where
-      # the catalog set and trust store live and must not be crowded out by an up-to-8-GB render
-      # cache. Mounted unconditionally so turning the cache on is a one-line .env change
-      # (SERVE_THEME_CACHE_DIR=/theme-cache); while it stays `none` the volume is simply empty.
+      # the catalog set and trust store live and must not be crowded out by the render cache. This
+      # is what SERVE_THEME_CACHE_DIR points at by default, and what lets a deploy keep the hours of
+      # background warming it would otherwise discard.
       - preview_theme_cache:/theme-cache
       # Fetched catalog bytes, on a volume of their OWN for the same reason the theme cache got
       # one: preview_config holds the catalog set and the trust store and must not be crowded out
