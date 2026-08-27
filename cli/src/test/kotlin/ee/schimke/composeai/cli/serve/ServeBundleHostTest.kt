@@ -666,9 +666,11 @@ class ServeBundleHostTest {
     File(figma, "sticker.svg")
       .writeText("""<svg viewBox="0 0 40 20"><g transform="translate(-80, -40)"></g></svg>""")
     val second = host.contentCrop("sticker__ideal__default")
+    // The vector's own box, NOT unioned with the render's drawn extent: on a guttered render that
+    // extent includes the shadow the gutter reserved room for, and unioning it would grow the
+    // window past the component and draw it smaller than its siblings. It bleeds instead.
     assertEquals(40, second?.boxW)
     assertEquals(20, second?.boxH)
-    // …and it still does not clip, because those pixels outside it are the gutter's shadow.
     assertEquals(false, second?.clip)
   }
 }

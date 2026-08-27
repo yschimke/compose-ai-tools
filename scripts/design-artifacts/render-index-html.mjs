@@ -120,7 +120,7 @@ function gutterAttr(image) {
   const g = image?.previewParams?.captureGutter;
   if (!g) return "";
   const edge = (v) => Math.max(0, Number(v) || 0);
-  const edges = [edge(g.start), edge(g.top), edge(g.end), edge(g.bottom)];
+  const edges = [edge(g.left), edge(g.top), edge(g.right), edge(g.bottom)];
   return edges.some((v) => v > 0) ? ` data-gutter="${edges.join(",")}"` : "";
 }
 
@@ -384,13 +384,15 @@ export function renderIndexHtml(catalog, opts = {}) {
      the component shows. A wear sticker rendered on a 454² device canvas is displayed cropped to
      the component instead of floating in an empty frame; a no-op for close-cropped (phone) renders
      where the bbox already fills the frame. */
-  /* A gutter window shows the component at its siblings' size, and lets the shadow it holds spill
-     past the box — so the card has to stop clipping too, or the spill dies at the card edge. */
-  .shot--bleed { overflow:visible; }
-  .card:has(.shot--bleed) { overflow:visible; }
   .shot--framed { overflow:hidden; padding:0; min-height:0; position:relative; place-items:stretch;
     margin:16px auto; border-radius:8px; max-width:100%; }
   .shot--framed img { position:absolute; max-width:none; max-height:none; }
+  /* A gutter window shows the component at its siblings' size and lets the shadow it holds spill
+     past the box — so it must not clip, and the card must not either, or the spill dies at the card
+     edge. AFTER the .shot--framed rule on purpose: same specificity, so the later one is what
+     wins, and a bleeding shot always carries both classes. */
+  .shot--bleed { overflow:visible; }
+  .card:has(.shot--bleed) { overflow:visible; }
   .shot--missing { color:var(--muted); font-style:italic; }
   .card--failed { border-color:#7d4148; }
   .shot--failed { color:#f1b5b9; background:#26191b; text-align:center; display:flex; flex-direction:column; gap:6px; }
@@ -483,6 +485,9 @@ ${details}
       var cap = 240, scale = Math.min(1, cap / Math.max(box.vw, box.vh));
       var dw = Math.max(1, Math.round(box.vw * scale));
       shot.classList.add("shot--framed");
+      // A vector-framed shot on a GUTTERED render must not hide its overflow either: the box the
+      // vector describes is the component, and the pixels beyond it are that component's shadow.
+      if (gutterEdges) shot.classList.add("shot--bleed");
       // Size the window by aspect-ratio at its natural (capped) width, with max-width:100% so it
       // shrinks to a narrow grid card instead of overflowing it; frame the render in PERCENTAGES of
       // the box so the whole thing scales as one. (A fixed-px window overflowed the card and clipped

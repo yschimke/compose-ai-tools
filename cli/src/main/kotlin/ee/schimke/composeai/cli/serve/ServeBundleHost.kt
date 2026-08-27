@@ -1359,7 +1359,13 @@ class ServeBundleHost(
       val fromSvg =
         svgFile
           ?.let {
-            computeThumbCrop(fileSystem.read(it) { readUtf8() }, rw, rh, pngAlphaBounds(bytes))
+            // The drawn extent is unioned in so a focus ring or disabled outline OUTSIDE the
+            // layout-derived figma box is never clipped — but on a guttered render those same
+            // pixels are the shadow the gutter reserved room for, and they are going to bleed
+            // rather than be clipped. Unioning them there would grow the window past the component
+            // and draw it smaller than its siblings, which is the whole complaint.
+            val bounds = if (gutter == null) pngAlphaBounds(bytes) else null
+            computeThumbCrop(fileSystem.read(it) { readUtf8() }, rw, rh, bounds)
           }
           // A vector crop on a GUTTERED render must not hide its overflow either: the box it frames
           // is the component, and the pixels the gutter holds are that component's shadow. Clipping

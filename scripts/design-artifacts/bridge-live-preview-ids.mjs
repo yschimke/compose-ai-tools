@@ -528,27 +528,31 @@ export function stampPreviewDensities(manifest, spec, bundles) {
       const candidates = previewsByFn.get(fn) ?? [];
       const candidateId = pickVariantId(candidates, image, breakpointForSize);
       const candidate = candidates.find((it) => it.id === candidateId);
-      const density =
-        candidate?.density !== undefined
-          ? candidate.density
-          : overrideVariantDensity({
-              previewForState,
-              previewsByFn,
-              breakpointForSize,
-              componentId: component.componentId,
-              image,
-              state,
-              fn,
-            });
+      // One resolution for everything this image inherits from the annotation that drew it. The
+      // fallback used to return a bare density, so a synthetic `@OverrideVariant` cell kept its
+      // export scale and silently lost every other fact — its capture gutter included, which would
+      // have left those cells the only ones still drawn smaller than their siblings.
+      const resolved =
+        candidate ??
+        overrideVariantCandidate({
+          previewForState,
+          previewsByFn,
+          breakpointForSize,
+          componentId: component.componentId,
+          image,
+          state,
+          fn,
+        })
+      const density = resolved?.density;
       if (density !== undefined) {
         image.density = density;
         stamped++;
       }
       // The gutter rides on the same resolution: pixels need the density this pass just picked, so
       // there is no second place that could disagree about which annotation rendered this image.
-      const gutter = captureGutterPx(candidate?.captureGutter, {
+      const gutter = captureGutterPx(resolved?.captureGutter, {
         density,
-        locale: candidate?.locale,
+        locale: resolved?.locale,
       });
       if (gutter) {
         image.previewParams = { ...(image.previewParams ?? {}), captureGutter: gutter };
@@ -559,7 +563,7 @@ export function stampPreviewDensities(manifest, spec, bundles) {
 }
 
 /**
- * The density of a synthetic `@OverrideVariant` sticker, or undefined — the gap that made
+ * The candidate preview behind a synthetic `@OverrideVariant` sticker, or undefined — the gap that made
  * [stampPreviewDensities] the one place the fallback [bridgeLivePreviewIds] and
  * [resolveSemanticsIds] both carry was missing, and the one whose absence went unnoticed longest
  * because it fails as a missing *reference* rather than a missing live lane.
@@ -579,7 +583,7 @@ export function stampPreviewDensities(manifest, spec, bundles) {
  * across a `@CatalogModes` pair — but it is separated properly anyway so the value always comes from
  * a record describing these exact pixels.
  */
-function overrideVariantDensity({
+function overrideVariantCandidate({
   previewForState,
   previewsByFn,
   breakpointForSize,
@@ -602,7 +606,7 @@ function overrideVariantDensity({
   // annotation that drew the pixels. Inventing one from the base would hand the rasteriser an
   // export scale for a render that never happened.
   const picked = pickVariantId(candidates, image, breakpointForSize);
-  return candidates.find((candidate) => candidate.id === picked)?.density;
+  return candidates.find((candidate) => candidate.id === picked);
 }
 
 /**
