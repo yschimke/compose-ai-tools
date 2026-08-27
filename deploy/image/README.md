@@ -266,6 +266,34 @@ unavailable. Once resolved it is **pinned for the life of the process**: a later
 does not move it, because live snippet JVMs hold those jars open. Restart the container to compile
 against a newer catalog ABI.
 
+### Widening the background render lane (`SERVE_BACKGROUND_RENDERS`)
+
+The theme optimizer's renders run in their own server-wide lane, so a visitor's render is never
+queued behind more than a bounded number of background ones. Unset, the server derives that lane
+from `SERVE_LIVE_SEATS`:
+
+```
+(seats − stream reserve) / Android seat weight,  clamped to [1, 3]
+```
+
+**The clamp is reached at 8 seats**, so on a bigger box the lane stops widening while everything
+else scales with the budget. Raising `SERVE_LIVE_SEATS` from 8 to 12 on `preview.coo.ee` — a
+container allowed 24 GB — left the lane at 3, unchanged.
+
+Name it explicitly to go past that:
+
+```
+SERVE_BACKGROUND_RENDERS=5
+```
+
+Deliberately un-clamped: the derivation is conservative because it is guessing, and an operator
+naming a number has looked at their own box. The seat budget still bounds how many daemons those
+renders can actually occupy, so this widens the queue rather than licensing unbounded memory.
+
+Before this existed the knob was reachable only as a system property, and the prebuilt image bakes
+`JAVA_TOOL_OPTIONS` into its own `ENV` — so on this deployment there was no way to set it short of
+rebuilding the image.
+
 ### Warmed theme renders survive a deploy (`SERVE_THEME_CACHE_DIR`)
 
 The server pre-renders every catalog preview under every declared theme while the box is idle, so a
