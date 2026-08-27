@@ -99,13 +99,8 @@ class ServeStatusLiveFramesTest {
 
   /** The daemon-side stream id, once the socket's live session has subscribed. */
   private fun awaitStreamId(session: FakeRenderSession): String {
-    repeat(100) {
-      session.lastFrameStreamId?.let {
-        return it
-      }
-      Thread.sleep(50)
-    }
-    error("the socket never opened a daemon stream")
+    pollUntil({ "the socket never opened a daemon stream" }) { session.lastFrameStreamId }
+    return session.lastFrameStreamId!!
   }
 
   /** `/status.json`'s `liveFrames`, polled until [ready] — frames cross threads to get there. */
@@ -114,17 +109,53 @@ class ServeStatusLiveFramesTest {
     ready: (kotlinx.serialization.json.JsonObject) -> Boolean,
   ): kotlinx.serialization.json.JsonObject {
     var last: kotlinx.serialization.json.JsonObject? = null
-    repeat(100) {
+    return pollUntil({ "liveFrames never reported the expected frames (last seen: $last)" }) {
       val (code, body) = get(server, "/status.json")
       assertEquals(200, code, body)
       val live = Json.parseToJsonElement(body).jsonObject["liveFrames"]?.jsonObject
       if (live != null) {
         last = live
-        if (ready(live)) return live
       }
-      Thread.sleep(50)
+      live?.takeIf(ready)
     }
-    error("liveFrames never reported the expected frames: $last")
+  }
+
+  /**
+   * Poll [probe] until it returns non-null, or the deadline passes.
+   *
+   * The budget is computed at runtime rather than written as a fixed `repeat(100)` of 50ms sleeps,
+   * because that spelled a 5-second ceiling that a loaded CI runner can miss for reasons that have
+   * nothing to do with the behaviour under test — the frames genuinely do cross threads to reach
+   * `/status.json`. On CI the wait is generous; locally it stays short so a real hang still fails
+   * fast rather than idling for half a minute.
+   *
+   * Deliberately not a `@Rule Timeout`: the point is to wait longer for a slow machine, not to
+   * bound the test. A failure here still reports what was actually observed — hence [message] is a
+   * lambda: built eagerly it captured the caller's `last` while it was still null, turning the one
+   * diagnostic this failure carries into "last seen: null" every time.
+   */
+  private fun <T : Any> pollUntil(message: () -> String, probe: () -> T?): T {
+    val deadline = System.nanoTime() + POLL_BUDGET_MS * 1_000_000
+    while (System.nanoTime() < deadline) {
+      probe()?.let {
+        return it
+      }
+      Thread.sleep(POLL_INTERVAL_MS)
+    }
+    error("${message()} — waited ${POLL_BUDGET_MS}ms")
+  }
+
+  private companion object {
+    /** `CI` is set by GitHub Actions; absent locally. */
+    private val ON_CI: Boolean = System.getenv("CI") != null
+
+    /**
+     * How long to wait for a frame to cross threads. 5s was the old fixed budget and is plenty on
+     * an unloaded machine; a CI runner sharing a box with the rest of the matrix is not that.
+     */
+    val POLL_BUDGET_MS: Long = if (ON_CI) 30_000 else 5_000
+
+    const val POLL_INTERVAL_MS: Long = 50
   }
 
   private fun get(server: ServeHttpServer, path: String): Pair<Int, String> =
