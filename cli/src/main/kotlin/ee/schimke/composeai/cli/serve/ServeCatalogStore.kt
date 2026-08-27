@@ -2182,8 +2182,22 @@ class ServeCatalogStore(
    * which is what makes this purely additive. An index that parses and names nothing is a different
    * answer: an empty list, honoured as one.
    */
-  private fun knownDifferenceArtifactPlan(base: String, documentBytes: ByteArray): List<String> =
-    publishedArtifactIndex(base) ?: knownDifferenceArtifactPaths(documentBytes)
+  private fun knownDifferenceArtifactPlan(base: String, documentBytes: ByteArray): List<String> {
+    // **The document's own length gates everything, index or no index.**
+    //
+    // Past [ServeKnownDifferences.MAX_DOCUMENT_BYTES] the reader answers `TooLarge` and the engine
+    // refuses the document whole — reading not one artifact. So every byte fetched for one is a
+    // byte fetched for no verdict, and at the caps that is 512 individually legal files on every
+    // refresh. The transport's ceiling is 25× the contract's, so a document in that band arrives
+    // intact, its index arrives intact, and preferring the index walked straight past the guard
+    // that made this cheap.
+    //
+    // This is **not** the derivation coming back. It is one property of a file already in hand,
+    // measured rather than interpreted — the cheapest fact there is, and the only class of verdict
+    // a fetch planner has to know in advance. The per-record rules stay where they belong.
+    if (documentBytes.size > ServeKnownDifferences.MAX_DOCUMENT_BYTES) return emptyList()
+    return publishedArtifactIndex(base) ?: knownDifferenceArtifactPaths(documentBytes)
+  }
 
   /**
    * The producer's artifact list, or null when this catalog publishes none.
@@ -2213,9 +2227,21 @@ class ServeCatalogStore(
 
     val paths = LinkedHashSet<String>()
     for (entry in artifacts) {
-      val path = (entry as? JsonPrimitive)?.takeIf { it.isString }?.content ?: continue
-      // The reader's own lexical rule, applied to the producer's list exactly as it is applied to
-      // the document's. A list is a convenience, not a licence.
+      // **A wrongly-typed entry rejects the whole index**, rather than being skipped past.
+      //
+      // Skipping looks harmless and is the opposite: `{"artifacts":[null]}` would reduce to an
+      // empty list, and an empty list is honoured as a producer saying "I carried nothing" — so a
+      // document naming perfectly good artifacts would stage none of them and every record would
+      // read as `artifact-unreadable`. That is the changed-verdict failure this file exists to
+      // prevent, reached through the malformed-index fallback that was written to prevent it.
+      //
+      // Returning null instead hands the caller back to the derivation, which is what "this
+      // producer published no usable index" has to mean for every other malformation here.
+      val path = (entry as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
+      // A path that parses but names something this host will not look up is a different case: the
+      // reader's own lexical rule, applied to the producer's list exactly as it is applied to the
+      // document's. One refused path does not make the list unreadable — a list is a convenience,
+      // not a licence, and this is the licence half.
       if (ServeKnownDifferences.isLookupPath(path)) paths += path
     }
     return paths.toList()
