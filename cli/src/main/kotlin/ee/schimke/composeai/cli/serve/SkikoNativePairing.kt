@@ -32,9 +32,9 @@ import java.io.File
  *
  * A bundle that promotes Skiko bindings must bring its **own** native. So when the recorded
  * coordinates name bindings at version V with no `skiko-awt-runtime-<host>` at V, synthesize that
- * coordinate and let [ee.schimke.composeai.cli.CoordinateResolver] fetch it like any other — it is
- * a published artifact on the same repository the bindings came from. Bindings and native then
- * travel together, exactly as they do on a Gradle-resolved render classpath
+ * coordinate and let [ee.schimke.composeai.bundle.coordinates.CoordinateResolver] fetch it like any
+ * other — it is a published artifact on the same repository the bindings came from. Bindings and
+ * native then travel together, exactly as they do on a Gradle-resolved render classpath
  * ([ee.schimke.composeai.plugin.ValidateComposePreviewClasspathTask] enforces the same invariant
  * there).
  *
@@ -123,9 +123,10 @@ internal object SkikoNativePairing {
    * no published native, a bundle that recorded a native for the wrong platform. **Classpath order
    * decides**, because both halves are plain classloader lookups: the bindings are `.class` files
    * and `libskiko-<target>.so` is a root-level resource in the platform jar
-   * ([ee.schimke.composeai.cli.CoordinateResolver] puts each resolved jar where the caller asked).
-   * So the pair that runs is the FIRST of each on the ordered `-cp`, which is what this reads — not
-   * the set of versions present, which would call a harmless shadowed duplicate a skew.
+   * ([ee.schimke.composeai.bundle.coordinates.CoordinateResolver] puts each resolved jar where the
+   * caller asked). So the pair that runs is the FIRST of each on the ordered `-cp`, which is what
+   * this reads — not the set of versions present, which would call a harmless shadowed duplicate a
+   * skew.
    *
    * The **first of each**, never a count of distinct versions — the distinction #4234/#4235 drew
    * for the Gradle-side guard, and it holds here for the same reason. Two independently-resolved

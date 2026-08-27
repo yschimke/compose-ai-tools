@@ -1,7 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.bundle.BundleReader
-import ee.schimke.composeai.cli.CoordinateResolver
+import ee.schimke.composeai.bundle.coordinates.CoordinateResolver
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test

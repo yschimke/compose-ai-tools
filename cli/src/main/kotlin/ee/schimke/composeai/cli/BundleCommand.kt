@@ -21,6 +21,7 @@ import ee.schimke.composeai.cli.serve.RenderOutcome
 import ee.schimke.composeai.cli.serve.ServeBundleDaemon
 import ee.schimke.composeai.cli.serve.ServeRenderHost
 import ee.schimke.composeai.cli.serve.SvgOutcome
+import ee.schimke.composeai.cli.serve.WebEmbed
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import ee.schimke.composeai.io.SystemFileSystem

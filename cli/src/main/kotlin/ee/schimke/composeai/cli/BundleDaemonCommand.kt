@@ -4,6 +4,7 @@ import ee.schimke.composeai.bundle.AndroidBundleLaunch
 import ee.schimke.composeai.bundle.AndroidBundleResources
 import ee.schimke.composeai.bundle.BundleReader
 import ee.schimke.composeai.bundle.bundleSidecarSearchDescription
+import ee.schimke.composeai.bundle.coordinates.CoordinateResolver
 import ee.schimke.composeai.bundle.extractBundleClassesAndManifest
 import ee.schimke.composeai.bundle.extractBundleIrArtifacts
 import ee.schimke.composeai.bundle.locateBundleSidecarJars

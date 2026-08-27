@@ -1,6 +1,7 @@
 package ee.schimke.composeai.previewserver.contract
 
 import ee.schimke.composeai.bundle.BundleReader
+import ee.schimke.composeai.bundle.coordinates.CoordinateResolver
 import ee.schimke.composeai.daemon.DaemonLaunchDescriptor
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
@@ -87,4 +88,11 @@ object ContractSurface {
    * checked claim rather than a stated one.
    */
   val bundleManifest: KClass<BundleReader.Manifest> = BundleReader.Manifest::class
+
+  /**
+   * Turning a bundle's recorded Maven coordinates back into local jars. Serve resolves a bundle's
+   * classpath before it can hand the daemon a `-cp`, and while this lived in `:cli` it was the last
+   * thing that made an extracted server depend on the CLI (preparation item 7).
+   */
+  val coordinateResolver: KClass<CoordinateResolver> = CoordinateResolver::class
 }

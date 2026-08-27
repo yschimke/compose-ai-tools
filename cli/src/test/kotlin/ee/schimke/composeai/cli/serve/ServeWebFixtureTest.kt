@@ -105,8 +105,8 @@ class ServeWebFixtureTest {
   private val moduleLabel = ":samples:cmp"
 
   // A FIXED server version for the goldens: the footer surfaces the running build, but pinning a
-  // constant here (rather than the real BUNDLE_VERSION) keeps the committed HTML stable across
-  // releases — production passes BUNDLE_VERSION, the fixtures pass this.
+  // constant here (rather than the real SERVE_VERSION) keeps the committed HTML stable across
+  // releases — production passes SERVE_VERSION, the fixtures pass this.
   private val version = "0.0.0-fixture"
 
   // Catalog provenance for the public compose-m3 landing golden — captures the provenance strip

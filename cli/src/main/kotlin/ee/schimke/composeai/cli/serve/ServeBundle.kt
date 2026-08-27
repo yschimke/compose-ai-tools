@@ -1,7 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.bundle.ZIP_DOS_EPOCH_MS
-import ee.schimke.composeai.cli.WebEmbed
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.zip.ZipEntry

@@ -32,6 +32,15 @@
     "The three left are genuinely declared in `:cli` and each needs a decision, not a move:",
     "BUNDLE_VERSION (does an extracted server report its own version?), CoordinateResolver, and",
     "WebEmbed. They are #3824 preparation item 7's problem.",
+    "Those three are now resolved, and cliInternalsUsedByServe is EMPTY in both source sets — the",
+    "serve->cli direction of this register is closed. BUNDLE_VERSION became serve's own",
+    "SERVE_VERSION (a deployed server reports what the server is, not what the CLI that launched",
+    "it is); CoordinateResolver moved into a published :bundle-coordinates, mapped below;",
+    "WebEmbed moved into the serve package, which turns it from a serve->cli crossing into a",
+    "cli->serve one — the direction that does not block extraction, since an extracted `:cli`",
+    "depends on the server module rather than the other way round.",
+    "What is left is serveInternalsUsedByCli, 102 on main, dominated by ServeCommand.kt. That is",
+    "the rest of preparation item 7: the module extraction itself.",
     "serveInternalsUsedByCli: the CLI reaching into serve. Each entry must either move to the",
     "server build with serve, or move down into a contract module the CLI can keep using. The",
     "long tail here is ServeCommand.kt, which #3824 wants reduced to a thin entry point.",
@@ -67,6 +76,7 @@
   ],
   "contractPackages": {
     "ee.schimke.composeai.bundle": "bundle-format",
+    "ee.schimke.composeai.bundle.coordinates": "bundle-coordinates",
     "ee.schimke.composeai.daemon": "daemon-core",
     "ee.schimke.composeai.daemon.bta": "daemon-core",
     "ee.schimke.composeai.daemon.devices": "daemon-core",
@@ -111,11 +121,7 @@
     }
   },
   "main": {
-    "cliInternalsUsedByServe": [
-      "BUNDLE_VERSION",
-      "CoordinateResolver",
-      "WebEmbed"
-    ],
+    "cliInternalsUsedByServe": [],
     "serveInternalsUsedByCli": [
       "serve.BundleVerifier",
       "serve.CatalogBlobPool",
@@ -210,7 +216,7 @@
       "serve.ThemeCacheFingerprint",
       "serve.ThemeCacheStore",
       "serve.TrustStore",
-      "serve.WebEscaping",
+      "serve.WebEmbed",
       "serve.clampTo",
       "serve.contentBoxFillsRender",
       "serve.declaredThemesFromPreviews",
@@ -222,10 +228,7 @@
     ]
   },
   "test": {
-    "cliInternalsUsedByServe": [
-      "CoordinateResolver",
-      "WebEmbed"
-    ],
+    "cliInternalsUsedByServe": [],
     "serveInternalsUsedByCli": [
       "serve.BundleVerifier",
       "serve.FakeRenderSession",
@@ -245,7 +248,8 @@
       "serve.TrustStore",
       "serve.TrustedBranch",
       "serve.TrustedIdentity",
-      "serve.TrustedKey"
+      "serve.TrustedKey",
+      "serve.WebEmbed"
     ]
   }
 }

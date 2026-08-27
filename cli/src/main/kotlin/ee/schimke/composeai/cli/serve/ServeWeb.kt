@@ -5098,9 +5098,9 @@ ${captureControlsHtml().prependIndent("          ")}
     token: String,
     isPublic: Boolean = false,
     /**
-     * Running server version (the CLI's `BUNDLE_VERSION`), surfaced in the minimal footer beside
-     * the source/`/version` links so the live build is visible on the front door. Null omits it;
-     * the fixture golden passes a fixed string so a release never churns the committed HTML.
+     * Running server version (the CLI's `SERVE_VERSION`), surfaced in the minimal footer beside the
+     * source/`/version` links so the live build is visible on the front door. Null omits it; the
+     * fixture golden passes a fixed string so a release never churns the committed HTML.
      */
     version: String? = null,
     /** Absolute page + representative hero URLs for Open Graph/Twitter link previews. */
@@ -5419,7 +5419,7 @@ ${captureControlsHtml().prependIndent("          ")}
     isPublic: Boolean,
     unfurl: UnfurlMetadata? = null,
     /**
-     * Running server version (`BUNDLE_VERSION`), shown in the minimal footer. Null omits the build
+     * Running server version (`SERVE_VERSION`), shown in the minimal footer. Null omits the build
      * span.
      */
     version: String? = null,
@@ -5825,7 +5825,7 @@ ${captureControlsHtml().prependIndent("          ")}
     pinnedCatalogSystems: Set<String> = emptySet(),
     unfurl: UnfurlMetadata? = null,
     /**
-     * Running server version (`BUNDLE_VERSION`), shown in the minimal footer. Null omits the build
+     * Running server version (`SERVE_VERSION`), shown in the minimal footer. Null omits the build
      * span.
      */
     version: String? = null,
@@ -6585,7 +6585,7 @@ ${captureControlsHtml().prependIndent("          ")}
     isPublic: Boolean,
     unfurl: UnfurlMetadata? = null,
     /**
-     * Running server version (`BUNDLE_VERSION`), shown in the minimal footer. Null omits the build
+     * Running server version (`SERVE_VERSION`), shown in the minimal footer. Null omits the build
      * span.
      */
     version: String? = null,
@@ -6667,7 +6667,7 @@ ${captureControlsHtml().prependIndent("          ")}
     urlUploadAllowed: Boolean,
     unfurl: UnfurlMetadata? = null,
     /**
-     * Running server version (`BUNDLE_VERSION`), shown in the minimal footer. Null omits the build
+     * Running server version (`SERVE_VERSION`), shown in the minimal footer. Null omits the build
      * span.
      */
     version: String? = null,
@@ -6797,7 +6797,7 @@ ${captureControlsHtml().prependIndent("          ")}
     isPublic: Boolean,
     unfurl: UnfurlMetadata? = null,
     /**
-     * Running server version (`BUNDLE_VERSION`), shown in the minimal footer. Null omits the build
+     * Running server version (`SERVE_VERSION`), shown in the minimal footer. Null omits the build
      * span.
      */
     version: String? = null,
@@ -7179,7 +7179,7 @@ ${captureControlsHtml().prependIndent("          ")}
     view: StatusView,
     token: String,
     unfurl: UnfurlMetadata? = null,
-    /** Running server version (`BUNDLE_VERSION`), shown in the minimal footer. */
+    /** Running server version (`SERVE_VERSION`), shown in the minimal footer. */
     version: String? = null,
     /**
      * The catalog whose colours and name this page wears, when it is served on a **top-level site**
@@ -8006,9 +8006,9 @@ ${captureControlsHtml().prependIndent("          ")}
      */
     presenceUrl: String = "",
     /**
-     * Running server version (the CLI's `BUNDLE_VERSION`), surfaced in the minimal footer beside
-     * the source/`/version` links. Null omits it; the fixture golden passes a fixed string so a
-     * release never churns the committed HTML.
+     * Running server version (the CLI's `SERVE_VERSION`), surfaced in the minimal footer beside the
+     * source/`/version` links. Null omits it; the fixture golden passes a fixed string so a release
+     * never churns the committed HTML.
      */
     version: String? = null,
     /**
@@ -8848,7 +8848,7 @@ ${captureControlsHtml().prependIndent("          ")}
      */
     reportIssue: ReportIssue? = null,
     /**
-     * Running server version (`BUNDLE_VERSION`), shown in the minimal footer. Null omits the build
+     * Running server version (`SERVE_VERSION`), shown in the minimal footer. Null omits the build
      * span.
      */
     version: String? = null,
@@ -9377,7 +9377,7 @@ $rows
     themeCss: String = "",
     unfurl: UnfurlMetadata? = null,
     /**
-     * Running server version (`BUNDLE_VERSION`), shown in the minimal footer. Null omits the build
+     * Running server version (`SERVE_VERSION`), shown in the minimal footer. Null omits the build
      * span.
      */
     version: String? = null,
@@ -10655,7 +10655,7 @@ $cards
     themeCss: String = "",
     unfurl: UnfurlMetadata? = null,
     /**
-     * Running server version (`BUNDLE_VERSION`), shown in the minimal footer. Null omits the build
+     * Running server version (`SERVE_VERSION`), shown in the minimal footer. Null omits the build
      * span.
      */
     version: String? = null,
@@ -11422,7 +11422,7 @@ ${scriptTag("known-differences.js")}
     /** Absolute viewer + PNG URLs for Open Graph/Twitter link previews. */
     unfurl: UnfurlMetadata? = null,
     /**
-     * Running server version (`BUNDLE_VERSION`), shown in the minimal footer. Null omits the build
+     * Running server version (`SERVE_VERSION`), shown in the minimal footer. Null omits the build
      * span.
      */
     version: String? = null,
@@ -13395,7 +13395,7 @@ ${scriptTag("known-differences.js")}
      */
     headerBreadcrumb: String = "",
     /**
-     * Running server version (the CLI's `BUNDLE_VERSION`), shown in the minimal [siteFooter] every
+     * Running server version (the CLI's `SERVE_VERSION`), shown in the minimal [siteFooter] every
      * page ends with. Null omits just the build span; the fixture goldens pass a fixed string so a
      * release never churns the committed HTML.
      */
