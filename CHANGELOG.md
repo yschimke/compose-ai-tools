@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.37.1](https://github.com/yschimke/compose-ai-tools/compare/v1.37.0...v1.37.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* **daemon:** keep held-session frame timestamps on the simulated clock ([#4554](https://github.com/yschimke/compose-ai-tools/issues/4554)) ([efa95ad](https://github.com/yschimke/compose-ai-tools/commit/efa95ad3286cf24b796e4d51f39d2e783e8f1bd5))
+* **deploy:** hold warmed theme renders on disk by default ([#4550](https://github.com/yschimke/compose-ai-tools/issues/4550)) ([f5d9361](https://github.com/yschimke/compose-ai-tools/commit/f5d936128d324ec613cc6e7fbd0628d9d1b215fe))
+* **serve:** give each catalog load its own generation directory, and keep a size refusal a size refusal ([#4552](https://github.com/yschimke/compose-ai-tools/issues/4552)) ([72b6215](https://github.com/yschimke/compose-ai-tools/commit/72b6215ec57882b7532c791e08c076361fe3b9dc))
+
 ## [1.37.0](https://github.com/yschimke/compose-ai-tools/compare/v1.36.0...v1.37.0) (2026-08-27)
 
 
