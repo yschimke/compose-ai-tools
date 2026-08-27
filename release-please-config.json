@@ -6,6 +6,7 @@
   "packages": {
     ".": {
       "package-name": "compose-ai-tools",
+      "release-as": "1.36.0",
       "include-component-in-tag": false,
       "draft": true,
       "extra-files": [
