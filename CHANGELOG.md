@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.38.0](https://github.com/yschimke/compose-ai-tools/compare/v1.37.1...v1.38.0) (2026-08-27)
+
+
+### Features
+
+* **contracts:** enforce explicit API and gate the ABI on eight contract modules ([#4561](https://github.com/yschimke/compose-ai-tools/issues/4561)) ([6e13bb2](https://github.com/yschimke/compose-ai-tools/commit/6e13bb27a1016ce935965b1d076296804c1123ae))
+* **daemon-client:** enforce explicit API and gate the published ABI ([#4558](https://github.com/yschimke/compose-ai-tools/issues/4558)) ([fe29566](https://github.com/yschimke/compose-ai-tools/commit/fe295662f8a7d8b2319f4b3b03aa88710b2c23fc))
+* **daemon-core:** enforce explicit API and gate the protocol ABI ([#4563](https://github.com/yschimke/compose-ai-tools/issues/4563)) ([311c119](https://github.com/yschimke/compose-ai-tools/commit/311c1199ec807cd9887b4657f8661e81094251c1))
+* **daemon-launch:** gate the four representations of the launch descriptor against each other ([#4571](https://github.com/yschimke/compose-ai-tools/issues/4571)) ([8e42a6b](https://github.com/yschimke/compose-ai-tools/commit/8e42a6b1c81868104ac850182b4fb995217fe278))
+* **data-products:** enforce explicit API and gate the ABI on the render and layout-inspector payload schemas ([#4565](https://github.com/yschimke/compose-ai-tools/issues/4565)) ([445ed73](https://github.com/yschimke/compose-ai-tools/commit/445ed737296b5d16569c1c88ad1853eea36e6dce))
+* **serve:** copy the producer's artifact list instead of deriving one ([#4562](https://github.com/yschimke/compose-ai-tools/issues/4562)) ([101efb9](https://github.com/yschimke/compose-ai-tools/commit/101efb9e4bfbdbcb3479744af9f152125013f7be))
+* **serve:** let a deployment name its background render lane ([#4560](https://github.com/yschimke/compose-ai-tools/issues/4560)) ([09c208b](https://github.com/yschimke/compose-ai-tools/commit/09c208b70d0d19d3780545e051b084f3ac8237c4))
+* **serve:** regenerate inherited theme renders instead of trusting them ([#4573](https://github.com/yschimke/compose-ai-tools/issues/4573)) ([6ae8525](https://github.com/yschimke/compose-ai-tools/commit/6ae8525e10bcd838e9968799392d428c3a277f4a))
+
+
+### Bug Fixes
+
+* **ci:** reach the repo-wide schema discovery, and stop a poll budget flaking under load ([#4576](https://github.com/yschimke/compose-ai-tools/issues/4576)) ([83ee241](https://github.com/yschimke/compose-ai-tools/commit/83ee24191f127bf1fc5a041413be89d46341e577))
+* **cli:** restore ktfmt formatting in ServeCatalogStoreTest ([#4570](https://github.com/yschimke/compose-ai-tools/issues/4570)) ([8fb31c1](https://github.com/yschimke/compose-ai-tools/commit/8fb31c19329d166729da4ee088595319eb351fb7))
+* **deploy:** stop the baked JAVA_TOOL_OPTIONS from hiding every other knob ([#4575](https://github.com/yschimke/compose-ai-tools/issues/4575)) ([c61a4bf](https://github.com/yschimke/compose-ai-tools/commit/c61a4bf4d96e5959d425dd64dcab0845b2bd2844))
+* **parity:** stop the browser adapter paying for an over-budget document ([#4577](https://github.com/yschimke/compose-ai-tools/issues/4577)) ([1c0e769](https://github.com/yschimke/compose-ai-tools/commit/1c0e769f3abbdae61f45b49fa0f1bd58c257da98))
+* **serve:** a size refusal is a refusal on the motion route and in telemetry ([#4567](https://github.com/yschimke/compose-ai-tools/issues/4567)) ([18ad1fa](https://github.com/yschimke/compose-ai-tools/commit/18ad1fad783da60e09ce1e577d9afd1383c930b4))
+* **serve:** close the convergence and ownership gaps in the dirty model ([#4574](https://github.com/yschimke/compose-ai-tools/issues/4574)) ([88df612](https://github.com/yschimke/compose-ai-tools/commit/88df6128f6b30562ca808e782fbf9734062886c9))
+* **serve:** keep the document ceiling and reject a malformed artifact index ([#4569](https://github.com/yschimke/compose-ai-tools/issues/4569)) ([aab15bb](https://github.com/yschimke/compose-ai-tools/commit/aab15bb003325419e3f94a91f1353de8ebf6d115))
+* **serve:** keep warmed theme renders across a release ([#4564](https://github.com/yschimke/compose-ai-tools/issues/4564)) ([7da9bdb](https://github.com/yschimke/compose-ai-tools/commit/7da9bdb871d9fce51e668614ee54e5fc44c0595e))
+* **serve:** move the in-browser Wasm registration onto the publishing generation ([#4555](https://github.com/yschimke/compose-ai-tools/issues/4555)) ([8dbac2d](https://github.com/yschimke/compose-ai-tools/commit/8dbac2d780366b357bf25e26620f67312cde1ee0))
+* **serve:** reject an artifact index naming two spellings of one file ([#4572](https://github.com/yschimke/compose-ai-tools/issues/4572)) ([6ade3d4](https://github.com/yschimke/compose-ai-tools/commit/6ade3d40fd30be5bb0ff315df8e9c1cfff1d6db2))
+
 ## [1.37.1](https://github.com/yschimke/compose-ai-tools/compare/v1.37.0...v1.37.1) (2026-08-27)
 
 
