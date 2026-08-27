@@ -292,14 +292,14 @@
     "serve-design-page-diff-lane.dark.png": {
       "fixture": "serve-design-page-diff-lane",
       "theme": "dark",
-      "sha256": "540fc75c0db49d1194ee6c8cc950bce2519e227acb1cfc2ec772ae9f1a2c5935",
-      "size": 68022
+      "sha256": "4e12077757e9508e758ee8e9ea67d63845692d7a229a05a0b43fed67913bb9ad",
+      "size": 68029
     },
     "serve-design-page-diff-lane.light.png": {
       "fixture": "serve-design-page-diff-lane",
       "theme": "light",
-      "sha256": "aa94db22c11558af5a3b3c2f9affe39d688edfac1e893fafa335b69f6cf90ff9",
-      "size": 67108
+      "sha256": "57896382830e0e0d1aed024495f675157fd9546c7a77e4c36a13c9331ab8231c",
+      "size": 67120
     },
     "serve-design-page-hover.dark.png": {
       "fixture": "serve-design-page-hover",
