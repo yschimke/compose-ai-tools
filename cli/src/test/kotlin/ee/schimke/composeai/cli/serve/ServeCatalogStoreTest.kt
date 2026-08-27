@@ -718,6 +718,56 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `an index does not stage artifacts for a document past the byte ceiling`() {
+    // The transport's envelope is 25x the contract's, so a document between the two arrives intact
+    // and its index arrives with it — but the reader answers `TooLarge` and the engine refuses the
+    // document whole, reading not one artifact. Preferring the index walked straight past the
+    // length guard that made that cheap, so 512 individually legal files could be fetched and
+    // staged on every refresh for a verdict that names none of them.
+    val oversized =
+      """{"schema":"compose-preview-known-differences/v1","acceptances":[],"pad":"""" +
+        "x".repeat(ServeKnownDifferences.MAX_DOCUMENT_BYTES) +
+        """"}"""
+    val (_, requested) =
+      loadWithArtifactIndex(
+        """
+        {"schema":"compose-preview-known-difference-artifacts/v1",
+         "artifacts":["glyph/mask.png","glyph/accepted-candidate.png"]}
+        """
+          .trimIndent(),
+        document = oversized,
+      )
+
+    assertTrue(
+      requested.none { it.contains("/parity/known-differences/") },
+      "artifacts were staged for a document the reader refuses whole: $requested",
+    )
+  }
+
+  @Test
+  fun `an index with a wrongly typed entry falls back rather than staging nothing`() {
+    // Skipping a malformed entry looks harmless and is the opposite: the list reduces to a shorter
+    // one — possibly empty — and an empty list is honoured as the producer saying it carried
+    // nothing. A document naming perfectly good artifacts would then stage none of them and every
+    // record would read as `artifact-unreadable`, which is the changed-verdict failure reached
+    // through the fallback written to prevent it.
+    // `[null]` rather than `["glyph/mask.png", null]`: with a surviving entry, skipping and
+    // rejecting both end up fetching that entry, so the assertion would pass either way and prove
+    // nothing. The list that reduces to *empty* is the one where the two behaviours diverge.
+    val (_, requested) =
+      loadWithArtifactIndex(
+        """{"schema":"compose-preview-known-difference-artifacts/v1","artifacts":[null]}""",
+        document = DERIVATION_ACCEPTS,
+      )
+
+    // Fell back to the derivation, which this document supports — so the artifacts still arrive.
+    assertTrue(
+      requested.any { it.endsWith("/parity/known-differences/glyph/mask.png") },
+      "a wrongly-typed entry must reject the index, not silently empty it: $requested",
+    )
+  }
+
+  @Test
   fun `an index cannot name a path the reader would refuse to look up`() {
     // A fetch plan, not a licence. The producer's list goes through exactly the lexical rule the
     // document's paths do, so an index is never a way around it.
