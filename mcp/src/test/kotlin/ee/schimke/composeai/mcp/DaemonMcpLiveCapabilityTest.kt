@@ -161,7 +161,7 @@ class DaemonMcpLiveCapabilityTest {
 private class JsonRpcDaemonClientFactory(private val pngFile: File) : DaemonClientFactory {
   val hosts = java.util.concurrent.CopyOnWriteArrayList<CapabilityRenderHost>()
 
-  override fun spawn(project: RegisteredProject, descriptor: DaemonLaunchDescriptor): DaemonSpawn {
+  override fun spawn(workspaceId: WorkspaceId, descriptor: DaemonLaunchDescriptor): DaemonSpawn {
     val host = CapabilityRenderHost(pngFile)
     hosts += host
     return JsonRpcDaemonSpawn(host)

@@ -172,7 +172,7 @@ object DaemonMcpMain {
  * into a [DaemonClient]. Mirrors `RealDesktopHarnessLauncher` from `:daemon:harness`.
  */
 class SubprocessDaemonClientFactory : DaemonClientFactory {
-  override fun spawn(project: RegisteredProject, descriptor: DaemonLaunchDescriptor): DaemonSpawn {
+  override fun spawn(workspaceId: WorkspaceId, descriptor: DaemonLaunchDescriptor): DaemonSpawn {
     require(descriptor.enabled) {
       "daemon disabled for ${descriptor.modulePath} — set composePreview { daemon { enabled = true } }"
     }
@@ -204,9 +204,9 @@ class SubprocessDaemonClientFactory : DaemonClientFactory {
         .redirectOutput(ProcessBuilder.Redirect.PIPE)
         .redirectError(ProcessBuilder.Redirect.PIPE)
         .start()
-    forwardStderr(process, "${project.workspaceId}/${descriptor.modulePath}")
+    forwardStderr(process, "$workspaceId/${descriptor.modulePath}")
     descriptor.hardTtlSeconds?.let { ttl ->
-      armHardTtl(process, ttl, "${project.workspaceId}/${descriptor.modulePath}")
+      armHardTtl(process, ttl, "$workspaceId/${descriptor.modulePath}")
     }
     return SubprocessDaemonSpawn(process)
   }
