@@ -86,12 +86,21 @@ class ServeCatalogStore(
   private val networkProbe: (url: String) -> BranchFetch = ::httpProbeOutcome,
   private val maxImages: Int = DEFAULT_MAX_IMAGES,
   /**
-   * Called when the catalog declares an in-browser Wasm app (`webRender` in `catalog.json`) and its
-   * files were fetched: the system id → the local directory the app was written to. The server then
-   * serves it at `/wasm/<system>/`, so the **CMP-Wasm tier rides the same trusted branch as the
-   * catalog** — a deployed public server needs no local `--wasm-dir` build, just `--catalogs`.
+   * Called when a catalog publishes: the system id → the local directory its in-browser Wasm app
+   * (`webRender` in `catalog.json`) was written to, or **null when this generation has no usable
+   * app**. The server then serves it at `/wasm/<system>/`, so the **CMP-Wasm tier rides the same
+   * trusted branch as the catalog** — a deployed public server needs no local `--wasm-dir` build,
+   * just `--catalogs`.
+   *
+   * Null is not the same as not calling this at all, and the difference is why it is invoked on
+   * every publish. A refreshed catalog that dropped its `webRender`, or whose app failed to fetch,
+   * leaves the previous generation's app on disk and readable — generation directories outlive
+   * their host by a refresh — so a registration nobody withdrew would keep the viewer's "Run in
+   * browser" toggle serving the *old* catalog's code beside the new catalog's pages, until the
+   * sweep turned the same toggle into 404s. So the registration moves with the generation: it is
+   * made at the moment the new host is published, and null withdraws it.
    */
-  private val registerWasm: (system: String, dir: File) -> Unit = { _, _ -> },
+  private val registerWasm: (system: String, dir: File?) -> Unit = { _, _ -> },
   /**
    * Invoked when a **post-publish** lane finished with a transient failure of its own.
    *
@@ -802,7 +811,10 @@ class ServeCatalogStore(
     // dir. Best-effort — a fetch failure just leaves the catalog without the in-browser tier (the
     // PNG + data tiers still serve). The file list is enumerated by the trusted catalog, not the
     // client, and each file is path-contained + size-capped like the images.
-    val wasmRegistered = fetchWasmApp(catalog.webRender, base, dir, safe)
+    // Fetched here, registered at publication ([publishGeneration]) — the tier belongs to this
+    // generation, and nothing may point at it while the previous host is still the registered one.
+    val wasmDir = fetchWasmApp(catalog.webRender, base, dir, safe)
+    val wasmRegistered = wasmDir != null
 
     val verdict =
       if (trust().trustsBranch(repo, branch))
@@ -1075,7 +1087,7 @@ class ServeCatalogStore(
               { bakedFallback(emptyList(), deferredIds.toList()) },
             )
         ) {
-          publishGeneration(safe, dir)
+          publishGeneration(safe, dir, wasmDir)
           return Result.Ok(
             safe,
             count + deferredIds.size + failedIds.size,
@@ -1159,7 +1171,7 @@ class ServeCatalogStore(
                   perPreviewBundle,
                 )
             ) {
-              publishGeneration(safe, dir)
+              publishGeneration(safe, dir, wasmDir)
               return Result.Ok(
                 safe,
                 count + deferredIds.size + failedIds.size,
@@ -1206,7 +1218,7 @@ class ServeCatalogStore(
           { bakedFallback(emptyList(), deferredIds.toList()) },
         )
     ) {
-      publishGeneration(safe, dir)
+      publishGeneration(safe, dir, wasmDir)
       return Result.Ok(
         safe,
         count + deferredIds.size + failedIds.size,
@@ -1250,7 +1262,7 @@ class ServeCatalogStore(
         )
     // Same reasoning as the degradation: a session with no live lane lists no live-only previews.
     val host = bakedFallback(degradations, emptyList())
-    publishGeneration(safe, dir)
+    publishGeneration(safe, dir, wasmDir)
     register(safe, host)
     return Result.Ok(
       safe,
@@ -1267,15 +1279,16 @@ class ServeCatalogStore(
    * to the declared `path`, rejected on traversal, and size-capped by [fetch]. Needs at least an
    * `index.html` to be usable. No-op for a null / non-`compose-wasm` descriptor.
    *
-   * Returns true iff the in-browser Wasm tier was actually registered — the caller uses this to
-   * decide whether the session still has a live (in-browser) lane, so it must NOT record a
-   * baked-only degradation even when there's no server-side `liveBundle`. A declared-but-incomplete
-   * app (any fetch/traversal failure) returns false, leaving the session genuinely snapshot-only.
+   * Returns the app's directory iff the in-browser Wasm tier is usable — the caller registers it
+   * with the generation it belongs to (see [registerWasm]) and uses it to decide whether the
+   * session still has a live (in-browser) lane, so it must NOT record a baked-only degradation even
+   * when there's no server-side `liveBundle`. A declared-but-incomplete app (any fetch/traversal
+   * failure) returns null, leaving the session genuinely snapshot-only.
    */
-  private fun fetchWasmApp(render: WebRender?, base: String, dir: File, system: String): Boolean {
-    if (render == null || render.kind != WEB_RENDER_COMPOSE_WASM) return false
+  private fun fetchWasmApp(render: WebRender?, base: String, dir: File, system: String): File? {
+    if (render == null || render.kind != WEB_RENDER_COMPOSE_WASM) return null
     val prefix = render.path.trim('/')
-    if (prefix.isEmpty() || render.files.isEmpty()) return false
+    if (prefix.isEmpty() || render.files.isEmpty()) return null
     val wasmDir = File(dir, WEB_WASM_DIR)
     // **Fail closed, all-or-nothing.** Register the app only if *every* declared file is fetched
     // and
@@ -1283,10 +1296,10 @@ class ServeCatalogStore(
     // traversal/escaping entry, or a list longer than the cap) would make the viewer advertise "Run
     // in browser (Wasm)" only for the iframe to 404 its module/wasm fetches. The file list is the
     // trusted catalog's complete manifest, so any missing/invalid entry means "don't offer it".
-    fun fail(reason: String): Boolean {
+    fun fail(reason: String): File? {
       wasmDir.deleteRecursively()
       System.err.println("serve: $system web/wasm/ incomplete ($reason) — in-browser tier disabled")
-      return false
+      return null
     }
     if (render.files.size > MAX_WASM_FILES) return fail("more than $MAX_WASM_FILES files declared")
     val wasmRoot = wasmDir.canonicalFile.toPath()
@@ -1302,8 +1315,7 @@ class ServeCatalogStore(
       target.writeBytes(bytes)
     }
     if (!File(wasmDir, "index.html").isFile) return fail("no index.html")
-    registerWasm(system, wasmDir)
-    return true
+    return wasmDir
   }
 
   /**
@@ -3240,8 +3252,12 @@ class ServeCatalogStore(
    * did this load hand over?", and a generation marked live by a load that then returned without
    * registering would be swept while the host that owns it is still serving.
    */
-  private fun publishGeneration(safe: String, dir: File) {
+  private fun publishGeneration(safe: String, dir: File, wasmDir: File?) {
     liveDirs[safe] = dir
+    // Always, including with null: an in-browser app registered by an earlier generation outlives
+    // its host on disk, so a publish that carries none has to withdraw it rather than simply not
+    // replace it. See [registerWasm].
+    registerWasm(safe, wasmDir)
   }
 
   /**

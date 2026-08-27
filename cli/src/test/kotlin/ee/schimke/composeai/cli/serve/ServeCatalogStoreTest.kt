@@ -137,7 +137,7 @@ class ServeCatalogStoreTest {
       register = { n, h -> registered[n] = h },
       trust = { trust },
       fetch = fetch,
-      registerWasm = { s, d -> registeredWasm[s] = d },
+      registerWasm = { s, d -> if (d == null) registeredWasm.remove(s) else registeredWasm[s] = d },
       maxImages = maxImages,
       figmaExecutor = figmaExecutor,
     )
@@ -1558,7 +1558,9 @@ class ServeCatalogStoreTest {
         register = { n, h -> registered[n] = h },
         trust = { TrustStore.EMPTY },
         fetch = fetch,
-        registerWasm = { s, d -> registeredWasm[s] = d },
+        registerWasm = { s, d ->
+          if (d == null) registeredWasm.remove(s) else registeredWasm[s] = d
+        },
       )
     assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok, "first load succeeds")
     val png =
@@ -1686,7 +1688,9 @@ class ServeCatalogStoreTest {
         register = { n, h -> registered[n] = h },
         trust = { TrustStore.EMPTY },
         fetch = fetch,
-        registerWasm = { s, d -> registeredWasm[s] = d },
+        registerWasm = { s, d ->
+          if (d == null) registeredWasm.remove(s) else registeredWasm[s] = d
+        },
       )
     assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
 
@@ -1917,7 +1921,9 @@ class ServeCatalogStoreTest {
         register = { n, h -> registered[n] = h },
         trust = { TrustStore.EMPTY },
         fetch = fetch,
-        registerWasm = { s, d -> registeredWasm[s] = d },
+        registerWasm = { s, d ->
+          if (d == null) registeredWasm.remove(s) else registeredWasm[s] = d
+        },
       )
     assertTrue(store.load("meshcore-mobile") is ServeCatalogStore.Result.Ok)
 
@@ -3067,6 +3073,55 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `a refresh that drops the wasm app withdraws its registration`() {
+    // Generation directories outlive their host by one refresh, so an app the previous generation
+    // registered stays readable after the new host publishes. A registration nobody withdrew would
+    // keep the viewer's "Run in browser" toggle serving the OLD catalog's code beside the new
+    // catalog's pages — and then, once the sweep took that directory, 404 on the same toggle. So
+    // the registration moves with the generation, in both directions.
+    val withWasm = wasmCatalog("\"index.html\",\"composeApp.wasm\",\"skiko.wasm\"")
+    val withoutWasm =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3","components":[
+        {"componentId":"Button/Filled","images":[
+          {"path":"images/button-filled/ideal__default__dark.png","theme":"dark"}]}]}
+      """
+        .trimIndent()
+    var catalog = withWasm
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        fetch = { url ->
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.toByteArray()
+            url.endsWith(".png") -> png()
+            url.contains("/web/wasm/") -> "x".toByteArray()
+            else -> null
+          }
+        },
+        registerWasm = { s, d ->
+          if (d == null) registeredWasm.remove(s) else registeredWasm[s] = d
+        },
+      )
+
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+    assertTrue(registeredWasm.containsKey("compose-m3"), "the first generation carries an app")
+
+    catalog = withoutWasm
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+    assertTrue(
+      registeredWasm.isEmpty(),
+      "a generation with no app must not leave the previous one's registered",
+    )
+    assertEquals(
+      listOf(ServeDegradation.CATALOG_BAKED_ONLY),
+      registered.getValue("compose-m3").degradations.map { it.code },
+    )
+  }
+
+  @Test
   fun `a webRender with a failed required-file fetch registers nothing (fail closed)`() {
     val catalog = wasmCatalog("\"index.html\",\"composeApp.wasm\",\"skiko.wasm\"")
     // composeApp.wasm 404s → the app is incomplete → don't advertise a tier whose iframe would 404.
@@ -3091,7 +3146,9 @@ class ServeCatalogStoreTest {
         register = { n, h -> registered[n] = h },
         trust = { TrustStore.EMPTY },
         fetch = wasmFetcher(catalog),
-        registerWasm = { s, d -> registeredWasm[s] = d },
+        registerWasm = { s, d ->
+          if (d == null) registeredWasm.remove(s) else registeredWasm[s] = d
+        },
       )
       .load("compose-m3")
     assertTrue(registeredWasm.isEmpty(), "malformed manifest must not register")
