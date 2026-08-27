@@ -1,5 +1,41 @@
 # Changelog
 
+## [1.36.0](https://github.com/yschimke/compose-ai-tools/compare/v1.35.0...v1.36.0) (2026-08-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **parity:** make the portable kernel the live scorer ([#4518](https://github.com/yschimke/compose-ai-tools/issues/4518))
+
+### Features
+
+* **build:** prepare the preview-server split in-repo, as a separate build ([#4512](https://github.com/yschimke/compose-ai-tools/issues/4512)) ([11070f7](https://github.com/yschimke/compose-ai-tools/commit/11070f76b9dcdd349702f68eb6f234463741055d))
+* **parity:** audit a catalog's acceptances on the parity dashboard, and document the loop ([#4508](https://github.com/yschimke/compose-ai-tools/issues/4508)) ([64bb32b](https://github.com/yschimke/compose-ai-tools/commit/64bb32b02be371db817d2edb86a3540ad5814c6a))
+* **parity:** bound a document's total compressed artifact bytes ([#4529](https://github.com/yschimke/compose-ai-tools/issues/4529)) ([1531148](https://github.com/yschimke/compose-ai-tools/commit/15311486b61b5516073ef019d8bd4d4de4cb7f26))
+* **parity:** export the alpha normalisation for consumers that decode elsewhere ([#4535](https://github.com/yschimke/compose-ai-tools/issues/4535)) ([56f82e4](https://github.com/yschimke/compose-ai-tools/commit/56f82e44eb18c990c882507be75643ceebc914b1))
+* **parity:** give known-differences/v1 a memory ceiling and a partial-alpha rule ([#4506](https://github.com/yschimke/compose-ai-tools/issues/4506)) ([268455d](https://github.com/yschimke/compose-ai-tools/commit/268455dc1e20b960bdbe2460cab7d1728a125f08))
+* **parity:** make the portable kernel the live scorer ([#4518](https://github.com/yschimke/compose-ai-tools/issues/4518)) ([db76e30](https://github.com/yschimke/compose-ai-tools/commit/db76e30e35d9a7e88e4b3614028ec4fde847bd3a))
+
+
+### Bug Fixes
+
+* address unresolved recent PR review findings ([#4499](https://github.com/yschimke/compose-ai-tools/issues/4499)) ([21ee31a](https://github.com/yschimke/compose-ai-tools/commit/21ee31a51b80256e03d6ae4aeef01bb6efdc46f6))
+* **daemon:** seed a held Android session's knobs from the spec it was given ([#4539](https://github.com/yschimke/compose-ai-tools/issues/4539)) ([9b48639](https://github.com/yschimke/compose-ai-tools/commit/9b48639d588d488ecbab0292f8a84148948ca801))
+* **deps:** move Remote Compose back to released coordinates ([#4538](https://github.com/yschimke/compose-ai-tools/issues/4538)) ([1b70bca](https://github.com/yschimke/compose-ai-tools/commit/1b70bca30a13d0f5aee514e186aabbdda6a134c5))
+* **deps:** take the gradle minor/patch group, hold compose-multiplatform at 1.11.1 ([#4527](https://github.com/yschimke/compose-ai-tools/issues/4527)) ([5ad6876](https://github.com/yschimke/compose-ai-tools/commit/5ad68765452ba19d0595a69b3bcb05ffe8a0145a))
+* **parity:** average premultiplied on the score path ([#4526](https://github.com/yschimke/compose-ai-tools/issues/4526)) ([9a8f472](https://github.com/yschimke/compose-ai-tools/commit/9a8f4724fa0cfcb8d3e45fcf8a1fa998854ef442))
+* **parity:** keep a prototype-named tag an own key in the projected index ([#4531](https://github.com/yschimke/compose-ai-tools/issues/4531)) ([51071ab](https://github.com/yschimke/compose-ai-tools/commit/51071ab960a9f5e786791c91e51139ec437b99e8))
+* **parity:** mirror JavaScript's blank-id test, not the JVM's ([#4523](https://github.com/yschimke/compose-ai-tools/issues/4523)) ([707f9f2](https://github.com/yschimke/compose-ai-tools/commit/707f9f223743e5702a7ebfc05412cca2350f372e))
+* **parity:** stage a catalog's known differences so a served catalog has them ([#4515](https://github.com/yschimke/compose-ai-tools/issues/4515)) ([b2163c6](https://github.com/yschimke/compose-ai-tools/commit/b2163c606b0ba2f6c660d462d500c4f02b964df9))
+* **parity:** take the locator's system from the session id, not the URL path ([#4514](https://github.com/yschimke/compose-ai-tools/issues/4514)) ([19b5c22](https://github.com/yschimke/compose-ai-tools/commit/19b5c2297c6ac7a07de6c04bda5d005886910122))
+* **serve:** retry a catalog revision whose optional assets could not be fetched ([#4525](https://github.com/yschimke/compose-ai-tools/issues/4525)) ([59a8e28](https://github.com/yschimke/compose-ai-tools/commit/59a8e28e23c1e724f8e3673da6094262d44d7283))
+
+
+### Performance Improvements
+
+* **parity:** fetch no artifacts for a document the engine rejects outright ([#4517](https://github.com/yschimke/compose-ai-tools/issues/4517)) ([98259c5](https://github.com/yschimke/compose-ai-tools/commit/98259c5a508007d38e6f3f4c4e337767028d8d44))
+* **serve:** release a parked optimizer's daemon so the pressure gate reopens ([#4536](https://github.com/yschimke/compose-ai-tools/issues/4536)) ([86c09b1](https://github.com/yschimke/compose-ai-tools/commit/86c09b1fb580b79027142b0fa662d68b712d86b4))
+
 ## [1.35.0](https://github.com/yschimke/compose-ai-tools/compare/v1.34.0...v1.35.0) (2026-08-25)
 
 

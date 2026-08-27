@@ -78,7 +78,7 @@ to the module whose previews you want to render:
 ```kotlin
 // <module>/build.gradle.kts
 plugins {
-    id("ee.schimke.composeai.preview") version "1.35.0"
+    id("ee.schimke.composeai.preview") version "1.36.0"
 }
 ```
 
