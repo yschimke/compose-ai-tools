@@ -2401,7 +2401,10 @@ class ServeCatalogStoreTest {
 
     assertTrue(store.load("jetsnack") is ServeCatalogStore.Result.Ok)
     val limits = requestedLimits.toMap()
-    assertEquals(25L * 1024 * 1024, limits.entries.single { it.key.endsWith("/catalog.json") }.value)
+    assertEquals(
+      25L * 1024 * 1024,
+      limits.entries.single { it.key.endsWith("/catalog.json") }.value,
+    )
     assertEquals(
       ServeCatalogStore.MAX_LIVE_BUNDLE_FETCH_BYTES,
       limits.entries.single { it.key.endsWith("bundle/bundle.png") }.value,
