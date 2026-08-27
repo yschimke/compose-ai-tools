@@ -266,6 +266,42 @@ unavailable. Once resolved it is **pinned for the life of the process**: a later
 does not move it, because live snippet JVMs hold those jars open. Restart the container to compile
 against a newer catalog ABI.
 
+### Warmed theme renders survive a deploy (`SERVE_THEME_CACHE_DIR`)
+
+The server pre-renders every catalog preview under every declared theme while the box is idle, so a
+visitor's theme selection is instant rather than a cold render. On `preview.coo.ee` that is 18,604
+renders, and it takes the better part of a day of quiet to fill.
+
+**That work is held on disk by default**, on the dedicated `preview_theme_cache` volume:
+
+```
+SERVE_THEME_CACHE_DIR=/theme-cache        # the default; `none` for a memory-only cache
+SERVE_THEME_CACHE_MAX_BYTES=4294967296    # 4 GiB — see below for where that comes from
+```
+
+The default was `none` — memory-only — and while it was, **theme optimization could not finish**.
+Without a disk tier the warmed renders live only in the serve process's heap, so every container
+recreation starts the pass again from zero, and the rolling update is a container recreation.
+Measured across one morning: 1,502 of 18,604 entries after a 40-hour uptime, then 0 an hour later,
+then 0 again — three releases, three resets. A pass that needs a day to complete cannot outrun a
+deploy cadence measured in hours. The in-memory tier is deliberately a 128 MB window onto a
+generation several times that size, so it was never going to hold the whole answer by itself.
+
+Sizing: a fully warmed set measures **~0.93 GiB** here — 1,503 cached renders occupied 76.8 MiB,
+i.e. ~52 KiB/entry, across 18,604 declared targets. The 4 GiB cap is ~4x headroom for superseded
+generations awaiting their sweep, and is deliberately below the server's own 8 GB default because
+the catalog blob pool on the same disk really does sit at its full 8 GB.
+
+Staleness is handled rather than assumed away. A generation is keyed by a fingerprint of everything
+that decides the pixels; because an input nobody thought of could still escape it, the server
+re-renders a sample of the adopted entries at startup and discards the entire generation on any
+mismatch, so a fingerprint miss costs a re-render rather than serving wrong pixels.
+
+Read `themeCache` on [`/status.json`](https://preview.coo.ee/status.json) to confirm it is on — it
+is `null` when there is no disk tier, and each catalog's `renderCache.persisted` is `null` beside
+it. `renderCache.persistenceOff` names the reason when a catalog fell back to memory-only for some
+*other* cause (an unreadable launch descriptor, a fingerprint it could not compute).
+
 ### Letting visitors pick the catalog
 
 `SERVE_PLAYGROUND=1` adds a **Catalog** selector to the editor, offering every catalog this box
