@@ -542,7 +542,11 @@ class ServeCatalogLiveHost(
     // so returning here would skip verification in exactly the fully-warmed restart case it exists
     // for — and a fingerprint that missed an input would then serve stale pixels indefinitely. The
     // check moves inside the task, below.
-    if (catalogThemeCache.snapshot().fullyOptimized && persistenceVerified.get()) return
+    // `converged`, not `fullyOptimized`, for the same reason the inner gate uses it: a catalog
+    // holding another build's renders is warm everywhere and finished nowhere, so the narrower
+    // question turned every heartbeat into an early return and the dirty queue was never reached
+    // by a resident host either.
+    if (catalogThemeCache.snapshot().converged && persistenceVerified.get()) return
     // Never start a pass into a broken renderer. The optimizer is the largest consumer of the
     // render gate, and every item it queues against an open breaker is pure waste — 4740 remaining
     // at a ~7h ETA on work where every single render fails (issue #3448). Targets stay configured
@@ -600,7 +604,12 @@ class ServeCatalogLiveHost(
                 // exactly the terms every other background render is. Cheap and once per host: a
                 // no-op when nothing was adopted from disk.
                 if (!persistenceVerified.get()) verifyPersistedRenders(jobs)
-                if (catalogThemeCache.snapshot().fullyOptimized) PassOutcome.FINISHED
+                // `converged`, NOT `fullyOptimized`. The latter asks only whether every target is
+                // cached, and a dirty entry IS cached — so on the normal state after adopting a
+                // previous build's generation, or right after an operator asks for a regenerate,
+                // this returned FINISHED and the pass never ran. The dirty queue inside
+                // `runOptimizerPass` was unreachable in exactly the case it exists for.
+                if (catalogThemeCache.snapshot().converged) PassOutcome.FINISHED
                 else runOptimizerPass(jobs, sliceUntil = clock() + optimizerSliceMillis)
               } finally {
                 optimizationActive.set(false)
@@ -744,12 +753,30 @@ class ServeCatalogLiveHost(
     // Batched by PREVIEW, which is both the unit the daemon warms for and the unit the job
     // list is already ordered by: every theme of one preview renders together, so one warm is
     // amortised across all of them and the pass never interleaves two previews' daemon opens.
+    // `contains`, not `get`: planning only needs to know WHETHER a target is warm. Reading it
+    // pulls every already-persisted PNG off disk on every slice — hundreds of megabytes for a
+    // partly warmed catalog — only for the 128 MB memory window to evict most of them again
+    // before the next slice repeats the whole thing.
+    val gaps = jobs.filterNot { catalogThemeCache.contains(it.cacheKey) }
+    // Whether this slice is working the dirty queue rather than filling gaps, which decides how its
+    // renders are issued: a gap can be answered from any tier, a dirty entry only by the daemon.
+    // Carried as a property of the slice rather than of each job because the two queues are never
+    // mixed — the dirty one is reached only once the gaps are gone.
+    val regenerating = gaps.isEmpty()
     val byPreview =
-      // `contains`, not `get`: planning only needs to know WHETHER a target is warm. Reading it
-      // pulls every already-persisted PNG off disk on every slice — hundreds of megabytes for a
-      // partly warmed catalog — only for the 128 MB memory window to evict most of them again
-      // before the next slice repeats the whole thing.
-      jobs.filterNot { catalogThemeCache.contains(it.cacheKey) }.groupBy { it.previewId }
+      gaps
+        .ifEmpty {
+          // Gaps first, dirt second. Once every target is warm the pass used to report FINISHED
+          // and stop, which was the whole story while warm meant "rendered by this build". It no
+          // longer does: a generation adopted across a release is warm and inherited, and left
+          // alone it would stay another build's pixels for the life of the catalog. These are
+          // re-rendered at the same admission and the same slice as anything else — they are the
+          // lowest-value work the pass has, because unlike a gap they are already serving
+          // something.
+          val dirty = catalogThemeCache.dirtyTargets().toSet()
+          jobs.filter { it.cacheKey in dirty }
+        }
+        .groupBy { it.previewId }
     if (byPreview.isEmpty()) return PassOutcome.FINISHED
     val allPreviewIds = jobs.map { it.previewId }.distinct()
     val start = Math.floorMod(optimizerPreviewCursor.get(), allPreviewIds.size)
@@ -829,7 +856,7 @@ class ServeCatalogLiveHost(
             // Clear the pool's high-water marks so the reads below belong to THIS batch.
             sharedDaemonPool?.takePeakInFlight()
             sharedDaemonPool?.takeColdStartMillis()
-            renderOptimizerBatch(batch).also {
+            renderOptimizerBatch(batch, regenerating).also {
               val elapsed = clock() - renderFrom
               // A replica's daemon starts on its FIRST render, so that render carries a full
               // cold start. Only the primary's warm is visible above (`awaitWarmCompletion`),
@@ -862,7 +889,16 @@ class ServeCatalogLiveHost(
           }
         )
         for ((job, outcome) in batch.zip(outcomes)) {
-          if (catalogThemeCache.get(job.cacheKey) != null) continue
+          // A render that SUCCEEDED needs no bookkeeping — `put` cleared this key's failure and
+          // busy counts on the way through the cache. Tested before anything else because the
+          // `when` below ends in an `else` that marks the key failed, so letting an `Ok` reach it
+          // would record a failure for every entry the pass got right.
+          if (outcome is RenderOutcome.Ok) continue
+          // A warm key means the gap closed — by a foreground render that beat this one — so again
+          // there is nothing to record. Not so while REGENERATING: every dirty key is warm by
+          // definition, and skipping on that basis would swallow a Busy or a Failed on the one
+          // queue whose whole purpose is to replace what is already there.
+          if (!regenerating && catalogThemeCache.get(job.cacheKey) != null) continue
           // Busy is "ask again", not a failure: the warm above may still be settling. Leave it
           // unmarked so a later pass retries instead of spending the `failed` count on it.
           when (outcome) {
@@ -933,15 +969,18 @@ class ServeCatalogLiveHost(
    * the same replicas — which is the whole point: a five-wide lane sitting idle next to a serial
    * prefetcher was the throughput bug.
    */
-  private fun renderOptimizerBatch(batch: List<ThemeOptimizationJob>): List<RenderOutcome> {
+  private fun renderOptimizerBatch(
+    batch: List<ThemeOptimizationJob>,
+    regenerating: Boolean,
+  ): List<RenderOutcome> {
     if (batch.size == 1) {
       val job = batch.single()
-      return listOf(renderPrefetch(job.previewId, job.overrides))
+      return listOf(renderPrefetch(job.previewId, job.overrides, regenerating))
     }
     return batch
       .map { job ->
         optimizerBatchExecutor.submit<RenderOutcome> {
-          runCatching { renderPrefetch(job.previewId, job.overrides) }
+          runCatching { renderPrefetch(job.previewId, job.overrides, regenerating) }
             .getOrElse { RenderOutcome.Failed("prefetch render threw: ${it.message}") }
         }
       }
@@ -1381,19 +1420,42 @@ class ServeCatalogLiveHost(
    * residency by definition and does not end, so pricing it as foreground let prefetching hold the
    * stream reserve for hours; see [ServeSharedDaemonPool.render].
    */
-  private fun renderPrefetch(previewId: String, overrides: PreviewOverrides): RenderOutcome =
-    renderInternal(previewId, overrides, leased = true, background = true)
+  private fun renderPrefetch(
+    previewId: String,
+    overrides: PreviewOverrides,
+    regenerating: Boolean = false,
+  ): RenderOutcome =
+    renderInternal(
+      previewId,
+      overrides,
+      leased = true,
+      background = true,
+      bypassCache = regenerating,
+    )
 
   private fun renderInternal(
     previewId: String,
     overrides: PreviewOverrides,
     leased: Boolean,
     background: Boolean = false,
+    /**
+     * Skip the cache read and go to the daemon.
+     *
+     * Set only by the dirty queue, and the thing that makes that queue work at all. A dirty entry
+     * is deliberately still *servable* — that is the point, a possibly-stale preview beats a cold
+     * render — so the ordinary read here answers from [CatalogThemeCache] and the render never
+     * reaches a daemon. No fresh bytes, no `put`, no flag cleared: the pass would select the same
+     * dirty set every slice, render nothing, and report progress it had not made. Regeneration has
+     * to ask the renderer, because a render is the entire question being asked.
+     */
+    bypassCache: Boolean = false,
   ): RenderOutcome {
     val catalogCacheKey = catalogCacheKey(previewId, overrides)
     val themeCacheKey = themeCacheKey(previewId, overrides)
-    cachedRender(previewId, overrides)?.let {
-      return it
+    if (!bypassCache) {
+      cachedRender(previewId, overrides)?.let {
+        return it
+      }
     }
     // A theme render this catalog has already proved it cannot produce is answered from the latch,
     // not by asking the daemon again. The daemon's answer would be the same failure, but arriving

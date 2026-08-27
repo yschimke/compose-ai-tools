@@ -92,7 +92,29 @@ data class ThemeOptimizationSnapshot(
    */
   val lastBatchWidth: Int = 0,
   val maxBatchWidth: Int = 0,
-)
+  /**
+   * Cached entries carried over from an older build and still awaiting re-render.
+   *
+   * Counted inside [cached], not beside it: they are warm and they are being served. This says how
+   * much of that warmth is another build's work, which is the difference between a catalog that has
+   * converged on this renderer and one that is merely inheriting. Falling steadily is the
+   * background regeneration doing its job; stuck with `remaining` at 0 means the pass believes it
+   * has finished and is not picking the queue up.
+   */
+  val dirty: Int = 0,
+) {
+  /**
+   * Every target warm **and** produced by the renderer that is running — the condition the pass may
+   * actually stop on.
+   *
+   * [fullyOptimized] is deliberately left meaning "nothing is missing", because that is what the
+   * status row and the completion state have always reported. It is the wrong gate for the worker:
+   * a dirty entry is cached, so a catalog that has inherited a whole generation reads as fully
+   * optimized while none of it is this build's work.
+   */
+  val converged: Boolean
+    get() = fullyOptimized && dirty == 0
+}
 
 /**
  * One catalog generation's rendered-preview cache: memory occupancy, what the reads did, and the
@@ -335,6 +357,8 @@ class CatalogThemeCache(
       withheldReads.incrementAndGet()
       return null
     }
+    // Sampled BEFORE the read, so the comparison below spans the whole unlocked window.
+    val epoch = dropEpoch.get()
     val fromDisk =
       store.get(key)
         ?: run {
@@ -344,8 +368,89 @@ class CatalogThemeCache(
     diskHits.incrementAndGet()
     // Promoted through the ordinary write path so it takes part in the LRU and the byte accounting
     // like any other entry — but NOT written back to disk, which is where it just came from.
-    remember(key, fromDisk)
+    //
+    // Only if no drop has happened since the epoch was sampled. The disk read above holds neither
+    // the render lock nor the generation write lock, by design — a visitor must not queue behind
+    // another replica's writes — so a `dropPersisted` can unlink the generation and clear memory
+    // in the gap between the sample and here. Promoting then would reinsert the very bytes the
+    // drop just declared wrong into the tier in FRONT of the one that was emptied, and every
+    // subsequent request would be served them from an empty disk. The bytes still go back to this
+    // caller: it asked before the drop and a render it already holds is not made wrong by one.
+    remember(key, fromDisk, validEpoch = epoch)
     return fromDisk
+  }
+
+  /**
+   * Bumped by every [dropPersisted]. Read either side of an unlocked disk read so bytes fetched
+   * before a drop cannot be promoted into memory after it.
+   */
+  private val dropEpoch = AtomicLong()
+
+  /**
+   * Targets held from an older build and queued for re-render, in a stable order.
+   *
+   * Dirty entries are *warm* — [contains] reports them and, once the sample has vouched for the
+   * generation, [get] serves them — so the optimizer's "not cached yet" filter passes straight over
+   * them, which is correct: a possibly-stale preview beats a cold render, and a build whose
+   * renderer genuinely moved is caught by the sample rather than by re-rendering everything on
+   * spec. This is the second queue, worked once the gaps are filled, so the store converges on
+   * pixels this renderer actually produced instead of trusting a version boundary forever.
+   */
+  fun dirtyTargets(): List<String> {
+    val store = persistence ?: return emptyList()
+    if (store.dirtyCount() == 0) return emptyList()
+    // Walked from the TARGETS, not from the directory: the store holds hashed file names and the
+    // hash is one-way, so what is on disk cannot name itself. The declared target set is the only
+    // place the keys still exist.
+    return targetKeys.filter(store::isDirty).sorted()
+  }
+
+  /**
+   * Mark every persisted render for this catalog dirty, and report how many.
+   *
+   * The operator's "regenerate this catalog", for pixels suspected wrong by something no
+   * fingerprint sees. Deliberately not a delete: the entries keep serving while the background pass
+   * replaces them.
+   */
+  fun markPersistedDirty(): Int {
+    val store = persistence ?: return 0
+    // A pass that was never given targets cannot regenerate anything. With
+    // `-Dcomposeai.serve.themeOptimization=false` the startup configures `persistableKeys` and
+    // deliberately leaves `targetKeys` empty, so marking would report a queue the optimizer has no
+    // way to work — an operator told "1,606 queued" would wait for a regeneration that is never
+    // coming. -1 says the action is unavailable here, which the route reports rather than fakes.
+    if (targetKeys.isEmpty()) return -1
+    return store.markAllDirty()
+  }
+
+  /**
+   * Throw this catalog's persisted renders away outright, and forget them in memory too.
+   *
+   * The decisive half of the pair, for pixels an operator has decided are wrong rather than merely
+   * suspect. Every preview goes cold at once and is re-rendered from nothing — which is the cost
+   * [markPersistedDirty] exists to avoid, so this is the second choice of the two, not the default.
+   *
+   * The memory window is cleared with it. Leaving it would keep serving the very renders just
+   * declared wrong, from the tier in front of the one that was emptied.
+   */
+  fun dropPersisted(): Boolean {
+    // `true` when there is no disk tier: the memory window below is all this cache has, clearing it
+    // is the whole of the drop, and it cannot fail. Reporting false would send the caller into a
+    // retry loop against a generation write lock that does not exist — the route turns false into a
+    // 409 whose contract is "contended, try again", and every retry would answer the same.
+    val discarded = persistence?.discard() ?: true
+    synchronized(renderLock) {
+      // Inside the lock and BEFORE the clear: a promotion racing this drop takes the lock to
+      // insert, so bumping here means it either lands before the clear (and is cleared) or reads
+      // the new epoch and declines. Bumping after the clear would leave a window where it does
+      // neither.
+      dropEpoch.incrementAndGet()
+      renders.clear()
+      byteCount.set(0)
+    }
+    state.set("paused")
+    completedAt.set(0)
+    return discarded
   }
 
   /** Whether [key] is warm in either tier, without paying to read the bytes. */
@@ -366,8 +471,15 @@ class CatalogThemeCache(
     // While quarantined, a fresh render REPLACES the adopted copy rather than being dropped because
     // a file already sits at that key — see [ThemeCacheStore.Generation.put].
     if (key in persistableKeys)
-      persistence?.put(key, png, replaceExisting = !persistenceTrusted.get())
-    remember(key, png)
+      persistence?.put(
+        key,
+        png,
+        // Dirty as well as quarantined. A regenerated entry is the whole point of the dirty queue
+        // and it must overwrite the older build's bytes; without this the pass renders it, the
+        // store declines the write, and the flag never clears.
+        replaceExisting = !persistenceTrusted.get() || persistence.isDirty(key),
+      )
+    remember(key, png, replaceExisting = true)
     failedKeys.remove(key)
     failureCounts.remove(key)
     failureReasons.remove(key)
@@ -376,9 +488,27 @@ class CatalogThemeCache(
   }
 
   /** Hold [png] in the memory tier under the byte cap, evicting least-recently-read first. */
-  private fun remember(key: String, png: ByteArray) {
+  private fun remember(
+    key: String,
+    png: ByteArray,
+    replaceExisting: Boolean = false,
+    /**
+     * Insert only while [dropEpoch] still reads this value — see [get], where a disk read runs
+     * unlocked and a drop can land underneath it. Checked INSIDE the lock: comparing before taking
+     * it only narrows the window, because the drop that invalidates these bytes can happen between
+     * the comparison and the insert.
+     */
+    validEpoch: Long? = null,
+  ) {
     synchronized(renderLock) {
-      if (renders.containsKey(key)) return@synchronized
+      if (validEpoch != null && dropEpoch.get() != validEpoch) return@synchronized
+      if (renders.containsKey(key)) {
+        // A regenerated dirty entry has to displace the copy the memory window is still serving,
+        // or the read path would keep handing out the older build's pixels for as long as the LRU
+        // held them — the disk tier converged and the tier in front of it did not.
+        if (!replaceExisting) return@synchronized
+        renders.remove(key)?.let { byteCount.addAndGet(-it.size.toLong()) }
+      }
       if (png.size.toLong() > maxBytes) return@synchronized
       renders[key] = png
       byteCount.addAndGet(png.size.toLong())
@@ -436,8 +566,24 @@ class CatalogThemeCache(
       val fresh = render(key) ?: continue
       compared++
       if (!fresh.contentEquals(cached)) {
-        val discarded = store.discard()
+        // Only the ADOPTED entries — the ones that were on disk when this generation opened. A
+        // generation can now hold renders from two processes at once, and the sample has just
+        // *confirmed* the ones this process made by disagreeing with the ones it inherited. Taking
+        // the lot would throw away however long this process has spent rendering, to fix a problem
+        // those renders do not have.
+        //
+        // Adopted, NOT dirty. Dirtiness asks "did a different BUILD write this", and the sample
+        // never tests that question: it draws its candidates from `wasAdopted`. A same-version
+        // restart inherits the previous process's renders as clean, so narrowing to dirty here
+        // would delete an older build's leftovers, report a positive count that suppresses the
+        // fallback `discard`, lift the quarantine, and go straight back to serving the entries the
+        // sample was drawn from.
+        val dropped = store.discardAdopted()
+        val discarded = if (dropped >= 0) dropped > 0 || store.discard() else false
         synchronized(renderLock) {
+          // Same hazard as a drop, and the same fix: these bytes have just been proved wrong, so a
+          // promotion already in flight must not put them back after the clear.
+          dropEpoch.incrementAndGet()
           renders.clear()
           byteCount.set(0)
         }
@@ -628,6 +774,10 @@ class CatalogThemeCache(
       turnsForced = turnsForced.get(),
       lastBatchWidth = lastBatchWidth.get(),
       maxBatchWidth = maxBatchWidth.get(),
+      // The store's own count, not `dirtyTargets().size`: `/status` snapshots every catalog on
+      // every request and m3-catalog alone declares 10,440 targets, so the filtered walk belongs on
+      // the optimizer's path — which runs per slice — and not on this one.
+      dirty = persistence?.dirtyCount() ?: 0,
     )
   }
 

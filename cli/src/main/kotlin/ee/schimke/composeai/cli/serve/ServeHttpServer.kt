@@ -1054,6 +1054,97 @@ class ServeHttpServer(
               ContentType.Application.Json,
             )
           }
+          // Per-catalog cache control, the pair that answers "these pixels look wrong".
+          //
+          // Separate verbs because they cost very different things and the cheap one is almost
+          // always right. `regenerate` marks the catalog's warmed renders for re-render and
+          // deletes nothing, so every preview keeps serving while the background pass replaces
+          // them — the answer for pixels *suspected* wrong by something no fingerprint sees, a
+          // base image that changed the installed fonts being the case that motivated it. `drop`
+          // takes them, and every preview for that catalog goes cold at once.
+          post("/admin/catalogs/{system}/theme-cache/regenerate") {
+            if (rejectBadAdminToken()) return@post
+            val system = call.parameters["system"].orEmpty()
+            // The retained STATE, not the live host. `peekHost` answers null for a suspended
+            // session, and since the optimizer residency work that is most catalogs most of the
+            // time — so peeking at hosts would 404 precisely the idle catalogs this action exists
+            // to refresh, and only for being idle. The cache hangs off the state and outlives the
+            // daemon, so this neither needs nor wakes one.
+            val cache = sessions.peekState(system)?.catalogThemeCache
+            if (cache == null) {
+              call.respondText("no such catalog: $system", status = HttpStatusCode.NotFound)
+              return@post
+            }
+            val queued = withContext(Dispatchers.IO) { cache.markPersistedDirty() }
+            // Wake the pass that has to work the queue. A converged catalog's optimizer task has
+            // already exited and its host is usually suspended as well, so marking alone would
+            // answer `queued: true` with nobody coming — the mark is durable, but "durable" and
+            // "being worked" are the two different promises this route makes and it has to keep
+            // both. Best-effort: a catalog that cannot be revived still has its mark on disk and
+            // is picked up by the ordinary resume rotation.
+            if (queued > 0) withContext(Dispatchers.IO) { sessions.wakeOptimizer(system) }
+            call.response.headers.append(HttpHeaders.CacheControl, "no-store")
+            if (queued < 0) {
+              // Two different refusals, both of which must not read as a queued regeneration: the
+              // pass has no targets to work (theme optimization switched off, so nothing would ever
+              // be re-rendered) or the mark could not be persisted (a full or read-only volume,
+              // where a restart would silently forget the request).
+              call.respondText(
+                Json.encodeToString(
+                  ThemeCacheActionDto.serializer(),
+                  ThemeCacheActionDto(
+                    system = system,
+                    action = "regenerate",
+                    entries = 0,
+                    queued = false,
+                  ),
+                ),
+                ContentType.Application.Json,
+                status = HttpStatusCode.Conflict,
+              )
+              return@post
+            }
+            call.respondText(
+              Json.encodeToString(
+                ThemeCacheActionDto.serializer(),
+                ThemeCacheActionDto(
+                  system = system,
+                  action = "regenerate",
+                  entries = queued,
+                  queued = true,
+                ),
+              ),
+              ContentType.Application.Json,
+            )
+          }
+          post("/admin/catalogs/{system}/theme-cache/drop") {
+            if (rejectBadAdminToken()) return@post
+            val system = call.parameters["system"].orEmpty()
+            // The state, for the reason the regenerate route above gives.
+            val cache = sessions.peekState(system)?.catalogThemeCache
+            if (cache == null) {
+              call.respondText("no such catalog: $system", status = HttpStatusCode.NotFound)
+              return@post
+            }
+            val dropped = withContext(Dispatchers.IO) { cache.dropPersisted() }
+            call.response.headers.append(HttpHeaders.CacheControl, "no-store")
+            call.respondText(
+              Json.encodeToString(
+                ThemeCacheActionDto.serializer(),
+                // `dropped = false` is a real answer, not an error: the generation write lock is
+                // held by a render publishing right now, and the caller should try again rather
+                // than believe the bytes are gone.
+                ThemeCacheActionDto(
+                  system = system,
+                  action = "drop",
+                  entries = 0,
+                  dropped = dropped,
+                ),
+              ),
+              ContentType.Application.Json,
+              status = if (dropped) HttpStatusCode.OK else HttpStatusCode.Conflict,
+            )
+          }
           post("/admin/theme-optimization/resume") {
             if (rejectBadAdminToken()) return@post
             optimizer.resumeOptimizers()
@@ -10751,6 +10842,28 @@ private data class BundleAcceptedResponse(
    * this tells the uploader whether the server would treat the bundle as trusted.
    */
   val trust: String,
+)
+
+/**
+ * Reply from the per-catalog theme-cache admin routes.
+ *
+ * [entries] is what `regenerate` queued — zero is a legitimate answer for a catalog with no
+ * persistent cache, or one already fully re-rendered. [dropped] reports whether `drop` actually
+ * took the bytes: false means the generation write lock was held by a render publishing at that
+ * moment, so the caller should retry rather than believe the store is empty.
+ */
+@Serializable
+private data class ThemeCacheActionDto(
+  val system: String,
+  val action: String,
+  val entries: Int = 0,
+  val dropped: Boolean? = null,
+  /**
+   * Whether `regenerate` actually queued anything. False with a 409 means it could not: theme
+   * optimization is switched off for this deployment, so no pass would ever work the queue, or the
+   * mark could not be written to the volume and a restart would forget it.
+   */
+  val queued: Boolean? = null,
 )
 
 /** Reply from the optimizer pause/resume admin routes. */
