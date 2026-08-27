@@ -27,8 +27,39 @@ pluginManagement {
 val matrixRobolectricVersion: String? =
   providers.gradleProperty("composeai.matrix.robolectricVersion").orNull
 
-// androidx-main post-submit build the Remote Compose / Glance Wear artifacts resolve from. See the
-// repository declaration below; bump this one line to move all three groups to a newer snapshot.
+// Which line the three Remote Compose groups (`androidx.compose.remote`,
+// `androidx.wear.compose.remote`, `androidx.glance.wear`) resolve from:
+//
+//   * `release`  (default) — the alpha coordinates pinned in `gradle/libs.versions.toml`,
+//     resolved from google(). This is the normal build: reproducible, never ages out, and
+//     the only mode CI and published consumers see.
+//   * `snapshot` — `1.0.0-SNAPSHOT` from the androidx-main post-submit build pinned by
+//     `androidxSnapshotBuildId` below. Use it to try an API that has landed on androidx-main
+//     but has not been released yet: `-Pcomposeai.remoteCompose=snapshot`.
+//
+// The whole trio moves together in either mode. They only work when built against the same
+// `remote-creation*` — the catalog comment above `compose-remote` records what a skewed pair
+// costs — so the mode flips all three keys at once rather than letting one group straddle the
+// two lines.
+//
+// Historical note on why the snapshot lane exists at all: `androidx.compose.remote.foundation`
+// (which `wear.compose.remote:remote-material3` needs) was, for a long time, published only on
+// androidx-main, so the release line could not resolve the Wear widget layer. It now ships on
+// Google Maven, which is what let the default flip back to `release`. Keep the lane anyway —
+// the next API this repo wants to exercise will land on androidx-main first.
+val remoteComposeLine =
+  providers.gradleProperty("composeai.remoteCompose").orElse("release").get().trim().lowercase()
+
+require(remoteComposeLine == "release" || remoteComposeLine == "snapshot") {
+  "composeai.remoteCompose must be 'release' or 'snapshot', was '$remoteComposeLine'"
+}
+
+val useRemoteComposeSnapshot = remoteComposeLine == "snapshot"
+
+// androidx-main post-submit build the Remote Compose / Glance Wear artifacts resolve from when
+// `composeai.remoteCompose=snapshot`. See the repository declaration below; bump this one line to
+// move all three groups to a newer snapshot. Build ids age out of androidx.dev after a few weeks —
+// if the artifacts 404, pick a fresh one from https://androidx.dev/snapshots/builds.
 val androidxSnapshotBuildId = "16155060"
 
 dependencyResolutionManagement {
@@ -44,26 +75,28 @@ dependencyResolutionManagement {
     mavenCentral()
     maven("https://repo.gradle.org/gradle/libs-releases")
     // Remote Compose (`androidx.compose.remote`), the Wear widget layer built on it
-    // (`androidx.wear.compose.remote`) and Glance Wear (`androidx.glance.wear`) resolve from an
-    // androidx-main post-submit snapshot rather than Google Maven. The three have to agree on a
-    // single `remote-creation*` version — the catalog comment above `compose-remote` records what
-    // a skewed pair costs (`NoClassDefFoundError` inside `RemoteButtonImpl` at render time, and a
-    // wear pin that briefly didn't exist at all) — and taking all three from one build makes that
-    // structural instead of a manual cross-check against each POM. Pinned to a build id rather
-    // than `snapshots/latest` so the build stays reproducible: a new snapshot lands only when
-    // `androidxSnapshotBuildId` changes. Scoped by group regex (which also picks up
-    // `androidx.compose.remote.foundation`, a module that exists only on the snapshot line) and
-    // `snapshotsOnly()`, so nothing else can drift onto an unreviewed snapshot and every release
-    // coordinate keeps resolving from google(). Build ids age out of androidx.dev after a few
-    // weeks — if these 404, pick a fresh one from https://androidx.dev/snapshots/builds.
-    maven("https://androidx.dev/snapshots/builds/$androidxSnapshotBuildId/artifacts/repository") {
-      name = "androidxSnapshots"
-      content {
-        includeGroupByRegex("androidx\\.compose\\.remote.*")
-        includeGroupByRegex("androidx\\.wear\\.compose\\.remote.*")
-        includeGroupByRegex("androidx\\.glance\\.wear.*")
+    // (`androidx.wear.compose.remote`) and Glance Wear (`androidx.glance.wear`) normally resolve
+    // from google() at the alpha coordinates the version catalog pins. Only in snapshot mode
+    // (`-Pcomposeai.remoteCompose=snapshot`, see `remoteComposeLine` above) is the androidx-main
+    // post-submit repository added, and then all three groups come from ONE build id: the trio has
+    // to agree on a single `remote-creation*` version — the catalog comment above `compose-remote`
+    // records what a skewed pair costs (`NoClassDefFoundError` inside `RemoteButtonImpl` at render
+    // time, and a wear pin that briefly didn't exist at all) — and taking all three from one build
+    // makes that structural instead of a manual cross-check against each POM. Pinned to a build id
+    // rather than `snapshots/latest` so even the snapshot lane stays reproducible: a new snapshot
+    // lands only when `androidxSnapshotBuildId` changes. Scoped by group regex (which also picks up
+    // `androidx.compose.remote.foundation`) and `snapshotsOnly()`, so nothing else can drift onto an
+    // unreviewed snapshot and every release coordinate keeps resolving from google() even here.
+    if (useRemoteComposeSnapshot) {
+      maven("https://androidx.dev/snapshots/builds/$androidxSnapshotBuildId/artifacts/repository") {
+        name = "androidxSnapshots"
+        content {
+          includeGroupByRegex("androidx\\.compose\\.remote.*")
+          includeGroupByRegex("androidx\\.wear\\.compose\\.remote.*")
+          includeGroupByRegex("androidx\\.glance\\.wear.*")
+        }
+        mavenContent { snapshotsOnly() }
       }
-      mavenContent { snapshotsOnly() }
     }
     if (matrixRobolectricVersion?.endsWith("-SNAPSHOT") == true) {
       maven("https://central.sonatype.com/repository/maven-snapshots/") {
@@ -73,6 +106,22 @@ dependencyResolutionManagement {
       maven("https://oss.sonatype.org/content/repositories/snapshots/") {
         name = "robolectric-snapshots-oss"
         content { includeGroup("org.robolectric") }
+      }
+    }
+  }
+
+  // Snapshot mode rewrites the three Remote Compose version refs in place, so the catalog file
+  // keeps exactly one set of coordinates — the released ones — and `-Pcomposeai.remoteCompose=
+  // snapshot` is the only thing that can move them. Overriding here (rather than keeping a second
+  // commented-out block in the TOML) means every `libs.compose.remote.*`, `libs.wear.compose.
+  // remote.*` and `libs.glance.wear.*` accessor follows the mode with no per-module wiring, and a
+  // release build can't accidentally resolve one group off the snapshot line.
+  if (useRemoteComposeSnapshot) {
+    versionCatalogs {
+      named("libs") {
+        version("compose-remote", "1.0.0-SNAPSHOT")
+        version("wear-compose-remote", "1.0.0-SNAPSHOT")
+        version("glance-wear", "1.0.0-SNAPSHOT")
       }
     }
   }

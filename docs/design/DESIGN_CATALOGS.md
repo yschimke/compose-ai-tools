@@ -788,23 +788,26 @@ dependency fact, and it has a **stated trigger**:
 
 `samples/design-catalog-remote-m3` depends on four project modules. Three are
 published (`:preview-annotations`, `:data-remotecompose-connector`,
-`:wear-preview-runtime`); `:third-party-rc-embedded-player` is **deliberately not**,
-because it `api`-exposes `androidx.compose.remote:*` coordinates that only resolve
-from the build-id-pinned androidx.dev snapshot repo declared in this project's
-`settings.gradle.kts` — see that module's own build file for why publishing it was
-withdrawn. All three remote groups (`compose-remote`, `wear-compose-remote`,
-`glance-wear`) are `1.0.0-SNAPSHOT` on a build id that ages out of androidx.dev after
-a few weeks, and the two published modules keep those deps off their POMs on purpose,
-so any external consumer has to declare and pin the snapshot repo itself.
+`:wear-preview-runtime`); `:third-party-rc-embedded-player` publishes under this
+repo's own group for parity testing only, and `api`-exposes `androidx.compose.remote:*`
+types, so a consumer of it inherits whatever Remote Compose line this build resolves.
 
-Moving the catalog to `wear-m3-catalog` today would therefore import an expiring
-snapshot pin into the repo whose job is a stable published kit reproduction, and drop
-the embedded-player lane. **The trigger is those three groups reaching Google Maven on
-release coordinates.** When they do, the move is cheap and worth making — co-locating
-the catalog with the kit references means a kit re-point fixes both sides in one PR,
-and `compareWith` drops to `{ "system": …, "spec": "../catalog.spec.json" }` with no
-`repo`. Until then this pairing is cross-repo, which is exactly the shape `compareWith`
-was widened to express.
+**The dependency half of the trigger has now fired.** All three remote groups
+(`compose-remote`, `wear-compose-remote`, `glance-wear`) resolve from Google Maven on
+released alpha coordinates — `androidx.compose.remote.foundation:foundation`, the
+`remote-material3` dependency that used to exist only on androidx-main, publishes
+there too — so the default build no longer carries a build-id pin that ages out after
+a few weeks. The androidx.dev snapshot repository is still declared in
+`settings.gradle.kts`, but only under `-Pcomposeai.remoteCompose=snapshot`; nothing
+resolves from it by default.
+
+What that leaves is a plain scheduling decision rather than a dependency fact: moving
+the catalog to `wear-m3-catalog` co-locates it with the kit references, so a kit
+re-point fixes both sides in one PR and `compareWith` drops to
+`{ "system": …, "spec": "../catalog.spec.json" }` with no `repo`. The one thing the
+receiving repo has to take on is the embedded-player lane and the alpha runtime
+(compileSdk 37) it needs. Until the move happens this pairing stays cross-repo, which
+is exactly the shape `compareWith` was widened to express.
 
 **That move is no longer blocked by the pipeline.** `compareWith` used to be a bare
 slug and could only ever name a sibling *module of this project*: the driver read the

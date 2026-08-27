@@ -50,10 +50,11 @@ plugins {
 }
 
 // Deliberately published under the compose-ai-tools group, not `androidx.*`: this is the vendored
-// and locally patched implementation. Its public API exposes AndroidX Remote Compose snapshot
-// types, so consumers must also use the matching androidx.dev repository/build recorded by this
-// release. The coordinate is intended for player experiments and parity testing, not as a stable
-// library API.
+// and locally patched implementation. Its public API exposes AndroidX Remote Compose types at the
+// `compose-remote` version this build resolved — released alpha coordinates from Google Maven by
+// default, or the androidx.dev snapshot when built with `-Pcomposeai.remoteCompose=snapshot`, in
+// which case a consumer also needs that repository. The coordinate is intended for player
+// experiments and parity testing, not as a stable library API.
 composeAiMavenPublishing {
   coordinates(
     artifactId = "third-party-rc-embedded-player",
