@@ -23,7 +23,7 @@ emits real Compose nodes, so the same document exports editable geometry and des
 
 ## The pixels barely move
 
-The whole `remote-m3` catalog rendered both ways (`:samples:design-catalog-remote-m3:composePreviewRender`),
+The whole `remote-m3` catalog rendered both ways (`composePreviewRender` over the catalog module),
 diffed with the same `pixelmatch` settings and the same mid-grey flatten `rc-compare` uses:
 
 **56 previews — 31 byte-identical, 25 moved, worst 0.64%.**
@@ -70,10 +70,16 @@ Java capture. Two things follow:
 
 ## Regenerating
 
+The `remote-m3` catalog now lives in yschimke/wear-m3-catalog as `:remote-catalog` (compose-ai-tools#4588), so the render half of this runs in a checkout of that repo.
+
 ```sh
-./gradlew :samples:design-catalog-remote-m3:composePreviewRender
-# renders land in samples/design-catalog-remote-m3/build/compose-previews/renders/
+# in a yschimke/wear-m3-catalog checkout
+./gradlew :remote-catalog:composePreviewRender
+# renders land in remote-catalog/build/compose-previews/renders/
 ```
+
+The two revisions being compared are of the PLAYER, which lives here — so render the catalog against
+each, by pointing that checkout's `composePreviewPlugin` pin at the build under test.
 
 Render once on `main` and once on this branch, then diff the two directories with `pixelmatch` at
 `threshold: 0.1` over `flattenedCopy(png, BG)` from
