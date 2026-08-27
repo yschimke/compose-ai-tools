@@ -9,7 +9,7 @@ import kotlinx.serialization.Serializable
  * [PreviewOverrideValue] is reconstructed here, once, for every render backend.
  */
 @Serializable
-enum class OverrideSeedKind {
+public enum class OverrideSeedKind {
   STRING,
   BOOLEAN,
   INT,
@@ -29,7 +29,7 @@ enum class OverrideSeedKind {
  * wire-compatible copy because it must stay off this runtime's classpath.
  */
 @Serializable
-data class OverrideSeed(
+public data class OverrideSeed(
   val key: String,
   val index: Int? = null,
   val kind: OverrideSeedKind,
@@ -40,7 +40,7 @@ data class OverrideSeed(
     get() = if (index == null) key else "$key[$index]"
 
   /** Typed value for this seed, or `null` when [raw] doesn't parse to [kind]. */
-  fun toValueOrNull(): PreviewOverrideValue? =
+  public fun toValueOrNull(): PreviewOverrideValue? =
     when (kind) {
       OverrideSeedKind.STRING -> PreviewOverrideValue.StringValue(raw)
       OverrideSeedKind.BOOLEAN ->
@@ -60,7 +60,7 @@ data class OverrideSeed(
  * onto the capture. [name] is the `_VARIANT_<name>` render-output tag and catalog `state`.
  */
 @Serializable
-data class OverrideVariantSpec(
+public data class OverrideVariantSpec(
   val name: String,
   val seeds: List<OverrideSeed> = emptyList(),
   val interaction: OverrideVariantInteraction? = null,
@@ -76,7 +76,7 @@ data class OverrideVariantSpec(
    * seeds are dropped; an all-unparseable variant yields an empty map (callers treat empty as "no
    * seed").
    */
-  fun toNamedOverrides(): Map<String, PreviewOverrideValue> {
+  public fun toNamedOverrides(): Map<String, PreviewOverrideValue> {
     val out = LinkedHashMap<String, PreviewOverrideValue>()
     for (seed in seeds) {
       val value = seed.toValueOrNull() ?: continue
@@ -87,7 +87,7 @@ data class OverrideVariantSpec(
 }
 
 @Serializable
-enum class OverrideVariantInteraction {
+public enum class OverrideVariantInteraction {
   Hovered,
   Focused,
   Pressed,

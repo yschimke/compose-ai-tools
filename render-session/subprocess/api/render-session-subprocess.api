@@ -1,0 +1,50 @@
+public final class ee/schimke/composeai/render/session/subprocess/DaemonClientRenderSession : ee/schimke/composeai/render/session/RenderSession {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/InitializeResult;Lee/schimke/composeai/render/session/RenderSessionBackend;Lee/schimke/composeai/daemon/client/DaemonClient;Lee/schimke/composeai/render/session/subprocess/NotificationFanout;Lkotlin/jvm/functions/Function0;)V
+	public fun close ()V
+	public fun disableExtensions-HG0u8IE (Ljava/util/List;J)Lee/schimke/composeai/daemon/protocol/ExtensionsDisableResult;
+	public fun enableExtensions-HG0u8IE (Ljava/util/List;J)Lee/schimke/composeai/daemon/protocol/ExtensionsEnableResult;
+	public fun fetchData-9VgGkz4 (Ljava/lang/String;Ljava/lang/String;ZLkotlinx/serialization/json/JsonElement;J)Lee/schimke/composeai/daemon/protocol/DataFetchResult;
+	public fun fileChanged (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/FileKind;Lee/schimke/composeai/daemon/protocol/ChangeType;)V
+	public fun getBackendKind ()Lee/schimke/composeai/render/session/RenderSessionBackend;
+	public fun getInitializeResult ()Lee/schimke/composeai/daemon/protocol/InitializeResult;
+	public fun getModulePath ()Ljava/lang/String;
+	public fun getWorkspaceRoot ()Ljava/lang/String;
+	public fun historyDiff-Wn2Vu4Y (Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/HistoryDiffMode;J)Lee/schimke/composeai/daemon/protocol/HistoryDiffResult;
+	public fun historyList-HG0u8IE (Lee/schimke/composeai/daemon/protocol/HistoryListParams;J)Lee/schimke/composeai/daemon/protocol/HistoryListResult;
+	public fun historyRead-SxA4cEA (Ljava/lang/String;ZJ)Lee/schimke/composeai/daemon/protocol/HistoryReadResultDto;
+	public fun interactiveInput (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/InteractiveInputKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Float;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public fun listExtensions-LRDsOJo (J)Lee/schimke/composeai/daemon/protocol/ExtensionsListResult;
+	public fun onNotification (Lee/schimke/composeai/render/session/NotificationListener;)Ljava/lang/AutoCloseable;
+	public fun recordingEncode-SxA4cEA (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/RecordingFormat;J)Lee/schimke/composeai/daemon/protocol/RecordingEncodeResult;
+	public fun recordingScript (Ljava/lang/String;Ljava/util/List;)V
+	public fun recordingStart-9VgGkz4 (Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Float;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;J)Lee/schimke/composeai/daemon/protocol/RecordingStartResult;
+	public fun recordingStop-HG0u8IE (Ljava/lang/String;J)Lee/schimke/composeai/daemon/protocol/RecordingStopResult;
+	public fun renderNow-9VgGkz4 (Ljava/util/List;Lee/schimke/composeai/daemon/protocol/RenderTier;Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;J)Lee/schimke/composeai/daemon/protocol/RenderNowResult;
+	public fun setFocus (Ljava/util/List;)V
+	public fun setVisible (Ljava/util/List;)V
+	public fun streamStart-9VgGkz4 (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/StreamCodec;Ljava/lang/Integer;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;J)Lee/schimke/composeai/daemon/protocol/StreamStartResult;
+	public fun streamStop (Ljava/lang/String;)V
+	public fun streamVisibility (Ljava/lang/String;ZLjava/lang/Integer;)V
+	public fun subscribeData-Wn2Vu4Y (Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;J)Lee/schimke/composeai/daemon/protocol/DataSubscribeResult;
+	public fun unsubscribeData-SxA4cEA (Ljava/lang/String;Ljava/lang/String;J)Lee/schimke/composeai/daemon/protocol/DataSubscribeResult;
+}
+
+public final class ee/schimke/composeai/render/session/subprocess/NotificationFanout {
+	public fun <init> ()V
+	public final fun clear ()V
+	public final fun dispatch (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;)V
+	public final fun register (Lee/schimke/composeai/render/session/NotificationListener;)Ljava/lang/AutoCloseable;
+}
+
+public final class ee/schimke/composeai/render/session/subprocess/SubprocessRenderSessions : ee/schimke/composeai/render/session/RenderSessionFactory {
+	public static final field INSTANCE Lee/schimke/composeai/render/session/subprocess/SubprocessRenderSessions;
+	public final fun descriptorFile (Ljava/io/File;Ljava/lang/String;)Ljava/io/File;
+	public fun getBackendKind ()Lee/schimke/composeai/render/session/RenderSessionBackend;
+	public final fun getFileSystem ()Lokio/FileSystem;
+	public fun open (Lee/schimke/composeai/render/session/RenderSessionConfig;)Lee/schimke/composeai/render/session/RenderSession;
+	public final fun open (Lee/schimke/composeai/render/session/RenderSessionConfig;Lee/schimke/composeai/daemon/client/DaemonClientFactory;)Lee/schimke/composeai/render/session/RenderSession;
+	public final fun openBundleDaemon-w3P_Jxs (Ljava/util/List;Ljava/io/File;Ljava/io/File;Ljava/io/File;Ljava/lang/String;JLjava/util/List;Ljava/util/Map;Ljava/util/List;Ljava/util/List;Ljava/lang/Long;Lee/schimke/composeai/daemon/client/DaemonClientFactory;)Lee/schimke/composeai/render/session/RenderSession;
+	public static synthetic fun openBundleDaemon-w3P_Jxs$default (Lee/schimke/composeai/render/session/subprocess/SubprocessRenderSessions;Ljava/util/List;Ljava/io/File;Ljava/io/File;Ljava/io/File;Ljava/lang/String;JLjava/util/List;Ljava/util/Map;Ljava/util/List;Ljava/util/List;Ljava/lang/Long;Lee/schimke/composeai/daemon/client/DaemonClientFactory;ILjava/lang/Object;)Lee/schimke/composeai/render/session/RenderSession;
+	public final fun setFileSystem (Lokio/FileSystem;)V
+}
+

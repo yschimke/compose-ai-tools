@@ -28,7 +28,7 @@ import kotlinx.serialization.Serializable
 // ---------------------------------------------------------------------------
 
 @Serializable
-data class AccessibilityFinding(
+public data class AccessibilityFinding(
   val level: String,
   val type: String,
   val message: String,
@@ -45,7 +45,7 @@ data class AccessibilityFinding(
  * `ee.schimke.composeai.cli.*` types rather than depending on the Android `:data-a11y-core`.
  */
 @Serializable
-data class AccessibilityNode(
+public data class AccessibilityNode(
   /**
    * What a screen reader announces: the node's own contentDescription / text, or the copy rolled up
    * from the descendants a focus stop merges (issue #4253). Empty only when nothing under the stop
@@ -76,7 +76,7 @@ data class AccessibilityNode(
 )
 
 @Serializable
-data class AccessibilityEntry(
+public data class AccessibilityEntry(
   val previewId: String,
   val findings: List<AccessibilityFinding>,
   /**
@@ -89,7 +89,7 @@ data class AccessibilityEntry(
 )
 
 @Serializable
-data class AccessibilityReport(
+public data class AccessibilityReport(
   val module: String,
   val entries: List<AccessibilityEntry>,
   /**
@@ -125,11 +125,11 @@ data class AccessibilityReport(
  * Lives in `:preview-data-api` (not `:cli`) so external consumers (contrib scripting, third-party
  * tooling) can pin to it without taking a CLI dependency.
  */
-const val A11Y_PAYLOAD_SCHEMA_V1: String = "compose-preview-data-a11y/v1"
+public const val A11Y_PAYLOAD_SCHEMA_V1: String = "compose-preview-data-a11y/v1"
 
 /**
  * Value emitted in [AccessibilityReport.status] when ATF data could not be produced for any preview
  * in the module (daemon classpath issue, render-session open failed, every per-preview fetch
  * errored). The python helper and PR-comment renderer check for this string verbatim.
  */
-const val A11Y_REPORT_STATUS_ATF_UNAVAILABLE: String = "atf-unavailable"
+public const val A11Y_REPORT_STATUS_ATF_UNAVAILABLE: String = "atf-unavailable"

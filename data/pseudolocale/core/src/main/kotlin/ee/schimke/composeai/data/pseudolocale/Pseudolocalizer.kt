@@ -18,7 +18,7 @@ package ee.schimke.composeai.data.pseudolocale
  *   `LayoutDirection.Rtl` is what actually flips layouts; the bidi marks are belt-and- braces for
  *   code paths that bypass `LocalLayoutDirection`.
  */
-object Pseudolocalizer {
+public object Pseudolocalizer {
   /**
    * Pseudolocalised text plus the input-to-output index map needed to remap span ranges over the
    * original [input] onto the transformed [text].
@@ -34,15 +34,16 @@ object Pseudolocalizer {
    * before transformation and any preview using bold / annotation / URLSpan resources would render
    * unstyled — see `PseudolocaleResources` in `:data-pseudolocale-connector`.
    */
-  class TransformResult(val text: String, val indexMap: IntArray)
+  public class TransformResult(public val text: String, public val indexMap: IntArray)
 
-  fun accent(input: CharSequence): String = transform(input.toString(), Pseudolocale.ACCENT)
+  public fun accent(input: CharSequence): String = transform(input.toString(), Pseudolocale.ACCENT)
 
-  fun bidi(input: CharSequence): String = transform(input.toString(), Pseudolocale.BIDI)
+  public fun bidi(input: CharSequence): String = transform(input.toString(), Pseudolocale.BIDI)
 
-  fun transform(input: String, mode: Pseudolocale): String = transformWithIndices(input, mode).text
+  public fun transform(input: String, mode: Pseudolocale): String =
+    transformWithIndices(input, mode).text
 
-  fun transformWithIndices(input: String, mode: Pseudolocale): TransformResult =
+  public fun transformWithIndices(input: String, mode: Pseudolocale): TransformResult =
     when (mode) {
       Pseudolocale.ACCENT -> accentWithIndices(input)
       Pseudolocale.BIDI -> bidiWithIndices(input)

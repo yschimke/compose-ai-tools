@@ -26,10 +26,10 @@ import okio.Path.Companion.toPath
  * [RenderSessionConfig.descriptorPath] — the heavy lifting (subprocess fork, JSON-RPC handshake)
  * happens before the factory returns, so consumers never see an un-initialized session.
  */
-object SubprocessRenderSessions : RenderSessionFactory {
+public object SubprocessRenderSessions : RenderSessionFactory {
   override val backendKind: RenderSessionBackend = RenderSessionBackend.Subprocess
 
-  var fileSystem: FileSystem = SystemFileSystem
+  public var fileSystem: FileSystem = SystemFileSystem
 
   override fun open(config: RenderSessionConfig): RenderSession =
     open(config = config, factory = SubprocessDaemonClientFactory())
@@ -38,7 +38,7 @@ object SubprocessRenderSessions : RenderSessionFactory {
    * Open a session, injecting a custom [DaemonClientFactory]. Test scaffolding pairs an in-memory
    * factory with a fake daemon; production callers stick with the default factory in [open].
    */
-  fun open(config: RenderSessionConfig, factory: DaemonClientFactory): RenderSession {
+  public fun open(config: RenderSessionConfig, factory: DaemonClientFactory): RenderSession {
     val descriptorFile = config.descriptorPath
     if (!descriptorFile.isFile) {
       throw RenderSessionException(
@@ -118,7 +118,7 @@ object SubprocessRenderSessions : RenderSessionFactory {
    * @param hardTtlSeconds optional wall-clock deadline after which the spawner force-kills the JVM.
    *   Set for a sandboxed playground snippet; null for an ordinary bundle daemon.
    */
-  fun openBundleDaemon(
+  public fun openBundleDaemon(
     daemonClasspath: List<String>,
     classesDir: File,
     previewsJson: File,
@@ -249,7 +249,7 @@ object SubprocessRenderSessions : RenderSessionFactory {
    * conventional `<projectDir>/<modulePath-derived>/build/compose-previews/daemon-launch.json`
    * layout. Convenience wrapper for callers that don't already have the descriptor path.
    */
-  fun descriptorFile(projectDir: File, modulePath: String): File {
+  public fun descriptorFile(projectDir: File, modulePath: String): File {
     val moduleDir =
       if (modulePath.isBlank() || modulePath == ":") projectDir
       else File(projectDir, modulePath.trimStart(':').replace(':', '/'))

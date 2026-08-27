@@ -7,34 +7,34 @@ import kotlinx.serialization.Serializable
  * MCP clients and other connectors can depend on the payload schema without pulling in the
  * daemon-side registry or Compose runtime.
  */
-object Material3ThemeProduct {
-  const val KIND: String = "compose/theme"
+public object Material3ThemeProduct {
+  public const val KIND: String = "compose/theme"
 
   /**
    * v2 populates [ThemePayload.consumers] (node → tokens read) via resolved-value attribution; v1
    * shipped resolved tokens only and left `consumers` empty (#449, #1847). The payload shape is
    * unchanged — v1 readers see a populated list where they previously saw `[]`.
    */
-  const val SCHEMA_VERSION: Int = 2
+  public const val SCHEMA_VERSION: Int = 2
 }
 
 @Serializable
-data class ThemePayload(
+public data class ThemePayload(
   val resolvedTokens: ResolvedThemeTokens,
   val consumers: List<ThemeConsumer> = emptyList(),
 )
 
 @Serializable
-data class ResolvedThemeTokens(
+public data class ResolvedThemeTokens(
   val colorScheme: Map<String, String>,
   val typography: Map<String, TypographyToken>,
   val shapes: Map<String, String>,
 )
 
-@Serializable data class ThemeConsumer(val nodeId: String, val tokens: List<String>)
+public @Serializable data class ThemeConsumer(val nodeId: String, val tokens: List<String>)
 
 @Serializable
-data class TypographyToken(
+public data class TypographyToken(
   val fontFamily: String? = null,
   val fontSize: Float? = null,
   val fontSizeUnit: String? = null,

@@ -12,13 +12,13 @@ import kotlinx.serialization.Serializable
  * `androidx.compose.remote.*` artifacts. Mirrors `Material3PermissionsProduct` /
  * `Material3KeyboardProduct`.
  */
-object RemoteComposeProduct {
-  const val KIND: String = "compose/remotecompose"
+public object RemoteComposeProduct {
+  public const val KIND: String = "compose/remotecompose"
   // v2 adds [RemoteComposePayload.declarations] — the auto-captured set of editable named-value
   // knobs a preview declared this render, so the viewer can render a control per knob instead of
   // relying on a hand-authored sidecar. Additive + defaulted, so a v1 reader that ignores the field
   // still decodes a v2 payload.
-  const val SCHEMA_VERSION: Int = 2
+  public const val SCHEMA_VERSION: Int = 2
 }
 
 /**
@@ -33,9 +33,9 @@ object RemoteComposeProduct {
  * Kept in this alpha-free core module (beside [RemoteComposeProduct]) so a client can depend on the
  * payload schema without the daemon-side registry or the `androidx.compose.remote.*` artifacts.
  */
-object RemoteComposeDocumentProduct {
-  const val KIND: String = "compose/remotecompose-doc"
-  const val SCHEMA_VERSION: Int = 1
+public object RemoteComposeDocumentProduct {
+  public const val KIND: String = "compose/remotecompose-doc"
+  public const val SCHEMA_VERSION: Int = 1
 }
 
 /**
@@ -44,7 +44,7 @@ object RemoteComposeDocumentProduct {
  * JSON, so the raw bytes ride as text). [documentBase64] decodes to the exact `.rc` byte stream the
  * vendored player consumes — the same bytes a bundle's `ir/<id>.rc` sidecar would carry.
  */
-@Serializable data class RemoteComposeDocumentPayload(val documentBase64: String)
+public @Serializable data class RemoteComposeDocumentPayload(val documentBase64: String)
 
 /**
  * One editable Remote Compose named-value knob a preview declared during its render — the auto-
@@ -61,7 +61,7 @@ object RemoteComposeDocumentProduct {
  * writes an edit back through the `remoteCompose` override facet.
  */
 @Serializable
-data class RemoteComposeKnobDeclaration(val name: String, val default: RemoteNamedValue)
+public data class RemoteComposeKnobDeclaration(val name: String, val default: RemoteNamedValue)
 
 /**
  * Bundle-sidecar shape for a preview's declared Remote Compose knobs — the payload of the
@@ -73,7 +73,7 @@ data class RemoteComposeKnobDeclaration(val name: String, val default: RemoteNam
  * carries only the editable surface, not the effective values / host actions / profile.
  */
 @Serializable
-data class RemoteComposeDeclarationsPayload(
+public data class RemoteComposeDeclarationsPayload(
   val declarations: List<RemoteComposeKnobDeclaration> = emptyList()
 )
 
@@ -100,19 +100,19 @@ data class RemoteComposeDeclarationsPayload(
  *   (name + author default + kind).
  */
 @Serializable
-data class RemoteComposePayload(
+public data class RemoteComposePayload(
   val namedValues: Map<String, RemoteNamedValue> = emptyMap(),
   val hostActions: List<RemoteHostAction> = emptyList(),
   val profile: RemoteComposeProfile? = null,
   val declarations: List<RemoteComposeKnobDeclaration> = emptyList(),
 ) {
-  companion object {
+  public companion object {
     /**
      * Cap for the in-memory host-action ring buffer. Picked so a busy panel session can keep ~5
      * seconds of typical agent-driven events without unbounded growth; downstream consumers that
      * need older events should subscribe to `data/subscribe(kind=compose/remotecompose)` and
      * accumulate themselves.
      */
-    const val HOST_ACTION_BUFFER_SIZE: Int = 256
+    public const val HOST_ACTION_BUFFER_SIZE: Int = 256
   }
 }

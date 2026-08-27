@@ -9,10 +9,10 @@ package ee.schimke.composeai.cli
  * lock-step by identical unit-test suites pinning the same expected strings / boundaries on both
  * sides. See the a11y-core originals for the full rationale.
  */
-object TalkBackUtterance {
+public object TalkBackUtterance {
 
   /** The single "what TalkBack speaks" string for [node]: `label, role, state…, usage-hint`. */
-  fun compose(node: AccessibilityNode): String {
+  public fun compose(node: AccessibilityNode): String {
     val checkable = node.states.any { it == CHECKED || it == UNCHECKED }
     val disabled = node.states.any { it == DISABLED }
 
@@ -58,14 +58,14 @@ object TalkBackUtterance {
 }
 
 /** JVM mirror of `:data-a11y-core`'s `TalkBackTraversal` (focus-stop walk). */
-object TalkBackTraversal {
+public object TalkBackTraversal {
 
   /** The focus stops in TalkBack traversal order — the merged nodes, in extraction order. */
-  fun focusStops(nodes: List<AccessibilityNode>): List<AccessibilityNode> = nodes.filter {
+  public fun focusStops(nodes: List<AccessibilityNode>): List<AccessibilityNode> = nodes.filter {
     it.merged
   }
 
-  fun next(nodes: List<AccessibilityNode>, currentRef: String?): AccessibilityNode? {
+  public fun next(nodes: List<AccessibilityNode>, currentRef: String?): AccessibilityNode? {
     val stops = focusStops(nodes)
     if (stops.isEmpty()) return null
     val idx = indexOfRef(stops, currentRef)
@@ -73,7 +73,7 @@ object TalkBackTraversal {
     return stops.getOrNull(idx + 1)
   }
 
-  fun previous(nodes: List<AccessibilityNode>, currentRef: String?): AccessibilityNode? {
+  public fun previous(nodes: List<AccessibilityNode>, currentRef: String?): AccessibilityNode? {
     val stops = focusStops(nodes)
     if (stops.isEmpty()) return null
     val idx = indexOfRef(stops, currentRef)
@@ -88,11 +88,11 @@ object TalkBackTraversal {
 }
 
 /** JVM mirror of `:data-a11y-core`'s `TalkBackOverlayFrames` (frame index → focus stop). */
-object TalkBackOverlayFrames {
+public object TalkBackOverlayFrames {
 
-  const val DEFAULT_DWELL_MS: Long = 900L
+  public const val DEFAULT_DWELL_MS: Long = 900L
 
-  fun focusedStopForFrame(
+  public fun focusedStopForFrame(
     frameIndex: Int,
     fps: Int,
     stopCount: Int,
@@ -105,7 +105,7 @@ object TalkBackOverlayFrames {
     return stop.coerceIn(0, stopCount - 1)
   }
 
-  fun totalFrames(fps: Int, stopCount: Int, dwellMs: Long = DEFAULT_DWELL_MS): Int {
+  public fun totalFrames(fps: Int, stopCount: Int, dwellMs: Long = DEFAULT_DWELL_MS): Int {
     if (stopCount <= 0 || fps <= 0 || dwellMs <= 0L) return 0
     val durationMs = stopCount.toLong() * dwellMs
     return (durationMs * fps / 1000L).toInt() + 1

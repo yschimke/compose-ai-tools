@@ -26,23 +26,24 @@ import kotlinx.serialization.json.JsonClassDiscriminator
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
 @JsonClassDiscriminator("kind")
-sealed class PreviewOverrideValue {
+public sealed class PreviewOverrideValue {
   @Serializable
   @SerialName("string")
-  data class StringValue(val value: String) : PreviewOverrideValue()
+  public data class StringValue(val value: String) : PreviewOverrideValue()
 
-  @Serializable @SerialName("int") data class IntValue(val value: Int) : PreviewOverrideValue()
+  public @Serializable @SerialName("int") data class IntValue(val value: Int) :
+    PreviewOverrideValue()
 
   @Serializable
   @SerialName("float")
-  data class FloatValue(val value: Float) : PreviewOverrideValue()
+  public data class FloatValue(val value: Float) : PreviewOverrideValue()
 
   @Serializable
   @SerialName("bool")
-  data class BooleanValue(val value: Boolean) : PreviewOverrideValue()
+  public data class BooleanValue(val value: Boolean) : PreviewOverrideValue()
 
   /** Color as `#AARRGGBB`. The runtime helper parses it back to a Compose `Color`. */
   @Serializable
   @SerialName("color")
-  data class ColorValue(val argb: String) : PreviewOverrideValue()
+  public data class ColorValue(val argb: String) : PreviewOverrideValue()
 }

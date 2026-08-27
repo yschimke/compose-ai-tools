@@ -62,18 +62,18 @@ import kotlinx.serialization.json.JsonObject
  * protocol failure. Wire-level data-product errors (`DataProductUnknown`,
  * `DataProductNotAvailable`, etc.) are surfaced as [DataProductException].
  */
-interface RenderSession : AutoCloseable {
+public interface RenderSession : AutoCloseable {
   /** Absolute path to the workspace root the session was opened against. */
-  val workspaceRoot: String
+  public val workspaceRoot: String
 
   /** Gradle path of the target module (e.g. `:samples:android`). */
-  val modulePath: String
+  public val modulePath: String
 
   /** Result of the initialize handshake. Surfaces daemon version, capabilities, and PID. */
-  val initializeResult: InitializeResult
+  public val initializeResult: InitializeResult
 
   /** Backend that hosts this session — informational; behaviour is identical across backends. */
-  val backendKind: RenderSessionBackend
+  public val backendKind: RenderSessionBackend
 
   // ---------------------------------------------------------------------------
   // Editor-state notifications. None of these return data; they update the
@@ -82,16 +82,16 @@ interface RenderSession : AutoCloseable {
   // ---------------------------------------------------------------------------
 
   /** Set the most-recently-visible preview ids. Drives sticky subscription liveness. */
-  fun setVisible(previewIds: List<String>)
+  public fun setVisible(previewIds: List<String>)
 
   /** Set the most-recently-focused preview ids. Drives focus-aware rendering. */
-  fun setFocus(previewIds: List<String>)
+  public fun setFocus(previewIds: List<String>)
 
   /**
    * Notify the session of a source / classpath change so it can invalidate caches, swap user
    * classloaders, and (depending on backend) trigger incremental discovery.
    */
-  fun fileChanged(
+  public fun fileChanged(
     path: String,
     kind: FileKind = FileKind.SOURCE,
     changeType: ChangeType = ChangeType.MODIFIED,
@@ -108,7 +108,7 @@ interface RenderSession : AutoCloseable {
    * unchanged results without re-running compose. Pass [PreviewOverrides] to drive
    * device/locale/inspection-mode tweaks per render without mutating the on-disk preview spec.
    */
-  fun renderNow(
+  public fun renderNow(
     previewIds: List<String>,
     tier: RenderTier = RenderTier.FULL,
     reason: String? = null,
@@ -129,7 +129,7 @@ interface RenderSession : AutoCloseable {
    *
    * @throws DataProductException on wire-level data-product errors.
    */
-  fun fetchData(
+  public fun fetchData(
     previewId: String,
     kind: String,
     inline: Boolean = false,
@@ -142,7 +142,7 @@ interface RenderSession : AutoCloseable {
    * while visible" — when the preview leaves the most recent [setVisible] set the backend drops the
    * subscription automatically. Re-subscribe when it returns to view.
    */
-  fun subscribeData(
+  public fun subscribeData(
     previewId: String,
     kind: String,
     params: JsonElement? = null,
@@ -150,7 +150,7 @@ interface RenderSession : AutoCloseable {
   ): DataSubscribeResult
 
   /** Unsubscribe. See [subscribeData]. */
-  fun unsubscribeData(
+  public fun unsubscribeData(
     previewId: String,
     kind: String,
     timeout: Duration = 15.seconds,
@@ -161,13 +161,19 @@ interface RenderSession : AutoCloseable {
   // ---------------------------------------------------------------------------
 
   /** Enumerate the extensions advertised by the backend. */
-  fun listExtensions(timeout: Duration = 15.seconds): ExtensionsListResult
+  public fun listExtensions(timeout: Duration = 15.seconds): ExtensionsListResult
 
   /** Enable specific extension contributions on this session. */
-  fun enableExtensions(ids: List<String>, timeout: Duration = 15.seconds): ExtensionsEnableResult
+  public fun enableExtensions(
+    ids: List<String>,
+    timeout: Duration = 15.seconds,
+  ): ExtensionsEnableResult
 
   /** Disable specific extension contributions on this session. */
-  fun disableExtensions(ids: List<String>, timeout: Duration = 15.seconds): ExtensionsDisableResult
+  public fun disableExtensions(
+    ids: List<String>,
+    timeout: Duration = 15.seconds,
+  ): ExtensionsDisableResult
 
   // ---------------------------------------------------------------------------
   // History — per-render archive surface. Optional on every backend; backends
@@ -176,20 +182,20 @@ interface RenderSession : AutoCloseable {
   // ---------------------------------------------------------------------------
 
   /** List archived render entries. Pass [HistoryListParams] to filter by preview id / time. */
-  fun historyList(
+  public fun historyList(
     params: HistoryListParams = HistoryListParams(),
     timeout: Duration = 30.seconds,
   ): HistoryListResult
 
   /** Read one archived entry. Set [inline] = `true` to receive base64 PNG bytes inline. */
-  fun historyRead(
+  public fun historyRead(
     entryId: String,
     inline: Boolean = false,
     timeout: Duration = 30.seconds,
   ): HistoryReadResultDto
 
   /** Diff two archived entries. */
-  fun historyDiff(
+  public fun historyDiff(
     fromId: String,
     toId: String,
     mode: HistoryDiffMode = HistoryDiffMode.METADATA,
@@ -201,7 +207,7 @@ interface RenderSession : AutoCloseable {
   // ---------------------------------------------------------------------------
 
   /** Start a recording session against one preview. Returns the daemon-allocated recording id. */
-  fun recordingStart(
+  public fun recordingStart(
     previewId: String,
     fps: Int? = null,
     scale: Float? = null,
@@ -210,13 +216,13 @@ interface RenderSession : AutoCloseable {
   ): RecordingStartResult
 
   /** Send recording-script events (fire-and-forget notification). */
-  fun recordingScript(recordingId: String, events: List<RecordingScriptEvent>)
+  public fun recordingScript(recordingId: String, events: List<RecordingScriptEvent>)
 
   /** Stop recording — blocks until the daemon's playback loop finishes writing frames. */
-  fun recordingStop(recordingId: String, timeout: Duration = 5.minutes): RecordingStopResult
+  public fun recordingStop(recordingId: String, timeout: Duration = 5.minutes): RecordingStopResult
 
   /** Encode a stopped recording into a single file (APNG by default). */
-  fun recordingEncode(
+  public fun recordingEncode(
     recordingId: String,
     format: RecordingFormat = RecordingFormat.APNG,
     timeout: Duration = 60.seconds,
@@ -234,7 +240,7 @@ interface RenderSession : AutoCloseable {
    * failure) and fall back to [renderNow]-per-frame. Only the subprocess/daemon backend overrides
    * this.
    */
-  fun streamStart(
+  public fun streamStart(
     previewId: String,
     codec: StreamCodec? = null,
     maxFps: Int? = null,
@@ -243,7 +249,7 @@ interface RenderSession : AutoCloseable {
   ): StreamStartResult = throw UnsupportedOperationException("streaming not supported")
 
   /** Stop a held stream (daemon `stream/stop`, fire-and-forget). Default throws. */
-  fun streamStop(frameStreamId: String): Unit =
+  public fun streamStop(frameStreamId: String): Unit =
     throw UnsupportedOperationException("streaming not supported")
 
   /**
@@ -252,14 +258,14 @@ interface RenderSession : AutoCloseable {
    * [fps] (daemon default: 1) for both emission *and* rendering, and the first frame after it flips
    * back to visible is flagged as a keyframe. Default throws.
    */
-  fun streamVisibility(frameStreamId: String, visible: Boolean, fps: Int? = null): Unit =
+  public fun streamVisibility(frameStreamId: String, visible: Boolean, fps: Int? = null): Unit =
     throw UnsupportedOperationException("streaming not supported")
 
   /**
    * Dispatch an input event into a held stream's live composition (daemon `interactive/input`,
    * fire-and-forget); the resulting frame arrives as a `streamFrame`. Default throws.
    */
-  fun interactiveInput(
+  public fun interactiveInput(
     frameStreamId: String,
     kind: InteractiveInputKind,
     pixelX: Int? = null,
@@ -280,7 +286,7 @@ interface RenderSession : AutoCloseable {
    * — typical use is `session.onNotification { … }.use { runRenders() }` so the subscription is
    * scoped to one block. Handlers must not block; offload to a worker if real work is needed.
    */
-  fun onNotification(listener: NotificationListener): AutoCloseable
+  public fun onNotification(listener: NotificationListener): AutoCloseable
 
   /**
    * Close the session. Idempotent. After close, every other method throws [IllegalStateException].
@@ -300,12 +306,12 @@ interface RenderSession : AutoCloseable {
  * session.onNotification { method, _ -> println("[notif] $method") }
  * ```
  */
-fun interface NotificationListener {
-  fun onNotification(method: String, params: JsonObject?)
+public fun interface NotificationListener {
+  public fun onNotification(method: String, params: JsonObject?)
 }
 
 /** Backend hosting a [RenderSession]. Informational; behaviour is identical across backends. */
-enum class RenderSessionBackend {
+public enum class RenderSessionBackend {
   /** Daemon JVM spawned as a subprocess, driven over JSON-RPC. The default. */
   Subprocess,
 
@@ -322,7 +328,7 @@ enum class RenderSessionBackend {
  * underlying [cause] (e.g. an `IOException` from the transport, a `JsonRpcException` from the
  * protocol layer) where one exists.
  */
-open class RenderSessionException(message: String, cause: Throwable? = null) :
+public open class RenderSessionException(message: String, cause: Throwable? = null) :
   RuntimeException(message, cause)
 
 /**
@@ -330,16 +336,16 @@ open class RenderSessionException(message: String, cause: Throwable? = null) :
  * JSON-RPC error code (`-32020`..`-32023`); [wireMessage] is the daemon's human-readable message;
  * [data] is the optional structured payload some errors carry.
  */
-class DataProductException(
-  val code: Int,
-  val wireMessage: String,
-  val data: JsonObject?,
+public class DataProductException(
+  public val code: Int,
+  public val wireMessage: String,
+  public val data: JsonObject?,
   cause: Throwable? = null,
 ) : RenderSessionException("data/fetch wire error $code: $wireMessage", cause) {
-  companion object {
-    const val UNKNOWN: Int = -32020
-    const val NOT_AVAILABLE: Int = -32021
-    const val FETCH_FAILED: Int = -32022
-    const val BUDGET_EXCEEDED: Int = -32023
+  public companion object {
+    public const val UNKNOWN: Int = -32020
+    public const val NOT_AVAILABLE: Int = -32021
+    public const val FETCH_FAILED: Int = -32022
+    public const val BUDGET_EXCEEDED: Int = -32023
   }
 }
