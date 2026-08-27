@@ -43,7 +43,7 @@ import { createHash } from "node:crypto";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { MAX_CONFORMING_HEADER_BYTES, decodePng, padPngTo } from "./png-lite.mjs";
+import { MAX_CONFORMING_HEADER_BYTES, decodePng, normaliseAlpha, padPngTo } from "./png-lite.mjs";
 // The writer, for the handful of tests that need bytes rather than a committed fixture. It lives
 // outside `png-lite.mjs` because that module has no compressor — see its header.
 import { encodePng } from "./png-write.mjs";
@@ -798,6 +798,31 @@ test("the memory ceiling is a different cap from the pixel one, both ways round"
   // The ceiling is not a function of the total alone — the same pixel count peaks differently
   // depending on how it is distributed, which is the whole of the transient term.
   assert.ok(peakRasterBytes(67_108_864, 8_388_608) < peakRasterBytes(67_108_864, 33_554_432));
+});
+
+test("the alpha normalisation is reachable by a consumer that decoded elsewhere", () => {
+  // The rule `png-lite.mjs` states is about "every raster that reaches a comparison, not only
+  // decoded PNGs" — a canonical raster lifted off a canvas, or read with whatever PNG library a
+  // consumer already depends on, has to land on the same grid or the same unchanged bytes compare
+  // unequal across two engines. It was private, so the only way to obey it was to reimplement it,
+  // which is the divergence the contract exists to prevent. This asserts it is exported and is the
+  // function the rule describes, over the case that actually bites: a straight-alpha colour that is
+  // not itself a premultiplied bucket's representative.
+  const pixels = new Uint8Array([200, 200, 200, 128, 10, 20, 30, 0, 77, 88, 99, 255]);
+  normaliseAlpha(pixels);
+  // 200 at alpha 128 premultiplies to 100 and comes back as 199 — one off, and the whole point.
+  assert.deepEqual([...pixels.subarray(0, 4)], [199, 199, 199, 128]);
+  // Alpha 0 keeps nothing: the premultiply destroyed every channel, so zero is the only answer both
+  // engines can agree on.
+  assert.deepEqual([...pixels.subarray(4, 8)], [0, 0, 0, 0]);
+  // Alpha 255 is the identity, skipped rather than computed.
+  assert.deepEqual([...pixels.subarray(8, 12)], [77, 88, 99, 255]);
+
+  // Idempotent, which is what lets a consumer apply it without knowing whether the decoder already
+  // did: `N(N(c)) = N(c)`.
+  const twice = Uint8Array.from(pixels);
+  normaliseAlpha(twice);
+  assert.deepEqual([...twice], [...pixels]);
 });
 
 test("a decoded pixel is the one spelling a premultiplied canvas hands back", () => {

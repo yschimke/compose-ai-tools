@@ -596,8 +596,19 @@ export function decodePng(bytes) {
  * be recovered from it — so it normalises to zero RGB, as it did when that was the only case
  * handled here. Alpha `255` is the identity and is skipped rather than computed, because it is
  * almost every pixel this contract sees.
+ *
+ * **Exported because the rule above is not only about PNGs this module decoded.** A consumer that
+ * obtains its rasters another way — a browser lifting them off a canvas, an offline runner decoding
+ * with whatever PNG library it already depends on — still has to put them on this grid before they
+ * reach a comparison, or the same unchanged bytes compare unequal across the two. `design-parity`
+ * was doing exactly that: its conformance suite decodes through {@link decodePng} and passes the
+ * partial-alpha cases, while its production path reads with `pngjs` and handed the raw bytes
+ * straight to the evaluation. A one-pixel file of colour `200` at alpha `128` arrives as `200` on
+ * one path and `199` on the other, which is `candidate-changed` on a candidate that never changed.
+ * Keeping this private left every such consumer with a second implementation to write, which is the
+ * divergence the contract exists to prevent.
  */
-function normaliseAlpha(pixels) {
+export function normaliseAlpha(pixels) {
   for (let d = 0; d < pixels.length; d += 4) {
     const a = pixels[d + 3];
     if (a === 255) continue;
