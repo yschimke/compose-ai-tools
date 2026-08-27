@@ -61,6 +61,24 @@ sealed interface BranchFetch {
   /** Never got an answer: connect/read timeout, DNS, TLS, reset. */
   data class Transport(val detail: String) : BranchFetch
 
+  /**
+   * The branch has the file and it is **past the envelope this read was given** — the body outgrew
+   * [limitBytes] before it was fully read, so no bytes are handed back.
+   *
+   * A distinct case rather than a `null`, because "there is no such file" and "the file is bigger
+   * than we will carry" are opposite facts about the branch, and one writer at least has a contract
+   * that must tell them apart: `compose-preview-known-differences/v1` answers `too-large`/413 for
+   * an over-sized document or artifact and `unreadable`/404 for an absent one. Collapsed into
+   * [NotFound] — which is what discarding the outcome does — an asset refused by size is reported
+   * as one the producer never published, which is both a different verdict and one that hides why.
+   *
+   * Not transient: the file will be exactly as oversized on the next attempt, so there is nothing
+   * to retry. Not permanent-cacheable either, in the sense [NotFound] is — the branch ref may
+   * publish a smaller file tomorrow — but every caller that memoises does so on a pinned `(commit,
+   * path)`, where the size is as immutable as the bytes.
+   */
+  data class TooLarge(val limitBytes: Long) : BranchFetch
+
   /** The bytes, or null for every failure — the shape the pre-existing call sites still want. */
   val bytesOrNull: ByteArray?
     get() = (this as? Ok)?.bytes
@@ -82,6 +100,7 @@ sealed interface BranchFetch {
         is Unavailable ->
           "unavailable ($status)" + (retryAfterSeconds?.let { " (retry after ${it}s)" } ?: "")
         is Transport -> "transport: $detail"
+        is TooLarge -> "too large (over $limitBytes bytes)"
       }
 
   companion object {

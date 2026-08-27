@@ -434,9 +434,29 @@ class ServeCatalogStore(
     // below run *after* the swap and are all fail-soft (they disable their tier or fall back to the
     // baked host), so they never leave the catalog broken — only the image fetch is a hard failure,
     // and that's what staging protects.
-    val dir = File(root, safe)
-    val staging = File(root, "$safe.staging")
+    //
+    // **The live directory is generation-scoped**, `<root>/<system>/g<n>`, and a load never writes
+    // into the one that is currently registered. The host and the bytes it reads lazily
+    // (`knownDifferenceArtifact`, rasters, preview PNGs) therefore change together: the previous
+    // generation keeps serving, from its own untouched files, until the new host is registered — at
+    // which point both switch at once. Replacing a shared `<root>/<system>` in place is what made
+    // the two divisible, and the gap was not small: everything between the swap and the
+    // registration (the Wasm app, the vectors, the live bundles) is network work, and a read that
+    // landed in it served the new generation's pixels beside the old generation's metadata, with
+    // nothing to notice.
+    //
+    // Retirement is deferred to the *next* load's sweep rather than done here, which gives every
+    // in-flight request against the outgoing host a full refresh interval to finish reading. See
+    // [retireStaleGenerations].
+    val systemRoot = File(root, safe)
+    val dir = File(systemRoot, "$GENERATION_DIR_PREFIX$generation")
+    val staging = File(systemRoot, STAGING_DIR)
+    retireStaleGenerations(safe, systemRoot, keep = setOf(dir.name, staging.name))
     staging.deleteRecursively()
+    // Only ever a leftover: the counter climbs within a process, so this name cannot be the live
+    // generation — but it can be one a previous process left behind, and the rename below needs the
+    // path free.
+    dir.deleteRecursively()
     val previewsDir = File(staging, "previews")
     val previewsRoot = previewsDir.canonicalFile.toPath()
     var count = 0
@@ -767,10 +787,9 @@ class ServeCatalogStore(
     writeDesignPages(base, staging)
     writeKnownDifferences(base, staging)
 
-    // The staged catalog is usable — atomically replace the live dir with it. The delete + rename
-    // is near-instant (same filesystem), so the window where `dir` is absent is microseconds, not
-    // the multi-second fetch above. From here everything operates on the fresh `dir` as before.
-    dir.deleteRecursively()
+    // The staged catalog is usable — move it into place as this load's generation. Nothing serves
+    // from `dir` yet (no host names it until [publishGeneration] below), so this is a rename onto a
+    // free path rather than a mutation of what the registered host is reading.
     if (!staging.renameTo(dir)) {
       // Cross-device or a racing reader held a handle — copy then drop the staging dir.
       staging.copyRecursively(dir, overwrite = true)
@@ -1056,6 +1075,7 @@ class ServeCatalogStore(
               { bakedFallback(emptyList(), deferredIds.toList()) },
             )
         ) {
+          publishGeneration(safe, dir)
           return Result.Ok(
             safe,
             count + deferredIds.size + failedIds.size,
@@ -1139,6 +1159,7 @@ class ServeCatalogStore(
                   perPreviewBundle,
                 )
             ) {
+              publishGeneration(safe, dir)
               return Result.Ok(
                 safe,
                 count + deferredIds.size + failedIds.size,
@@ -1185,6 +1206,7 @@ class ServeCatalogStore(
           { bakedFallback(emptyList(), deferredIds.toList()) },
         )
     ) {
+      publishGeneration(safe, dir)
       return Result.Ok(
         safe,
         count + deferredIds.size + failedIds.size,
@@ -1228,6 +1250,7 @@ class ServeCatalogStore(
         )
     // Same reasoning as the degradation: a session with no live lane lists no live-only previews.
     val host = bakedFallback(degradations, emptyList())
+    publishGeneration(safe, dir)
     register(safe, host)
     return Result.Ok(
       safe,
@@ -2050,11 +2073,25 @@ class ServeCatalogStore(
    */
   private fun writeKnownDifferences(base: String, staging: File) {
     val dirName = ServeKnownDifferences.DIRECTORY
-    val documentBytes =
+    val documentFile = File(staging, "$dirName/${ServeKnownDifferences.DOCUMENT_FILE}")
+    val documentOutcome =
       runCatching {
-        fetchCatalogAsset("$base$dirName/${ServeKnownDifferences.DOCUMENT_FILE}")
+        fetchCatalogAssetOutcome("$base$dirName/${ServeKnownDifferences.DOCUMENT_FILE}")
       }
         .getOrNull() ?: return
+    // The transport's own ceiling is far above the contract's, so a document it refuses by size is
+    // one the reader would refuse anyway — but it would refuse it as *absent*, because a fetch that
+    // brings back no bytes and a branch that published no file are the same `null`. Staging a
+    // marker past the contract's ceiling restores the verdict the producer earned: the reader
+    // measures the file, answers `TooLarge`, the route serves 413 and the engine says
+    // `document-too-large` rather than `document-unreadable`. Nothing reads the marker's bytes —
+    // [ServeKnownDifferences.document] refuses from the length before opening it — so it is a
+    // length, not a payload.
+    if (documentOutcome is BranchFetch.TooLarge) {
+      stageOversizeMarker(documentFile, ServeKnownDifferences.MAX_DOCUMENT_BYTES + 1L)
+      return
+    }
+    val documentBytes = documentOutcome.bytesOrNull ?: return
 
     val artifactRoot = "$dirName/${ServeKnownDifferences.ARTIFACT_DIRECTORY}"
     // **Streamed to disk, never accumulated.** Each worker holds only the artifact it is writing,
@@ -2076,12 +2113,37 @@ class ServeCatalogStore(
     fetchCatalogAssetsToFiles(
       knownDifferenceArtifactPaths(documentBytes).map { path ->
         "$base$artifactRoot/$path" to File(staging, "$artifactRoot/$path")
-      }
+      },
+      // An artifact the transport refuses by size gets the same marker treatment the document does,
+      // for the same reason and against the artifact ceiling: `artifact-too-large`/413 is the
+      // verdict the contract names, and dropping the file would leave `artifact-unreadable`/404 —
+      // the answer that means the producer published nothing.
+      oversizeMarkerBytes = ServeKnownDifferences.MAX_ARTIFACT_BYTES + 1L,
     )
 
     File(staging, dirName).mkdirs()
-    File(staging, "$dirName/${ServeKnownDifferences.DOCUMENT_FILE}").writeBytes(documentBytes)
+    documentFile.writeBytes(documentBytes)
   }
+
+  /**
+   * Write a placeholder of exactly [length] bytes, for an asset the transport refused by size.
+   *
+   * Set rather than written: [java.io.RandomAccessFile.setLength] extends the file without
+   * producing its bytes, which every filesystem this runs on stores as a hole. The point is the
+   * size — the readers this exists for ([ServeKnownDifferences.document],
+   * [ServeKnownDifferences.artifact]) answer `TooLarge` from the metadata and never open the file —
+   * so materialising 8 MiB of zeroes to say "too big" would be the ceiling defeated by the code
+   * enforcing it.
+   *
+   * Fail-soft like every writer around it: a marker that cannot be written leaves the asset absent,
+   * which is what it was before.
+   */
+  private fun stageOversizeMarker(target: File, length: Long): Boolean = runCatching {
+    target.parentFile?.mkdirs()
+    java.io.RandomAccessFile(target, "rw").use { it.setLength(length) }
+    true
+  }
+    .getOrDefault(false)
 
   /**
    * The `<id>/<file>` paths a known-difference document names — none, when the engine will reject
@@ -2980,6 +3042,20 @@ class ServeCatalogStore(
     private const val MAX_FETCH_BYTES = 25L * 1024 * 1024 // 25 MB per catalog asset
 
     /**
+     * A catalog's live directories are `<root>/<system>/g<generation>`; the staging tree it is
+     * assembled in is `<root>/<system>/.staging`.
+     *
+     * Nested under the system rather than named as siblings (`<system>.g3`) because a system id may
+     * itself contain a dot — `ServeBundleStore.sanitizeName` admits one — so a sibling naming
+     * scheme would let a system called `m3.g3` collide with a generation of one called `m3`. Under
+     * the system's own directory the namespace is this store's alone, which also makes the sweep a
+     * listing rather than a prefix match.
+     */
+    internal const val GENERATION_DIR_PREFIX = "g"
+
+    internal const val STAGING_DIR = ".staging"
+
+    /**
      * Cap on a delivery branch's commit feed ([fetchRevisions]). Deliberately far smaller than a
      * catalog asset: the feed is ~20 commit entries and measures in tens of kilobytes. A body that
      * doesn't fit here is not one worth scanning.
@@ -3068,9 +3144,15 @@ class ServeCatalogStore(
     }
 
     /**
-     * A single attempt. Only [java.io.IOException] becomes [BranchFetch.Transport]: the size cap in
-     * [readCapped] throws too, and it must keep propagating rather than being retried — the asset
-     * will be exactly as oversized the second time, and the existing call sites already catch it.
+     * A single attempt. Only [java.io.IOException] becomes [BranchFetch.Transport]; a body that
+     * outgrows the envelope becomes [BranchFetch.TooLarge], which is not retried — the asset will
+     * be exactly as oversized the second time.
+     *
+     * The size refusal is an *outcome* rather than a thrown exception because it is a fact about
+     * the branch that one writer has to act on: known differences answers `too-large`/413 for an
+     * asset past the contract's ceiling and `unreadable`/404 for an absent one, and a throw that
+     * every call site catches into `null` erases exactly that distinction. Callers that only ever
+     * wanted bytes are unaffected — [BranchFetch.bytesOrNull] is null either way.
      */
     private fun httpFetchOnce(url: String, maxBytes: Long): BranchFetch =
       try {
@@ -3082,7 +3164,8 @@ class ServeCatalogStore(
             )
           } else {
             val body = response.body
-            BranchFetch.Ok(readCapped(body.byteStream(), maxBytes))
+            readCapped(body.byteStream(), maxBytes)?.let { BranchFetch.Ok(it) }
+              ?: BranchFetch.TooLarge(maxBytes)
           }
         }
       } catch (e: java.io.IOException) {
@@ -3111,7 +3194,15 @@ class ServeCatalogStore(
         BranchFetch.Transport(e::class.simpleName ?: "IOException")
       }
 
-    private fun readCapped(input: InputStream, max: Long): ByteArray {
+    /**
+     * The body, or null once it has read past [max] — the caller turns that into
+     * [BranchFetch.TooLarge].
+     *
+     * Abandons the read at the ceiling rather than counting to the end: the point of the cap is
+     * that an over-sized body is never held, and knowing the exact length of one we are refusing
+     * anyway would cost the whole download to learn.
+     */
+    private fun readCapped(input: InputStream, max: Long): ByteArray? {
       val out = ByteArrayOutputStream()
       val buffer = ByteArray(64 * 1024)
       var total = 0L
@@ -3119,7 +3210,7 @@ class ServeCatalogStore(
         val n = input.read(buffer)
         if (n < 0) break
         total += n
-        require(total <= max) { "catalog file exceeds ${max / (1024 * 1024)}MB" }
+        if (total > max) return null
         out.write(buffer, 0, n)
       }
       return out.toByteArray()
@@ -3128,6 +3219,50 @@ class ServeCatalogStore(
 
   /** Current generation per system; see [scheduleFigmaSvgFetch]. */
   private val generations = ConcurrentHashMap<String, Int>()
+
+  /**
+   * The generation directory each system's **registered** host reads from.
+   *
+   * Written only where a host is published, never where one is built: a load that stages a
+   * generation and then fails to stand a session up leaves the previous entry in place, because the
+   * previous host is still the one serving.
+   */
+  private val liveDirs = ConcurrentHashMap<String, File>()
+
+  /** Where [system]'s registered host reads its bytes from, or null if it has never published. */
+  fun liveDir(system: String): File? = ServeBundleStore.sanitizeName(system)?.let { liveDirs[it] }
+
+  /**
+   * Record [dir] as [safe]'s live generation, at the moment the host reading it is registered.
+   *
+   * Called at every point a load publishes a session — the baked registration and each of the three
+   * live-lane builders — because "which files is the current host reading?" is exactly "which host
+   * did this load hand over?", and a generation marked live by a load that then returned without
+   * registering would be swept while the host that owns it is still serving.
+   */
+  private fun publishGeneration(safe: String, dir: File) {
+    liveDirs[safe] = dir
+  }
+
+  /**
+   * Delete every generation directory of [safe] except the live one and the names in [keep].
+   *
+   * Run at the **start** of a load rather than after the swap, and that is the whole of the grace
+   * period: a request that began against the outgoing host has until the next refresh tick —
+   * minutes — to finish reading, where retiring at the swap would pull the files out from under a
+   * read already in flight. Nothing here is load-bearing for correctness; a directory this misses
+   * is disk, not a wrong answer, and the next sweep takes it.
+   *
+   * The previous process's leftovers are swept by the same rule: on a fresh start nothing is live,
+   * so every generation on disk is stale by definition.
+   */
+  private fun retireStaleGenerations(safe: String, systemRoot: File, keep: Set<String>) {
+    val live = liveDirs[safe]?.name
+    for (child in systemRoot.listFiles().orEmpty()) {
+      if (child.name == live || child.name in keep) continue
+      runCatching { child.deleteRecursively() }
+    }
+  }
 
   /**
    * The delivery branch's published revisions, newest first — its commit history, read from the
@@ -3350,6 +3485,13 @@ class ServeCatalogStore(
   private fun fetchCatalogAssetsToFiles(
     plan: List<Pair<String, File>>,
     stillWanted: () -> Boolean = { true },
+    /**
+     * When set, an asset the transport refuses by size is staged as a marker of this many bytes
+     * instead of being skipped — see [stageOversizeMarker]. Only a lane whose reader distinguishes
+     * "too large" from "absent" passes it; for everything else a size refusal really is nothing to
+     * serve, and a marker would invent a file the branch never published.
+     */
+    oversizeMarkerBytes: Long? = null,
   ): Set<String> {
     if (plan.isEmpty()) return emptySet()
     val pool =
@@ -3366,13 +3508,19 @@ class ServeCatalogStore(
             val previous = activeFetchScope.get()
             activeFetchScope.set(submitting)
             try {
-              val bytes = runCatching { fetchCatalogAsset(url) }.getOrNull() ?: return@submit false
+              val outcome =
+                runCatching { fetchCatalogAssetOutcome(url) }.getOrNull() ?: return@submit false
               // Re-checked immediately before the write, not just once per wave: a fetch started
               // for
               // one catalog generation must not land in the directory a refresh has since swapped
               // in.
               // Checking only between waves leaves every worker in the current wave free to write
               // after the swap, and nothing then removes what they wrote.
+              if (outcome is BranchFetch.TooLarge && oversizeMarkerBytes != null) {
+                if (!stillWanted()) return@submit false
+                return@submit stageOversizeMarker(target, oversizeMarkerBytes)
+              }
+              val bytes = outcome.bytesOrNull ?: return@submit false
               if (!stillWanted()) return@submit false
               runCatching {
                 target.parentFile?.mkdirs()

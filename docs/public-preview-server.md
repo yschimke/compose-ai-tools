@@ -3265,13 +3265,36 @@ repo they had never heard of, which is the opposite of the rule and reads as "no
 contributor read a signed-out Live lane as a broken preview). The playground's own refusal still
 names the repo, because there the access genuinely is the bar.
 
+### A refresh never serves one host against another generation's files
+
+A load stages its catalog into `<root>/<system>/.staging` and, when the tree is usable, moves it to
+`<root>/<system>/g<n>` — a directory **no registered host is reading**. The session built from it is
+registered at the end of the load; only then does `g<n>` become the live generation, and the previous
+one keeps serving, from its own untouched files, until that moment.
+
+That is a property the older shape could not have. It renamed the staged tree over one shared
+`<root>/<system>`, and the registration of the host built for it came *later* — after the Wasm app,
+the baked vectors, the live bundles, all of which are network work measured in seconds. Everything
+read lazily from the bundle directory was exposed in that gap: `knownDifferenceArtifact`, design
+reference rasters, preview PNGs. Hash-guarded content degraded to a refusal that self-healed on the
+next tick, which is late rather than wrong; un-hashed content — a preview PNG, a raster — was served
+as the new generation's pixels beside the old generation's metadata, with nothing to notice
+([#4522](https://github.com/yschimke/compose-ai-tools/issues/4522)).
+
+Generations are retired by the sweep at the **start** of the next load rather than at the swap, so a
+request already reading the outgoing host has a full refresh interval to finish. Nothing there is
+load-bearing for correctness: a directory a sweep misses costs disk, and the following sweep takes
+it. On a fresh process nothing is live, so every generation left on disk by the previous one is stale
+by definition and swept on the first load.
+
 ### Fetched catalog bytes outlive the container (`--catalog-cache-dir`)
 
 `serve --catalogs` fetches each system's delivery branch into a directory the server creates with
 `createTempDirectory`, so everything a catalog pulled is discarded when the container is recreated —
 which on this image is what every rolled release performs. It is not only restarts: a catalog load
-deletes the live per-system directory before renaming its staging over it, so **each reload throws
-the previous generation away too**, including bytes the new revision never changed.
+publishes into a fresh per-system generation directory and the sweep at the *next* load retires the
+one before it, so **each reload throws an earlier generation away too**, including bytes the new
+revision never changed.
 
 For most of what a catalog fetches that costs little, because the baked PNGs are already lazy — a
 grid fills them through the ordinary request path. The exception is the executable tier: each live
