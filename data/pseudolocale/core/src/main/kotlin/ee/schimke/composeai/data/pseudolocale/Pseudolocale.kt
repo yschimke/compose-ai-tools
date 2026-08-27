@@ -14,17 +14,21 @@ package ee.schimke.composeai.data.pseudolocale
  * finds `values/` strings; the pseudolocalisation happens in [Pseudolocalizer] applied to whatever
  * the default locale resolved to.
  */
-enum class Pseudolocale(val tag: String, val baseTag: String, val isRtl: Boolean) {
+public enum class Pseudolocale(
+  public val tag: String,
+  public val baseTag: String,
+  public val isRtl: Boolean,
+) {
   ACCENT(tag = "en-XA", baseTag = "en", isRtl = false),
   BIDI(tag = "ar-XB", baseTag = "en", isRtl = true);
 
-  companion object {
+  public companion object {
     /**
      * Recognise pseudolocale BCP-47 tags. Case-insensitive match, accepts `_` separators alongside
      * `-`. Returns `null` for any other tag — the renderer falls through to its standard locale
      * qualifier path.
      */
-    fun fromTag(tag: String?): Pseudolocale? {
+    public fun fromTag(tag: String?): Pseudolocale? {
       if (tag.isNullOrBlank()) return null
       val normalized = tag.replace('_', '-').lowercase()
       return entries.firstOrNull { it.tag.lowercase() == normalized }

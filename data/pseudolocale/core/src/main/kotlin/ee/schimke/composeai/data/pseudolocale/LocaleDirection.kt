@@ -18,7 +18,7 @@ package ee.schimke.composeai.data.pseudolocale
  * `az-Arab` (Azerbaijani in Arabic script) is RTL despite `az`. Language is the fallback for the
  * common `ar` / `he-IL` shape where no script is written down.
  */
-object LocaleDirection {
+public object LocaleDirection {
   private val RTL_LANGUAGES =
     setOf(
       "ar", // Arabic
@@ -56,7 +56,7 @@ object LocaleDirection {
    * True when [tag] is written right-to-left — by its explicit script subtag when it carries one,
    * otherwise by its primary language subtag.
    */
-  fun isRtl(tag: String?): Boolean {
+  public fun isRtl(tag: String?): Boolean {
     if (tag.isNullOrBlank()) return false
     val subtags = tag.replace('_', '-').split('-').filter { it.isNotEmpty() }
     val language = subtags.firstOrNull()?.lowercase() ?: return false

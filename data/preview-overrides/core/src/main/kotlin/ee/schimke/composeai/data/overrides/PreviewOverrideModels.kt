@@ -7,9 +7,9 @@ import kotlinx.serialization.Serializable
  * (as `RemoteComposeProduct` is) so the bundle producer and MCP clients can depend on the payload
  * schema without pulling in the connector, Compose, or any backend.
  */
-object PreviewOverridesProduct {
-  const val KIND: String = "compose/overrides"
-  const val SCHEMA_VERSION: Int = 1
+public object PreviewOverridesProduct {
+  public const val KIND: String = "compose/overrides"
+  public const val SCHEMA_VERSION: Int = 1
 }
 
 /**
@@ -18,12 +18,12 @@ object PreviewOverridesProduct {
  * tolerates a future type it doesn't recognise. Matches the [PreviewOverrideValue] variants the
  * runtime emits.
  */
-object PreviewOverrideType {
-  const val STRING: String = "string"
-  const val INT: String = "int"
-  const val FLOAT: String = "float"
-  const val BOOL: String = "bool"
-  const val COLOR: String = "color"
+public object PreviewOverrideType {
+  public const val STRING: String = "string"
+  public const val INT: String = "int"
+  public const val FLOAT: String = "float"
+  public const val BOOL: String = "bool"
+  public const val COLOR: String = "color"
 }
 
 /**
@@ -34,7 +34,7 @@ object PreviewOverrideType {
  * size axis seeds `xs` and reads "Extra small", a pseudo-locale is `en-XA` and reads "Accented
  * (pseudo)".
  */
-@Serializable data class PreviewOverrideOption(val value: String, val label: String = value)
+public @Serializable data class PreviewOverrideOption(val value: String, val label: String = value)
 
 /**
  * One author-declared editable knob a preview exposes through a `previewOverride*` lookup.
@@ -52,7 +52,7 @@ object PreviewOverrideType {
  * `repeat(n)`.
  */
 @Serializable
-data class PreviewOverrideDeclaration(
+public data class PreviewOverrideDeclaration(
   /**
    * Author-chosen key, e.g. `"label"` or `"rowCount"`. Stable across renders for the same call
    * site.
@@ -124,4 +124,6 @@ data class PreviewOverrideDeclaration(
  * latest render, in declaration order.
  */
 @Serializable
-data class PreviewOverridesPayload(val declarations: List<PreviewOverrideDeclaration> = emptyList())
+public data class PreviewOverridesPayload(
+  val declarations: List<PreviewOverrideDeclaration> = emptyList()
+)

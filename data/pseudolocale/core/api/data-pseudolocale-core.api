@@ -1,0 +1,35 @@
+public final class ee/schimke/composeai/data/pseudolocale/LocaleDirection {
+	public static final field INSTANCE Lee/schimke/composeai/data/pseudolocale/LocaleDirection;
+	public final fun isRtl (Ljava/lang/String;)Z
+}
+
+public final class ee/schimke/composeai/data/pseudolocale/Pseudolocale : java/lang/Enum {
+	public static final field ACCENT Lee/schimke/composeai/data/pseudolocale/Pseudolocale;
+	public static final field BIDI Lee/schimke/composeai/data/pseudolocale/Pseudolocale;
+	public static final field Companion Lee/schimke/composeai/data/pseudolocale/Pseudolocale$Companion;
+	public final fun getBaseTag ()Ljava/lang/String;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getTag ()Ljava/lang/String;
+	public final fun isRtl ()Z
+	public static fun valueOf (Ljava/lang/String;)Lee/schimke/composeai/data/pseudolocale/Pseudolocale;
+	public static fun values ()[Lee/schimke/composeai/data/pseudolocale/Pseudolocale;
+}
+
+public final class ee/schimke/composeai/data/pseudolocale/Pseudolocale$Companion {
+	public final fun fromTag (Ljava/lang/String;)Lee/schimke/composeai/data/pseudolocale/Pseudolocale;
+}
+
+public final class ee/schimke/composeai/data/pseudolocale/Pseudolocalizer {
+	public static final field INSTANCE Lee/schimke/composeai/data/pseudolocale/Pseudolocalizer;
+	public final fun accent (Ljava/lang/CharSequence;)Ljava/lang/String;
+	public final fun bidi (Ljava/lang/CharSequence;)Ljava/lang/String;
+	public final fun transform (Ljava/lang/String;Lee/schimke/composeai/data/pseudolocale/Pseudolocale;)Ljava/lang/String;
+	public final fun transformWithIndices (Ljava/lang/String;Lee/schimke/composeai/data/pseudolocale/Pseudolocale;)Lee/schimke/composeai/data/pseudolocale/Pseudolocalizer$TransformResult;
+}
+
+public final class ee/schimke/composeai/data/pseudolocale/Pseudolocalizer$TransformResult {
+	public fun <init> (Ljava/lang/String;[I)V
+	public final fun getIndexMap ()[I
+	public final fun getText ()Ljava/lang/String;
+}
+

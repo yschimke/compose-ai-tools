@@ -38,7 +38,7 @@ private val ARGFILE_CHARSET: Charset = runCatching {
  * @return the `@<file>` token to splice into the command **in place of** `-cp`/`-classpath` + the
  *   joined classpath. The file is registered for deletion on exit.
  */
-fun classpathArgFile(classpath: List<String>, directory: File? = null): String {
+public fun classpathArgFile(classpath: List<String>, directory: File? = null): String {
   require(classpath.isNotEmpty()) { "classpath must not be empty" }
   val joined = classpath.joinToString(File.pathSeparator)
   val file = File.createTempFile("composeai-cp", ".args", directory)

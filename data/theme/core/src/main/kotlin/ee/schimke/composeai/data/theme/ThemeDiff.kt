@@ -4,8 +4,8 @@ import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
-object ThemeDiffProduct {
-  const val SCHEMA: String = "compose-theme-diff/v1"
+public object ThemeDiffProduct {
+  public const val SCHEMA: String = "compose-theme-diff/v1"
 }
 
 /**
@@ -21,9 +21,9 @@ object ThemeDiffProduct {
  * [ThemePayload.consumers] (node → token attribution) is deliberately ignored, the way
  * `SemanticsDiff` ignores volatile bounds.
  */
-object ThemeDiff {
+public object ThemeDiff {
 
-  fun diff(base: ThemePayload, head: ThemePayload): ThemeDelta {
+  public fun diff(base: ThemePayload, head: ThemePayload): ThemeDelta {
     val b = base.resolvedTokens
     val h = head.resolvedTokens
     return ThemeDelta(
@@ -55,10 +55,14 @@ object ThemeDiff {
 }
 
 @Serializable
-data class ThemeTokenChange(val token: String, val from: String? = null, val to: String? = null)
+public data class ThemeTokenChange(
+  val token: String,
+  val from: String? = null,
+  val to: String? = null,
+)
 
 @Serializable
-data class ThemeTypographyChange(
+public data class ThemeTypographyChange(
   val token: String,
   val from: TypographyToken? = null,
   val to: TypographyToken? = null,
@@ -66,7 +70,7 @@ data class ThemeTypographyChange(
 
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
-data class ThemeDelta(
+public data class ThemeDelta(
   // `@EncodeDefault` so the versioned schema discriminator rides every wire surface even under
   // `encodeDefaults = false` (the daemon's `history/diff mode=data` result), matching the
   // `SemanticsDelta` contract.

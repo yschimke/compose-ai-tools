@@ -21,10 +21,10 @@ import okio.Path
  * artifact) and exercise the IO entirely in memory. The composition roots (`main` entry points) are
  * the one place that legitimately names this constant.
  */
-val SystemFileSystem: FileSystem = FileSystem.SYSTEM
+public val SystemFileSystem: FileSystem = FileSystem.SYSTEM
 
 /** Okio's process-temp directory, e.g. `$TMPDIR`. */
-val TemporaryDirectory: Path = FileSystem.SYSTEM_TEMPORARY_DIRECTORY
+public val TemporaryDirectory: Path = FileSystem.SYSTEM_TEMPORARY_DIRECTORY
 
 /**
  * Root of compose-ai-tools' user-level cache, following the XDG Base Directory spec:
@@ -40,7 +40,7 @@ val TemporaryDirectory: Path = FileSystem.SYSTEM_TEMPORARY_DIRECTORY
  * weight, italic)` or a dependency keyed by Maven coordinate is identical regardless of which
  * project asked for it, so one cache serves them all.
  */
-fun composeAiCacheDir(subdir: String): File {
+public fun composeAiCacheDir(subdir: String): File {
   val xdg = System.getenv("XDG_CACHE_HOME")?.takeIf { it.isNotBlank() }
   val base =
     if (xdg != null) File(xdg, "composeai")
@@ -49,7 +49,7 @@ fun composeAiCacheDir(subdir: String): File {
 }
 
 /** Directory name of the legacy in-tree history archive, kept for backwards compatibility. */
-const val LEGACY_HISTORY_DIRNAME: String = ".compose-preview-history"
+public const val LEGACY_HISTORY_DIRNAME: String = ".compose-preview-history"
 
 /**
  * Where a module's render history lives:
@@ -75,7 +75,7 @@ const val LEGACY_HISTORY_DIRNAME: String = ".compose-preview-history"
  * [composeAiHistoryWorkspaceSlug] documents the slug contract those mirror; `HistoryPathsTest` and
  * its TS counterpart pin the same vectors on both sides.
  */
-fun composeAiHistoryDir(workspaceRoot: File, projectDir: File): File {
+public fun composeAiHistoryDir(workspaceRoot: File, projectDir: File): File {
   val legacy = File(projectDir, LEGACY_HISTORY_DIRNAME)
   if (legacy.isDirectory) return legacy
   return File(
@@ -94,7 +94,7 @@ fun composeAiHistoryDir(workspaceRoot: File, projectDir: File): File {
  * inside it instead; this is only the standalone fallback, which previously landed in the repo
  * working tree.
  */
-fun composeAiGitRefCacheDir(repoRoot: File): File =
+public fun composeAiGitRefCacheDir(repoRoot: File): File =
   File(
     File(composeAiCacheDir("history"), composeAiHistoryWorkspaceSlug(repoRoot)),
     ".git-ref-cache",
@@ -110,7 +110,7 @@ fun composeAiGitRefCacheDir(repoRoot: File): File =
  * extension each learn the workspace root by a different route and only the unresolved form is
  * reliably identical across all three.
  */
-fun composeAiHistoryWorkspaceSlug(workspaceRoot: File): String {
+public fun composeAiHistoryWorkspaceSlug(workspaceRoot: File): String {
   val normalised = workspaceRoot.absolutePath.replace('\\', '/').trimEnd('/')
   val digest =
     java.security.MessageDigest.getInstance("SHA-256")
@@ -133,7 +133,7 @@ fun composeAiHistoryWorkspaceSlug(workspaceRoot: File): String {
  * directory would mix their entries and prune state, and let matching preview ids overwrite each
  * other. Segments that need no rewriting (the overwhelming majority) stay plain and readable.
  */
-fun composeAiHistoryModuleSegment(workspaceRoot: File, projectDir: File): String {
+public fun composeAiHistoryModuleSegment(workspaceRoot: File, projectDir: File): String {
   val root = workspaceRoot.absolutePath.replace('\\', '/').trimEnd('/')
   val module = projectDir.absolutePath.replace('\\', '/').trimEnd('/')
   if (module == root) return "_root"

@@ -9,7 +9,7 @@ package ee.schimke.composeai.data.theme
  * `#AARRGGBB` strings matching [ResolvedThemeTokens.colorScheme] values; [textStyle] is the node's
  * resolved typography token (or `null` for a non-text node).
  */
-data class NodeThemeFacts(
+public data class NodeThemeFacts(
   val nodeId: String,
   val foregroundColor: String? = null,
   val backgroundColor: String? = null,
@@ -45,8 +45,11 @@ data class NodeThemeFacts(
  * A node is only emitted as a [ThemeConsumer] when it read at least one token — nodes that hardcode
  * non-theme values produce no entry.
  */
-object ThemeConsumerAttribution {
-  fun attribute(nodes: List<NodeThemeFacts>, resolved: ResolvedThemeTokens): List<ThemeConsumer> {
+public object ThemeConsumerAttribution {
+  public fun attribute(
+    nodes: List<NodeThemeFacts>,
+    resolved: ResolvedThemeTokens,
+  ): List<ThemeConsumer> {
     if (nodes.isEmpty()) return emptyList()
     val rolesByColor: Map<String, List<String>> =
       buildMap<String, MutableList<String>> {

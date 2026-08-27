@@ -55,7 +55,7 @@ import kotlinx.serialization.json.JsonObject
  * Pre-1.0 surface. The public constructor lets new backends construct one without owning a copy of
  * the ~150 LOC of pass-through delegate methods.
  */
-class DaemonClientRenderSession(
+public class DaemonClientRenderSession(
   override val workspaceRoot: String,
   override val modulePath: String,
   override val initializeResult: InitializeResult,
@@ -293,19 +293,19 @@ class DaemonClientRenderSession(
  * (which delegates to [register]). Lifetime is the owner's: `clear()` on teardown so stale handles
  * to `close()` are harmless after the underlying daemon goes away.
  */
-class NotificationFanout {
+public class NotificationFanout {
   private val listeners = CopyOnWriteArraySet<NotificationListener>()
 
-  fun register(listener: NotificationListener): AutoCloseable {
+  public fun register(listener: NotificationListener): AutoCloseable {
     listeners.add(listener)
     return AutoCloseable { listeners.remove(listener) }
   }
 
-  fun dispatch(method: String, params: JsonObject?) {
+  public fun dispatch(method: String, params: JsonObject?) {
     for (l in listeners) runCatching { l.onNotification(method, params) }
   }
 
-  fun clear() {
+  public fun clear() {
     listeners.clear()
   }
 }

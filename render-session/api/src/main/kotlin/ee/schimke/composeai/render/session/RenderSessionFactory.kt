@@ -21,15 +21,15 @@ import kotlin.time.Duration.Companion.seconds
  * session.use { … }
  * ```
  */
-interface RenderSessionFactory {
+public interface RenderSessionFactory {
   /** Backend this factory produces. */
-  val backendKind: RenderSessionBackend
+  public val backendKind: RenderSessionBackend
 
   /**
    * Open and initialize a session. Throws [RenderSessionException] (or subclass) on transport /
    * descriptor / handshake failure — callers don't observe an un-initialized session.
    */
-  fun open(config: RenderSessionConfig): RenderSession
+  public fun open(config: RenderSessionConfig): RenderSession
 }
 
 /**
@@ -37,7 +37,7 @@ interface RenderSessionFactory {
  * subprocess JVM args overrides) live on per-backend extensions; this base record holds the minimum
  * every backend needs.
  */
-data class RenderSessionConfig(
+public data class RenderSessionConfig(
   /**
    * Path to the daemon launch descriptor written by the gradle plugin's `composePreviewDaemonStart`
    * task. Lives at `<projectDir>/build/compose-previews/daemon-launch.json`. Required even for the
@@ -88,7 +88,7 @@ data class RenderSessionConfig(
    */
   val shutdownTimeout: Duration? = null,
 ) {
-  companion object {
+  public companion object {
     private fun inferWorkspaceRoot(descriptorPath: File): File =
       descriptorPath.parentFile?.parentFile?.parentFile ?: descriptorPath.absoluteFile
   }

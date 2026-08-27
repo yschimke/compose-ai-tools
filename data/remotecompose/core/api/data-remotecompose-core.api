@@ -1,0 +1,133 @@
+public final class ee/schimke/composeai/data/remotecompose/RemoteComposeDeclarationsPayload {
+	public static final field Companion Lee/schimke/composeai/data/remotecompose/RemoteComposeDeclarationsPayload$Companion;
+	public fun <init> ()V
+	public fun <init> (Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Lee/schimke/composeai/data/remotecompose/RemoteComposeDeclarationsPayload;
+	public static synthetic fun copy$default (Lee/schimke/composeai/data/remotecompose/RemoteComposeDeclarationsPayload;Ljava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/data/remotecompose/RemoteComposeDeclarationsPayload;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDeclarations ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/data/remotecompose/RemoteComposeDeclarationsPayload$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/data/remotecompose/RemoteComposeDeclarationsPayload$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/data/remotecompose/RemoteComposeDeclarationsPayload;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/data/remotecompose/RemoteComposeDeclarationsPayload;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/data/remotecompose/RemoteComposeDeclarationsPayload$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/data/remotecompose/RemoteComposeDocumentPayload {
+	public static final field Companion Lee/schimke/composeai/data/remotecompose/RemoteComposeDocumentPayload$Companion;
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lee/schimke/composeai/data/remotecompose/RemoteComposeDocumentPayload;
+	public static synthetic fun copy$default (Lee/schimke/composeai/data/remotecompose/RemoteComposeDocumentPayload;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/data/remotecompose/RemoteComposeDocumentPayload;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDocumentBase64 ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/data/remotecompose/RemoteComposeDocumentPayload$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/data/remotecompose/RemoteComposeDocumentPayload$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/data/remotecompose/RemoteComposeDocumentPayload;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/data/remotecompose/RemoteComposeDocumentPayload;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/data/remotecompose/RemoteComposeDocumentPayload$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/data/remotecompose/RemoteComposeDocumentProduct {
+	public static final field INSTANCE Lee/schimke/composeai/data/remotecompose/RemoteComposeDocumentProduct;
+	public static final field KIND Ljava/lang/String;
+	public static final field SCHEMA_VERSION I
+}
+
+public final class ee/schimke/composeai/data/remotecompose/RemoteComposeKnobDeclaration {
+	public static final field Companion Lee/schimke/composeai/data/remotecompose/RemoteComposeKnobDeclaration$Companion;
+	public fun <init> (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/RemoteNamedValue;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lee/schimke/composeai/daemon/protocol/RemoteNamedValue;
+	public final fun copy (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/RemoteNamedValue;)Lee/schimke/composeai/data/remotecompose/RemoteComposeKnobDeclaration;
+	public static synthetic fun copy$default (Lee/schimke/composeai/data/remotecompose/RemoteComposeKnobDeclaration;Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/RemoteNamedValue;ILjava/lang/Object;)Lee/schimke/composeai/data/remotecompose/RemoteComposeKnobDeclaration;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDefault ()Lee/schimke/composeai/daemon/protocol/RemoteNamedValue;
+	public final fun getName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/data/remotecompose/RemoteComposeKnobDeclaration$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/data/remotecompose/RemoteComposeKnobDeclaration$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/data/remotecompose/RemoteComposeKnobDeclaration;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/data/remotecompose/RemoteComposeKnobDeclaration;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/data/remotecompose/RemoteComposeKnobDeclaration$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/data/remotecompose/RemoteComposePayload {
+	public static final field Companion Lee/schimke/composeai/data/remotecompose/RemoteComposePayload$Companion;
+	public static final field HOST_ACTION_BUFFER_SIZE I
+	public fun <init> ()V
+	public fun <init> (Ljava/util/Map;Ljava/util/List;Lee/schimke/composeai/daemon/protocol/RemoteComposeProfile;Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/util/Map;Ljava/util/List;Lee/schimke/composeai/daemon/protocol/RemoteComposeProfile;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/util/Map;
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()Lee/schimke/composeai/daemon/protocol/RemoteComposeProfile;
+	public final fun component4 ()Ljava/util/List;
+	public final fun copy (Ljava/util/Map;Ljava/util/List;Lee/schimke/composeai/daemon/protocol/RemoteComposeProfile;Ljava/util/List;)Lee/schimke/composeai/data/remotecompose/RemoteComposePayload;
+	public static synthetic fun copy$default (Lee/schimke/composeai/data/remotecompose/RemoteComposePayload;Ljava/util/Map;Ljava/util/List;Lee/schimke/composeai/daemon/protocol/RemoteComposeProfile;Ljava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/data/remotecompose/RemoteComposePayload;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDeclarations ()Ljava/util/List;
+	public final fun getHostActions ()Ljava/util/List;
+	public final fun getNamedValues ()Ljava/util/Map;
+	public final fun getProfile ()Lee/schimke/composeai/daemon/protocol/RemoteComposeProfile;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/data/remotecompose/RemoteComposePayload$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/data/remotecompose/RemoteComposePayload$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/data/remotecompose/RemoteComposePayload;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/data/remotecompose/RemoteComposePayload;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/data/remotecompose/RemoteComposePayload$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/data/remotecompose/RemoteComposeProduct {
+	public static final field INSTANCE Lee/schimke/composeai/data/remotecompose/RemoteComposeProduct;
+	public static final field KIND Ljava/lang/String;
+	public static final field SCHEMA_VERSION I
+}
+

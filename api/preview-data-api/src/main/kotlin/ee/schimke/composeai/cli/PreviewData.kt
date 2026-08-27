@@ -20,7 +20,7 @@ import kotlinx.serialization.json.JsonElement
 
 /** On-disk shape mirrors gradle-plugin/PreviewData.kt (parsed with ignoreUnknownKeys). */
 @Serializable
-data class PreviewParams(
+public data class PreviewParams(
   val name: String? = null,
   val device: String? = null,
   val widthDp: Int? = null,
@@ -93,7 +93,7 @@ data class PreviewParams(
  * left/right.
  */
 @Serializable
-data class CaptureGutterDp(
+public data class CaptureGutterDp(
   val start: Int = 0,
   val top: Int = 0,
   val end: Int = 0,
@@ -113,7 +113,7 @@ data class CaptureGutterDp(
  * string-typed mirror so unknown future modes/axes round-trip cleanly through the CLI.
  */
 @Serializable
-data class ScrollCapture(
+public data class ScrollCapture(
   val mode: String,
   val axis: String = "VERTICAL",
   val maxScrollPx: Int = 0,
@@ -123,7 +123,7 @@ data class ScrollCapture(
 )
 
 @Serializable
-data class Capture(
+public data class Capture(
   val advanceTimeMillis: Long? = null,
   val scroll: ScrollCapture? = null,
   val renderOutput: String = "",
@@ -160,7 +160,7 @@ data class Capture(
    * new primary parameter preserves *source* compatibility only, while appending it still changes
    * the JVM constructor descriptor and its default-argument bridge.
    */
-  constructor(
+  public constructor(
     advanceTimeMillis: Long? = null,
     scroll: ScrollCapture? = null,
     renderOutput: String = "",
@@ -188,7 +188,7 @@ data class Capture(
  * caller (the field itself is nullable on [PreviewInfo]).
  */
 @Serializable
-enum class CatalogRole {
+public enum class CatalogRole {
   COMPONENT,
   VARIANT,
 }
@@ -196,7 +196,7 @@ enum class CatalogRole {
 /**
  * One `key=value` content/i18n/a11y axis of a [CatalogRole.VARIANT]. Mirrors `CatalogVariantProp`.
  */
-@Serializable data class CatalogVariantProp(val key: String, val value: String)
+public @Serializable data class CatalogVariantProp(val key: String, val value: String)
 
 /**
  * Design-catalog identity a preview carries via `@CatalogComponent` / `@CatalogVariant`. Mirrors
@@ -206,7 +206,7 @@ enum class CatalogRole {
  * previews.
  */
 @Serializable
-data class CatalogEntry(
+public data class CatalogEntry(
   val role: CatalogRole,
   val componentId: String,
   val group: String? = null,
@@ -259,7 +259,7 @@ data class CatalogEntry(
    * against the previous artifact would fail with `NoSuchMethodError` without this overload. Same
    * policy as [PreviewResult]'s pre-`projectDirectory` constructor below.
    */
-  constructor(
+  public constructor(
     role: CatalogRole,
     componentId: String,
     group: String? = null,
@@ -294,7 +294,7 @@ data class CatalogEntry(
   )
 
   /** As above, for consumers compiled after [kitValue] but before [motionPreview]. */
-  constructor(
+  public constructor(
     role: CatalogRole,
     componentId: String,
     group: String? = null,
@@ -331,7 +331,7 @@ data class CatalogEntry(
 }
 
 @Serializable
-data class PreviewInfo(
+public data class PreviewInfo(
   val id: String,
   val functionName: String,
   val className: String,
@@ -367,7 +367,7 @@ data class PreviewInfo(
 )
 
 @Serializable
-data class PreviewDataProduct(
+public data class PreviewDataProduct(
   val kind: String,
   val output: String = "",
   val mediaTypes: List<String> = emptyList(),
@@ -376,7 +376,7 @@ data class PreviewDataProduct(
 )
 
 @Serializable
-data class PreviewManifest(
+public data class PreviewManifest(
   val module: String,
   val variant: String,
   val previews: List<PreviewInfo>,
@@ -408,7 +408,7 @@ data class PreviewManifest(
  * fan-out produces N entries — one row per capture filename on disk.
  */
 @Serializable
-data class CaptureResult(
+public data class CaptureResult(
   val advanceTimeMillis: Long? = null,
   val scroll: ScrollCapture? = null,
   val pngPath: String? = null,
@@ -445,7 +445,7 @@ data class CaptureResult(
  * The [schema] string identifies the payload's shape so consumers can detect a version bump (e.g.
  * `"compose-preview-data-a11y/v1"`); pinned strings, never regex-matched.
  */
-@Serializable data class ExtensionPayload(val schema: String, val payload: JsonElement)
+public @Serializable data class ExtensionPayload(val schema: String, val payload: JsonElement)
 
 /**
  * CLI output DTO — enriches manifest entries with runtime data agents need.
@@ -456,7 +456,7 @@ data class CaptureResult(
  * `compose-preview-data-a11y/v1` payload body).
  */
 @Serializable
-data class PreviewResult(
+public data class PreviewResult(
   val id: String,
   val module: String,
   /** Gradle's resolved project directory; never reconstruct this from [module]. */
@@ -493,7 +493,7 @@ data class PreviewResult(
    * added. A default on the new primary parameter preserves source compatibility only; this
    * overload preserves the old JVM constructor descriptor and its default-argument bridge.
    */
-  constructor(
+  public constructor(
     id: String,
     module: String,
     functionName: String,
