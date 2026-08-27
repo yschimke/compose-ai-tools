@@ -157,7 +157,7 @@
       "allowedVersions": "!/-SNAPSHOT$/"
     },
     {
-      "description": "Remote Compose, its Wear widget layer and Glance Wear resolve from an androidx-main snapshot (`1.0.0-SNAPSHOT`), pinned by build id as `androidxSnapshotBuildId` in settings.gradle.kts. Renovate can't track a build id embedded in a repository URL, and left enabled the gradle minor/patch group would 'upgrade' the snapshot back onto a Google Maven alpha that predates the APIs the samples and connector call. Moving the snapshot means editing that one line and re-verifying a render.",
+      "description": "Remote Compose, its Wear widget layer and Glance Wear resolve from Google Maven on released alpha coordinates, and the three groups only work together when built against the same `remote-creation*` — `remote-material3` and `androidx.glance.wear:*` name that version in their POMs. Renovate updates one dependency at a time, so an automated bump of any one group produces exactly the skew that has taken CI red before (a `NoClassDefFoundError` inside `RemoteButtonImpl` at render time, a wear pin that did not exist yet). Bump the three refs in gradle/libs.versions.toml as one set after checking the POMs, and re-verify a render, not just a compile.",
       "matchManagers": [
         "gradle"
       ],
