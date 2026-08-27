@@ -50,6 +50,11 @@ dependencies {
   // core module re-exposes kotlinx-serialization-json as `api`, so we don't
   // re-declare it here.
   implementation(project(":daemon:core"))
+  // JVM client for the native XR render server. Explicit since `:daemon:core` stopped api-exposing
+  // it: this module owns `XrManagerSessions`, the adapter from `XrSessionManager` onto the daemon's
+  // `XrSessions` port, so the renderer client is a detail of the desktop daemon rather than of the
+  // published protocol contract.
+  implementation(project(":renderer-xr-client"))
   implementation(project(":common-io"))
   // PreviewBackground — the shared showBackground/backgroundColor/uiMode resolution.
   implementation(project(":data-render-core"))

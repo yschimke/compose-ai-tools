@@ -48,10 +48,8 @@ CONTRACT_PROJECTS=(
 # so this file says out loud what `checkContractSurface` enforces: contracts stay, leaks go.
 #
 #   :mcp                  reached through :render-session-subprocess's transport
-#   :renderer-xr-client   reached through :daemon:core's JsonRpcServer constructor ABI
 LEAK_PROJECTS=(
   ":mcp"
-  ":renderer-xr-client"
 )
 
 skip_publish=0

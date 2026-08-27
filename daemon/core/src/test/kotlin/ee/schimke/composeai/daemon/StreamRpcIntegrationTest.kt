@@ -1,8 +1,5 @@
 package ee.schimke.composeai.daemon
 
-import ee.schimke.composeai.renderer.xr.client.StreamFrame as XrStreamFrame
-import ee.schimke.composeai.renderer.xr.client.XrRenderServerFactory
-import ee.schimke.composeai.renderer.xr.client.XrRenderServerHandle
 import java.io.File
 import java.io.PipedInputStream
 import java.io.PipedOutputStream
@@ -14,9 +11,9 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
-import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
@@ -490,7 +487,7 @@ class StreamRpcIntegrationTest {
 
   private fun bringUpServer(
     host: RenderHost,
-    xrServerFactory: XrRenderServerFactory? = null,
+    xrSessions: XrSessions? = null,
   ): ServerHarness {
     val clientToServerOut = PipedOutputStream()
     val clientToServerIn = PipedInputStream(clientToServerOut, 64 * 1024)
@@ -506,7 +503,7 @@ class StreamRpcIntegrationTest {
         daemonVersion = "test",
         interactiveFrameIntervalMs = 0,
         onExit = { _ -> exitLatch.countDown() },
-        xrServerFactory = xrServerFactory,
+        xrSessions = xrSessions,
       )
     val thread = Thread({ server.run() }, "stream-rpc-server").apply { isDaemon = true }
     thread.start()
@@ -584,9 +581,9 @@ class StreamRpcIntegrationTest {
   fun xrStart_then_updatePanels_emit_streamFrames_and_stop_closes() {
     val tmp = Files.createTempDirectory("xr-rpc-test").toFile()
     val pngFile = File(tmp, "preview-A.png").apply { writeBytes(testPngBytes(seed = 0)) }
-    val factory = FakeXrFactory()
+    val sessions = FakeXrSessions()
     val (_, serverThread, out, received, exitLatch) =
-      bringUpServer(StreamRpcFakeHost(pngFile), factory)
+      bringUpServer(StreamRpcFakeHost(pngFile), sessions)
     resourcesToClose.add(AutoCloseable { runCatching { out.close() } })
     handshake(out, received)
 
@@ -637,14 +634,115 @@ class StreamRpcIntegrationTest {
       """{"jsonrpc":"2.0","method":"xr/stop","params":{"frameStreamId":"$streamId"}}""",
     )
     teardownServer(out, received, serverThread, exitLatch)
-    assertTrue("the native session must be closed", factory.created.single().closed)
+    assertTrue("the XR sessions must be closed", sessions.closed)
+  }
+
+  @Test(timeout = 30_000)
+  fun xrPortThatThrowsOnCloseStillLetsTheDaemonExit() {
+    // `XrSessions` is an interface, so the daemon cannot assume the renderer's close() is
+    // well-behaved — and it is called on every teardown path, twice on some. Unguarded, a throw
+    // would escape from the middle of cleanShutdown: before host.shutdown(), before the writer
+    // sentinel and thread joins, and before onExit. The daemon would hang instead of exiting.
+    val tmp = Files.createTempDirectory("xr-rpc-test").toFile()
+    val pngFile = File(tmp, "preview-A.png").apply { writeBytes(testPngBytes(seed = 0)) }
+    val sessions = ThrowingCloseXrSessions()
+    val (_, serverThread, out, received, exitLatch) =
+      bringUpServer(StreamRpcFakeHost(pngFile), sessions)
+    resourcesToClose.add(AutoCloseable { runCatching { out.close() } })
+    handshake(out, received)
+
+    writeFrame(
+      out,
+      """{"jsonrpc":"2.0","id":30,"method":"xr/start","params":{
+            "previewId":"p","sceneDir":".",
+            "scene":{"version":1,"units":"dp","camera":{"kind":"orbit"},"panels":[]}}}""",
+    )
+    assertNotNull(
+      "xr/start must respond",
+      pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 30 },
+    )
+
+    // The assertion is teardownServer's own: the exit latch must fire within 5s.
+    teardownServer(out, received, serverThread, exitLatch)
+    assertTrue("the failing close must still have been attempted", sessions.closeAttempts.get() > 0)
+  }
+
+  @Test(timeout = 30_000)
+  fun xrStructureAnswersTheRequestWhenThePortThrows() {
+    // `structure()` is reached from a REQUEST handler, so a throw that only hits the outer
+    // dispatch log leaves this id unanswered and the client blocked until its own timeout.
+    val tmp = Files.createTempDirectory("xr-rpc-test").toFile()
+    val pngFile = File(tmp, "preview-A.png").apply { writeBytes(testPngBytes(seed = 0)) }
+    val sessions = FakeXrSessions(throwFrom = "structure")
+    val (_, serverThread, out, received, exitLatch) =
+      bringUpServer(StreamRpcFakeHost(pngFile), sessions)
+    resourcesToClose.add(AutoCloseable { runCatching { out.close() } })
+    handshake(out, received)
+
+    writeFrame(
+      out,
+      """{"jsonrpc":"2.0","id":40,"method":"xr/start","params":{
+            "previewId":"p","sceneDir":".",
+            "scene":{"version":1,"units":"dp","camera":{"kind":"orbit"},"panels":[]}}}""",
+    )
+    val started = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 40 }!!
+    val streamId = started["result"]!!.jsonObject["frameStreamId"]!!.jsonPrimitive.contentOrNull!!
+
+    writeFrame(
+      out,
+      """{"jsonrpc":"2.0","id":41,"method":"xr/structure","params":{"frameStreamId":"$streamId"}}""",
+    )
+    val resp = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 41 }
+    assertNotNull("xr/structure must answer even when the port throws", resp)
+    assertEquals(
+      JsonRpcServer.ERR_INTERNAL,
+      resp!!["error"]!!.jsonObject["code"]?.jsonPrimitive?.intOrNull,
+    )
+
+    teardownServer(out, received, serverThread, exitLatch)
+  }
+
+  @Test(timeout = 30_000)
+  fun xrStopStillEmitsTheFinalFrameWhenThePortThrows() {
+    // The final `final=true` marker is what lets the client release decoder state. An unguarded
+    // close(id) that threw would take the marker with it.
+    val tmp = Files.createTempDirectory("xr-rpc-test").toFile()
+    val pngFile = File(tmp, "preview-A.png").apply { writeBytes(testPngBytes(seed = 0)) }
+    val sessions = FakeXrSessions(throwFrom = "closeSession")
+    val (_, serverThread, out, received, exitLatch) =
+      bringUpServer(StreamRpcFakeHost(pngFile), sessions)
+    resourcesToClose.add(AutoCloseable { runCatching { out.close() } })
+    handshake(out, received)
+
+    writeFrame(
+      out,
+      """{"jsonrpc":"2.0","id":50,"method":"xr/start","params":{
+            "previewId":"p","sceneDir":".",
+            "scene":{"version":1,"units":"dp","camera":{"kind":"orbit"},"panels":[]}}}""",
+    )
+    val started = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 50 }!!
+    val streamId = started["result"]!!.jsonObject["frameStreamId"]!!.jsonPrimitive.contentOrNull!!
+    pollUntil(received) { it["method"]?.jsonPrimitive?.contentOrNull == "streamFrame" }
+
+    writeFrame(
+      out,
+      """{"jsonrpc":"2.0","method":"xr/stop","params":{"frameStreamId":"$streamId"}}""",
+    )
+    val finalFrame =
+      pollUntil(received) {
+        it["method"]?.jsonPrimitive?.contentOrNull == "streamFrame" &&
+          it["params"]!!.jsonObject["final"]?.jsonPrimitive?.boolean == true
+      }
+    assertNotNull("xr/stop must still emit the final marker when the port throws", finalFrame)
+
+    teardownServer(out, received, serverThread, exitLatch)
   }
 
   @Test(timeout = 30_000)
   fun xrStart_replies_methodNotFound_when_xr_unavailable() {
     val tmp = Files.createTempDirectory("xr-rpc-test").toFile()
     val pngFile = File(tmp, "preview-A.png").apply { writeBytes(testPngBytes(seed = 0)) }
-    // No xrServerFactory → capability off, methods rejected.
+    // No xrSessions port → capability off, methods rejected.
     val (_, serverThread, out, received, exitLatch) = bringUpServer(StreamRpcFakeHost(pngFile))
     resourcesToClose.add(AutoCloseable { runCatching { out.close() } })
     handshake(out, received)
@@ -684,41 +782,94 @@ class StreamRpcIntegrationTest {
   }
 }
 
-/** Fake native XR render server — returns monotonically-sequenced frames, tracks stop/close. */
-private class FakeXrHandle : XrRenderServerHandle {
-  private val seq = AtomicInteger(0)
-  @Volatile var closed = false
-  val stopped = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
-  override val capabilities = buildJsonObject {}
+/**
+ * An [XrSessions] whose `close()` always throws — the shape the daemon must survive, since the port
+ * is an interface and an implementation can fail to tear its renderer down.
+ */
+private class ThrowingCloseXrSessions : XrSessions {
+  val closeAttempts = AtomicInteger(0)
 
-  // Distinct payload per frame so the registry doesn't dedup them to heartbeats.
-  private fun frame() =
-    seq.incrementAndGet().let { n -> XrStreamFrame(n.toLong(), 64, 48, "png", "data-$n") }
-
-  override fun render(
-    sessionId: String,
-    scene: kotlinx.serialization.json.JsonElement,
+  override fun open(
+    id: String,
+    scene: JsonElement,
     sceneDir: String?,
     environment: String?,
     width: Int?,
     height: Int?,
-  ) = frame()
+  ): XrFrame = XrFrame(1L, 64, 48, "png", "data-1")
 
-  override fun updatePanels(sessionId: String, panels: JsonArray) = frame()
+  override fun isOpen(id: String): Boolean = true
 
-  override fun stop(sessionId: String) {
-    stopped.add(sessionId)
+  override fun updatePanels(id: String, panels: JsonArray): XrFrame =
+    XrFrame(2L, 64, 48, "png", "data-2")
+
+  override fun structure(id: String): JsonElement? = null
+
+  override fun close(id: String) = Unit
+
+  override fun close() {
+    closeAttempts.incrementAndGet()
+    throw IllegalStateException("renderer refused to close")
+  }
+}
+
+/**
+ * Fake [XrSessions] port — monotonically-sequenced frames, holds the scene, tracks stop/close.
+ *
+ * A fake of the port, not of the native server: what this file tests is that `JsonRpcServer` serves
+ * the `xr/…` methods correctly against whatever renderer it is given — routing frames through the
+ * stream registry, gating the capability, closing on shutdown. The real multiplexer's own behaviour
+ * (one shared process, scene merging on `updatePanels`, respawn after a death) belongs to
+ * `XrSessionManagerTest` in `:renderer-xr-client`, which covers it directly, and the mapping
+ * between the two lives in `:daemon:desktop`'s `XrManagerSessionsTest`.
+ */
+private class FakeXrSessions(private val throwFrom: String? = null) : XrSessions {
+  private val seq = AtomicInteger(0)
+  @Volatile var closed = false
+  val stopped = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+  private val scenes = java.util.concurrent.ConcurrentHashMap<String, JsonElement>()
+
+  // Distinct payload per frame so the registry doesn't dedup them to heartbeats.
+  private fun frame() =
+    seq.incrementAndGet().let { n -> XrFrame(n.toLong(), 64, 48, "png", "data-$n") }
+
+  override fun open(
+    id: String,
+    scene: JsonElement,
+    sceneDir: String?,
+    environment: String?,
+    width: Int?,
+    height: Int?,
+  ): XrFrame {
+    scenes[id] = scene
+    return frame()
+  }
+
+  private fun failIf(point: String) {
+    if (throwFrom == point) throw IllegalStateException("renderer failed at $point")
+  }
+
+  override fun isOpen(id: String): Boolean {
+    failIf("isOpen")
+    return scenes.containsKey(id)
+  }
+
+  override fun updatePanels(id: String, panels: JsonArray): XrFrame = frame()
+
+  override fun structure(id: String): JsonElement? {
+    failIf("structure")
+    return scenes[id]
+  }
+
+  override fun close(id: String) {
+    failIf("closeSession")
+    scenes.remove(id)
+    stopped.add(id)
   }
 
   override fun close() {
     closed = true
   }
-}
-
-private class FakeXrFactory : XrRenderServerFactory {
-  val created = mutableListOf<FakeXrHandle>()
-
-  override fun start(): XrRenderServerHandle = FakeXrHandle().also { created.add(it) }
 }
 
 /** Mirror of the test-only host in InteractiveRpcIntegrationTest. */

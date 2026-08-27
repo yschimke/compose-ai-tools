@@ -362,9 +362,9 @@ fun runDaemon(
   // host-native, so it's wired on the desktop (host) daemon only.
   val xrBinary = XrCompositeBinary.resolve(version = DaemonVersion.value)
   val xrMaterials = xrBinary?.let { XrCompositeBinary.resolveMaterials(it) }
-  val xrServerFactory =
+  val xrSessions =
     if (xrBinary != null && xrMaterials != null) {
-      XrRenderServerFactory { XrRenderServer.start(xrBinary, xrMaterials) }
+      XrManagerSessions(XrRenderServerFactory { XrRenderServer.start(xrBinary, xrMaterials) })
     } else {
       null
     }
@@ -382,7 +382,7 @@ fun runDaemon(
       extensions = extensions,
       btaCompileService = btaCompileService,
       onExit = onExit,
-      xrServerFactory = xrServerFactory,
+      xrSessions = xrSessions,
     )
 
   if (installSigtermHook) {

@@ -23,7 +23,9 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.Timeout
 
 /**
  * End-to-end test for [JsonRpcServer] over piped streams. Drives the full happy-path lifecycle:
@@ -58,7 +60,13 @@ class JsonRpcServerIntegrationTest {
 
   private val json = Json { ignoreUnknownKeys = true }
 
-  @Test(timeout = 30_000)
+  /**
+   * The per-test deadline, replacing the `@Test(timeout = …)` this suite used to carry. A backstop
+   * against a wedged daemon, not an assertion about speed — see [testTimeoutMs].
+   */
+  @get:Rule val globalTimeout: Timeout = Timeout.millis(testTimeoutMs)
+
+  @Test
   fun full_lifecycle_renders_one_preview_and_emits_finished_notification() {
     val clientToServerOut = PipedOutputStream()
     val clientToServerIn = PipedInputStream(clientToServerOut, 64 * 1024)
@@ -217,7 +225,7 @@ class JsonRpcServerIntegrationTest {
     }
   }
 
-  @Test(timeout = 30_000)
+  @Test
   fun render_failure_notifies_data_product_registry_before_render_failed() {
     val clientToServerOut = PipedOutputStream()
     val clientToServerIn = PipedInputStream(clientToServerOut, 64 * 1024)
@@ -312,7 +320,7 @@ class JsonRpcServerIntegrationTest {
    * count of previews known to the daemon. Mirrors the `initialize.classpathFingerprint` pin in the
    * B2.1 test below.
    */
-  @Test(timeout = 30_000)
+  @Test
   fun initialize_manifest_reports_preview_index_path_and_count() {
     val tmpDir = java.nio.file.Files.createTempDirectory("preview-index-test")
     val previewsJson = tmpDir.resolve("previews.json")
@@ -415,7 +423,7 @@ class JsonRpcServerIntegrationTest {
    * stub shape so existing in-process callers that don't yet wire the index keep receiving the
    * empty placeholder.
    */
-  @Test(timeout = 30_000)
+  @Test
   fun initialize_manifest_defaults_to_empty_index() {
     val clientToServerOut = PipedOutputStream()
     val clientToServerIn = PipedInputStream(clientToServerOut, 64 * 1024)
@@ -482,7 +490,7 @@ class JsonRpcServerIntegrationTest {
    * configured. When the cheap-signal file's bytes change AND the (synthetic) classpath hash
    * drifts, the daemon must emit `classpathDirty` exactly once and then exit cleanly.
    */
-  @Test(timeout = 30_000)
+  @Test
   fun classpath_fingerprint_dirty_emits_classpathDirty_and_exits() {
     val tmpDir = java.nio.file.Files.createTempDirectory("classpath-fp-test").toFile()
     val cheapFile = java.io.File(tmpDir, "libs.versions.toml").apply { writeText("a = 1\n") }
@@ -612,7 +620,7 @@ class JsonRpcServerIntegrationTest {
    * a comment-only edit in `build.gradle.kts`). Daemon must NOT emit `classpathDirty` and must keep
    * accepting `renderNow`.
    */
-  @Test(timeout = 30_000)
+  @Test
   fun classpath_fingerprint_false_alarm_does_not_emit_classpathDirty() {
     val tmpDir = java.nio.file.Files.createTempDirectory("classpath-fp-fa-test").toFile()
     val cheapFile = java.io.File(tmpDir, "build.gradle.kts").apply { writeText("// hi\n") }
@@ -710,7 +718,7 @@ class JsonRpcServerIntegrationTest {
    * The synthetic classpath has no `@Preview`-bearing classes, so the scoped scan returns empty and
    * the diff carries `removed = [the index's preview]`.
    */
-  @Test(timeout = 30_000)
+  @Test
   fun fileChanged_source_emits_discoveryUpdated() {
     val tmpDir = java.nio.file.Files.createTempDirectory("phase2-discovery-test")
     // The "source" file we'll claim changed. Cheap pre-filter trips on text match (`@Preview`).
@@ -836,7 +844,7 @@ class JsonRpcServerIntegrationTest {
    * The watchdog is set to a value much larger than the render's wall-clock so the only way
    * `discoveryUpdated` can arrive is via the post-`renderFinished` drain.
    */
-  @Test(timeout = 30_000)
+  @Test
   fun fileChanged_then_renderNow_emits_renderFinished_before_discoveryUpdated() {
     val tmpDir = java.nio.file.Files.createTempDirectory("ordering-test")
     val sourceKt = tmpDir.resolve("Foo.kt")
@@ -962,7 +970,7 @@ class JsonRpcServerIntegrationTest {
    * preview set already on the index emits **no** `discoveryUpdated`. The watchdog still fires
    * (drains the queue) but [`runIncrementalDiscoveryNow`] short-circuits on `discoveryDiffEmpty`.
    */
-  @Test(timeout = 15_000)
+  @Test
   fun fileChanged_with_no_diff_emits_no_discoveryUpdated() {
     val tmpDir = java.nio.file.Files.createTempDirectory("identity-save-test")
     val sourceKt = tmpDir.resolve("NoChange.kt")
@@ -1062,7 +1070,7 @@ class JsonRpcServerIntegrationTest {
    * `JsonRpcServer.renderFinishedFromResult` translates them into a structured [RenderMetrics] on
    * the wire.
    */
-  @Test(timeout = 30_000)
+  @Test
   fun renderFinished_metrics_populated_when_host_supplies_all_four_b23_keys() {
     val hostMetrics: Map<String, Long> =
       mapOf(
@@ -1098,7 +1106,7 @@ class JsonRpcServerIntegrationTest {
    * wire-level `renderFinished.metrics` stays null. Pins the pre-B2.3 behaviour for hosts that
    * don't measure anything.
    */
-  @Test(timeout = 30_000)
+  @Test
   fun renderFinished_metrics_null_when_host_supplies_null() {
     runRenderAndPollFinished(
       host = FakeRenderHost(metricsToReturn = null),
@@ -1119,7 +1127,7 @@ class JsonRpcServerIntegrationTest {
    * Pinned here to lock the JsonRpcServer behaviour; the partial-map outcome itself is unit- tested
    * in [RenderMetricsFromFlatMapTest].
    */
-  @Test(timeout = 30_000)
+  @Test
   fun renderFinished_metrics_null_when_host_supplies_partial_map() {
     val partial: Map<String, Long> =
       mapOf(
@@ -1235,7 +1243,7 @@ class JsonRpcServerIntegrationTest {
    * grace window. Uses a 200 ms idle timeout so the assertion has a comfortable margin without the
    * test sleeping for the full 5 s default.
    */
-  @Test(timeout = 30_000)
+  @Test
   fun interactive_session_closes_immediately_on_transport_eof() {
     val clientToServerOut = PipedOutputStream()
     val clientToServerIn = PipedInputStream(clientToServerOut, 64 * 1024)
@@ -1354,6 +1362,46 @@ class JsonRpcServerIntegrationTest {
     }
   }
 
+  private companion object {
+    /**
+     * Whether this suite is running on a shared CI runner rather than a developer machine.
+     *
+     * GitHub Actions sets `CI`; verified rather than assumed, since Gradle only forwards the
+     * ambient environment to the test worker and a value that never arrives would make both bounds
+     * below silently local-sized.
+     */
+    private val onCi: Boolean = System.getenv("CI") != null
+
+    /**
+     * The hard per-test deadline, enforced by [globalTimeout].
+     *
+     * This used to be `@Test(timeout = 30_000)` on each of the thirteen tests. It moved to a
+     * `@Rule` for a reason that is not tidiness: an annotation argument must be a compile-time
+     * constant, so a per-test deadline written that way *cannot* be scaled for CI, and any
+     * [pollUntil] bound raised past it is unreachable — the test is killed with a timeout while the
+     * poll is still waiting, replacing an assertion that says which message never arrived with one
+     * that says nothing at all.
+     */
+    private val testTimeoutMs: Long = if (onCi) 180_000 else 30_000
+
+    /**
+     * How long a [pollUntil] waits for a message the daemon has already been asked to produce.
+     *
+     * These tests drive a real [JsonRpcServer] over real pipes with a real dispatch thread, so
+     * every wait is on genuine scheduling. 10s is generous on an idle machine and tight on a runner
+     * executing the rest of the module matrix beside it. Nothing here asserts that a render is
+     * *fast*, only that it finishes, so this is a liveness bound rather than a latency assertion:
+     * raising it costs nothing when the code is correct — a passing poll returns the moment the
+     * message lands, not at the deadline — and only changes how long a genuinely hung daemon takes
+     * to be reported.
+     *
+     * Deliberately a fraction of [testTimeoutMs] rather than an independent number, so the poll
+     * always expires first and the failure is `assertNotNull`'s message naming the awaited message,
+     * not an opaque test-level timeout. Keep it that way if either value changes.
+     */
+    private val defaultPollTimeoutMs: Long = testTimeoutMs / 3
+  }
+
   /** Helper: writes one Content-Length-framed JSON message. */
   private fun writeFrame(out: PipedOutputStream, json: String) {
     val payload = json.toByteArray(Charsets.UTF_8)
@@ -1364,7 +1412,7 @@ class JsonRpcServerIntegrationTest {
 
   private fun pollUntil(
     queue: LinkedBlockingQueue<JsonObject>,
-    timeoutMs: Long = 10_000,
+    timeoutMs: Long = defaultPollTimeoutMs,
     matcher: (JsonObject) -> Boolean,
   ): JsonObject? {
     val deadline = System.currentTimeMillis() + timeoutMs

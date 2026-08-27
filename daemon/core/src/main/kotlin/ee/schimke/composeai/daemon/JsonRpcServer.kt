@@ -79,9 +79,6 @@ import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
 import ee.schimke.composeai.data.layoutinspector.SemanticsDiff
 import ee.schimke.composeai.io.SystemFileSystem
-import ee.schimke.composeai.renderer.xr.client.StreamFrame as XrStreamFrame
-import ee.schimke.composeai.renderer.xr.client.XrRenderServerFactory
-import ee.schimke.composeai.renderer.xr.client.XrSessionManager
 import java.io.ByteArrayOutputStream
 import java.io.EOFException
 import java.io.IOException
@@ -282,14 +279,17 @@ class JsonRpcServer(
    */
   private val onExit: (Int) -> Unit,
   /**
-   * Factory for the native XR render server (see the "XR render service" section in
+   * The daemon's XR renderer, if it has one (see the "XR render service" section in
    * `protocol/Messages.kt`). When non-null the daemon advertises `capabilities.xr` and serves
-   * `xr/start` / `xr/updatePanels` / `xr/stop`, spawning one `xr-composite --serve` child per
-   * session. When null (the in-process integration tests, fake-mode harness, daemons whose host has
-   * no XR binary) the `xr/…` methods reply `MethodNotFound` — the one-shot composite path is
-   * unaffected.
+   * `xr/start` / `xr/updatePanels` / `xr/structure` / `xr/stop`. When null (the in-process
+   * integration tests, fake-mode harness, daemons whose host has no XR binary) the `xr/…` methods
+   * reply `MethodNotFound` — the one-shot composite path is unaffected.
+   *
+   * A port rather than the renderer client itself, so this module's compile ABI does not carry
+   * `:renderer-xr-client` to every consumer of the daemon protocol; `:daemon:desktop` adapts the
+   * real `XrSessionManager` onto it. See [XrSessions].
    */
-  private val xrServerFactory: XrRenderServerFactory? = null,
+  private val xrSessions: XrSessions? = null,
 ) {
 
   private val json = Json {
@@ -551,13 +551,6 @@ class JsonRpcServer(
    */
   private val streamSessions = ConcurrentHashMap<String, InteractiveSession>()
 
-  /**
-   * Held native XR render sessions, one per `frameStreamId`, present only when [xrServerFactory]
-   * was wired. The daemon's `xr/…` handlers drive it and feed each returned frame out as a
-   * `streamFrame` notification.
-   */
-  private val xrSessions: XrSessionManager? = xrServerFactory?.let { XrSessionManager(it) }
-
   // ----------------------------------------------------------------------
   // Recording (scripted screen-record) state — see docs/daemon/RECORDING.md.
   //
@@ -621,7 +614,7 @@ class JsonRpcServer(
       // [closeAllInteractiveSessions] is idempotent, so the second call inside [cleanShutdown]
       // is a safe no-op on this path.
       closeAllInteractiveSessions()
-      xrSessions?.close()
+      closeXrSessions()
       // EOF without exit notification — PROTOCOL.md § 3 idle-timeout exit.
       if (!shutdownRequested.get()) {
         try {
@@ -854,7 +847,7 @@ class JsonRpcServer(
             // held-scene recording driver (DesktopHost). `false` keeps `recording/start` behind a
             // `MethodNotFound` reply so clients can grey out the toggle.
             recording = host.supportsRecording,
-            // `true` when the daemon can front the native XR render server (the `xrServerFactory`
+            // `true` when the daemon can front the native XR render server (an `xrSessions` port
             // was wired). Gates the `xr/…` methods.
             xr = xrSessions != null,
             // RECORDING.md § "encoded formats" — list of wire format spellings the host can
@@ -2781,9 +2774,15 @@ class JsonRpcServer(
 
   private fun handleXrUpdatePanels(params: XrUpdatePanelsParams) {
     val manager = xrSessions ?: return
-    if (!manager.isOpen(params.frameStreamId)) return
     val frame =
       try {
+        // `isOpen` is inside the guard, not before it. Unlike the other two port calls fixed
+        // alongside this one there is no observable difference — `xr/updatePanels` is a
+        // notification, so a throw is absorbed by the outer dispatch and the read loop continues
+        // either way, and a test asserting otherwise passes with the guard removed. It is here so
+        // every call through the port is guarded uniformly, rather than leaving the next reader to
+        // re-derive which ones happen to be safe.
+        if (!manager.isOpen(params.frameStreamId)) return
         manager.updatePanels(params.frameStreamId, params.panels)
       } catch (t: Throwable) {
         System.err.println(
@@ -2812,7 +2811,19 @@ class JsonRpcServer(
         sendErrorResponse(req.id, ERR_INVALID_PARAMS, "invalid xr/structure params: ${e.message}")
         return
       }
-    val structure = manager.structure(params.frameStreamId)
+    val structure =
+      try {
+        manager.structure(params.frameStreamId)
+      } catch (t: Throwable) {
+        // A request, so silence is the worst outcome: the outer dispatch would log and continue,
+        // leaving this id unanswered until the client's own timeout. Answer it.
+        sendErrorResponse(
+          req.id,
+          ERR_INTERNAL,
+          "xr/structure failed: ${t.javaClass.simpleName}: ${t.message}",
+        )
+        return
+      }
     if (structure == null) {
       sendErrorResponse(
         req.id,
@@ -2835,7 +2846,17 @@ class JsonRpcServer(
     // registry state, then tear down the native session.
     val finalFrame = streamRegistry.finalFrameOnStop(params.frameStreamId)
     streamRegistry.unregister(params.frameStreamId)
-    xrSessions?.close(params.frameStreamId)
+    try {
+      xrSessions?.close(params.frameStreamId)
+    } catch (t: Throwable) {
+      // Guarded so the final marker below still goes out. Without this a renderer that failed to
+      // drop the session would also cost the client its `final=true` frame, and with it the
+      // decoder state this method exists to release.
+      System.err.println(
+        "compose-ai-daemon: xr/stop close failed for ${params.frameStreamId}: " +
+          "${t.javaClass.simpleName}: ${t.message}; continuing"
+      )
+    }
     if (finalFrame != null) {
       sendNotification("streamFrame", encode(StreamFrameParams.serializer(), finalFrame))
     }
@@ -2846,7 +2867,7 @@ class JsonRpcServer(
    * if it survives the gate, send it as a `streamFrame` notification. The native server already
    * base64-encodes the PNG, so the registry forwards the payload as-is.
    */
-  private fun emitXrFrame(frameStreamId: String, frame: XrStreamFrame) {
+  private fun emitXrFrame(frameStreamId: String, frame: XrFrame) {
     val params =
       streamRegistry.consumeForStream(frameStreamId, frame.dataBase64, frame.width, frame.height)
         ?: return
@@ -4106,7 +4127,7 @@ class JsonRpcServer(
     // safe no-op on this path.
     closeAllInteractiveSessions()
     closeAllRecordingSessions()
-    xrSessions?.close()
+    closeXrSessions()
     running.set(false)
     cleanShutdown()
     invokeExit(exitCode)
@@ -4121,6 +4142,32 @@ class JsonRpcServer(
    * tearing down the scene; the [InteractiveSession.close] contract pushes that responsibility to
    * the implementation.
    */
+  /**
+   * Close the XR port, best-effort. Called from every teardown path, and deliberately more than
+   * once on some of them — the EOF path closes before the idle-timeout grace window and
+   * [cleanShutdown] closes again afterwards, exactly as [closeAllInteractiveSessions] is called
+   * twice there.
+   *
+   * Guarded because [XrSessions] is an interface. The old concrete `XrSessionManager` swallowed
+   * renderer-close failures internally and was idempotent, so an unguarded call was safe by
+   * accident; a port implementation makes neither promise. An exception escaping here would be
+   * raised from the middle of [cleanShutdown] — before `host.shutdown()`, before the writer
+   * sentinel and the thread joins, and before `invokeExit` — so a renderer that failed to close
+   * would strand the daemon rather than end it. Every neighbouring teardown call in [cleanShutdown]
+   * is wrapped for the same reason.
+   */
+  private fun closeXrSessions() {
+    val sessions = xrSessions ?: return
+    try {
+      sessions.close()
+    } catch (e: Throwable) {
+      System.err.println(
+        "compose-ai-daemon: xrSessions.close failed: ${e.javaClass.simpleName}: ${e.message}; " +
+          "continuing shutdown"
+      )
+    }
+  }
+
   private fun closeAllInteractiveSessions() {
     val sessions = interactiveSessions.values.toList()
     interactiveSessions.clear()
@@ -4274,7 +4321,7 @@ class JsonRpcServer(
     }
     closeAllInteractiveSessions()
     closeAllRecordingSessions()
-    xrSessions?.close()
+    closeXrSessions()
     try {
       host.shutdown()
     } catch (e: Throwable) {

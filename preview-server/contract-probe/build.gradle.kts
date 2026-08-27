@@ -73,17 +73,12 @@ dependencies {
  */
 val contractLeaks =
   mapOf(
-    "renderer-xr-client" to
-      "`:daemon:core` api-exposes the XR render-server client because `JsonRpcServer`'s " +
-        "constructor takes an `XrRenderServerFactory?`. #3824 preparation item 4: invert it " +
-        "into a port the daemon injects, so the protocol contract stops shipping a renderer " +
-        "client to every consumer.",
     "mcp" to
       "`:render-session-subprocess` implements its transport on `:mcp`'s `DaemonClient` / " +
         "`SubprocessDaemonClientFactory`, so consuming the render-session library drags an MCP " +
         "server onto the classpath. #3824 preparation item 3: lift the daemon client out of " +
         "`:mcp` into its own published module. (`DaemonLaunchDescriptor`, the one MCP type " +
-        "`serve` imported directly, has already moved to `:daemon:core`.)",
+        "`serve` imported directly, has already moved to `:daemon:core`.)"
   )
 
 abstract class CheckContractSurface : DefaultTask() {
