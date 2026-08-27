@@ -493,6 +493,22 @@ def check_raw_key_readers(
 NESTED_DTOS = ("BtaCompileConfig",)
 
 
+def emitted_shape(writer: dict[str, tuple[str, bool]], allowlist: dict) -> dict:
+    """The writer's fields plus the reader-only fields a registered writer actually emits.
+
+    `jailCommand` and `hardTtlSeconds` are absent from the Gradle plugin's DTO but written by
+    serve, so they are on the wire even though they are not in `DaemonClasspathDescriptor`.
+    Fingerprinting the plugin's DTO alone meant renaming one of them moved the wire format while
+    the digest held steady — the same hole the nested DTOs had, one field-set over.
+    """
+    reader = kotlin_data_class(JVM_READER, "DaemonLaunchDescriptor")
+    shape = dict(writer)
+    for field in allowlist["readerOnlyFields"].get("jvm", {}):
+        if field in reader:
+            shape[field] = reader[field]
+    return shape
+
+
 def wire_shape(writer: dict[str, tuple[str, bool]]) -> str:
     """The descriptor's on-the-wire shape, including the DTOs it nests.
 
@@ -537,7 +553,7 @@ def wire_fingerprint(writer: dict[str, tuple[str, bool]]) -> str:
 def check_wire_fingerprint(
     writer: dict[str, tuple[str, bool]], allowlist: dict, failures: list[str]
 ) -> None:
-    actual = wire_fingerprint(writer)
+    actual = wire_fingerprint(emitted_shape(writer, allowlist))
     history = allowlist["wireFingerprint"]["history"]
     writer_version = kotlin_consts(WRITER)["DAEMON_DESCRIPTOR_SCHEMA_VERSION"]
     recorded = history.get(writer_version)
@@ -590,6 +606,11 @@ def is_test_source(rel: str) -> bool:
 DESCRIPTOR_CTOR = re.compile(
     r"(?<!class )\b(?:DaemonLaunchDescriptor|DaemonClasspathDescriptor)\s*\("
 )
+
+# `descriptor.copy(schemaVersion = …)` re-stamps an existing instance without naming a class, so
+# the constructor scan cannot see it. `schemaVersion` is a descriptor field name, so matching it on
+# any `copy(` is precise enough in practice.
+COPY_STAMP = re.compile(r"\.copy\s*\(\s*schemaVersion\s*=\s*([A-Za-z_]\w*|\d+)")
 SCHEMA_ARG = re.compile(r"\bschemaVersion\s*=\s*([A-Za-z_]\w*|\d+)")
 
 # Sentinel for a construction site that passes its arguments positionally.
@@ -648,6 +669,8 @@ def discover_version_stamps() -> list[tuple[str, str]]:
                 # nor the name-based one can see the version it stamps. Reported as an unnamed
                 # stamp rather than silently skipped.
                 stamps.append((rel, POSITIONAL))
+        for m in COPY_STAMP.finditer(text):
+            stamps.append((rel, m.group(1)))
     return stamps
 
 
@@ -807,8 +830,7 @@ def check_writer_encoders(allowlist: dict, failures: list[str]) -> None:
     configs, hand-maintained separately — the same duplication this whole check exists for, one
     level further out, so they are also compared against each other by construction.
     """
-    required = allowlist["writerEncoders"]["requiredSettings"]
-    for rel in allowlist["writerEncoders"]["declaredBy"]:
+    for rel, required in allowlist["writerEncoders"]["declaredBy"].items():
         text = stripped(rel)
         # Resolve the receiver the descriptor is actually encoded through, the same way the
         # reader-side tolerance check resolves `parse`'s. Validating every syntactic `Json { … }`

@@ -714,6 +714,10 @@ tasks.register<CheckDaemonLaunchSchema>("checkDaemonLaunchSchema") {
       )
     }
   )
+  // Not only Kotlin/TypeScript: the mirrored-constant rule reads the production image, where the
+  // sandbox-count key is a literal in `JAVA_TOOL_OPTIONS`. Without this the same up-to-date hole
+  // the source tree had would reopen for exactly the file that rule was added to cover.
+  representations.from(repoRoot.file("deploy/image/Dockerfile"))
   allowlist.set(repoRoot.file("scripts/daemon-launch-schema-allowlist.json"))
   checker.set(repoRoot.file("scripts/check-daemon-launch-schema.py"))
   stamp.set(layout.buildDirectory.file("check-daemon-launch-schema/ok.txt"))

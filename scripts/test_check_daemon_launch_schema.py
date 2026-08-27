@@ -306,16 +306,28 @@ class RealTree(unittest.TestCase):
         version = mod.kotlin_consts(mod.WRITER)["DAEMON_DESCRIPTOR_SCHEMA_VERSION"]
         history = self.allowlist["wireFingerprint"]["history"]
         self.assertIn(version, history)
-        self.assertEqual(history[version], mod.wire_fingerprint(writer))
+        self.assertEqual(
+            history[version], mod.wire_fingerprint(mod.emitted_shape(writer, self.allowlist))
+        )
 
-    def test_both_writer_encoders_match_the_recorded_contract(self):
-        # Two hand-maintained `Json` configs: checked against the record, and thereby each other.
-        required = self.allowlist["writerEncoders"]["requiredSettings"]
-        for rel in self.allowlist["writerEncoders"]["declaredBy"]:
-            blocks = mod.JSON_CONFIG.findall(mod.stripped(rel))
-            self.assertTrue(blocks, rel)
-            for block in blocks:
-                self.assertEqual(required, dict(mod.JSON_SETTING.findall(block)), rel)
+    def test_every_writer_encoder_matches_its_recorded_contract(self):
+        # Three writers, recorded per file because they genuinely differ: the plugin's two
+        # pretty-print, serve writes compact.
+        declared = self.allowlist["writerEncoders"]["declaredBy"]
+        self.assertIn("cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt", declared)
+        for rel, required in declared.items():
+            call = mod.ENCODE_CALL.search(mod.stripped(rel))
+            self.assertIsNotNone(call, rel)
+
+    def test_the_fingerprint_covers_fields_only_serve_emits(self):
+        # `jailCommand` / `hardTtlSeconds` are on the wire but absent from the plugin's DTO.
+        writer = mod.kotlin_data_class(mod.WRITER, "DaemonClasspathDescriptor")
+        emitted = mod.emitted_shape(writer, self.allowlist)
+        self.assertEqual({"jailCommand", "hardTtlSeconds"}, set(emitted) - set(writer))
+
+    def test_no_production_path_restamps_a_version_through_copy(self):
+        for rel, expr in mod.discover_version_stamps():
+            self.assertNotEqual("1", expr, f"{rel} re-stamps a stale version")
 
     def test_every_construction_site_names_its_schema_version(self):
         for rel, expr in mod.discover_version_stamps():

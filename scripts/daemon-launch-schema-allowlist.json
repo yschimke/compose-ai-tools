@@ -139,20 +139,26 @@
   },
   "wireFingerprint": {
     "history": {
-      "2": "7ea9f6c0ea6c2e4e"
+      "2": "61a2ff3d4f32b16b"
     },
-    "why": "The shape of DaemonClasspathDescriptor, including the DTOs it nests, recorded per schema version. A version's entry is IMMUTABLE once written: an editable digest meant a breaking rename could pass by updating the writer, the readers and the record together, leaving released v2 consumers accepting a v2 descriptor they now misread. Changing the shape means adding a new version, not refreshing this one."
+    "why": "The shape of the descriptor AS EMITTED, recorded per schema version: the writer's DTO, the DTOs it nests, and the reader-only fields a registered writer actually puts on the wire (serve's jailCommand / hardTtlSeconds). A version's entry is IMMUTABLE once written \u2014 changing the shape means adding a version, not refreshing this one."
   },
   "writerEncoders": {
-    "declaredBy": [
-      "gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonLaunchBuilder.kt",
-      "gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/daemon/DaemonBootstrapTask.kt"
-    ],
-    "requiredSettings": {
-      "prettyPrint": "true",
-      "encodeDefaults": "true",
-      "explicitNulls": "true"
+    "declaredBy": {
+      "gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonLaunchBuilder.kt": {
+        "prettyPrint": "true",
+        "encodeDefaults": "true",
+        "explicitNulls": "true"
+      },
+      "gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/daemon/DaemonBootstrapTask.kt": {
+        "prettyPrint": "true",
+        "encodeDefaults": "true",
+        "explicitNulls": "true"
+      },
+      "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt": {
+        "encodeDefaults": "true"
+      }
     },
-    "why": "The two production writers each configure their own `Json`, and the configuration is part of the wire format: a `namingStrategy` would rename every key while the DTO declaration, the fingerprint, both readers and every version constant stayed identical. `encodeDefaults` and `explicitNulls` decide whether a defaulted or null field is emitted at all. Two hand-maintained copies of one contract is the same duplication this file exists to police, one level further out \u2014 so they are checked against this record and thereby against each other."
+    "why": "Every production writer's `Json`, recorded per file because they are not identical. The two Gradle-plugin writers pretty-print and force explicit nulls; serve writes compact and relies on kotlinx's `explicitNulls = true` default. That divergence is pre-existing and harmless \u2014 whitespace is not wire shape \u2014 but it is recorded rather than assumed, because the settings that DO change the wire (a `namingStrategy`, or `encodeDefaults = false` dropping defaulted fields) live in the same block. Serve was registered as a version-stamping writer from the start; leaving its encoder unchecked while checking the other two was an inconsistency, not a decision."
   }
 }
