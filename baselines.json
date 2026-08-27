@@ -1072,8 +1072,8 @@
     "serve-motion-index-motion-index-playing.dark.png": {
       "fixture": "serve-motion-index-motion-index-playing",
       "theme": "dark",
-      "sha256": "3a79b35408e6b44fa709dcff44f8bb02338212a985b73515d931b7c5adb16d8c",
-      "size": 126198
+      "sha256": "d04b17ad266c89b2f3b160991a6203d810f99b46d38eea0746e1c8dfd89bd396",
+      "size": 126200
     },
     "serve-motion-index-motion-index-playing.light.png": {
       "fixture": "serve-motion-index-motion-index-playing",
