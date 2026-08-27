@@ -485,6 +485,10 @@ class ServeCatalogLiveHost(
   override fun catalogRenderCacheSnapshot(): CatalogRenderCacheSnapshot =
     catalogThemeCache.renderCacheSnapshot()
 
+  override fun regenerateThemeCache(): Int = catalogThemeCache.markPersistedDirty()
+
+  override fun dropThemeCache(): Boolean = catalogThemeCache.dropPersisted()
+
   override val backgroundWorkActive: Boolean
     get() = optimizationActive.get()
 

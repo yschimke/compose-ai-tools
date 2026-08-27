@@ -232,6 +232,28 @@ class ServeAdminRoutingTest {
   }
 
   @Test
+  fun `the per-catalog theme-cache actions are gated like every other admin route`() {
+    // The pair an operator reaches for when a catalog's pixels look wrong. Both mutate a durable
+    // store, so both sit behind the same credential as the rest of the admin surface — and a
+    // missing or wrong token 404s rather than confirming the route is there.
+    for (action in listOf("regenerate", "drop")) {
+      val path = "/admin/catalogs/compose-m3/theme-cache/$action"
+      assertEquals(404, send(path, method = "POST", token = null).first, action)
+      assertEquals(404, send(path, method = "POST", token = "wrong").first, action)
+    }
+  }
+
+  @Test
+  fun `a theme-cache action on an unknown catalog is a not-found, not a silent success`() {
+    // With the credential, so this is the route answering rather than the gate: an operator who
+    // mistypes a system must be told, not left believing a cache was regenerated.
+    val (code, body) =
+      send("/admin/catalogs/no-such-catalog/theme-cache/regenerate", method = "POST")
+    assertEquals(404, code)
+    assertTrue(body.contains("no-such-catalog"), body)
+  }
+
+  @Test
   fun `clearing the catalog cache needs the admin token like every other admin route`() {
     blobPool.write(
       "https://raw.githubusercontent.com/o/r/${"b".repeat(40)}/images/button.png",

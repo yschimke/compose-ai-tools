@@ -386,6 +386,27 @@ class CatalogThemeCache(
    */
   fun markPersistedDirty(): Int = persistence?.markAllDirty() ?: 0
 
+  /**
+   * Throw this catalog's persisted renders away outright, and forget them in memory too.
+   *
+   * The decisive half of the pair, for pixels an operator has decided are wrong rather than merely
+   * suspect. Every preview goes cold at once and is re-rendered from nothing — which is the cost
+   * [markPersistedDirty] exists to avoid, so this is the second choice of the two, not the default.
+   *
+   * The memory window is cleared with it. Leaving it would keep serving the very renders just
+   * declared wrong, from the tier in front of the one that was emptied.
+   */
+  fun dropPersisted(): Boolean {
+    val discarded = persistence?.discard() ?: false
+    synchronized(renderLock) {
+      renders.clear()
+      byteCount.set(0)
+    }
+    state.set("paused")
+    completedAt.set(0)
+    return discarded
+  }
+
   /** Whether [key] is warm in either tier, without paying to read the bytes. */
   fun contains(key: String): Boolean =
     synchronized(renderLock) { renders.containsKey(key) } || persistence?.contains(key) == true
