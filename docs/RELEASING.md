@@ -12,7 +12,9 @@ In **Settings → Actions → General → Workflow permissions**, tick **"Allow 
 
 [release-please](https://github.com/googleapis/release-please) watches `main` for conventional-commit history and keeps a release PR up to date. Merging the PR is the only manual step.
 
-1. **Land conventional-commit PRs to `main`.** `fix:`, `feat:`, and `feat!:` / `BREAKING CHANGE` trigger a release. `chore:`, `docs:`, `ci:`, `refactor:`, and `test:` do not. To force a bump, add a `Release-As: 0.3.4` footer to any commit, or run the `Release PR` workflow via `workflow_dispatch`.
+1. **Land conventional-commit PRs to `main`.** `fix:`, `feat:`, and `feat!:` / `BREAKING CHANGE` trigger a release. `chore:`, `docs:`, `ci:`, `refactor:`, and `test:` do not. To force a bump, run the `Release PR` workflow via `workflow_dispatch`, or set `"release-as": "0.3.4"` in `release-please-config.json`, let the release land, then revert that key in a follow-up PR.
+
+   > **A `Release-As:` footer does not work here.** release-please parses it from a commit's body, and this repo squash-merges with `squash_merge_commit_message=BLANK` — the squashed commit on `main` keeps the **PR title only**, so every body is discarded and the footer never arrives. Confirm with `git log --format='%b' -5 origin/main`, which prints nothing. Putting the footer in a branch commit, in the PR description, or in an empty commit all fail for the same reason (an empty commit additionally contributes no commit at all to a squash). The two routes above are the ones that survive.
 
    > **PR titles are the commit headlines.** Squash-merge uses the PR title as the commit headline, which is what release-please parses. The [PR Title](../.github/workflows/pr-title.yml) workflow enforces conventional-commit format on every PR so mis-titled PRs can't silently skip a release (as PR #94 did before the 0.6.0 cut). If you _do_ ever end up with a non-conforming commit on `main`, push an empty conventional-commit marker with `git commit --allow-empty -m "feat(...)…"` and release-please will re-scan.
 
