@@ -118,7 +118,12 @@ dependencyResolutionManagement {
   // release build can't accidentally resolve one group off the snapshot line.
   if (useRemoteComposeSnapshot) {
     versionCatalogs {
-      named("libs") {
+      // `create`, not `named`: `named` fails here with "VersionCatalogBuilder with name 'libs' not
+      // found" — the default catalog is registered after settings are evaluated. `create("libs")`
+      // returns that same builder with `gradle/libs.versions.toml` ALREADY imported (calling
+      // `from(...)` on it fails with "Multiple 'from' invocations"), so these three lines override
+      // three versions and leave every other entry as the TOML has it.
+      create("libs") {
         version("compose-remote", "1.0.0-SNAPSHOT")
         version("wear-compose-remote", "1.0.0-SNAPSHOT")
         version("glance-wear", "1.0.0-SNAPSHOT")
