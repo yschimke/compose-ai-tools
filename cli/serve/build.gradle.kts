@@ -67,7 +67,6 @@ dependencies {
   implementation(project(":common-io"))
   implementation(project(":data-layoutinspector-core"))
   implementation(project(":data-theme-core"))
-  implementation(project(":data-fonts-core"))
   implementation(project(":data-pseudolocale-core"))
   implementation(project(":data-preview-overrides-core"))
   implementation(project(":data-remotecompose-core"))

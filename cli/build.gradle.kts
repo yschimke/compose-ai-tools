@@ -664,6 +664,14 @@ tasks.register<CheckServeSeam>("checkServeSeam") {
 
 tasks.named("check") { dependsOn("checkServeSeam") }
 
+// …and the server module's boundary check, which CI would otherwise never run. `:cli:build` (what
+// the Build CLI job invokes) does not execute a dependency project's `check` lifecycle, and the
+// module-test fan-out calls `:cli:serve:test`, not `:cli:serve:check` — so the task that proves
+// nothing forbidden reached the server's classpath was reachable only by someone typing it. A
+// boundary nothing runs is a comment. Verified with `./gradlew :cli:build --dry-run`, which now
+// lists `:cli:serve:checkServeModuleBoundary` and previously did not.
+tasks.named("check") { dependsOn(":cli:serve:checkServeModuleBoundary") }
+
 // The four representations of `daemon-launch.json`, checked against each other.
 //
 // The descriptor is written by the gradle plugin and read by the daemon JVM, this CLI's `doctor`
