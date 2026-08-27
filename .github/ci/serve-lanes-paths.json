@@ -29,8 +29,8 @@
       "preview-server/preview-harness/serve-lanes.*",
       "preview-server/preview-harness/serve-android-lane-boot.sh",
       "samples/android-live-lane/**",
-      "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleResources.kt",
-      "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleLaunch.kt"
+      "bundle/format/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleResources.kt",
+      "bundle/format/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleLaunch.kt"
     ],
     "bundle": [
       "cli/src/main/kotlin/ee/schimke/composeai/cli/BundleCommand.kt",
@@ -44,8 +44,8 @@
       "preview-server/preview-harness/playground.*",
       "preview-server/preview-harness/playground-boot.sh",
       "samples/android-live-lane/**",
-      "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleResources.kt",
-      "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleLaunch.kt"
+      "bundle/format/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleResources.kt",
+      "bundle/format/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleLaunch.kt"
     ]
   }
 }

@@ -20,7 +20,7 @@ package ee.schimke.composeai.cli
  * thumbnail-to-retina fidelity — right for a design reference layer. If these two call sites ever
  * diverge, the waste comes straight back, so change the bound here rather than at either site.
  */
-internal const val MAX_FIGMA_RASTER_EDGE_PX: Int = 1024
+public const val MAX_FIGMA_RASTER_EDGE_PX: Int = 1024
 
 /**
  * [png] re-encoded with its longest edge capped at [maxEdgePx] (aspect preserved, bilinear), or the
@@ -29,7 +29,7 @@ internal const val MAX_FIGMA_RASTER_EDGE_PX: Int = 1024
  * both callers must degrade to the full-resolution bytes rather than a broken layer or a failed
  * pack.
  */
-internal fun downscaleRaster(png: ByteArray, maxEdgePx: Int): ByteArray {
+public fun downscaleRaster(png: ByteArray, maxEdgePx: Int): ByteArray {
   if (maxEdgePx <= 0 || maxEdgePx == Int.MAX_VALUE) return png
   return try {
     val image = javax.imageio.ImageIO.read(java.io.ByteArrayInputStream(png)) ?: return png

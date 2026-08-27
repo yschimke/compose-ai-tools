@@ -26,7 +26,7 @@ import kotlinx.serialization.json.Json
  * `PreviewBundleFormat.kt` — the CLI re-declares the wire shape here rather than depend on that
  * module, same pattern as [BundleReader]).
  */
-internal object BundleSigning {
+public object BundleSigning {
 
   /** Zip path of the detached signatures; excluded from the digest it signs. */
   const val SIGNATURES_PATH = "signatures.json"

@@ -13,9 +13,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Coverage for [BundleReader.readWebEmbedData] — reading the previews a web embed needs out of a
- * real PNG+ZIP polyglot bundle. Builds the polyglot the same way the plugin does (a leading PNG
- * followed by the appended zip) so the reader's polyglot detection is exercised end to end.
+ * Coverage for [readBundleWebEmbedData] — reading the previews a web embed needs out of a real
+ * PNG+ZIP polyglot bundle. Builds the polyglot the same way the plugin does (a leading PNG followed
+ * by the appended zip) so the reader's polyglot detection is exercised end to end.
  */
 class BundleEmbedDataTest {
 
@@ -80,7 +80,7 @@ class BundleEmbedDataTest {
         ),
       )
 
-    val data = BundleReader.readWebEmbedData(file)
+    val data = readBundleWebEmbedData(file)
 
     assertEquals(listOf("a", "b"), data.previews.map { it.id })
     assertEquals(listOf("Alpha", "Beta"), data.previews.map { it.label })
@@ -109,7 +109,7 @@ class BundleEmbedDataTest {
         ),
       )
 
-    val data = BundleReader.readWebEmbedData(file)
+    val data = readBundleWebEmbedData(file)
 
     // b is omitted; a and c stay in manifest order. Labels fall back to ids (no previews.json).
     assertEquals(listOf("a", "c"), data.previews.map { it.id })
@@ -131,7 +131,7 @@ class BundleEmbedDataTest {
         linkedMapOf("bundle.json" to bundleJson.toByteArray(), "previews/a.png" to png()),
       )
 
-    val data = BundleReader.readWebEmbedData(file)
+    val data = readBundleWebEmbedData(file)
     val out =
       WebEmbed.generate(
         title = "Demo",
@@ -244,7 +244,7 @@ class BundleEmbedDataTest {
     val full = file.readBytes()
     val zip = BundleReader.extractZipBytes(file)
     val prefix = full.copyOfRange(0, full.size - zip.size)
-    val data = BundleReader.readWebEmbedData(file)
+    val data = readBundleWebEmbedData(file)
     val out = WebEmbed.generate("Demo", data.manifest.modulePath, data.previews)
     val newZip = embedWebIntoZip(zip, out.files.mapKeys { (rel, _) -> "web/$rel" })
     val enriched = File(workRoot, "enriched.png")
@@ -257,7 +257,7 @@ class BundleEmbedDataTest {
     assertEquals(originalPrefixLen, prefix.size)
     assertEquals(coverPng.toList(), enriched.readBytes().copyOfRange(0, prefix.size).toList())
     // The reader still parses it, and the new web/ entries are present alongside the originals.
-    val reread = BundleReader.readWebEmbedData(enriched)
+    val reread = readBundleWebEmbedData(enriched)
     assertEquals(listOf("a"), reread.previews.map { it.id })
     val names = entries(BundleReader.extractZipBytes(enriched)).keys
     assertTrue("bundle.json" in names && "previews/a.png" in names)

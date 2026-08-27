@@ -235,6 +235,16 @@ includeBuild("gradle-plugin")
 
 include(":cli")
 
+// The preview-bundle *format* — split out of `:cli` for issue #3824. Everything a reader of a
+// `.previewbundle` needs (well-known entry names, the manifest DTO, sidecar injectors,
+// deterministic zip helpers, the detached signature scheme, classpath hydration, Android
+// resource/launch support), with none of the argument parsing. `:cli` keeps the `bundle`
+// subcommands and depends on this. Types keep the `ee.schimke.composeai.cli` package for
+// source-compat, the same way `:gradle-preview-driver` did.
+include(":bundle-format")
+
+project(":bundle-format").projectDir = file("bundle/format")
+
 // The mobile + Wear "session viewer" client apps (`:clients:*`) were split out to their own repo,
 // yschimke/compose-preview-client (issue #2533). They consumed `compose-preview serve` purely
 // through the wire contract (docs/serve/SESSION-VIEWER-PROTOCOL.md), never a code dependency, so the
