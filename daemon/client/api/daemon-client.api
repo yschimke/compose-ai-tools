@@ -1,0 +1,100 @@
+public final class ee/schimke/composeai/daemon/client/DaemonClient : java/io/Closeable {
+	public fun <init> (Ljava/io/InputStream;Ljava/io/OutputStream;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function0;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/io/InputStream;Ljava/io/OutputStream;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function0;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun close ()V
+	public final fun dataFetch-9VgGkz4 (Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ZJ)Lee/schimke/composeai/daemon/protocol/DataFetchResult;
+	public static synthetic fun dataFetch-9VgGkz4$default (Lee/schimke/composeai/daemon/client/DaemonClient;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ZJILjava/lang/Object;)Lee/schimke/composeai/daemon/protocol/DataFetchResult;
+	public final fun dataSubscribe-SxA4cEA (Ljava/lang/String;Ljava/lang/String;J)Lee/schimke/composeai/daemon/protocol/DataSubscribeResult;
+	public static synthetic fun dataSubscribe-SxA4cEA$default (Lee/schimke/composeai/daemon/client/DaemonClient;Ljava/lang/String;Ljava/lang/String;JILjava/lang/Object;)Lee/schimke/composeai/daemon/protocol/DataSubscribeResult;
+	public final fun dataUnsubscribe-SxA4cEA (Ljava/lang/String;Ljava/lang/String;J)Lee/schimke/composeai/daemon/protocol/DataSubscribeResult;
+	public static synthetic fun dataUnsubscribe-SxA4cEA$default (Lee/schimke/composeai/daemon/client/DaemonClient;Ljava/lang/String;Ljava/lang/String;JILjava/lang/Object;)Lee/schimke/composeai/daemon/protocol/DataSubscribeResult;
+	public final fun extensionsDisable-HG0u8IE (Ljava/util/List;J)Lee/schimke/composeai/daemon/protocol/ExtensionsDisableResult;
+	public static synthetic fun extensionsDisable-HG0u8IE$default (Lee/schimke/composeai/daemon/client/DaemonClient;Ljava/util/List;JILjava/lang/Object;)Lee/schimke/composeai/daemon/protocol/ExtensionsDisableResult;
+	public final fun extensionsEnable-HG0u8IE (Ljava/util/List;J)Lee/schimke/composeai/daemon/protocol/ExtensionsEnableResult;
+	public static synthetic fun extensionsEnable-HG0u8IE$default (Lee/schimke/composeai/daemon/client/DaemonClient;Ljava/util/List;JILjava/lang/Object;)Lee/schimke/composeai/daemon/protocol/ExtensionsEnableResult;
+	public final fun extensionsList-LRDsOJo (J)Lee/schimke/composeai/daemon/protocol/ExtensionsListResult;
+	public static synthetic fun extensionsList-LRDsOJo$default (Lee/schimke/composeai/daemon/client/DaemonClient;JILjava/lang/Object;)Lee/schimke/composeai/daemon/protocol/ExtensionsListResult;
+	public final fun fileChanged (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/FileKind;Lee/schimke/composeai/daemon/protocol/ChangeType;)V
+	public static synthetic fun fileChanged$default (Lee/schimke/composeai/daemon/client/DaemonClient;Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/FileKind;Lee/schimke/composeai/daemon/protocol/ChangeType;ILjava/lang/Object;)V
+	public final fun historyDiff-Wn2Vu4Y (Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/HistoryDiffMode;J)Lee/schimke/composeai/daemon/protocol/HistoryDiffResult;
+	public static synthetic fun historyDiff-Wn2Vu4Y$default (Lee/schimke/composeai/daemon/client/DaemonClient;Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/HistoryDiffMode;JILjava/lang/Object;)Lee/schimke/composeai/daemon/protocol/HistoryDiffResult;
+	public final fun historyList-HG0u8IE (Lee/schimke/composeai/daemon/protocol/HistoryListParams;J)Lee/schimke/composeai/daemon/protocol/HistoryListResult;
+	public static synthetic fun historyList-HG0u8IE$default (Lee/schimke/composeai/daemon/client/DaemonClient;Lee/schimke/composeai/daemon/protocol/HistoryListParams;JILjava/lang/Object;)Lee/schimke/composeai/daemon/protocol/HistoryListResult;
+	public final fun historyRead-SxA4cEA (Ljava/lang/String;ZJ)Lee/schimke/composeai/daemon/protocol/HistoryReadResultDto;
+	public static synthetic fun historyRead-SxA4cEA$default (Lee/schimke/composeai/daemon/client/DaemonClient;Ljava/lang/String;ZJILjava/lang/Object;)Lee/schimke/composeai/daemon/protocol/HistoryReadResultDto;
+	public final fun initialize-B8UsjHI (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/ClientCapabilities;Ljava/util/List;Ljava/lang/Long;J)Lee/schimke/composeai/daemon/protocol/InitializeResult;
+	public static synthetic fun initialize-B8UsjHI$default (Lee/schimke/composeai/daemon/client/DaemonClient;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/ClientCapabilities;Ljava/util/List;Ljava/lang/Long;JILjava/lang/Object;)Lee/schimke/composeai/daemon/protocol/InitializeResult;
+	public final fun interactiveInput (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/InteractiveInputKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Float;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public static synthetic fun interactiveInput$default (Lee/schimke/composeai/daemon/client/DaemonClient;Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/InteractiveInputKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Float;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun recordingEncode-SxA4cEA (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/RecordingFormat;J)Lee/schimke/composeai/daemon/protocol/RecordingEncodeResult;
+	public static synthetic fun recordingEncode-SxA4cEA$default (Lee/schimke/composeai/daemon/client/DaemonClient;Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/RecordingFormat;JILjava/lang/Object;)Lee/schimke/composeai/daemon/protocol/RecordingEncodeResult;
+	public final fun recordingScript (Ljava/lang/String;Ljava/util/List;)V
+	public final fun recordingStart-9VgGkz4 (Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Float;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;J)Lee/schimke/composeai/daemon/protocol/RecordingStartResult;
+	public static synthetic fun recordingStart-9VgGkz4$default (Lee/schimke/composeai/daemon/client/DaemonClient;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Float;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;JILjava/lang/Object;)Lee/schimke/composeai/daemon/protocol/RecordingStartResult;
+	public final fun recordingStop-HG0u8IE (Ljava/lang/String;J)Lee/schimke/composeai/daemon/protocol/RecordingStopResult;
+	public static synthetic fun recordingStop-HG0u8IE$default (Lee/schimke/composeai/daemon/client/DaemonClient;Ljava/lang/String;JILjava/lang/Object;)Lee/schimke/composeai/daemon/protocol/RecordingStopResult;
+	public final fun renderNow-9VgGkz4 (Ljava/util/List;Lee/schimke/composeai/daemon/protocol/RenderTier;Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;J)Lee/schimke/composeai/daemon/protocol/RenderNowResult;
+	public static synthetic fun renderNow-9VgGkz4$default (Lee/schimke/composeai/daemon/client/DaemonClient;Ljava/util/List;Lee/schimke/composeai/daemon/protocol/RenderTier;Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;JILjava/lang/Object;)Lee/schimke/composeai/daemon/protocol/RenderNowResult;
+	public final fun setFocus (Ljava/util/List;)V
+	public final fun setVisible (Ljava/util/List;)V
+	public final fun shutdownAndExit-LRDsOJo (J)V
+	public static synthetic fun shutdownAndExit-LRDsOJo$default (Lee/schimke/composeai/daemon/client/DaemonClient;JILjava/lang/Object;)V
+	public final fun streamStart-9VgGkz4 (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/StreamCodec;Ljava/lang/Integer;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;J)Lee/schimke/composeai/daemon/protocol/StreamStartResult;
+	public static synthetic fun streamStart-9VgGkz4$default (Lee/schimke/composeai/daemon/client/DaemonClient;Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/StreamCodec;Ljava/lang/Integer;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;JILjava/lang/Object;)Lee/schimke/composeai/daemon/protocol/StreamStartResult;
+	public final fun streamStop (Ljava/lang/String;)V
+	public final fun streamVisibility (Ljava/lang/String;ZLjava/lang/Integer;)V
+	public static synthetic fun streamVisibility$default (Lee/schimke/composeai/daemon/client/DaemonClient;Ljava/lang/String;ZLjava/lang/Integer;ILjava/lang/Object;)V
+}
+
+public abstract interface class ee/schimke/composeai/daemon/client/DaemonClientFactory {
+	public abstract fun spawn (Lee/schimke/composeai/daemon/client/WorkspaceId;Lee/schimke/composeai/daemon/DaemonLaunchDescriptor;)Lee/schimke/composeai/daemon/client/DaemonSpawn;
+}
+
+public abstract interface class ee/schimke/composeai/daemon/client/DaemonSpawn {
+	public abstract fun client (Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function0;)Lee/schimke/composeai/daemon/client/DaemonClient;
+	public abstract fun getClient ()Lee/schimke/composeai/daemon/client/DaemonClient;
+	public abstract fun shutdown ()V
+	public fun shutdown-LRDsOJo (J)V
+}
+
+public final class ee/schimke/composeai/daemon/client/DaemonSpawn$DefaultImpls {
+	public static fun shutdown-LRDsOJo (Lee/schimke/composeai/daemon/client/DaemonSpawn;J)V
+}
+
+public final class ee/schimke/composeai/daemon/client/DataProductWireException : java/lang/RuntimeException {
+	public static final field BUDGET_EXCEEDED I
+	public static final field Companion Lee/schimke/composeai/daemon/client/DataProductWireException$Companion;
+	public static final field FETCH_FAILED I
+	public static final field NOT_AVAILABLE I
+	public static final field UNKNOWN I
+	public fun <init> (ILjava/lang/String;Lkotlinx/serialization/json/JsonObject;)V
+	public final fun getCode ()I
+	public final fun getData ()Lkotlinx/serialization/json/JsonObject;
+	public final fun getWireMessage ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/daemon/client/DataProductWireException$Companion {
+	public final fun from (Lkotlinx/serialization/json/JsonObject;)Lee/schimke/composeai/daemon/client/DataProductWireException;
+}
+
+public final class ee/schimke/composeai/daemon/client/SubprocessDaemonClientFactory : ee/schimke/composeai/daemon/client/DaemonClientFactory {
+	public fun <init> ()V
+	public fun spawn (Lee/schimke/composeai/daemon/client/WorkspaceId;Lee/schimke/composeai/daemon/DaemonLaunchDescriptor;)Lee/schimke/composeai/daemon/client/DaemonSpawn;
+}
+
+public final class ee/schimke/composeai/daemon/client/WorkspaceId {
+	public static final field Companion Lee/schimke/composeai/daemon/client/WorkspaceId$Companion;
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lee/schimke/composeai/daemon/client/WorkspaceId;
+	public static synthetic fun copy$default (Lee/schimke/composeai/daemon/client/WorkspaceId;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/daemon/client/WorkspaceId;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/daemon/client/WorkspaceId$Companion {
+	public final fun derive (Ljava/lang/String;Ljava/io/File;)Lee/schimke/composeai/daemon/client/WorkspaceId;
+}
+
