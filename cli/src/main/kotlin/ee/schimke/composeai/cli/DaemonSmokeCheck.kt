@@ -3,7 +3,6 @@ package ee.schimke.composeai.cli
 import ee.schimke.composeai.daemon.DaemonLaunchDescriptor
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.mcp.DaemonClientFactory
-import ee.schimke.composeai.mcp.RegisteredProject
 import ee.schimke.composeai.mcp.SubprocessDaemonClientFactory
 import ee.schimke.composeai.mcp.WorkspaceId
 import java.io.File
@@ -69,8 +68,8 @@ internal fun daemonDescriptorFile(projectDir: File, modulePath: String): File {
  * Run the smoke test for one module. Returns a [DaemonSmokeOutcome] describing the result.
  *
  * [factory] defaults to the production subprocess factory; tests inject an in-memory factory.
- * [workspaceName] is the project's root name (used for the synthesised [WorkspaceId] passed to the
- * factory — production daemons don't care, but the [RegisteredProject] type wants something).
+ * [workspaceName] is the project's root name, used to derive the [WorkspaceId] the factory names
+ * the daemon by.
  */
 internal fun runDaemonSmokeTest(
   projectDir: File,
@@ -95,17 +94,9 @@ internal fun runDaemonSmokeTest(
   if (!descriptor.enabled) return DaemonSmokeOutcome.DescriptorDisabled(descriptorFile)
 
   val canonicalRoot = runCatching { projectDir.canonicalFile }.getOrDefault(projectDir.absoluteFile)
-  val project =
-    RegisteredProject(
-      workspaceId = WorkspaceId.derive(workspaceName, canonicalRoot),
-      rootProjectName = workspaceName,
-      path = canonicalRoot,
-      knownModules = mutableListOf(),
-    )
-
   val spawn =
     try {
-      factory.spawn(project, descriptor)
+      factory.spawn(WorkspaceId.derive(workspaceName, canonicalRoot), descriptor)
     } catch (e: Exception) {
       return DaemonSmokeOutcome.SpawnFailed(reason = e.message ?: e.javaClass.simpleName)
     }
@@ -115,7 +106,7 @@ internal fun runDaemonSmokeTest(
   return try {
     val result =
       client.initialize(
-        workspaceRoot = project.path.absolutePath,
+        workspaceRoot = canonicalRoot.absolutePath,
         moduleId = descriptor.modulePath,
         moduleProjectDir = descriptor.workingDirectory,
       )

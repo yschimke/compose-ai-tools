@@ -207,7 +207,7 @@ class DaemonSupervisor(
     // before `daemonFor` returns. With sandboxCount > 1 the daemon's per-sandbox bootstrap is
     // sequenced internally (RobolectricHost.start), so the wall-clock here is roughly
     // (1 + replicasPerDaemon) × per-sandbox-boot.
-    val spawn = clientFactory.spawn(project, descriptor)
+    val spawn = clientFactory.spawn(project.workspaceId, descriptor)
     spawn.client(
       onNotification = { method, params ->
         router.dispatch(supervised, method, params)
@@ -688,9 +688,17 @@ fun interface DescriptorProvider {
  * tests inject an in-memory factory that wires the [DaemonClient] to a fake daemon over piped
  * streams. The factory returns a [DaemonSpawn] that owns the underlying resource (subprocess or
  * coroutine).
+ *
+ * [workspaceId] identifies which workspace the daemon serves; with
+ * [DaemonLaunchDescriptor.modulePath] it names the daemon in logs and keys test doubles. It is
+ * deliberately *not* a [RegisteredProject]: that type carries the MCP supervisor's own registry
+ * ([RegisteredProject.knownModules], [RegisteredProject.daemons]), and naming it here would put the
+ * supervision model in the signature of every consumer that only wants to start a daemon —
+ * including the render-session library, which built a throwaway [RegisteredProject] purely to
+ * satisfy this parameter. Spawning needs the identity, not the registry.
  */
 fun interface DaemonClientFactory {
-  fun spawn(project: RegisteredProject, descriptor: DaemonLaunchDescriptor): DaemonSpawn
+  fun spawn(workspaceId: WorkspaceId, descriptor: DaemonLaunchDescriptor): DaemonSpawn
 }
 
 /**

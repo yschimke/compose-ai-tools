@@ -5,7 +5,6 @@ import ee.schimke.composeai.daemon.protocol.InitializeResult
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.mcp.DaemonClient
 import ee.schimke.composeai.mcp.DaemonClientFactory
-import ee.schimke.composeai.mcp.RegisteredProject
 import ee.schimke.composeai.mcp.SubprocessDaemonClientFactory
 import ee.schimke.composeai.mcp.WorkspaceId
 import ee.schimke.composeai.render.session.RenderSession
@@ -185,17 +184,9 @@ object SubprocessRenderSessions : RenderSessionFactory {
     shutdownTimeout: Duration?,
     factory: DaemonClientFactory,
   ): RenderSession {
-    val project =
-      RegisteredProject(
-        workspaceId = WorkspaceId.derive(workspaceName, canonicalRoot),
-        rootProjectName = workspaceName,
-        path = canonicalRoot,
-        knownModules = mutableListOf(),
-      )
-
     val spawn =
       try {
-        factory.spawn(project, descriptor)
+        factory.spawn(WorkspaceId.derive(workspaceName, canonicalRoot), descriptor)
       } catch (e: Exception) {
         throw RenderSessionException(
           "Failed to spawn daemon subprocess for ${descriptor.modulePath}: " +

@@ -795,11 +795,11 @@ class FakeDaemonClientFactory : DaemonClientFactory {
    */
   @Volatile var daemonConfigurer: (FakeDaemon) -> Unit = {}
 
-  override fun spawn(project: RegisteredProject, descriptor: DaemonLaunchDescriptor): DaemonSpawn {
+  override fun spawn(workspaceId: WorkspaceId, descriptor: DaemonLaunchDescriptor): DaemonSpawn {
     val daemon = FakeDaemon()
     runCatching { daemonConfigurer(daemon) }
     synchronized(this) {
-      daemons[project.workspaceId to descriptor.modulePath] = daemon
+      daemons[workspaceId to descriptor.modulePath] = daemon
       spawnHistory.add(daemon)
       spawnDescriptors.add(descriptor)
     }
