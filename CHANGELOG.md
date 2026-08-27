@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.37.0](https://github.com/yschimke/compose-ai-tools/compare/v1.36.0...v1.37.0) (2026-08-27)
+
+
+### Features
+
+* **serve:** subtract a declared capture gutter when a sheet lays a render out ([#4542](https://github.com/yschimke/compose-ai-tools/issues/4542)) ([6d14063](https://github.com/yschimke/compose-ai-tools/commit/6d14063ea8919ee680212606ecf7225019248f38))
+
+
+### Bug Fixes
+
+* **ci:** schedule the contract probe on the pseudolocale module's own sources ([#4546](https://github.com/yschimke/compose-ai-tools/issues/4546)) ([db09175](https://github.com/yschimke/compose-ai-tools/commit/db0917519041a1501e614dcdc37e29634c9dcd0d))
+* **deps:** take the rest of the minor/patch group, hold coil3 and robolectric ([#4548](https://github.com/yschimke/compose-ai-tools/issues/4548)) ([27225bc](https://github.com/yschimke/compose-ai-tools/commit/27225bc1f665e53223f73310e2acebb4214070eb))
+* **serve:** keep one challenger at the optimizer door so parked catalogs rotate ([#4541](https://github.com/yschimke/compose-ai-tools/issues/4541)) ([4cbdb3c](https://github.com/yschimke/compose-ai-tools/commit/4cbdb3cf6bd2fcdfe168778ec5a4d0b893784547))
+
 ## [1.36.0](https://github.com/yschimke/compose-ai-tools/compare/v1.35.0...v1.36.0) (2026-08-27)
 
 
