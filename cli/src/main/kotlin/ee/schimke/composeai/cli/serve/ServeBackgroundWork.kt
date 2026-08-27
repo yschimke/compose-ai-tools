@@ -89,6 +89,8 @@ class ServeBackgroundWork(
   private val optimizerAdmissions = AtomicLong()
   private val optimizerRefusals = AtomicLong()
   private val optimizerAdmissionWaitMillis = AtomicLong()
+  private val optimizerHostSuspensions = AtomicLong()
+  private val optimizerHostResumes = AtomicLong()
   private val optimizerPausedUntil = AtomicLong(Long.MIN_VALUE)
   private val optimizerPauseReason = ConcurrentHashMap<String, String>()
   private val optimizerHostRefusals = AtomicLong()
@@ -292,6 +294,40 @@ class ServeBackgroundWork(
     }
   }
 
+  /**
+   * Lanes nothing is holding right now — how many parked catalogs it is worth making resident
+   * again, and no more.
+   *
+   * [ServeSessionRegistry.resumeIdleOptimizers] reads this because resuming costs a cold Android
+   * daemon (34-68s) and roughly a gigabyte for as long as it stays up. Resuming a catalog that then
+   * queues behind two others pays that price to sit at the door, which is the residency this whole
+   * change exists to stop paying.
+   *
+   * Advisory, deliberately unsynchronized: an admission landing in the same instant makes this one
+   * too high and the resumed pass simply queues, which is the ordinary case anyway.
+   */
+  fun optimizerLanesFree(): Int =
+    if (optimizersPaused()) 0
+    else
+      admissionLock.run {
+        lock()
+        try {
+          (optimizerLanes - optimizerLanesInUse - optimizerQueue.size).coerceAtLeast(0)
+        } finally {
+          unlock()
+        }
+      }
+
+  /** A catalog with optimization left to do had its host released to reclaim its daemon's RAM. */
+  fun recordOptimizerHostSuspended() {
+    optimizerHostSuspensions.incrementAndGet()
+  }
+
+  /** A parked catalog was made resident again so it could take a lane. */
+  fun recordOptimizerHostResumed() {
+    optimizerHostResumes.incrementAndGet()
+  }
+
   private fun releaseOptimizerLane(system: String) {
     admissionLock.lock()
     try {
@@ -383,6 +419,8 @@ class ServeBackgroundWork(
       refusals = optimizerRefusals.get(),
       hostRefusals = optimizerHostRefusals.get(),
       admissionWaitMillis = optimizerAdmissionWaitMillis.get(),
+      hostSuspensions = optimizerHostSuspensions.get(),
+      hostResumes = optimizerHostResumes.get(),
       paused = paused,
       pausedUntilEpochMillis = if (manuallyPaused) until else null,
       pauseReason =
@@ -507,6 +545,19 @@ data class ThemeOptimizerAdmissionSnapshot(
   val refusals: Long,
   val hostRefusals: Long = 0,
   val admissionWaitMillis: Long,
+  /**
+   * Catalogs whose host was released while they still had optimization left, and catalogs made
+   * resident again to take a lane — the residency the pass costs when it is *not* running.
+   *
+   * The pair is the read that was missing while every unfinished catalog stayed resident for the
+   * life of the process: `running`/`waiting` describe passes, and a parked pass looks free there
+   * while its daemon holds ~1.2 GB. A [hostSuspensions] that stays 0 on a box with more unfinished
+   * catalogs than [lanes] means the residency rule is not firing, whatever the memory reading says.
+   * [hostResumes] climbing far faster than [admissions] is the opposite fault: catalogs paying a
+   * cold start to queue rather than to render.
+   */
+  val hostSuspensions: Long = 0,
+  val hostResumes: Long = 0,
   val paused: Boolean,
   val pausedUntilEpochMillis: Long? = null,
   val pauseReason: String? = null,

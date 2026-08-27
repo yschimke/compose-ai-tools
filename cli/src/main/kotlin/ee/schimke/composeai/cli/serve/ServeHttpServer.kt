@@ -5431,7 +5431,13 @@ class ServeHttpServer(
             " · duty cycle $cycles" + (pressure.reason?.let { " · $it" } ?: "")
           cycles > 0 -> " · ${countLabel(cycles, "duty cycle")}"
           else -> ""
-        }
+        } +
+          // Residency is the other half of the memory story the gate reads. A box with more
+          // unfinished catalogs than lanes and `0 parked` is one whose daemons are still pinned by
+          // their own backlog — the state that made the reading the gate trips on.
+          if (admission.hostSuspensions > 0 || admission.hostResumes > 0)
+            " · ${admission.hostSuspensions} parked / ${admission.hostResumes} resumed"
+          else ""
       if (admission.paused) {
         return "paused" + (admission.pauseReason?.let { " · $it" } ?: "") + dutyCycles
       }

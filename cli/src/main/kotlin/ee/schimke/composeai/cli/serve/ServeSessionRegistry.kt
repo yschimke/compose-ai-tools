@@ -286,6 +286,9 @@ class ServeSessionRegistry(
               runCatching { suspendIdle() }
               runCatching { releaseIdleDaemons() }
               runCatching { reclaimIdleForked() }
+              // After the shedding, not before: the lane a parked catalog is resumed into is
+              // usually the one this sweep's suspensions just freed.
+              runCatching { resumeIdleOptimizers() }
             },
             reaperIntervalMillis,
             reaperIntervalMillis,
@@ -582,6 +585,9 @@ class ServeSessionRegistry(
           // Under the lock, BEFORE the detach: this and `entry.host = null` are one transition,
           // so no reader can catch the session detached with its snapshot not yet published.
           snapshots?.let { runCatching { it.capture(id, host) } }
+          if (optimizerUnfinished(entry.state)) {
+            runCatching { entry.state?.backgroundWork?.recordOptimizerHostSuspended() }
+          }
           entry.host = null
           entry.startedAt = null
           entry.closing = true
@@ -624,6 +630,67 @@ class ServeSessionRegistry(
       if (closed) emptyList() else sessions.values.mapNotNull { it.host }
     }
     return hosts.sumOf { host -> runCatching { host.releaseIdleDaemons(window) }.getOrDefault(0) }
+  }
+
+  /**
+   * Bring back the parked catalog that has waited longest, while a lane is free to give it.
+   *
+   * The counterpart to letting an unfinished optimizer be suspended at all. Its progress survives —
+   * a catalog's rendered PNGs live in [ServeSessionState.catalogThemeCache], which outlives the
+   * host — but nothing would *restart* the pass: re-entry rides on [ServeHost.keepLiveWarm], which
+   * a visitor's presence heartbeat drives, so on a box nobody is browsing the parked catalogs would
+   * simply stop. This is the heartbeat they would otherwise never get.
+   *
+   * Bounded by [ServeBackgroundWork.optimizerLanesFree] because resuming is not free: it costs a
+   * cold Android daemon (34-68s) and holds roughly a gigabyte for as long as the host stays up.
+   * Resuming a catalog that then queues behind two others pays that price to stand at the door,
+   * which is exactly the residency suspension reclaims. One per sweep, longest-parked first, so the
+   * rotation is the same fair one admission uses.
+   *
+   * **Only on a quiet server.** A resume is background work like the renders it leads to, and a
+   * cold start landing while someone is browsing competes with them for the seat budget.
+   */
+  fun resumeIdleOptimizers(): Int {
+    val toWarm = lock.withLock {
+      if (closed) return 0
+      if (idleMillis() == null) return 0
+      val candidates =
+        sessions.values
+          .filter { it.host == null && !it.closing && optimizerUnfinished(it.state) }
+          .sortedBy { it.lastAccess }
+      val resumed = mutableListOf<ServeHost>()
+      var lanes = candidates.firstOrNull()?.state?.backgroundWork?.optimizerLanesFree() ?: 0
+      for (entry in candidates) {
+        if (lanes <= 0) break
+        val host = liveHost(entry) ?: continue
+        // The session's own idle clock, NOT `lastActivity`: that one is the whole-server quiet
+        // gate the optimizer reads, and stamping it here would have the resume report the server
+        // as busy and refuse the very turn it was resumed to take. This one only buys the host
+        // `idleTimeoutMillis` before [suspendIdle] looks at it again, which is the slice it needs
+        // to win a lane and render.
+        entry.lastAccess = clock()
+        runCatching { entry.state?.backgroundWork?.recordOptimizerHostResumed() }
+        resumed += host
+        lanes--
+      }
+      resumed
+    }
+    // Outside the lock: `keepLiveWarm` re-enters the optimization pass, and a pass that starts
+    // synchronously here would hold the registry lock across a daemon warm.
+    toWarm.forEach { runCatching { it.keepLiveWarm() } }
+    return toWarm.size
+  }
+
+  /**
+   * Whether this session is a catalog with theme-optimization targets left to fill.
+   *
+   * Read from [ServeSessionState] rather than from a host, because the whole point is to ask it of
+   * a session whose host is gone. A session with no cache, or one whose optimizer is switched off
+   * (no targets are ever configured, so `total` stays 0), is not a candidate.
+   */
+  private fun optimizerUnfinished(state: ServeSessionState?): Boolean {
+    val snapshot = state?.catalogThemeCache?.snapshot() ?: return false
+    return snapshot.total > 0 && !snapshot.fullyOptimized
   }
 
   /**

@@ -903,6 +903,29 @@ When enabled, it yields twice over — both learned from `preview.coo.ee`:
   scheduler eventually warmed one non-reapable primary per catalog: the public box reached 17
   resident daemons with no traffic, and that idle RAM kept the pressure gate closed against the
   optimizer that created it.
+- **A catalog is resident for its lane, not for its backlog.** The pass worker does not end while a
+  catalog has targets left — it loops through the quiet gate, takes a slice, re-queues — and the
+  registry refuses to suspend a host whose `backgroundWorkActive` is set. Setting that flag for the
+  worker's whole life therefore made "this catalog is not fully optimized" mean "this catalog's
+  daemon can never be released": the public box carried nine such residents at zero active streams,
+  `MemAvailable` pinned at 14-21%, and the pressure gate consequently holding — so the only progress
+  left was the starvation cap's five-minute concessions (50 of them across a 40-hour uptime,
+  1,502 of 18,604 entries, i.e. roughly a **ten-day** finish). The optimizer's own residency was
+  what stopped the optimizer running. The flag now covers only the slice a pass actually holds a
+  lane for. A parked catalog is suspendable, loses its daemon on the ordinary idle sweep, and its
+  progress is unaffected — the rendered PNGs live in `ServeSessionState.catalogThemeCache`, which
+  is retained across suspend/resume precisely so they survive it.
+- **Parked catalogs are resumed by the reaper, not by a visitor.** Re-entering a pass rides on
+  `keepLiveWarm()`, which a presence heartbeat drives, so suspending an unfinished catalog on a box
+  nobody is browsing would simply stop it. `ServeSessionRegistry.resumeIdleOptimizers()` runs after
+  each suspend/reap sweep and brings back the longest-parked unfinished catalog — only while the
+  server is quiet, and only as many as `ServeBackgroundWork.optimizerLanesFree()` says can take a
+  lane now. Resuming costs a cold Android daemon (34-68s) and about a gigabyte for as long as the
+  host stays up, so resuming a catalog that would then queue behind two others pays that price to
+  stand at the door. `themeOptimizer.hostSuspensions` / `hostResumes` on `/status.json` report the
+  two sides: suspensions stuck at 0 with more unfinished catalogs than `lanes` means the residency
+  rule is not firing, and resumes far outrunning `admissions` means catalogs are paying cold starts
+  to queue rather than to render.
 
 **When it isn't running, `/status` says which gate is holding it.** A pass must clear a quiet gate
 before it starts: the whole server has to have been untouched for
