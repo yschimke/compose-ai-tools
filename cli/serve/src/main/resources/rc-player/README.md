@@ -27,7 +27,7 @@ copy it back over this file:
   third_party/remote-compose-player/src/web/main.ts \
   --bundle --format=iife --target=es2020 \
   --global-name=RC --external:canvas \
-  --outfile=cli/src/main/resources/rc-player/bundle.js
+  --outfile=cli/serve/src/main/resources/rc-player/bundle.js
 ```
 
 Run it **from the repository root**, as written. esbuild labels each bundled

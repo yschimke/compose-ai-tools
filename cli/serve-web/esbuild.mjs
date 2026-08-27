@@ -28,6 +28,9 @@ const assets = (name) =>
     resolve(
         root,
         "..",
+        // The server is its own Gradle module (#3824 item 7); its resources moved with it, so
+        // the bundles are written into `cli/serve/`, not `cli/`.
+        "serve",
         "src",
         "main",
         "resources",

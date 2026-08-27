@@ -122,7 +122,7 @@
     "design_artifacts": [
       "design-map/**",
       "scripts/design-artifacts/**",
-      "cli/src/main/resources/rc-player/**",
+      "cli/serve/src/main/resources/rc-player/**",
       ".github/actions/lib/**"
     ],
     "preview_server_contracts": [

@@ -9,7 +9,7 @@
 // duplicate than a coupling the split has to unpick later.
 //
 // Note what the ORIGINAL already did: it resolved the serve viewer's assets out of
-// `cli/src/main/resources/.../serve/assets`. The extension's harness server was serving serve's
+// `cli/serve/src/main/resources/.../serve/assets`. The extension's harness server was serving serve's
 // stylesheets — one more way the misfiling showed.
 
 import { fileURLToPath } from "node:url";
@@ -43,7 +43,7 @@ const mimeByExt = {
 // however the harness is booted (in-process or standalone).
 const SERVE_ASSETS_DIR = resolve(
     harnessDir,
-    "../../cli/src/main/resources/ee/schimke/composeai/cli/serve/assets",
+    "../../cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets",
 );
 
 export function startServer(root, port = 0) {

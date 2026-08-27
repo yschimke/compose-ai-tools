@@ -34,7 +34,7 @@ import { fileURLToPath } from "node:url";
 import { PNG } from "pngjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const BUNDLE = path.resolve(HERE, "../../cli/src/main/resources/rc-player/bundle.js");
+const BUNDLE = path.resolve(HERE, "../../cli/serve/src/main/resources/rc-player/bundle.js");
 const WEIGHT_FIXTURE = path.join(HERE, "fixtures", "typeface-variable-weight.rc");
 const WIDTH_FIXTURE = path.join(HERE, "fixtures", "typeface-variable-width.rc");
 /** The catalog's own variable face — an `fvar` table is what makes the ramp possible at all. */

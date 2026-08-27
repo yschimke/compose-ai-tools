@@ -10,7 +10,7 @@ emits for each mode:
 | `dev-mode.png` | `serve-home-index` | Dev — the full interface (menu, status, settings) |
 
 Captured by serving the fixture directory alongside
-`cli/src/main/resources/ee/schimke/composeai/cli/serve/assets` as `/assets/serve/fixture` and
+`cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets` as `/assets/serve/fixture` and
 screenshotting each page at 1280×760 in headless Chromium — the same pages
 `pages-snapshot.spec.mjs` shoots for the visual-diff bot.
 

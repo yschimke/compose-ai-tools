@@ -28,9 +28,9 @@ must work with no CDN reachable.
 ```bash
 npm pack lottie-web@<version>
 tar xzf lottie-web-<version>.tgz package/build/player/lottie.min.js package/LICENSE.md
-cp package/build/player/lottie.min.js cli/src/main/resources/lottie-player/bundle.js
-cp package/LICENSE.md                 cli/src/main/resources/lottie-player/LICENSE.md
-sha256sum cli/src/main/resources/lottie-player/bundle.js   # refresh the row above
+cp package/build/player/lottie.min.js cli/serve/src/main/resources/lottie-player/bundle.js
+cp package/LICENSE.md                 cli/serve/src/main/resources/lottie-player/LICENSE.md
+sha256sum cli/serve/src/main/resources/lottie-player/bundle.js   # refresh the row above
 ```
 
 Keep the version, licence and digest rows above in step with the file — they are

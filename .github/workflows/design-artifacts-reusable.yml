@@ -1658,7 +1658,7 @@ jobs:
           fi
           echo "✓ Chromium ready."
 
-          PLAYER="$GITHUB_WORKSPACE/compose-ai-tools/cli/src/main/resources/rc-player/bundle.js"
+          PLAYER="$GITHUB_WORKSPACE/compose-ai-tools/cli/serve/src/main/resources/rc-player/bundle.js"
           EMBEDDED_ARGS=()
 
           # The shared machine-local Google Fonts cache, laid out exactly as `composeAiFontsCacheDir`

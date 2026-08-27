@@ -22,7 +22,7 @@
 //   node scripts/compare-audit.mjs mirror --all --dir .audit-mirror
 //   node scripts/compare-audit.mjs run --dir .audit-mirror --format reference
 //   node scripts/compare-audit.mjs run --dir .audit-mirror --format reference \
-//     --patch cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js
+//     --patch cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js
 //
 // Requires `playwright` on NODE_PATH (the vscode-extension dev dependency, or a standalone install).
 

@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, "..", "..", "..");
 const css = readFileSync(
-  join(repo, "cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/serve.css"),
+  join(repo, "cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/serve.css"),
   "utf8",
 );
 

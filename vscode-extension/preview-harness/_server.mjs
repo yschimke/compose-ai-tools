@@ -45,7 +45,7 @@ const mimeByExt = {
 // however the harness is booted (in-process or standalone).
 const SERVE_ASSETS_DIR = resolve(
     harnessDir,
-    "../../cli/src/main/resources/ee/schimke/composeai/cli/serve/assets",
+    "../../cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets",
 );
 
 export function startServer(root, port = 0) {

@@ -13,7 +13,7 @@
  * failure needs the actual Canvas2D semantics (`roundRect`'s non-finite bail-out, and what an empty
  * clip does to later draws) to reproduce at all, and it is silent everywhere else — the document
  * parses, no opcode is unknown, nothing warns. Only the pixels tell you. It exercises the built
- * bundle (`cli/src/main/resources/rc-player/bundle.js`) for the same reason `rc-webfonts.test.mjs`
+ * bundle (`cli/serve/src/main/resources/rc-player/bundle.js`) for the same reason `rc-webfonts.test.mjs`
  * does: that is the artifact that actually ships, and a stale bundle beside fixed source is exactly
  * the regression worth catching.
  */
@@ -24,7 +24,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const BUNDLE = path.resolve(HERE, "../../cli/src/main/resources/rc-player/bundle.js");
+const BUNDLE = path.resolve(HERE, "../../cli/serve/src/main/resources/rc-player/bundle.js");
 const FIXTURE = path.join(HERE, "fixtures", "watch-screen-round-clip.rc");
 // The fixture's own generation size; the document is a 227dp round watch face at density 2.
 const WIDTH = 454;

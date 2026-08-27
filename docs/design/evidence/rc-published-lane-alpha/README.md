@@ -94,7 +94,7 @@ Both compare-page rows above come from a full parity run of that same bundle:
 
 ```sh
 node scripts/design-artifacts/rc-compare.mjs \
-  --bundle bundle.png --player cli/src/main/resources/rc-player/bundle.js \
+  --bundle bundle.png --player cli/serve/src/main/resources/rc-player/bundle.js \
   --out /tmp/parity --system remote-m3
 # then screenshot the first row of /tmp/parity/rc-compare.html
 ```

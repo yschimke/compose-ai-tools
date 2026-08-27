@@ -130,7 +130,7 @@ Two properties fall out of this split:
 | Live, daemon-backed streaming session | `cli/.../serve/ServeLiveSession.kt`, `ServeStreamSession.kt`, per-preview pool | **Shipped.** `compose-m3` (desktop) and `wear-m3` (Android) run live on `preview.coo.ee`. |
 | Interactive `input` protocol (click / pointer / rotary / key) | `docs/serve/SESSION-VIEWER-PROTOCOL.md` §`input`, `ServeStreamProtocol.parseClient` | **Shipped.** Dispatched into the live composition; snapshot lane ignores it. |
 | Expiring capability permalink (id = 128-bit `SecureRandom`, TTL, `private,no-store`) | `cli/.../serve/ServeDocStore.kt` | **Shipped.** The literal template for the preview-token store. |
-| Remote Compose document → browser playback | `--accept-docs`, `ServeDocFormats`, vendored `RcdPlayer` (`cli/src/main/resources/rc-player/`) | **Shipped.** RC-in-browser needs no server round-trip per interaction. |
+| Remote Compose document → browser playback | `--accept-docs`, `ServeDocFormats`, vendored `RcdPlayer` (`cli/serve/src/main/resources/rc-player/`) | **Shipped.** RC-in-browser needs no server round-trip per interaction. |
 | Live-seat admission budget (desktop = 1 permit, Android = 2) | `cli/.../serve/LiveSeatLimiter.kt` | **Shipped**, but sized for *trusted catalogs* — see [§6](#6-isolation-the-actual-hard-part). |
 
 ### 2.2 What is new

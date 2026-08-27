@@ -22,7 +22,7 @@ const assets = resolve(
     here,
     "..",
     "..",
-    "src/main/resources/ee/schimke/composeai/cli/serve/assets",
+    "serve/src/main/resources/ee/schimke/composeai/cli/serve/assets",
 );
 const tracked = [
     "serve-components.js",

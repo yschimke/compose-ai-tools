@@ -4,7 +4,7 @@ The browser side of `compose-preview serve`, as typed, tested Lit components
 instead of hand-rolled IIFEs in `assets/*.js`.
 
 Built to a single committed bundle at
-`cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/serve-components.js`,
+`cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/serve-components.js`,
 which `ServeWebAssets` then serves like any other static asset.
 
 ```

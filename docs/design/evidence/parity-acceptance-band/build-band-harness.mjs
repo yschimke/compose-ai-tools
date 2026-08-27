@@ -57,7 +57,7 @@ function maskPng(box) {
   return encodePng({ width: plane.box.width, height: plane.box.height, colourType: 0, samples });
 }
 
-const [VARIANT = "band", BUNDLE = "/home/user/compose-ai-tools/cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/known-differences.js", OUT = "/tmp/claude-0/-home-user/a80ed2f7-16cc-5418-810d-c29ddab48aca/scratchpad/band/band.html"] =
+const [VARIANT = "band", BUNDLE = "/home/user/compose-ai-tools/cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/known-differences.js", OUT = "/tmp/claude-0/-home-user/a80ed2f7-16cc-5418-810d-c29ddab48aca/scratchpad/band/band.html"] =
   process.argv.slice(2);
 
 const glyphMask = maskPng(GLYPH);
@@ -126,7 +126,7 @@ const routes = {
   "/m3/parity/known-differences/m3-iconbutton-tonal-badge/accepted-candidate.png": { b64: b64(otherAccepted) },
 };
 
-const css = readFileSync("/home/user/compose-ai-tools/cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/serve.css", "utf8");
+const css = readFileSync("/home/user/compose-ai-tools/cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/serve.css", "utf8");
 const bundle = readFileSync(BUNDLE, "utf8");
 
 const context = {

@@ -590,7 +590,7 @@ theme on `https://preview.coo.ee/meshcore-mobile/` lands on
 later reopens exactly there.
 
 Nothing reloads. Every write is a `history.pushState` / `replaceState` from
-[`assets/url-state.js`](../cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/url-state.js),
+[`assets/url-state.js`](../cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/url-state.js),
 and Back/Forward re-points the grid (or the viewer's controls) in place — no second fetch of a page
 the browser already has, and no re-render the visitor didn't ask for. Params the server owns
 (`token`, `session`, …) are never touched, and a control back at its default **clears** its param
@@ -1133,7 +1133,7 @@ snapping back to the catalog's baked one.
 The server exists to show Material design systems, so the page around them is one too. The web
 chrome is built on **Material 3** (Material You) — the same design language `@material/web` ships —
 expressed as a token layer at the top of
-[`serve.css`](../cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/serve.css): the
+[`serve.css`](../cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/serve.css): the
 `--md-sys-color-*` role set (the primary/secondary/tertiary/error families, the surface-container
 ladder, the outline pair), the shape scale, the six elevation levels, the state-layer opacities, the
 motion easings, and the type scale. The `--cp-*` properties the sheet was already written against
@@ -2798,7 +2798,7 @@ adding one is a registry entry plus its player bundle, not a new route:
 | Format | Sniffed by | Played by | Player bundle |
 |---|---|---|---|
 | **Remote Compose** (`.rc`) | the `Header` op's `0x048C` magic | `RC.RcdPlayer` on a `<canvas>` | the same vendored player the preview viewer's canvas lane uses |
-| **Lottie** (`.json`) | a Bodymovin object (`layers` + `fr`/`ip`/`op`) | `lottie-web` (SVG renderer) | vendored MIT build, `cli/src/main/resources/lottie-player/` |
+| **Lottie** (`.json`) | a Bodymovin object (`layers` + `fr`/`ip`/`op`) | `lottie-web` (SVG renderer) | vendored MIT build, `cli/serve/src/main/resources/lottie-player/` |
 
 Why this is safe to leave open on a public box, and where its limits are:
 

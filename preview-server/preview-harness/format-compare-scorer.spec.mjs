@@ -29,7 +29,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const SCORER = readFileSync(
     resolve(
         here,
-        "../../cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js",
+        "../../cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js",
     ),
     "utf8",
 );

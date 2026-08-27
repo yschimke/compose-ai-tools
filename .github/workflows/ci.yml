@@ -583,7 +583,7 @@ jobs:
           set -euo pipefail
           node rc-compare.mjs \
             --bundle "$RUNNER_TEMP/corpus/bundle.png" \
-            --player "$GITHUB_WORKSPACE/cli/src/main/resources/rc-player/bundle.js" \
+            --player "$GITHUB_WORKSPACE/cli/serve/src/main/resources/rc-player/bundle.js" \
             --out "$RUNNER_TEMP/parity-base" \
             --system remote-m3 \
             --cmp-wasm "$RUNNER_TEMP/parity-base-source/rc-player/wasm/build/wasmDist"
@@ -594,7 +594,7 @@ jobs:
           set -euo pipefail
           node rc-compare.mjs \
             --bundle "$RUNNER_TEMP/corpus/bundle.png" \
-            --player "$GITHUB_WORKSPACE/cli/src/main/resources/rc-player/bundle.js" \
+            --player "$GITHUB_WORKSPACE/cli/serve/src/main/resources/rc-player/bundle.js" \
             --out "$RUNNER_TEMP/parity-out" \
             --system remote-m3 \
             --cmp-wasm "$GITHUB_WORKSPACE/rc-player/wasm/build/wasmDist"
@@ -1389,7 +1389,7 @@ jobs:
         run: ./.github/scripts/test-refresh-driver-pin.sh
 
   # The design-artifacts driver's own `node --test` suite, including the browser tests that drive the
-  # built Remote Compose player bundle (`cli/src/main/resources/rc-player/bundle.js`) in headless
+  # built Remote Compose player bundle (`cli/serve/src/main/resources/rc-player/bundle.js`) in headless
   # Chromium. Those tests existed but nothing ran them, which is how a player bug that renders a
   # whole document as a blank canvas reached a published catalog unnoticed (#2930): the pixels are
   # the only signal — the document parses and warns about nothing — and the weekly render is the
@@ -1496,7 +1496,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # `cli/serve-web/`'s bundle is COMMITTED (to `cli/src/main/resources/.../serve/assets/
+      # `cli/serve-web/`'s bundle is COMMITTED (to `cli/serve/src/main/resources/.../serve/assets/
       # serve-components.js`) so the Gradle build and the release chain stay node-free. The cost of
       # a committed artifact is that it goes stale silently: edit a component, forget `npm run
       # build`, and `:cli:test` and every shipped tarball keep serving the old behaviour while the

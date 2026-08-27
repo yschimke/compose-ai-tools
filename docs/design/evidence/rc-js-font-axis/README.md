@@ -61,7 +61,7 @@ git show design-artifacts/remote-m3:bundle/bundle.png > bundle.png && unzip -o b
 ```
 
 Then render `VariableWeightRemote` followed by `VariableWidthRemote` into a single Playwright page
-with `cli/src/main/resources/rc-player/bundle.js`, using the same sequence `rc-compare.mjs` uses per
+with `cli/serve/src/main/resources/rc-player/bundle.js`, using the same sequence `rc-compare.mjs` uses per
 document (`loadFromArrayBuffer` → `repaint` → `await fontsReady()` → `repaint`). The hermetic version
 of exactly this is
 [`rc-font-axis-order.test.mjs`](../../../../scripts/design-artifacts/rc-font-axis-order.test.mjs),

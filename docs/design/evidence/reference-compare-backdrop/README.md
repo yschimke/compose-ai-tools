@@ -8,7 +8,7 @@ The reference-compare page was the one comparison surface with no ground of its 
 [`ServeWeb.referenceComparisonPage`](../../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeWeb.kt)
 emitted `#cp-reference-compare` with no `data-bg-theme`, unlike the grid cards and the viewer, both
 of which resolve one. So all three panels fell through to `.cp-compare-shot`'s default in
-[`serve.css`](../../../cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/serve.css) —
+[`serve.css`](../../../cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/serve.css) —
 a **transparency checkerboard**. The only solid override, `.cp-compare-row[data-bg-theme="dark"]`,
 is scoped to the compare wall's rows, which this page has none of.
 
