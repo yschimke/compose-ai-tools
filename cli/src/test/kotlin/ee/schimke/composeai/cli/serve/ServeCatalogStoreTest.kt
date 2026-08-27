@@ -800,6 +800,48 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `the derivation stages one write per file, and keeps the rest of the document`() {
+    // The same hazard one layer down, where the index's answer is not available. A record naming
+    // `mask.png` and `MASK.PNG` derives two portable paths fetched from two URLs that are ONE file
+    // on Windows and on a default macOS volume; the plan runs concurrently, so staging both leaves
+    // behind whichever worker returned last — and the canonical spelling on disk may be the one the
+    // reader then rejects for case.
+    //
+    // Rejecting the whole list the way `publishedArtifactIndex` does is NOT available here: an
+    // index that is refused falls back to the derivation, while a derivation that is refused leaves
+    // nothing, so every legal record in the document would lose its artifacts. First spelling wins
+    // instead — which drops a path only when another path in the same plan already claims that
+    // file, and makes the outcome a function of the document rather than of fetch timing.
+    val document =
+      """
+      {"schema":"compose-preview-known-differences/v1","acceptances":[
+        {"id":"glyph","issue":"https://github.com/yschimke/m3-catalog/issues/40",
+         "mask":"mask.png","acceptedCandidate":"MASK.PNG"},
+        {"id":"other","issue":"https://github.com/yschimke/m3-catalog/issues/41",
+         "mask":"mask.png","acceptedCandidate":"accepted-candidate.png"}]}
+      """
+        .trimIndent()
+    val (_, requested) = loadWithArtifactIndex(index = null, document = document)
+
+    val staged = requested.filter { it.contains("/parity/known-differences/") }
+    assertTrue(
+      staged.none { it.contains("MASK.PNG") },
+      "the second spelling of one file must not be scheduled: $staged",
+    )
+    assertTrue(
+      staged.any { it.endsWith("/parity/known-differences/glyph/mask.png") },
+      "the first spelling is the one that wins, not neither: $staged",
+    )
+    // The point of not rejecting outright: a colliding record must not cost its neighbours their
+    // artifacts, which is exactly what returning an empty plan here would do.
+    assertTrue(
+      staged.any { it.endsWith("/parity/known-differences/other/mask.png") } &&
+        staged.any { it.endsWith("/parity/known-differences/other/accepted-candidate.png") },
+      "an unrelated record lost its artifacts to a sibling's collision: $staged",
+    )
+  }
+
+  @Test
   fun `an index cannot name a path the reader would refuse to look up`() {
     // A fetch plan, not a licence. The producer's list goes through exactly the lexical rule the
     // document's paths do, so an index is never a way around it.

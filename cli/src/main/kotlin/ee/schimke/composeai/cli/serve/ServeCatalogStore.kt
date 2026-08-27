@@ -2196,7 +2196,38 @@ class ServeCatalogStore(
     // measured rather than interpreted — the cheapest fact there is, and the only class of verdict
     // a fetch planner has to know in advance. The per-record rules stay where they belong.
     if (documentBytes.size > ServeKnownDifferences.MAX_DOCUMENT_BYTES) return emptyList()
-    return publishedArtifactIndex(base) ?: knownDifferenceArtifactPaths(documentBytes)
+    return oneWritePerFile(
+      publishedArtifactIndex(base) ?: knownDifferenceArtifactPaths(documentBytes)
+    )
+  }
+
+  /**
+   * The plan with any path that would write a file an earlier path already claims removed.
+   *
+   * **A staging invariant, not a contract rule**: never schedule two writes that can land on one
+   * file. `glyph/mask.png` and `glyph/MASK.PNG` are distinct strings, both portable, both fetched
+   * from different URLs — and on Windows or a default macOS volume they are ONE file. The plan runs
+   * concurrently, so staging both means last-finisher-wins: the bytes left behind are whichever
+   * worker returned second, and the canonical spelling on disk may be the one
+   * [ServeKnownDifferences.artifact] then rejects for case. A record's real artifact can be
+   * overwritten by a sibling, differently on each refresh.
+   *
+   * [publishedArtifactIndex] already refuses such a list outright, and can: refusing it means
+   * falling back to the derivation, so nothing is lost. The **derivation** has nothing below it, so
+   * rejecting there would strip every legal record in the document of its artifacts — the
+   * changed-verdict failure that whole path is written to avoid. Hence first-spelling-wins rather
+   * than reject: it drops a path only when another path in the SAME plan already targets that file,
+   * so no artifact is lost that was not already liable to be clobbered by its colliding sibling.
+   * What it buys is that the outcome is a deterministic function of the document rather than of
+   * which fetch returned last.
+   *
+   * Applied to the plan rather than to either source, because it is a property of executing the
+   * plan — a future third source would need it just the same. It is a no-op on an index, which has
+   * already been rejected if it collides.
+   */
+  private fun oneWritePerFile(paths: List<String>): List<String> {
+    val claimed = HashSet<String>()
+    return paths.filter { claimed.add(it.lowercase()) }
   }
 
   /**
