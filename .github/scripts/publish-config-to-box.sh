@@ -70,8 +70,10 @@ sites_skipped=0
 # only means catalogs land ungrouped — no reason to skip them.
 post() {
   local path="$1" body="$2" label="$3"
+  last_post=failed
   if [[ "${DRY_RUN}" == 1 ]]; then
     echo "POST ${path} ${body}"
+    last_post=ok
     return 0
   fi
   local response code payload
@@ -83,8 +85,14 @@ post() {
   code="${response##*$'\n'}"
   payload="${response%$'\n'*}"
   case "${code}" in
-    200 | 201) echo "  ${label}: applied" ;;
-    409) echo "  ${label}: already present" ;;
+    200 | 201)
+      echo "  ${label}: applied"
+      last_post=ok
+      ;;
+    409)
+      echo "  ${label}: already present"
+      last_post=present
+      ;;
     404)
       echo "::warning::${path} returned 404 — route not available on this box; skipping the rest of this section."
       return 2
@@ -108,13 +116,21 @@ post() {
   return 0
 }
 
-# DELETE one admin path. 200 = retired, 409 = it was not there (both fine — the goal is "gone").
-# Only used to retire a registration this file is about to re-create under a different `repo`; see
-# `retire_if_repo_moved` below.
+# DELETE one admin path. Sets `last_delete` to ok | absent | refused.
+#
+# A 409 is NOT uniformly "it was already gone". `ServeCatalogAdmin.unregister` answers 409 for two
+# opposite situations: the catalog is not published here (benign — the POST below will create it),
+# and the catalog is published as a TOP-LEVEL SITE, which refuses retirement outright so a hostname
+# is never stranded. Reading the second as success is how a move on m3-catalog or wear-m3-catalog —
+# the two catalogs that ARE sites — would come back green having changed nothing: the delete is
+# refused, the re-post 409s on the repo mismatch, and `post` calls that "already present". So
+# discriminate on the payload, and let the caller decide.
 delete() {
   local path="$1" label="$2"
+  last_delete=refused
   if [[ "${DRY_RUN}" == 1 ]]; then
     echo "DELETE ${path}"
+    last_delete=ok
     return 0
   fi
   local response code payload
@@ -124,11 +140,28 @@ delete() {
   code="${response##*$'\n'}"
   payload="${response%$'\n'*}"
   case "${code}" in
-    200 | 201) echo "  ${label}: retired the stale registration" ;;
-    409 | 404) echo "  ${label}: nothing to retire" ;;
+    200 | 201)
+      echo "  ${label}: retired the stale registration"
+      last_delete=ok
+      ;;
+    404)
+      echo "  ${label}: nothing to retire"
+      last_delete=absent
+      ;;
+    409)
+      if [[ "${payload}" == *"is not published here"* ]]; then
+        echo "  ${label}: nothing to retire"
+        last_delete=absent
+      else
+        rejected=$((rejected + 1))
+        echo "::error::${label}: cannot be retired — ${payload}"
+        last_delete=refused
+      fi
+      ;;
     *)
       rejected=$((rejected + 1))
       echo "::error::${label}: retiring failed, HTTP ${code} — ${payload}"
+      last_delete=refused
       ;;
   esac
   return 0
@@ -192,12 +225,26 @@ if [[ "${DRY_RUN}" != 1 ]]; then
     "${BASE_URL}/admin/catalogs" 2>/dev/null || true)
 fi
 
-# The `repo` the box currently serves for a system, or empty if it serves no such catalog.
-box_repo_for() {
+# One field of the box's current registration for a system, or empty if it serves no such catalog.
+box_field_for() {
   [[ -n "${box_catalogs}" ]] || return 0
   printf '%s' "${box_catalogs}" |
-    jq -r --arg s "$1" '.catalogs // [] | map(select(.system == $s)) | .[0].repo // ""' 2>/dev/null ||
-    true
+    jq -r --arg s "$1" --arg f "$2" \
+      '.catalogs // [] | map(select(.system == $s)) | .[0][$f] // ""' 2>/dev/null || true
+}
+
+# Is <repo> actually publishing <branch>? A repo move retires the live registration before the POST
+# re-creates it, and `ServeCatalogAdmin.register` FETCHES before it persists — so a POST that cannot
+# load removes the entry it just added and the catalog is left published nowhere, not rolled back to
+# where it was. This is the cheap half of closing that window: refuse to retire anything until the
+# replacement branch is known to exist. It does not prove the box can load it, which is why the
+# caller still shouts if the re-post fails.
+delivery_branch_exists() {
+  local repo="$1" branch="$2" heads
+  [[ -n "${repo}" && -n "${branch}" ]] || return 1
+  heads=$(git ls-remote --heads "https://github.com/${repo}.git" "refs/heads/${branch}" 2>/dev/null) ||
+    return 2
+  [[ -n "${heads}" ]]
 }
 
 echo "Reconciling catalogs from ${CATALOGS_FILE#"${REPO_ROOT}/"}"
@@ -205,10 +252,29 @@ while IFS= read -r entry; do
   [[ -n "${entry}" ]] || continue
   system=$(printf '%s' "${entry}" | jq -r '.system')
   declared_repo=$(printf '%s' "${entry}" | jq -r '.repo // ""')
-  current_repo=$(box_repo_for "${system}")
-  if [[ -n "${current_repo}" && -n "${declared_repo}" && "${current_repo}" != "${declared_repo}" ]]; then
+  current_repo=$(box_field_for "${system}" repo)
+  moved=0
+  if [[ -n "${current_repo}" && -z "${declared_repo}" ]]; then
+    # No `repo` here means "the box's own --catalog-repo default", which this file cannot see. The
+    # POST would resolve it, find a mismatch, 409, and be logged as success. Say so rather than
+    # letting that read green; every entry in this repository's config names its repo explicitly.
+    echo "::warning::catalog ${system}: no repo declared, so a move away from ${current_repo} cannot be detected here — declare the repo explicitly."
+  elif [[ -n "${current_repo}" && "${current_repo}" != "${declared_repo}" ]]; then
     echo "  catalog ${system}: repo moved ${current_repo} -> ${declared_repo}"
-    delete "/admin/catalogs/${system}" "catalog ${system}"
+    # The branch name does not depend on the repo — it is `<branchPrefix><system>` either way — so
+    # the live registration tells us what to look for on the new side.
+    target_branch=$(box_field_for "${system}" branch)
+    if delivery_branch_exists "${declared_repo}" "${target_branch}"; then
+      moved=1
+      delete "/admin/catalogs/${system}" "catalog ${system}"
+      [[ "${last_delete}" == refused ]] && moved=0
+    else
+      case $? in
+        2) echo "::error::catalog ${system}: could not reach github.com to check ${declared_repo}@${target_branch}; leaving it on ${current_repo}." ;;
+        *) echo "::error::catalog ${system}: ${declared_repo} publishes no ${target_branch} yet; leaving it on ${current_repo} rather than retiring a catalog with nothing to replace it." ;;
+      esac
+      rejected=$((rejected + 1))
+    fi
   fi
   # Preserve the declared shape — an unlisted catalog must stay off the front page, a group
   # claim has to survive or the card lands under the owner fallback instead of its section, and
@@ -222,6 +288,13 @@ while IFS= read -r entry; do
       break
     fi
   }
+  if [[ "${moved}" == 1 && "${last_post}" != ok ]]; then
+    # The retire succeeded and the re-publish did not, so this catalog is now published NOWHERE —
+    # `register` drops the entry it added when the fetch fails. Never let that end up in a green
+    # log: it is the one outcome an operator has to act on immediately.
+    rejected=$((rejected + 1))
+    echo "::error::catalog ${system} was retired from ${current_repo} but could not be re-published from ${declared_repo} — it is currently unpublished. Re-run this workflow once ${declared_repo} serves ${target_branch}, or re-post the old entry to restore it."
+  fi
 done < <(jq -c '.catalogs // [] | .[]' "${CATALOGS_FILE}")
 
 # Sites LAST: a site may only name a catalog the box already serves, so it has to follow the
