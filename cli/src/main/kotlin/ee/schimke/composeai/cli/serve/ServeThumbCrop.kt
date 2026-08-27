@@ -43,6 +43,18 @@ data class ContentCrop(
    * shadow belongs.
    */
   val clip: Boolean = true,
+  /**
+   * The box width in NATIVE render pixels — the window's 1x ceiling, before [CAP] is applied. Zero
+   * when unknown (a hand-assembled crop), which makes the page fall back to a fixed-px window.
+   */
+  val natBoxW: Int = 0,
+  /**
+   * The native length of the axis [CAP] bounds — the largest edge for a content crop, the height
+   * for a gutter crop. With [natBoxW] this is enough to re-derive the window's width for ANY cap,
+   * which is what lets the stylesheet shrink it at a narrow viewport (`width = natBoxW * min(1, cap
+   * / natCapAxis)`). Zero when unknown.
+   */
+  val natCapAxis: Int = 0,
 )
 
 /** Largest edge (px) a cropped thumbnail is scaled to — mirrors the static gallery's `cap`. */
@@ -194,6 +206,8 @@ fun computeGutterCrop(
     left = (-left * scale).roundToInt(),
     top = (-top * scale).roundToInt(),
     clip = false,
+    natBoxW = boxW,
+    natCapAxis = boxH,
   )
 }
 
@@ -219,5 +233,7 @@ fun computeThumbCrop(
     // `left`/`top` are the render's offset under the clip window: negative of the box origin.
     left = (-box.x * scale).roundToInt(),
     top = (-box.y * scale).roundToInt(),
+    natBoxW = box.w,
+    natCapAxis = max(box.w, box.h),
   )
 }

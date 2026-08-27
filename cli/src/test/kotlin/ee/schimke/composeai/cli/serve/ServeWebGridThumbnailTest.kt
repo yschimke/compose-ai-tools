@@ -19,7 +19,16 @@ class ServeWebGridThumbnailTest {
     listOf(ServePreview(id = "filled-button__ideal__default__compact", label = "Filled"))
 
   private val crop =
-    ContentCrop(boxW = 120, boxH = 48, imgW = 454, imgH = 454, left = -167, top = -203)
+    ContentCrop(
+      boxW = 120,
+      boxH = 48,
+      imgW = 454,
+      imgH = 454,
+      left = -167,
+      top = -203,
+      natBoxW = 120,
+      natCapAxis = 120,
+    )
 
   private fun page(
     thumbHash: (String) -> String? = { null },
@@ -86,7 +95,9 @@ class ServeWebGridThumbnailTest {
     // identically — the geometry is in percentages, so it is resolution independent.
     val html = page(thumbHash = { "abc123" }, thumbCrop = { crop })
     assertTrue(
-      html.contains("class=\"cp-crop\" style=\"width:120px;aspect-ratio:120/48\""),
+      html.contains(
+        "class=\"cp-crop\" style=\"--cp-crop-w-per-cap:1;--cp-crop-max-w:120px;aspect-ratio:120/48\""
+      ),
       "clip window still sized to the component box",
     )
     assertTrue(
