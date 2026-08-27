@@ -201,3 +201,49 @@ test("drops dp that name no device, because nothing downstream can use them", ()
     previewParams: { showBackground: true },
   });
 });
+
+test("publishes a capture gutter in render pixels, resolved per edge", () => {
+  // m3-catalog's elevated button: `@CaptureGutter(all = 4, bottom = 5)` at the catalog's 2.625
+  // density is the 11/11/11/13 px the renderer actually added, each edge rounded on its own. A
+  // sheet subtracting these lands on the component, which is the whole point of publishing them.
+  const bundle = {
+    previews: [
+      {
+        id: "ElevatedButtonSticker_Light",
+        params: {
+          density: 2.625,
+          captureGutter: { start: 4, top: 4, end: 4, bottom: 5 },
+        },
+      },
+    ],
+    entries: {},
+  };
+  assert.deepEqual(declarationsByPreviewId(bundle).get("ElevatedButtonSticker_Light"), {
+    previewParams: { captureGutter: { start: 11, top: 11, end: 11, bottom: 13 } },
+  });
+});
+
+test("records no gutter for a preview that declares none, or declares an empty one", () => {
+  // `@CaptureGutter(all = 0)` is equivalent to no annotation (discovery drops it), and a preview
+  // without one must stay out of the record entirely — see the "nothing" test above.
+  const bundle = {
+    previews: [
+      { id: "Plain", params: { density: 2.625 } },
+      { id: "Zeroed", params: { density: 2.625, captureGutter: { start: 0, top: 0, end: 0, bottom: 0 } } },
+    ],
+    entries: {},
+  };
+  const declarations = declarationsByPreviewId(bundle);
+  assert.equal(declarations.get("Plain"), undefined);
+  assert.equal(declarations.get("Zeroed"), undefined);
+});
+
+test("falls back to 1x when a manifest states no density, rather than inventing one", () => {
+  const bundle = {
+    previews: [{ id: "Densityless", params: { captureGutter: { start: 4, top: 4, end: 4, bottom: 5 } } }],
+    entries: {},
+  };
+  assert.deepEqual(declarationsByPreviewId(bundle).get("Densityless"), {
+    previewParams: { captureGutter: { start: 4, top: 4, end: 4, bottom: 5 } },
+  });
+});

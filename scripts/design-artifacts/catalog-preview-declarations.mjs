@@ -21,12 +21,37 @@ function sidecarDeclarations(bundle, previewId, suffix) {
 }
 
 /**
+ * A preview's declared `@CaptureGutter`, resolved to **render pixels**, or null when it declares
+ * none (or every edge is zero).
+ *
+ * Pixels rather than the dp the annotation states, because a browse surface is the reader and it
+ * cannot recover the density: `presentationParams` deliberately drops it (it is baked into the
+ * image), and the gutter is only useful next to the image's own pixel dimensions. Each edge rounds
+ * on its own, which is the rule the renderer used when it grew the canvas — so `4dp` at 2.625
+ * comes back as the same 11px the render actually carries, and a consumer subtracting these
+ * numbers lands exactly on the component.
+ */
+function captureGutterPx(params) {
+  const gutter = params?.captureGutter;
+  if (!gutter) return null;
+  const density = Number.isFinite(params.density) && params.density > 0 ? params.density : 1;
+  const px = (dp) => Math.round(Math.max(0, Number(dp) || 0) * density);
+  const out = {
+    start: px(gutter.start),
+    top: px(gutter.top),
+    end: px(gutter.end),
+    bottom: px(gutter.bottom),
+  };
+  return out.start || out.top || out.end || out.bottom ? out : null;
+}
+
+/**
  * The subset of a preview's `@Preview` params that decides how it is PRESENTED — the ground behind
  * it and the device frame around it — or null when it states none of them.
  *
  * Deliberately not the whole params record: locale, font scale and density describe how the render
  * was produced and are already baked into the pixels, so republishing them would grow every
- * catalog for no reader. These six are the ones a browse surface has to know *before* it opens
+ * catalog for no reader. These are the ones a browse surface has to know *before* it opens
  * anything, because they decide what it paints behind the image and what shape it clips it to.
  *
  * Omitting an all-defaults record keeps the catalog quiet for the ordinary preview: a component
@@ -47,6 +72,12 @@ function presentationParams(params) {
     if (Number.isFinite(params.widthDp)) out.widthDp = params.widthDp;
     if (Number.isFinite(params.heightDp)) out.heightDp = params.heightDp;
   }
+  // The seventh, and the one that changes what a sheet DRAWS rather than what it paints behind:
+  // a `@CaptureGutter` render's canvas is the component plus the gutter, so a consumer fitting the
+  // whole canvas to a column draws the component smaller than its gutter-less siblings by exactly
+  // that margin (m3-catalog#179). It can only subtract what it is told.
+  const captureGutter = captureGutterPx(params);
+  if (captureGutter) out.captureGutter = captureGutter;
   return Object.keys(out).length > 0 ? out : null;
 }
 

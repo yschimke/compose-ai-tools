@@ -53,6 +53,52 @@ test("a component with no figma-svg gets no crop wiring (link absent)", () => {
   assert.doesNotMatch(html, /href="figma\/filled-button\.svg"/);
 });
 
+test("a declared capture gutter rides on the hero as data-gutter, in render pixels", () => {
+  // The renderer grew this canvas by 11/11/11/13px so a shadow could fall outside the component's
+  // bounds. A card fitting the whole canvas to its column draws the component that much smaller
+  // than its gutter-less siblings (m3-catalog#179), so the gallery is told what to subtract.
+  const guttered = {
+    ...catalog,
+    components: [
+      {
+        componentId: "elevated-button",
+        group: "Buttons",
+        images: [
+          png("images/elevated-button/ideal__default__light.png", {
+            previewParams: { captureGutter: { start: 11, top: 11, end: 11, bottom: 13 } },
+          }),
+        ],
+      },
+    ],
+  };
+  const html = renderIndexHtml(guttered, { figmaSvgSlugs: new Set() });
+  assert.match(html, /data-gutter="11,11,11,13"/);
+  assert.match(html, /function frameGutter/);
+});
+
+test("a component that declares no gutter carries no data-gutter", () => {
+  const html = renderIndexHtml(catalog, { figmaSvgSlugs: new Set() });
+  assert.doesNotMatch(html, /data-gutter=/);
+});
+
+test("an all-zero gutter is the same as none — nothing to subtract", () => {
+  const zeroed = {
+    ...catalog,
+    components: [
+      {
+        componentId: "filled-button",
+        group: "Buttons",
+        images: [
+          png("images/filled-button/ideal__default__light.png", {
+            previewParams: { captureGutter: { start: 0, top: 0, end: 0, bottom: 0 } },
+          }),
+        ],
+      },
+    ],
+  };
+  assert.doesNotMatch(renderIndexHtml(zeroed, { figmaSvgSlugs: new Set() }), /data-gutter=/);
+});
+
 test("failed renders become visible cards with expandable diagnostics", () => {
   const html = renderIndexHtml({
     system: "broken",

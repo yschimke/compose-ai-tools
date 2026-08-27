@@ -2771,7 +2771,39 @@ class ServeCatalogStore(
     val widthDp: Int? = null,
     /** `@Preview(heightDp = …)`, when the annotation states one. */
     val heightDp: Int? = null,
+    /**
+     * The preview's `@CaptureGutter`, in **render pixels** — the transparent margin the capture
+     * added around the component so a shadow / focus ring drawn outside its bounds is not cropped
+     * at the image edge.
+     *
+     * A browse surface has to know it: the render's canvas is `component + gutter`, so fitting the
+     * whole canvas to a grid column draws the component smaller than its gutter-less siblings by
+     * exactly that margin — 7% on the m3 catalog's button row, for a reason that has nothing to do
+     * with the design (m3-catalog#179). Subtracting it is what makes the canvas mean the component
+     * again. Pixels rather than dp because the exporter resolved them against the render's own
+     * density, which a published catalog does not carry.
+     */
+    val captureGutter: CaptureGutterPx? = null,
   )
+
+  /**
+   * A published capture gutter, per edge, in render pixels.
+   *
+   * [start] / [end] are leading / trailing, as the annotation declares them; a consumer maps them
+   * onto left / right for the layout direction the render was captured in. Every gutter published
+   * so far is horizontally symmetric, so that mapping has not yet had to be decided — an asymmetric
+   * one on an RTL capture is the case to think about before relying on it.
+   */
+  @Serializable
+  data class CaptureGutterPx(
+    val start: Int = 0,
+    val top: Int = 0,
+    val end: Int = 0,
+    val bottom: Int = 0,
+  ) {
+    /** True when no edge carries a gutter — the same "equivalent to no annotation" rule. */
+    fun isEmpty(): Boolean = start <= 0 && top <= 0 && end <= 0 && bottom <= 0
+  }
 
   @Serializable
   data class VariantMeta(

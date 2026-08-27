@@ -547,4 +547,68 @@ class ServeBundleHostTest {
     assertTrue(host.pinnedRender(commit, previewId) is ServeBundleHost.PinnedOutcome.Missing)
     assertEquals(1, calls, "a known-absent asset is refused from memory")
   }
+
+  /** A real PNG, so the host can read its IHDR dimensions the way it does in production. */
+  private fun pngOf(width: Int, height: Int): ByteArray {
+    val image =
+      java.awt.image.BufferedImage(width, height, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+    val out = java.io.ByteArrayOutputStream()
+    javax.imageio.ImageIO.write(image, "png", out)
+    return out.toByteArray()
+  }
+
+  @Test
+  fun `a declared capture gutter is trimmed off a card's thumbnail`() {
+    // m3-catalog's `Button/Elevated`: a 249x126 button captured with `@CaptureGutter(all = 4,
+    // bottom = 5)` at 2.625, so its PNG is 271x150 and a sheet fitting whole canvases to a column
+    // drew it ~7% smaller than the four gutter-less siblings beside it (m3-catalog#179). The
+    // gutter is a fact the renderer recorded, so the crop is exact rather than inferred.
+    val dir = bundle("button-elevated__ideal__default__light" to pngOf(271, 150))
+    File(dir, "previews.json")
+      .writeText(
+        """
+        {"module":"catalog","variant":"main","previews":[
+          {"id":"button-elevated__ideal__default__light","functionName":"ElevatedButtonSticker",
+           "className":"ButtonsKt",
+           "params":{"density":2.625,"captureGutter":{"start":4,"top":4,"end":4,"bottom":5}}}
+        ]}
+        """
+          .trimIndent()
+      )
+
+    val crop =
+      ServeBundleHost(dir, label = "b").contentCrop("button-elevated__ideal__default__light")
+
+    assertEquals(
+      ContentCrop(
+        boxW = 249,
+        boxH = 126,
+        imgW = 271,
+        imgH = 150,
+        left = -11,
+        top = -11,
+        clip = false,
+      ),
+      crop,
+    )
+  }
+
+  @Test
+  fun `a preview with no capture gutter keeps the plain uncropped image`() {
+    val dir = bundle("button-filled__ideal__default__light" to pngOf(249, 126))
+    File(dir, "previews.json")
+      .writeText(
+        """
+        {"module":"catalog","variant":"main","previews":[
+          {"id":"button-filled__ideal__default__light","functionName":"FilledButton",
+           "className":"ButtonsKt","params":{"density":2.625}}
+        ]}
+        """
+          .trimIndent()
+      )
+
+    assertNull(
+      ServeBundleHost(dir, label = "b").contentCrop("button-filled__ideal__default__light")
+    )
+  }
 }

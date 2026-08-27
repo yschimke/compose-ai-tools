@@ -1648,8 +1648,16 @@ cp-parity-scores { display: contents; }
    1x), but `max-width: 100%` lets it shrink to a narrow grid card instead of overflowing it —
    the render <img> inside is absolutely positioned and sized + offset in PERCENTAGES of the box,
    so the whole frame scales as one when the card is narrower than the box. Overrides fit-to-box. */
-.cp-crop { position: relative; overflow: hidden; display: block; max-width: 100%; }
+/* `max-height` mirrors `.cp-imgwrap img` above: a clip window is a sticker image by another name,
+   and a card whose window was capped differently from its plain-image neighbours would draw its
+   component at a different size for a reason the reader cannot see — which is the whole complaint
+   a capture gutter's crop exists to answer (m3-catalog#179). */
+.cp-crop { position: relative; overflow: hidden; display: block; max-width: 100%; max-height: 240px; }
 .cp-imgwrap .cp-crop img { position: absolute; max-width: none; max-height: none; margin: 0; }
+/* A capture-gutter window: same geometry, nothing hidden. What overflows it is the component's own
+   shadow — the reason the gutter was captured at all — so it spills into the grid gap instead of
+   being cropped a second time. */
+.cp-crop--bleed { overflow: visible; }
 /* Sticker backing: the preview server shows components on a solid surface by DEFAULT, so a
    transparent sticker reads like a real component instead of washing out. The header's
    Transparent toggle flips the whole page to a checkerboard (html.cp-bg-transparent)

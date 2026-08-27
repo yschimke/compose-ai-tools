@@ -71,6 +71,23 @@ class ServeWebThumbCropTest {
   }
 
   @Test
+  fun `a gutter window is marked so its overflow is not hidden`() {
+    // The pixels outside a capture gutter's box are the component's own shadow — the reason the
+    // gutter was captured. The window lines the box up with its neighbours; it must not crop.
+    val html =
+      ServeWeb.landingPage(
+        "compose-m3",
+        previews,
+        token = "t",
+        basePath = "/compose-m3",
+        thumbCrop = { crop.copy(clip = false) },
+      )
+    assertTrue(html.contains("class=\"cp-crop cp-crop--bleed\""), "bleeding window marked")
+    val css = ServeWebAssets.load("serve.css")!!.bytes.decodeToString()
+    assertTrue(css.contains(".cp-crop--bleed { overflow: visible; }"), "and allowed to overflow")
+  }
+
+  @Test
   fun `the crop CSS is present so the clip window actually clips`() {
     val css = ServeWebAssets.load("serve.css")!!.bytes.decodeToString()
     assertTrue(
@@ -80,6 +97,12 @@ class ServeWebThumbCropTest {
     assertTrue(
       css.contains(".cp-imgwrap .cp-crop img { position: absolute; max-width: none;"),
       "img escapes the fit-to-box cap",
+    )
+    // The window itself keeps the cap a plain sticker image has, so a cropped card and an
+    // uncropped one beside it draw their components at the same size (m3-catalog#179).
+    assertTrue(
+      css.contains("max-width: 100%; max-height: 240px; }"),
+      "clip window capped like an img",
     )
   }
 
