@@ -768,6 +768,38 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `an index naming two spellings of one file falls back`() {
+    // `glyph/mask.png` and `glyph/MASK.PNG` are distinct strings, both portable, and on Windows or
+    // a default macOS volume they are one file. The plan is executed concurrently, so staging both
+    // schedules two workers writing the same path — last writer wins, and the canonical spelling
+    // left behind may be the one the reader then rejects for case. A record's real artifact can be
+    // overwritten by a sibling the document never named, differently on each refresh.
+    //
+    // Reachable through the index in particular, because it may carry siblings the document does
+    // not name.
+    val (_, requested) =
+      loadWithArtifactIndex(
+        """
+        {"schema":"compose-preview-known-difference-artifacts/v1",
+         "artifacts":["glyph/mask.png","glyph/MASK.PNG"]}
+        """
+          .trimIndent(),
+        document = DERIVATION_ACCEPTS,
+      )
+
+    // Fell back to the derivation, which names one spelling per field — so the staging plan is
+    // executable again.
+    assertTrue(
+      requested.none { it.contains("MASK.PNG") },
+      "a case-folded collision must reject the list, not race two writes: $requested",
+    )
+    assertTrue(
+      requested.any { it.endsWith("/parity/known-differences/glyph/mask.png") },
+      "the fallback should still stage the document's own artifacts: $requested",
+    )
+  }
+
+  @Test
   fun `an index cannot name a path the reader would refuse to look up`() {
     // A fetch plan, not a licence. The producer's list goes through exactly the lexical rule the
     // document's paths do, so an index is never a way around it.
