@@ -230,6 +230,88 @@ class ServeCatalogAdminTest {
   }
 
   @Test
+  fun `a repo change is a swap - it loads first, keeps its place, and retires nothing`() {
+    seedConfig(
+      ServeCatalogsConfig(
+        groups = listOf(ServeCatalogsConfig.Group("ds", "Design Systems", "design system(s)")),
+        catalogs =
+          listOf(
+            ServeCatalogsConfig.Entry("remote-m3", repo = "yschimke/compose-ai-tools"),
+            ServeCatalogsConfig.Entry("cadence", repo = "yschimke/cadence"),
+          ),
+      )
+    )
+    val tracker =
+      tracker(
+        CatalogLoadTracker.Config(
+          "remote-m3",
+          true,
+          "yschimke/compose-ai-tools",
+          "design-artifacts/remote-m3",
+        ),
+        CatalogLoadTracker.Config("cadence", false, "yschimke/cadence", "design-artifacts/cadence"),
+      )
+    tracker.recordSuccess("remote-m3")
+
+    val result =
+      admin(tracker)
+        .register(
+          ServeCatalogsConfig.Entry("remote-m3", repo = "yschimke/wear-m3-catalog", listed = true)
+        )
+
+    assertEquals(ServeCatalogAdmin.Result.Ok("remote-m3", warning = null), result)
+    // Loaded from the NEW repo, and nothing was retired on the way — the old registration was
+    // replaced in place rather than dropped and rebuilt.
+    assertEquals(listOf("remote-m3" to "yschimke/wear-m3-catalog"), loaded)
+    assertEquals(emptyList(), unloaded)
+    // Provenance moved…
+    val config = assertNotNull(tracker.configFor("remote-m3"))
+    assertEquals("yschimke/wear-m3-catalog", config.repo)
+    assertEquals("design-artifacts/remote-m3", config.branch)
+    // …and its place on the front page did not.
+    assertEquals(listOf("remote-m3", "cadence"), tracker.snapshot().map { it.config.system })
+    assertEquals(
+      "yschimke/wear-m3-catalog",
+      file.load().catalogs.single { it.system == "remote-m3" }.repo,
+    )
+  }
+
+  @Test
+  fun `a repo change that cannot be fetched leaves the old catalog serving`() {
+    seedConfig(
+      ServeCatalogsConfig(
+        catalogs = listOf(ServeCatalogsConfig.Entry("remote-m3", repo = "yschimke/old-home"))
+      )
+    )
+    val tracker =
+      tracker(
+        CatalogLoadTracker.Config(
+          "remote-m3",
+          true,
+          "yschimke/old-home",
+          "design-artifacts/remote-m3",
+        )
+      )
+
+    val result =
+      admin(tracker, failWith = "could not fetch catalog.json")
+        .register(ServeCatalogsConfig.Entry("remote-m3", repo = "yschimke/nowhere", listed = true))
+
+    // The whole reason the load runs first: a source that cannot be fetched costs nothing. This is
+    // the case that, under retire-then-publish, left the system published NOWHERE.
+    assertTrue(result is ServeCatalogAdmin.Result.Failed, "$result")
+    assertTrue(
+      (result as ServeCatalogAdmin.Result.Failed)
+        .reason
+        .contains("still serving yschimke/old-home"),
+      result.reason,
+    )
+    assertEquals(emptyList(), unloaded)
+    assertEquals("yschimke/old-home", assertNotNull(tracker.configFor("remote-m3")).repo)
+    assertEquals("yschimke/old-home", file.load().catalogs.single().repo)
+  }
+
+  @Test
   fun `the tracker keeps configured order and reports what is served`() {
     val tracker = tracker(CatalogLoadTracker.Config("a", true, "o/r", "b"))
     tracker.recordSuccess("a")

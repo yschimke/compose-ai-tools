@@ -173,20 +173,56 @@ class ServeCatalogAdmin(
     // what made a committed config unable to catch up with a running box: re-posting an entry whose
     // group or listed flag had changed was rejected, so the box kept its original placement
     // forever.
-    // The content is untouched — no re-fetch, no dropped load state — and a repo change is still
-    // refused, since that decides what bytes get served (retire and re-publish for that).
+    // The content is untouched — no re-fetch, no dropped load state. A repo change is handled
+    // separately just below: it DOES decide what bytes get served, so it re-fetches, and it does
+    // that before anything is dropped.
     // `loadPriority` converges the same way: it changes nothing about a catalog already registered,
     // but the point of writing it back is the NEXT boot's fetch order, and the deployment reconcile
     // (.github/scripts/publish-config-to-box.sh) is additive — without this, re-declaring a
     // priority on an already-published catalog would 409 and never reach the box's config.
     tracker.configFor(entry.system)?.let { current ->
-      if (current.repo != repo) {
-        return Result.Conflict(
-          "catalog '${entry.system}' is published from ${current.repo}; retire it before " +
-            "re-publishing from $repo"
-        )
-      }
       val resolved = homeGroup(entry, repo, declared)
+      // A REPO CHANGE is a swap, not a conflict — and the order here is the whole point.
+      //
+      // This used to answer 409 "retire it before re-publishing from …", which made re-pointing a
+      // catalog a two-step dance every caller had to get right: DELETE, then POST. It is not a safe
+      // dance. `load` fetches before anything is persisted, and the failure path below drops the
+      // entry it added — so a retire that succeeds followed by a publish that cannot fetch leaves
+      // the system published NOWHERE, and the deployment reconcile that drives this is
+      // non-blocking, so it stays that way. The 409 also read as success to that reconcile
+      // (.github/scripts/publish-config-to-box.sh), which is how a moved catalog went on being
+      // served from the repository it had left, with a green log either side of it.
+      //
+      // Loading FIRST removes the window instead of narrowing it. A load that fails returns before
+      // it touches any registration, so the old catalog is still serving and this returns Failed
+      // with that said plainly; a load that succeeds re-registers the host in place — exactly what
+      // the branch refresher does on every poll — so the swap is one atomic replacement of content
+      // followed by [CatalogLoadTracker.repoint] recording where it now comes from.
+      //
+      // It works for a catalog published as a top-level site, too, which the retire-first route
+      // could not: `unregister` refuses those outright to keep a hostname from being stranded, and
+      // a swap never strands one because the system never stops existing.
+      if (current.repo != repo) {
+        val failure = runCatching {
+          load(entry.system, repo)
+        }
+          .getOrElse { it.message ?: "load failed" }
+        if (failure != null) {
+          return Result.Failed(
+            entry.system,
+            "could not re-point '${entry.system}' to $repo, still serving ${current.repo}: $failure",
+          )
+        }
+        tracker.repoint(entry.system, repo = repo, branch = "$branchPrefix${entry.system}")
+        tracker.relist(
+          entry.system,
+          listed = entry.listed,
+          group = resolved,
+          loadPriority = entry.loadPriority,
+        )
+        onLog("serve: catalog ${entry.system} re-pointed ${current.repo} -> $repo via admin API")
+        return Result.Ok(entry.system, persist { it.withEntry(entry.copy(repo = repo)) })
+      }
       if (
         current.group == resolved &&
           current.listed == entry.listed &&
