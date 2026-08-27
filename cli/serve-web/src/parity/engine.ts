@@ -22,6 +22,7 @@ import {
     acceptanceLifecycles as acceptanceLifecyclesJs,
     evaluateKnownDifferences as evaluateJs,
     readsNoArtifacts as readsNoArtifactsJs,
+    recordsThatRead as recordsThatReadJs,
 } from "../../../../scripts/design-artifacts/known-differences.mjs";
 import {
     canonicalRaster as canonicalRasterJs,
@@ -140,6 +141,18 @@ export interface Catalog {
  * rules is how a consumer fetches for a document that reads nothing, or — worse — skips for one that
  * does.
  */
+/**
+ * The ids whose artifacts the engine will actually read, for a document it does not refuse whole.
+ *
+ * The exact set, shared with the evaluation — see the engine's own doc. A planner needs it because
+ * summing the sizes of every path a document *names* is an upper bound, and gating on an upper
+ * bound skips fetching for a document the engine would have evaluated.
+ */
+export const recordsThatRead = recordsThatReadJs as unknown as (
+    documentText: string,
+    catalog?: unknown,
+) => string[];
+
 export const readsNoArtifacts = readsNoArtifactsJs as unknown as (
     documentText: string,
 ) => boolean;
@@ -216,6 +229,13 @@ export const BUDGET = BudgetJs as unknown as {
     maxPixels: number;
     maxAxis: number;
     maxArtifactBytes: number;
+    /**
+     * What one document may oblige a reader to hold in total, across every artifact it reads.
+     *
+     * Declared here because the prefetch gate needs it: `maxArtifactBytes` bounds one file, and 256
+     * records × 2 files of legal, individually-capped artifacts is what this bounds instead.
+     */
+    maxTotalArtifactBytes: number;
     maxPreflightBytes: number;
 };
 

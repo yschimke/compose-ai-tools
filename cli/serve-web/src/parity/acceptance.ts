@@ -31,6 +31,7 @@ import {
     preflightPng,
     projectTagIndex,
     readsNoArtifacts,
+    recordsThatRead,
     resolvePlane,
     scoreComparison,
     sha256Hex,
@@ -517,6 +518,39 @@ async function prefetch(
             await fetchPrefix(artifactUrl(path), BUDGET.maxPreflightBytes),
         );
     });
+
+    // **A document over the aggregate ceiling is not paid for either.** `readsNoArtifacts` above
+    // catches the document the engine refuses from its *text*; this catches the one it refuses from
+    // the reader's *sizes* — `document-too-large` against `maxTotalArtifactBytes`, a verdict reached
+    // without decoding anything. Round one has already answered every size, so the total is known
+    // here, and round two would otherwise retain full bodies right up until the engine said the
+    // document was never readable. The ceiling bounds the legal case; this is the illegal one, which
+    // is the one an attacker picks.
+    //
+    // **Summed over the records the engine will actually read, not over every path the document
+    // names.** Those are different numbers: `id-not-safe`, a schema failure, `orphaned-target` and
+    // `path-not-contained` all refuse a record before its first read, so the naive sum is an *upper*
+    // bound on the engine's total. Gating on an upper bound would skip round two for a document
+    // whose engine-side total is under the ceiling, and every record the engine then asked to decode
+    // would be a body nobody fetched — `artifact-unreadable` on a document the engine evaluated. A
+    // verdict change decided by a planner, which is the failure direction that matters.
+    // `recordsThatRead` is the engine's own answer to that question, so the sum is exact.
+    //
+    // No catalog here, which widens the set — `orphaned-target` is the one pre-read refusal that
+    // needs one. A larger set is a larger sum is a gate that skips less readily, and that is the
+    // conservative direction: it can only ever fail to skip, never skip wrongly.
+    //
+    // An undeclared size (`totalKnown: false`) contributes only what arrived, so it under-counts and
+    // the gate holds off — again the safe direction for verdicts, and the honest limit of this
+    // check: a producer whose server declares no length is measured by round two rather than here.
+    const reading = new Set(recordsThatRead(documentText));
+    let plannedBytes = 0;
+    for (const [path, entry] of artifacts) {
+        if (!reading.has(path.slice(0, path.indexOf("/")))) continue;
+        if ("byteLength" in entry.header)
+            plannedBytes += entry.header.byteLength;
+    }
+    if (plannedBytes > BUDGET.maxTotalArtifactBytes) return artifacts;
 
     // Round two: the full body of the prefixes that earned it — and of the ones whose size the
     // response never declared, which must be read to be measured. See `totalKnown`.

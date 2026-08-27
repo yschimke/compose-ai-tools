@@ -1018,37 +1018,32 @@ function parseDocument(documentText) {
  * stage runs only when every earlier one was clean, so a record with an unparseable shape is never
  * also reported for the paths that shape does not contain.
  */
-function preflightRecord(record, index, readArtifact, catalog) {
-  const evaluation = {
-    index,
-    record,
-    reasons: [],
-    headers: [],
-    preflightClean: false,
-    // What the reader said this record's two artifacts weigh, once both reads have answered — 0
-    // until then, and 0 forever for a record that never got as far as reading. Summed by
-    // {@link evaluateKnownDifferences} against `maxTotalArtifactBytes`.
-    artifactBytes: 0,
-    mask: null,
-    accepted: null,
-  };
-  const fail = (...reasons) => {
-    evaluation.reasons.push(...reasons);
-    return evaluation;
-  };
+/**
+ * Everything {@link preflightRecord} decides **before it reads a byte**, and nothing it decides
+ * after.
+ *
+ * The line is exactly where the first `readArtifact` sits, because that is the line a consumer
+ * planning its fetches needs: `reads: false` means the engine refuses this record without ever
+ * asking the reader for it, so its artifacts are bytes nobody will look at.
+ *
+ * A record that is not an object at all answers `reads: false` with **no reasons** — the identity
+ * scan already rejects the document for it, and this function must not dereference what it was
+ * handed. That is the one case where "will not read" and "has a reason" come apart.
+ */
+function preReadVerdict(record, catalog) {
+  // `acceptances` is third-party data and can hold `null`, a string, an array.
+  if (!record || typeof record !== "object" || Array.isArray(record)) {
+    return { reads: false, reasons: [] };
+  }
 
-  // A record need not be an object at all — `acceptances` is third-party data and can hold `null`,
-  // a string, an array. Those are already `id-missing` in the identity scan and the document is
-  // rejected for them, but this function still runs first (the pixel budget needs the preflight),
-  // so it must not dereference what it was handed. Nothing further is knowable about such a record.
-  if (!record || typeof record !== "object" || Array.isArray(record)) return evaluation;
-
-  if (!isSafeId(record.id)) return fail("id-not-safe");
+  if (!isSafeId(record.id)) return { reads: false, reasons: ["id-not-safe"] };
 
   const shapeReasons = schemaReasons(record);
-  if (shapeReasons.length > 0) return fail(...shapeReasons);
+  if (shapeReasons.length > 0) return { reads: false, reasons: shapeReasons };
 
-  if (catalog && !catalogResolves(record, catalog)) return fail("orphaned-target");
+  if (catalog && !catalogResolves(record, catalog)) {
+    return { reads: false, reasons: ["orphaned-target"] };
+  }
 
   const pathReasons = [];
   if (!isSafeArtifactPath(record.mask)) pathReasons.push("path-not-contained");
@@ -1068,7 +1063,69 @@ function preflightRecord(record, index, readArtifact, catalog) {
   ) {
     pathReasons.push("path-not-contained");
   }
-  if (pathReasons.length > 0) return fail(...pathReasons);
+  if (pathReasons.length > 0) return { reads: false, reasons: pathReasons };
+
+  return { reads: true, reasons: [] };
+}
+
+/**
+ * The ids of the records this document will actually make the engine **read artifacts for**.
+ *
+ * The companion to {@link readsNoArtifacts}, and the piece it could not answer. That one says
+ * whether the document is refused *whole*; this says, for a document that is not, which of its
+ * records get as far as the reader. A consumer that must fetch ahead — a browser, where
+ * `readArtifact` is synchronous and every answer has to be in hand before the ladder starts — needs
+ * this to know what its fetches will actually weigh in the engine's terms.
+ *
+ * **The point is that it is exact, not merely bounded.** A planner summing the sizes of every path
+ * the document *names* has an upper bound: the engine's own `maxTotalArtifactBytes` total counts
+ * only records that reached a read, and `id-not-safe`, a schema failure, `orphaned-target` and
+ * `path-not-contained` all return before the first one. Gating on that upper bound would skip
+ * fetching for a document whose engine-side total is *under* the ceiling — and every record the
+ * engine then asked for would be a body nobody fetched, reported as `artifact-unreadable`. A
+ * verdict change decided by a planner, which is the one failure direction that matters.
+ *
+ * Shared with the evaluation through {@link preReadVerdict} rather than reimplemented, for the same
+ * reason {@link readsNoArtifacts} is: two copies of these rules that agree today are two copies.
+ *
+ * **[catalog] is optional, and omitting it widens the answer.** `orphaned-target` is the one
+ * pre-read refusal that depends on it, so a caller without a catalog gets the records that would
+ * read *if nothing were orphaned* — a superset. That is the conservative direction here: a larger
+ * set means a larger sum means a gate that skips less readily, where every other approximation in
+ * this file has to be careful the other way.
+ */
+export function recordsThatRead(documentText, catalog = null) {
+  const parsed = parseDocument(documentText);
+  if (parsed.failure) return [];
+  const records = parsed.document.acceptances;
+  // A document refused whole reads nothing at all, whatever its records look like.
+  if (identityFailures(records).length > 0) return [];
+  return records.filter((record) => preReadVerdict(record, catalog).reads).map((record) => record.id);
+}
+
+function preflightRecord(record, index, readArtifact, catalog) {
+  const evaluation = {
+    index,
+    record,
+    reasons: [],
+    headers: [],
+    preflightClean: false,
+    // What the reader said this record's two artifacts weigh, once both reads have answered — 0
+    // until then, and 0 forever for a record that never got as far as reading. Summed by
+    // {@link evaluateKnownDifferences} against `maxTotalArtifactBytes`.
+    artifactBytes: 0,
+    mask: null,
+    accepted: null,
+  };
+  const fail = (...reasons) => {
+    evaluation.reasons.push(...reasons);
+    return evaluation;
+  };
+
+  // Everything decidable before a byte is read, shared with {@link recordsThatRead} so a consumer
+  // planning its fetches cannot disagree with the evaluation about which records get read at all.
+  const preRead = preReadVerdict(record, catalog);
+  if (!preRead.reads) return fail(...preRead.reasons);
 
   // **A prefix, not the file.** This pass reads nothing but chunk headers, so asking for the whole
   // artifact would allocate 8 MiB per raster to look at its first kilobyte — the budget defeated by
