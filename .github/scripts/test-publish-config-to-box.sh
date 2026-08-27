@@ -236,6 +236,24 @@ printf 'ok\n200'
 SH
 chmod +x "${shim}/curl"
 
+# The pre-flight asks github.com whether the replacement branch exists; stub it so these cases are
+# hermetic. `present` = the branch is there, `missing` = it is not, `down` = ls-remote itself failed.
+git_stub() {
+  cat > "${shim}/git" <<SH
+#!/usr/bin/env bash
+if [[ "\$1" == ls-remote ]]; then
+  case "$1" in
+    present) echo "deadbeef	refs/heads/x"; exit 0 ;;
+    missing) exit 0 ;;
+    down)    exit 128 ;;
+  esac
+fi
+exec /usr/bin/git "\$@"
+SH
+  chmod +x "${shim}/git"
+}
+git_stub present
+
 moved=$(PATH="${shim}:${PATH}" BASE_URL=https://example.invalid ADMIN_TOKEN=t \
   TRUST_FILE="${tmp}/producers.json" CATALOGS_FILE="${tmp}/catalogs.json" \
   bash "${UNDER_TEST}" 2>&1)
@@ -277,6 +295,127 @@ printf '%s' "${no_listing}" | grep -q 'catalog compose-m3: applied' ||
   fail "an unreadable listing must not stop catalogs being published:\n${no_listing}"
 printf '%s' "${no_listing}" | grep -q 'retired the stale registration' &&
   fail "an unreadable listing must not retire anything:\n${no_listing}"
+
+# 10c. A catalog published as a TOP-LEVEL SITE refuses retirement (unregister answers 409 with
+#      "published as the top-level site"), and reading that as "nothing to retire" is how a move on
+#      m3-catalog or wear-m3-catalog would finish green having changed nothing.
+cat > "${shim}/curl" <<'SH'
+#!/usr/bin/env bash
+method=GET
+for a in "$@"; do
+  case "$a" in
+    POST) method=POST ;;
+    DELETE) method=DELETE ;;
+  esac
+done
+if [[ "$method" == GET ]]; then
+  for a in "$@"; do
+    case "$a" in
+      */admin/catalogs)
+        cat <<'JSON'
+{"catalogs":[{"system":"compose-m3","repo":"yschimke/old-home","branch":"design-artifacts/compose-m3","listed":true,"state":"loaded"}]}
+JSON
+        exit 0 ;;
+    esac
+  done
+  exit 0
+fi
+if [[ "$method" == DELETE ]]; then
+  printf "catalog 'compose-m3' is published as the top-level site 'm3.preview.coo.ee'; remove the site first\n409"
+  exit 0
+fi
+printf 'ok\n200'
+SH
+chmod +x "${shim}/curl"
+git_stub present
+
+sited=$(PATH="${shim}:${PATH}" BASE_URL=https://example.invalid ADMIN_TOKEN=t \
+  TRUST_FILE="${tmp}/producers.json" CATALOGS_FILE="${tmp}/catalogs.json" \
+  bash "${UNDER_TEST}" 2>&1)
+
+printf '%s' "${sited}" | grep -q '::error::catalog compose-m3: cannot be retired' ||
+  fail "a site-protected 409 must be an error, not 'nothing to retire':\n${sited}"
+printf '%s' "${sited}" | grep -q 'catalog compose-m3: nothing to retire' &&
+  fail "a site-protected 409 must NOT read as absent:\n${sited}"
+
+# 10d. The replacement branch does not exist yet. Retiring first would leave the catalog published
+#      NOWHERE — `register` fetches before it persists and drops the entry it added on failure — so
+#      nothing may be retired until the new side is known to publish something.
+cat > "${shim}/curl" <<'SH'
+#!/usr/bin/env bash
+method=GET
+for a in "$@"; do
+  case "$a" in
+    POST) method=POST ;;
+    DELETE) method=DELETE ;;
+  esac
+done
+if [[ "$method" == GET ]]; then
+  for a in "$@"; do
+    case "$a" in
+      */admin/catalogs)
+        printf '%s' '{"catalogs":[{"system":"compose-m3","repo":"yschimke/old-home","branch":"design-artifacts/compose-m3","listed":true,"state":"loaded"}]}'
+        exit 0 ;;
+    esac
+  done
+  exit 0
+fi
+printf 'ok\n200'
+SH
+chmod +x "${shim}/curl"
+git_stub missing
+
+no_branch=$(PATH="${shim}:${PATH}" BASE_URL=https://example.invalid ADMIN_TOKEN=t \
+  TRUST_FILE="${tmp}/producers.json" CATALOGS_FILE="${tmp}/catalogs.json" \
+  bash "${UNDER_TEST}" 2>&1)
+
+printf '%s' "${no_branch}" | grep -q 'publishes no design-artifacts/compose-m3 yet' ||
+  fail "a missing replacement branch must be reported:\n${no_branch}"
+printf '%s' "${no_branch}" | grep -q 'DELETE\|retired the stale registration' &&
+  fail "nothing may be retired when the replacement branch is missing:\n${no_branch}"
+
+# 10e. The retire succeeded and the re-publish did not: the catalog is now published nowhere, which
+#      is the one outcome that must never end up in a green log.
+cat > "${shim}/curl" <<'SH'
+#!/usr/bin/env bash
+method=GET
+for a in "$@"; do
+  case "$a" in
+    POST) method=POST ;;
+    DELETE) method=DELETE ;;
+  esac
+done
+case "$method" in
+  GET)
+    for a in "$@"; do
+      case "$a" in
+        */admin/catalogs)
+          printf '%s' '{"catalogs":[{"system":"compose-m3","repo":"yschimke/old-home","branch":"design-artifacts/compose-m3","listed":true,"state":"loaded"}]}'
+          exit 0 ;;
+      esac
+    done
+    exit 0 ;;
+  DELETE) printf 'ok\n200'; exit 0 ;;
+  POST)
+    for a in "$@"; do
+      case "$a" in
+        *compose-m3*) printf 'fetch failed\n502'; exit 0 ;;
+      esac
+    done
+    printf 'ok\n200'; exit 0 ;;
+esac
+SH
+chmod +x "${shim}/curl"
+git_stub present
+
+stranded=$(PATH="${shim}:${PATH}" BASE_URL=https://example.invalid ADMIN_TOKEN=t \
+  TRUST_FILE="${tmp}/producers.json" CATALOGS_FILE="${tmp}/catalogs.json" \
+  bash "${UNDER_TEST}" 2>&1)
+
+printf '%s' "${stranded}" | grep -q 'it is currently unpublished' ||
+  fail "a retire that could not be re-published must be a loud error:\n${stranded}"
+
+rm -f "${shim}/git"
 
 if [[ "${failures}" -gt 0 ]]; then
   echo "${failures} check(s) failed" >&2

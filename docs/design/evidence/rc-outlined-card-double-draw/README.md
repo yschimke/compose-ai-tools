@@ -53,14 +53,31 @@ the baked reference**, independent of this fix.
 
 ## Regenerating
 
-The `remote-m3` catalog now lives in yschimke/wear-m3-catalog as `:remote-catalog` (compose-ai-tools#4588), so the render half of this runs in a checkout of that repo. The harness below is unchanged and still runs here.
+The `remote-m3` catalog now lives in yschimke/wear-m3-catalog as `:remote-catalog`
+(compose-ai-tools#4588). The harness itself is unchanged and still runs here.
+
+It wants a directory of `<id>.rc` plus a `manifest.json`. Two ways to get one — the
+second needs no Gradle and no second checkout, because the delivery branch carries the documents
+inside `bundle.png` rather than as loose files:
+
+```sh
+# (a) render the catalog, in a yschimke/wear-m3-catalog checkout:
+./gradlew :remote-catalog:composePreviewRenderAll
+#     → remote-catalog/build/compose-previews/renders/<id>.rc (no manifest.json — see (b))
+
+# (b) or stage them straight from the published bundle, entirely inside this checkout:
+git fetch https://github.com/yschimke/wear-m3-catalog.git design-artifacts/remote-m3
+git show FETCH_HEAD:bundle/bundle.png > /tmp/remote-m3.png
+node scripts/design-artifacts/rc-compare.mjs \
+  --bundle /tmp/remote-m3.png \
+  --player cli/src/main/resources/rc-player/bundle.js \
+  --out /tmp/rc-out --stage-embedded /tmp/rc-in
+#     → /tmp/rc-in/<id>.rc + /tmp/rc-in/manifest.json, which is what -Prc.embedded.input reads
+```
+
+Then run the harness here:
 
 ```
-# card .rc sidecars, in a yschimke/wear-m3-catalog checkout:
-#   ./gradlew :remote-catalog:composePreviewRenderAll
-#   → remote-catalog/build/compose-previews/renders/<id>.rc
-# or take them off the delivery branch with no build at all:
-#   git fetch https://github.com/yschimke/wear-m3-catalog.git design-artifacts/remote-m3
 ./gradlew :third-party-rc-embedded-player:testDebugUnitTest \
   --tests 'ee.schimke.composeai.rcembedded.RcEmbeddedRenderHarness' \
   -Prc.embedded.input=<dir with <id>.rc + manifest.json> -Prc.embedded.output=<out>
