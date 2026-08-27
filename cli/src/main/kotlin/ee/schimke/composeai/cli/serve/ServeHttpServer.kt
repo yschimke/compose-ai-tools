@@ -8153,6 +8153,17 @@ class ServeHttpServer(
       // does not exist, which is what "The recorded interaction could not be loaded" meant for both
       // cases and what made diagnosing this lane a manual exercise. 503 with `Retry-After` says the
       // true thing to a browser, a monitor and a person reading a log alike.
+      //
+      // And a capture past the transport's envelope is a third thing again: it exists, it is not
+      // coming, and asking again will not shrink it. `TooLarge` carries no bytes and is not
+      // transient, so it lands in neither branch above by default — 404 for a file the branch is
+      // holding, which is the absence-versus-refusal confusion this block exists to end, arriving
+      // through the outcome added to end it elsewhere. 413 is the answer the rest of this server
+      // already gives for a body past a ceiling.
+      if (outcome is BranchFetch.TooLarge) {
+        call.respondText(outcome.summary, status = HttpStatusCode.PayloadTooLarge)
+        return
+      }
       if (outcome.isTransient) {
         call.response.headers.append(
           HttpHeaders.RetryAfter,
