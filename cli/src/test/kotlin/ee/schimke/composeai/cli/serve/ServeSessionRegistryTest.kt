@@ -498,6 +498,71 @@ class ServeSessionRegistryTest {
       }
   }
 
+  /**
+   * A catalog an operator marked for regeneration is work, and has to be treated as work.
+   *
+   * Warm everywhere and finished nowhere is a state that did not exist before renders could be
+   * inherited across a build. `fullyOptimized` still reads true for it, so the resume filter passed
+   * straight over the one catalog that had just been given something to do — and the action that
+   * marked it answered `queued` while nothing would ever come and work the queue.
+   */
+  @Test
+  fun `a catalog marked for regeneration is resumed even though every target is warm`() {
+    val root = java.nio.file.Files.createTempDirectory("registry-dirty").toFile()
+    root.deleteOnExit()
+    val fp = "f".repeat(64)
+    val generation =
+      assertNotNull(
+        ThemeCacheStore(root, graceMillis = 0)
+          .open(
+            "marked",
+            fp,
+            GenerationInputs(
+              system = "marked",
+              fingerprint = fp,
+              toolVersion = "1.14.0",
+              variant = "desktop",
+              renderConfig = "density=2",
+            ),
+          )
+      )
+    val clock = AtomicLong(0)
+    val work = ServeBackgroundWork(clock = clock::get)
+    val cache =
+      CatalogThemeCache(persistence = generation).apply {
+        configureTargets(listOf("preview|dark"))
+        put("preview|dark", ByteArray(4))
+      }
+    assertTrue(cache.snapshot().fullyOptimized, "every target is warm")
+
+    val opener = Opener()
+    ServeSessionRegistry(
+        open = opener,
+        idleTimeoutMillis = 100,
+        reaperIntervalMillis = 0,
+        clock = clock::get,
+      )
+      .use { registry ->
+        registry.register(
+          "marked",
+          stateFor("marked").copy(catalogThemeCache = cache, backgroundWork = work),
+          host = opener(stateFor("marked")),
+        )
+        clock.set(200)
+        assertEquals(1, registry.suspendIdle())
+        assertEquals(0, registry.resumeIdleOptimizers(), "warm and converged: nothing to do")
+
+        assertEquals(1, cache.markPersistedDirty(), "the operator's regenerate")
+        val openedBefore = opener.opened.get()
+        assertEquals(
+          1,
+          registry.resumeIdleOptimizers(),
+          "and now there is work, so the suspended catalog comes back to do it",
+        )
+        assertEquals(openedBefore + 1, opener.opened.get())
+      }
+  }
+
   @Test
   fun `a fully optimized or lane-starved catalog is not resumed`() {
     val clock = AtomicLong(0)

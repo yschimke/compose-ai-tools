@@ -357,6 +357,8 @@ class CatalogThemeCache(
       withheldReads.incrementAndGet()
       return null
     }
+    // Sampled BEFORE the read, so the comparison below spans the whole unlocked window.
+    val epoch = dropEpoch.get()
     val fromDisk =
       store.get(key)
         ?: run {
@@ -366,9 +368,23 @@ class CatalogThemeCache(
     diskHits.incrementAndGet()
     // Promoted through the ordinary write path so it takes part in the LRU and the byte accounting
     // like any other entry — but NOT written back to disk, which is where it just came from.
-    remember(key, fromDisk)
+    //
+    // Only if no drop has happened since the epoch was sampled. The disk read above holds neither
+    // the render lock nor the generation write lock, by design — a visitor must not queue behind
+    // another replica's writes — so a `dropPersisted` can unlink the generation and clear memory
+    // in the gap between the sample and here. Promoting then would reinsert the very bytes the
+    // drop just declared wrong into the tier in FRONT of the one that was emptied, and every
+    // subsequent request would be served them from an empty disk. The bytes still go back to this
+    // caller: it asked before the drop and a render it already holds is not made wrong by one.
+    remember(key, fromDisk, validEpoch = epoch)
     return fromDisk
   }
+
+  /**
+   * Bumped by every [dropPersisted]. Read either side of an unlocked disk read so bytes fetched
+   * before a drop cannot be promoted into memory after it.
+   */
+  private val dropEpoch = AtomicLong()
 
   /**
    * Targets held from an older build and queued for re-render, in a stable order.
@@ -424,6 +440,11 @@ class CatalogThemeCache(
     // 409 whose contract is "contended, try again", and every retry would answer the same.
     val discarded = persistence?.discard() ?: true
     synchronized(renderLock) {
+      // Inside the lock and BEFORE the clear: a promotion racing this drop takes the lock to
+      // insert, so bumping here means it either lands before the clear (and is cleared) or reads
+      // the new epoch and declines. Bumping after the clear would leave a window where it does
+      // neither.
+      dropEpoch.incrementAndGet()
       renders.clear()
       byteCount.set(0)
     }
@@ -467,8 +488,20 @@ class CatalogThemeCache(
   }
 
   /** Hold [png] in the memory tier under the byte cap, evicting least-recently-read first. */
-  private fun remember(key: String, png: ByteArray, replaceExisting: Boolean = false) {
+  private fun remember(
+    key: String,
+    png: ByteArray,
+    replaceExisting: Boolean = false,
+    /**
+     * Insert only while [dropEpoch] still reads this value — see [get], where a disk read runs
+     * unlocked and a drop can land underneath it. Checked INSIDE the lock: comparing before taking
+     * it only narrows the window, because the drop that invalidates these bytes can happen between
+     * the comparison and the insert.
+     */
+    validEpoch: Long? = null,
+  ) {
     synchronized(renderLock) {
+      if (validEpoch != null && dropEpoch.get() != validEpoch) return@synchronized
       if (renders.containsKey(key)) {
         // A regenerated dirty entry has to displace the copy the memory window is still serving,
         // or the read path would keep handing out the older build's pixels for as long as the LRU
@@ -533,15 +566,24 @@ class CatalogThemeCache(
       val fresh = render(key) ?: continue
       compared++
       if (!fresh.contentEquals(cached)) {
-        // Only the DIRTY entries, where the generation knows which those are. A generation can now
-        // hold renders from two builds at once — the suspect ones this process adopted, and the
-        // ones it has produced itself since — and the sample has just *confirmed* the second kind
-        // by disagreeing with the first. Taking the lot would throw away however long this process
-        // has spent rendering, to fix a problem those renders do not have. A store with no
-        // boundary has nothing to narrow to, so it still takes everything.
-        val dropped = store.discardDirty()
+        // Only the ADOPTED entries — the ones that were on disk when this generation opened. A
+        // generation can now hold renders from two processes at once, and the sample has just
+        // *confirmed* the ones this process made by disagreeing with the ones it inherited. Taking
+        // the lot would throw away however long this process has spent rendering, to fix a problem
+        // those renders do not have.
+        //
+        // Adopted, NOT dirty. Dirtiness asks "did a different BUILD write this", and the sample
+        // never tests that question: it draws its candidates from `wasAdopted`. A same-version
+        // restart inherits the previous process's renders as clean, so narrowing to dirty here
+        // would delete an older build's leftovers, report a positive count that suppresses the
+        // fallback `discard`, lift the quarantine, and go straight back to serving the entries the
+        // sample was drawn from.
+        val dropped = store.discardAdopted()
         val discarded = if (dropped >= 0) dropped > 0 || store.discard() else false
         synchronized(renderLock) {
+          // Same hazard as a drop, and the same fix: these bytes have just been proved wrong, so a
+          // promotion already in flight must not put them back after the clear.
+          dropEpoch.incrementAndGet()
           renders.clear()
           byteCount.set(0)
         }

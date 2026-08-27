@@ -1076,6 +1076,13 @@ class ServeHttpServer(
               return@post
             }
             val queued = withContext(Dispatchers.IO) { cache.markPersistedDirty() }
+            // Wake the pass that has to work the queue. A converged catalog's optimizer task has
+            // already exited and its host is usually suspended as well, so marking alone would
+            // answer `queued: true` with nobody coming — the mark is durable, but "durable" and
+            // "being worked" are the two different promises this route makes and it has to keep
+            // both. Best-effort: a catalog that cannot be revived still has its mark on disk and
+            // is picked up by the ordinary resume rotation.
+            if (queued > 0) withContext(Dispatchers.IO) { sessions.wakeOptimizer(system) }
             call.response.headers.append(HttpHeaders.CacheControl, "no-store")
             if (queued < 0) {
               // Two different refusals, both of which must not read as a queued regeneration: the

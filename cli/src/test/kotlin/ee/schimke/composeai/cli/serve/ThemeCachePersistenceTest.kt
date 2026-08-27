@@ -190,6 +190,56 @@ class ThemeCachePersistenceTest {
     assertEquals(0, next.dirtyCount(), "and nothing older than the boundary is left")
   }
 
+  /**
+   * What a failed sample must take, and why "dirty" is the wrong set to narrow to.
+   *
+   * The sample draws its candidates from `wasAdopted` — entries present when this generation opened
+   * — so adoption is the boundary it actually tests. Dirtiness asks a different question, "did a
+   * different BUILD write this", and a same-version restart of a partly converged generation
+   * inherits the previous process's renders as clean. Narrowing to dirty would delete an older
+   * build's leftovers, report a positive count that suppresses the fallback discard, lift the
+   * quarantine, and go on serving the very entries the sample disagreed with.
+   */
+  @Test
+  fun `a failed sample takes everything inherited, not just what an older build wrote`() {
+    val root = tempDir()
+    val fp = "fp-a"
+    val oldBuild = assertNotNull(store(root).open("m3-catalog", fp, inputs(fp)))
+    oldBuild.put("from-old-build|dark", ByteArray(8) { 1 })
+    ageRenders(root, "m3-catalog", fp, byMillis = 10_000)
+
+    // This build opens, marking the old build's render dirty, and renders one of its own.
+    val firstRun =
+      assertNotNull(store(root).open("m3-catalog", fp, inputs(fp).copy(toolVersion = "1.15.0")))
+    firstRun.put("from-previous-process|dark", ByteArray(8) { 2 })
+
+    // ...then restarts. Same version, so the manifest is left alone and its boundary still stands:
+    // the old build's render is dirty, and the previous PROCESS's render is clean.
+    val restarted =
+      assertNotNull(store(root).open("m3-catalog", fp, inputs(fp).copy(toolVersion = "1.15.0")))
+    restarted.put("from-this-process|dark", ByteArray(8) { 3 })
+    assertEquals(1, restarted.dirtyCount(), "only the old build's render is DIRTY")
+    assertTrue(
+      restarted.wasAdopted("from-previous-process|dark"),
+      "but the previous process's render was still inherited, and inherited is what the sample " +
+        "tests",
+    )
+
+    assertEquals(2, restarted.discardAdopted(), "both inherited renders go")
+    assertFalse(restarted.contains("from-old-build|dark"))
+    assertFalse(
+      restarted.contains("from-previous-process|dark"),
+      "including the one no boundary called dirty — an untracked input such as the base image or " +
+        "the installed fonts moved, and this process never saw these pixels made",
+    )
+    assertTrue(
+      restarted.contains("from-this-process|dark"),
+      "and what this process rendered survives: the sample disagreeing with the inherited bytes " +
+        "is precisely evidence FOR these",
+    )
+    assertEquals(0, restarted.dirtyCount())
+  }
+
   @Test
   fun `marking a catalog dirty queues its renders without taking them away`() {
     val root = tempDir()
@@ -250,6 +300,144 @@ class ThemeCachePersistenceTest {
       later.isDirty("during|dark"),
       "and written DURING the overlap — a bare `now` boundary would have filed this as current, " +
         "which is the stale pixel the boundary exists to catch",
+    )
+  }
+
+  /**
+   * The volume that cannot record the boundary.
+   *
+   * A cross-build open whose manifest write fails used to record the failure and carry on, and the
+   * generation then re-read the PREVIOUS manifest — commonly a boundary of zero — and concluded
+   * that another build's renders were its own. A five-entry sample verifies the generation and a
+   * renderer change outside that sample is served for the life of the process. Unknown provenance
+   * has to read as dirty, not as ours.
+   */
+  @Test
+  fun `renders are dirty when the boundary could not be recorded`() {
+    val root = tempDir()
+    val fp = "fp-a"
+    val first = assertNotNull(store(root).open("m3-catalog", fp, inputs(fp)))
+    first.put("preview|dark", ByteArray(8) { 1 })
+    first.put("preview|light", ByteArray(8) { 2 })
+    ageRenders(root, "m3-catalog", fp, byMillis = 10_000)
+
+    val dir = File(File(root, "m3-catalog"), fp)
+    if (!dir.setWritable(false)) return
+    try {
+      // Skipped where the filesystem does not enforce it — as root, which is how this container
+      // runs though CI does not. See [writable].
+      if (writable(dir)) return
+      val next =
+        assertNotNull(store(root).open("m3-catalog", fp, inputs(fp).copy(toolVersion = "1.15.0")))
+      assertEquals(
+        2,
+        next.dirtyCount(),
+        "a volume that could not be told another build was here cannot then be believed when it " +
+          "says these renders are ours",
+      )
+    } finally {
+      dir.setWritable(true)
+    }
+  }
+
+  /**
+   * The boundary is a line, and a line left behind after everything crossed it re-dirties the very
+   * work that crossed.
+   *
+   * A cross-build open dates the boundary a grace window into the FUTURE, deliberately, so the
+   * outgoing replica's later writes are caught. The cost is that this build's own early renders
+   * fall under it too — fine once, and a bug forever: left in the manifest, every restart
+   * reclassifies them and regenerates them again.
+   */
+  @Test
+  fun `the boundary is cleared once every render is this build's own`() {
+    val root = tempDir()
+    val fp = "fp-a"
+    val first = assertNotNull(store(root).open("m3-catalog", fp, inputs(fp)))
+    first.put("a|dark", ByteArray(8) { 1 })
+    first.put("b|dark", ByteArray(8) { 2 })
+    ageRenders(root, "m3-catalog", fp, byMillis = 10_000)
+
+    val next =
+      assertNotNull(store(root).open("m3-catalog", fp, inputs(fp).copy(toolVersion = "1.15.0")))
+    assertEquals(2, next.dirtyCount())
+    next.put("a|dark", ByteArray(8) { 3 }, replaceExisting = true)
+    next.put("b|dark", ByteArray(8) { 4 }, replaceExisting = true)
+    assertEquals(0, next.dirtyCount(), "converged")
+
+    val manifest =
+      kotlinx.serialization.json.Json.decodeFromString(
+        GenerationInputs.serializer(),
+        File(File(File(root, "m3-catalog"), fp), ThemeCacheStore.MANIFEST_NAME).readText(),
+      )
+    assertEquals(
+      0L,
+      manifest.dirtyBeforeEpochMillis,
+      "and the line goes with the last dirty entry",
+    )
+
+    val reopened =
+      assertNotNull(store(root).open("m3-catalog", fp, inputs(fp).copy(toolVersion = "1.15.0")))
+    assertEquals(
+      0,
+      reopened.dirtyCount(),
+      "so a restart does not regenerate work that already converged — which a future-dated " +
+        "boundary left in place would do once per restart, forever",
+    )
+  }
+
+  /**
+   * The half of the rollout overlap a boundary cannot see.
+   *
+   * Classification happens once, at open. A key the incoming replica renders FIRST leaves the dirty
+   * set by its own write, so the outgoing replica renaming over it afterwards is invisible however
+   * the boundary is dated — memory keeps serving the right pixels until it evicts, and the read
+   * then falls through to another build's bytes under a generation reporting itself converged.
+   */
+  @Test
+  fun `a render the outgoing replica overwrote after ours goes back on the queue`() {
+    val root = tempDir()
+    val fp = "fp-a"
+    val first = assertNotNull(store(root).open("m3-catalog", fp, inputs(fp)))
+    first.put("seed|dark", ByteArray(8) { 1 })
+    ageRenders(root, "m3-catalog", fp, byMillis = 10_000)
+
+    // A real grace window — the overlap allowance IS the window, and the helper store uses zero —
+    // and a clock the test can push past it, since the reconcile is deliberately deferred until
+    // the overlap is over and there is no second writer left to race.
+    var now = System.currentTimeMillis()
+    val incoming =
+      assertNotNull(
+        ThemeCacheStore(
+            root,
+            maxBytes = ThemeCacheStore.DEFAULT_MAX_BYTES,
+            graceMillis = 60_000,
+            clock = { now },
+          )
+          .open("m3-catalog", fp, inputs(fp).copy(toolVersion = "1.15.0"))
+      )
+    // The incoming replica regenerates the key, inside the overlap window.
+    incoming.put("seed|dark", ByteArray(8) { 2 }, replaceExisting = true)
+    assertEquals(0, incoming.dirtyCount(), "clean, as far as this replica knows")
+
+    // The OUTGOING replica, still live on the old build, renames its own copy over the top. Only
+    // one render is in this generation, so the file is unambiguous without hashing the key — which
+    // the test could not do anyway, the name being a one-way hash.
+    val png =
+      assertNotNull(
+        File(File(root, "m3-catalog"), fp).listFiles()?.singleOrNull { it.name.endsWith(".png") }
+      )
+    png.writeBytes(ByteArray(8) { 9 })
+    assertTrue(png.setLastModified(now + 5_000), "the co-replica's write carries its own timestamp")
+
+    // Past the overlap, the incoming replica re-checks what it left behind.
+    now += 120_000
+    assertEquals(
+      1,
+      incoming.dirtyCount(),
+      "a file whose timestamp is no longer the one we left is one somebody else has replaced, " +
+        "and the only honest thing to do with it is render it again — the boundary cannot see " +
+        "this on its own, because our own write had already taken the key off the dirty queue",
     )
   }
 

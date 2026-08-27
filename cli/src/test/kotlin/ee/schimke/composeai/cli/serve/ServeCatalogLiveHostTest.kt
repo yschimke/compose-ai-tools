@@ -1147,6 +1147,76 @@ class ServeCatalogLiveHostTest {
     assertEquals(false, composite.backgroundWorkActive)
   }
 
+  /**
+   * The dirty queue's one load-bearing property: a marked entry is actually RE-RENDERED.
+   *
+   * A dirty render is deliberately still servable — a possibly-stale preview beats a cold one — so
+   * the ordinary render path answers it straight out of [CatalogThemeCache] and never reaches a
+   * daemon. That is correct for a visitor and fatal for the pass: no daemon render means no fresh
+   * bytes, no `put`, and no flag cleared, so the pass re-selects the same dirty set every slice,
+   * renders nothing, and converges never. Regeneration has to ask the renderer, because a render is
+   * the entire question being asked.
+   */
+  @Test
+  fun `a marked render is regenerated through the daemon, not answered from the cache`() {
+    val root = java.nio.file.Files.createTempDirectory("theme-cache-regen").toFile()
+    root.deleteOnExit()
+    val fp = "f".repeat(64)
+    val generation =
+      assertNotNull(
+        ThemeCacheStore(root, graceMillis = 0)
+          .open(
+            "m3-catalog",
+            fp,
+            GenerationInputs(
+              system = "m3-catalog",
+              fingerprint = fp,
+              toolVersion = "1.14.0",
+              variant = "desktop",
+              renderConfig = "density=2",
+            ),
+          )
+      )
+    val cache = CatalogThemeCache(persistence = generation)
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        declaredThemes = listOf(brandTheme),
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked"),
+        catalogThemeCache = cache,
+        serverIdleMillis = { Long.MAX_VALUE },
+        themeOptimizationEnabled = true,
+        themeOptimizationIdleMillis = 0,
+      )
+
+    composite.prewarm()
+    val warmed = awaitOptimization(composite)
+    assertEquals(1, warmed.cached, "the gap is filled first")
+    assertEquals(0, warmed.dirty)
+    val rendersWhileWarming = live.renderCalls
+
+    // The operator's regenerate: nothing is deleted, so the entry stays warm and servable.
+    assertEquals(1, cache.markPersistedDirty(), "the mark lands on the one warmed render")
+    assertEquals(1, cache.snapshot().dirty)
+    assertTrue(cache.snapshot().fullyOptimized, "still warm everywhere — dirty is not absent")
+    assertFalse(cache.snapshot().converged, "but no longer finished")
+
+    composite.keepLiveWarm()
+    val settled = awaitOk(5_000) { composite.themeOptimizationSnapshot()?.takeIf { it.converged } }
+    assertEquals(0, settled.dirty, "the queue drains")
+    assertTrue(
+      live.renderCalls > rendersWhileWarming,
+      "and it drains by RENDERING: answering the dirty key from the cache would clear no flag, " +
+        "leaving the pass to select the same set every slice forever",
+    )
+  }
+
   @Test
   fun `idle optimizer waits for asynchronous cold warming without spending its retry budget`() {
     val warmStarted = CountDownLatch(1)

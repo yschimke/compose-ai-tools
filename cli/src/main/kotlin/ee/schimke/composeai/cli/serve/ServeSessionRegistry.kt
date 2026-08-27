@@ -704,6 +704,41 @@ class ServeSessionRegistry(
   }
 
   /**
+   * Put one named catalog's optimizer back to work, reviving its host if it has been suspended.
+   *
+   * The explicit counterpart to [resumeIdleOptimizers]. Marking a catalog's renders dirty changes
+   * what there is to do but wakes nobody: a converged catalog's pass has already exited, and for
+   * most catalogs most of the time the host is suspended as well. Left to the background rotation
+   * the mark would sit until the reaper next ran and a lane happened to be free, so the action that
+   * reports a queue would be telling the truth about the queue and not about anyone working it.
+   *
+   * Deliberately NOT bounded by [ServeBackgroundWork.optimizerResumeSlots]: that budget paces a
+   * rotation nobody asked for, and this is a request. Admission still applies once the pass runs —
+   * waking a host is not the same as granting it a lane.
+   */
+  fun wakeOptimizer(sessionId: String): Boolean {
+    val host =
+      lock.withLock {
+        if (closed) return false
+        val entry = sessions[sessionId] ?: return false
+        if (entry.closing) return false
+        // Buys the host `idleTimeoutMillis` before [suspendIdle] looks at it again — the slice it
+        // needs to win a lane. See [resumeIdleOptimizers] for why this is `lastAccess` and not the
+        // server-wide quiet clock the optimizer's own gate reads.
+        entry.lastAccess = clock()
+        if (entry.suspendedAt != null) {
+          entry.suspendedAt = null
+          runCatching { entry.state?.backgroundWork?.recordOptimizerHostResumed() }
+        }
+        liveHost(entry)
+      } ?: return false
+    // Outside the lock, for the reason [resumeIdleOptimizers] gives: the pass this re-enters can
+    // warm a daemon, and holding the registry lock across that stalls every other session.
+    runCatching { host.keepLiveWarm() }
+    return true
+  }
+
+  /**
    * Whether this session is a catalog with theme-optimization targets left to fill.
    *
    * Read from [ServeSessionState] rather than from a host, because the whole point is to ask it of
@@ -712,7 +747,12 @@ class ServeSessionRegistry(
    */
   private fun optimizerUnfinished(state: ServeSessionState?): Boolean {
     val snapshot = state?.catalogThemeCache?.snapshot() ?: return false
-    return snapshot.total > 0 && !snapshot.fullyOptimized
+    // `converged`, NOT `fullyOptimized`. A catalog whose every target is warm but whose renders
+    // came from another build still has work — and it is the case an operator's "regenerate this
+    // catalog" creates deliberately. Asking the narrower question here left the newly marked
+    // catalog excluded from every resume, so the action reported a queue that nothing would ever
+    // come and work.
+    return snapshot.total > 0 && !snapshot.converged
   }
 
   /**
