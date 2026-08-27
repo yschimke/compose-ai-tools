@@ -299,7 +299,11 @@ export async function walkCatalog(
     const document = await fetchDocument(sources.documentUrl);
     if (document.state === "absent") return empty("absent");
     if (document.state === "unavailable") return empty("unavailable");
-    const artifacts = await prefetch(document.text, sources.artifactUrl);
+    const artifacts = await prefetch(
+        document.text,
+        sources.artifactUrl,
+        catalog,
+    );
     const result = evaluateKnownDifferences({
         documentText: document.text,
         readArtifact: reader(artifacts),
@@ -469,6 +473,14 @@ interface PrefetchedArtifact {
 async function prefetch(
     documentText: string,
     artifactUrl: (path: string) => string,
+    /**
+     * The catalog the **evaluation** will be given, or none when it will be given none.
+     *
+     * Not optional in spirit: `orphaned-target` is a pre-read refusal, so a planner without the
+     * catalog the engine has counts records the engine never reads. See the ceiling gate below for
+     * why that direction is the dangerous one.
+     */
+    catalog: unknown = null,
 ): Promise<Map<string, PrefetchedArtifact>> {
     const artifacts = new Map<string, PrefetchedArtifact>();
     let parsed: unknown;
@@ -527,28 +539,56 @@ async function prefetch(
     // document was never readable. The ceiling bounds the legal case; this is the illegal one, which
     // is the one an attacker picks.
     //
-    // **Summed over the records the engine will actually read, not over every path the document
-    // names.** Those are different numbers: `id-not-safe`, a schema failure, `orphaned-target` and
-    // `path-not-contained` all refuse a record before its first read, so the naive sum is an *upper*
-    // bound on the engine's total. Gating on an upper bound would skip round two for a document
-    // whose engine-side total is under the ceiling, and every record the engine then asked to decode
-    // would be a body nobody fetched — `artifact-unreadable` on a document the engine evaluated. A
-    // verdict change decided by a planner, which is the failure direction that matters.
-    // `recordsThatRead` is the engine's own answer to that question, so the sum is exact.
+    // **Over-estimating this total is the dangerous direction, and under-estimating is free.** The
+    // gate skips when the sum exceeds the ceiling, so a sum that is too high skips round two for a
+    // document whose engine-side total is *under* it — and every record the engine then asks to
+    // decode is a body nobody fetched, reported as `artifact-unreadable`. A verdict changed by a
+    // planner. A sum that is too low merely fetches bytes for a document that turns out to be
+    // rejected: wasteful, never wrong.
     //
-    // No catalog here, which widens the set — `orphaned-target` is the one pre-read refusal that
-    // needs one. A larger set is a larger sum is a gate that skips less readily, and that is the
-    // conservative direction: it can only ever fail to skip, never skip wrongly.
+    // So this mirrors `preflightRecord`'s accounting exactly rather than summing the map:
     //
-    // An undeclared size (`totalKnown: false`) contributes only what arrived, so it under-counts and
-    // the gate holds off — again the safe direction for verdicts, and the honest limit of this
-    // check: a producer whose server declares no length is measured by round two rather than here.
-    const reading = new Set(recordsThatRead(documentText));
+    // - **only records the engine reads at all.** `id-not-safe`, a schema failure,
+    //   `orphaned-target` and `path-not-contained` all return before the first read, so their
+    //   artifacts never reach the engine's total. `recordsThatRead` is the engine's own answer, and
+    //   it is given the same catalog the evaluation gets — without it, `orphaned-target` cannot be
+    //   seen and every orphan is counted, which is exactly the over-estimate above.
+    // - **only records whose two artifacts both answered, and both within `maxArtifactBytes`.** A
+    //   record refused for busting the per-artifact cap returns before `artifactBytes` is assigned,
+    //   so the engine charges it nothing — while its declared size is the largest number in the
+    //   document, and counting it is the easiest way to over-estimate by gigabytes.
+    // - **per record's two fields, not per unique path.** A record may legitimately name the same
+    //   file for `mask` and `acceptedCandidate`; the engine reads it twice and charges it twice,
+    //   and the fetch map holds it once. Counting map entries under-charges such a record — the
+    //   safe direction, but not the right number.
+    //
+    // An undeclared size (`totalKnown: false`) contributes only what arrived, under-counting for the
+    // same safe reason, and is the honest limit of this check: a producer whose server declares no
+    // length is measured by round two rather than here.
+    const reading = new Set(recordsThatRead(documentText, catalog));
     let plannedBytes = 0;
-    for (const [path, entry] of artifacts) {
-        if (!reading.has(path.slice(0, path.indexOf("/")))) continue;
-        if ("byteLength" in entry.header)
-            plannedBytes += entry.header.byteLength;
+    for (const record of acceptances) {
+        const id = (record as { id?: unknown })?.id;
+        if (typeof id !== "string" || !reading.has(id)) continue;
+        let recordBytes = 0;
+        let bothReadable = true;
+        for (const key of ["mask", "acceptedCandidate"] as const) {
+            const value = (record as Record<string, unknown>)[key];
+            const header =
+                typeof value === "string"
+                    ? artifacts.get(`${id}/${value}`)?.header
+                    : undefined;
+            if (!header || !("byteLength" in header)) {
+                bothReadable = false;
+                break;
+            }
+            if (header.byteLength > BUDGET.maxArtifactBytes) {
+                bothReadable = false;
+                break;
+            }
+            recordBytes += header.byteLength;
+        }
+        if (bothReadable) plannedBytes += recordBytes;
     }
     if (plannedBytes > BUDGET.maxTotalArtifactBytes) return artifacts;
 

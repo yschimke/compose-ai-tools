@@ -27,7 +27,7 @@ import {
     world,
 } from "./support/knownDifferences.js";
 import { sha256Hex } from "../../../scripts/design-artifacts/png-lite.mjs";
-import { evaluateComparison } from "../src/parity/acceptance.js";
+import { evaluateComparison, walkCatalog } from "../src/parity/acceptance.js";
 
 /** One recorded request: the path asked for, and the `Range` header if the caller sent one. */
 interface RecordedRequest {
@@ -594,6 +594,189 @@ describe("evaluateComparison", () => {
         );
         assert.deepEqual(report.statuses.glyph, { status: "valid" });
         assert.equal(report.documentRejected, false);
+    });
+
+    it("charges a record twice when it names one file for both artifacts", async () => {
+        // A record may legitimately use the same path for `mask` and `acceptedCandidate` — the
+        // engine says so explicitly, and reads it twice and charges it twice. The fetch map holds it
+        // once, so a sum over map entries under-charges every such record and the ceiling arrives
+        // late: the browser retains full bodies for a document that is about to be rejected.
+        //
+        // Five records x one aliased file x 7 MiB charged twice = 70 MiB, past the 64 MiB ceiling —
+        // where counting unique paths sees 35 MiB and fetches everything.
+        //
+        // 7 MiB, not 9: an artifact past the 8 MiB per-artifact cap is refused per-record and never
+        // full-read anyway, so a larger figure makes this test pass for a reason that has nothing to
+        // do with the aliasing. The property is only observable in the band where each file is legal
+        // and the aggregate is not.
+        const scene = world();
+        const ids = ["glyph", "glyph2", "glyph3", "glyph4", "glyph5"];
+        const parsed = JSON.parse(knownDifferencesJson(scene)) as {
+            acceptances: Record<string, unknown>[];
+        };
+        const template = parsed.acceptances[0];
+        parsed.acceptances = ids.map((id) => ({
+            ...template,
+            id,
+            // One file, named twice. Its digest has to answer for both fields.
+            mask: "mask.png",
+            acceptedCandidate: "mask.png",
+            acceptedCandidateSha256: template.maskSha256,
+        }));
+        const routes = catalogRoutes(scene, JSON.stringify(parsed));
+        for (const id of ids) {
+            routes[`/m3/parity/known-differences/${id}/mask.png`] = scene.mask;
+        }
+        const declaredSizes = Object.fromEntries(
+            ids.map((id) => [
+                `/m3/parity/known-differences/${id}/mask.png`,
+                7 * 1024 * 1024,
+            ]),
+        );
+
+        await withRecordingFetch(
+            routes,
+            { honourRange: true, declaredSizes },
+            async (requests) => {
+                await evaluateComparison(SOURCES, scope(scene), {});
+                const whole = requests.filter(
+                    (request) =>
+                        request.url.startsWith(
+                            "/m3/parity/known-differences/",
+                        ) && request.range === null,
+                );
+                assert.equal(
+                    whole.length,
+                    0,
+                    `an aliased artifact was under-charged and its body fetched: ${whole.map((r) => r.url).join(", ")}`,
+                );
+            },
+        );
+    });
+
+    it("charges nothing for a record refused by the per-artifact cap", async () => {
+        // `preflightRecord` reads a record's two prefixes and then returns *before* assigning
+        // `artifactBytes` when either is past `maxArtifactBytes` — so the engine charges such a
+        // record zero toward the aggregate ceiling, while its declared size is the largest number in
+        // the document. A planner that counted it would over-estimate by gigabytes, skip round two,
+        // and turn a perfectly legal sibling into `artifact-unreadable`.
+        //
+        // Here one record declares 200 MiB per artifact (refused per-record, charged zero) beside one
+        // ordinary record the engine does read.
+        const scene = world();
+        const routes = catalogRoutes(
+            scene,
+            repeatedRecords(scene, ["glyph", "huge"]),
+        );
+        routes["/m3/parity/known-differences/huge/mask.png"] = scene.mask;
+        routes["/m3/parity/known-differences/huge/accepted-candidate.png"] =
+            scene.accepted;
+        const declaredSizes = {
+            "/m3/parity/known-differences/huge/mask.png": 200 * 1024 * 1024,
+            "/m3/parity/known-differences/huge/accepted-candidate.png":
+                200 * 1024 * 1024,
+        };
+
+        const report = await withRecordingFetch(
+            routes,
+            { honourRange: true, declaredSizes },
+            async (requests) => {
+                const result = await evaluateComparison(
+                    SOURCES,
+                    scope(scene),
+                    {},
+                );
+                const whole = requests.filter(
+                    (request) =>
+                        request.url.startsWith(
+                            "/m3/parity/known-differences/glyph/",
+                        ) && request.range === null,
+                );
+                assert.equal(
+                    whole.length,
+                    2,
+                    "the legal record's bodies were never fetched",
+                );
+                return result;
+            },
+        );
+        assert.deepEqual(report.statuses.glyph, { status: "valid" });
+    });
+
+    it("does not count records the catalog orphans toward the ceiling", async () => {
+        // The catalog-aware call site, and the reason `prefetch` needs the catalog the evaluation
+        // gets. `orphaned-target` is a *pre-read* refusal: the engine charges an orphaned record
+        // nothing toward the aggregate ceiling. A planner without the catalog cannot see that, counts
+        // every orphan, and over-estimates — which is the direction that skips round two for a
+        // document the engine evaluates and turns its readable records into `artifact-unreadable`.
+        //
+        // Four orphans at 7 MiB x 2 = 56 MiB the engine never charges, beside one resolvable record
+        // at 14 MiB it does. Catalog-blind the sum is 70 MiB and the gate fires; catalog-aware it is
+        // 14 MiB and the readable record is fetched.
+        const scene = world();
+        const ids = ["glyph", "orphan1", "orphan2", "orphan3", "orphan4"];
+        const routes = catalogRoutes(scene, repeatedRecords(scene, ids));
+        for (const id of ids) {
+            routes[`/m3/parity/known-differences/${id}/mask.png`] = scene.mask;
+            routes[
+                `/m3/parity/known-differences/${id}/accepted-candidate.png`
+            ] = scene.accepted;
+        }
+        const each = 7 * 1024 * 1024;
+        const declaredSizes = Object.fromEntries(
+            ids.flatMap((id) =>
+                ["mask.png", "accepted-candidate.png"].map((file) => [
+                    `/m3/parity/known-differences/${id}/${file}`,
+                    each,
+                ]),
+            ),
+        );
+        // Every record names the same preview, so the catalog resolves them all or none — which is
+        // no use here. The orphans are made orphans by giving the catalog a preview that matches
+        // only the first record's `referenceId`... except they share that too. So instead the
+        // catalog resolves the shared preview, and the orphans are re-pointed at one it lacks.
+        const parsed = JSON.parse(repeatedRecords(scene, ids)) as {
+            acceptances: Record<string, unknown>[];
+        };
+        for (const record of parsed.acceptances) {
+            if (record.id !== "glyph") record.previewId = "no-such-preview";
+        }
+        routes["/m3/parity/known-differences.json"] = JSON.stringify(parsed);
+        const template = JSON.parse(knownDifferencesJson(scene))
+            .acceptances[0] as Record<string, string>;
+        const catalog = {
+            previews: [
+                {
+                    system: template.system,
+                    id: template.previewId,
+                    component: template.component,
+                    variant: template.variant,
+                    referenceIds: [template.referenceId],
+                },
+            ],
+        };
+
+        const report = await withRecordingFetch(
+            routes,
+            { honourRange: true, declaredSizes },
+            async (requests) => {
+                const result = await walkCatalog(SOURCES, catalog);
+                const whole = requests.filter(
+                    (request) =>
+                        request.url.startsWith(
+                            "/m3/parity/known-differences/glyph/",
+                        ) && request.range === null,
+                );
+                assert.equal(
+                    whole.length,
+                    2,
+                    "the resolvable record's bodies were never fetched — the orphans were counted",
+                );
+                return result;
+            },
+        );
+        assert.equal(report.documentRejected, false);
+        assert.equal(report.statuses.orphan1?.status, "refused");
     });
 
     it("never reads an artifact whole when its prefix already refuses it", async () => {
