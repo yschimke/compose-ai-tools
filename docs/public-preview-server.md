@@ -919,10 +919,21 @@ When enabled, it yields twice over — both learned from `preview.coo.ee`:
   `keepLiveWarm()`, which a presence heartbeat drives, so suspending an unfinished catalog on a box
   nobody is browsing would simply stop it. `ServeSessionRegistry.resumeIdleOptimizers()` runs after
   each suspend/reap sweep and brings back the longest-parked unfinished catalog — only while the
-  server is quiet, and only as many as `ServeBackgroundWork.optimizerLanesFree()` says can take a
-  lane now. Resuming costs a cold Android daemon (34-68s) and about a gigabyte for as long as the
-  host stays up, so resuming a catalog that would then queue behind two others pays that price to
-  stand at the door. `themeOptimizer.hostSuspensions` / `hostResumes` on `/status.json` report the
+  server is quiet, and only as many as `ServeBackgroundWork.optimizerResumeSlots()` allows, since
+  resuming costs a cold Android daemon (34-68s) and about a gigabyte for as long as the host stays
+  up.
+- **That budget is the free lanes plus one challenger, and the rotation depends on the plus one.**
+  Bounding resumption at the *free* lanes alone starves every catalog that is not already resident:
+  a pass returns its lane on a slice boundary and re-queues immediately, so every later sweep reads
+  zero free lanes and the parked catalogs wait for an incumbent to **finish** — hours, for the
+  10,440-target `m3-catalog`, and possibly never. Admission's fairness orders catalogs *at the
+  door* by who has gone longest without a lane, which only helps a catalog that is standing there,
+  so one challenger is kept queued: it wins the next lane release ahead of the incumbent that just
+  ran, and that incumbent is then suspended in its turn. The rotation period becomes the idle
+  window rather than a catalog's whole backlog, at the cost of one extra resident daemon.
+  Candidates are ordered by **when they were suspended**, not by `lastAccess` — a catalog parked by
+  the very sweep that then resumes has the oldest `lastAccess` of all, so ordering on that would
+  resurrect whatever had just been parked and leave the long-parked ones where they were. `themeOptimizer.hostSuspensions` / `hostResumes` on `/status.json` report the
   two sides: suspensions stuck at 0 with more unfinished catalogs than `lanes` means the residency
   rule is not firing, and resumes far outrunning `admissions` means catalogs are paying cold starts
   to queue rather than to render.

@@ -121,6 +121,16 @@ class ServeSessionRegistry(
      * session momentarily runs two daemon subprocesses and overshoots the live-seat/memory budget.
      * Closing under the lock used to serialise this implicitly.
      */
+    /**
+     * When [suspendIdle] released this session's host, or null while it is resident.
+     *
+     * The rotation key for [resumeIdleOptimizers], and deliberately not [lastAccess]: a catalog
+     * suspended in the very sweep that then resumes is the one with the OLDEST `lastAccess`, so
+     * ordering on that resurrected whatever had just been parked and left the genuinely long-parked
+     * catalogs exactly where they were. Suspension order is least-recently-parked-first, which is
+     * the round-robin the fair admission rule already assumes.
+     */
+    @Volatile var suspendedAt: Long? = null,
     @Volatile var closing: Boolean = false,
   ) {
     /** Every open holder, of either kind — the residency question. */
@@ -590,6 +600,7 @@ class ServeSessionRegistry(
           }
           entry.host = null
           entry.startedAt = null
+          entry.suspendedAt = now
           entry.closing = true
           detached += Triple(id, entry, host)
         }
@@ -641,11 +652,17 @@ class ServeSessionRegistry(
    * a visitor's presence heartbeat drives, so on a box nobody is browsing the parked catalogs would
    * simply stop. This is the heartbeat they would otherwise never get.
    *
-   * Bounded by [ServeBackgroundWork.optimizerLanesFree] because resuming is not free: it costs a
+   * Bounded by [ServeBackgroundWork.optimizerResumeSlots] because resuming is not free: it costs a
    * cold Android daemon (34-68s) and holds roughly a gigabyte for as long as the host stays up.
-   * Resuming a catalog that then queues behind two others pays that price to stand at the door,
-   * which is exactly the residency suspension reclaims. One per sweep, longest-parked first, so the
-   * rotation is the same fair one admission uses.
+   * That budget is the free lanes **plus one challenger**: bounding it at the free lanes alone
+   * starves every catalog that is not already resident, because a pass re-queues the instant its
+   * slice ends, so every later sweep reads zero and the parked ones wait for an incumbent to
+   * *finish* — hours, for a 10,440-target catalog. The extra slot puts the longest-parked catalog
+   * at the door, where admission's own fairness hands it the next lane ahead of the incumbent that
+   * just ran, and the displaced incumbent is suspended in its turn.
+   *
+   * Longest-parked first by [Entry.suspendedAt] — not by `lastAccess`, which would resurrect
+   * whatever the same sweep had just suspended.
    *
    * **Only on a quiet server.** A resume is background work like the renders it leads to, and a
    * cold start landing while someone is browsing competes with them for the seat budget.
@@ -657,11 +674,15 @@ class ServeSessionRegistry(
       val candidates =
         sessions.values
           .filter { it.host == null && !it.closing && optimizerUnfinished(it.state) }
-          .sortedBy { it.lastAccess }
+          // Longest-parked first — see [Entry.suspendedAt] for why this is not `lastAccess`.
+          .sortedBy { it.suspendedAt ?: Long.MIN_VALUE }
       val resumed = mutableListOf<ServeHost>()
-      var lanes = candidates.firstOrNull()?.state?.backgroundWork?.optimizerLanesFree() ?: 0
+      // Read once, from any candidate: every catalog on a server shares the one process-wide
+      // [ServeBackgroundWork], and re-reading it per entry would let a resume this loop just made
+      // widen its own budget.
+      var slots = candidates.firstOrNull()?.state?.backgroundWork?.optimizerResumeSlots() ?: 0
       for (entry in candidates) {
-        if (lanes <= 0) break
+        if (slots <= 0) break
         val host = liveHost(entry) ?: continue
         // The session's own idle clock, NOT `lastActivity`: that one is the whole-server quiet
         // gate the optimizer reads, and stamping it here would have the resume report the server
@@ -669,9 +690,10 @@ class ServeSessionRegistry(
         // `idleTimeoutMillis` before [suspendIdle] looks at it again, which is the slice it needs
         // to win a lane and render.
         entry.lastAccess = clock()
+        entry.suspendedAt = null
         runCatching { entry.state?.backgroundWork?.recordOptimizerHostResumed() }
         resumed += host
-        lanes--
+        slots--
       }
       resumed
     }
