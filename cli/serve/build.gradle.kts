@@ -1,4 +1,6 @@
 import java.io.File
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.component.ProjectComponentIdentifier
 import org.gradle.api.tasks.ClasspathNormalizer
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.process.CommandLineArgumentProvider
@@ -223,23 +225,28 @@ tasks.withType<Test>().configureEach {
 // `checkCliDaemonLibraryBoundary` and the `forbiddenPackages` list in the seam allowlist. An
 // extracted preview server is a protocol client; it never loads a renderer in its own JVM.
 abstract class CheckServeModuleBoundary : DefaultTask() {
-  @get:Classpath abstract val runtimeClasspath: ConfigurableFileCollection
+  /**
+   * Every component on the resolved runtime classpath, as a stable identity string: `project :cli`
+   * for a project in this build, `module <group>:<name>` for anything resolved from a repository.
+   *
+   * Identity rather than file location, and that distinction is the whole point. An earlier version
+   * of this task compared each classpath *file* against the forbidden projects' `projectDir`s,
+   * which silently passed the case it most needed to catch: `renderers/desktop` publishes as
+   * `ee.schimke.composeai:renderer-desktop`, so once it arrives as a published or transitively
+   * substituted Maven dependency its jar sits in Gradle's cache, under no project directory at all.
+   * The prefix compare found nothing and the boundary reported clean.
+   */
+  @get:Input abstract val resolvedComponents: SetProperty<String>
 
-  @get:Input abstract val forbiddenProjectDirs: MapProperty<String, String>
+  @get:Input abstract val forbiddenProjects: SetProperty<String>
+
+  @get:Input abstract val forbiddenModules: SetProperty<String>
 
   @TaskAction
   fun checkBoundary() {
-    val forbidden = forbiddenProjectDirs.get()
-    val hits =
-      runtimeClasspath.files
-        .mapNotNull { file ->
-          val path = file.invariantSeparatorsPath
-          forbidden.entries
-            .firstOrNull { (_, dir) -> path.startsWith("$dir/") }
-            ?.let { (project, _) -> "$project (${file.name})" }
-        }
-        .distinct()
-        .sorted()
+    val forbidden =
+      forbiddenProjects.get().map { "project $it" } + forbiddenModules.get().map { "module $it" }
+    val hits = resolvedComponents.get().filter { it in forbidden }.sorted()
 
     check(hits.isEmpty()) {
       "The preview server must not depend on the CLI or on a renderer implementation — that is " +
@@ -253,16 +260,41 @@ tasks.register<CheckServeModuleBoundary>("checkServeModuleBoundary") {
   description = "Fails if the CLI, a renderer, or the Gradle plugin reaches the server's classpath."
   group = "verification"
 
-  runtimeClasspath.from(configurations.named("runtimeClasspath"))
-  forbiddenProjectDirs.set(
+  resolvedComponents.set(
+    configurations.named("runtimeClasspath").flatMap { configuration ->
+      configuration.incoming.artifacts.resolvedArtifacts.map { artifacts ->
+        artifacts
+          .map { artifact ->
+            when (val id = artifact.id.componentIdentifier) {
+              is ProjectComponentIdentifier -> "project ${id.projectPath}"
+              is ModuleComponentIdentifier -> "module ${id.group}:${id.module}"
+              else -> "other ${id.displayName}"
+            }
+          }
+          .toSet()
+      }
+    }
+  )
+
+  // The same implementations named twice, because they can arrive by two different routes and the
+  // identity differs between them.
+  forbiddenProjects.set(
+    listOf(":cli", ":daemon:android", ":daemon:desktop", ":renderer-android", ":renderer-desktop")
+  )
+  // Their published coordinates, for the transitive case a project-path check cannot see. The
+  // Gradle plugin is here and *only* here: it lives in an included build (`includeBuild`), so
+  // `project(":gradle-plugin")` does not resolve from this build and it could never have been in
+  // a project-path list — the previous task advertised it in its own description and then had no
+  // rule for it.
+  forbiddenModules.set(
     listOf(
-        ":cli",
-        ":daemon:android",
-        ":daemon:desktop",
-        ":renderer-android",
-        ":renderer-desktop",
-      )
-      .associateWith { project(it).projectDir.invariantSeparatorsPath }
+      "ee.schimke.composeai:renderer-android",
+      "ee.schimke.composeai:renderer-desktop",
+      "ee.schimke.composeai:daemon-android",
+      "ee.schimke.composeai:daemon-desktop",
+      "ee.schimke.composeai:compose-preview-plugin",
+      "ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin",
+    )
   )
 }
 
