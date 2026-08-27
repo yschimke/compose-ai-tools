@@ -102,13 +102,24 @@
       "allowedVersions": "/^1\\.13\\./"
     },
     {
-      "description": "compose-multiplatform: pin to the 1.10.x line. `:data-render-compose` exposes `org.jetbrains.compose.{runtime,ui}` as `api` on a published artifact, so the Compose Multiplatform version is part of the supported-minimum floor for consumers. 1.11.0 ships ABI-breaking changes (non-Android `Shader` becomes a Compose wrapper type, `NativePaint`/`NativeCanvas` typealiases deprecated, `Paint.asFrameworkPaint`/`Canvas.nativeCanvas` replaced) and bumps the required Kotlin language/API to 2.2 — raising the floor is a manual decision. Keep `samples/cmp-shared`'s explicit `ui-tooling-preview` coord in lockstep so the plugin's compose-runtime compatibility check stays happy.",
+      "description": "compose-multiplatform: pin to the 1.11.x line. `:data-render-compose` exposes `org.jetbrains.compose.{runtime,ui}` as `api` on a published artifact, so the Compose Multiplatform version is part of the supported-minimum floor for consumers, and the ref is also a CEILING on every catalog the serve host renders live (docs/RENDERER_COMPATIBILITY.md). 1.12.0 needs a coordinated move, not a minor/patch bump: its `androidx.compose.*` AARs declare `minCompileSdk = 37` (the repo default is 36), skiko 0.150.1 deletes the mutating `org.jetbrains.skia.Path` API our `conicTo` seams call, and `compose-multiplatform-material3` + `compottie` have to move with it. See gradle/libs.versions.toml — raising the floor is a manual decision. `matchCurrentValue` scopes this to the refs that are actually on 1.11.x; the explicit `ui-tooling-preview:1.10.3` coords in the cmp samples are held on their own line by the rule below.",
       "matchManagers": [
         "gradle"
       ],
       "matchPackageNames": [
         "org.jetbrains.compose",
         "org.jetbrains.compose{/,}**"
+      ],
+      "matchCurrentValue": "/^1\\.11\\./",
+      "allowedVersions": "/^1\\.11\\./"
+    },
+    {
+      "description": "org.jetbrains.compose.ui:ui-tooling-preview (explicit coords in `samples/cmp-shared` and `samples/cmp-android-only`): pin to the 1.10.x line. These two modules declare the JetBrains-relocated androidx artifact by hand — it ships `androidx.compose.ui.tooling.preview.Preview` on every target, which is the FQN `DiscoverPreviewsTask` scans for, whereas the CMP-bundled `compose.components.uiToolingPreview` republishes the annotation under `org.jetbrains.compose.ui.tooling.preview` and discovery does not recognise it. The explicit coords were renamed in the 1.10 line and are not reliably published to every mirror above it, so they deliberately do NOT track `compose-multiplatform`. Held here because the rule above is scoped by `matchCurrentValue` to the 1.11.x refs and no longer covers them; without this the generic minor/patch group would drift these to a line the preview-discovery contract has not been validated against. See each module's build.gradle.kts.",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchDepNames": [
+        "org.jetbrains.compose.ui:ui-tooling-preview"
       ],
       "matchCurrentValue": "/^1\\.10\\./",
       "allowedVersions": "/^1\\.10\\./"
@@ -125,15 +136,15 @@
       "allowedVersions": "/^2\\.0\\.17$/"
     },
     {
-      "description": "compottie: pin to the 2.1.x line. `:lottie-preview-runtime` is built against JetBrains Compose foundation 1.10.1 (matching `compose-multiplatform = 1.10.x`); compottie 2.2.x targets foundation 1.11.0 and drags a newer Compose onto the renderer classpath — the skew `docs/RENDERER_COMPATIBILITY.md` warns about. Bump only in lockstep with `compose-multiplatform`; see gradle/libs.versions.toml.",
+      "description": "compottie: pin to the 2.2.x line. `:lottie-preview-runtime` is built against JetBrains Compose foundation 1.11.0 (matching `compose-multiplatform = 1.11.x`); a compottie line built against a newer foundation drags a newer Compose onto the renderer classpath — the skew `docs/RENDERER_COMPATIBILITY.md` warns about. Bump only in lockstep with `compose-multiplatform`; see gradle/libs.versions.toml.",
       "matchManagers": [
         "gradle"
       ],
       "matchDepNames": [
         "io.github.alexzhirkevich:compottie"
       ],
-      "matchCurrentValue": "/^2\\.1\\./",
-      "allowedVersions": "/^2\\.1\\./"
+      "matchCurrentValue": "/^2\\.2\\./",
+      "allowedVersions": "/^2\\.2\\./"
     },
     {
       "description": "robolectric: released versions only. Robolectric publishes a rolling `4.17-SNAPSHOT` to Sonatype and Renovate ranks it above `4.17-beta-2`, but the build declares no snapshot repository — so the bump resolves nowhere and fails every Android configuration. Betas and RCs are still fair game; only `-SNAPSHOT` is excluded.",
