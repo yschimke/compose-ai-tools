@@ -56,7 +56,7 @@ import java.net.URLClassLoader
  *   with the new loader. The Android backend uses it to mirror the loader into
  *   `DaemonHostBridge.currentChildLoader` so the sandbox-side render thread sees the swap.
  */
-class UserClassLoaderHolder(
+public class UserClassLoaderHolder(
   private val urls: List<URL>,
   private val parentSupplier: () -> ClassLoader = {
     Thread.currentThread().contextClassLoader ?: ClassLoader.getSystemClassLoader()
@@ -72,7 +72,7 @@ class UserClassLoaderHolder(
    * Returns the current child [URLClassLoader], allocating it lazily on first read. Subsequent
    * reads return the same instance until [swap] is invoked.
    */
-  fun currentChildLoader(): URLClassLoader =
+  public fun currentChildLoader(): URLClassLoader =
     synchronized(lock) {
       val existing = current
       if (existing != null) return@synchronized existing
@@ -85,7 +85,7 @@ class UserClassLoaderHolder(
    * sandbox/Compose state holding references to user-class-loaded objects is cleared (per-render
    * scoping verified in CLASSLOADER.md § Risks 1).
    */
-  fun swap() {
+  public fun swap() {
     synchronized(lock) {
       current = null
       // Self-diagnostic log — surfaces as `[daemon stderr] [classloader] swap …` in the VS Code
@@ -106,7 +106,7 @@ class UserClassLoaderHolder(
    * Returns the URL list this holder uses. Exposed so backends can construct identically-shaped
    * sibling loaders (e.g. the Robolectric bridge mirror).
    */
-  fun urls(): List<URL> = urls.toList()
+  public fun urls(): List<URL> = urls.toList()
 
   /**
    * Forces 2 GCs and returns the count of allocated child loaders that haven't yet been collected.
@@ -115,7 +115,7 @@ class UserClassLoaderHolder(
    *
    * Used by the soak `WeakReference` probe in the unit test.
    */
-  fun liveLoaderCount(): Int {
+  public fun liveLoaderCount(): Int {
     repeat(2) {
       System.gc()
       // Hint the runtime that finalizers should run; not guaranteed but doesn't hurt.
@@ -200,13 +200,13 @@ class UserClassLoaderHolder(
     }
   }
 
-  companion object {
+  public companion object {
     /**
      * Sysprop name. Colon-delimited (`File.pathSeparator`) absolute paths to user-class directories
      * — the gradle plugin's daemon launch descriptor sets it; both backends' [DaemonMain] reads it
      * and constructs a [UserClassLoaderHolder] with the resolved URLs.
      */
-    const val USER_CLASS_DIRS_PROP: String = "composeai.daemon.userClassDirs"
+    public const val USER_CLASS_DIRS_PROP: String = "composeai.daemon.userClassDirs"
 
     /**
      * Whether [name] must be resolved via the parent loader instead of child-first (used by
@@ -277,7 +277,7 @@ class UserClassLoaderHolder(
      * themselves keep their relative order — important because AGP's main-vs-test classpath
      * ordering carries semantics we don't want to scramble.
      */
-    fun urlsFromSysprop(): List<URL> {
+    public fun urlsFromSysprop(): List<URL> {
       val raw = System.getProperty(USER_CLASS_DIRS_PROP) ?: return emptyList()
       if (raw.isBlank()) return emptyList()
       val files =
@@ -317,7 +317,7 @@ class UserClassLoaderHolder(
      * The SHA is the first 6 bytes of SHA-256 hex (12 chars) — enough to disambiguate consecutive
      * recompiles in a save loop without bloating each log line.
      */
-    fun classFileFingerprint(loader: ClassLoader, className: String): String? {
+    public fun classFileFingerprint(loader: ClassLoader, className: String): String? {
       val resourceName = className.replace('.', '/') + ".class"
       if (loader is URLClassLoader) {
         fingerprintFromUrls(loader.urLs, resourceName)?.let {

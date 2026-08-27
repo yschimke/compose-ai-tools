@@ -43,7 +43,7 @@ import okio.Path.Companion.toPath
  * dump `java.lang.String` always identical; etc.) live in the design doc and are realised by the
  * test bodies.
  */
-object ClassloaderForensics {
+public object ClassloaderForensics {
 
   private val json = Json {
     prettyPrint = true
@@ -83,7 +83,7 @@ object ClassloaderForensics {
    * reflective path.
    */
   @JvmOverloads
-  fun capture(
+  public fun capture(
     surveySet: List<String>,
     robolectricConfig: RobolectricConfigSnapshot? = null,
     contextHint: String,
@@ -123,7 +123,7 @@ object ClassloaderForensics {
    * 4. Robolectric-config field diffs.
    * 5. The remainder (loader-name diffs that don't affect identity, package version diffs).
    */
-  fun diff(
+  public fun diff(
     a: File,
     b: File,
     mdOut: File,
@@ -715,7 +715,7 @@ object ClassloaderForensics {
  * across Robolectric versions are populated best-effort and documented inline in the test.
  */
 @Serializable
-data class RobolectricConfigSnapshot(
+public data class RobolectricConfigSnapshot(
   val apiLevel: Int,
   val qualifiers: String,
   val fontScale: Float,

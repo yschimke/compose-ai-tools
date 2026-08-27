@@ -27,7 +27,7 @@ package ee.schimke.composeai.daemon.devices
  *
  * @see ee.schimke.composeai.plugin.DeviceDimensions
  */
-object DeviceDimensions {
+public object DeviceDimensions {
   /**
    * Per-device geometry resolved from a `@Preview(device = ...)` string.
    *
@@ -35,7 +35,7 @@ object DeviceDimensions {
    * density to populate `RenderSpec.widthPx`/`heightPx`; the Android backend then re-derives the
    * Robolectric `<n>dpi` qualifier from it.
    */
-  data class DeviceSpec(
+  public data class DeviceSpec(
     val widthDp: Int,
     val heightDp: Int,
     val density: Float = DEFAULT_DENSITY,
@@ -46,7 +46,7 @@ object DeviceDimensions {
    * The density Android Studio uses when no device is specified — xxhdpi-ish (420dpi → 2.625x),
    * matching its default phone-class preview.
    */
-  const val DEFAULT_DENSITY: Float = 2.625f
+  public const val DEFAULT_DENSITY: Float = 2.625f
 
   // Source-of-truth for the dp values and densities below: sergio-sastre/ComposablePreviewScanner
   // (Phone.kt / Tablet.kt / Wear.kt / GenericDevices.kt / Desktop.kt / Television.kt /
@@ -128,8 +128,8 @@ object DeviceDimensions {
       "id:xr_device" to DeviceSpec(1280, 1279, 2.0f),
     )
 
-  val DEFAULT = DeviceSpec(400, 800, DEFAULT_DENSITY)
-  val DEFAULT_WEAR = DeviceSpec(227, 227, 2.0f, isRound = true)
+  public val DEFAULT: DeviceSpec = DeviceSpec(400, 800, DEFAULT_DENSITY)
+  public val DEFAULT_WEAR: DeviceSpec = DeviceSpec(227, 227, 2.0f, isRound = true)
 
   /**
    * The set of device-id strings the catalog recognises (every key in [KNOWN_DEVICES]). Useful for
@@ -137,7 +137,7 @@ object DeviceDimensions {
    * `renderNow`. The `spec:...` and `name:...` grammars are not enumerable; they're parsed at
    * resolve-time.
    */
-  val KNOWN_DEVICE_IDS: Set<String> = KNOWN_DEVICES.keys
+  public val KNOWN_DEVICE_IDS: Set<String> = KNOWN_DEVICES.keys
 
   /**
    * Resolves a `@Preview(device = ...)` string to a [DeviceSpec]. Mirrors the gradle-plugin's
@@ -154,7 +154,7 @@ object DeviceDimensions {
    * - Any device string containing `wear` (case-insensitive) returns [DEFAULT_WEAR].
    * - Otherwise [DEFAULT] (400×800 dp at xxhdpi).
    */
-  fun resolve(device: String?, widthDp: Int? = null, heightDp: Int? = null): DeviceSpec {
+  public fun resolve(device: String?, widthDp: Int? = null, heightDp: Int? = null): DeviceSpec {
     if (widthDp != null && widthDp > 0 && heightDp != null && heightDp > 0) {
       return DeviceSpec(widthDp, heightDp, DEFAULT_DENSITY)
     }
@@ -233,7 +233,10 @@ object DeviceDimensions {
  * Kept here rather than in either resolver so the four places that make this decision — both
  * daemons' `PreviewManifestEntry.resolved()` and `renderSpecFromInfo()` — cannot drift apart on it.
  */
-fun DeviceDimensions.DeviceSpec.frameDpOverriddenBy(widthDp: Int?, heightDp: Int?): Pair<Int, Int> {
+public fun DeviceDimensions.DeviceSpec.frameDpOverriddenBy(
+  widthDp: Int?,
+  heightDp: Int?,
+): Pair<Int, Int> {
   val w = widthDp?.takeIf { it > 0 }
   val h = heightDp?.takeIf { it > 0 }
   return if (w != null && h != null) w to h else this.widthDp to this.heightDp

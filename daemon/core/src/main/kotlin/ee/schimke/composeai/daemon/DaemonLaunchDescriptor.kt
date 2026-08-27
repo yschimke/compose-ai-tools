@@ -23,7 +23,7 @@ import kotlinx.serialization.json.Json
  * side of the boundary first.
  */
 @Serializable
-data class DaemonLaunchDescriptor(
+public data class DaemonLaunchDescriptor(
   val schemaVersion: Int,
   val modulePath: String,
   val variant: String,
@@ -58,7 +58,7 @@ data class DaemonLaunchDescriptor(
 ) {
 
   /** Returns a copy launched behind [command] and force-killed after [hardTtlSeconds]. */
-  fun jailed(command: List<String>, hardTtlSeconds: Long?): DaemonLaunchDescriptor =
+  public fun jailed(command: List<String>, hardTtlSeconds: Long?): DaemonLaunchDescriptor =
     copy(jailCommand = command, hardTtlSeconds = hardTtlSeconds)
 
   /**
@@ -69,7 +69,7 @@ data class DaemonLaunchDescriptor(
    * Idempotent at [count] = 1 (the daemon's default; the sysprop is omitted to keep the disk
    * descriptor trivially diffable across replicas-per-daemon settings of 0).
    */
-  fun withSandboxCount(count: Int): DaemonLaunchDescriptor {
+  public fun withSandboxCount(count: Int): DaemonLaunchDescriptor {
     require(count >= 1) { "sandboxCount must be >= 1, got $count" }
     if (count == 1) return this
     val merged = systemProperties.toMutableMap()
@@ -77,17 +77,17 @@ data class DaemonLaunchDescriptor(
     return copy(systemProperties = merged)
   }
 
-  companion object {
+  public companion object {
     /**
      * Sysprop key the daemon reads to configure
      * [`RobolectricHost.sandboxCount`][ee.schimke.composeai.daemon.RobolectricHost.sandboxCount].
      * Mirrored on the daemon side as a private const in `DaemonMain.kt`; both sides MUST agree.
      */
-    const val SANDBOX_COUNT_PROP: String = "composeai.daemon.sandboxCount"
+    public const val SANDBOX_COUNT_PROP: String = "composeai.daemon.sandboxCount"
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    fun parse(jsonText: String): DaemonLaunchDescriptor =
+    public fun parse(jsonText: String): DaemonLaunchDescriptor =
       json.decodeFromString(serializer(), jsonText)
   }
 }

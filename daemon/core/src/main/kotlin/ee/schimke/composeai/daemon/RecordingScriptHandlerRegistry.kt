@@ -14,17 +14,19 @@ import ee.schimke.composeai.daemon.protocol.RecordingScriptEvidence
  *
  * Live tick-loop callers reuse the same shape with the wall-clock-anchored virtual nanoTime.
  */
-interface RecordingDispatchContext {
+public interface RecordingDispatchContext {
   /** Virtual nanoTime of the frame this event is dispatched at. */
-  val tNanos: Long
+  public val tNanos: Long
 
   /** Virtual milliseconds (`tNanos / 1_000_000`). */
-  val tMs: Long
+  public val tMs: Long
 }
 
 /** Default value-class implementation — backends can pass an instance per event. */
-data class SimpleRecordingDispatchContext(override val tNanos: Long, override val tMs: Long) :
-  RecordingDispatchContext
+public data class SimpleRecordingDispatchContext(
+  override val tNanos: Long,
+  override val tMs: Long,
+) : RecordingDispatchContext
 
 /**
  * Single-event dispatch interface. One implementation per `(host, event-kind)` pair. The session
@@ -35,8 +37,11 @@ data class SimpleRecordingDispatchContext(override val tNanos: Long, override va
  * never throw — so a malformed event aborts at most a single dispatch slot, not the whole
  * recording. Use [appliedEvidence] / [unsupportedEvidence] to build the result.
  */
-fun interface RecordingScriptEventHandler {
-  fun apply(event: RecordingScriptEvent, ctx: RecordingDispatchContext): RecordingScriptEvidence
+public fun interface RecordingScriptEventHandler {
+  public fun apply(
+    event: RecordingScriptEvent,
+    ctx: RecordingDispatchContext,
+  ): RecordingScriptEvidence
 }
 
 /**
@@ -50,8 +55,8 @@ fun interface RecordingScriptEventHandler {
  * recording session is the source of truth for evidence shape and shouldn't fail because an
  * extension threw.
  */
-fun interface RecordingScriptDispatchObserver {
-  fun beforeDispatch(event: RecordingScriptEvent, ctx: RecordingDispatchContext)
+public fun interface RecordingScriptDispatchObserver {
+  public fun beforeDispatch(event: RecordingScriptEvent, ctx: RecordingDispatchContext)
 }
 
 /**
@@ -67,12 +72,12 @@ fun interface RecordingScriptDispatchObserver {
  * [observers] receive every dispatched event before the handler runs — see
  * [RecordingScriptDispatchObserver] for the contract.
  */
-class RecordingScriptHandlerRegistry(
+public class RecordingScriptHandlerRegistry(
   private val handlers: Map<String, RecordingScriptEventHandler>,
   private val observers: List<RecordingScriptDispatchObserver> = emptyList(),
 ) {
 
-  fun dispatch(
+  public fun dispatch(
     event: RecordingScriptEvent,
     ctx: RecordingDispatchContext,
   ): RecordingScriptEvidence {
@@ -95,7 +100,7 @@ class RecordingScriptHandlerRegistry(
   }
 
   /** Wire-string keys this registry knows about. Useful for tests + capability derivation. */
-  fun knownKinds(): Set<String> = handlers.keys
+  public fun knownKinds(): Set<String> = handlers.keys
 }
 
 /**
@@ -103,7 +108,7 @@ class RecordingScriptHandlerRegistry(
  * `message` field for human-readable trace context. [probeSemantics] carries the host-captured
  * semantics snapshot for a `recording.probe` event (issue #1786); null for every other kind.
  */
-fun appliedEvidence(
+public fun appliedEvidence(
   event: RecordingScriptEvent,
   message: String? = null,
   probeSemantics: List<ee.schimke.composeai.daemon.protocol.RecordingProbeNode>? = null,
@@ -131,7 +136,7 @@ fun appliedEvidence(
  * ref/testTag/role+text dispatch path (issue #1784) — matched-count + candidate nodes. Other event
  * kinds leave both `null`.
  */
-fun unsupportedEvidence(
+public fun unsupportedEvidence(
   event: RecordingScriptEvent,
   message: String,
   unsupportedReason: ee.schimke.composeai.daemon.protocol.UiAutomatorUnsupportedReason? = null,
@@ -158,7 +163,7 @@ fun unsupportedEvidence(
  * [message] states the unmet condition; optional [targetUnresolvedReason] carries the matched-count
  * + candidate nodes so the agent can see what *was* present without re-rendering.
  */
-fun failedEvidence(
+public fun failedEvidence(
   event: RecordingScriptEvent,
   message: String,
   targetUnresolvedReason: ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedReason? =

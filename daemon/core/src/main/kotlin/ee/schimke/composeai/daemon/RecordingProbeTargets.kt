@@ -35,23 +35,23 @@ import ee.schimke.composeai.daemon.protocol.SemanticsInputTarget
  * desktop [resolvedNodeText] preference (own text wins over descendant text) so the two backends
  * answer `role`+`text` and `assert.textEquals` the same way.
  */
-fun RecordingProbeNode.effectiveText(): String? =
+public fun RecordingProbeNode.effectiveText(): String? =
   text?.takeIf { it.isNotEmpty() } ?: mergedText?.takeIf { it.isNotEmpty() }
 
 /** Outcome of resolving a [SemanticsInputTarget] against a flat probe snapshot. */
-sealed interface ProbeTargetResolution {
+public sealed interface ProbeTargetResolution {
   /**
    * The target shape is resolvable against the snapshot; [nodes] is every node that matched (0, 1,
    * or more). A visibility check reads its size; a text check requires exactly one.
    */
-  data class Matched(val nodes: List<RecordingProbeNode>) : ProbeTargetResolution
+  public data class Matched(val nodes: List<RecordingProbeNode>) : ProbeTargetResolution
 
   /**
    * The target can't be resolved against the flat snapshot at all (a `ref` target, or a target with
    * no resolvable field). [reason] is a caller-facing explanation for the failed-assertion
    * evidence.
    */
-  data class Unsupported(val reason: String) : ProbeTargetResolution
+  public data class Unsupported(val reason: String) : ProbeTargetResolution
 }
 
 /**
@@ -60,7 +60,7 @@ sealed interface ProbeTargetResolution {
  * [ProbeTargetResolution.Unsupported] so the caller fails the assertion with a clear message
  * instead of risking a false pass.
  */
-fun resolveProbeTarget(
+public fun resolveProbeTarget(
   nodes: List<RecordingProbeNode>,
   target: SemanticsInputTarget,
 ): ProbeTargetResolution {

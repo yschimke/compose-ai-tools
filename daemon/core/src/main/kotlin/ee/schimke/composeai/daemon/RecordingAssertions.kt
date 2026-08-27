@@ -15,10 +15,10 @@ import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
  * nodes match. This is deliberately laxer than the tap-dispatch path (which treats an ambiguous
  * match as unresolved): an existence check doesn't need a unique node, it needs a yes/no answer.
  */
-sealed interface AssertionVerdict {
-  data object Passed : AssertionVerdict
+public sealed interface AssertionVerdict {
+  public data object Passed : AssertionVerdict
 
-  data class Failed(val reason: String) : AssertionVerdict
+  public data class Failed(val reason: String) : AssertionVerdict
 }
 
 /**
@@ -26,7 +26,7 @@ sealed interface AssertionVerdict {
  * `assert.notVisible`. [matchCount] is how many semantics nodes the target resolved to (0, 1, or
  * more). [targetLabel] is a human-readable rendering of the target for the failure message.
  */
-fun evaluateVisibilityAssertion(
+public fun evaluateVisibilityAssertion(
   expectVisible: Boolean,
   matchCount: Int,
   targetLabel: String,
@@ -49,7 +49,7 @@ fun evaluateVisibilityAssertion(
  * The target-resolution failure (no match / ambiguous) is handled by the caller before this runs —
  * this is purely the string comparison.
  */
-fun evaluateTextEqualsAssertion(
+public fun evaluateTextEqualsAssertion(
   expected: String,
   actual: String?,
   targetLabel: String,
@@ -73,7 +73,7 @@ fun evaluateTextEqualsAssertion(
  * than `<none>`. Pure (operates on the [ComposeSemanticsNode] model, no scene) so it's
  * unit-testable directly.
  */
-fun resolvedNodeText(node: ComposeSemanticsNode): String? {
+public fun resolvedNodeText(node: ComposeSemanticsNode): String? {
   node.text
     ?.takeIf { it.isNotEmpty() }
     ?.let {
@@ -92,13 +92,13 @@ fun resolvedNodeText(node: ComposeSemanticsNode): String? {
 }
 
 /** Threshold for `assert.a11y`: fail on ATF errors only, or on warnings (and errors) too. */
-enum class A11yAssertThreshold {
+public enum class A11yAssertThreshold {
   ERRORS,
   WARNINGS;
 
-  companion object {
+  public companion object {
     /** Parse the wire token (`errors` / `warnings`, singular accepted); defaults to [ERRORS]. */
-    fun parseOrDefault(token: String?): A11yAssertThreshold =
+    public fun parseOrDefault(token: String?): A11yAssertThreshold =
       when (token?.trim()?.lowercase()) {
         "warnings",
         "warning" -> WARNINGS
@@ -114,7 +114,7 @@ enum class A11yAssertThreshold {
  * [RecordingA11yFinding][ee.schimke.composeai.daemon.protocol.RecordingA11yFinding] projection) so
  * it's unit-testable without standing up a Robolectric scene.
  */
-fun evaluateA11yAssertion(
+public fun evaluateA11yAssertion(
   findings: List<ee.schimke.composeai.daemon.protocol.RecordingA11yFinding>,
   threshold: A11yAssertThreshold,
 ): AssertionVerdict {

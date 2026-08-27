@@ -138,7 +138,7 @@ import okio.Path.Companion.toPath
  * that materialises the PNG and returns timing/metrics. The render queue plumbing (submit → poll →
  * notify) does not need to change.
  */
-class JsonRpcServer(
+public class JsonRpcServer(
   private val input: InputStream,
   private val output: OutputStream,
   private val host: RenderHost,
@@ -591,7 +591,7 @@ class JsonRpcServer(
    *    1).
    * 2. stdin EOF without `shutdown`+`exit` → waits up to [idleTimeoutMs], then exits with code 1.
    */
-  fun run() {
+  public fun run() {
     StartupTimings.mark("JsonRpcServer.run() entered")
     host.start()
     StartupTimings.mark("host.start() returned (sandbox ready)")
@@ -4392,7 +4392,7 @@ class JsonRpcServer(
     data class Failed(val message: String) : RerenderOutcome
   }
 
-  companion object {
+  public companion object {
     /**
      * PROTOCOL.md § 7. Bumped to 2 when daemons stopped advertising every extension's contributions
      * by default — `initialize.capabilities.{dataProducts,dataExtensions,previewExtensions}` are
@@ -4400,21 +4400,21 @@ class JsonRpcServer(
      * daemon will see empty capability lists and assume nothing is supported; the daemon errors out
      * on `protocolVersion` mismatch so they get a clean handshake failure instead.
      */
-    const val PROTOCOL_VERSION: Int = 2
+    public const val PROTOCOL_VERSION: Int = 2
 
     /**
      * The `onExit` a **real daemon process** wants: end the JVM with the server's exit code. Named
      * rather than inlined at each `DaemonMain` so the process-ending call sites are greppable, and
      * so no in-process caller reaches it by accident (see the `onExit` parameter doc / #3087).
      */
-    val EXIT_PROCESS: (Int) -> Unit = { code -> exitProcess(code) }
+    public val EXIT_PROCESS: (Int) -> Unit = { code -> exitProcess(code) }
 
-    const val IDLE_TIMEOUT_PROP: String = "composeai.daemon.idleTimeoutMs"
-    const val DEFAULT_IDLE_TIMEOUT_MS: Long = 5_000L
+    public const val IDLE_TIMEOUT_PROP: String = "composeai.daemon.idleTimeoutMs"
+    public const val DEFAULT_IDLE_TIMEOUT_MS: Long = 5_000L
 
     /** PROTOCOL.md § 6 — `daemon.classpathDirtyGraceMs`, default 2000ms. */
-    const val CLASSPATH_DIRTY_GRACE_PROP: String = "composeai.daemon.classpathDirtyGraceMs"
-    const val DEFAULT_CLASSPATH_DIRTY_GRACE_MS: Long = 2_000L
+    public const val CLASSPATH_DIRTY_GRACE_PROP: String = "composeai.daemon.classpathDirtyGraceMs"
+    public const val DEFAULT_CLASSPATH_DIRTY_GRACE_MS: Long = 2_000L
 
     /**
      * DATA-PRODUCTS.md § "Re-render semantics" — `daemon.dataFetchRerenderBudgetMs`, default
@@ -4422,8 +4422,9 @@ class JsonRpcServer(
      * override for tests; `JsonRpcServer` constructor param for in-process callers (the in-process
      * integration tests pin it sub-second so the timeout branch is fast).
      */
-    const val DATA_FETCH_RERENDER_BUDGET_PROP: String = "composeai.daemon.dataFetchRerenderBudgetMs"
-    const val DEFAULT_DATA_FETCH_RERENDER_BUDGET_MS: Long = 30_000L
+    public const val DATA_FETCH_RERENDER_BUDGET_PROP: String =
+      "composeai.daemon.dataFetchRerenderBudgetMs"
+    public const val DEFAULT_DATA_FETCH_RERENDER_BUDGET_MS: Long = 30_000L
 
     /**
      * Watchdog window between `fileChanged({kind:source})` and the (deferred) discovery scan. The
@@ -4433,15 +4434,15 @@ class JsonRpcServer(
      * metadata reconcile responsive without racing fast renders. Tests override to a few hundred ms
      * via the sysprop.
      */
-    const val DISCOVERY_WATCHDOG_PROP: String = "composeai.daemon.discoveryWatchdogMs"
-    const val DEFAULT_DISCOVERY_WATCHDOG_MS: Long = 1_500L
+    public const val DISCOVERY_WATCHDOG_PROP: String = "composeai.daemon.discoveryWatchdogMs"
+    public const val DEFAULT_DISCOVERY_WATCHDOG_MS: Long = 1_500L
 
     /**
      * Experimental gate for `history/diff`. See the constructor parameter on [JsonRpcServer] for
      * rationale. TODO(1.1): remove once H5 + the rest of the History roadmap lands and the diff
      * surface is no longer half-finished.
      */
-    const val HISTORY_DIFF_EXPERIMENTAL_PROP: String = "composeai.experimental.historyDiff"
+    public const val HISTORY_DIFF_EXPERIMENTAL_PROP: String = "composeai.experimental.historyDiff"
 
     /**
      * Ceiling on shutdown drain. Renders that take longer than this are still allowed to finish —
@@ -4454,7 +4455,7 @@ class JsonRpcServer(
      * render in a daemon's life (Robolectric cold sandbox bootstrap, ~5–15s) plus a heavy
      * single-render render body. Overridable per-session via `initialize.options.maxRenderMs`.
      */
-    const val DEFAULT_RENDER_TIMEOUT_MS: Long = 5 * 60_000L
+    public const val DEFAULT_RENDER_TIMEOUT_MS: Long = 5 * 60_000L
 
     /**
      * Sysprop override for the initial [renderTimeoutMs]. Set to a positive ms value (e.g.
@@ -4462,19 +4463,19 @@ class JsonRpcServer(
      * debugging-friendly window before the client's `initialize.options.maxRenderMs` lands. Unset /
      * non-positive values keep [DEFAULT_RENDER_TIMEOUT_MS].
      */
-    const val RENDER_TIMEOUT_PROP: String = "composeai.daemon.renderTimeoutMs"
+    public const val RENDER_TIMEOUT_PROP: String = "composeai.daemon.renderTimeoutMs"
 
     /** RECORDING.md — default `recording/start.fps` when the caller doesn't specify one. */
-    const val DEFAULT_RECORDING_FPS: Int = 30
+    public const val DEFAULT_RECORDING_FPS: Int = 30
 
     /** Live interactive preview frame cadence. Conservative to avoid saturating Android renders. */
-    const val INTERACTIVE_FRAME_INTERVAL_MS: Long = 250L
+    public const val INTERACTIVE_FRAME_INTERVAL_MS: Long = 250L
 
     /**
      * Frame cadence while a live preview is settling an input — roughly 60fps, so press feedback
      * that lives and dies inside one idle frame gap gets sampled rather than skipped.
      */
-    const val INTERACTIVE_BURST_INTERVAL_MS: Long = 16L
+    public const val INTERACTIVE_BURST_INTERVAL_MS: Long = 16L
 
     /**
      * How long after an input the burst cadence holds. Long enough for a Material ripple to fade
@@ -4482,7 +4483,7 @@ class JsonRpcServer(
      * top of it, and short enough that a resting preview is back to four frames a second before the
      * next tap.
      */
-    const val INTERACTIVE_BURST_MS: Long = 600L
+    public const val INTERACTIVE_BURST_MS: Long = 600L
 
     /**
      * Ceiling on the idle backoff — how rarely a resting live preview is re-rendered.
@@ -4493,7 +4494,7 @@ class JsonRpcServer(
      * waiting this out, so the only thing a longer gap delays is an animation that started with
      * nobody touching it.
      */
-    const val INTERACTIVE_IDLE_MAX_INTERVAL_MS: Long = 2_000L
+    public const val INTERACTIVE_IDLE_MAX_INTERVAL_MS: Long = 2_000L
 
     /**
      * Byte-identical frames tolerated before the idle backoff starts.
@@ -4503,19 +4504,19 @@ class JsonRpcServer(
      * motion. Three at the idle cadence is ~750ms of nothing moving, which is well past the burst
      * window any input opens.
      */
-    const val INTERACTIVE_QUIESCENT_AFTER: Int = 3
+    public const val INTERACTIVE_QUIESCENT_AFTER: Int = 3
 
     /** RECORDING.md — minimum legal `recording/start.fps`. */
-    const val MIN_RECORDING_FPS: Int = 1
+    public const val MIN_RECORDING_FPS: Int = 1
 
     /** RECORDING.md — maximum legal `recording/start.fps`. Capped to keep frame budgets sane. */
-    const val MAX_RECORDING_FPS: Int = 120
+    public const val MAX_RECORDING_FPS: Int = 120
 
     /** RECORDING.md — default `recording/start.scale` when the caller doesn't specify one. */
-    const val DEFAULT_RECORDING_SCALE: Float = 1.0f
+    public const val DEFAULT_RECORDING_SCALE: Float = 1.0f
 
     /** RECORDING.md — maximum legal `recording/start.scale` (output dimension multiplier). */
-    const val MAX_RECORDING_SCALE: Float = 8.0f
+    public const val MAX_RECORDING_SCALE: Float = 8.0f
 
     private const val DEFAULT_DAEMON_VERSION: String = "0.0.0-dev"
     private const val DEFAULT_HISTORY_DIR: String = ".compose-preview-history"
@@ -4525,25 +4526,25 @@ class JsonRpcServer(
       "history methods are post-1.0 and disabled in this daemon build; tracking for 1.1+"
 
     // JSON-RPC error codes — PROTOCOL.md § 2.
-    const val ERR_PARSE: Int = -32700
-    const val ERR_INVALID_REQUEST: Int = -32600
-    const val ERR_METHOD_NOT_FOUND: Int = -32601
-    const val ERR_INVALID_PARAMS: Int = -32602
-    const val ERR_INTERNAL: Int = -32603
-    const val ERR_NOT_INITIALIZED: Int = -32001
+    public const val ERR_PARSE: Int = -32700
+    public const val ERR_INVALID_REQUEST: Int = -32600
+    public const val ERR_METHOD_NOT_FOUND: Int = -32601
+    public const val ERR_INVALID_PARAMS: Int = -32602
+    public const val ERR_INTERNAL: Int = -32603
+    public const val ERR_NOT_INITIALIZED: Int = -32001
 
     /** PROTOCOL.md § 5 — `renderNow` rejected because the daemon will exit imminently. */
-    const val ERR_CLASSPATH_DIRTY: Int = -32002
+    public const val ERR_CLASSPATH_DIRTY: Int = -32002
 
     /** HISTORY.md § "Error codes" — `history/read` referenced a missing entry id. */
-    const val ERR_HISTORY_ENTRY_NOT_FOUND: Int = -32010
+    public const val ERR_HISTORY_ENTRY_NOT_FOUND: Int = -32010
 
     /**
      * HISTORY.md § "Error codes" — `history/diff` was given two entries from different previews.
      * Reserved in the wire enum even though `history/diff` itself isn't implemented in H1+H2 (lands
      * in H3+); pinned here so the code constant is part of the locked surface.
      */
-    const val ERR_HISTORY_DIFF_MISMATCH: Int = -32011
+    public const val ERR_HISTORY_DIFF_MISMATCH: Int = -32011
 
     /**
      * HISTORY.md § "Error codes" — formerly returned when `history/diff` was called with `mode =
@@ -4553,7 +4554,7 @@ class JsonRpcServer(
      * special-cased it still compile/resolve it.
      */
     @Deprecated("Pixel mode is implemented (H5); this code is no longer emitted.")
-    const val ERR_HISTORY_PIXEL_NOT_IMPLEMENTED: Int = -32012
+    public const val ERR_HISTORY_PIXEL_NOT_IMPLEMENTED: Int = -32012
 
     /**
      * HISTORY.md § "Error codes" — `history/diff` was called with `mode = semantics` but one of the
@@ -4562,19 +4563,19 @@ class JsonRpcServer(
      * semantics (a stub host, or a render that never had the kind subscribed), so there's nothing
      * to diff against.
      */
-    const val ERR_HISTORY_SEMANTICS_NOT_CAPTURED: Int = -32013
+    public const val ERR_HISTORY_SEMANTICS_NOT_CAPTURED: Int = -32013
 
     /** DATA-PRODUCTS.md § "Error codes" — kind not advertised by the daemon. */
-    const val ERR_DATA_PRODUCT_UNKNOWN: Int = -32020
+    public const val ERR_DATA_PRODUCT_UNKNOWN: Int = -32020
 
     /** DATA-PRODUCTS.md § "Error codes" — preview has never rendered; caller should `renderNow`. */
-    const val ERR_DATA_PRODUCT_NOT_AVAILABLE: Int = -32021
+    public const val ERR_DATA_PRODUCT_NOT_AVAILABLE: Int = -32021
 
     /** DATA-PRODUCTS.md § "Error codes" — re-render or projection failed; details in `data`. */
-    const val ERR_DATA_PRODUCT_FETCH_FAILED: Int = -32022
+    public const val ERR_DATA_PRODUCT_FETCH_FAILED: Int = -32022
 
     /** DATA-PRODUCTS.md § "Error codes" — re-render budget tripped before the payload landed. */
-    const val ERR_DATA_PRODUCT_BUDGET_EXCEEDED: Int = -32023
+    public const val ERR_DATA_PRODUCT_BUDGET_EXCEEDED: Int = -32023
 
     private val SHUTDOWN_SENTINEL = ByteArray(0)
   }

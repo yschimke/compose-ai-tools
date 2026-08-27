@@ -40,19 +40,19 @@ import ee.schimke.composeai.daemon.protocol.RecordingScriptEvidence
  * 9](../../../../../../docs/daemon/DESIGN.md)). [close] must drain any in-flight render before
  * tearing down the scene, the same way `RenderHost.shutdown` drains its queue.
  */
-interface RecordingSession : AutoCloseable {
+public interface RecordingSession : AutoCloseable {
 
   /** The preview id this session is recording. Frozen at allocation time. */
-  val previewId: String
+  public val previewId: String
 
   /** Opaque session id assigned by [JsonRpcServer] at `recording/start`. Frozen at allocation. */
-  val recordingId: String
+  public val recordingId: String
 
   /** Frame rate of the virtual clock, in frames per second. Frozen at allocation. */
-  val fps: Int
+  public val fps: Int
 
   /** Output-frame size multiplier (≥ 0). Frozen at allocation. */
-  val scale: Float
+  public val scale: Float
 
   /**
    * `true` when this session captures real-time interactions instead of replaying a scripted
@@ -63,14 +63,14 @@ interface RecordingSession : AutoCloseable {
    * `false` (the default) is the scripted path that's been live since v1: post a full timeline via
    * [postScript], then [stop] plays it back at virtual frame time.
    */
-  val live: Boolean
+  public val live: Boolean
 
   /**
    * **Scripted mode only.** Append a batch of events to the virtual timeline. May be called
    * multiple times before [stop]; each call merges and re-sorts by `tMs` so out-of-order client
    * batches still play in order. Throws [IllegalStateException] when [live] is `true`.
    */
-  fun postScript(events: List<RecordingScriptEvent>)
+  public fun postScript(events: List<RecordingScriptEvent>)
 
   /**
    * **Live mode only.** Append one input event to the live tick loop's pending queue. The
@@ -81,7 +81,7 @@ interface RecordingSession : AutoCloseable {
    * Fire-and-forget by design: the daemon's `recording/input` notification handler doesn't wait for
    * the tick to consume the event. Inputs that arrive after [stop] are dropped silently.
    */
-  fun postInput(input: RecordingInputParams)
+  public fun postInput(input: RecordingInputParams)
 
   /**
    * Stop the recording and return its frame metadata. Behaviour differs by mode:
@@ -94,14 +94,14 @@ interface RecordingSession : AutoCloseable {
    * illegal — but the PNGs remain on disk so [encode] can be invoked. Idempotent in the limited
    * sense that a second call returns the same [RecordingResult] without re-rendering.
    */
-  fun stop(): RecordingResult
+  public fun stop(): RecordingResult
 
   /**
    * Encode the on-disk frames produced by [stop] into a single video file. Must be called after
    * [stop] (the implementation throws otherwise). Idempotent: encoding the same format twice
    * returns the same path; encoding different formats writes side-by-side files.
    */
-  fun encode(format: RecordingFormat): EncodedRecording
+  public fun encode(format: RecordingFormat): EncodedRecording
 
   /**
    * Drains any in-flight playback, frees the held scene + native resources, and removes any
@@ -115,7 +115,7 @@ interface RecordingSession : AutoCloseable {
  * Metadata returned by [RecordingSession.stop]. The on-disk PNGs at `<framesDir>/frame-NNNNN.png`
  * outlive the session.
  */
-data class RecordingResult(
+public data class RecordingResult(
   val frameCount: Int,
   val durationMs: Long,
   val framesDir: String,
@@ -131,9 +131,9 @@ data class RecordingResult(
 )
 
 /** Metadata returned by [RecordingSession.encode]. */
-data class EncodedRecording(val videoPath: String, val mimeType: String, val sizeBytes: Long)
+public data class EncodedRecording(val videoPath: String, val mimeType: String, val sizeBytes: Long)
 
-fun String.toInteractiveInputKindOrNull(): InteractiveInputKind? =
+public fun String.toInteractiveInputKindOrNull(): InteractiveInputKind? =
   INTERACTIVE_INPUT_KIND_BY_WIRE_NAME[this]
 
 /**
@@ -147,7 +147,7 @@ fun String.toInteractiveInputKindOrNull(): InteractiveInputKind? =
  * `InputRsbRecordingScriptEvents`. The MCP `validateRecordingScriptKinds` checks every kind against
  * the daemon's advertised set — no special-case branch for input kinds anymore.
  */
-val INTERACTIVE_INPUT_KIND_BY_WIRE_NAME: Map<String, InteractiveInputKind> =
+public val INTERACTIVE_INPUT_KIND_BY_WIRE_NAME: Map<String, InteractiveInputKind> =
   mapOf(
     "input.click" to InteractiveInputKind.CLICK,
     "input.pointerDown" to InteractiveInputKind.POINTER_DOWN,
@@ -171,4 +171,5 @@ private val INTERACTIVE_INPUT_KIND_TO_WIRE_NAME: Map<InteractiveInputKind, Strin
 /**
  * Wire-name string for an [InteractiveInputKind] (the reverse of [toInteractiveInputKindOrNull]).
  */
-fun InteractiveInputKind.wireName(): String = INTERACTIVE_INPUT_KIND_TO_WIRE_NAME.getValue(this)
+public fun InteractiveInputKind.wireName(): String =
+  INTERACTIVE_INPUT_KIND_TO_WIRE_NAME.getValue(this)

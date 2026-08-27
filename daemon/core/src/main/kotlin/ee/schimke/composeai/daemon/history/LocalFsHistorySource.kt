@@ -61,7 +61,7 @@ import kotlinx.serialization.json.JsonElement
  * model". `index.jsonl` writes use [StandardOpenOption.APPEND] (POSIX `O_APPEND`); PNGs and
  * sidecars use distinct filenames per render so two writes never race on the same file.
  */
-class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
+public class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
 
   /** `fs:<absoluteHistoryDir>` — HISTORY.md § "Built-in sources § LocalFsHistorySource". */
   override val id: String = "fs:${historyDir.toAbsolutePath()}"
@@ -592,12 +592,12 @@ class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
     return parsed
   }
 
-  companion object {
-    const val INDEX_FILENAME: String = "index.jsonl"
+  public companion object {
+    public const val INDEX_FILENAME: String = "index.jsonl"
     /** Default limit for [HistoryFilter.limit]. Pinned in [HistoryFilters] for shared use. */
-    const val DEFAULT_LIMIT: Int = HistoryFilters.DEFAULT_LIMIT
+    public const val DEFAULT_LIMIT: Int = HistoryFilters.DEFAULT_LIMIT
     /** Hard ceiling for [HistoryFilter.limit]. Pinned in [HistoryFilters] for shared use. */
-    const val MAX_LIMIT: Int = HistoryFilters.MAX_LIMIT
+    public const val MAX_LIMIT: Int = HistoryFilters.MAX_LIMIT
 
     /**
      * JSON configuration shared across the LocalFs path. `encodeDefaults = false` keeps the sidecar
@@ -614,7 +614,7 @@ class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
     private val ISO_TS: DateTimeFormatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
 
     /** SHA-256 hex of [bytes]. */
-    fun sha256Hex(bytes: ByteArray): String {
+    public fun sha256Hex(bytes: ByteArray): String {
       val digest = MessageDigest.getInstance("SHA-256")
       val hash = digest.digest(bytes)
       val sb = StringBuilder(hash.size * 2)

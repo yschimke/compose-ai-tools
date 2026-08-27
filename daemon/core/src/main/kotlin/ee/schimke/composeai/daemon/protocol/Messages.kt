@@ -47,7 +47,7 @@ import kotlinx.serialization.json.JsonElement
 // `encodeDefaults = false`.
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
-data class JsonRpcRequest(
+public data class JsonRpcRequest(
   @EncodeDefault val jsonrpc: String = "2.0",
   val id: Long,
   val method: String,
@@ -56,7 +56,7 @@ data class JsonRpcRequest(
 
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
-data class JsonRpcResponse(
+public data class JsonRpcResponse(
   @EncodeDefault val jsonrpc: String = "2.0",
   val id: Long,
   val result: JsonElement? = null,
@@ -65,21 +65,21 @@ data class JsonRpcResponse(
 
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
-data class JsonRpcNotification(
+public data class JsonRpcNotification(
   @EncodeDefault val jsonrpc: String = "2.0",
   val method: String,
   val params: JsonElement? = null,
 )
 
 @Serializable
-data class JsonRpcError(val code: Int, val message: String, val data: JsonElement? = null)
+public data class JsonRpcError(val code: Int, val message: String, val data: JsonElement? = null)
 
 // =====================================================================
 // 2. initialize (PROTOCOL.md § 3)
 // =====================================================================
 
 @Serializable
-data class InitializeParams(
+public data class InitializeParams(
   val protocolVersion: Int,
   val clientVersion: String,
   val workspaceRoot: String,
@@ -89,10 +89,10 @@ data class InitializeParams(
   val options: Options? = null,
 )
 
-@Serializable data class ClientCapabilities(val visibility: Boolean, val metrics: Boolean)
+public @Serializable data class ClientCapabilities(val visibility: Boolean, val metrics: Boolean)
 
 @Serializable
-data class Options(
+public data class Options(
   val maxHeapMb: Int? = null,
   val warmSpare: Boolean? = null,
   val detectLeaks: DetectLeaks? = null,
@@ -118,7 +118,7 @@ data class Options(
 )
 
 @Serializable
-data class HistoryPruneOptions(
+public data class HistoryPruneOptions(
   val maxEntriesPerPreview: Int? = null,
   val maxAgeDays: Int? = null,
   val maxTotalSizeBytes: Long? = null,
@@ -126,14 +126,14 @@ data class HistoryPruneOptions(
 )
 
 @Serializable
-enum class DetectLeaks {
+public enum class DetectLeaks {
   @SerialName("off") OFF,
   @SerialName("light") LIGHT,
   @SerialName("heavy") HEAVY,
 }
 
 @Serializable
-data class InitializeResult(
+public data class InitializeResult(
   val protocolVersion: Int,
   val daemonVersion: String,
   val pid: Long,
@@ -143,7 +143,7 @@ data class InitializeResult(
 )
 
 @Serializable
-data class ServerCapabilities(
+public data class ServerCapabilities(
   val incrementalDiscovery: Boolean,
   val sandboxRecycle: Boolean,
   // Subset of {"light","heavy"}; empty means leak detection unavailable.
@@ -245,7 +245,7 @@ data class ServerCapabilities(
  * variant is a wire change.
  */
 @Serializable
-enum class BackendKind {
+public enum class BackendKind {
   @SerialName("desktop") DESKTOP,
   @SerialName("android") ANDROID,
 }
@@ -257,7 +257,7 @@ enum class BackendKind {
  * identifies circular Wear-style displays.
  */
 @Serializable
-data class KnownDevice(
+public data class KnownDevice(
   val id: String,
   val widthDp: Int,
   val heightDp: Int,
@@ -274,7 +274,7 @@ data class KnownDevice(
  * `data/fetch` may pay a render cost when the latest pass didn't compute the kind.
  */
 @Serializable
-data class DataProductCapability(
+public data class DataProductCapability(
   val kind: String,
   val schemaVersion: Int,
   val transport: DataProductTransport,
@@ -288,14 +288,14 @@ data class DataProductCapability(
 )
 
 @Serializable
-enum class DataProductTransport {
+public enum class DataProductTransport {
   @SerialName("inline") INLINE,
   @SerialName("path") PATH,
   @SerialName("both") BOTH,
 }
 
 @Serializable
-enum class DataProductFacet {
+public enum class DataProductFacet {
   @SerialName("structured") STRUCTURED,
   @SerialName("artifact") ARTIFACT,
   @SerialName("image") IMAGE,
@@ -308,12 +308,12 @@ enum class DataProductFacet {
 }
 
 @Serializable
-enum class LeakDetectionMode {
+public enum class LeakDetectionMode {
   @SerialName("light") LIGHT,
   @SerialName("heavy") HEAVY,
 }
 
-@Serializable data class Manifest(val path: String, val previewCount: Int)
+public @Serializable data class Manifest(val path: String, val previewCount: Int)
 
 // =====================================================================
 // 2b. extensions/{list,enable,disable} (PROTOCOL.md § 3a)
@@ -325,7 +325,7 @@ enum class LeakDetectionMode {
 // =====================================================================
 
 @Serializable
-data class ExtensionInfoDto(
+public data class ExtensionInfoDto(
   val id: String,
   val displayName: String,
   val dependencies: List<String> = emptyList(),
@@ -336,12 +336,12 @@ data class ExtensionInfoDto(
   val previewExtensionIds: List<String> = emptyList(),
 )
 
-@Serializable data class ExtensionsListResult(val extensions: List<ExtensionInfoDto>)
+public @Serializable data class ExtensionsListResult(val extensions: List<ExtensionInfoDto>)
 
-@Serializable data class ExtensionsEnableParams(val ids: List<String>)
+public @Serializable data class ExtensionsEnableParams(val ids: List<String>)
 
 @Serializable
-data class ExtensionsEnableResult(
+public data class ExtensionsEnableResult(
   val newlyEnabled: List<String> = emptyList(),
   val pulledIn: List<String> = emptyList(),
   val alreadyEnabled: List<String> = emptyList(),
@@ -352,10 +352,10 @@ data class ExtensionsEnableResult(
   val previewExtensions: List<PreviewExtensionDescriptor> = emptyList(),
 )
 
-@Serializable data class ExtensionsDisableParams(val ids: List<String>)
+public @Serializable data class ExtensionsDisableParams(val ids: List<String>)
 
 @Serializable
-data class ExtensionsDisableResult(
+public data class ExtensionsDisableResult(
   val disabled: List<String> = emptyList(),
   val deactivated: List<String> = emptyList(),
   val stillActiveAsDependency: List<String> = emptyList(),
@@ -370,22 +370,26 @@ data class ExtensionsDisableResult(
 // 3. Client → daemon notifications (PROTOCOL.md § 4)
 // =====================================================================
 
-@Serializable data class SetVisibleParams(val ids: List<String>)
+public @Serializable data class SetVisibleParams(val ids: List<String>)
 
-@Serializable data class SetFocusParams(val ids: List<String>)
-
-@Serializable
-data class FileChangedParams(val path: String, val kind: FileKind, val changeType: ChangeType)
+public @Serializable data class SetFocusParams(val ids: List<String>)
 
 @Serializable
-enum class FileKind {
+public data class FileChangedParams(
+  val path: String,
+  val kind: FileKind,
+  val changeType: ChangeType,
+)
+
+@Serializable
+public enum class FileKind {
   @SerialName("source") SOURCE,
   @SerialName("resource") RESOURCE,
   @SerialName("classpath") CLASSPATH,
 }
 
 @Serializable
-enum class ChangeType {
+public enum class ChangeType {
   @SerialName("modified") MODIFIED,
   @SerialName("created") CREATED,
   @SerialName("deleted") DELETED,
@@ -407,20 +411,23 @@ enum class ChangeType {
  * its on-disk cache. Either form works; `Known` saves BTA a directory scan.
  */
 @Serializable
-data class CompileSourcesParams(val sources: List<String>, val changes: SourceChangeSet? = null)
+public data class CompileSourcesParams(
+  val sources: List<String>,
+  val changes: SourceChangeSet? = null,
+)
 
 /**
  * Editor-supplied dirty set for [CompileSourcesParams]. Translates 1:1 to BTA's
  * `SourcesChanges.Known(modifiedFiles, removedFiles)`.
  */
 @Serializable
-data class SourceChangeSet(
+public data class SourceChangeSet(
   val modified: List<String> = emptyList(),
   val removed: List<String> = emptyList(),
 )
 
 @Serializable
-data class CompileSourcesResult(
+public data class CompileSourcesResult(
   val result: CompileResultKind,
   /** Populated when [result] = `compileError`. Empty otherwise. */
   val errors: List<CompileErrorDetail> = emptyList(),
@@ -429,7 +436,7 @@ data class CompileSourcesResult(
 )
 
 @Serializable
-enum class CompileResultKind {
+public enum class CompileResultKind {
   @SerialName("ok") OK,
 
   /**
@@ -447,14 +454,19 @@ enum class CompileResultKind {
 }
 
 @Serializable
-data class CompileErrorDetail(val file: String, val line: Int, val column: Int, val message: String)
+public data class CompileErrorDetail(
+  val file: String,
+  val line: Int,
+  val column: Int,
+  val message: String,
+)
 
 // =====================================================================
 // 4. Client → daemon requests (PROTOCOL.md § 5)
 // =====================================================================
 
 @Serializable
-data class RenderNowParams(
+public data class RenderNowParams(
   val previews: List<String>,
   val tier: RenderTier,
   val reason: String? = null,
@@ -474,7 +486,7 @@ data class RenderNowParams(
  * PROTOCOL.md § 5 ("renderNow.overrides").
  */
 @Serializable
-data class PreviewOverrides(
+public data class PreviewOverrides(
   /** Sandbox width in pixels. Mirrors `@Preview(widthDp=…)` × density. A *fixed* frame. */
   val widthPx: Int? = null,
   /** Sandbox height in pixels. A *fixed* frame. */
@@ -792,7 +804,7 @@ data class PreviewOverrides(
  * path yet and ignores the field.
  */
 @Serializable
-data class LottieOverride(
+public data class LottieOverride(
   /**
    * Timeline position in `0f..1f` (`0f` = first frame, `1f` = last). Coerced into range by the
    * runtime. Null leaves the composable's authored `progress` untouched — so an override carrying
@@ -813,14 +825,14 @@ data class LottieOverride(
  * preview JAR carries.
  */
 @Serializable
-data class PermissionsOverride(
+public data class PermissionsOverride(
   /** Permission name -> grant state. Keys are `Manifest.permission.*` constant strings. */
   val grants: Map<String, PermissionGrantStateOverride> = emptyMap()
 )
 
 /** Wire spelling for [PermissionsOverride.grants] values. */
 @Serializable
-enum class PermissionGrantStateOverride {
+public enum class PermissionGrantStateOverride {
   @SerialName("granted") GRANTED,
   @SerialName("denied") DENIED,
 }
@@ -842,7 +854,7 @@ enum class PermissionGrantStateOverride {
  *   `"sym"`.
  */
 @Serializable
-data class KeyboardOverride(val visible: Boolean? = null, val pressedKey: String? = null)
+public data class KeyboardOverride(val visible: Boolean? = null, val pressedKey: String? = null)
 
 /**
  * Focus / keyboard-traversal override for previews. Drives the connector-side
@@ -865,7 +877,7 @@ data class KeyboardOverride(val visible: Boolean? = null, val pressedKey: String
  * `ee.schimke.composeai.daemon.FocusOverlay.apply` when set.
  */
 @Serializable
-data class FocusOverride(
+public data class FocusOverride(
   val tabIndex: Int? = null,
   val direction: FocusDirection? = null,
   val step: Int? = null,
@@ -893,7 +905,7 @@ data class FocusOverride(
  * focus connector's `toCompose` adapter maps each value to the upstream constant at render time.
  */
 @Serializable
-enum class FocusDirection {
+public enum class FocusDirection {
   Next,
   Previous,
   Up,
@@ -913,7 +925,7 @@ enum class FocusDirection {
  * accessibility contrast control (`-1.0` → reduced, `0.0` → default, `0.5` → medium, `1.0` → high).
  */
 @Serializable
-data class WallpaperOverride(
+public data class WallpaperOverride(
   /** Seed color as `#RRGGBB` or `#AARRGGBB`. */
   val seedColor: String,
   /** When non-null, forces the dark variant of the derived scheme. */
@@ -949,7 +961,7 @@ data class WallpaperOverride(
  * requested state after [idleTimeoutMs] of further inactivity.
  */
 @Serializable
-data class AmbientOverride(
+public data class AmbientOverride(
   /** Requested ambient state. */
   val state: AmbientStateOverride,
   /**
@@ -982,7 +994,7 @@ data class AmbientOverride(
 
 /** Wire spelling for [AmbientOverride.state]. */
 @Serializable
-enum class AmbientStateOverride {
+public enum class AmbientStateOverride {
   @SerialName("interactive") INTERACTIVE,
   @SerialName("ambient") AMBIENT,
   @SerialName("inactive") INACTIVE,
@@ -1006,7 +1018,7 @@ enum class AmbientStateOverride {
  * previewed tree (the "disabled gesture" screen). Null falls back to `true`.
  */
 @Serializable
-data class GestureOverride(
+public data class GestureOverride(
   /** Mirrors `LocalOneHandedGestureEnabled`. Null falls back to `true` (recognition enabled). */
   val enabled: Boolean? = null,
   /** Force-show the gesture hints for this render (immediate mode). Null falls back to `false`. */
@@ -1022,7 +1034,7 @@ data class GestureOverride(
 
 /** Wire spelling for [GestureOverride.invoke] and the connector's registered-gesture kinds. */
 @Serializable
-enum class GestureKindOverride {
+public enum class GestureKindOverride {
   @SerialName("primary") PRIMARY,
   @SerialName("dismiss") DISMISS,
   @SerialName("scroll") SCROLL,
@@ -1030,7 +1042,7 @@ enum class GestureKindOverride {
 }
 
 @Serializable
-enum class WallpaperPaletteStyle {
+public enum class WallpaperPaletteStyle {
   @SerialName("tonalSpot") TONAL_SPOT,
   @SerialName("neutral") NEUTRAL,
   @SerialName("vibrant") VIBRANT,
@@ -1063,7 +1075,7 @@ enum class WallpaperPaletteStyle {
  * Android-only — the desktop backend has no Remote Compose runtime and ignores this field.
  */
 @Serializable
-data class RemoteComposeOverride(
+public data class RemoteComposeOverride(
   val profile: RemoteComposeProfile? = null,
   val namedValues: Map<String, RemoteNamedValue> = emptyMap(),
   val acceptedHostActions: List<String>? = null,
@@ -1095,7 +1107,7 @@ data class RemoteComposeOverride(
  * way `:daemon:android` gates the whole Remote Compose extension.
  */
 @Serializable
-enum class RemoteComposePlayerKind {
+public enum class RemoteComposePlayerKind {
   @SerialName("view") VIEW,
   @SerialName("embedded") EMBEDDED,
 }
@@ -1119,7 +1131,7 @@ enum class RemoteComposePlayerKind {
  *   face hosts).
  */
 @Serializable
-enum class RemoteComposeProfile {
+public enum class RemoteComposeProfile {
   @SerialName("androidx") ANDROIDX,
   @SerialName("androidx7") ANDROIDX7,
   @SerialName("androidx8") ANDROIDX8,
@@ -1141,27 +1153,31 @@ enum class RemoteComposeProfile {
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
 @kotlinx.serialization.json.JsonClassDiscriminator("kind")
-sealed class RemoteNamedValue {
+public sealed class RemoteNamedValue {
   /** Single-precision float. Matches `Float.rf` / `RemoteFloat`. */
-  @Serializable @SerialName("float") data class FloatValue(val value: Float) : RemoteNamedValue()
+  public @Serializable @SerialName("float") data class FloatValue(val value: Float) :
+    RemoteNamedValue()
 
   /**
    * Density-independent pixel measurement. Carries the raw dp value; the connector wraps with
    * `.rdp` at bind time so user code can read it as a `RemoteFloat` representing the dp.
    */
-  @Serializable @SerialName("dp") data class DpValue(val value: Float) : RemoteNamedValue()
+  public @Serializable @SerialName("dp") data class DpValue(val value: Float) : RemoteNamedValue()
 
   /** 32-bit integer. Matches `Int.rint` / `RemoteInt`. */
-  @Serializable @SerialName("int") data class IntValue(val value: Int) : RemoteNamedValue()
+  public @Serializable @SerialName("int") data class IntValue(val value: Int) : RemoteNamedValue()
 
   /** UTF-8 string. Matches `String.rs` / `RemoteString`. */
-  @Serializable @SerialName("string") data class StringValue(val value: String) : RemoteNamedValue()
+  public @Serializable @SerialName("string") data class StringValue(val value: String) :
+    RemoteNamedValue()
 
   /** Boolean flag. Matches `Boolean.rb` / `RemoteBoolean`. */
-  @Serializable @SerialName("bool") data class BooleanValue(val value: Boolean) : RemoteNamedValue()
+  public @Serializable @SerialName("bool") data class BooleanValue(val value: Boolean) :
+    RemoteNamedValue()
 
   /** Color as `#AARRGGBB`. Matches `RemoteColor(Color(...))`. */
-  @Serializable @SerialName("color") data class ColorValue(val argb: String) : RemoteNamedValue()
+  public @Serializable @SerialName("color") data class ColorValue(val argb: String) :
+    RemoteNamedValue()
 }
 
 /**
@@ -1174,7 +1190,11 @@ sealed class RemoteNamedValue {
  * downstream consumers can order events without needing the remote runtime's own clock model.
  */
 @Serializable
-data class RemoteHostAction(val payload: String, val handlerId: Float, val firedAtMillis: Long = 0L)
+public data class RemoteHostAction(
+  val payload: String,
+  val handlerId: Float,
+  val firedAtMillis: Long = 0L,
+)
 
 /**
  * Whole-cell size on a launcher's grid, expressed as integer cell counts.
@@ -1185,7 +1205,7 @@ data class RemoteHostAction(val payload: String, val handlerId: Float, val fired
  * up to the configured floor.
  */
 @Serializable
-data class LauncherWidgetSize(val width: Int, val height: Int) {
+public data class LauncherWidgetSize(val width: Int, val height: Int) {
   init {
     require(width >= 0) { "LauncherWidgetSize.width must be >= 0, was $width" }
     require(height >= 0) { "LauncherWidgetSize.height must be >= 0, was $height" }
@@ -1205,7 +1225,7 @@ data class LauncherWidgetSize(val width: Int, val height: Int) {
  * intermediate frames it emits between source and target.
  */
 @Serializable
-enum class LauncherResizeOrder {
+public enum class LauncherResizeOrder {
   @SerialName("diagonal") DIAGONAL,
   @SerialName("widthFirst") WIDTH_FIRST,
   @SerialName("heightFirst") HEIGHT_FIRST,
@@ -1247,7 +1267,7 @@ enum class LauncherResizeOrder {
  *   (`widthPx`/`heightPx` or `device`); the chrome fills whatever canvas the render is given.
  */
 @Serializable
-data class LauncherWidgetOverride(
+public data class LauncherWidgetOverride(
   val cells: LauncherWidgetSize,
   val cellSizeDp: Int? = null,
   val cellSpacingDp: Int? = null,
@@ -1271,7 +1291,7 @@ data class LauncherWidgetOverride(
  * resolved end-state the renderer rendered.
  */
 @Serializable
-data class LauncherWidgetPayload(
+public data class LauncherWidgetPayload(
   /** Resolved (post-clamp) cell count the renderer applied. */
   val cells: LauncherWidgetSize,
   /** Resolved per-cell edge length in dp. */
@@ -1331,7 +1351,7 @@ data class LauncherWidgetPayload(
  * can lock the axes the widget doesn't support.
  */
 @Serializable
-enum class LauncherResizeAxes {
+public enum class LauncherResizeAxes {
   @SerialName("none") NONE,
   @SerialName("horizontal") HORIZONTAL,
   @SerialName("vertical") VERTICAL,
@@ -1339,7 +1359,7 @@ enum class LauncherResizeAxes {
 }
 
 @Serializable
-data class Material3ThemeOverrides(
+public data class Material3ThemeOverrides(
   /** Material 3 color role -> `#RRGGBB` or `#AARRGGBB`. */
   val colorScheme: Map<String, String> = emptyMap(),
   /** Material 3 text style name -> partial text-style override. */
@@ -1349,7 +1369,7 @@ data class Material3ThemeOverrides(
 )
 
 @Serializable
-data class Material3TypographyOverride(
+public data class Material3TypographyOverride(
   val fontSizeSp: Float? = null,
   val lineHeightSp: Float? = null,
   val letterSpacingSp: Float? = null,
@@ -1358,27 +1378,27 @@ data class Material3TypographyOverride(
 )
 
 @Serializable
-enum class UiMode {
+public enum class UiMode {
   @SerialName("light") LIGHT,
   @SerialName("dark") DARK,
 }
 
 @Serializable
-enum class Orientation {
+public enum class Orientation {
   @SerialName("portrait") PORTRAIT,
   @SerialName("landscape") LANDSCAPE,
 }
 
 @Serializable
-enum class RenderTier {
+public enum class RenderTier {
   @SerialName("fast") FAST,
   @SerialName("full") FULL,
 }
 
 @Serializable
-data class RenderNowResult(val queued: List<String>, val rejected: List<RejectedRender>)
+public data class RenderNowResult(val queued: List<String>, val rejected: List<RejectedRender>)
 
-@Serializable data class RejectedRender(val id: String, val reason: String)
+public @Serializable data class RejectedRender(val id: String, val reason: String)
 
 // ---------------------------------------------------------------------------
 // `preview/rows` — enumerate a `@PreviewParameter` provider's rows (issue #3749).
@@ -1389,17 +1409,20 @@ data class RenderNowResult(val queued: List<String>, val rejected: List<Rejected
 // past the end and read the error. This is the direct answer.
 // ---------------------------------------------------------------------------
 
-@Serializable data class PreviewRowsParams(val previewId: String)
+public @Serializable data class PreviewRowsParams(val previewId: String)
 
 /**
  * [rows] is empty for an ordinary preview — the daemon answers that from discovery metadata alone,
  * without touching a classloader or (on Android) the render sandbox. Empty means "render the bare
  * id"; it is not an error.
  */
-@Serializable data class PreviewRowsResult(val previewId: String, val rows: List<PreviewRowDto>)
+public @Serializable data class PreviewRowsResult(
+  val previewId: String,
+  val rows: List<PreviewRowDto>,
+)
 
 @Serializable
-data class PreviewRowDto(
+public data class PreviewRowDto(
   /** Zero-based position in the provider's value sequence. */
   val index: Int,
   /** The row token — a derived label (`Dark`) or `PARAM_<index>`. See docs/RENDER_FILENAMES.md. */
@@ -1417,13 +1440,13 @@ data class PreviewRowDto(
 // ---------------------------------------------------------------------------
 
 @Serializable
-data class DataFetchParams(
+public data class DataFetchParams(
   val previewId: String,
   val kind: String,
   val params: JsonElement? = null,
   val inline: Boolean = false,
 ) {
-  companion object {
+  public companion object {
     /**
      * `params` key: when `true`, a `requiresRerender` kind re-renders even if its on-disk artefact
      * already exists — used by the serve host's `?scroll=long` lane to force a fresh render at the
@@ -1431,19 +1454,19 @@ data class DataFetchParams(
      * differently-themed file must be re-rendered rather than served). Ignored by kinds that don't
      * re-render.
      */
-    const val PARAM_FORCE_RERENDER: String = "force"
+    public const val PARAM_FORCE_RERENDER: String = "force"
 
     /**
      * `params` key: a serialized [PreviewOverrides] the daemon threads into a `requiresRerender`
      * re-render, so the produced artefact reflects the caller's theme / device / locale /
      * font-scale / knob overrides rather than the preview's defaults.
      */
-    const val PARAM_OVERRIDES: String = "overrides"
+    public const val PARAM_OVERRIDES: String = "overrides"
   }
 }
 
 @Serializable
-data class DataFetchResult(
+public data class DataFetchResult(
   val kind: String,
   val schemaVersion: Int,
   val payload: JsonElement? = null,
@@ -1471,7 +1494,7 @@ data class DataFetchResult(
  * "Recomposition + interactive mode".
  */
 @Serializable
-data class DataSubscribeParams(
+public data class DataSubscribeParams(
   val previewId: String,
   val kind: String,
   val params: JsonElement? = null,
@@ -1480,9 +1503,9 @@ data class DataSubscribeParams(
 /** Acknowledgement-only result; trivial by design so growing it stays additive. */
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
-data class DataSubscribeResult(@EncodeDefault val ok: Boolean = true) {
-  companion object {
-    val OK: DataSubscribeResult = DataSubscribeResult(ok = true)
+public data class DataSubscribeResult(@EncodeDefault val ok: Boolean = true) {
+  public companion object {
+    public val OK: DataSubscribeResult = DataSubscribeResult(ok = true)
   }
 }
 
@@ -1491,7 +1514,7 @@ data class DataSubscribeResult(@EncodeDefault val ok: Boolean = true) {
 // =====================================================================
 
 @Serializable
-data class DiscoveryUpdatedParams(
+public data class DiscoveryUpdatedParams(
   // PreviewInfo is the schema emitted by DiscoverPreviewsTask plus the
   // sourceFile field added in P0.2. Carried as JsonElement here because the
   // canonical shape lives in :gradle-plugin and we don't want to duplicate
@@ -1503,10 +1526,10 @@ data class DiscoveryUpdatedParams(
   val totalPreviews: Int,
 )
 
-@Serializable data class RenderStartedParams(val id: String, val queuedMs: Long)
+public @Serializable data class RenderStartedParams(val id: String, val queuedMs: Long)
 
 @Serializable
-data class RenderFinishedParams(
+public data class RenderFinishedParams(
   val id: String,
   val pngPath: String,
   val tookMs: Long,
@@ -1535,7 +1558,7 @@ data class RenderFinishedParams(
  * PNG). Always omitted on the wire when empty so pre-feature clients ignore it.
  */
 @Serializable
-data class DataProductAttachment(
+public data class DataProductAttachment(
   val kind: String,
   val schemaVersion: Int,
   val payload: JsonElement? = null,
@@ -1560,7 +1583,7 @@ data class DataProductAttachment(
  * processors and extras".
  */
 @Serializable
-data class DataProductExtra(
+public data class DataProductExtra(
   val name: String,
   val path: String,
   val mediaType: String? = null,
@@ -1568,13 +1591,13 @@ data class DataProductExtra(
 )
 
 @Serializable
-data class RenderMetrics(
+public data class RenderMetrics(
   val heapAfterGcMb: Long,
   val nativeHeapMb: Long,
   val sandboxAgeRenders: Long,
   val sandboxAgeMs: Long,
 ) {
-  companion object {
+  public companion object {
     /**
      * The four flat-map keys [RenderHost] implementations populate on `RenderResult.metrics` to
      * carry B2.3 measurement values across the renderer-agnostic seam.
@@ -1582,10 +1605,10 @@ data class RenderMetrics(
      * Pinned here so `:daemon:core`, `:daemon:android`, `:daemon:desktop`, and `:daemon:harness`
      * agree on the exact spelling without each reaching for a string literal at the call site.
      */
-    const val KEY_HEAP_AFTER_GC_MB: String = "heapAfterGcMb"
-    const val KEY_NATIVE_HEAP_MB: String = "nativeHeapMb"
-    const val KEY_SANDBOX_AGE_RENDERS: String = "sandboxAgeRenders"
-    const val KEY_SANDBOX_AGE_MS: String = "sandboxAgeMs"
+    public const val KEY_HEAP_AFTER_GC_MB: String = "heapAfterGcMb"
+    public const val KEY_NATIVE_HEAP_MB: String = "nativeHeapMb"
+    public const val KEY_SANDBOX_AGE_RENDERS: String = "sandboxAgeRenders"
+    public const val KEY_SANDBOX_AGE_MS: String = "sandboxAgeMs"
 
     /**
      * Translates the flat `Map<String, Long>` carrier on `RenderResult.metrics` into a structured
@@ -1600,7 +1623,7 @@ data class RenderMetrics(
      * partial-map case and observe drift — a common shape early in a host backend's measurement
      * plumbing.
      */
-    fun fromFlatMap(map: Map<String, Long>?): FromFlatMapResult {
+    public fun fromFlatMap(map: Map<String, Long>?): FromFlatMapResult {
       if (map == null) return FromFlatMapResult.AbsentSource
       val heap = map[KEY_HEAP_AFTER_GC_MB]
       val native = map[KEY_NATIVE_HEAP_MB]
@@ -1634,19 +1657,19 @@ data class RenderMetrics(
    *   logs a warn-level notification so caller-side drift is observable.
    * - [Populated] — all four keys present; the wire carries the structured object.
    */
-  sealed interface FromFlatMapResult {
-    data object AbsentSource : FromFlatMapResult
+  public sealed interface FromFlatMapResult {
+    public data object AbsentSource : FromFlatMapResult
 
-    data class PartialMap(val missingKeys: List<String>) : FromFlatMapResult
+    public data class PartialMap(val missingKeys: List<String>) : FromFlatMapResult
 
-    data class Populated(val metrics: RenderMetrics) : FromFlatMapResult
+    public data class Populated(val metrics: RenderMetrics) : FromFlatMapResult
   }
 }
 
-@Serializable data class RenderFailedParams(val id: String, val error: RenderError)
+public @Serializable data class RenderFailedParams(val id: String, val error: RenderError)
 
 @Serializable
-data class RenderError(
+public data class RenderError(
   val kind: RenderErrorKind,
   val message: String,
   val stackTrace: String? = null,
@@ -1676,7 +1699,7 @@ data class RenderError(
  * value here stays additive for old clients. Every `when (kind)` must carry an explicit `else`.
  */
 @Serializable(with = RenderErrorKindSerializer::class)
-enum class RenderErrorKind(val wire: String) {
+public enum class RenderErrorKind(public val wire: String) {
   COMPILE("compile"),
   RUNTIME("runtime"),
   CAPTURE("capture"),
@@ -1701,7 +1724,7 @@ enum class RenderErrorKind(val wire: String) {
  * 4.1 enum discipline). This is what keeps adding a new failure discriminant an additive,
  * non-breaking change for older clients.
  */
-object RenderErrorKindSerializer : KSerializer<RenderErrorKind> {
+public object RenderErrorKindSerializer : KSerializer<RenderErrorKind> {
   override val descriptor: SerialDescriptor =
     PrimitiveSerialDescriptor(
       "ee.schimke.composeai.daemon.protocol.RenderErrorKind",
@@ -1719,21 +1742,21 @@ object RenderErrorKindSerializer : KSerializer<RenderErrorKind> {
 }
 
 @Serializable
-data class ClasspathDirtyParams(
+public data class ClasspathDirtyParams(
   val reason: ClasspathDirtyReason,
   val detail: String,
   val changedPaths: List<String>? = null,
 )
 
 @Serializable
-enum class ClasspathDirtyReason {
+public enum class ClasspathDirtyReason {
   @SerialName("fingerprintMismatch") FINGERPRINT_MISMATCH,
   @SerialName("fileChanged") FILE_CHANGED,
   @SerialName("manifestMissing") MANIFEST_MISSING,
 }
 
 @Serializable
-data class SandboxRecycleParams(
+public data class SandboxRecycleParams(
   val reason: SandboxRecycleReason,
   val ageMs: Long,
   val renderCount: Long,
@@ -1741,7 +1764,7 @@ data class SandboxRecycleParams(
 )
 
 @Serializable
-enum class SandboxRecycleReason {
+public enum class SandboxRecycleReason {
   @SerialName("heapCeiling") HEAP_CEILING,
   @SerialName("heapDrift") HEAP_DRIFT,
   @SerialName("renderTimeDrift") RENDER_TIME_DRIFT,
@@ -1751,10 +1774,10 @@ enum class SandboxRecycleReason {
   @SerialName("manual") MANUAL,
 }
 
-@Serializable data class DaemonWarmingParams(val etaMs: Long)
+public @Serializable data class DaemonWarmingParams(val etaMs: Long)
 
 @Serializable
-class DaemonReadyParams {
+public class DaemonReadyParams {
   // Empty-object payload per PROTOCOL.md § 6 ("daemonReady"). Modelled as a
   // class with no fields so kotlinx-serialization emits/accepts {}.
   override fun equals(other: Any?): Boolean = other is DaemonReadyParams
@@ -1765,7 +1788,7 @@ class DaemonReadyParams {
 }
 
 @Serializable
-data class LogParams(
+public data class LogParams(
   val level: LogLevel,
   val message: String,
   val category: String? = null,
@@ -1773,7 +1796,7 @@ data class LogParams(
 )
 
 @Serializable
-enum class LogLevel {
+public enum class LogLevel {
   @SerialName("debug") DEBUG,
   @SerialName("info") INFO,
   @SerialName("warn") WARN,
@@ -1795,7 +1818,7 @@ enum class LogLevel {
 // =====================================================================
 
 @Serializable
-data class HistoryListParams(
+public data class HistoryListParams(
   val previewId: String? = null,
   val since: String? = null,
   val until: String? = null,
@@ -1814,7 +1837,7 @@ data class HistoryListParams(
 )
 
 @Serializable
-data class HistoryListResult(
+public data class HistoryListResult(
   val entries: List<JsonElement>,
   val nextCursor: String? = null,
   val totalCount: Int,
@@ -1823,17 +1846,21 @@ data class HistoryListResult(
 // `ref` (H10-read) — read this id from an on-demand git reporting branch instead of the configured
 // sources; must match the `ref` the id was listed from.
 @Serializable
-data class HistoryReadParams(val id: String, val inline: Boolean = false, val ref: String? = null)
+public data class HistoryReadParams(
+  val id: String,
+  val inline: Boolean = false,
+  val ref: String? = null,
+)
 
 @Serializable
-data class HistoryReadResultDto(
+public data class HistoryReadResultDto(
   val entry: JsonElement,
   val previewMetadata: JsonElement? = null,
   val pngPath: String,
   val pngBytes: String? = null,
 )
 
-@Serializable data class HistoryAddedParams(val entry: JsonElement)
+public @Serializable data class HistoryAddedParams(val entry: JsonElement)
 
 // =====================================================================
 // 5b. Interactive (live-stream) mode — see docs/daemon/INTERACTIVE.md § 8.
@@ -1847,7 +1874,7 @@ data class HistoryReadResultDto(
 // =====================================================================
 
 @Serializable
-data class InteractiveStartParams(
+public data class InteractiveStartParams(
   val previewId: String,
   /**
    * Optional `LocalInspectionMode` override for held interactive sessions. Null preserves the
@@ -1874,7 +1901,7 @@ data class InteractiveStartParams(
  * right frame stream and drop stale ids cleanly.
  */
 @Serializable
-data class InteractiveStartResult(
+public data class InteractiveStartResult(
   val frameStreamId: String,
   /**
    * True when the daemon acquired a held composition for this stream. False means the stream is
@@ -1885,7 +1912,7 @@ data class InteractiveStartResult(
   val fallbackReason: String? = null,
 )
 
-@Serializable data class InteractiveStopParams(val frameStreamId: String)
+public @Serializable data class InteractiveStopParams(val frameStreamId: String)
 
 /**
  * `interactive/setRemoteCompose` notification — push a single Remote Compose state edit into a held
@@ -1900,7 +1927,7 @@ data class InteractiveStartResult(
  * the notification.
  */
 @Serializable
-data class InteractiveSetRemoteComposeParams(
+public data class InteractiveSetRemoteComposeParams(
   /**
    * Routing key — same `frameStreamId` `interactive/start` allocated and `interactive/input` uses.
    */
@@ -1921,7 +1948,7 @@ data class InteractiveSetRemoteComposeParams(
  * `renderNow`.
  */
 @Serializable
-data class InteractiveSetLottieParams(
+public data class InteractiveSetLottieParams(
   /**
    * Routing key — same `frameStreamId` `interactive/start` allocated and `interactive/input` uses.
    */
@@ -1942,20 +1969,21 @@ data class InteractiveSetLottieParams(
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
 @kotlinx.serialization.json.JsonClassDiscriminator("field")
-sealed class RemoteComposeChange {
+public sealed class RemoteComposeChange {
   /** Replace the active platform profile. `value = null` clears it. */
   @Serializable
   @SerialName("profile")
-  data class Profile(val value: RemoteComposeProfile? = null) : RemoteComposeChange()
+  public data class Profile(val value: RemoteComposeProfile? = null) : RemoteComposeChange()
 
   /** Merge a single typed named value. Preserves other entries in the controller. */
   @Serializable
   @SerialName("namedValue")
-  data class NamedValue(val name: String, val value: RemoteNamedValue) : RemoteComposeChange()
+  public data class NamedValue(val name: String, val value: RemoteNamedValue) :
+    RemoteComposeChange()
 }
 
 @Serializable
-data class InteractiveInputParams(
+public data class InteractiveInputParams(
   val frameStreamId: String,
   val kind: InteractiveInputKind,
   /** Image-natural physical pixels, dispatched without density conversion. */
@@ -2016,13 +2044,13 @@ data class InteractiveInputParams(
  * backends know how to synthesise. Unknown / absent values fall back to [TOUCH] so a client that
  * predates the field keeps its old dispatch behaviour exactly.
  */
-enum class InteractivePointerType {
+public enum class InteractivePointerType {
   MOUSE,
   TOUCH,
   PEN;
 
-  companion object {
-    fun parse(wire: String?): InteractivePointerType =
+  public companion object {
+    public fun parse(wire: String?): InteractivePointerType =
       when (wire?.trim()?.lowercase()) {
         "mouse" -> MOUSE
         "pen" -> PEN
@@ -2043,7 +2071,7 @@ enum class InteractivePointerType {
  * than one (for testTag / role+text) is an unresolved target; refs are unique by construction.
  */
 @Serializable
-data class SemanticsInputTarget(
+public data class SemanticsInputTarget(
   val ref: String? = null,
   val testTag: String? = null,
   val role: String? = null,
@@ -2051,7 +2079,7 @@ data class SemanticsInputTarget(
 )
 
 @Serializable
-enum class InteractiveInputKind {
+public enum class InteractiveInputKind {
   @SerialName("click") CLICK,
   @SerialName("pointerDown") POINTER_DOWN,
   @SerialName("pointerMove") POINTER_MOVE,
@@ -2071,7 +2099,7 @@ enum class InteractiveInputKind {
 // ---------------------------------------------------------------------------
 
 @Serializable
-enum class HistoryDiffMode {
+public enum class HistoryDiffMode {
   @SerialName("metadata") METADATA,
   @SerialName("pixel") PIXEL,
   // Structural text diff of the two entries' `compose/semantics` trees (issue #1785) — the cheap,
@@ -2086,7 +2114,7 @@ enum class HistoryDiffMode {
 }
 
 @Serializable
-data class HistoryDiffParams(
+public data class HistoryDiffParams(
   val from: String,
   val to: String,
   val mode: HistoryDiffMode = HistoryDiffMode.METADATA,
@@ -2096,7 +2124,7 @@ data class HistoryDiffParams(
 )
 
 @Serializable
-data class HistoryDiffResult(
+public data class HistoryDiffResult(
   val pngHashChanged: Boolean,
   val fromMetadata: JsonElement,
   val toMetadata: JsonElement,
@@ -2128,7 +2156,7 @@ data class HistoryDiffResult(
  * `dryRun = true` returns the would-remove set without touching disk.
  */
 @Serializable
-data class HistoryPruneParams(
+public data class HistoryPruneParams(
   val maxEntriesPerPreview: Int? = null,
   val maxAgeDays: Int? = null,
   val maxTotalSizeBytes: Long? = null,
@@ -2136,7 +2164,7 @@ data class HistoryPruneParams(
 )
 
 @Serializable
-data class HistoryPruneSourceResult(val removedEntryIds: List<String>, val freedBytes: Long)
+public data class HistoryPruneSourceResult(val removedEntryIds: List<String>, val freedBytes: Long)
 
 /**
  * Result of `history/prune`. [removedEntries] / [freedBytes] are the cross-source aggregate;
@@ -2144,7 +2172,7 @@ data class HistoryPruneSourceResult(val removedEntryIds: List<String>, val freed
  * are listed — read-only git/HTTP sources don't participate in pruning).
  */
 @Serializable
-data class HistoryPruneResult(
+public data class HistoryPruneResult(
   val removedEntries: List<String>,
   val freedBytes: Long,
   val sourceResults: Map<String, HistoryPruneSourceResult>,
@@ -2155,14 +2183,14 @@ data class HistoryPruneResult(
  * pass — auto-prune passes that removed nothing produce no notification.
  */
 @Serializable
-data class HistoryPrunedParams(
+public data class HistoryPrunedParams(
   val removedIds: List<String>,
   val freedBytes: Long,
   val reason: PruneReasonWire,
 )
 
 @Serializable
-enum class PruneReasonWire {
+public enum class PruneReasonWire {
   @SerialName("auto") AUTO,
   @SerialName("manual") MANUAL,
 }
@@ -2203,7 +2231,7 @@ enum class PruneReasonWire {
  *   Defaults to `false` (scripted mode); see RECORDING.md § "live mode".
  */
 @Serializable
-data class RecordingStartParams(
+public data class RecordingStartParams(
   val previewId: String,
   val fps: Int? = null,
   val scale: Float? = null,
@@ -2224,7 +2252,7 @@ data class RecordingStartParams(
  * the analogous wire shape there is `recording/script`.
  */
 @Serializable
-data class RecordingInputParams(
+public data class RecordingInputParams(
   val recordingId: String,
   val kind: InteractiveInputKind,
   /** Image-natural physical pixels, dispatched without density conversion. */
@@ -2282,10 +2310,10 @@ data class RecordingInputParams(
  * subsequent `recording/script`, `recording/stop`, and `recording/encode` so the daemon can route
  * to the right held session.
  */
-@Serializable data class RecordingStartResult(val recordingId: String)
+public @Serializable data class RecordingStartResult(val recordingId: String)
 
 @Serializable
-enum class RecordingScriptEventStatus {
+public enum class RecordingScriptEventStatus {
   @SerialName("applied") APPLIED,
   @SerialName("unsupported") UNSUPPORTED,
   /**
@@ -2299,7 +2327,7 @@ enum class RecordingScriptEventStatus {
 
 /** One scripted input/control event on the virtual timeline. */
 @Serializable
-data class RecordingScriptEvent(
+public data class RecordingScriptEvent(
   /** Virtual time offset from `recording/start`, in milliseconds. Must be ≥ 0. */
   val tMs: Long,
   /**
@@ -2428,9 +2456,12 @@ data class RecordingScriptEvent(
 )
 
 @Serializable
-data class RecordingScriptParams(val recordingId: String, val events: List<RecordingScriptEvent>)
+public data class RecordingScriptParams(
+  val recordingId: String,
+  val events: List<RecordingScriptEvent>,
+)
 
-@Serializable data class RecordingStopParams(val recordingId: String)
+public @Serializable data class RecordingStopParams(val recordingId: String)
 
 /**
  * Compact semantics snapshot of one node, captured at a `recording.probe` marker (issue #1786).
@@ -2456,7 +2487,7 @@ data class RecordingScriptParams(val recordingId: String, val events: List<Recor
  * became present) instead of a hand-filled TODO stub.
  */
 @Serializable
-data class RecordingProbeNode(
+public data class RecordingProbeNode(
   val testTag: String? = null,
   val text: String? = null,
   val contentDescription: String? = null,
@@ -2474,10 +2505,10 @@ data class RecordingProbeNode(
  * violation.
  */
 @Serializable
-data class RecordingA11yFinding(val level: String, val type: String, val message: String)
+public data class RecordingA11yFinding(val level: String, val type: String, val message: String)
 
 @Serializable
-data class RecordingScriptEvidence(
+public data class RecordingScriptEvidence(
   val tMs: Long,
   val kind: String,
   val status: RecordingScriptEventStatus,
@@ -2515,7 +2546,7 @@ data class RecordingScriptEvidence(
  * PNG per virtual frame to [framesDir], and freed the held scene.
  */
 @Serializable
-data class RecordingStopResult(
+public data class RecordingStopResult(
   /**
    * Number of frames written. Equals `ceil(durationMs * fps / 1000) + 1` (inclusive of frame 0).
    */
@@ -2553,7 +2584,7 @@ data class RecordingStopResult(
  * derived default.
  */
 @Serializable
-data class RecordingGenerateTestParams(
+public data class RecordingGenerateTestParams(
   /** Preview the recording was driven against. Used to resolve the composable's function name. */
   val previewId: String,
   /** The captured timeline — typically [RecordingStopResult.capturedScript]. */
@@ -2568,7 +2599,7 @@ data class RecordingGenerateTestParams(
   val packageName: String? = null,
 )
 
-@Serializable data class RecordingGenerateTestResult(val source: String)
+public @Serializable data class RecordingGenerateTestResult(val source: String)
 
 /**
  * v1 supports only animated PNG (pure JVM, no native deps, plays in every browser/webview). mp4 /
@@ -2585,7 +2616,7 @@ data class RecordingGenerateTestParams(
  * `protocolVersion`.
  */
 @Serializable
-enum class RecordingFormat {
+public enum class RecordingFormat {
   @SerialName("apng") APNG,
   @SerialName("gif") GIF,
   @SerialName("mp4") MP4,
@@ -2593,13 +2624,13 @@ enum class RecordingFormat {
 }
 
 @Serializable
-data class RecordingEncodeParams(
+public data class RecordingEncodeParams(
   val recordingId: String,
   val format: RecordingFormat = RecordingFormat.APNG,
 )
 
 @Serializable
-data class RecordingEncodeResult(
+public data class RecordingEncodeResult(
   /** Absolute path of the encoded video file. */
   val videoPath: String,
   /**
@@ -2633,7 +2664,7 @@ data class RecordingEncodeResult(
 // =====================================================================
 
 @Serializable
-enum class StreamCodec {
+public enum class StreamCodec {
   /** Raw PNG bytes — same encoding the renderer already produces. The default. */
   @SerialName("png") PNG,
   /**
@@ -2663,7 +2694,7 @@ enum class StreamCodec {
  *   very high-density devices feeding a small webview.
  */
 @Serializable
-data class StreamStartParams(
+public data class StreamStartParams(
   val previewId: String,
   val codec: StreamCodec? = null,
   val maxFps: Int? = null,
@@ -2687,14 +2718,14 @@ data class StreamStartParams(
  * - [fallbackReason] carries a human-readable string when [heldSession] is `false`.
  */
 @Serializable
-data class StreamStartResult(
+public data class StreamStartResult(
   val frameStreamId: String,
   val codec: StreamCodec,
   val heldSession: Boolean,
   val fallbackReason: String? = null,
 )
 
-@Serializable data class StreamStopParams(val frameStreamId: String)
+public @Serializable data class StreamStopParams(val frameStreamId: String)
 
 /**
  * `stream/visibility` — fire-and-forget signal the client uses to throttle a stream when the
@@ -2709,7 +2740,7 @@ data class StreamStartResult(
  *   [visible] is true.
  */
 @Serializable
-data class StreamVisibilityParams(
+public data class StreamVisibilityParams(
   val frameStreamId: String,
   val visible: Boolean,
   val fps: Int? = null,
@@ -2736,7 +2767,7 @@ data class StreamVisibilityParams(
  *   state on receipt.
  */
 @Serializable
-data class StreamFrameParams(
+public data class StreamFrameParams(
   val frameStreamId: String,
   val seq: Long,
   val ptsMillis: Long,
@@ -2778,7 +2809,7 @@ data class StreamFrameParams(
  * first frame as a `streamFrame` notification.
  */
 @Serializable
-data class XrStartParams(
+public data class XrStartParams(
   val previewId: String,
   val scene: JsonElement,
   /** Directory the scene's relative panel textures resolve against. */
@@ -2795,7 +2826,7 @@ data class XrStartParams(
 
 /** `xr/start` result — the allocated stream id + negotiated codec frames will arrive on. */
 @Serializable
-data class XrStartResult(
+public data class XrStartResult(
   val frameStreamId: String,
   val codec: StreamCodec,
   val available: Boolean = true,
@@ -2805,16 +2836,22 @@ data class XrStartResult(
  * `xr/updatePanels` — per-frame panel mutations; each entry is `{id, texture?, poseInRoot?,
  * sizeDp?}`.
  */
-@Serializable data class XrUpdatePanelsParams(val frameStreamId: String, val panels: JsonArray)
+public @Serializable data class XrUpdatePanelsParams(
+  val frameStreamId: String,
+  val panels: JsonArray,
+)
 
 /** `xr/stop` — close the held XR session for [frameStreamId]. */
-@Serializable data class XrStopParams(val frameStreamId: String)
+public @Serializable data class XrStopParams(val frameStreamId: String)
 
 /** `xr/structure` — fetch the held scene's panel tree + poses for [frameStreamId]. */
-@Serializable data class XrStructureParams(val frameStreamId: String)
+public @Serializable data class XrStructureParams(val frameStreamId: String)
 
 /**
  * `xr/structure` result — the `SpatialScene` structure (panel tree + poses) the session was opened
  * with, inline as JSON (mirrors `a11y/hierarchy`).
  */
-@Serializable data class XrStructureResult(val frameStreamId: String, val structure: JsonElement)
+public @Serializable data class XrStructureResult(
+  val frameStreamId: String,
+  val structure: JsonElement,
+)

@@ -24,7 +24,7 @@ import ee.schimke.composeai.data.overrides.PreviewOverrideValue
  * need to stay identical across hosts. This small DTO lets hosts adapt their local spec into a
  * shared merge function, then copy the merged fields back into their local type.
  */
-data class PreviewOverrideBaseSpec(
+public data class PreviewOverrideBaseSpec(
   val widthPx: Int,
   val heightPx: Int,
   val density: Float,
@@ -49,7 +49,7 @@ data class PreviewOverrideBaseSpec(
   val namedOverrides: Map<String, PreviewOverrideValue>? = null,
 )
 
-data class MergedPreviewOverrides(
+public data class MergedPreviewOverrides(
   val widthPx: Int,
   val heightPx: Int,
   val density: Float,
@@ -98,7 +98,7 @@ data class MergedPreviewOverrides(
    * without this, locale-only overrides ran the qualifier rewrite but never installed the
    * around-composable, leaving strings un-pseudolocalised.
    */
-  fun toExtensionOverrides(): PreviewOverrides? {
+  public fun toExtensionOverrides(): PreviewOverrides? {
     val isPseudolocale = isPseudolocaleTag(localeTag)
     if (
       material3Theme == null &&
@@ -162,7 +162,7 @@ data class MergedPreviewOverrides(
  * Display-geometry fields (`widthPx`, `density`, `uiMode`, …) are deliberately NOT touched: the
  * host resolves those from its own spec, where the discovery-time values already live.
  */
-fun PreviewOverrideBaseSpec.withCarriedOverrides(
+public fun PreviewOverrideBaseSpec.withCarriedOverrides(
   carried: PreviewOverrides?
 ): PreviewOverrideBaseSpec =
   if (carried == null) this
@@ -192,7 +192,7 @@ fun PreviewOverrideBaseSpec.withCarriedOverrides(
  * the default wrapper. Both hosts' `applyOverrides` call this to carry the selection through,
  * mirroring how `clearBackground` is carried onto the held spec. A blank / null FQN is a no-op.
  */
-fun PreviewOverrides?.withThemeProvider(themeProvider: String?): PreviewOverrides? =
+public fun PreviewOverrides?.withThemeProvider(themeProvider: String?): PreviewOverrides? =
   if (themeProvider.isNullOrBlank()) this
   else (this ?: PreviewOverrides()).copy(themeProvider = themeProvider)
 
@@ -205,7 +205,7 @@ fun PreviewOverrides?.withThemeProvider(themeProvider: String?): PreviewOverride
  * wrap. Mirrors [withThemeProvider] and the `clearBackground` carry in each host's
  * `applyOverrides`. A [source] with no bounds set is a no-op.
  */
-fun PreviewOverrides?.withSizeBounds(source: PreviewOverrides?): PreviewOverrides? {
+public fun PreviewOverrides?.withSizeBounds(source: PreviewOverrides?): PreviewOverrides? {
   if (
     source?.minWidthPx == null &&
       source?.minHeightPx == null &&
@@ -249,7 +249,7 @@ fun PreviewOverrides?.withSizeBounds(source: PreviewOverrides?): PreviewOverride
  * Only pseudolocales are folded back: a real locale (`de`, `ar`, `zh-Hant-TW`) has no bag-consuming
  * planner, and restating it would put a tokenised field back in the bag for no reader.
  */
-fun PreviewOverrides?.withPseudolocaleFrom(localeTag: String?): PreviewOverrides? =
+public fun PreviewOverrides?.withPseudolocaleFrom(localeTag: String?): PreviewOverrides? =
   if (!isPseudolocaleTag(localeTag)) this
   else (this ?: PreviewOverrides()).copy(localeTag = localeTag)
 
@@ -285,7 +285,7 @@ private fun isPseudolocaleTag(tag: String?): Boolean {
  * base value. `PreviewOverrideMergeTest.layeredOver…` guards this by asserting an empty overlay
  * over a fully-populated base round-trips to the base unchanged.
  */
-fun PreviewOverrides?.layeredOver(base: PreviewOverrides?): PreviewOverrides? {
+public fun PreviewOverrides?.layeredOver(base: PreviewOverrides?): PreviewOverrides? {
   val over = this ?: return base
   if (base == null) return over
   return PreviewOverrides(
@@ -337,7 +337,7 @@ fun PreviewOverrides?.layeredOver(base: PreviewOverrides?): PreviewOverrides? {
  * pixels from its dp geometry at the effective density, then let explicit pixel dimensions replace
  * either axis.
  */
-fun mergePreviewOverrides(
+public fun mergePreviewOverrides(
   base: PreviewOverrideBaseSpec,
   overrides: PreviewOverrides?,
 ): MergedPreviewOverrides {

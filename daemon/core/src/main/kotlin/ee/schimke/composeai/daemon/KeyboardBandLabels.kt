@@ -15,9 +15,9 @@ package ee.schimke.composeai.daemon
  * Lives on `daemon:core` so both `AndroidInteractiveSession` and `DesktopInteractiveSession` can
  * call into it without either side taking a dep on the other's connector module.
  */
-object KeyboardBandLabels {
+public object KeyboardBandLabels {
 
-  fun fromAndroidKeycode(wire: String?): String? {
+  public fun fromAndroidKeycode(wire: String?): String? {
     val code = InteractiveKeyCodes.parse(wire) ?: return null
     return LABELS[code]
   }

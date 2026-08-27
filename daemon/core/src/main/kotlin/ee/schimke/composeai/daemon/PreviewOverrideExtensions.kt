@@ -23,7 +23,7 @@ import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
  * the merged [PreviewOverrides] to every registered planner and threads the resulting list through
  * the Compose data-extension pipeline.
  */
-typealias PreviewOverrideExtension = DataExtension<PreviewOverrides>
+public typealias PreviewOverrideExtension = DataExtension<PreviewOverrides>
 
 /**
  * Opt-in marker for a [PreviewOverrideExtension] that must be planned on **every** render,
@@ -46,7 +46,7 @@ typealias PreviewOverrideExtension = DataExtension<PreviewOverrides>
  * shared interactive state (keyboard visibility, permission grants) on an empty bag — running those
  * on every no-override render would reset state a held session still depends on.
  */
-interface AlwaysOnPreviewOverrideExtension
+public interface AlwaysOnPreviewOverrideExtension
 
 /**
  * Aggregator of registered [PreviewOverrideExtension]s, injected into the renderer.
@@ -60,11 +60,11 @@ interface AlwaysOnPreviewOverrideExtension
  * rebuilding the renderer. The default predicate considers every extension active — used by tests
  * and by callers that want the legacy "always on" behaviour.
  */
-class PreviewOverrideExtensions(
-  val extensions: List<PreviewOverrideExtension>,
+public class PreviewOverrideExtensions(
+  public val extensions: List<PreviewOverrideExtension>,
   private val isActive: (PreviewOverrideExtension) -> Boolean = { true },
 ) {
-  fun plan(overrides: PreviewOverrides?): List<PlannedDataExtension> {
+  public fun plan(overrides: PreviewOverrides?): List<PlannedDataExtension> {
     if (extensions.isEmpty()) return emptyList()
     // No override bag on this render: most planners would abstain, so skip them — but the
     // always-on planners (e.g. the named-override host + scope stamper) still have to run. Hand
@@ -79,7 +79,7 @@ class PreviewOverrideExtensions(
     return extensions.mapNotNull { if (isActive(it)) it.plan(overrides) else null }
   }
 
-  companion object {
-    val Empty: PreviewOverrideExtensions = PreviewOverrideExtensions(emptyList())
+  public companion object {
+    public val Empty: PreviewOverrideExtensions = PreviewOverrideExtensions(emptyList())
   }
 }

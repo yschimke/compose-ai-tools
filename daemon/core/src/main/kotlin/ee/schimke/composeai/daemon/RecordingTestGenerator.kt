@@ -25,21 +25,21 @@ import ee.schimke.composeai.daemon.protocol.SemanticsInputTarget
  *
  * Pure string generation — no Compose / daemon runtime — so it is golden-testable in isolation.
  */
-object RecordingTestGenerator {
+public object RecordingTestGenerator {
 
   /**
    * One recorded event plus whether the recording reported it as applied (vs `unsupported`).
    * [probeSemantics] is the host-captured semantics snapshot for a `recording.probe` event (null
    * for every other kind, and for probes from daemons that predate the capture).
    */
-  data class Step(
+  public data class Step(
     val event: RecordingScriptEvent,
     val applied: Boolean = true,
     val probeSemantics: List<RecordingProbeNode>? = null,
   )
 
   /** Inputs for one generated test. */
-  data class Spec(
+  public data class Spec(
     /** Generated class name, e.g. `GeneratedTogglePreviewTest`. */
     val className: String,
     /** Generated `@Test` method name, e.g. `togglePreviewInteraction`. */
@@ -52,7 +52,7 @@ object RecordingTestGenerator {
   )
 
   /** Wrap raw events as all-applied steps — for callers without recording evidence. */
-  fun stepsOf(events: List<RecordingScriptEvent>): List<Step> = events.map { Step(it) }
+  public fun stepsOf(events: List<RecordingScriptEvent>): List<Step> = events.map { Step(it) }
 
   /**
    * Build a [Spec] for a recording captured against [previewId] (issue #2047, the record-live
@@ -66,7 +66,7 @@ object RecordingTestGenerator {
    * pin exact names. Events are wrapped as all-applied steps (panel clicks dispatched); callers
    * with per-event evidence build [Step]s themselves and call [generate] directly.
    */
-  fun defaultSpec(
+  public fun defaultSpec(
     previewId: String,
     functionName: String?,
     classFqn: String?,
@@ -102,7 +102,7 @@ object RecordingTestGenerator {
     return trimmed.takeIf { it.isNotBlank() }
   }
 
-  fun generate(spec: Spec): String = buildString {
+  public fun generate(spec: Spec): String = buildString {
     val sortedSteps = spec.steps.sortedBy { it.event.tMs }
     // Probe snapshots opt the assertion finders/imports in; without any, the output stays
     // byte-identical to the pre-#1786-assertions stub form so older recordings are unaffected.

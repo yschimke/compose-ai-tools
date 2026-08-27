@@ -32,10 +32,10 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposeChange
  * tearing down the scene, the same way `RenderHost.shutdown` drains its queue. We never interrupt a
  * render mid-flight.
  */
-interface InteractiveSession : AutoCloseable {
+public interface InteractiveSession : AutoCloseable {
 
   /** The preview id this session is rendering. Frozen at allocation time. */
-  val previewId: String
+  public val previewId: String
 
   /**
    * `true` once the session has been closed — either by explicit [close] or by a host-internal
@@ -48,7 +48,7 @@ interface InteractiveSession : AutoCloseable {
    * behaviour (the worker still cleans up when their `render()` throws — see the catch in
    * `submitInteractiveRenderAsync` — but the loop won't pre-emptively stop).
    */
-  val isClosed: Boolean
+  public val isClosed: Boolean
     get() = false
 
   /**
@@ -62,7 +62,7 @@ interface InteractiveSession : AutoCloseable {
    * coalescing path in [JsonRpcServer.handleInteractiveInput] queue several inputs and dispatch
    * them in a batch followed by a single [render].
    */
-  fun dispatch(input: InteractiveInputParams)
+  public fun dispatch(input: InteractiveInputParams)
 
   /**
    * Push one Remote Compose state edit into the held composition's `RemoteComposeController`
@@ -82,7 +82,7 @@ interface InteractiveSession : AutoCloseable {
    *   `RemoteComposeChangeDetail`. The implementation maps each variant onto the controller's
    *   matching method.
    */
-  fun dispatchRemoteComposeChange(change: RemoteComposeChange): Boolean = false
+  public fun dispatchRemoteComposeChange(change: RemoteComposeChange): Boolean = false
 
   /**
    * Push one Lottie timeline scrub into the held composition without a fresh `renderNow`. The
@@ -101,7 +101,7 @@ interface InteractiveSession : AutoCloseable {
    * @param progress timeline position in `0f..1f` (implementations clamp); mirrors the panel's
    *   `setLottieProgress` value.
    */
-  fun dispatchLottieProgress(progress: Float): Boolean = false
+  public fun dispatchLottieProgress(progress: Float): Boolean = false
 
   /**
    * Accessibility-driven dispatch: resolve a node by its visible content description and invoke the
@@ -126,7 +126,8 @@ interface InteractiveSession : AutoCloseable {
    *   `SemanticsProperties.ContentDescription` — exact match, useUnmergedTree = true so merged
    *   children remain reachable.
    */
-  fun dispatchSemanticsAction(actionKind: String, nodeContentDescription: String): Boolean = false
+  public fun dispatchSemanticsAction(actionKind: String, nodeContentDescription: String): Boolean =
+    false
 
   /**
    * UIAutomator-shaped dispatch: resolve a node by a multi-axis BySelector-style predicate and
@@ -153,7 +154,7 @@ interface InteractiveSession : AutoCloseable {
    * @param inputText payload for `actionKind = "inputText"`; ignored otherwise. Routed through
    *   `SemanticsActions.SetText` (Compose) or `ACTION_SET_TEXT` (View).
    */
-  fun dispatchUiAutomator(
+  public fun dispatchUiAutomator(
     actionKind: String,
     selectorJson: String,
     useUnmergedTree: Boolean = false,
@@ -172,7 +173,7 @@ interface InteractiveSession : AutoCloseable {
    * cleanly degrade to the existing free-form `message` — agents iterating on selectors only see
    * the structured field on backends that wired it up.
    */
-  fun findUiAutomatorEvidence(
+  public fun findUiAutomatorEvidence(
     actionKind: String,
     selectorJson: String,
     useUnmergedTree: Boolean = false,
@@ -190,7 +191,8 @@ interface InteractiveSession : AutoCloseable {
    * Default returns `null` so hosts that can't reach the live tree (or predate probe capture) leave
    * the probe assertion-less and the generator falls back to a stub.
    */
-  fun captureProbeSemantics(): List<ee.schimke.composeai.daemon.protocol.RecordingProbeNode>? = null
+  public fun captureProbeSemantics():
+    List<ee.schimke.composeai.daemon.protocol.RecordingProbeNode>? = null
 
   /**
    * Run the Android Accessibility Test Framework (ATF) against the held composition for an
@@ -203,7 +205,8 @@ interface InteractiveSession : AutoCloseable {
    * hierarchy, and ATF runs only against Android Views) cleanly surface "a11y capture unavailable"
    * — the `assert.a11y` handler then reports unsupported rather than blowing up the session.
    */
-  fun captureA11yFindings(): List<ee.schimke.composeai.daemon.protocol.RecordingA11yFinding>? = null
+  public fun captureA11yFindings():
+    List<ee.schimke.composeai.daemon.protocol.RecordingA11yFinding>? = null
 
   /**
    * Lifecycle dispatch: move the held activity (or per-host equivalent) to the named lifecycle
@@ -225,7 +228,7 @@ interface InteractiveSession : AutoCloseable {
    *   intentionally not part of v1 — moving to `DESTROYED` mid-recording would tear down the
    *   scenario and break subsequent renders; document it as a follow-up if a use case lands.
    */
-  fun dispatchLifecycle(lifecycleEvent: String): Boolean = false
+  public fun dispatchLifecycle(lifecycleEvent: String): Boolean = false
 
   /**
    * Force a fresh composition: tear down the current composition slot and rebuild from scratch
@@ -241,7 +244,7 @@ interface InteractiveSession : AutoCloseable {
    * rebuild invalidates the saveable-state call sites. For "state survives a config-change" audits
    * use [dispatchLifecycle] (`pause` / `resume`) instead.
    */
-  fun dispatchPreviewReload(): Boolean = false
+  public fun dispatchPreviewReload(): Boolean = false
 
   /**
    * Force a Compose-level save+restore round-trip: snapshot `rememberSaveable` state from the
@@ -260,7 +263,7 @@ interface InteractiveSession : AutoCloseable {
    * (`pause` / `resume`) when you want a real Android lifecycle round-trip with the activity
    * intact.
    */
-  fun dispatchStateRecreate(): Boolean = false
+  public fun dispatchStateRecreate(): Boolean = false
 
   /**
    * Capture the current `SaveableStateRegistry` snapshot into a named bundle keyed by
@@ -270,7 +273,7 @@ interface InteractiveSession : AutoCloseable {
    * Returns `true` when the snapshot was stored; `false` when the host doesn't have the bridge
    * wired (DesktopHost today). Multiple saves to the same id overwrite the previous bundle.
    */
-  fun dispatchStateSave(checkpointId: String): Boolean = false
+  public fun dispatchStateSave(checkpointId: String): Boolean = false
 
   /**
    * Look up the bundle stashed by an earlier [dispatchStateSave] with matching [checkpointId] and
@@ -278,7 +281,7 @@ interface InteractiveSession : AutoCloseable {
    * when no checkpoint with that id has been saved (caller surfaces unsupported evidence). Throws
    * when the rebuild itself failed.
    */
-  fun dispatchStateRestore(checkpointId: String): Boolean = false
+  public fun dispatchStateRestore(checkpointId: String): Boolean = false
 
   /**
    * Navigation-driven dispatch: fire a deep-link Intent at the held activity, an instant back
@@ -307,7 +310,7 @@ interface InteractiveSession : AutoCloseable {
    *   (default) or `"right"`. Mapped sandbox-side to
    *   [`androidx.activity.BackEventCompat.EDGE_LEFT`] / `EDGE_RIGHT`.
    */
-  fun dispatchNavigation(
+  public fun dispatchNavigation(
     actionKind: String,
     deepLinkUri: String? = null,
     backProgress: Float? = null,
@@ -326,7 +329,7 @@ interface InteractiveSession : AutoCloseable {
    *   interactive callers leave this null so the backend uses its default settle window; recording
    *   callers can pass frame deltas to keep captured animation time paced to fps.
    */
-  fun render(requestId: Long, advanceTimeMs: Long? = null): RenderResult
+  public fun render(requestId: Long, advanceTimeMs: Long? = null): RenderResult
 
   /**
    * Drains any in-flight render, frees the held scene + its native resources, and removes any

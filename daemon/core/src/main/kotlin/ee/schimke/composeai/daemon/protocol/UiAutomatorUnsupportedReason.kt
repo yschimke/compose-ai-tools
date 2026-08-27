@@ -19,7 +19,7 @@ import kotlinx.serialization.Serializable
  * response side.
  */
 @Serializable
-data class UiAutomatorUnsupportedReason(
+public data class UiAutomatorUnsupportedReason(
   /** Coarse cause — see [UiAutomatorUnsupportedReasonCode]. */
   val code: UiAutomatorUnsupportedReasonCode,
   /** Action kind the dispatch attempted (`"click"`, `"longClick"`, `"inputText"`, …). */
@@ -55,7 +55,7 @@ data class UiAutomatorUnsupportedReason(
  * [RecordingScriptEvidence.message].
  */
 @Serializable
-enum class UiAutomatorUnsupportedReasonCode {
+public enum class UiAutomatorUnsupportedReasonCode {
   /** Agent omitted the `selector` object entirely. */
   @SerialName("missingSelector") MISSING_SELECTOR,
   /** Agent omitted the `inputText` payload required by `uia.inputText`. */
@@ -87,7 +87,7 @@ enum class UiAutomatorUnsupportedReasonCode {
  * JSON-serializable, no Compose dep.
  */
 @Serializable
-data class UiAutomatorNearMatchNode(
+public data class UiAutomatorNearMatchNode(
   val text: String? = null,
   val contentDescription: String? = null,
   val testTag: String? = null,

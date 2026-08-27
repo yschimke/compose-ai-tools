@@ -111,3 +111,26 @@ composeAiMavenPublishing {
   )
   inceptionYear.set("2025")
 }
+
+kotlin {
+  // `explicitApi()` — every declaration states its visibility, every public one its return type.
+  // This is the JSON-RPC protocol contract an extracted preview server compiles against across a
+  // repo boundary (#3824), and the widest surface of the twelve: 776 declarations. An
+  // implicitly-public declaration here is an API decision nobody made.
+  //
+  // All of it is already in a shipped ABI, so the annotations record the existing surface rather
+  // than changing it — narrowing any of these to `internal` would be a breaking change and is
+  // deliberately not part of this pass. (`:daemon-client` in #4558 was the one module where
+  // narrowing was free, because it had never been published.)
+  explicitApi()
+
+  // ABI dump gate, following `:rc-player-*`, `:daemon-client` and the eight contracts in #4561.
+  // `checkKotlinAbi` diffs the real public ABI against the committed dump in `api/`, so a change to
+  // the protocol surface is a diff in review rather than a downstream break. Regenerate with
+  // `./gradlew :daemon:core:updateKotlinAbi`.
+  @OptIn(org.jetbrains.kotlin.gradle.dsl.abi.ExperimentalAbiValidation::class) abiValidation()
+}
+
+// `checkKotlinAbi` is not wired into `check` by the Kotlin Gradle plugin, so an unrecorded surface
+// change would pass CI silently. Wire it explicitly — the gate is only worth having if it runs.
+tasks.named("check") { dependsOn("checkKotlinAbi") }

@@ -24,14 +24,14 @@ import okio.Path.Companion.toPath
  * Per-scenario tolerance overrides via [PixelDiffTolerance]; callers stay on the defaults until a
  * real PR shows the tolerances need tightening or loosening.
  */
-object PixelDiff {
+public object PixelDiff {
 
   /**
    * Compares two PNGs (decoded via `javax.imageio`) and returns an [PixelDiffResult] indicating
    * whether they match within [tolerance]. Mismatched dimensions are an immediate failure with
    * `offendingPixelCount = -1` to distinguish from a per-pixel miss.
    */
-  fun compare(
+  public fun compare(
     actual: ByteArray,
     expected: ByteArray,
     tolerance: PixelDiffTolerance = PixelDiffTolerance.DEFAULT,
@@ -102,7 +102,7 @@ object PixelDiff {
    * Best-effort: any I/O failure is swallowed (after logging to stderr) so the test's primary
    * failure isn't masked by an artefact-writing exception.
    */
-  fun writeDiffArtefacts(
+  public fun writeDiffArtefacts(
     actual: ByteArray,
     expected: ByteArray,
     outDir: File,
@@ -162,7 +162,7 @@ object PixelDiff {
 }
 
 /** Tolerance struct — see TEST-HARNESS § 11 for the rationale behind each default. */
-data class PixelDiffTolerance(
+public data class PixelDiffTolerance(
   /** Maximum allowed `|Δr| + |Δg| + |Δb|` per pixel before it counts toward the aggregate. */
   val perPixel: Int = 3,
   /** Maximum fraction of pixels that may exceed [perPixel]. 0.5% by default. */
@@ -170,21 +170,21 @@ data class PixelDiffTolerance(
   /** No single pixel may exceed this — catches whole-region colour bleed. */
   val absoluteCap: Int = 50,
 ) {
-  companion object {
-    val DEFAULT = PixelDiffTolerance()
+  public companion object {
+    public val DEFAULT: PixelDiffTolerance = PixelDiffTolerance()
   }
 }
 
 /** Outcome of a [PixelDiff.compare] call. */
-data class PixelDiffResult(
+public data class PixelDiffResult(
   val ok: Boolean,
   val offendingPixelCount: Int,
   val totalPixels: Int,
   val maxDelta: Int,
   val message: String,
 ) {
-  companion object {
-    fun failure(message: String): PixelDiffResult =
+  public companion object {
+    public fun failure(message: String): PixelDiffResult =
       PixelDiffResult(
         ok = false,
         offendingPixelCount = -1,

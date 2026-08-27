@@ -69,7 +69,7 @@ import kotlinx.serialization.json.JsonElement
  * @param gitExecutable git binary; defaults to `git` on PATH.
  * @param warnEmitter logger for the ref-missing read case.
  */
-class GitRefHistorySource(
+public class GitRefHistorySource(
   private val repoRoot: Path,
   private val ref: String,
   private val syncMode: SyncMode = SyncMode.READ_ONLY,
@@ -277,7 +277,7 @@ class GitRefHistorySource(
    * debounced commit can't break a render). Driven by the debounce timer and by [close] on
    * shutdown.
    */
-  fun flushPending() {
+  public fun flushPending() {
     val batch =
       synchronized(pendingLock) {
         val drained = pending.values.toList()
@@ -904,7 +904,7 @@ class GitRefHistorySource(
     HistoryListPage(entries = emptyList(), nextCursor = null, totalCount = 0)
 
   /** How this source treats the reporting ref. */
-  enum class SyncMode {
+  public enum class SyncMode {
     /** Read the ref, never write. */
     READ_ONLY,
     /** Commit each changed render onto the local ref via git plumbing; no push. */
@@ -921,7 +921,7 @@ class GitRefHistorySource(
    * always records every render (the developer's scratch history); this only gates the *shared*
    * branch so uncommitted / off-branch local states don't pollute it.
    */
-  enum class PublishPolicy {
+  public enum class PublishPolicy {
     /** Record every render (today's behaviour) — no curation. */
     ALL,
     /**
@@ -933,18 +933,18 @@ class GitRefHistorySource(
     CLEAN_ON_BRANCH,
   }
 
-  companion object {
+  public companion object {
     /** Stable filename for the overwritten-per-render PNG on the ref. */
-    const val RENDER_FILENAME: String = "render.png"
+    public const val RENDER_FILENAME: String = "render.png"
 
     /** Current-state pointer at the ref root. docs/daemon/REPORTING-BRANCH.md § manifest.json. */
-    const val MANIFEST_FILENAME: String = "manifest.json"
+    public const val MANIFEST_FILENAME: String = "manifest.json"
 
     /** Aggregate index of the legacy read-only format; read as a fallback for old refs. */
-    const val LEGACY_INDEX_FILENAME: String = "_index.jsonl"
+    public const val LEGACY_INDEX_FILENAME: String = "_index.jsonl"
 
     /** Bumped on incompatible reporting-branch layout changes. */
-    const val REPORTING_BRANCH_FORMAT_VERSION: Int = 1
+    public const val REPORTING_BRANCH_FORMAT_VERSION: Int = 1
 
     /**
      * Depth cap for the commit-walk timeline read (#1868) — the newest N commits of the ref are
@@ -952,16 +952,16 @@ class GitRefHistorySource(
      * older history stays reachable by tightening the `since`/`until` filter against a re-orphaned
      * ref.
      */
-    const val MAX_TIMELINE_DEPTH: Int = 500
+    public const val MAX_TIMELINE_DEPTH: Int = 500
 
     /**
      * Comma/semicolon-separated list of refs (e.g.
      * `refs/heads/preview/main,refs/heads/preview/agent/foo`).
      */
-    const val GIT_REF_HISTORY_PROP: String = "composeai.daemon.gitRefHistory"
+    public const val GIT_REF_HISTORY_PROP: String = "composeai.daemon.gitRefHistory"
 
     /** Sync mode for the reporting refs: `READ_ONLY` (default) or `WRITE_LOCAL`. */
-    const val SYNC_MODE_PROP: String = "composeai.daemon.gitRefHistorySyncMode"
+    public const val SYNC_MODE_PROP: String = "composeai.daemon.gitRefHistorySyncMode"
 
     // Synthetic identity for daemon-authored reporting-branch commits. These are machine-generated
     // history commits in the *consumer's* repo (not this project's git history), so they carry a
@@ -981,13 +981,15 @@ class GitRefHistorySource(
       prettyPrint = true
     }
 
-    fun parseRefsSysprop(
+    public fun parseRefsSysprop(
       propValue: String? = System.getProperty(GIT_REF_HISTORY_PROP)
     ): List<String> =
       propValue?.split(',', ';')?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
 
     /** Parses [SYNC_MODE_PROP]; unknown / unset → [SyncMode.READ_ONLY]. */
-    fun parseSyncModeSysprop(propValue: String? = System.getProperty(SYNC_MODE_PROP)): SyncMode =
+    public fun parseSyncModeSysprop(
+      propValue: String? = System.getProperty(SYNC_MODE_PROP)
+    ): SyncMode =
       when (propValue?.trim()?.uppercase()) {
         "WRITE_LOCAL" -> SyncMode.WRITE_LOCAL
         "WRITE_PUSH" -> SyncMode.WRITE_PUSH
@@ -995,31 +997,31 @@ class GitRefHistorySource(
       }
 
     /** Default git remote for `WRITE_PUSH`. Remote-name config is a follow-up. */
-    const val DEFAULT_REMOTE: String = "origin"
+    public const val DEFAULT_REMOTE: String = "origin"
 
     /** Max push attempts before giving up (one initial + retries after fetch–rebase on a race). */
-    const val MAX_PUSH_ATTEMPTS: Int = 5
+    public const val MAX_PUSH_ATTEMPTS: Int = 5
 
     /** Sysprop for the reporting-branch commit debounce window in ms (#1882). */
-    const val DEBOUNCE_PROP: String = "composeai.daemon.gitRefHistoryDebounceMs"
+    public const val DEBOUNCE_PROP: String = "composeai.daemon.gitRefHistoryDebounceMs"
 
     /** Default debounce window (ms): coalesce a render burst into one commit. `0` disables it. */
-    const val DEFAULT_DEBOUNCE_MS: Long = 1_000
+    public const val DEFAULT_DEBOUNCE_MS: Long = 1_000
 
     /** Parses [DEBOUNCE_PROP]; unset → [DEFAULT_DEBOUNCE_MS], unparseable / negative → `0`. */
-    fun parseDebounceSysprop(propValue: String? = System.getProperty(DEBOUNCE_PROP)): Long {
+    public fun parseDebounceSysprop(propValue: String? = System.getProperty(DEBOUNCE_PROP)): Long {
       if (propValue == null) return DEFAULT_DEBOUNCE_MS
       return propValue.trim().toLongOrNull()?.coerceAtLeast(0) ?: 0
     }
 
     /** Sysprop for the reporting-branch publish policy (#1872 curation). */
-    const val PUBLISH_POLICY_PROP: String = "composeai.daemon.gitRefHistoryPublishPolicy"
+    public const val PUBLISH_POLICY_PROP: String = "composeai.daemon.gitRefHistoryPublishPolicy"
 
     /**
      * Parses [PUBLISH_POLICY_PROP]; `all` → [PublishPolicy.ALL], else →
      * [PublishPolicy.CLEAN_ON_BRANCH].
      */
-    fun parsePublishPolicySysprop(
+    public fun parsePublishPolicySysprop(
       propValue: String? = System.getProperty(PUBLISH_POLICY_PROP)
     ): PublishPolicy =
       when (propValue?.trim()?.lowercase()) {
@@ -1027,21 +1029,21 @@ class GitRefHistorySource(
         else -> PublishPolicy.CLEAN_ON_BRANCH
       }
 
-    fun defaultCacheDir(historyDir: Path): Path = historyDir.resolve(".git-ref-cache")
+    public fun defaultCacheDir(historyDir: Path): Path = historyDir.resolve(".git-ref-cache")
 
     /**
      * Cache location when no module history directory is configured. Keyed by repo under the
      * user-level cache root — this used to be `<repoRoot>/.compose-preview-history/.git-ref-cache`,
      * i.e. a bare git working area planted in the user's working tree.
      */
-    fun defaultRepoCacheDir(repoRoot: Path): Path =
+    public fun defaultRepoCacheDir(repoRoot: Path): Path =
       composeAiGitRefCacheDir(repoRoot.toFile()).toPath()
   }
 }
 
 /** Current-state manifest written at the reporting ref root. docs/daemon/REPORTING-BRANCH.md. */
 @Serializable
-data class ReportingBranchManifest(
+public data class ReportingBranchManifest(
   val formatVersion: Int = 1,
   val generatedAt: String,
   val commit: String? = null,
@@ -1050,7 +1052,7 @@ data class ReportingBranchManifest(
 )
 
 @Serializable
-data class ReportingBranchPreview(
+public data class ReportingBranchPreview(
   val previewId: String,
   val module: String,
   val dir: String,

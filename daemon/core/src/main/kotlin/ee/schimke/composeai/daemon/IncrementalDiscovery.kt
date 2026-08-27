@@ -41,7 +41,7 @@ import java.nio.file.Path
  * during the plugin's full discovery pass) are passed in via [knownPreviewAnnotationFqns] so the
  * cheap pre-filter can also greplace them.
  */
-class IncrementalDiscovery(
+public class IncrementalDiscovery(
   /** The daemon's own classpath — typically `java.class.path` split on the path separator. */
   private val classpath: List<Path>,
   /**
@@ -79,7 +79,7 @@ class IncrementalDiscovery(
    * Fail-safe on I/O errors — returns `true` so a transient read failure can't silently drop a real
    * edit.
    */
-  fun cheapPrefilter(file: Path, currentIndex: PreviewIndex): Boolean {
+  public fun cheapPrefilter(file: Path, currentIndex: PreviewIndex): Boolean {
     // Quick path: file currently contributes previews. The basename match guards against the
     // worst-case "absolute path" → "relative path" mismatch by also accepting suffix matches.
     val pathString = file.toString()
@@ -116,7 +116,7 @@ class IncrementalDiscovery(
    *
    * Fail-safe: returns `emptySet` on any scan failure (and writes a stderr diagnostic).
    */
-  fun scanForFile(file: Path): Set<PreviewInfoDto> {
+  public fun scanForFile(file: Path): Set<PreviewInfoDto> {
     val target = classpathElementForFile(file)
     val scanRoots = scanRootsForTarget(target)
     return try {
@@ -388,13 +388,13 @@ class IncrementalDiscovery(
       }
   }
 
-  companion object {
+  public companion object {
     /**
      * Daemon-side mirror of `:gradle-plugin`'s `DiscoverPreviewsTask.PREVIEW_FQNS`. Sharing would
      * pull `:gradle-plugin` onto the daemon classpath (a layering inversion); duplicating ~3 FQNs
      * is the cheap fix.
      */
-    val DEFAULT_PREVIEW_ANNOTATION_FQNS: Set<String> =
+    public val DEFAULT_PREVIEW_ANNOTATION_FQNS: Set<String> =
       setOf(
         "androidx.compose.ui.tooling.preview.Preview",
         "androidx.compose.desktop.ui.tooling.preview.Preview",

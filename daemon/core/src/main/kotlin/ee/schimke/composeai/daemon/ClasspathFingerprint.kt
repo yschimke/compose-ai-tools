@@ -43,21 +43,21 @@ import java.security.MessageDigest
  * responsible for serialising recomputation; in practice this happens on the single read thread, so
  * no locking is needed.
  */
-class ClasspathFingerprint(
+public class ClasspathFingerprint(
   /**
    * Cheap-signal file set. The daemon recomputes [cheapHash] on every `fileChanged` notification
    * tagged `kind: "classpath"` — so the set should stay small (single-digit files) and stable for
    * the lifetime of the daemon. `libs.versions.toml`, `*.gradle.kts`, `settings.gradle.kts`,
    * `gradle.properties`, `local.properties` per DESIGN § 8.
    */
-  val cheapSignalFiles: List<File>,
+  public val cheapSignalFiles: List<File>,
   /**
    * Authoritative classpath. Hashed over `(absolutePath, length, lastModified)` per entry — bytes
    * are intentionally NOT read (a 200-JAR Compose classpath would cost hundreds of ms per check).
    * The mtime/size pair is sufficient for a build-system-driven classpath: gradle's resolved
    * artefact cache touches the JAR's mtime when the version changes.
    */
-  val classpathEntries: List<File>,
+  public val classpathEntries: List<File>,
 ) {
 
   /**
@@ -65,7 +65,7 @@ class ClasspathFingerprint(
    * (insertion order in the constructor list); a file that doesn't exist contributes its absolute
    * path string only.
    */
-  fun cheapHash(): String {
+  public fun cheapHash(): String {
     val md = MessageDigest.getInstance(SHA_256)
     for (file in cheapSignalFiles) {
       md.update(file.absolutePath.toByteArray(Charsets.UTF_8))
@@ -94,7 +94,7 @@ class ClasspathFingerprint(
    * hash; a JAR being temporarily missing during a Gradle re-resolve would too, but Gradle
    * re-resolves are atomic from the daemon's POV (it doesn't watch them mid-flight).
    */
-  fun classpathHash(): String {
+  public fun classpathHash(): String {
     val md = MessageDigest.getInstance(SHA_256)
     for (file in classpathEntries) {
       md.update(file.absolutePath.toByteArray(Charsets.UTF_8))
@@ -109,21 +109,22 @@ class ClasspathFingerprint(
   }
 
   /** Composite snapshot — the daemon stores this at startup as the reference. */
-  fun snapshot(): Snapshot = Snapshot(cheapHash = cheapHash(), classpathHash = classpathHash())
+  public fun snapshot(): Snapshot =
+    Snapshot(cheapHash = cheapHash(), classpathHash = classpathHash())
 
   /** Pair of hashes recorded at a single point in time. */
-  data class Snapshot(val cheapHash: String, val classpathHash: String)
+  public data class Snapshot(val cheapHash: String, val classpathHash: String)
 
-  companion object {
+  public companion object {
     /**
      * Sysprop the gradle plugin's `composePreviewDaemonStart` task sets to a colon-delimited
      * (`File.pathSeparator`) list of absolute paths in the cheap-signal file set. Read by
      * [parseCheapSignalFilesSysprop] at daemon startup.
      */
-    const val CHEAP_SIGNAL_FILES_PROP: String = "composeai.daemon.cheapSignalFiles"
+    public const val CHEAP_SIGNAL_FILES_PROP: String = "composeai.daemon.cheapSignalFiles"
 
     /** SHA-256 hash size — used by tests to assert hex-string length. */
-    const val SHA_256_HEX_LENGTH: Int = 64
+    public const val SHA_256_HEX_LENGTH: Int = 64
 
     private const val SHA_256: String = "SHA-256"
     private const val BUFFER_SIZE: Int = 64 * 1024
@@ -136,7 +137,7 @@ class ClasspathFingerprint(
      * daemon respawn). That's the pre-B2.1 fallback and it's what the harness's fake-mode scenarios
      * deliberately use so they don't drift on B2.1's Tier-1 logic.
      */
-    fun parseCheapSignalFilesSysprop(
+    public fun parseCheapSignalFilesSysprop(
       value: String? = System.getProperty(CHEAP_SIGNAL_FILES_PROP)
     ): List<File> {
       if (value.isNullOrBlank()) return emptyList()

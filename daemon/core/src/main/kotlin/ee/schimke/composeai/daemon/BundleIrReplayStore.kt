@@ -25,23 +25,27 @@ import okio.Path.Companion.toPath
  * so [lookup] is always a cheap no-op there. Format strings are kept in lockstep with `IR_FORMAT_*`
  * in `:gradle-plugin` / `IrSidecarChannel` in `:data-render-core`.
  */
-object BundleIrReplayStore {
+public object BundleIrReplayStore {
 
-  const val FORMAT_REMOTECOMPOSE: String = "remotecompose"
+  public const val FORMAT_REMOTECOMPOSE: String = "remotecompose"
 
-  const val FORMAT_PROTOLAYOUT: String = "protolayout"
+  public const val FORMAT_PROTOLAYOUT: String = "protolayout"
 
   /** One preview's resolved IR. [resourcesBytes] is non-null only for protolayout. */
-  class Entry(val format: String, val bytes: ByteArray, val resourcesBytes: ByteArray?)
+  public class Entry(
+    public val format: String,
+    public val bytes: ByteArray,
+    public val resourcesBytes: ByteArray?,
+  )
 
-  const val BUNDLE_MANIFEST_PATH_PROP: String = "composeai.daemon.bundleManifestPath"
+  public const val BUNDLE_MANIFEST_PATH_PROP: String = "composeai.daemon.bundleManifestPath"
 
-  const val IR_DIR_PROP: String = "composeai.daemon.irDir"
+  public const val IR_DIR_PROP: String = "composeai.daemon.irDir"
 
   @Volatile private var cached: Map<String, Entry>? = null
 
   /** The resolved IR for [previewId], or `null` when this preview isn't IR-backed. */
-  fun lookup(previewId: String?): Entry? {
+  public fun lookup(previewId: String?): Entry? {
     if (previewId == null) return null
     return entries()[previewId]
   }
@@ -49,7 +53,7 @@ object BundleIrReplayStore {
   private fun entries(): Map<String, Entry> = cached ?: load().also { cached = it }
 
   /** Visible for tests — load from explicit paths instead of the system properties. */
-  fun loadFrom(
+  public fun loadFrom(
     bundleManifestFile: File,
     irDir: File,
     fileSystem: FileSystem = SystemFileSystem,
@@ -82,7 +86,7 @@ object BundleIrReplayStore {
   }
 
   /** Test seam — drop the cached map so a follow-up [lookup] reloads from the (new) sysprops. */
-  fun resetForTest() {
+  public fun resetForTest() {
     cached = null
   }
 

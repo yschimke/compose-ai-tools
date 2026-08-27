@@ -14,17 +14,17 @@ import ee.schimke.composeai.data.render.extensions.RecordingScriptEventDescripto
  * Lives in `:daemon:core` because the descriptor is renderer-agnostic — both backends advertise it
  * from `recordingScriptEventDescriptors()`. Issue #1203 closed the desktop/Android no-op gaps.
  */
-object InputKeyboardRecordingScriptEvents {
+public object InputKeyboardRecordingScriptEvents {
 
-  const val KEY_DOWN_EVENT: String = "input.keyDown"
-  const val KEY_UP_EVENT: String = "input.keyUp"
+  public const val KEY_DOWN_EVENT: String = "input.keyDown"
+  public const val KEY_UP_EVENT: String = "input.keyUp"
 
   /**
    * Build the descriptor with [supported] set on each script event. Hosts call this with `supported
    * = true` once they've wired real dispatch; the pre-#1203 default (`supported = false`) remains
    * available for backends that haven't yet.
    */
-  fun descriptor(supported: Boolean): DataExtensionDescriptor =
+  public fun descriptor(supported: Boolean): DataExtensionDescriptor =
     DataExtensionDescriptor(
       id = DataExtensionId("input.keyboard"),
       displayName = "Keyboard input",
@@ -53,11 +53,11 @@ object InputKeyboardRecordingScriptEvents {
     )
 
   /** Convenience for hosts whose dispatch path is wired. */
-  val supportedDescriptor: DataExtensionDescriptor = descriptor(supported = true)
+  public val supportedDescriptor: DataExtensionDescriptor = descriptor(supported = true)
 
   /** Legacy const-style alias retained for backends that haven't wired key dispatch yet. */
-  val descriptor: DataExtensionDescriptor = descriptor(supported = false)
+  public val descriptor: DataExtensionDescriptor = descriptor(supported = false)
 
   /** Convenience for the host's `recordingScriptEventDescriptors()` override. */
-  val descriptors: List<DataExtensionDescriptor> = listOf(descriptor)
+  public val descriptors: List<DataExtensionDescriptor> = listOf(descriptor)
 }

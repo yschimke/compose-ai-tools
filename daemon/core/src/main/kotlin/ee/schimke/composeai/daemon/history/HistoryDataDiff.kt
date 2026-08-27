@@ -33,11 +33,11 @@ import kotlinx.serialization.json.JsonElement
 // needs are mirrored; `ignoreUnknownKeys` skips the rest.
 // ---------------------------------------------------------------------------
 
-object HistoryDataDiffProduct {
-  const val SCHEMA: String = "history-data-diff/v1"
+public object HistoryDataDiffProduct {
+  public const val SCHEMA: String = "history-data-diff/v1"
 }
 
-object HistoryDataDiff {
+public object HistoryDataDiff {
 
   private val DECODE = Json { ignoreUnknownKeys = true }
 
@@ -46,7 +46,7 @@ object HistoryDataDiff {
    * preview (the caller enforces that). Decoding uses a lenient JSON reader so an older sidecar
    * with extra/renamed fields still diffs on the fields this product cares about.
    */
-  fun diff(from: HistoryEntry, to: HistoryEntry, json: Json = DECODE): HistoryDataDelta {
+  public fun diff(from: HistoryEntry, to: HistoryEntry, json: Json = DECODE): HistoryDataDelta {
     val semantics =
       bothPresent(from.semantics, to.semantics) { base, head ->
         SemanticsDiff.diff(
@@ -90,7 +90,7 @@ object HistoryDataDiff {
 
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
-data class HistoryDataDelta(
+public data class HistoryDataDelta(
   // `@EncodeDefault` so the versioned schema discriminator rides the wire even under
   // `encodeDefaults = false`, matching the `SemanticsDelta` / `ThemeDelta` contract.
   @EncodeDefault val schema: String = HistoryDataDiffProduct.SCHEMA,
@@ -107,8 +107,8 @@ data class HistoryDataDelta(
 // a11y findings diff (a11y-diff/v1)
 // ---------------------------------------------------------------------------
 
-object A11yDiffProduct {
-  const val SCHEMA: String = "a11y-diff/v1"
+public object A11yDiffProduct {
+  public const val SCHEMA: String = "a11y-diff/v1"
 }
 
 /**
@@ -119,7 +119,7 @@ object A11yDiffProduct {
  * is still deterministic; a copy edit (message text changing on the same ref) then reports as a
  * field change rather than a remove + add.
  */
-object A11yDiff {
+public object A11yDiff {
 
   // `internal` because the parameter types are internal mirrors; the only caller is
   // `HistoryDataDiff` in this module. The result type (`A11yDelta`) is public.
@@ -203,10 +203,14 @@ object A11yDiff {
 }
 
 @Serializable
-data class A11yFieldChange(val field: String, val from: String? = null, val to: String? = null)
+public data class A11yFieldChange(
+  val field: String,
+  val from: String? = null,
+  val to: String? = null,
+)
 
 @Serializable
-data class A11yFindingSummary(
+public data class A11yFindingSummary(
   val ref: String? = null,
   val type: String,
   val level: String,
@@ -215,7 +219,7 @@ data class A11yFindingSummary(
 )
 
 @Serializable
-data class A11yFindingChange(
+public data class A11yFindingChange(
   val ref: String? = null,
   val type: String,
   val changes: List<A11yFieldChange>,
@@ -223,7 +227,7 @@ data class A11yFindingChange(
 
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
-data class A11yDelta(
+public data class A11yDelta(
   @EncodeDefault val schema: String = A11yDiffProduct.SCHEMA,
   val added: List<A11yFindingSummary> = emptyList(),
   val removed: List<A11yFindingSummary> = emptyList(),

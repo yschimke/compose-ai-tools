@@ -44,7 +44,7 @@ import okio.Path.Companion.toPath
  * - Payload synthesis from a sibling kind's file (the strings registry derives from the semantics
  *   file, not its own).
  */
-abstract class FileBackedDataProductRegistry(
+public abstract class FileBackedDataProductRegistry(
   final override val capabilities: List<DataProductCapability>,
   private val fileSystem: FileSystem = SystemFileSystem,
 ) : DataProductRegistry {
@@ -205,7 +205,7 @@ abstract class FileBackedDataProductRegistry(
     }
       .getOrNull() == true
 
-  companion object {
+  public companion object {
     private val DEFAULT_JSON = Json { ignoreUnknownKeys = true }
   }
 }
