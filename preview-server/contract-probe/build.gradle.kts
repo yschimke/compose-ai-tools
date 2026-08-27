@@ -45,6 +45,7 @@ val INTERNAL_GROUP = "ee.schimke.composeai"
 val contracts =
   listOf(
     "daemon-core",
+    "daemon-client",
     "preview-data-api",
     "render-session-api",
     "render-session-subprocess",
@@ -74,16 +75,19 @@ dependencies {
  * server. Each is a preparation item in `docs/design/PREVIEW_SERVER_SPLIT.md`, and each must
  * eventually leave this list — the check fails when a recorded leak is GONE as well as when a new
  * one appears, so the list cannot rot into a permanent exemption.
+ *
+ * **Empty, as of #3824 preparation item 3.** The last entry was `mcp`, reached because
+ * `:render-session-subprocess` built its transport on `:mcp`'s `DaemonClient` /
+ * `SubprocessDaemonClientFactory` — so consuming the render-session library dragged an MCP server
+ * onto the classpath. Those types now live in `:daemon-client`, which is a contract rather than a
+ * leak: the server legitimately needs a daemon client, it just must not need an MCP server to get
+ * one.
+ *
+ * Keep it empty. An addition here is a regression, not a TODO — the extracted server's dependency
+ * floor is now exactly [contracts], and anything else on the graph should fail the build until it
+ * is either promoted to a contract with a reason or removed.
  */
-val contractLeaks =
-  mapOf(
-    "mcp" to
-      "`:render-session-subprocess` implements its transport on `:mcp`'s `DaemonClient` / " +
-        "`SubprocessDaemonClientFactory`, so consuming the render-session library drags an MCP " +
-        "server onto the classpath. #3824 preparation item 3: lift the daemon client out of " +
-        "`:mcp` into its own published module. (`DaemonLaunchDescriptor`, the one MCP type " +
-        "`serve` imported directly, has already moved to `:daemon:core`.)"
-  )
+val contractLeaks = emptyMap<String, String>()
 
 abstract class CheckContractSurface : DefaultTask() {
   /** Artifact names (no group, no version) the server is allowed to resolve. */
