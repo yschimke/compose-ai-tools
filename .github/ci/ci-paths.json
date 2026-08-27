@@ -113,7 +113,7 @@
       "scripts/daemon-launch-schema-allowlist.json",
       "scripts/test_check_daemon_launch_schema.py",
       "**/*.kt",
-      "vscode-extension/src/daemon/**",
+      "**/*.ts",
       "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/**",
       "cli/src/test/kotlin/ee/schimke/composeai/cli/serve/**"
     ],

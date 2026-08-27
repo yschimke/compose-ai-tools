@@ -64,10 +64,28 @@ class RepositoryConfigsTest(unittest.TestCase):
         )
 
     def test_vscode_only_skips_gradle_ci_groups(self):
+        # Named for what it protects: no group that costs a JDK, a Gradle daemon or a runner
+        # minute should wake for a VS Code-only change.
+        #
+        # `actions_tests` is deliberately excluded from that claim. It is pure-stdlib Python with
+        # no JDK and no Gradle, and it carries the repo-wide checks — `check-serve-seam.py` and
+        # `check-daemon-launch-schema.py` — whose whole value is scanning files nobody enumerated.
+        # Scoping it to `**/*.kt` and `**/*.ts` is what makes those claims true on a PR rather than
+        # only on `main`; the assertion used to read `not any(...)`, which conflated "skips the
+        # expensive groups" with "skips everything" and quietly capped that coverage.
         result = mod.decide(
             ["vscode-extension/src/extension.ts"], self.load("ci-paths.json")
         )
-        self.assertFalse(any(result.values()))
+        gradle_groups = {k: v for k, v in result.items() if k != "actions_tests"}
+        self.assertFalse(
+            any(gradle_groups.values()),
+            f"a VS Code-only change woke a Gradle CI group: {gradle_groups}",
+        )
+        self.assertTrue(
+            result["actions_tests"],
+            "actions_tests must run on a TypeScript change so the repo-wide mirror discovery in "
+            "check-daemon-launch-schema.py executes on the PR that introduces a mirror",
+        )
 
     def test_driver_pin_bump_runs_only_the_actions_validator(self):
         # The export-driver pin bump is opened unattended after every release and
