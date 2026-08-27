@@ -21,12 +21,12 @@ package ee.schimke.composeai.data.layoutinspector
  * Assignment is deterministic and idempotent: running it twice yields identical refs, so callers
  * can re-assign defensively (the differ does) without surprise.
  */
-object SemanticsRefs {
-  const val ROOT_REF: String = "r"
+public object SemanticsRefs {
+  public const val ROOT_REF: String = "r"
 
   // Copies field by field rather than by `copy()` so a new payload field is a compile-time
   // decision here, not a silent drop — ref assignment sits on the write path of every capture.
-  fun assign(payload: ComposeSemanticsPayload): ComposeSemanticsPayload =
+  public fun assign(payload: ComposeSemanticsPayload): ComposeSemanticsPayload =
     ComposeSemanticsPayload(root = assign(payload.root), density = payload.density)
 
   /**
@@ -38,10 +38,10 @@ object SemanticsRefs {
    * a `SubcomposeLayout` changes which arrangement it places. Consumers that care about the frame
    * (`SemanticsTargets`, the annotation and wireframe walks) filter at the point of use instead.
    */
-  fun assign(root: ComposeSemanticsNode): ComposeSemanticsNode = assignNode(root, ROOT_REF)
+  public fun assign(root: ComposeSemanticsNode): ComposeSemanticsNode = assignNode(root, ROOT_REF)
 
   /** The anchor token for a node, before sibling disambiguation. */
-  fun anchor(node: ComposeSemanticsNode): String =
+  public fun anchor(node: ComposeSemanticsNode): String =
     node.testTag?.trim()?.takeIf { it.isNotEmpty() }?.let { "tag:${sanitize(it)}" }
       ?: node.role?.trim()?.takeIf { it.isNotEmpty() }?.let { "role:${sanitize(it)}" }
       ?: GENERIC_ANCHOR

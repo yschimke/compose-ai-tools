@@ -28,15 +28,15 @@ import kotlinx.serialization.json.putJsonObject
  *   (`"metrics"`) — a client should not have to infer that from `phases.size == 1`,
  * - `droppedSpans`, non-zero only if a pathologically long render blew the recorder's cap.
  */
-object RenderTraceDataProduct {
-  const val KIND: String = "render/trace"
-  const val SCHEMA_VERSION: Int = 2
+public object RenderTraceDataProduct {
+  public const val KIND: String = "render/trace"
+  public const val SCHEMA_VERSION: Int = 2
 
   /** `source` value when [payloadFrom] had real spans to work from. */
-  const val SOURCE_SPANS: String = "spans"
+  public const val SOURCE_SPANS: String = "spans"
 
   /** `source` value for the v1-shaped fallback: one synthetic phase covering `tookMs`. */
-  const val SOURCE_METRICS: String = "metrics"
+  public const val SOURCE_METRICS: String = "metrics"
 
   /**
    * Build the payload for one render.
@@ -47,7 +47,7 @@ object RenderTraceDataProduct {
    * backend) still get a usable, if coarse, answer.
    */
   @JvmOverloads
-  fun payloadFrom(metrics: Map<String, Long>, trace: RenderTrace? = null): JsonElement {
+  public fun payloadFrom(metrics: Map<String, Long>, trace: RenderTrace? = null): JsonElement {
     val totalMs = metrics["tookMs"]?.coerceAtLeast(0L) ?: 0L
     val spans = trace?.spans.orEmpty()
     return buildJsonObject {

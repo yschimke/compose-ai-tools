@@ -17,22 +17,22 @@ package ee.schimke.composeai.data.render
  * Best-effort: an offer outside a render (no current preview id) is a no-op, matching the
  * launcher-widget channel.
  */
-object IrSidecarChannel {
+public object IrSidecarChannel {
 
   /**
    * [format] values — kept in lockstep with `IR_FORMAT_*` in `:gradle-plugin`'s
    * `PreviewBundleFormat`.
    */
-  const val FORMAT_REMOTECOMPOSE: String = "remotecompose"
+  public const val FORMAT_REMOTECOMPOSE: String = "remotecompose"
 
-  const val FORMAT_PROTOLAYOUT: String = "protolayout"
+  public const val FORMAT_PROTOLAYOUT: String = "protolayout"
 
   /**
    * One captured IR. [resourcesBytes] is non-null only for [FORMAT_PROTOLAYOUT] (the tile
    * `Resources` proto, written as the companion `.tileresources` sidecar); Remote Compose carries
    * everything in [bytes].
    */
-  data class IrCapture(
+  public data class IrCapture(
     val format: String,
     val bytes: ByteArray,
     val resourcesBytes: ByteArray? = null,
@@ -63,26 +63,26 @@ object IrSidecarChannel {
    * composition; clear in a `finally`. Producers read it via [offer] so they don't need an explicit
    * `previewId` parameter.
    */
-  fun setCurrentPreviewId(previewId: String?) {
+  public fun setCurrentPreviewId(previewId: String?) {
     if (previewId == null) currentPreviewIdHolder.remove()
     else currentPreviewIdHolder.set(previewId)
   }
 
   /** Current render thread's preview id, or `null` outside a render. */
-  fun currentPreviewId(): String? = currentPreviewIdHolder.get()
+  public fun currentPreviewId(): String? = currentPreviewIdHolder.get()
 
   /**
    * Producer-side: stash the captured IR for the current render's preview. No-op when no current
    * preview id is set (running outside a daemon/test render — bare unit tests, IDE preview pane). A
    * later offer within the same render replaces the previous entry.
    */
-  fun offer(format: String, bytes: ByteArray, resourcesBytes: ByteArray? = null) {
+  public fun offer(format: String, bytes: ByteArray, resourcesBytes: ByteArray? = null) {
     val previewId = currentPreviewIdHolder.get() ?: return
     pending[previewId] = IrCapture(format, bytes, resourcesBytes)
   }
 
   /** Drain (read + remove) the IR captured for [previewId] during the just-finished render. */
-  fun consume(previewId: String): IrCapture? = pending.remove(previewId)
+  public fun consume(previewId: String): IrCapture? = pending.remove(previewId)
 
   /**
    * Read the IR captured for [previewId] **without** removing it. Lets a consumer inspect a
@@ -91,5 +91,5 @@ object IrSidecarChannel {
    * matches, so it never swallows another format's capture (a protolayout tile) that a different
    * consumer is due to drain.
    */
-  fun peek(previewId: String): IrCapture? = pending[previewId]
+  public fun peek(previewId: String): IrCapture? = pending[previewId]
 }

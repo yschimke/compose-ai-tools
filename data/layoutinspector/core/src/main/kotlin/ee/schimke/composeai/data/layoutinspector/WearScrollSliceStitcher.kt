@@ -21,11 +21,11 @@ package ee.schimke.composeai.data.layoutinspector
  *   frame root much taller than wide, so `FigmaSvgModel.from(roundClip = true)` masks it to the
  *   vertical capsule. Every card, its text, the clock arc and the device face stay editable vector.
  */
-object WearScrollSliceStitcher {
+public object WearScrollSliceStitcher {
   /**
    * One captured scroll slice: the preview's layout + semantics trees at native (viewport) size.
    */
-  data class Slice(val layout: LayoutInspectorNode, val semantics: ComposeSemanticsNode)
+  public data class Slice(val layout: LayoutInspectorNode, val semantics: ComposeSemanticsNode)
 
   /**
    * The settled `EdgeButton` crescent, emitted as one opaque `Image` node ([nodeId]) at [dest]. The
@@ -33,10 +33,14 @@ object WearScrollSliceStitcher {
    * height]` band (black-backed, so it composites onto the black capsule face) and pastes them at
    * [dest].
    */
-  data class EdgeRaster(val nodeId: String, val sourceTop: Int, val dest: LayoutInspectorBounds)
+  public data class EdgeRaster(
+    val nodeId: String,
+    val sourceTop: Int,
+    val dest: LayoutInspectorBounds,
+  )
 
   /** The stitched capsule: combined layout + semantics trees, size, and any edge-crescent spec. */
-  data class Stitched(
+  public data class Stitched(
     val layout: LayoutInspectorPayload,
     val semantics: ComposeSemanticsPayload,
     val width: Int,
@@ -44,14 +48,14 @@ object WearScrollSliceStitcher {
     val edge: EdgeRaster?,
   )
 
-  const val EDGE_NODE_ID: String = "edge-raster"
+  public const val EDGE_NODE_ID: String = "edge-raster"
   private const val EDGE_COMPONENT = "Image"
 
   /** Inter-part gap (px) between the last list item and the EdgeButton. */
-  const val GAP: Int = 6
+  public const val GAP: Int = 6
 
   /** Bottom inset (px) below the EdgeButton, hugging the capsule's bottom curve. */
-  const val BOTTOM_PAD: Int = 8
+  public const val BOTTOM_PAD: Int = 8
 
   /** ~px bucket that treats an item measured a pixel differently across slices as the same item. */
   private const val DEDUP_BUCKET = 6
@@ -62,7 +66,7 @@ object WearScrollSliceStitcher {
    * `width`×`width` square), the crescent is placed below the last item as an [EdgeRaster];
    * otherwise the screen has no bottom control.
    */
-  fun stitch(
+  public fun stitch(
     rootId: String,
     width: Int,
     slices: List<Slice>,

@@ -23,21 +23,21 @@ package ee.schimke.composeai.data.layoutinspector
  * never forces a raster; what it *does* contribute is its own state-aware layer — see
  * [LayoutInspectorPlaceholder.visible].
  */
-object PlaceholderModifiers {
+public object PlaceholderModifiers {
 
   /** Inspector `nameFallback` of `Modifier.placeholder`. */
-  const val NAME_PLACEHOLDER: String = "placeholder"
+  public const val NAME_PLACEHOLDER: String = "placeholder"
 
   /** Inspector `nameFallback` of `Modifier.placeholderShimmer`. */
-  const val NAME_SHIMMER: String = "placeholderShimmer"
+  public const val NAME_SHIMMER: String = "placeholderShimmer"
 
   /**
    * [LayoutInspectorPlaceholder.kind] for a `Modifier.placeholder` (the content-covering block).
    */
-  const val KIND_PLACEHOLDER: String = "placeholder"
+  public const val KIND_PLACEHOLDER: String = "placeholder"
 
   /** [LayoutInspectorPlaceholder.kind] for a `Modifier.placeholderShimmer` (the sweep overlay). */
-  const val KIND_SHIMMER: String = "shimmer"
+  public const val KIND_SHIMMER: String = "shimmer"
 
   /**
    * True for a placeholder-family modifier, matched by the inspector [name]
@@ -49,7 +49,7 @@ object PlaceholderModifiers {
    * lowers to a bare `drawWithContent` + `graphicsLayer` pair with no identity of its own — see
    * [isPlaceholderOrigin], the other half of the recognition.
    */
-  fun isPlaceholderModifier(name: String?, className: String?): Boolean =
+  public fun isPlaceholderModifier(name: String?, className: String?): Boolean =
     name == NAME_PLACEHOLDER || name == NAME_SHIMMER || className?.startsWith("Placeholder") == true
 
   /**
@@ -67,7 +67,7 @@ object PlaceholderModifiers {
    * Deliberately anchored to a Material package so an application's own `PlaceholderKt` file can't
    * claim the identity.
    */
-  fun isPlaceholderOrigin(className: String?): Boolean {
+  public fun isPlaceholderOrigin(className: String?): Boolean {
     val n = className ?: return false
     val material =
       n.startsWith("androidx.wear.compose.material3.") ||
@@ -81,7 +81,7 @@ object PlaceholderModifiers {
    * The [LayoutInspectorPlaceholder.kind] for a placeholder-family modifier, or null when it isn't
    * one. Shimmer is matched first: `PlaceholderShimmerElement` also starts with `Placeholder`.
    */
-  fun kindOf(name: String?, className: String?): String? =
+  public fun kindOf(name: String?, className: String?): String? =
     when {
       name == NAME_SHIMMER || className?.startsWith("PlaceholderShimmer") == true -> KIND_SHIMMER
       isPlaceholderModifier(name, className) -> KIND_PLACEHOLDER

@@ -25,7 +25,7 @@ package ee.schimke.composeai.data.render
  * A non-positive axis is dropped — the caller has nothing to say about it, so the previous
  * qualifier state stands.
  */
-fun previewSizeQualifiers(widthDp: Int, heightDp: Int): List<String> = buildList {
+public fun previewSizeQualifiers(widthDp: Int, heightDp: Int): List<String> = buildList {
   listOf(widthDp, heightDp).filter { it > 0 }.minOrNull()?.let { add("sw${it}dp") }
   if (widthDp > 0) add("w${widthDp}dp")
   if (heightDp > 0) add("h${heightDp}dp")
@@ -55,7 +55,7 @@ fun previewSizeQualifiers(widthDp: Int, heightDp: Int): List<String> = buildList
  * "spec:…,orientation=portrait"` has already been rotated into the dimensions by
  * `DeviceDimensions.resolve`, so there is no separate request left to consult.
  */
-fun previewOrientationQualifier(widthDp: Int, heightDp: Int, requested: String?): String? {
+public fun previewOrientationQualifier(widthDp: Int, heightDp: Int, requested: String?): String? {
   if (widthDp <= 0 || heightDp <= 0) return null
   if (widthDp != heightDp) return if (widthDp > heightDp) "land" else "port"
   return when (requested) {

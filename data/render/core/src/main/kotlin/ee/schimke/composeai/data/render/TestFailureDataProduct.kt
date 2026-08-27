@@ -8,11 +8,11 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 
-object TestFailureDataProduct {
-  const val KIND: String = "test/failure"
-  const val SCHEMA_VERSION: Int = 1
+public object TestFailureDataProduct {
+  public const val KIND: String = "test/failure"
+  public const val SCHEMA_VERSION: Int = 1
 
-  fun payloadFrom(cause: Throwable, phase: String = "unknown"): JsonElement {
+  public fun payloadFrom(cause: Throwable, phase: String = "unknown"): JsonElement {
     val stackFrames = cause.stackTrace.map { it.toString() }
     return buildJsonObject {
       put("status", "failed")

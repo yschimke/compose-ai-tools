@@ -19,15 +19,15 @@ import java.util.ServiceLoader
  * method and a public no-arg constructor, because the renderer instantiates it and invokes `Replay`
  * via `getDeclaredComposableMethod` exactly as it does `PreviewWrapperProvider.Wrap`.
  */
-interface IrReplayComposableProvider {
+public interface IrReplayComposableProvider {
   /**
    * The IR format this provider replays — matches `IrSidecarChannel.FORMAT_*` (e.g.
    * `remotecompose`).
    */
-  val format: String
+  public val format: String
 
   /** The class whose `@Composable Replay(bytes: ByteArray)` method renders the IR. */
-  fun replayClass(): Class<*>
+  public fun replayClass(): Class<*>
 }
 
 /**
@@ -35,7 +35,7 @@ interface IrReplayComposableProvider {
  * (the common non-bundle case, and any format without a connector). The renderer then falls back to
  * its normal class-reflection path. "First wins" in `ServiceLoader` order.
  */
-fun loadIrReplayClass(
+public fun loadIrReplayClass(
   format: String,
   classLoader: ClassLoader =
     Thread.currentThread().contextClassLoader ?: IrReplayComposableProvider::class.java.classLoader,

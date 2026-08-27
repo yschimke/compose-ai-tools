@@ -19,12 +19,12 @@ import java.util.ServiceLoader
  * `Wrap(content: @Composable () -> Unit)` method, because the renderer constructs and invokes them
  * the same way it would the original.
  */
-interface PreviewWrapperSubstitutionProvider {
+public interface PreviewWrapperSubstitutionProvider {
   /**
    * Return the class to instantiate in place of [originalWrapperFqn], or null to leave the
    * resolution to the next provider (or fall through to a direct `Class.forName` on the original).
    */
-  fun substituteFor(originalWrapperFqn: String): Class<*>?
+  public fun substituteFor(originalWrapperFqn: String): Class<*>?
 
   /**
    * Whether [wrapperFqn] is a **structural** wrapper — see [isStructuralPreviewWrapper]. Providers
@@ -32,7 +32,7 @@ interface PreviewWrapperSubstitutionProvider {
    * installing its own applier / capture surface (the RemoteCompose one) declares it here so a
    * `themeProvider` override nests around it instead of replacing it.
    */
-  fun isStructural(wrapperFqn: String): Boolean = false
+  public fun isStructural(wrapperFqn: String): Boolean = false
 }
 
 /**
@@ -69,7 +69,7 @@ private val BUILT_IN_STRUCTURAL_WRAPPER_FQNS =
  * Consults [PreviewWrapperSubstitutionProvider.isStructural] on every registered service, so a
  * connector's own wrapper classes count too, then falls back to [BUILT_IN_STRUCTURAL_WRAPPER_FQNS].
  */
-fun isStructuralPreviewWrapper(
+public fun isStructuralPreviewWrapper(
   wrapperFqn: String,
   classLoader: ClassLoader =
     Thread.currentThread().contextClassLoader
@@ -88,7 +88,7 @@ fun isStructuralPreviewWrapper(
  * this from their `resolveWrapper` implementations so substitution behaves identically across
  * backends.
  */
-fun loadPreviewWrapperClass(
+public fun loadPreviewWrapperClass(
   originalWrapperFqn: String,
   classLoader: ClassLoader =
     Thread.currentThread().contextClassLoader

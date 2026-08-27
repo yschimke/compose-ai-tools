@@ -8,7 +8,7 @@ package ee.schimke.composeai.data.render
  * understand that runtime can cast and inspect them, while standalone renderers, daemon adapters,
  * and non-Compose producers stay decoupled from Compose internals.
  */
-data class PreviewContext(
+public data class PreviewContext(
   val previewId: String?,
   val backend: String?,
   val renderMode: String?,
@@ -18,7 +18,7 @@ data class PreviewContext(
   val inspection: PreviewInspectionContext = PreviewInspectionContext(),
   val animation: PreviewAnimationContext? = null,
 ) {
-  class Builder(
+  public class Builder(
     private val previewId: String?,
     private val backend: String?,
     private val renderMode: String?,
@@ -32,9 +32,9 @@ data class PreviewContext(
     private var parameterInformationCollected: Boolean = false
     private var rootForTest: Any? = null
 
-    fun device(device: PreviewDeviceContext): Builder = apply { this.device = device }
+    public fun device(device: PreviewDeviceContext): Builder = apply { this.device = device }
 
-    fun deviceFromRenderPixels(
+    public fun deviceFromRenderPixels(
       device: String?,
       widthPx: Int,
       heightPx: Int,
@@ -45,23 +45,27 @@ data class PreviewContext(
         PreviewDeviceContext.fromRenderPixels(device, widthPx, heightPx, density, resolvedDevice)
     }
 
-    fun frameTime(frameTime: PreviewFrameTime): Builder = apply { this.frameTime = frameTime }
+    public fun frameTime(frameTime: PreviewFrameTime): Builder = apply {
+      this.frameTime = frameTime
+    }
 
-    fun animation(animation: PreviewAnimationContext?): Builder = apply {
+    public fun animation(animation: PreviewAnimationContext?): Builder = apply {
       this.animation = animation
     }
 
-    fun addSlotTables(tables: Iterable<Any>): Builder = apply { slotTables.addAll(tables) }
+    public fun addSlotTables(tables: Iterable<Any>): Builder = apply { slotTables.addAll(tables) }
 
-    fun rootForTest(root: Any?): Builder = apply { rootForTest = root }
+    public fun rootForTest(root: Any?): Builder = apply { rootForTest = root }
 
-    fun putInspectionValue(key: String, value: Any): Builder = apply {
+    public fun putInspectionValue(key: String, value: Any): Builder = apply {
       inspectionValues[key] = value
     }
 
-    fun parameterInformationCollected(): Builder = apply { parameterInformationCollected = true }
+    public fun parameterInformationCollected(): Builder = apply {
+      parameterInformationCollected = true
+    }
 
-    fun build(): PreviewContext =
+    public fun build(): PreviewContext =
       PreviewContext(
         previewId = previewId,
         backend = backend,
@@ -81,9 +85,9 @@ data class PreviewContext(
   }
 }
 
-object PreviewBackends {
-  const val DESKTOP: String = "desktop"
-  const val ANDROID: String = "android"
+public object PreviewBackends {
+  public const val DESKTOP: String = "desktop"
+  public const val ANDROID: String = "android"
 }
 
 /**
@@ -94,7 +98,7 @@ object PreviewBackends {
  * as roundness; dimensions may differ from [resolvedDevice] when runtime overrides change the
  * render size.
  */
-data class PreviewDeviceContext(
+public data class PreviewDeviceContext(
   val device: String? = null,
   val widthDp: Double? = null,
   val heightDp: Double? = null,
@@ -104,8 +108,8 @@ data class PreviewDeviceContext(
   val isRound: Boolean
     get() = resolvedDevice?.isRound == true
 
-  companion object {
-    fun fromRenderPixels(
+  public companion object {
+    public fun fromRenderPixels(
       device: String?,
       widthPx: Int,
       heightPx: Int,
@@ -124,7 +128,7 @@ data class PreviewDeviceContext(
   }
 }
 
-data class PreviewDeviceSpec(
+public data class PreviewDeviceSpec(
   val widthDp: Int,
   val heightDp: Int,
   val density: Float,
@@ -138,12 +142,12 @@ data class PreviewDeviceSpec(
  * sample every frame should publish one context per sampled frame, or attach a
  * [PreviewAnimationContext] describing the sampled window.
  */
-data class PreviewFrameTime(
+public data class PreviewFrameTime(
   val mode: Mode = Mode.INITIAL_SETTLED_FRAME,
   val virtualTimeMs: Long? = null,
   val frameIndex: Int? = null,
 ) {
-  enum class Mode {
+  public enum class Mode {
     /** One-shot render after the backend has allowed effects/measure to settle. */
     INITIAL_SETTLED_FRAME,
     /** Deterministic animation or recording frame driven by virtual time. */
@@ -165,7 +169,7 @@ data class PreviewFrameTime(
  * Compose-aware data products inspect the same LayoutNode/semantics tree used by tooling without
  * adding a Compose UI dependency to the core render model.
  */
-data class PreviewInspectionContext(
+public data class PreviewInspectionContext(
   val slotTables: List<Any> = emptyList(),
   val rootForTest: Any? = null,
   val values: Map<String, Any> = emptyMap(),
@@ -181,7 +185,7 @@ data class PreviewInspectionContext(
  * clock to each [sampleTimesMs] entry, and publish sampled values without independently advancing
  * the render clock.
  */
-data class PreviewAnimationContext(
+public data class PreviewAnimationContext(
   val showCurves: Boolean,
   val requestedDurationMs: Int,
   val effectiveDurationMs: Int?,

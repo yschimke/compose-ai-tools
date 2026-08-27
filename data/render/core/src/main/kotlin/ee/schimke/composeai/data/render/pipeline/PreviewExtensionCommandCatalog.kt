@@ -10,8 +10,8 @@ import ee.schimke.composeai.data.render.RenderPreviewExtension
  * single shrinkwrapped command surface they can list or route without depending on Android-only
  * extension modules or starting a daemon.
  */
-object PreviewExtensionCommandCatalog {
-  val extensions: List<PreviewExtensionDescriptor> =
+public object PreviewExtensionCommandCatalog {
+  public val extensions: List<PreviewExtensionDescriptor> =
     listOf(
       RenderPreviewExtension.deviceClipDescriptor,
       RenderPreviewExtension.deviceBackgroundDescriptor,
@@ -27,9 +27,11 @@ object PreviewExtensionCommandCatalog {
       scrollGif(),
     )
 
-  val commands: List<PreviewExtensionCliCommand> = extensions.flatMap { it.cliCommands }
+  public val commands: List<PreviewExtensionCliCommand> = extensions.flatMap { it.cliCommands }
 
-  fun commandById(id: String): PreviewExtensionCliCommand? = commands.firstOrNull { it.id == id }
+  public fun commandById(id: String): PreviewExtensionCliCommand? = commands.firstOrNull {
+    it.id == id
+  }
 
   private fun accessibilityHierarchy(): PreviewExtensionDescriptor =
     PreviewExtensionDescriptor(

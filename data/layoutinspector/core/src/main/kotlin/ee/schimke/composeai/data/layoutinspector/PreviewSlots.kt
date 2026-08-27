@@ -21,9 +21,9 @@ import kotlinx.serialization.Serializable
  * (`dp-slot:content;scope=column;scroll=1`); a bare `dp-slot:<name>` (no attributes) reads back as
  * [SlotScope.UNKNOWN], not scrolling, so older tags still parse.
  */
-object PreviewSlots {
+public object PreviewSlots {
   /** The `testTag` prefix a slot marker applies; the slot name is the suffix (`dp-slot:<name>`). */
-  const val SLOT_TAG_PREFIX: String = "dp-slot:"
+  public const val SLOT_TAG_PREFIX: String = "dp-slot:"
 
   /** Separates the slot name from its optional `key=value` attributes in the tag. */
   private const val ATTR_SEP: Char = ';'
@@ -34,7 +34,7 @@ object PreviewSlots {
    * `boundsInRoot`). Nodes with a blank name or malformed bounds are skipped, so a partial/garbled
    * tree never throws; an unrecognised attribute is ignored (forward-compatible).
    */
-  fun extractSlots(payload: ComposeSemanticsPayload): List<PreviewSlot> {
+  public fun extractSlots(payload: ComposeSemanticsPayload): List<PreviewSlot> {
     val out = mutableListOf<PreviewSlot>()
     fun walk(node: ComposeSemanticsNode) {
       // A slot marker inside a trial-measured subtree marks nothing: it was never placed, so it has
@@ -74,7 +74,7 @@ object PreviewSlots {
  * when the marker didn't record one (a bare `dp-slot:<name>` tag).
  */
 @Serializable
-enum class SlotScope {
+public enum class SlotScope {
   UNKNOWN,
   /** `RowScope` — children are placed horizontally. */
   ROW,
@@ -87,9 +87,9 @@ enum class SlotScope {
    */
   LAZY;
 
-  companion object {
+  public companion object {
     /** The [SlotScope] for a tag's `scope=<wire>` value; [UNKNOWN] for null / anything unknown. */
-    fun fromWire(wire: String?): SlotScope =
+    public fun fromWire(wire: String?): SlotScope =
       when (wire) {
         "row" -> ROW
         "column" -> COLUMN
@@ -105,7 +105,8 @@ enum class SlotScope {
  * depth-first order, tagged with the [previewId] they came from. A structured-screen builder reads
  * this to lay out slot regions and size children to fill them.
  */
-@Serializable data class PreviewSlotsPayload(val previewId: String, val slots: List<PreviewSlot>)
+@Serializable
+public data class PreviewSlotsPayload(val previewId: String, val slots: List<PreviewSlot>)
 
 /**
  * One named slot region — its author-declared [name], its [bounds] (absolute-to-root px), the
@@ -114,7 +115,7 @@ enum class SlotScope {
  * round-trips unchanged.
  */
 @Serializable
-data class PreviewSlot(
+public data class PreviewSlot(
   val name: String,
   val bounds: SlotBounds,
   val scope: SlotScope = SlotScope.UNKNOWN,
@@ -129,10 +130,10 @@ data class PreviewSlot(
 
 /** A slot's box in absolute-to-root px, mirroring the semantics `boundsInRoot` wire form. */
 @Serializable
-data class SlotBounds(val left: Int, val top: Int, val right: Int, val bottom: Int) {
-  companion object {
+public data class SlotBounds(val left: Int, val top: Int, val right: Int, val bottom: Int) {
+  public companion object {
     /** Parse the `"left,top,right,bottom"` int wire form; null when malformed. */
-    fun parse(wire: String): SlotBounds? {
+    public fun parse(wire: String): SlotBounds? {
       val parts = wire.split(",")
       if (parts.size != 4) return null
       val ints = parts.map { it.trim().toIntOrNull() ?: return null }

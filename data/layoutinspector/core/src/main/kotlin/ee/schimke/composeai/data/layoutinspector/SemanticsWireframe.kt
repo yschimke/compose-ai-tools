@@ -21,10 +21,10 @@ package ee.schimke.composeai.data.layoutinspector
  *
  * Pure and deterministic: input model in, SVG string out, no graphics toolkit, no IO.
  */
-object SemanticsWireframeSvg {
+public object SemanticsWireframeSvg {
 
   /** Tunables for the bake; defaults are chosen to read at a glance on a phone-sized root. */
-  data class Options(
+  public data class Options(
     /** Transparent margin (px) around the diagram extent. */
     val padding: Int = 16,
     /** Draw the top-left label on each box. */
@@ -34,13 +34,13 @@ object SemanticsWireframeSvg {
   )
 
   /** Writes the wireframe SVG for [payload]. */
-  fun render(payload: ComposeSemanticsPayload, options: Options = Options()): String {
+  public fun render(payload: ComposeSemanticsPayload, options: Options = Options()): String {
     val model = WireframeModel.from(payload, options.padding)
     return render(model, options)
   }
 
   /** Writes the wireframe SVG for an already-built [model]. */
-  fun render(model: WireframeModel, options: Options = Options()): String {
+  public fun render(model: WireframeModel, options: Options = Options()): String {
     val sb = StringBuilder()
     sb.append(
       """<svg xmlns="http://www.w3.org/2000/svg" width="${model.width}" height="${model.height}" """ +

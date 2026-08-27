@@ -9,16 +9,16 @@ package ee.schimke.composeai.data.render.extensions
  * Non-product context inputs the host hands to extensions go through [data] as typed
  * [ExtensionContextKey] entries.
  */
-data class ExtensionPostCaptureContext(
+public data class ExtensionPostCaptureContext(
   val extensionId: DataExtensionId,
   val previewId: String?,
   val renderMode: String?,
   val products: DataProductStore,
   val data: ExtensionContextData = ExtensionContextData.Empty,
 ) {
-  fun <T : Any> get(key: ExtensionContextKey<T>): T? = data.get(key)
+  public fun <T : Any> get(key: ExtensionContextKey<T>): T? = data.get(key)
 
-  fun <T : Any> require(key: ExtensionContextKey<T>): T = data.require(key)
+  public fun <T : Any> require(key: ExtensionContextKey<T>): T = data.require(key)
 }
 
 /**
@@ -31,6 +31,6 @@ data class ExtensionPostCaptureContext(
  * populated by upstream producers. Implementations should fail fast on missing required inputs via
  * `context.products.require(...)` and emit outputs with `context.products.put(key, value)`.
  */
-interface PostCaptureProcessor : PlannedDataExtension {
-  fun process(context: ExtensionPostCaptureContext)
+public interface PostCaptureProcessor : PlannedDataExtension {
+  public fun process(context: ExtensionPostCaptureContext)
 }

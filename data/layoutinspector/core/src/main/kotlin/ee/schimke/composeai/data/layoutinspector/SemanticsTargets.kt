@@ -10,12 +10,12 @@ package ee.schimke.composeai.data.layoutinspector
  * (unref'd) tree. The returned [SemanticsPoint] is the node's centre in the same root-pixel space
  * as [ComposeSemanticsNode.boundsInRoot].
  */
-object SemanticsTargets {
+public object SemanticsTargets {
 
-  fun resolve(payload: ComposeSemanticsPayload, target: SemanticsTarget): TargetResolution =
+  public fun resolve(payload: ComposeSemanticsPayload, target: SemanticsTarget): TargetResolution =
     resolve(payload.root, target)
 
-  fun resolve(root: ComposeSemanticsNode, target: SemanticsTarget): TargetResolution {
+  public fun resolve(root: ComposeSemanticsNode, target: SemanticsTarget): TargetResolution {
     val refRoot = SemanticsRefs.assign(root)
     val matches =
       when (target) {
@@ -38,7 +38,7 @@ object SemanticsTargets {
    * tree still yields stable refs. Bounded by [limit] to keep the diagnostic payload small on dense
    * trees; the most-targetable nodes (those with a `testTag`) sort first.
    */
-  fun targetableNodes(
+  public fun targetableNodes(
     root: ComposeSemanticsNode,
     limit: Int = DEFAULT_CANDIDATE_LIMIT,
   ): List<ComposeSemanticsNode> =
@@ -70,7 +70,7 @@ object SemanticsTargets {
    * Reassigns refs defensively (same contract as [resolve]) so a raw tree still yields a stable
    * ref.
    */
-  fun nodeAt(root: ComposeSemanticsNode, x: Int, y: Int): SemanticsTarget? {
+  public fun nodeAt(root: ComposeSemanticsNode, x: Int, y: Int): SemanticsTarget? {
     val hit =
       SemanticsRefs.assign(root)
         .flatten()
@@ -162,33 +162,34 @@ object SemanticsTargets {
 }
 
 /** A request to identify a node by stable handle rather than pixel coordinates (issue #1784). */
-sealed interface SemanticsTarget {
+public sealed interface SemanticsTarget {
   /** Match the unique node whose [ComposeSemanticsNode.ref] equals [ref]. */
-  data class Ref(val ref: String) : SemanticsTarget
+  public data class Ref(val ref: String) : SemanticsTarget
 
   /** Match nodes carrying this exact `testTag`. */
-  data class Tag(val testTag: String) : SemanticsTarget
+  public data class Tag(val testTag: String) : SemanticsTarget
 
   /** Match nodes by role and/or accessible text (at least one must be non-null). */
-  data class RoleText(val role: String? = null, val text: String? = null) : SemanticsTarget
+  public data class RoleText(val role: String? = null, val text: String? = null) : SemanticsTarget
 }
 
-sealed interface TargetResolution {
+public sealed interface TargetResolution {
   /** Exactly one node matched; dispatch at [point] (centre of the node, root-pixel space). */
-  data class Resolved(val node: ComposeSemanticsNode, val point: SemanticsPoint) : TargetResolution
+  public data class Resolved(val node: ComposeSemanticsNode, val point: SemanticsPoint) :
+    TargetResolution
 
   /** No node matched. */
-  data object NotFound : TargetResolution
+  public data object NotFound : TargetResolution
 
   /** More than one node matched; the caller should disambiguate among [candidates]. */
-  data class Ambiguous(val candidates: List<ComposeSemanticsNode>) : TargetResolution
+  public data class Ambiguous(val candidates: List<ComposeSemanticsNode>) : TargetResolution
 }
 
 /** A point in the root-pixel coordinate space used by [ComposeSemanticsNode.boundsInRoot]. */
-data class SemanticsPoint(val x: Int, val y: Int)
+public data class SemanticsPoint(val x: Int, val y: Int)
 
 /** Bounds parsed from the `"left,top,right,bottom"` wire string. */
-data class SemanticsBounds(val left: Int, val top: Int, val right: Int, val bottom: Int) {
+public data class SemanticsBounds(val left: Int, val top: Int, val right: Int, val bottom: Int) {
   val centerX: Int
     get() = (left + right) / 2
 
@@ -199,8 +200,8 @@ data class SemanticsBounds(val left: Int, val top: Int, val right: Int, val bott
   val area: Long
     get() = (right - left).toLong().coerceAtLeast(0) * (bottom - top).toLong().coerceAtLeast(0)
 
-  companion object {
-    fun parse(wire: String): SemanticsBounds? {
+  public companion object {
+    public fun parse(wire: String): SemanticsBounds? {
       val parts = wire.split(',')
       if (parts.size != 4) return null
       val ints = parts.map { it.trim().toIntOrNull() ?: return null }

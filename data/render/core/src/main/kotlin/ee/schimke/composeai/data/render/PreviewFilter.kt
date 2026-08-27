@@ -23,7 +23,7 @@ package ee.schimke.composeai.data.render
  * substring. Matching is case-sensitive, any pattern keeps the preview (OR across the list), and an
  * empty pattern list matches everything ("render every preview").
  */
-object PreviewFilter {
+public object PreviewFilter {
 
   /**
    * Prefix marking a pattern as an **exact** match rather than a substring one — the renderer-side
@@ -31,19 +31,19 @@ object PreviewFilter {
    * id is always a substring of its own `_VARIANT_` / row fan-out, so substring exclusion deletes
    * work a sharder meant to keep).
    */
-  const val ANCHOR: String = "="
+  public const val ANCHOR: String = "="
 
   /** System property carrying the comma-separated `--preview` name patterns. */
-  const val NAME_FILTER_PROPERTY: String = "composeai.preview.filter"
+  public const val NAME_FILTER_PROPERTY: String = "composeai.preview.filter"
 
   /** System property carrying the comma-separated `--preview-id` id patterns. */
-  const val ID_FILTER_PROPERTY: String = "composeai.preview.idFilter"
+  public const val ID_FILTER_PROPERTY: String = "composeai.preview.idFilter"
 
   /** System property carrying the comma-separated `--exclude-preview-id` id patterns. */
-  const val ID_EXCLUDE_PROPERTY: String = "composeai.preview.idExclude"
+  public const val ID_EXCLUDE_PROPERTY: String = "composeai.preview.idExclude"
 
   /** System property carrying the comma-separated `--exclude-preview-row` label patterns. */
-  const val ROW_EXCLUDE_PROPERTY: String = "composeai.preview.rowExclude"
+  public const val ROW_EXCLUDE_PROPERTY: String = "composeai.preview.rowExclude"
 
   /**
    * Reads one of the comma-separated pattern system properties into a cleaned list: split on `,`,
@@ -51,7 +51,7 @@ object PreviewFilter {
    * shape the plugin's property resolvers produce, so a single `-PcomposePreview.filter=A,B` or
    * `ORG_GRADLE_PROJECT_composePreview.filter=A,B` reaches both backends identically.
    */
-  fun patternsFrom(
+  public fun patternsFrom(
     property: String,
     read: (String) -> String? = System::getProperty,
   ): List<String> =
@@ -61,7 +61,11 @@ object PreviewFilter {
    * True when [functionName] (owned by [className]) matches at least one of [patterns], or when
    * [patterns] is empty.
    */
-  fun matches(patterns: Collection<String>, functionName: String, className: String): Boolean {
+  public fun matches(
+    patterns: Collection<String>,
+    functionName: String,
+    className: String,
+  ): Boolean {
     val cleaned = patterns.map(String::trim).filter(String::isNotEmpty)
     if (cleaned.isEmpty()) return true
     val fqName = fqName(className, functionName)
@@ -69,7 +73,7 @@ object PreviewFilter {
   }
 
   /** True when a preview **id** matches at least one of [patterns], or when [patterns] is empty. */
-  fun matchesId(patterns: Collection<String>, id: String): Boolean {
+  public fun matchesId(patterns: Collection<String>, id: String): Boolean {
     val cleaned = patterns.map(String::trim).filter(String::isNotEmpty)
     if (cleaned.isEmpty()) return true
     return cleaned.any { matchOne(it, id, id) }
@@ -80,7 +84,7 @@ object PreviewFilter {
    * is the owning class FQN (a synthetic `…Kt` holder for top-level functions), so only its package
    * segment is meaningful. Falls back to the bare function name in the default package.
    */
-  fun fqName(className: String, functionName: String): String {
+  public fun fqName(className: String, functionName: String): String {
     val pkg = className.substringBeforeLast('.', "")
     return if (pkg.isEmpty()) functionName else "$pkg.$functionName"
   }
@@ -109,7 +113,7 @@ object PreviewFilter {
    * Type-agnostic via the accessor lambdas so the image-render [ee.schimke.composeai.renderer]
    * entry and the XR entry can each pass their own row type.
    */
-  fun <T> select(
+  public fun <T> select(
     items: List<T>,
     nameFilters: List<String>,
     idFilters: List<String>,
@@ -129,7 +133,7 @@ object PreviewFilter {
    * [failOnNoMatch] (the default), else returns an empty list. See [select] for why a sibling view
    * passes `false`.
    */
-  fun <T> selectByName(
+  public fun <T> selectByName(
     items: List<T>,
     patterns: List<String>,
     functionName: (T) -> String,
@@ -151,7 +155,7 @@ object PreviewFilter {
   /**
    * Narrows [items] to those whose id matches [patterns]. No-match behaviour: see [selectByName].
    */
-  fun <T> selectById(
+  public fun <T> selectById(
     items: List<T>,
     patterns: List<String>,
     id: (T) -> String,
@@ -174,7 +178,7 @@ object PreviewFilter {
    * everything, throws if [failOnNoMatch] (the default) else returns the empty list — a
    * kind-restricted sibling may legitimately exclude its whole subset.
    */
-  fun <T> excludeById(
+  public fun <T> excludeById(
     items: List<T>,
     excludes: List<String>,
     id: (T) -> String,
@@ -280,7 +284,7 @@ object PreviewFilter {
    * - if every row matches, none is skipped: a preview that rendered nothing would publish as a
    *   component with no pixels, which is a misconfigured exclusion rather than a deferral.
    */
-  fun keptRowIndices(suffixes: List<String>, patterns: List<String>): List<Int> {
+  public fun keptRowIndices(suffixes: List<String>, patterns: List<String>): List<Int> {
     val all = suffixes.indices.toList()
     val cleaned = patterns.map(String::trim).filter(String::isNotEmpty)
     if (cleaned.isEmpty()) return all
@@ -292,7 +296,7 @@ object PreviewFilter {
   /**
    * True when a row [label] matches one of [patterns] — glob when it has `*`/`?`, else equality.
    */
-  fun matchesRowLabel(patterns: Collection<String>, label: String): Boolean =
+  public fun matchesRowLabel(patterns: Collection<String>, label: String): Boolean =
     patterns.map(String::trim).filter(String::isNotEmpty).any { pattern ->
       if (pattern.any { it == '*' || it == '?' })
         Regex(globToRegex(pattern).pattern, RegexOption.IGNORE_CASE).matches(label)
