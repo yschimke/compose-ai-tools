@@ -2244,6 +2244,24 @@ class ServeCatalogStore(
       // not a licence, and this is the licence half.
       if (ServeKnownDifferences.isLookupPath(path)) paths += path
     }
+
+    // **Two spellings of one file is a malformed list, not a longer one.**
+    //
+    // `glyph/mask.png` and `glyph/MASK.PNG` are distinct strings, both portable, and on Windows or
+    // a default macOS volume they are *one file*. The plan is executed concurrently, so staging
+    // both schedules two workers writing the same path: whichever finishes last wins, and the
+    // canonical spelling left on disk may be the one `ServeKnownDifferences.artifact` then rejects
+    // for case. A record's real artifact can be overwritten by a sibling the document never named,
+    // differently on each refresh.
+    //
+    // Reachable specifically through the index, which may legitimately carry siblings the document
+    // does not name — so this is not a contract rule being mirrored, it is a staging invariant:
+    // never schedule two writes that can land on one file. Rejecting the whole list rather than
+    // dropping one spelling, because nothing here can know which the producer meant, and the
+    // fallback is the honest answer for a list this host cannot execute safely.
+    val collision = paths.groupingBy { it.lowercase() }.eachCount().any { it.value > 1 }
+    if (collision) return null
+
     return paths.toList()
   }
 
