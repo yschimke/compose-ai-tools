@@ -1096,6 +1096,10 @@
     {
       "id": "a-box-outside-the-plane-keeps-its-count",
       "title": "A tagged node that clips away entirely"
+    },
+    {
+      "id": "a-prototype-named-tag-stays-an-own-key",
+      "title": "A tag literally named `__proto__`"
     }
   ]
 }

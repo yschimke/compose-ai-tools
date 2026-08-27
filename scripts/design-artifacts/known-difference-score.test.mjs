@@ -148,7 +148,16 @@ for (const id of readdirSync(TAG_PROJECTION).sort()) {
   const expected = readJson(join(dir, "expected.json"));
 
   test(`tag projection: ${id} — ${meta.title}`, () => {
-    assert.deepEqual(projectTagIndex(meta.tagIndex, meta.candidateBox, meta.plane), expected);
+    // **Own enumerable entries, not object identity.** `projectTagIndex` returns a null-prototype
+    // map so a tag named `__proto__` or `constructor` is an ordinary key rather than the prototype
+    // or an inherited false positive; `expected` comes back from `JSON.parse` with the ordinary one.
+    // A strict `deepEqual` between the two compares *that* difference, which is an artifact of how
+    // this runner happens to read the fixture rather than anything the contract pins — a runtime
+    // without JavaScript prototypes has no such distinction to make. Spreading normalises both
+    // sides to the thing the tree actually specifies: which keys are present, and their values.
+    // Spread defines own properties rather than assigning, so `__proto__` survives the copy.
+    const projected = projectTagIndex(meta.tagIndex, meta.candidateBox, meta.plane);
+    assert.deepEqual({ ...projected }, { ...expected });
   });
 }
 
