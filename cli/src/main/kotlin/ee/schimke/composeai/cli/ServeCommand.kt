@@ -3559,7 +3559,10 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
               is ServeCatalogStore.Result.Ok -> {
                 if (config.listed) registeredCatalogs += r.system
                 else registeredUnlistedCatalogs += r.system
-                loaded += r.system
+                // Seeded as a settled head only when the read was complete: a catalog that came up
+                // serving but could not fetch an optional artifact *right now* must be re-read on
+                // the first tick, not treated as current until someone publishes again.
+                if (!r.incomplete) loaded += r.system
                 System.err.println(
                   "serve: catalog ${r.system} → ${r.previewCount} preview(s), trust=${r.trust} " +
                     "(/${r.system}/${if (config.listed) "" else ", unlisted"})"
@@ -3623,6 +3626,10 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         maxImages = catalogMaxImages,
         blobs = catalogBlobPool,
         serverSideRenderEnabled = allowRenderTrusted,
+        // The vector fills and the rc-compare pull run after the catalog is published, so a
+        // throttle there lands after the head was recorded. Un-settle the revision so the next
+        // poll re-reads it, exactly as a trust revocation and a retirement do.
+        onPostPublishIncomplete = { system -> activeRefresher?.forgetHeads(listOf(system)) },
         registerWasm = { system, wasmDir ->
           // A local `--wasm-dir` is the operator's explicit override, so a published app never
           // displaces it — including on a later branch refresh, which re-runs this callback.
@@ -3723,6 +3730,11 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
           // `--wasm-dir` the operator configured, which isn't the catalog's to remove.
           if (system !in localWasm) wasmCatalogs.remove(system)
         }
+        // And forget its branch head, for the reason a trust revocation does: the poller
+        // short-circuits on an unchanged SHA, so a system retired and later republished at the
+        // same commit would keep the head recorded from before it was retired — and the republished
+        // copy would never be re-read, however it loaded.
+        activeRefresher?.forgetHeads(listOf(system))
       },
     )
 
@@ -3770,14 +3782,12 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
             result
           }
         }
-        if (result == null) {
-          false
-        } else if (result is ServeCatalogStore.Result.Failed) {
+        // Handed back as-is: what a result means for the recorded head is the refresher's to
+        // decide, and saying it twice is how the two would drift.
+        if (result is ServeCatalogStore.Result.Failed) {
           System.err.println("serve: catalog $system refresh failed: ${result.reason}")
-          false
-        } else {
-          true
         }
+        result
       },
       intervalMillis = catalogRefreshSeconds * 1000,
     )

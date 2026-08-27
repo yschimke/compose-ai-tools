@@ -925,6 +925,234 @@ class ServeCatalogStoreTest {
     )
   }
 
+  /** A catalog whose only optional extra is its parity issue index, fetched through one seam. */
+  private fun loadWithIssueIndexOutcome(
+    issues: BranchFetch
+  ): Pair<ServeCatalogStore.Result, List<String>> {
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png"}]}]}
+      """
+        .trimIndent()
+    val asked = CopyOnWriteArrayList<String>()
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        networkFetch = { url, _ ->
+          asked += url
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") ->
+              BranchFetch.Ok(catalog.encodeToByteArray())
+            url.endsWith("/parity/issues.json") -> issues
+            url.endsWith(".png") -> BranchFetch.Ok(png())
+            else -> BranchFetch.NotFound
+          }
+        },
+      )
+    return store.load("compose-m3") to asked.toList()
+  }
+
+  @Test
+  fun `a throttled optional asset leaves the load incomplete`() {
+    // The load succeeds — every writer beside the required ones is fail-soft, and a catalog missing
+    // its issue index is far better than no catalog. What it must NOT do is look settled: the
+    // absence is ours, not the producer's, so `incomplete` is what stops the refresher recording
+    // this revision as current and never re-reading it.
+    val (result, asked) = loadWithIssueIndexOutcome(BranchFetch.Throttled(retryAfterSeconds = 5))
+    assertTrue(asked.any { it.endsWith("/parity/issues.json") }, "the index was asked for: $asked")
+    val ok = result as ServeCatalogStore.Result.Ok
+    assertTrue(ok.incomplete, "a throttled optional asset must not read as a settled revision")
+  }
+
+  @Test
+  fun `an optional asset the branch does not have leaves the load complete`() {
+    // The other half, and the one that must not regress into needless re-reads: `404` is an answer.
+    // Most catalogs publish no issue index at all, so treating absence as incomplete would put
+    // every one of them into a permanent re-read loop.
+    val (result, _) = loadWithIssueIndexOutcome(BranchFetch.NotFound)
+    val ok = result as ServeCatalogStore.Result.Ok
+    assertTrue(!ok.incomplete, "a genuinely absent optional asset is a settled answer")
+  }
+
+  @Test
+  fun `a transport failure on an optional asset leaves the load incomplete`() {
+    val (result, _) = loadWithIssueIndexOutcome(BranchFetch.Transport("SocketTimeoutException"))
+    assertTrue((result as ServeCatalogStore.Result.Ok).incomplete)
+  }
+
+  @Test
+  fun `a transient failure on a request-time read does not un-settle a concurrent load`() {
+    // `incomplete` speaks for the operation that issued the read, not for the store. Lazy
+    // request-time reads — a capture somebody opened, a pinned asset — run continuously against
+    // the same branch host, so a store-wide signal would let one reader retrying an unavailable
+    // capture keep every complete revision unsettled and force a full reload every polling
+    // interval. That is traffic amplification precisely while the host is unwell, which is the
+    // condition the mechanism exists to survive.
+    val requested = CopyOnWriteArrayList<String>()
+    var host: ServeBundleHost? = null
+    val watched = java.util.concurrent.atomic.AtomicBoolean(false)
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        networkFetch = { url, _ ->
+          requested += url
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> {
+              // Once the host exists, drive one lazy capture read from a thread that is inside no
+              // load at all, and let it finish before this load continues.
+              val h = host
+              if (h != null && watched.compareAndSet(false, true)) {
+                val t = Thread { h.motionBytes("switch-on__ideal__default__dark", ".apng") }
+                t.start()
+                t.join()
+              }
+              BranchFetch.Ok(motionCatalogJson.toByteArray())
+            }
+            url.endsWith(".png") -> BranchFetch.Ok(png())
+            // The capture is the unwell asset. It is never staged at registration, so only the
+            // request-time read below ever touches it.
+            url.endsWith(".apng") -> BranchFetch.Throttled(retryAfterSeconds = 5)
+            else -> BranchFetch.NotFound
+          }
+        },
+      )
+
+    assertTrue((store.load("compose-m3") as ServeCatalogStore.Result.Ok).incomplete.not())
+    host = registered.getValue("compose-m3")
+
+    val second = store.load("compose-m3") as ServeCatalogStore.Result.Ok
+    assertTrue(watched.get(), "the request-time read ran during the second load")
+    assertTrue(requested.any { it.endsWith(".apng") }, "and it really was throttled: $requested")
+    assertFalse(
+      second.incomplete,
+      "a throttled read issued outside this load must not un-settle the revision it loaded",
+    )
+    assertNull(host.motionBytes("switch-on__ideal__default__dark", ".apng"))
+  }
+
+  @Test
+  fun `a throttled post-publish vector fill un-settles the revision`() {
+    // `incomplete` can only speak for what the load itself read. The vector fills run on
+    // `figmaExecutor` AFTER the catalog is published, so a throttle there lands once the result has
+    // been handed back and the branch head recorded — and without this the missing vectors would
+    // wait for the next commit, which is the permanence this whole change exists to end.
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png",
+         "figma":{"nodeId":"1:2"}}]}]}
+      """
+        .trimIndent()
+    val unsettled = CopyOnWriteArrayList<String>()
+    val deferred = mutableListOf<Runnable>()
+    // The publish path itself takes one or two vectors inline (see `scheduleFigmaSvgFetch`) and
+    // leaves the rest to the deferred lane. Throttling only after the load has returned is what
+    // isolates the case under test: a failure the load could not possibly have counted.
+    var published = false
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        // Deferred, so the load returns before the lane runs — which is the whole point.
+        figmaExecutor = java.util.concurrent.Executor { deferred += it },
+        onPostPublishIncomplete = { unsettled += it },
+        networkFetch = { url, _ ->
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") ->
+              BranchFetch.Ok(catalog.encodeToByteArray())
+            url.endsWith(".png") -> BranchFetch.Ok(png())
+            url.endsWith(".svg") ->
+              if (published) BranchFetch.Throttled(retryAfterSeconds = 5)
+              else BranchFetch.Ok("<svg/>".encodeToByteArray())
+            else -> BranchFetch.NotFound
+          }
+        },
+      )
+
+    val result = store.load("compose-m3") as ServeCatalogStore.Result.Ok
+    // The load itself read everything it needed: the vectors are not its business.
+    assertTrue(!result.incomplete, "the publish path itself was complete")
+    assertEquals(emptyList(), unsettled.toList(), "nothing is reported before the lane runs")
+
+    published = true
+    deferred.forEach { it.run() }
+
+    assertEquals(
+      listOf("compose-m3"),
+      unsettled.toList(),
+      "a throttled vector fill must un-settle the revision so the next tick re-reads it",
+    )
+  }
+
+  @Test
+  fun `a superseded post-publish lane does not un-settle the revision that replaced it`() {
+    // The lane checks the generation on entry, but it does network I/O afterwards — so a refresh
+    // can land a whole new revision while it is still reading. The entry check cannot see that;
+    // reporting anyway un-settles the *fresh* revision over a throttle belonging to the one it
+    // replaced, costing it a needless full reload. The new revision reports for itself.
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png",
+         "figma":{"nodeId":"1:2"}}]}]}
+      """
+        .trimIndent()
+    val unsettled = CopyOnWriteArrayList<String>()
+    val deferred = mutableListOf<Runnable>()
+    lateinit var store: ServeCatalogStore
+    // 0: first load. 1: the stale lane is reading. 2: the superseding load is running inside it.
+    var phase = 0
+    var superseded = false
+    store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        figmaExecutor = java.util.concurrent.Executor { deferred += it },
+        onPostPublishIncomplete = { unsettled += it },
+        networkFetch = { url, _ ->
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") ->
+              BranchFetch.Ok(catalog.encodeToByteArray())
+            url.endsWith(".png") -> BranchFetch.Ok(png())
+            url.endsWith(".svg") ->
+              if (phase != 1) BranchFetch.Ok("<svg/>".encodeToByteArray())
+              else {
+                // Mid-read, a refresh lands a whole new revision under a new generation — the
+                // thing the lane's entry check ran too early to see.
+                if (!superseded) {
+                  superseded = true
+                  phase = 2
+                  store.load("compose-m3")
+                  phase = 1
+                }
+                BranchFetch.Throttled(retryAfterSeconds = 5)
+              }
+            else -> BranchFetch.NotFound
+          }
+        },
+      )
+
+    store.load("compose-m3")
+    val stale = deferred.toList()
+    deferred.clear()
+
+    phase = 1
+    stale.forEach { it.run() }
+    assertTrue(superseded, "a newer revision really did land while the stale lane was reading")
+    assertEquals(
+      emptyList(),
+      unsettled.toList(),
+      "a lane whose revision has been superseded must not un-settle the one that replaced it",
+    )
+  }
+
   @Test
   fun `an over-sized artifact is staged, so the reader can refuse it as too large`() {
     // Dropping it would leave a missing file, and a missing file is `artifact-unreadable`/404 — a

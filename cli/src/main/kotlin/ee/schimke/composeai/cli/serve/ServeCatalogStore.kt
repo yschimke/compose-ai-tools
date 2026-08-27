@@ -92,6 +92,22 @@ class ServeCatalogStore(
    * catalog** — a deployed public server needs no local `--wasm-dir` build, just `--catalogs`.
    */
   private val registerWasm: (system: String, dir: File) -> Unit = { _, _ -> },
+  /**
+   * Invoked when a **post-publish** lane finished with a transient failure of its own.
+   *
+   * [Result.Ok.incomplete] can only speak for what the load itself read: the vector fills and the
+   * rc-compare pull run on [figmaExecutor] *after* the catalog is published, so a throttle there
+   * lands long after the result was handed back and the branch head recorded. This is how they say
+   * so — the caller wires it to `ServeCatalogRefresher.forgetHeads`, which un-settles the revision
+   * so the next tick re-reads it.
+   *
+   * After the fact rather than before, which used to leave a window: an invalidation arriving
+   * between the load returning and the head being recorded — or before the startup loader seeded
+   * any head at all — had nothing to remove. `ServeCatalogRefresher` closes it by leaving a
+   * *pending* mark rather than only removing a head, and consuming that mark everywhere it would
+   * otherwise record one.
+   */
+  private val onPostPublishIncomplete: (system: String) -> Unit = {},
   private val serverSideRenderEnabled: Boolean = false,
   /**
    * Trusted server-side re-render from a carried **executable bundle** (opt-in,
@@ -316,6 +332,21 @@ class ServeCatalogStore(
       val previewCount: Int,
       val trust: String,
       val failedRenderCount: Int = 0,
+      /**
+       * Some optional artifact could not be fetched **right now** — throttled, the branch host
+       * unwell, or no answer at all.
+       *
+       * The catalog is registered and served either way; every writer beside the required ones is
+       * fail-soft by design, and a catalog missing its activity feed is far better than no catalog.
+       * What this says is that the absence is not the producer's: asking again could answer
+       * differently, so the caller must not record this revision as settled.
+       *
+       * Without it a single throttled request drops that catalog's parity issue index — or its
+       * whole acceptance surface — until the branch head next moves, with nothing anywhere
+       * reporting it. See `ServeCatalogRefresher.checkOne`, which is what declines to advance the
+       * recorded head, and `seedInitialHeads`, which does the same at startup.
+       */
+      val incomplete: Boolean = false,
     ) : Result
 
     data class Failed(val system: String, val reason: String) : Result
@@ -330,7 +361,17 @@ class ServeCatalogStore(
    * own `design-artifacts/<system>` branch). Null ⇒ the store's [repo] / [branchPrefix]. The
    * branch-trust verdict is computed against whichever repo actually served the catalog.
    */
-  fun load(system: String, sourceRepo: String? = null, sourceBranchPrefix: String? = null): Result {
+  fun load(system: String, sourceRepo: String? = null, sourceBranchPrefix: String? = null): Result =
+    inFetchScope {
+      load(system, sourceRepo, sourceBranchPrefix, it)
+    }
+
+  private fun load(
+    system: String,
+    sourceRepo: String?,
+    sourceBranchPrefix: String?,
+    scope: FetchScope,
+  ): Result {
     val safe = ServeBundleStore.sanitizeName(system) ?: return Result.Failed(system, "invalid name")
     // Bumped per load so a background pass started for an earlier generation of this catalog stops
     // instead of writing its vectors into the refreshed one.
@@ -1020,6 +1061,7 @@ class ServeCatalogStore(
             count + deferredIds.size + failedIds.size,
             "${BundleVerifier.summary(verdict)} (${prepared.size} live module bundles)",
             failedIds.size,
+            incomplete = scope.sawTransientFailure,
           )
         }
         if (liveBundleFallback == null) {
@@ -1102,6 +1144,7 @@ class ServeCatalogStore(
                 count + deferredIds.size + failedIds.size,
                 "${BundleVerifier.summary(verdict)} (live bundle)",
                 failedIds.size,
+                incomplete = scope.sawTransientFailure,
               )
             }
             // Declared + fetched + rehydrated, but the builder didn't stand a daemon up — most
@@ -1147,6 +1190,7 @@ class ServeCatalogStore(
         count + deferredIds.size + failedIds.size,
         "${BundleVerifier.summary(verdict)} (live)",
         failedIds.size,
+        incomplete = scope.sawTransientFailure,
       )
     }
 
@@ -1185,7 +1229,13 @@ class ServeCatalogStore(
     // Same reasoning as the degradation: a session with no live lane lists no live-only previews.
     val host = bakedFallback(degradations, emptyList())
     register(safe, host)
-    return Result.Ok(safe, host.previews.size, BundleVerifier.summary(verdict), failedIds.size)
+    return Result.Ok(
+      safe,
+      host.previews.size,
+      BundleVerifier.summary(verdict),
+      failedIds.size,
+      incomplete = scope.sawTransientFailure,
+    )
   }
 
   /**
@@ -1804,10 +1854,19 @@ class ServeCatalogStore(
   ) {
     figmaExecutor.execute {
       if (generations[system] != generation) return@execute
-      runCatching {
-        fetchFigmaSvgs(slugs, variantPaths, base, dir) { generations[system] == generation }
+      // Its own scope: this lane runs after the result was handed back, so it reports its own
+      // incompleteness rather than being counted into anyone else's load.
+      val incomplete = inFetchScope { scope ->
+        runCatching {
+          fetchFigmaSvgs(slugs, variantPaths, base, dir) { generations[system] == generation }
+        }
+          .onFailure { System.err.println("serve: catalog $system figma vectors: ${it.message}") }
+        scope.sawTransientFailure
       }
-        .onFailure { System.err.println("serve: catalog $system figma vectors: ${it.message}") }
+      // Re-checked, not just checked on entry: a newer load of this system can finish while this
+      // lane is still reading, and un-settling a revision this work was never about would cost the
+      // fresh one a needless full reload. The new revision reports its own incompleteness.
+      if (incomplete && generations[system] == generation) onPostPublishIncomplete(system)
     }
   }
 
@@ -1821,8 +1880,16 @@ class ServeCatalogStore(
     if (!ServeRcCompare.stagesFor(alias)) return
     figmaExecutor.execute {
       if (generations[system] != generation) return@execute
-      runCatching { fetchRcCompare(alias, base, dir) { generations[system] == generation } }
-        .onFailure { System.err.println("serve: catalog $system rc-compare: ${it.message}") }
+      // Post-publish and self-reporting, like the vector fills beside it.
+      val incomplete = inFetchScope { scope ->
+        runCatching { fetchRcCompare(alias, base, dir) { generations[system] == generation } }
+          .onFailure { System.err.println("serve: catalog $system rc-compare: ${it.message}") }
+        scope.sawTransientFailure
+      }
+      // Re-checked, not just checked on entry: a newer load of this system can finish while this
+      // lane is still reading, and un-settling a revision this work was never about would cost the
+      // fresh one a needless full reload. The new revision reports its own incompleteness.
+      if (incomplete && generations[system] == generation) onPostPublishIncomplete(system)
     }
   }
 
@@ -3097,11 +3164,55 @@ class ServeCatalogStore(
 
   /** [networkFetch] with its outcome counted. Every network read in this store goes through it. */
   private fun branchRead(url: String, maxBytes: Long): BranchFetch =
-    networkFetch(url, maxBytes).also(branchFetchStats::record)
+    networkFetch(url, maxBytes).also {
+      branchFetchStats.record(it)
+      // Attributed to whatever operation issued it; a read outside one belongs to nobody.
+      if (it.isTransient) activeFetchScope.get()?.recordTransient()
+    }
 
   /** [networkProbe] with its outcome counted; true only when the branch actually has the file. */
   private fun branchProbe(url: String): Boolean =
     networkProbe(url).also(branchFetchStats::record) is BranchFetch.Ok
+
+  /**
+   * One operation's tally of reads that ended in a **"right now"** failure — throttled, the branch
+   * host unwell, or no answer at all.
+   *
+   * Scoped to the operation rather than counted store-wide, and the difference is not academic.
+   * `fetchCatalogAsset` also serves *request-time* lazy reads — a baked PNG, a motion capture, a
+   * pinned revision — which run continuously on a busy server. A shared total would let a client
+   * retrying an unavailable asset mark an otherwise complete catalog revision incomplete, forcing a
+   * full re-read every polling interval: more traffic at exactly the moment the branch host is
+   * already unhealthy, which is a feedback loop rather than one wasted request.
+   */
+  private class FetchScope {
+    private val transient = java.util.concurrent.atomic.AtomicLong()
+
+    fun recordTransient() {
+      transient.incrementAndGet()
+    }
+
+    val sawTransientFailure: Boolean
+      get() = transient.get() > 0
+  }
+
+  /**
+   * The scope reads on this thread belong to, or null for a read that belongs to no operation — a
+   * request-time lazy fetch, which is nobody's load.
+   */
+  private val activeFetchScope = ThreadLocal<FetchScope?>()
+
+  /** Run [body] with a fresh scope installed, restoring whatever was there before. */
+  private fun <T> inFetchScope(body: (FetchScope) -> T): T {
+    val scope = FetchScope()
+    val previous = activeFetchScope.get()
+    activeFetchScope.set(scope)
+    return try {
+      body(scope)
+    } finally {
+      activeFetchScope.set(previous)
+    }
+  }
 
   /** Fetch an ordinary catalog asset using the existing tight per-file envelope. */
   private fun fetchCatalogAsset(url: String): ByteArray? = cachedBranchRead(url).bytesOrNull
@@ -3213,20 +3324,31 @@ class ServeCatalogStore(
         Thread(r, "serve-catalog-fetch").apply { isDaemon = true }
       }
     return try {
+      // The scope these reads belong to is the caller's, and a `ThreadLocal` set here is invisible
+      // to the workers — so it is captured at submission and re-established inside each task.
+      val submitting = activeFetchScope.get()
       val inFlight = plan.map { (url, target) ->
         url to
           pool.submit<Boolean> {
-            val bytes = runCatching { fetchCatalogAsset(url) }.getOrNull() ?: return@submit false
-            // Re-checked immediately before the write, not just once per wave: a fetch started for
-            // one catalog generation must not land in the directory a refresh has since swapped in.
-            // Checking only between waves leaves every worker in the current wave free to write
-            // after the swap, and nothing then removes what they wrote.
-            if (!stillWanted()) return@submit false
-            runCatching {
-              target.parentFile?.mkdirs()
-              target.writeBytes(bytes)
+            val previous = activeFetchScope.get()
+            activeFetchScope.set(submitting)
+            try {
+              val bytes = runCatching { fetchCatalogAsset(url) }.getOrNull() ?: return@submit false
+              // Re-checked immediately before the write, not just once per wave: a fetch started
+              // for
+              // one catalog generation must not land in the directory a refresh has since swapped
+              // in.
+              // Checking only between waves leaves every worker in the current wave free to write
+              // after the swap, and nothing then removes what they wrote.
+              if (!stillWanted()) return@submit false
+              runCatching {
+                target.parentFile?.mkdirs()
+                target.writeBytes(bytes)
+              }
+                .isSuccess
+            } finally {
+              activeFetchScope.set(previous)
             }
-              .isSuccess
           }
       }
       buildSet {
@@ -3250,9 +3372,19 @@ class ServeCatalogStore(
       Executors.newFixedThreadPool(minOf(ASSET_FETCH_CONCURRENCY, distinct.size)) { r ->
         Thread(r, "serve-catalog-fetch").apply { isDaemon = true }
       }
+    val submitting = activeFetchScope.get()
     return try {
       val inFlight = distinct.map { url ->
-        url to pool.submit<ByteArray?> { runCatching { fetchCatalogAsset(url) }.getOrNull() }
+        url to
+          pool.submit<ByteArray?> {
+            val previous = activeFetchScope.get()
+            activeFetchScope.set(submitting)
+            try {
+              runCatching { fetchCatalogAsset(url) }.getOrNull()
+            } finally {
+              activeFetchScope.set(previous)
+            }
+          }
       }
       buildMap {
         for ((url, future) in inFlight) {
