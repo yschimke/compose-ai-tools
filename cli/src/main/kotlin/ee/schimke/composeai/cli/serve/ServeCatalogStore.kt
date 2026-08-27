@@ -2123,7 +2123,7 @@ class ServeCatalogStore(
     // guards each write, so one unwriteable artifact is an artifact the engine calls unreadable
     // rather than a reason to abandon the refresh.
     fetchCatalogAssetsToFiles(
-      knownDifferenceArtifactPaths(documentBytes).map { path ->
+      knownDifferenceArtifactPlan(base, documentBytes).map { path ->
         "$base$artifactRoot/$path" to File(staging, "$artifactRoot/$path")
       },
       // An artifact the transport refuses by size gets the same marker treatment the document does,
@@ -2158,8 +2158,77 @@ class ServeCatalogStore(
     .getOrDefault(false)
 
   /**
+   * Which artifact files to fetch: **the producer's list when it publishes one**, and only
+   * otherwise the paths derived from the document.
+   *
+   * The published index ([ServeKnownDifferences.ARTIFACT_INDEX_FILE]) is written by the producer
+   * that wrote the files, so it is the one source that cannot be wrong about what exists.
+   * Preferring it retires the derivation below along with every rule the derivation had to mirror —
+   * including the ones nobody has thought of yet.
+   *
+   * **A fetch plan, not an authority.** Three things follow, and all three are deliberate:
+   * - every path still goes through [ServeKnownDifferences.isLookupPath] before it is fetched or
+   *   written. A producer naming `../../secrets.png` in its index gets exactly the refusal it gets
+   *   for naming it in the document. The index changes *where the list comes from*, never what this
+   *   host will look up.
+   * - a list that disagrees with the document is not an error to report. The document remains the
+   *   contract: a file the index omits is not staged and evaluates as `artifact-unreadable`, which
+   *   is already the verdict for a file a producer forgot to commit.
+   * - the index is not consulted for whether the *document* is readable. It says what to copy, and
+   *   a host that let it decide that would have swapped one derivation for another.
+   *
+   * **Absent means "this producer does not publish one", not "there is nothing".** So a catalog
+   * published before the index existed falls back to the derivation and behaves exactly as it did —
+   * which is what makes this purely additive. An index that parses and names nothing is a different
+   * answer: an empty list, honoured as one.
+   */
+  private fun knownDifferenceArtifactPlan(base: String, documentBytes: ByteArray): List<String> =
+    publishedArtifactIndex(base) ?: knownDifferenceArtifactPaths(documentBytes)
+
+  /**
+   * The producer's artifact list, or null when this catalog publishes none.
+   *
+   * Fail-soft in the direction that costs least: anything unparseable, wrongly-schema'd or
+   * wrongly-shaped is null, so the caller derives the list as it always did rather than staging
+   * nothing. The alternative — treating a malformed index as an empty list — would let one bad file
+   * silently strip every record of its artifacts, which is the changed-verdict failure this whole
+   * change exists to remove.
+   *
+   * Bounded by the document ceiling. The index is a list of paths for a document that may name at
+   * most [ServeKnownDifferences.MAX_ACCEPTANCES] records, so it has no business being larger than
+   * the document itself, and a host must not read an unbounded file to find out how much to read.
+   */
+  private fun publishedArtifactIndex(base: String): List<String>? {
+    val dirName = ServeKnownDifferences.DIRECTORY
+    val url = "$base$dirName/${ServeKnownDifferences.ARTIFACT_INDEX_FILE}"
+    val bytes = runCatching { fetchCatalogAsset(url) }.getOrNull() ?: return null
+    if (bytes.size > ServeKnownDifferences.MAX_DOCUMENT_BYTES) return null
+    val parsed =
+      runCatching { json.parseToJsonElement(bytes.decodeToString()) }.getOrNull() as? JsonObject
+        ?: return null
+    val schema = (parsed["schema"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    if (schema != ServeKnownDifferences.ARTIFACT_INDEX_SCHEMA) return null
+    val artifacts = parsed["artifacts"] as? JsonArray ?: return null
+    if (artifacts.size > MAX_INDEXED_ARTIFACTS) return null
+
+    val paths = LinkedHashSet<String>()
+    for (entry in artifacts) {
+      val path = (entry as? JsonPrimitive)?.takeIf { it.isString }?.content ?: continue
+      // The reader's own lexical rule, applied to the producer's list exactly as it is applied to
+      // the document's. A list is a convenience, not a licence.
+      if (ServeKnownDifferences.isLookupPath(path)) paths += path
+    }
+    return paths.toList()
+  }
+
+  /**
    * The `<id>/<file>` paths a known-difference document names — none, when the engine will reject
    * the document whole.
+   *
+   * **The fallback, not the plan.** A producer that publishes an artifact index makes all of this
+   * unnecessary; see [knownDifferenceArtifactPlan]. This remains for catalogs published before the
+   * index existed, and it is worth keeping exactly as conservative as it is, because those catalogs
+   * are the ones with nobody left to fix them.
    *
    * Two questions, and only the second is lenient.
    *
@@ -2226,8 +2295,14 @@ class ServeCatalogStore(
    *
    * What their absence costs is a wasted fetch, bounded by the ceiling a fully-populated *valid*
    * document already permits — 256 × 2 × 8 MiB is what the contract allows and what the engine
-   * genuinely reads. Issue #4520 closes the waste properly, by having the producer publish the
-   * artifact list it already knows so nothing here has to derive one.
+   * genuinely reads.
+   *
+   * That cost is now avoided rather than mitigated: a producer publishing an artifact index is
+   * copied from rather than interpreted, and this whole path is skipped. What is left here runs
+   * only for catalogs published before the index existed — which is why nothing was added to it,
+   * and why the three families of refusal above stay deliberately unmirrored. Growing this to close
+   * the remaining waste would be building the third implementation on the one path that no longer
+   * needs to exist.
    */
   private fun rejectsWholeDocument(document: JsonObject, acceptances: JsonArray): Boolean {
     // The schema and the shape. `acceptances` is already known to be an array by the caller.
@@ -3066,6 +3141,17 @@ class ServeCatalogStore(
     internal const val GENERATION_DIR_PREFIX = "g"
 
     internal const val STAGING_DIR = ".staging"
+
+    /**
+     * How many entries a published artifact index may name before it is ignored.
+     *
+     * The contract's own ceiling: at most [ServeKnownDifferences.MAX_ACCEPTANCES] records, each
+     * naming a `mask` and an `acceptedCandidate`. A producer is free to publish siblings a record
+     * does not name — the consumer decides which matter — so this is not a statement about what is
+     * legal, only a bound on how long a *fetch plan* this host will act on before deciding the file
+     * is not one.
+     */
+    private const val MAX_INDEXED_ARTIFACTS = ServeKnownDifferences.MAX_ACCEPTANCES * 2
 
     /**
      * Cap on a delivery branch's commit feed ([fetchRevisions]). Deliberately far smaller than a
