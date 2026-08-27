@@ -31,6 +31,7 @@ import {
     preflightPng,
     projectTagIndex,
     readsNoArtifacts,
+    recordsThatRead,
     resolvePlane,
     scoreComparison,
     sha256Hex,
@@ -298,7 +299,11 @@ export async function walkCatalog(
     const document = await fetchDocument(sources.documentUrl);
     if (document.state === "absent") return empty("absent");
     if (document.state === "unavailable") return empty("unavailable");
-    const artifacts = await prefetch(document.text, sources.artifactUrl);
+    const artifacts = await prefetch(
+        document.text,
+        sources.artifactUrl,
+        catalog,
+    );
     const result = evaluateKnownDifferences({
         documentText: document.text,
         readArtifact: reader(artifacts),
@@ -468,6 +473,14 @@ interface PrefetchedArtifact {
 async function prefetch(
     documentText: string,
     artifactUrl: (path: string) => string,
+    /**
+     * The catalog the **evaluation** will be given, or none when it will be given none.
+     *
+     * Not optional in spirit: `orphaned-target` is a pre-read refusal, so a planner without the
+     * catalog the engine has counts records the engine never reads. See the ceiling gate below for
+     * why that direction is the dangerous one.
+     */
+    catalog: unknown = null,
 ): Promise<Map<string, PrefetchedArtifact>> {
     const artifacts = new Map<string, PrefetchedArtifact>();
     let parsed: unknown;
@@ -517,6 +530,67 @@ async function prefetch(
             await fetchPrefix(artifactUrl(path), BUDGET.maxPreflightBytes),
         );
     });
+
+    // **A document over the aggregate ceiling is not paid for either.** `readsNoArtifacts` above
+    // catches the document the engine refuses from its *text*; this catches the one it refuses from
+    // the reader's *sizes* — `document-too-large` against `maxTotalArtifactBytes`, a verdict reached
+    // without decoding anything. Round one has already answered every size, so the total is known
+    // here, and round two would otherwise retain full bodies right up until the engine said the
+    // document was never readable. The ceiling bounds the legal case; this is the illegal one, which
+    // is the one an attacker picks.
+    //
+    // **Over-estimating this total is the dangerous direction, and under-estimating is free.** The
+    // gate skips when the sum exceeds the ceiling, so a sum that is too high skips round two for a
+    // document whose engine-side total is *under* it — and every record the engine then asks to
+    // decode is a body nobody fetched, reported as `artifact-unreadable`. A verdict changed by a
+    // planner. A sum that is too low merely fetches bytes for a document that turns out to be
+    // rejected: wasteful, never wrong.
+    //
+    // So this mirrors `preflightRecord`'s accounting exactly rather than summing the map:
+    //
+    // - **only records the engine reads at all.** `id-not-safe`, a schema failure,
+    //   `orphaned-target` and `path-not-contained` all return before the first read, so their
+    //   artifacts never reach the engine's total. `recordsThatRead` is the engine's own answer, and
+    //   it is given the same catalog the evaluation gets — without it, `orphaned-target` cannot be
+    //   seen and every orphan is counted, which is exactly the over-estimate above.
+    // - **only records whose two artifacts both answered, and both within `maxArtifactBytes`.** A
+    //   record refused for busting the per-artifact cap returns before `artifactBytes` is assigned,
+    //   so the engine charges it nothing — while its declared size is the largest number in the
+    //   document, and counting it is the easiest way to over-estimate by gigabytes.
+    // - **per record's two fields, not per unique path.** A record may legitimately name the same
+    //   file for `mask` and `acceptedCandidate`; the engine reads it twice and charges it twice,
+    //   and the fetch map holds it once. Counting map entries under-charges such a record — the
+    //   safe direction, but not the right number.
+    //
+    // An undeclared size (`totalKnown: false`) contributes only what arrived, under-counting for the
+    // same safe reason, and is the honest limit of this check: a producer whose server declares no
+    // length is measured by round two rather than here.
+    const reading = new Set(recordsThatRead(documentText, catalog));
+    let plannedBytes = 0;
+    for (const record of acceptances) {
+        const id = (record as { id?: unknown })?.id;
+        if (typeof id !== "string" || !reading.has(id)) continue;
+        let recordBytes = 0;
+        let bothReadable = true;
+        for (const key of ["mask", "acceptedCandidate"] as const) {
+            const value = (record as Record<string, unknown>)[key];
+            const header =
+                typeof value === "string"
+                    ? artifacts.get(`${id}/${value}`)?.header
+                    : undefined;
+            if (!header || !("byteLength" in header)) {
+                bothReadable = false;
+                break;
+            }
+            if (header.byteLength > BUDGET.maxArtifactBytes) {
+                bothReadable = false;
+                break;
+            }
+            recordBytes += header.byteLength;
+        }
+        if (bothReadable) plannedBytes += recordBytes;
+    }
+    if (plannedBytes > BUDGET.maxTotalArtifactBytes) return artifacts;
 
     // Round two: the full body of the prefixes that earned it — and of the ones whose size the
     // response never declared, which must be read to be measured. See `totalKnown`.

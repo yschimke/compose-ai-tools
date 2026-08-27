@@ -27,7 +27,7 @@ import {
     world,
 } from "./support/knownDifferences.js";
 import { sha256Hex } from "../../../scripts/design-artifacts/png-lite.mjs";
-import { evaluateComparison } from "../src/parity/acceptance.js";
+import { evaluateComparison, walkCatalog } from "../src/parity/acceptance.js";
 
 /** One recorded request: the path asked for, and the `Range` header if the caller sent one. */
 interface RecordedRequest {
@@ -45,7 +45,23 @@ interface RecordedRequest {
  */
 function recordingFetch(
     routes: Record<string, Uint8Array | string | number>,
-    { honourRange, declareSize = true }: { honourRange: boolean; declareSize?: boolean },
+    {
+        honourRange,
+        declareSize = true,
+        declaredSizes = {},
+    }: {
+        honourRange: boolean;
+        declareSize?: boolean;
+        /**
+         * Sizes to *claim* for named paths, without transferring them.
+         *
+         * A hostile catalog does not have to send 64 MiB to make a reader plan for it — it declares
+         * the length and lets the reader decide. Modelling that with a header rather than with real
+         * bytes is both faithful and the only way to test an aggregate ceiling without allocating
+         * one.
+         */
+        declaredSizes?: Record<string, number>;
+    },
 ) {
     const requests: RecordedRequest[] = [];
     const impl = (input: RequestInfo | URL, init?: RequestInit) => {
@@ -55,11 +71,15 @@ function recordingFetch(
         requests.push({ url, range });
 
         const body = routes[url];
-        if (body === undefined) return Promise.resolve(new Response("not found", { status: 404 }));
-        if (typeof body === "number") return Promise.resolve(new Response("no", { status: body }));
-        if (typeof body === "string") return Promise.resolve(new Response(body));
+        if (body === undefined)
+            return Promise.resolve(new Response("not found", { status: 404 }));
+        if (typeof body === "number")
+            return Promise.resolve(new Response("no", { status: body }));
+        if (typeof body === "string")
+            return Promise.resolve(new Response(body));
 
         const bytes = body as Uint8Array;
+        const declared = declaredSizes[url] ?? bytes.length;
         const match = range ? /^bytes=0-(\d+)$/.exec(range) : null;
         if (honourRange && match) {
             const end = Math.min(Number(match[1]), bytes.length - 1);
@@ -67,7 +87,7 @@ function recordingFetch(
             return Promise.resolve(
                 new Response(slice as unknown as BodyInit, {
                     status: 206,
-                    headers: { "Content-Range": `bytes 0-${end}/${bytes.length}` },
+                    headers: { "Content-Range": `bytes 0-${end}/${declared}` },
                 }),
             );
         }
@@ -79,7 +99,9 @@ function recordingFetch(
                     controller.close();
                 },
             });
-            return Promise.resolve(new Response(stream as unknown as BodyInit, { status: 200 }));
+            return Promise.resolve(
+                new Response(stream as unknown as BodyInit, { status: 200 }),
+            );
         }
         return Promise.resolve(
             new Response(bytes as unknown as BodyInit, {
@@ -92,7 +114,11 @@ function recordingFetch(
 
 function withRecordingFetch<T>(
     routes: Record<string, Uint8Array | string | number>,
-    options: { honourRange: boolean; declareSize?: boolean },
+    options: {
+        honourRange: boolean;
+        declareSize?: boolean;
+        declaredSizes?: Record<string, number>;
+    },
     body: (requests: RecordedRequest[]) => Promise<T>,
 ) {
     const original = globalThis.fetch;
@@ -118,12 +144,51 @@ function pngWithOversizedPlte(): Uint8Array {
     new DataView(plte.buffer).setUint32(0, declared);
     plte.set([0x50, 0x4c, 0x54, 0x45], 4);
     const tail = base.subarray(8 + 25);
-    const out = new Uint8Array(signatureAndIhdr.length + plte.length + tail.length);
+    const out = new Uint8Array(
+        signatureAndIhdr.length + plte.length + tail.length,
+    );
     out.set(signatureAndIhdr, 0);
     out.set(plte, signatureAndIhdr.length);
     out.set(tail, signatureAndIhdr.length + plte.length);
     return out;
 }
+/**
+ * The fixture document repeated across [ids], so an aggregate ceiling has something to aggregate.
+ *
+ * Every record names the same shape of artifact; only the ids differ. The ceiling is only reachable
+ * with several records because each *individual* artifact must stay under `maxArtifactBytes` — one
+ * refused for busting the per-file cap is refused before its size is counted, and contributes
+ * nothing to the total. Which is the whole reason the aggregate ceiling exists: the exhaustion is
+ * built from files that are each perfectly legal.
+ */
+function repeatedRecords(
+    scene: ReturnType<typeof world>,
+    ids: string[],
+): string {
+    const parsed = JSON.parse(knownDifferencesJson(scene)) as {
+        acceptances: Record<string, unknown>[];
+    };
+    const template = parsed.acceptances[0];
+    parsed.acceptances = ids.map((id) => ({ ...template, id }));
+    return JSON.stringify(parsed);
+}
+
+/**
+ * The fixture document plus a record the engine refuses **before reading anything**.
+ *
+ * `bad id` is a perfectly ordinary string — so it survives the identity scan, and the document is
+ * evaluated — but it is not a portable path segment, so `isSafeId` refuses the record and its two
+ * artifacts are never read. The adapter still fetches their headers, because it plans leniently and
+ * lets the engine own the verdict; what it must not do is count them toward the ceiling.
+ */
+function withUnreadableRecord(scene: ReturnType<typeof world>): string {
+    const parsed = JSON.parse(knownDifferencesJson(scene)) as {
+        acceptances: Record<string, unknown>[];
+    };
+    parsed.acceptances.push({ ...parsed.acceptances[0], id: "bad id" });
+    return JSON.stringify(parsed);
+}
+
 describe("evaluateComparison", () => {
     it("says nothing at all when the catalog publishes no document", async () => {
         const report = await withFetch({}, () =>
@@ -164,13 +229,16 @@ describe("evaluateComparison", () => {
         );
         assert.equal(report.state, "evaluated");
         assert.deepEqual(report.statuses, { glyph: { status: "valid" } });
-        assert.deepEqual({ ...report.lifecycles }, {
-            glyph: {
-                issue: "yschimke/m3-catalog#40",
-                lifecycle: "closed",
-                stale: true,
+        assert.deepEqual(
+            { ...report.lifecycles },
+            {
+                glyph: {
+                    issue: "yschimke/m3-catalog#40",
+                    lifecycle: "closed",
+                    stale: true,
+                },
             },
-        });
+        );
         assert.deepEqual(report.suppressing, ["glyph"]);
         assert.ok(report.scores, "a decodable pair must be scored");
         // The raw finding survives acceptance — the whole reason this is not an ignore rectangle.
@@ -371,23 +439,344 @@ describe("evaluateComparison", () => {
         // This pins the two rounds: every declared path is asked for with a bounded `Range` first.
         const scene = world();
         const routes = catalogRoutes(scene, knownDifferencesJson(scene));
-        const report = await withRecordingFetch(routes, { honourRange: true }, async (requests) => {
-            const result = await evaluateComparison(SOURCES, scope(scene), {});
-            const artifactRequests = requests.filter((request) =>
-                request.url.startsWith("/m3/parity/known-differences/"),
-            );
-            const ranged = artifactRequests.filter((request) => request.range !== null);
-            assert.equal(ranged.length, 2, "both artifacts are asked for as a bounded prefix");
-            for (const request of ranged) {
-                assert.equal(request.range, "bytes=0-4095", "the prefix is the named budget");
-            }
-            // And each is then read whole exactly once, because both preflight cleanly here.
-            const whole = artifactRequests.filter((request) => request.range === null);
-            assert.equal(whole.length, 2, "a clean header earns one full read");
-            return result;
-        });
+        const report = await withRecordingFetch(
+            routes,
+            { honourRange: true },
+            async (requests) => {
+                const result = await evaluateComparison(
+                    SOURCES,
+                    scope(scene),
+                    {},
+                );
+                const artifactRequests = requests.filter((request) =>
+                    request.url.startsWith("/m3/parity/known-differences/"),
+                );
+                const ranged = artifactRequests.filter(
+                    (request) => request.range !== null,
+                );
+                assert.equal(
+                    ranged.length,
+                    2,
+                    "both artifacts are asked for as a bounded prefix",
+                );
+                for (const request of ranged) {
+                    assert.equal(
+                        request.range,
+                        "bytes=0-4095",
+                        "the prefix is the named budget",
+                    );
+                }
+                // And each is then read whole exactly once, because both preflight cleanly here.
+                const whole = artifactRequests.filter(
+                    (request) => request.range === null,
+                );
+                assert.equal(
+                    whole.length,
+                    2,
+                    "a clean header earns one full read",
+                );
+                return result;
+            },
+        );
         // The verdict is unchanged by any of it — the prefix is a resource bound, never a verdict.
         assert.deepEqual(report.statuses, { glyph: { status: "valid" } });
+    });
+
+    it("never fetches a body for a document past the aggregate ceiling", async () => {
+        // The gap `readsNoArtifacts` cannot close. That one refuses a document from its *text*; this
+        // one is refused from the reader's *sizes* — `document-too-large` against
+        // `maxTotalArtifactBytes`, a verdict the engine reaches without decoding anything. Round one
+        // has already answered every size, so the total is knowable before round two, and without
+        // this gate the adapter retains full bodies right up until the engine says the document was
+        // never readable. The ceiling bounds the legal case; this is the illegal one, and the
+        // illegal one is what an attacker picks.
+        //
+        // The sizes are *declared*, not sent: a hostile catalog does not upload 64 MiB to make a
+        // reader plan for it.
+        const scene = world();
+        // Five records x two artifacts x 7 MiB = 70 MiB, past the 64 MiB ceiling — and every file
+        // individually under the 8 MiB per-artifact cap, so none is refused before it is counted.
+        const ids = ["glyph", "glyph2", "glyph3", "glyph4", "glyph5"];
+        const routes = catalogRoutes(scene, repeatedRecords(scene, ids));
+        for (const id of ids) {
+            routes[`/m3/parity/known-differences/${id}/mask.png`] = scene.mask;
+            routes[
+                `/m3/parity/known-differences/${id}/accepted-candidate.png`
+            ] = scene.accepted;
+        }
+        const each = 7 * 1024 * 1024;
+        const declaredSizes = Object.fromEntries(
+            ids.flatMap((id) =>
+                ["mask.png", "accepted-candidate.png"].map((file) => [
+                    `/m3/parity/known-differences/${id}/${file}`,
+                    each,
+                ]),
+            ),
+        );
+
+        const report = await withRecordingFetch(
+            routes,
+            { honourRange: true, declaredSizes },
+            async (requests) => {
+                const result = await evaluateComparison(
+                    SOURCES,
+                    scope(scene),
+                    {},
+                );
+                const artifactRequests = requests.filter((request) =>
+                    request.url.startsWith("/m3/parity/known-differences/"),
+                );
+                assert.equal(
+                    artifactRequests.length,
+                    10,
+                    "every declared path is still sized",
+                );
+                for (const request of artifactRequests) {
+                    assert.equal(
+                        request.range,
+                        "bytes=0-4095",
+                        `a body was fetched for a refused document: ${request.url}`,
+                    );
+                }
+                return result;
+            },
+        );
+        // And the verdict is the engine's own, unchanged by the adapter having skipped the round.
+        assert.equal(report.documentRejected, true);
+    });
+
+    it("still fetches when the records the engine reads are under the ceiling", async () => {
+        // The test that separates this gate from the naive one. Summing every path the *document
+        // names* is an upper bound on the engine's total: `id-not-safe`, a schema failure,
+        // `orphaned-target` and `path-not-contained` all refuse a record before its first read, so
+        // their artifacts never count toward `maxTotalArtifactBytes`.
+        //
+        // Here one legal record is small and one `id-not-safe` record declares 80 MiB. The naive sum
+        // is over the ceiling; the engine's is not. Gating on the naive sum would skip round two, and
+        // the legal record — which the engine does ask to decode — would come back
+        // `artifact-unreadable`: a verdict changed by a planner, on a document the engine evaluated.
+        const scene = world();
+        const doc = withUnreadableRecord(scene);
+        const routes = catalogRoutes(scene, doc);
+        routes["/m3/parity/known-differences/bad id/mask.png"] = scene.mask;
+        routes["/m3/parity/known-differences/bad id/accepted-candidate.png"] =
+            scene.accepted;
+        const huge = 40 * 1024 * 1024; // 2 x 40 MiB, all of it on the record nobody reads.
+        const declaredSizes = {
+            "/m3/parity/known-differences/bad id/mask.png": huge,
+            "/m3/parity/known-differences/bad id/accepted-candidate.png": huge,
+        };
+
+        const report = await withRecordingFetch(
+            routes,
+            { honourRange: true, declaredSizes },
+            async (requests) => {
+                const result = await evaluateComparison(
+                    SOURCES,
+                    scope(scene),
+                    {},
+                );
+                // The safety property, asserted where it bites: every path the engine actually reads
+                // was fetched whole.
+                const whole = requests.filter(
+                    (request) =>
+                        request.url.startsWith(
+                            "/m3/parity/known-differences/glyph/",
+                        ) && request.range === null,
+                );
+                assert.equal(
+                    whole.length,
+                    2,
+                    "the evaluated record's bodies were never fetched",
+                );
+                return result;
+            },
+        );
+        assert.deepEqual(report.statuses.glyph, { status: "valid" });
+        assert.equal(report.documentRejected, false);
+    });
+
+    it("charges a record twice when it names one file for both artifacts", async () => {
+        // A record may legitimately use the same path for `mask` and `acceptedCandidate` — the
+        // engine says so explicitly, and reads it twice and charges it twice. The fetch map holds it
+        // once, so a sum over map entries under-charges every such record and the ceiling arrives
+        // late: the browser retains full bodies for a document that is about to be rejected.
+        //
+        // Five records x one aliased file x 7 MiB charged twice = 70 MiB, past the 64 MiB ceiling —
+        // where counting unique paths sees 35 MiB and fetches everything.
+        //
+        // 7 MiB, not 9: an artifact past the 8 MiB per-artifact cap is refused per-record and never
+        // full-read anyway, so a larger figure makes this test pass for a reason that has nothing to
+        // do with the aliasing. The property is only observable in the band where each file is legal
+        // and the aggregate is not.
+        const scene = world();
+        const ids = ["glyph", "glyph2", "glyph3", "glyph4", "glyph5"];
+        const parsed = JSON.parse(knownDifferencesJson(scene)) as {
+            acceptances: Record<string, unknown>[];
+        };
+        const template = parsed.acceptances[0];
+        parsed.acceptances = ids.map((id) => ({
+            ...template,
+            id,
+            // One file, named twice. Its digest has to answer for both fields.
+            mask: "mask.png",
+            acceptedCandidate: "mask.png",
+            acceptedCandidateSha256: template.maskSha256,
+        }));
+        const routes = catalogRoutes(scene, JSON.stringify(parsed));
+        for (const id of ids) {
+            routes[`/m3/parity/known-differences/${id}/mask.png`] = scene.mask;
+        }
+        const declaredSizes = Object.fromEntries(
+            ids.map((id) => [
+                `/m3/parity/known-differences/${id}/mask.png`,
+                7 * 1024 * 1024,
+            ]),
+        );
+
+        await withRecordingFetch(
+            routes,
+            { honourRange: true, declaredSizes },
+            async (requests) => {
+                await evaluateComparison(SOURCES, scope(scene), {});
+                const whole = requests.filter(
+                    (request) =>
+                        request.url.startsWith(
+                            "/m3/parity/known-differences/",
+                        ) && request.range === null,
+                );
+                assert.equal(
+                    whole.length,
+                    0,
+                    `an aliased artifact was under-charged and its body fetched: ${whole.map((r) => r.url).join(", ")}`,
+                );
+            },
+        );
+    });
+
+    it("charges nothing for a record refused by the per-artifact cap", async () => {
+        // `preflightRecord` reads a record's two prefixes and then returns *before* assigning
+        // `artifactBytes` when either is past `maxArtifactBytes` — so the engine charges such a
+        // record zero toward the aggregate ceiling, while its declared size is the largest number in
+        // the document. A planner that counted it would over-estimate by gigabytes, skip round two,
+        // and turn a perfectly legal sibling into `artifact-unreadable`.
+        //
+        // Here one record declares 200 MiB per artifact (refused per-record, charged zero) beside one
+        // ordinary record the engine does read.
+        const scene = world();
+        const routes = catalogRoutes(
+            scene,
+            repeatedRecords(scene, ["glyph", "huge"]),
+        );
+        routes["/m3/parity/known-differences/huge/mask.png"] = scene.mask;
+        routes["/m3/parity/known-differences/huge/accepted-candidate.png"] =
+            scene.accepted;
+        const declaredSizes = {
+            "/m3/parity/known-differences/huge/mask.png": 200 * 1024 * 1024,
+            "/m3/parity/known-differences/huge/accepted-candidate.png":
+                200 * 1024 * 1024,
+        };
+
+        const report = await withRecordingFetch(
+            routes,
+            { honourRange: true, declaredSizes },
+            async (requests) => {
+                const result = await evaluateComparison(
+                    SOURCES,
+                    scope(scene),
+                    {},
+                );
+                const whole = requests.filter(
+                    (request) =>
+                        request.url.startsWith(
+                            "/m3/parity/known-differences/glyph/",
+                        ) && request.range === null,
+                );
+                assert.equal(
+                    whole.length,
+                    2,
+                    "the legal record's bodies were never fetched",
+                );
+                return result;
+            },
+        );
+        assert.deepEqual(report.statuses.glyph, { status: "valid" });
+    });
+
+    it("does not count records the catalog orphans toward the ceiling", async () => {
+        // The catalog-aware call site, and the reason `prefetch` needs the catalog the evaluation
+        // gets. `orphaned-target` is a *pre-read* refusal: the engine charges an orphaned record
+        // nothing toward the aggregate ceiling. A planner without the catalog cannot see that, counts
+        // every orphan, and over-estimates — which is the direction that skips round two for a
+        // document the engine evaluates and turns its readable records into `artifact-unreadable`.
+        //
+        // Four orphans at 7 MiB x 2 = 56 MiB the engine never charges, beside one resolvable record
+        // at 14 MiB it does. Catalog-blind the sum is 70 MiB and the gate fires; catalog-aware it is
+        // 14 MiB and the readable record is fetched.
+        const scene = world();
+        const ids = ["glyph", "orphan1", "orphan2", "orphan3", "orphan4"];
+        const routes = catalogRoutes(scene, repeatedRecords(scene, ids));
+        for (const id of ids) {
+            routes[`/m3/parity/known-differences/${id}/mask.png`] = scene.mask;
+            routes[
+                `/m3/parity/known-differences/${id}/accepted-candidate.png`
+            ] = scene.accepted;
+        }
+        const each = 7 * 1024 * 1024;
+        const declaredSizes = Object.fromEntries(
+            ids.flatMap((id) =>
+                ["mask.png", "accepted-candidate.png"].map((file) => [
+                    `/m3/parity/known-differences/${id}/${file}`,
+                    each,
+                ]),
+            ),
+        );
+        // Every record names the same preview, so the catalog resolves them all or none — which is
+        // no use here. The orphans are made orphans by giving the catalog a preview that matches
+        // only the first record's `referenceId`... except they share that too. So instead the
+        // catalog resolves the shared preview, and the orphans are re-pointed at one it lacks.
+        const parsed = JSON.parse(repeatedRecords(scene, ids)) as {
+            acceptances: Record<string, unknown>[];
+        };
+        for (const record of parsed.acceptances) {
+            if (record.id !== "glyph") record.previewId = "no-such-preview";
+        }
+        routes["/m3/parity/known-differences.json"] = JSON.stringify(parsed);
+        const template = JSON.parse(knownDifferencesJson(scene))
+            .acceptances[0] as Record<string, string>;
+        const catalog = {
+            previews: [
+                {
+                    system: template.system,
+                    id: template.previewId,
+                    component: template.component,
+                    variant: template.variant,
+                    referenceIds: [template.referenceId],
+                },
+            ],
+        };
+
+        const report = await withRecordingFetch(
+            routes,
+            { honourRange: true, declaredSizes },
+            async (requests) => {
+                const result = await walkCatalog(SOURCES, catalog);
+                const whole = requests.filter(
+                    (request) =>
+                        request.url.startsWith(
+                            "/m3/parity/known-differences/glyph/",
+                        ) && request.range === null,
+                );
+                assert.equal(
+                    whole.length,
+                    2,
+                    "the resolvable record's bodies were never fetched — the orphans were counted",
+                );
+                return result;
+            },
+        );
+        assert.equal(report.documentRejected, false);
+        assert.equal(report.statuses.orphan1?.status, "refused");
     });
 
     it("never reads an artifact whole when its prefix already refuses it", async () => {
@@ -398,18 +787,37 @@ describe("evaluateComparison", () => {
         // exhaustion reached through the guard meant to prevent it.
         const scene = world();
         const oversized = pngWithOversizedPlte();
-        const routes = catalogRoutes(scene, knownDifferencesJson(scene, { maskSha256: sha256Hex(oversized) }));
+        const routes = catalogRoutes(
+            scene,
+            knownDifferencesJson(scene, { maskSha256: sha256Hex(oversized) }),
+        );
         routes["/m3/parity/known-differences/glyph/mask.png"] = oversized;
 
-        const report = await withRecordingFetch(routes, { honourRange: true }, async (requests) => {
-            const result = await evaluateComparison(SOURCES, scope(scene), {});
-            const maskRequests = requests.filter((request) =>
-                request.url.endsWith("/glyph/mask.png"),
-            );
-            assert.equal(maskRequests.length, 1, "the refused mask is fetched once, not twice");
-            assert.equal(maskRequests[0].range, "bytes=0-4095", "and only as a prefix");
-            return result;
-        });
+        const report = await withRecordingFetch(
+            routes,
+            { honourRange: true },
+            async (requests) => {
+                const result = await evaluateComparison(
+                    SOURCES,
+                    scope(scene),
+                    {},
+                );
+                const maskRequests = requests.filter((request) =>
+                    request.url.endsWith("/glyph/mask.png"),
+                );
+                assert.equal(
+                    maskRequests.length,
+                    1,
+                    "the refused mask is fetched once, not twice",
+                );
+                assert.equal(
+                    maskRequests[0].range,
+                    "bytes=0-4095",
+                    "and only as a prefix",
+                );
+                return result;
+            },
+        );
         assert.deepEqual(report.statuses, {
             glyph: { status: "refused", reasons: ["header-invalid"] },
         });
@@ -432,7 +840,8 @@ describe("evaluateComparison", () => {
         globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
             const url = String(input);
             if (url.endsWith("/glyph/mask.png")) {
-                const ranged = new Headers(init?.headers ?? {}).get("Range") !== null;
+                const ranged =
+                    new Headers(init?.headers ?? {}).get("Range") !== null;
                 if (ranged) {
                     return Promise.resolve(
                         new Response("range not satisfiable", {
@@ -441,7 +850,9 @@ describe("evaluateComparison", () => {
                         }),
                     );
                 }
-                return Promise.resolve(new Response(new Uint8Array(0) as unknown as BodyInit));
+                return Promise.resolve(
+                    new Response(new Uint8Array(0) as unknown as BodyInit),
+                );
             }
             return base.impl(input, init);
         }) as typeof fetch;
@@ -470,9 +881,13 @@ describe("evaluateComparison", () => {
             const routes = catalogRoutes(scene, knownDifferencesJson(scene));
             const base = recordingFetch(routes, { honourRange: true });
             const original = globalThis.fetch;
-            globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+            globalThis.fetch = ((
+                input: RequestInfo | URL,
+                init?: RequestInit,
+            ) => {
                 const url = String(input);
-                const ranged = new Headers(init?.headers ?? {}).get("Range") !== null;
+                const ranged =
+                    new Headers(init?.headers ?? {}).get("Range") !== null;
                 // The prefix is served honestly; only the whole-body read is refused.
                 if (url.endsWith("/glyph/mask.png") && !ranged) {
                     return Promise.resolve(new Response("no", { status }));
@@ -480,7 +895,11 @@ describe("evaluateComparison", () => {
                 return base.impl(input, init);
             }) as typeof fetch;
             try {
-                const report = await evaluateComparison(SOURCES, scope(scene), {});
+                const report = await evaluateComparison(
+                    SOURCES,
+                    scope(scene),
+                    {},
+                );
                 assert.deepEqual(
                     report.statuses,
                     { glyph: { status: "refused", reasons: [token] } },
@@ -517,7 +936,10 @@ describe("evaluateComparison", () => {
         } finally {
             globalThis.fetch = original;
         }
-        assert.ok(peak <= 8, `at most eight artifact requests in flight, saw ${peak}`);
+        assert.ok(
+            peak <= 8,
+            `at most eight artifact requests in flight, saw ${peak}`,
+        );
     });
 
     it("keeps an artifact's true size when the response never declares one", async () => {
@@ -539,12 +961,23 @@ describe("evaluateComparison", () => {
             noisy.pixels[i + 2] = (i * 151) % 239;
         }
         const big = png(noisy);
-        assert.ok(big.length > 4096, "the artifact has to outgrow the prefix to show the bug");
-        const routes = catalogRoutes(scene, knownDifferencesJson(scene, { acceptedCandidateSha256: sha256Hex(big) }));
-        routes["/m3/parity/known-differences/glyph/accepted-candidate.png"] = big;
+        assert.ok(
+            big.length > 4096,
+            "the artifact has to outgrow the prefix to show the bug",
+        );
+        const routes = catalogRoutes(
+            scene,
+            knownDifferencesJson(scene, {
+                acceptedCandidateSha256: sha256Hex(big),
+            }),
+        );
+        routes["/m3/parity/known-differences/glyph/accepted-candidate.png"] =
+            big;
 
-        const report = await withRecordingFetch(routes, { honourRange: false, declareSize: false }, () =>
-            evaluateComparison(SOURCES, scope(scene), {}),
+        const report = await withRecordingFetch(
+            routes,
+            { honourRange: false, declareSize: false },
+            () => evaluateComparison(SOURCES, scope(scene), {}),
         );
         // Whatever the record's verdict is on its merits, it must not be "the file changed".
         const reasons = report.statuses.glyph?.reasons ?? [];
@@ -561,11 +994,16 @@ describe("evaluateComparison", () => {
         // oversized `PLTE` is `header-invalid` here too, rather than walking through to a decode.
         const scene = world();
         const oversized = pngWithOversizedPlte();
-        const routes = catalogRoutes(scene, knownDifferencesJson(scene, { maskSha256: sha256Hex(oversized) }));
+        const routes = catalogRoutes(
+            scene,
+            knownDifferencesJson(scene, { maskSha256: sha256Hex(oversized) }),
+        );
         routes["/m3/parity/known-differences/glyph/mask.png"] = oversized;
 
-        const report = await withRecordingFetch(routes, { honourRange: false }, () =>
-            evaluateComparison(SOURCES, scope(scene), {}),
+        const report = await withRecordingFetch(
+            routes,
+            { honourRange: false },
+            () => evaluateComparison(SOURCES, scope(scene), {}),
         );
         assert.deepEqual(report.statuses, {
             glyph: { status: "refused", reasons: ["header-invalid"] },
