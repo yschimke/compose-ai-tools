@@ -1663,6 +1663,12 @@ open class RobolectricHost(
         // get threaded across the sandbox boundary (see the field's doc on
         // `InteractiveCommand.Start`).
         touchOverlay = spec.overrides?.touchOverlay,
+        // …and the author-declared knob seeds, encoded as strings for the same boundary reason
+        // (see `InteractiveCommand.Start.namedOverrides`). `applyOverrides` has already layered the
+        // live bag over the preview's own `@OverrideVariant` seed, so this is the value the held
+        // composition must read — without it every knob composed at its author default and a
+        // seeded variant drew its base state in Live (yschimke/wear-m3-catalog#83).
+        namedOverrides = HeldNamedOverrides.encode(spec.overrides?.namedOverrides),
         // Preview flavour — lets the held-rule loop route tile / notification / Glance previews
         // through their non-composable strategies instead of `getDeclaredComposableMethod`, which
         // those previews never satisfy. Without it the start reply errors and live mode blanks the
@@ -3096,9 +3102,19 @@ open class RobolectricHost(
                         // `ldrtl`), so a live session browsed at `?localeTag=ar-XB` mirrored but
                         // showed plain, un-pseudolocalised strings (#4371). `withPseudolocaleFrom`
                         // ignores every real locale, which the qualifier path already serves.
+                        //
+                        // `namedOverrides` joins them for the plain-Compose knob planner, decoded
+                        // here so the values are the sandbox classloader's own — a host-side
+                        // `PreviewOverrideValue` would fail the controller's typed reads even if it
+                        // crossed. Omitting it planned every held composition with an empty seed,
+                        // so an `@OverrideVariant` cell browsed in Live drew its base state and a
+                        // knob edited in the viewer did nothing (yschimke/wear-m3-catalog#83).
                         val syntheticOverrides =
                           ee.schimke.composeai.daemon.protocol
-                            .PreviewOverrides(touchOverlay = start.touchOverlay)
+                            .PreviewOverrides(
+                              touchOverlay = start.touchOverlay,
+                              namedOverrides = HeldNamedOverrides.decode(start.namedOverrides),
+                            )
                             .withPseudolocaleFrom(start.localeTag)
                         ComposeDataExtensionPipeline.Apply(
                           extensions = engine.previewOverrideExtensions.plan(syntheticOverrides),
