@@ -602,6 +602,113 @@ class ServeCatalogStoreTest {
     assertEquals("button-figma", loaded.issues.single().referenceIds.single())
   }
 
+  /**
+   * Load a catalog whose known-difference document and one artifact answer with [documentOutcome]
+   * and [artifactOutcome].
+   */
+  private fun loadWithKnownDifferenceOutcomes(
+    documentOutcome: (ByteArray) -> BranchFetch,
+    artifactOutcome: BranchFetch,
+  ): ServeHost {
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png"}]}]}
+      """
+        .trimIndent()
+    val document =
+      """
+      {"schema":"compose-preview-known-differences/v1","acceptances":[
+        {"id":"glyph","issue":"https://github.com/yschimke/m3-catalog/issues/40",
+         "mask":"mask.png","acceptedCandidate":"accepted-candidate.png"}]}
+      """
+        .trimIndent()
+        .encodeToByteArray()
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        networkFetch = { url, _ ->
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") ->
+              BranchFetch.Ok(catalog.encodeToByteArray())
+            url.endsWith("/parity/known-differences.json") -> documentOutcome(document)
+            url.endsWith("/parity/known-differences/glyph/mask.png") -> artifactOutcome
+            url.endsWith("/parity/known-differences/glyph/accepted-candidate.png") ->
+              BranchFetch.Ok("accepted".encodeToByteArray())
+            url.endsWith(".png") -> BranchFetch.Ok(png())
+            else -> BranchFetch.NotFound
+          }
+        },
+      )
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+    return registered.getValue("compose-m3")
+  }
+
+  @Test
+  fun `an artifact past the transport ceiling is too large, not missing`() {
+    // The contract distinguishes `artifact-too-large` (413) from `artifact-unreadable` (404), and
+    // the staging path stages over-sized files precisely so the reader can answer the first from a
+    // file's length. Above the transport's own ceiling nothing arrives — and that used to reach the
+    // stager as the same `null` a real 404 gives, so the verdict silently became the second one at
+    // exactly the sizes where "too large" is least in doubt.
+    val host =
+      loadWithKnownDifferenceOutcomes(
+        documentOutcome = { BranchFetch.Ok(it) },
+        artifactOutcome = BranchFetch.TooLarge(25L * 1024 * 1024),
+      )
+
+    assertTrue(
+      host.knownDifferenceArtifact("glyph/mask.png") is ServeKnownDifferences.Artifact.TooLarge,
+      "a size refusal must reach the engine as too-large, not as a missing file",
+    )
+    // The record's other artifact is untouched: the refusal is per-file, not a reason to abandon
+    // the record or the refresh.
+    assertTrue(
+      host.knownDifferenceArtifact("glyph/accepted-candidate.png")
+        is ServeKnownDifferences.Artifact.Bytes
+    )
+  }
+
+  @Test
+  fun `an artifact the branch really lacks stays unreadable`() {
+    // The other half, and the reason this cannot simply mark everything that fails: a 404 is a
+    // genuine absence and `artifact-unreadable` is the correct verdict for it. Marking it would
+    // manufacture a 413 for a file the producer never published.
+    val host =
+      loadWithKnownDifferenceOutcomes(
+        documentOutcome = { BranchFetch.Ok(it) },
+        artifactOutcome = BranchFetch.NotFound,
+      )
+
+    assertTrue(
+      host.knownDifferenceArtifact("glyph/mask.png") is ServeKnownDifferences.Artifact.Unreadable,
+      "an absent artifact must stay unreadable",
+    )
+  }
+
+  @Test
+  fun `a document past the transport ceiling is too large, and names no artifacts`() {
+    val host =
+      loadWithKnownDifferenceOutcomes(
+        documentOutcome = { BranchFetch.TooLarge(25L * 1024 * 1024) },
+        artifactOutcome = BranchFetch.Ok("mask".encodeToByteArray()),
+      )
+
+    assertTrue(
+      host.knownDifferences() is ServeKnownDifferences.Document.TooLarge,
+      "a document refused by size must reach the engine as too-large",
+    )
+    // A document the reader refuses whole names nothing the engine will read, so no artifact was
+    // staged for it — the same reasoning that makes an over-sized *fetched* document contribute no
+    // paths.
+    assertTrue(
+      host.knownDifferenceArtifact("glyph/mask.png") !is ServeKnownDifferences.Artifact.Bytes,
+      "artifacts were staged for a document the engine refuses whole",
+    )
+  }
+
   @Test
   fun `catalog stages the published known differences, document and artifacts`() {
     // The failure this guards is silent: `knownDifferences()` reads the staging tree, so a document

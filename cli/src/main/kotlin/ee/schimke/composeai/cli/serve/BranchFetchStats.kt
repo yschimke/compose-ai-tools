@@ -45,6 +45,7 @@ class BranchFetchStats(private val clock: () -> Long = System::currentTimeMillis
   private var throttled = 0L
   private var unavailable = 0L
   private var transport = 0L
+  private var tooLarge = 0L
   private var lastThrottleAtEpochMillis: Long? = null
   private var lastFailureAtEpochMillis: Long? = null
   private var lastFailureReason: String? = null
@@ -74,8 +75,17 @@ class BranchFetchStats(private val clock: () -> Long = System::currentTimeMillis
         }
         is BranchFetch.Unavailable -> unavailable++
         is BranchFetch.Transport -> transport++
+        is BranchFetch.TooLarge -> tooLarge++
       }
-      if (outcome !is BranchFetch.Ok && outcome !is BranchFetch.NotFound) {
+      // `lastFailure*` describes the **branch host**, which is what an operator reads it for. A
+      // size refusal is a fact about what the catalog published — this server declining to buffer
+      // it — so it belongs with `notFound` rather than beside a throttle or an outage. Counting it
+      // as the last failure would make a large published asset look like the branch misbehaving.
+      if (
+        outcome !is BranchFetch.Ok &&
+          outcome !is BranchFetch.NotFound &&
+          outcome !is BranchFetch.TooLarge
+      ) {
         lastFailureAtEpochMillis = clock()
         lastFailureReason = outcome.summary.take(MAX_REASON_CHARS)
       }
@@ -93,6 +103,7 @@ class BranchFetchStats(private val clock: () -> Long = System::currentTimeMillis
         throttled = throttled,
         unavailable = unavailable,
         transport = transport,
+        tooLarge = tooLarge,
         lastThrottleAtEpochMillis = lastThrottleAtEpochMillis,
         lastFailureAtEpochMillis = lastFailureAtEpochMillis,
         lastFailureReason = lastFailureReason,
@@ -109,8 +120,9 @@ class BranchFetchStats(private val clock: () -> Long = System::currentTimeMillis
  * Delivery-branch read counters on `/status.json` (`branchFetch`).
  *
  * `notFound` is **not** an error: a catalog legitimately declares assets a given revision never
- * published, and the lane is built to answer that cheaply. The three that mean something is wrong
- * with the *branch host* rather than with the catalog are [throttled], [unavailable] and
+ * published, and the lane is built to answer that cheaply. Neither is [tooLarge], which says the
+ * catalog published something past this server's per-asset ceiling. The three that mean something
+ * is wrong with the *branch host* rather than with the catalog are [throttled], [unavailable] and
  * [transport] — those are the ones to alert on.
  */
 @Serializable
@@ -133,6 +145,15 @@ data class BranchFetchSnapshot(
   val unavailable: Long,
   /** Never got an answer: timeout, DNS, TLS, reset. */
   val transport: Long,
+  /**
+   * Bodies past the transport's own per-asset ceiling, refused without being kept.
+   *
+   * Like [notFound] and unlike the three above it, this is a statement about what the *catalog*
+   * published rather than about the branch host being unwell — so it is not something to alert on
+   * by itself. It is worth counting because it is otherwise invisible: the read is not an error,
+   * returns no bytes, and used to be indistinguishable from an asset that was never published.
+   */
+  val tooLarge: Long = 0,
   val lastThrottleAtEpochMillis: Long? = null,
   val lastFailureAtEpochMillis: Long? = null,
   val lastFailureReason: String? = null,

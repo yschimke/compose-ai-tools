@@ -61,6 +61,29 @@ sealed interface BranchFetch {
   /** Never got an answer: connect/read timeout, DNS, TLS, reset. */
   data class Transport(val detail: String) : BranchFetch
 
+  /**
+   * The branch served a body past the transport's own ceiling, so nothing was kept.
+   *
+   * **A refusal, not an absence, and that difference is the point.** The size cap used to surface
+   * as a thrown `IllegalArgumentException` from deep inside the reader — not an `IOException`, so
+   * it escaped the transport's own `catch` and reached whichever caller happened to be on the
+   * stack. Callers that wrap their read in `runCatching` turned it into `null`; the several that do
+   * not still see it as an exception out of a function whose whole purpose is to answer with an
+   * outcome. Either way the fact that a file *existed and was too big* was destroyed.
+   *
+   * That mattered in one place with a contract behind it. `compose-preview-known-differences/v1`
+   * distinguishes `document-too-large`/`artifact-too-large` (413) from `artifact-unreadable` (404),
+   * and the staging path stages over-sized files precisely so the reader can answer the first from
+   * a file's length. Above the transport ceiling the file never arrived, so a 413 became a 404: a
+   * different verdict, and one that hides why.
+   *
+   * [limitBytes] is the ceiling that refused it, not the body's size — nothing measured the body,
+   * which is the whole point of stopping.
+   *
+   * Not [isTransient]: asking again will not make the file smaller.
+   */
+  data class TooLarge(val limitBytes: Long) : BranchFetch
+
   /** The bytes, or null for every failure — the shape the pre-existing call sites still want. */
   val bytesOrNull: ByteArray?
     get() = (this as? Ok)?.bytes
@@ -82,6 +105,7 @@ sealed interface BranchFetch {
         is Unavailable ->
           "unavailable ($status)" + (retryAfterSeconds?.let { " (retry after ${it}s)" } ?: "")
         is Transport -> "transport: $detail"
+        is TooLarge -> "too large (over $limitBytes bytes)"
       }
 
   companion object {

@@ -2034,6 +2034,14 @@ class ServeCatalogStore(
    * substitute silence — a missing file, which is the *different* verdict `unreadable` — for a
    * refusal the reader already knows how to voice.
    *
+   * **And above the transport's own ceiling, where there is nothing to stage.** That ceiling
+   * ([MAX_FETCH_BYTES], 25 MiB) is far above the contract's, so between the two a file arrives and
+   * is staged whole. Past it the read is refused and no bytes exist — which used to arrive here as
+   * the same `null` a real 404 gives, collapsing `too-large` into `unreadable` at precisely the
+   * sizes where "too large" is least in doubt. [BranchFetch.TooLarge] now carries that refusal, and
+   * a marker is staged whose *length alone* is past the contract ceiling ([writeOversizedMarker]) —
+   * the reader measures it, refuses by size, and the verdict is the one that actually happened.
+   *
    * Each artifact path is checked with the reader's own lexical rule before anything is fetched or
    * written ([ServeKnownDifferences.isLookupPath]), so a path the host would refuse to look up
    * never lands in the staging tree — and, since the rule admits only portable segments, cannot
@@ -2048,13 +2056,57 @@ class ServeCatalogStore(
    * the artifacts stream to disk through the same bounded helper every other bulk lane here uses,
    * so a refresh holds one artifact per worker rather than a whole wave.
    */
+  /**
+   * Leave a file whose **length alone** is past [ceilingBytes], so the reader refuses it by size.
+   *
+   * [ServeKnownDifferences.document] and [ServeKnownDifferences.artifact] both answer `TooLarge`
+   * from `metadata.size`, before a byte is read — deliberately, so measuring a hostile file cannot
+   * exhaust the process. That is exactly the seam a marker needs: the verdict depends on the
+   * length, and on nothing else.
+   *
+   * Written **sparse** — `setLength` reserves the length without allocating blocks on any
+   * filesystem that supports holes — because the honest alternative is not cheap. The pathological
+   * case here is 256 records × 2 artifacts, and 8 MiB of real zeroes each would be 4 GiB of staging
+   * disk written to say "this was too big to fetch". A hole costs the inode. Where the filesystem
+   * has no holes it falls back to allocating, which still writes strictly less than staging the
+   * real file would have: the file that triggered this was over the transport's 25 MiB ceiling, and
+   * the marker is the contract's 8 MiB.
+   *
+   * The bytes are never read, so their content is irrelevant — which is the point. This is not a
+   * counterfeit of the file; it is a record of the refusal, in the one dimension the reader asks
+   * about.
+   */
+  private fun writeOversizedMarker(target: File, ceilingBytes: Long): Boolean = runCatching {
+    target.parentFile?.mkdirs()
+    java.io.RandomAccessFile(target, "rw").use { it.setLength(ceilingBytes + 1) }
+  }
+    .isSuccess
+
   private fun writeKnownDifferences(base: String, staging: File) {
     val dirName = ServeKnownDifferences.DIRECTORY
-    val documentBytes =
-      runCatching {
-        fetchCatalogAsset("$base$dirName/${ServeKnownDifferences.DOCUMENT_FILE}")
-      }
-        .getOrNull() ?: return
+    val documentUrl = "$base$dirName/${ServeKnownDifferences.DOCUMENT_FILE}"
+    val documentOutcome =
+      runCatching { fetchCatalogAssetOutcome(documentUrl) }.getOrNull() ?: return
+
+    // **Above the transport's ceiling the file never arrives, and "never arrived" is not what
+    // happened.** The contract says a document past `maxDocumentBytes` is `document-too-large`/413;
+    // discarding the outcome and keeping only the bytes turned that into a missing file, which the
+    // engine reports as `document-unreadable`/404 — a different verdict, and one that hides why.
+    // The marker restores it: the reader measures the length, refuses by size, and the route serves
+    // the 413 that was always the right answer.
+    if (documentOutcome is BranchFetch.TooLarge) {
+      File(staging, dirName).mkdirs()
+      writeOversizedMarker(
+        File(staging, "$dirName/${ServeKnownDifferences.DOCUMENT_FILE}"),
+        ServeKnownDifferences.MAX_DOCUMENT_BYTES.toLong(),
+      )
+      // No artifacts. A document the reader refuses whole names nothing the engine will read, which
+      // is the same reason [knownDifferenceArtifactPaths] returns none for an over-sized one it
+      // *did* manage to fetch.
+      return
+    }
+
+    val documentBytes = documentOutcome.bytesOrNull ?: return
 
     val artifactRoot = "$dirName/${ServeKnownDifferences.ARTIFACT_DIRECTORY}"
     // **Streamed to disk, never accumulated.** Each worker holds only the artifact it is writing,
@@ -2076,7 +2128,14 @@ class ServeCatalogStore(
     fetchCatalogAssetsToFiles(
       knownDifferenceArtifactPaths(documentBytes).map { path ->
         "$base$artifactRoot/$path" to File(staging, "$artifactRoot/$path")
-      }
+      },
+      // The artifact half of the same distinction. Between the contract's 8 MiB and the transport's
+      // 25 MiB the file arrives and is staged whole, and the reader refuses it from its length.
+      // Above 25 MiB nothing arrives, and without this the record silently becomes
+      // `artifact-unreadable` instead of `artifact-too-large`.
+      onOversized = { target ->
+        writeOversizedMarker(target, ServeKnownDifferences.MAX_ARTIFACT_BYTES.toLong())
+      },
     )
 
     File(staging, dirName).mkdirs()
@@ -3068,9 +3127,14 @@ class ServeCatalogStore(
     }
 
     /**
-     * A single attempt. Only [java.io.IOException] becomes [BranchFetch.Transport]: the size cap in
-     * [readCapped] throws too, and it must keep propagating rather than being retried — the asset
-     * will be exactly as oversized the second time, and the existing call sites already catch it.
+     * A single attempt. Only [java.io.IOException] becomes [BranchFetch.Transport]; the size cap
+     * becomes [BranchFetch.TooLarge], which is not transient, so the retry loop stops on it — the
+     * asset will be exactly as oversized the second time.
+     *
+     * That cap used to *throw* from [readCapped], past this `catch` and out to whichever caller was
+     * on the stack. Making it an outcome is what lets a writer that has a contract about size say
+     * so; every other caller reads [BranchFetch.bytesOrNull] and sees the same `null` it saw when
+     * the exception was swallowed.
      */
     private fun httpFetchOnce(url: String, maxBytes: Long): BranchFetch =
       try {
@@ -3082,7 +3146,8 @@ class ServeCatalogStore(
             )
           } else {
             val body = response.body
-            BranchFetch.Ok(readCapped(body.byteStream(), maxBytes))
+            readCapped(body.byteStream(), maxBytes)?.let { BranchFetch.Ok(it) }
+              ?: BranchFetch.TooLarge(maxBytes)
           }
         }
       } catch (e: java.io.IOException) {
@@ -3111,7 +3176,18 @@ class ServeCatalogStore(
         BranchFetch.Transport(e::class.simpleName ?: "IOException")
       }
 
-    private fun readCapped(input: InputStream, max: Long): ByteArray {
+    /**
+     * Read at most [max] bytes, or **null** once that is exceeded — stopping there rather than
+     * buffering a deliberately huge response into the server's heap.
+     *
+     * Null rather than a thrown `require`, which is what this did. `IllegalArgumentException` is
+     * not an `IOException`, so it went straight past [httpFetchOnce]'s own `catch` and out of a
+     * function whose entire contract is to answer with a [BranchFetch]. Callers wrapping their read
+     * in `runCatching` silently got `null`; the several that do not got an exception from the
+     * middle of a load. Either way "the file exists and is too big" was destroyed, which is a
+     * verdict `compose-preview-known-differences/v1` requires a consumer to be able to reach.
+     */
+    private fun readCapped(input: InputStream, max: Long): ByteArray? {
       val out = ByteArrayOutputStream()
       val buffer = ByteArray(64 * 1024)
       var total = 0L
@@ -3119,7 +3195,7 @@ class ServeCatalogStore(
         val n = input.read(buffer)
         if (n < 0) break
         total += n
-        require(total <= max) { "catalog file exceeds ${max / (1024 * 1024)}MB" }
+        if (total > max) return null
         out.write(buffer, 0, n)
       }
       return out.toByteArray()
@@ -3350,6 +3426,13 @@ class ServeCatalogStore(
   private fun fetchCatalogAssetsToFiles(
     plan: List<Pair<String, File>>,
     stillWanted: () -> Boolean = { true },
+    /**
+     * What to leave behind when the transport refuses an asset by size, for the one lane whose
+     * contract distinguishes "too large" from "absent". Absent by default: for every other bulk
+     * lane a refused asset really is nothing to serve, and inventing a placeholder would be worse
+     * than the gap.
+     */
+    onOversized: ((File) -> Boolean)? = null,
   ): Set<String> {
     if (plan.isEmpty()) return emptySet()
     val pool =
@@ -3366,7 +3449,13 @@ class ServeCatalogStore(
             val previous = activeFetchScope.get()
             activeFetchScope.set(submitting)
             try {
-              val bytes = runCatching { fetchCatalogAsset(url) }.getOrNull() ?: return@submit false
+              val outcome = runCatching { fetchCatalogAssetOutcome(url) }.getOrNull()
+              if (outcome is BranchFetch.TooLarge && onOversized != null) {
+                // Re-checked before the write for the same reason the byte path re-checks it.
+                if (!stillWanted()) return@submit false
+                return@submit runCatching { onOversized(target) }.getOrDefault(false)
+              }
+              val bytes = outcome?.bytesOrNull ?: return@submit false
               // Re-checked immediately before the write, not just once per wave: a fetch started
               // for
               // one catalog generation must not land in the directory a refresh has since swapped
