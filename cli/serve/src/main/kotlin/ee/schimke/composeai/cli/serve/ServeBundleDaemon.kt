@@ -48,7 +48,7 @@ import okio.Path.Companion.toPath
  * `android-all-instrumented` jar (network + cold-start latency). Missing either → `null` + a clear
  * log, same fail-soft as a missing desktop sidecar.
  */
-internal object ServeBundleDaemon {
+public object ServeBundleDaemon {
 
   /**
    * Live-seat cost ([LiveSeatLimiter] permits) of an **Android/Robolectric** catalog daemon. It
@@ -540,7 +540,7 @@ internal object ServeBundleDaemon {
    * `previews/<id>.overrides.json` sidecar (in [previewsDir]) so the daemon-backed session
    * advertises what's editable.
    */
-  internal fun readPreviews(
+  public fun readPreviews(
     previewsJson: File,
     previewsDir: File,
     fileSystem: FileSystem,
@@ -580,7 +580,7 @@ internal object ServeBundleDaemon {
    * the PNG-side extraction in [ServeBundleStore]; other bundle entries are handled elsewhere
    * ([extractBundleClassesAndManifest]).
    */
-  internal fun extractKnobSidecars(zipBytes: ByteArray, previewsDir: File, fileSystem: FileSystem) {
+  public fun extractKnobSidecars(zipBytes: ByteArray, previewsDir: File, fileSystem: FileSystem) {
     val root = previewsDir.canonicalFile.toPath()
     java.util.zip.ZipInputStream(java.io.ByteArrayInputStream(zipBytes)).use { zin ->
       while (true) {
@@ -710,7 +710,7 @@ internal object ServeBundleDaemon {
    * kotlinx-serialization: the daemon's generated JSON-RPC serializers and its runtime must stay
    * version-aligned.
    */
-  internal fun bundleDaemonClasspaths(
+  public fun bundleDaemonClasspaths(
     classesDir: File,
     extraClasspathDirs: List<File>,
     embeddedLibJars: List<File>,
@@ -749,7 +749,7 @@ internal object ServeBundleDaemon {
     )
   }
 
-  internal data class BundleDaemonClasspaths(
+  public data class BundleDaemonClasspaths(
     val daemonClasspath: List<String>,
     val userClassPath: String,
   )
@@ -758,7 +758,7 @@ internal object ServeBundleDaemon {
    * Dependencies whose packages [ee.schimke.composeai.daemon.UserClassLoaderHolder] deliberately
    * resolves from the parent and whose consumer ABI must therefore win over the baked sidecar.
    */
-  internal fun shouldPrecedeDaemonSidecar(coordinate: BundleReader.ClasspathEntry.Maven): Boolean =
+  public fun shouldPrecedeDaemonSidecar(coordinate: BundleReader.ClasspathEntry.Maven): Boolean =
     coordinate.group.startsWith("androidx.") ||
       // Compose Multiplatform artifacts are `org.jetbrains.compose.*` by GROUP but ship
       // `androidx.compose.*` PACKAGES — the same overlap [ValidateComposePreviewClasspathTask]
@@ -793,7 +793,7 @@ internal object ServeBundleDaemon {
    * `kotlinx-coroutines` / `kotlinx-io` the kotlinx artifacts whose namespaces
    * `UserClassLoaderHolder` delegates to the daemon parent.
    */
-  internal fun jarPrecedesDaemonSidecar(jar: File): Boolean {
+  public fun jarPrecedesDaemonSidecar(jar: File): Boolean {
     val path = jar.path.replace('\\', '/')
     return path.contains("/androidx") ||
       JETBRAINS_COMPOSE_ARTIFACT_PATH.containsMatchIn(path) ||

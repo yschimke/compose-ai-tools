@@ -43,7 +43,7 @@ enum class CatalogRefreshResult {
  *   Defaults to [gitLsRemoteHead]; injected so tests drive change detection without a network.
  * @param intervalMillis poll cadence; the first tick fires one interval after [start].
  */
-internal class ServeCatalogRefresher(
+public class ServeCatalogRefresher(
   private val entries: () -> List<Entry>,
   private val reload: (system: String, repo: String) -> ServeCatalogStore.Result?,
   private val intervalMillis: Long,
@@ -246,7 +246,7 @@ internal class ServeCatalogRefresher(
  * failure (git absent, network error, unknown branch), which the refresher treats as "can't check,
  * skip". Best-effort with a bounded wait so a hung remote can't wedge the poll thread.
  */
-internal fun gitLsRemoteHead(repo: String, branch: String): String? = runCatching {
+public fun gitLsRemoteHead(repo: String, branch: String): String? = runCatching {
   val proc =
     ProcessBuilder("git", "ls-remote", "https://github.com/$repo.git", "refs/heads/$branch")
       .redirectErrorStream(true)

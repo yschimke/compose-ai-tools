@@ -213,7 +213,7 @@ class ServeKnownDifferencesTest {
     // guessed one would refuse what the engine calls legal — and the disagreement would surface as
     // a record that evaluates on one consumer and 413s on the other.
     val source =
-      File("../scripts/design-artifacts/known-differences.mjs").let {
+      File(repoRoot(), "scripts/design-artifacts/known-differences.mjs").let {
         if (it.exists()) it else File("scripts/design-artifacts/known-differences.mjs")
       }
     assertTrue(source.exists(), "the reference implementation moved: ${source.absolutePath}")

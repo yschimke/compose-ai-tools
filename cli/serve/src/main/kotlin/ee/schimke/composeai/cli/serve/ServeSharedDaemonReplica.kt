@@ -4,7 +4,7 @@ import java.io.File
 import java.nio.file.Files
 
 /** Open one daemon replica with private render and data output directories. */
-internal fun openIsolatedSharedDaemonReplica(
+public fun openIsolatedSharedDaemonReplica(
   descriptorPath: File,
   open: (systemPropertyOverrides: Map<String, String>) -> ServeHost,
 ): ServeHost {

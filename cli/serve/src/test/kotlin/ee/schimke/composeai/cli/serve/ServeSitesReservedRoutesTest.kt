@@ -53,7 +53,10 @@ class ServeSitesReservedRoutesTest {
 
   private val source: String
     get() =
-      File(repoRoot(), "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeHttpServer.kt")
+      File(
+          repoRoot(),
+          "cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeHttpServer.kt",
+        )
         .also { assertTrue(it.isFile, "routing block not found at $it") }
         .readText()
 

@@ -40,9 +40,9 @@
     ],
     "rc_player_tests": [
       "rc-player/**",
-      "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/**",
-      "cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/viewer.js",
-      "cli/src/test/kotlin/ee/schimke/composeai/cli/serve/**",
+      "cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/**",
+      "cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/viewer.js",
+      "cli/serve/src/test/kotlin/ee/schimke/composeai/cli/serve/**",
       "scripts/design-artifacts/rc-compare*",
       "scripts/design-artifacts/rc-chromium*",
       "scripts/design-artifacts/rc-cmp-wasm-*",
@@ -116,8 +116,8 @@
       "scripts/test_check_daemon_launch_schema.py",
       "**/*.kt",
       "**/*.ts",
-      "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/**",
-      "cli/src/test/kotlin/ee/schimke/composeai/cli/serve/**"
+      "cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/**",
+      "cli/serve/src/test/kotlin/ee/schimke/composeai/cli/serve/**"
     ],
     "design_artifacts": [
       "design-map/**",
@@ -146,7 +146,7 @@
       "bundle/coordinates/**",
       "mcp/**",
       "renderers/xr-client/**",
-      "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/**"
+      "cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/**"
     ]
   }
 }

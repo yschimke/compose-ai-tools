@@ -74,7 +74,7 @@
       "why": "`:render-session-subprocess` writes its own descriptors for the bundle daemons it spawns, stamping this private copy. It is one of the twelve published contract modules an extracted preview server links against (#3824), so post-split a stale mirror here is cross-repo version skew no compiler sees."
     },
     {
-      "file": "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt",
+      "file": "cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt",
       "symbol": "DAEMON_LAUNCH_SCHEMA_VERSION",
       "role": "second writer",
       "why": "serve stamps this into the catalog and playground bundle descriptors it writes. Named `DAEMON_LAUNCH_\u2026` rather than `\u2026DESCRIPTOR_\u2026`, which is how it sat outside the first cut of this check \u2014 the reason discovery now also works by use (`discover_version_stamps`) and not by name alone. It moves with serve at the split, making it a cross-repo mirror of the plugin's constant."
@@ -155,7 +155,7 @@
         "encodeDefaults": "true",
         "explicitNulls": "true"
       },
-      "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt": {
+      "cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt": {
         "encodeDefaults": "true"
       }
     },

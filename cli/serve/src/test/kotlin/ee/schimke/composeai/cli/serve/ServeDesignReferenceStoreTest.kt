@@ -227,7 +227,7 @@ class ServeDesignReferenceStoreTest {
     // pair that has to: the browser mints the number and the host decides whether to print it, so a
     // host reading the wrong version would discard every current match or trust every stale one.
     val source =
-      File("../cli/serve-web/src/scorer/tuning.ts").let {
+      File(repoRoot(), "cli/serve-web/src/scorer/tuning.ts").let {
         if (it.exists()) it else File("cli/serve-web/src/scorer/tuning.ts")
       }
     assertTrue(source.exists(), "the scorer's tuning moved: ${source.absolutePath}")

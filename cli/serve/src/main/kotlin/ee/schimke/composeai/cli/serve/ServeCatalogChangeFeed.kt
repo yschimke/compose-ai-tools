@@ -34,7 +34,7 @@ import kotlinx.serialization.json.jsonObject
  * requests.
  */
 class ServeCatalogChangeFeed
-internal constructor(
+public constructor(
   private val entries: () -> List<CatalogLoadTracker.Config>,
   private val cacheRoot: File,
   private val idleTimeoutMillis: Long,
@@ -155,7 +155,7 @@ internal constructor(
   }
 
   /** One activity pass. Package-visible so lease expiry is deterministic in tests. */
-  internal fun tick() {
+  public fun tick() {
     val configs = entries().associateBy { it.system }
     val at = now()
     for ((key, state) in states) {
@@ -165,12 +165,12 @@ internal constructor(
     }
   }
 
-  internal fun isActive(system: String, baseUrl: String, linkQuery: String = ""): Boolean =
+  public fun isActive(system: String, baseUrl: String, linkQuery: String = ""): Boolean =
     states[Key(system, baseUrl.trimEnd('/'), linkQuery.removePrefix("?"))]?.activeUntil?.let {
       it > now()
     } == true
 
-  internal fun stateCount(): Int = states.size
+  public fun stateCount(): Int = states.size
 
   private fun enqueue(key: Key, config: CatalogLoadTracker.Config, state: State) {
     if (!state.building.compareAndSet(false, true)) return
@@ -247,9 +247,9 @@ internal constructor(
   companion object {
     private val COMMIT = Regex("[0-9a-f]{40}")
     private const val CACHE_VERSION = "2"
-    internal const val MAX_FEED_ADDRESSES = 64
+    public const val MAX_FEED_ADDRESSES = 64
 
-    internal fun safeName(value: String): String =
+    public fun safeName(value: String): String =
       value.replace(Regex("[^A-Za-z0-9._-]+"), "-").trim('-').ifBlank { "catalog" }
 
     private fun digest(value: String): String =
@@ -260,21 +260,21 @@ internal constructor(
 }
 
 /** A fully materialised, newest-first slice of one delivery branch. */
-internal data class CatalogFeedHistory(
+public data class CatalogFeedHistory(
   val title: String?,
   val revisions: List<CatalogFeedRevision>,
   val batches: List<CatalogFeedBatch>,
   val repo: String? = null,
 )
 
-internal data class CatalogFeedRevision(
+public data class CatalogFeedRevision(
   val commit: String,
   val date: String,
   val subject: String,
   val sourceSha: String?,
 )
 
-internal enum class CatalogPreviewChangeKind {
+public enum class CatalogPreviewChangeKind {
   ADDED,
   DELETED,
   CHANGED,
@@ -282,7 +282,7 @@ internal enum class CatalogPreviewChangeKind {
   METADATA,
 }
 
-internal data class CatalogPreviewChange(
+public data class CatalogPreviewChange(
   val kind: CatalogPreviewChangeKind,
   val id: String,
   val label: String,
@@ -291,7 +291,7 @@ internal data class CatalogPreviewChange(
   val order: Int = Int.MAX_VALUE,
 )
 
-internal data class CatalogReferenceChange(
+public data class CatalogReferenceChange(
   val id: String,
   val label: String,
   val previewId: String,
@@ -303,7 +303,7 @@ internal data class CatalogReferenceChange(
   val afterPresent: Boolean = true,
 )
 
-internal data class CatalogFeedBatch(
+public data class CatalogFeedBatch(
   val before: CatalogFeedRevision,
   val after: CatalogFeedRevision,
   val previews: List<CatalogPreviewChange>,
@@ -311,13 +311,13 @@ internal data class CatalogFeedBatch(
 )
 
 /** Source seam: real serving uses Git; tests can provide an already-built history. */
-internal fun interface CatalogFeedSource {
+public fun interface CatalogFeedSource {
   /** Return null when [knownHead] is still current, before materialising historical snapshots. */
   fun read(config: CatalogLoadTracker.Config, knownHead: String?): CatalogFeedHistory?
 }
 
 /** Shallow bare-Git implementation of [CatalogFeedSource]. */
-internal class GitCatalogFeedSource(
+public class GitCatalogFeedSource(
   private val root: File,
   private val git: (File, List<String>) -> CatalogFeedGitResult = ::runCatalogFeedGit,
 ) : CatalogFeedSource {
@@ -426,7 +426,7 @@ internal class GitCatalogFeedSource(
     private val SHA = Regex("[0-9a-f]{40}")
     private val SOURCE_SHA = Regex("(?:from |catalog \\([^)]*?,\\s*)([0-9a-f]{7,40})(?:\\)|$)")
 
-    internal fun parseRevision(line: String): CatalogFeedRevision? {
+    public fun parseRevision(line: String): CatalogFeedRevision? {
       val fields = line.split('\u001f', limit = 3)
       if (fields.size != 3 || !SHA.matches(fields[0])) return null
       return CatalogFeedRevision(
@@ -437,7 +437,7 @@ internal class GitCatalogFeedSource(
       )
     }
 
-    internal fun parseTree(text: String): Map<String, String> = buildMap {
+    public fun parseTree(text: String): Map<String, String> = buildMap {
       for (line in text.lineSequence()) {
         val tab = line.indexOf('\t')
         if (tab < 0) continue
@@ -449,7 +449,7 @@ internal class GitCatalogFeedSource(
   }
 }
 
-internal data class CatalogFeedGitResult(
+public data class CatalogFeedGitResult(
   val exitCode: Int,
   val stdout: String,
   val stderr: String,
@@ -458,7 +458,7 @@ internal data class CatalogFeedGitResult(
     get() = exitCode == 0
 }
 
-internal fun runCatalogFeedGit(dir: File, args: List<String>): CatalogFeedGitResult {
+public fun runCatalogFeedGit(dir: File, args: List<String>): CatalogFeedGitResult {
   val process = ProcessBuilder(listOf("git") + args).directory(dir).start()
   val stdout = StringBuilder()
   val stderr = StringBuilder()
@@ -498,7 +498,7 @@ private fun terminateCatalogFeedGit(process: Process, outThread: Thread, errThre
   runCatching { errThread.join(1_000) }
 }
 
-internal data class CatalogSnapshot(
+public data class CatalogSnapshot(
   val title: String?,
   val previews: LinkedHashMap<String, SnapshotPreview>,
   val references: LinkedHashMap<String, SnapshotReference>,
@@ -590,7 +590,7 @@ internal data class CatalogSnapshot(
   }
 }
 
-internal data class SnapshotPreview(
+public data class SnapshotPreview(
   val id: String,
   val label: String,
   val path: String,
@@ -599,7 +599,7 @@ internal data class SnapshotPreview(
   val order: Int,
 )
 
-internal data class SnapshotReference(
+public data class SnapshotReference(
   val id: String,
   val label: String,
   val previewId: String,
@@ -617,7 +617,7 @@ internal data class SnapshotReference(
   val order: Int,
 )
 
-internal object CatalogFeedDiff {
+public object CatalogFeedDiff {
   /**
    * Whether the two revisions' scores are two readings of one instrument.
    *
@@ -758,9 +758,9 @@ internal object CatalogFeedDiff {
 }
 
 /** Pure RSS 2.0 projection of [CatalogFeedHistory]. */
-internal object CatalogFeedXml {
+public object CatalogFeedXml {
   /** How many variants a collapsed group names before the rest become a count. */
-  internal const val MAX_GROUP_LINKS = 24
+  public const val MAX_GROUP_LINKS = 24
 
   /** Preview ids join their component slug and axes with this; group names are cut on it. */
   private const val SEPARATOR = "__"

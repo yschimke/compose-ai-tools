@@ -590,7 +590,13 @@ internal constructor(
    * Wrap an already-open session. Nothing is deferred — the session exists — but the lazies below
    * are shared with the deferred path, so their RPCs fire on first access rather than here.
    */
-  internal constructor(
+  // `public`, unlike the deferred primary constructor above: `:cli`'s `BundleRenderKnobTest` wraps
+  // a
+  // fake session to exercise `bundle render --knob` without a daemon subprocess, and `serve` is its
+  // own
+  // module now, so `internal` no longer reaches it. Wrapping a session the caller already owns is a
+  // reasonable thing to expose; spawning one is not, which is why only this half opens up.
+  public constructor(
     session: RenderSession,
     previews: List<ServePreview>,
     label: String = "",

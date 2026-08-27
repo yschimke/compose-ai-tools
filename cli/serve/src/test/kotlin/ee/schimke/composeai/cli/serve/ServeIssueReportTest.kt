@@ -309,7 +309,7 @@ class ServeIssueReportTest {
     // map ordered by code point, none of which the writer can be talked out of emitting.
     val fixture =
       Json.parseToJsonElement(
-          File("../scripts/design-artifacts/fixtures/parity-locators.json").readText()
+          File(repoRoot(), "scripts/design-artifacts/fixtures/parity-locators.json").readText()
         )
         .jsonObject
     assertEquals(ServeIssueReport.LOCATOR_FENCE, fixture["schema"]?.jsonPrimitive?.contentOrNull)
@@ -349,7 +349,7 @@ class ServeIssueReportTest {
     // components; one block can name one, so the body is their concatenation, in order.
     val fixture =
       Json.parseToJsonElement(
-          File("../scripts/design-artifacts/fixtures/parity-locators.json").readText()
+          File(repoRoot(), "scripts/design-artifacts/fixtures/parity-locators.json").readText()
         )
         .jsonObject
     val bodies =

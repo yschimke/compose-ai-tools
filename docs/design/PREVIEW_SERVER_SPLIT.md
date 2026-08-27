@@ -119,8 +119,16 @@ the `serve→cli` direction of this register is closed:
 | `CoordinateResolver` | moved to a published `:bundle-coordinates`. It is not part of `:bundle-format` — reading the format is offline and synchronous, this does HTTP over ktor, and a format module should not drag a network client onto the render subprocess classpath. |
 | `WebEmbed` | moved into the `serve` package. That converts it from a `serve→cli` crossing into a `cli→serve` one, which is the direction that does not block extraction: an extracted `:cli` depends on the server module, not the reverse. |
 
-What is left is `serveInternalsUsedByCli` — 102 entries on `main`, dominated by `ServeCommand.kt`.
-That is the rest of preparation item 7: the module extraction itself.
+`serve` is now its own Gradle module, `:cli:serve` (`cli/serve`), and the `serve→cli` direction is
+a **build** fact rather than a scanner's finding: `:cli` depends on it, so Gradle rejects the
+reverse, and `checkServeModuleBoundary` walks the module's resolved runtime classpath and fails if
+`:cli`, a renderer, or the plugin arrives transitively. The sources keep the
+`ee.schimke.composeai.cli.serve` package — moving a module and renaming its package are independent
+changes, and doing both at once would make a 300-file diff unreviewable.
+
+What is left is `serveInternalsUsedByCli` — 102 entries on `main`, dominated by `ServeCommand.kt`
+(~4.9k lines in `:cli`, 92 of the 102 on its own). Reducing that to a thin entry point is the rest
+of preparation item 7.
 
 ### 2. `scripts/check-preview-server-contracts.sh` — the artifact probe
 

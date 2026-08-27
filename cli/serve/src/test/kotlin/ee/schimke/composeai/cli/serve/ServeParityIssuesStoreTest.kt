@@ -85,7 +85,7 @@ class ServeParityIssuesStoreTest {
 
   @Test
   fun `loads the JavaScript producer fixture without schema drift`() {
-    write(File("../scripts/design-artifacts/fixtures/parity-issues.json").readText())
+    write(File(repoRoot(), "scripts/design-artifacts/fixtures/parity-issues.json").readText())
     assertEquals(listOf("open", "closed"), assertNotNull(load()).issues.map { it.state })
   }
 

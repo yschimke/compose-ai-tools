@@ -61,7 +61,7 @@ import kotlinx.serialization.json.put
  * hook that emits nothing models a render that times out (the daemon owes a late event), which
  * drives the stale-event path. [rejectAll] rejects every render.
  */
-internal class FakeRenderSession(
+public class FakeRenderSession(
   private val renderRoot: File,
   private val rejectAll: Boolean = false,
   private val renderHook: ((call: Int, emit: (ByteArray) -> Unit) -> Unit)? = null,

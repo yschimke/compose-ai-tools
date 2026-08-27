@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import java.io.File
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -67,13 +68,25 @@ class ServeWebAssetsTest {
         "format-compare.js",
         "keyboard-navigation.js",
       )) {
-      val resource =
+      // Read the bytes and hand `node` a temp copy, rather than pointing it at the resource's own
+      // path. `getResource(...).toURI().path` is null for a `jar:` URL, and which of the two this
+      // is depends on packaging, not on anything the test asserts: while `serve` was a package
+      // inside `:cli` the assets resolved from an exploded `build/resources/main` directory, and
+      // as its own module they resolve from `serve.jar`, whereupon `ProcessBuilder` was handed a
+      // null command element and threw NPE. Checking the bytes is also the more honest test — it
+      // is the shipped copy that has to parse.
+      val bytes =
         assertNotNull(
-          ServeWebAssets::class.java.getResource("/ee/schimke/composeai/cli/serve/assets/$name")
-        )
+            ServeWebAssets::class
+              .java
+              .getResourceAsStream("/ee/schimke/composeai/cli/serve/assets/$name")
+          )
+          .use { it.readBytes() }
+      val copy = File.createTempFile("serve-asset-", "-$name").apply { deleteOnExit() }
+      copy.writeBytes(bytes)
       val result =
         try {
-          ProcessBuilder("node", "--check", resource.toURI().path).redirectErrorStream(true).start()
+          ProcessBuilder("node", "--check", copy.absolutePath).redirectErrorStream(true).start()
         } catch (_: IOException) {
           return
         }

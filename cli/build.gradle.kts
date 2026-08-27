@@ -218,6 +218,11 @@ dependencies {
   // preparation item 7. `api` for source-compat with the existing in-package call sites.
   api(project(":bundle-coordinates"))
 
+  // The preview server, split out of this module for #3824 preparation item 7. `api` for
+  // source-compat: `ServeCommand.kt` and the bundle/auth commands reference serve types in-package
+  // today, and reducing that surface is the rest of item 7 rather than part of the move.
+  api(project(":cli:serve"))
+
   // Okio-based file IO (`SystemFileSystem` + suspend helpers) the CLI commands read/write through.
   implementation(project(":common-io"))
 
@@ -340,6 +345,12 @@ dependencies {
   // (e.g. RenderMatrixCellNamesTest's stale-cell clearing). okio itself is on the compile
   // classpath transitively via `common:io`; the fake ships separately.
   testImplementation(libs.okio.fakefilesystem)
+
+  // `FakeRenderSession`, shared with `:cli:serve`'s own tests. `BundleRenderKnobTest` drives
+  // `bundle render --knob` against a fake render session rather than spawning a daemon; the
+  // fixture lives with the server because that is what defines it, and a fixture configuration
+  // keeps it off both modules' runtime classpaths.
+  testImplementation(testFixtures(project(":cli:serve")))
   // Gradle TestKit drives a real Gradle build inside [InitScriptExclusiveContentReproducerTest] —
   // the only way to assert that the rendered init script doesn't trip Gradle 9.3+'s
   // `exclusiveContent`-vs-`buildscript.repositories` validation when the consumer's
@@ -756,35 +767,3 @@ val generateCliVersionResource =
   }
 
 sourceSets.main.get().resources.srcDir(generateCliVersionResource)
-
-// The typefaces the served viewer registers for its client-side Remote Compose lanes
-// (`ServeRcFonts`): without them the browser lane paints a document's generic families in whatever
-// the *viewer's* machine calls `sans-serif`, at different metrics and without the Medium weight,
-// while the baked PNG beside it used these files (issue #3480).
-//
-// STAGED, not committed a second time. The source is the one vendored directory the offline parity
-// harness reads (`scripts/design-artifacts/rc-fonts.mjs`'s `DEFAULT_FONTS_DIR`) and the snapshot
-// renderer rasterizes with, so "the viewer's faces" and "the faces parity is measured against"
-// cannot become different files. The named-family faces in that directory (Orbitron, Lobster Two)
-// are deliberately left out — the player fetches those itself through `WebFonts.ts`; only the four
-// behind the generic families need registering, and they are what `ServeRcFonts.FACES` declares
-// (`ServeRcFontsTest` fails when this list and that table disagree).
-val stageRcFontResources =
-  tasks.register<Sync>("stageRcFontResources") {
-    description =
-      "Stage the vendored generic-family faces the serve viewer registers for its RC lanes."
-    from(rootDir.resolve("samples/cmp-wasm-catalog/src/wasmJsMain/resources/fonts")) {
-      include(
-        "Roboto-Regular.ttf",
-        "Roboto-Medium.ttf",
-        "NotoSerif-Regular.ttf",
-        "DroidSansMono.ttf",
-        // The faces' own licence, so the jar carries it beside the bytes.
-        "LICENSE.txt",
-      )
-      into("rc-fonts")
-    }
-    into(layout.buildDirectory.dir("generated/rc-font-resources"))
-  }
-
-sourceSets.main.get().resources.srcDir(stageRcFontResources)

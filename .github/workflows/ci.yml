@@ -1527,7 +1527,7 @@ jobs:
           # cli/serve-web/scripts/check-committed-bundle.mjs: a bundle named there but missing here
           # is checked on every PR except the one kind that needs it most, and the failure is
           # silent — the job reports green having skipped its own npm steps.
-          if printf '%s\n' "$changed" | grep -qE '^cli/serve-web/|^cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/(serve-components|serve-chrome|keyboard-navigation|report-capture|format-compare|known-differences|viewer)\.js$'; then
+          if printf '%s\n' "$changed" | grep -qE '^cli/serve-web/|^cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/(serve-components|serve-chrome|keyboard-navigation|report-capture|format-compare|known-differences|viewer)\.js$'; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"

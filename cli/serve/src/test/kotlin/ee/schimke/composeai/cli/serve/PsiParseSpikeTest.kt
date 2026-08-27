@@ -65,7 +65,7 @@ class PsiParseSpikeTest {
       ?.let {
         return File(it)
       }
-    val repoRoot = File("../build/usage-corpus")
+    val repoRoot = File(repoRoot(), "build/usage-corpus")
     return if (repoRoot.isDirectory) repoRoot else File("build/usage-corpus")
   }
 

@@ -19,7 +19,7 @@ import okhttp3.Request
  * This class only turns a spec into (name, bytes, origin) — the live-vs-baked decision and the
  * registry wiring live in [ServeCommand] alongside the catalog machinery it mirrors.
  */
-internal object ServeStartupBundles {
+public object ServeStartupBundles {
 
   /**
    * One `--bundle` entry: the [source] (an `http(s)://…` URL or a local filesystem path) and the

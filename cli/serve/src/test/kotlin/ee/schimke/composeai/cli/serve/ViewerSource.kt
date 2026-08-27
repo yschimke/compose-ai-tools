@@ -17,7 +17,14 @@ package ee.schimke.composeai.cli.serve
 
 import java.io.File
 
-/** Walk up from the test working dir (the `:cli` project dir) to the repo root. */
+/**
+ * Walk up from the test working dir to the repo root.
+ *
+ * Anchored on `settings.gradle.kts` rather than a count of `..` segments, which is what let the
+ * serve tests survive the move into `:cli:serve` — the working directory went from `cli/` to
+ * `cli/serve/`, and every sibling assertion that had spelled a repo path as `File("../scripts/…")`
+ * silently pointed a level too high. Those now come through here.
+ */
 internal fun repoRoot(): File {
   var dir: File? = File(System.getProperty("user.dir")).absoluteFile
   while (dir != null) {
