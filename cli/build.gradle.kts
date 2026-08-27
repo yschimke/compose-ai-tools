@@ -520,20 +520,6 @@ tasks.register<Zip>("packageAndroidDaemon") {
 
 tasks.withType<Test>().configureEach {
   useJUnitPlatform()
-  // Catalog checkouts for the usage-snippet corpus (UsageSnippetCorpusTest). Absent by default, so
-  // the corpus is a no-op in a normal build; `scripts/usage-corpus.sh` supplies them. Forwarded
-  // rather than read from the environment so the paths show up in the build's own inputs.
-  // `repos` is one property carrying every checkout as `name=path,name=path`, rather than one
-  // forwarded key per catalog: a fixed key list silently ignores any checkout not named in it, so
-  // adding a third catalog would have produced an empty corpus and a passing run.
-  for (key in
-    listOf(
-      "composeai.usageCorpus.repos",
-      "composeai.usageCorpus.out",
-      "composeai.usageCorpus.samples",
-    )) {
-    providers.systemProperty(key).orNull?.let { systemProperty(key, it) }
-  }
 
   // The BTA jars, handed to `PsiParseSpikeTest` so its isolated-classloader check runs in an
   // ordinary `:cli:test`. It used to look for the *installed* `lib-bta/`, which `test` does not
@@ -659,10 +645,17 @@ tasks.register<CheckServeSeam>("checkServeSeam") {
   description = "Fails if the serve <-> cli symbol surface grows (or its allowlist goes stale)."
   group = "verification"
 
+  // BOTH trees: `:cli`'s own sources and the extracted server's. The checker reads the serve half
+  // from `cli/serve/src` since #3824 item 7, and declaring only `cli/src` here would leave this
+  // task up-to-date across any change confined to the server — the gate would silently stop
+  // running exactly where the coupling it polices lives.
   serveSources.from(
     fileTree(layout.projectDirectory.dir("src")) {
       include("*/kotlin/ee/schimke/composeai/cli/**/*.kt")
-    }
+    },
+    fileTree(project(":cli:serve").layout.projectDirectory.dir("src")) {
+      include("*/kotlin/ee/schimke/composeai/cli/**/*.kt")
+    },
   )
   allowlist.set(rootProject.layout.projectDirectory.file("scripts/serve-seam-allowlist.json"))
   checker.set(rootProject.layout.projectDirectory.file("scripts/check-serve-seam.py"))

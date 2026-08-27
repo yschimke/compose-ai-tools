@@ -31,6 +31,23 @@ plugins {
   `java-test-fixtures`
 }
 
+// Same derivation as `:cli` (PLUGIN_VERSION in CI, a patch-bumped SNAPSHOT off
+// `.release-please-manifest.json` locally). Without it Gradle leaves `project.version` as
+// `unspecified`, `generateServeVersionResource` below writes `version=unspecified`, and the server
+// reports that string through `/version`, the session handshake, the page footers and every bug
+// report — silently, because nothing type-checks a version string.
+//
+// A separate assignment from `:cli`'s rather than a shared one, deliberately: the two agree today
+// because they ship together, and the whole point of #3824 is that one day they will not.
+version =
+  providers.environmentVariable("PLUGIN_VERSION").orNull
+    ?: run {
+      val manifest = rootDir.resolve(".release-please-manifest.json").readText()
+      val current = Regex(""""\.":\s*"([^"]+)"""").find(manifest)!!.groupValues[1]
+      val (major, minor, patch) = current.split(".").map { it.toInt() }
+      "$major.$minor.${patch + 1}-SNAPSHOT"
+    }
+
 // The jar lands in the CLI distribution's `lib/` beside a hundred third-party jars, where a bare
 // `serve.jar` (the default from the project name) says nothing and could collide. Same naming as
 // `:cli`'s `compose-preview` and `:mcp`'s `compose-preview-mcp`.
@@ -55,7 +72,6 @@ dependencies {
   implementation(project(":data-preview-overrides-core"))
   implementation(project(":data-remotecompose-core"))
   implementation(project(":data-render-core"))
-  implementation(project(":mcp"))
 
   implementation(libs.kotlinx.serialization.json)
   implementation(libs.ktor.client.core)
@@ -136,6 +152,22 @@ tasks.withType<Test>().configureEach {
   // from. Without it the platform defaults to JUnit 4 and roughly a dozen serve test classes stop
   // compiling.
   useJUnitPlatform()
+
+  // Catalog checkouts for the usage-snippet corpus (`UsageSnippetCorpusTest`, which moved here with
+  // the serve sources). Absent by default, so the corpus is a no-op in a normal build;
+  // `scripts/usage-corpus.sh` supplies them. Forwarded rather than read from the environment so the
+  // paths show up in the build's own inputs. `repos` is ONE property carrying every checkout as
+  // `name=path,name=path`, rather than a key per catalog: a fixed key list silently ignores any
+  // checkout not named in it, so adding a third catalog would produce an empty corpus and a
+  // passing run.
+  for (key in
+    listOf(
+      "composeai.usageCorpus.repos",
+      "composeai.usageCorpus.out",
+      "composeai.usageCorpus.samples",
+    )) {
+    providers.systemProperty(key).orNull?.let { systemProperty(key, it) }
+  }
 
   // Through a `CommandLineArgumentProvider` (resolved at execution time, declared as an input) so
   // the configuration cache stays valid rather than resolving a configuration at configuration

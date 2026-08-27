@@ -434,7 +434,10 @@ jobs:
           # `docs/design/RC_PLAYER_SWIFT.md` against the assembled framework) went with it, rather
           # than being left in place: it exits 0 when no framework is present, so without the link
           # above it would report green while checking nothing.
-          ./gradlew :cli:test --tests ee.schimke.composeai.cli.serve.ServeWebTest
+          # `:cli:serve:test`, not `:cli:test` — the serve tests are their own module since
+          # #3824 item 7, and Gradle does not run a dependency project's tests transitively, so
+          # the old target matches nothing and passes vacuously.
+          ./gradlew :cli:serve:test --tests ee.schimke.composeai.cli.serve.ServeWebTest
           ./gradlew ktfmtCheck
       - name: Upload player test reports on failure
         if: failure()
