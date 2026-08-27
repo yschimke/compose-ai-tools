@@ -1,6 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
-import ee.schimke.composeai.cli.BundleReader
+import ee.schimke.composeai.bundle.BundleReader
 import java.io.File
 
 /**

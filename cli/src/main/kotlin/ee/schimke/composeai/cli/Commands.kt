@@ -1,5 +1,9 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.bundle.BUNDLE_FIGMA_SVG_SUFFIX
+import ee.schimke.composeai.bundle.BundleReader
+import ee.schimke.composeai.bundle.injectFigmaRasterIntoBundle
+import ee.schimke.composeai.bundle.injectFigmaSvgIntoBundle
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.io.SystemFileSystem
 import java.awt.image.BufferedImage

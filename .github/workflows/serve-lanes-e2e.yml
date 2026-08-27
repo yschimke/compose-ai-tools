@@ -58,8 +58,8 @@ on:
       - "preview-server/preview-harness/package-lock.json"
       # The Android lane's fixture and the detached-render Application pin it guards.
       - "samples/android-live-lane/**"
-      - "bundle/format/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleResources.kt"
-      - "bundle/format/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleLaunch.kt"
+      - "bundle/format/src/main/kotlin/ee/schimke/composeai/bundle/AndroidBundleResources.kt"
+      - "bundle/format/src/main/kotlin/ee/schimke/composeai/bundle/AndroidBundleLaunch.kt"
       # A Robolectric bump is THE regression this lane exists to catch (#2669 rode 4.15 → 4.16),
       # and it lands entirely in the version catalog — `libs.robolectric`, consumed by
       # `daemon/android/build.gradle.kts`. Without this entry a bump-only PR matches nothing here
@@ -101,8 +101,8 @@ on:
       - "preview-server/preview-harness/package-lock.json"
       # The Android lane's fixture and the detached-render Application pin it guards.
       - "samples/android-live-lane/**"
-      - "bundle/format/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleResources.kt"
-      - "bundle/format/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleLaunch.kt"
+      - "bundle/format/src/main/kotlin/ee/schimke/composeai/bundle/AndroidBundleResources.kt"
+      - "bundle/format/src/main/kotlin/ee/schimke/composeai/bundle/AndroidBundleLaunch.kt"
       # A Robolectric bump is THE regression this lane exists to catch (#2669 rode 4.15 → 4.16),
       # and it lands entirely in the version catalog — `libs.robolectric`, consumed by
       # `daemon/android/build.gradle.kts`. Without this entry a bump-only PR matches nothing here

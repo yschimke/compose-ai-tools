@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli
+package ee.schimke.composeai.bundle
 
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
@@ -17,7 +17,7 @@ public object BundleClasspathHydration {
    * injected. The external declaration and any now-stale producer signatures are removed from the
    * derivative.
    */
-  fun hydrate(
+  public fun hydrate(
     source: File,
     output: File,
     fileSystem: FileSystem = SystemFileSystem,
@@ -35,7 +35,7 @@ public object BundleClasspathHydration {
    * Hydrate both whole classpath entries and resources lifted out of `classes/app.jar`. The result
    * is published atomically, so a failed resolver never leaves a thin bundle at [output].
    */
-  fun hydrate(
+  public fun hydrate(
     source: File,
     output: File,
     fileSystem: FileSystem = SystemFileSystem,

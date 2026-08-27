@@ -1,5 +1,12 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.bundle.BundleReader
+import ee.schimke.composeai.bundle.addOrReplaceZipEntries
+import ee.schimke.composeai.bundle.injectFigmaRasterIntoBundle
+import ee.schimke.composeai.bundle.injectFigmaSvgIntoBundle
+import ee.schimke.composeai.bundle.injectFontsIntoBundle
+import ee.schimke.composeai.bundle.injectLayoutIntoBundle
+import ee.schimke.composeai.bundle.injectSemanticsIntoBundle
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream

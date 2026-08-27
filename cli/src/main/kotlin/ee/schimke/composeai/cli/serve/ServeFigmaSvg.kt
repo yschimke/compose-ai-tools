@@ -1,7 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
-import ee.schimke.composeai.cli.MAX_FIGMA_RASTER_EDGE_PX
-import ee.schimke.composeai.cli.downscaleRaster
+import ee.schimke.composeai.bundle.MAX_FIGMA_RASTER_EDGE_PX
+import ee.schimke.composeai.bundle.downscaleRaster
 import java.util.Base64
 import okio.FileSystem
 import okio.Path

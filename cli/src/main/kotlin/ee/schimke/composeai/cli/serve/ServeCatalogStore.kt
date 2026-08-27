@@ -1,7 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
-import ee.schimke.composeai.cli.BundleClasspathHydration
-import ee.schimke.composeai.cli.BundleReader
+import ee.schimke.composeai.bundle.BundleClasspathHydration
+import ee.schimke.composeai.bundle.BundleReader
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
 import ee.schimke.composeai.designpages.DesignPagesJson

@@ -8,12 +8,14 @@
     "cliInternalsUsedByServe: serve reaching into the CLI. Each entry is something the extracted",
     "server would have to get from a published contract module instead. The bundle-format cluster",
     "(BundleReader, BundleSigning, BundleClasspathHydration, extractBundle*, locateBundleSidecar*,",
-    "BUNDLE_VERSION, ZIP_DOS_EPOCH_MS) is #3824 preparation item 5 and is most of this list.",
-  "Those symbols now live in their own module, `:bundle-format`, but kept the",
-  "`ee.schimke.composeai.cli` package for source-compat, and this check keys a crossing on the",
-  "package an import names rather than the module that declares it. So they are still listed,",
-  "and correctly: an extracted server cannot name an unpublished module, whatever build it sits",
-  "in. They come off when item 5 finishes \u2014 package rename plus publishing.",
+    "ZIP_DOS_EPOCH_MS, downscaleRaster) used to be most of this list and is now off it — #3824",
+    "preparation item 5. Those symbols live in a published `:bundle-format` whose package,",
+    "`ee.schimke.composeai.bundle`, is mapped under contractPackages below, so serve names a",
+    "contract instead of a CLI internal. BUNDLE_VERSION stays: it is still declared in `:cli`.",
+    "Note what made the difference. Moving the files into a module did not shrink this list at",
+    "all, because the check keys a crossing on the package an import names, not on the module",
+    "that declares it, and the extraction kept the `…cli` package for source-compat. The rename",
+    "is what moved the number.",
     "serveInternalsUsedByCli: the CLI reaching into serve. Each entry must either move to the",
     "server build with serve, or move down into a contract module the CLI can keep using. The",
     "long tail here is ServeCommand.kt, which #3824 wants reduced to a thin entry point.",
@@ -48,20 +50,21 @@
     "ee.schimke.composeai.plugin"
   ],
   "contractPackages": {
-    "ee.schimke.composeai.daemon.protocol": "daemon-core",
-    "ee.schimke.composeai.daemon.devices": "daemon-core",
+    "ee.schimke.composeai.bundle": "bundle-format",
     "ee.schimke.composeai.daemon": "daemon-core",
-    "ee.schimke.composeai.designpages": "preview-data-api",
-    "ee.schimke.composeai.io": "common-io",
-    "ee.schimke.composeai.render.session.subprocess": "render-session-subprocess",
-    "ee.schimke.composeai.render.session": "render-session-api",
+    "ee.schimke.composeai.daemon.bta": "daemon-core",
+    "ee.schimke.composeai.daemon.devices": "daemon-core",
+    "ee.schimke.composeai.daemon.protocol": "daemon-core",
     "ee.schimke.composeai.data.layoutinspector": "data-layoutinspector-core",
     "ee.schimke.composeai.data.overrides": "data-preview-overrides-core",
+    "ee.schimke.composeai.data.pseudolocale": "data-pseudolocale-core",
     "ee.schimke.composeai.data.remotecompose": "data-remotecompose-core",
-    "ee.schimke.composeai.data.theme": "data-theme-core",
     "ee.schimke.composeai.data.render": "data-render-core",
-    "ee.schimke.composeai.daemon.bta": "daemon-core",
-    "ee.schimke.composeai.data.pseudolocale": "data-pseudolocale-core"
+    "ee.schimke.composeai.data.theme": "data-theme-core",
+    "ee.schimke.composeai.designpages": "preview-data-api",
+    "ee.schimke.composeai.io": "common-io",
+    "ee.schimke.composeai.render.session": "render-session-api",
+    "ee.schimke.composeai.render.session.subprocess": "render-session-subprocess"
   },
   "unpublishedContracts": {},
   "reflectiveDependencies": {
@@ -92,27 +95,15 @@
   },
   "main": {
     "cliInternalsUsedByServe": [
-      "AndroidBundleLaunch",
-      "AndroidBundleResources",
       "BUNDLE_VERSION",
-      "BundleClasspathHydration",
-      "BundleReader",
-      "BundleSigning",
       "CoordinateResolver",
-      "MAX_FIGMA_RASTER_EDGE_PX",
       "PreviewInfo",
       "PreviewManifest",
       "PreviewModule",
       "PreviewParameterFanout",
       "PreviewParams",
       "PreviewResultBuilder",
-      "WebEmbed",
-      "ZIP_DOS_EPOCH_MS",
-      "bundleSidecarSearchDescription",
-      "downscaleRaster",
-      "extractBundleClassesAndManifest",
-      "extractBundleIrArtifacts",
-      "locateBundleSidecarJars"
+      "WebEmbed"
     ],
     "serveInternalsUsedByCli": [
       "serve.BundleVerifier",
@@ -221,15 +212,12 @@
   },
   "test": {
     "cliInternalsUsedByServe": [
-      "BundleReader",
-      "BundleSigning",
       "Capture",
       "CoordinateResolver",
       "PreviewInfo",
       "PreviewManifest",
       "PreviewParams",
-      "WebEmbed",
-      "downscaleRaster"
+      "WebEmbed"
     ],
     "serveInternalsUsedByCli": [
       "serve.BundleVerifier",

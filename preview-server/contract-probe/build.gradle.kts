@@ -59,6 +59,11 @@ val contracts =
     // leading/trailing edges onto left/right exactly as the render that produced the pixels did,
     // and a second copy of that language table in the server would be a thing to drift.
     "data-pseudolocale-core",
+    // The `.previewbundle` format (#3824 preparation item 5). `serve` reads bundles — the
+    // manifest, the signatures, the classpath entries, the baked previews — and until this module
+    // existed it did that by reaching into `:cli`. It was the one entry in the dependency-floor
+    // table below that was not a module at all; naming it here is what stops it being a blocker.
+    "bundle-format",
   )
 
 dependencies {

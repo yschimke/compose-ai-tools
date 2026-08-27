@@ -1,5 +1,8 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.bundle.BundleReader
+import ee.schimke.composeai.bundle.ZIP_DOS_EPOCH_MS
+import ee.schimke.composeai.bundle.injectRawZipEntries
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream

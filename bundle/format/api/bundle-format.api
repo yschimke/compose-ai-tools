@@ -1,0 +1,708 @@
+public final class ee/schimke/composeai/bundle/AndroidBundleLaunch {
+	public static final field Companion Lee/schimke/composeai/bundle/AndroidBundleLaunch$Companion;
+	public static final field DEFAULT_SDK I
+	public static final field MAX_SDK I
+	public static final field MIN_SDK I
+	public fun <init> ()V
+	public fun <init> (IZLokio/FileSystem;Ljava/lang/String;)V
+	public synthetic fun <init> (IZLokio/FileSystem;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getSdkLevel ()I
+	public final fun jvmArgs ()Ljava/util/List;
+	public final fun robolectricPropertiesBody ()Ljava/lang/String;
+	public final fun robolectricSystemProperties ()Ljava/util/Map;
+	public final fun systemProperties (Ljava/lang/String;Ljava/lang/String;)Ljava/util/Map;
+	public final fun writeRobolectricConfig (Ljava/io/File;)Ljava/io/File;
+}
+
+public final class ee/schimke/composeai/bundle/AndroidBundleLaunch$Companion {
+	public final fun resolveAndroidJar (Ljava/io/File;Lkotlin/jvm/functions/Function1;Lokio/FileSystem;)Ljava/io/File;
+	public static synthetic fun resolveAndroidJar$default (Lee/schimke/composeai/bundle/AndroidBundleLaunch$Companion;Ljava/io/File;Lkotlin/jvm/functions/Function1;Lokio/FileSystem;ILjava/lang/Object;)Ljava/io/File;
+	public final fun sdkLevelFromSystemProperty (Ljava/lang/String;)I
+	public static synthetic fun sdkLevelFromSystemProperty$default (Lee/schimke/composeai/bundle/AndroidBundleLaunch$Companion;Ljava/lang/String;ILjava/lang/Object;)I
+}
+
+public final class ee/schimke/composeai/bundle/AndroidBundleResources {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/AndroidBundleResources;
+	public final fun daemonClasspath ([BLjava/io/File;Ljava/lang/String;Z)Ljava/util/List;
+	public static synthetic fun daemonClasspath$default (Lee/schimke/composeai/bundle/AndroidBundleResources;[BLjava/io/File;Ljava/lang/String;ZILjava/lang/Object;)Ljava/util/List;
+	public final fun extract ([BLjava/io/File;)Lee/schimke/composeai/bundle/AndroidBundleResources$Extracted;
+	public final fun stripApplicationName (Ljava/lang/String;)Ljava/lang/String;
+	public final fun writeTestConfig (Ljava/io/File;Ljava/io/File;Ljava/io/File;Ljava/lang/String;)Ljava/io/File;
+}
+
+public final class ee/schimke/composeai/bundle/AndroidBundleResources$Extracted {
+	public fun <init> (Ljava/io/File;Ljava/io/File;Ljava/io/File;)V
+	public final fun component1 ()Ljava/io/File;
+	public final fun component2 ()Ljava/io/File;
+	public final fun component3 ()Ljava/io/File;
+	public final fun copy (Ljava/io/File;Ljava/io/File;Ljava/io/File;)Lee/schimke/composeai/bundle/AndroidBundleResources$Extracted;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/AndroidBundleResources$Extracted;Ljava/io/File;Ljava/io/File;Ljava/io/File;ILjava/lang/Object;)Lee/schimke/composeai/bundle/AndroidBundleResources$Extracted;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMergedManifest ()Ljava/io/File;
+	public final fun getRClassesJar ()Ljava/io/File;
+	public final fun getResourceApk ()Ljava/io/File;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/bundle/BundleClasspathHydration {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/BundleClasspathHydration;
+	public final fun hydrate (Ljava/io/File;Ljava/io/File;Lokio/FileSystem;Lkotlin/jvm/functions/Function1;)Ljava/io/File;
+	public final fun hydrate (Ljava/io/File;Ljava/io/File;Lokio/FileSystem;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)Ljava/io/File;
+	public static synthetic fun hydrate$default (Lee/schimke/composeai/bundle/BundleClasspathHydration;Ljava/io/File;Ljava/io/File;Lokio/FileSystem;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Ljava/io/File;
+	public static synthetic fun hydrate$default (Lee/schimke/composeai/bundle/BundleClasspathHydration;Ljava/io/File;Ljava/io/File;Lokio/FileSystem;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Ljava/io/File;
+}
+
+public final class ee/schimke/composeai/bundle/BundleDaemonSupportKt {
+	public static final fun bundleSidecarSearchDescription (Ljava/lang/String;)Ljava/lang/String;
+	public static final fun expandZipBytesSafely ([BLjava/io/File;Lokio/FileSystem;Ljava/lang/String;)V
+	public static synthetic fun expandZipBytesSafely$default ([BLjava/io/File;Lokio/FileSystem;Ljava/lang/String;ILjava/lang/Object;)V
+	public static final fun extractBundleClassesAndManifest ([BLjava/io/File;Ljava/io/File;Ljava/io/File;ZLokio/FileSystem;)V
+	public static synthetic fun extractBundleClassesAndManifest$default ([BLjava/io/File;Ljava/io/File;Ljava/io/File;ZLokio/FileSystem;ILjava/lang/Object;)V
+	public static final fun extractBundleIrArtifacts ([BLjava/io/File;Ljava/io/File;Ljava/io/File;Lokio/FileSystem;)V
+	public static synthetic fun extractBundleIrArtifacts$default ([BLjava/io/File;Ljava/io/File;Ljava/io/File;Lokio/FileSystem;ILjava/lang/Object;)V
+	public static final fun locateBundleSidecarJars (Ljava/lang/String;)Ljava/util/List;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/BundleReader;
+	public final fun extractEmbeddedLibs ([BLjava/io/File;Lokio/FileSystem;)Ljava/util/List;
+	public static synthetic fun extractEmbeddedLibs$default (Lee/schimke/composeai/bundle/BundleReader;[BLjava/io/File;Lokio/FileSystem;ILjava/lang/Object;)Ljava/util/List;
+	public final fun extractZipBytes (Ljava/io/File;Lokio/FileSystem;)[B
+	public static synthetic fun extractZipBytes$default (Lee/schimke/composeai/bundle/BundleReader;Ljava/io/File;Lokio/FileSystem;ILjava/lang/Object;)[B
+	public final fun readMetadata (Ljava/io/File;)Lee/schimke/composeai/bundle/BundleReader$Metadata;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$AndroidResources {
+	public static final field Companion Lee/schimke/composeai/bundle/BundleReader$AndroidResources$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/bundle/BundleReader$AndroidResources;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/BundleReader$AndroidResources;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleReader$AndroidResources;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getApplicationPackage ()Ljava/lang/String;
+	public final fun getMergedManifestPath ()Ljava/lang/String;
+	public final fun getRClassesJarPath ()Ljava/lang/String;
+	public final fun getResourceApkPath ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/bundle/BundleReader$AndroidResources$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/BundleReader$AndroidResources$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/bundle/BundleReader$AndroidResources;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/bundle/BundleReader$AndroidResources;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$AndroidResources$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$BundleIr {
+	public static final field Companion Lee/schimke/composeai/bundle/BundleReader$BundleIr$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/bundle/BundleReader$BundleIr;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/BundleReader$BundleIr;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleReader$BundleIr;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFormat ()Ljava/lang/String;
+	public final fun getPath ()Ljava/lang/String;
+	public final fun getPreviewId ()Ljava/lang/String;
+	public final fun getResourcesPath ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/bundle/BundleReader$BundleIr$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/BundleReader$BundleIr$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/bundle/BundleReader$BundleIr;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/bundle/BundleReader$BundleIr;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$BundleIr$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public abstract interface class ee/schimke/composeai/bundle/BundleReader$ClasspathEntry {
+	public static final field Companion Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Companion;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Embedded : ee/schimke/composeai/bundle/BundleReader$ClasspathEntry {
+	public static final field Companion Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Embedded$Companion;
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Embedded;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Embedded;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Embedded;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getInlinedAs ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Embedded$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Embedded$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Embedded;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Embedded;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Embedded$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Maven : ee/schimke/composeai/bundle/BundleReader$ClasspathEntry {
+	public static final field Companion Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Maven$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Maven;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Maven;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Maven;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArtifact ()Ljava/lang/String;
+	public final fun getGroup ()Ljava/lang/String;
+	public final fun getSha256 ()Ljava/lang/String;
+	public final fun getType ()Ljava/lang/String;
+	public final fun getVersion ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Maven$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Maven$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Maven;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Maven;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Maven$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Module : ee/schimke/composeai/bundle/BundleReader$ClasspathEntry {
+	public static final field Companion Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Module$Companion;
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Module;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Module;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Module;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPath ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Module$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Module$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Module;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Module;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Module$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Project : ee/schimke/composeai/bundle/BundleReader$ClasspathEntry {
+	public static final field Companion Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Project$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Project;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Project;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Project;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getInlinedAs ()Ljava/lang/String;
+	public final fun getPath ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Project$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Project$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Project;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Project;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Project$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$DataExtension {
+	public static final field Companion Lee/schimke/composeai/bundle/BundleReader$DataExtension$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/bundle/BundleReader$DataExtension;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/BundleReader$DataExtension;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleReader$DataExtension;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getExtensionId ()Ljava/lang/String;
+	public final fun getPath ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/bundle/BundleReader$DataExtension$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/BundleReader$DataExtension$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/bundle/BundleReader$DataExtension;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/bundle/BundleReader$DataExtension;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$DataExtension$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$DependencyDecision {
+	public static final field Companion Lee/schimke/composeai/bundle/BundleReader$DependencyDecision$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IIJZ)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun component6 ()J
+	public final fun component7 ()Z
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IIJZ)Lee/schimke/composeai/bundle/BundleReader$DependencyDecision;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/BundleReader$DependencyDecision;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IIJZILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleReader$DependencyDecision;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCoordinate ()Ljava/lang/String;
+	public final fun getKept ()Z
+	public final fun getOriginalBytes ()J
+	public final fun getProjectPath ()Ljava/lang/String;
+	public final fun getReachableClasses ()I
+	public final fun getSourcePath ()Ljava/lang/String;
+	public final fun getTotalClasses ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/bundle/BundleReader$DependencyDecision$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/BundleReader$DependencyDecision$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/bundle/BundleReader$DependencyDecision;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/bundle/BundleReader$DependencyDecision;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$DependencyDecision$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$ExternalClasspath {
+	public static final field Companion Lee/schimke/composeai/bundle/BundleReader$ExternalClasspath$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;J)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;J)Lee/schimke/composeai/bundle/BundleReader$ExternalClasspath;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/BundleReader$ExternalClasspath;Ljava/lang/String;Ljava/lang/String;JILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleReader$ExternalClasspath;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPath ()Ljava/lang/String;
+	public final fun getSha256 ()Ljava/lang/String;
+	public final fun getSize ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/bundle/BundleReader$ExternalClasspath$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/BundleReader$ExternalClasspath$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/bundle/BundleReader$ExternalClasspath;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/bundle/BundleReader$ExternalClasspath;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$ExternalClasspath$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$ExternalResource {
+	public static final field Companion Lee/schimke/composeai/bundle/BundleReader$ExternalResource$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;J)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;J)Lee/schimke/composeai/bundle/BundleReader$ExternalResource;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/BundleReader$ExternalResource;Ljava/lang/String;Ljava/lang/String;JILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleReader$ExternalResource;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPath ()Ljava/lang/String;
+	public final fun getSha256 ()Ljava/lang/String;
+	public final fun getSize ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/bundle/BundleReader$ExternalResource$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/BundleReader$ExternalResource$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/bundle/BundleReader$ExternalResource;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/bundle/BundleReader$ExternalResource;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$ExternalResource$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$Manifest {
+	public static final field Companion Lee/schimke/composeai/bundle/BundleReader$Manifest$Companion;
+	public fun <init> (ILjava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lee/schimke/composeai/bundle/BundleReader$AndroidResources;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;)V
+	public synthetic fun <init> (ILjava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lee/schimke/composeai/bundle/BundleReader$AndroidResources;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component10 ()Ljava/lang/String;
+	public final fun component11 ()Ljava/util/List;
+	public final fun component12 ()Lee/schimke/composeai/bundle/BundleReader$AndroidResources;
+	public final fun component13 ()Ljava/util/List;
+	public final fun component14 ()Ljava/util/List;
+	public final fun component15 ()Ljava/util/List;
+	public final fun component16 ()Ljava/util/List;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/util/List;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/util/List;
+	public final fun component6 ()Ljava/util/List;
+	public final fun component7 ()Ljava/lang/String;
+	public final fun component8 ()Ljava/lang/String;
+	public final fun component9 ()Ljava/lang/String;
+	public final fun copy (ILjava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lee/schimke/composeai/bundle/BundleReader$AndroidResources;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;)Lee/schimke/composeai/bundle/BundleReader$Manifest;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/BundleReader$Manifest;ILjava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lee/schimke/composeai/bundle/BundleReader$AndroidResources;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleReader$Manifest;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAndroidResources ()Lee/schimke/composeai/bundle/BundleReader$AndroidResources;
+	public final fun getBackend ()Ljava/lang/String;
+	public final fun getClasspath ()Ljava/util/List;
+	public final fun getCoverPreviewId ()Ljava/lang/String;
+	public final fun getDataExtensions ()Ljava/util/List;
+	public final fun getExternalClasspath ()Ljava/util/List;
+	public final fun getExternalResources ()Ljava/util/List;
+	public final fun getIntermediateRepresentations ()Ljava/util/List;
+	public final fun getModulePath ()Ljava/lang/String;
+	public final fun getPreviewIds ()Ljava/util/List;
+	public final fun getProducedBy ()Ljava/lang/String;
+	public final fun getProducer ()Ljava/lang/String;
+	public final fun getRawPreviewIds ()Ljava/util/List;
+	public final fun getRepositories ()Ljava/util/List;
+	public final fun getResolution ()Ljava/lang/String;
+	public final fun getSchemaVersion ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/bundle/BundleReader$Manifest$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/BundleReader$Manifest$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/bundle/BundleReader$Manifest;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/bundle/BundleReader$Manifest;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$Manifest$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$Metadata {
+	public fun <init> (Lee/schimke/composeai/bundle/BundleReader$Manifest;Lee/schimke/composeai/bundle/BundleReader$Report;)V
+	public final fun component1 ()Lee/schimke/composeai/bundle/BundleReader$Manifest;
+	public final fun component2 ()Lee/schimke/composeai/bundle/BundleReader$Report;
+	public final fun copy (Lee/schimke/composeai/bundle/BundleReader$Manifest;Lee/schimke/composeai/bundle/BundleReader$Report;)Lee/schimke/composeai/bundle/BundleReader$Metadata;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/BundleReader$Metadata;Lee/schimke/composeai/bundle/BundleReader$Manifest;Lee/schimke/composeai/bundle/BundleReader$Report;ILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleReader$Metadata;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getManifest ()Lee/schimke/composeai/bundle/BundleReader$Manifest;
+	public final fun getReport ()Lee/schimke/composeai/bundle/BundleReader$Report;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$ModuleClasses {
+	public static final field Companion Lee/schimke/composeai/bundle/BundleReader$ModuleClasses$Companion;
+	public fun <init> (IIJ)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()J
+	public final fun copy (IIJ)Lee/schimke/composeai/bundle/BundleReader$ModuleClasses;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/BundleReader$ModuleClasses;IIJILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleReader$ModuleClasses;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPackedBytes ()J
+	public final fun getReachableClasses ()I
+	public final fun getTotalClasses ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/bundle/BundleReader$ModuleClasses$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/BundleReader$ModuleClasses$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/bundle/BundleReader$ModuleClasses;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/bundle/BundleReader$ModuleClasses;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$ModuleClasses$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$Report {
+	public static final field Companion Lee/schimke/composeai/bundle/BundleReader$Report$Companion;
+	public fun <init> (Ljava/util/List;IILee/schimke/composeai/bundle/BundleReader$ModuleClasses;Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()Lee/schimke/composeai/bundle/BundleReader$ModuleClasses;
+	public final fun component5 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;IILee/schimke/composeai/bundle/BundleReader$ModuleClasses;Ljava/util/List;)Lee/schimke/composeai/bundle/BundleReader$Report;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/BundleReader$Report;Ljava/util/List;IILee/schimke/composeai/bundle/BundleReader$ModuleClasses;Ljava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleReader$Report;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDependencies ()Ljava/util/List;
+	public final fun getEntryClassFqns ()Ljava/util/List;
+	public final fun getModuleClasses ()Lee/schimke/composeai/bundle/BundleReader$ModuleClasses;
+	public final fun getReachableClassCount ()I
+	public final fun getTotalScannedClassCount ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/bundle/BundleReader$Report$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/BundleReader$Report$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/bundle/BundleReader$Report;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/bundle/BundleReader$Report;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleReader$Report$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleSigning {
+	public static final field ALG_ED25519 Ljava/lang/String;
+	public static final field INSTANCE Lee/schimke/composeai/bundle/BundleSigning;
+	public static final field SIGNATURES_PATH Ljava/lang/String;
+	public static final field SIGNATURES_SCHEMA Ljava/lang/String;
+	public final fun addSignature (Ljava/io/File;Lee/schimke/composeai/bundle/BundleSigning$Signature;)I
+	public final fun base64 ([B)Ljava/lang/String;
+	public final fun canonicalDigest (Ljava/io/File;)[B
+	public final fun canonicalDigest ([B)[B
+	public final fun decodeBase64 (Ljava/lang/String;)[B
+	public final fun generateKeyPair ()Lee/schimke/composeai/bundle/BundleSigning$KeyPairB64;
+	public final fun hex ([B)Ljava/lang/String;
+	public final fun parsePrivateKey (Ljava/lang/String;)Ljava/security/PrivateKey;
+	public final fun parsePublicKey (Ljava/lang/String;)Ljava/security/PublicKey;
+	public final fun readSignatures (Ljava/io/File;)Lee/schimke/composeai/bundle/BundleSigning$Signatures;
+	public final fun readSignatures ([B)Lee/schimke/composeai/bundle/BundleSigning$Signatures;
+	public final fun sha256 ([B)[B
+	public final fun signEd25519 (Ljava/security/PrivateKey;[B)[B
+	public final fun verifyEd25519 (Ljava/security/PublicKey;[B[B)Z
+	public final fun zipBytesOf ([B)[B
+}
+
+public final class ee/schimke/composeai/bundle/BundleSigning$KeyPairB64 {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/bundle/BundleSigning$KeyPairB64;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/BundleSigning$KeyPairB64;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleSigning$KeyPairB64;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPrivateKeyB64 ()Ljava/lang/String;
+	public final fun getPublicKeyB64 ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/bundle/BundleSigning$Provenance {
+	public static final field Companion Lee/schimke/composeai/bundle/BundleSigning$Provenance$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/bundle/BundleSigning$Provenance;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/BundleSigning$Provenance;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleSigning$Provenance;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAttestation ()Ljava/lang/String;
+	public final fun getIdentity ()Ljava/lang/String;
+	public final fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/bundle/BundleSigning$Provenance$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/BundleSigning$Provenance$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/bundle/BundleSigning$Provenance;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/bundle/BundleSigning$Provenance;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleSigning$Provenance$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleSigning$Signature {
+	public static final field Companion Lee/schimke/composeai/bundle/BundleSigning$Signature$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/bundle/BundleSigning$Provenance;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/bundle/BundleSigning$Provenance;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6 ()Lee/schimke/composeai/bundle/BundleSigning$Provenance;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/bundle/BundleSigning$Provenance;)Lee/schimke/composeai/bundle/BundleSigning$Signature;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/BundleSigning$Signature;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/bundle/BundleSigning$Provenance;ILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleSigning$Signature;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAlgorithm ()Ljava/lang/String;
+	public final fun getDigest ()Ljava/lang/String;
+	public final fun getKeyId ()Ljava/lang/String;
+	public final fun getProducer ()Ljava/lang/String;
+	public final fun getProvenance ()Lee/schimke/composeai/bundle/BundleSigning$Provenance;
+	public final fun getSignature ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/bundle/BundleSigning$Signature$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/BundleSigning$Signature$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/bundle/BundleSigning$Signature;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/bundle/BundleSigning$Signature;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleSigning$Signature$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleSigning$Signatures {
+	public static final field Companion Lee/schimke/composeai/bundle/BundleSigning$Signatures$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/util/List;)Lee/schimke/composeai/bundle/BundleSigning$Signatures;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/BundleSigning$Signatures;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleSigning$Signatures;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getSchema ()Ljava/lang/String;
+	public final fun getSignatures ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/bundle/BundleSigning$Signatures$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/BundleSigning$Signatures$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/bundle/BundleSigning$Signatures;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/bundle/BundleSigning$Signatures;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/BundleSigning$Signatures$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/FigmaRasterScalingKt {
+	public static final field MAX_FIGMA_RASTER_EDGE_PX I
+	public static final fun downscaleRaster ([BI)[B
+}
+
+public final class ee/schimke/composeai/bundle/PreviewBundleFormatKt {
+	public static final field BUNDLE_FIGMA_RASTER_DIR_SUFFIX Ljava/lang/String;
+	public static final field BUNDLE_FIGMA_SVG_SUFFIX Ljava/lang/String;
+	public static final field BUNDLE_FONTS_SUFFIX Ljava/lang/String;
+	public static final field BUNDLE_LAYOUT_SUFFIX Ljava/lang/String;
+	public static final field BUNDLE_PREVIEWS_DIR Ljava/lang/String;
+	public static final field BUNDLE_SEMANTICS_SUFFIX Ljava/lang/String;
+	public static final field BUNDLE_WEB_DIR Ljava/lang/String;
+	public static final fun addOrReplaceZipEntries ([BLjava/util/Map;Ljava/util/Set;)[B
+	public static synthetic fun addOrReplaceZipEntries$default ([BLjava/util/Map;Ljava/util/Set;ILjava/lang/Object;)[B
+	public static final fun embedWebIntoZip ([BLjava/util/Map;)[B
+	public static final fun getZIP_DOS_EPOCH_MS ()J
+	public static final fun injectFigmaRasterIntoBundle (Ljava/io/File;Ljava/util/Map;Lokio/FileSystem;I)I
+	public static synthetic fun injectFigmaRasterIntoBundle$default (Ljava/io/File;Ljava/util/Map;Lokio/FileSystem;IILjava/lang/Object;)I
+	public static final fun injectFigmaSvgIntoBundle (Ljava/io/File;Ljava/util/Map;Lokio/FileSystem;)I
+	public static synthetic fun injectFigmaSvgIntoBundle$default (Ljava/io/File;Ljava/util/Map;Lokio/FileSystem;ILjava/lang/Object;)I
+	public static final fun injectFontsIntoBundle (Ljava/io/File;Ljava/util/Map;Lokio/FileSystem;)I
+	public static synthetic fun injectFontsIntoBundle$default (Ljava/io/File;Ljava/util/Map;Lokio/FileSystem;ILjava/lang/Object;)I
+	public static final fun injectLayoutIntoBundle (Ljava/io/File;Ljava/util/Map;Lokio/FileSystem;)I
+	public static synthetic fun injectLayoutIntoBundle$default (Ljava/io/File;Ljava/util/Map;Lokio/FileSystem;ILjava/lang/Object;)I
+	public static final fun injectRawZipEntries (Ljava/io/File;Ljava/util/Map;Lokio/FileSystem;)I
+	public static synthetic fun injectRawZipEntries$default (Ljava/io/File;Ljava/util/Map;Lokio/FileSystem;ILjava/lang/Object;)I
+	public static final fun injectSemanticsIntoBundle (Ljava/io/File;Ljava/util/Map;Lokio/FileSystem;)I
+	public static synthetic fun injectSemanticsIntoBundle$default (Ljava/io/File;Ljava/util/Map;Lokio/FileSystem;ILjava/lang/Object;)I
+	public static final fun injectSidecarsIntoBundle (Ljava/io/File;Ljava/util/Map;Ljava/lang/String;Lokio/FileSystem;)I
+	public static synthetic fun injectSidecarsIntoBundle$default (Ljava/io/File;Ljava/util/Map;Ljava/lang/String;Lokio/FileSystem;ILjava/lang/Object;)I
+	public static final fun resolveInBundleTarget (Ljava/lang/String;Ljava/lang/String;Z)Ljava/lang/String;
+	public static final fun rewriteRawZipEntries (Ljava/io/File;Ljava/util/Map;Ljava/util/Set;Lokio/FileSystem;)V
+	public static synthetic fun rewriteRawZipEntries$default (Ljava/io/File;Ljava/util/Map;Ljava/util/Set;Lokio/FileSystem;ILjava/lang/Object;)V
+}
+

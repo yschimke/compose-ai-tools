@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli
+package ee.schimke.composeai.bundle
 
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.ByteArrayInputStream

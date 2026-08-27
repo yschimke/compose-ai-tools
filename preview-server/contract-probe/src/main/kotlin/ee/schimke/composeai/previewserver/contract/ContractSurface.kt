@@ -1,5 +1,6 @@
 package ee.schimke.composeai.previewserver.contract
 
+import ee.schimke.composeai.bundle.BundleReader
 import ee.schimke.composeai.daemon.DaemonLaunchDescriptor
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
@@ -32,10 +33,17 @@ import okio.FileSystem
  * module that isn't a contract, the split's dependency floor moved — and it moved here, in a PR,
  * rather than on the day someone tries the extraction.
  *
- * Two things it deliberately does not do: exercise behaviour (there is no server here to exercise),
- * and cover `serve`'s dependency on `:cli`'s bundle format or on `:daemon:bta-host`. Neither is a
- * published contract yet; both are preparation items in `docs/design/PREVIEW_SERVER_SPLIT.md`, and
- * the day they can be named here is the day they stop being blockers.
+ * What it deliberately does not do is exercise behaviour — there is no server here to exercise.
+ *
+ * This paragraph used to name two things it also could not cover: `serve`'s dependency on `:cli`'s
+ * bundle format and on `:daemon:bta-host`. Both have since resolved, in different ways. The bundle
+ * format became `:bundle-format`, published, and is named below. `:daemon:bta-host` was a
+ * misreading: `ee.schimke.composeai.daemon.bta` is declared by BOTH it and `:daemon:core`, and the
+ * types serve uses (`BtaCompileSession`, `DiagnosticCollector`) are the `:daemon:core` ones — see
+ * the correction in `docs/design/PREVIEW_SERVER_SPLIT.md`. What the probe still cannot see is the
+ * two unpublished modules serve loads by class name; those are recorded under
+ * `reflectiveDependencies` in `scripts/serve-seam-allowlist.json`, where no import scan reaches
+ * either.
  */
 object ContractSurface {
 
@@ -70,4 +78,13 @@ object ContractSurface {
 
   /** File IO. The server funnels reads/writes through `:common-io` like every other module. */
   val fileSystem: FileSystem = SystemFileSystem
+
+  /**
+   * The `.previewbundle` format. `serve` reads bundles — the manifest, the classpath entries, the
+   * baked previews — and for most of this document's life it did that by reaching into `:cli`,
+   * which is why the dependency-floor table listed the bundle format as the one entry that was not
+   * a module at all. It is `:bundle-format` now, and naming its manifest here is what makes that a
+   * checked claim rather than a stated one.
+   */
+  val bundleManifest: KClass<BundleReader.Manifest> = BundleReader.Manifest::class
 }

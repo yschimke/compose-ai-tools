@@ -2,7 +2,7 @@
 
 package ee.schimke.composeai.cli.serve
 
-import ee.schimke.composeai.cli.locateBundleSidecarJars
+import ee.schimke.composeai.bundle.locateBundleSidecarJars
 import ee.schimke.composeai.daemon.bta.BtaCompileSession
 import ee.schimke.composeai.daemon.bta.DiagnosticCollector
 import ee.schimke.composeai.daemon.protocol.CompileErrorDetail

@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli
+package ee.schimke.composeai.bundle
 
 /**
  * Longest-edge bound (px) for a hybrid figma-svg's raster crops, applied in **two** places that

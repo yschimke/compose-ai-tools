@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli
+package ee.schimke.composeai.bundle
 
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.ByteArrayInputStream
@@ -342,7 +342,7 @@ public fun resolveInBundleTarget(
 public object BundleReader {
 
   @Serializable
-  data class Manifest(
+  public data class Manifest(
     val schemaVersion: Int,
     val backend: String,
     val previewIds: List<String>,
@@ -394,16 +394,18 @@ public object BundleReader {
   )
 
   /** v8 mirror of `BundleExternalResource` in `PreviewBundleFormat.kt`. */
-  @Serializable data class ExternalResource(val path: String, val sha256: String, val size: Long)
+  @Serializable
+  public data class ExternalResource(val path: String, val sha256: String, val size: Long)
 
-  @Serializable data class ExternalClasspath(val path: String, val sha256: String, val size: Long)
+  @Serializable
+  public data class ExternalClasspath(val path: String, val sha256: String, val size: Long)
 
   /** v7+ mirror of `BundleDataExtension` in `PreviewBundleFormat.kt`. */
-  @Serializable data class DataExtension(val extensionId: String, val path: String)
+  @Serializable public data class DataExtension(val extensionId: String, val path: String)
 
   /** v6+ mirror of `BundleAndroidResources` in `PreviewBundleFormat.kt`. */
   @Serializable
-  data class AndroidResources(
+  public data class AndroidResources(
     val resourceApkPath: String,
     val mergedManifestPath: String,
     val rClassesJarPath: String? = null,
@@ -415,7 +417,7 @@ public object BundleReader {
 
   /** v5+ mirror of `BundleIr` in `PreviewBundleFormat.kt`. */
   @Serializable
-  data class BundleIr(
+  public data class BundleIr(
     val previewId: String,
     /** `remotecompose` (RC doc) or `protolayout` (Wear tile Layout proto). */
     val format: String,
@@ -426,14 +428,14 @@ public object BundleReader {
   @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
   @Serializable
   @JsonClassDiscriminator("kind")
-  sealed interface ClasspathEntry {
+  public sealed interface ClasspathEntry {
     @Serializable
     @kotlinx.serialization.SerialName("module")
-    data class Module(val path: String) : ClasspathEntry
+    public data class Module(val path: String) : ClasspathEntry
 
     @Serializable
     @kotlinx.serialization.SerialName("maven")
-    data class Maven(
+    public data class Maven(
       val group: String,
       val artifact: String,
       val version: String,
@@ -444,18 +446,18 @@ public object BundleReader {
 
     @Serializable
     @kotlinx.serialization.SerialName("project")
-    data class Project(val path: String, val inlinedAs: String) : ClasspathEntry
+    public data class Project(val path: String, val inlinedAs: String) : ClasspathEntry
 
     /**
      * v3+: a third-party jar carried inside the bundle's `libs/` — no coordinate, no resolution.
      */
     @Serializable
     @kotlinx.serialization.SerialName("embedded")
-    data class Embedded(val inlinedAs: String) : ClasspathEntry
+    public data class Embedded(val inlinedAs: String) : ClasspathEntry
   }
 
   @Serializable
-  data class Report(
+  public data class Report(
     val entryClassFqns: List<String>,
     val reachableClassCount: Int,
     val totalScannedClassCount: Int,
@@ -464,10 +466,14 @@ public object BundleReader {
   )
 
   @Serializable
-  data class ModuleClasses(val totalClasses: Int, val reachableClasses: Int, val packedBytes: Long)
+  public data class ModuleClasses(
+    val totalClasses: Int,
+    val reachableClasses: Int,
+    val packedBytes: Long,
+  )
 
   @Serializable
-  data class DependencyDecision(
+  public data class DependencyDecision(
     val sourcePath: String,
     val coordinate: String?,
     val projectPath: String?,
@@ -477,14 +483,14 @@ public object BundleReader {
     val kept: Boolean,
   )
 
-  data class Metadata(val manifest: Manifest, val report: Report?)
+  public data class Metadata(val manifest: Manifest, val report: Report?)
 
   private val json = Json {
     ignoreUnknownKeys = true
     classDiscriminator = "kind"
   }
 
-  fun readMetadata(file: File): Metadata {
+  public fun readMetadata(file: File): Metadata {
     val zipBytes = extractZipBytes(file)
     var manifest: Manifest? = null
     var report: Report? = null
@@ -509,7 +515,7 @@ public object BundleReader {
   }
 
   /** Polyglot-aware zip extraction; mirrors [extractZipBytes] in the plugin module. */
-  fun extractZipBytes(file: File, fileSystem: FileSystem = SystemFileSystem): ByteArray {
+  public fun extractZipBytes(file: File, fileSystem: FileSystem = SystemFileSystem): ByteArray {
     val bytes = fileSystem.read(file.path.toPath()) { readByteArray() }
     if (bytes.size < 8) {
       throw IllegalArgumentException("not a bundle: ${file.path} is too small (${bytes.size}B)")
@@ -558,7 +564,7 @@ public object BundleReader {
    * and directory entries are ignored. Shared by [BundleRenderer] and [BundleDaemonCommand] so the
    * two player paths extract identically.
    */
-  fun extractEmbeddedLibs(
+  public fun extractEmbeddedLibs(
     zipBytes: ByteArray,
     libsDir: File,
     fileSystem: FileSystem = SystemFileSystem,

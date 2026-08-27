@@ -429,6 +429,12 @@ class ContractCoverage(unittest.TestCase):
         kts = (
             mod.REPO_ROOT / "preview-server/contract-probe/build.gradle.kts"
         ).read_text(encoding="utf-8")
+        # Strip `//` comments before looking for the list's closing paren. The entries are
+        # commented, and a comment containing a `)` — an issue reference, a parenthetical — used to
+        # end the block early. That does not fail loudly: it silently drops every contract after
+        # the comment, so the coverage assertions below pass over a truncated list. Comments cannot
+        # contain a quoted coordinate that matters, so removing them first is safe.
+        kts = re.sub(r"//[^\n]*", "", kts)
         block = kts.split("val contracts =", 1)[1].split(")", 1)[0]
         return set(re.findall(r'"([a-z0-9-]+)"', block))
 
@@ -519,10 +525,26 @@ class RealTree(unittest.TestCase):
     def test_forbidden_packages_are_clean(self):
         self.assertEqual(mod.forbidden_hits(mod.load_allowlist()["forbiddenPackages"]), [])
 
-    def test_the_bundle_cluster_is_on_the_list(self):
-        """It is preparation item 5's whole justification — don't lose it silently."""
-        entries = set(mod.load_allowlist()["main"]["cliInternalsUsedByServe"])
-        self.assertTrue({"BundleReader", "BundleSigning"} & entries)
+    def test_the_bundle_cluster_has_left_the_list(self):
+        """Preparation item 5, from the other side.
+
+        This assertion used to read the opposite way: the bundle cluster HAD to be on
+        `cliInternalsUsedByServe`, because losing it silently would have meant losing item 5's whole
+        justification. Item 5 is done — the cluster lives in a published `:bundle-format` in its own
+        package — so the thing worth guarding is now the reverse. If these symbols reappear as CLI
+        internals, something moved back.
+
+        Both halves matter. Off the register alone would also be true if serve had simply stopped
+        using them; the contract mapping is what says they are still used, from a module an
+        extracted server can name.
+        """
+        allowlist = mod.load_allowlist()
+        for source_set in mod.SOURCE_SETS:
+            entries = set(allowlist[source_set]["cliInternalsUsedByServe"])
+            self.assertEqual({"BundleReader", "BundleSigning"} & entries, set(), source_set)
+        self.assertEqual(
+            allowlist["contractPackages"].get("ee.schimke.composeai.bundle"), "bundle-format"
+        )
 
 
 if __name__ == "__main__":

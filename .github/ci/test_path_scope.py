@@ -171,6 +171,78 @@ class RepositoryConfigsTest(unittest.TestCase):
                     },
                 )
 
+    @staticmethod
+    def missing_literal_paths(config):
+        """Literal (non-glob) paths in a lane config that do not exist in the tree.
+
+        A glob is a pattern over paths that may not exist yet — a lane fixture nobody has written
+        — so only exact paths are resolved.
+        """
+        root = HERE.parents[1]
+        literal = []
+        for value in config.values():
+            entries = value if isinstance(value, list) else sum(value.values(), [])
+            literal += [e for e in entries if not any(c in e for c in "*?[")]
+        return literal, sorted({p for p in literal if not (root / p).exists()})
+
+    def test_every_literal_path_in_the_serve_lane_config_exists(self):
+        """A renamed file silently stops selecting its lane (PR #4587 review).
+
+        The lane config pins two Robolectric bundle sources by exact path rather than by glob,
+        because they are the only files outside `serve` that the Android and playground lanes
+        depend on. An exact path is a fact about the tree that nothing checked: when
+        `AndroidBundleLaunch.kt` moved modules, and again when it changed package directory, the
+        entries kept matching nothing at all. That does not fail — it just quietly stops waking
+        the lanes on exactly the changes they exist to cover. Both mistakes were made here, one
+        PR apart.
+        """
+        literal, missing = self.missing_literal_paths(self.load("serve-lanes-paths.json"))
+        self.assertTrue(literal, "no literal paths in serve-lanes-paths.json to check")
+        self.assertEqual(
+            missing,
+            [],
+            "serve-lanes-paths.json names path(s) that do not exist; a moved or renamed file "
+            "stops selecting its lane silently: " + ", ".join(missing),
+        )
+
+    def test_the_missing_path_guard_actually_fires(self):
+        """The guard above must fail on a stale path, or it guards nothing.
+
+        Uses the exact path this PR had to fix — the one `AndroidBundleLaunch.kt` carried between
+        the module move and the package rename.
+        """
+        stale = "bundle/format/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleLaunch.kt"
+        real = "bundle/format/src/main/kotlin/ee/schimke/composeai/bundle/AndroidBundleLaunch.kt"
+        # A synthetic config, not the real one: if the real config were itself broken, injecting a
+        # path into it would make this pass for the wrong reason and mask the failure above.
+        literal, missing = self.missing_literal_paths(
+            {"globalPaths": [real, "bundle/format/**"], "lanes": {"android": [stale]}}
+        )
+        self.assertEqual(sorted(literal), sorted([real, stale]), "glob was not skipped")
+        self.assertEqual(missing, [stale])
+
+    def test_the_workflow_and_the_lane_config_pin_the_same_bundle_sources(self):
+        """Two files carry these paths; only one of them is JSON anything can validate.
+
+        `serve-lanes-e2e.yml`'s own `paths:` filters decide whether the workflow runs at all, and
+        `serve-lanes-paths.json` decides which lanes it then selects. A path fixed in one and not
+        the other is worse than a path wrong in both: the workflow starts and picks no lane.
+        """
+        import re as _re
+
+        root = HERE.parents[1]
+        workflow = (root / ".github/workflows/serve-lanes-e2e.yml").read_text()
+        in_workflow = set(_re.findall(r'"(bundle/format/\S+?\.kt)"', workflow))
+        config = self.load("serve-lanes-paths.json")
+        in_config = {
+            e
+            for value in config.values()
+            for e in (value if isinstance(value, list) else sum(value.values(), []))
+            if e.startswith("bundle/format/") and e.endswith(".kt")
+        }
+        self.assertTrue(in_config, "lane config pins no bundle-format sources")
+        self.assertEqual(in_workflow, in_config)
+
     def test_wasm_distribution_resources_run_the_rc_player_jobs(self):
         # `wasmPlayerDist` syncs these two paths straight into the shipped player (see
         # rc-player/wasm/build.gradle.kts), so a font swap or a fonts.json edit changes production

@@ -42,6 +42,7 @@ CONTRACT_PROJECTS=(
   ":data-theme-core"
   ":data-render-core"
   ":data-pseudolocale-core"
+  ":bundle-format"
 )
 
 # Recorded leaks, published only so the probe can resolve at all. Every name here is a module an

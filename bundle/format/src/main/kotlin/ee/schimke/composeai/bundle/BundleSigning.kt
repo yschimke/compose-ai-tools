@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli
+package ee.schimke.composeai.bundle
 
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -29,17 +29,20 @@ import kotlinx.serialization.json.Json
 public object BundleSigning {
 
   /** Zip path of the detached signatures; excluded from the digest it signs. */
-  const val SIGNATURES_PATH = "signatures.json"
-  const val SIGNATURES_SCHEMA = "compose-preview-bundle/signatures/v1"
-  const val ALG_ED25519 = "ed25519"
+  public const val SIGNATURES_PATH: String = "signatures.json"
+  public const val SIGNATURES_SCHEMA: String = "compose-preview-bundle/signatures/v1"
+  public const val ALG_ED25519: String = "ed25519"
 
-  /** CLI-side mirror of `BundleSignatures` in `PreviewBundleFormat.kt`. */
+  /** Mirror of `BundleSignatures` in the Gradle plugin's `PreviewBundleFormat.kt`. */
   @Serializable
-  data class Signatures(val schema: String = SIGNATURES_SCHEMA, val signatures: List<Signature>)
+  public data class Signatures(
+    val schema: String = SIGNATURES_SCHEMA,
+    val signatures: List<Signature>,
+  )
 
-  /** CLI-side mirror of `BundleSignature`. */
+  /** Mirror of `BundleSignature` in the Gradle plugin's `PreviewBundleFormat.kt`. */
   @Serializable
-  data class Signature(
+  public data class Signature(
     val keyId: String,
     val algorithm: String = ALG_ED25519,
     val digest: String,
@@ -50,7 +53,11 @@ public object BundleSigning {
 
   /** CLI-side mirror of `BundleProvenance`. */
   @Serializable
-  data class Provenance(val type: String, val identity: String, val attestation: String? = null)
+  public data class Provenance(
+    val type: String,
+    val identity: String,
+    val attestation: String? = null,
+  )
 
   private val json = Json {
     ignoreUnknownKeys = true
@@ -67,7 +74,7 @@ public object BundleSigning {
    * Deterministic regardless of zip ordering or compression, and stable when signatures are
    * appended.
    */
-  fun canonicalDigest(zipBytes: ByteArray): ByteArray {
+  public fun canonicalDigest(zipBytes: ByteArray): ByteArray {
     val lines = ArrayList<String>()
     ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
       while (true) {
@@ -84,13 +91,13 @@ public object BundleSigning {
   }
 
   /** Canonical digest of a bundle file (polyglot-aware). */
-  fun canonicalDigest(bundle: File): ByteArray =
+  public fun canonicalDigest(bundle: File): ByteArray =
     canonicalDigest(BundleReader.extractZipBytes(bundle))
 
   // --- signatures.json read / write ------------------------------------------------------------
 
   /** Decode `signatures.json` from a bundle's [zipBytes], or null when the bundle is unsigned. */
-  fun readSignatures(zipBytes: ByteArray): Signatures? {
+  public fun readSignatures(zipBytes: ByteArray): Signatures? {
     var bytes: ByteArray? = null
     ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
       while (true) {
@@ -106,7 +113,7 @@ public object BundleSigning {
       .getOrNull()
   }
 
-  fun readSignatures(bundle: File): Signatures? =
+  public fun readSignatures(bundle: File): Signatures? =
     readSignatures(BundleReader.extractZipBytes(bundle))
 
   /**
@@ -114,7 +121,7 @@ public object BundleSigning {
    * already present, replacing one with the same `keyId`), keeping the leading PNG cover and every
    * other entry. Idempotent per keyId. Returns the resulting signature count.
    */
-  fun addSignature(bundle: File, signature: Signature): Int {
+  public fun addSignature(bundle: File, signature: Signature): Int {
     val existing =
       readSignatures(bundle)?.signatures.orEmpty().filter { it.keyId != signature.keyId }
     val merged = Signatures(signatures = existing + signature)
@@ -127,7 +134,7 @@ public object BundleSigning {
   // --- Ed25519 ----------------------------------------------------------------------------------
 
   /** Sign [digest] with an Ed25519 [privateKey]; returns the raw signature bytes. */
-  fun signEd25519(privateKey: PrivateKey, digest: ByteArray): ByteArray {
+  public fun signEd25519(privateKey: PrivateKey, digest: ByteArray): ByteArray {
     // Fully qualified — the nested [Signature] data class shadows java.security.Signature here.
     val sig = java.security.Signature.getInstance("Ed25519")
     sig.initSign(privateKey)
@@ -136,19 +143,22 @@ public object BundleSigning {
   }
 
   /** Verify [signatureBytes] over [digest] against an Ed25519 [publicKey]. */
-  fun verifyEd25519(publicKey: PublicKey, digest: ByteArray, signatureBytes: ByteArray): Boolean =
-    runCatching {
-      val sig = java.security.Signature.getInstance("Ed25519")
-      sig.initVerify(publicKey)
-      sig.update(digest)
-      sig.verify(signatureBytes)
-    }
+  public fun verifyEd25519(
+    publicKey: PublicKey,
+    digest: ByteArray,
+    signatureBytes: ByteArray,
+  ): Boolean = runCatching {
+    val sig = java.security.Signature.getInstance("Ed25519")
+    sig.initVerify(publicKey)
+    sig.update(digest)
+    sig.verify(signatureBytes)
+  }
     .getOrDefault(false)
 
   /** A fresh Ed25519 keypair, base64-encoded: private = PKCS#8 DER, public = X.509 SPKI DER. */
-  data class KeyPairB64(val privateKeyB64: String, val publicKeyB64: String)
+  public data class KeyPairB64(val privateKeyB64: String, val publicKeyB64: String)
 
-  fun generateKeyPair(): KeyPairB64 {
+  public fun generateKeyPair(): KeyPairB64 {
     val pair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
     return KeyPairB64(
       privateKeyB64 = Base64.getEncoder().encodeToString(pair.private.encoded),
@@ -157,7 +167,7 @@ public object BundleSigning {
   }
 
   /** Parse an Ed25519 private key from PEM (`-----BEGIN PRIVATE KEY-----`) or raw base64 PKCS#8. */
-  fun parsePrivateKey(text: String): PrivateKey {
+  public fun parsePrivateKey(text: String): PrivateKey {
     val der = decodePemOrBase64(text, "PRIVATE KEY")
     return KeyFactory.getInstance("Ed25519").generatePrivate(PKCS8EncodedKeySpec(der))
   }
@@ -165,7 +175,7 @@ public object BundleSigning {
   /**
    * Parse an Ed25519 public key from PEM (`-----BEGIN PUBLIC KEY-----`) or raw base64 X.509 SPKI.
    */
-  fun parsePublicKey(text: String): PublicKey {
+  public fun parsePublicKey(text: String): PublicKey {
     val der = decodePemOrBase64(text, "PUBLIC KEY")
     return KeyFactory.getInstance("Ed25519").generatePublic(X509EncodedKeySpec(der))
   }
@@ -186,13 +196,14 @@ public object BundleSigning {
 
   // --- helpers ----------------------------------------------------------------------------------
 
-  fun base64(bytes: ByteArray): String = Base64.getEncoder().encodeToString(bytes)
+  public fun base64(bytes: ByteArray): String = Base64.getEncoder().encodeToString(bytes)
 
-  fun decodeBase64(text: String): ByteArray = Base64.getDecoder().decode(text.trim())
+  public fun decodeBase64(text: String): ByteArray = Base64.getDecoder().decode(text.trim())
 
-  fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it) }
+  public fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it) }
 
-  fun sha256(bytes: ByteArray): ByteArray = MessageDigest.getInstance("SHA-256").digest(bytes)
+  public fun sha256(bytes: ByteArray): ByteArray =
+    MessageDigest.getInstance("SHA-256").digest(bytes)
 
   /**
    * Normalize raw bundle bytes to the appended ZIP portion: a plain zip (`PK\x03\x04`) is returned
@@ -201,7 +212,7 @@ public object BundleSigning {
    * input unchanged when it matches neither signature (best effort — callers treat it as zip
    * bytes).
    */
-  fun zipBytesOf(raw: ByteArray): ByteArray {
+  public fun zipBytesOf(raw: ByteArray): ByteArray {
     if (raw.size >= 2 && raw[0] == 0x50.toByte() && raw[1] == 0x4B.toByte()) return raw
     val pngSig = byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10)
     if (raw.size < pngSig.size || !pngSig.indices.all { raw[it] == pngSig[it] }) return raw

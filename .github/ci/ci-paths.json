@@ -142,6 +142,7 @@
       "data/theme/core/**",
       "data/render/core/**",
       "data/pseudolocale/core/**",
+      "bundle/format/**",
       "mcp/**",
       "renderers/xr-client/**",
       "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/**"
