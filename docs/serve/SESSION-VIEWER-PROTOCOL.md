@@ -10,10 +10,10 @@ things: the streamed-frame WebSocket protocol, the tappable session-link format,
 and the mDNS discovery contract.
 
 The server side lives in `:cli`:
-[`ServeStreamProtocol`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeStreamProtocol.kt)
-(frames), [`ServeUrls`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeUrls.kt)
+[`ServeStreamProtocol`](../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeStreamProtocol.kt)
+(frames), [`ServeUrls`](../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeUrls.kt)
 (link shapes), and
-[`ServeMdnsAdvertiser`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeMdnsAdvertiser.kt)
+[`ServeMdnsAdvertiser`](../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeMdnsAdvertiser.kt)
 (discovery). See [daemon/STREAMING.md](../daemon/STREAMING.md) for the native
 daemon streaming protocol this serve lane mirrors.
 

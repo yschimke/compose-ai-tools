@@ -113,7 +113,7 @@ exists: uploading a PNG through the [image lane](../public-preview-server.md#upl
 is not "more" than starting a render daemon and not "less" than compiling a snippet — it is sideways
 from both. As a fourth rung it would have made every `playground` grant an uploader and every
 uploader a daemon-starter, so it is a **set** beside the scope
-([`ServeAgentGrantCapability`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeAgentGrantCapability.kt))
+([`ServeAgentGrantCapability`](../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeAgentGrantCapability.kt))
 rather than a value on it, with its own operator ceiling (`--agent-grant-capabilities`, default
 empty) and its own checkbox on the approval page. Radios for the ladder, checkboxes for the set:
 independent boxes describe independent permissions honestly, and nothing is pre-ticked.
@@ -147,7 +147,7 @@ Three edges are worth stating, since none of them is obvious:
 **The other ingest lanes are outside the scope system entirely.** `POST /bundles/{name}` and `POST /docs`
 run through the same `rejectBadToken` as everything else, so a `preview` grant would have satisfied
 them — letting an agent granted "browse this server's catalogs" publish a document or replace a
-named runtime bundle. They take [`rejectBadTokenForIngest`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeHttpServer.kt)
+named runtime bundle. They take [`rejectBadTokenForIngest`](../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeHttpServer.kt)
 instead, which no grant satisfies. Contributing content to someone else's box is the operator's
 business, not a capability this flow should be able to hand out; the image lane already worked this
 way for its own reasons.

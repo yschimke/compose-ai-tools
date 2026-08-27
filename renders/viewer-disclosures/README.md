@@ -15,7 +15,7 @@ default safe.
 The component's renders are now a **subtree of the catalog tree**, filtered to the one component
 on screen and built from the same `primaryVariants` the landing tree uses — one definition of what
 a component's renders are, drawn twice. The markup is in
-[`ServeWeb.viewerPage`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeWeb.kt)
+[`ServeWeb.viewerPage`](../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeWeb.kt)
 (`componentSubtreeHtml`, `appendComponentRow`, `disclosureToggleHtml`, `AXIS_ROWS_INLINE`,
 `THEME_CHIPS_INLINE`), the fold behaviour and its
 per-visitor memory in [`viewer-drawers.js`](../../cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/viewer-drawers.js).

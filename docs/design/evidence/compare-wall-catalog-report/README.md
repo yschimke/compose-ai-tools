@@ -5,7 +5,7 @@ Issue [#4289](https://github.com/yschimke/compose-ai-tools/issues/4289): filed f
 action trying to open against a catalog."
 
 The floating launcher offers two trackers, and the catalog half is
-[`ServeWeb.reportIssueHtml`](../../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeWeb.kt)'s
+[`ServeWeb.reportIssueHtml`](../../../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeWeb.kt)'s
 `#cp-report`, which
 [`reportLauncher.ts`](../../../cli/serve-web/src/chrome/reportLauncher.ts) unhides and completes
 on the pages that carry one. The comparison wall carried none — and `.cp-fab-choice`'s

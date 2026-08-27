@@ -3,7 +3,7 @@
 Audit of how each of the five Remote Compose render lanes the preview server (`compose-preview
 serve`) and the `compose-preview` CLI can drive resolves a **typeface**, and where those lanes
 disagree about the same document. The lanes themselves are described in
-[`RcPlayerBackend`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/RcPlayerBackend.kt) —
+[`RcPlayerBackend`](../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/RcPlayerBackend.kt) —
 this document is only about fonts.
 
 A Remote Compose document names its typeface in one of three ways, and each is a separate support
@@ -43,7 +43,7 @@ viewer disagree about the *same* document:
    intercepted by
    [`ShadowFontsContractCompat`](../../renderers/android/src/main/kotlin/ee/schimke/composeai/renderer/ShadowFontsContractCompat.kt)
    and served from the machine-local Google font cache (`composeai.fonts.cacheDir`, set for the
-   serve daemon by [`ServeBundleDaemon`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt)
+   serve daemon by [`ServeBundleDaemon`](../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt)
    and for the CLI daemon by [`BundleDaemonCommand`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/BundleDaemonCommand.kt)).
    So the branded face appears under `cmp-android`, `cmp-jvm` and `js`, and silently does not under
    `java` — which is the **default** server-side snapshot lane. **Closed** for all three: `cmp-jvm`
@@ -98,7 +98,7 @@ built-in ids to the concrete faces Android's `fonts.xml` resolves them to — `R
 offline compare harness inlines them as base64 `@font-face`
 (`scripts/design-artifacts/rc-fonts.mjs`), the wasm catalog dist ships them, and the `serve` viewer
 serves them —
-[`ServeRcFonts`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeRcFonts.kt) publishes
+[`ServeRcFonts`](../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeRcFonts.kt) publishes
 `/rc-fonts/fonts.css` plus the four face files out of the CLI jar, and every page with a client-side
 lane (the viewer's `js` chip, the PNG↔RC comparison, a shared `/d/<id>` document) links it and
 *loads* it before painting via `rc-fonts.js`. The load matters as much as the declaration: canvas

@@ -3,7 +3,7 @@
     "What this repo's own design catalogs use as scaffolding, so the preview server's Source panel",
     "(and the playground handoff) can reduce a sticker to the plain Compose that produced the",
     "render. Read by `PlaygroundSeedResolver` from the repo root at the same `ref` a catalog was",
-    "published from; see `cli/src/main/kotlin/ee/schimke/composeai/cli/serve/UsageRules.kt`.",
+    "published from; see `cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/UsageRules.kt`.",
     "",
     "CatalogSticker is UNWRAPped rather than expanded into a stock MaterialTheme: it is the render",
     "frame (a transparent Surface and 16dp of padding around a component silhouette), so keeping it",

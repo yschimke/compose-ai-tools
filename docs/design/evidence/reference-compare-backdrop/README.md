@@ -5,7 +5,7 @@ Issue [wear-m3-catalog#56](https://github.com/yschimke/wear-m3-catalog/issues/56
 to understand."
 
 The reference-compare page was the one comparison surface with no ground of its own.
-[`ServeWeb.referenceComparisonPage`](../../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeWeb.kt)
+[`ServeWeb.referenceComparisonPage`](../../../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeWeb.kt)
 emitted `#cp-reference-compare` with no `data-bg-theme`, unlike the grid cards and the viewer, both
 of which resolve one. So all three panels fell through to `.cp-compare-shot`'s default in
 [`serve.css`](../../../cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/serve.css) —

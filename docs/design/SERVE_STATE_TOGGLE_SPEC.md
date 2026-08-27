@@ -13,7 +13,7 @@
 
 In all three `catalog.spec.json` files the "on/checked/selected" render is the `componentId` and the "off/unchecked/pressed/disabled" render is a **`variant`** tagged by `state`. `foldVariants` (`scripts/design-artifacts/catalog-variants.mjs`) merges each variant's images onto the parent component's `images[]`, re-tagged with `image.state`. So the published `catalog.json` already carries ONE component whose `images[]` holds all its states × themes. **Do not change the specs or the generator.**
 
-The gaps are entirely in `cli/src/main/kotlin/ee/schimke/composeai/cli/serve/`:
+The gaps are entirely in `cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/`:
 - The grid grouping (`ServeWeb.kt` `baseKey`) only collapses the *theme* segment, so each `state` render becomes its own card → the "off" is a duplicate.
 - `ServeCatalogStore` drops `image.state`/`image.theme`; the viewer only builds a Light/Dark toggle → no state switcher.
 
@@ -54,7 +54,7 @@ Both from the catalog's `variants.json`; null keeps current behavior everywhere 
 - Escape all interpolated ids/labels with `WebEscaping.htmlEscape` / `urlEncodeSegment`. Match the existing string-template + `.trimIndent()` style. Do NOT touch the daemon/live lane, overrides, wasm, or figma-svg logic.
 
 ## Tests (this repo gates on tests)
-Add/extend under `cli/src/test/kotlin/ee/schimke/composeai/cli/serve/`:
+Add/extend under `cli/serve/src/test/kotlin/ee/schimke/composeai/cli/serve/`:
 - **ServeWebTest.kt (new):** (a) a component with `default`+`unchecked` (both light+dark) yields ONE grid card (the default, still carrying light/dark swap attrs) and NO card for the `unchecked` id; (b) the default viewer renders a `cp-states` switcher linking the same-theme `unchecked` sibling with Default marked active; (c) a single-state component renders NO `cp-states`; (d) a plain stateless catalog renders grid + viewer unchanged.
 - **ServeCatalogStoreTest.kt:** `previews/variants.json` is written with the right `{id:{state,theme}}` (null keys omitted) for a state-bearing fixture, and round-trips onto host previews.
 - **ServeBundleHostTest.kt:** previews tagged from `variants.json`; a plain bundle (no manifest) keeps null state/theme.

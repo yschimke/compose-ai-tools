@@ -1,7 +1,7 @@
 # Render history for the design catalogs
 
 `<cp-history-menu>` has shipped on every viewer page for a while, and it already models exactly the
-right thing: [`PreviewHistory`](../../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/PreviewHistory.kt)
+right thing: [`PreviewHistory`](../../../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/PreviewHistory.kt)
 collapses a delivery branch into one entry per distinct render, keyed by blob sha.
 
 On the design catalogs it drew nothing at all. Two reasons, both of them the same mistake — the
@@ -70,7 +70,7 @@ renders of that preview identified as the points where the pixels moved.
 A baseline branch needs that sidecar because `renders/<module>/<basename>` says nothing about which
 preview a file belongs to. A design catalog needs nothing: the id the viewer addresses a preview by
 *is* its path flattened, which is what
-[`ServeCatalogStore.previewIdFor`](../../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeCatalogStore.kt)
+[`ServeCatalogStore.previewIdFor`](../../../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeCatalogStore.kt)
 already computes for the routes. The manifest builder reuses that function rather than restating
 the rule — a manifest keyed any other way is one the menu silently finds nothing in, which is the
 failure this whole change exists to remove.

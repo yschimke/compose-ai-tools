@@ -12,7 +12,7 @@ machine-identifiable, and issues filed before it need their bodies hand-edited l
 argument for doing this batch first even if nothing else gets done.**
 
 **Read first:** [`../COMPONENT_PARITY_WORKFLOW.md`](../COMPONENT_PARITY_WORKFLOW.md) §2 and §6 step 1;
-`cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeIssueReport.kt` in full (220 lines — the
+`cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeIssueReport.kt` in full (220 lines — the
 KDoc explains why the link is prefilled rather than filed server-side, which constrains everything
 here); `viewer.js` around `refreshReportLink()` (~line 657).
 
