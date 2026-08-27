@@ -10,17 +10,17 @@ package ee.schimke.composeai.data.render.extensions
  * a list of `CompositionLocal` overrides on Android) live on platform-specific subclasses /
  * holders; this interface is the generic surface every backend can rely on.
  */
-interface RenderSession {
+public interface RenderSession {
   /**
    * Ids of every data extension the host has opted into for this session. The Robolectric runner
    * derives this from `composeai.session.extensions`; the daemon derives it from the active
    * `RenderSpec`/subscription state. Extensions consult this to decide whether they're "on" — no
    * standalone toggle is plumbed through the gradle plugin or VS Code.
    */
-  val appliedExtensionIds: Set<DataExtensionId>
+  public val appliedExtensionIds: Set<DataExtensionId>
 
   /** Convenience predicate matching by id string. */
-  fun isApplied(id: DataExtensionId): Boolean = id in appliedExtensionIds
+  public fun isApplied(id: DataExtensionId): Boolean = id in appliedExtensionIds
 }
 
 /**
@@ -37,13 +37,13 @@ interface RenderSession {
  *    up for it. The canonical use is asserting `id in session.appliedExtensionIds` so a
  *    misconfigured render never silently produces data products without the matching opt-in.
  */
-interface RenderSessionParticipant {
+public interface RenderSessionParticipant {
   /**
    * Called once during session setup if this participant's id is in
    * [RenderSession.appliedExtensionIds]. Implementations register any session-wide configuration
    * they require (e.g. CompositionLocal overrides). No-op by default.
    */
-  fun configureSession(session: RenderSession) {}
+  public fun configureSession(session: RenderSession) {}
 
   /**
    * Called before this participant's per-render hooks run. Throws if the session is not in a valid
@@ -51,19 +51,19 @@ interface RenderSessionParticipant {
    * [RenderSession.appliedExtensionIds] (i.e. the host invoked the hook without opting the
    * extension in). Default: no-op (always valid).
    */
-  fun validateSession(session: RenderSession) {}
+  public fun validateSession(session: RenderSession) {}
 }
 
 /** Minimal, immutable [RenderSession] implementation backed by an explicit applied-id set. */
-data class SimpleRenderSession(override val appliedExtensionIds: Set<DataExtensionId>) :
+public data class SimpleRenderSession(override val appliedExtensionIds: Set<DataExtensionId>) :
   RenderSession {
-  companion object {
+  public companion object {
     /**
      * Parse a comma- or semicolon-separated string of extension ids (the format the gradle plugin
      * forwards via `composeai.session.extensions`) into a [SimpleRenderSession]. Blank / null input
      * yields an empty session.
      */
-    fun fromIdList(raw: String?): SimpleRenderSession {
+    public fun fromIdList(raw: String?): SimpleRenderSession {
       if (raw.isNullOrBlank()) return SimpleRenderSession(emptySet())
       val ids =
         raw

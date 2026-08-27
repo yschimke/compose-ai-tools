@@ -10,7 +10,7 @@ import kotlinx.serialization.Serializable
  * available.
  */
 @Serializable
-data class PreviewPipelineStep(
+public data class PreviewPipelineStep(
   val id: String,
   val displayName: String = id,
   val productKinds: List<String> = emptyList(),
@@ -25,13 +25,13 @@ data class PreviewPipelineStep(
 )
 
 @Serializable
-enum class PreviewExtensionUsageMode {
+public enum class PreviewExtensionUsageMode {
   ExplicitEffect,
   SuggestedExtraPreview,
 }
 
 @Serializable
-data class PreviewExtensionDescriptor(
+public data class PreviewExtensionDescriptor(
   val id: String,
   val displayName: String = id,
   val usageModes: Set<PreviewExtensionUsageMode> = setOf(PreviewExtensionUsageMode.ExplicitEffect),
@@ -41,7 +41,7 @@ data class PreviewExtensionDescriptor(
 )
 
 @Serializable
-data class PreviewExtensionCliCommand(
+public data class PreviewExtensionCliCommand(
   val id: String,
   val displayName: String = id,
   val summary: String = "",
@@ -53,7 +53,7 @@ data class PreviewExtensionCliCommand(
 )
 
 @Serializable
-enum class PipelineStepTrait {
+public enum class PipelineStepTrait {
   ScenarioDriver,
   InteractiveDriver,
   AnnotationInspector,
@@ -67,7 +67,7 @@ enum class PipelineStepTrait {
 }
 
 @Serializable
-enum class PipelineCapability {
+public enum class PipelineCapability {
   Frames,
   SingleFrame,
   MultipleFrames,
@@ -89,7 +89,7 @@ enum class PipelineCapability {
 }
 
 @Serializable
-enum class SamplingPolicy {
+public enum class SamplingPolicy {
   Start,
   End,
   EachFrame,
@@ -99,7 +99,7 @@ enum class SamplingPolicy {
 }
 
 @Serializable
-data class ExtractionSpec(
+public data class ExtractionSpec(
   val kind: String,
   val sampling: SamplingPolicy,
   val requiresImage: Boolean = false,
@@ -107,7 +107,7 @@ data class ExtractionSpec(
   val aggregate: Boolean = false,
 )
 
-data class PreviewPipelinePlan(
+public data class PreviewPipelinePlan(
   val steps: List<PreviewPipelineStep>,
   val initialCapabilities: Set<PipelineCapability> = emptySet(),
 ) {
@@ -115,14 +115,14 @@ data class PreviewPipelinePlan(
     steps.fold(initialCapabilities) { provided, step -> provided + step.provides }
 }
 
-data class PipelineValidationError(
+public data class PipelineValidationError(
   val code: String,
   val message: String,
   val steps: List<String> = emptyList(),
 )
 
-object PreviewPipelineValidator {
-  fun validate(plan: PreviewPipelinePlan): List<PipelineValidationError> = buildList {
+public object PreviewPipelineValidator {
+  public fun validate(plan: PreviewPipelinePlan): List<PipelineValidationError> = buildList {
     val steps = plan.steps
 
     addAtMostOneTraitError(

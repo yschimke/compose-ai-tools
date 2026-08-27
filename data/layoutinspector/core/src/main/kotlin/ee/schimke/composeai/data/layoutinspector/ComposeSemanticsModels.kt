@@ -3,8 +3,8 @@ package ee.schimke.composeai.data.layoutinspector
 import kotlin.math.abs
 import kotlinx.serialization.Serializable
 
-object ComposeSemanticsProduct {
-  const val KIND: String = "compose/semantics"
+public object ComposeSemanticsProduct {
+  public const val KIND: String = "compose/semantics"
   // v3 (#1897): each node may carry resolved design-token data (`tokens`) — container colour,
   // corner radius, padding — so design-parity's token-compliance check can populate `actual`
   // instead of degrading to "missing from candidate". Additive: older `compose-semantics.json`
@@ -76,12 +76,12 @@ object ComposeSemanticsProduct {
   // top-left corner. `layout/inspector` has carried the same flag since its first version;
   // this closes the gap on the tree that owns typography. Additive — older entries decode as
   // `placed = true`, which is what every node they describe was assumed to be.
-  const val SCHEMA_VERSION: Int = 15
-  const val FILE: String = "compose-semantics.json"
+  public const val SCHEMA_VERSION: Int = 15
+  public const val FILE: String = "compose-semantics.json"
 }
 
-object LayoutInspectorProduct {
-  const val KIND: String = "layout/inspector"
+public object LayoutInspectorProduct {
+  public const val KIND: String = "layout/inspector"
   // v2 (#1903): each node may carry resolved design `tokens` — the modifier-derived
   // `{backgroundColor, borderColor, cornerRadius, shape, gap, padding}` projection. This is the
   // *canonical* home for those tokens: they come from modifiers, which `layout/inspector` already
@@ -158,8 +158,8 @@ object LayoutInspectorProduct {
   // rather than the drawn rect (Wear's `AlertDialog` confirm button: a 126x108 pill turned -45
   // degrees reports 166x166), so a consumer that places by `bounds` alone draws the node too big
   // and un-turned. Additive — older entries decode with `rotationDegrees = 0f`.
-  const val SCHEMA_VERSION: Int = 17
-  const val FILE: String = "layout-inspector.json"
+  public const val SCHEMA_VERSION: Int = 17
+  public const val FILE: String = "layout-inspector.json"
 }
 
 /**
@@ -168,14 +168,14 @@ object LayoutInspectorProduct {
  * path-transported artifact) and a baked PNG (rides as a [DataProductExtra][name=[PNG_EXTRA_NAME]]
  * for raster-only consumers).
  */
-object ComposeSemanticsWireframeProduct {
-  const val KIND: String = "compose/semantics-wireframe"
-  const val SCHEMA_VERSION: Int = 1
-  const val FILE_SVG: String = "compose-semantics-wireframe.svg"
-  const val FILE_PNG: String = "compose-semantics-wireframe.png"
-  const val PNG_EXTRA_NAME: String = "png"
-  const val MEDIA_TYPE_SVG: String = "image/svg+xml"
-  const val MEDIA_TYPE_PNG: String = "image/png"
+public object ComposeSemanticsWireframeProduct {
+  public const val KIND: String = "compose/semantics-wireframe"
+  public const val SCHEMA_VERSION: Int = 1
+  public const val FILE_SVG: String = "compose-semantics-wireframe.svg"
+  public const val FILE_PNG: String = "compose-semantics-wireframe.png"
+  public const val PNG_EXTRA_NAME: String = "png"
+  public const val MEDIA_TYPE_SVG: String = "image/svg+xml"
+  public const val MEDIA_TYPE_PNG: String = "image/png"
 }
 
 /**
@@ -185,11 +185,11 @@ object ComposeSemanticsWireframeProduct {
  * counterpart of the wireframe: the wireframe is for *reading* the structure, this is for *editing*
  * it in Figma. One file per preview: the layered SVG. See [FigmaLayeredSvg] for the layer mapping.
  */
-object ComposeFigmaSvgProduct {
-  const val KIND: String = "compose/figma-svg"
-  const val SCHEMA_VERSION: Int = 1
-  const val FILE_SVG: String = "compose-figma.svg"
-  const val MEDIA_TYPE_SVG: String = "image/svg+xml"
+public object ComposeFigmaSvgProduct {
+  public const val KIND: String = "compose/figma-svg"
+  public const val SCHEMA_VERSION: Int = 1
+  public const val FILE_SVG: String = "compose-figma.svg"
+  public const val MEDIA_TYPE_SVG: String = "image/svg+xml"
 
   /**
    * `compose/figma-svg-long` — the **full-page** variant of [KIND] for a *scrolling* preview. A
@@ -201,9 +201,9 @@ object ComposeFigmaSvgProduct {
    * viewport-sized [FILE_SVG]. `requiresRerender = true`: a `data/fetch` re-renders in
    * [RENDER_MODE_LONG]. See [docs/design/SCROLLING_SVG.md].
    */
-  const val KIND_LONG: String = "compose/figma-svg-long"
-  const val FILE_SVG_LONG: String = "compose-figma-long.svg"
-  const val RENDER_MODE_LONG: String = "figma-svg-long"
+  public const val KIND_LONG: String = "compose/figma-svg-long"
+  public const val FILE_SVG_LONG: String = "compose-figma-long.svg"
+  public const val RENDER_MODE_LONG: String = "figma-svg-long"
 
   /**
    * Subdirectory (under the preview's output dir) the long export lives in — the SVG plus its own
@@ -213,7 +213,7 @@ object ComposeFigmaSvgProduct {
    * from one render overwriting the other's). Its own subdir keeps each export's crops
    * self-consistent.
    */
-  const val LONG_SUBDIR: String = "figma-long"
+  public const val LONG_SUBDIR: String = "figma-long"
 
   /**
    * Directory (relative to the preview's output dir) holding the per-node `<node>.png` crops a
@@ -221,11 +221,11 @@ object ComposeFigmaSvgProduct {
    * vector-only export. The single source of truth for the prefix [FigmaSvgModel.defaultRasterHref]
    * emits and consumers (the design-catalog carrier) collect.
    */
-  const val RASTER_DIR: String = "figma-raster"
+  public const val RASTER_DIR: String = "figma-raster"
 }
 
 @Serializable
-data class ComposeSemanticsPayload(
+public data class ComposeSemanticsPayload(
   val root: ComposeSemanticsNode,
   /**
    * Render pixels per dp for this capture — the factor that turns a node's
@@ -240,7 +240,7 @@ data class ComposeSemanticsPayload(
 )
 
 @Serializable
-data class ComposeSemanticsNode(
+public data class ComposeSemanticsNode(
   val nodeId: String,
   /**
    * Stable, content-independent handle for this node within the tree, assigned by [SemanticsRefs].
@@ -305,7 +305,7 @@ data class ComposeSemanticsNode(
  * omits the ambiguous field; a node that declares nothing typographic emits no `typography` object.
  */
 @Serializable
-data class ComposeSemanticsTypography(
+public data class ComposeSemanticsTypography(
   /**
    * Resolved text size as `"<value>sp"`, e.g. `"22.0sp"` (was the flat `layoutFontSize`, #1903).
    */
@@ -387,7 +387,7 @@ data class ComposeSemanticsTypography(
 
 /** One effective styled UTF-16 range within a text node. */
 @Serializable
-data class ComposeSemanticsTextSpan(
+public data class ComposeSemanticsTextSpan(
   val start: Int,
   val end: Int,
   val fontSize: String? = null,
@@ -415,7 +415,7 @@ data class ComposeSemanticsTextSpan(
  * takes the raster fallback rather than being emitted as a gradient it isn't.
  */
 @Serializable
-data class LayoutInspectorGradient(
+public data class LayoutInspectorGradient(
   /** `#AARRGGBB` stop colours, in order. */
   val colors: List<String>,
   /** Explicit stop positions (`0..1`), or null for evenly spaced stops. */
@@ -433,7 +433,7 @@ data class LayoutInspectorGradient(
  * surface supplies it).
  */
 @Serializable
-data class ComposeSemanticsTextColor(
+public data class ComposeSemanticsTextColor(
   /** Resolved text foreground colour as ARGB hex (`#AARRGGBB`). */
   val foreground: String? = null,
   /** Resolved text background colour as ARGB hex (`#AARRGGBB`); usually unset. */
@@ -446,7 +446,7 @@ data class ComposeSemanticsTextColor(
  * `layoutDidOverflow{Width,Height}`, all read from the node's `TextLayoutResult`.
  */
 @Serializable
-data class ComposeSemanticsTextOverflow(
+public data class ComposeSemanticsTextOverflow(
   /** Total laid-out line count across the node's text. */
   val lineCount: Int? = null,
   /** The `maxLines` constraint, when one was set (not `Int.MAX_VALUE`). */
@@ -476,7 +476,7 @@ data class ComposeSemanticsTextOverflow(
  * for centred/right-aligned text).
  */
 @Serializable
-data class ComposeSemanticsTextLine(
+public data class ComposeSemanticsTextLine(
   val text: String,
   val left: Int,
   val baseline: Int,
@@ -502,7 +502,7 @@ data class ComposeSemanticsTextLine(
  * policy. All fields are optional: a node emits only the tokens it actually declares.
  */
 @Serializable
-data class ComposeSemanticsTokens(
+public data class ComposeSemanticsTokens(
   /** Resolved container/fill colour as ARGB hex (`#AARRGGBB`), e.g. from `Modifier.background`. */
   val backgroundColor: String? = null,
   /**
@@ -647,7 +647,7 @@ data class ComposeSemanticsTokens(
  * as a paint-insetting padding (it would otherwise suppress the growth heuristic for a Wear control
  * whose chain merely contains `padding(0.dp)`) (issue #2852).
  */
-fun ComposeSemanticsInsets.insetsPaint(): Boolean =
+public fun ComposeSemanticsInsets.insetsPaint(): Boolean =
   insetsPaintHorizontally() || insetsPaintVertically()
 
 /**
@@ -656,24 +656,26 @@ fun ComposeSemanticsInsets.insetsPaint(): Boolean =
  * and `start`/`end` by 12dp *after* it, so its drawn pill is the placed height but the measured
  * width. Suppressing both axes together squashed it to the narrow content box (issue #3573).
  */
-fun ComposeSemanticsInsets.insetsPaintHorizontally(): Boolean = positive(start) || positive(end)
+public fun ComposeSemanticsInsets.insetsPaintHorizontally(): Boolean =
+  positive(start) || positive(end)
 
 /** The vertical half of [insetsPaint] — see there. */
-fun ComposeSemanticsInsets.insetsPaintVertically(): Boolean = positive(top) || positive(bottom)
+public fun ComposeSemanticsInsets.insetsPaintVertically(): Boolean =
+  positive(top) || positive(bottom)
 
 private fun positive(edge: String?): Boolean =
   (edge?.removeSuffix("dp")?.toDoubleOrNull() ?: 0.0) > 0.0
 
 /** Per-edge insets in dp (`"16.0dp"`), as resolved from `Modifier.padding` (issue #1897). */
 @Serializable
-data class ComposeSemanticsInsets(
+public data class ComposeSemanticsInsets(
   val start: String? = null,
   val top: String? = null,
   val end: String? = null,
   val bottom: String? = null,
 )
 
-@Serializable data class LayoutInspectorPayload(val root: LayoutInspectorNode)
+@Serializable public data class LayoutInspectorPayload(val root: LayoutInspectorNode)
 
 /**
  * The scale a node inherits from the `graphicsLayer`s between it and the root — the *drawn* size of
@@ -690,7 +692,7 @@ data class ComposeSemanticsInsets(
  * to its unscaled size (issue #2615).
  */
 @Serializable
-data class LayoutInspectorTransform(
+public data class LayoutInspectorTransform(
   val scaleX: Float = 1f,
   val scaleY: Float = 1f,
   /**
@@ -714,19 +716,19 @@ data class LayoutInspectorTransform(
   val rotated: Boolean
     get() = abs(rotationDegrees) > ROTATION_EPSILON_DEGREES
 
-  companion object {
-    const val EPSILON: Float = 0.001f
+  public companion object {
+    public const val EPSILON: Float = 0.001f
 
     /**
      * Below this the "rotation" is sub-pixel placement noise on any realistic box, and honouring it
      * would re-centre a node the render drew exactly on its bounds.
      */
-    const val ROTATION_EPSILON_DEGREES: Float = 0.5f
+    public const val ROTATION_EPSILON_DEGREES: Float = 0.5f
   }
 }
 
 @Serializable
-data class LayoutInspectorNode(
+public data class LayoutInspectorNode(
   val nodeId: String,
   /**
    * The node's **own** identity — its own `C(Composable)` name, or (when it has none) its
@@ -832,7 +834,7 @@ data class LayoutInspectorNode(
  * placeholder as its own vector layer, in its own [colorArgb] / corner, when [visible] is true.
  */
 @Serializable
-data class LayoutInspectorPlaceholder(
+public data class LayoutInspectorPlaceholder(
   /**
    * [PlaceholderModifiers.KIND_PLACEHOLDER] (the content-covering block) or
    * [PlaceholderModifiers.KIND_SHIMMER] (the sweep overlay drawn over it).
@@ -881,7 +883,7 @@ data class LayoutInspectorPlaceholder(
  * matches what the export did before.
  */
 @Serializable
-data class LayoutInspectorDrawRaster(
+public data class LayoutInspectorDrawRaster(
   /** Captured region in root-pixel space — the union of the node's draw modifiers' own bounds. */
   val left: Int,
   val top: Int,
@@ -906,7 +908,7 @@ data class LayoutInspectorDrawRaster(
  * fill rather than guessing — matching the vector-vs-raster rule the rest of the export follows.
  */
 @Serializable
-data class LayoutInspectorVectorGraphic(
+public data class LayoutInspectorVectorGraphic(
   val viewportWidth: Float,
   val viewportHeight: Float,
   val paths: List<LayoutInspectorVectorPath>,
@@ -940,7 +942,7 @@ data class LayoutInspectorVectorGraphic(
  * One `<path>` of a [LayoutInspectorVectorGraphic]: SVG path data plus its resolved solid paint.
  */
 @Serializable
-data class LayoutInspectorVectorPath(
+public data class LayoutInspectorVectorPath(
   /** SVG path `d` string, in viewport coordinates. */
   val pathData: String,
   /** Solid fill as `#AARRGGBB`, or null when there is no fill (or a non-solid brush fill). */
@@ -972,7 +974,7 @@ data class LayoutInspectorVectorPath(
  * Text reads [clockwise] along the arc at [fontSizePx].
  */
 @Serializable
-data class LayoutInspectorCurvedText(
+public data class LayoutInspectorCurvedText(
   val text: String,
   val centerXPx: Double,
   val centerYPx: Double,
@@ -986,12 +988,17 @@ data class LayoutInspectorCurvedText(
 )
 
 @Serializable
-data class LayoutInspectorBounds(val left: Int, val top: Int, val right: Int, val bottom: Int)
+public data class LayoutInspectorBounds(
+  val left: Int,
+  val top: Int,
+  val right: Int,
+  val bottom: Int,
+)
 
-@Serializable data class LayoutInspectorSize(val width: Int, val height: Int)
+@Serializable public data class LayoutInspectorSize(val width: Int, val height: Int)
 
 @Serializable
-data class LayoutInspectorConstraints(
+public data class LayoutInspectorConstraints(
   val minWidth: Int,
   val maxWidth: Int? = null,
   val minHeight: Int,
@@ -999,7 +1006,7 @@ data class LayoutInspectorConstraints(
 )
 
 @Serializable
-data class LayoutInspectorModifier(
+public data class LayoutInspectorModifier(
   val name: String,
   val value: String? = null,
   val properties: Map<String, String> = emptyMap(),

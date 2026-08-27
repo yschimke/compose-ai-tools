@@ -41,9 +41,9 @@ import kotlin.math.sin
  * Pure and deterministic: model in, SVG string out — no graphics toolkit, no IO — so it lives on
  * the render-subprocess-safe core classpath next to [SemanticsWireframeSvg].
  */
-object FigmaLayeredSvg {
+public object FigmaLayeredSvg {
 
-  data class Options(
+  public data class Options(
     /** Emit the `<title>`/`data-token` theme-role annotations on named-colour shapes. */
     val annotateTokens: Boolean = true,
     /** Fallback text size (px) when a text node didn't resolve one. */
@@ -73,7 +73,7 @@ object FigmaLayeredSvg {
    *   — so it matches the `@font-face` the producer embedded for that file. Unmapped families fall
    *   back to [resolveFamily].
    */
-  fun render(
+  public fun render(
     model: FigmaSvgModel,
     options: Options = Options(),
     fontFaces: List<FigmaSvgFontFace> = emptyList(),
@@ -1435,7 +1435,7 @@ object FigmaLayeredSvg {
    * rather than the sans default (which is what lost serif/monospace specimens their identity); a
    * real captured face keeps its name.
    */
-  fun resolveFamily(captured: String?, defaultFamily: String): String {
+  public fun resolveFamily(captured: String?, defaultFamily: String): String {
     val stated = statedFamily(captured) ?: return defaultFamily
     val generic = stated.lowercase()
     if (generic in SANS_GENERICS) return defaultFamily
@@ -1455,7 +1455,7 @@ object FigmaLayeredSvg {
    * `@font-face` name and the override key) are untouched, so an embedded face still matches by its
    * bare name.
    */
-  fun withGenericFallback(family: String): String {
+  public fun withGenericFallback(family: String): String {
     if (family.lowercase() in CSS_GENERICS) return family
     val lower = family.lowercase()
     val generic =
@@ -1474,7 +1474,7 @@ object FigmaLayeredSvg {
    * [resolveFamily] and the viewer supplies the generic. Shared with the producer so the name it
    * embeds matches what [resolveFamily] would emit for the same capture.
    */
-  fun embedFamily(captured: String?, defaultFamily: String): String? {
+  public fun embedFamily(captured: String?, defaultFamily: String): String? {
     val stated = statedFamily(captured) ?: return defaultFamily
     val generic = stated.lowercase()
     if (generic in SANS_GENERICS) return defaultFamily

@@ -10,8 +10,11 @@ import kotlinx.serialization.Serializable
  * same key lets planner code stay protocol-compatible while extension implementations depend on
  * compile-time payload types instead of string joins.
  */
-data class DataProductKey<T : Any>(val kind: String, val schemaVersion: Int, val type: Class<T>) :
-  Comparable<DataProductKey<*>> {
+public data class DataProductKey<T : Any>(
+  val kind: String,
+  val schemaVersion: Int,
+  val type: Class<T>,
+) : Comparable<DataProductKey<*>> {
   init {
     require(kind.isNotBlank()) { "Data product kind must not be blank." }
     require(schemaVersion > 0) { "Data product schema version must be positive." }
@@ -24,31 +27,31 @@ data class DataProductKey<T : Any>(val kind: String, val schemaVersion: Int, val
 }
 
 /** Read-only view of declared inputs for an extension. */
-interface DataProductSource {
-  fun <T : Any> get(key: DataProductKey<T>): T?
+public interface DataProductSource {
+  public fun <T : Any> get(key: DataProductKey<T>): T?
 
-  fun <T : Any> require(key: DataProductKey<T>): T =
+  public fun <T : Any> require(key: DataProductKey<T>): T =
     get(key) ?: error("Data product '$key' is not available.")
 }
 
 /** Write-only view for emitting an extension's declared outputs. */
-interface DataProductSink {
-  fun <T : Any> put(key: DataProductKey<T>, value: T)
+public interface DataProductSink {
+  public fun <T : Any> put(key: DataProductKey<T>, value: T)
 }
 
 /** A small in-process product store used by downstream extensions to consume declared inputs. */
-interface DataProductStore : DataProductSource, DataProductSink {
+public interface DataProductStore : DataProductSource, DataProductSink {
   /**
    * Returns a per-extension view that enforces the declared `inputs`/`outputs` contract: `get` only
    * succeeds for keys in [PlannedDataExtension.inputs] (or already produced), `put` only for keys
    * in [PlannedDataExtension.outputs]. Use this to wrap the shared store before handing it to a
    * hook so contract drift is caught at runtime, not days later in a downstream consumer.
    */
-  fun scopedFor(extension: PlannedDataExtension): DataProductStore =
+  public fun scopedFor(extension: PlannedDataExtension): DataProductStore =
     ScopedDataProductStore(this, extension)
 }
 
-class RecordingDataProductStore : DataProductStore {
+public class RecordingDataProductStore : DataProductStore {
   private val values: MutableMap<DataProductKey<*>, Any> = linkedMapOf()
 
   override fun <T : Any> get(key: DataProductKey<T>): T? {
@@ -81,28 +84,28 @@ private class ScopedDataProductStore(
   }
 }
 
-data class RenderImageArtifact(val path: String, val mediaType: String = "image/png")
+public data class RenderImageArtifact(val path: String, val mediaType: String = "image/png")
 
-data class RenderSemanticsSnapshot(val handle: String)
+public data class RenderSemanticsSnapshot(val handle: String)
 
-data class RenderDensity(val density: Float)
+public data class RenderDensity(val density: Float)
 
-object CommonDataProducts {
-  val ImageArtifact: DataProductKey<RenderImageArtifact> =
+public object CommonDataProducts {
+  public val ImageArtifact: DataProductKey<RenderImageArtifact> =
     DataProductKey("render/image", schemaVersion = 1, RenderImageArtifact::class.java)
 
-  val SemanticsSnapshot: DataProductKey<RenderSemanticsSnapshot> =
+  public val SemanticsSnapshot: DataProductKey<RenderSemanticsSnapshot> =
     DataProductKey(
       "render/semanticsSnapshot",
       schemaVersion = 1,
       RenderSemanticsSnapshot::class.java,
     )
 
-  val Density: DataProductKey<RenderDensity> =
+  public val Density: DataProductKey<RenderDensity> =
     DataProductKey("render/density", schemaVersion = 1, RenderDensity::class.java)
 }
 
-enum class DataExtensionTarget {
+public enum class DataExtensionTarget {
   Android,
   Desktop,
 }
@@ -115,7 +118,7 @@ enum class DataExtensionTarget {
  */
 @Serializable
 @JvmInline
-value class DataExtensionId(val value: String) : Comparable<DataExtensionId> {
+public value class DataExtensionId(public val value: String) : Comparable<DataExtensionId> {
   init {
     require(value.isNotBlank()) { "Data extension id must not be blank." }
   }
@@ -133,7 +136,8 @@ value class DataExtensionId(val value: String) : Comparable<DataExtensionId> {
  */
 @Serializable
 @JvmInline
-value class DataExtensionCapability(val value: String) : Comparable<DataExtensionCapability> {
+public value class DataExtensionCapability(public val value: String) :
+  Comparable<DataExtensionCapability> {
   init {
     require(value.isNotBlank()) { "Data extension capability must not be blank." }
   }
@@ -144,7 +148,7 @@ value class DataExtensionCapability(val value: String) : Comparable<DataExtensio
 }
 
 @Serializable
-enum class DataExtensionPhase {
+public enum class DataExtensionPhase {
   OuterEnvironment,
   UserEnvironment,
   Instrumentation,
@@ -155,7 +159,7 @@ enum class DataExtensionPhase {
 }
 
 @Serializable
-enum class DataExtensionLifecycle {
+public enum class DataExtensionLifecycle {
   OneShot,
   Subscribed,
   AttachOnRender,
@@ -164,7 +168,7 @@ enum class DataExtensionLifecycle {
 }
 
 @Serializable
-enum class DataExtensionHookKind {
+public enum class DataExtensionHookKind {
   AroundComposable,
   ComposableExtractor,
   CompositionObserver,
@@ -178,7 +182,7 @@ enum class DataExtensionHookKind {
 }
 
 @Serializable
-data class DataExtensionConstraints(
+public data class DataExtensionConstraints(
   val phase: DataExtensionPhase = DataExtensionPhase.Instrumentation,
   val before: Set<DataExtensionId> = emptySet(),
   val after: Set<DataExtensionId> = emptySet(),
@@ -188,30 +192,30 @@ data class DataExtensionConstraints(
   val lifecycle: DataExtensionLifecycle = DataExtensionLifecycle.OneShot,
 )
 
-interface PlannedDataExtension {
-  val id: DataExtensionId
-  val hooks: Set<DataExtensionHookKind>
-  val constraints: DataExtensionConstraints
-  val inputs: Set<DataProductKey<*>>
+public interface PlannedDataExtension {
+  public val id: DataExtensionId
+  public val hooks: Set<DataExtensionHookKind>
+  public val constraints: DataExtensionConstraints
+  public val inputs: Set<DataProductKey<*>>
     get() = emptySet()
 
-  val outputs: Set<DataProductKey<*>>
+  public val outputs: Set<DataProductKey<*>>
     get() = emptySet()
 
-  val targets: Set<DataExtensionTarget>
+  public val targets: Set<DataExtensionTarget>
     get() = emptySet()
 }
 
-interface DataExtension<in Request> {
-  val id: DataExtensionId
-  val defaultConstraints: DataExtensionConstraints
+public interface DataExtension<in Request> {
+  public val id: DataExtensionId
+  public val defaultConstraints: DataExtensionConstraints
     get() = DataExtensionConstraints()
 
-  fun plan(request: Request): PlannedDataExtension?
+  public fun plan(request: Request): PlannedDataExtension?
 }
 
 @Serializable
-data class DataExtensionDescriptor(
+public data class DataExtensionDescriptor(
   val id: DataExtensionId,
   val displayName: String = id.value,
   val recordingScriptEvents: List<RecordingScriptEventDescriptor> = emptyList(),
@@ -226,7 +230,7 @@ data class DataExtensionDescriptor(
 )
 
 @Serializable
-data class RecordingScriptEventDescriptor(
+public data class RecordingScriptEventDescriptor(
   val id: String,
   val displayName: String = id,
   val summary: String = "",
@@ -256,11 +260,11 @@ data class RecordingScriptEventDescriptor(
  * The legacy aggregate [descriptors] (probe + roadmap) is retained for callers that haven't
  * migrated yet — see the deprecation note.
  */
-object RecordingScriptDataExtensions {
-  const val PROBE_EVENT: String = "recording.probe"
-  const val STATE_SAVE_EVENT: String = "state.save"
-  const val STATE_RESTORE_EVENT: String = "state.restore"
-  const val PREVIEW_RELOAD_EVENT: String = "preview.reload"
+public object RecordingScriptDataExtensions {
+  public const val PROBE_EVENT: String = "recording.probe"
+  public const val STATE_SAVE_EVENT: String = "state.save"
+  public const val STATE_RESTORE_EVENT: String = "state.restore"
+  public const val PREVIEW_RELOAD_EVENT: String = "preview.reload"
 
   /**
    * Assertion script events (Maestro-style `assertVisible` / `assertNotVisible`). Each resolves the
@@ -268,15 +272,15 @@ object RecordingScriptDataExtensions {
    * records [ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.FAILED] evidence when
    * the condition isn't met — turning a recording into a check the `record` command can gate on.
    */
-  const val ASSERT_VISIBLE_EVENT: String = "assert.visible"
-  const val ASSERT_NOT_VISIBLE_EVENT: String = "assert.notVisible"
+  public const val ASSERT_VISIBLE_EVENT: String = "assert.visible"
+  public const val ASSERT_NOT_VISIBLE_EVENT: String = "assert.notVisible"
 
   /**
    * `assert.textEquals` — resolves the event's `target` and fails unless the resolved node's text
    * equals the expected string carried in the event's existing `inputText` field (no new wire
    * field). The Maestro `assertVisible: "text"` / Espresso `withText` equivalent.
    */
-  const val ASSERT_TEXT_EQUALS_EVENT: String = "assert.textEquals"
+  public const val ASSERT_TEXT_EQUALS_EVENT: String = "assert.textEquals"
 
   /**
    * `assert.a11y` — runs the Android Accessibility Test Framework (ATF) against the **held
@@ -285,7 +289,7 @@ object RecordingScriptDataExtensions {
    * `ImageComposeScene` doesn't have. The threshold rides the event's `inputText` field (`errors`
    * default / `warnings`).
    */
-  const val ASSERT_A11Y_EVENT: String = "assert.a11y"
+  public const val ASSERT_A11Y_EVENT: String = "assert.a11y"
 
   /**
    * `assert.pixels` — golden-image assertion (issue #1967). Diffs the recorded frame at the event's
@@ -294,14 +298,14 @@ object RecordingScriptDataExtensions {
    * existing `inputText` field (no new wire field), resolved by the CLI against `--baseline-dir`.
    * Desktop-only today (it reads the frames the desktop session wrote); Android is a follow-up.
    */
-  const val ASSERT_PIXELS_EVENT: String = "assert.pixels"
+  public const val ASSERT_PIXELS_EVENT: String = "assert.pixels"
 
   /**
    * `recording.probe` descriptor with `supported = true`. Returned from each
    * `RenderHost.recordingScriptEventDescriptors()` that wires a real probe handler in its
    * recording-session registry (today: both desktop and android backends).
    */
-  val recordingDescriptor: DataExtensionDescriptor =
+  public val recordingDescriptor: DataExtensionDescriptor =
     DataExtensionDescriptor(
       id = DataExtensionId("recording"),
       displayName = "Recording script markers",
@@ -322,7 +326,7 @@ object RecordingScriptDataExtensions {
    * semantics snapshot doesn't yet carry the refs the resolver needs). Hosts that don't wire them
    * simply omit this descriptor, so the MCP layer rejects `assert.*` up front for those daemons.
    */
-  val assertionDescriptor: DataExtensionDescriptor =
+  public val assertionDescriptor: DataExtensionDescriptor =
     DataExtensionDescriptor(
       id = DataExtensionId("assertion"),
       displayName = "Recording assertions",
@@ -372,7 +376,7 @@ object RecordingScriptDataExtensions {
    * `assertionVisibilityDescriptor`, back when Android was `testTag`-only and text/pixels weren't
    * wired.)
    */
-  val assertionAndroidDescriptor: DataExtensionDescriptor =
+  public val assertionAndroidDescriptor: DataExtensionDescriptor =
     DataExtensionDescriptor(
       id = DataExtensionId("assertion"),
       displayName = "Recording assertions",
@@ -416,7 +420,7 @@ object RecordingScriptDataExtensions {
    * run ATF against the held composition's `View` hierarchy; desktop omits it so `record_preview`
    * rejects `assert.a11y` up front for desktop daemons rather than letting it silently no-op.
    */
-  val assertionA11yDescriptor: DataExtensionDescriptor =
+  public val assertionA11yDescriptor: DataExtensionDescriptor =
     DataExtensionDescriptor(
       id = DataExtensionId("assertion-a11y"),
       displayName = "Recording accessibility assertions",
@@ -448,7 +452,7 @@ object RecordingScriptDataExtensions {
    * `lifecycle.event` →
    * [`LifecycleRecordingScriptEvents`][ee.schimke.composeai.daemon.LifecycleRecordingScriptEvents].
    */
-  val roadmapDescriptors: List<DataExtensionDescriptor> = emptyList()
+  public val roadmapDescriptors: List<DataExtensionDescriptor> = emptyList()
 
   /**
    * Combined list of [recordingDescriptor] + [roadmapDescriptors]. Retained for callers that build
@@ -456,10 +460,11 @@ object RecordingScriptDataExtensions {
    * `host.recordingScriptEventDescriptors() + roadmapDescriptors` so the host can opt in / out of
    * the supported half independently.
    */
-  val descriptors: List<DataExtensionDescriptor> = listOf(recordingDescriptor) + roadmapDescriptors
+  public val descriptors: List<DataExtensionDescriptor> =
+    listOf(recordingDescriptor) + roadmapDescriptors
 }
 
-data class SimplePlannedDataExtension(
+public data class SimplePlannedDataExtension(
   override val id: DataExtensionId,
   override val hooks: Set<DataExtensionHookKind> = emptySet(),
   override val constraints: DataExtensionConstraints = DataExtensionConstraints(),
@@ -468,7 +473,7 @@ data class SimplePlannedDataExtension(
   override val targets: Set<DataExtensionTarget> = emptySet(),
 ) : PlannedDataExtension
 
-data class OrderedDataExtensionPlan(
+public data class OrderedDataExtensionPlan(
   val extensions: List<PlannedDataExtension>,
   val initialCapabilities: Set<DataExtensionCapability> = emptySet(),
 ) {
@@ -478,13 +483,13 @@ data class OrderedDataExtensionPlan(
     }
 }
 
-data class DataExtensionPlanningError(
+public data class DataExtensionPlanningError(
   val code: String,
   val message: String,
   val extensions: List<DataExtensionId> = emptyList(),
 )
 
-data class DataExtensionPlanningResult(
+public data class DataExtensionPlanningResult(
   val orderedExtensions: List<PlannedDataExtension>,
   val errors: List<DataExtensionPlanningError>,
 ) {
@@ -492,8 +497,8 @@ data class DataExtensionPlanningResult(
     get() = errors.isEmpty()
 }
 
-object DataExtensionPlanner {
-  fun planOutputs(
+public object DataExtensionPlanner {
+  public fun planOutputs(
     extensions: List<PlannedDataExtension>,
     requestedOutputs: Set<DataProductKey<*>>,
     initialProducts: Set<DataProductKey<*>> = emptySet(),
@@ -558,7 +563,7 @@ object DataExtensionPlanner {
     )
   }
 
-  fun <Request> planRequest(
+  public fun <Request> planRequest(
     extensions: List<DataExtension<Request>>,
     request: Request,
     initialCapabilities: Set<DataExtensionCapability> = emptySet(),
@@ -568,7 +573,7 @@ object DataExtensionPlanner {
       initialCapabilities = initialCapabilities,
     )
 
-  fun plan(
+  public fun plan(
     extensions: List<PlannedDataExtension>,
     initialCapabilities: Set<DataExtensionCapability> = emptySet(),
   ): DataExtensionPlanningResult {

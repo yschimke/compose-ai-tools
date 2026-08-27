@@ -10,18 +10,18 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /** Core producer/model for Perfetto-importable render trace artifacts. */
-object PerfettoTraceDataProducer {
-  const val KIND: String = "render/composeAiTrace"
-  const val SCHEMA_VERSION: Int = 1
-  const val FILE: String = "render-perfetto-trace.json"
-  const val ENABLED_PROP: String = "composeai.daemon.perfettoTrace"
+public object PerfettoTraceDataProducer {
+  public const val KIND: String = "render/composeAiTrace"
+  public const val SCHEMA_VERSION: Int = 1
+  public const val FILE: String = "render-perfetto-trace.json"
+  public const val ENABLED_PROP: String = "composeai.daemon.perfettoTrace"
 
   private val json = Json {
     encodeDefaults = false
     prettyPrint = false
   }
 
-  fun enabled(): Boolean = System.getProperty(ENABLED_PROP) == "true"
+  public fun enabled(): Boolean = System.getProperty(ENABLED_PROP) == "true"
 
   /**
    * Optional platform-tracing mirror for [Recorder.section] spans. When set, every named section
@@ -36,19 +36,19 @@ object PerfettoTraceDataProducer {
    * the backend is installed once per sandbox classloader. Backend failures must never fail a
    * render, so both calls are guarded at the call site.
    */
-  @Volatile var sectionBackend: TraceSectionBackend? = null
+  @Volatile public var sectionBackend: TraceSectionBackend? = null
 
   /** Begin/end pair for one [Recorder.section] span on a platform tracer. See [sectionBackend]. */
-  interface TraceSectionBackend {
-    fun begin(name: String)
+  public interface TraceSectionBackend {
+    public fun begin(name: String)
 
-    fun end()
+    public fun end()
   }
 
-  fun recorder(previewId: String, backend: String, enabled: Boolean = enabled()): Recorder =
+  public fun recorder(previewId: String, backend: String, enabled: Boolean = enabled()): Recorder =
     Recorder(previewId = previewId, backend = backend, enabled = enabled)
 
-  fun writeArtifacts(
+  public fun writeArtifacts(
     rootDir: File,
     previewId: String,
     trace: TracePayload,
@@ -60,7 +60,7 @@ object PerfettoTraceDataProducer {
     }
   }
 
-  class Recorder(
+  public class Recorder(
     private val previewId: String,
     private val backend: String,
     private val enabled: Boolean,
@@ -128,7 +128,7 @@ object PerfettoTraceDataProducer {
      * Open a section that [endSection] will close. Prefer [section] wherever the work is lexically
      * scoped — an unbalanced pair here silently mis-nests everything after it.
      */
-    fun beginSection(name: String, category: String = "compose-preview") {
+    public fun beginSection(name: String, category: String = "compose-preview") {
       // Mirror the span onto the platform tracer when one is installed (see [sectionBackend]).
       // Independent of [enabled] — the JSON recorder and an atrace capture are separate opt-ins —
       // and guarded so a tracer failure can never fail the render it's observing.
@@ -145,7 +145,7 @@ object PerfettoTraceDataProducer {
     }
 
     /** Close the innermost section opened by [beginSection]. Ignored when none is open. */
-    fun endSection() {
+    public fun endSection() {
       val open = openSections.removeLastOrNull() ?: return
       depth -= 1
       record(
@@ -163,7 +163,7 @@ object PerfettoTraceDataProducer {
       }
     }
 
-    fun <T> section(name: String, category: String = "compose-preview", block: () -> T): T {
+    public fun <T> section(name: String, category: String = "compose-preview", block: () -> T): T {
       beginSection(name = name, category = category)
       try {
         return block()
@@ -173,7 +173,7 @@ object PerfettoTraceDataProducer {
     }
 
     @JvmOverloads
-    fun record(
+    public fun record(
       name: String,
       category: String = "compose-preview",
       startNs: Long,
@@ -215,7 +215,7 @@ object PerfettoTraceDataProducer {
      * Snapshot semantics: call it after the outermost section has closed, or the phases still open
      * are simply absent. Cheap enough to call more than once.
      */
-    fun renderTrace(): RenderTrace =
+    public fun renderTrace(): RenderTrace =
       RenderTrace.of(
         backend = backend,
         events = spans.toList(),
@@ -256,7 +256,7 @@ object PerfettoTraceDataProducer {
         )
     }
 
-    fun payload(): TracePayload =
+    public fun payload(): TracePayload =
       TracePayload(
         traceEvents = events,
         metadata =
@@ -267,7 +267,7 @@ object PerfettoTraceDataProducer {
           ),
       )
 
-    fun write(rootDir: File) {
+    public fun write(rootDir: File) {
       if (enabled) writeArtifacts(rootDir = rootDir, previewId = previewId, trace = payload())
     }
 
@@ -302,14 +302,14 @@ internal object ComposeRuntimeTracingAvailability {
 }
 
 @Serializable
-data class TracePayload(
+public data class TracePayload(
   @SerialName("traceEvents") val traceEvents: List<TraceEvent>,
   val displayTimeUnit: String = "ms",
   val metadata: TraceMetadata,
 )
 
 @Serializable
-data class TraceMetadata(
+public data class TraceMetadata(
   val previewId: String,
   val backend: String,
   val format: String = "chrome-trace-json",
@@ -317,7 +317,7 @@ data class TraceMetadata(
 )
 
 @Serializable
-data class TraceEvent(
+public data class TraceEvent(
   val name: String,
   @SerialName("cat") val category: String,
   @SerialName("ph") val phase: String = "X",

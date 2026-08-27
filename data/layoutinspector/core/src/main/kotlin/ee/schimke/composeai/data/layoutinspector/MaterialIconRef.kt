@@ -30,7 +30,7 @@ package ee.schimke.composeai.data.layoutinspector
  * a network fetch or on this mapping being right: a mis-mapped name is a wrong *label*, not a wrong
  * *drawing*. See `FigmaLayeredSvg` for the emitted shape.
  */
-data class MaterialIconRef(
+public data class MaterialIconRef(
   /** Canonical icon name as fonts.google.com knows it — `account_circle`, `arrow_back`. */
   val name: String,
   /** The style variant the app used. */
@@ -55,11 +55,11 @@ data class MaterialIconRef(
     get() = "https://fonts.gstatic.com/s/i/${style.cdnFamily}/$name/v1/24px.svg"
 
   /** The five drawing styles the Material Icons set (and `Icons.*`) ships. */
-  enum class Style(
+  public enum class Style(
     /** The `Icons.` sub-object name, as it appears in the `ImageVector` name prefix. */
-    val composeName: String,
+    public val composeName: String,
     /** The CDN path segment for this style's drawing. */
-    val cdnFamily: String,
+    public val cdnFamily: String,
   ) {
     FILLED("Filled", "materialicons"),
     OUTLINED("Outlined", "materialiconsoutlined"),
@@ -68,7 +68,7 @@ data class MaterialIconRef(
     TWO_TONE("TwoTone", "materialiconstwotone"),
   }
 
-  companion object {
+  public companion object {
 
     /** The `Icons.AutoMirrored` prefix that precedes the style on a mirrored icon's name. */
     private const val AUTO_MIRRORED = "AutoMirrored"
@@ -106,7 +106,7 @@ data class MaterialIconRef(
      * annotation is only worth emitting when it is certainly right, and an unnamed vector still
      * exports its captured paths exactly as before.
      */
-    fun parse(vectorName: String?): MaterialIconRef? {
+    public fun parse(vectorName: String?): MaterialIconRef? {
       val raw = vectorName?.trim().orEmpty()
       if (raw.isEmpty()) return null
       val parts = raw.split('.')

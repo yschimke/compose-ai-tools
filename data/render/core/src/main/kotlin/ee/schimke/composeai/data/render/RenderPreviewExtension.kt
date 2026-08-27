@@ -8,15 +8,15 @@ import ee.schimke.composeai.data.render.pipeline.PreviewPipelineStep
 import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
 
 /** Pipeline metadata for built-in render-level preview extension steps. */
-object RenderPreviewExtension {
-  const val ID: String = "render"
-  const val KIND_DEVICE_CLIP: String = "render/deviceClip"
-  const val KIND_DEVICE_BACKGROUND: String = "render/deviceBackground"
-  const val KIND_TRACE: String = "render/trace"
-  const val KIND_COMPOSE_AI_TRACE: String = "render/composeAiTrace"
-  const val KIND_TEST_FAILURE: String = "test/failure"
+public object RenderPreviewExtension {
+  public const val ID: String = "render"
+  public const val KIND_DEVICE_CLIP: String = "render/deviceClip"
+  public const val KIND_DEVICE_BACKGROUND: String = "render/deviceBackground"
+  public const val KIND_TRACE: String = "render/trace"
+  public const val KIND_COMPOSE_AI_TRACE: String = "render/composeAiTrace"
+  public const val KIND_TEST_FAILURE: String = "test/failure"
 
-  val deviceClipProcessor: PreviewPipelineStep =
+  public val deviceClipProcessor: PreviewPipelineStep =
     PreviewPipelineStep(
       id = "render.deviceClip",
       displayName = "Device clip",
@@ -26,7 +26,7 @@ object RenderPreviewExtension {
       provides = setOf(PipelineCapability.DeviceClip, PipelineCapability.ImageArtifact),
     )
 
-  val deviceBackgroundProcessor: PreviewPipelineStep =
+  public val deviceBackgroundProcessor: PreviewPipelineStep =
     PreviewPipelineStep(
       id = "render.deviceBackground",
       displayName = "Device background",
@@ -36,7 +36,7 @@ object RenderPreviewExtension {
       provides = setOf(PipelineCapability.DeviceBackground, PipelineCapability.ImageArtifact),
     )
 
-  val renderTraceProfiler: PreviewPipelineStep =
+  public val renderTraceProfiler: PreviewPipelineStep =
     PreviewPipelineStep(
       id = "render.trace",
       displayName = "Render trace",
@@ -46,7 +46,7 @@ object RenderPreviewExtension {
       sampling = SamplingPolicy.Aggregate,
     )
 
-  val composeTraceProfiler: PreviewPipelineStep =
+  public val composeTraceProfiler: PreviewPipelineStep =
     PreviewPipelineStep(
       id = "render.composeAiTrace",
       displayName = "Compose composition trace",
@@ -56,7 +56,7 @@ object RenderPreviewExtension {
       sampling = SamplingPolicy.Aggregate,
     )
 
-  val overlayLegendProcessor: PreviewPipelineStep =
+  public val overlayLegendProcessor: PreviewPipelineStep =
     PreviewPipelineStep(
       id = "render.overlayLegend",
       displayName = "Overlay with legend",
@@ -65,7 +65,7 @@ object RenderPreviewExtension {
       provides = setOf(PipelineCapability.ImageArtifact, PipelineCapability.AnnotatedImageArtifact),
     )
 
-  val deviceClipDescriptor: PreviewExtensionDescriptor =
+  public val deviceClipDescriptor: PreviewExtensionDescriptor =
     PreviewExtensionDescriptor(
       id = "render-device-clip",
       displayName = "Device clip",
@@ -92,7 +92,7 @@ object RenderPreviewExtension {
       steps = listOf(deviceClipProcessor),
     )
 
-  val deviceBackgroundDescriptor: PreviewExtensionDescriptor =
+  public val deviceBackgroundDescriptor: PreviewExtensionDescriptor =
     PreviewExtensionDescriptor(
       id = "render-device-background",
       displayName = "Device background",
@@ -119,7 +119,7 @@ object RenderPreviewExtension {
       steps = listOf(deviceBackgroundProcessor),
     )
 
-  val renderTraceDescriptor: PreviewExtensionDescriptor =
+  public val renderTraceDescriptor: PreviewExtensionDescriptor =
     PreviewExtensionDescriptor(
       id = "render-trace",
       displayName = "Render trace",
@@ -147,7 +147,7 @@ object RenderPreviewExtension {
       steps = listOf(renderTraceProfiler),
     )
 
-  val composeTraceDescriptor: PreviewExtensionDescriptor =
+  public val composeTraceDescriptor: PreviewExtensionDescriptor =
     PreviewExtensionDescriptor(
       id = "compose-trace",
       displayName = "Compose composition trace",
@@ -174,7 +174,7 @@ object RenderPreviewExtension {
       steps = listOf(composeTraceProfiler),
     )
 
-  val overlayLegendDescriptor: PreviewExtensionDescriptor =
+  public val overlayLegendDescriptor: PreviewExtensionDescriptor =
     PreviewExtensionDescriptor(
       id = "overlay-legend",
       displayName = "Overlay with legend",

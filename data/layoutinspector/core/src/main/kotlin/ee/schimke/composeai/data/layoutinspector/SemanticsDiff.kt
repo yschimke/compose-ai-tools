@@ -4,8 +4,8 @@ import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
-object SemanticsDiffProduct {
-  const val SCHEMA: String = "compose-semantics-diff/v1"
+public object SemanticsDiffProduct {
+  public const val SCHEMA: String = "compose-semantics-diff/v1"
 }
 
 /**
@@ -20,7 +20,7 @@ object SemanticsDiffProduct {
  * Positional fields ([ComposeSemanticsNode.boundsInRoot]) and the volatile per-render
  * [ComposeSemanticsNode.nodeId] are deliberately ignored — bounds churn is the pixel diff's job.
  */
-object SemanticsDiff {
+public object SemanticsDiff {
 
   /** Semantic fields compared between two nodes sharing a ref, in stable report order. */
   private val COMPARED_FIELDS: List<Pair<String, (ComposeSemanticsNode) -> String?>> =
@@ -48,10 +48,10 @@ object SemanticsDiff {
       "layoutDidOverflowHeight" to { it.textOverflow?.didOverflowHeight?.toString() },
     )
 
-  fun diff(base: ComposeSemanticsPayload, head: ComposeSemanticsPayload): SemanticsDelta =
+  public fun diff(base: ComposeSemanticsPayload, head: ComposeSemanticsPayload): SemanticsDelta =
     diff(base.root, head.root)
 
-  fun diff(base: ComposeSemanticsNode, head: ComposeSemanticsNode): SemanticsDelta {
+  public fun diff(base: ComposeSemanticsNode, head: ComposeSemanticsNode): SemanticsDelta {
     val baseByRef = SemanticsRefs.assign(base).byRef()
     val headByRef = SemanticsRefs.assign(head).byRef()
 
@@ -102,10 +102,11 @@ object SemanticsDiff {
     )
 }
 
-@Serializable data class SemanticsFieldChange(val field: String, val from: String?, val to: String?)
+@Serializable
+public data class SemanticsFieldChange(val field: String, val from: String?, val to: String?)
 
 @Serializable
-data class SemanticsNodeChange(
+public data class SemanticsNodeChange(
   val ref: String,
   /** testTag/role anchor of the node, for human-readable output. */
   val anchor: String? = null,
@@ -113,7 +114,7 @@ data class SemanticsNodeChange(
 )
 
 @Serializable
-data class SemanticsNodeSummary(
+public data class SemanticsNodeSummary(
   val ref: String,
   val role: String? = null,
   val testTag: String? = null,
@@ -123,7 +124,7 @@ data class SemanticsNodeSummary(
 
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
-data class SemanticsDelta(
+public data class SemanticsDelta(
   // `@EncodeDefault` so the versioned schema rides every wire surface — including JSON encoders
   // configured with `encodeDefaults = false` (the daemon's `history/diff mode=SEMANTICS` result and
   // the MCP `diff_semantics` payload). Without it an empty-or-default delta would serialize without

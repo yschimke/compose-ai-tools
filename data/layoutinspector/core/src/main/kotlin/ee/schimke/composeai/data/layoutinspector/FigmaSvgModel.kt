@@ -24,7 +24,7 @@ import kotlin.math.roundToInt
  * a single translate ([tx]/[ty]) drops it into the padded canvas. All dp/sp token values are
  * converted to px here (× density) so the renderer never has to know about density.
  */
-data class FigmaSvgColor(
+public data class FigmaSvgColor(
   /** `#RRGGBB` — the opaque RGB channel, ready to drop into an SVG `fill`/`stroke`. */
   val hex: String,
   /** Alpha in `0.0..1.0`; emitted as `fill-opacity`/`stroke-opacity` only when < 1. */
@@ -38,7 +38,7 @@ data class FigmaSvgColor(
 )
 
 /** Editable text carried by a leaf layer, with the typography needed to reproduce its face. */
-data class FigmaSvgText(
+public data class FigmaSvgText(
   val content: String,
   /** Resolved size in px (sp × density), or null when the capture didn't resolve one. */
   val fontSizePx: Double? = null,
@@ -91,7 +91,7 @@ data class FigmaSvgText(
 )
 
 /** One laid-out line of a wrapped [FigmaSvgText], px offsets from the text layer's top-left. */
-data class FigmaSvgTextLine(
+public data class FigmaSvgTextLine(
   val content: String,
   val left: Int,
   val baseline: Int,
@@ -107,7 +107,7 @@ data class FigmaSvgTextLine(
 )
 
 /** One effective styled UTF-16 range within [FigmaSvgText.content]. */
-data class FigmaSvgTextSpan(
+public data class FigmaSvgTextSpan(
   val start: Int,
   val end: Int,
   val fontSizePx: Double? = null,
@@ -124,7 +124,7 @@ data class FigmaSvgTextSpan(
  * the SVG's consumers read natively), or `truetype`/`opentype` when embedding the exact font *file*
  * the render loaded (a downloaded / bundled / custom / variable face the capture recorded by path).
  */
-data class FigmaSvgFontFace(
+public data class FigmaSvgFontFace(
   val family: String,
   val weight: Int,
   val italic: Boolean,
@@ -133,7 +133,7 @@ data class FigmaSvgFontFace(
 )
 
 /** Background-free raster standing in for an opaque, un-vectorisable subtree. */
-data class FigmaSvgRaster(val href: String)
+public data class FigmaSvgRaster(val href: String)
 
 /**
  * An editable vector graphic (an `Icon`/`Image`'s `ImageVector`) emitted as real `<path>` layers —
@@ -142,7 +142,7 @@ data class FigmaSvgRaster(val href: String)
  * slot, allowing the emitter to distinguish an intentionally transformed vector from a merely
  * non-square slot. [fillBounds] preserves an explicit `ContentScale.FillBounds`.
  */
-data class FigmaSvgVector(
+public data class FigmaSvgVector(
   val viewportWidth: Float,
   val viewportHeight: Float,
   val layoutWidth: Int,
@@ -181,7 +181,7 @@ data class FigmaSvgVector(
 )
 
 /** One `<path>` of a [FigmaSvgVector] in viewport coordinates, with its resolved solid paint. */
-data class FigmaSvgVectorPath(
+public data class FigmaSvgVectorPath(
   val pathData: String,
   val fillArgb: String? = null,
   val fillAlpha: Float = 1f,
@@ -201,7 +201,7 @@ data class FigmaSvgVectorPath(
  * box (a padded `Spacer` paints only the bar). Carries its own bounds so the `<image>` lands on the
  * drawn region rather than the layer box.
  */
-data class FigmaSvgBackgroundRaster(
+public data class FigmaSvgBackgroundRaster(
   val href: String,
   val left: Int,
   val top: Int,
@@ -248,7 +248,7 @@ data class FigmaSvgBackgroundRaster(
 }
 
 /** An opaque node to rasterise: its nodeId, `<image>` href, and bounds to capture. */
-data class FigmaSvgRasterTarget(
+public data class FigmaSvgRasterTarget(
   val nodeId: String,
   val href: String,
   val left: Int,
@@ -269,7 +269,7 @@ data class FigmaSvgRasterTarget(
  * (from container tokens), hold editable text, both, or neither (a pure grouping layer for
  * nesting).
  */
-data class FigmaSvgLayer(
+public data class FigmaSvgLayer(
   /** Layer name — the composable name (plus a role/label hint when it disambiguates). */
   val name: String,
   val left: Int,
@@ -421,7 +421,7 @@ data class FigmaSvgLayer(
  * SVG must mask to the same circle or its (square) full-frame background paints the corners the
  * render leaves transparent, tanking render-parity on every round-device scaffold.
  */
-data class FigmaSvgRoundClip(val cx: Int, val cy: Int, val r: Int)
+public data class FigmaSvgRoundClip(val cx: Int, val cy: Int, val r: Int)
 
 /**
  * A capsule (vertical stadium) device-screen clip in root-pixel space. The Wear scroll-SVG export
@@ -432,7 +432,7 @@ data class FigmaSvgRoundClip(val cx: Int, val cy: Int, val r: Int)
  * `applyWearPillClip`. Rendered as a single `<rect rx=width/2>`; degenerates to the round clip's
  * circle when `height == width`.
  */
-data class FigmaSvgCapsuleClip(val x: Int, val y: Int, val width: Int, val height: Int) {
+public data class FigmaSvgCapsuleClip(val x: Int, val y: Int, val width: Int, val height: Int) {
   /**
    * Corner radius of the stadium — half the (narrower) width, so the caps are true half-circles.
    */
@@ -441,7 +441,7 @@ data class FigmaSvgCapsuleClip(val x: Int, val y: Int, val width: Int, val heigh
 }
 
 /** An axis-aligned rectangle in root-pixel space. */
-data class FigmaSvgRect(val x: Int, val y: Int, val width: Int, val height: Int)
+public data class FigmaSvgRect(val x: Int, val y: Int, val width: Int, val height: Int)
 
 /**
  * How the `compose/figma-svg` export treats the background the render painted behind the preview.
@@ -453,7 +453,7 @@ data class FigmaSvgRect(val x: Int, val y: Int, val width: Int, val height: Int)
  * is wanted.
  */
 @kotlinx.serialization.Serializable
-enum class FigmaSvgBackgroundMode {
+public enum class FigmaSvgBackgroundMode {
   /**
    * Export background-free (the default). The tree's own fills still draw — a screen that paints
    * its surface colour keeps painting it; only the *injected* bottom layer is dropped.
@@ -483,14 +483,14 @@ enum class FigmaSvgBackgroundMode {
    */
   FULL_BLEED;
 
-  companion object {
+  public companion object {
     /**
      * Parses a mode from a wire/property string, case- and separator-insensitive (`full-bleed`,
      * `full_bleed`, `fullBleed`). Also accepts the pre-modes booleans: `true` is the device-mask
      * shape the export used to inject unconditionally, `false` is [NONE]. Null when unset or
      * unrecognised, so a typo falls back to the caller's default rather than failing a render.
      */
-    fun parse(raw: String?): FigmaSvgBackgroundMode? =
+    public fun parse(raw: String?): FigmaSvgBackgroundMode? =
       when (raw?.trim()?.lowercase()?.replace("-", "")?.replace("_", "")) {
         null,
         "" -> null
@@ -510,7 +510,7 @@ enum class FigmaSvgBackgroundMode {
   }
 }
 
-data class FigmaSvgModel(
+public data class FigmaSvgModel(
   val root: FigmaSvgLayer,
   val minX: Int,
   val minY: Int,
@@ -559,9 +559,9 @@ data class FigmaSvgModel(
   val ty: Int
     get() = padding - minY
 
-  companion object {
+  public companion object {
     /** Default transparent margin (px) around the diagram extent. */
-    const val DEFAULT_PADDING: Int = 16
+    public const val DEFAULT_PADDING: Int = 16
 
     /**
      * Composable-name fragments exported as opaque `<image>` placeholders (opt in via `from`).
@@ -587,7 +587,7 @@ data class FigmaSvgModel(
      * node by name would pre-empt that capture (the opaque-by-name branch drops the subtree before
      * recursion reaches the drawn leaves), so keep `Slider` out of this set.
      */
-    val DEFAULT_RASTER_COMPONENTS: Set<String> =
+    public val DEFAULT_RASTER_COMPONENTS: Set<String> =
       setOf(
         "Image",
         "AsyncImage",
@@ -603,7 +603,7 @@ data class FigmaSvgModel(
       )
 
     /** Default `<image>` href for an opaque node: a per-node PNG under `figma-raster/`. */
-    fun defaultRasterHref(nodeId: String): String {
+    public fun defaultRasterHref(nodeId: String): String {
       val safe = nodeId.map { if (it.isLetterOrDigit()) it else '_' }.joinToString("")
       return "figma-raster/$safe.png"
     }
@@ -613,7 +613,7 @@ data class FigmaSvgModel(
      * producers round the same float differently (truncate vs. round), so an exact match drops text
      * on fractional pixels; 2px absorbs that skew without bleeding onto a genuinely different node.
      */
-    const val BOUNDS_TOLERANCE_PX: Int = 2
+    public const val BOUNDS_TOLERANCE_PX: Int = 2
 
     /**
      * Builds the export model.
@@ -644,7 +644,7 @@ data class FigmaSvgModel(
      *   no-frame path) falls back to sizing the background from the drawn-content extent.
      * @param frameHeightPx the captured frame PNG's pixel height; see [frameWidthPx].
      */
-    fun from(
+    public fun from(
       layout: LayoutInspectorPayload,
       semantics: ComposeSemanticsPayload? = null,
       colorNames: Map<String, String> = emptyMap(),
@@ -2719,7 +2719,7 @@ data class FigmaSvgModel(
      * resolved font size (in px). Returns null when neither the value nor (for `em`) the font size
      * parses.
      */
-    fun lineHeightToPx(
+    public fun lineHeightToPx(
       value: String,
       fontSize: String?,
       density: Float,
@@ -2808,7 +2808,7 @@ data class FigmaSvgModel(
      * bottom-left) at [density]. Returns null when the value can't be read as dp (e.g. a px corner
      * the resolver left unresolved), so the layer falls back to a sharp rectangle.
      */
-    fun parseCornersPx(value: String, density: Float): List<Double>? {
+    public fun parseCornersPx(value: String, density: Float): List<Double>? {
       val parts = value.split(",").map { it.trim() }
       val dps =
         when (parts.size) {
@@ -2830,7 +2830,7 @@ data class FigmaSvgModel(
      * [parseCornersPx] these are already pixels (a `RoundedCornerShape(<px>f)` corner), so there's
      * no density conversion. Returns null when unreadable or all corners are zero.
      */
-    fun parseRawCornersPx(value: String): List<Double>? {
+    public fun parseRawCornersPx(value: String): List<Double>? {
       val parts = value.split(",").map { it.trim().removeSuffix("px") }
       val px =
         when (parts.size) {
@@ -2856,7 +2856,7 @@ data class FigmaSvgModel(
      * font-size>` must carry the same fontScale or the glyphs float undersized in boxes sized for
      * larger text. [fontScale] defaults to 1.0 (an un-scaled capture).
      */
-    fun spToPx(value: String, density: Float, fontScale: Float = 1f): Double? {
+    public fun spToPx(value: String, density: Float, fontScale: Float = 1f): Double? {
       val n = value.removeSuffix("sp").trim().toDoubleOrNull() ?: return null
       return n * density * fontScale
     }
@@ -2866,7 +2866,7 @@ data class FigmaSvgModel(
      * out into [FigmaSvgColor.opacity] and the theme role name attached when [colorNames] knows it.
      * Returns null for an unparseable value.
      */
-    fun argbToColor(argb: String, colorNames: Map<String, String>): FigmaSvgColor? {
+    public fun argbToColor(argb: String, colorNames: Map<String, String>): FigmaSvgColor? {
       val hex = argb.removePrefix("#")
       val (rgb, opacity) =
         when (hex.length) {

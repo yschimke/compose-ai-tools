@@ -78,10 +78,10 @@ import org.w3c.dom.Node
  * Planes are emitted in ascending k, which is also back-to-front under this camera, so the
  * painter's order is document order and no depth sorting is needed.
  */
-object ExplodedSvg {
+public object ExplodedSvg {
 
   /** Knobs for [render]. Defaults are the "reads like a hardware exploded diagram" preset. */
-  data class Options(
+  public data class Options(
     /** In-plane rotation ψ, degrees. Negative spins the drawing anticlockwise on the page. */
     val spinDeg: Double = -16.0,
     /**
@@ -117,7 +117,7 @@ object ExplodedSvg {
    * Hard cap on [Options.maxDepth]. Each plane is a structural copy of the source tree, so this
    * bounds both the work and the output size for a hostile or pathologically deep input.
    */
-  const val MAX_PLANES: Int = 16
+  public const val MAX_PLANES: Int = 16
 
   /**
    * Clamp for a caller-supplied [Options.tiltDeg]. Past ~75° the sheets are so foreshortened that
@@ -182,7 +182,7 @@ object ExplodedSvg {
    * caller can apply this unconditionally: the worst case is the ordinary flat export, never a
    * broken response.
    */
-  fun render(svg: String, options: Options = Options()): String {
+  public fun render(svg: String, options: Options = Options()): String {
     val doc = parse(svg) ?: return svg
     val root = doc.documentElement ?: return svg
     if (root.localNameOf() != "svg") return svg

@@ -72,27 +72,27 @@ package ee.schimke.composeai.data.render
  * on every lane, once per JVM, exactly like the opt-in itself. What it drops is the *build
  * failure*, not the report.
  */
-object LinkBufferComposer {
+public object LinkBufferComposer {
 
   /** System property that opts a render JVM into the rewritten `SlotTable`. */
-  const val PROPERTY: String = "composeai.render.linkBufferComposer"
+  public const val PROPERTY: String = "composeai.render.linkBufferComposer"
 
   /** The `auto` wire value — enable where available, degrade (and say so) where not. */
-  const val AUTO: String = "auto"
+  public const val AUTO: String = "auto"
 
   /** Fully-qualified name of the runtime's flag holder. */
-  const val FLAGS_CLASS: String = "androidx.compose.runtime.ComposeRuntimeFlags"
+  public const val FLAGS_CLASS: String = "androidx.compose.runtime.ComposeRuntimeFlags"
 
   /** Name of the static `Boolean` field on [FLAGS_CLASS]. */
-  const val FLAG_FIELD: String = "isLinkBufferComposerEnabled"
+  public const val FLAG_FIELD: String = "isLinkBufferComposerEnabled"
 
   /** What [applyIfRequested] did, so a caller can log it once per JVM rather than per capture. */
-  sealed interface Outcome {
+  public sealed interface Outcome {
     /** Not requested — the runtime keeps whatever default it ships with. */
-    object NotRequested : Outcome
+    public object NotRequested : Outcome
 
     /** The flag was set to `true` on this classloader's copy of [FLAGS_CLASS]. */
-    object Enabled : Outcome
+    public object Enabled : Outcome
 
     /**
      * Requested as [Request.Preferred], and this render's Compose runtime has no such flag — so the
@@ -101,11 +101,11 @@ object LinkBufferComposer {
      * Only reachable from `auto`. [Request.Required] throws instead, which is what keeps "I asked
      * for the new composer and got it" checkable.
      */
-    object Unavailable : Outcome
+    public object Unavailable : Outcome
   }
 
   /** How badly the caller wants the new composer. */
-  enum class Request {
+  public enum class Request {
     /** Unset, blank, or `false` — the runtime keeps whatever default it ships with. */
     Off,
 
@@ -125,7 +125,7 @@ object LinkBufferComposer {
    *
    * @throws IllegalArgumentException when [raw] is set but is none of `true` / `false` / [AUTO].
    */
-  fun request(raw: String? = System.getProperty(PROPERTY)): Request {
+  public fun request(raw: String? = System.getProperty(PROPERTY)): Request {
     val value = raw?.trim().orEmpty()
     if (value.isEmpty()) return Request.Off
     val lowercase = value.lowercase()
@@ -145,7 +145,8 @@ object LinkBufferComposer {
   }
 
   /** Whether [raw] asks for the new composer at all, strictly or otherwise. */
-  fun requested(raw: String? = System.getProperty(PROPERTY)): Boolean = request(raw) != Request.Off
+  public fun requested(raw: String? = System.getProperty(PROPERTY)): Boolean =
+    request(raw) != Request.Off
 
   /**
    * Applies the opt-in to [classLoader]'s copy of the Compose runtime, and reports what happened.
@@ -164,7 +165,7 @@ object LinkBufferComposer {
    *   `false` / [AUTO] (see [request]).
    */
   @JvmOverloads
-  fun applyIfRequested(
+  public fun applyIfRequested(
     classLoader: ClassLoader =
       Thread.currentThread().contextClassLoader ?: LinkBufferComposer::class.java.classLoader,
     raw: String? = System.getProperty(PROPERTY),
@@ -243,7 +244,7 @@ object LinkBufferComposer {
    * that got the new one say *that*.
    */
   @JvmStatic
-  fun applyAndDescribe(
+  public fun applyAndDescribe(
     classLoader: ClassLoader =
       Thread.currentThread().contextClassLoader ?: LinkBufferComposer::class.java.classLoader
   ): String? =

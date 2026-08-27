@@ -7,7 +7,7 @@ package ee.schimke.composeai.data.layoutinspector
  * applies the same translate ([WireframeModel.tx] / [WireframeModel.ty]) and reads the same colours
  * from [WireframeStyle], so the SVG and the PNG agree pixel-for-pixel on layout and encoding.
  */
-data class WireframeBox(
+public data class WireframeBox(
   val left: Int,
   val top: Int,
   val right: Int,
@@ -29,7 +29,7 @@ data class WireframeBox(
  * The full diagram: every parseable box (pre-order) plus the padded extent. [boxes] is empty for a
  * tree with no parseable bounds — renderers emit a minimal [width]×[height] ground in that case.
  */
-data class WireframeModel(
+public data class WireframeModel(
   val boxes: List<WireframeBox>,
   /** Min corner of the union of all boxes (0,0 when empty). */
   val minX: Int,
@@ -46,8 +46,8 @@ data class WireframeModel(
   val ty: Int
     get() = padding - minY
 
-  companion object {
-    fun from(payload: ComposeSemanticsPayload, padding: Int): WireframeModel {
+  public companion object {
+    public fun from(payload: ComposeSemanticsPayload, padding: Int): WireframeModel {
       val boxes = mutableListOf<WireframeBox>()
       collect(payload.root, depth = 0, into = boxes)
       if (boxes.isEmpty()) {
@@ -116,39 +116,39 @@ data class WireframeModel(
  * both the SVG and raster renderers read so they stay identical. Kept toolkit-free (no
  * `android.graphics`, no `java.awt`) so it lives on the render-subprocess-safe core classpath.
  */
-object WireframeStyle {
+public object WireframeStyle {
   /** Muted, high-contrast-on-white stroke palette cycled by nesting depth. */
-  val depthStrokes =
+  public val depthStrokes: IntArray =
     intArrayOf(0x5B6470, 0x2E7D6B, 0x8E6BA8, 0xB0813B, 0x3B72A8, 0xA85B6B, 0x4F8A4A, 0x7A7A33)
 
   /** Accent for clickable (actionable) nodes — fill + stroke. */
-  const val clickAccent: Int = 0x1976D2
+  public const val clickAccent: Int = 0x1976D2
 
   /** Fill opacity (0..1) painted inside clickable boxes. */
-  const val clickFillOpacity: Double = 0.08
+  public const val clickFillOpacity: Double = 0.08
 
   /** White ground so the wireframe reads the same on a dark webview / terminal. */
-  const val ground: Int = 0xFFFFFF
+  public const val ground: Int = 0xFFFFFF
 
   /** Default label font size (px). */
-  const val fontSize: Int = 11
+  public const val fontSize: Int = 11
 
   /** Dotted/dashed stroke for `clearAndSet` boxes: on/off run lengths (px). */
-  val clearAndSetDash = floatArrayOf(4f, 3f)
+  public val clearAndSetDash: FloatArray = floatArrayOf(4f, 3f)
 
-  fun strokeColor(box: WireframeBox): Int =
+  public fun strokeColor(box: WireframeBox): Int =
     if (box.clickable) clickAccent else depthStrokes[box.depth % depthStrokes.size]
 
-  fun strokeWidth(box: WireframeBox): Int = if (box.clickable) 2 else 1
+  public fun strokeWidth(box: WireframeBox): Int = if (box.clickable) 2 else 1
 
   /** `0xRRGGBB` → `#RRGGBB`. */
-  fun hex(rgb: Int): String = "#%06X".format(rgb)
+  public fun hex(rgb: Int): String = "#%06X".format(rgb)
 
-  fun red(rgb: Int): Int = (rgb shr 16) and 0xFF
+  public fun red(rgb: Int): Int = (rgb shr 16) and 0xFF
 
-  fun green(rgb: Int): Int = (rgb shr 8) and 0xFF
+  public fun green(rgb: Int): Int = (rgb shr 8) and 0xFF
 
-  fun blue(rgb: Int): Int = rgb and 0xFF
+  public fun blue(rgb: Int): Int = rgb and 0xFF
 
   /**
    * Truncates [text] with a trailing `…` so the rendered string fits in [maxWidthPx], estimating
@@ -157,7 +157,7 @@ object WireframeStyle {
    * raster bakers measure precisely with their own `FontMetrics`/`Paint`, but share this for parity
    * of intent.
    */
-  fun truncateToWidth(text: String, maxWidthPx: Int, fontSize: Int = this.fontSize): String {
+  public fun truncateToWidth(text: String, maxWidthPx: Int, fontSize: Int = this.fontSize): String {
     if (maxWidthPx <= 0) return ""
     val charWidth = fontSize * 0.6
     val maxChars = (maxWidthPx / charWidth).toInt()

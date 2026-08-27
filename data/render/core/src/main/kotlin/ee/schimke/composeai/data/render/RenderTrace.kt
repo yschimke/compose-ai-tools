@@ -11,7 +11,7 @@ import kotlinx.serialization.Serializable
  * nobody reads that precisely, and milliseconds would round most of a render's phases to zero.
  */
 @Serializable
-data class RenderTraceSpan(
+public data class RenderTraceSpan(
   val name: String,
   val category: String,
   @SerialName("startUs") val startMicros: Long,
@@ -33,7 +33,7 @@ data class RenderTraceSpan(
  * data.
  */
 @Serializable
-data class RenderTraceSection(
+public data class RenderTraceSection(
   val name: String,
   val category: String,
   val count: Int,
@@ -55,7 +55,7 @@ data class RenderTraceSection(
  * one is structured data on the wire and is always available.
  */
 @Serializable
-data class RenderTrace(
+public data class RenderTrace(
   /** Which engine produced it — `"desktop"`, `"android"`, `"android-live"`. */
   val backend: String,
   /** Wall time from the first span opening to the last one closing. */
@@ -78,7 +78,7 @@ data class RenderTrace(
    * recorder appends spans as they **close**, so a parent lands after its children and containment
    * would have to be reconstructed. A counter on the section stack is exact and costs nothing.
    */
-  data class Recorded(
+  public data class Recorded(
     val name: String,
     val category: String,
     val startNanos: Long,
@@ -86,7 +86,7 @@ data class RenderTrace(
     val depth: Int,
   )
 
-  companion object {
+  public companion object {
     /**
      * Build a trace from the recorder's closed sections, rebasing times onto the first span.
      *
@@ -109,7 +109,7 @@ data class RenderTrace(
      * them onto their own minimum while reporting the full duration would scale the bars correctly
      * but place every phase at the wrong offset.
      */
-    fun of(
+    public fun of(
       backend: String,
       events: List<Recorded>,
       sections: List<RenderTraceSection>? = null,
