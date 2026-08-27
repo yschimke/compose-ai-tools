@@ -379,7 +379,13 @@ def check_versions(allowlist: dict, failures: list[str]) -> None:
         by_package.setdefault(s["symbol"], set()).add(package_declared_in(s["file"]))
     aliases = set(allowlist["versionStampAliases"])
     for found_rel, expr in discover_version_stamps():
-        if expr.isdigit():
+        if expr == POSITIONAL:
+            failures.append(
+                f"  {found_rel}: a descriptor is constructed without naming `schemaVersion`.\n"
+                f"    A positional argument names nothing, so neither discovery-by-use nor the "
+                f"name-based scan can see which version it stamps. Use the named argument."
+            )
+        elif expr.isdigit():
             failures.append(
                 f"  {found_rel}: a descriptor is constructed with `schemaVersion = {expr}`, a bare "
                 f"literal.\n    That is a mirror with no name, which no name-based scan can find. "
@@ -493,22 +499,29 @@ def check_wire_fingerprint(
     writer: dict[str, tuple[str, bool]], allowlist: dict, failures: list[str]
 ) -> None:
     actual = wire_fingerprint(writer)
-    recorded = allowlist["wireFingerprint"]
-    if actual != recorded["digest"]:
-        failures.append(
-            f"  the descriptor's wire shape changed: fingerprint {recorded['digest']} -> {actual}, "
-            f"recorded against schema v{recorded['schemaVersion']}.\n"
-            f"    If the change is breaking for an already-released reader, bump "
-            f"`DAEMON_DESCRIPTOR_SCHEMA_VERSION` everywhere and record the new pair here. If it is "
-            f"additive and safe (a new field with a default), record the new digest against the "
-            f"same version and say so in the PR — but decide, rather than letting the shape drift "
-            f"under a version that no longer describes it."
-        )
+    history = allowlist["wireFingerprint"]["history"]
     writer_version = kotlin_consts(WRITER)["DAEMON_DESCRIPTOR_SCHEMA_VERSION"]
-    if str(recorded["schemaVersion"]) != writer_version:
+    recorded = history.get(writer_version)
+
+    if recorded is None:
         failures.append(
-            f"  `wireFingerprint.schemaVersion` is {recorded['schemaVersion']} but the writer is "
-            f"at {writer_version}. Record the fingerprint against the version it describes."
+            f"  schema v{writer_version} has no recorded wire fingerprint. Add "
+            f'`"{writer_version}": "{actual}"` to `wireFingerprint.history`, which is the point at '
+            f"which the new shape gets looked at."
+        )
+    elif recorded != actual:
+        # Deliberately NOT "update the digest". Making the digest editable in place meant a
+        # breaking rename could pass by editing the writer, the readers and the record together,
+        # leaving released v2 consumers accepting a v2 descriptor they now misread. A version's
+        # shape is fixed once published; changing the shape means a new version.
+        failures.append(
+            f"  the descriptor's wire shape changed under schema v{writer_version}: "
+            f"{recorded} -> {actual}.\n"
+            f"    A version's shape is immutable once recorded, so this is not fixed by editing "
+            f"the digest: bump `DAEMON_DESCRIPTOR_SCHEMA_VERSION` at every registered site and add "
+            f"the new version to `history`, leaving the old entry in place. If you are certain the "
+            f"change is invisible to every released reader, say so in the PR and amend the entry "
+            f"deliberately — but that is a decision, not a refresh."
         )
 
 
@@ -532,8 +545,16 @@ def is_test_source(rel: str) -> bool:
     return TEST_SOURCE_SET.search(f"/{rel}") is not None
 
 
-DESCRIPTOR_CTOR = re.compile(r"\b(?:DaemonLaunchDescriptor|DaemonClasspathDescriptor)\s*\(")
+# `(?<!class )` keeps the DTOs' own `data class …(` declarations out: they open a parameter list
+# that looks exactly like a construction, and counting them made the checker report the two files
+# that DEFINE the descriptor as constructing one without naming its version.
+DESCRIPTOR_CTOR = re.compile(
+    r"(?<!class )\b(?:DaemonLaunchDescriptor|DaemonClasspathDescriptor)\s*\("
+)
 SCHEMA_ARG = re.compile(r"\bschemaVersion\s*=\s*([A-Za-z_]\w*|\d+)")
+
+# Sentinel for a construction site that passes its arguments positionally.
+POSITIONAL = "<positional>"
 
 
 PACKAGE_LINE = re.compile(r"^\s*package\s+([\w.]+)", re.M)
@@ -580,8 +601,14 @@ def discover_version_stamps() -> list[tuple[str, str]]:
                 body = balanced(text, m.end() - 1, "(", ")")
             except IndexError:
                 continue  # a construction split across an unbalanced fragment; nothing to read
-            for arg in SCHEMA_ARG.finditer(body):
-                stamps.append((rel, arg.group(1)))
+            found = [arg.group(1) for arg in SCHEMA_ARG.finditer(body)]
+            if found:
+                stamps.extend((rel, expr) for expr in found)
+            else:
+                # A positional `DaemonLaunchDescriptor(1, …)` names nothing, so neither this scan
+                # nor the name-based one can see the version it stamps. Reported as an unnamed
+                # stamp rather than silently skipped.
+                stamps.append((rel, POSITIONAL))
     return stamps
 
 
@@ -716,6 +743,41 @@ def check_unknown_key_tolerance(allowlist: dict, failures: list[str]) -> None:
         )
 
 
+JSON_CONFIG = re.compile(r"\bJson\s*\{([^}]*)\}", re.S)
+JSON_SETTING = re.compile(r"(\w+)\s*=\s*([^\s;]+)")
+
+
+def check_writer_encoders(allowlist: dict, failures: list[str]) -> None:
+    """The `Json` configuration each writer encodes through is part of the wire format.
+
+    The fingerprint starts from the DTO declaration, which says nothing about how it is serialised.
+    A `namingStrategy` on either writer would rename every key at once while the declaration, the
+    digest, both readers and every version constant stayed identical. And there are two encoder
+    configs, hand-maintained separately — the same duplication this whole check exists for, one
+    level further out, so they are also compared against each other by construction.
+    """
+    required = allowlist["writerEncoders"]["requiredSettings"]
+    for rel in allowlist["writerEncoders"]["declaredBy"]:
+        text = stripped(rel)
+        blocks = JSON_CONFIG.findall(text)
+        if not blocks:
+            failures.append(
+                f"  {rel}: registered as declaring a descriptor `Json` encoder, but no "
+                f"`Json {{ … }}` block was found. Prune the entry or fix the matcher."
+            )
+            continue
+        for block in blocks:
+            settings = dict(JSON_SETTING.findall(block))
+            if settings != required:
+                failures.append(
+                    f"  {rel}: the descriptor's `Json` encoder is configured "
+                    f"{settings}, but the recorded wire contract is {required}.\n"
+                    f"    Encoder settings rename or drop keys without touching a single "
+                    f"declaration — a `namingStrategy` alone would move every key while the "
+                    f"fingerprint held steady. Both writers must agree, and with this record."
+                )
+
+
 def check_mirrored_constants(allowlist: dict, failures: list[str]) -> None:
     """String constants the descriptor carries that other modules re-declare."""
     for name, spec in allowlist["mirroredConstants"].items():
@@ -779,6 +841,7 @@ def check() -> int:
     check_unknown_key_tolerance(allowlist, failures)
     check_mirrored_constants(allowlist, failures)
     check_raw_key_readers(writer, allowlist, failures)
+    check_writer_encoders(allowlist, failures)
     check_wire_fingerprint(writer, allowlist, failures)
 
     # Annotations on these properties change what is emitted without changing the declaration that

@@ -45,7 +45,14 @@
     "image passes the sandbox-count key as a literal in JAVA_TOOL_OPTIONS, so a rename across every",
     "Kotlin constant would still strand deployed hosts on a property nothing reads; and the doctor's",
     "raw JSON reads have no compiler behind them, so the type each one assumes is recorded rather",
-    "than inferred."
+    "than inferred.",
+    "",
+    "writerEncoders: the `Json` configuration each production writer serialises through. Encoder",
+    "settings rename or drop keys without touching a declaration, so they are part of the wire",
+    "contract rather than a formatting preference.",
+    "",
+    "wireFingerprint.history maps schema version -> shape digest, and entries are immutable. Changing",
+    "the shape means adding a version, never editing the digest recorded for an existing one."
   ],
   "schemaVersionSites": [
     {
@@ -128,8 +135,21 @@
     }
   },
   "wireFingerprint": {
-    "digest": "7ea9f6c0ea6c2e4e",
-    "schemaVersion": 2,
-    "why": "The shape of DaemonClasspathDescriptor as of schema v2, including the DTOs it nests (BtaCompileConfig) \u2014 a top-level-only digest left a rename inside a nested class invisible. Regenerate deliberately, never to make the build pass."
+    "history": {
+      "2": "7ea9f6c0ea6c2e4e"
+    },
+    "why": "The shape of DaemonClasspathDescriptor, including the DTOs it nests, recorded per schema version. A version's entry is IMMUTABLE once written: an editable digest meant a breaking rename could pass by updating the writer, the readers and the record together, leaving released v2 consumers accepting a v2 descriptor they now misread. Changing the shape means adding a new version, not refreshing this one."
+  },
+  "writerEncoders": {
+    "declaredBy": [
+      "gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonLaunchBuilder.kt",
+      "gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/daemon/DaemonBootstrapTask.kt"
+    ],
+    "requiredSettings": {
+      "prettyPrint": "true",
+      "encodeDefaults": "true",
+      "explicitNulls": "true"
+    },
+    "why": "The two production writers each configure their own `Json`, and the configuration is part of the wire format: a `namingStrategy` would rename every key while the DTO declaration, the fingerprint, both readers and every version constant stayed identical. `encodeDefaults` and `explicitNulls` decide whether a defaulted or null field is emitted at all. Two hand-maintained copies of one contract is the same duplication this file exists to police, one level further out \u2014 so they are checked against this record and thereby against each other."
   }
 }

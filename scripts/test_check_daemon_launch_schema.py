@@ -278,18 +278,37 @@ class RealTree(unittest.TestCase):
             {(s["file"], s["symbol"]) for s in self.allowlist["schemaVersionSites"]},
         )
 
-    def test_the_recorded_fingerprint_matches_the_writer(self):
-        writer = mod.kotlin_data_class(mod.WRITER, "DaemonClasspathDescriptor")
-        self.assertEqual(
-            mod.wire_fingerprint(writer), self.allowlist["wireFingerprint"]["digest"]
-        )
-
     def test_every_raw_key_the_doctor_reads_is_a_writer_field(self):
         writer = mod.kotlin_data_class(mod.WRITER, "DaemonClasspathDescriptor")
         for rel in self.allowlist["rawKeyReaders"]:
             keys = {m.group(1) for m in mod.RAW_KEY.finditer(mod.strip_comments(mod.read(rel)))}
             self.assertTrue(keys, f"{rel} exposes no raw key reads any more")
             self.assertEqual(set(), keys - set(writer), f"{rel} reads keys the writer never emits")
+
+    def test_the_writer_version_has_an_immutable_recorded_fingerprint(self):
+        writer = mod.kotlin_data_class(mod.WRITER, "DaemonClasspathDescriptor")
+        version = mod.kotlin_consts(mod.WRITER)["DAEMON_DESCRIPTOR_SCHEMA_VERSION"]
+        history = self.allowlist["wireFingerprint"]["history"]
+        self.assertIn(version, history)
+        self.assertEqual(history[version], mod.wire_fingerprint(writer))
+
+    def test_both_writer_encoders_match_the_recorded_contract(self):
+        # Two hand-maintained `Json` configs: checked against the record, and thereby each other.
+        required = self.allowlist["writerEncoders"]["requiredSettings"]
+        for rel in self.allowlist["writerEncoders"]["declaredBy"]:
+            blocks = mod.JSON_CONFIG.findall(mod.stripped(rel))
+            self.assertTrue(blocks, rel)
+            for block in blocks:
+                self.assertEqual(required, dict(mod.JSON_SETTING.findall(block)), rel)
+
+    def test_every_construction_site_names_its_schema_version(self):
+        for rel, expr in mod.discover_version_stamps():
+            self.assertNotEqual(mod.POSITIONAL, expr, f"{rel} constructs positionally")
+
+    def test_the_dto_declarations_are_not_mistaken_for_constructions(self):
+        # The first cut of the positional rule reported the two files that DEFINE the descriptor.
+        declaring = {mod.WRITER, mod.JVM_READER}
+        self.assertEqual(set(), declaring & {rel for rel, _ in mod.discover_version_stamps()})
 
     def test_no_dto_property_carries_an_unvetted_annotation(self):
         # Refused as a class rather than one annotation at a time: `@Transient` drops a field and

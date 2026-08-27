@@ -190,13 +190,14 @@ produced. `:render-session-subprocess` is one of the published contract modules 
 links against, so after the split that stops being a same-commit mistake and becomes cross-repo
 version skew no compiler sees.
 
-`scripts/check-daemon-launch-schema.py` enforces nine things:
+`scripts/check-daemon-launch-schema.py` enforces ten things:
 
 - **version agreement** — every declared copy equals the writer's, *and* every copy is registered.
   An unregistered version constant anywhere in the tree fails, so a new mirror has to be declared,
   which is the moment someone can ask whether it should exist at all. Discovery works **by use**
   as well as by name: every `schemaVersion = …` at a descriptor construction site must be a
-  registered constant, never a bare literal. That arm exists because name matching alone was not
+  registered constant named as `schemaVersion = …` (a positional argument names nothing, so
+  neither scan can see it), never a bare literal. That arm exists because name matching alone was not
   enough — `ServeBundleDaemon` calls its copy `DAEMON_LAUNCH_SCHEMA_VERSION` rather than
   `…DESCRIPTOR_SCHEMA_VERSION`, and stamps real descriptors with it, so a fifth mirror sat outside
   a check whose entire claim was that every mirror is registered;
@@ -223,15 +224,24 @@ version skew no compiler sees.
   rather than one at a time — nothing is allowed on these properties unless it is on an
   (currently empty) allowlist, so the next annotation someone reaches for has to be considered
   rather than slipping through;
+- **the writers' encoder configuration** — the two production writers each configure their own
+  `Json`, and that is part of the wire format rather than a formatting preference: a
+  `namingStrategy` would rename every key while the declaration, the digest, both readers and every
+  version constant stayed identical. Two hand-maintained copies of one contract is the same
+  duplication this check exists for, one level out, so they are compared against the record and
+  thereby against each other;
 - **a wire fingerprint** — a digest of the writer's field names, types and optionality *and of the
-  DTOs it nests*, pinned
+  DTOs it nests*, recorded per version and **immutable once written**, pinned
   against the version it describes. Version agreement across the copies is necessary and not
   sufficient: a PR could rename a field in the writer and every in-repo reader at once, leaving
   all constants at v2 while a released extension accepts the new descriptor as v2 and misreads
   it. Changing the shape fails until someone records the new digest, which is where the question
   "is this breaking?" actually gets asked. Nesting is load-bearing: a top-level-only digest left
   `btaCompile` as the opaque token `BtaCompileConfig?`, so a rename *inside* that class moved the
-  wire contract while the digest held steady.
+  wire contract while the digest held steady. Immutability is the other half: while the digest was
+  editable in place, a breaking rename could pass by updating the writer, the readers *and* the
+  record together, leaving released v2 consumers accepting a v2 descriptor they now misread.
+  Changing the shape means adding a version, never refreshing the entry for an existing one.
 
 Divergences that are correct by design live in `scripts/daemon-launch-schema-allowlist.json` with
 the reason written down — the same debt-register discipline as the seam allowlist, not an exemption
