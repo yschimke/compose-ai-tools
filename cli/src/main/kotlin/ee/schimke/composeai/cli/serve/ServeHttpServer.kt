@@ -1054,6 +1054,59 @@ class ServeHttpServer(
               ContentType.Application.Json,
             )
           }
+          // Per-catalog cache control, the pair that answers "these pixels look wrong".
+          //
+          // Separate verbs because they cost very different things and the cheap one is almost
+          // always right. `regenerate` marks the catalog's warmed renders for re-render and
+          // deletes nothing, so every preview keeps serving while the background pass replaces
+          // them — the answer for pixels *suspected* wrong by something no fingerprint sees, a
+          // base image that changed the installed fonts being the case that motivated it. `drop`
+          // takes them, and every preview for that catalog goes cold at once.
+          post("/admin/catalogs/{system}/theme-cache/regenerate") {
+            if (rejectBadAdminToken()) return@post
+            val system = call.parameters["system"].orEmpty()
+            val host = sessions.peekHost(system)
+            if (host == null) {
+              call.respondText("no such catalog: $system", status = HttpStatusCode.NotFound)
+              return@post
+            }
+            val queued = withContext(Dispatchers.IO) { host.regenerateThemeCache() }
+            call.response.headers.append(HttpHeaders.CacheControl, "no-store")
+            call.respondText(
+              Json.encodeToString(
+                ThemeCacheActionDto.serializer(),
+                ThemeCacheActionDto(system = system, action = "regenerate", entries = queued),
+              ),
+              ContentType.Application.Json,
+            )
+          }
+          post("/admin/catalogs/{system}/theme-cache/drop") {
+            if (rejectBadAdminToken()) return@post
+            val system = call.parameters["system"].orEmpty()
+            val host = sessions.peekHost(system)
+            if (host == null) {
+              call.respondText("no such catalog: $system", status = HttpStatusCode.NotFound)
+              return@post
+            }
+            val dropped = withContext(Dispatchers.IO) { host.dropThemeCache() }
+            call.response.headers.append(HttpHeaders.CacheControl, "no-store")
+            call.respondText(
+              Json.encodeToString(
+                ThemeCacheActionDto.serializer(),
+                // `dropped = false` is a real answer, not an error: the generation write lock is
+                // held by a render publishing right now, and the caller should try again rather
+                // than believe the bytes are gone.
+                ThemeCacheActionDto(
+                  system = system,
+                  action = "drop",
+                  entries = 0,
+                  dropped = dropped,
+                ),
+              ),
+              ContentType.Application.Json,
+              status = if (dropped) HttpStatusCode.OK else HttpStatusCode.Conflict,
+            )
+          }
           post("/admin/theme-optimization/resume") {
             if (rejectBadAdminToken()) return@post
             optimizer.resumeOptimizers()
@@ -10740,6 +10793,22 @@ private data class BundleAcceptedResponse(
    * this tells the uploader whether the server would treat the bundle as trusted.
    */
   val trust: String,
+)
+
+/**
+ * Reply from the per-catalog theme-cache admin routes.
+ *
+ * [entries] is what `regenerate` queued — zero is a legitimate answer for a catalog with no
+ * persistent cache, or one already fully re-rendered. [dropped] reports whether `drop` actually
+ * took the bytes: false means the generation write lock was held by a render publishing at that
+ * moment, so the caller should retry rather than believe the store is empty.
+ */
+@Serializable
+private data class ThemeCacheActionDto(
+  val system: String,
+  val action: String,
+  val entries: Int = 0,
+  val dropped: Boolean? = null,
 )
 
 /** Reply from the optimizer pause/resume admin routes. */
