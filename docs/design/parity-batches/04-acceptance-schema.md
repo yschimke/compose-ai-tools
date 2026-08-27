@@ -58,7 +58,7 @@ Each exists because two engines would otherwise diverge on identical bytes.
   engines different pixels — a decoder reads `IDAT`, an `<img>` advances the animation. Reject on
   `acTL`.
 - **Budget before decode**: 256 acceptances, 128 megapixels, 8192 px per axis, 8 MiB encoded per
-  artifact, **640 MiB of peak live raster** — all versioned. The header pass reads a **4096-byte prefix** of each artifact rather than
+  artifact, **64 MiB of artifacts in total**, **640 MiB of peak live raster** — all versioned. The header pass reads a **4096-byte prefix** of each artifact rather than
   the whole of it, so the byte cap is enforced by something that has not already allocated past it;
   the reader reports the artifact's full length alongside, and that is what the cap is measured
   against. 4096 is provably enough: only `PLTE` and `tRNS` may precede the first `IDAT`, which bounds

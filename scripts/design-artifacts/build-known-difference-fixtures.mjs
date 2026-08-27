@@ -2265,6 +2265,108 @@ const documentTooLarge = () => ({
   });
 }
 
+{
+  // **The aggregate compressed ceiling, both sides of it.** `maxArtifactBytes` bounds one artifact
+  // and `maxRasterBytes` bounds the decoded rasters, and between them they left four gigabytes of
+  // entirely legal compressed bytes: 256 records × 2 artifacts × 8 MiB. Padding inside the
+  // compressed stream is legal — the cases above do it deliberately — so a small image padded to
+  // 8 MiB contributes about sixteen bytes to `maxRasterBytes` and eight megabytes to a reader that
+  // has to hold it. An engine that re-reads from disk escapes that; a browser whose `readArtifact`
+  // is synchronous cannot, so it must fetch ahead and hold what it fetched.
+  //
+  // Eight records of two 4 MiB artifacts is exactly 64 MiB, so the pair below straddles the ceiling
+  // by a single byte in the same way `artifact-at-byte-cap` and `artifact-too-large` straddle the
+  // per-artifact one. Eight rather than four because 8 MiB artifacts would sit *on* the per-artifact
+  // cap, and one byte past the aggregate would then also be one byte past that — the case would
+  // refuse for the wrong reason and pass anyway.
+  const world = glyphWorld();
+  const maskBase = world.maskPngBytes;
+  const acceptedBase = world.acceptedPngBytes;
+  const share = 4 * 1024 * 1024;
+  const ids = Array.from({ length: 8 }, (_, slot) => `m3-aggregate-${slot}`);
+
+  /**
+   * The document, files and synthesis recipes for eight padded records.
+   *
+   * `extra` is added to the very last artifact, so the over-budget case differs from the legal one
+   * by one byte in one file and by nothing else.
+   */
+  const aggregate = (extra) => {
+    const lastPath = `artifacts/${ids[ids.length - 1]}/accepted-candidate.png`;
+    const records = [];
+    const files = {
+      "canonical-reference.png": world.referencePngBytes,
+      "canonical-candidate.png": world.candidatePngBytes,
+    };
+    const synthesize = [];
+    for (const id of ids) {
+      const maskTo = share;
+      const acceptedTo = `artifacts/${id}/accepted-candidate.png` === lastPath ? share + extra : share;
+      records.push(
+        glyphRecord(world, {
+          id,
+          maskSha256: sha256Hex(padPngTo(maskBase, maskTo)),
+          acceptedCandidateSha256: sha256Hex(padPngTo(acceptedBase, acceptedTo)),
+        }),
+      );
+      files[`artifacts/${id}/mask.base.png`] = maskBase;
+      files[`artifacts/${id}/accepted-candidate.base.png`] = acceptedBase;
+      synthesize.push(
+        { path: `artifacts/${id}/mask.png`, from: `artifacts/${id}/mask.base.png`, padTo: maskTo },
+        {
+          path: `artifacts/${id}/accepted-candidate.png`,
+          from: `artifacts/${id}/accepted-candidate.base.png`,
+          padTo: acceptedTo,
+        },
+      );
+    }
+    return { records, files, synthesize };
+  };
+
+  {
+    const { records, files, synthesize } = aggregate(0);
+    addCase({
+      id: "artifacts-at-total-byte-cap",
+      title: "Eight records whose artifacts total exactly 64 MiB",
+      why:
+        "The accepting half of the aggregate boundary. The ceiling is inclusive like every other " +
+        "one here, so a runtime checking `>=` refuses a document `v1` calls legal — and because " +
+        "this is the cap that decides what a browser adapter may retain, refusing early is a " +
+        "verdict change rather than a conservative choice.",
+      document: document(records),
+      files,
+      synthesize,
+      comparison: glyphComparison(world),
+      expected: {
+        pins: ["statuses", "validationFailures"],
+        statuses: Object.fromEntries(ids.map((id) => [id, { status: "valid" }])),
+        validationFailures: [],
+      },
+    });
+  }
+
+  {
+    const { records, files, synthesize } = aggregate(1);
+    addCase({
+      id: "artifacts-too-large-in-total",
+      title: "The same eight records, one byte over 64 MiB in total",
+      why:
+        "`document-too-large`, not `artifact-too-large`: every artifact here is half the " +
+        "per-artifact cap and the document is refused for what they weigh together. The refusal is " +
+        "document-level and carries no `statuses`, which is what lets a reader stop fetching at the " +
+        "record that crosses the line rather than holding the rest to find out.",
+      document: document(records),
+      files,
+      synthesize,
+      comparison: glyphComparison(world),
+      expected: {
+        pins: ["statuses", "validationFailures"],
+        validationFailures: [{ reason: "document-too-large" }],
+      },
+    });
+  }
+}
+
 // --- identity and paths --------------------------------------------------------------------------
 
 glyphValidation({

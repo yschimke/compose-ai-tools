@@ -1,0 +1,33 @@
+{
+  "pins": [
+    "statuses",
+    "validationFailures"
+  ],
+  "statuses": {
+    "m3-aggregate-0": {
+      "status": "valid"
+    },
+    "m3-aggregate-1": {
+      "status": "valid"
+    },
+    "m3-aggregate-2": {
+      "status": "valid"
+    },
+    "m3-aggregate-3": {
+      "status": "valid"
+    },
+    "m3-aggregate-4": {
+      "status": "valid"
+    },
+    "m3-aggregate-5": {
+      "status": "valid"
+    },
+    "m3-aggregate-6": {
+      "status": "valid"
+    },
+    "m3-aggregate-7": {
+      "status": "valid"
+    }
+  },
+  "validationFailures": []
+}

@@ -133,6 +133,8 @@ issues — six issues can carry a locator, four are acceptance candidates.
 | `document-axis-over-cap` | A raster 8193 px on its long axis |
 | `artifact-at-byte-cap` | A mask of exactly 8 MiB encoded |
 | `artifact-too-large` | A mask one byte past 8 MiB encoded |
+| `artifacts-at-total-byte-cap` | Eight records whose artifacts total exactly 64 MiB |
+| `artifacts-too-large-in-total` | The same eight records, one byte over 64 MiB in total |
 | `id-not-safe-proto` | An `id` of `__proto__` |
 | `id-not-safe-single-dot` | An `id` of `.` reaching a sibling's `mask.png` |
 | `id-not-safe-parent-dot` | An `id` of `..` |

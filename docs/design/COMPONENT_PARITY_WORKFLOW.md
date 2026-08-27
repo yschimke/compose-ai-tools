@@ -1204,6 +1204,39 @@ budget already refuses with. A memory ceiling is a budget; giving it a token of 
 one class of refusal arrive under two names in two engines. Inclusive at the boundary like every
 other cap.
 
+**And a compressed ceiling, because the memory one is only about decoded bytes.** `maxRasterBytes`
+bounds what a reader holds *after* decoding, and says nothing about what it holds on the way there.
+Padding inside the compressed stream is legal — the conformance fixtures use it deliberately to
+express artifacts too large to commit — so a 1×1 image padded to 8 MiB contributes about sixteen
+bytes to the memory ceiling and eight megabytes to a reader that has to hold the file. 256 records ×
+2 artifacts × 8 MiB is **four gigabytes** of entirely legal compressed bytes, inside every number
+above. So `v1` names a sixth constant, **64 MiB of artifacts in total**.
+
+The offline engine escapes that gap by re-reading from disk: its preflight pass reads headers one
+record at a time and retains nothing, then re-reads the bytes when it decodes. A browser cannot.
+`readArtifact` is synchronous by design — the evaluation ladder is a sequence of ordering
+requirements and threading a promise through it would turn each of them into a race — so a browser
+adapter has to fetch ahead and hold what it fetched, and the bound on what it holds was the four
+gigabytes above.
+
+It is summed over **every record whose two artifacts the reader answered for**, whatever any later
+header check says about them, and that scope is what makes the ceiling enforceable anywhere but
+inside the engine. A total restricted to records that pass the *whole* preflight is one an outside
+planner can only over-estimate — it has the headers but not the mask-encoding rules or either hash,
+so it sees a superset of the clean set — and over-estimating a ceiling means skipping a body the
+engine then asks for, which is `artifact-unreadable`: a verdict change, decided by a planner. Summed
+over answered reads, the total is a pure function of what a header pass already saw. Counting a
+record the decode pass will never re-read over-counts, and over-counting is the safe direction for a
+ceiling: it refuses slightly early rather than holding slightly too much.
+
+Checked as a running total with the same compare-as-you-go short-circuit as the other aggregates,
+refused as **`document-too-large`** like every other budget, and inclusive at the boundary — exactly
+64 MiB is legal, one byte past refuses. Both halves are fixtured
+(`artifacts-at-total-byte-cap`, `artifacts-too-large-in-total`), as eight records of two 4 MiB
+artifacts: eight rather than four because 8 MiB artifacts would sit *on* the per-artifact cap, and
+one byte past the aggregate would then also be one byte past that, so the case would refuse for the
+wrong reason and pass anyway.
+
 **The pixel cap and the memory ceiling are not two spellings of one number**, which is why both are
 named. 512 artifacts of 250,000 pixels are exactly 128 megapixels and peak at about 515 MB — refused
 by the pixel cap, nowhere near the ceiling. The 8000 × 8000 pair above is *also* exactly 128

@@ -1,0 +1,119 @@
+{
+  "title": "The same eight records, one byte over 64 MiB in total",
+  "site": null,
+  "why": "`document-too-large`, not `artifact-too-large`: every artifact here is half the per-artifact cap and the document is refused for what they weigh together. The refusal is document-level and carries no `statuses`, which is what lets a reader stop fetching at the record that crosses the line rather than holding the rest to find out.",
+  "comparison": {
+    "system": "m3",
+    "component": "IconButton/Tonal",
+    "previewId": "iconbutton-tonal__ideal__default__light",
+    "referenceId": "iconbutton-tonal-ideal-light",
+    "variant": "ideal/default/light",
+    "overrides": {},
+    "referenceSha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+    "plane": {
+      "plane": "content-box",
+      "box": {
+        "x": 4,
+        "y": 4,
+        "width": 24,
+        "height": 24
+      }
+    },
+    "canonicalReference": "rasters/bb16b4247345bda7.png",
+    "canonicalCandidate": "rasters/73c291212fff39a2.png",
+    "tagIndex": {
+      "iconbutton-tonal-glyph": {
+        "count": 1,
+        "bounds": {
+          "x": 8,
+          "y": 8,
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "catalog": null,
+  "synthesize": [
+    {
+      "path": "artifacts/m3-aggregate-0/mask.png",
+      "from": "artifacts/m3-aggregate-0/mask.base.png",
+      "padTo": 4194304
+    },
+    {
+      "path": "artifacts/m3-aggregate-0/accepted-candidate.png",
+      "from": "artifacts/m3-aggregate-0/accepted-candidate.base.png",
+      "padTo": 4194304
+    },
+    {
+      "path": "artifacts/m3-aggregate-1/mask.png",
+      "from": "artifacts/m3-aggregate-1/mask.base.png",
+      "padTo": 4194304
+    },
+    {
+      "path": "artifacts/m3-aggregate-1/accepted-candidate.png",
+      "from": "artifacts/m3-aggregate-1/accepted-candidate.base.png",
+      "padTo": 4194304
+    },
+    {
+      "path": "artifacts/m3-aggregate-2/mask.png",
+      "from": "artifacts/m3-aggregate-2/mask.base.png",
+      "padTo": 4194304
+    },
+    {
+      "path": "artifacts/m3-aggregate-2/accepted-candidate.png",
+      "from": "artifacts/m3-aggregate-2/accepted-candidate.base.png",
+      "padTo": 4194304
+    },
+    {
+      "path": "artifacts/m3-aggregate-3/mask.png",
+      "from": "artifacts/m3-aggregate-3/mask.base.png",
+      "padTo": 4194304
+    },
+    {
+      "path": "artifacts/m3-aggregate-3/accepted-candidate.png",
+      "from": "artifacts/m3-aggregate-3/accepted-candidate.base.png",
+      "padTo": 4194304
+    },
+    {
+      "path": "artifacts/m3-aggregate-4/mask.png",
+      "from": "artifacts/m3-aggregate-4/mask.base.png",
+      "padTo": 4194304
+    },
+    {
+      "path": "artifacts/m3-aggregate-4/accepted-candidate.png",
+      "from": "artifacts/m3-aggregate-4/accepted-candidate.base.png",
+      "padTo": 4194304
+    },
+    {
+      "path": "artifacts/m3-aggregate-5/mask.png",
+      "from": "artifacts/m3-aggregate-5/mask.base.png",
+      "padTo": 4194304
+    },
+    {
+      "path": "artifacts/m3-aggregate-5/accepted-candidate.png",
+      "from": "artifacts/m3-aggregate-5/accepted-candidate.base.png",
+      "padTo": 4194304
+    },
+    {
+      "path": "artifacts/m3-aggregate-6/mask.png",
+      "from": "artifacts/m3-aggregate-6/mask.base.png",
+      "padTo": 4194304
+    },
+    {
+      "path": "artifacts/m3-aggregate-6/accepted-candidate.png",
+      "from": "artifacts/m3-aggregate-6/accepted-candidate.base.png",
+      "padTo": 4194304
+    },
+    {
+      "path": "artifacts/m3-aggregate-7/mask.png",
+      "from": "artifacts/m3-aggregate-7/mask.base.png",
+      "padTo": 4194304
+    },
+    {
+      "path": "artifacts/m3-aggregate-7/accepted-candidate.png",
+      "from": "artifacts/m3-aggregate-7/accepted-candidate.base.png",
+      "padTo": 4194305
+    }
+  ]
+}

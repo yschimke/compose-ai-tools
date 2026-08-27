@@ -1,0 +1,11 @@
+{
+  "pins": [
+    "statuses",
+    "validationFailures"
+  ],
+  "validationFailures": [
+    {
+      "reason": "document-too-large"
+    }
+  ]
+}

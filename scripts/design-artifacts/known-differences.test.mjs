@@ -764,6 +764,7 @@ test("the budget constants are the ones `v1` names", () => {
     maxPixels: 128_000_000,
     maxAxis: 8192,
     maxArtifactBytes: 8 * 1024 * 1024,
+    maxTotalArtifactBytes: 64 * 1024 * 1024,
     maxPreflightBytes: 4096,
     maxRasterBytes: 640 * 1024 * 1024,
   });
