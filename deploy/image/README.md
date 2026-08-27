@@ -292,7 +292,71 @@ renders can actually occupy, so this widens the queue rather than licensing unbo
 
 Before this existed the knob was reachable only as a system property, and the prebuilt image bakes
 `JAVA_TOOL_OPTIONS` into its own `ENV` — so on this deployment there was no way to set it short of
-rebuilding the image.
+rebuilding the image. `SERVE_JAVA_OPTS` below is the general answer to that; this flag stays because
+it is one an operator reaches for often enough to deserve a name.
+
+### Setting any other JVM or `composeai.*` property (`SERVE_JAVA_OPTS`)
+
+**Do not set `JAVA_TOOL_OPTIONS` in the compose file.** The image bakes its own — the heap ceiling,
+the daemon library directories, the render timeouts, the sandbox boot settings — and an environment
+entry *replaces* that whole string rather than adding to it. The container then starts without its
+heap ceiling and without the paths the daemon lane needs, for the sake of one `-D`. Nothing in the
+resulting failure points back at the change.
+
+Use this instead. The entrypoint appends it to whatever the image already carries:
+
+```
+SERVE_JAVA_OPTS=-Dcomposeai.serve.themeOptimizationIdleMillis=10000
+```
+
+Space-separate several. Last wins within `JAVA_TOOL_OPTIONS`, so this can override a baked value as
+well as add one.
+
+It is **inherited by the daemon JVMs** the server spawns, exactly as the baked options are. That is
+what makes it the right layer for a render-side property, and the thing to know before putting a
+heap flag here — every sandbox would take it as its own.
+
+The knobs this reaches that nothing else did:
+
+| Property | What it does |
+| --- | --- |
+| `composeai.serve.themeOptimizationIdleMillis` | Quiet window before an optimizer pass may **start** (default 60000). See the section below. |
+| `composeai.serve.themeOptimizationGateCeilingMillis` | How long the gate may withhold a turn before one is forced anyway (default 600000). The floor under throughput on a box that never goes quiet. |
+| `composeai.serve.themeOptimizerSliceMillis` | How long one admitted catalog holds a lane before handing it back. |
+| `composeai.serve.optimizerStopMemoryAvailableFraction` / `…Resume…` | Where the pressure gate stops and resumes on memory. |
+| `composeai.serve.optimizerStopCpuUtilization` / `…Resume…` | The same for CPU, and `…LoadPerCpu` for load average. |
+| `composeai.serve.optimizerStarvationCapMillis`, `…DutyCycleMillis` | How long a hold may last before the gate opens a window anyway, and how long that window is. |
+| `composeai.serve.catalogRenderCacheMaxBytes` | Per-catalog memory window for rendered pixels. |
+| `composeai.serve.themeOptimization` | `false` switches the optimizer off entirely. |
+
+The pressure thresholds in particular are documented in the source as "a property of the host, not
+of the code, and it needs to be settable without a rebuild" — which was true of the intent and not
+of this image until now. A box whose steady state is 18% available memory has a resume threshold set
+below its own baseline, so the gate latches on the first transient dip and never reopens.
+
+### Letting the optimizer start on a busy box
+
+A theme-optimizer pass may only *start* once the whole server has been untouched for a quiet window,
+60 seconds by default. That is the "don't begin work on a box someone might be using" rule, and it
+assumes a box that goes quiet.
+
+**A public box serving many catalogs may never do so.** When it does not, the pass falls back on its
+forced-turn ceiling — one preview per catalog per ten minutes — and throughput collapses to roughly
+a hundred entries an hour against a warm render of well under a second. What that looks like on
+`/status.json`, and worth confirming before reaching for this:
+
+- `turnsGranted` and `turnsYielded` within a handful of each other on every catalog: every turn the
+  gate hands out is being taken straight back.
+- `gateWaitMillis` several times `renderMillis` — measured on `preview.coo.ee`, 1,789s against 427s.
+- `themeOptimizer.pressure.constrained` **false** and memory healthy, so nothing else is the cause.
+
+```
+SERVE_JAVA_OPTS=-Dcomposeai.serve.themeOptimizationIdleMillis=10000
+```
+
+This does not remove the courtesy the window encodes. It governs *entry*, asked once per pass; a
+request arriving **during** a pass still takes the turn back within about two seconds, so a visitor
+waits at most the render already in flight either way.
 
 ### Warmed theme renders survive a deploy (`SERVE_THEME_CACHE_DIR`)
 
