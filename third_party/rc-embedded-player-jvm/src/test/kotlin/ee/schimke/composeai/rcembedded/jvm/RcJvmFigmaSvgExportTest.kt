@@ -372,9 +372,9 @@ class RcJvmFigmaSvgExportTest {
   }
 
   /**
-   * `TitleCardRemote` as `design-catalog-remote-m3` bakes it — the committed 1 KB fixture the
-   * Android lanes render, shared from the Android module's test resources so the two lanes' reports
-   * are about the same document.
+   * `TitleCardRemote` as the `remote-m3` catalog bakes it — the committed 1 KB fixture the Android
+   * lanes render, shared from the Android module's test resources so the two lanes' reports are
+   * about the same document.
    */
   private fun fixtureDocument(): Doc {
     val bytes =

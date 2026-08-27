@@ -266,9 +266,9 @@ data class BundleManifest(
    * A coordinate is only a promise that the bytes can be re-attached from *somewhere*, and that
    * promise silently breaks the moment a module resolves a dependency from anywhere else: a JitPack
    * fork, an internal mirror, or — the case that produced this field — the androidx.dev snapshot
-   * build `:samples:design-catalog-remote-m3` takes its entire Remote Compose runtime from. The
-   * player found nothing for those coordinates, dropped them with a warning, and stood a daemon up
-   * on an incomplete classpath; the first render then died with `NoClassDefFoundError:
+   * build the `remote-m3` catalog takes its entire Remote Compose runtime from. The player found
+   * nothing for those coordinates, dropped them with a warning, and stood a daemon up on an
+   * incomplete classpath; the first render then died with `NoClassDefFoundError:
    * androidx/compose/remote/player/view/RemoteComposePlayer` and the catalog fell back to baked
    * PNGs (issues #4259 / #4265). Recording the repositories makes the bundle say where its bytes
    * live instead of leaving a server operator to guess it into `--extra-maven-repos`, and keeps a

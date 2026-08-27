@@ -6,7 +6,8 @@
  *
  * The pairing is authored, not guessed: each component in the system's
  * `catalog.spec.json` carries a `parallel` field naming its counterpart's
- * `componentId` in the other system (see samples/design-catalog-remote-m3). This
+ * `componentId` in the other system (see the `remote-m3` catalog, in
+ * yschimke/wear-m3-catalog). This
  * module takes the local catalog (the flattened manifest, same shape
  * `renderIndexHtml`/`renderCompareHtml` read), the `parallel` map lifted from the
  * spec, and the other system's component list (also from its committed spec), and

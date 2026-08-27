@@ -602,17 +602,21 @@ fun ButtonFocused() = WearSticker {
 // `Layout/List`, `Template/EdgeButton`, `CheckboxButton/Checked` and `ListHeader` were dropped on
 // exactly that test. The by-component redundancy that LOOKS cuttable — the four other button
 // emphasis levels, `IconButton`, `CompactButton`, `ButtonGroup`, `AppCard`, `TitleCard`,
-// `Card/Outlined`, `Icon`, `Typography`, `ColorScheme` — is load-bearing elsewhere and stays:
-// `samples/design-catalog-remote-m3` declares `compareWith: "wear-m3"` and authors a `parallel`
-// into each of those ids, so deleting one silently unpairs a row on the published remote-m3
-// cross-system compare page. Cut them when remote-m3's `compareWith` moves to the new
-// wear-m3-catalog, not before.
+// `Card/Outlined`, `Icon`, `Typography`, `ColorScheme` — used to be load-bearing elsewhere:
+// the remote-m3 sheet declared `compareWith: "wear-m3"` and authored a `parallel` into each of
+// those ids, so deleting one silently unpaired a row on its published compare page.
+//
+// **That hold is released.** remote-m3 pairs against the wear-m3-catalog REFERENCE sheet now, and
+// since #4588 it does so from inside that repo. Nothing outside this module depends on these ids
+// any more, so they are cuttable by the feature rule above — a separate change, and one that
+// should confirm against a published `matches.html` first (see DESIGN_CATALOGS.md).
 
 // ---------------------------------------------------------------------------
 // Parallels of the Remote Compose Material 3 catalog. These mirror the extra
 // components the remote-m3 sheet carries (IconButton, CompactButton, ButtonGroup,
-// AppCard, Icon, and the theme specimens), so the cross-system compare page pairs
-// every remote sticker with a real Wear M3 counterpart rather than a placeholder.
+// AppCard, Icon, and the theme specimens). They were what paired every remote sticker
+// with a real Wear M3 counterpart rather than a placeholder; remote-m3 pairs against
+// wear-m3-catalog now, so this block documents a pairing that has moved on.
 // ---------------------------------------------------------------------------
 
 // A simple five-point star shared by the icon stickers — the catalog doesn't pull

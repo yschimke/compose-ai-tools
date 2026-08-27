@@ -29,8 +29,8 @@ import androidx.wear.compose.remote.material3.RemoteText
  * container's own surface — corner-clipped, edge-to-edge, no inner rectangle.
  *
  * Upstream's `wear-os-samples/WearWidget` does exactly this (`WearWidgetDocument(background =
- * WearWidgetBrush.color(...))`), and so do the `WidgetContainer*Remote` stickers in
- * `:samples:design-catalog-remote-m3`.
+ * WearWidgetBrush.color(...))`), and so do the `WidgetContainer*Remote` stickers in the `remote-m3`
+ * catalog (yschimke/wear-m3-catalog).
  */
 val RemoteImageWidgetBackground: WearWidgetBrush
   get() = WearWidgetBrush.verticalGradient(listOf(Color(0xFF1E88E5).rc, Color(0xFF1565C0).rc))

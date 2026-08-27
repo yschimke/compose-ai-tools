@@ -11,8 +11,11 @@ README](known-differences/README.md); do not hand-edit it.
 The `.rc` files below are captured Remote Compose documents for the player tests.
 
 Small, committed `.rc` documents the browser-player tests in this directory replay. They are real
-captures from the `design-catalog-remote-m3` render, not hand-written bytes, so a test built on one
-exercises exactly the wire form the connector packs into a bundle's `ir/<id>.rc` sidecar.
+captures from the `remote-m3` catalog's render, not hand-written bytes, so a test built on one
+exercises exactly the wire form the connector packs into a bundle's `ir/<id>.rc` sidecar. That
+catalog is published from [yschimke/wear-m3-catalog](https://github.com/yschimke/wear-m3-catalog)
+now (#4588), so re-capturing means rendering it there — see below. The committed fixtures are
+unaffected: they are bytes, not a build.
 
 | file | source preview | why it is here |
 |---|---|---|
@@ -21,9 +24,19 @@ exercises exactly the wire form the connector packs into a bundle's `ir/<id>.rc`
 Re-capture one by rendering the catalog and copying the sidecar:
 
 ```sh
-./gradlew :samples:design-catalog-remote-m3:composePreviewRenderAll
-cp samples/design-catalog-remote-m3/build/compose-previews/renders/\
+# in a yschimke/wear-m3-catalog checkout
+./gradlew :remote-catalog:composePreviewRenderAll
+cp remote-catalog/build/compose-previews/renders/\
 WatchScreenRemote_width_227dp_height_227dp_dpi_320.rc \
+  <compose-ai-tools>/scripts/design-artifacts/fixtures/watch-screen-round-clip.rc
+```
+
+Or pull it straight off the delivery branch without a build at all — the same document ships as the
+sticker's IR sidecar:
+
+```sh
+git fetch https://github.com/yschimke/wear-m3-catalog.git design-artifacts/remote-m3
+git show FETCH_HEAD:bundle/ir/Template%2FWatchScreen.rc > \
   scripts/design-artifacts/fixtures/watch-screen-round-clip.rc
 ```
 

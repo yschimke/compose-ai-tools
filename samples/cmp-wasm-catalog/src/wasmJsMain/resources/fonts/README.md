@@ -19,7 +19,7 @@ classic Roboto 2.x and CMP's bundled default both differ measurably (see PR hist
   usage. Downloaded from Google Fonts, SIL OFL-1.1 — see [Orbitron-OFL.txt](Orbitron-OFL.txt).
 
 - `google-sans-flex-400.ttf` + `google-sans-flex-700.ttf` — a downloadable **GoogleFont**
-  (`role: "named"`), the face `:samples:design-catalog-remote-m3`'s **Google Sans Flex** typeface
+  (`role: "named"`), the face the `remote-m3` catalog's **Google Sans Flex** typeface
   theme names as `google:Google Sans Flex`. This lane is *manifest-only* — it never fetches — so
   without the face vendored here the themed document fails `RcComposeSupport.fontFamilyIssue`'s
   availability check instead of rendering, while the other four player lanes resolve it. Fetched

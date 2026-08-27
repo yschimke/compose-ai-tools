@@ -175,11 +175,11 @@ internal object ComposePreviewTasks {
    * A `coordinates` bundle only re-renders where its coordinates resolve. A module that takes a
    * dependency from a JitPack fork, an internal mirror, or an androidx.dev snapshot build therefore
    * records coordinates no player can find: the resolver warns, drops them, and the daemon comes up
-   * on an incomplete classpath — which is how `:samples:design-catalog-remote-m3` (whose entire
-   * Remote Compose runtime is an androidx.dev snapshot) served a live lane that died on its first
-   * render with `NoClassDefFoundError: androidx/compose/remote/player/view/RemoteComposePlayer`
-   * (issues #4259 / #4265). Carrying the URLs makes the bundle self-describing, and keeps a pinned
-   * snapshot build id honest: bump it here and the next pack records the new one.
+   * on an incomplete classpath — which is how the `remote-m3` catalog (whose entire Remote Compose
+   * runtime is an androidx.dev snapshot) served a live lane that died on its first render with
+   * `NoClassDefFoundError: androidx/compose/remote/player/view/RemoteComposePlayer` (issues #4259
+   * / #4265). Carrying the URLs makes the bundle self-describing, and keeps a pinned snapshot build
+   * id honest: bump it here and the next pack records the new one.
    *
    * **Both** repository sources are read, because a build declares them in either place and this
    * repo uses the one a project-level read misses: `project.repositories` holds what the build
