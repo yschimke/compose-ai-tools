@@ -126,6 +126,9 @@ services:
       # derivation from the seat budget, which clamps at 3 and reaches that at 8 seats — so raising
       # SERVE_LIVE_SEATS alone does not widen this lane.
       SERVE_BACKGROUND_RENDERS: "${SERVE_BACKGROUND_RENDERS:-}"
+      # Extra JVM options, appended to the image's baked JAVA_TOOL_OPTIONS by the entrypoint.
+      # Set JAVA_TOOL_OPTIONS directly and you replace the baked string instead — see the README.
+      SERVE_JAVA_OPTS: "${SERVE_JAVA_OPTS:-}"
       # Playground compile lane. Off by default: it runs visitor-supplied Kotlin and needs both a
       # catalog liveBundle classpath plus a sandbox profile on public hosts. Set the bundle path(s)
       # to local files available inside the container, for example a bind mount under /config.

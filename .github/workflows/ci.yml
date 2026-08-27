@@ -1319,6 +1319,13 @@ jobs:
       # kept the public host's playground pinned to one catalog with the Android modes off.
       - name: Run deploy compose env-passthrough tests
         run: ./deploy/image/test-compose-env-passthrough.sh
+      # SERVE_JAVA_OPTS must be APPENDED to the image's baked JAVA_TOOL_OPTIONS. The variable exists
+      # precisely because assigning JAVA_TOOL_OPTIONS replaces that string — dropping the heap
+      # ceiling and the daemon library paths for the sake of one -D, with nothing in the resulting
+      # failure pointing back at the change. A refactor rewriting the append as an assignment would
+      # reintroduce that trap and would look entirely reasonable in a diff.
+      - name: Run deploy JAVA_TOOL_OPTIONS append tests
+        run: ./deploy/image/test-java-opts-append.sh
       # The agent-grant lane derives its own default (on where SERVE_GITHUB_AUTH_* gives it a human
       # to approve against, off otherwise), because both flat answers are wrong in opposite
       # directions: `1` fails startup on every box with no OAuth app, `0` ships the feature dead on

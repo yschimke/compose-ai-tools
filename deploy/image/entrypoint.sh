@@ -479,5 +479,32 @@ fi
 [[ -n "${SERVE_CATALOG_CACHE_MAX_BYTES:-}" ]] &&
   args+=(--catalog-cache-max-bytes "${SERVE_CATALOG_CACHE_MAX_BYTES}")
 
+# Operator-supplied JVM options, APPENDED to the image's own rather than replacing them.
+#
+# This exists because the obvious way to set a `composeai.*` system property on this deployment is
+# a trap. The image bakes JAVA_TOOL_OPTIONS into its ENV (heap ceiling, daemon library dirs, render
+# timeouts, sandbox boot), and setting JAVA_TOOL_OPTIONS from the compose file REPLACES that whole
+# string — so the container comes up without its heap ceiling and without the paths the daemon lane
+# needs, for the sake of one `-D`. The failure is silent and does not look related to the change.
+#
+# The workaround so far has been a dedicated CLI flag per knob (`--background-renders`,
+# `--live-seats`), which is fine for the handful an operator sets often and does not scale: the
+# twelve `composeai.serve.optimizer*` pressure thresholds are documented as "a property of the host,
+# not of the code, and it needs to be settable without a rebuild", and on this image none of them
+# were reachable at all. Appending covers the whole class, including knobs added later.
+#
+# Inherited by the daemon JVMs this process spawns, exactly as the baked options are — that is what
+# makes it the right layer for a render-side property, and worth knowing before setting a heap flag
+# here, which every sandbox would then take as its own.
+#
+#   SERVE_JAVA_OPTS=-Dcomposeai.serve.themeOptimizationIdleMillis=10000
+#
+# Last wins in JAVA_TOOL_OPTIONS, so an operator can also override a baked value rather than only
+# add to it.
+if [[ -n "${SERVE_JAVA_OPTS:-}" ]]; then
+  export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} ${SERVE_JAVA_OPTS}"
+  echo "entrypoint: appended SERVE_JAVA_OPTS to JAVA_TOOL_OPTIONS" >&2
+fi
+
 echo "entrypoint: compose-preview serve on 0.0.0.0:${PORT}" >&2
 exec compose-preview "${args[@]}"
