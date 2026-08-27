@@ -384,7 +384,10 @@ export function renderIndexHtml(catalog, opts = {}) {
      the component shows. A wear sticker rendered on a 454² device canvas is displayed cropped to
      the component instead of floating in an empty frame; a no-op for close-cropped (phone) renders
      where the bbox already fills the frame. */
+  /* A gutter window shows the component at its siblings' size, and lets the shadow it holds spill
+     past the box — so the card has to stop clipping too, or the spill dies at the card edge. */
   .shot--bleed { overflow:visible; }
+  .card:has(.shot--bleed) { overflow:visible; }
   .shot--framed { overflow:hidden; padding:0; min-height:0; position:relative; place-items:stretch;
     margin:16px auto; border-radius:8px; max-width:100%; }
   .shot--framed img { position:absolute; max-width:none; max-height:none; }
@@ -506,8 +509,17 @@ ${details}
     function apply() {
       var rw = img.naturalWidth || img.width, rh = img.naturalHeight || img.height;
       if (!(rw > 0 && rh > 0)) return;
-      var bw = rw - edges[0] - edges[2], bh = rh - edges[1] - edges[3];
-      if (!(bw > 0 && bh > 0)) return;
+      var boxW = rw - edges[0] - edges[2], boxH = rh - edges[1] - edges[3];
+      if (!(boxW > 0 && boxH > 0)) return;
+      // Capped on HEIGHT, which is the rule the stylesheet applies to a plain card image
+      // (max-height:240px, width follows) — a framed window carries an aspect-ratio, so the cap
+      // cannot come from CSS without squashing it. Capping the largest edge instead would shrink a
+      // wide-but-short component no plain sibling shrinks.
+      var scale = Math.min(1, 240 / boxH);
+      var bw = Math.max(1, Math.round(boxW * scale));
+      var bh = Math.max(1, Math.round(boxH * scale));
+      var iw = Math.round(rw * scale);
+      var offX = Math.round(edges[0] * scale), offY = Math.round(edges[1] * scale);
       var pct = function (n, d) { return +(n / d * 100).toFixed(4); };
       // "shot--bleed" keeps the overflow visible: what falls outside this box is the component's
       // own shadow, which the gutter was captured to preserve. Hiding it would crop the shadow a
@@ -516,9 +528,9 @@ ${details}
       shot.classList.add("shot--bleed");
       shot.style.width = bw + "px";
       shot.style.aspectRatio = bw + " / " + bh;
-      img.style.width = pct(rw, bw) + "%";
-      img.style.left = pct(-edges[0], bw) + "%";
-      img.style.top = pct(-edges[1], bh) + "%";
+      img.style.width = pct(iw, bw) + "%";
+      img.style.left = pct(-offX, bw) + "%";
+      img.style.top = pct(-offY, bh) + "%";
     }
     if (img.complete) apply();
     else img.addEventListener("load", apply);

@@ -11,6 +11,7 @@
  */
 
 import { breakpointMatcher, catalogBreakpoints } from "./catalog-breakpoints.mjs";
+import { captureGutterPx } from "./catalog-preview-declarations.mjs";
 
 /**
  * Theme of a daemon preview id. The catalog's multipreview (`@CatalogModes` /
@@ -115,6 +116,12 @@ function variantIdentity(preview) {
       typeof params.fontScale === "number" && params.fontScale !== 1
         ? params.fontScale
         : null,
+    // Not an identity field — carried so [stampPreviewDensities] can publish the capture gutter in
+    // the same pass, on every catalog. The declarations pass that also publishes it runs only where
+    // a live lane is bridged, and a gutter is not a live-lane concern: a static catalog's sheet
+    // lays its images out exactly like a bridged one's (m3-catalog#179).
+    captureGutter: params.captureGutter ?? null,
+    locale: typeof params.locale === "string" ? params.locale : null,
   };
 }
 
@@ -536,6 +543,15 @@ export function stampPreviewDensities(manifest, spec, bundles) {
       if (density !== undefined) {
         image.density = density;
         stamped++;
+      }
+      // The gutter rides on the same resolution: pixels need the density this pass just picked, so
+      // there is no second place that could disagree about which annotation rendered this image.
+      const gutter = captureGutterPx(candidate?.captureGutter, {
+        density,
+        locale: candidate?.locale,
+      });
+      if (gutter) {
+        image.previewParams = { ...(image.previewParams ?? {}), captureGutter: gutter };
       }
     }
   }

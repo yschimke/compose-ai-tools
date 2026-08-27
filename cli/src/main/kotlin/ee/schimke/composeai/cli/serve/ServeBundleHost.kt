@@ -4,6 +4,8 @@ import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamFrameParams
 import ee.schimke.composeai.data.overrides.PreviewOverridesPayload
+import ee.schimke.composeai.data.pseudolocale.LocaleDirection
+import ee.schimke.composeai.data.pseudolocale.Pseudolocale
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlin.math.roundToInt
@@ -1312,7 +1314,12 @@ class ServeBundleHost(
     // pass hasn't reached (or never will) still gets its gutter trimmed rather than waiting on a
     // file that decides a different question.
     val gutter = declaredCaptureGutter(previewId)
-    if (gutter == null && figmaDir != null && figmaSvgFileFor(previewId) == null) return null
+    val svgOutstanding = figmaDir != null && figmaSvgFileFor(previewId) == null
+    // While a vector may still be landing, a gutter crop is a provisional answer: serve it (a card
+    // that waits is a card drawn at the wrong size) but do NOT memoise it, or the vector would
+    // never be reconsidered until the host is rebuilt. Only a decision made against files that are
+    // actually present is cached — the same rule the guard above states.
+    if (svgOutstanding) return if (gutter == null) null else computeContentCrop(previewId, gutter)
     val computed = java.util.Optional.ofNullable(computeContentCrop(previewId, gutter))
     cropCache[previewId] = computed
     return computed.orElse(null)
@@ -1349,13 +1356,19 @@ class ServeBundleHost(
       val (rw, rh) = WebEscaping.pngDimensions(bytes.copyOf(PNG_HEADER_BYTES.toInt()))
       // Union the render's actual non-transparent extent into the crop box so a focus ring or
       // disabled outline drawn outside the layout-derived figma box is never clipped.
-      val fromSvg = svgFile?.let {
-        computeThumbCrop(fileSystem.read(it) { readUtf8() }, rw, rh, pngAlphaBounds(bytes))
-      }
+      val fromSvg =
+        svgFile
+          ?.let {
+            computeThumbCrop(fileSystem.read(it) { readUtf8() }, rw, rh, pngAlphaBounds(bytes))
+          }
+          // A vector crop on a GUTTERED render must not hide its overflow either: the box it frames
+          // is the component, and the pixels the gutter holds are that component's shadow. Clipping
+          // them is the bug the gutter exists to prevent, whichever crop decided the box.
+          ?.let { if (gutter == null) it else it.copy(clip = false) }
       // The vector wins where it applies: it frames the component inside a canvas the render was
       // drawn on (a Wear watch face), which is a tighter question than "how much margin did the
       // capture add", and it already accounts for the gutter's pixels by unioning the drawn extent.
-      fromSvg ?: gutter?.let { computeGutterCrop(it.start, it.top, it.end, it.bottom, rw, rh) }
+      fromSvg ?: gutter?.let { computeGutterCrop(it.left, it.top, it.right, it.bottom, rw, rh) }
     } catch (e: Exception) {
       null
     }
@@ -1479,6 +1492,22 @@ class ServeBundleHost(
 private const val DEFAULT_RENDER_DENSITY = 2.625f
 
 /**
+ * Whether a `@Preview(locale = …)` render was composed right-to-left — the direction the renderer
+ * resolved a capture gutter's leading / trailing edges against.
+ *
+ * The renderer's own rule, out of the renderer's own module: the bidi pseudolocale first (`ar-XB`
+ * mirrors, `en-XA` does not), then the real language table. A second copy of that table here would
+ * be a thing to drift.
+ */
+private fun rendersRightToLeft(locale: String?): Boolean {
+  if (locale.isNullOrBlank()) return false
+  Pseudolocale.fromTag(locale)?.let {
+    return it.isRtl
+  }
+  return LocaleDirection.isRtl(locale)
+}
+
+/**
  * A bundle manifest's `@Preview` params in the shape a catalog publishes them.
  *
  * The two sources describe the same annotation and are reduced to one type here rather than being
@@ -1503,10 +1532,13 @@ private fun ee.schimke.composeai.cli.PreviewParams.asPreviewParamsMeta():
       captureGutter?.let { gutter ->
         val scale = density?.takeIf { it > 0f } ?: DEFAULT_RENDER_DENSITY
         fun px(dp: Int) = (dp.coerceAtLeast(0) * scale).roundToInt()
+        // Leading/trailing → left/right against the direction this render was composed in — the
+        // same resolution the renderer performed when it placed the component inset.
+        val rtl = rendersRightToLeft(locale)
         ServeCatalogStore.CaptureGutterPx(
-            start = px(gutter.start),
+            left = px(if (rtl) gutter.end else gutter.start),
             top = px(gutter.top),
-            end = px(gutter.end),
+            right = px(if (rtl) gutter.start else gutter.end),
             bottom = px(gutter.bottom),
           )
           .takeUnless { it.isEmpty() }

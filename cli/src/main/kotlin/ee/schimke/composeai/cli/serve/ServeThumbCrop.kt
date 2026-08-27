@@ -155,9 +155,8 @@ fun pngAlphaBounds(pngBytes: ByteArray, threshold: Int = 16): SvgContentBox? {
  * publishes, which is the whole point — a sheet fitting canvases to a column drew the guttered one
  * ~7% smaller until it could subtract this (m3-catalog#179).
  *
- * [gutter]'s `start`/`end` are mapped onto left/right, i.e. the render is read as LTR. Every gutter
- * published so far is horizontally symmetric, so the two readings agree; an asymmetric gutter on an
- * RTL capture would need the direction, which this record does not carry.
+ * The edges are PHYSICAL — whoever published the record resolved the annotation's leading/trailing
+ * against the direction the render was composed in, so there is no direction left to guess at here.
  */
 fun computeGutterCrop(
   gutterLeft: Int,
@@ -166,6 +165,7 @@ fun computeGutterCrop(
   gutterBottom: Int,
   renderW: Int,
   renderH: Int,
+  cap: Int = CAP,
 ): ContentCrop? {
   if (renderW <= 0 || renderH <= 0) return null
   val left = gutterLeft.coerceAtLeast(0)
@@ -178,18 +178,21 @@ fun computeGutterCrop(
   // A gutter wider than the render it was published against is a record that disagrees with its
   // own image; show the image whole rather than cropping to a guess.
   if (boxW <= 0 || boxH <= 0) return null
-  // No [CAP] here, unlike [computeThumbCrop]. The cap bounds how large a clip window is DRAWN, and
-  // a plain uncropped sticker is bounded by the stylesheet instead (`max-width: 100%`,
-  // `max-height`) — so scaling this box would hand the guttered card a different display size from
-  // the gutter-less card beside it, which is the difference the crop exists to remove. Native
-  // pixels, and the same CSS caps both.
+  // Capped on HEIGHT alone, unlike [computeThumbCrop]'s largest edge. The card beside this one is a
+  // plain `<img>` bounded by the stylesheet's `max-height`, which scales an image on its height and
+  // lets width follow; matching that rule is what keeps the two the same size in every column
+  // width, and it is the whole point of this window. Capping the largest edge instead would shrink
+  // a wide-but-short component (a 249x126 button) that no plain sibling shrinks — the same
+  // mismatch this removes, one layer down. A window box carries `aspect-ratio`, so the cap cannot
+  // live in CSS: constraining its height there squashes the box rather than scaling it.
+  val scale = min(1.0, cap / boxH.toDouble())
   return ContentCrop(
-    boxW = boxW,
-    boxH = boxH,
-    imgW = renderW,
-    imgH = renderH,
-    left = -left,
-    top = -top,
+    boxW = max(1, (boxW * scale).roundToInt()),
+    boxH = max(1, (boxH * scale).roundToInt()),
+    imgW = (renderW * scale).roundToInt(),
+    imgH = (renderH * scale).roundToInt(),
+    left = (-left * scale).roundToInt(),
+    top = (-top * scale).roundToInt(),
     clip = false,
   )
 }

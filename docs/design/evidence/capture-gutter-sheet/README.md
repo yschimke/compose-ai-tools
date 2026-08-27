@@ -30,9 +30,19 @@ subtracted, which is what this change makes the sheet do.
 ![The button row today and with the gutter subtracted](sheet-row-before-after.png)
 
 The elevated card's shadow is still there in the bottom band: the window that lines the box up with
-its neighbours does **not** hide its overflow (`.cp-crop--bleed`). Clipping it would crop the very
-shadow the gutter was captured to keep (#4445, and m3-catalog#102 before it) — the shadow spills
-into the grid's gap, which is where a shadow belongs.
+its neighbours does **not** hide its overflow (`.cp-crop--bleed`), and the card it sits in stops
+clipping too (`.cp-card:has(.cp-crop--bleed)`), so the spill reaches the grid's gap rather than
+dying at the card's rounded edge. Clipping it would crop the very shadow the gutter was captured to
+keep (#4445, and m3-catalog#102 before it).
+
+Two rules the geometry follows, both so a cropped card and a plain one land on the same size:
+
+- **The display cap is on height, not the largest edge.** A plain card image is bounded by the
+  stylesheet's `max-height`, which scales an image on its height and lets width follow. Capping the
+  largest edge would shrink a wide-but-short component (a 249×126 button) that no plain sibling
+  shrinks — the same mismatch, one layer down.
+- **That cap lives in the crop geometry, not in CSS.** A window carries an inline `aspect-ratio`,
+  and constraining its height in CSS squashes the box instead of scaling it.
 
 ## How to reproduce the picture
 
@@ -41,5 +51,6 @@ into the grid's gap, which is where a shadow belongs.
 2. Lay the four PNGs out in `.cp-imgwrap` cards at `--cp-card-w: 213px` with this repo's
    `serve.css`, once as plain `<img>` and once with the elevated one in a
    `<span class="cp-crop cp-crop--bleed" style="width:249px;aspect-ratio:249/126">` window whose
-   image is sized `width:108.8353%;left:-4.4177%;top:-8.7302%` (249/271, −11/249, −11/126).
+   image is sized `width:108.8353%;left:-4.4177%;top:-8.7302%` (249/271, −11/249, −11/126). The
+   gutter's 126px box is inside the 240px cap, so the geometry is native pixels here.
 3. Screenshot at `deviceScaleFactor: 2`.

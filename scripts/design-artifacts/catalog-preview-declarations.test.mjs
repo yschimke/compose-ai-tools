@@ -219,8 +219,60 @@ test("publishes a capture gutter in render pixels, resolved per edge", () => {
     entries: {},
   };
   assert.deepEqual(declarationsByPreviewId(bundle).get("ElevatedButtonSticker_Light"), {
-    previewParams: { captureGutter: { start: 11, top: 11, end: 11, bottom: 13 } },
+    previewParams: { captureGutter: { left: 11, top: 11, right: 11, bottom: 13 } },
   });
+});
+
+test("resolves start/end onto physical edges for an RTL capture", () => {
+  // The renderer placed `start` against the layout direction it composed in, so on an Arabic
+  // capture the leading margin is the RIGHT one. A consumer sees pixels, not a direction — it
+  // could only guess — so the published record is about the image, not about the annotation.
+  const bundle = {
+    previews: [
+      {
+        id: "Sticker_Rtl",
+        params: {
+          density: 1,
+          locale: "ar",
+          captureGutter: { start: 4, top: 1, end: 12, bottom: 5 },
+        },
+      },
+      {
+        id: "Sticker_Ltr",
+        params: {
+          density: 1,
+          locale: "en-GB",
+          captureGutter: { start: 4, top: 1, end: 12, bottom: 5 },
+        },
+      },
+    ],
+    entries: {},
+  };
+  const declarations = declarationsByPreviewId(bundle);
+  assert.deepEqual(declarations.get("Sticker_Rtl").previewParams.captureGutter, {
+    left: 12,
+    top: 1,
+    right: 4,
+    bottom: 5,
+  });
+  assert.deepEqual(declarations.get("Sticker_Ltr").previewParams.captureGutter, {
+    left: 4,
+    top: 1,
+    right: 12,
+    bottom: 5,
+  });
+});
+
+test("the bidi pseudolocale mirrors, the accented one does not", () => {
+  const of = (locale) =>
+    declarationsByPreviewId({
+      previews: [
+        { id: locale, params: { density: 1, locale, captureGutter: { start: 4, end: 12 } } },
+      ],
+      entries: {},
+    }).get(locale).previewParams.captureGutter;
+  assert.equal(of("ar-XB").left, 12);
+  assert.equal(of("en-XA").left, 4);
 });
 
 test("records no gutter for a preview that declares none, or declares an empty one", () => {
@@ -244,6 +296,6 @@ test("falls back to 1x when a manifest states no density, rather than inventing 
     entries: {},
   };
   assert.deepEqual(declarationsByPreviewId(bundle).get("Densityless"), {
-    previewParams: { captureGutter: { start: 4, top: 4, end: 4, bottom: 5 } },
+    previewParams: { captureGutter: { left: 4, top: 4, right: 4, bottom: 5 } },
   });
 });

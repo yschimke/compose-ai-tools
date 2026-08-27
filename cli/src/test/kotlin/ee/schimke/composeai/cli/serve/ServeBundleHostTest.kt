@@ -611,4 +611,64 @@ class ServeBundleHostTest {
       ServeBundleHost(dir, label = "b").contentCrop("button-filled__ideal__default__light")
     )
   }
+
+  @Test
+  fun `an RTL capture's leading gutter is published as the right-hand margin`() {
+    // The renderer placed `start` against the layout direction it composed in, so on an Arabic
+    // capture the leading margin is on the right. The crop reads pixels, not a direction — it can
+    // only be told.
+    val dir = bundle("sticker__ideal__rtl" to pngOf(200, 100))
+    File(dir, "previews.json")
+      .writeText(
+        """
+        {"module":"catalog","variant":"main","previews":[
+          {"id":"sticker__ideal__rtl","functionName":"Sticker","className":"Kt",
+           "params":{"density":1.0,"locale":"ar",
+                     "captureGutter":{"start":4,"top":1,"end":12,"bottom":5}}}
+        ]}
+        """
+          .trimIndent()
+      )
+
+    val crop = ServeBundleHost(dir, label = "b").contentCrop("sticker__ideal__rtl")
+
+    assertEquals(184, crop?.boxW) // 200 - 4 - 12, whichever way round
+    assertEquals(94, crop?.boxH)
+    // …but the render is offset by the RIGHT-hand 12, not by the declared `start`.
+    assertEquals(-12, crop?.left)
+    assertEquals(-1, crop?.top)
+  }
+
+  @Test
+  fun `a gutter crop served while a vector is still landing is not memoised`() {
+    // The figma pass fills vectors in the background. Answering with the gutter meanwhile is right
+    // — a card that waits is a card drawn at the wrong size — but caching that answer would keep
+    // the vector from ever being reconsidered.
+    val dir = bundle("sticker__ideal__default" to pngOf(200, 100))
+    File(dir, "previews.json")
+      .writeText(
+        """
+        {"module":"catalog","variant":"main","previews":[
+          {"id":"sticker__ideal__default","functionName":"Sticker","className":"Kt",
+           "params":{"density":1.0,"captureGutter":{"start":4,"top":4,"end":4,"bottom":4}}}
+        ]}
+        """
+          .trimIndent()
+      )
+    val figma = File(dir, "figma").apply { mkdirs() } // no vector for this id yet
+
+    val host = ServeBundleHost(dir, label = "b", figmaDir = figma)
+    val first = host.contentCrop("sticker__ideal__default")
+    assertEquals(192, first?.boxW)
+
+    // The vector lands: its box (not the gutter's) now decides, which could not happen if the
+    // first answer had been cached.
+    File(figma, "sticker.svg")
+      .writeText("""<svg viewBox="0 0 40 20"><g transform="translate(-80, -40)"></g></svg>""")
+    val second = host.contentCrop("sticker__ideal__default")
+    assertEquals(40, second?.boxW)
+    assertEquals(20, second?.boxH)
+    // …and it still does not clip, because those pixels outside it are the gutter's shadow.
+    assertEquals(false, second?.clip)
+  }
 }

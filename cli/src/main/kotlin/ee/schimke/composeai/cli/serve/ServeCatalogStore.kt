@@ -2787,22 +2787,23 @@ class ServeCatalogStore(
   )
 
   /**
-   * A published capture gutter, per edge, in render pixels.
+   * A published capture gutter, per **physical** edge, in render pixels.
    *
-   * [start] / [end] are leading / trailing, as the annotation declares them; a consumer maps them
-   * onto left / right for the layout direction the render was captured in. Every gutter published
-   * so far is horizontally symmetric, so that mapping has not yet had to be decided — an asymmetric
-   * one on an RTL capture is the case to think about before relying on it.
+   * The annotation declares leading / trailing, and the renderer placed those against the layout
+   * direction of the locale it composed in — so on an RTL capture the leading margin is the
+   * right-hand one. A consumer of this record sees pixels, not a direction, so whoever writes it
+   * resolves the mapping: the exporter for a published catalog, [asPreviewParamsMeta] for a
+   * bundle's own manifest. What lands here is about the image.
    */
   @Serializable
   data class CaptureGutterPx(
-    val start: Int = 0,
+    val left: Int = 0,
     val top: Int = 0,
-    val end: Int = 0,
+    val right: Int = 0,
     val bottom: Int = 0,
   ) {
     /** True when no edge carries a gutter — the same "equivalent to no annotation" rule. */
-    fun isEmpty(): Boolean = start <= 0 && top <= 0 && end <= 0 && bottom <= 0
+    fun isEmpty(): Boolean = left <= 0 && top <= 0 && right <= 0 && bottom <= 0
   }
 
   @Serializable

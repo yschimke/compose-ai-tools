@@ -1067,6 +1067,57 @@ test("a variant density comes from the variant's own record, not the base's", ()
   assert.equal(manifest.components[0].images[0].density, 3);
 });
 
+test("a capture gutter is stamped in the same pass, so a static catalog carries it too", () => {
+  // The declarations pass that also publishes this runs only where a live lane is bridged, and a
+  // gutter is not a live-lane concern: a static catalog's sheet lays its images out exactly like a
+  // bridged one's, and would draw a guttered component smaller than its siblings without it
+  // (m3-catalog#179).
+  const spec = {
+    groups: [{ components: [{ componentId: "Button/Elevated", preview: "ElevatedButtonSticker" }] }],
+  };
+  const manifest = {
+    components: [
+      { componentId: "Button/Elevated", images: [{ state: "default", path: "elevated.png" }] },
+    ],
+  };
+  const bundle = {
+    previews: [
+      {
+        id: "ElevatedButtonSticker",
+        functionName: "ElevatedButtonSticker",
+        params: { density: 2.625, captureGutter: { start: 4, top: 4, end: 4, bottom: 5 } },
+      },
+    ],
+  };
+
+  stampPreviewDensities(manifest, spec, [bundle]);
+
+  assert.deepEqual(manifest.components[0].images[0].previewParams.captureGutter, {
+    left: 11,
+    top: 11,
+    right: 11,
+    bottom: 13,
+  });
+});
+
+test("an image whose preview declares no gutter gains no previewParams record", () => {
+  const spec = {
+    groups: [{ components: [{ componentId: "Button/Filled", preview: "FilledButton" }] }],
+  };
+  const manifest = {
+    components: [
+      { componentId: "Button/Filled", images: [{ state: "default", path: "filled.png" }] },
+    ],
+  };
+  const bundle = {
+    previews: [{ id: "FilledButton", functionName: "FilledButton", params: { density: 2.625 } }],
+  };
+
+  stampPreviewDensities(manifest, spec, [bundle]);
+
+  assert.equal(manifest.components[0].images[0].previewParams, undefined);
+});
+
 test("a state that rendered no _VARIANT_ preview is left unstamped rather than given the base's", () => {
   // A density is a statement about the annotation that drew these pixels. Inventing one for a
   // sticker no bundle carries would hand the rasteriser a scale for a render that never happened.
