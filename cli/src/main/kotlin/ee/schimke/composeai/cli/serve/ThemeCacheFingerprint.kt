@@ -29,12 +29,30 @@ import java.security.MessageDigest
  *   worth paying for: it is the only input that is derived from the thing itself rather than
  *   asserted about it.
  * - **The daemon variant.** Desktop and Android/Robolectric are different renderers reading the
- *   same classpath, and they do not agree pixel-for-pixel.
- * - **The tool version.** Covers the renderer, and stands proxy for the container image — hence the
- *   JVM, Skia and the installed fonts, none of which are visible from here. **That proxying is an
- *   assumption, not a proof:** a base-image bump that ships without a release would slip through
- *   it. It is recorded in the generation manifest so a mismatch is at least explainable after the
- *   fact, and the sample verification is what actually catches it.
+ *   same classpath, and they do not agree pixel-for-pixel. What is deliberately **not** keyed on,
+ *   and why:
+ * - **The tool version.** It used to be, and that made a release throw away every warmed render on
+ *   the box. Measured on preview.coo.ee, whose theme optimization needs the better part of a day to
+ *   fill 18,604 entries: four versions shipped inside four hours, each one starting the pass again
+ *   from zero, so the cache could never be adopted once. A cache that is invalidated faster than it
+ *   can be filled is not a cache.
+ *
+ *   The version was never proof of anything — it stood *proxy* for the renderer and the container
+ *   image (the JVM, Skia, the installed fonts), none of which are visible from here, and the class
+ *   doc above already conceded that proxying is an assumption rather than a proof: a base-image
+ *   bump shipping without a release slipped through it either way. So it was a key that failed open
+ *   on the case it was supposed to cover, while failing closed on every case it was not.
+ *
+ *   What actually catches a renderer that moved is [CatalogThemeCache.verifySample], which
+ *   re-renders a sample of the adopted entries against the running renderer and discards the whole
+ *   generation on any mismatch — the same net that was always covering the unenumerated inputs.
+ *   Crossing a version boundary is now exactly that case: every entry reads as adopted (it came
+ *   from another process), so it is withheld from the read path until the sample settles. A version
+ *   that renders differently costs a re-warm; it does not serve a wrong pixel.
+ *
+ *   The version is still recorded in the generation manifest, so which build last wrote a
+ *   generation stays answerable, and `--theme-cache-evict` discards the store outright for the case
+ *   where an operator *knows* the pixels moved and does not want to wait for a sample to notice.
  * - **The render config.** The server-side defaults that never appear in a cache key — density,
  *   default device, font scale, image encoding. The easiest inputs to forget precisely *because*
  *   they are absent from the key, so they are named explicitly by the caller.
@@ -69,7 +87,6 @@ object ThemeCacheFingerprint {
   fun of(
     classpath: List<File>,
     variant: String,
-    toolVersion: String,
     renderConfig: String,
     /**
      * Digest of the catalog-id to daemon-preview routing this generation renders through.
@@ -86,7 +103,8 @@ object ThemeCacheFingerprint {
     val digest = MessageDigest.getInstance("SHA-256")
     digest.line("schema", SCHEMA)
     digest.line("variant", variant)
-    digest.line("version", toolVersion)
+    // NOT the tool version — see the class doc. A release must not orphan the warmed renders; the
+    // load-time sample verification is what covers a renderer that actually moved.
     digest.line("renderConfig", renderConfig)
     digest.line("routing", routing)
     // Hashed in the order the descriptor lists them, NOT sorted. Classpath order is semantically

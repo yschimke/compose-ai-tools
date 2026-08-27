@@ -1089,7 +1089,16 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
       args.flagValue("--theme-cache-max-bytes")?.toLongOrNull()?.takeIf { it > 0 }
         ?: ThemeCacheStore.DEFAULT_MAX_BYTES
     System.err.println("serve: theme cache at $preferred (cap ${maxBytes / (1024 * 1024)} MB)")
-    ThemeCacheStore(preferred, maxBytes = maxBytes)
+    ThemeCacheStore(preferred, maxBytes = maxBytes).also { store ->
+      // Before anything opens a generation, so eviction can never race a live write. Renders
+      // survive a release now (see [ThemeCacheFingerprint]) and the load-time sample is what
+      // catches a renderer that moved — this is the lever for the case where the operator already
+      // knows it moved and would rather not wait to be told.
+      if ("--theme-cache-evict" in args) {
+        val evicted = store.evictAll()
+        System.err.println("serve: theme cache evicted on request — $evicted generation(s) removed")
+      }
+    }
   }
 
   /**
@@ -1196,7 +1205,6 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
                 extraPayloads = listOfNotNull(launch.manifestPath),
               ),
             variant = launch.variant,
-            toolVersion = BUNDLE_VERSION,
             renderConfig =
               ThemeCacheFingerprint.renderConfig(launch.systemProperties, launch.jvmArgs),
             routing = routing,
@@ -4847,6 +4855,13 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
                           ${ThemeCacheStore.DEFAULT_MAX_BYTES / (1024L * 1024 * 1024)} GB). Superseded
                           generations are reclaimed; generations still in use are never evicted, so
                           exceeding this is reported rather than acted on.
+        --theme-cache-evict
+                          Delete every persisted theme-render generation at startup, before any is
+                          opened. For when the pixels on the volume are known to be wrong — a base
+                          image that changed the installed fonts, say, which no fingerprint sees.
+                          Ordinary renderer changes need no eviction: entries written by another
+                          build are withheld until a re-rendered sample agrees with them, and the
+                          whole generation is discarded when it does not.
         --background-renders <n>
                           Background (theme-optimizer) renders admitted at once, server-wide.
                           Defaults to a value derived from --live-seats, which clamps at

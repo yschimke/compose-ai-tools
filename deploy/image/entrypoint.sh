@@ -463,6 +463,13 @@ fi
 [[ -n "${SERVE_THEME_CACHE_DIR:-}" ]] && args+=(--theme-cache-dir "${SERVE_THEME_CACHE_DIR}")
 [[ -n "${SERVE_THEME_CACHE_MAX_BYTES:-}" ]] &&
   args+=(--theme-cache-max-bytes "${SERVE_THEME_CACHE_MAX_BYTES}")
+# One-shot: discard every persisted generation at startup. For when the pixels on the volume are
+# known to be wrong (a base image that changed the installed fonts, say) — an ordinary renderer
+# change needs no eviction, because entries from another build are withheld until a re-rendered
+# sample agrees with them. Leave it set for one roll, then unset it: it fires on EVERY start.
+if [[ "${SERVE_THEME_CACHE_EVICT:-}" == "1" || "${SERVE_THEME_CACHE_EVICT:-}" == "true" ]]; then
+  args+=(--theme-cache-evict)
+fi
 
 # The heavy bytes a catalog fetches — its executable liveBundle, the per-preview splits and the
 # externalised resource pool — kept on a volume so a rolled replica reads them instead of pulling

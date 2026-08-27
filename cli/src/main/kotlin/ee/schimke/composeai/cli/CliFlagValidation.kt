@@ -159,6 +159,7 @@ internal object CliFlagValidation {
             "--catalog-cache-dir",
             "--catalog-cache-max-bytes",
             "--theme-cache-dir",
+            "--theme-cache-evict",
             "--theme-cache-max-bytes",
             "--theme-optimizer-coordination-dir",
             "--catalog-feed-idle-timeout",

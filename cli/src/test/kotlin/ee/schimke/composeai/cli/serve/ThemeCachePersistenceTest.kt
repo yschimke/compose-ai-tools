@@ -42,9 +42,8 @@ class ThemeCachePersistenceTest {
   private fun fingerprint(
     classpath: List<File>,
     variant: String = "desktop",
-    version: String = "1.14.0",
     renderConfig: String = "density=2",
-  ) = ThemeCacheFingerprint.of(classpath, variant, version, renderConfig)
+  ) = ThemeCacheFingerprint.of(classpath, variant, renderConfig)
 
   // ---- fingerprint ----------------------------------------------------------------------------
 
@@ -84,18 +83,74 @@ class ThemeCachePersistenceTest {
   }
 
   @Test
-  fun `renderer version, daemon variant and render config each change the generation`() {
+  fun `daemon variant and render config each change the generation, and the tool version does not`() {
     val dir = tempDir()
     val cp = listOf(jar(dir, "catalog.jar", "CLASSES"))
     val base = fingerprint(cp)
 
-    // The version stands proxy for the whole container image — JVM, Skia, fonts — so a release must
-    // never read the previous release's pixels.
-    assertNotEquals(base, fingerprint(cp, version = "1.15.0"))
     // Desktop and Android/Robolectric read the same classpath and do not agree pixel-for-pixel.
     assertNotEquals(base, fingerprint(cp, variant = "android"))
     // The inputs that never appear in a cache key, and are therefore the easiest to forget.
     assertNotEquals(base, fingerprint(cp, renderConfig = "density=3"))
+  }
+
+  /**
+   * The version used to be keyed on, and a release therefore orphaned every warmed render on the
+   * box. On preview.coo.ee, where a full pass is 18,604 entries and the better part of a day, four
+   * versions shipped inside four hours — so the cache was invalidated faster than it could ever be
+   * filled, and was adopted exactly zero times.
+   *
+   * It was never proof of anything either: it stood *proxy* for the container image, which a
+   * base-image bump changes without moving the version at all. What actually covers a renderer that
+   * moved is the load-time sample verification, which the next test exercises — crossing a version
+   * boundary is simply the adopted-entry case, and adopted entries are withheld until the sample
+   * agrees.
+   */
+  @Test
+  fun `a new build reads the previous build's generation`() {
+    val dir = tempDir()
+    val cp = listOf(jar(dir, "catalog.jar", "CLASSES"))
+    assertEquals(
+      fingerprint(cp),
+      fingerprint(cp),
+      "the same inputs name the same generation whatever build is asking",
+    )
+
+    // And the manifest still answers which build last wrote here, so a volume whose pixels are in
+    // question stays diagnosable.
+    val root = tempDir()
+    val fp = assertNotNull(fingerprint(cp))
+    store(root).open("m3-catalog", fp, inputs(fp).copy(toolVersion = "1.14.0"))
+    val reopened = store(root).open("m3-catalog", fp, inputs(fp).copy(toolVersion = "1.15.0"))
+    assertNotNull(reopened)
+    val manifest =
+      kotlinx.serialization.json.Json.decodeFromString(
+        GenerationInputs.serializer(),
+        File(File(File(root, "m3-catalog"), fp), ThemeCacheStore.MANIFEST_NAME).readText(),
+      )
+    assertEquals("1.15.0", manifest.toolVersion, "the manifest names the build that last opened it")
+  }
+
+  @Test
+  fun `evictAll discards every generation, including one the sweep would spare`() {
+    val root = tempDir()
+    // A real store, so the grace window is in force — this is the case `sweep` cannot serve, and
+    // therefore the whole reason `evictAll` exists.
+    val guarded = ThemeCacheStore(root, maxBytes = ThemeCacheStore.DEFAULT_MAX_BYTES)
+    val generation = assertNotNull(guarded.open("m3-catalog", "fp-a", inputs("fp-a")))
+    generation.put("preview|dark", ByteArray(8) { 1 })
+
+    assertEquals(
+      0,
+      guarded.sweep(live = emptySet()).deletedGenerations,
+      "the grace window spares a freshly written generation, which is exactly the problem",
+    )
+    assertEquals(1, guarded.evictAll(), "evict takes it anyway")
+    assertEquals(
+      false,
+      File(File(root, "m3-catalog"), "fp-a").exists(),
+      "and the bytes are gone from the volume",
+    )
   }
 
   @Test
@@ -231,7 +286,6 @@ class ThemeCachePersistenceTest {
       ThemeCacheFingerprint.of(
         cp,
         variant = "desktop",
-        toolVersion = "1.14.0",
         renderConfig = "density=2",
         routing = ThemeCacheFingerprint.routingDigest(alias),
       )
