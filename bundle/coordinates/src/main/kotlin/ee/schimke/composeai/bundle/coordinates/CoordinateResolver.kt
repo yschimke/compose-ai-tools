@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli
+package ee.schimke.composeai.bundle.coordinates
 
 import ee.schimke.composeai.bundle.BundleReader
 import ee.schimke.composeai.io.SystemFileSystem
@@ -51,7 +51,7 @@ import okio.openZip
  * so the caller proceeds with a partial classpath (the bundled renderer's Compose stack covers the
  * common surface).
  */
-internal class CoordinateResolver(
+public class CoordinateResolver(
   private val repositoryRoots: List<File> = defaultRepositoryRoots(),
   private val warn: (String) -> Unit = { System.err.println("compose-preview: $it") },
   private val networkEnabled: Boolean = defaultNetworkEnabled(),
@@ -61,7 +61,7 @@ internal class CoordinateResolver(
 ) {
 
   /** Outcome of resolving one coordinate. [file] is null when nothing was found or downloaded. */
-  data class Resolution(
+  public data class Resolution(
     val coordinate: BundleReader.ClasspathEntry.Maven,
     val file: File?,
     val verified: Boolean,
@@ -75,11 +75,12 @@ internal class CoordinateResolver(
    * [Resolution] per input coordinate in order; callers typically take `mapNotNull { it.file }` for
    * the classpath and surface the misses to the user.
    */
-  fun resolveAll(coords: List<BundleReader.ClasspathEntry.Maven>): List<Resolution> = coords.map {
-    resolve(it)
-  }
+  public fun resolveAll(coords: List<BundleReader.ClasspathEntry.Maven>): List<Resolution> =
+    coords.map {
+      resolve(it)
+    }
 
-  fun resolve(coord: BundleReader.ClasspathEntry.Maven): Resolution {
+  public fun resolve(coord: BundleReader.ClasspathEntry.Maven): Resolution {
     val candidates = locate(coord)
     val expected = coord.sha256
 
@@ -336,9 +337,9 @@ internal class CoordinateResolver(
       hashing.hash.hex()
     }
 
-  companion object {
+  public companion object {
     /** Maven Central + Google Maven, the two repos that serve almost every Compose/AndroidX dep. */
-    val DEFAULT_REMOTE_REPOSITORIES: List<String> =
+    public val DEFAULT_REMOTE_REPOSITORIES: List<String> =
       listOf("https://repo1.maven.org/maven2", "https://dl.google.com/dl/android/maven2")
 
     /**
@@ -354,7 +355,7 @@ internal class CoordinateResolver(
       }
 
     /** A Maven snapshot version — the only kind whose artifact file name isn't the version. */
-    internal fun isSnapshot(version: String): Boolean = version.endsWith("-SNAPSHOT")
+    public fun isSnapshot(version: String): Boolean = version.endsWith("-SNAPSHOT")
 
     /**
      * The unique-snapshot version (`1.0.0-20260818.194125-1`) a version-level `maven-metadata.xml`
@@ -366,7 +367,7 @@ internal class CoordinateResolver(
      * whose `<extension>` matches wins — a version-level metadata document carries one classifier-
      * free entry per extension, the current publication.
      */
-    internal fun snapshotVersion(metadataXml: String, extension: String): String? =
+    public fun snapshotVersion(metadataXml: String, extension: String): String? =
       SNAPSHOT_VERSION_BLOCK.findAll(metadataXml)
         .map { it.groupValues[1] }
         .filterNot { "<classifier>" in it }
@@ -389,7 +390,7 @@ internal class CoordinateResolver(
      * `maven.repo.local` override and `GRADLE_USER_HOME`; falls back to the conventional `~/.m2`
      * and `~/.gradle` locations. Non-existent roots are simply skipped at lookup time.
      */
-    fun defaultRepositoryRoots(): List<File> {
+    public fun defaultRepositoryRoots(): List<File> {
       val home = System.getProperty("user.home")?.let(::File)
       val roots = mutableListOf<File>()
       System.getProperty("maven.repo.local")?.let { roots += File(it) }
@@ -406,14 +407,14 @@ internal class CoordinateResolver(
      * `COMPOSE_PREVIEW_OFFLINE=1` (env) — an escape hatch for sandboxes / air-gapped machines that
      * want strictly-local resolution.
      */
-    fun defaultNetworkEnabled(): Boolean {
+    public fun defaultNetworkEnabled(): Boolean {
       if (System.getProperty("composeai.bundle.offline").toBoolean()) return false
       if (System.getenv("COMPOSE_PREVIEW_OFFLINE") == "1") return false
       return true
     }
 
     /** Where downloaded coordinate jars are cached (Maven layout). Override-able for tests. */
-    fun defaultDownloadCacheDir(): File {
+    public fun defaultDownloadCacheDir(): File {
       System.getProperty("composeai.bundle.cacheDir")?.let {
         return File(it)
       }

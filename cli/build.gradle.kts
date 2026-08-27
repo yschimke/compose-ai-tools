@@ -213,6 +213,11 @@ dependencies {
   // package, so every existing call site (including `serve`) resolves them unchanged.
   api(project(":bundle-format"))
 
+  // Turning a bundle's recorded Maven coordinates back into local jars — the `bundle daemon` and
+  // `bundle render` subcommands and `serve` all need it. Split out of this module for #3824
+  // preparation item 7. `api` for source-compat with the existing in-package call sites.
+  api(project(":bundle-coordinates"))
+
   // Okio-based file IO (`SystemFileSystem` + suspend helpers) the CLI commands read/write through.
   implementation(project(":common-io"))
 

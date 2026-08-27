@@ -109,10 +109,18 @@ needed Gradle: `PreviewParameterFanout` has no imports at all, and `PreviewResul
 `previewSha256` use only Okio and the DTOs. They moved down into `:preview-data-api` instead.
 `:gradle-preview-driver` is not a contract and serve no longer names it.
 
-The three that remain are genuinely declared in `:cli` and each needs a decision rather than a
-move: `BUNDLE_VERSION` (does an extracted server report its own version, or the CLI's?),
-`CoordinateResolver`, and `WebEmbed`. They belong to preparation item 7. The `cli→serve` direction
-is untouched at 102 entries and is dominated by `ServeCommand.kt`.
+The three that remained were genuinely declared in `:cli`, and each needed a decision rather than a
+move. All three are now resolved, and **`cliInternalsUsedByServe` is empty in both source sets** —
+the `serve→cli` direction of this register is closed:
+
+| symbol | resolution |
+| --- | --- |
+| `BUNDLE_VERSION` | became serve's own `SERVE_VERSION`. A deployed server answering `/version` is being asked what the *server* is, not what the CLI that happened to launch it is. Same resource today, so the reported string is unchanged; when serve is its own module it generates its own. |
+| `CoordinateResolver` | moved to a published `:bundle-coordinates`. It is not part of `:bundle-format` — reading the format is offline and synchronous, this does HTTP over ktor, and a format module should not drag a network client onto the render subprocess classpath. |
+| `WebEmbed` | moved into the `serve` package. That converts it from a `serve→cli` crossing into a `cli→serve` one, which is the direction that does not block extraction: an extracted `:cli` depends on the server module, not the reverse. |
+
+What is left is `serveInternalsUsedByCli` — 102 entries on `main`, dominated by `ServeCommand.kt`.
+That is the rest of preparation item 7: the module extraction itself.
 
 ### 2. `scripts/check-preview-server-contracts.sh` — the artifact probe
 

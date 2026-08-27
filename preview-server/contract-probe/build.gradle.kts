@@ -64,6 +64,10 @@ val contracts =
     // existed it did that by reaching into `:cli`. It was the one entry in the dependency-floor
     // table below that was not a module at all; naming it here is what stops it being a blocker.
     "bundle-format",
+    // Turning those coordinates back into local jars. `serve` resolves a bundle's classpath before
+    // it can hand the daemon a `-cp`, and while this lived in `:cli` that was the last thing
+    // making an extracted server depend on the CLI. Preparation item 7.
+    "bundle-coordinates",
   )
 
 dependencies {

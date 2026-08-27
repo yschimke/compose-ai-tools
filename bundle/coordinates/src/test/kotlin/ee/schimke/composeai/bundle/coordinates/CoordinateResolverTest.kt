@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli
+package ee.schimke.composeai.bundle.coordinates
 
 import com.sun.net.httpserver.HttpServer
 import ee.schimke.composeai.bundle.BundleReader

@@ -58,7 +58,7 @@ internal object ServeBugReport {
 
   /** Facts about the running server, independent of which page the visitor came from. */
   data class Server(
-    /** `BUNDLE_VERSION` — the build the bug is in. */
+    /** `SERVE_VERSION` — the build the bug is in. */
     val version: String?,
     /** True when the host answers without a token (`--public`). */
     val public: Boolean,

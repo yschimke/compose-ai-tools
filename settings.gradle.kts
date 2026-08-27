@@ -245,6 +245,14 @@ include(":bundle-format")
 
 project(":bundle-format").projectDir = file("bundle/format")
 
+// Resolving a bundle's recorded Maven coordinates into local jars — cache probes then an HTTP
+// fetch. Split out of `:cli` for #3824 preparation item 7: `serve` needs it, and while it lived in
+// `:cli` an extracted preview server could only have reached it through the CLI. Deliberately not
+// part of `:bundle-format`, which stays offline and network-free.
+include(":bundle-coordinates")
+
+project(":bundle-coordinates").projectDir = file("bundle/coordinates")
+
 // The mobile + Wear "session viewer" client apps (`:clients:*`) were split out to their own repo,
 // yschimke/compose-preview-client (issue #2533). They consumed `compose-preview serve` purely
 // through the wire contract (docs/serve/SESSION-VIEWER-PROTOCOL.md), never a code dependency, so the

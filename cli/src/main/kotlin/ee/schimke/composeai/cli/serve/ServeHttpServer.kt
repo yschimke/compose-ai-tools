@@ -1,6 +1,5 @@
 package ee.schimke.composeai.cli.serve
 
-import ee.schimke.composeai.cli.BUNDLE_VERSION
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
@@ -625,7 +624,7 @@ class ServeHttpServer(
                 "That page was not found on this site.",
                 current.linkToken(),
                 isPublic,
-                version = BUNDLE_VERSION,
+                version = SERVE_VERSION,
                 siteName = skin.first,
                 themeCss = skin.second,
                 themeStorageKey = skin.third,
@@ -722,7 +721,7 @@ class ServeHttpServer(
           call.respondText(
             JSON.encodeToString(
               VersionResponse.serializer(),
-              VersionResponse(version = BUNDLE_VERSION, public = isPublic),
+              VersionResponse(version = SERVE_VERSION, public = isPublic),
             ),
             ContentType.Application.Json,
           )
@@ -1920,7 +1919,7 @@ class ServeHttpServer(
         linkToken(),
         isPublic,
         unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
-        version = BUNDLE_VERSION,
+        version = SERVE_VERSION,
         siteName = skin.first,
         themeCss = skin.second,
         themeStorageKey = skin.third,
@@ -1945,7 +1944,7 @@ class ServeHttpServer(
         ttlSeconds = store.ttlSeconds,
         urlUploadAllowed = store.urlFetchAllowed,
         unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
-        version = BUNDLE_VERSION,
+        version = SERVE_VERSION,
       ),
       ContentType.Text.Html,
     )
@@ -2062,7 +2061,7 @@ class ServeHttpServer(
         preselectCatalog = call.request.queryParameters["catalog"],
         pinnedCatalogSystems = service.pinnedCatalogSystems,
         unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
-        version = BUNDLE_VERSION,
+        version = SERVE_VERSION,
         editingLeaseEnabled = service.editLeasesEnabled && githubAuth?.currentLogin(call) != null,
       ),
       ContentType.Text.Html,
@@ -2097,7 +2096,7 @@ class ServeHttpServer(
         token = linkToken(),
         isPublic = isPublic,
         unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
-        version = BUNDLE_VERSION,
+        version = SERVE_VERSION,
       ),
       ContentType.Text.Html,
       HttpStatusCode.ServiceUnavailable,
@@ -2393,7 +2392,7 @@ class ServeHttpServer(
         token = linkToken(),
         isPublic = isPublic,
         unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
-        version = BUNDLE_VERSION,
+        version = SERVE_VERSION,
       ),
       ContentType.Text.Html,
     )
@@ -2948,7 +2947,7 @@ class ServeHttpServer(
                 ServeWeb.designToolLabel(it.source.provider)
               }
             } ?: renderHost.parityActivity()?.figma?.let { "Figma" },
-          version = BUNDLE_VERSION,
+          version = SERVE_VERSION,
           // Catalog provenance (delivery branch, generation date, tool versions) for the strip
           // under the header; null for a plain (non-catalog) module session.
           provenance = catalogBundleHost(renderHost)?.provenance,
@@ -3208,7 +3207,7 @@ class ServeHttpServer(
           referencesFor = renderHost::designReferencesFor,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
           reportIssue = reportIssue,
-          version = BUNDLE_VERSION,
+          version = SERVE_VERSION,
           displayTitle = catalogBundleHost(renderHost)?.title,
           // A top-level site's pages carry their session in the ORIGIN, so same-session links
           // drop the `?session=` the rooted legacy form would add. See [ServeSites].
@@ -3313,7 +3312,7 @@ class ServeHttpServer(
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
-          version = BUNDLE_VERSION,
+          version = SERVE_VERSION,
           displayTitle = catalogBundleHost(renderHost)?.title,
           hasReferenceFor = hasReference,
           parityIssues = issues,
@@ -3523,7 +3522,7 @@ class ServeHttpServer(
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
-          version = BUNDLE_VERSION,
+          version = SERVE_VERSION,
           displayTitle = catalogBundleHost(renderHost)?.title,
           sessionInOrigin = siteSystem() != null,
         ),
@@ -3558,7 +3557,7 @@ class ServeHttpServer(
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
-          version = BUNDLE_VERSION,
+          version = SERVE_VERSION,
           displayTitle = catalogBundleHost(renderHost)?.title,
           // A top-level site's pages carry their session in the ORIGIN, so same-session links
           // drop the `?session=` the rooted legacy form would add. See [ServeSites].
@@ -3623,7 +3622,7 @@ class ServeHttpServer(
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
-          version = BUNDLE_VERSION,
+          version = SERVE_VERSION,
           displayTitle = catalogBundleHost(renderHost)?.title,
           // A top-level site's pages carry their session in the ORIGIN, so same-session links
           // drop the `?session=` the rooted legacy form would add. See [ServeSites].
@@ -3783,7 +3782,7 @@ class ServeHttpServer(
           // must not drop back to the built-in chrome mid-journey.
           themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
-          version = BUNDLE_VERSION,
+          version = SERVE_VERSION,
           displayTitle = catalogBundleHost(renderHost)?.title,
           // Annotation layers describe the CURRENT catalog's layout and typography. Drawing them
           // over a pinned pair would overlay today's bounds on historical pixels and label the
@@ -4376,7 +4375,7 @@ class ServeHttpServer(
         linkToken(),
         isPublic = isPublic,
         componentBrowser = componentBrowserMode(),
-        version = BUNDLE_VERSION,
+        version = SERVE_VERSION,
         unfurl = unfurl,
         githubAuth = githubAuthStatus(),
       ),
@@ -4612,7 +4611,7 @@ class ServeHttpServer(
           ),
           linkToken(),
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
-          version = BUNDLE_VERSION,
+          version = SERVE_VERSION,
           siteName = skin.first,
           themeCss = skin.second,
           themeStorageKey = skin.third,
@@ -4693,7 +4692,7 @@ class ServeHttpServer(
     val status = withContext(Dispatchers.IO) { buildStatusData(onlySystem = siteSystem()) }
     val server =
       ServeBugReport.Server(
-        version = BUNDLE_VERSION,
+        version = SERVE_VERSION,
         public = isPublic,
         uptimeSeconds = status.uptimeSeconds,
         java = "${System.getProperty("java.version")} (${System.getProperty("java.vendor")})",
@@ -4795,7 +4794,7 @@ class ServeHttpServer(
         // possibly off-origin URL into the markup, which is exactly what `sanitizeFrom` refuses to
         // do for every other use of the value. There is nothing to unfurl per-report anyway.
         unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalOrigin() + ServeBugReport.PATH),
-        version = BUNDLE_VERSION,
+        version = SERVE_VERSION,
         siteName = skin.first,
         themeCss = skin.second,
         themeStorageKey = skin.third,
@@ -5563,7 +5562,7 @@ class ServeHttpServer(
       // is both wasted work and two answers that can disagree.
       val imageOccupancy = imageStore?.occupancy()
       return StatusResponse(
-        version = BUNDLE_VERSION,
+        version = SERVE_VERSION,
         public = isPublic,
         status = if (overallOk) "ok" else "degraded",
         uptimeSeconds = uptimeSeconds,
@@ -5918,7 +5917,7 @@ class ServeHttpServer(
       return ServeWeb.StatusView(
         agentGrants = agentGrants,
         agentGrantRequests = agentGrantRequests,
-        version = BUNDLE_VERSION,
+        version = SERVE_VERSION,
         public = isPublic,
         nowMillis = nowMillis,
         overallOk = overallOk,
@@ -6985,7 +6984,7 @@ class ServeHttpServer(
               isPublic = isPublic,
               revisions = revisions,
               unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
-              version = BUNDLE_VERSION,
+              version = SERVE_VERSION,
               siteName = skin.first,
               themeCss = skin.second,
               themeStorageKey = skin.third,
@@ -7222,7 +7221,7 @@ class ServeHttpServer(
               imageWidth = imageSize?.first,
               imageHeight = imageSize?.second,
             ),
-          version = BUNDLE_VERSION,
+          version = SERVE_VERSION,
           sourceHref = sourceHref,
           reportIssue = reportIssue,
           // The Figma node this preview is specified by, when the catalog publishes a Figma-backed
@@ -9236,7 +9235,7 @@ class ServeHttpServer(
           agentGrantCsrf.seal(request.id, approver.name, ServeAgentGrants.Csrf.ACTION_DENY),
         formAction = ServeAgentGrants.approvalPath(request.id) + agentGrantTokenQuery(),
         navSuffix = agentGrantTokenQuery(),
-        version = BUNDLE_VERSION,
+        version = SERVE_VERSION,
         siteName = skin.first,
         themeCss = skin.second,
         selectableCapabilities =
@@ -9432,7 +9431,7 @@ class ServeHttpServer(
         message = message,
         detail = detail,
         navSuffix = agentGrantTokenQuery(),
-        version = BUNDLE_VERSION,
+        version = SERVE_VERSION,
         siteName = skin.first,
         themeCss = skin.second,
       ),
@@ -9555,7 +9554,7 @@ class ServeHttpServer(
           linkToken(),
           isPublic,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
-          version = BUNDLE_VERSION,
+          version = SERVE_VERSION,
           componentBrowser = componentBrowserMode(),
           githubAuth = githubAuthStatus(),
         ),
@@ -10018,7 +10017,7 @@ class ServeHttpServer(
 @Serializable
 private data class VersionResponse(
   val schema: String = "compose-preview-serve/version/v1",
-  /** The host CLI's released version ([BUNDLE_VERSION]). */
+  /** The host CLI's released version ([SERVE_VERSION]). */
   val version: String,
   /**
    * The schema id the `/api/previews` + page surface speaks, so a client can feature-detect. `v2`
@@ -10038,7 +10037,7 @@ private data class VersionResponse(
 @Serializable
 private data class StatusResponse(
   val schema: String = "compose-preview-serve/status/v1",
-  /** The host CLI's released version ([BUNDLE_VERSION]). */
+  /** The host CLI's released version ([SERVE_VERSION]). */
   val version: String,
   /** True when the box serves token-free (public preview server). */
   val public: Boolean,

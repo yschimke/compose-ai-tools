@@ -1,8 +1,8 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.bundle.BundleReader
+import ee.schimke.composeai.bundle.coordinates.CoordinateResolver
 import ee.schimke.composeai.bundle.extractBundleClassesAndManifest
-import ee.schimke.composeai.cli.CoordinateResolver
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import okio.FileSystem
