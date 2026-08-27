@@ -290,6 +290,25 @@ class ServeCatalogLiveHost(
    * [verifyPersistedRenders].
    */
   private val persistenceVerified = AtomicBoolean()
+  /**
+   * True only while the pass **holds an optimizer lane**, which is what [backgroundWorkActive] —
+   * and through it [ServeSessionRegistry.suspendIdle] — reads as "this host must stay resident".
+   *
+   * It used to be set for the whole life of the worker, and the worker does not end: on a catalog
+   * with targets left it loops through the quiet gate forever, so the flag was effectively "this
+   * catalog is not fully optimized". That made a catalog's own unfinished optimization the reason
+   * its daemon could never be suspended, and the daemon is the expensive part — an Android lane is
+   * priced at ~1.2 GB in the seat budget. preview.coo.ee reached nine such residents with zero
+   * active streams, `MemAvailable` pinned at 14-21%, and the pressure gate therefore holding: the
+   * optimizer's own residency was what stopped the optimizer running, and the box made progress
+   * only on [OptimizerPressureThresholds.dutyCycleMillis] concessions — 50 of them across 40 hours,
+   * 1,502 of 18,604 entries.
+   *
+   * A pass parked at the gate or queued for a lane needs nothing resident. Its progress lives in
+   * [catalogThemeCache], which is held in [ServeSessionState] precisely so it survives daemon
+   * suspension, and [ServeSessionRegistry.resumeIdleOptimizers] brings the host back when a lane
+   * frees. So the flag covers the slice and nothing more.
+   */
   private val optimizationActive = AtomicBoolean()
   private val warmExecutor by lazy {
     Executors.newSingleThreadExecutor { r ->
@@ -469,6 +488,18 @@ class ServeCatalogLiveHost(
   override val backgroundWorkActive: Boolean
     get() = optimizationActive.get()
 
+  /**
+   * Whether the pass **worker** is alive, as opposed to [backgroundWorkActive], which says only
+   * whether it currently holds a lane.
+   *
+   * The two stopped being the same question when residency was scoped to the lane: a worker parked
+   * at the quiet gate is running and holding nothing. Tests that want "the pass has settled" need
+   * this one — reading the residency flag would let them proceed while the worker was merely
+   * between slices, or before it had taken its first.
+   */
+  internal val optimizationPassRunning: Boolean
+    get() = optimizationStarted.get()
+
   private data class ThemeOptimizationJob(
     val previewId: String,
     val overrides: PreviewOverrides,
@@ -519,7 +550,6 @@ class ServeCatalogLiveHost(
     // heartbeat, so the pass resumes by itself if the breaker closes.
     if (renderBreakerStopsBackgroundWork()) return
     if (!optimizationStarted.compareAndSet(false, true)) return
-    optimizationActive.set(true)
     optimizationExecutor.execute {
       try {
         // Verification does NOT run here, ahead of admission — see the slot below. It renders, and
@@ -561,12 +591,20 @@ class ServeCatalogLiveHost(
           }
           val outcome =
             backgroundWork.withOptimizerSlot(label, optimizerAdmissionWaitMillis) {
-              // Holding the turn established above, so the sample's renders are admitted on
-              // exactly the terms every other background render is. Cheap and once per host: a
-              // no-op when nothing was adopted from disk.
-              if (!persistenceVerified.get()) verifyPersistedRenders(jobs)
-              if (catalogThemeCache.snapshot().fullyOptimized) PassOutcome.FINISHED
-              else runOptimizerPass(jobs, sliceUntil = clock() + optimizerSliceMillis)
+              // The lane, not the worker, is what this host has to be resident for — see
+              // [optimizationActive]. Set inside the slot and cleared on the way out, so the
+              // catalog is suspendable again the instant it re-queues.
+              optimizationActive.set(true)
+              try {
+                // Holding the turn established above, so the sample's renders are admitted on
+                // exactly the terms every other background render is. Cheap and once per host: a
+                // no-op when nothing was adopted from disk.
+                if (!persistenceVerified.get()) verifyPersistedRenders(jobs)
+                if (catalogThemeCache.snapshot().fullyOptimized) PassOutcome.FINISHED
+                else runOptimizerPass(jobs, sliceUntil = clock() + optimizerSliceMillis)
+              } finally {
+                optimizationActive.set(false)
+              }
             }
           if (outcome == null) {
             // Stay in the admission queue without needing a visitor heartbeat to resurrect this
@@ -654,7 +692,14 @@ class ServeCatalogLiveHost(
     optimizationExecutor.execute {
       try {
         backgroundWork.withOptimizerSlot(label, OPTIMIZER_ADMISSION_WAIT_MILLIS) {
-          if (awaitOptimizerTurn()) verifyPersistedRenders(jobs)
+          // Resident for the lane, like the pass proper — this one renders too, and a suspension
+          // landing mid-sample would close the daemon under it.
+          optimizationActive.set(true)
+          try {
+            if (awaitOptimizerTurn()) verifyPersistedRenders(jobs)
+          } finally {
+            optimizationActive.set(false)
+          }
           true
         }
       } finally {

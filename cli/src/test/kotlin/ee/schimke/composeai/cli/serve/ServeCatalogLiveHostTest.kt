@@ -1259,7 +1259,10 @@ class ServeCatalogLiveHostTest {
     Thread.sleep(50)
     assertEquals(0, firstLive.renderCalls)
     assertEquals("paused", first.themeOptimizationSnapshot()?.state)
-    assertTrue(first.backgroundWorkActive)
+    // Parked at the gate, holding no lane — and therefore NOT keeping its host resident. The
+    // catalog's progress is in the shared cache, not in the daemon, which is what lets the registry
+    // reclaim the daemon's memory while the pass waits.
+    assertFalse(first.backgroundWorkActive, "a parked pass does not pin its daemon")
     idle.set(true)
     awaitOptimization(first)
     first.close()
@@ -1370,10 +1373,10 @@ class ServeCatalogLiveHostTest {
       )
 
     composite.prewarm()
-    // The pass is at the quiet gate, which it now waits out holding NO lane — so what says it has
-    // started is its own worker being active, not an admission. (It used to be `running == 1`;
-    // that assertion was reading the bug where a gated pass sat on a lane the whole time.)
-    awaitOk(5_000) { composite.backgroundWorkActive.takeIf { it } }
+    // The pass is at the quiet gate, which it waits out holding NO lane — and, since residency
+    // follows the lane, not keeping its host resident either. So what says it has started is the
+    // gate wait it is accruing, not an admission and not `backgroundWorkActive`.
+    awaitOk(5_000) { composite.themeOptimizationSnapshot()?.takeIf { it.gateWaitMillis > 0 } }
     assertEquals(
       0,
       backgroundWork.optimizerAdmissionSnapshot().running,
@@ -1829,7 +1832,9 @@ class ServeCatalogLiveHostTest {
     // turn, however long it waits.
     val blocked = host { null }
     blocked.prewarm()
-    awaitOk(5_000) { blocked.backgroundWorkActive.takeIf { it } }
+    // The accruing gate wait, not `backgroundWorkActive`: a pass that holds no lane holds no
+    // residency either, so the flag stays false for exactly as long as this test cares about.
+    awaitOk(5_000) { blocked.themeOptimizationSnapshot()?.takeIf { it.gateWaitMillis > 0 } }
 
     repeat(5) {
       assertEquals(
@@ -1930,9 +1935,60 @@ class ServeCatalogLiveHostTest {
     composite.close()
   }
 
+  /**
+   * The residency rule this whole memory fix rests on.
+   *
+   * `backgroundWorkActive` is what [ServeSessionRegistry.suspendIdle] reads as "this host must stay
+   * resident", and the pass worker does not end while a catalog has targets left — it loops through
+   * the quiet gate forever. Setting the flag for the worker's life therefore meant "not fully
+   * optimized" implied "daemon can never be released", and on the public box nine catalogs held a
+   * ~1.2 GB Android daemon each with no traffic, which is the memory reading the pressure gate then
+   * refused to admit work against.
+   */
+  @Test
+  fun `optimizer residency follows the lane, not the backlog`() {
+    val backgroundWork = ServeBackgroundWork(maxConcurrentOptimizers = 1)
+    val idle = AtomicBoolean()
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live =
+          RecordingHost(
+            previews = listOf(ServePreview(daemonId, daemonId)),
+            tag = "live",
+            declaredThemes = listOf(brandTheme),
+          ),
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked"),
+        serverIdleMillis = { if (idle.get()) Long.MAX_VALUE else null },
+        themeOptimizationEnabled = true,
+        themeOptimizationIdleMillis = 0,
+        optimizerGateCeilingMillis = 0,
+        backgroundWork = backgroundWork,
+      )
+
+    composite.prewarm()
+    // Targets left and a worker running, but parked at a gate that answers busy: nothing is held.
+    awaitOk(5_000) { composite.themeOptimizationSnapshot()?.takeIf { it.gateWaitMillis > 0 } }
+    assertFalse(
+      composite.backgroundWorkActive,
+      "a catalog with work left but no lane must not pin its daemon",
+    )
+    assertEquals(1, composite.themeOptimizationSnapshot()?.remaining)
+
+    // Let it in: now it is rendering on a lane, and the host has to stay put under it.
+    idle.set(true)
+    assertTrue(awaitOptimization(composite).fullyOptimized)
+    awaitPassIdle(composite)
+    assertFalse(composite.backgroundWorkActive, "and it is released again once the slice ends")
+    composite.close()
+  }
+
   private fun awaitPassIdle(host: ServeCatalogLiveHost) {
+    // The WORKER, not the residency flag. Since residency follows the lane, `backgroundWorkActive`
+    // is false while a worker is parked at the gate and before it takes its first slice — so
+    // reading it here returned the instant the pass was scheduled, ahead of any render.
     repeat(200) {
-      if (!host.backgroundWorkActive) return
+      if (!host.optimizationPassRunning) return
       Thread.sleep(25)
     }
     error("theme optimization pass did not settle: ${host.themeOptimizationSnapshot()}")

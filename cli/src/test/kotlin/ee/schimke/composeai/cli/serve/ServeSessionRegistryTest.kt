@@ -458,6 +458,91 @@ class ServeSessionRegistryTest {
   }
 
   @Test
+  fun `an unfinished optimizer no longer pins its daemon and is resumed when a lane is free`() {
+    val clock = AtomicLong(0)
+    val work = ServeBackgroundWork(clock = clock::get)
+    val cache = CatalogThemeCache().apply { configureTargets(listOf("preview|dark")) }
+    val opener = Opener()
+    ServeSessionRegistry(
+        open = opener,
+        idleTimeoutMillis = 100,
+        reaperIntervalMillis = 0,
+        clock = clock::get,
+      )
+      .use { registry ->
+        registry.register(
+          "catalog",
+          stateFor("catalog").copy(catalogThemeCache = cache, backgroundWork = work),
+          host = opener(stateFor("catalog")),
+        )
+        clock.set(200)
+        // The pass is parked, not holding a lane: `backgroundWorkActive` is false, so the daemon
+        // is reclaimable even though the catalog has targets left. This is the whole change — the
+        // flag used to stay set for the worker's life and the worker never ends.
+        assertEquals(1, registry.suspendIdle(), "a parked optimizer does not pin its daemon")
+        assertEquals(
+          1,
+          work.optimizerAdmissionSnapshot().hostSuspensions,
+          "the suspension is counted against the optimizer, not lost as an ordinary idle reap",
+        )
+
+        val openedBefore = opener.opened.get()
+        assertEquals(1, registry.resumeIdleOptimizers(), "an unfinished catalog is brought back")
+        assertEquals(openedBefore + 1, opener.opened.get(), "the host was actually reopened")
+        assertEquals(1, work.optimizerAdmissionSnapshot().hostResumes)
+
+        // Resuming stamps the session's own idle clock, not the whole-server one the quiet gate
+        // reads: a resume that reported the box as busy would refuse the turn it exists to take.
+        assertNotNull(registry.idleMillis(), "the resume did not make the server look busy")
+        assertEquals(0, registry.suspendIdle(), "the resumed host gets its idle window to work in")
+      }
+  }
+
+  @Test
+  fun `a fully optimized or lane-starved catalog is not resumed`() {
+    val clock = AtomicLong(0)
+    val work = ServeBackgroundWork(clock = clock::get)
+    val unfinished = CatalogThemeCache().apply { configureTargets(listOf("preview|dark")) }
+    val finished =
+      CatalogThemeCache().apply {
+        configureTargets(listOf("preview|dark"))
+        put("preview|dark", ByteArray(4))
+      }
+    val opener = Opener()
+    ServeSessionRegistry(
+        open = opener,
+        idleTimeoutMillis = 100,
+        reaperIntervalMillis = 0,
+        clock = clock::get,
+      )
+      .use { registry ->
+        registry.register(
+          "done",
+          stateFor("done").copy(catalogThemeCache = finished, backgroundWork = work),
+          host = opener(stateFor("done")),
+        )
+        registry.register(
+          "todo",
+          stateFor("todo").copy(catalogThemeCache = unfinished, backgroundWork = work),
+          host = opener(stateFor("todo")),
+        )
+        clock.set(200)
+        assertEquals(2, registry.suspendIdle())
+
+        // No lane to give: resuming here would pay a cold daemon to stand at the door, which is
+        // the residency the suspension just reclaimed.
+        work.pauseOptimizers(10_000, "test")
+        assertEquals(0, work.optimizerLanesFree())
+        assertEquals(0, registry.resumeIdleOptimizers(), "no lane free, so nothing is resumed")
+
+        work.resumeOptimizers()
+        val openedBefore = opener.opened.get()
+        assertEquals(1, registry.resumeIdleOptimizers(), "only the unfinished catalog comes back")
+        assertEquals(openedBefore + 1, opener.opened.get())
+      }
+  }
+
+  @Test
   fun `a leased session is not suspended until the lease closes`() {
     val clock = AtomicLong(0)
     ServeSessionRegistry(
