@@ -186,6 +186,15 @@ open class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(tes
     // for
     // `RenderEngine`'s fatal-on-fallback gate instead of vanishing.
     shadows += ShadowFontsContractCompat::class.java
+    // Held-clock frame timestamps (#4549). Always registered — `android.graphics.HardwareRenderer`
+    // is core Android, so the `@Implements` link always resolves, and the shadow only replaces the
+    // one method Robolectric 4.17-beta-3 added on top of the native renderer. Without it a held
+    // session's render-thread animations (Material's `RippleDrawable` → `RenderNodeAnimator`) are
+    // paced by host wall-clock time instead of the clock this daemon advances, so a pressed ripple
+    // barely moves across a filmed press and a live click paints no press feedback at all. See
+    // [ShadowPausedClockHardwareRenderer]; `AndroidRippleFrameTest` and `LivePressRippleTest` are
+    // the pixel oracles that fail without it.
+    shadows += ShadowPausedClockHardwareRenderer::class.java
     // Coil 2 preview-branch shadow. Gated on coil 2 actually being on the classpath purely to keep
     // the sandbox's instrumentation config honest — the shadow itself declares its target by
     // `className`, so unlike the Wear shadows above it carries no unresolvable symbolic links and

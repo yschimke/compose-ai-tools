@@ -168,17 +168,6 @@
       "allowedVersions": "!/-SNAPSHOT$/"
     },
     {
-      "description": "robolectric: hold at 4.17-beta-2. Under 4.17-beta-4 a pressed ripple stops painting in a held Robolectric session — `LivePressRippleTest.aLiveClickPaintsPressFeedback` sees every post-click frame identical to rest, and `AndroidRippleFrameTest` measures no motion across the filmed press (#4503). Both are pixel oracles over the live lane's press feedback, so this is a product regression in that lane, not a harness detail; `roborazzi` 1.73.0 was bisected out. Raising the line again means re-running those two tests, so it stays manual. Declared after the released-versions-only rule above so this stricter `allowedVersions` wins.",
-      "matchManagers": [
-        "gradle"
-      ],
-      "matchDepNames": [
-        "org.robolectric:robolectric"
-      ],
-      "matchCurrentValue": "/^4\\.17-beta-2$/",
-      "allowedVersions": "/^4\\.17-beta-2$/"
-    },
-    {
       "description": "Remote Compose, its Wear widget layer and Glance Wear resolve from Google Maven on released alpha coordinates, and the three groups only work together when built against the same `remote-creation*` — `remote-material3` and `androidx.glance.wear:*` name that version in their POMs. Renovate updates one dependency at a time, so an automated bump of any one group produces exactly the skew that has taken CI red before (a `NoClassDefFoundError` inside `RemoteButtonImpl` at render time, a wear pin that did not exist yet). Bump the three refs in gradle/libs.versions.toml as one set after checking the POMs, and re-verify a render, not just a compile.",
       "matchManagers": [
         "gradle"
