@@ -66,7 +66,20 @@ compose-bom-compat = "2025.11.01"
 # on 1.10.3 (skiko 0.9.37.4, whose native exports no `PathBuilder_*` symbol at all). Bumping this
 # ref is therefore a SERVE-HOST RELEASE concern, not just a build-hygiene one — see
 # `docs/RENDERER_COMPATIBILITY.md`.
-compose-multiplatform = "1.12.0"
+#
+# HELD AT 1.11.1 — 1.12.0 is not a minor/patch bump this ref can take on its own (#4503):
+#   * `androidx.compose.*:1.12.0` AAR metadata declares `minCompileSdk = 37`, so every Android
+#     module on the conventions default (`compileSdk = 36`) fails `checkAarMetadata` — the bump is
+#     a repo-wide platform move, not a version-ref edit.
+#   * skiko 0.150.1 (what 1.12.0 resolves) REMOVES the mutating `org.jetbrains.skia.Path` API that
+#     m144 had only deprecated at `DeprecationLevel.ERROR`. `Path.conicTo` is gone, which breaks
+#     `PathConic.{jvm,wasm,ios}.kt` and the vendored `FloatsToPath.kt`; the replacement
+#     (`PathBuilder`) is build-then-`snapshot()`, so those seams have to be restructured.
+#   * `compose-multiplatform-material3` (1.11.0-alpha07) and `compottie` (built against foundation
+#     1.11.0) move in lockstep with this ref — see their comments below.
+# The Renovate rule for `org.jetbrains.compose**` in `.github/renovate.json` now tracks the 1.11.x
+# line so the group stops re-proposing this; moving to 1.12 is a deliberate, coordinated change.
+compose-multiplatform = "1.11.1"
 # Consumer runtime used by renderer forward-compatibility tests. Keep this on the newest CMP line
 # that catalogs are expected to adopt; it intentionally does not affect production compilation.
 compose-multiplatform-forward = "1.12.0-rc01"

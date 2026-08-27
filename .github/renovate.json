@@ -102,7 +102,7 @@
       "allowedVersions": "/^1\\.13\\./"
     },
     {
-      "description": "compose-multiplatform: pin to the 1.10.x line. `:data-render-compose` exposes `org.jetbrains.compose.{runtime,ui}` as `api` on a published artifact, so the Compose Multiplatform version is part of the supported-minimum floor for consumers. 1.11.0 ships ABI-breaking changes (non-Android `Shader` becomes a Compose wrapper type, `NativePaint`/`NativeCanvas` typealiases deprecated, `Paint.asFrameworkPaint`/`Canvas.nativeCanvas` replaced) and bumps the required Kotlin language/API to 2.2 — raising the floor is a manual decision. Keep `samples/cmp-shared`'s explicit `ui-tooling-preview` coord in lockstep so the plugin's compose-runtime compatibility check stays happy.",
+      "description": "compose-multiplatform: pin to the 1.11.x line. `:data-render-compose` exposes `org.jetbrains.compose.{runtime,ui}` as `api` on a published artifact, so the Compose Multiplatform version is part of the supported-minimum floor for consumers, and the ref is also a CEILING on every catalog the serve host renders live (docs/RENDERER_COMPATIBILITY.md). 1.12.0 needs a coordinated move, not a minor/patch bump: its `androidx.compose.*` AARs declare `minCompileSdk = 37` (the repo default is 36), skiko 0.150.1 deletes the mutating `org.jetbrains.skia.Path` API our `conicTo` seams call, and `compose-multiplatform-material3` + `compottie` have to move with it. See gradle/libs.versions.toml — raising the floor is a manual decision. Keep `samples/cmp-shared`'s explicit `ui-tooling-preview` coord in lockstep so the plugin's compose-runtime compatibility check stays happy.",
       "matchManagers": [
         "gradle"
       ],
@@ -110,8 +110,8 @@
         "org.jetbrains.compose",
         "org.jetbrains.compose{/,}**"
       ],
-      "matchCurrentValue": "/^1\\.10\\./",
-      "allowedVersions": "/^1\\.10\\./"
+      "matchCurrentValue": "/^1\\.11\\./",
+      "allowedVersions": "/^1\\.11\\./"
     },
     {
       "description": "org.slf4j:slf4j-nop: track gradle-tooling-api's bundled slf4j-api. Tooling API declares `slf4j-api {strictly <X>}` and bumping `-nop` past that drags in a newer `slf4j-api` that can't reconcile with the strict constraint. The matching `-nop` version moves whenever the Tooling-API release ships a newer slf4j-api floor — bump this pin in lockstep then.",
@@ -125,15 +125,15 @@
       "allowedVersions": "/^2\\.0\\.17$/"
     },
     {
-      "description": "compottie: pin to the 2.1.x line. `:lottie-preview-runtime` is built against JetBrains Compose foundation 1.10.1 (matching `compose-multiplatform = 1.10.x`); compottie 2.2.x targets foundation 1.11.0 and drags a newer Compose onto the renderer classpath — the skew `docs/RENDERER_COMPATIBILITY.md` warns about. Bump only in lockstep with `compose-multiplatform`; see gradle/libs.versions.toml.",
+      "description": "compottie: pin to the 2.2.x line. `:lottie-preview-runtime` is built against JetBrains Compose foundation 1.11.0 (matching `compose-multiplatform = 1.11.x`); a compottie line built against a newer foundation drags a newer Compose onto the renderer classpath — the skew `docs/RENDERER_COMPATIBILITY.md` warns about. Bump only in lockstep with `compose-multiplatform`; see gradle/libs.versions.toml.",
       "matchManagers": [
         "gradle"
       ],
       "matchDepNames": [
         "io.github.alexzhirkevich:compottie"
       ],
-      "matchCurrentValue": "/^2\\.1\\./",
-      "allowedVersions": "/^2\\.1\\./"
+      "matchCurrentValue": "/^2\\.2\\./",
+      "allowedVersions": "/^2\\.2\\./"
     },
     {
       "description": "robolectric: released versions only. Robolectric publishes a rolling `4.17-SNAPSHOT` to Sonatype and Renovate ranks it above `4.17-beta-2`, but the build declares no snapshot repository — so the bump resolves nowhere and fails every Android configuration. Betas and RCs are still fair game; only `-SNAPSHOT` is excluded.",
