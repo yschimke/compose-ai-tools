@@ -1,6 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
-import ee.schimke.composeai.cli.PreviewManifest
+import ee.schimke.composeai.previewdata.PreviewManifest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.serialization.json.Json

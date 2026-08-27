@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli
+package ee.schimke.composeai.previewdata
 
 import kotlinx.serialization.Serializable
 
@@ -42,7 +42,8 @@ public data class AccessibilityFinding(
  * [AccessibilityNode][ee.schimke.composeai.renderer.AccessibilityNode] field-for-field — same JSON
  * schema, pinned by the wire format rather than Kotlin type identity. The desktop daemon's
  * overlay-only a11y path (Compose-semantics extraction, no ATF) emits these from
- * `ee.schimke.composeai.cli.*` types rather than depending on the Android `:data-a11y-core`.
+ * `ee.schimke.composeai.previewdata.*` types rather than depending on the Android
+ * `:data-a11y-core`.
  */
 @Serializable
 public data class AccessibilityNode(

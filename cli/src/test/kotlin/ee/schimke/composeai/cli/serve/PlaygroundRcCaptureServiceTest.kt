@@ -1,8 +1,8 @@
 package ee.schimke.composeai.cli.serve
 
-import ee.schimke.composeai.cli.PreviewManifest
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.data.remotecompose.RemoteComposeDocumentPayload
+import ee.schimke.composeai.previewdata.PreviewManifest
 import java.io.File
 import java.util.Base64
 import kotlin.test.AfterTest

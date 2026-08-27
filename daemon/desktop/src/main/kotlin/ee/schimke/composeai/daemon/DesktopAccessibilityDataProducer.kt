@@ -1,8 +1,8 @@
 package ee.schimke.composeai.daemon
 
-import ee.schimke.composeai.cli.AccessibilityFinding
-import ee.schimke.composeai.cli.AccessibilityNode
 import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.previewdata.AccessibilityFinding
+import ee.schimke.composeai.previewdata.AccessibilityNode
 import java.io.File
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json

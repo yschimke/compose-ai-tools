@@ -1,8 +1,8 @@
 package ee.schimke.composeai.cli.serve
 
-import ee.schimke.composeai.cli.PreviewInfo
-import ee.schimke.composeai.cli.PreviewParameterFanout
 import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.previewdata.PreviewInfo
+import ee.schimke.composeai.previewdata.PreviewParameterFanout
 import okio.FileSystem
 import okio.Path
 import okio.Path.Companion.toPath

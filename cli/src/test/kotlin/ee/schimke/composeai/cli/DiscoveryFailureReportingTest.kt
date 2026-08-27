@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.previewdriver.ProjectDiscoveryFailure
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

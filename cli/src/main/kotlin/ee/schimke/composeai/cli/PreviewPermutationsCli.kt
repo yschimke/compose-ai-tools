@@ -2,6 +2,11 @@ package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.UiMode
+import ee.schimke.composeai.previewdata.Capture
+import ee.schimke.composeai.previewdata.PreviewDataProduct
+import ee.schimke.composeai.previewdata.PreviewInfo
+import ee.schimke.composeai.previewdata.PreviewManifest
+import ee.schimke.composeai.previewdata.PreviewParams
 
 internal object PreviewPermutationsCli {
   const val PROPERTY: String = "composePreview.permutations"

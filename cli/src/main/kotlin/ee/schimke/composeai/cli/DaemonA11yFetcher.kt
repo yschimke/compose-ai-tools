@@ -3,6 +3,12 @@ package ee.schimke.composeai.cli
 import ee.schimke.composeai.daemon.protocol.DataFetchParams
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.previewdata.A11Y_REPORT_STATUS_ATF_UNAVAILABLE
+import ee.schimke.composeai.previewdata.AccessibilityEntry
+import ee.schimke.composeai.previewdata.AccessibilityFinding
+import ee.schimke.composeai.previewdata.AccessibilityNode
+import ee.schimke.composeai.previewdata.AccessibilityReport
+import ee.schimke.composeai.previewdata.PreviewModule
 import ee.schimke.composeai.render.session.DataProductException
 import ee.schimke.composeai.render.session.RenderSession
 import ee.schimke.composeai.render.session.RenderSessionConfig

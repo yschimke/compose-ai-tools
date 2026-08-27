@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.previewdata.PreviewInfo
+import ee.schimke.composeai.previewdata.PreviewParams
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals

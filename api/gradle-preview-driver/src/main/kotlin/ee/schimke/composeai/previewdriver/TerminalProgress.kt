@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli
+package ee.schimke.composeai.previewdriver
 
 /**
  * OSC 9;4 terminal progress bar protocol.

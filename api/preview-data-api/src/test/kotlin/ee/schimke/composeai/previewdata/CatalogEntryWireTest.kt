@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli
+package ee.schimke.composeai.previewdata
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

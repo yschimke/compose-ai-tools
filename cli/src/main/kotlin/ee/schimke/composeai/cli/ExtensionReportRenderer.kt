@@ -1,5 +1,9 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.previewdata.PreviewManifest
+import ee.schimke.composeai.previewdata.PreviewModule
+import ee.schimke.composeai.previewdata.PreviewResult
+
 /**
  * Strategy for "given a render outcome, surface a canned per-extension report" — the slot the CLI
  * gives each data extension to participate in the `compose-preview <extension>` command shape

@@ -1,6 +1,7 @@
-package ee.schimke.composeai.cli
+package ee.schimke.composeai.previewdriver
 
 import ee.schimke.composeai.plugin.tooling.ComposePreviewModel
+import ee.schimke.composeai.previewdata.PreviewModule
 import java.io.Serializable
 import org.gradle.tooling.BuildAction
 import org.gradle.tooling.BuildController

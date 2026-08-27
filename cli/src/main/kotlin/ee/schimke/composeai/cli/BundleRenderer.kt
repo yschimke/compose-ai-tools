@@ -5,6 +5,8 @@ import ee.schimke.composeai.bundle.BundleReader
 import ee.schimke.composeai.bundle.expandZipBytesSafely
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.io.TemporaryDirectory
+import ee.schimke.composeai.previewdata.PreviewInfo
+import ee.schimke.composeai.previewdata.PreviewManifest
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.UUID

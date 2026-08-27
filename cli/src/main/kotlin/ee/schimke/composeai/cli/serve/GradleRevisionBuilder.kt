@@ -1,7 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
-import ee.schimke.composeai.cli.PreviewModule
-import ee.schimke.composeai.cli.PreviewResultBuilder
+import ee.schimke.composeai.previewdata.PreviewModule
+import ee.schimke.composeai.previewdata.PreviewResultBuilder
 import java.io.File
 import java.util.concurrent.TimeUnit
 

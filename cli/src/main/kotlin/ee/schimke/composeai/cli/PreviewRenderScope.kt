@@ -1,5 +1,8 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.previewdata.PreviewManifest
+import ee.schimke.composeai.previewdata.PreviewModule
+
 /**
  * Turns a `--id` / `--filter` / `--preview` request into the Gradle property that actually narrows
  * the render (issue #3730; `--preview` joined the selectors in #3744).

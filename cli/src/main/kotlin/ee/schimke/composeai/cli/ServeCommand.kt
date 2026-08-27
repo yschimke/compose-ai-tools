@@ -95,6 +95,9 @@ import ee.schimke.composeai.cli.serve.declaredThemesFromPreviews
 import ee.schimke.composeai.cli.serve.detectedFeaturesOf
 import ee.schimke.composeai.cli.serve.openIsolatedSharedDaemonReplica
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.previewdata.PreviewInfo
+import ee.schimke.composeai.previewdata.PreviewManifest
+import ee.schimke.composeai.previewdata.PreviewModule
 import ee.schimke.composeai.render.session.RenderSessionException
 import ee.schimke.composeai.render.session.subprocess.SubprocessRenderSessions
 import java.awt.Desktop

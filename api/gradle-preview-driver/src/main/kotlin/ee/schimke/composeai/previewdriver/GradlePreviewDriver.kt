@@ -1,5 +1,10 @@
-package ee.schimke.composeai.cli
+package ee.schimke.composeai.previewdriver
 
+import ee.schimke.composeai.previewdata.PreviewManifest
+import ee.schimke.composeai.previewdata.PreviewModule
+import ee.schimke.composeai.previewdata.PreviewResult
+import ee.schimke.composeai.previewdata.PreviewResultBuilder
+import ee.schimke.composeai.previewdata.previewSha256
 import java.io.File
 
 /**

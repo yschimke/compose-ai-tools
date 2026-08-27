@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli
+package ee.schimke.composeai.previewdata
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement

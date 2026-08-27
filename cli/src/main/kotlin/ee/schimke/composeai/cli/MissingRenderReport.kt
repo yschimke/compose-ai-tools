@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.cli.serve.RenderFailureFrame
 import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.previewdata.PreviewResult
 import java.io.File
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json

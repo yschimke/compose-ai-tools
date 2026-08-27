@@ -1,10 +1,10 @@
 package ee.schimke.composeai.cli.serve
 
-import ee.schimke.composeai.cli.PreviewManifest
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import ee.schimke.composeai.data.overrides.PreviewOverridesPayload
+import ee.schimke.composeai.previewdata.PreviewManifest
 import java.io.File
 import kotlin.test.AfterTest
 import kotlin.test.Test

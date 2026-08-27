@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli
+package ee.schimke.composeai.previewdata
 
 import ee.schimke.composeai.io.SystemFileSystem
 import java.awt.image.BufferedImage
@@ -27,7 +27,7 @@ import okio.Path.Companion.toPath
  * through `:cli` need the same change-detection hash function so their state files stay compatible
  * with the CLI's.
  */
-fun previewSha256(file: File, fileSystem: FileSystem = SystemFileSystem): String =
+public fun previewSha256(file: File, fileSystem: FileSystem = SystemFileSystem): String =
   if (file.extension.equals("gif", ignoreCase = true)) {
     gifBookendFrameSha256(file, fileSystem) ?: sha256(readAllBytes(file, fileSystem))
   } else {

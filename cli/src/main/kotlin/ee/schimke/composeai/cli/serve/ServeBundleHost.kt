@@ -368,12 +368,16 @@ class ServeBundleHost(
    * Compose replays, this preserves each baked preview's explicit `uiMode` for the viewer's
    * Day/Night default. Empty when the bundle carries no manifest.
    */
-  private val previewParamsById: Map<String, ee.schimke.composeai.cli.PreviewParams> by lazy {
+  private val previewParamsById:
+    Map<String, ee.schimke.composeai.previewdata.PreviewParams> by lazy {
     val previewsJson = File(bundleDir, PREVIEWS_JSON).toOkioPath()
     if (!fileSystem.exists(previewsJson)) return@lazy emptyMap()
     try {
       val text = fileSystem.read(previewsJson) { readUtf8() }
-      OVERRIDES_JSON.decodeFromString(ee.schimke.composeai.cli.PreviewManifest.serializer(), text)
+      OVERRIDES_JSON.decodeFromString(
+          ee.schimke.composeai.previewdata.PreviewManifest.serializer(),
+          text,
+        )
         .previews
         .associate { it.id to it.params }
     } catch (e: Exception) {
@@ -408,7 +412,7 @@ class ServeBundleHost(
         val text = fileSystem.read(previewsJson) { readUtf8() }
         val manifest =
           OVERRIDES_JSON.decodeFromString(
-            ee.schimke.composeai.cli.PreviewManifest.serializer(),
+            ee.schimke.composeai.previewdata.PreviewManifest.serializer(),
             text,
           )
         for (p in manifest.previews) {
@@ -644,7 +648,7 @@ class ServeBundleHost(
         val text = fileSystem.read(previewsJson) { readUtf8() }
         val manifest =
           OVERRIDES_JSON.decodeFromString(
-            ee.schimke.composeai.cli.PreviewManifest.serializer(),
+            ee.schimke.composeai.previewdata.PreviewManifest.serializer(),
             text,
           )
         for (p in manifest.previews) {
@@ -671,7 +675,10 @@ class ServeBundleHost(
     try {
       val text = fileSystem.read(previewsJson) { readUtf8() }
       val manifest =
-        OVERRIDES_JSON.decodeFromString(ee.schimke.composeai.cli.PreviewManifest.serializer(), text)
+        OVERRIDES_JSON.decodeFromString(
+          ee.schimke.composeai.previewdata.PreviewManifest.serializer(),
+          text,
+        )
       declaredThemesFromPreviews(manifest.previews)
     } catch (e: Exception) {
       emptyList()
@@ -1521,7 +1528,7 @@ private fun rendersRightToLeft(locale: String?): Boolean {
  * the fields a browse surface consults before opening a daemon cross over — the rest of
  * `PreviewParams` (locale, font scale, density) belongs to the render, not to how it is presented.
  */
-private fun ee.schimke.composeai.cli.PreviewParams.asPreviewParamsMeta():
+private fun ee.schimke.composeai.previewdata.PreviewParams.asPreviewParamsMeta():
   ServeCatalogStore.PreviewParamsMeta =
   ServeCatalogStore.PreviewParamsMeta(
     uiMode = uiMode,

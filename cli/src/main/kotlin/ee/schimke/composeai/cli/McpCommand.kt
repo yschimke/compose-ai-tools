@@ -2,6 +2,9 @@ package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.mcp.DaemonMcpMain
+import ee.schimke.composeai.previewdriver.DriverOptions
+import ee.schimke.composeai.previewdriver.GradlePreviewDriver
+import ee.schimke.composeai.previewdriver.RenderRequest
 import java.io.File
 import kotlin.system.exitProcess
 import kotlinx.serialization.json.Json

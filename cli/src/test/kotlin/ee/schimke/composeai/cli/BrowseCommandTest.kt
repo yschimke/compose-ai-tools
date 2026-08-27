@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.previewdata.PreviewModule
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test

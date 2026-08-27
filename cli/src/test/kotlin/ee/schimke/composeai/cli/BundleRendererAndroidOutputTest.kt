@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.previewdata.Capture
+import ee.schimke.composeai.previewdata.PreviewInfo
 import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test

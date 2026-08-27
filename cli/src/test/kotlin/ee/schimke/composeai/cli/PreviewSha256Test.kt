@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.previewdata.previewSha256
 import java.awt.Color
 import java.awt.image.BufferedImage
 import java.io.File

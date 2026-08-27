@@ -4,6 +4,7 @@ import ee.schimke.composeai.plugin.tooling.ComposePreviewModel
 import ee.schimke.composeai.plugin.tooling.ModuleFinding
 import ee.schimke.composeai.plugin.tooling.ModuleInfo
 import ee.schimke.composeai.plugin.tooling.RenderPreviewsTaskInfo
+import ee.schimke.composeai.previewdriver.ProjectDiscoveryFailure
 import java.io.Serializable
 import org.gradle.tooling.BuildAction
 import org.gradle.tooling.BuildController

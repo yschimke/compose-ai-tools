@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli
+package ee.schimke.composeai.previewdata
 
 import ee.schimke.composeai.io.SystemFileSystem
 import kotlinx.serialization.json.Json
@@ -19,14 +19,14 @@ import okio.Path.Companion.toPath
  * Results are returned with `changed = null` on every capture — the driver doesn't track diff
  * state. Consumers that want change detection track `sha256` against their own prior run.
  */
-object PreviewResultBuilder {
+public object PreviewResultBuilder {
 
   /**
    * Read a module's `build/compose-previews/previews.json` and decode it into a [PreviewManifest].
    * Returns `null` when the file doesn't exist — `composePreviewRenderAll` is allowed to skip a
    * module that has no previews discovered yet.
    */
-  fun readManifest(
+  public fun readManifest(
     module: PreviewModule,
     fileSystem: FileSystem = SystemFileSystem,
   ): PreviewManifest? {
@@ -42,7 +42,7 @@ object PreviewResultBuilder {
    * Convenience over [readManifest] — drops modules whose manifest file isn't on disk yet.
    * Order-preserving.
    */
-  fun readAllManifests(
+  public fun readAllManifests(
     modules: List<PreviewModule>,
     fileSystem: FileSystem = SystemFileSystem,
   ): List<Pair<PreviewModule, PreviewManifest>> {
@@ -60,7 +60,7 @@ object PreviewResultBuilder {
    *
    * No side effects — pure function over the manifest data + on-disk PNG files.
    */
-  fun build(
+  public fun build(
     manifests: List<Pair<PreviewModule, PreviewManifest>>,
     fileSystem: FileSystem = SystemFileSystem,
   ): List<PreviewResult> {
@@ -236,7 +236,7 @@ object PreviewResultBuilder {
  * `.error.json` sidecars. Two copies of this rule would drift, and a drift means one preview's
  * failure reported under another's name.
  */
-fun parameterFanoutOwnedBySibling(
+public fun parameterFanoutOwnedBySibling(
   templateOutput: String,
   siblingOutput: String,
   candidateOutput: String,
