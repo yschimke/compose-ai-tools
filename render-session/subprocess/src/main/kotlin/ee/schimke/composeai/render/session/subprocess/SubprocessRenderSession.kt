@@ -241,6 +241,12 @@ public object SubprocessRenderSessions : RenderSessionFactory {
 
   /**
    * Descriptor schema version the daemon launch path speaks; mirrors the gradle plugin's writer.
+   *
+   * This module cannot import the writer's constant — `:gradle-plugin:daemon-launch-builder` lives
+   * in a separate composite build — so the value is duplicated here. `checkDaemonLaunchSchema`
+   * fails if the two ever disagree, which matters more than usual: this is one of the published
+   * contract modules an extracted preview server links against (#3824), so after the split a stale
+   * copy here is cross-repo version skew that no compiler sees.
    */
   private const val DAEMON_DESCRIPTOR_SCHEMA_VERSION = 2
 

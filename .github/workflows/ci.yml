@@ -1239,6 +1239,12 @@ jobs:
         run: python3 scripts/test_check_serve_seam.py -v
       - name: Run serve coupling measurement tests
         run: python3 scripts/test_measure_serve_coupling.py -v
+      # `daemon-launch.json` is written by the gradle plugin and read by the daemon JVM, the CLI
+      # doctor and the VS Code extension, each with its own copy of the shape and of the schema
+      # version. Two of those copies carry a comment asking a human to keep them in sync; this is
+      # the gate that makes it enforceable. Runs the check against the real tree too.
+      - name: Run daemon-launch schema gate tests
+        run: python3 scripts/test_check_daemon_launch_schema.py -v
       # The AdaptiveJetStream XR cell renders the sample's Subspaces with OUR compose-testing
       # against ITS compose. A version skew there fails only on main (the XR step is skipped on
       # PRs) and only at runtime, with a message that points nowhere near the cause.

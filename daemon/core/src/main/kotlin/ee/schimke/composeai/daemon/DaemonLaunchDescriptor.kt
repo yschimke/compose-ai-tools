@@ -81,7 +81,9 @@ public data class DaemonLaunchDescriptor(
     /**
      * Sysprop key the daemon reads to configure
      * [`RobolectricHost.sandboxCount`][ee.schimke.composeai.daemon.RobolectricHost.sandboxCount].
-     * Mirrored on the daemon side as a private const in `DaemonMain.kt`; both sides MUST agree.
+     * Mirrored on the daemon side as private consts in `DaemonMain.kt` and `SandboxProcessPool.kt`;
+     * all three MUST agree, or every daemon silently gets a pool of one. Enforced by
+     * `checkDaemonLaunchSchema`.
      */
     public const val SANDBOX_COUNT_PROP: String = "composeai.daemon.sandboxCount"
 

@@ -46,7 +46,7 @@ breaks, on a normal PR cadence, for as long as it takes the gate to go green.
 
 ## What enforces it today
 
-Three checks, each failing in both directions so it cannot rot into decoration.
+Four checks, each failing in both directions so it cannot rot into decoration.
 
 ### 1. `./gradlew :cli:checkServeSeam` — the symbol ratchet
 
@@ -162,6 +162,59 @@ this table: it is not a module at all, so an extracted server cannot name it.
 > now resolves every imported type to its declaring module and fails if the mapping disagrees.
 > There is no unpublished blocker *among the packages serve imports*. There are two among the ones
 > it loads reflectively — see below, which is where the real answer turned out to be.
+
+### 4. `./gradlew :cli:checkDaemonLaunchSchema` — the cross-language schema gate
+
+The first three checks police *which* modules the server touches. This one polices a contract that
+has no module at all: `<module>/build/compose-previews/daemon-launch.json`, written by the Gradle
+plugin and read by the daemon JVM, `compose-preview doctor`, and the VS Code extension. Four
+representations of one file, in two languages, in three separate Gradle builds — and nothing in the
+build knew they described the same thing.
+
+The schema version was the sharp edge. It was declared four times, as a literal `2` each time, and
+two of those copies carried a comment asking a human to remember:
+
+```
+render-session/subprocess/.../SubprocessRenderSession.kt
+    /** ... mirrors the gradle plugin's writer. */
+    private const val DAEMON_DESCRIPTOR_SCHEMA_VERSION = 2
+
+cli/.../McpCommand.kt
+    // Keep in sync — bump together.
+    internal const val EXPECTED_DESCRIPTOR_SCHEMA_VERSION: Int = 2
+```
+
+Bumping the writer alone left both writing and expecting v2 with nothing failing, while
+`daemonProcess.ts` — the only reader that checks the version — rejected every descriptor the plugin
+produced. `:render-session-subprocess` is one of the published contract modules an extracted server
+links against, so after the split that stops being a same-commit mistake and becomes cross-repo
+version skew no compiler sees.
+
+`scripts/check-daemon-launch-schema.py` enforces five things:
+
+- **version agreement** — every declared copy equals the writer's, *and* every copy is registered.
+  An unregistered `*DESCRIPTOR_SCHEMA_VERSION` anywhere in the tree fails, so a new mirror has to be
+  declared, which is the moment someone can ask whether it should exist at all;
+- **structural agreement** — every field a reader requires is one the writer emits, shared fields
+  carry corresponding types across Kotlin and TypeScript, and a reader-only field is optional;
+- **`BtaCompileConfig` field-for-field** across the two languages, which its KDoc claimed and
+  nothing enforced;
+- **unknown-key tolerance** — the JVM reader keeps `ignoreUnknownKeys = true`, the single line that
+  makes the writer's `btaCompile` (which that reader does not declare) safe rather than fatal;
+- **mirrored constants** — sysprop keys the descriptor carries that other modules re-declare
+  privately, such as `SANDBOX_COUNT_PROP`, whose own KDoc says "both sides MUST agree".
+
+Divergences that are correct by design live in `scripts/daemon-launch-schema-allowlist.json` with
+the reason written down — the same debt-register discipline as the seam allowlist, not an exemption
+list. The three that exist today: serve's sandbox-only `jailCommand` and `hardTtlSeconds` (which
+the plugin never writes, so both must default), and the writer's `btaCompile` (which the daemon JVM
+does consume, but through flattened system properties rather than the nested block).
+
+All five rules were falsified before the check was committed — each one made to fail on purpose,
+then restored — and the gate is unit-tested by `scripts/test_check_daemon_launch_schema.py`.
+
+The representations agreed when the gate landed. That is the point: it was written while the
+answer was still "no drift", so the first time it fails will be the first real drift.
 
 ### Reflective dependencies — the checks' blind spot
 

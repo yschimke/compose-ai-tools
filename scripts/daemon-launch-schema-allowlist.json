@@ -1,0 +1,84 @@
+{
+  "_doc": [
+    "The four representations of `<module>/build/compose-previews/daemon-launch.json`, and the",
+    "divergences between them that are correct on purpose. Checked by",
+    "`scripts/check-daemon-launch-schema.py`. A debt register, not a config file: an entry is a",
+    "claim someone made deliberately, with the reason written down, not an exemption to add when",
+    "the check goes red.",
+    "",
+    "schemaVersionSites: every place the descriptor's schema version is declared. The check fails",
+    "if any disagrees with the writer, and fails again if a `*DESCRIPTOR_SCHEMA_VERSION` appears",
+    "anywhere that is not listed — a new mirror has to be declared here, which is the moment",
+    "someone can ask whether it should exist at all. The right long-term number of entries is 2",
+    "(the writer, and the TypeScript reader that cannot import Kotlin); the other two are Kotlin",
+    "and could read the writer's constant directly if `:render-session-subprocess` and `:cli`",
+    "took a dependency on `:gradle-plugin:daemon-launch-builder`. Until then they are mirrors,",
+    "and mirrors need a gate rather than a comment asking a human to remember.",
+    "",
+    "readerOnlyFields: a field a reader declares that the plugin's writer never emits. Each must",
+    "carry a Kotlin default (or be `?:` in TypeScript), because a plugin-written descriptor will",
+    "not contain it. The check enforces that.",
+    "",
+    "writerOnlyFields: a field the writer emits that a reader does not declare. Safe only while",
+    "that reader tolerates unknown keys, which the check verifies separately against the JVM",
+    "reader's `Json { ignoreUnknownKeys = true }`.",
+    "",
+    "mirroredConstants: string constants carried inside the descriptor that another module",
+    "re-declares privately. Same hazard as the schema version, one level down."
+  ],
+  "schemaVersionSites": [
+    {
+      "file": "gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonClasspathDescriptor.kt",
+      "symbol": "DAEMON_DESCRIPTOR_SCHEMA_VERSION",
+      "role": "writer",
+      "why": "The source of truth. `DaemonLaunchBuilder` stamps it into every descriptor it writes, and it participates in `DaemonBootstrapTask`'s up-to-date fingerprint."
+    },
+    {
+      "file": "vscode-extension/src/daemon/daemonProtocol.ts",
+      "symbol": "DAEMON_DESCRIPTOR_SCHEMA_VERSION",
+      "role": "reader",
+      "why": "The only reader that gates on the version: `daemonProcess.ts` refuses a descriptor whose `schemaVersion` differs. Cannot import the Kotlin constant, so this copy is unavoidable — which is exactly why it needs checking."
+    },
+    {
+      "file": "render-session/subprocess/src/main/kotlin/ee/schimke/composeai/render/session/subprocess/SubprocessRenderSession.kt",
+      "symbol": "DAEMON_DESCRIPTOR_SCHEMA_VERSION",
+      "role": "second writer",
+      "why": "`:render-session-subprocess` writes its own descriptors for the bundle daemons it spawns, stamping this private copy. It is one of the twelve published contract modules an extracted preview server links against (#3824), so post-split a stale mirror here is cross-repo version skew no compiler sees."
+    },
+    {
+      "file": "cli/src/main/kotlin/ee/schimke/composeai/cli/McpCommand.kt",
+      "symbol": "EXPECTED_DESCRIPTOR_SCHEMA_VERSION",
+      "role": "doctor",
+      "why": "`compose-preview doctor` reports a descriptor written by a mismatched plugin version. Its comment already says `Keep in sync — bump together`; this makes that enforceable."
+    }
+  ],
+  "readerOnlyFields": {
+    "jvm": {
+      "jailCommand": {
+        "writtenBy": "the CLI's serve path (ServeBundleDaemon.kt, ServeCommand.kt) via DaemonLaunchDescriptor.jailed()",
+        "why": "The playground sandbox launches the daemon JVM behind an argv prefix. The Gradle plugin has no sandbox and never writes this; :daemon-client reads it when spawning. Defaults to an empty list, so a plugin-written descriptor parses unchanged."
+      },
+      "hardTtlSeconds": {
+        "writtenBy": "the CLI's serve path (ServeBundleDaemon.kt, ServeCommand.kt) via DaemonLaunchDescriptor.jailed()",
+        "why": "Wall-clock deadline after which the spawner force-kills a sandboxed daemon. Same sandbox-only origin as jailCommand; null by default."
+      }
+    },
+    "vscode": {}
+  },
+  "writerOnlyFields": {
+    "btaCompile": {
+      "invisibleTo": ["jvm"],
+      "why": "The daemon JVM does read this config, but through flattened `composeai.daemon.bta*` system properties (DefaultBtaCompileService.fromSysprops()), not through the descriptor's nested block — so DaemonLaunchDescriptor has no reason to declare it. The VS Code extension reads the block directly to decide whether calling `compileSources` is worth a round-trip. Survivable only because the JVM reader ignores unknown keys."
+    }
+  },
+  "mirroredConstants": {
+    "SANDBOX_COUNT_PROP": {
+      "declaredBy": "daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/DaemonLaunchDescriptor.kt",
+      "mirroredBy": [
+        "daemon/android/src/main/kotlin/ee/schimke/composeai/daemon/DaemonMain.kt",
+        "daemon/android/src/main/kotlin/ee/schimke/composeai/daemon/pool/SandboxProcessPool.kt"
+      ],
+      "why": "The descriptor merges this sysprop in via `withSandboxCount()` and the daemon reads it at boot; its own KDoc says 'both sides MUST agree'. Disagreement silently gives every daemon a pool of one."
+    }
+  }
+}

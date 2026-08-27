@@ -648,6 +648,73 @@ tasks.register<CheckServeSeam>("checkServeSeam") {
 
 tasks.named("check") { dependsOn("checkServeSeam") }
 
+// The four representations of `daemon-launch.json`, checked against each other.
+//
+// The descriptor is written by the gradle plugin and read by the daemon JVM, this CLI's `doctor`
+// and the VS Code extension. Each declares its own copy of the shape and of the schema version,
+// and nothing in the build knows they describe one file. Two of the copies carry a comment asking
+// a human to keep them in sync — `SubprocessRenderSession.kt`'s "mirrors the gradle plugin's
+// writer" and `McpCommand.kt`'s "Keep in sync — bump together". This is that comment, enforced.
+//
+// It lives on `:cli` for the same reason `checkServeSeam` does: the check spans modules that sit
+// in different builds (the writer is inside the `gradle-plugin` composite) plus a TypeScript file
+// that is in no Gradle build at all, so no single owning module exists. `:cli` runs on every PR,
+// holds one of the four sites itself, and already hosts the sibling repo-wide seam check.
+abstract class CheckDaemonLaunchSchema : DefaultTask() {
+  /** Every representation the checker compares, so Gradle re-runs when any of them moves. */
+  @get:InputFiles
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val representations: ConfigurableFileCollection
+
+  @get:InputFile
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val allowlist: RegularFileProperty
+
+  @get:InputFile
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val checker: RegularFileProperty
+
+  /** Nothing to produce — the file just lets Gradle skip the check when nothing moved. */
+  @get:OutputFile abstract val stamp: RegularFileProperty
+
+  @get:Inject abstract val execOps: ExecOperations
+
+  @TaskAction
+  fun checkSchema() {
+    execOps.exec { commandLine("python3", checker.get().asFile.absolutePath) }
+    stamp.get().asFile.writeText("ok\n")
+  }
+}
+
+tasks.register<CheckDaemonLaunchSchema>("checkDaemonLaunchSchema") {
+  description = "Fails if the daemon-launch.json writer and its readers disagree."
+  group = "verification"
+
+  val repoRoot = rootProject.layout.projectDirectory
+  representations.from(
+    repoRoot.file(
+      "gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonClasspathDescriptor.kt"
+    ),
+    repoRoot.file(
+      "daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/DaemonLaunchDescriptor.kt"
+    ),
+    repoRoot.file("vscode-extension/src/daemon/daemonProtocol.ts"),
+    repoRoot.file(
+      "render-session/subprocess/src/main/kotlin/ee/schimke/composeai/render/session/subprocess/SubprocessRenderSession.kt"
+    ),
+    repoRoot.file("cli/src/main/kotlin/ee/schimke/composeai/cli/McpCommand.kt"),
+    repoRoot.file("daemon/android/src/main/kotlin/ee/schimke/composeai/daemon/DaemonMain.kt"),
+    repoRoot.file(
+      "daemon/android/src/main/kotlin/ee/schimke/composeai/daemon/pool/SandboxProcessPool.kt"
+    ),
+  )
+  allowlist.set(repoRoot.file("scripts/daemon-launch-schema-allowlist.json"))
+  checker.set(repoRoot.file("scripts/check-daemon-launch-schema.py"))
+  stamp.set(layout.buildDirectory.file("check-daemon-launch-schema/ok.txt"))
+}
+
+tasks.named("check") { dependsOn("checkDaemonLaunchSchema") }
+
 // Bake the resolved Gradle build version into a properties resource the CLI reads at runtime
 // (see `Version.kt#BUNDLE_VERSION`). Avoids the previous hand-edited literal in source — which
 // drifted out of sync with the release manifest and made `compose-preview show` advertise a
