@@ -166,6 +166,17 @@ class TestSourceSets(unittest.TestCase):
         self.assertFalse(mod.is_test_source("a/src/main/B.kt"))
 
 
+class TypeScriptConstants(unittest.TestCase):
+    def test_a_module_local_const_is_still_a_mirror(self):
+        # `export` is not what makes a constant dangerous; declaring a version is.
+        self.assertIn("X", dict(mod.TS_CONST.findall("const X = 2;")))
+        self.assertIn("Y", dict(mod.TS_CONST.findall("export const Y = 2;")))
+
+    def test_discovery_matches_a_non_exported_version_name(self):
+        found = mod.VERSION_NAME.findall("const ROGUE_DESCRIPTOR_SCHEMA_VERSION = 2;")
+        self.assertEqual(["ROGUE_DESCRIPTOR_SCHEMA_VERSION"], found)
+
+
 class WireFingerprint(unittest.TestCase):
     def test_a_renamed_field_changes_the_digest(self):
         a = {"variant": ("String", False)}
@@ -279,6 +290,22 @@ class RealTree(unittest.TestCase):
             keys = {m.group(1) for m in mod.RAW_KEY.finditer(mod.strip_comments(mod.read(rel)))}
             self.assertTrue(keys, f"{rel} exposes no raw key reads any more")
             self.assertEqual(set(), keys - set(writer), f"{rel} reads keys the writer never emits")
+
+    def test_no_dto_property_carries_an_unvetted_annotation(self):
+        # Refused as a class rather than one annotation at a time: `@Transient` drops a field and
+        # `@EncodeDefault` changes whether a default is written, both invisible to a checker that
+        # reads declarations. Nothing is allowed unless it has been considered.
+        for dto in ("DaemonClasspathDescriptor",) + mod.NESTED_DTOS:
+            self.assertEqual([], mod.annotated_properties(mod.WRITER, dto), dto)
+
+    def test_no_reader_only_entry_is_stale(self):
+        writer = mod.kotlin_data_class(mod.WRITER, "DaemonClasspathDescriptor")
+        for label, fields in self.allowlist["readerOnlyFields"].items():
+            self.assertEqual(
+                set(),
+                set(fields) & set(writer),
+                f"{label}: reader-only entries the writer now emits must be pruned",
+            )
 
     def test_no_descriptor_dto_uses_serial_name(self):
         # `@SerialName` moves the JSON key while the identifier — which every rule here reads —

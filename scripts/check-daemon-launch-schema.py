@@ -167,6 +167,15 @@ KT_FIELD = re.compile(r"\bval\s+(\w+)\s*:\s*(.+)", re.S)
 # rather than half-support it, the check refuses it and says why.
 KT_SERIAL_NAME = re.compile(r'@SerialName\s*\(\s*"([^"]*)"\s*\)')
 
+# Every rule here reads the Kotlin declaration, so any annotation that changes what
+# kotlinx.serialization actually emits is invisible to all of them. `@SerialName` moves the key;
+# `@Transient` removes the field entirely; `@EncodeDefault` changes whether a defaulted field is
+# written at all. Rather than adding a rule per annotation as each is thought of, nothing is
+# allowed on these properties unless it is listed here — so the next one has to be considered
+# rather than slipping through.
+KT_PROPERTY_ANNOTATION = re.compile(r"@(\w+)")
+ALLOWED_DTO_ANNOTATIONS: frozenset[str] = frozenset()
+
 
 def split_params(body: str) -> list[str]:
     """Split a parameter list on top-level commas.
@@ -201,6 +210,23 @@ def serial_name_renames(rel: str, name: str) -> list[str]:
         field = KT_FIELD.search(param)
         if rename and field and rename.group(1) != field.group(1):
             found.append(f"{field.group(1)} -> \"{rename.group(1)}\"")
+    return found
+
+
+def annotated_properties(rel: str, name: str) -> list[tuple[str, str]]:
+    """`(field, annotation)` for every annotation on a property of `name` that is not allowed."""
+    text = stripped(rel)
+    m = re.search(r"\bdata class\s+" + re.escape(name) + r"\s*\(", text)
+    if not m:
+        return []
+    found = []
+    for param in split_params(balanced(text, m.end() - 1, "(", ")")):
+        field = KT_FIELD.search(param)
+        if not field:
+            continue
+        for annotation in KT_PROPERTY_ANNOTATION.findall(param):
+            if annotation not in ALLOWED_DTO_ANNOTATIONS:
+                found.append((field.group(1), annotation))
     return found
 
 
@@ -257,7 +283,10 @@ def ts_interface(rel: str, name: str) -> dict[str, tuple[str, bool]]:
     return {f.group(1): (f.group(3).strip(), f.group(2) == "?") for f in TS_FIELD.finditer(body)}
 
 
-TS_CONST = re.compile(r"export const (\w+)\s*(?::\s*\w+\s*)?=\s*(.+?);", re.M)
+# `export` is optional. A module-local `const DAEMON_DESCRIPTOR_SCHEMA_VERSION = 2` is a mirror
+# like any other — it can compare a descriptor against its own stale copy without ever constructing
+# a DTO, so discovery-by-use cannot see it either.
+TS_CONST = re.compile(r"(?:export\s+)?const (\w+)\s*(?::\s*\w+\s*)?=\s*(.+?);", re.M)
 
 
 def ts_consts(rel: str) -> dict[str, str]:
@@ -489,7 +518,7 @@ def check_wire_fingerprint(
 # is a heuristic either way — `discover_version_stamps` below is the one that cannot be renamed
 # out of, and this stays to catch readers that only *compare* a version without constructing one.
 VERSION_NAME = re.compile(
-    r"(?:const val|export const) (\w*(?:DESCRIPTOR|DAEMON_LAUNCH)_SCHEMA_VERSION)\b"
+    r"(?:const val|(?:export\s+)?const) (\w*(?:DESCRIPTOR|DAEMON_LAUNCH)_SCHEMA_VERSION)\b"
 )
 
 # `src/test` and `src/functionalTest` were not enough: this repo also carries `commonTest`,
@@ -601,6 +630,17 @@ def check_reader(
     ts: bool,
 ) -> None:
     reader_only = allowlist["readerOnlyFields"].get(label, {})
+
+    # A reader-only entry claims "the writer never emits this". Once the writer does, the claim is
+    # false and the entry has to go — otherwise it sits there as a standing exemption that would
+    # silently authorise the field's removal later. A debt register that stops describing reality
+    # is the failure this whole check exists to prevent.
+    for field in sorted(set(reader_only) & set(writer)):
+        failures.append(
+            f"  {rel}: `{field}` is recorded in `readerOnlyFields` as something the writer never "
+            f"emits, but the writer now declares it.\n    Remove the entry — it is a stale "
+            f"exemption, and leaving it would license a later removal without review."
+        )
 
     for field, (rtype, optional) in reader.items():
         if field not in writer:
@@ -741,7 +781,8 @@ def check() -> int:
     check_raw_key_readers(writer, allowlist, failures)
     check_wire_fingerprint(writer, allowlist, failures)
 
-    # `@SerialName` moves the wire key without moving the identifier, which every rule here reads.
+    # Annotations on these properties change what is emitted without changing the declaration that
+    # every rule here reads. Refused as a class rather than one at a time.
     for dto in ("DaemonClasspathDescriptor",) + NESTED_DTOS:
         for rename in serial_name_renames(WRITER, dto):
             failures.append(
@@ -749,6 +790,17 @@ def check() -> int:
                 f"matches the Kotlin identifier.\n    Every rule here compares identifiers, so a "
                 f"wire rename this way would be invisible to all of them. Either drop the "
                 f"annotation, or teach this checker to read it — do not leave it unhandled."
+            )
+        for field, annotation in annotated_properties(WRITER, dto):
+            if annotation == "SerialName":
+                continue  # reported above, with a better message
+            failures.append(
+                f"  {WRITER}: `{dto}.{field}` carries `@{annotation}`, which is not in "
+                f"`ALLOWED_DTO_ANNOTATIONS`.\n    An annotation can change what "
+                f"kotlinx.serialization emits (`@Transient` drops the field, `@EncodeDefault` "
+                f"changes whether a default is written) while the declaration this checker reads "
+                f"stays identical. Decide what it means for the wire format and record it, rather "
+                f"than letting it through unexamined."
             )
 
     # `BtaCompileConfig` claims to be field-for-field across the two languages.

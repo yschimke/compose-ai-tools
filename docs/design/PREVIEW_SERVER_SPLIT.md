@@ -217,9 +217,12 @@ version skew no compiler sees.
   each one records the **type it assumes** — `enabled` going `Boolean` -> `String` would keep its
   name, pass every other rule, and crash `.jsonPrimitive.boolean` at runtime with no compiler in
   the way;
-- **`@SerialName` refusal** — the annotation moves the JSON key while the Kotlin identifier, which
-  every other rule reads, stays put. Rather than half-supporting it the check refuses it outright
-  and says why;
+- **annotation refusal** — an annotation can change what kotlinx.serialization emits while the
+  declaration every other rule reads stays identical: `@SerialName` moves the key, `@Transient`
+  drops the field, `@EncodeDefault` changes whether a default is written. Refused as a *class*
+  rather than one at a time — nothing is allowed on these properties unless it is on an
+  (currently empty) allowlist, so the next annotation someone reaches for has to be considered
+  rather than slipping through;
 - **a wire fingerprint** — a digest of the writer's field names, types and optionality *and of the
   DTOs it nests*, pinned
   against the version it describes. Version agreement across the copies is necessary and not
