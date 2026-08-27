@@ -17,7 +17,16 @@ class ServeWebThumbCropTest {
   private val previews =
     listOf(ServePreview(id = "filled-button__ideal__default__compact", label = "Filled"))
   private val crop =
-    ContentCrop(boxW = 120, boxH = 48, imgW = 454, imgH = 454, left = -167, top = -203)
+    ContentCrop(
+      boxW = 120,
+      boxH = 48,
+      imgW = 454,
+      imgH = 454,
+      left = -167,
+      top = -203,
+      natBoxW = 120,
+      natCapAxis = 120,
+    )
 
   @Test
   fun `a catalog card with a crop wraps the image in an aspect-sized clip window`() {
@@ -32,7 +41,9 @@ class ServeWebThumbCropTest {
     // The window's natural width is the box, but it sizes by aspect-ratio (so `max-width: 100%` can
     // shrink it on a narrow card) rather than a fixed height.
     assertTrue(
-      html.contains("class=\"cp-crop\" style=\"width:120px;aspect-ratio:120/48\""),
+      html.contains(
+        "class=\"cp-crop\" style=\"--cp-crop-w-per-cap:1;--cp-crop-max-w:120px;aspect-ratio:120/48\""
+      ),
       "clip window sized to the box by aspect-ratio",
     )
     // Render img framed in percentages of the box (454/120, -167/120, -203/48), so the whole frame
@@ -65,7 +76,9 @@ class ServeWebThumbCropTest {
       )
     val html = ServeWeb.homeIndexPage(listOf(system), token = "t", isPublic = true)
     assertTrue(
-      html.contains("class=\"cp-crop\" style=\"width:120px;aspect-ratio:120/48\""),
+      html.contains(
+        "class=\"cp-crop\" style=\"--cp-crop-w-per-cap:1;--cp-crop-max-w:120px;aspect-ratio:120/48\""
+      ),
       "hero framed to its box",
     )
   }
@@ -93,6 +106,75 @@ class ServeWebThumbCropTest {
   }
 
   @Test
+  fun `a capped window publishes its width relative to the display cap, not as frozen px`() {
+    // A 300x100 component on a 600x600 render: the largest edge is capped 240/300, so the window
+    // draws 240x80. Freezing that 240px in the HTML is what made a cropped card 20% larger than
+    // its plain neighbour under the narrow-viewport `max-height: 200px` (#4544) — the plain image
+    // shrank and the window did not. Publishing the RELATIONSHIP instead (box width per 1px of
+    // cap, plus the 1x ceiling) lets the stylesheet re-derive it for whatever cap is in force.
+    val capped = computeThumbCrop(svg("0 0 300 100", "translate(-150, -250)"), 600, 600)!!
+    val html =
+      ServeWeb.landingPage(
+        "wear-m3",
+        previews,
+        token = "t",
+        basePath = "/wear-m3",
+        thumbCrop = { capped },
+      )
+    // 300 wide per 300 of cap = 1, ceiling 300px → min(300px, 1 * 240px) = 240px at the desktop
+    // cap and min(300px, 1 * 200px) = 200px at the narrow one: the same ratio the plain <img>'s
+    // 240 -> 200 `max-height` drop applies.
+    assertTrue(
+      html.contains(
+        "class=\"cp-crop\" style=\"--cp-crop-w-per-cap:1;--cp-crop-max-w:300px;aspect-ratio:240/80\""
+      ),
+      "window width published as a ratio of the cap",
+    )
+  }
+
+  @Test
+  fun `a gutter window is capped on its height, so it matches a plain image's max-height`() {
+    // A 249x126 button in a 271x150 render with an 11/11/11/13 gutter. The cap acts on HEIGHT here
+    // (a plain <img> beside it is bounded by `max-height`), so the ratio published is width-per-
+    // cap = 249/126 and the window's height lands on the cap exactly.
+    val gutter = computeGutterCrop(11, 11, 11, 13, 271, 150)!!
+    val html =
+      ServeWeb.landingPage(
+        "wear-m3",
+        previews,
+        token = "t",
+        basePath = "/wear-m3",
+        thumbCrop = { gutter },
+      )
+    assertTrue(
+      html.contains("--cp-crop-w-per-cap:1.9762;--cp-crop-max-w:249px"),
+      "gutter window width published per cap PIXEL of height (249/126)",
+    )
+  }
+
+  @Test
+  fun `a crop with no native size keeps the fixed-px window`() {
+    val handmade =
+      ContentCrop(boxW = 120, boxH = 48, imgW = 454, imgH = 454, left = -167, top = -203)
+    val html =
+      ServeWeb.landingPage(
+        "wear-m3",
+        previews,
+        token = "t",
+        basePath = "/wear-m3",
+        thumbCrop = { handmade },
+      )
+    assertTrue(
+      html.contains("class=\"cp-crop\" style=\"width:120px;aspect-ratio:120/48\""),
+      "no native size to re-derive from, so the window stays at its computed px",
+    )
+  }
+
+  /** A minimal figma-svg carrying a content [viewBox] and placing [translate]. */
+  private fun svg(viewBox: String, translate: String) =
+    """<svg viewBox="$viewBox"><g transform="$translate"></g></svg>"""
+
+  @Test
   fun `the crop CSS is present so the clip window actually clips`() {
     val css = ServeWebAssets.load("serve.css")!!.bytes.decodeToString()
     assertTrue(
@@ -113,6 +195,17 @@ class ServeWebThumbCropTest {
       ),
       "no CSS height cap on an aspect-ratio window",
     )
+    // The cap the window resolves its published ratio against, and the narrow-viewport drop that
+    // keeps a cropped card the same size as the plain card beside it (#4544).
+    assertTrue(
+      css.contains(
+        "width: min(var(--cp-crop-max-w, 100%), calc(var(--cp-crop-w-per-cap, 9999) * var(--cp-thumb-cap, 240px)));"
+      ),
+      "window width derived from the cap, defaulting to the desktop 240px",
+    )
+    assertTrue(css.contains(".cp-crop { --cp-thumb-cap: 200px; }"), "narrow-viewport cap")
+    // ...and it must drop in lockstep with the plain image's cap, or the mismatch just moves.
+    assertTrue(css.contains(".cp-imgwrap img { max-height: 200px; }"), "plain image's narrow cap")
   }
 
   /** The section an operator's `catalogs.json` declares for Android's samples. */

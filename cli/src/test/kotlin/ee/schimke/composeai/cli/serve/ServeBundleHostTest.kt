@@ -588,6 +588,10 @@ class ServeBundleHostTest {
         left = -11,
         top = -11,
         clip = false,
+        // The native box and the capped axis (height, for a gutter crop) ride along, so the page
+        // can re-derive the window's width for a narrower viewport's cap (#4544).
+        natBoxW = 249,
+        natCapAxis = 126,
       ),
       crop,
     )

@@ -54,6 +54,10 @@ class ServeThumbCropTest {
     assertNotNull(crop)
     // scale = 240 / max(300,100) = 0.8
     assertEquals(240, crop.boxW) // 300 * 0.8
+    // The NATIVE box and the axis the cap acted on travel with the crop, so the page can re-derive
+    // the window's width for a different cap (the narrow-viewport one) instead of freezing 240px.
+    assertEquals(300, crop.natBoxW)
+    assertEquals(300, crop.natCapAxis) // largest edge
     assertEquals(80, crop.boxH) //  100 * 0.8
     assertEquals(480, crop.imgW) // 600 * 0.8
     assertEquals(480, crop.imgH)
@@ -168,6 +172,8 @@ class ServeThumbCropTest {
     assertEquals(150, crop.imgH)
     assertEquals(-11, crop.left)
     assertEquals(-11, crop.top)
+    assertEquals(249, crop.natBoxW)
+    assertEquals(126, crop.natCapAxis) // a gutter crop caps on HEIGHT, not the largest edge
     // The shadow lives in those 11px, so the window lines the box up without hiding what spills.
     assertFalse(crop.clip)
   }

@@ -1650,10 +1650,16 @@ cp-parity-scores { display: contents; }
    so the whole frame scales as one when the card is narrower than the box. Overrides fit-to-box. */
 /* No `max-height` here, deliberately: this box carries an inline `aspect-ratio`, and constraining
    its height as well as its width squashes it (an aspect ratio is only honoured while one axis is
-   free) — the absolutely-positioned render inside would then sit at the wrong scale. The display
-   cap belongs to the crop geometry, which is where both `computeThumbCrop` and `computeGutterCrop`
-   apply it. */
-.cp-crop { position: relative; overflow: hidden; display: block; max-width: 100%; }
+   free) — the absolutely-positioned render inside would then sit at the wrong scale. So the
+   display cap acts on the WIDTH instead: the server publishes the box's relationship to the cap
+   (`--cp-crop-w-per-cap`, box width per 1px of cap) and its 1x ceiling (`--cp-crop-max-w`), and
+   `--cp-thumb-cap` mirrors the `max-height` the plain `.cp-imgwrap img` beside it gets — 240px by
+   default, dropping with it in the narrow-viewport block below, which a baked-in px width used to
+   miss (#4544). Only one axis is constrained, so the box scales instead of squashing. The var
+   fallbacks keep the declaration valid for a fixed-px window, whose inline `width` overrides it
+   anyway. */
+.cp-crop { position: relative; overflow: hidden; display: block; max-width: 100%;
+  width: min(var(--cp-crop-max-w, 100%), calc(var(--cp-crop-w-per-cap, 9999) * var(--cp-thumb-cap, 240px))); }
 .cp-imgwrap .cp-crop img { position: absolute; max-width: none; max-height: none; margin: 0; }
 /* A capture-gutter window: same geometry, nothing hidden. What overflows it is the component's own
    shadow — the reason the gutter was captured at all — so it spills into the grid gap instead of
@@ -3297,6 +3303,9 @@ html:not(.cp-bg-transparent) #cp-reference-compare[data-cp-stage-clip] .cp-refer
   .cp-syslist, .cp-syslist.cp-grid { grid-template-columns: 1fr; }
   .cp-card.cp-sys { grid-template-rows: 220px 1fr; }
   .cp-imgwrap img { max-height: 200px; }
+  /* …and a clip window shrinks by the same cap, so a cropped card stays the size of the plain
+     card beside it rather than drawing 20% larger (#4544). */
+  .cp-crop { --cp-thumb-cap: 200px; }
   .cp-syslist .cp-imgwrap > img { max-height: none; }
   /* The export line wraps to one group per row rather than squeezing six buttons across. */
   .cp-export { gap: 2px 10px; }

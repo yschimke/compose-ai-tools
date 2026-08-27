@@ -5031,7 +5031,22 @@ ${captureControlsHtml().prependIndent("          ")}
     // A gutter window does not hide its overflow: the pixels outside the box are the component's
     // own shadow, and the window exists to line the box up with its neighbours, not to crop it.
     val cls = if (crop.clip) "cp-crop" else "cp-crop cp-crop--bleed"
-    return "<span class=\"$cls\" style=\"width:${crop.boxW}px;aspect-ratio:${crop.boxW}/${crop.boxH}\">$cropped</span>"
+    // The window's WIDTH is published as its relationship to the display cap, not as a frozen px
+    // count: `--cp-crop-w-per-cap` is the box width per 1px of cap and `--cp-crop-max-w` the 1x
+    // ceiling, so the stylesheet resolves `min(max-w, w-per-cap * --cp-thumb-cap)` and a narrow
+    // viewport can lower the cap exactly as it lowers a plain `<img>`'s `max-height` (#4544 — a
+    // cropped card drew 20% larger than its plain neighbour on a phone, because the 240px cap was
+    // baked in here). Only the width is set, so `aspect-ratio` still derives the height and the box
+    // scales rather than squashing. A hand-assembled crop carries no native size; it keeps the
+    // fixed-px window.
+    val sizing =
+      if (crop.natBoxW > 0 && crop.natCapAxis > 0) {
+        "--cp-crop-w-per-cap:${cropRatio(crop.natBoxW, crop.natCapAxis)};" +
+          "--cp-crop-max-w:${crop.natBoxW}px"
+      } else {
+        "width:${crop.boxW}px"
+      }
+    return "<span class=\"$cls\" style=\"$sizing;aspect-ratio:${crop.boxW}/${crop.boxH}\">$cropped</span>"
   }
 
   /**
@@ -5042,6 +5057,16 @@ ${captureControlsHtml().prependIndent("          ")}
    */
   private fun cropPct(numerator: Int, denominator: Int): String {
     val v = numerator * 100.0 / denominator
+    val s = String.format(java.util.Locale.ROOT, "%.4f", v)
+    return if (s.contains('.')) s.trimEnd('0').trimEnd('.') else s
+  }
+
+  /**
+   * A unitless CSS ratio (`numerator/denominator`), formatted like [cropPct] — up to 4 decimals,
+   * locale-independent, trailing zeros trimmed. Used for the crop window's width-per-cap-pixel.
+   */
+  private fun cropRatio(numerator: Int, denominator: Int): String {
+    val v = numerator.toDouble() / denominator
     val s = String.format(java.util.Locale.ROOT, "%.4f", v)
     return if (s.contains('.')) s.trimEnd('0').trimEnd('.') else s
   }
