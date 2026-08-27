@@ -157,7 +157,8 @@ export function scorePlaneSize(candidateBox) {
 /**
  * One region of one side, resampled from the **source image** straight into the score plane.
  *
- * The area average of {@link resampleArea}, restricted to the region's own pixels: a destination
+ * The area average of {@link resampleAreaPremultiplied}, restricted to the region's own pixels: a
+ * destination
  * pixel averages only the source pixels that are in the region, and a destination pixel whose
  * footprint contains none of them is **absent** rather than filled. Absence is not a value — the
  * whole point of separating is that nothing invented is allowed to reach the scorer, because a
@@ -168,6 +169,11 @@ export function scorePlaneSize(candidateBox) {
  * regions, each carrying only its own contributions. That is the straddling-footprint answer §4
  * calls for: neither dropping the pixel (which hides the boundary ring) nor keeping it whole (which
  * lets accepted pixels bleed into the score they were meant to leave alone).
+ *
+ * The output's RGB is **premultiplied** (`mean(a·c)`) while its alpha is the ordinary `mean(a)`, so
+ * {@link lumaPlane} composites by adding the ground's share rather than by weighting again. See
+ * {@link resampleAreaPremultiplied} for why the score plane premultiplies where the gate plane does
+ * not.
  *
  * @param source the full source raster, `{ width, height, pixels }` in 8-bit RGBA.
  * @param box the normalised content box, in `source`'s own pixels.
@@ -203,18 +209,23 @@ export function resampleRegion(source, box, member, targetWidth, targetHeight) {
           if (px < 0 || py < 0 || px >= source.width || py >= source.height) continue;
           const weight = coverX * coverY;
           const i = (py * source.width + px) * 4;
-          r += source.pixels[i] * weight;
-          g += source.pixels[i + 1] * weight;
-          b += source.pixels[i + 2] * weight;
-          a += source.pixels[i + 3] * weight;
+          const alpha = source.pixels[i + 3];
+          // Premultiplied, like `resampleAreaPremultiplied`, and for the same reason: averaging
+          // straight colour and compositing afterwards do not commute, so two encodings of one
+          // half-covered edge scored differently. The extra factor of 255 rides in the denominator
+          // so the premultiply stays exact integer arithmetic and rounds once.
+          r += source.pixels[i] * alpha * weight;
+          g += source.pixels[i + 1] * alpha * weight;
+          b += source.pixels[i + 2] * alpha * weight;
+          a += alpha * weight;
           area += weight;
         }
       }
       if (area === 0) continue;
       const d = (ty * targetWidth + tx) * 4;
-      pixels[d] = roundHalfUp(r, area);
-      pixels[d + 1] = roundHalfUp(g, area);
-      pixels[d + 2] = roundHalfUp(b, area);
+      pixels[d] = roundHalfUp(r, area * 255);
+      pixels[d + 1] = roundHalfUp(g, area * 255);
+      pixels[d + 2] = roundHalfUp(b, area * 255);
       pixels[d + 3] = roundHalfUp(a, area);
       present[ty * targetWidth + tx] = 1;
     }
@@ -241,19 +252,24 @@ function roundHalfUp(numerator, denominator) {
  * opaque ground *annihilates* ink that matches it, and the metric reads two blank planes as a
  * perfect match. Both sides of a comparison are always handed the same one.
  *
- * Compositing happens **after** the resample, on non-premultiplied samples — D5 answer 1. That is a
- * deliberate difference from a `drawImage` path, which premultiplies before it filters, and it is
- * part of the one-off rebaseline: two engines agreeing matters more than matching a filter neither
- * of them can reproduce.
+ * `region`'s colour arrives **premultiplied** from {@link resampleRegion}, so compositing is
+ * `mean(a·c) + g·(1 − mean(a))` — the ground's share added, not the colour weighted a second time.
+ *
+ * That ordering is the correction to D5 answer 1, which originally composited straight samples after
+ * the resample. Those two steps do not commute for alpha-bearing artwork: the same half-covered edge
+ * scored 128 encoded as one pixel at alpha 128 and 64 encoded as an opaque pixel beside a
+ * transparent one, so two visually identical exports at different resolutions read as a mismatch.
+ * Compositing per ground before the average gives the same expression as premultiplying before it;
+ * this is the second, which keeps one raster per region rather than one per region per ground.
  */
 export function lumaPlane(region, ground) {
   const plane = new Float64Array(region.width * region.height);
   for (let i = 0; i < plane.length; i++) {
     if (!region.present[i]) continue;
-    const alpha = region.pixels[i * 4 + 3] / 255;
-    const r = region.pixels[i * 4] * alpha + ground[0] * (1 - alpha);
-    const g = region.pixels[i * 4 + 1] * alpha + ground[1] * (1 - alpha);
-    const b = region.pixels[i * 4 + 2] * alpha + ground[2] * (1 - alpha);
+    const rest = 1 - region.pixels[i * 4 + 3] / 255;
+    const r = region.pixels[i * 4] + ground[0] * rest;
+    const g = region.pixels[i * 4 + 1] + ground[1] * rest;
+    const b = region.pixels[i * 4 + 2] + ground[2] * rest;
     plane[i] = 0.299 * r + 0.587 * g + 0.114 * b;
   }
   return plane;

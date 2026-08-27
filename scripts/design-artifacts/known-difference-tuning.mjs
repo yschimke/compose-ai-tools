@@ -21,10 +21,11 @@
 export const SCORE_TUNING = {
   /**
    * Which pixel path produced a score — the carrier D3 asks for, so a published number can be told
-   * from a rebaselined one. `1` was the browser-only `drawImage` era; `2` is the portable area
-   * average both engines now run. The rationale lives with the browser's copy in `tuning.ts`.
+   * from a rebaselined one. `1` was the browser-only `drawImage` era; `2` was the portable area
+   * average on straight alpha; `3` is that kernel premultiplied on the score path. The rationale
+   * lives with the browser's copy in `tuning.ts`.
    */
-  SCORE_VERSION: 2,
+  SCORE_VERSION: 3,
   /** Longest side of the downscale a score is computed over. */
   MAX_SIDE: 192,
   /** How far an edge pixel may look for its partner, and what it is charged per unit of distance. */

@@ -1,0 +1,28 @@
+{
+  "title": "The same half-covered edge, encoded at two resolutions, is not a difference",
+  "why": "Averaging straight alpha and compositing the ground afterwards do not commute, so the same picture scored differently depending only on how its exporter encoded a partly covered pixel. The score plane averages premultiplied colour, which makes the two orderings the one expression `mean(a·c) + g·(1 − mean(a))` — and is what `drawImage` produced before the portable kernel replaced it, since a canvas downscales premultiplied.",
+  "plane": {
+    "plane": "content-box",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "width": 32,
+      "height": 24
+    }
+  },
+  "referenceBox": {
+    "x": 0,
+    "y": 0,
+    "width": 32,
+    "height": 24
+  },
+  "candidateBox": {
+    "x": 0,
+    "y": 0,
+    "width": 16,
+    "height": 24
+  },
+  "reference": "reference.png",
+  "candidate": "candidate.png",
+  "masks": []
+}

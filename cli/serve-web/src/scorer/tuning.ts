@@ -111,6 +111,14 @@ export const COMPARISON_GROUND_RGB: ReadonlyArray<
  * nothing offline could have carried a version even if it had wanted to. `2` is the portable area
  * average — the kernel `known-difference-resample.mjs` names and both engines run.
  *
+ * `3` premultiplies that kernel on the score path. `2` averaged straight colour and composited the
+ * ground afterwards, and those two steps do not commute: the same half-covered white edge on black
+ * scored 128 encoded as one pixel at alpha 128 and 64 encoded as an opaque pixel beside a
+ * transparent one, so two visually identical exports at different resolutions read as a mismatch.
+ * `drawImage` had this right by accident of the host — a canvas downscales premultiplied — so `1`
+ * agreed with `3` here and `2` was the regression. The gate path is untouched and no acceptance
+ * verdict moves; only the number does.
+ *
  * It rides on every baked `match` and the reader drops a match that does not carry the version it
  * would compute with, rather than clamping or trusting it. That is the whole reason to have it: a
  * catalog published before the rebaseline and served by a viewer after it would otherwise print a
@@ -121,7 +129,7 @@ export const COMPARISON_GROUND_RGB: ReadonlyArray<
  * **Bump it in the same change that moves the number, never in one that also changes acceptance
  * semantics.** A moved number and a changed verdict in one diff cannot be told apart.
  */
-export const SCORE_VERSION = 2;
+export const SCORE_VERSION = 3;
 
 /** Below this per-channel delta a pixel has not moved — PNG round-tripping and resampling noise. */
 export const DIFF_CHANNEL_TOLERANCE = 3;

@@ -1,0 +1,28 @@
+{
+  "title": "Two translucent sides differ by exactly the ground they let through",
+  "why": "Premultiplied colour composites by *adding* the ground's share, not by weighting the colour again. Both sides annihilate against white and separate against black, which is why `COMPARISON_GROUNDS` has two entries and why the score is the minimum over them.",
+  "plane": {
+    "plane": "content-box",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "width": 32,
+      "height": 24
+    }
+  },
+  "referenceBox": {
+    "x": 0,
+    "y": 0,
+    "width": 32,
+    "height": 24
+  },
+  "candidateBox": {
+    "x": 0,
+    "y": 0,
+    "width": 32,
+    "height": 24
+  },
+  "reference": "reference.png",
+  "candidate": "candidate.png",
+  "masks": []
+}

@@ -144,6 +144,37 @@ export function grayFromRaster(
 }
 
 /**
+ * {@link grayFromRaster} for a raster whose colour is already **premultiplied** — the score plane.
+ *
+ * `source-over` on premultiplied colour is `a·c + (1−a)·ground` with the `a·c` already done, so this
+ * adds the ground's share instead of weighting the colour a second time. Handing a premultiplied
+ * raster to {@link grayFromRaster} would multiply by alpha twice and drag every partly transparent
+ * pixel toward the ground.
+ *
+ * It exists because averaging straight colour and compositing afterwards do not commute: the same
+ * half-covered white edge on black scored 128 encoded as one pixel at alpha 128 and 64 encoded as an
+ * opaque pixel beside a transparent one, so two visually identical exports at different resolutions
+ * read as a mismatch. `resampleAreaPremultiplied` fixes the ordering upstream and this reads its
+ * output — together they are `mean(a·c) + g·(1 − mean(a))`, which is also what `drawImage` produced
+ * before the portable kernel replaced it, since a canvas downscales premultiplied.
+ */
+export function grayFromPremultipliedRaster(
+    raster: Raster,
+    ground: readonly [number, number, number],
+): Float32Array {
+    const { width, height, pixels } = raster;
+    const gray = new Float32Array(width * height);
+    for (let i = 0; i < gray.length; i++) {
+        const rest = 1 - pixels[i * 4 + 3] / 255;
+        const r = pixels[i * 4] + ground[0] * rest;
+        const g = pixels[i * 4 + 1] + ground[1] * rest;
+        const b = pixels[i * 4 + 2] + ground[2] * rest;
+        gray[i] = 0.299 * r + 0.587 * g + 0.114 * b;
+    }
+    return gray;
+}
+
+/**
  * Whatever `draw` paints, on `ground`, as a luminance plane.
  *
  * The ground is a parameter rather than a constant because a score is taken on more than one of them
