@@ -7,6 +7,7 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.zip.ZipInputStream
 import javax.imageio.ImageIO
@@ -2315,7 +2316,11 @@ class ServeCatalogStoreTest {
          {"path":"images/button/ideal__default.png","previewId":"ButtonPreview"}]}]}
       """
         .trimIndent()
-    val requestedLimits = linkedMapOf<String, Long>()
+    // Written from the `serve-catalog-fetch` pool (up to ASSET_FETCH_CONCURRENCY threads call the
+    // transport at once), so the recorder has to be concurrent and the assertions have to run off a
+    // snapshot — a plain map races put-with-put and iteration-with-put. Insertion order is not
+    // relied on: both assertions select by key.
+    val requestedLimits = ConcurrentHashMap<String, Long>()
     // Outcome-shaped like the seam it stands in for: one transport, so no lane can reach the
     // network around an injected one.
     val networkFetch: (String, Long) -> BranchFetch = { url, maxBytes ->
@@ -2345,13 +2350,11 @@ class ServeCatalogStoreTest {
       )
 
     assertTrue(store.load("jetsnack") is ServeCatalogStore.Result.Ok)
-    assertEquals(
-      25L * 1024 * 1024,
-      requestedLimits.entries.single { it.key.endsWith("/catalog.json") }.value,
-    )
+    val limits = requestedLimits.toMap()
+    assertEquals(25L * 1024 * 1024, limits.entries.single { it.key.endsWith("/catalog.json") }.value)
     assertEquals(
       ServeCatalogStore.MAX_LIVE_BUNDLE_FETCH_BYTES,
-      requestedLimits.entries.single { it.key.endsWith("bundle/bundle.png") }.value,
+      limits.entries.single { it.key.endsWith("bundle/bundle.png") }.value,
     )
     assertTrue(builderCalled)
   }
