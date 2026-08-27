@@ -31,14 +31,16 @@ Asserts `before == revert` (byte-equal) and `before != after`.
 sed -i 's/"enabled": false/"enabled": true/' \
   samples/cmp/build/compose-previews/daemon-launch.json
 
-# 3. Build the mcp + daemon-core jars.
-./gradlew :mcp:jar :daemon:core:jar
+# 3. Build the mcp + daemon-core + daemon-client jars.
+./gradlew :mcp:jar :daemon:core:jar :daemon-client:jar
 
 # 4. Build a runtime classpath. Adjust paths to match your gradle cache layout.
 VERSION=$(grep -m1 -oP '"\.":\s*"\K[^"]+' .release-please-manifest.json)
 NEXT="${VERSION%.*}.$((${VERSION##*.} + 1))"
 CP="$(pwd)/mcp/build/libs/mcp-${NEXT}-SNAPSHOT.jar"
 CP="$CP:$(pwd)/daemon/core/build/libs/core-${NEXT}-SNAPSHOT.jar"
+# `DaemonMcpMain` constructs `SubprocessDaemonClientFactory`, which lives here since #3824 item 3.
+CP="$CP:$(pwd)/daemon/client/build/libs/daemon-client-${NEXT}-SNAPSHOT.jar"
 for jar in \
     "$HOME/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib/2.3.20/"*"/kotlin-stdlib-2.3.20.jar" \
     "$HOME/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlinx/kotlinx-coroutines-core-jvm/1.10.2/"*"/kotlinx-coroutines-core-jvm-1.10.2.jar" \

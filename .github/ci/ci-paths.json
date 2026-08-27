@@ -125,6 +125,7 @@
       "preview-server/gradle.properties",
       "scripts/check-preview-server-contracts.sh",
       "daemon/core/**",
+      "daemon/client/**",
       "api/preview-data-api/**",
       "common/io/**",
       "render-session/**",
@@ -133,6 +134,7 @@
       "data/remotecompose/core/**",
       "data/theme/core/**",
       "data/render/core/**",
+      "data/pseudolocale/core/**",
       "mcp/**",
       "renderers/xr-client/**",
       "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/**"
