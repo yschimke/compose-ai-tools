@@ -441,6 +441,88 @@ class ThemeCachePersistenceTest {
     )
   }
 
+  /**
+   * A manifest that says nothing is not a manifest saying "this build made these".
+   *
+   * A write interrupted mid-flight leaves exactly this: a full set of another build's PNGs beside a
+   * missing or unparseable manifest. Reading that absence as "we created the generation" opens it
+   * with a zero boundary, and a five-entry sample then verifies renders nobody can account for.
+   */
+  @Test
+  fun `renders beside an unreadable manifest are of unknown ownership, so dirty`() {
+    val root = tempDir()
+    val fp = "fp-a"
+    val first = assertNotNull(store(root).open("m3-catalog", fp, inputs(fp)))
+    first.put("preview|dark", ByteArray(8) { 1 })
+    first.put("preview|light", ByteArray(8) { 2 })
+    ageRenders(root, "m3-catalog", fp, byMillis = 10_000)
+    assertTrue(File(File(File(root, "m3-catalog"), fp), ThemeCacheStore.MANIFEST_NAME).delete())
+
+    // Same tool version, so nothing about the BUILD says these are suspect — only the fact that
+    // the volume can no longer account for them.
+    val next = assertNotNull(store(root).open("m3-catalog", fp, inputs(fp)))
+    assertEquals(
+      2,
+      next.dirtyCount(),
+      "a manifest that cannot say who wrote these is not evidence that we did",
+    )
+  }
+
+  /**
+   * The reconcile is a way of reaching convergence, so it has to be able to finish the job.
+   *
+   * In the ordinary rollout — nobody overwrote anything — the dirty set empties first and the
+   * at-risk set empties later, in the reconcile, with no further write to notice. Leaving the clear
+   * to `put` alone strands the future-dated boundary in the manifest, which is the very thing that
+   * re-dirties this build's own renders on the next restart.
+   */
+  @Test
+  fun `convergence reached by the overlap reconcile clears the boundary too`() {
+    val root = tempDir()
+    val fp = "fp-a"
+    val first = assertNotNull(store(root).open("m3-catalog", fp, inputs(fp)))
+    first.put("a|dark", ByteArray(8) { 1 })
+    ageRenders(root, "m3-catalog", fp, byMillis = 10_000)
+
+    var now = System.currentTimeMillis()
+    val incoming =
+      assertNotNull(
+        ThemeCacheStore(
+            root,
+            maxBytes = ThemeCacheStore.DEFAULT_MAX_BYTES,
+            graceMillis = 60_000,
+            clock = { now },
+          )
+          .open("m3-catalog", fp, inputs(fp).copy(toolVersion = "1.15.0"))
+      )
+    // Regenerated inside the overlap window, so the dirty set empties but the at-risk set does not.
+    incoming.put("a|dark", ByteArray(8) { 2 }, replaceExisting = true)
+    assertEquals(0, incoming.dirtyCount())
+    val duringOverlap =
+      kotlinx.serialization.json.Json.decodeFromString(
+        GenerationInputs.serializer(),
+        File(File(File(root, "m3-catalog"), fp), ThemeCacheStore.MANIFEST_NAME).readText(),
+      )
+    assertTrue(
+      duringOverlap.dirtyBeforeEpochMillis > 0,
+      "still standing while a co-replica could be writing",
+    )
+
+    // Past the window, with no further write of any kind: the reconcile is the last thing to run.
+    now += 120_000
+    assertEquals(0, incoming.dirtyCount())
+    val settled =
+      kotlinx.serialization.json.Json.decodeFromString(
+        GenerationInputs.serializer(),
+        File(File(File(root, "m3-catalog"), fp), ThemeCacheStore.MANIFEST_NAME).readText(),
+      )
+    assertEquals(
+      0L,
+      settled.dirtyBeforeEpochMillis,
+      "nothing moved under us and the window is shut, so the line has nothing left to mark",
+    )
+  }
+
   @Test
   fun `a partly failed dirty discard keeps the quarantine rather than reporting success`() {
     val root = tempDir()

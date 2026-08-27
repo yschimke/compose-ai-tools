@@ -145,6 +145,13 @@ class ThemeCacheStore(
     if (existing != null && existing.toolVersion == inputs.toolVersion)
       return MarkOutcome.NOT_NEEDED
     val createdAt = existing?.createdAtEpochMillis?.takeIf { it > 0 } ?: clock()
+    // Renders are here that this build did not write. Usually the manifest says so; when it is
+    // MISSING OR CORRUPT it says nothing, and "says nothing" was being read as "this build created
+    // the generation". A manifest write interrupted mid-flight leaves exactly that state beside a
+    // full set of another build's PNGs, which would then open with a zero boundary, verify on a
+    // five-entry sample, and never be regenerated. Files of unknown ownership are not ours.
+    val inherited =
+      existing != null || dir.listFiles()?.any { it.name.endsWith(PNG_SUFFIX) } == true
     // A DIFFERENT build is opening renders another one wrote, so everything already here is dirty.
     // On a generation this build created there is nothing older to mark, and the boundary stays at
     // zero.
@@ -159,7 +166,7 @@ class ThemeCacheStore(
     //
     // The cost is that some of this build's OWN early renders fall under the boundary and are
     // re-rendered once. That is the right direction to be wrong in.
-    val boundary = if (existing != null) clock() + graceMillis else 0L
+    val boundary = if (inherited) clock() + graceMillis else 0L
     val wrote = runCatching {
       file.writeText(
         json.encodeToString(
@@ -179,7 +186,7 @@ class ThemeCacheStore(
     // re-render of a catalog the volume could not record anything about, which is the right
     // direction to be wrong in.
     return when {
-      existing == null -> MarkOutcome.NOT_NEEDED
+      !inherited -> MarkOutcome.NOT_NEEDED
       wrote -> MarkOutcome.RECORDED
       else -> MarkOutcome.UNRECORDED
     }
@@ -473,6 +480,23 @@ class ThemeCacheStore(
         // not the same answer as ours.
         if (modified != writtenAt) dirtyNames += name
       }
+      // The reconcile is itself a way of REACHING convergence, and in the ordinary case — no
+      // co-replica overwrote anything — it is the last thing that happens: the dirty set emptied
+      // some time ago and the at-risk set empties here, with no further write to notice. Leaving
+      // the clear to `put` alone stranded the future-dated boundary in the manifest for exactly the
+      // rollout this bookkeeping exists to serve.
+      clearBoundaryIfConverged()
+    }
+
+    /**
+     * Drop the durable boundary once every render on this volume is one this process made, and
+     * nothing it wrote during a rollout overlap is still unverified.
+     *
+     * Called from both places convergence can be reached — the write that clears the last dirty
+     * name, and the reconcile that clears the last at-risk one — because either can be the last.
+     */
+    private fun clearBoundaryIfConverged() {
+      if (dirtyBefore > 0L && dirtyNames.isEmpty() && atRiskWrites.isEmpty()) clearDirtyBoundary()
     }
 
     /** Whether [cacheKey] is on disk from an older build and has not been re-rendered since. */
@@ -510,23 +534,39 @@ class ThemeCacheStore(
      * them, so asking for a refresh does not cost every preview a cold render.
      */
     fun markAllDirty(): Int {
-      val now = clock()
-      // Persist FIRST, and refuse to claim the mark if it did not land. The contract this action
-      // sells is that a request survives the next roll; a full or read-only volume would otherwise
-      // leave the boundary in memory only, answer the operator 200 with a queued count, and forget
-      // the whole thing at the next restart — the one failure a durable-sounding API must not have.
-      val persisted = runCatching {
-        val file = File(dir, MANIFEST_NAME)
-        val existing = json.decodeFromString(GenerationInputs.serializer(), file.readText())
-        file.writeText(json.encodeToString(existing.copy(dirtyBeforeEpochMillis = now)))
+      // Under the generation write lock, because the transition races the one thing that undoes it.
+      // A render publishing the last dirty entry calls `clearDirtyBoundary` from inside `put`,
+      // which holds this lock — so an unlocked mark could write its boundary, be overwritten by
+      // that older in-flight convergence, then repopulate `dirtyNames` and report a durable mark
+      // that is not on disk. Regeneration would proceed in this process and a restart before it
+      // finished would silently forget the rest of the operator's request.
+      val generationWriteLock = tryGenerationWriteLock() ?: return -1
+      try {
+        val now = clock()
+        // Persist FIRST, and refuse to claim the mark if it did not land. The contract this action
+        // sells is that a request survives the next roll; a full or read-only volume would
+        // otherwise leave the boundary in memory only, answer the operator 200 with a queued count,
+        // and forget the whole thing at the next restart — the one failure a durable-sounding API
+        // must not have.
+        val persisted = runCatching {
+          val file = File(dir, MANIFEST_NAME)
+          val existing = json.decodeFromString(GenerationInputs.serializer(), file.readText())
+          file.writeText(json.encodeToString(existing.copy(dirtyBeforeEpochMillis = now)))
+        }
+          .onFailure { recordFailure(system, "manifest: ${it.message}") }
+          .isSuccess
+        if (!persisted) return -1
+        dirtyBefore = now
+        // Everything on disk predates a boundary set to now, so the whole of `present` is dirty.
+        dirtyNames.addAll(present)
+        // A mark supersedes the overlap bookkeeping: every one of those entries is dirty now, so
+        // there is nothing left for the reconcile to decide, and leaving it populated would block
+        // the convergence clear for a window that has already been overtaken.
+        atRiskWrites.clear()
+        return dirtyNames.size
+      } finally {
+        generationWriteLock.close()
       }
-        .onFailure { recordFailure(system, "manifest: ${it.message}") }
-        .isSuccess
-      if (!persisted) return -1
-      dirtyBefore = now
-      // Everything on disk predates a boundary set to now, so the whole of `present` is dirty.
-      dirtyNames.addAll(present)
-      return dirtyNames.size
     }
 
     // Per-generation counters. The store-wide ones next to them answer "is the volume being used";
@@ -637,7 +677,7 @@ class ThemeCacheStore(
         // grace window into the FUTURE, so leaving it behind would have the next start reclassify
         // this build's own early renders as another build's work and regenerate them again, once
         // per restart, forever.
-        if (dirtyBefore > 0L && dirtyNames.isEmpty() && atRiskWrites.isEmpty()) clearDirtyBoundary()
+        clearBoundaryIfConverged()
         writes.incrementAndGet()
         generationWrites.incrementAndGet()
         knownBytes.addAndGet(png.size.toLong() - previousSize)
