@@ -147,32 +147,28 @@ private fun Project.configureAndroidLibraryPublication() {
  * nothing at configuration time) and it names the line a human has to edit.
  */
 private fun Project.rejectSnapshotDependenciesInPom() {
-  // `api`/`implementation`/`runtimeOnly` are what vanniktech maps into the POM's compile and
-  // runtime scopes; the `release*` variants are AGP's per-variant buckets for the single published
-  // Android variant.
-  val pomScopes =
-    setOf(
-      "api",
-      "implementation",
-      "runtimeOnly",
-      "releaseApi",
-      "releaseImplementation",
-      "releaseRuntimeOnly",
-    )
   afterEvaluate {
     val offenders =
       configurations
-        .filter { it.name in pomScopes }
+        .filter { isPomVisibleConfiguration(it.name) }
         .flatMap { configuration ->
-          configuration.dependencies.withType(ExternalModuleDependency::class.java).mapNotNull {
-            dependency ->
-            dependency.version
-              ?.takeIf { it.endsWith("-SNAPSHOT") }
-              ?.let { version ->
-                "  ${configuration.name}(\"${dependency.group}:${dependency.name}:$version\")"
+          // Constraints as well as dependencies: Gradle serializes an `api`/`implementation`
+          // constraint into the POM's `dependencyManagement`, so a constraint pinning a SNAPSHOT
+          // puts that coordinate in the uploaded POM just as a dependency does.
+          val declared =
+            configuration.dependencies
+              .withType(ExternalModuleDependency::class.java)
+              .map { Triple(it.group, it.name, it.version) } +
+              configuration.dependencyConstraints.map {
+                Triple(it.group, it.name, it.version)
               }
+          declared.mapNotNull { (group, name, version) ->
+            version
+              ?.takeIf { it.endsWith("-SNAPSHOT") }
+              ?.let { "  ${configuration.name}(\"$group:$name:$it\")" }
           }
         }
+        .distinct()
         .sorted()
     if (offenders.isNotEmpty()) {
       error(
@@ -191,6 +187,33 @@ private fun Project.rejectSnapshotDependenciesInPom() {
       )
     }
   }
+}
+
+/**
+ * The declaration buckets whose contents Gradle writes into a published POM.
+ *
+ * Matched by *suffix* rather than by an explicit list of names, because the same four kinds are
+ * prefixed differently per plugin: plain `api` for a JVM library, `releaseApi` for the single
+ * Android variant vanniktech publishes, and `commonMainApi` / `jvmMainImplementation` for the
+ * Kotlin Multiplatform modules (`:rc-player-runtime`, `:rc-player-compose`, …) whose source-set
+ * dependencies land in their per-target publications. An explicit list silently stopped covering
+ * whichever convention was added last, which is exactly the hole this guard exists to close.
+ *
+ * `compileOnlyApi` is in — unlike `compileOnly`, it *is* published, in compile scope. Test and
+ * test-fixture source sets are out: nothing they declare reaches a POM. So are the non-published
+ * Android variants, since only `release` is published and a debug-only SNAPSHOT is legitimate.
+ */
+private val POM_SCOPE_KINDS = listOf("compileOnlyApi", "implementation", "runtimeOnly", "api")
+
+private fun isPomVisibleConfiguration(name: String): Boolean {
+  val kind =
+    POM_SCOPE_KINDS.firstOrNull {
+      name == it || name.endsWith(it.replaceFirstChar(Char::uppercaseChar))
+    } ?: return false
+  val prefix = name.dropLast(kind.length)
+  return !prefix.contains("test", ignoreCase = true) &&
+    !prefix.contains("fixtures", ignoreCase = true) &&
+    !prefix.startsWith("debug")
 }
 
 private fun Project.nextPatchSnapshotVersion(): String {
