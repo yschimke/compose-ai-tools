@@ -102,7 +102,7 @@
       "allowedVersions": "/^1\\.13\\./"
     },
     {
-      "description": "compose-multiplatform: pin to the 1.11.x line. `:data-render-compose` exposes `org.jetbrains.compose.{runtime,ui}` as `api` on a published artifact, so the Compose Multiplatform version is part of the supported-minimum floor for consumers, and the ref is also a CEILING on every catalog the serve host renders live (docs/RENDERER_COMPATIBILITY.md). 1.12.0 needs a coordinated move, not a minor/patch bump: its `androidx.compose.*` AARs declare `minCompileSdk = 37` (the repo default is 36), skiko 0.150.1 deletes the mutating `org.jetbrains.skia.Path` API our `conicTo` seams call, and `compose-multiplatform-material3` + `compottie` have to move with it. See gradle/libs.versions.toml — raising the floor is a manual decision. Keep `samples/cmp-shared`'s explicit `ui-tooling-preview` coord in lockstep so the plugin's compose-runtime compatibility check stays happy.",
+      "description": "compose-multiplatform: pin to the 1.11.x line. `:data-render-compose` exposes `org.jetbrains.compose.{runtime,ui}` as `api` on a published artifact, so the Compose Multiplatform version is part of the supported-minimum floor for consumers, and the ref is also a CEILING on every catalog the serve host renders live (docs/RENDERER_COMPATIBILITY.md). 1.12.0 needs a coordinated move, not a minor/patch bump: its `androidx.compose.*` AARs declare `minCompileSdk = 37` (the repo default is 36), skiko 0.150.1 deletes the mutating `org.jetbrains.skia.Path` API our `conicTo` seams call, and `compose-multiplatform-material3` + `compottie` have to move with it. See gradle/libs.versions.toml — raising the floor is a manual decision. `matchCurrentValue` scopes this to the refs that are actually on 1.11.x; the explicit `ui-tooling-preview:1.10.3` coords in the cmp samples are held on their own line by the rule below.",
       "matchManagers": [
         "gradle"
       ],
@@ -112,6 +112,17 @@
       ],
       "matchCurrentValue": "/^1\\.11\\./",
       "allowedVersions": "/^1\\.11\\./"
+    },
+    {
+      "description": "org.jetbrains.compose.ui:ui-tooling-preview (explicit coords in `samples/cmp-shared` and `samples/cmp-android-only`): pin to the 1.10.x line. These two modules declare the JetBrains-relocated androidx artifact by hand — it ships `androidx.compose.ui.tooling.preview.Preview` on every target, which is the FQN `DiscoverPreviewsTask` scans for, whereas the CMP-bundled `compose.components.uiToolingPreview` republishes the annotation under `org.jetbrains.compose.ui.tooling.preview` and discovery does not recognise it. The explicit coords were renamed in the 1.10 line and are not reliably published to every mirror above it, so they deliberately do NOT track `compose-multiplatform`. Held here because the rule above is scoped by `matchCurrentValue` to the 1.11.x refs and no longer covers them; without this the generic minor/patch group would drift these to a line the preview-discovery contract has not been validated against. See each module's build.gradle.kts.",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchDepNames": [
+        "org.jetbrains.compose.ui:ui-tooling-preview"
+      ],
+      "matchCurrentValue": "/^1\\.10\\./",
+      "allowedVersions": "/^1\\.10\\./"
     },
     {
       "description": "org.slf4j:slf4j-nop: track gradle-tooling-api's bundled slf4j-api. Tooling API declares `slf4j-api {strictly <X>}` and bumping `-nop` past that drags in a newer `slf4j-api` that can't reconcile with the strict constraint. The matching `-nop` version moves whenever the Tooling-API release ships a newer slf4j-api floor — bump this pin in lockstep then.",
