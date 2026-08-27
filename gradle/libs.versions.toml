@@ -30,7 +30,7 @@ roborazzi = "1.73.0"
 # androidx.tracing — atrace-level sections for the Android daemon's render phases (see
 # `AndroidxTraceSections` in :daemon:android). Version-pinned (not BOM-managed) because the daemon
 # ships it in the standalone lib-daemon-android sidecar where no BOM applies.
-androidx-tracing = "2.0.0"
+androidx-tracing = "2.0.1"
 # androidx.tracing 2.x — the Kotlin Multiplatform rewrite, used by the CMP Remote Compose player
 # stack through `:rc-player-trace`. Pinned separately from `androidx-tracing` above rather than
 # bumping it: 2.x drags `kotlinx-coroutines-core` and `androidx.collection` in, which the daemon's
@@ -38,7 +38,7 @@ androidx-tracing = "2.0.0"
 # atrace-shaped `Trace.beginSection` that 1.3.0 already gives it. The two coordinates never meet on
 # one classpath. Note 2.x publishes only `androidJvm` + `jvm` variants — there is no wasmJs or Apple
 # klib, which is the whole reason `:rc-player-trace` is an `expect`/`actual` facade.
-androidx-tracing-kmp = "2.0.0"
+androidx-tracing-kmp = "2.0.1"
 classgraph = "4.8.194"
 # Stable BOM line — what samples use and what `composePreviewRender` /
 # `Compare previews` is exercised against. Renovate updates this freely;
@@ -96,7 +96,7 @@ compose-multiplatform-forward = "1.12.0-rc01"
 # build.gradle.kts) rather than the repo default 36 — a scoped divergence, like
 # `:samples:design-catalog-remote-m3`. Drop this pin and revert to `libs.compose.material3`
 # once material3 1.5.0 is stable in `compose-bom-stable`.
-compose-material3-catalog = "1.5.0-alpha26"
+compose-material3-catalog = "1.5.0-alpha27"
 # JetBrains Compose Multiplatform material3 tracks its own line, so the explicit coordinate must
 # use this version rather than `compose-multiplatform`. Matched to what `m3-catalog` pins on the
 # 1.11 line, so the largest live-rendered catalog and the host agree on the material3 ABI as well
@@ -117,14 +117,14 @@ activity-compose = "1.13.0"
 # `navigation.*` script-event surface end-to-end. Activity-compose 1.13's
 # transitive `androidx.navigationevent` floor (see CompatRules.kt) means
 # this stays compatible with the renderer's compileOnly stack.
-navigation-compose = "2.9.8"
+navigation-compose = "2.10.0"
 # `androidx.glance:glance-appwidget` — used only by `:samples:android`'s Glance widget
 # preview (`GlanceWidgetPreview` in `AppWidgetPreviews.kt`). Renders a `GlanceAppWidget` to
 # `RemoteViews` via `GlanceAppWidget.compose(...)` and inflates that into the preview surface.
 # 1.1.x is the current stable line; bump when the Glance team ships a 1.2.x with the planned
 # preview-DSL stabilisation.
-glance-appwidget = "1.2.0-rc01"
-wear-compose = "1.7.0-beta01"
+glance-appwidget = "1.2.0"
+wear-compose = "1.7.0-beta02"
 wear-tiles = "1.6.2"
 wear-protolayout = "1.4.2"
 wear-tooling-preview = "1.0.0"
@@ -132,7 +132,7 @@ wear-tooling-preview = "1.0.0"
 # glasses (`androidx.xr.glimmer`). Alpha10+ requires AGP 9.2+ and
 # `compileSdk = 37` (matched by `:samples:xr-glimmer`'s `compileSdk` and our
 # `agp = 9.2.x` toolchain). Alpha13 was published 2026-05-19.
-xr-glimmer = "1.0.0-alpha17"
+xr-glimmer = "1.0.0-alpha18"
 # Jetpack Compose for XR (`androidx.xr.compose`) — the spatial-UI toolkit
 # (`Subspace`, `SpatialPanel`, `Orbiter`, `SpatialElevation`, `SpatialDialog`).
 # AAR metadata declares `minCompileSdk = 36` / `minAgp = 8.9.1`, so it builds on
@@ -296,7 +296,7 @@ jmdns = "3.6.3"
 # against both and pick at runtime. Versions here only bound what the renderer *compiles* against —
 # the consumer's own coil is what runs, and the builder APIs we touch are stable across each major.
 coil2 = "2.7.0"
-coil3 = "3.5.0"
+coil3 = "3.6.0"
 
 [libraries]
 # `@com.android.tools.screenshot.PreviewTest` — the marker Google's screenshot plugin requires on a
