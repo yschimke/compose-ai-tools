@@ -1327,6 +1327,17 @@ class ServeHttpRoutingTest {
       answer = BranchFetch.NotFound
       assertEquals(404 to null, fetchMotion())
 
+      // A capture past the transport's envelope is a third answer again: it exists, it is not
+      // coming, and asking again will not shrink it. It carries no bytes and is not transient, so
+      // without a case of its own it lands in the 404 branch — a file the branch is holding,
+      // reported as one that was never published. That is the absence-versus-refusal confusion this
+      // whole route exists to end, arriving through the outcome added to end it elsewhere.
+      //
+      // Not 503 either: `Retry-After` on something that will be exactly as oversized next time is a
+      // promise the server cannot keep.
+      answer = BranchFetch.TooLarge(25L * 1024 * 1024)
+      assertEquals(413 to null, fetchMotion())
+
       // …and once the branch serves it, it serves.
       answer = BranchFetch.Ok("capture".toByteArray())
       assertEquals(200 to null, fetchMotion())

@@ -77,7 +77,17 @@ class BranchFetchStats(private val clock: () -> Long = System::currentTimeMillis
         is BranchFetch.Transport -> transport++
         is BranchFetch.TooLarge -> tooLarge++
       }
-      if (outcome !is BranchFetch.Ok && outcome !is BranchFetch.NotFound) {
+      // `lastFailure*` describes the **branch host**, which is what an operator reads it for — and
+      // [BranchFetchSnapshot.tooLarge] already says a size refusal is "not a fault of the branch
+      // host the way `throttled` and `unavailable` are", naming those three as the ones to alert
+      // on. Recording it here contradicted that: a catalog publishing one large asset showed up as
+      // the server's last failure, with its reason, next to a timestamp that reads as an incident.
+      // It belongs with `notFound` — a fact about what was published, counted and not alarmed on.
+      if (
+        outcome !is BranchFetch.Ok &&
+          outcome !is BranchFetch.NotFound &&
+          outcome !is BranchFetch.TooLarge
+      ) {
         lastFailureAtEpochMillis = clock()
         lastFailureReason = outcome.summary.take(MAX_REASON_CHARS)
       }

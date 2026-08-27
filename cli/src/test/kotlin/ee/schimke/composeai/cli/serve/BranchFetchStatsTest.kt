@@ -57,6 +57,26 @@ class BranchFetchStatsTest {
   }
 
   @Test
+  fun `a size refusal is counted but not alarmed on`() {
+    // `tooLarge`'s own documentation says it is "not a fault of the branch host the way `throttled`
+    // and `unavailable` are", and names those three as the ones to alert on — but the
+    // `lastFailure*`
+    // fields, which exist to describe the branch host, recorded it anyway. A catalog publishing one
+    // large asset then showed up as this server's last failure, with a reason and a timestamp that
+    // read as an incident.
+    //
+    // It belongs with `notFound`: a fact about what the producer published, worth its own counter
+    // and not worth waking anyone.
+    val stats = BranchFetchStats(clock = { 9L })
+    stats.record(BranchFetch.TooLarge(25L * 1024 * 1024))
+
+    val snap = stats.snapshot()!!
+    assertEquals(1, snap.tooLarge, "the refusal must still be visible as its own number")
+    assertNull(snap.lastFailureAtEpochMillis, "a large published asset is not a branch-host fault")
+    assertNull(snap.lastFailureReason)
+  }
+
+  @Test
   fun `the branch host's own failures carry a reason and a time`() {
     val stats = BranchFetchStats(clock = { 42L })
     stats.record(BranchFetch.Unavailable(503))
