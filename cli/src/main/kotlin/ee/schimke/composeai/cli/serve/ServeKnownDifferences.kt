@@ -67,6 +67,26 @@ object ServeKnownDifferences {
   const val ARTIFACT_DIRECTORY = "known-differences"
 
   /**
+   * The producer's own list of the artifacts it published, beside the document.
+   *
+   * Written by `@design-parity/catalog-export`, which knows exactly which files it wrote. It exists
+   * so the staging path can *copy a list* rather than interpret the contract to derive one — see
+   * [ServeCatalogStore.knownDifferenceArtifactPaths] for what deriving it costs.
+   *
+   * A **sibling** of the document rather than `known-differences/index.json`, because a record `id`
+   * is a portable segment and `index.json` is one: a record so named owns the directory
+   * `known-differences/index.json/`, which an index file of that name could not coexist with.
+   *
+   * Not part of `compose-preview-known-differences/v1` and not read by any engine. It is a
+   * transport convenience between a producer and a host, which is why a catalog without it still
+   * works.
+   */
+  const val ARTIFACT_INDEX_FILE = "known-differences-index.json"
+
+  /** The index's schema token; a document declaring another is ignored rather than guessed at. */
+  const val ARTIFACT_INDEX_SCHEMA = "compose-preview-known-difference-artifacts/v1"
+
+  /**
    * The document's schema token, mirrored for the same one job the record cap is: the staging path
    * has to know whether the engine will read *anything* before it fetches a document's artifacts,
    * and a document declaring another schema is one the engine refuses whole.

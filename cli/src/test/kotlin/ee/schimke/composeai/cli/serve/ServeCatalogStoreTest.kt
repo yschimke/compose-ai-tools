@@ -602,6 +602,175 @@ class ServeCatalogStoreTest {
     assertEquals("button-figma", loaded.issues.single().referenceIds.single())
   }
 
+  /**
+   * A document the derivation refuses **whole** — an unknown document-level member. Using it is
+   * what makes "the index was copied" distinguishable from "the list was re-derived": if the
+   * artifacts arrive, only the index can have named them.
+   */
+  private val DERIVATION_REJECTS =
+    """
+    {"schema":"compose-preview-known-differences/v1","note":"unknown member","acceptances":[
+      {"id":"glyph","issue":"https://github.com/yschimke/m3-catalog/issues/40",
+       "mask":"mask.png","acceptedCandidate":"accepted-candidate.png"}]}
+    """
+      .trimIndent()
+
+  /**
+   * The same records in a document the derivation happily reads, for the mirror-image assertion.
+   */
+  private val DERIVATION_ACCEPTS =
+    """
+    {"schema":"compose-preview-known-differences/v1","acceptances":[
+      {"id":"glyph","issue":"https://github.com/yschimke/m3-catalog/issues/40",
+       "mask":"mask.png","acceptedCandidate":"accepted-candidate.png"}]}
+    """
+      .trimIndent()
+
+  /**
+   * Load a catalog whose known-difference document names two artifacts for `glyph`, with [index]
+   * served (or not) as the published artifact list.
+   */
+  private fun loadWithArtifactIndex(
+    index: String?,
+    document: String = DERIVATION_REJECTS,
+  ): Pair<ServeHost, List<String>> {
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png"}]}]}
+      """
+        .trimIndent()
+    val requested = CopyOnWriteArrayList<String>()
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        fetch = { url ->
+          requested += url
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.encodeToByteArray()
+            url.endsWith("/parity/known-differences-index.json") -> index?.encodeToByteArray()
+            url.endsWith("/parity/known-differences.json") -> document.encodeToByteArray()
+            url.contains("/parity/known-differences/") -> "artifact".encodeToByteArray()
+            url.endsWith("/images/button.png") -> png()
+            else -> null
+          }
+        },
+      )
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+    return registered.getValue("compose-m3") to requested.toList()
+  }
+
+  @Test
+  fun `a published artifact index is copied, not derived from the contract`() {
+    // The point of the index. Deriving the fetch list from the document means mirroring every
+    // pre-read refusal the engine has, and a mirror that drifts stricter starves a legal record of
+    // its artifacts. The producer wrote the files; it can simply say which.
+    //
+    // The document here carries an unknown member, which the derivation refuses whole — so if the
+    // artifacts arrive, the list came from the index and nothing re-derived it.
+    val (host, requested) =
+      loadWithArtifactIndex(
+        """
+        {"schema":"compose-preview-known-difference-artifacts/v1",
+         "artifacts":["glyph/mask.png","glyph/accepted-candidate.png"]}
+        """
+          .trimIndent()
+      )
+
+    assertTrue(
+      host.knownDifferenceArtifact("glyph/mask.png") is ServeKnownDifferences.Artifact.Bytes,
+      "the index's artifacts were not staged: $requested",
+    )
+    assertTrue(
+      host.knownDifferenceArtifact("glyph/accepted-candidate.png")
+        is ServeKnownDifferences.Artifact.Bytes
+    )
+    // The document still reaches the host verbatim — the index says what to copy, never what the
+    // engine may read.
+    assertTrue(host.knownDifferences() is ServeKnownDifferences.Document.Text)
+  }
+
+  @Test
+  fun `a catalog without an index still derives the list`() {
+    // Purely additive: a catalog published before the index existed behaves exactly as it did. The
+    // same document, no index — and the derivation refuses it whole, so nothing is staged.
+    val (host, _) = loadWithArtifactIndex(null)
+
+    assertTrue(
+      host.knownDifferenceArtifact("glyph/mask.png") !is ServeKnownDifferences.Artifact.Bytes,
+      "the derivation must still refuse a document it rejects whole",
+    )
+  }
+
+  @Test
+  fun `without an index, that same document derives its artifacts`() {
+    // The other half of the empty-index test: it only means something if this document really does
+    // produce a fetch when the list is derived.
+    val (_, requested) = loadWithArtifactIndex(index = null, document = DERIVATION_ACCEPTS)
+
+    assertTrue(
+      requested.any { it.endsWith("/parity/known-differences/glyph/mask.png") },
+      "the derivation fetched nothing, so the empty-index test proves nothing: $requested",
+    )
+  }
+
+  @Test
+  fun `an index cannot name a path the reader would refuse to look up`() {
+    // A fetch plan, not a licence. The producer's list goes through exactly the lexical rule the
+    // document's paths do, so an index is never a way around it.
+    val (_, requested) =
+      loadWithArtifactIndex(
+        """
+        {"schema":"compose-preview-known-difference-artifacts/v1",
+         "artifacts":["glyph/mask.png","../../secrets.png","glyph/../../escape.png"]}
+        """
+          .trimIndent()
+      )
+
+    assertTrue(
+      requested.none { it.contains("secrets.png") || it.contains("escape.png") },
+      "a traversal path from the index was fetched: $requested",
+    )
+    assertTrue(requested.any { it.endsWith("glyph/mask.png") }, "the legal path was skipped")
+  }
+
+  @Test
+  fun `a malformed index falls back to deriving rather than staging nothing`() {
+    // The fail-soft direction matters. Treating an unreadable index as an empty list would let one
+    // bad file silently strip every record of its artifacts — the changed-verdict failure the whole
+    // change exists to remove. So a wrong schema means "this producer published no usable index".
+    val (host, _) =
+      loadWithArtifactIndex("""{"schema":"something-else/v1","artifacts":["glyph/mask.png"]}""")
+
+    // Falls back to the derivation, which refuses this document whole — the same answer a catalog
+    // with no index at all gets.
+    assertTrue(
+      host.knownDifferenceArtifact("glyph/mask.png") !is ServeKnownDifferences.Artifact.Bytes
+    )
+  }
+
+  @Test
+  fun `an index that names nothing stages nothing`() {
+    // An empty list is a statement, not an absence: the producer published an index and carried no
+    // artifacts. Falling back to the derivation here would make a producer that says "nothing"
+    // indistinguishable from one that says nothing at all.
+    // The document here is one the derivation *accepts* and would derive two artifacts from, so a
+    // fallback is visible: if anything under the artifact root is fetched, the empty list was
+    // treated as an absence.
+    val (_, requested) =
+      loadWithArtifactIndex(
+        """{"schema":"compose-preview-known-difference-artifacts/v1","artifacts":[]}""",
+        document = DERIVATION_ACCEPTS,
+      )
+
+    assertTrue(
+      requested.none { it.contains("/parity/known-differences/") },
+      "an empty index must not fall back to the derivation: $requested",
+    )
+  }
+
   @Test
   fun `catalog stages the published known differences, document and artifacts`() {
     // The failure this guards is silent: `knownDifferences()` reads the staging tree, so a document
