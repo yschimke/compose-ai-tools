@@ -190,7 +190,7 @@ produced. `:render-session-subprocess` is one of the published contract modules 
 links against, so after the split that stops being a same-commit mistake and becomes cross-repo
 version skew no compiler sees.
 
-`scripts/check-daemon-launch-schema.py` enforces seven things:
+`scripts/check-daemon-launch-schema.py` enforces nine things:
 
 - **version agreement** — every declared copy equals the writer's, *and* every copy is registered.
   An unregistered version constant anywhere in the tree fails, so a new mirror has to be declared,
@@ -207,16 +207,28 @@ version skew no compiler sees.
 - **unknown-key tolerance** — the JVM reader keeps `ignoreUnknownKeys = true`, the single line that
   makes the writer's `btaCompile` (which that reader does not declare) safe rather than fatal;
 - **mirrored constants** — sysprop keys the descriptor carries that other modules re-declare
-  privately, such as `SANDBOX_COUNT_PROP`, whose own KDoc says "both sides MUST agree";
+  privately, such as `SANDBOX_COUNT_PROP`, whose own KDoc says "both sides MUST agree". Not only
+  Kotlin ones: the production image passes that key as a literal in `deploy/image/Dockerfile`'s
+  `JAVA_TOOL_OPTIONS`, so renaming it across every Kotlin copy would still strand deployed hosts on
+  a property nothing reads, silently falling back to a pool of one;
 - **raw-key readers** — `compose-preview doctor` indexes the parsed JSON by string rather than
   deserialising a DTO, so a renamed field leaves it asking for a key that reads as `null` and
-  reporting the daemon disabled instead of failing. Its keys are checked against the writer;
-- **a wire fingerprint** — a digest of the writer's field names, types and optionality, pinned
+  reporting the daemon disabled instead of failing. Its keys are checked against the writer, and
+  each one records the **type it assumes** — `enabled` going `Boolean` -> `String` would keep its
+  name, pass every other rule, and crash `.jsonPrimitive.boolean` at runtime with no compiler in
+  the way;
+- **`@SerialName` refusal** — the annotation moves the JSON key while the Kotlin identifier, which
+  every other rule reads, stays put. Rather than half-supporting it the check refuses it outright
+  and says why;
+- **a wire fingerprint** — a digest of the writer's field names, types and optionality *and of the
+  DTOs it nests*, pinned
   against the version it describes. Version agreement across the copies is necessary and not
   sufficient: a PR could rename a field in the writer and every in-repo reader at once, leaving
   all constants at v2 while a released extension accepts the new descriptor as v2 and misreads
   it. Changing the shape fails until someone records the new digest, which is where the question
-  "is this breaking?" actually gets asked.
+  "is this breaking?" actually gets asked. Nesting is load-bearing: a top-level-only digest left
+  `btaCompile` as the opaque token `BtaCompileConfig?`, so a rename *inside* that class moved the
+  wire contract while the digest held steady.
 
 Divergences that are correct by design live in `scripts/daemon-launch-schema-allowlist.json` with
 the reason written down — the same debt-register discipline as the seam allowlist, not an exemption

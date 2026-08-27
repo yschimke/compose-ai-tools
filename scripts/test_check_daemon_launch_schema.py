@@ -128,6 +128,44 @@ class Parsers(unittest.TestCase):
         self.assertFalse(t["schemaVersion"][1], "schemaVersion is not declared optional")
 
 
+class CommentNestingIsLanguageAware(unittest.TestCase):
+    """Kotlin's block comments nest; TypeScript's do not. Using one rule for both hides code."""
+
+    def test_typescript_ends_at_the_first_closer(self):
+        self.assertEqual(
+            mod.strip_comments("/* a /* b */ const x = 1", nested=False), " const x = 1"
+        )
+
+    def test_kotlin_needs_the_matching_closer(self):
+        self.assertEqual(
+            mod.strip_comments("/* a /* b */ z */ const x = 1", nested=True), " const x = 1"
+        )
+
+    def test_kotlin_would_swallow_what_typescript_keeps(self):
+        # The concrete hazard: under Kotlin's rule the TS declaration disappears from the scan.
+        self.assertNotIn("const x", mod.strip_comments("/* a /* b */ const x = 1", nested=True))
+
+
+class TestSourceSets(unittest.TestCase):
+    """Excluding only `src/test` and `src/functionalTest` missed most of this repo's test trees."""
+
+    def test_the_source_sets_this_repo_actually_has(self):
+        for rel in (
+            "a/src/test/B.kt",
+            "a/src/functionalTest/B.kt",
+            "a/src/commonTest/B.kt",
+            "a/src/jvmTest/B.kt",
+            "a/src/iosTest/B.kt",
+            "a/src/desktopTest/B.kt",
+            "a/src/screenshotTest/B.kt",
+            "a/src/testFixtures/B.kt",
+        ):
+            self.assertTrue(mod.is_test_source(rel), rel)
+
+    def test_main_is_not_a_test_source(self):
+        self.assertFalse(mod.is_test_source("a/src/main/B.kt"))
+
+
 class WireFingerprint(unittest.TestCase):
     def test_a_renamed_field_changes_the_digest(self):
         a = {"variant": ("String", False)}
@@ -145,6 +183,14 @@ class WireFingerprint(unittest.TestCase):
         a = {"repositories": ("List<String>", False)}
         b = {"repositories": ("List<String>", True)}
         self.assertNotEqual(mod.wire_fingerprint(a), mod.wire_fingerprint(b))
+
+    def test_a_nested_dto_rename_changes_the_digest(self):
+        # The top-level shape is identical either way — `btaCompile: BtaCompileConfig?` — so this
+        # only holds because the nested DTO is part of the hashed shape.
+        writer = mod.kotlin_data_class(mod.WRITER, "DaemonClasspathDescriptor")
+        before = mod.wire_shape(writer)
+        self.assertIn("BtaCompileConfig{", before)
+        self.assertIn("moduleName", before)
 
     def test_the_digest_is_stable_for_the_same_shape(self):
         a = {"x": ("Int", False), "y": ("String", True)}
@@ -233,6 +279,50 @@ class RealTree(unittest.TestCase):
             keys = {m.group(1) for m in mod.RAW_KEY.finditer(mod.strip_comments(mod.read(rel)))}
             self.assertTrue(keys, f"{rel} exposes no raw key reads any more")
             self.assertEqual(set(), keys - set(writer), f"{rel} reads keys the writer never emits")
+
+    def test_no_descriptor_dto_uses_serial_name(self):
+        # `@SerialName` moves the JSON key while the identifier — which every rule here reads —
+        # stays put. The checker refuses it rather than half-supporting it.
+        for dto in ("DaemonClasspathDescriptor",) + mod.NESTED_DTOS:
+            self.assertEqual([], mod.serial_name_renames(mod.WRITER, dto), dto)
+
+    def test_every_raw_key_records_the_type_it_assumes(self):
+        writer = mod.kotlin_data_class(mod.WRITER, "DaemonClasspathDescriptor")
+        for rel, spec in self.allowlist["rawKeyReaders"].items():
+            keys = {m.group(1) for m in mod.RAW_KEY.finditer(mod.stripped(rel))}
+            assumed = spec.get("assumedTypes", {})
+            self.assertEqual(keys, set(assumed), f"{rel}: assumedTypes must cover every raw read")
+            for key, expected in assumed.items():
+                self.assertEqual(writer[key][0], expected, f"{rel}: {key}")
+
+    def test_a_mirrored_key_that_lives_outside_kotlin_is_registered(self):
+        # The production image passes the sandbox-count key as a literal in JAVA_TOOL_OPTIONS.
+        spec = self.allowlist["mirroredConstants"]["SANDBOX_COUNT_PROP"]
+        self.assertIn("deploy/image/Dockerfile", spec.get("alsoAppearsIn", []))
+        for rel in spec["alsoAppearsIn"]:
+            self.assertIn("composeai.daemon.sandboxCount", mod.read(rel))
+
+    def test_a_stamp_resolves_by_package_not_by_bare_name(self):
+        # `DaemonLaunchBuilder.kt` stamps a constant declared in a sibling file of the same
+        # package, which must pass; a same-named symbol in an unrelated package must not.
+        by_package = {}
+        for s in self.allowlist["schemaVersionSites"]:
+            by_package.setdefault(s["symbol"], set()).add(mod.package_declared_in(s["file"]))
+        self.assertTrue(
+            mod.resolves_to_registered(
+                "gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/"
+                "daemonlaunch/DaemonLaunchBuilder.kt",
+                "DAEMON_DESCRIPTOR_SCHEMA_VERSION",
+                by_package,
+            )
+        )
+        self.assertFalse(
+            mod.resolves_to_registered(
+                "daemon/desktop/src/main/kotlin/ee/schimke/composeai/daemon/DaemonMain.kt",
+                "DAEMON_DESCRIPTOR_SCHEMA_VERSION",
+                by_package,
+            )
+        )
 
     def test_mirrored_constants_are_declared_where_the_register_says(self):
         for name, spec in self.allowlist["mirroredConstants"].items():

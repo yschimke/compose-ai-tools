@@ -84,7 +84,12 @@ def read(rel: str) -> str:
     return (REPO_ROOT / rel).read_text(encoding="utf-8")
 
 
-def strip_comments(text: str) -> str:
+def stripped(rel: str) -> str:
+    """`read` with comments removed under the rules of the file's own language."""
+    return strip_comments(read(rel), nested=not rel.endswith(".ts"))
+
+
+def strip_comments(text: str, nested: bool = True) -> str:
     """Remove comments, keeping string literals intact.
 
     String-aware on purpose. A stripper that only looks for `//` and `/*` truncates
@@ -93,16 +98,18 @@ def strip_comments(text: str) -> str:
     behind an ordinary URL. It keeps the contents because mirrored constants ARE strings
     (`"composeai.daemon.sandboxCount"`), so blanking them would defeat the comparison.
 
-    Handles Kotlin raw strings and char literals and TypeScript template literals; Kotlin block
-    comments nest, TypeScript's do not, and treating both as nesting is the safe direction (an
-    unmatched `*/` cannot then run past the end of the file).
+    Handles Kotlin raw strings and char literals and TypeScript template literals. `nested`
+    selects the language's block-comment rule and is not cosmetic: Kotlin's `/*` nests, TypeScript's
+    does not. Applying Kotlin's rule to TypeScript means `/* showing /* */` leaves the scanner
+    inside a comment after the real closer and swallows whatever follows — which for a repo-wide
+    scanner is a place a mirror could hide.
     """
     out: list[str] = []
     i, n, depth = 0, len(text), 0
     while i < n:
         c, two, three = text[i], text[i : i + 2], text[i : i + 3]
         if depth:
-            if two == "/*":
+            if two == "/*" and nested:
                 depth += 1
                 i += 2
             elif two == "*/":
@@ -113,6 +120,10 @@ def strip_comments(text: str) -> str:
         elif two == "/*":
             depth = 1
             i += 2
+            if not nested:
+                j = text.find("*/", i)
+                i = len(text) if j < 0 else j + 2
+                depth = 0
         elif two == "//":
             j = text.find("\n", i)
             i = n if j < 0 else j
@@ -150,6 +161,12 @@ def balanced(text: str, open_at: int, opener: str, closer: str) -> str:
 
 KT_FIELD = re.compile(r"\bval\s+(\w+)\s*:\s*(.+)", re.S)
 
+# `@SerialName("x")` changes the JSON key while the Kotlin identifier stays put, so a parser that
+# reads identifiers would see no change at all — the structural comparison and the fingerprint would
+# both hold while the emitted wire name moved under every reader. None of these DTOs uses it today;
+# rather than half-support it, the check refuses it and says why.
+KT_SERIAL_NAME = re.compile(r'@SerialName\s*\(\s*"([^"]*)"\s*\)')
+
 
 def split_params(body: str) -> list[str]:
     """Split a parameter list on top-level commas.
@@ -172,9 +189,24 @@ def split_params(body: str) -> list[str]:
     return [p.strip() for p in parts if p.strip()]
 
 
+def serial_name_renames(rel: str, name: str) -> list[str]:
+    """Fields of `name` carrying `@SerialName`, whose wire key differs from their identifier."""
+    text = stripped(rel)
+    m = re.search(r"\bdata class\s+" + re.escape(name) + r"\s*\(", text)
+    if not m:
+        return []
+    found = []
+    for param in split_params(balanced(text, m.end() - 1, "(", ")")):
+        rename = KT_SERIAL_NAME.search(param)
+        field = KT_FIELD.search(param)
+        if rename and field and rename.group(1) != field.group(1):
+            found.append(f"{field.group(1)} -> \"{rename.group(1)}\"")
+    return found
+
+
 def kotlin_data_class(rel: str, name: str) -> dict[str, tuple[str, bool]]:
     """`{field: (type, has_default)}` for a Kotlin `data class` primary constructor."""
-    text = strip_comments(read(rel))
+    text = stripped(rel)
     m = re.search(r"\bdata class\s+" + re.escape(name) + r"\s*\(", text)
     if not m:
         raise LookupError(f"{name} not found in {rel}")
@@ -205,7 +237,7 @@ KT_CONST = re.compile(
 
 
 def kotlin_consts(rel: str) -> dict[str, str]:
-    return {m.group(1): m.group(2) for m in KT_CONST.finditer(strip_comments(read(rel)))}
+    return {m.group(1): m.group(2) for m in KT_CONST.finditer(stripped(rel))}
 
 
 # --------------------------------------------------------------------------
@@ -217,7 +249,7 @@ TS_FIELD = re.compile(r"(\w+)(\??)\s*:\s*([^;]+?);")
 
 def ts_interface(rel: str, name: str) -> dict[str, tuple[str, bool]]:
     """`{field: (type, optional)}` for a TS interface. `optional` = declared `field?:`."""
-    text = strip_comments(read(rel))
+    text = stripped(rel)
     m = re.search(r"\binterface\s+" + re.escape(name) + r"\s*\{", text)
     if not m:
         raise LookupError(f"interface {name} not found in {rel}")
@@ -229,7 +261,7 @@ TS_CONST = re.compile(r"export const (\w+)\s*(?::\s*\w+\s*)?=\s*(.+?);", re.M)
 
 
 def ts_consts(rel: str) -> dict[str, str]:
-    return {m.group(1): m.group(2).strip() for m in TS_CONST.finditer(strip_comments(read(rel)))}
+    return {m.group(1): m.group(2).strip() for m in TS_CONST.finditer(stripped(rel))}
 
 
 # --------------------------------------------------------------------------
@@ -306,8 +338,17 @@ def check_versions(allowlist: dict, failures: list[str]) -> None:
                 f"declaring its own."
             )
 
-    # Discovery by use. Whatever a construction site stamps must be a registered constant.
-    known_symbols = {s["symbol"] for s in sites} | set(allowlist["versionStampAliases"])
+    # Discovery by use. Whatever a construction site stamps must be a registered constant *of that
+    # file* — a global name set would accept any file declaring a same-named `val` (non-const, so
+    # invisible to the name scan) and stamping it, which is a stale mirror wearing a registered
+    # name. Aliases stay global: they name an indirection, not a value.
+    # Resolution follows Kotlin's own rules rather than file identity: a stamp is legitimate when
+    # the stamping file declares the registered constant, sits in the same package as a file that
+    # does (no import needed), or imports it by name.
+    by_package: dict[str, set[str]] = {}
+    for s in sites:
+        by_package.setdefault(s["symbol"], set()).add(package_declared_in(s["file"]))
+    aliases = set(allowlist["versionStampAliases"])
     for found_rel, expr in discover_version_stamps():
         if expr.isdigit():
             failures.append(
@@ -315,11 +356,13 @@ def check_versions(allowlist: dict, failures: list[str]) -> None:
                 f"literal.\n    That is a mirror with no name, which no name-based scan can find. "
                 f"Stamp a registered constant instead."
             )
-        elif expr not in known_symbols:
+        elif expr not in aliases and not resolves_to_registered(found_rel, expr, by_package):
             failures.append(
                 f"  {found_rel}: a descriptor is constructed with `schemaVersion = {expr}`, which "
-                f"is neither a registered site nor a recorded alias.\n    Add it to "
-                f"`schemaVersionSites` or `versionStampAliases` in {ALLOWLIST.name}."
+                f"does not resolve to a registered schema-version constant from here.\n"
+                f"    Register the declaration in `schemaVersionSites`, or record the indirection "
+                f"in `versionStampAliases`, in {ALLOWLIST.name}. Name matching alone would let a "
+                f"stale local `val` of the same name pass in an unrelated package."
             )
 
 
@@ -338,7 +381,7 @@ def check_raw_key_readers(
     the daemon as disabled rather than failing loudly.
     """
     for rel, spec in allowlist["rawKeyReaders"].items():
-        keys = {m.group(1) for m in RAW_KEY.finditer(strip_comments(read(rel)))}
+        keys = {m.group(1) for m in RAW_KEY.finditer(stripped(rel))}
         if not keys:
             failures.append(
                 f"  {rel}: registered as a raw-key reader but no `obj[\"…\"]` accesses were "
@@ -351,6 +394,58 @@ def check_raw_key_readers(
                 f"no such field.\n    {spec['why']}"
             )
 
+        # Presence is not enough. `enabled` going from Boolean to String would keep its name, pass
+        # every other rule, and still crash `.jsonPrimitive.boolean` at runtime — an untyped read
+        # has no compiler to catch it, so the assumed type is recorded here instead.
+        for key, expected in spec.get("assumedTypes", {}).items():
+            if key not in keys:
+                failures.append(
+                    f"  {rel}: `assumedTypes` records `{key}`, but no `obj[\"{key}\"]` read "
+                    f"remains. Prune it."
+                )
+            elif key in writer and writer[key][0] != expected:
+                failures.append(
+                    f"  {rel}: reads `{key}` assuming `{expected}`, but the writer now declares "
+                    f"`{writer[key][0]}`.\n    The read is untyped, so this is a runtime crash "
+                    f"rather than a compile error. Update the reader and this record together."
+                )
+        for key in sorted(keys & set(writer) - set(spec.get("assumedTypes", {}))):
+            failures.append(
+                f"  {rel}: reads `{key}` but records no assumed type for it in `assumedTypes`.\n"
+                f"    An untyped read needs its expectation written down, or a retype slips past."
+            )
+
+
+NESTED_DTOS = ("BtaCompileConfig",)
+
+
+def wire_shape(writer: dict[str, tuple[str, bool]]) -> str:
+    """The descriptor's on-the-wire shape, including the DTOs it nests.
+
+    Hashing only the top level left `btaCompile` as the opaque token `BtaCompileConfig?`: renaming
+    or retyping a field *inside* that class changed the wire contract for a released consumer while
+    the digest held steady, and the field-for-field check passed too because both languages had been
+    edited together. The nested shapes are part of the format, so they are part of its identity.
+    """
+    parts = [
+        ";".join(
+            f"{name}:{type_}{'?' if has_default else ''}"
+            for name, (type_, has_default) in writer.items()
+        )
+    ]
+    for dto in NESTED_DTOS:
+        nested = kotlin_data_class(WRITER, dto)
+        parts.append(
+            dto
+            + "{"
+            + ";".join(
+                f"{name}:{type_}{'?' if has_default else ''}"
+                for name, (type_, has_default) in nested.items()
+            )
+            + "}"
+        )
+    return "|".join(parts)
+
 
 def wire_fingerprint(writer: dict[str, tuple[str, bool]]) -> str:
     """A digest of the writer's on-the-wire shape: field names, types, and optionality.
@@ -362,10 +457,7 @@ def wire_fingerprint(writer: dict[str, tuple[str, bool]]) -> str:
     explicit: change it and this fails, which forces the version bump (or a deliberate decision
     that the change is backwards-compatible) to be part of the same diff.
     """
-    shape = ";".join(
-        f"{name}:{type_}{'?' if has_default else ''}" for name, (type_, has_default) in writer.items()
-    )
-    return hashlib.sha256(shape.encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha256(wire_shape(writer).encode("utf-8")).hexdigest()[:16]
 
 
 def check_wire_fingerprint(
@@ -400,8 +492,42 @@ VERSION_NAME = re.compile(
     r"(?:const val|export const) (\w*(?:DESCRIPTOR|DAEMON_LAUNCH)_SCHEMA_VERSION)\b"
 )
 
+# `src/test` and `src/functionalTest` were not enough: this repo also carries `commonTest`,
+# `jvmTest`, `iosTest`, `desktopTest`, `screenshotTest` and `testFixtures` source sets, and a
+# deliberately-skewed descriptor in any of them (a v1 payload proving the reader rejects it) is the
+# point of the test rather than drift.
+TEST_SOURCE_SET = re.compile(r"/src/[A-Za-z0-9]*([Tt]est|[Tt]estFixtures)[A-Za-z0-9]*/")
+
+
+def is_test_source(rel: str) -> bool:
+    return TEST_SOURCE_SET.search(f"/{rel}") is not None
+
+
 DESCRIPTOR_CTOR = re.compile(r"\b(?:DaemonLaunchDescriptor|DaemonClasspathDescriptor)\s*\(")
 SCHEMA_ARG = re.compile(r"\bschemaVersion\s*=\s*([A-Za-z_]\w*|\d+)")
+
+
+PACKAGE_LINE = re.compile(r"^\s*package\s+([\w.]+)", re.M)
+
+
+def package_declared_in(rel: str) -> str:
+    """The Kotlin package a file declares, or its directory for TypeScript."""
+    m = PACKAGE_LINE.search(stripped(rel))
+    return m.group(1) if m else rel.rsplit("/", 1)[0]
+
+
+def resolves_to_registered(rel: str, symbol: str, by_package: dict[str, set[str]]) -> bool:
+    """Would Kotlin resolve `symbol` here to one of the registered declarations?"""
+    packages = by_package.get(symbol)
+    if not packages:
+        return False
+    if package_declared_in(rel) in packages:
+        return True
+    text = stripped(rel)
+    return any(
+        re.search(r"^\s*import\s+" + re.escape(f"{pkg}.{symbol}") + r"\s*$", text, re.M)
+        for pkg in packages
+    )
 
 
 def discover_version_stamps() -> list[tuple[str, str]]:
@@ -418,7 +544,7 @@ def discover_version_stamps() -> list[tuple[str, str]]:
     """
     stamps: list[tuple[str, str]] = []
     for rel, text in walk_sources():
-        if "/src/test/" in f"/{rel}" or "/src/functionalTest/" in f"/{rel}":
+        if is_test_source(rel):
             continue
         for m in DESCRIPTOR_CTOR.finditer(text):
             try:
@@ -450,7 +576,9 @@ def walk_sources() -> list[tuple[str, str]]:
             out.append(
                 (
                     path.relative_to(REPO_ROOT).as_posix(),
-                    strip_comments(path.read_text(encoding="utf-8")),
+                    strip_comments(
+                        path.read_text(encoding="utf-8"), nested=not filename.endswith(".ts")
+                    ),
                 )
             )
     return out
@@ -515,10 +643,32 @@ def check_unknown_key_tolerance(allowlist: dict, failures: list[str]) -> None:
     """The JVM reader ignores unknown keys — what makes writer-only fields survivable."""
     if not allowlist["writerOnlyFields"]:
         return
-    text = strip_comments(read(JVM_READER))
-    if not re.search(r"Json\s*\{[^}]*ignoreUnknownKeys\s*=\s*true", text, re.S):
+    text = stripped(JVM_READER)
+    # Find the receiver `parse` decodes through, then prove THAT instance is the tolerant one.
+    # Matching any `Json { ignoreUnknownKeys = true }` in the file proved only that a tolerant
+    # parser exists somewhere in it — a refactor to the default `Json`, or a second unrelated
+    # tolerant instance, would keep the check green while every plugin-written descriptor (which
+    # carries the writer-only `btaCompile`) failed to parse.
+    call = re.search(r"fun parse\([^)]*\)[^=]*=\s*(\w+)\s*\.decodeFromString", text, re.S)
+    receiver = call.group(1) if call else None
+    tolerant = receiver is not None and re.search(
+        r"\b(?:private\s+)?val\s+" + re.escape(receiver) + r"\s*=\s*Json\s*\{[^}]*"
+        r"ignoreUnknownKeys\s*=\s*true",
+        text,
+        re.S,
+    )
+    if receiver is None:
         failures.append(
-            f"  {JVM_READER}: `ignoreUnknownKeys = true` is gone from the descriptor's `Json`.\n"
+            f"  {JVM_READER}: could not find the `Json` instance `parse` decodes through, so "
+            f"unknown-key tolerance is unverifiable. Update the matcher rather than dropping the "
+            f"check — the writer emits "
+            + ", ".join(f"`{f}`" for f in sorted(allowlist["writerOnlyFields"]))
+            + " which this reader does not declare."
+        )
+    elif not tolerant:
+        failures.append(
+            f"  {JVM_READER}: `parse` decodes through `{receiver}`, which is not a "
+            f"`Json { { } }` configured with `ignoreUnknownKeys = true`.\n"
             f"    The writer emits "
             + ", ".join(f"`{f}`" for f in sorted(allowlist["writerOnlyFields"]))
             + " which this reader does not declare; without that setting every plugin-written "
@@ -536,6 +686,17 @@ def check_mirrored_constants(allowlist: dict, failures: list[str]) -> None:
                 f"constant but is not declared there."
             )
             continue
+        # A key is not only mirrored by Kotlin constants. The production image passes
+        # `-Dcomposeai.daemon.sandboxCount=3` as a literal in its `JAVA_TOOL_OPTIONS`, so renaming
+        # the key consistently across every Kotlin copy would still leave deployed hosts setting a
+        # property nothing reads — silently falling back to a pool of one.
+        for rel in spec.get("alsoAppearsIn", []):
+            if source.strip('"') not in read(rel):
+                failures.append(
+                    f"  {rel}: does not contain {source}, which it is registered as carrying for "
+                    f"`{name}`.\n    {spec['why']}"
+                )
+
         for rel in spec["mirroredBy"]:
             value = kotlin_consts(rel).get(spec.get("mirrorSymbol", name))
             if value is None:
@@ -579,6 +740,16 @@ def check() -> int:
     check_mirrored_constants(allowlist, failures)
     check_raw_key_readers(writer, allowlist, failures)
     check_wire_fingerprint(writer, allowlist, failures)
+
+    # `@SerialName` moves the wire key without moving the identifier, which every rule here reads.
+    for dto in ("DaemonClasspathDescriptor",) + NESTED_DTOS:
+        for rename in serial_name_renames(WRITER, dto):
+            failures.append(
+                f"  {WRITER}: `{dto}.{rename}` uses `@SerialName`, so the JSON key no longer "
+                f"matches the Kotlin identifier.\n    Every rule here compares identifiers, so a "
+                f"wire rename this way would be invisible to all of them. Either drop the "
+                f"annotation, or teach this checker to read it — do not leave it unhandled."
+            )
 
     # `BtaCompileConfig` claims to be field-for-field across the two languages.
     kt_bta = kotlin_data_class(WRITER, "BtaCompileConfig")

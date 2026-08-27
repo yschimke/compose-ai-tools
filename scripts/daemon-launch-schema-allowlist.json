@@ -39,7 +39,13 @@
     "sufficient \u2014 a PR could rename a field in the writer and every in-repo reader at once, leaving",
     "all constants at v2 while a released consumer accepts the new descriptor as v2 and misreads it.",
     "Changing the shape fails here until someone records the new digest, which is where the decision",
-    "'is this breaking?' actually gets made."
+    "'is this breaking?' actually gets made.",
+    "",
+    "alsoAppearsIn / assumedTypes: two ways a contract escapes the Kotlin type system. The production",
+    "image passes the sandbox-count key as a literal in JAVA_TOOL_OPTIONS, so a rename across every",
+    "Kotlin constant would still strand deployed hosts on a property nothing reads; and the doctor's",
+    "raw JSON reads have no compiler behind them, so the type each one assumes is recorded rather",
+    "than inferred."
   ],
   "schemaVersionSites": [
     {
@@ -101,7 +107,10 @@
         "daemon/android/src/main/kotlin/ee/schimke/composeai/daemon/DaemonMain.kt",
         "daemon/android/src/main/kotlin/ee/schimke/composeai/daemon/pool/SandboxProcessPool.kt"
       ],
-      "why": "The descriptor merges this sysprop in via `withSandboxCount()` and the daemon reads it at boot; its own KDoc says 'both sides MUST agree'. Disagreement silently gives every daemon a pool of one."
+      "why": "The descriptor merges this sysprop in via `withSandboxCount()` and the daemon reads it at boot; its own KDoc says 'both sides MUST agree'. Disagreement silently gives every daemon a pool of one.",
+      "alsoAppearsIn": [
+        "deploy/image/Dockerfile"
+      ]
     }
   },
   "versionStampAliases": {
@@ -109,12 +118,18 @@
   },
   "rawKeyReaders": {
     "cli/src/main/kotlin/ee/schimke/composeai/cli/McpCommand.kt": {
-      "why": "`compose-preview doctor` parses the descriptor to a JsonObject and indexes it by string (`enabled`, `schemaVersion`, `javaLauncher`, `manifestPath`) so it can report on a descriptor a typed reader would reject outright. A key that no longer exists reads as null, so doctor would quietly report the daemon disabled instead of failing."
+      "why": "`compose-preview doctor` parses the descriptor to a JsonObject and indexes it by string (`enabled`, `schemaVersion`, `javaLauncher`, `manifestPath`) so it can report on a descriptor a typed reader would reject outright. A key that no longer exists reads as null, so doctor would quietly report the daemon disabled instead of failing.",
+      "assumedTypes": {
+        "enabled": "Boolean",
+        "schemaVersion": "Int",
+        "javaLauncher": "String?",
+        "manifestPath": "String"
+      }
     }
   },
   "wireFingerprint": {
-    "digest": "5198a1ddbf878242",
+    "digest": "7ea9f6c0ea6c2e4e",
     "schemaVersion": 2,
-    "why": "The shape of DaemonClasspathDescriptor as of schema v2. Regenerate deliberately, never to make the build pass."
+    "why": "The shape of DaemonClasspathDescriptor as of schema v2, including the DTOs it nests (BtaCompileConfig) \u2014 a top-level-only digest left a rename inside a nested class invisible. Regenerate deliberately, never to make the build pass."
   }
 }
