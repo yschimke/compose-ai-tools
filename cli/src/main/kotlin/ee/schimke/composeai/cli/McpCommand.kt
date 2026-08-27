@@ -599,7 +599,9 @@ internal class McpCommand(
 }
 
 // Pinned to DAEMON_DESCRIPTOR_SCHEMA_VERSION in
-// gradle-plugin/.../daemon/DaemonClasspathDescriptor.kt. Keep in sync — bump together.
+// gradle-plugin/daemon-launch-builder/.../DaemonClasspathDescriptor.kt. Bump together —
+// `checkDaemonLaunchSchema` fails the build if they drift, so this is enforced rather than
+// remembered.
 internal const val EXPECTED_DESCRIPTOR_SCHEMA_VERSION: Int = 2
 
 internal data class DoctorState(

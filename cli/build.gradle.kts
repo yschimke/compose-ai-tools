@@ -648,6 +648,83 @@ tasks.register<CheckServeSeam>("checkServeSeam") {
 
 tasks.named("check") { dependsOn("checkServeSeam") }
 
+// The four representations of `daemon-launch.json`, checked against each other.
+//
+// The descriptor is written by the gradle plugin and read by the daemon JVM, this CLI's `doctor`
+// and the VS Code extension. Each declares its own copy of the shape and of the schema version,
+// and nothing in the build knows they describe one file. Two of the copies carry a comment asking
+// a human to keep them in sync — `SubprocessRenderSession.kt`'s "mirrors the gradle plugin's
+// writer" and `McpCommand.kt`'s "Keep in sync — bump together". This is that comment, enforced.
+//
+// It lives on `:cli` for the same reason `checkServeSeam` does: the check spans modules that sit
+// in different builds (the writer is inside the `gradle-plugin` composite) plus a TypeScript file
+// that is in no Gradle build at all, so no single owning module exists. `:cli` runs on every PR,
+// holds one of the four sites itself, and already hosts the sibling repo-wide seam check.
+abstract class CheckDaemonLaunchSchema : DefaultTask() {
+  /**
+   * Every Kotlin/TypeScript source in the repo, not just the seven representations.
+   *
+   * The checker's strongest rule is repo-wide: it fails on a schema-version constant, or a
+   * descriptor construction stamping one, that is not registered. That rule reads files nobody
+   * listed — which is the point. Declaring only the representations let Gradle mark the task
+   * up-to-date after a mirror was added in an eighth file, so locally the one check that finds new
+   * mirrors never ran on the change that introduced one. The exclusions mirror `PRUNE` in the
+   * checker; if one list grows, so must the other.
+   */
+  @get:InputFiles
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val representations: ConfigurableFileCollection
+
+  @get:InputFile
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val allowlist: RegularFileProperty
+
+  @get:InputFile
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val checker: RegularFileProperty
+
+  /** Nothing to produce — the file just lets Gradle skip the check when nothing moved. */
+  @get:OutputFile abstract val stamp: RegularFileProperty
+
+  @get:Inject abstract val execOps: ExecOperations
+
+  @TaskAction
+  fun checkSchema() {
+    execOps.exec { commandLine("python3", checker.get().asFile.absolutePath) }
+    stamp.get().asFile.writeText("ok\n")
+  }
+}
+
+tasks.register<CheckDaemonLaunchSchema>("checkDaemonLaunchSchema") {
+  description = "Fails if the daemon-launch.json writer and its readers disagree."
+  group = "verification"
+
+  val repoRoot = rootProject.layout.projectDirectory
+  representations.from(
+    rootProject.fileTree(repoRoot) {
+      include("**/*.kt", "**/*.ts")
+      exclude(
+        "**/build/**",
+        "**/node_modules/**",
+        "**/.git/**",
+        "**/.gradle/**",
+        "**/out/**",
+        "**/dist/**",
+        "scripts/**",
+      )
+    }
+  )
+  // Not only Kotlin/TypeScript: the mirrored-constant rule reads the production image, where the
+  // sandbox-count key is a literal in `JAVA_TOOL_OPTIONS`. Without this the same up-to-date hole
+  // the source tree had would reopen for exactly the file that rule was added to cover.
+  representations.from(repoRoot.file("deploy/image/Dockerfile"))
+  allowlist.set(repoRoot.file("scripts/daemon-launch-schema-allowlist.json"))
+  checker.set(repoRoot.file("scripts/check-daemon-launch-schema.py"))
+  stamp.set(layout.buildDirectory.file("check-daemon-launch-schema/ok.txt"))
+}
+
+tasks.named("check") { dependsOn("checkDaemonLaunchSchema") }
+
 // Bake the resolved Gradle build version into a properties resource the CLI reads at runtime
 // (see `Version.kt#BUNDLE_VERSION`). Avoids the previous hand-edited literal in source — which
 // drifted out of sync with the release manifest and made `compose-preview show` advertise a
