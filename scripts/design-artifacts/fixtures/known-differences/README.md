@@ -362,3 +362,4 @@ an element that never moved. Pure geometry, so every expectation is derivable by
 | `a-fractional-projection-rounds-outward` | A scale that lands the box off the integer grid |
 | `a-negative-origin-clips-to-the-plane` | A tagged node reaching above and left of the content box |
 | `a-box-outside-the-plane-keeps-its-count` | A tagged node that clips away entirely |
+| `a-prototype-named-tag-stays-an-own-key` | A tag literally named `__proto__` |

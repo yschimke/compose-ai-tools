@@ -6044,6 +6044,37 @@ addTagProjection({
   expected: { glyph: { count: 2 } },
 });
 
+/** The projection is the identity here, so one builder serves as both input and expectation. */
+function protoTagCase() {
+  const index = Object.create(null);
+  index["__proto__"] = { count: 1, bounds: { x: 1, y: 2, width: 3, height: 4 } };
+  index.glyph = { count: 1, bounds: { x: 0, y: 0, width: 4, height: 4 } };
+  return index;
+}
+
+addTagProjection({
+  id: "a-prototype-named-tag-stays-an-own-key",
+  title: "A tag literally named `__proto__`",
+  why:
+    "`testTag` is producer-controlled and `__proto__` is an ordinary string in a semantics tree — " +
+    "and a catastrophic object key. On a plain `{}` the assignment *replaces the prototype* rather " +
+    "than creating an own property, so the tag disappears from `Object.keys` and every iteration " +
+    "built on it while a direct lookup still answers through the prototype chain. A consumer that " +
+    "iterates and one that reads by name then disagree about whether the producer published the " +
+    "tag at all, and an element acceptance targeting it resolves differently depending on which the " +
+    "reader used. Same defence and same reason as the `id-not-safe` rules on record ids, one " +
+    "module over: these keys never pass through them.",
+  candidateBox: { x: 0, y: 0, width: 20, height: 20 },
+  plane: { plane: "full-canvas", box: { x: 0, y: 0, width: 20, height: 20 } },
+  // **Built, not written as a literal.** `{ __proto__: … }` in source is the prototype-setting
+  // *syntax*, not an own property — writing this case the obvious way produced a `case.json` with no
+  // `__proto__` key at all, which is the very defect it exists to pin. Assigning onto a
+  // null-prototype object is what makes it an ordinary own key, and `JSON.stringify` then emits it.
+  tagIndex: protoTagCase(),
+  expected: protoTagCase(),
+});
+
+
 // --------------------------------------------------------------------------------------------
 // 6. Write the tree.
 // --------------------------------------------------------------------------------------------

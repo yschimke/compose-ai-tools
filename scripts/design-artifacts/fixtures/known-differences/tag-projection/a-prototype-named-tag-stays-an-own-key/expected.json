@@ -1,0 +1,20 @@
+{
+  "__proto__": {
+    "count": 1,
+    "bounds": {
+      "x": 1,
+      "y": 2,
+      "width": 3,
+      "height": 4
+    }
+  },
+  "glyph": {
+    "count": 1,
+    "bounds": {
+      "x": 0,
+      "y": 0,
+      "width": 4,
+      "height": 4
+    }
+  }
+}

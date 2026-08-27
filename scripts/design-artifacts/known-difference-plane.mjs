@@ -221,7 +221,18 @@ export function canonicalRaster(image, box, plane) {
  * there. Dropping the entry entirely would say the tag had *vanished*, which is a different verdict.
  */
 export function projectTagIndex(tagIndex, candidateBox, plane) {
-  const projected = {};
+  // **Null-prototype, because the keys are producer-controlled tag names.** A `testTag` of
+  // `__proto__` is a perfectly ordinary string in a semantics tree and a catastrophic object key: on
+  // a plain `{}`, `projected[tag] = …` *replaces the prototype* instead of creating an own property.
+  // The tag then vanishes from `Object.keys` and every iteration built on it, while `projected[tag]`
+  // still answers through the prototype chain — so a consumer that iterates and one that looks up
+  // disagree about whether the producer published that tag at all, and an element acceptance
+  // targeting it resolves differently depending on which the reader used.
+  //
+  // Same defence and same reason as the `id-not-safe` rules on record ids, one module over: this
+  // index is keyed by names that never pass through them. `joinedIssues` in `known-differences.mjs`
+  // already builds its map this way.
+  const projected = Object.create(null);
   for (const [tag, entry] of Object.entries(tagIndex ?? {})) {
     if (!entry || typeof entry !== "object") continue;
     const bounds = projectRenderBox(entry.bounds, candidateBox, plane);
