@@ -1,8 +1,8 @@
 package ee.schimke.composeai.daemon
 
-import ee.schimke.composeai.cli.AccessibilityNode
-import ee.schimke.composeai.cli.TalkBackTraversal
-import ee.schimke.composeai.cli.TalkBackUtterance
+import ee.schimke.composeai.previewdata.AccessibilityNode
+import ee.schimke.composeai.previewdata.TalkBackTraversal
+import ee.schimke.composeai.previewdata.TalkBackUtterance
 import java.awt.BasicStroke
 import java.awt.Color
 import java.awt.Font

@@ -1,6 +1,6 @@
 package ee.schimke.composeai.daemon
 
-import ee.schimke.composeai.cli.AccessibilityNode
+import ee.schimke.composeai.previewdata.AccessibilityNode
 import java.awt.Color
 import java.awt.image.BufferedImage
 import javax.imageio.ImageIO

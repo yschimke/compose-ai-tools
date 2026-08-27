@@ -2,6 +2,8 @@ package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.plugin.tooling.ModuleInfo
+import ee.schimke.composeai.previewdriver.GradleAccessFailure
+import ee.schimke.composeai.previewdriver.GradleConnection
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout

@@ -1,5 +1,11 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.previewdata.PreviewManifest
+import ee.schimke.composeai.previewdata.PreviewModule
+import ee.schimke.composeai.previewdata.PreviewResult
+import ee.schimke.composeai.previewdriver.GradleTaskDisposition
+import ee.schimke.composeai.previewdriver.GradleTaskOutcome
+
 /*
  * The prose half of issue #3796. `PreviewDiagnosis.kt` holds what is known; this file turns it into
  * sentences, and its one rule is that every sentence is a function taking the evidence it asserts.

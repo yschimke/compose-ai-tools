@@ -1,5 +1,9 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.previewdata.CaptureResult
+import ee.schimke.composeai.previewdata.PreviewParams
+import ee.schimke.composeai.previewdata.PreviewResult
+import ee.schimke.composeai.previewdata.ScrollCapture
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

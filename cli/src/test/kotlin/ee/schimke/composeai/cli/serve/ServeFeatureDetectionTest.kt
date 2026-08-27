@@ -1,7 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
-import ee.schimke.composeai.cli.Capture
-import ee.schimke.composeai.cli.PreviewInfo
+import ee.schimke.composeai.previewdata.Capture
+import ee.schimke.composeai.previewdata.PreviewInfo
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.serialization.json.JsonPrimitive

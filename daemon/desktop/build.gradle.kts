@@ -119,7 +119,8 @@ dependencies {
   implementation(project(":data-navigation-connector"))
   // Accessibility (desktop, overlay-only) — the desktop a11y path extracts Compose semantics from
   // `ImageComposeScene.semanticsOwners`, draws the Paparazzi-style overlay + legend with AWT, and
-  // emits the wire-format DTOs from `:preview-data-api` (`ee.schimke.composeai.cli.*`). ATF is
+  // emits the wire-format DTOs from `:preview-data-api` (`ee.schimke.composeai.previewdata.*`). ATF
+  // is
   // Android-only, so findings are always empty here — no dependency on `:data-a11y-core` (an
   // android-library). See `DesktopAccessibility*`.
   implementation(project(":preview-data-api"))

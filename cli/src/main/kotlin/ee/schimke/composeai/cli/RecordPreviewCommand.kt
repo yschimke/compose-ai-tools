@@ -6,6 +6,8 @@ import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvidence
+import ee.schimke.composeai.previewdata.PreviewManifest
+import ee.schimke.composeai.previewdata.PreviewModule
 import ee.schimke.composeai.render.session.RenderSession
 import ee.schimke.composeai.render.session.RenderSessionConfig
 import ee.schimke.composeai.render.session.RenderSessionException

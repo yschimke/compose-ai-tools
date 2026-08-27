@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli
+package ee.schimke.composeai.previewdriver
 
 import ee.schimke.composeai.plugin.tooling.ComposePreviewModel
 import ee.schimke.composeai.plugin.tooling.ModuleInfo

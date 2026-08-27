@@ -1,5 +1,6 @@
-package ee.schimke.composeai.cli
+package ee.schimke.composeai.previewdriver
 
+import ee.schimke.composeai.previewdata.PreviewModule
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.OutputStream
@@ -18,18 +19,6 @@ import org.gradle.tooling.events.task.TaskSkippedResult
 import org.gradle.tooling.events.task.TaskSuccessResult
 import org.gradle.tooling.events.test.JvmTestOperationDescriptor
 import org.gradle.tooling.events.test.TestOperationDescriptor
-
-/**
- * Handle for a subproject that applies `ee.schimke.composeai.preview`.
- *
- * [gradlePath] is the colon-separated project path **without** its leading colon (e.g. `"app"`,
- * `"auth:composables"`) — used to address Gradle tasks like
- * `":$gradlePath:composePreviewRenderAll"` and to identify the module in CLI output / persisted
- * state. [projectDir] is the actual filesystem directory of that subproject, resolved via Gradle's
- * Tooling API. Using it instead of `projectRoot/$gradlePath` is what makes nested subprojects
- * (`:foo:bar`) and any custom `project.projectDir` override work correctly — see issue #157.
- */
-data class PreviewModule(val gradlePath: String, val projectDir: File) : java.io.Serializable
 
 data class GradleAccessFailure(
   val operation: String,

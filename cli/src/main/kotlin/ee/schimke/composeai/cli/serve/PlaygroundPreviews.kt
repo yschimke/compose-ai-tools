@@ -1,7 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
-import ee.schimke.composeai.cli.PreviewInfo
-import ee.schimke.composeai.cli.PreviewManifest
+import ee.schimke.composeai.previewdata.PreviewInfo
+import ee.schimke.composeai.previewdata.PreviewManifest
 import kotlinx.serialization.json.Json
 
 /**

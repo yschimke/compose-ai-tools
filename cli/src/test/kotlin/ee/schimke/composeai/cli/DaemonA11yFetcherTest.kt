@@ -24,6 +24,11 @@ import ee.schimke.composeai.daemon.protocol.RecordingStopResult
 import ee.schimke.composeai.daemon.protocol.RenderNowResult
 import ee.schimke.composeai.daemon.protocol.RenderTier
 import ee.schimke.composeai.daemon.protocol.ServerCapabilities
+import ee.schimke.composeai.previewdata.A11Y_REPORT_STATUS_ATF_UNAVAILABLE
+import ee.schimke.composeai.previewdata.AccessibilityEntry
+import ee.schimke.composeai.previewdata.AccessibilityFinding
+import ee.schimke.composeai.previewdata.AccessibilityNode
+import ee.schimke.composeai.previewdata.AccessibilityReport
 import ee.schimke.composeai.render.session.NotificationListener
 import ee.schimke.composeai.render.session.RenderSession
 import ee.schimke.composeai.render.session.RenderSessionBackend

@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.previewdata.PreviewModule
+import ee.schimke.composeai.previewdata.PreviewResult
 import java.io.File
 import java.security.MessageDigest
 import kotlin.system.exitProcess

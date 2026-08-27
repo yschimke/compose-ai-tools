@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli
+package ee.schimke.composeai.previewdata
 
 /**
  * JVM mirror of `:data-a11y-core`'s pure TalkBack helpers (issue #1956), operating on the

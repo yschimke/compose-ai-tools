@@ -1,6 +1,13 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.previewdata.PreviewInfo
+import ee.schimke.composeai.previewdata.PreviewManifest
+import ee.schimke.composeai.previewdata.PreviewModule
+import ee.schimke.composeai.previewdata.PreviewResult
+import ee.schimke.composeai.previewdata.parameterFanoutOwnedBySibling
+import ee.schimke.composeai.previewdriver.GradleTaskDisposition
+import ee.schimke.composeai.previewdriver.GradleTaskOutcome
 import okio.FileSystem
 import okio.Path.Companion.toPath
 

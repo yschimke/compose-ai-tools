@@ -6,6 +6,17 @@ import ee.schimke.composeai.bundle.injectFigmaRasterIntoBundle
 import ee.schimke.composeai.bundle.injectFigmaSvgIntoBundle
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.previewdata.CaptureResult
+import ee.schimke.composeai.previewdata.PreviewInfo
+import ee.schimke.composeai.previewdata.PreviewManifest
+import ee.schimke.composeai.previewdata.PreviewModule
+import ee.schimke.composeai.previewdata.PreviewResult
+import ee.schimke.composeai.previewdata.PreviewResultBuilder
+import ee.schimke.composeai.previewdata.previewSha256
+import ee.schimke.composeai.previewdriver.GradleConnection
+import ee.schimke.composeai.previewdriver.GradleTaskOutcome
+import ee.schimke.composeai.previewdriver.ProjectDiscoveryFailure
+import ee.schimke.composeai.previewdriver.printCapturedTestFailures
 import java.awt.image.BufferedImage
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean

@@ -6,9 +6,6 @@
 package ee.schimke.composeai.daemon
 
 import androidx.compose.ui.input.pointer.PointerEventType
-import ee.schimke.composeai.cli.AccessibilityNode
-import ee.schimke.composeai.cli.TalkBackOverlayFrames
-import ee.schimke.composeai.cli.TalkBackTraversal
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingInputParams
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
@@ -21,6 +18,9 @@ import ee.schimke.composeai.data.layoutinspector.SemanticsTargets
 import ee.schimke.composeai.data.layoutinspector.TargetResolution
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
 import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.previewdata.AccessibilityNode
+import ee.schimke.composeai.previewdata.TalkBackOverlayFrames
+import ee.schimke.composeai.previewdata.TalkBackTraversal
 import ee.schimke.composeai.renderer.encodePngData
 import java.awt.AlphaComposite
 import java.awt.RenderingHints

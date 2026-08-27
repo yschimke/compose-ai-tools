@@ -24,6 +24,7 @@ import ee.schimke.composeai.cli.serve.SvgOutcome
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.previewdata.PreviewModule
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.nio.file.Files

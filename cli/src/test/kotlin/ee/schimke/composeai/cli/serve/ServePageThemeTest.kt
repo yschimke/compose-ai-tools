@@ -1,7 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
-import ee.schimke.composeai.cli.PreviewInfo
-import ee.schimke.composeai.cli.PreviewParams
+import ee.schimke.composeai.previewdata.PreviewInfo
+import ee.schimke.composeai.previewdata.PreviewParams
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

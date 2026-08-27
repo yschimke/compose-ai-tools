@@ -87,14 +87,32 @@ tokenizer is now tested and the register is stable, and because the check become
 preparation item 7 — once serve is its own module, `checkServeModuleBoundary` reads a resolved
 classpath and no source scanning is needed at all. If this check needs substantial work again before
 then, rewrite it against bytecode rather than teaching the tokenizer another Kotlin rule.
-The `serve→cli` direction is dominated by the bundle format (`BundleReader`, `BundleSigning`,
-`BundleClasspathHydration`, `extractBundle*`, `locateBundleSidecarJars`, `BUNDLE_VERSION`) —
-preparation item 5 below — and it is *no longer* dominated by them: those symbols now live in a
-published `:bundle-format` under `ee.schimke.composeai.bundle`, a package the register maps to a
-contract, so twelve of them came off. What is left is nine names on `main`. Worth remembering how
-that happened: moving the files into a module changed the count by zero, because this check reads
-the package an import names, not the module that declares it. The package rename is what moved it. The `cli→serve` direction is dominated by `ServeCommand.kt`, which #3824
-wants reduced to a thin entry point.
+The `serve→cli` direction used to be dominated by the bundle format (`BundleReader`,
+`BundleSigning`, `BundleClasspathHydration`, `extractBundle*`, `locateBundleSidecarJars`) —
+preparation item 5 — and is now down to **three** entries on `main`. Getting there took the same
+lesson twice, and it is worth writing down because it is not the obvious one.
+
+Moving files into a module changes this number by **zero**. The check keys a crossing on the
+*package* an import names, not on the module that declares it, so `:bundle-format` was invisible to
+it until the package was renamed too. Applying that a second time took the list from 9 to 3: six of
+the nine survivors were never `:cli` internals at all — `PreviewInfo`, `PreviewManifest` and
+`PreviewParams` belong to the published `:preview-data-api`, and `PreviewModule`,
+`PreviewParameterFanout` and `PreviewResultBuilder` to `:gradle-preview-driver`. They only looked
+like coupling because they shared the `…cli` package. Both modules now carry their own
+(`ee.schimke.composeai.previewdata`, `ee.schimke.composeai.previewdriver`), which is a **breaking
+change for external consumers** and was taken deliberately rather than annotated away.
+
+That rename immediately exposed something the shared package had hidden. Serve used three types
+from `:gradle-preview-driver`, whose `api` dependency is the **Gradle Tooling API** — so naming it
+as a contract would have put the Tooling API on an extracted server's floor. None of the three
+needed Gradle: `PreviewParameterFanout` has no imports at all, and `PreviewResultBuilder` /
+`previewSha256` use only Okio and the DTOs. They moved down into `:preview-data-api` instead.
+`:gradle-preview-driver` is not a contract and serve no longer names it.
+
+The three that remain are genuinely declared in `:cli` and each needs a decision rather than a
+move: `BUNDLE_VERSION` (does an extracted server report its own version, or the CLI's?),
+`CoordinateResolver`, and `WebEmbed`. They belong to preparation item 7. The `cli→serve` direction
+is untouched at 102 entries and is dominated by `ServeCommand.kt`.
 
 ### 2. `scripts/check-preview-server-contracts.sh` — the artifact probe
 

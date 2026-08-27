@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.bundle.BundleReader
+import ee.schimke.composeai.previewdata.PreviewManifest
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.zip.ZipInputStream

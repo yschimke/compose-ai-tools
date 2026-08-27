@@ -1,5 +1,15 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.previewdata.Capture
+import ee.schimke.composeai.previewdata.CaptureResult
+import ee.schimke.composeai.previewdata.PreviewDataProduct
+import ee.schimke.composeai.previewdata.PreviewInfo
+import ee.schimke.composeai.previewdata.PreviewManifest
+import ee.schimke.composeai.previewdata.PreviewModule
+import ee.schimke.composeai.previewdata.PreviewParams
+import ee.schimke.composeai.previewdata.PreviewResult
+import ee.schimke.composeai.previewdriver.GradleTaskDisposition
+import ee.schimke.composeai.previewdriver.GradleTaskOutcome
 import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlin.test.AfterTest

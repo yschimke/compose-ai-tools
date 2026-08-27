@@ -206,9 +206,9 @@ data class ServePreview(
   /**
    * Module-relative source path of the file this preview was authored in
    * (`src/main/kotlin/…/Foo.kt`), from the bundle's `previews.json` manifest
-   * ([ee.schimke.composeai.cli.PreviewInfo.sourceFile]). Lets the viewer link the preview to its
-   * source on GitHub when the session carries delivery provenance (repo + branch). Null for a
-   * bundle without a manifest, a preview whose manifest entry recorded no source path, or a
+   * ([ee.schimke.composeai.previewdata.PreviewInfo.sourceFile]). Lets the viewer link the preview
+   * to its source on GitHub when the session carries delivery provenance (repo + branch). Null for
+   * a bundle without a manifest, a preview whose manifest entry recorded no source path, or a
    * live/local session with no published source to point at.
    */
   val sourceFile: String? = null,
@@ -219,7 +219,7 @@ data class ServePreview(
   val sourceModule: String? = null,
   /**
    * A 1-based line inside this preview's function body within [sourceFile], from the bundle's
-   * `previews.json` ([ee.schimke.composeai.cli.PreviewInfo.bodyLine]).
+   * `previews.json` ([ee.schimke.composeai.previewdata.PreviewInfo.bodyLine]).
    *
    * Lets the playground handoff seed the editor with the one declaration that was clicked rather
    * than the whole file it shares with its group — a section file is one *group*, so opening
@@ -347,12 +347,14 @@ data class RenderFailureFrame(val file: String = "", val line: Int = 0, val func
 
 /**
  * Detected per-preview feature support, folded across a discovery
- * [ee.schimke.composeai.cli.PreviewInfo]'s captures: keyboard focus (`@FocusedPreview` → a
+ * [ee.schimke.composeai.previewdata.PreviewInfo]'s captures: keyboard focus (`@FocusedPreview` → a
  * `focus`/`focusGif` capture) and one-handed gestures (`@GestureHintPreview` → a `gestureHint`
  * capture). Returns the two booleans the viewer gates its feature controls on. A preview with
  * neither annotation yields `(false, false)`.
  */
-fun detectedFeaturesOf(preview: ee.schimke.composeai.cli.PreviewInfo): Pair<Boolean, Boolean> {
+fun detectedFeaturesOf(
+  preview: ee.schimke.composeai.previewdata.PreviewInfo
+): Pair<Boolean, Boolean> {
   val focus = preview.captures.any { it.focus != null || it.focusGif != null }
   val gestures = preview.captures.any { it.gestureHint != null }
   return focus to gestures
@@ -400,7 +402,7 @@ internal fun inferredThemeMode(name: String, providerFqn: String): String? {
  * provider FQN are skipped (nothing to apply). Deduped by FQN.
  */
 fun declaredThemesFromPreviews(
-  previews: List<ee.schimke.composeai.cli.PreviewInfo>
+  previews: List<ee.schimke.composeai.previewdata.PreviewInfo>
 ): List<ServeTheme> =
   previews
     .filter { it.params.kind == "THEME_CATALOG" || it.params.kind == "WEAR_THEME_CATALOG" }

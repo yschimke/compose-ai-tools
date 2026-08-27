@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.previewdriver.GradleTaskDisposition
+import ee.schimke.composeai.previewdriver.GradleTaskOutcome
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

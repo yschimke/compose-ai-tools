@@ -1,6 +1,16 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.daemon.protocol.UiMode
+import ee.schimke.composeai.previewdata.A11Y_PAYLOAD_SCHEMA_V1
+import ee.schimke.composeai.previewdata.AccessibilityEntry
+import ee.schimke.composeai.previewdata.AccessibilityFinding
+import ee.schimke.composeai.previewdata.CaptureResult
+import ee.schimke.composeai.previewdata.ExtensionPayload
+import ee.schimke.composeai.previewdata.PreviewInfo
+import ee.schimke.composeai.previewdata.PreviewManifest
+import ee.schimke.composeai.previewdata.PreviewModule
+import ee.schimke.composeai.previewdata.PreviewParams
+import ee.schimke.composeai.previewdata.PreviewResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

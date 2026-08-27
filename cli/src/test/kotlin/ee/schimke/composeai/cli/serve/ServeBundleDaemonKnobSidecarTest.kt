@@ -1,7 +1,5 @@
 package ee.schimke.composeai.cli.serve
 
-import ee.schimke.composeai.cli.PreviewInfo
-import ee.schimke.composeai.cli.PreviewManifest
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
@@ -9,6 +7,8 @@ import ee.schimke.composeai.data.overrides.PreviewOverridesPayload
 import ee.schimke.composeai.data.remotecompose.RemoteComposeDeclarationsPayload
 import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
 import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.previewdata.PreviewInfo
+import ee.schimke.composeai.previewdata.PreviewManifest
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.util.zip.ZipEntry

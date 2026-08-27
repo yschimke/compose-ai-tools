@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli
+package ee.schimke.composeai.previewdata
 
 /**
  * The **one** rule for turning a `@PreviewParameter` fan-out on disk into addressable **row ids**
@@ -21,13 +21,13 @@ package ee.schimke.composeai.cli
  * listing — testable without a render, and indifferent to whether the listing came from Okio, a
  * `java.io.File`, or a fake.
  */
-object PreviewParameterFanout {
+public object PreviewParameterFanout {
 
   /** One value of a provider: the file it rendered to, the token that names it, and its row id. */
-  data class Row(val id: String, val token: String, val output: String)
+  public data class Row(val id: String, val token: String, val output: String)
 
   /** The `<stem>_PARAM_<idx>` spelling the renderer falls back to when no label can be derived. */
-  const val INDEX_PREFIX: String = "PARAM_"
+  public const val INDEX_PREFIX: String = "PARAM_"
 
   /**
    * The rows of the preview whose id is [baseId] and whose manifest template capture renders to
@@ -45,7 +45,7 @@ object PreviewParameterFanout {
    * disk matched — the caller decides what an empty fan-out means (the builder keeps no captures,
    * `serve` keeps the bare id).
    */
-  fun rowsOf(
+  public fun rowsOf(
     baseId: String,
     templateOutput: String,
     fileNames: List<String>,
@@ -86,7 +86,7 @@ object PreviewParameterFanout {
    * The addressable id of one row: `<baseId>_<token>`, exactly the shape the daemon accepts on
    * `renderNow` and `--id` accepts as a selector. The single place that spelling is written down.
    */
-  fun rowId(baseId: String, token: String): String = "${baseId}_$token"
+  public fun rowId(baseId: String, token: String): String = "${baseId}_$token"
 
   /**
    * Human-readable coordinate for a row, for output that shows a row *under* its preview rather
@@ -94,7 +94,7 @@ object PreviewParameterFanout {
    * the token carries nothing to say. Distinct from [rowId] on purpose — this one is lossy, and a
    * selector must never be derived from it.
    */
-  fun label(token: String): String? {
+  public fun label(token: String): String? {
     val parameterIndex =
       token.removePrefix(INDEX_PREFIX).toIntOrNull()?.takeIf { token.startsWith(INDEX_PREFIX) }
     return if (parameterIndex != null) "parameter $parameterIndex"
@@ -106,7 +106,7 @@ object PreviewParameterFanout {
    * preceding it as lexicographic order would; labelled rows after, alphabetically. Provider order
    * isn't recoverable from a filename, so alphabetical is the stable, readable choice.
    */
-  val tokenOrder: Comparator<String> = Comparator { a, b ->
+  public val tokenOrder: Comparator<String> = Comparator { a, b ->
     val ia = a.removePrefix(INDEX_PREFIX).toIntOrNull()?.takeIf { a.startsWith(INDEX_PREFIX) }
     val ib = b.removePrefix(INDEX_PREFIX).toIntOrNull()?.takeIf { b.startsWith(INDEX_PREFIX) }
     when {
