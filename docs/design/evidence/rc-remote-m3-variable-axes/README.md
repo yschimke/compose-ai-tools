@@ -12,7 +12,7 @@
 ## The fix, in the reference lane
 
 Baked **before** | baked **after** | changed pixels, both rendered from this repo with
-`:samples:design-catalog-remote-m3:composePreviewRenderAll` (the renders are white text on
+`:remote-catalog:composePreviewRenderAll` in yschimke/wear-m3-catalog (the renders are white text on
 transparent; composited on grey here to be legible).
 
 ![VariableWeightRemote before, after, changed pixels](variable-weight-baked-before-after.png)
@@ -68,10 +68,14 @@ so glyph edges are nearly all of its ink.
 
 ## Reproducing
 
+The `remote-m3` catalog now lives in yschimke/wear-m3-catalog as `:remote-catalog` (compose-ai-tools#4588), so the render half of this runs in a checkout of that repo. The player half stays here.
+
 ```
-export ANDROID_HOME=…                                     # any SDK with platform 36
-./gradlew :samples:design-catalog-remote-m3:composePreviewRenderAll   # baked PNGs + .rc sidecars
-./gradlew :rc-player-wasm:wasmPlayerDist                              # the lane's player
+export ANDROID_HOME=…                          # any SDK with platform 36
+# in a yschimke/wear-m3-catalog checkout:
+./gradlew :remote-catalog:composePreviewRenderAll     # baked PNGs + .rc sidecars
+# back in compose-ai-tools:
+./gradlew :rc-player-wasm:wasmPlayerDist              # the lane's player
 ```
 
 then render each `.rc` sidecar through `rc-player/wasm/build/wasmDist` and `pixelmatch` it against

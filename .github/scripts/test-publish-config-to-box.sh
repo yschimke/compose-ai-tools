@@ -199,6 +199,85 @@ printf '%s' "${off}" | grep -q 'admin API not enabled' ||
 [[ $(printf '%s\n' "${off}" | grep -c 'returned 404') -le 1 ]] ||
   fail "an admin-off box should warn once, not per entry:\n${off}"
 
+# 10. A catalog that MOVED REPOSITORIES is re-pointed, not silently left on the old one.
+#
+#     The reconcile is additive and the server refuses a repo change under an existing id, so the
+#     re-post comes back 409 and reads as success while the box goes on serving the old
+#     repository's branch. That is what a catalog changing repos does (remote-m3 ->
+#     yschimke/wear-m3-catalog), and the symptom is a frozen catalog with a green publish log. The
+#     fix is a DELETE immediately before the POST — pinned here in both directions, because the
+#     over-eager version (retire every catalog every publish) is its own outage.
+cat > "${shim}/curl" <<'SH'
+#!/usr/bin/env bash
+# A box serving compose-m3 from a DIFFERENT repo than catalogs.json declares, and cadence from
+# the same one. Distinguish the listing GET from the mutations by the -X flag.
+method=GET
+for a in "$@"; do
+  case "$a" in
+    POST) method=POST ;;
+    DELETE) method=DELETE ;;
+  esac
+done
+if [[ "$method" == GET ]]; then
+  for a in "$@"; do
+    case "$a" in
+      */admin/catalogs)
+        cat <<'JSON'
+{"schema":"compose-preview-serve/admin-catalogs/v1","catalogs":[
+  {"system":"compose-m3","repo":"yschimke/old-home","branch":"design-artifacts/compose-m3","listed":true,"state":"loaded"},
+  {"system":"cadence","repo":"yschimke/cadence","branch":"design-artifacts/cadence","listed":false,"state":"loaded"}]}
+JSON
+        exit 0 ;;
+    esac
+  done
+  exit 0
+fi
+printf 'ok\n200'
+SH
+chmod +x "${shim}/curl"
+
+moved=$(PATH="${shim}:${PATH}" BASE_URL=https://example.invalid ADMIN_TOKEN=t \
+  TRUST_FILE="${tmp}/producers.json" CATALOGS_FILE="${tmp}/catalogs.json" \
+  bash "${UNDER_TEST}" 2>&1)
+
+printf '%s' "${moved}" | grep -q 'catalog compose-m3: repo moved yschimke/old-home -> yschimke/compose-ai-tools' ||
+  fail "a repo change must be detected and reported:\n${moved}"
+printf '%s' "${moved}" | grep -q 'catalog compose-m3: retired the stale registration' ||
+  fail "a repo change must retire the stale registration before re-posting:\n${moved}"
+printf '%s' "${moved}" | grep -q 'catalog compose-m3: applied' ||
+  fail "the moved catalog must still be re-published after the delete:\n${moved}"
+# The other two are unchanged or absent from the box — retiring them would take a live catalog off
+# the front page for the length of a publish, for nothing.
+printf '%s' "${moved}" | grep -q 'catalog cadence: retired' &&
+  fail "an UNCHANGED catalog must not be retired:\n${moved}"
+printf '%s' "${moved}" | grep -q 'catalog jetnews: retired' &&
+  fail "a catalog the box does not serve yet must not be retired:\n${moved}"
+
+# 10b. A box whose listing is unavailable (older image, no route, bad token) degrades to exactly
+#      the old additive behaviour rather than failing the publish.
+cat > "${shim}/curl" <<'SH'
+#!/usr/bin/env bash
+method=GET
+for a in "$@"; do
+  case "$a" in
+    POST) method=POST ;;
+    DELETE) method=DELETE ;;
+  esac
+done
+[[ "$method" == GET ]] && exit 22
+printf 'ok\n200'
+SH
+chmod +x "${shim}/curl"
+
+no_listing=$(PATH="${shim}:${PATH}" BASE_URL=https://example.invalid ADMIN_TOKEN=t \
+  TRUST_FILE="${tmp}/producers.json" CATALOGS_FILE="${tmp}/catalogs.json" \
+  bash "${UNDER_TEST}" 2>&1)
+
+printf '%s' "${no_listing}" | grep -q 'catalog compose-m3: applied' ||
+  fail "an unreadable listing must not stop catalogs being published:\n${no_listing}"
+printf '%s' "${no_listing}" | grep -q 'retired the stale registration' &&
+  fail "an unreadable listing must not retire anything:\n${no_listing}"
+
 if [[ "${failures}" -gt 0 ]]; then
   echo "${failures} check(s) failed" >&2
   exit 1
