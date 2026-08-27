@@ -45,6 +45,7 @@ class BranchFetchStats(private val clock: () -> Long = System::currentTimeMillis
   private var throttled = 0L
   private var unavailable = 0L
   private var transport = 0L
+  private var tooLarge = 0L
   private var lastThrottleAtEpochMillis: Long? = null
   private var lastFailureAtEpochMillis: Long? = null
   private var lastFailureReason: String? = null
@@ -74,6 +75,7 @@ class BranchFetchStats(private val clock: () -> Long = System::currentTimeMillis
         }
         is BranchFetch.Unavailable -> unavailable++
         is BranchFetch.Transport -> transport++
+        is BranchFetch.TooLarge -> tooLarge++
       }
       if (outcome !is BranchFetch.Ok && outcome !is BranchFetch.NotFound) {
         lastFailureAtEpochMillis = clock()
@@ -93,6 +95,7 @@ class BranchFetchStats(private val clock: () -> Long = System::currentTimeMillis
         throttled = throttled,
         unavailable = unavailable,
         transport = transport,
+        tooLarge = tooLarge,
         lastThrottleAtEpochMillis = lastThrottleAtEpochMillis,
         lastFailureAtEpochMillis = lastFailureAtEpochMillis,
         lastFailureReason = lastFailureReason,
@@ -133,6 +136,15 @@ data class BranchFetchSnapshot(
   val unavailable: Long,
   /** Never got an answer: timeout, DNS, TLS, reset. */
   val transport: Long,
+  /**
+   * Reads the branch answered with a body past the envelope the read was given.
+   *
+   * Not a fault of the branch host the way [throttled] and [unavailable] are — the file arrived, it
+   * is simply bigger than this server will carry — but worth its own number rather than being
+   * folded into [notFound]: an operator looking at a catalog that serves nothing wants "the
+   * producer published something we refuse" separated from "the producer published nothing".
+   */
+  val tooLarge: Long = 0,
   val lastThrottleAtEpochMillis: Long? = null,
   val lastFailureAtEpochMillis: Long? = null,
   val lastFailureReason: String? = null,

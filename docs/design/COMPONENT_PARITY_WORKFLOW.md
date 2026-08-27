@@ -1163,7 +1163,16 @@ canonical plane — a preview render is hundreds of pixels a side, not thousands
 `ServeCatalogStore.fetchCatalogAsset` caps every fetched catalog asset at `MAX_FETCH_BYTES` — 25 MB
 — so a noisy `accepted-candidate.png` that is comfortably inside 8192 px and 128 megapixels can
 still be evaluated offline, where it is read off disk, and refused on the serving host, where the
-fetch never completes and becomes `artifact-unreadable`. Dimensions do not bound file size: PNG
+fetch never completes. That refusal used to arrive as `artifact-unreadable`, because a fetch that
+brings back no bytes and a branch that published no file were the same `null` — the transport kept
+the bytes and discarded the outcome. It no longer does: `BranchFetch.TooLarge` is its own outcome
+(#4521), and the known-differences staging lane turns one into a marker file whose *length alone* is
+past the contract's ceiling, so the reader answers `artifact-too-large` from the metadata, the route
+serves 413, and the engine reports the verdict the producer actually earned. The marker is a length,
+not a payload — nothing allocates the megabytes it stands for, and nothing reads them, because both
+`ServeKnownDifferences.document` and `.artifact` refuse from the file's size before opening it.
+Only this lane opts in: for every other writer a size refusal genuinely is nothing to serve, and a
+marker there would invent a file the branch never published. Dimensions do not bound file size: PNG
 compression varies by orders of magnitude with content, and an acceptance's rasters are exactly the
 noisy sub-regions that compress worst. So `v1` caps each artifact at **8 MiB encoded**, checked from
 the artifact's length, which the reader reports alongside the prefix it serves (measuring the prefix

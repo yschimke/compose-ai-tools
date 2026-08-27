@@ -767,6 +767,218 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `a document the transport refuses by size still reaches the reader as too-large`() {
+    // #4521. The transport's envelope (25 MiB) sits far above the contract's document ceiling
+    // (1 MiB), so a document big enough to be refused *by the transport* is one the reader would
+    // refuse anyway — but it would refuse it as absent, because a read that brings back no bytes
+    // and a branch that published no file were the same `null`. `too-large`/413 and
+    // `unreadable`/404 are different verdicts, and the second one hides why.
+    //
+    // The marker is a length, not a payload: the reader answers from the file's metadata and never
+    // opens it, so nothing here materialises the megabytes it stands for.
+    val root = tempRoot()
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png"}]}]}
+      """
+        .trimIndent()
+    val store =
+      ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        networkFetch = { url, maxBytes ->
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") ->
+              BranchFetch.Ok(catalog.encodeToByteArray())
+            url.endsWith("/parity/known-differences.json") -> BranchFetch.TooLarge(maxBytes)
+            url.endsWith("/images/button.png") -> BranchFetch.Ok(png())
+            else -> BranchFetch.NotFound
+          }
+        },
+      )
+
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+    assertTrue(
+      registered.getValue("compose-m3").knownDifferences()
+        is ServeKnownDifferences.Document.TooLarge,
+      "a size refusal must not read as a document the producer never published",
+    )
+    assertTrue(
+      File(store.liveDir("compose-m3")!!, "parity/known-differences.json").length() >
+        ServeKnownDifferences.MAX_DOCUMENT_BYTES,
+      "the marker's length alone is what the reader refuses from",
+    )
+  }
+
+  @Test
+  fun `an artifact the transport refuses by size still reaches the reader as too-large`() {
+    // The artifact half of #4521, and the half that costs something in practice: a mask past the
+    // transport's envelope was staged as nothing at all, so the engine reached
+    // `artifact-unreadable` — "the producer published no such file" — for a file the producer did
+    // publish and this server declined to carry.
+    val root = tempRoot()
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png"}]}]}
+      """
+        .trimIndent()
+    val document =
+      """{"schema":"${ServeKnownDifferences.SCHEMA}","acceptances":[
+        {"id":"glyph","issue":"https://github.com/yschimke/m3-catalog/issues/40",
+         "mask":"mask.png"}]}"""
+    val store =
+      ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        networkFetch = { url, maxBytes ->
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") ->
+              BranchFetch.Ok(catalog.encodeToByteArray())
+            url.endsWith("/parity/known-differences.json") ->
+              BranchFetch.Ok(document.encodeToByteArray())
+            url.endsWith("/parity/known-differences/glyph/mask.png") ->
+              BranchFetch.TooLarge(maxBytes)
+            url.endsWith("/images/button.png") -> BranchFetch.Ok(png())
+            else -> BranchFetch.NotFound
+          }
+        },
+      )
+
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+    val host = registered.getValue("compose-m3")
+    assertTrue(
+      host.knownDifferences() is ServeKnownDifferences.Document.Text,
+      "the document itself was readable",
+    )
+    assertEquals(
+      ServeKnownDifferences.Artifact.TooLarge,
+      host.knownDifferenceArtifact("glyph/mask.png"),
+    )
+  }
+
+  @Test
+  fun `an absent artifact stays absent — the marker is only for a size refusal`() {
+    // The other side of the same seam, and the reason the marker is opt-in per lane: a 404 must
+    // keep answering `unreadable`. A stager that invented a file for every failure would trade one
+    // collapsed verdict for the opposite one.
+    val root = tempRoot()
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png"}]}]}
+      """
+        .trimIndent()
+    val document =
+      """{"schema":"${ServeKnownDifferences.SCHEMA}","acceptances":[
+        {"id":"glyph","issue":"https://github.com/yschimke/m3-catalog/issues/40",
+         "mask":"mask.png"}]}"""
+    val store =
+      ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        networkFetch = { url, _ ->
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") ->
+              BranchFetch.Ok(catalog.encodeToByteArray())
+            url.endsWith("/parity/known-differences.json") ->
+              BranchFetch.Ok(document.encodeToByteArray())
+            url.endsWith("/images/button.png") -> BranchFetch.Ok(png())
+            else -> BranchFetch.NotFound
+          }
+        },
+      )
+
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+    assertEquals(
+      ServeKnownDifferences.Artifact.Unreadable,
+      registered.getValue("compose-m3").knownDifferenceArtifact("glyph/mask.png"),
+    )
+  }
+
+  @Test
+  fun `a refreshing catalog never serves one host against another generation's files`() {
+    // #4522. The live directory is generation-scoped, so a refresh assembles `g<n+1>` while the
+    // registered host keeps reading `g<n>`. What this pins is the property the shared directory
+    // could not have: at every moment between the swap and the new registration, the host that is
+    // serving reads the files it was built for.
+    //
+    // Read through the outgoing host itself, since that is the thing the old shape got wrong: it
+    // kept serving from a directory whose files a later load had already replaced, so a lazily-read
+    // artifact came back as the new generation's bytes under the old generation's metadata.
+    val root = tempRoot()
+    val catalog = { marker: String ->
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3","title":"$marker",
+       "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png"}]}]}
+      """
+        .trimIndent()
+    }
+    val document = { marker: String ->
+      """{"schema":"${ServeKnownDifferences.SCHEMA}","acceptances":[
+        {"id":"glyph","issue":"https://github.com/yschimke/m3-catalog/issues/$marker",
+         "mask":"mask.png"}]}"""
+    }
+    var generation = "1"
+    val store =
+      ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        fetch = { url ->
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") ->
+              catalog(generation).encodeToByteArray()
+            url.endsWith("/parity/known-differences.json") ->
+              document(generation).encodeToByteArray()
+            url.endsWith("/parity/known-differences/glyph/mask.png") ->
+              "mask-$generation".encodeToByteArray()
+            url.endsWith("/images/button.png") -> png()
+            else -> null
+          }
+        },
+      )
+
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+    val firstHost = registered.getValue("compose-m3")
+    val firstDir = store.liveDir("compose-m3")!!
+
+    generation = "2"
+    // The second load's staged files land in their own generation directory; the first host's
+    // remain exactly where they were until the new host takes over.
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+    val secondDir = store.liveDir("compose-m3")!!
+    assertFalse(firstDir == secondDir, "a load publishes a new generation directory")
+    assertTrue(firstDir.isDirectory, "the outgoing generation survives its successor's load")
+
+    // The first host still reads its own generation's bytes, not the second's.
+    assertEquals(
+      "mask-1",
+      (firstHost.knownDifferenceArtifact("glyph/mask.png") as ServeKnownDifferences.Artifact.Bytes)
+        .bytes
+        .decodeToString(),
+    )
+    // And the new host reads the new ones.
+    assertEquals(
+      "mask-2",
+      (registered.getValue("compose-m3").knownDifferenceArtifact("glyph/mask.png")
+          as ServeKnownDifferences.Artifact.Bytes)
+        .bytes
+        .decodeToString(),
+    )
+
+    // A third load retires the first generation: the grace period is one refresh, not forever.
+    generation = "3"
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+    assertFalse(firstDir.exists(), "the generation two loads back is swept")
+    assertTrue(secondDir.isDirectory, "the generation one load back is still readable")
+  }
+
+  @Test
   fun `a document the engine refuses whole names nothing to fetch`() {
     // Every one of these is a rejection of the *file*: the engine reaches it before `readArtifact`
     // is called once, and the result carries no `statuses` at all. So a stager that read the fetch
@@ -1349,7 +1561,8 @@ class ServeCatalogStoreTest {
         registerWasm = { s, d -> registeredWasm[s] = d },
       )
     assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok, "first load succeeds")
-    val png = File(root, "compose-m3/previews/button-filled__ideal__default__dark.png")
+    val png =
+      File(store.liveDir("compose-m3")!!, "previews/button-filled__ideal__default__dark.png")
     assertTrue(png.isFile, "the first load writes the preview PNG on disk")
 
     // Re-load with every image (transiently) unavailable — parseable catalog.json, zero images.
@@ -1359,7 +1572,10 @@ class ServeCatalogStoreTest {
       "a catalog with no usable images fails the re-load",
     )
     assertTrue(png.isFile, "the previously-served catalog is left intact on a failed re-load")
-    assertFalse(File(root, "compose-m3.staging").exists(), "the staging dir is cleaned up")
+    assertFalse(
+      File(root, "compose-m3/${ServeCatalogStore.STAGING_DIR}").exists(),
+      "the staging dir is cleaned up",
+    )
   }
 
   @Test
@@ -1476,7 +1692,8 @@ class ServeCatalogStoreTest {
 
     // The manifest is written into the served previews dir, with null keys omitted (all present
     // here).
-    val manifest = File(root, "compose-m3/previews/${ServeCatalogStore.VARIANTS_FILE}")
+    val manifest =
+      File(store.liveDir("compose-m3")!!, "previews/${ServeCatalogStore.VARIANTS_FILE}")
     assertTrue(manifest.isFile, "variants.json is written")
     val text = manifest.readText()
     assertTrue(
@@ -1641,7 +1858,8 @@ class ServeCatalogStoreTest {
     val preview = registered.getValue("reply").previews.single()
     assertEquals(expected, preview.props)
 
-    val manifest = File(root, "reply/previews/${ServeCatalogStore.VARIANTS_FILE}").readText()
+    val manifest =
+      File(store.liveDir("reply")!!, "previews/${ServeCatalogStore.VARIANTS_FILE}").readText()
     assertEquals(
       expected,
       Json.parseToJsonElement(manifest)
@@ -1705,7 +1923,8 @@ class ServeCatalogStoreTest {
 
     // variants.json carries the section/group/order the tabbed landing keys off (state/theme
     // absent).
-    val manifest = File(root, "meshcore-mobile/previews/${ServeCatalogStore.VARIANTS_FILE}")
+    val manifest =
+      File(store.liveDir("meshcore-mobile")!!, "previews/${ServeCatalogStore.VARIANTS_FILE}")
     val text = manifest.readText()
     assertTrue(
       text.contains("\"section\":\"Themes\"") && text.contains("\"group\":\"Foundation\""),
@@ -1899,7 +2118,7 @@ class ServeCatalogStoreTest {
     )
     assertContentEquals(
       rcBytes,
-      File(root, "remote-m3/ir/remote__ideal__default.rc").readBytes(),
+      File(store.liveDir("remote-m3")!!, "ir/remote__ideal__default.rc").readBytes(),
       "the IR-backed preview remains available for browser-side replay",
     )
   }
@@ -2013,7 +2232,7 @@ class ServeCatalogStoreTest {
 
     // On disk: the daemon-keyed entry landed re-keyed to the catalog id, beside `previews/`.
     assertTrue(
-      File(root, "compose-m3/ir/button-filled__ideal__default__dark.rc").isFile,
+      File(store.liveDir("compose-m3")!!, "ir/button-filled__ideal__default__dark.rc").isFile,
       "ir/<catalog-id>.rc materialised",
     )
     val host = registered.getValue("compose-m3")
@@ -2876,7 +3095,10 @@ class ServeCatalogStoreTest {
       )
       .load("compose-m3")
     assertTrue(registeredWasm.isEmpty(), "malformed manifest must not register")
-    assertTrue(!File(root, "compose-m3/escape.html").exists(), "traversal write rejected")
+    assertTrue(
+      root.walkTopDown().none { it.name == "escape.html" },
+      "traversal write rejected anywhere under the catalog root",
+    )
   }
 
   @Test
