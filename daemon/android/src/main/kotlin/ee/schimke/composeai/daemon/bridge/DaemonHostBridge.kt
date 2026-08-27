@@ -485,6 +485,25 @@ sealed interface InteractiveCommand {
      * restores the old reflect-the-class behaviour.
      */
     val previewId: String? = null,
+    /**
+     * `spec.overrides.namedOverrides` — the author-declared `previewOverride*` knob seeds — encoded
+     * as `seedKey → "<kind>:<raw>"` strings (see `HeldNamedOverrides`). The held-rule loop decodes
+     * them back into the sandbox's own `PreviewOverrideValue` copies and plans
+     * `PreviewOverridesOverrideExtension` from them, so a live session composes the same values the
+     * one-shot render does.
+     *
+     * Threaded as plain strings rather than the typed bag for the same do-not-acquire bridge reason
+     * as [touchOverlay] and the other `spec.*` fields — and, here, for a second reason:
+     * `PreviewOverrideValue` is re-loaded inside the sandbox, so a host-side instance handed across
+     * would fail the controller's `as? IntValue` reads even if it crossed. Decoding sandbox-side
+     * mints the values from the classloader that reads them.
+     *
+     * Without this the held composition planned its extensions from a synthetic bag carrying only
+     * `touchOverlay` / `localeTag`, so **every** knob fell back to its author default the moment
+     * Live was enabled: an `@OverrideVariant` cell drew its base state
+     * (yschimke/wear-m3-catalog#83), and a knob edited in the viewer's Live lane did nothing.
+     */
+    val namedOverrides: Map<String, String> = emptyMap(),
   ) : InteractiveCommand
 
   /**
