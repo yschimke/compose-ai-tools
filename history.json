@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "58734253dd65378a0db1a0e064047e3c65da025d",
+    "generatedFrom": "6437facc76a9fff701aca8c7f08855c520dfba3e",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -7201,6 +7201,13 @@
             "path": "renders/samples:design-catalog-wear-m3/SwitchButtonOn-3f3536cc.apng",
             "versions": [
                 {
+                    "blob": "eb68b810575d136f6dbe20b6f9aa4306623d39a6",
+                    "commit": "6437facc76a9fff701aca8c7f08855c520dfba3e",
+                    "date": "2026-08-27T07:27:33Z",
+                    "sourceSha": "5ad68765",
+                    "commits": 1
+                },
+                {
                     "blob": "7d99d348dc35d7635af2fbf5448bbacd8e1bbe87",
                     "commit": "31b51415e0ccd1bd224cc377a0c961e0b7d0700f",
                     "date": "2026-08-19T13:30:14Z",
@@ -7208,7 +7215,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
