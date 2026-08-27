@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.39.0](https://github.com/yschimke/compose-ai-tools/compare/v1.38.0...v1.39.0) (2026-08-27)
+
+
+### Features
+
+* **serve:** re-point a catalog's repo atomically instead of refusing it ([#4596](https://github.com/yschimke/compose-ai-tools/issues/4596)) ([63f79f0](https://github.com/yschimke/compose-ai-tools/commit/63f79f04ea09dc4afabf182594fb6fd7347f9056))
+
+
+### Bug Fixes
+
+* **deploy:** never retire a catalog we cannot put back ([#4595](https://github.com/yschimke/compose-ai-tools/issues/4595)) ([8c1bec8](https://github.com/yschimke/compose-ai-tools/commit/8c1bec8da56f1a9ab22587c6f5462ebb7a485d18))
+* **deploy:** re-point a catalog that changed repositories, don't 409 past it ([#4592](https://github.com/yschimke/compose-ai-tools/issues/4592)) ([a986036](https://github.com/yschimke/compose-ai-tools/commit/a986036d98ecfdc4578e21f439c6759ea5eb2a36))
+* **render:** pace the render lane's native animations off the paused clock ([#4589](https://github.com/yschimke/compose-ai-tools/issues/4589)) ([13bb036](https://github.com/yschimke/compose-ai-tools/commit/13bb036e8b06dc2acc1f7bdcc347d4c08273af83))
+* **serve:** let a crop window shrink with the narrow-viewport thumbnail cap ([#4582](https://github.com/yschimke/compose-ai-tools/issues/4582)) ([e5832e0](https://github.com/yschimke/compose-ai-tools/commit/e5832e032f726879bb618af91659d001425b7775))
+* **serve:** never schedule two staging writes that land on one file ([#4586](https://github.com/yschimke/compose-ai-tools/issues/4586)) ([3dc34e3](https://github.com/yschimke/compose-ai-tools/commit/3dc34e359d70073eb39edf17278bb3ab20d35e61))
+
 ## [1.38.0](https://github.com/yschimke/compose-ai-tools/compare/v1.37.1...v1.38.0) (2026-08-27)
 
 
