@@ -1127,6 +1127,12 @@ class ServeHttpServer(
               return@post
             }
             val dropped = withContext(Dispatchers.IO) { cache.dropPersisted() }
+            // Wake the pass, exactly as the regenerate route does. A drop leaves a catalog that
+            // was warm everywhere full of gaps, and a converged catalog's optimizer task has
+            // already exited — so without this the 200 advertises a rewarming that waits on the
+            // capacity-limited resume rotation, or on a visitor's heartbeat, before it starts. The
+            // drop is the more urgent of the two, not the less: every preview is cold now.
+            if (dropped) withContext(Dispatchers.IO) { sessions.wakeOptimizer(system) }
             call.response.headers.append(HttpHeaders.CacheControl, "no-store")
             call.respondText(
               Json.encodeToString(
