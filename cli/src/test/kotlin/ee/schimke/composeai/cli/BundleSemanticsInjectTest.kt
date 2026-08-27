@@ -131,7 +131,7 @@ class BundleSemanticsInjectTest {
       names.getValue("previews/b.semantics.json").toString(Charsets.UTF_8),
     )
     // The web-embed reader still parses the enriched bundle.
-    assertEquals(listOf("a", "b"), BundleReader.readWebEmbedData(file).previews.map { it.id })
+    assertEquals(listOf("a", "b"), readBundleWebEmbedData(file).previews.map { it.id })
   }
 
   @Test

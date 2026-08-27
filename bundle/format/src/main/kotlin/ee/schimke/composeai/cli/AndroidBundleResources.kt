@@ -31,7 +31,7 @@ import org.w3c.dom.Element
  * ([ee.schimke.composeai.cli.serve.ServeBundleDaemon]) paths prepend to the Robolectric daemon's
  * `-cp`. Shared so both wire resources identically.
  */
-internal object AndroidBundleResources {
+public object AndroidBundleResources {
 
   /**
    * The `android/…` payload extracted from a bundle zip: the merged resource APK, the merged
@@ -245,7 +245,7 @@ internal object AndroidBundleResources {
    * external entities disabled), so a hostile or unusual manifest can't reach the network or blow
    * up parsing.
    */
-  internal fun stripApplicationName(manifestXml: String): String? {
+  public fun stripApplicationName(manifestXml: String): String? {
     val doc =
       runCatching {
         val factory =

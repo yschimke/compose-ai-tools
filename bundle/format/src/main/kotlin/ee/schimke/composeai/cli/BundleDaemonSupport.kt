@@ -24,7 +24,7 @@ import okio.source
  * [requireAppJar] is true (false for a v5+ bundle whose previews are all IR-only — a fully
  * IR-backed bundle legitimately carries no consumer classes).
  */
-internal fun extractBundleClassesAndManifest(
+public fun extractBundleClassesAndManifest(
   zipBytes: ByteArray,
   classesDir: File,
   previewsJson: File,
@@ -65,7 +65,7 @@ internal fun extractBundleClassesAndManifest(
  * subprocess, while the public catalog server records them in `daemon-launch.json`. Keeping the
  * extraction here prevents those two launch paths from silently diverging again.
  */
-internal fun extractBundleIrArtifacts(
+public fun extractBundleIrArtifacts(
   zipBytes: ByteArray,
   irDir: File,
   manifestFile: File,
@@ -105,7 +105,7 @@ internal fun extractBundleIrArtifacts(
  *
  * [what] names the offending entry in the rejection message ("bundle entry", "app jar entry", …).
  */
-internal fun expandZipBytesSafely(
+public fun expandZipBytesSafely(
   bytes: ByteArray,
   targetDir: File,
   fileSystem: FileSystem = SystemFileSystem,
@@ -136,7 +136,7 @@ internal fun expandZipBytesSafely(
  * the CLI install. In order: explicit sysprop override (`composeai.cli.lib<Name>Dir`),
  * `$APP_HOME/<name>`, `<jar-parent>/../<name>` (IDE / `JavaExec` runs).
  */
-internal fun locateBundleSidecarJars(sidecarName: String): List<File> {
+public fun locateBundleSidecarJars(sidecarName: String): List<File> {
   val sysprop = bundleSidecarSysprop(sidecarName)
   val override = System.getProperty(sysprop)
   val appHome = System.getProperty("composeai.cli.appHome") ?: System.getenv("APP_HOME")
@@ -155,7 +155,7 @@ internal fun locateBundleSidecarJars(sidecarName: String): List<File> {
 }
 
 /** Human-readable description of where [locateBundleSidecarJars] looked, for error messages. */
-internal fun bundleSidecarSearchDescription(sidecarName: String): String {
+public fun bundleSidecarSearchDescription(sidecarName: String): String {
   val sysprop = bundleSidecarSysprop(sidecarName)
   val override = System.getProperty(sysprop)
   val appHome = System.getProperty("composeai.cli.appHome") ?: System.getenv("APP_HOME")

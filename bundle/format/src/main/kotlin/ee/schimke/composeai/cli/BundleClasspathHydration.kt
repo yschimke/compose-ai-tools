@@ -9,7 +9,7 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /** Restore opt-in shared classpath entries into a self-contained executable bundle. */
-internal object BundleClasspathHydration {
+public object BundleClasspathHydration {
   private val json = Json { ignoreUnknownKeys = true }
 
   /**

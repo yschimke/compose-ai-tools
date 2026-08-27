@@ -89,7 +89,10 @@ classpath and no source scanning is needed at all. If this check needs substanti
 then, rewrite it against bytecode rather than teaching the tokenizer another Kotlin rule.
 The `serve→cli` direction is dominated by the bundle format (`BundleReader`, `BundleSigning`,
 `BundleClasspathHydration`, `extractBundle*`, `locateBundleSidecarJars`, `BUNDLE_VERSION`) —
-preparation item 5 below. The `cli→serve` direction is dominated by `ServeCommand.kt`, which #3824
+preparation item 5 below. Those symbols now live in `:bundle-format` rather than in `:cli`, but
+they kept the `ee.schimke.composeai.cli` package, and this check reads the package an import
+names, not the module that declares it. So the eleven entries stay on the register until item 5's
+package rename; the register is not wrong, it is measuring the thing that still has to change. The `cli→serve` direction is dominated by `ServeCommand.kt`, which #3824
 wants reduced to a thin entry point.
 
 ### 2. `scripts/check-preview-server-contracts.sh` — the artifact probe
@@ -143,14 +146,16 @@ wider, and that two of the entries drag things a server should not carry.
 | `data-render-core` | **not in #3824's six** — payload schema the viewer renders |
 | `data-pseudolocale-core` | **not in #3824's six** — the renderer's locale-direction rule, read to resolve a published capture gutter's leading/trailing edges onto left/right (#4542) |
 | `daemon-core` again, via `daemon.bta` (`BtaCompileSession`, `DiagnosticCollector`) | published — see the correction below |
-| `:cli`'s bundle format | **not a module at all** — preparation item 5 |
+| `:cli`'s bundle format | **a module, `:bundle-format`, but not yet published or renamed** — preparation item 5 |
 
 The three payload schemas are the same kind of thing as the six (a `-core` module, a wire shape, no
 renderer), so they are contracts rather than leaks. `data-pseudolocale-core` joined them for the
 same reason: a pure table of RTL languages and scripts with no renderer behind it, and the
 alternative — serve keeping its own copy of that table — is exactly the drift a contract exists to
 prevent. The bundle format is the one genuine blocker in
-this table: it is not a module at all, so an extracted server cannot name it.
+this table. It is now a module — `:bundle-format` — but it is neither published nor moved out of
+the `ee.schimke.composeai.cli` package, so an extracted server still cannot name it and the seam
+register still counts every bundle symbol as a `:cli` internal. See preparation item 5.
 
 > **Correction.** An earlier revision of this document listed `:daemon:bta-host` as unpublished and
 > therefore a split blocker, because serve imports `BtaCompileSession` and `DiagnosticCollector`
@@ -337,7 +342,25 @@ From #3824's follow-up investigation, with what has landed marked.
    `XrManagerSessionsTest`.
 5. **Extract the bundle schema / read / sign / hydrate / extract path into a published module.**
    `bundle.json` is an external, versioned format that is currently a `:cli` internal, and it is
-   most of the `serve→cli` half of the seam register.
+   most of the `serve→cli` half of the seam register. — *half done.* The code is now a module,
+   `:bundle-format` (`bundle/format`): the manifest DTO, the well-known entry names, the sidecar
+   injectors, the deterministic zip helpers, the detached signature scheme, classpath hydration,
+   the Android resource/launch support, and the figma-raster bound. It depends only on
+   `:common-io` and `:preview-data-api`, which the build now enforces — nothing in it can reach
+   `:cli`, `serve`, the daemon, or a data product. The `bundle` subcommands stayed in `:cli`;
+   they are argument parsing, not format.
+
+   **Not done, and deliberately a separate change: the package and the publishing.** The types
+   kept their `ee.schimke.composeai.cli` package for source-compat, the same way
+   `:gradle-preview-driver` did for its step-B carve-out, so `scripts/check-serve-seam.py` — which
+   keys a crossing on the *package* an import names — still counts all eleven bundle entries as
+   `cliInternalsUsedByServe`. The register is unchanged by this extraction and correctly so: an
+   extracted server still cannot name this module. Finishing item 5 means renaming the package to
+   `ee.schimke.composeai.bundle` and publishing the module, and that carries a decision this
+   extraction does not: the probe compiles against artifacts at an already-released
+   `contractVersion`, so a module first published in the *next* release has to be recorded in
+   `unpublishedContracts` — which is empty today, and guarded by a test that says so — until that
+   release lands. Sequencing that is its own PR, not a side effect of moving files.
 6. **Add ABI validation and explicit API enforcement to the contract modules**, so a contract can't
    change shape silently between the two repos.
 7. **Extract the server implementation**, leaving a genuinely thin CLI adapter. `ServeCommand.kt`

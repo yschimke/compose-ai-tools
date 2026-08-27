@@ -55,6 +55,7 @@
     "module_unit_tests": [
       "api/**",
       "bundle-viewer/**",
+      "bundle/**",
       "cli/**",
       "common/**",
       "daemon/**",
@@ -84,6 +85,7 @@
     "build_cli": [
       "cli/**",
       "bundle-viewer/**",
+      "bundle/**",
       "common/**",
       "api/**",
       "data/**",

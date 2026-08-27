@@ -206,6 +206,13 @@ dependencies {
   // slf4j-nop dependencies the CLI used to declare directly.
   api(project(":gradle-preview-driver"))
 
+  // The preview-bundle format — reading/writing a `.previewbundle`, its manifest DTO, sidecar
+  // injectors, deterministic zip helpers, the detached signature scheme, classpath hydration, and
+  // the Android resource/launch support. Split out of this module for #3824; the `bundle`
+  // subcommands stay here. `api` for source-compat: the types kept their `ee.schimke.composeai.cli`
+  // package, so every existing call site (including `serve`) resolves them unchanged.
+  api(project(":bundle-format"))
+
   // Okio-based file IO (`SystemFileSystem` + suspend helpers) the CLI commands read/write through.
   implementation(project(":common-io"))
 
