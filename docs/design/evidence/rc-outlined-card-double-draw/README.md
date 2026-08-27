@@ -53,9 +53,14 @@ the baked reference**, independent of this fix.
 
 ## Regenerating
 
+The `remote-m3` catalog now lives in yschimke/wear-m3-catalog as `:remote-catalog` (compose-ai-tools#4588), so the render half of this runs in a checkout of that repo. The harness below is unchanged and still runs here.
+
 ```
-# card .rc sidecars: ./gradlew :samples:design-catalog-remote-m3:composePreviewRenderAll
-#   → samples/design-catalog-remote-m3/build/compose-previews/renders/<id>.rc
+# card .rc sidecars, in a yschimke/wear-m3-catalog checkout:
+#   ./gradlew :remote-catalog:composePreviewRenderAll
+#   → remote-catalog/build/compose-previews/renders/<id>.rc
+# or take them off the delivery branch with no build at all:
+#   git fetch https://github.com/yschimke/wear-m3-catalog.git design-artifacts/remote-m3
 ./gradlew :third-party-rc-embedded-player:testDebugUnitTest \
   --tests 'ee.schimke.composeai.rcembedded.RcEmbeddedRenderHarness' \
   -Prc.embedded.input=<dir with <id>.rc + manifest.json> -Prc.embedded.output=<out>

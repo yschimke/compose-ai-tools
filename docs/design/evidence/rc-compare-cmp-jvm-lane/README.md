@@ -22,8 +22,12 @@ links libGL and draws offscreen, so its Gradle test runs under `xvfb-run`.
 In-session, on this machine, over the real `remote-m3` catalog (24 `ir/*.rc` documents):
 
 ```sh
-# 1. render the real catalog to a bundle (Robolectric baked PNGs + ir/*.rc)
-compose-preview bundle pack --module samples:design-catalog-remote-m3 --with-semantics -o bundle.png
+# 1. render the real catalog to a bundle (Robolectric baked PNGs + ir/*.rc).
+#    The catalog moved to yschimke/wear-m3-catalog (#4588), so run this in a checkout of that
+#    repo — or skip the render and take its published bundle straight off the delivery branch:
+#      git fetch https://github.com/yschimke/wear-m3-catalog.git design-artifacts/remote-m3
+#      git show FETCH_HEAD:bundle/bundle.png > bundle.png
+compose-preview bundle pack --module :remote-catalog --with-semantics -o bundle.png
 
 # 2. stage the documents once (shared by both embedded lanes)
 node rc-compare.mjs --bundle bundle.png --player <rc-player>/bundle.js --out out --stage-embedded rc-in

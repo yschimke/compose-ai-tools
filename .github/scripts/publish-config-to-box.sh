@@ -108,6 +108,32 @@ post() {
   return 0
 }
 
+# DELETE one admin path. 200 = retired, 409 = it was not there (both fine — the goal is "gone").
+# Only used to retire a registration this file is about to re-create under a different `repo`; see
+# `retire_if_repo_moved` below.
+delete() {
+  local path="$1" label="$2"
+  if [[ "${DRY_RUN}" == 1 ]]; then
+    echo "DELETE ${path}"
+    return 0
+  fi
+  local response code payload
+  response=$(curl -sS -w $'\n%{http_code}' -m 30 \
+    -X DELETE -H "${ADMIN_TOKEN_HEADER}: ${ADMIN_TOKEN}" \
+    "${BASE_URL}${path}" 2>/dev/null || printf '\n000')
+  code="${response##*$'\n'}"
+  payload="${response%$'\n'*}"
+  case "${code}" in
+    200 | 201) echo "  ${label}: retired the stale registration" ;;
+    409 | 404) echo "  ${label}: nothing to retire" ;;
+    *)
+      rejected=$((rejected + 1))
+      echo "::error::${label}: retiring failed, HTTP ${code} — ${payload}"
+      ;;
+  esac
+  return 0
+}
+
 # Trust FIRST. A catalog is verified at fetch time, so publishing it before its producer is
 # trusted would register it as `unverified` and leave it that way until its branch next moves.
 echo "Reconciling trusted producers from ${TRUST_FILE#"${REPO_ROOT}/"}"
@@ -147,10 +173,43 @@ while IFS= read -r group; do
   }
 done < <(jq -c '.groups // [] | .[]' "${CATALOGS_FILE}")
 
+# What the box serves RIGHT NOW, so a `repo` change in this file can actually be applied.
+#
+# The reconcile is additive: re-posting an entry the box already has comes back 409, which `post`
+# treats as success. That converges `listed`, `group` and `loadPriority` in place, but NOT `repo` —
+# the server refuses to re-point a catalog under an existing id, so the 409 means "unchanged", and
+# the box would go on serving the old repository's branch while this file says otherwise and every
+# log line reads green. That is not hypothetical: it is exactly what a catalog moving repositories
+# does (remote-m3 → yschimke/wear-m3-catalog, #4588), and the failure is silent in the worst way —
+# the publisher stops, the served bytes freeze, and nothing reports a problem.
+#
+# So: read the current registrations, and where the declared `repo` differs from the live one,
+# retire that id immediately before the POST re-creates it. A GET failure (older box, no route,
+# no token) leaves the map empty, which degrades to exactly the old additive behaviour.
+box_catalogs=""
+if [[ "${DRY_RUN}" != 1 ]]; then
+  box_catalogs=$(curl -sS -m 30 -H "${ADMIN_TOKEN_HEADER}: ${ADMIN_TOKEN}" \
+    "${BASE_URL}/admin/catalogs" 2>/dev/null || true)
+fi
+
+# The `repo` the box currently serves for a system, or empty if it serves no such catalog.
+box_repo_for() {
+  [[ -n "${box_catalogs}" ]] || return 0
+  printf '%s' "${box_catalogs}" |
+    jq -r --arg s "$1" '.catalogs // [] | map(select(.system == $s)) | .[0].repo // ""' 2>/dev/null ||
+    true
+}
+
 echo "Reconciling catalogs from ${CATALOGS_FILE#"${REPO_ROOT}/"}"
 while IFS= read -r entry; do
   [[ -n "${entry}" ]] || continue
   system=$(printf '%s' "${entry}" | jq -r '.system')
+  declared_repo=$(printf '%s' "${entry}" | jq -r '.repo // ""')
+  current_repo=$(box_repo_for "${system}")
+  if [[ -n "${current_repo}" && -n "${declared_repo}" && "${current_repo}" != "${declared_repo}" ]]; then
+    echo "  catalog ${system}: repo moved ${current_repo} -> ${declared_repo}"
+    delete "/admin/catalogs/${system}" "catalog ${system}"
+  fi
   # Preserve the declared shape — an unlisted catalog must stay off the front page, a group
   # claim has to survive or the card lands under the owner fallback instead of its section, and
   # loadPriority has to reach the box or the committed startup fetch order never takes effect
