@@ -81,6 +81,26 @@ internal object PackPreviewIdExclusions {
     return file.readLines().map(String::trim).filter(String::isNotEmpty)
   }
 
+  /**
+   * `bundle pack --id-file <path>`: the previews to PACK, one per line.
+   *
+   * The include-side twin of [fileFromArgs], and needed for the same reason. `--id` comma-splits
+   * every value, so an id containing a comma — `@Preview(widthDp = …, heightDp = …)` mints
+   * `…AppCardRemote_width=227dp,height=200dp,dpi=320` — is shattered into three.
+   * `composePreviewRender` survives that because it matches ids by SUBSTRING, so the fragments
+   * still select something; `composePreviewBundle` matches EXACTLY and fails with `preview id not
+   * found: …AppCardRemote_width=227dp`, naming the first fragment. Escaping does not help:
+   * `encodePreviewId` protects commas on the Gradle transport, but by then the id is already in
+   * pieces.
+   *
+   * A line break cannot occur inside an id, so a file has no such ambiguity. When present it
+   * REPLACES `--id` rather than adding to it.
+   */
+  fun idFileFromArgs(args: List<String>): java.io.File? =
+    args.flagValuesAll("--id-file").lastOrNull()?.trim()?.takeIf(String::isNotEmpty)?.let {
+      java.io.File(it)
+    }
+
   /** The Gradle property carrying `@PreviewParameter` **row** label exclusions. */
   const val ROW_GRADLE_PROPERTY = "composePreview.rowExclude"
 

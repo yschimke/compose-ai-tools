@@ -157,6 +157,15 @@ class BundleCommand(args: List<String>) : Command(args) {
                             -PcomposePreview.idExclude; also read from the
                             ORG_GRADLE_PROJECT_composePreview.idExclude env var when the flag is
                             absent, so an env-only setup thins the semantics pass too.
+        --id-file <path>    The previews to pack, one per line, read from a file. The include-side
+                            twin of --exclude-preview-id-file below, and needed for the same
+                            reason: --id comma-splits its values, so an id containing a comma (a
+                            @Preview(widthDp = …, heightDp = …) mints
+                            `…AppCard_width=227dp,height=200dp,dpi=320`) is shattered into three.
+                            The render hides that — it matches ids by substring — but
+                            composePreviewBundle matches exactly and fails with "preview id not
+                            found" naming the first fragment. Wins over --id. An unreadable path is
+                            an error, not an empty selection.
         --exclude-preview-id-file <path>
                             The same exclusions, one per line, read from a file. Use this for a
                             GENERATED list: a preview id may itself contain a comma (a
@@ -269,11 +278,12 @@ private class PackSubcommand(private val args: List<String>) {
   private val progress: Boolean = verbose || "--progress" in args
   private val timeout: String? = args.flagValue("--timeout")
   private val ids: List<String> =
-    args
-      .flagValuesAll("--id")
-      .flatMap { it.split(',') }
-      .map { it.trim() }
-      .filter { it.isNotEmpty() }
+    PackPreviewIdExclusions.idFileFromArgs(args)?.let(PackPreviewIdExclusions::linesOf)
+      ?: args
+        .flagValuesAll("--id")
+        .flatMap { it.split(',') }
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
 
   /**
    * `--exclude-preview-id` patterns (issue #2966) — the previews this pack must NOT render or

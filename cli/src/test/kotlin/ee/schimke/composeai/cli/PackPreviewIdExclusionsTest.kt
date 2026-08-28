@@ -247,4 +247,54 @@ class PackPreviewIdExclusionsTest {
       PackPreviewIdExclusions.retain(ids, listOf("=FilledButton_Light")),
     )
   }
+
+  // --- --id-file: the include-side twin (the composePreviewBundle failure) ---
+
+  @Test
+  fun `an id file carries a comma-bearing id intact`() {
+    val f = fileWith(commaBearingIds)
+    assertEquals(
+      commaBearingIds,
+      PackPreviewIdExclusions.idFileFromArgs(listOf("pack", "--id-file", f.path))!!.let(
+        PackPreviewIdExclusions::linesOf
+      ),
+    )
+  }
+
+  @Test
+  fun `no --id-file yields null, leaving --id in charge`() {
+    assertEquals(null, PackPreviewIdExclusions.idFileFromArgs(listOf("pack", "--id", "Foo")))
+  }
+
+  /**
+   * The live failure: `--id` comma-splits, so the first fragment is what `composePreviewBundle`
+   * reports as `preview id not found`. Pinned so the shattering is a documented behaviour of the
+   * flag rather than a surprise.
+   */
+  @Test
+  fun `--id shatters a comma-bearing id into its fragments`() {
+    val shattered =
+      listOf("pack", "--id", commaBearingIds[0]).let { args ->
+        args.drop(2).flatMap { it.split(',') }.map(String::trim)
+      }
+    assertEquals(3, shattered.size)
+    assertEquals(
+      "ee.schimke.wearm3catalog.remote.CatalogPreviewsKt.CustomShapeRemoteButton_width=227dp",
+      shattered[0],
+    )
+  }
+
+  @Test
+  fun `a missing id file fails loudly rather than packing nothing`() {
+    val missing = java.io.File(tmpRoot, "nope-ids.txt")
+    val e =
+      kotlin
+        .runCatching {
+          PackPreviewIdExclusions.linesOf(
+            PackPreviewIdExclusions.idFileFromArgs(listOf("pack", "--id-file", missing.path))!!
+          )
+        }
+        .exceptionOrNull()
+    assertEquals(true, e is IllegalStateException)
+  }
 }

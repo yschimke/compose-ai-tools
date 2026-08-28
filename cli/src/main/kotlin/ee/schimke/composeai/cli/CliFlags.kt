@@ -30,6 +30,7 @@ internal object CliFlags {
       "--module",
       "--filter",
       "--id",
+      "--id-file",
       "--exclude-preview-id",
       "--exclude-preview-id-file",
       "--exclude-preview-row",
