@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.41.0](https://github.com/yschimke/compose-ai-tools/compare/v1.40.0...v1.41.0) (2026-08-28)
+
+
+### Features
+
+* **cli:** add --id-file, so a preview id containing a comma can be packed ([#4615](https://github.com/yschimke/compose-ai-tools/issues/4615)) ([5ddc4ef](https://github.com/yschimke/compose-ai-tools/commit/5ddc4ef200c656aaffca9718700dbbac4fd04b19))
+* **deploy:** turn the image lane on where its gating repository is named ([#4608](https://github.com/yschimke/compose-ai-tools/issues/4608)) ([e286a24](https://github.com/yschimke/compose-ai-tools/commit/e286a2434d1bd6373f34a4700ba0c7bd99ca9623))
+* make every CI-enforced rule reachable from every agent's entrypoint ([#4605](https://github.com/yschimke/compose-ai-tools/issues/4605)) ([3c45998](https://github.com/yschimke/compose-ai-tools/commit/3c4599818b87c6026bd4bc92b168f633a06a3922))
+
+
+### Bug Fixes
+
+* **ci:** composite transparent renders onto a backdrop before diffing them ([#4618](https://github.com/yschimke/compose-ai-tools/issues/4618)) ([d5af401](https://github.com/yschimke/compose-ai-tools/commit/d5af401ebfe5a836cd7659af70fe3928cb7246bc))
+* **ci:** record the test-side ServeBackgroundWork crossing on the seam register ([#4620](https://github.com/yschimke/compose-ai-tools/issues/4620)) ([c5dd361](https://github.com/yschimke/compose-ai-tools/commit/c5dd361a8c34f374122425affc1e864ea58f9237))
+* **serve:** count a dirty render the pass cannot replace as failed ([#4614](https://github.com/yschimke/compose-ai-tools/issues/4614)) ([339770a](https://github.com/yschimke/compose-ai-tools/commit/339770a257d94355c313e4cb48d4e3a7aebb76d7))
+* **serve:** let --background-renders widen the passes, not just the permits ([#4616](https://github.com/yschimke/compose-ai-tools/issues/4616)) ([f124e77](https://github.com/yschimke/compose-ai-tools/commit/f124e77236f8ba0f748b00ca4244e4d22865970c))
+* **serve:** say when a warm catalog is serving another build's renders ([#4609](https://github.com/yschimke/compose-ai-tools/issues/4609)) ([197df08](https://github.com/yschimke/compose-ai-tools/commit/197df0838f7e31c8df8b8e858d55bb4fa826abe5))
+
 ## [1.40.0](https://github.com/yschimke/compose-ai-tools/compare/v1.39.0...v1.40.0) (2026-08-28)
 
 
