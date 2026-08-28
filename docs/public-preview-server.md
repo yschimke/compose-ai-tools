@@ -1963,6 +1963,18 @@ panels; clicking pins it, so the highlight survives the reader's eye moving from
 the frame, and two findings can be held up against each other. Nothing is lit at rest: a dozen
 findings' regions drawn at once over one frame answer "where is this one" for none of them.
 
+**Where the file comes from.** A design-parity run publishes its findings to its own
+`design-parity/<system>` branch, keyed by the ids a *run* knows — the fully-qualified compose
+preview id and the design-map code handle. The compare page routes on neither: it routes on the
+catalog's sticker id, minted at publish. So `emit-parity-findings.mjs` does the join in the
+publishing job, which is the only place holding both the run's output and the catalog it will be
+shown against — the same reason `parity/activity.json` is a publish step rather than a server
+feature. On the way through it fills in the two fields a run cannot know: the `referenceId`, from
+the same `planDesignReferences` records that mint `references/index.json`, so one board's token
+drift never prints under another board's panels; and the `reportUrl`, from the branch plus the
+`reportPath` the run's `run.json` records. A catalog with no parity branch publishes nothing and
+serves exactly as it did before the panel existed.
+
 A finding with no anchors keeps its sentence and is never offered as a control — no `tabindex`, no
 pointer affordance — because a promise of a highlight that cannot come is worse than plain text.
 Everything is fail-soft in the same way the reference and annotation manifests are: an unreadable
