@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "f0ce48544e2dbe0e9685dadda499184f8f1505f8",
+    "generatedFrom": "9f54d69ed69608775ebb3ba382dbc2a16300e440",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -7254,6 +7254,13 @@
             "path": "renders/samples:wear/activity__MainActivity.png",
             "versions": [
                 {
+                    "blob": "6d96f4a4272b9bbd2ede0ce97688e43924488577",
+                    "commit": "9f54d69ed69608775ebb3ba382dbc2a16300e440",
+                    "date": "2026-08-28T11:18:03Z",
+                    "sourceSha": "6f1d73e0",
+                    "commits": 1
+                },
+                {
                     "blob": "e55069882caaf3cdb7c84985f1475f88c6f01582",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
@@ -7261,7 +7268,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -7284,6 +7291,13 @@
             "path": "renders/samples:wear/AmbientStatusInteractivePreview_Ambient_body_interactive-e608dece.png",
             "versions": [
                 {
+                    "blob": "b780c800522e5d4aceebe84e2db816572a954c0b",
+                    "commit": "9f54d69ed69608775ebb3ba382dbc2a16300e440",
+                    "date": "2026-08-28T11:18:03Z",
+                    "sourceSha": "6f1d73e0",
+                    "commits": 1
+                },
+                {
                     "blob": "40999cb4dd7f9a5bdd6e617d5f0f2c229939318e",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
@@ -7291,7 +7305,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -7314,6 +7328,13 @@
             "path": "renders/samples:wear/ActivityListDeviceMatrixPreview_Activity_list_XL_Round_240dp-f001d04a.png",
             "versions": [
                 {
+                    "blob": "03a05de751158ce26fc87fd95f84c8c8741face3",
+                    "commit": "9f54d69ed69608775ebb3ba382dbc2a16300e440",
+                    "date": "2026-08-28T11:18:03Z",
+                    "sourceSha": "6f1d73e0",
+                    "commits": 1
+                },
+                {
                     "blob": "8d05640604b3e5d15aea8e8ad4e0bbf1bc755af8",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
@@ -7321,7 +7342,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -7344,6 +7365,13 @@
             "path": "renders/samples:wear/WearDeviceMatrixPreview_Large_Round_227dp-6e431ca7.png",
             "versions": [
                 {
+                    "blob": "dab816d58ff74dfe44a849f10d682db65eae507f",
+                    "commit": "9f54d69ed69608775ebb3ba382dbc2a16300e440",
+                    "date": "2026-08-28T11:18:03Z",
+                    "sourceSha": "6f1d73e0",
+                    "commits": 1
+                },
+                {
                     "blob": "748b4181dcec7bd34569f895a4fe8dce9ee03353",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
@@ -7351,7 +7379,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -7374,6 +7402,13 @@
             "path": "renders/samples:wear/WearDeviceMatrixPreview_XL_Round_240dp-1f5c776d.png",
             "versions": [
                 {
+                    "blob": "58dd7fd05d74e63b891037e056984ecbd665f843",
+                    "commit": "9f54d69ed69608775ebb3ba382dbc2a16300e440",
+                    "date": "2026-08-28T11:18:03Z",
+                    "sourceSha": "6f1d73e0",
+                    "commits": 1
+                },
+                {
                     "blob": "2549d0d0707fb04991ad953e1b388ea97d56ad49",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
@@ -7381,7 +7416,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -7404,6 +7439,13 @@
             "path": "renders/samples:wear/MediaGestureScreenPreview_Media_hints_off-e089b6a3.png",
             "versions": [
                 {
+                    "blob": "ff390f134a39ccd1d05a8c7aed80fbee2c57b122",
+                    "commit": "9f54d69ed69608775ebb3ba382dbc2a16300e440",
+                    "date": "2026-08-28T11:18:03Z",
+                    "sourceSha": "6f1d73e0",
+                    "commits": 1
+                },
+                {
                     "blob": "9cb061c0eb2f923c9cefe707b36709ca263ee1e1",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
@@ -7411,7 +7453,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -7434,6 +7476,13 @@
             "path": "renders/samples:wear/DisabledGestureScreenPreview_Devices_Large_Round-0db487e4.png",
             "versions": [
                 {
+                    "blob": "d69c171127f8d5b0efb3c66e36f7d3782dbcfe0b",
+                    "commit": "9f54d69ed69608775ebb3ba382dbc2a16300e440",
+                    "date": "2026-08-28T11:18:03Z",
+                    "sourceSha": "6f1d73e0",
+                    "commits": 1
+                },
+                {
                     "blob": "52817f227cd859cc985a079e34c7e8203b0e4f8d",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
@@ -7441,7 +7490,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -7464,6 +7513,13 @@
             "path": "renders/samples:wear/GestureGalleryPreview_Devices_Large_Round-67656b37.png",
             "versions": [
                 {
+                    "blob": "ac297831335401020cc53d4281f0b17a45d4c5ae",
+                    "commit": "9f54d69ed69608775ebb3ba382dbc2a16300e440",
+                    "date": "2026-08-28T11:18:03Z",
+                    "sourceSha": "6f1d73e0",
+                    "commits": 1
+                },
+                {
                     "blob": "52ce1679b26475534bacc852f4750050a76210f4",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
@@ -7471,7 +7527,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -7524,6 +7580,13 @@
             "path": "renders/samples:wear/PrimaryActionStickerPreview-bde44328_TIME_800ms.png",
             "versions": [
                 {
+                    "blob": "b1a061f7ddffc3a8121de4b893c3ca15a5445ed2",
+                    "commit": "9f54d69ed69608775ebb3ba382dbc2a16300e440",
+                    "date": "2026-08-28T11:18:03Z",
+                    "sourceSha": "6f1d73e0",
+                    "commits": 1
+                },
+                {
                     "blob": "5563d482073703b2f491c7492b2131c369a79c0b",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
@@ -7531,7 +7594,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -7584,6 +7647,13 @@
             "path": "renders/samples:wear/PlaceholderCardLoading_wearos_small_round-636c01fa.png",
             "versions": [
                 {
+                    "blob": "96c67893fc039c941f8af30db6d4de8602f57ec8",
+                    "commit": "9f54d69ed69608775ebb3ba382dbc2a16300e440",
+                    "date": "2026-08-28T11:18:03Z",
+                    "sourceSha": "6f1d73e0",
+                    "commits": 1
+                },
+                {
                     "blob": "2ebbfc0c1259c6d571fd74440bda479e31125ac0",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
@@ -7591,7 +7661,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -7614,6 +7684,13 @@
             "path": "renders/samples:wear/ActivityListFontScalesPreview_Fonts_Large-11543d6b.png",
             "versions": [
                 {
+                    "blob": "dcfa9e904fba33c5f24e0a97969b171c43bf7dad",
+                    "commit": "9f54d69ed69608775ebb3ba382dbc2a16300e440",
+                    "date": "2026-08-28T11:18:03Z",
+                    "sourceSha": "6f1d73e0",
+                    "commits": 1
+                },
+                {
                     "blob": "639cfef2898b01f159d7c98abf4e954e4bdc0386",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
@@ -7621,7 +7698,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -7644,6 +7721,13 @@
             "path": "renders/samples:wear/ActivityListFontScalesPreview_Fonts_Largest-5951aa63.png",
             "versions": [
                 {
+                    "blob": "7bf56c7a655b76d7e39e79bebc0e089712ee4dd1",
+                    "commit": "9f54d69ed69608775ebb3ba382dbc2a16300e440",
+                    "date": "2026-08-28T11:18:03Z",
+                    "sourceSha": "6f1d73e0",
+                    "commits": 1
+                },
+                {
                     "blob": "5a67befe12b838908193dda3d6993615c2b16df8",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
@@ -7651,7 +7735,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -7674,6 +7758,13 @@
             "path": "renders/samples:wear/ActivityListFontScalesPreview_Fonts_Normal-e724390d.png",
             "versions": [
                 {
+                    "blob": "cc708f11f74dc2f42b67088077dc18415e2689f4",
+                    "commit": "9f54d69ed69608775ebb3ba382dbc2a16300e440",
+                    "date": "2026-08-28T11:18:03Z",
+                    "sourceSha": "6f1d73e0",
+                    "commits": 1
+                },
+                {
                     "blob": "7b3f2d4973c688f554726eddd3aa8fbe9741b222",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
@@ -7681,7 +7772,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -7726,6 +7817,13 @@
             "path": "renders/samples:wear/ActivityListLongPreview_Devices_Large_Round-5304b86a.png",
             "versions": [
                 {
+                    "blob": "80d7425d744f76887bf07390a2f115fec70e6eb4",
+                    "commit": "9f54d69ed69608775ebb3ba382dbc2a16300e440",
+                    "date": "2026-08-28T11:18:03Z",
+                    "sourceSha": "6f1d73e0",
+                    "commits": 1
+                },
+                {
                     "blob": "46cba7b58ab0258ca2195e34a316d4deb896db75",
                     "commit": "fe52ff4a7f8ccd094d48083c06fd644c1996dd85",
                     "date": "2026-08-19T22:14:45Z",
@@ -7740,7 +7838,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 2,
+            "observations": 3,
             "unstable": false,
             "flapCount": 0
         },
@@ -7785,6 +7883,13 @@
             "path": "renders/samples:wear/ActivityListPreview_Devices_Large_Round-e1600e4b.png",
             "versions": [
                 {
+                    "blob": "29f7db90365977091ebf73f67c3add1c3926ff48",
+                    "commit": "9f54d69ed69608775ebb3ba382dbc2a16300e440",
+                    "date": "2026-08-28T11:18:03Z",
+                    "sourceSha": "6f1d73e0",
+                    "commits": 1
+                },
+                {
                     "blob": "84fbee93d53ceddeec3d9ed596e49bf1b54377d3",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
@@ -7792,7 +7897,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -7845,6 +7950,13 @@
             "path": "renders/samples:wear/ButtonPreview_Devices_Small_Round-5977caf7.png",
             "versions": [
                 {
+                    "blob": "d85c148ddd1cfa3180fc4f0218430a339853e020",
+                    "commit": "9f54d69ed69608775ebb3ba382dbc2a16300e440",
+                    "date": "2026-08-28T11:18:03Z",
+                    "sourceSha": "6f1d73e0",
+                    "commits": 1
+                },
+                {
                     "blob": "399f8d0a48b086f918baeecfa8a6ef26bf9a1552",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
@@ -7852,7 +7964,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -7875,6 +7987,13 @@
             "path": "renders/samples:wear/CircularProgressIndicatorPreview_Devices_Small_Round-39c1ab95.png",
             "versions": [
                 {
+                    "blob": "15deba4b9f52464b547f9d9ae837873f263addd1",
+                    "commit": "9f54d69ed69608775ebb3ba382dbc2a16300e440",
+                    "date": "2026-08-28T11:18:03Z",
+                    "sourceSha": "6f1d73e0",
+                    "commits": 1
+                },
+                {
                     "blob": "d278cfc0ad58f770a365c49125bd0fbd04dc4978",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
@@ -7882,13 +8001,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:wear/com.example.samplewear.PreviewsKt.SettingsMainScreenLongPreview_Devices - Large Round": {
             "path": "renders/samples:wear/SettingsMainScreenLongPreview_Devices_Large_Round-36703d30.png",
             "versions": [
+                {
+                    "blob": "3e9a616b7a15fac3c40d50ae9e2cffa94505bf15",
+                    "commit": "9f54d69ed69608775ebb3ba382dbc2a16300e440",
+                    "date": "2026-08-28T11:18:03Z",
+                    "sourceSha": "6f1d73e0",
+                    "commits": 1
+                },
                 {
                     "blob": "c1b47fb291dfb5f01237ce0abdaefbbd99d487e0",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
@@ -7897,7 +8023,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -8040,6 +8166,13 @@
             "path": "renders/samples:wear/ActivityListRealDeviceMatrixPreview_Galaxy_Watch_7_44mm_480px_340dpi_225dp-2cd4c861.png",
             "versions": [
                 {
+                    "blob": "57e4275c0cd82e8c21cea5eac35e443b0384a62e",
+                    "commit": "9f54d69ed69608775ebb3ba382dbc2a16300e440",
+                    "date": "2026-08-28T11:18:03Z",
+                    "sourceSha": "6f1d73e0",
+                    "commits": 1
+                },
+                {
                     "blob": "64bf19d9af78f68a180a42884a55dfcc2d17cd41",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
@@ -8047,7 +8180,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -8085,6 +8218,13 @@
             "path": "renders/samples:wear/WearRealDeviceMatrixPreview_Galaxy_Watch_5_44mm_450px_340dpi_211dp-c506752b.png",
             "versions": [
                 {
+                    "blob": "9f02cc94ec2d0a06cb2925ed9f3bdda0918c3dbd",
+                    "commit": "9f54d69ed69608775ebb3ba382dbc2a16300e440",
+                    "date": "2026-08-28T11:18:03Z",
+                    "sourceSha": "6f1d73e0",
+                    "commits": 1
+                },
+                {
                     "blob": "485bdaa07d5fba8a3064dbc3ab5b5e6e701674d3",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
@@ -8092,7 +8232,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -8130,6 +8270,13 @@
             "path": "renders/samples:wear/WearRealDeviceMatrixPreview_Pixel_Watch_450px_320dpi_225dp-925b1f5e.png",
             "versions": [
                 {
+                    "blob": "190a03095d2ecb383fa33a81c89846ece4667bb0",
+                    "commit": "9f54d69ed69608775ebb3ba382dbc2a16300e440",
+                    "date": "2026-08-28T11:18:03Z",
+                    "sourceSha": "6f1d73e0",
+                    "commits": 1
+                },
+                {
                     "blob": "5d294c1dcc9fade8f36f0b2d6adc6736d8d2565a",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
@@ -8137,7 +8284,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
