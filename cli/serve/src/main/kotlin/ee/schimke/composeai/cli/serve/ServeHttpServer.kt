@@ -1,5 +1,8 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.agentgrants.AgentGrantCapability
+import ee.schimke.composeai.agentgrants.AgentGrantProtocol
+import ee.schimke.composeai.agentgrants.AgentGrantScope
 import ee.schimke.composeai.bundle.BundleVerifier
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
@@ -2577,8 +2580,8 @@ class ServeHttpServer(
   }
 
   /**
-   * The upload identity of a live agent grant carrying [ServeAgentGrantCapability.IMAGES], or null
-   * when this call presents no such grant (in which case the GitHub gate has its say as before).
+   * The upload identity of a live agent grant carrying [AgentGrantCapability.IMAGES], or null when
+   * this call presents no such grant (in which case the GitHub gate has its say as before).
    *
    * This is the whole of the link between the grant lane and the image lane, and it is small on
    * purpose: a grant does not become a GitHub account here, it becomes *an admitted caller with a
@@ -2596,7 +2599,7 @@ class ServeHttpServer(
    */
   private fun RoutingContext.grantedImageIdentity(): ServeImageUploadAuth.Identity.Ok? {
     val grant = agentGrantFor(call) ?: return null
-    if (!grant.allows(ServeAgentGrantCapability.IMAGES)) return null
+    if (!grant.allows(AgentGrantCapability.IMAGES)) return null
     return ServeImageUploadAuth.Identity.Ok(
       login = "agent grant ${grant.fingerprint} (approved by ${grant.approvedBy})",
       budgetKey = "grant:${grant.id}",
@@ -3070,7 +3073,7 @@ class ServeHttpServer(
     // grant would be handed the lease and then refused every render it authorises, which is a
     // confusing way to say no; refuse the ticket instead. (The release counterpart is deliberately
     // ungated — handing capacity back is always welcome.)
-    if (rejectGrantBelowScope(ServeAgentGrantScope.LIVE, api = true)) return
+    if (rejectGrantBelowScope(AgentGrantScope.LIVE, api = true)) return
     val sessionId = selectedSessionId(sessionInPath)
     withLeasedSession(sessionId) { renderHost ->
       val grant =
@@ -3115,7 +3118,7 @@ class ServeHttpServer(
     if (rejectBadToken()) return
     // `keepLiveWarm()` below starts or retains a daemon — the definition of `live`, however small
     // each individual ping looks.
-    if (rejectGrantBelowScope(ServeAgentGrantScope.LIVE, api = true)) return
+    if (rejectGrantBelowScope(AgentGrantScope.LIVE, api = true)) return
     withLeasedSession(
       selectedSessionId(sessionInPath),
       onMissing = { call.respond(HttpStatusCode.NoContent) },
@@ -4312,6 +4315,67 @@ class ServeHttpServer(
     if (!playgroundService.compilesCatalog(system)) return null
     val token = if (isPublic) "" else "&token=" + WebEscaping.urlEncodeSegment(linkToken())
     return "/playground?catalog=${WebEscaping.urlEncodeSegment(system)}$token"
+  }
+
+  /**
+   * The counterpart component's render in the `compareWith` sibling, as a second source for the
+   * viewer's spec lane (issue #4621).
+   *
+   * The pairing is carried in two halves and BOTH have to resolve, because half of it means
+   * nothing: the catalog's `compareWith` names the sibling SYSTEM, and the component's `parallel`
+   * names the counterpart COMPONENT in it. From there this walks to the sibling's own preview id,
+   * which is what a render URL needs.
+   *
+   * Every step is allowed to fail, and each failure simply means no second source — the lane then
+   * offers exactly what it offered before. The chain is long because it spans two catalogs, not
+   * because it is doing anything clever:
+   *
+   * 1. this catalog declares a `compareWith` system;
+   * 2. this preview belongs to a component that declares a `parallel`;
+   * 3. the sibling is served on THIS host (a pairing with a system we do not host is a fact about
+   *    the spec, not a link we can offer);
+   * 4. the sibling has a preview for that component id.
+   *
+   * [ServeSessionRegistry.peekHost], never `lease`: this is a metadata read while building a page,
+   * and standing a suspended sibling's daemon up to decide whether to draw a button would be a
+   * daemon per page view. A suspended sibling therefore offers no lane — fail-soft, like the rest
+   * of this surface.
+   */
+  private fun parallelSpecSource(host: ServeHost, preview: ServePreview): ServeWeb.SpecSource? {
+    val bundle = catalogBundleHost(host) ?: return null
+    val siblingSystem = bundle.compareWithSystem?.takeIf { it.isNotBlank() } ?: return null
+    val componentId = preview.componentId?.takeIf { it.isNotBlank() } ?: return null
+    val parallelId = bundle.parallelByComponentId[componentId] ?: return null
+    val siblingHost = sessions.peekHost(siblingSystem) ?: return null
+    // The sibling's OWN preview for that component. First match, like the design-reference lane
+    // above: a component with several previews has one canonical sticker and the manifest's order
+    // is the producer's.
+    val siblingPreview =
+      siblingHost.previews.firstOrNull { it.componentId == parallelId } ?: return null
+    val siblingBundle = catalogBundleHost(siblingHost)
+    val siblingLabel =
+      siblingBundle?.title?.takeIf { it.isNotBlank() }
+        ?: siblingHost.label.ifBlank { siblingSystem }
+    return ServeWeb.SpecSource(
+      id = "parallel",
+      label = siblingLabel,
+      // Same origin, no token: this is the sibling catalog's ordinary public render route on this
+      // very server, which is the whole reason the pairing is cheap to offer here and expensive
+      // anywhere else (a static compare page can only bake thumbnails at publish time).
+      rasterUrl =
+        "/" +
+          WebEscaping.urlEncodeSegment(siblingSystem) +
+          "/render/" +
+          WebEscaping.urlEncodeSegment(siblingPreview.id) +
+          ".png",
+      // The caveat that keeps the pair honest. Unlike the kit reference, this panel is another
+      // catalog's RENDER, produced under its own theme, knobs and overrides rather than the ones
+      // that produced the render beside it. Saying so is the difference between a comparison and an
+      // implied equivalence.
+      provenance =
+        "$siblingLabel's own render of ${siblingPreview.componentId ?: parallelId}, " +
+          "under that catalog's theme and knobs — not this page's.",
+    )
   }
 
   private fun catalogBundleHost(host: ServeHost): ServeBundleHost? =
@@ -5732,13 +5796,13 @@ class ServeHttpServer(
                 pendingRequests = store.pendingRequests().size,
                 maxScope = store.maxScope.wire,
                 maxTtlSeconds = store.maxGrantTtlSeconds,
-                maxCapabilities = ServeAgentGrantCapability.wireNames(store.maxCapabilities),
+                maxCapabilities = AgentGrantCapability.wireNames(store.maxCapabilities),
                 grants =
                   live.map { grant ->
                     AgentGrantDto(
                       fingerprint = grant.fingerprint,
                       scopes = grant.scopes.map { it.wire },
-                      capabilities = ServeAgentGrantCapability.wireNames(grant.capabilities),
+                      capabilities = AgentGrantCapability.wireNames(grant.capabilities),
                       approvedBy = grant.approvedBy,
                       expiresInSeconds = grant.secondsUntilExpiry(now),
                       label = grant.label,
@@ -6581,7 +6645,7 @@ class ServeHttpServer(
   private suspend fun RoutingContext.handleStorybookIframe(sessionInPath: Boolean) {
     if (rejectBadToken()) return
     // Renders unconditionally — there is no baked lane here at all, so every request is live work.
-    if (rejectGrantBelowScope(ServeAgentGrantScope.LIVE, api = true)) return
+    if (rejectGrantBelowScope(AgentGrantScope.LIVE, api = true)) return
     // Renders a story unconditionally — there is no baked lane here. A chrome-less frame for
     // screenshot tools is never an unfurl target (and is robots-disallowed), so a bodyless probe
     // gets nothing but the render bill.
@@ -6750,7 +6814,7 @@ class ServeHttpServer(
     // …and by the same token the most expensive thing a grant could trigger, so it wants `live`.
     // Not named in the review that caught the `/render` case, but it is the same rule and the
     // larger bill: leaving the sibling hole open while closing the named one would be theatre.
-    if (rejectGrantBelowScope(ServeAgentGrantScope.LIVE, api = true)) return
+    if (rejectGrantBelowScope(AgentGrantScope.LIVE, api = true)) return
     withLeasedSession(selectedSessionId(sessionInPath)) { renderHost ->
       // Render the whole module once (cache-backed) into the portable WebEmbed gallery and stream
       // it
@@ -7273,6 +7337,10 @@ class ServeHttpServer(
           // one canonical spec, and the manifest's order is the producer's own. Absent for every
           // catalog that publishes no references, which omits the lane entirely.
           designReference = renderHost.designReferencesFor(preview.id).firstOrNull(),
+          // …and the counterpart in the `compareWith` sibling, when this catalog declares a pairing
+          // and we host the other side of it. A second SOURCE for that same lane rather than a mode
+          // of its own, so the four views are unchanged (issue #4621).
+          parallelSource = parallelSpecSource(renderHost, preview),
           referenceAnnotations =
             if (revisions.pinned != null) emptyList()
             else
@@ -7380,7 +7448,7 @@ class ServeHttpServer(
     // time a session was not resident, which is not what anyone approved or withheld.
     if (
       (requestCarriesOverrides() || wantsDaemonOnlyRenderProduct()) &&
-        rejectGrantBelowScope(ServeAgentGrantScope.LIVE, api = true)
+        rejectGrantBelowScope(AgentGrantScope.LIVE, api = true)
     )
       return
     // A bare `/render/<id>.png` replays a baked file and IS what an unfurler probes for `og:image`,
@@ -8623,7 +8691,7 @@ class ServeHttpServer(
     // scope whether or not this box configures GitHub auth.
     val socketGrant = agentGrantFor(call)
     if (socketGrant != null) {
-      if (!socketGrant.allows(ServeAgentGrantScope.LIVE)) {
+      if (!socketGrant.allows(AgentGrantScope.LIVE)) {
         close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "live not approved for this grant"))
         return
       }
@@ -8775,9 +8843,9 @@ class ServeHttpServer(
    * the request's `?token=` / `X-Compose-Preview-Token` doesn't match. Constant-time compare.
    *
    * A live **agent grant** ([ServeAgentGrantStore]) presented in the same place is the other way to
-   * pass, at [ServeAgentGrantScope.PREVIEW] — the lowest rung, which every grant carries. That is
-   * the whole integration: an agent presents its bearer exactly where the operator token goes, and
-   * no route learns anything new.
+   * pass, at [AgentGrantScope.PREVIEW] — the lowest rung, which every grant carries. That is the
+   * whole integration: an agent presents its bearer exactly where the operator token goes, and no
+   * route learns anything new.
    */
   private suspend fun RoutingContext.rejectBadToken(): Boolean {
     if (callIsAuthorized()) return false
@@ -8795,7 +8863,7 @@ class ServeHttpServer(
   private fun ApplicationCall.isAuthorizedCall(): Boolean {
     val provided = request.queryParameters["token"] ?: request.headers[TOKEN_HEADER]
     if (isAuthorized(serverToken, provided, isPublic)) return true
-    return agentGrantFor(this)?.allows(ServeAgentGrantScope.PREVIEW) == true
+    return agentGrantFor(this)?.allows(AgentGrantScope.PREVIEW) == true
   }
 
   /**
@@ -8832,13 +8900,13 @@ class ServeHttpServer(
 
   /**
    * Whether a credential arriving as a **path** segment (`/wasm-private/{access}/…`) is one this
-   * server accepts. The operator's token, or a live grant that reaches
-   * [ServeAgentGrantScope.PREVIEW] — the same two answers [linkToken] can produce, because the page
-   * that builds these URLs embeds whichever one its reader presented.
+   * server accepts. The operator's token, or a live grant that reaches [AgentGrantScope.PREVIEW] —
+   * the same two answers [linkToken] can produce, because the page that builds these URLs embeds
+   * whichever one its reader presented.
    */
   private fun isAuthorizedAccessParam(value: String?): Boolean =
     ServeUrls.tokensMatch(serverToken, value) ||
-      agentGrants?.grantForToken(value)?.allows(ServeAgentGrantScope.PREVIEW) == true
+      agentGrants?.grantForToken(value)?.allows(AgentGrantScope.PREVIEW) == true
 
   /**
    * The live grant this call presents, or null. Reads the same two places the operator token is
@@ -8951,10 +9019,10 @@ class ServeHttpServer(
         id = grant.id,
         fingerprint = grant.fingerprint,
         scopes = grant.scopes.joinToString(", ") { it.wire },
-        capabilities = ServeAgentGrantCapability.wireNames(grant.capabilities).joinToString(", "),
+        capabilities = AgentGrantCapability.wireNames(grant.capabilities).joinToString(", "),
         label = grant.label,
         approvedBy = grant.approvedBy,
-        expiresInText = ServeAgentGrants.formatDuration(grant.secondsUntilExpiry(now)),
+        expiresInText = AgentGrantProtocol.formatDuration(grant.secondsUntilExpiry(now)),
         revokeCsrf =
           approver?.let {
             agentGrantCsrf.seal(grant.id, it.name, ServeAgentGrants.Csrf.ACTION_DENY)
@@ -8983,7 +9051,7 @@ class ServeHttpServer(
         label = request.label,
         client = request.client,
         requestedScope = request.requestedScope.wire,
-        expiresInText = ServeAgentGrants.formatDuration(request.secondsUntilExpiry(now)),
+        expiresInText = AgentGrantProtocol.formatDuration(request.secondsUntilExpiry(now)),
       )
     }
   }
@@ -9026,12 +9094,11 @@ class ServeHttpServer(
             call.respondText("invalid request: ${e.message}", status = HttpStatusCode.BadRequest)
             return
           }
-      val scope = ServeAgentGrantScope.parse(parsed.scope) ?: ServeAgentGrantScope.DEFAULT_REQUEST
+      val scope = AgentGrantScope.parse(parsed.scope) ?: AgentGrantScope.DEFAULT_REQUEST
       // Unknown names are dropped rather than refused — see [OpenRequest.capabilities]. The store
       // narrows what survives to this box's ceiling, so asking for `images` on a box that offers
       // none is not an error, it simply is not in the request that comes back.
-      val capabilities =
-        parsed.capabilities.mapNotNull { ServeAgentGrantCapability.parse(it) }.toSet()
+      val capabilities = parsed.capabilities.mapNotNull { AgentGrantCapability.parse(it) }.toSet()
       val ttl =
         parsed.ttlSeconds.takeIf { it > 0 } ?: ServeAgentGrantStore.DEFAULT_GRANT_TTL_SECONDS
       val request =
@@ -9073,9 +9140,8 @@ class ServeHttpServer(
             requestedTtlSeconds = request.requestedTtlSeconds,
             maxScope = store.maxScope.wire,
             maxTtlSeconds = store.maxGrantTtlSeconds,
-            requestedCapabilities =
-              ServeAgentGrantCapability.wireNames(request.requestedCapabilities),
-            maxCapabilities = ServeAgentGrantCapability.wireNames(store.maxCapabilities),
+            requestedCapabilities = AgentGrantCapability.wireNames(request.requestedCapabilities),
+            maxCapabilities = AgentGrantCapability.wireNames(store.maxCapabilities),
           ),
         ),
         ContentType.Application.Json,
@@ -9125,7 +9191,7 @@ class ServeHttpServer(
               token = outcome.grant.token,
               tokenHeader = TOKEN_HEADER,
               scopes = outcome.grant.scopes.map { it.wire },
-              capabilities = ServeAgentGrantCapability.wireNames(outcome.grant.capabilities),
+              capabilities = AgentGrantCapability.wireNames(outcome.grant.capabilities),
               expiresInSeconds = outcome.grant.secondsUntilExpiry(System.currentTimeMillis()),
               approvedBy = outcome.grant.approvedBy,
               message = "approved by ${outcome.grant.approvedBy}",
@@ -9171,7 +9237,7 @@ class ServeHttpServer(
         ServeAgentGrants.WhoamiResponse(
           active = true,
           scopes = grant.scopes.map { it.wire },
-          capabilities = ServeAgentGrantCapability.wireNames(grant.capabilities),
+          capabilities = AgentGrantCapability.wireNames(grant.capabilities),
           expiresInSeconds = grant.secondsUntilExpiry(System.currentTimeMillis()),
           approvedBy = grant.approvedBy,
           label = grant.label,
@@ -9244,7 +9310,7 @@ class ServeHttpServer(
     }
     val selectable =
       ServeAgentGrants.selectableScopes(request.requestedScope, approver, store.maxScope)
-    val withheld = ServeAgentGrantScope.upTo(request.requestedScope).filterNot { it in selectable }
+    val withheld = AgentGrantScope.upTo(request.requestedScope).filterNot { it in selectable }
     val selectableCapabilities =
       ServeAgentGrants.selectableCapabilities(
         request.requestedCapabilities,
@@ -9279,7 +9345,7 @@ class ServeHttpServer(
         siteName = skin.first,
         themeCss = skin.second,
         selectableCapabilities =
-          ServeAgentGrantCapability.entries.filter { it in selectableCapabilities },
+          AgentGrantCapability.entries.filter { it in selectableCapabilities },
         withheldScopes = withheld,
         withheldCapabilities = withheldCapabilities,
         withheldReason = "you do not hold it yourself on this server, so you cannot pass it on",
@@ -9350,17 +9416,17 @@ class ServeHttpServer(
     // set of checkboxes), but `maxOrNull` is kept rather than `single()`: the form is client state,
     // and a caller that posts several is asking for the highest, which the ceilings then clamp.
     val ticked =
-      form["scope"].orEmpty().mapNotNull { ServeAgentGrantScope.parse(it) }.maxOrNull()
-        ?: ServeAgentGrantScope.PREVIEW
+      form["scope"].orEmpty().mapNotNull { AgentGrantScope.parse(it) }.maxOrNull()
+        ?: AgentGrantScope.PREVIEW
     val chosen = minOf(ticked, approver.ceiling)
     // Capabilities ARE checkboxes — they are independent, so a box per capability describes the
     // outcome honestly (the scopes' radio is the opposite case, see above). Absent means unticked
     // means not granted, which is why nothing here defaults to the request.
     val tickedCapabilities =
-      form["capability"].orEmpty().mapNotNull { ServeAgentGrantCapability.parse(it) }.toSet()
+      form["capability"].orEmpty().mapNotNull { AgentGrantCapability.parse(it) }.toSet()
     val chosenCapabilities = tickedCapabilities intersect approver.capabilityCeiling
     val ttl =
-      form["ttl"]?.firstOrNull()?.let { ServeAgentGrants.parseDurationSeconds(it) }
+      form["ttl"]?.firstOrNull()?.let { AgentGrantProtocol.parseDurationSeconds(it) }
         ?: ServeAgentGrantStore.DEFAULT_GRANT_TTL_SECONDS
     val grant = store.approve(requestId, approver.name, chosen, ttl, chosenCapabilities)
     if (grant == null) {
@@ -9377,13 +9443,13 @@ class ServeHttpServer(
       heading = "Access granted",
       message =
         "The agent can now use this server for " +
-          ServeAgentGrants.formatDuration(grant.secondsUntilExpiry(System.currentTimeMillis())) +
+          AgentGrantProtocol.formatDuration(grant.secondsUntilExpiry(System.currentTimeMillis())) +
           ". You can end it early from the server status page at any time.",
       detail =
         buildString {
           append("Scopes: ${grant.scopes.joinToString(", ") { it.wire }}")
           if (grant.capabilities.isNotEmpty()) {
-            val names = ServeAgentGrantCapability.wireNames(grant.capabilities).joinToString(", ")
+            val names = AgentGrantCapability.wireNames(grant.capabilities).joinToString(", ")
             append(" · also: $names")
           }
           append(" · grant ${grant.fingerprint}")
@@ -9535,7 +9601,7 @@ class ServeHttpServer(
     // unread, so a `preview` grant opened live daemon sessions the human never agreed to. The gate
     // is "is this caller allowed to run this lane", and for a grant holder the answer comes from
     // the grant, on every deployment shape.
-    if (rejectGrantBelowScope(ServeAgentGrantScope.LIVE, api)) return true
+    if (rejectGrantBelowScope(AgentGrantScope.LIVE, api)) return true
     if (agentGrantFor(call) != null) return false
     val auth = githubAuth ?: return false
     if (auth.isAuthenticated(call)) return false
@@ -9556,7 +9622,7 @@ class ServeHttpServer(
    * browser to be redirected in, and its remedy is to ask for a wider grant, not to sign in.
    */
   private suspend fun RoutingContext.rejectGrantBelowScope(
-    required: ServeAgentGrantScope,
+    required: AgentGrantScope,
     api: Boolean,
   ): Boolean {
     val grant = agentGrantFor(call) ?: return false
@@ -9578,7 +9644,7 @@ class ServeHttpServer(
     // other order was a hole. `playground` is never in a default grant and can only be approved by
     // someone holding repository access themselves, so a grant that reaches it means a human with
     // this exact right said yes.
-    if (rejectGrantBelowScope(ServeAgentGrantScope.PLAYGROUND, api)) return true
+    if (rejectGrantBelowScope(AgentGrantScope.PLAYGROUND, api)) return true
     if (agentGrantFor(call) != null) return false
     val auth = githubAuth ?: return false
     if (auth.hasRepositoryAccess(call)) return false

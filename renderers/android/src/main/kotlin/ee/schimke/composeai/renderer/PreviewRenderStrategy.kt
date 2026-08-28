@@ -20,6 +20,8 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.currentComposer
+import androidx.compose.runtime.reflect.ComposableMethod
+import androidx.compose.runtime.reflect.asComposableMethod
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -130,7 +132,7 @@ private object ComposePreviewStrategy : PreviewRenderStrategy {
     // the full list keeps the lookup shape honest with the invocation.
     val composableMethod =
       if (previewArgs.isEmpty()) {
-        clazz.getDeclaredComposableMethod(preview.functionName)
+        resolveNoArgComposableMethod(clazz, preview.functionName)
       } else {
         findComposableMethodWithArgs(clazz, preview.functionName, previewArgs)
       }
@@ -168,6 +170,84 @@ private object ComposePreviewStrategy : PreviewRenderStrategy {
     }
   }
 }
+
+/**
+ * Resolves the `ComposableMethod` for a preview invoked with no arguments.
+ *
+ * `getDeclaredComposableMethod(name)` builds the JVM signature it looks for out of the argument
+ * types the caller passes, so with none it can only ever match `name(Composer, changed[, default])`
+ * — a preview whose own parameter list is empty. That misses the shape Studio renders happily and
+ * that samples reach for constantly: a component that IS its own preview, every parameter defaulted
+ * (`@Preview @Composable fun AverageTimeInBedCard(modifier: Modifier = Modifier)`). Its compiled
+ * signature carries the real parameters ahead of the synthetic tail, the exact-signature lookup
+ * misses, and the preview fails with a bare `NoSuchMethodException` naming a function that is
+ * plainly there (issue: 11 JetLagged renders).
+ *
+ * So: try the officially supported lookup first, and only when it misses fall back to scanning
+ * `declaredMethods` for the name. `ComposableMethod.invoke` already knows how to call a defaulted
+ * composable — it fills every unsupplied parameter with the type's zero value and sets that
+ * parameter's bit in the defaults mask, so the callee substitutes its own default expression. The
+ * fallback therefore only has to find a *defaulted* overload; one without a defaults mask would
+ * have the zero values passed through as real arguments (a null `Modifier`, straight into an NPE),
+ * which is worse than reporting the miss.
+ */
+private fun resolveNoArgComposableMethod(clazz: Class<*>, functionName: String): ComposableMethod {
+  runCatching { clazz.getDeclaredComposableMethod(functionName) }
+    .getOrNull()
+    ?.let {
+      return it
+    }
+  return findDefaultedComposableMethod(clazz, functionName)
+    ?: throw NoSuchMethodException("${clazz.name}.$functionName")
+}
+
+/**
+ * The `declaredMethods` scan behind [resolveNoArgComposableMethod]: the named composable overloads
+ * that can be invoked with no arguments because every real parameter is defaulted. Prefers the
+ * fewest real parameters — a defaulted preview and a fully-applied sibling overload of the same
+ * name both qualify, and the one with less to default is the closer match to "call it with
+ * nothing".
+ */
+internal fun findDefaultedComposableMethod(
+  clazz: Class<*>,
+  functionName: String,
+): ComposableMethod? =
+  clazz.declaredMethods
+    .asSequence()
+    .filter { it.name == functionName }
+    .mapNotNull { method -> method.asComposableMethod()?.takeIf { method.hasComposableDefaults() } }
+    .sortedBy { it.parameterCount }
+    .firstOrNull()
+
+/**
+ * Whether this compiled composable carries a defaults mask — i.e. the source function declared
+ * default arguments.
+ *
+ * The Compose calling convention appends `(Composer, changed…[, default…])` to the real parameters:
+ * one `changed` int per [SLOTS_PER_COMPOSABLE_INT] parameters (counting the dispatch receiver of a
+ * non-static method) and, only when the function has defaults, one `default` int per 31 real
+ * parameters. Both tails are `int`, so the shape — not the types — is what distinguishes them.
+ * Callers must have established that the method IS composable (`asComposableMethod() != null`)
+ * before asking; the arithmetic assumes the synthetic tail is well-formed.
+ */
+private fun java.lang.reflect.Method.hasComposableDefaults(): Boolean {
+  val realParams = parameterTypes.indexOfLast {
+    it == androidx.compose.runtime.Composer::class.java
+  }
+  if (realParams <= 0) return false
+  val thisParams = if (java.lang.reflect.Modifier.isStatic(modifiers)) 0 else 1
+  val changedParams =
+    ceil((realParams + thisParams).toDouble() / SLOTS_PER_COMPOSABLE_INT).toInt().coerceAtLeast(1)
+  return parameterTypes.size > realParams + 1 + changedParams
+}
+
+/**
+ * Real parameters encoded per synthetic `changed` int — `androidx.compose.runtime.internal
+ * .SLOTS_PER_INT`, which is `internal` to the runtime and so restated here. It is part of the
+ * compiled calling convention (every composable ever compiled encodes it), which is what makes
+ * restating it safe: `getDeclaredComposableMethod` depends on the same constant.
+ */
+private const val SLOTS_PER_COMPOSABLE_INT = 10
 
 /**
  * Resolves the `ComposableMethod` for a preview function that declares `@PreviewParameter`

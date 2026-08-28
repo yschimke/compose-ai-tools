@@ -136,6 +136,7 @@
       "api/preview-data-api/**",
       "common/io/**",
       "common/image-crop/**",
+      "api/agent-grant-protocol/**",
       "render-session/**",
       "data/layoutinspector/core/**",
       "data/preview-overrides/core/**",

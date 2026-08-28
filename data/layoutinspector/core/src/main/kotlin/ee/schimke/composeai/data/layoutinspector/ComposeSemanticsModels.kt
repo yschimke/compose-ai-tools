@@ -158,7 +158,15 @@ public object LayoutInspectorProduct {
   // rather than the drawn rect (Wear's `AlertDialog` confirm button: a 126x108 pill turned -45
   // degrees reports 166x166), so a consumer that places by `bounds` alone draws the node too big
   // and un-turned. Additive — older entries decode with `rotationDegrees = 0f`.
-  public const val SCHEMA_VERSION: Int = 17
+  // v18: a `vectorGraphic` path may carry a `transform` — the composed SVG transform list of every
+  // `ImageVector` group above it, so a grouped icon exports as paths rather than falling back to a
+  // raster. Additive — older entries decode with `transform = null`, which is what a path no group
+  // transforms carries anyway, so they export exactly as before.
+  //
+  // Bumped because the advertised integer is what a client gates payload support on: without it, a
+  // v17 capture that predates group transforms and a v18 one that has them are indistinguishable,
+  // and an archived artifact is labelled as the schema it is not.
+  public const val SCHEMA_VERSION: Int = 18
   public const val FILE: String = "layout-inspector.json"
 }
 

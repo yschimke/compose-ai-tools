@@ -32,11 +32,20 @@ object AppTourDiscovery {
   /**
    * Class-name prefixes of activities that manifest-merger injects from libraries (Glance's action
    * trampoline, ui-tooling's `PreviewActivity`, ui-test-manifest's `ComponentActivity`, Play
-   * Services dialogs, …). They're not part of the *app* — not previewable entry points, not tour
-   * material — so they're dropped at parse time.
+   * Services dialogs, Firebase Auth's reCAPTCHA / federated-IdP trampolines, …). They're not part
+   * of the *app* — not previewable entry points, not tour material — so they're dropped at parse
+   * time.
+   *
+   * `com.google.` subsumes the narrower `com.google.android.` this list used to carry, so that
+   * Firebase Auth's `GenericIdpActivity` and `RecaptchaActivity` — headless trampolines that NPE
+   * inside `onResume` the moment they are launched off a real device — stop reaching the catalog as
+   * broken cards, as they did in both Confetti catalogs.
+   *
+   * The list stays evidence-led rather than pre-emptive: every prefix is also a way to silently
+   * drop an app's own screen, so an SDK earns one once it has been seen producing a dead card.
    */
   private val LIBRARY_ACTIVITY_PREFIXES =
-    listOf("android.", "androidx.", "com.android.", "com.google.android.")
+    listOf("android.", "androidx.", "com.android.", "com.google.")
 
   private val xmlFactory: XMLInputFactory =
     XMLInputFactory.newFactory().apply {
@@ -267,10 +276,9 @@ object AppTourDiscovery {
   )
 
   /** Parses one tour spec file. Returns `null` (best-effort) when unreadable or not a tour. */
-  fun parseTourSpec(file: File): TourSpec? =
-    runCatching { TOUR_JSON.decodeFromString(TourSpec.serializer(), file.readText()) }
-      .getOrNull()
-      ?.takeIf { it.steps.isNotEmpty() || it.start != null }
+  fun parseTourSpec(file: File): TourSpec? = runCatching {
+    TOUR_JSON.decodeFromString(TourSpec.serializer(), file.readText())
+  }.getOrNull()?.takeIf { it.steps.isNotEmpty() || it.start != null }
 
   /**
    * Turns committed tour spec files into one synthetic [PreviewKind.APP_TOUR] preview each. Every

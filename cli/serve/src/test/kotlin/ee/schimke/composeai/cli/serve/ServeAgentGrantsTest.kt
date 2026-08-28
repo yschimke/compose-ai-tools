@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.agentgrants.AgentGrantProtocol
+import ee.schimke.composeai.agentgrants.AgentGrantScope
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -14,38 +16,36 @@ class ServeAgentGrantsTest {
 
   @Test
   fun `scopes imply everything below them and nothing above`() {
-    assertTrue(ServeAgentGrantScope.PLAYGROUND.implies(ServeAgentGrantScope.PREVIEW))
-    assertTrue(ServeAgentGrantScope.LIVE.implies(ServeAgentGrantScope.PREVIEW))
-    assertTrue(ServeAgentGrantScope.PREVIEW.implies(ServeAgentGrantScope.PREVIEW))
-    assertFalse(ServeAgentGrantScope.PREVIEW.implies(ServeAgentGrantScope.LIVE))
-    assertFalse(ServeAgentGrantScope.LIVE.implies(ServeAgentGrantScope.PLAYGROUND))
+    assertTrue(AgentGrantScope.PLAYGROUND.implies(AgentGrantScope.PREVIEW))
+    assertTrue(AgentGrantScope.LIVE.implies(AgentGrantScope.PREVIEW))
+    assertTrue(AgentGrantScope.PREVIEW.implies(AgentGrantScope.PREVIEW))
+    assertFalse(AgentGrantScope.PREVIEW.implies(AgentGrantScope.LIVE))
+    assertFalse(AgentGrantScope.LIVE.implies(AgentGrantScope.PLAYGROUND))
   }
 
   @Test
   fun `a scope list resolves to its highest rung`() {
-    assertEquals(ServeAgentGrantScope.LIVE, ServeAgentGrantScope.parseHighest("preview,live"))
-    assertEquals(ServeAgentGrantScope.LIVE, ServeAgentGrantScope.parseHighest("live"))
+    assertEquals(AgentGrantScope.LIVE, AgentGrantScope.parseHighest("preview,live"))
+    assertEquals(AgentGrantScope.LIVE, AgentGrantScope.parseHighest("live"))
     assertEquals(
-      ServeAgentGrantScope.PLAYGROUND,
-      ServeAgentGrantScope.parseHighest("preview playground"),
+      AgentGrantScope.PLAYGROUND,
+      AgentGrantScope.parseHighest("preview playground"),
     )
-    assertNull(ServeAgentGrantScope.parseHighest(null))
-    assertNull(ServeAgentGrantScope.parseHighest("   "))
+    assertNull(AgentGrantScope.parseHighest(null))
+    assertNull(AgentGrantScope.parseHighest("   "))
   }
 
   @Test
   fun `a typo in the scope list fails loudly instead of silently narrowing`() {
     val e =
-      assertFailsWith<IllegalArgumentException> {
-        ServeAgentGrantScope.parseHighest("preview,liev")
-      }
+      assertFailsWith<IllegalArgumentException> { AgentGrantScope.parseHighest("preview,liev") }
     assertTrue(e.message!!.contains("liev"))
   }
 
   @Test
   fun `playground is not in the default ceiling`() {
-    assertEquals(ServeAgentGrantScope.LIVE, ServeAgentGrantScope.DEFAULT_MAX)
-    assertFalse(ServeAgentGrantScope.DEFAULT_MAX.implies(ServeAgentGrantScope.PLAYGROUND))
+    assertEquals(AgentGrantScope.LIVE, AgentGrantScope.DEFAULT_MAX)
+    assertFalse(AgentGrantScope.DEFAULT_MAX.implies(AgentGrantScope.PLAYGROUND))
   }
 
   // ---------------------------------------------------------------- approver
@@ -56,15 +56,15 @@ class ServeAgentGrantsTest {
       ServeAgentGrants.Approver.github(
         login = "outsider",
         repositoryAccess = false,
-        storeCeiling = ServeAgentGrantScope.PLAYGROUND,
+        storeCeiling = AgentGrantScope.PLAYGROUND,
       )
-    assertEquals(ServeAgentGrantScope.LIVE, approver.ceiling)
+    assertEquals(AgentGrantScope.LIVE, approver.ceiling)
     assertEquals(
       listOf("preview", "live"),
       ServeAgentGrants.selectableScopes(
-          ServeAgentGrantScope.PLAYGROUND,
+          AgentGrantScope.PLAYGROUND,
           approver,
-          ServeAgentGrantScope.PLAYGROUND,
+          AgentGrantScope.PLAYGROUND,
         )
         .map { it.wire },
     )
@@ -72,21 +72,20 @@ class ServeAgentGrantsTest {
 
   @Test
   fun `an approver with repository access may pass playground on`() {
-    val approver =
-      ServeAgentGrants.Approver.github("maintainer", true, ServeAgentGrantScope.PLAYGROUND)
-    assertEquals(ServeAgentGrantScope.PLAYGROUND, approver.ceiling)
+    val approver = ServeAgentGrants.Approver.github("maintainer", true, AgentGrantScope.PLAYGROUND)
+    assertEquals(AgentGrantScope.PLAYGROUND, approver.ceiling)
     assertEquals("@maintainer", approver.name)
   }
 
   @Test
   fun `the page never offers more than the agent asked for`() {
-    val approver = ServeAgentGrants.Approver.operator(ServeAgentGrantScope.PLAYGROUND)
+    val approver = ServeAgentGrants.Approver.operator(AgentGrantScope.PLAYGROUND)
     assertEquals(
       listOf("preview"),
       ServeAgentGrants.selectableScopes(
-          ServeAgentGrantScope.PREVIEW,
+          AgentGrantScope.PREVIEW,
           approver,
-          ServeAgentGrantScope.PLAYGROUND,
+          AgentGrantScope.PLAYGROUND,
         )
         .map { it.wire },
     )
@@ -118,23 +117,23 @@ class ServeAgentGrantsTest {
 
   @Test
   fun `durations parse the forms a human types`() {
-    assertEquals(7200, ServeAgentGrants.parseDurationSeconds("2h"))
-    assertEquals(2700, ServeAgentGrants.parseDurationSeconds("45m"))
-    assertEquals(90, ServeAgentGrants.parseDurationSeconds("90s"))
-    assertEquals(3600, ServeAgentGrants.parseDurationSeconds("3600"))
-    assertEquals(7200, ServeAgentGrants.parseDurationSeconds(" 2 H "))
-    assertNull(ServeAgentGrants.parseDurationSeconds("soon"))
-    assertNull(ServeAgentGrants.parseDurationSeconds("0h"))
-    assertNull(ServeAgentGrants.parseDurationSeconds(""))
-    assertNull(ServeAgentGrants.parseDurationSeconds(null))
+    assertEquals(7200, AgentGrantProtocol.parseDurationSeconds("2h"))
+    assertEquals(2700, AgentGrantProtocol.parseDurationSeconds("45m"))
+    assertEquals(90, AgentGrantProtocol.parseDurationSeconds("90s"))
+    assertEquals(3600, AgentGrantProtocol.parseDurationSeconds("3600"))
+    assertEquals(7200, AgentGrantProtocol.parseDurationSeconds(" 2 H "))
+    assertNull(AgentGrantProtocol.parseDurationSeconds("soon"))
+    assertNull(AgentGrantProtocol.parseDurationSeconds("0h"))
+    assertNull(AgentGrantProtocol.parseDurationSeconds(""))
+    assertNull(AgentGrantProtocol.parseDurationSeconds(null))
   }
 
   @Test
   fun `durations format the way the page and the CLI print them`() {
-    assertEquals("30s", ServeAgentGrants.formatDuration(30))
-    assertEquals("15m", ServeAgentGrants.formatDuration(900))
-    assertEquals("2h", ServeAgentGrants.formatDuration(7200))
-    assertEquals("2h 30m", ServeAgentGrants.formatDuration(9000))
+    assertEquals("30s", AgentGrantProtocol.formatDuration(30))
+    assertEquals("15m", AgentGrantProtocol.formatDuration(900))
+    assertEquals("2h", AgentGrantProtocol.formatDuration(7200))
+    assertEquals("2h 30m", AgentGrantProtocol.formatDuration(9000))
   }
 
   @Test

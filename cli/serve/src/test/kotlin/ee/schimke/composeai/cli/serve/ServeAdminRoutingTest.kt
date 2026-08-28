@@ -321,7 +321,15 @@ class ServeAdminRoutingTest {
       502,
       send("/admin/catalogs", method = "POST", body = """{"system":"ghost"}""").first,
     )
-    // A duplicate of an already-served catalog is a conflict, not a silent overwrite.
+    // A duplicate of an already-served catalog is a conflict, not a silent overwrite — once the
+    // config file agrees with what is running. When it does NOT, the same request is the retry path
+    // that repairs a swap whose persistence failed, and answers 200; the fixture's tracker is
+    // seeded without a matching file entry, so this states the agreement it is testing.
+    configFile.save(
+      configFile
+        .load()
+        .withEntry(ServeCatalogsConfig.Entry("compose-m3", repo = "yschimke/compose-ai-tools"))
+    )
     assertEquals(
       409,
       send("/admin/catalogs", method = "POST", body = """{"system":"compose-m3"}""").first,

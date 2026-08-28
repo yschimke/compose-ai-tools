@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.agentgrants.AgentGrantCapability
+import ee.schimke.composeai.agentgrants.AgentGrantScope
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -37,8 +39,8 @@ class ServeAgentGrantImageUploadTest {
 
   private val grants =
     ServeAgentGrantStore(
-      maxScope = ServeAgentGrantScope.LIVE,
-      maxCapabilities = setOf(ServeAgentGrantCapability.IMAGES),
+      maxScope = AgentGrantScope.LIVE,
+      maxCapabilities = setOf(AgentGrantCapability.IMAGES),
       maxGrantTtlSeconds = 3600,
     )
 
@@ -59,7 +61,7 @@ class ServeAgentGrantImageUploadTest {
 
   /** A second box whose operator never opted into the capability at all. */
   private val closedGrants =
-    ServeAgentGrantStore(maxScope = ServeAgentGrantScope.LIVE, maxGrantTtlSeconds = 3600)
+    ServeAgentGrantStore(maxScope = AgentGrantScope.LIVE, maxGrantTtlSeconds = 3600)
 
   private val closedServer: ServeHttpServer by lazy {
     ServeHttpServer(

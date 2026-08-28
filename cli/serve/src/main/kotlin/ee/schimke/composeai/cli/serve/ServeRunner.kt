@@ -1,5 +1,8 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.agentgrants.AgentGrantCapability
+import ee.schimke.composeai.agentgrants.AgentGrantProtocol
+import ee.schimke.composeai.agentgrants.AgentGrantScope
 import ee.schimke.composeai.bundle.AndroidBundleLaunch
 import ee.schimke.composeai.bundle.BundleReader
 import ee.schimke.composeai.bundle.BundleVerifier
@@ -26,17 +29,20 @@ import okio.Path.Companion.toPath
 /**
  * `compose-preview serve`, from the first port bind to the last shutdown hook.
  *
- * This is the body that used to live in `:cli`'s `ServeCommand`. It reaches its configuration and
- * its build through [ServeOptions] — `by options`, so every flag reads exactly as it did when it
- * was a private val on the command — and it never sees `args`, `--help`, the usage text, or a
- * Gradle type.
+ * This is the body that used to live in `:cli`'s `ServeCommand`. It reaches its configuration
+ * through [ServeOptions] and its build through [ServeBuildHost] — `by options`, so every flag reads
+ * exactly as it did when it was a private val on the command — and it never sees `args`, `--help`,
+ * the usage text, or a Gradle type.
  *
  * The point is not tidiness. While this code sat in `:cli`, the module boundary #4599 drew was true
  * of every serve file *except* the one that starts the server, and the seam register carried 92
  * symbols for this file alone. A preview server you cannot start without the CLI is not separable,
  * whatever the build files say.
  */
-public class ServeRunner(private val options: ServeOptions) : ServeOptions by options {
+public class ServeRunner(
+  private val options: ServeOptions,
+  private val build: ServeBuildHost,
+) : ServeOptions by options, ServeBuildHost by build {
 
   private val catalogBlobPool: CatalogBlobPool by lazy {
     val requested = catalogCacheDirFlag
@@ -116,7 +122,7 @@ public class ServeRunner(private val options: ServeOptions) : ServeOptions by op
         // operator asking for half an hour and getting eight — sixteen times the ceiling they
         // meant, on the one setting that bounds how long a minted credential lives. The client's
         // `--ttl` already fails loudly; so does this.
-        ServeAgentGrants.parseDurationSeconds(it)
+        AgentGrantProtocol.parseDurationSeconds(it)
           ?: throw IllegalArgumentException(
             "--agent-grant-max-ttl '$it' is not a duration — try 90m, 2h, or a number of seconds"
           )
@@ -124,30 +130,30 @@ public class ServeRunner(private val options: ServeOptions) : ServeOptions by op
       ?.coerceIn(60L, ServeDefaults.AGENT_GRANT_HARD_MAX_TTL_SECONDS)
       ?: ServeDefaults.AGENT_GRANT_MAX_TTL_SECONDS
 
-  private val agentGrantMaxScope: ServeAgentGrantScope =
+  private val agentGrantMaxScope: AgentGrantScope =
     agentGrantScopesFlag?.let {
       // The worst of this family to default silently: `--agent-grant-scopes preivew` is an operator
       // narrowing the box to read-only, and the default it would fall back to is `preview,live`. A
       // typo would have *widened* what every grant on the host may do, which is the opposite of the
       // intent that made them type the flag.
-      ServeAgentGrantScope.parseHighest(it)
+      AgentGrantScope.parseHighest(it)
         ?: throw IllegalArgumentException(
           "--agent-grant-scopes '$it' is not a scope list — use preview, live, or playground"
         )
-    } ?: ServeAgentGrantScope.DEFAULT_MAX
+    } ?: AgentGrantScope.DEFAULT_MAX
 
   // ---- flag values the server parses for itself ----
   //
   // Each of these arrived as a raw string from the CLI. Parsing them here rather than there is what
-  // keeps `ServeAgentGrantCapability`, `ServeAgentGrantScope`, `ServeStartupBundles.Spec` and the
+  // keeps `AgentGrantCapability`, `AgentGrantScope`, `ServeStartupBundles.Spec` and the
   // two cache stores off `:cli`'s classpath: the command reads flags, the server decides what they
   // mean. The operator-facing error messages are unchanged and still fire during startup.
-  private val agentGrantCapabilities: Set<ServeAgentGrantCapability> =
+  private val agentGrantCapabilities: Set<AgentGrantCapability> =
     agentGrantCapabilitiesFlag?.let {
       // Throws on an unknown name, same as `--agent-grant-scopes`: a typo here would silently
       // withhold a capability the operator believes they turned on, and they would go looking for
       // the bug in the agent.
-      ServeAgentGrantCapability.parseAll(it)
+      AgentGrantCapability.parseAll(it)
     } ?: emptySet()
 
   /**
@@ -1717,7 +1723,7 @@ public class ServeRunner(private val options: ServeOptions) : ServeOptions by op
       )
       throw IllegalArgumentException("--agent-grants needs an approver identity")
     }
-    if (agentGrantMaxScope == ServeAgentGrantScope.PLAYGROUND) {
+    if (agentGrantMaxScope == AgentGrantScope.PLAYGROUND) {
       System.err.println(
         "serve: WARNING --agent-grant-scopes allows 'playground' — an approved agent can compile " +
           "and run Kotlin on this host."
@@ -1731,7 +1737,7 @@ public class ServeRunner(private val options: ServeOptions) : ServeOptions by op
     // [imageLaneConfigured], not `acceptImages`: the flag alone is not a lane. Without a repository
     // to gate on, [openImageLane] declines to build one and says so — and a box that keeps starting
     // for some other reason would then have offered a capability whose every upload 404s.
-    if (ServeAgentGrantCapability.IMAGES in agentGrantCapabilities && !imageLaneConfigured) {
+    if (AgentGrantCapability.IMAGES in agentGrantCapabilities && !imageLaneConfigured) {
       System.err.println(
         "serve: --agent-grant-capabilities images refused — this server does not run the image " +
           "lane, so a granted upload would have nowhere to go. Add --accept-images AND a " +
@@ -1750,7 +1756,7 @@ public class ServeRunner(private val options: ServeOptions) : ServeOptions by op
     // than to approximate the check.
     val imageRepository = imageUploadRepository
     if (
-      ServeAgentGrantCapability.IMAGES in agentGrantCapabilities &&
+      AgentGrantCapability.IMAGES in agentGrantCapabilities &&
         githubAuth != null &&
         !imageRepository.isNullOrBlank() &&
         !imageRepository.equals(githubAuthRepo, ignoreCase = true)
@@ -1769,7 +1775,7 @@ public class ServeRunner(private val options: ServeOptions) : ServeOptions by op
     if (agentGrantCapabilities.isNotEmpty()) {
       System.err.println(
         "serve: agent grants may carry " +
-          ServeAgentGrantCapability.wireNames(agentGrantCapabilities).joinToString(", ") +
+          AgentGrantCapability.wireNames(agentGrantCapabilities).joinToString(", ") +
           " when a human ticks it — an approved agent can then upload without a GitHub credential."
       )
     }
@@ -2407,7 +2413,7 @@ public class ServeRunner(private val options: ServeOptions) : ServeOptions by op
     if (agentGrantStore != null) {
       System.err.println(
         "serve: agent access grants enabled at /agent-access — up to " +
-          "${ServeAgentGrants.formatDuration(agentGrantStore.maxGrantTtlSeconds)}, " +
+          "${AgentGrantProtocol.formatDuration(agentGrantStore.maxGrantTtlSeconds)}, " +
           "max scope ${agentGrantStore.maxScope.wire}, approved by " +
           (if (githubAuth != null) "a signed-in GitHub user" else "the holder of --token")
       )
@@ -2924,6 +2930,9 @@ public class ServeRunner(private val options: ServeOptions) : ServeOptions by op
       branchPrefix = catalogBranchPrefix,
       configFile = catalogsFile,
       groups = catalogsConfig.groups,
+      // The same monitor `load` takes below, so a re-point holds it across the provenance record
+      // too — see the parameter's doc for the interleaving that closes.
+      registrationLock = catalogRegistrationLock,
       load = { system, repo ->
         backgroundWork.whileLoadingCatalog {
           synchronized(catalogRegistrationLock) {
@@ -2990,7 +2999,18 @@ public class ServeRunner(private val options: ServeOptions) : ServeOptions by op
       reload = { system, repo ->
         val result = backgroundWork.whileLoadingCatalog {
           synchronized(catalogRegistrationLock) {
-            if (loads.configFor(system) == null) return@synchronized null
+            // Both halves of "is this pass still about the catalog it was queued for". The system
+            // still existing was the only test, and it is not enough: a pass captures each entry's
+            // repo when it snapshots the tracker, and can then sit on this monitor for the whole of
+            // an admin re-point. Reloading the captured OLD repo afterwards would put the old
+            // repo's host back in front of the new registration, with the provenance and
+            // `catalogs.json` both naming the new one — a catalog served from a repository it had
+            // left, reporting that it had left it.
+            //
+            // Declining is the right answer rather than reloading the CURRENT repo: the admin has
+            // just fetched it, so there is nothing to refresh, and the next ordinary pass picks up
+            // the new provenance from the tracker anyway.
+            if (!loads.stillPointsAt(system, repo)) return@synchronized null
             val result = store.load(system, sourceRepo = repo)
             loads.record(result)
             result

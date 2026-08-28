@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli.serve
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -115,12 +116,16 @@ class ServeCatalogAdminTest {
 
   @Test
   fun `re-publishing a served catalog is a conflict, not a silent overwrite`() {
+    // Seeded, so this is a catalog that really is already published: the file and the runtime agree
+    // on the repo. When they DISAGREE the same request is a repair rather than a conflict — see
+    // `a swap whose persistence failed can be repaired by re-posting the same entry`.
+    seedConfig(ServeCatalogsConfig(catalogs = listOf(ServeCatalogsConfig.Entry("compose-m3"))))
     val tracker =
       tracker(CatalogLoadTracker.Config("compose-m3", true, "yschimke/compose-ai-tools", "b"))
 
     val result = admin(tracker).register(ServeCatalogsConfig.Entry("compose-m3"))
 
-    assertTrue(result is ServeCatalogAdmin.Result.Conflict)
+    assertTrue(result is ServeCatalogAdmin.Result.Conflict, "$result")
     assertEquals(emptyList(), loaded, "the running catalog is never re-fetched behind its back")
   }
 
@@ -292,6 +297,9 @@ class ServeCatalogAdminTest {
           "design-artifacts/remote-m3",
         )
       )
+    // Actually serving, which is what makes the message below true. See the sibling test for the
+    // case where it is not.
+    tracker.recordSuccess("remote-m3")
 
     val result =
       admin(tracker, failWith = "could not fetch catalog.json")
@@ -309,6 +317,164 @@ class ServeCatalogAdminTest {
     assertEquals(emptyList(), unloaded)
     assertEquals("yschimke/old-home", assertNotNull(tracker.configFor("remote-m3")).repo)
     assertEquals("yschimke/old-home", file.load().catalogs.single().repo)
+  }
+
+  @Test
+  fun `a failed re-point does not claim an unavailable old catalog is still serving`() {
+    // `configFor` answers for a pending entry and for one whose initial load failed exactly as it
+    // does for a live one, so the failure message was the reassuring half of a two-part answer that
+    // could be wrong: reconciliation during startup, or a persistent startup fetch failure, reaches
+    // here with nothing at all behind the old configuration.
+    seedConfig(
+      ServeCatalogsConfig(
+        catalogs = listOf(ServeCatalogsConfig.Entry("remote-m3", repo = "yschimke/old-home"))
+      )
+    )
+    val tracker =
+      tracker(
+        CatalogLoadTracker.Config(
+          "remote-m3",
+          true,
+          "yschimke/old-home",
+          "design-artifacts/remote-m3",
+        )
+      )
+    // Never loaded — `available` is false and no session is behind it.
+    assertEquals("pending", assertNotNull(tracker.stateFor("remote-m3")).loadState)
+
+    val result =
+      admin(tracker, failWith = "could not fetch catalog.json")
+        .register(ServeCatalogsConfig.Entry("remote-m3", repo = "yschimke/nowhere", listed = true))
+
+    val reason = (assertIs<ServeCatalogAdmin.Result.Failed>(result)).reason
+    assertFalse(reason.contains("still serving"), reason)
+    assertTrue(reason.contains("kept the yschimke/old-home configuration"), reason)
+    assertTrue(reason.contains("not currently serving"), reason)
+    // The old configuration IS preserved, which is the part that was true all along.
+    assertEquals("yschimke/old-home", assertNotNull(tracker.configFor("remote-m3")).repo)
+  }
+
+  @Test
+  fun `a swap whose persistence failed can be repaired by re-posting the same entry`() {
+    // The dead end this closes. A runtime swap whose `persist` failed transiently answers
+    // Ok-with-warning, leaving the tracker on the new repo and `catalogs.json` on the old one.
+    // Every later POST of the same desired entry then matched on every TRACKED field and returned
+    // 409 before attempting persistence — so reconciliation could never repair the file, and the
+    // next restart reverted the catalog to the repo it had left.
+    seedConfig(
+      ServeCatalogsConfig(
+        catalogs = listOf(ServeCatalogsConfig.Entry("remote-m3", repo = "yschimke/old-home"))
+      )
+    )
+    val tracker =
+      tracker(
+        CatalogLoadTracker.Config(
+          "remote-m3",
+          true,
+          "yschimke/new-home",
+          "design-artifacts/remote-m3",
+        )
+      )
+    tracker.recordSuccess("remote-m3")
+
+    val entry = ServeCatalogsConfig.Entry("remote-m3", repo = "yschimke/new-home", listed = true)
+    val result = admin(tracker).register(entry)
+
+    assertEquals(ServeCatalogAdmin.Result.Ok("remote-m3", warning = null), result)
+    assertEquals("yschimke/new-home", file.load().catalogs.single().repo)
+    // Nothing was re-fetched: the runtime half was already correct and only the file was behind.
+    assertEquals(emptyList(), loaded)
+
+    // And now that the two agree, the same POST is the ordinary conflict again.
+    assertEquals(
+      ServeCatalogAdmin.Result.Conflict("catalog 'remote-m3' is already published"),
+      admin(tracker).register(entry),
+    )
+  }
+
+  @Test
+  fun `a refresh captured before a re-point no longer points at the tracked catalog`() {
+    // The refresher's half of the same race. It captures each entry's repo when it snapshots the
+    // tracker; "does the system still exist" was the only test it made after finally getting the
+    // registration monitor, and that is true either side of a re-point.
+    val tracker =
+      tracker(
+        CatalogLoadTracker.Config("remote-m3", true, "yschimke/old-home", "design-artifacts/x")
+      )
+    assertTrue(tracker.stillPointsAt("remote-m3", "yschimke/old-home"))
+
+    tracker.repoint("remote-m3", repo = "yschimke/new-home", branch = "design-artifacts/x")
+
+    assertFalse(
+      tracker.stillPointsAt("remote-m3", "yschimke/old-home"),
+      "a pass captured before the swap must not reload the repo the catalog has left",
+    )
+    assertTrue(tracker.stillPointsAt("remote-m3", "yschimke/new-home"))
+    assertFalse(tracker.stillPointsAt("gone", "yschimke/new-home"), "and a retired system is gone")
+  }
+
+  @Test
+  fun `a re-point holds the registration lock across its provenance record`() {
+    // The branch refresher captures each entry's repo when it snapshots the tracker, then queues on
+    // the registration monitor. With the load inside the lock and `repoint` outside it, the
+    // refresher could get in between, still read the OLD repo, and reload it over the new
+    // registration — the old repo's host serving while the provenance and `catalogs.json` both
+    // named the new one.
+    seedConfig(
+      ServeCatalogsConfig(
+        catalogs = listOf(ServeCatalogsConfig.Entry("remote-m3", repo = "yschimke/old-home"))
+      )
+    )
+    val tracker =
+      tracker(
+        CatalogLoadTracker.Config(
+          "remote-m3",
+          true,
+          "yschimke/old-home",
+          "design-artifacts/remote-m3",
+        )
+      )
+    tracker.recordSuccess("remote-m3")
+
+    val lock = Any()
+    // What the refresher reads once it finally gets the monitor.
+    val seenByRefresher = java.util.concurrent.LinkedBlockingQueue<String>()
+    val loadEntered = java.util.concurrent.CountDownLatch(1)
+    val admin =
+      ServeCatalogAdmin(
+        tracker = tracker,
+        defaultRepo = "yschimke/compose-ai-tools",
+        branchPrefix = "design-artifacts/",
+        configFile = file,
+        registrationLock = lock,
+        load = { _, _ ->
+          // The real `load` takes this same monitor; reentrancy is what makes the wider section
+          // legal at all.
+          synchronized(lock) {
+            loadEntered.countDown()
+            Thread.sleep(50)
+            null
+          }
+        },
+        unload = {},
+        onLog = {},
+      )
+
+    val refresher = Thread {
+      loadEntered.await()
+      synchronized(lock) { seenByRefresher.add(assertNotNull(tracker.configFor("remote-m3")).repo) }
+    }
+      .apply { start() }
+
+    val result = admin.register(ServeCatalogsConfig.Entry("remote-m3", "yschimke/new-home"))
+    refresher.join(5_000)
+
+    assertEquals(ServeCatalogAdmin.Result.Ok("remote-m3", warning = null), result)
+    assertEquals(
+      "yschimke/new-home",
+      seenByRefresher.poll(),
+      "the first read that gets the monitor after the load must already see the new provenance",
+    )
   }
 
   @Test

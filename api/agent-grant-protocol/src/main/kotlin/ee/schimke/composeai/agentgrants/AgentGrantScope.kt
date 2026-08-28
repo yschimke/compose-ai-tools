@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli.serve
+package ee.schimke.composeai.agentgrants
 
 /**
  * What an agent grant ([ServeAgentGrantStore]) may unlock, and nothing else — see
@@ -14,22 +14,22 @@ package ee.schimke.composeai.cli.serve
  * matching a set. Adding a value in the middle re-orders the lattice, which is why the ordinal is
  * load-bearing and the enum is not alphabetised.
  */
-enum class ServeAgentGrantScope(
+public enum class AgentGrantScope(
   /** The wire/CLI name — lowercase, stable, what `--scope` and the JSON carry. */
-  val wire: String,
+  public val wire: String,
   /** One line for the approval page: what the human is actually agreeing to. */
-  val humanDescription: String,
+  public val humanDescription: String,
 ) {
   /**
    * Read the published catalogs: browse pages, baked renders, `/status`. Satisfies the token gate
-   * ([ServeHttpServer.rejectBadToken]) and nothing further, so on a `--public` box this scope is
+   * (`ServeHttpServer.rejectBadToken`) and nothing further, so on a `--public` box this scope is
    * already what an anonymous visitor has.
    */
   PREVIEW("preview", "Browse this server's catalogs and their rendered previews"),
 
   /**
    * Open a live daemon-backed session — the viewer WebSocket, on-demand renders, theme switching.
-   * Satisfies [ServeHttpServer.rejectMissingGithubAuth], the gate a signed-in GitHub visitor
+   * Satisfies `ServeHttpServer.rejectMissingGithubAuth`, the gate a signed-in GitHub visitor
    * passes. Costs the box real CPU (a render daemon), which is why it is a step above [PREVIEW]
    * rather than part of it.
    */
@@ -37,7 +37,7 @@ enum class ServeAgentGrantScope(
 
   /**
    * Compile and run a Kotlin snippet on this host (the playground lane). Satisfies
-   * [ServeHttpServer.rejectMissingGithubRepoAccess].
+   * `ServeHttpServer.rejectMissingGithubRepoAccess`.
    *
    * This is arbitrary code execution on the box, inside the playground's sandbox and nothing more.
    * It is deliberately absent from [DEFAULT_MAX], and an approver who does not themselves hold
@@ -46,24 +46,24 @@ enum class ServeAgentGrantScope(
   PLAYGROUND("playground", "Compile and run Kotlin snippets on this machine (the playground)");
 
   /** True when holding `this` also confers [other] — i.e. [other] is at or below this rung. */
-  fun implies(other: ServeAgentGrantScope): Boolean = ordinal >= other.ordinal
+  public fun implies(other: AgentGrantScope): Boolean = ordinal >= other.ordinal
 
-  companion object {
+  public companion object {
     /**
      * What a grant carries when the agent asked for nothing in particular: enough to look, not
      * enough to spend the box's CPU. An agent that wants [LIVE] says so.
      */
-    val DEFAULT_REQUEST: ServeAgentGrantScope = PREVIEW
+    public val DEFAULT_REQUEST: AgentGrantScope = PREVIEW
 
     /**
      * The operator's ceiling when `--agent-grant-scopes` is unset. [PLAYGROUND] is out because it
      * runs code; opting into it must be a deliberate, typed decision rather than a default an
      * operator inherits by upgrading.
      */
-    val DEFAULT_MAX: ServeAgentGrantScope = LIVE
+    public val DEFAULT_MAX: AgentGrantScope = LIVE
 
     /** Parse one wire name, case-insensitively; null when it names nothing. */
-    fun parse(value: String?): ServeAgentGrantScope? {
+    public fun parse(value: String?): AgentGrantScope? {
       val wanted = value?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return null
       return entries.firstOrNull { it.wire == wanted }
     }
@@ -76,7 +76,7 @@ enum class ServeAgentGrantScope(
      * `--agent-grant-scopes` fails the server's startup instead of silently narrowing every future
      * grant to `preview` and leaving the operator to wonder why live never works.
      */
-    fun parseHighest(list: String?): ServeAgentGrantScope? {
+    public fun parseHighest(list: String?): AgentGrantScope? {
       val names =
         list?.split(',', ' ')?.map { it.trim() }?.filter { it.isNotEmpty() } ?: return null
       if (names.isEmpty()) return null
@@ -91,7 +91,7 @@ enum class ServeAgentGrantScope(
     }
 
     /** Every scope up to and including [highest], least-privileged first — what a grant lists. */
-    fun upTo(highest: ServeAgentGrantScope): List<ServeAgentGrantScope> = entries.filter {
+    public fun upTo(highest: AgentGrantScope): List<AgentGrantScope> = entries.filter {
       highest.implies(it)
     }
   }

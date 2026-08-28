@@ -4061,15 +4061,26 @@ hog a single seat and starve the cheap `compose-m3` CMP lanes. A session that ca
 is refused with WebSocket close `1013` (*Try Again Later*) instead of spawning a daemon that risks
 the OOM killer; `0` is unbounded, and snapshot + Wasm sessions never consume a permit.
 
-**Auto-sizing.** When `SERVE_LIVE_SEATS` is unset, the prebuilt image derives the budget from the
-container's memory (reserve ~1 GB for the host + OS, ~1.2 GB per permit, clamped to **[2, 8]**), so a
-bigger box scales up on its own with no compose edit: an 8 GB box gets **5** permits, a 4 GB box gets
-**2** (two concurrent CMP sessions, or one Android). `preview.coo.ee` runs on an **8 GB host**, so it
-derives **5** permits — enough for the heavier Wear/Android daemon (2 permits) plus concurrent CMP
-lanes. The `preview` container is **unbounded by default** (`mem_limit: ${PREVIEW_MEM_LIMIT:-0}`), so
-it uses the box's full RAM and the entrypoint
-falls back to physical RAM when there's no cgroup cap — redeploy onto a larger dedicated box and it
-scales automatically. Admission control (the live-seat budget + the per-render concurrency limiter)
+**Auto-sizing.** When `SERVE_LIVE_SEATS` is unset, the prebuilt image derives the budget from
+**both** memory and CPU and takes the smaller: memory affords `(effective MB − 1024) / 1200` permits
+(~1 GB reserved for the host + OS, ~1.2 GB per permit), CPU affords **2 per core** (one Android
+daemon per core, since Android costs two permits and is the heaviest backend), and the result is
+clamped to **[2, 32]**. A 4 GB box gets **2** (two concurrent CMP sessions, or one Android); an 8 GB
+/ 4-core box gets **5**, memory governing; a 48 GB / 8-core box gets **16**, the cores governing.
+
+Memory alone was the wrong input, and so is `nproc` alone. A permit buys a render daemon and a
+render is CPU-bound, so a RAM-rich, core-poor box derived a budget it could not work — and the old
+`[2, 8]` clamp meant a large box stopped scaling entirely. The CPU figure is the **cgroup quota**
+where one is set, not the visible core count: `nproc` reports the processors visible to the process,
+so a container constrained with `docker --cpus 2` whose cpuset was not also narrowed reports the
+host's cores. The entrypoint reads `cpu.max` (cgroup v2) or `cpu.cfs_quota_us`/`cpu.cfs_period_us`
+(v1) and takes the tighter of quota and `nproc`; an absent, unlimited or unparseable quota leaves
+the visible count as the answer. The startup line says which applied — `8 cpus quota-limited from
+16` when the quota bound it.
+
+The `preview` container is **unbounded by default** (`mem_limit: ${PREVIEW_MEM_LIMIT:-0}`), so it
+uses the box's full RAM and the entrypoint falls back to physical RAM when there's no cgroup cap —
+redeploy onto a larger dedicated box and it scales automatically. Admission control (the live-seat budget + the per-render concurrency limiter)
 is the memory guard, rather than a hard cgroup kill. On a **shared** host, set `PREVIEW_MEM_LIMIT` in
 `.env` (e.g. `PREVIEW_MEM_LIMIT=4g`) to cap the container — which also lowers the derived seat budget
 to match. Set `SERVE_LIVE_SEATS` explicitly to override the budget directly, or `0` for unbounded.

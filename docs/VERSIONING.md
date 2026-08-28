@@ -59,6 +59,32 @@ By surface:
 
 Anything else is additive.
 
+### 3.1 The data-product payload classes are a JSON contract, not a JVM ABI
+
+The published `data-*-core` artifacts carry Kotlin `data class`es — `LayoutInspectorVectorPath`,
+`FigmaSvgVectorPath` and their neighbours — that serialize the daemon's data products. **What is
+promised about them is the JSON**: additive fields with documented defaults (§ 4.3), unknown fields
+ignored on both sides (§ 4.2), and the per-product `schemaVersion` bumped so a consumer can tell the
+shapes apart (§ 4.1). A reader holding an older artifact decodes a newer payload, which is the
+property these types exist to have.
+
+**Their JVM ABI is not a second contract on top of that, and adding a field is not a breaking
+change.** Kotlin compiles a data class's constructor and `copy` with a descriptor per parameter, so
+an additive property necessarily replaces both — the 9-argument constructor becomes a 10-argument
+one. There is no way to append a field and keep them: a hand-written secondary constructor restores
+the all-arguments call path but *not* the synthetic `$default` a Kotlin caller uses when it omits a
+parameter, so the artifact would read as binary compatible while an old consumer still failed to
+link. A partial restoration that looks total is worse than a recorded change.
+
+What is guaranteed instead is that the change is **deliberate and visible**: every one of these
+modules runs `explicitApi()` plus `abiValidation()` with a committed dump under `api/`, and wires
+`checkKotlinAbi` into `check` (see § 9), so a surface change is a reviewable diff in the dump rather
+than a downstream surprise. Consumers pinning one of these artifacts should move it with the CLI
+they resolve — they are one release train, not independently versioned libraries.
+
+This does **not** extend to `:rc-player-*`, which are ordinary libraries an external consumer
+compiles against on its own cadence. There the ABI is the contract.
+
 ## 4. The wire-format rules
 
 These apply to surfaces 1, 2, 3, and the history sidecar.
@@ -151,7 +177,7 @@ Three layers were designed; this is what each one actually does today.
 | Layer | Intended gate | Reality |
 |---|---|---|
 | **Fixture corpus** — `docs/daemon/protocol-fixtures/` | Adding a wire message without a fixture fails CI | Kotlin round-trips the fixtures it covers. **TypeScript does not round-trip** — `daemonProtocol.test.ts` does `JSON.parse(...) as T` and asserts selected properties on 16 of the 28 fixtures, so a renamed field nobody asserts passes. And the inventory (`MessagesTest.fixtureInventoryMatchesExpected`) is a **hand-maintained** set: a new message adds no entry and lands green. History, interactive, stream, XR, recording and extension methods are already uncovered |
-| **Kotlin BCV** — named for `:gradle-plugin` and `:preview-annotations` | Changing a public API without updating the golden file fails CI | **Not wired on those modules.** No `.api` golden files, no ABI check in any workflow for them. Note they are also the wrong target: the DSL consumers compile against is `:gradle-plugin-config`, the artifact that gets conflict-resolved between a pinned config plugin and a CLI-injected runtime. **One module set is gated:** the four `:rc-player-*` library modules run `explicitApi()` plus the Kotlin Gradle plugin's built-in `abiValidation()`, with committed JVM and klib dumps under `rc-player/*/api/` and `checkKotlinAbi` in the `rc-player-tests` job — see [API_STABILITY.md § 5.1](API_STABILITY.md#51-the-one-module-set-that-is-gated--the-remote-compose-player) |
+| **Kotlin BCV** — named for `:gradle-plugin` and `:preview-annotations` | Changing a public API without updating the golden file fails CI | **Not wired on those modules.** No `.api` golden files, no ABI check in any workflow for them. Note they are also the wrong target: the DSL consumers compile against is `:gradle-plugin-config`, the artifact that gets conflict-resolved between a pinned config plugin and a CLI-injected runtime. **Two sets are gated, by different routes:** the four `:rc-player-*` library modules run `explicitApi()` plus the Kotlin Gradle plugin's built-in `abiValidation()`, with committed JVM and klib dumps under `rc-player/*/api/` and `checkKotlinAbi` named explicitly in the `rc-player-tests` job — see [API_STABILITY.md § 5.1](API_STABILITY.md#51-the-one-module-set-that-is-gated--the-remote-compose-player). Sixteen more do the same and wire `checkKotlinAbi` into their own `check`, so the ordinary build runs it without CI naming the task: `:agent-grant-protocol`, `:preview-data-api`, `:bundle-coordinates`, `:bundle-format`, `:common-image-crop`, `:common-io`, `:daemon:client`, `:daemon:core`, `:render-session-api`, `:render-session-subprocess`, and the six `data-*-core` payload modules. For those payload modules, read the gate as § 3.1 describes it — a record of a deliberate change, not a compatibility promise |
 | **Toolchain integration matrix** — `.github/workflows/integration.yml` | Bumping a matrix corner without a green run fails CI | Two different things. **On a PR:** one cell (`wear-os-samples (ComposeStarter)`); `agp8-min` is skipped, and a diff touching only safe paths skips the matrix entirely with the required legs re-emitted green. **On `main` + the nightly cron:** the full matrix, so AGP-floor drift surfaces within a day rather than on the PR. Either way the cells are external repositories and fixtures, not pinned current / current-1 / next-RC |
 
 The fixture corpus and the integration suite are real tests that catch real regressions. What none of the three currently provides is the *exhaustive* coverage the rules above assume.

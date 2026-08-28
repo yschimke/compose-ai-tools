@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.agentgrants.AgentGrantProtocol
+import ee.schimke.composeai.agentgrants.AgentGrantScope
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -22,7 +24,7 @@ class ServeAgentGrantStoreTest {
   private var now = 1_000_000L
 
   private fun store(
-    maxScope: ServeAgentGrantScope = ServeAgentGrantScope.PLAYGROUND,
+    maxScope: AgentGrantScope = AgentGrantScope.PLAYGROUND,
     maxGrantTtlSeconds: Long = 3600,
     maxActiveGrants: Int = 16,
     maxPendingRequests: Int = 32,
@@ -36,7 +38,7 @@ class ServeAgentGrantStoreTest {
     )
 
   private fun ServeAgentGrantStore.ask(
-    scope: ServeAgentGrantScope = ServeAgentGrantScope.LIVE,
+    scope: AgentGrantScope = AgentGrantScope.LIVE,
     ttl: Long = 1800,
   ) = openRequest("fix #1", "10.0.0.1", scope, ttl)!!
 
@@ -44,7 +46,7 @@ class ServeAgentGrantStoreTest {
   fun `the token goes to the device secret, not to the link`() {
     val store = store()
     val request = store.ask()
-    store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, 600)
+    store.approve(request.id, "@yuri", AgentGrantScope.LIVE, 600)
 
     // Someone holding the link but not the secret gets the same answer as someone holding neither.
     assertEquals(ServeAgentGrantStore.Poll.Unknown, store.poll(request.id, "not-the-secret"))
@@ -64,33 +66,33 @@ class ServeAgentGrantStoreTest {
 
   @Test
   fun `approval may narrow a request but never widen it`() {
-    val store = store(maxScope = ServeAgentGrantScope.PLAYGROUND)
-    val request = store.ask(scope = ServeAgentGrantScope.LIVE, ttl = 900)
+    val store = store(maxScope = AgentGrantScope.PLAYGROUND)
+    val request = store.ask(scope = AgentGrantScope.LIVE, ttl = 900)
 
-    val grant = store.approve(request.id, "@yuri", ServeAgentGrantScope.PLAYGROUND, 99_999)!!
-    assertEquals(ServeAgentGrantScope.LIVE, grant.scope)
+    val grant = store.approve(request.id, "@yuri", AgentGrantScope.PLAYGROUND, 99_999)!!
+    assertEquals(AgentGrantScope.LIVE, grant.scope)
     assertEquals(900, (grant.expiresAtMillis - grant.issuedAtMillis) / 1000)
   }
 
   @Test
   fun `the operator ceiling clamps a request at the door`() {
-    val store = store(maxScope = ServeAgentGrantScope.PREVIEW)
-    val request = store.ask(scope = ServeAgentGrantScope.PLAYGROUND)
-    assertEquals(ServeAgentGrantScope.PREVIEW, request.requestedScope)
+    val store = store(maxScope = AgentGrantScope.PREVIEW)
+    val request = store.ask(scope = AgentGrantScope.PLAYGROUND)
+    assertEquals(AgentGrantScope.PREVIEW, request.requestedScope)
 
-    val grant = store.approve(request.id, "@yuri", ServeAgentGrantScope.PLAYGROUND, 600)!!
-    assertEquals(ServeAgentGrantScope.PREVIEW, grant.scope)
-    assertFalse(grant.allows(ServeAgentGrantScope.LIVE))
+    val grant = store.approve(request.id, "@yuri", AgentGrantScope.PLAYGROUND, 600)!!
+    assertEquals(AgentGrantScope.PREVIEW, grant.scope)
+    assertFalse(grant.allows(AgentGrantScope.LIVE))
   }
 
   @Test
   fun `scopes are cumulative`() {
     val store = store()
-    val request = store.ask(scope = ServeAgentGrantScope.PLAYGROUND)
-    val grant = store.approve(request.id, "@yuri", ServeAgentGrantScope.PLAYGROUND, 600)!!
-    assertTrue(grant.allows(ServeAgentGrantScope.PREVIEW))
-    assertTrue(grant.allows(ServeAgentGrantScope.LIVE))
-    assertTrue(grant.allows(ServeAgentGrantScope.PLAYGROUND))
+    val request = store.ask(scope = AgentGrantScope.PLAYGROUND)
+    val grant = store.approve(request.id, "@yuri", AgentGrantScope.PLAYGROUND, 600)!!
+    assertTrue(grant.allows(AgentGrantScope.PREVIEW))
+    assertTrue(grant.allows(AgentGrantScope.LIVE))
+    assertTrue(grant.allows(AgentGrantScope.PLAYGROUND))
     assertEquals(listOf("preview", "live", "playground"), grant.scopes.map { it.wire })
   }
 
@@ -98,8 +100,8 @@ class ServeAgentGrantStoreTest {
   fun `approving twice mints one grant, not two`() {
     val store = store()
     val request = store.ask()
-    val first = store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, 600)!!
-    val second = store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, 600)!!
+    val first = store.approve(request.id, "@yuri", AgentGrantScope.LIVE, 600)!!
+    val second = store.approve(request.id, "@yuri", AgentGrantScope.LIVE, 600)!!
     assertEquals(first.id, second.id)
     assertEquals(1, store.activeGrants().size)
   }
@@ -109,7 +111,7 @@ class ServeAgentGrantStoreTest {
     val store = store()
     val request = store.ask()
     assertTrue(store.deny(request.id, "@yuri"))
-    assertNull(store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, 600))
+    assertNull(store.approve(request.id, "@yuri", AgentGrantScope.LIVE, 600))
     val polled = store.poll(request.id, request.deviceSecret)
     assertTrue(polled is ServeAgentGrantStore.Poll.Denied)
   }
@@ -118,7 +120,7 @@ class ServeAgentGrantStoreTest {
   fun `an approved request cannot then be denied`() {
     val store = store()
     val request = store.ask()
-    store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, 600)
+    store.approve(request.id, "@yuri", AgentGrantScope.LIVE, 600)
     assertFalse(store.deny(request.id, "@someone-else"))
   }
 
@@ -135,7 +137,7 @@ class ServeAgentGrantStoreTest {
   fun `a grant expires and stops authorising`() {
     val store = store()
     val request = store.ask()
-    val grant = store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, 60)!!
+    val grant = store.approve(request.id, "@yuri", AgentGrantScope.LIVE, 60)!!
     assertNotNull(store.grantForToken(grant.token))
     now += 61_000
     assertNull(store.grantForToken(grant.token))
@@ -146,7 +148,7 @@ class ServeAgentGrantStoreTest {
   fun `a revoked grant stops authorising immediately`() {
     val store = store()
     val request = store.ask()
-    val grant = store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, 3600)!!
+    val grant = store.approve(request.id, "@yuri", AgentGrantScope.LIVE, 3600)!!
     assertTrue(store.revoke(grant.id, "@yuri"))
     assertNull(store.grantForToken(grant.token))
     assertFalse(store.revoke(grant.id, "@yuri"))
@@ -156,7 +158,7 @@ class ServeAgentGrantStoreTest {
   fun `revoking by token is the agent handing its own access back`() {
     val store = store()
     val request = store.ask()
-    val grant = store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, 3600)!!
+    val grant = store.approve(request.id, "@yuri", AgentGrantScope.LIVE, 3600)!!
     assertTrue(store.revokeToken(grant.token, "the agent itself"))
     assertNull(store.grantForToken(grant.token))
   }
@@ -165,7 +167,7 @@ class ServeAgentGrantStoreTest {
   fun `polling after a revoke reports expired rather than handing back a dead token`() {
     val store = store()
     val request = store.ask()
-    val grant = store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, 3600)!!
+    val grant = store.approve(request.id, "@yuri", AgentGrantScope.LIVE, 3600)!!
     store.revoke(grant.id, "@yuri")
     assertEquals(ServeAgentGrantStore.Poll.Expired, store.poll(request.id, request.deviceSecret))
   }
@@ -175,7 +177,7 @@ class ServeAgentGrantStoreTest {
     val store = store(maxActiveGrants = 2)
     fun mint(ttl: Long): ServeAgentGrantStore.Grant {
       val request = store.ask(ttl = ttl)
-      return store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, ttl)!!
+      return store.approve(request.id, "@yuri", AgentGrantScope.LIVE, ttl)!!
     }
     val shortest = mint(60)
     val middle = mint(600)
@@ -193,7 +195,7 @@ class ServeAgentGrantStoreTest {
     val store = store(maxActiveGrants = 2)
     fun mint(ttl: Long): ServeAgentGrantStore.Grant {
       val request = store.ask(ttl = ttl)
-      return store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, ttl)!!
+      return store.approve(request.id, "@yuri", AgentGrantScope.LIVE, ttl)!!
     }
     mint(3600)
     mint(1800)
@@ -205,9 +207,9 @@ class ServeAgentGrantStoreTest {
   @Test
   fun `the pending-request cap refuses rather than growing without bound`() {
     val store = store(maxPendingRequests = 2)
-    assertNotNull(store.openRequest("a", "ip", ServeAgentGrantScope.PREVIEW, 600))
-    assertNotNull(store.openRequest("b", "ip", ServeAgentGrantScope.PREVIEW, 600))
-    assertNull(store.openRequest("c", "ip", ServeAgentGrantScope.PREVIEW, 600))
+    assertNotNull(store.openRequest("a", "ip", AgentGrantScope.PREVIEW, 600))
+    assertNotNull(store.openRequest("b", "ip", AgentGrantScope.PREVIEW, 600))
+    assertNull(store.openRequest("c", "ip", AgentGrantScope.PREVIEW, 600))
   }
 
   @Test
@@ -217,7 +219,7 @@ class ServeAgentGrantStoreTest {
     val store = store(maxPendingRequests = 8)
     val threads =
       (1..32).map { i ->
-        Thread { store.openRequest("burst-$i", "ip-$i", ServeAgentGrantScope.PREVIEW, 600) }
+        Thread { store.openRequest("burst-$i", "ip-$i", AgentGrantScope.PREVIEW, 600) }
       }
     threads.forEach { it.start() }
     threads.forEach { it.join() }
@@ -234,21 +236,21 @@ class ServeAgentGrantStoreTest {
     // the sender a fresh slot with every click. A denial is kept (its owner must be able to learn
     // it was denied) and charged to whoever caused it; only its own expiry frees the space.
     val store = store(maxPendingRequests = 2)
-    val first = store.openRequest("a", "ip", ServeAgentGrantScope.PREVIEW, 600)!!
-    store.openRequest("b", "ip", ServeAgentGrantScope.PREVIEW, 600)
+    val first = store.openRequest("a", "ip", AgentGrantScope.PREVIEW, 600)!!
+    store.openRequest("b", "ip", AgentGrantScope.PREVIEW, 600)
     store.deny(first.id, "@yuri")
-    assertNull(store.openRequest("c", "ip", ServeAgentGrantScope.PREVIEW, 600))
+    assertNull(store.openRequest("c", "ip", AgentGrantScope.PREVIEW, 600))
     // The denial is still readable by its owner while it holds that slot.
     assertTrue(store.poll(first.id, first.deviceSecret) is ServeAgentGrantStore.Poll.Denied)
     now += (store.requestTtlSeconds + 5) * 1000
-    assertNotNull(store.openRequest("c", "ip", ServeAgentGrantScope.PREVIEW, 600))
+    assertNotNull(store.openRequest("c", "ip", AgentGrantScope.PREVIEW, 600))
   }
 
   @Test
   fun `a token is never mistaken for the operator token, and vice versa`() {
     val store = store()
     val request = store.ask()
-    val grant = store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, 600)!!
+    val grant = store.approve(request.id, "@yuri", AgentGrantScope.LIVE, 600)!!
     assertTrue(ServeAgentGrantStore.isWellFormedToken(grant.token))
     // An ordinary `--token` (no prefix) never reaches the map at all.
     assertFalse(ServeAgentGrantStore.isWellFormedToken("plain-operator-token-value"))
@@ -259,10 +261,10 @@ class ServeAgentGrantStoreTest {
   fun `the fingerprint identifies a grant without disclosing it`() {
     val store = store()
     val request = store.ask()
-    val grant = store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, 600)!!
+    val grant = store.approve(request.id, "@yuri", AgentGrantScope.LIVE, 600)!!
     assertEquals(12, grant.fingerprint.length)
     assertFalse(grant.token.contains(grant.fingerprint))
-    assertEquals(grant.fingerprint, ServeAgentGrantStore.fingerprintOf(grant.token))
+    assertEquals(grant.fingerprint, AgentGrantProtocol.fingerprintOf(grant.token))
   }
 
   @Test
@@ -271,11 +273,11 @@ class ServeAgentGrantStoreTest {
     val store =
       ServeAgentGrantStore(
         clock = { now },
-        maxScope = ServeAgentGrantScope.PLAYGROUND,
+        maxScope = AgentGrantScope.PLAYGROUND,
         audit = { lines += it },
       )
-    val request = store.openRequest("fix #1", "10.0.0.1", ServeAgentGrantScope.LIVE, 600)!!
-    val grant = store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, 600)!!
+    val request = store.openRequest("fix #1", "10.0.0.1", AgentGrantScope.LIVE, 600)!!
+    val grant = store.approve(request.id, "@yuri", AgentGrantScope.LIVE, 600)!!
     store.revoke(grant.id, "@yuri")
     assertEquals(2, lines.size)
     assertTrue(lines.all { it.contains(grant.fingerprint) })
@@ -302,10 +304,10 @@ class ServeAgentGrantStoreTest {
     // arrives.
     val store = store(maxPendingRequests = 2)
     val approved = store.ask()
-    store.approve(approved.id, "@yuri", ServeAgentGrantScope.LIVE, 600)
+    store.approve(approved.id, "@yuri", AgentGrantScope.LIVE, 600)
     // Saturate the pending budget, then keep asking — every one of these is refused or admitted on
     // its own merits, and none of them may cost the approval above its credential.
-    repeat(6) { store.openRequest("filler-$it", "10.9.9.9", ServeAgentGrantScope.PREVIEW, 600) }
+    repeat(6) { store.openRequest("filler-$it", "10.9.9.9", AgentGrantScope.PREVIEW, 600) }
     val polled = store.poll(approved.id, approved.deviceSecret)
     assertTrue(polled is ServeAgentGrantStore.Poll.Approved, "got $polled")
   }
@@ -317,7 +319,7 @@ class ServeAgentGrantStoreTest {
     // seconds of the window, because the agent's next poll landed after it.
     val store = store()
     val request = store.ask(ttl = 3600)
-    store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, 3600)
+    store.approve(request.id, "@yuri", AgentGrantScope.LIVE, 3600)
     now += (store.requestTtlSeconds + 5) * 1000
     val polled = store.poll(request.id, request.deviceSecret)
     assertTrue(polled is ServeAgentGrantStore.Poll.Approved, "got $polled")
@@ -333,7 +335,7 @@ class ServeAgentGrantStoreTest {
       val request = store.ask(ttl = 600)
       val results = java.util.concurrent.ConcurrentLinkedQueue<ServeAgentGrantStore.Grant?>()
       val approver = Thread {
-        results += store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, 600)
+        results += store.approve(request.id, "@yuri", AgentGrantScope.LIVE, 600)
       }
       val purger = Thread { repeat(20) { store.purge() } }
       approver.start()
@@ -363,7 +365,7 @@ class ServeAgentGrantStoreTest {
       val seen = java.util.concurrent.ConcurrentLinkedQueue<ServeAgentGrantStore.Poll>()
       val poller = Thread { repeat(200) { seen += store.poll(request.id, request.deviceSecret) } }
       poller.start()
-      store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, 600)
+      store.approve(request.id, "@yuri", AgentGrantScope.LIVE, 600)
       poller.join()
       assertTrue(
         seen.none { it is ServeAgentGrantStore.Poll.Expired },
@@ -396,11 +398,11 @@ class ServeAgentGrantStoreTest {
     // anonymous caller can attempt.
     val store = store(maxPendingRequests = 2)
     val mine = store.ask(ttl = 3600)
-    store.approve(mine.id, "@yuri", ServeAgentGrantScope.LIVE, 3600)
+    store.approve(mine.id, "@yuri", AgentGrantScope.LIVE, 3600)
     assertTrue(store.poll(mine.id, mine.deviceSecret) is ServeAgentGrantStore.Poll.Approved)
     // …that response is lost. Now an anonymous caller tries to fill the map. `openRequest` rather
     // than the `!!` helper: being REFUSED is the correct outcome here, not an error.
-    repeat(4) { store.openRequest("spam", "10.9.9.9", ServeAgentGrantScope.PREVIEW, 600) }
+    repeat(4) { store.openRequest("spam", "10.9.9.9", AgentGrantScope.PREVIEW, 600) }
     assertTrue(
       store.poll(mine.id, mine.deviceSecret) is ServeAgentGrantStore.Poll.Approved,
       "a live grant was shed to admit an anonymous request",
@@ -414,7 +416,7 @@ class ServeAgentGrantStoreTest {
     // grant was still live.
     val store = store()
     val request = store.ask(ttl = 3600)
-    store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, 3600)
+    store.approve(request.id, "@yuri", AgentGrantScope.LIVE, 3600)
     assertTrue(store.poll(request.id, request.deviceSecret) is ServeAgentGrantStore.Poll.Approved)
     now += (store.requestTtlSeconds + 5) * 1000 // past the request window, grant still alive
     assertTrue(
@@ -430,14 +432,14 @@ class ServeAgentGrantStoreTest {
     val request = store.ask()
     now += (store.requestTtlSeconds + 5) * 1000
     assertNull(store.request(request.id))
-    assertNull(store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, 600))
+    assertNull(store.approve(request.id, "@yuri", AgentGrantScope.LIVE, 600))
   }
 
   @Test
   fun `a retained approval is reclaimed once its grant is gone`() {
     val store = store()
     val request = store.ask(ttl = 60)
-    store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, 60)
+    store.approve(request.id, "@yuri", AgentGrantScope.LIVE, 60)
     now += (store.requestTtlSeconds + 5) * 1000
     // The grant expired too, so the record owes nobody anything and goes.
     assertNull(store.request(request.id))
@@ -454,12 +456,12 @@ class ServeAgentGrantStoreTest {
     val approved =
       (1..5).map { i ->
         val r = store.ask(ttl = 3600)
-        store.approve(r.id, "@yuri", ServeAgentGrantScope.LIVE, 3600)
+        store.approve(r.id, "@yuri", AgentGrantScope.LIVE, 3600)
         r
       }
     // …and a fresh request still gets in, because none of those is pending.
     assertNotNull(
-      store.openRequest("new", "ip", ServeAgentGrantScope.PREVIEW, 600),
+      store.openRequest("new", "ip", AgentGrantScope.PREVIEW, 600),
       "retained approvals must not spend the pending budget",
     )
     // Every one of those grants is still collectable.
@@ -479,22 +481,20 @@ class ServeAgentGrantStoreTest {
     // another, forever, in an anonymously-controlled map that was supposed to be bounded.
     val store = store(maxPendingRequests = 3)
     val first =
-      (1..3).mapNotNull {
-        store.openRequest("spam-$it", "10.9.9.9", ServeAgentGrantScope.PREVIEW, 600)
-      }
+      (1..3).mapNotNull { store.openRequest("spam-$it", "10.9.9.9", AgentGrantScope.PREVIEW, 600) }
     assertEquals(3, first.size)
     // The operator denies every one of them.
     for (r in first) assertTrue(store.deny(r.id, "@yuri"))
     // The attacker immediately tries again, and gets nowhere.
     assertNull(
-      store.openRequest("spam-again", "10.9.9.9", ServeAgentGrantScope.PREVIEW, 600),
+      store.openRequest("spam-again", "10.9.9.9", AgentGrantScope.PREVIEW, 600),
       "a denied row must still be charged to whoever created it",
     )
     // …and the denials remain visible to their owners in the meantime.
     assertTrue(store.poll(first[0].id, first[0].deviceSecret) is ServeAgentGrantStore.Poll.Denied)
     // Only the passage of time frees the capacity.
     now += (store.requestTtlSeconds + 5) * 1000
-    assertNotNull(store.openRequest("later", "10.9.9.9", ServeAgentGrantScope.PREVIEW, 600))
+    assertNotNull(store.openRequest("later", "10.9.9.9", AgentGrantScope.PREVIEW, 600))
   }
 
   @Test
@@ -503,19 +503,19 @@ class ServeAgentGrantStoreTest {
     // pushes someone over the cap.
     val store = store(maxPendingRequests = 2)
     val done = store.ask(ttl = 60)
-    store.approve(done.id, "@yuri", ServeAgentGrantScope.LIVE, 60)
+    store.approve(done.id, "@yuri", AgentGrantScope.LIVE, 60)
     now += 61_000 // the grant is gone; the row owes nobody anything
-    assertNotNull(store.openRequest("a", "ip", ServeAgentGrantScope.PREVIEW, 600))
-    assertNotNull(store.openRequest("b", "ip", ServeAgentGrantScope.PREVIEW, 600))
+    assertNotNull(store.openRequest("a", "ip", AgentGrantScope.PREVIEW, 600))
+    assertNotNull(store.openRequest("b", "ip", AgentGrantScope.PREVIEW, 600))
   }
 
   @Test
   fun `the pending cap still bounds what an anonymous caller can create`() {
     val store = store(maxPendingRequests = 2)
-    assertNotNull(store.openRequest("a", "ip", ServeAgentGrantScope.PREVIEW, 600))
-    assertNotNull(store.openRequest("b", "ip", ServeAgentGrantScope.PREVIEW, 600))
+    assertNotNull(store.openRequest("a", "ip", AgentGrantScope.PREVIEW, 600))
+    assertNotNull(store.openRequest("b", "ip", AgentGrantScope.PREVIEW, 600))
     assertNull(
-      store.openRequest("c", "ip", ServeAgentGrantScope.PREVIEW, 600),
+      store.openRequest("c", "ip", AgentGrantScope.PREVIEW, 600),
       "a third pending request must be refused",
     )
   }
@@ -528,11 +528,11 @@ class ServeAgentGrantStoreTest {
     // request that is genuinely finished with — here, one whose grant has since expired.
     val store = store(maxPendingRequests = 2)
     val done = store.ask(ttl = 60)
-    store.approve(done.id, "@yuri", ServeAgentGrantScope.LIVE, 60)
+    store.approve(done.id, "@yuri", AgentGrantScope.LIVE, 60)
     assertTrue(store.poll(done.id, done.deviceSecret) is ServeAgentGrantStore.Poll.Approved)
     now += 61_000 // its grant is gone, so the record owes nobody anything
-    store.openRequest("b", "ip", ServeAgentGrantScope.PREVIEW, 600)
-    assertNotNull(store.openRequest("c", "ip", ServeAgentGrantScope.PREVIEW, 600))
+    store.openRequest("b", "ip", AgentGrantScope.PREVIEW, 600)
+    assertNotNull(store.openRequest("c", "ip", AgentGrantScope.PREVIEW, 600))
   }
 
   @Test
@@ -540,10 +540,10 @@ class ServeAgentGrantStoreTest {
     val lines = mutableListOf<String>()
     val store = ServeAgentGrantStore(clock = { now }, audit = { lines += it })
     val hostile = "ok\nagent-grant: minted deadbeef scope=playground\u001b[2J"
-    val request = store.openRequest(hostile, "10.0.0.1", ServeAgentGrantScope.PREVIEW, 600)!!
+    val request = store.openRequest(hostile, "10.0.0.1", AgentGrantScope.PREVIEW, 600)!!
     assertFalse(request.label.contains('\n'))
     assertFalse(request.label.any { it.isISOControl() })
-    store.approve(request.id, "@yuri", ServeAgentGrantScope.PREVIEW, 600)
+    store.approve(request.id, "@yuri", AgentGrantScope.PREVIEW, 600)
     assertEquals(1, lines.size, "one label must not become two log lines")
     assertFalse(lines.single().contains('\n'))
   }
@@ -551,7 +551,7 @@ class ServeAgentGrantStoreTest {
   @Test
   fun `a label from an agent is capped rather than trusted to be short`() {
     val store = store()
-    val request = store.openRequest("x".repeat(5000), "ip", ServeAgentGrantScope.PREVIEW, 600)!!
+    val request = store.openRequest("x".repeat(5000), "ip", AgentGrantScope.PREVIEW, 600)!!
     assertEquals(ServeAgentGrantStore.MAX_LABEL_CHARS, request.label.length)
   }
 }

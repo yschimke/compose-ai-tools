@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli
 
-import ee.schimke.composeai.cli.serve.ServeAgentGrantStore
+import ee.schimke.composeai.agentgrants.AgentGrantCapability
+import ee.schimke.composeai.agentgrants.AgentGrantProtocol
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.file.Files
@@ -51,8 +52,8 @@ internal open class AgentAccessStore(
     val token: String,
     val scopes: List<String> = emptyList(),
     /**
-     * Independent permissions the approver ticked ([ServeAgentGrantCapability]). Defaulted, so a
-     * file written by an older CLI reads back without complaint.
+     * Independent permissions the approver ticked ([AgentGrantCapability]). Defaulted, so a file
+     * written by an older CLI reads back without complaint.
      */
     val capabilities: List<String> = emptyList(),
     val approvedBy: String = "",
@@ -65,7 +66,7 @@ internal open class AgentAccessStore(
      * message here names a row a human can actually find. Never the token itself.
      */
     val fingerprint: String
-      get() = ServeAgentGrantStore.fingerprintOf(token)
+      get() = AgentGrantProtocol.fingerprintOf(token)
 
     fun secondsUntilExpiry(nowMillis: Long): Long =
       ((expiresAtMillis - nowMillis) / 1000).coerceAtLeast(0)
@@ -343,8 +344,8 @@ internal open class AgentAccessStore(
     /**
      * How long a remembered request stays worth polling **past the close of its approval window** —
      * the server's own hard ceiling on a grant's life
-     * ([ServeAgentGrantStore.HARD_MAX_GRANT_TTL_SECONDS]). Measured from the window's end rather
-     * than from the request's creation, because the server starts a grant's TTL at approval: past
+     * ([AgentGrantProtocol.HARD_MAX_GRANT_TTL_SECONDS]). Measured from the window's end rather than
+     * from the request's creation, because the server starts a grant's TTL at approval: past
      * window-end plus this, no grant the request could have produced can still be alive, so the
      * record owes nobody.
      */

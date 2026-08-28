@@ -275,12 +275,18 @@ export class CompareWall extends LitElement {
             return;
         }
 
-        // Everything that does not need the scorer, done for every row before the scorer is asked
-        // for anything: the pictures, the grounds, the links and the published scores. See
-        // {@link dressRow}.
-        const dressed = new Set(this.rows.filter((row) => this.dressRow(row)));
+        // Everything that does not need the scorer, done before the scorer is asked for anything:
+        // the pictures, the grounds, the links and the published scores. See {@link dressRow}.
+        //
+        // Dressing is driven from {@link applySearch} rather than run over every row here, because
+        // it assigns both image `src` values — so dressing first and filtering after had the
+        // browser fetch and decode the whole wall for a `?preview=` or `?q=` link showing one row.
+        // On the large catalogs this page exists for that is hundreds of full-resolution pairs for
+        // a single visible comparison. The dressed set is reset per run: a format or theme switch
+        // changes which pair each row shows, so a row already dressed for the previous lane has to
+        // be dressed again for this one.
+        this.dressedRows = new Set();
         this.applySearch();
-        for (const row of this.rows) if (!dressed.has(row)) row.hidden = true;
         const visible = this.rows.filter((row) => !row.hidden);
         // Ordered on the published numbers BEFORE anything is measured. The server already served
         // the reference lane in this order, so on first load this is a no-op; it earns its keep on
@@ -416,14 +422,40 @@ export class CompareWall extends LitElement {
                 query,
                 preview,
             );
-            row.hidden = !keep;
-            if (keep) visible++;
+            // Dressed HERE, and only when it is going to be seen — see {@link run}. `ensureDressed`
+            // is also what keeps a row revealed by a later filter change (the search input clearing,
+            // a Back to a wider query) from appearing with no pictures in it.
+            const show = keep && this.ensureDressed(row);
+            row.hidden = !show;
+            if (show) visible++;
         }
         if (this.count) this.count.textContent = countLabel(visible);
         if (this.empty) this.empty.hidden = visible !== 0;
     }
 
     // ---- one row -------------------------------------------------------------
+
+    /**
+     * Rows already dressed for the current format and theme, so {@link applySearch} can dress a
+     * newly revealed one without redressing the wall. Reset by {@link run}, which is what a format
+     * or theme switch goes through.
+     */
+    private dressedRows = new Set<HTMLElement>();
+
+    /**
+     * {@link dressRow} once per row per run, remembering the outcome.
+     *
+     * False when the row cannot be paired in this format — the caller hides it, exactly as the
+     * unconditional pass used to. A failure is deliberately not remembered: it costs one repeated
+     * `querySelector` sweep on a row that will not be shown either way, and remembering it would
+     * mean carrying a second set whose only purpose is to skip work nobody waits on.
+     */
+    private ensureDressed(row: HTMLElement): boolean {
+        if (this.dressedRows.has(row)) return true;
+        if (!this.dressRow(row)) return false;
+        this.dressedRows.add(row);
+        return true;
+    }
 
     /**
      * Everything a row shows that is known WITHOUT measuring anything: the pair it is pointing at,

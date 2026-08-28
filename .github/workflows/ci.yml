@@ -1401,6 +1401,11 @@ jobs:
       # rule and the update-don't-duplicate behaviour so neither has to be discovered live.
       - name: Run release milestone comment tests
         run: ./.github/scripts/test-comment-release-milestone.sh
+      # The release-PR race guard only ever executes in the minutes around a release, and both of
+      # its failure directions are quiet: too lax and a duplicate `chore(main): release X.Y.Z` PR
+      # appears mid-release, too strict and the release PR silently stops updating at all.
+      - name: Run release PR race guard tests
+        run: ./.github/scripts/test-release-pr-race-guard.sh
       - name: Run PR run reaper tests
         run: node --test .github/scripts/reap-pr-runs.test.mjs
       # The Figma reference column cuts a node out of a repo's committed page

@@ -80,6 +80,7 @@
     "ee.schimke.composeai.plugin"
   ],
   "contractPackages": {
+    "ee.schimke.composeai.agentgrants": "agent-grant-protocol",
     "ee.schimke.composeai.bundle": "bundle-format",
     "ee.schimke.composeai.bundle.coordinates": "bundle-coordinates",
     "ee.schimke.composeai.daemon": "daemon-core",
@@ -133,10 +134,7 @@
       "serve.PreviewHistoryManifest",
       "serve.RenderFailureFrame",
       "serve.RenderOutcome",
-      "serve.ServeAgentGrantCapability",
-      "serve.ServeAgentGrantScope",
-      "serve.ServeAgentGrantStore",
-      "serve.ServeAgentGrants",
+      "serve.ServeBuildHost",
       "serve.ServeBundleDaemon",
       "serve.ServeDefaults",
       "serve.ServeDiscovery",
@@ -152,7 +150,6 @@
     "serveInternalsUsedByCli": [
       "serve.FakeRenderSession",
       "serve.PreviewHistoryManifest",
-      "serve.ServeAgentGrantScope",
       "serve.ServeAgentGrantStore",
       "serve.ServeBackgroundWork",
       "serve.ServeBundleHost",

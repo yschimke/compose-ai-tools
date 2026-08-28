@@ -65,20 +65,24 @@ private val VIEWBOX_RE = Regex("""viewBox="0 0 (\d+(?:\.\d+)?) (\d+(?:\.\d+)?)""
 
 /**
  * The component's content box in the render's native pixel space, read from a figma-svg: crop
- * origin ([x],[y]) and size ([w]×[h]). The figma-svg is content-cropped — its root `viewBox` is the
- * box size and its root `<g transform="translate(tx,ty)">` places it, so the component's top-left
- * in the render is `(-tx, -ty)`. This is the *unscaled* box (native render pixels);
- * [computeThumbCrop] adds the display scaling on top, while the bundle PNG crop
- * ([ee.schimke.composeai.cli] `bundle split`) uses it at full resolution.
+ * origin ([x],[y]) and size ([w]×[h]), in native render pixels.
+ *
+ * Not SVG-specific despite where it is first read: [pngAlphaBounds] returns one for a PNG's drawn
+ * extent, and [union] combines the two. It was called `SvgContentBox` while it lived beside the one
+ * producer that parses an SVG, which read as a claim about the format rather than about the
+ * rectangle. The figma-svg is content-cropped — its root `viewBox` is the box size and its root `<g
+ * transform="translate(tx,ty)">` places it, so the component's top-left in the render is `(-tx,
+ * -ty)`. This is the *unscaled* box (native render pixels); [computeThumbCrop] adds the display
+ * scaling on top, while a full-resolution consumer (the CLI's `bundle split`) uses it as-is.
  */
-public data class SvgContentBox(val x: Int, val y: Int, val w: Int, val h: Int)
+public data class ContentBox(val x: Int, val y: Int, val w: Int, val h: Int)
 
 /**
  * Parse a figma-svg's content box (root `viewBox` size + `translate` origin) in render pixels, or
  * `null` when the svg carries no parseable `viewBox`. A missing `translate` places the box at the
  * origin.
  */
-public fun svgContentBox(svgText: String): SvgContentBox? {
+public fun svgContentBox(svgText: String): ContentBox? {
   val vb = VIEWBOX_RE.find(svgText) ?: return null
   val w = vb.groupValues[1].toDouble()
   val h = vb.groupValues[2].toDouble()
@@ -86,7 +90,7 @@ public fun svgContentBox(svgText: String): SvgContentBox? {
   val tr = TRANSLATE_RE.find(svgText)
   val tx = tr?.groupValues?.get(1)?.toInt() ?: 0
   val ty = tr?.groupValues?.get(2)?.toInt() ?: 0
-  return SvgContentBox(x = -tx, y = -ty, w = w.roundToInt(), h = h.roundToInt())
+  return ContentBox(x = -tx, y = -ty, w = w.roundToInt(), h = h.roundToInt())
 }
 
 /**
@@ -95,23 +99,23 @@ public fun svgContentBox(svgText: String): SvgContentBox? {
  * canvas) — the shared "within 10% on both axes" no-op guard. Consumers that read a pre-cropped PNG
  * then find their box ≈ the image and no-op via this same test.
  */
-public fun contentBoxFillsRender(box: SvgContentBox, renderW: Int, renderH: Int): Boolean =
+public fun contentBoxFillsRender(box: ContentBox, renderW: Int, renderH: Int): Boolean =
   box.w >= renderW * 0.9 && box.h >= renderH * 0.9
 
 /** The smallest box covering both [this] and [other]. */
-public fun SvgContentBox.union(other: SvgContentBox): SvgContentBox {
+public fun ContentBox.union(other: ContentBox): ContentBox {
   val x1 = min(x, other.x)
   val y1 = min(y, other.y)
   val x2 = max(x + w, other.x + other.w)
   val y2 = max(y + h, other.y + other.h)
-  return SvgContentBox(x1, y1, x2 - x1, y2 - y1)
+  return ContentBox(x1, y1, x2 - x1, y2 - y1)
 }
 
 /** Clamp [this] to a [renderW]×[renderH] canvas (origin ≥ 0, extent within bounds). */
-public fun SvgContentBox.clampTo(renderW: Int, renderH: Int): SvgContentBox {
+public fun ContentBox.clampTo(renderW: Int, renderH: Int): ContentBox {
   val nx = x.coerceIn(0, renderW)
   val ny = y.coerceIn(0, renderH)
-  return SvgContentBox(nx, ny, max(1, min(x + w, renderW) - nx), max(1, min(y + h, renderH) - ny))
+  return ContentBox(nx, ny, max(1, min(x + w, renderW) - nx), max(1, min(y + h, renderH) - ny))
 }
 
 /**
@@ -122,7 +126,7 @@ public fun SvgContentBox.clampTo(renderW: Int, renderH: Int): SvgContentBox {
  * (see [computeThumbCrop]) guarantees the crop never clips real pixels, self-correcting per variant
  * without needing a per-variant figma-svg.
  */
-public fun pngAlphaBounds(pngBytes: ByteArray, threshold: Int = 16): SvgContentBox? {
+public fun pngAlphaBounds(pngBytes: ByteArray, threshold: Int = 16): ContentBox? {
   val img = runCatching { ImageIO.read(ByteArrayInputStream(pngBytes)) }.getOrNull() ?: return null
   val w = img.width
   val h = img.height
@@ -141,7 +145,7 @@ public fun pngAlphaBounds(pngBytes: ByteArray, threshold: Int = 16): SvgContentB
     }
   }
   if (maxX < 0) return null // fully transparent
-  return SvgContentBox(minX, minY, maxX - minX + 1, maxY - minY + 1)
+  return ContentBox(minX, minY, maxX - minX + 1, maxY - minY + 1)
 }
 
 /**
@@ -215,7 +219,7 @@ public fun computeThumbCrop(
   svgText: String,
   renderW: Int,
   renderH: Int,
-  contentBounds: SvgContentBox? = null,
+  contentBounds: ContentBox? = null,
   cap: Int = CAP,
 ): ContentCrop? {
   if (renderW <= 0 || renderH <= 0) return null

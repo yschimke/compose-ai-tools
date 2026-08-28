@@ -1,6 +1,8 @@
 package ee.schimke.composeai.cli.serve
 
-import java.security.MessageDigest
+import ee.schimke.composeai.agentgrants.AgentGrantCapability
+import ee.schimke.composeai.agentgrants.AgentGrantProtocol
+import ee.schimke.composeai.agentgrants.AgentGrantScope
 import java.security.SecureRandom
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
@@ -30,14 +32,14 @@ class ServeAgentGrantStore(
   /** The longest grant this box will mint, whatever the agent asked for or the approver chose. */
   val maxGrantTtlSeconds: Long = DEFAULT_MAX_GRANT_TTL_SECONDS,
   /** The most privileged scope any grant here may carry — the operator's ceiling. */
-  val maxScope: ServeAgentGrantScope = ServeAgentGrantScope.DEFAULT_MAX,
+  val maxScope: AgentGrantScope = AgentGrantScope.DEFAULT_MAX,
   /**
-   * The capabilities ([ServeAgentGrantCapability]) any grant here may carry — the operator's other
+   * The capabilities ([AgentGrantCapability]) any grant here may carry — the operator's other
    * ceiling, and empty by default. Separate from [maxScope] because capabilities are not rungs: a
    * box that grants `live` has said nothing about whether an agent may also publish an image on its
    * origin, and must not be read as having said yes.
    */
-  val maxCapabilities: Set<ServeAgentGrantCapability> = emptySet(),
+  val maxCapabilities: Set<AgentGrantCapability> = emptySet(),
   private val maxActiveGrants: Int = DEFAULT_MAX_ACTIVE_GRANTS,
   private val maxPendingRequests: Int = DEFAULT_MAX_PENDING_REQUESTS,
   private val clock: () -> Long = System::currentTimeMillis,
@@ -75,14 +77,14 @@ class ServeAgentGrantStore(
     /** Where the request came from, for the approval page's "who is asking". Also untrusted. */
     val client: String,
     /** The most privileged scope the agent asked for; the approver may grant this or less. */
-    val requestedScope: ServeAgentGrantScope,
+    val requestedScope: AgentGrantScope,
     /** Seconds of access the agent asked for; the approver may grant this or less. */
     val requestedTtlSeconds: Long,
     /**
      * The capabilities the agent asked for, already narrowed to this box's ceiling. The approver
      * may grant these or fewer — never more, for the same reason the scope can only be narrowed.
      */
-    val requestedCapabilities: Set<ServeAgentGrantCapability> = emptySet(),
+    val requestedCapabilities: Set<AgentGrantCapability> = emptySet(),
     val createdAtMillis: Long,
     val expiresAtMillis: Long,
     @Volatile var state: State = State.PENDING,
@@ -125,9 +127,9 @@ class ServeAgentGrantStore(
     val id: String,
     /** The bearer. Returned exactly once (the poll response) and never rendered again. */
     val token: String,
-    val scope: ServeAgentGrantScope,
+    val scope: AgentGrantScope,
     /** The independent permissions this grant carries beside its rung. Usually empty. */
-    val capabilities: Set<ServeAgentGrantCapability> = emptySet(),
+    val capabilities: Set<AgentGrantCapability> = emptySet(),
     /** The label from the request, carried through so `/status` says what this is for. */
     val label: String,
     /** GitHub login, or `operator (token)` — see [ServeAgentGrants]. */
@@ -136,24 +138,24 @@ class ServeAgentGrantStore(
     val expiresAtMillis: Long,
   ) {
     /** Every scope this grant confers, least-privileged first — the poll response's `scopes`. */
-    val scopes: List<ServeAgentGrantScope>
-      get() = ServeAgentGrantScope.upTo(scope)
+    val scopes: List<AgentGrantScope>
+      get() = AgentGrantScope.upTo(scope)
 
     /** True when this grant is at or above [wanted]. The one question every gate asks. */
-    fun allows(wanted: ServeAgentGrantScope): Boolean = scope.implies(wanted)
+    fun allows(wanted: AgentGrantScope): Boolean = scope.implies(wanted)
 
     /**
      * True when this grant carries [wanted]. Deliberately **not** implied by any scope: the rung
      * says how much of the machine the agent may spend, and a capability is a separate yes.
      */
-    fun allows(wanted: ServeAgentGrantCapability): Boolean = wanted in capabilities
+    fun allows(wanted: AgentGrantCapability): Boolean = wanted in capabilities
 
     /**
      * A short, stable, non-reversible handle on the token, for `/status` and the audit log. SHA-256
      * truncated to 12 hex characters: enough to tell two live grants apart and to match a log line
      * to a row, and useless to anyone who reads it.
      */
-    val fingerprint: String by lazy { fingerprintOf(token) }
+    val fingerprint: String by lazy { AgentGrantProtocol.fingerprintOf(token) }
 
     fun secondsUntilExpiry(nowMillis: Long): Long =
       ((expiresAtMillis - nowMillis) / 1000).coerceAtLeast(0)
@@ -182,9 +184,9 @@ class ServeAgentGrantStore(
   fun openRequest(
     label: String,
     client: String,
-    requestedScope: ServeAgentGrantScope,
+    requestedScope: AgentGrantScope,
     requestedTtlSeconds: Long,
-    requestedCapabilities: Set<ServeAgentGrantCapability> = emptySet(),
+    requestedCapabilities: Set<AgentGrantCapability> = emptySet(),
   ): Request? =
     synchronized(this) {
       openRequestLocked(label, client, requestedScope, requestedTtlSeconds, requestedCapabilities)
@@ -202,9 +204,9 @@ class ServeAgentGrantStore(
   private fun openRequestLocked(
     label: String,
     client: String,
-    requestedScope: ServeAgentGrantScope,
+    requestedScope: AgentGrantScope,
     requestedTtlSeconds: Long,
-    requestedCapabilities: Set<ServeAgentGrantCapability>,
+    requestedCapabilities: Set<AgentGrantCapability>,
   ): Request? {
     val now = clock()
     purge(now)
@@ -277,9 +279,9 @@ class ServeAgentGrantStore(
   fun approve(
     id: String,
     approvedBy: String,
-    scope: ServeAgentGrantScope,
+    scope: AgentGrantScope,
     ttlSeconds: Long,
-    capabilities: Set<ServeAgentGrantCapability> = emptySet(),
+    capabilities: Set<AgentGrantCapability> = emptySet(),
   ): Grant? {
     synchronized(this) {
       // Lookup, expiry validation and the state transition all inside the lock. Split across it,
@@ -506,9 +508,9 @@ class ServeAgentGrantStore(
    * overwhelmingly common case, and a trailing `caps=` on every line would be noise that trains the
    * reader to skip the field on the lines where it matters.
    */
-  private fun capabilityAuditField(capabilities: Set<ServeAgentGrantCapability>): String =
+  private fun capabilityAuditField(capabilities: Set<AgentGrantCapability>): String =
     if (capabilities.isEmpty()) ""
-    else "caps=${ServeAgentGrantCapability.wireNames(capabilities).joinToString(",")} "
+    else "caps=${AgentGrantCapability.wireNames(capabilities).joinToString(",")} "
 
   private fun evictOverflow(keep: Grant) {
     while (grants.size > maxActiveGrants) {
@@ -531,7 +533,6 @@ class ServeAgentGrantStore(
      * a day stops being "temporary access for this task" and becomes a credential nobody remembers
      * issuing, which is the thing this feature exists to replace.
      */
-    const val HARD_MAX_GRANT_TTL_SECONDS = 24 * 60 * 60L
 
     /** What an agent gets when it names no TTL: long enough for one task. */
     const val DEFAULT_GRANT_TTL_SECONDS = 60 * 60L
@@ -635,13 +636,6 @@ class ServeAgentGrantStore(
 
     /** Cheap shape check on a presented bearer, so an ordinary `--token` never reaches the map. */
     fun isWellFormedToken(token: String): Boolean = token.matches(TOKEN_SHAPE)
-
-    /** SHA-256, first 12 hex characters — the only form of a token that is ever displayed. */
-    fun fingerprintOf(token: String): String =
-      MessageDigest.getInstance("SHA-256")
-        .digest(token.toByteArray(Charsets.UTF_8))
-        .joinToString("") { "%02x".format(it) }
-        .take(12)
 
     private val ID_SHAPE = Regex("[A-Za-z0-9_-]{16,64}")
     private val TOKEN_SHAPE = Regex("${Regex.escape(TOKEN_PREFIX)}[A-Za-z0-9_-]{16,64}")

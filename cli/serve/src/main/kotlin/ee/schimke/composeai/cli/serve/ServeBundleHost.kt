@@ -93,6 +93,22 @@ class ServeBundleHost(
    */
   val catalogSource: ServeWeb.CatalogSource? = null,
   /**
+   * The sibling system this catalog is a parallel rendition of (`catalog.json`'s `compareWith`),
+   * populated by [ServeCatalogStore]. With [parallelByComponentId] it is what lets the viewer's
+   * spec lane offer the counterpart's render as a second comparison source: this says WHICH SYSTEM,
+   * that says WHICH COMPONENT in it, and neither half resolves alone.
+   *
+   * Null for a plain uploaded bundle and for every catalog that declares no pairing.
+   */
+  val compareWithSystem: String? = null,
+  /**
+   * `componentId` → the counterpart's `componentId` in [compareWithSystem], from each published
+   * component's `parallel`. Empty for a catalog that declares no pairing, or one published before
+   * `parallel` reached the manifest (yschimke/compose-ai-tools#4631) — in which case the lane
+   * simply isn't offered, exactly as it wasn't before.
+   */
+  val parallelByComponentId: Map<String, String> = emptyMap(),
+  /**
    * Why this session is snapshot-only, when it is — populated by [ServeCatalogStore] for the baked
    * host it terminally registers (e.g. a catalog with no `liveBundle`), and left empty for a plain
    * uploaded bundle or for the baked host that merely *fronts* a live daemon (that session isn't
