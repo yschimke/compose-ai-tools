@@ -230,7 +230,9 @@ genuinely explain why this box differs from stock are buried.
 ./env-redundant.sh
 ```
 
-Reports which entries restate a compose or entrypoint default and which are set but empty (the same
+It first refuses any line ending in a backslash — `.env` is not a shell script, and that typo takes
+the box down with a 502 and no explanation. Then it reports which entries restate a compose or
+entrypoint default and which are set but empty (the same
 as unset), then lists the keys that genuinely differ — **by name only**. It never prints a value:
 the file holds `SERVE_TOKEN`, `SERVE_ADMIN_TOKEN`, the GitHub OAuth secret and the deploy hook
 token, and the output is meant to be safe to paste into an issue or a chat.
@@ -242,13 +244,14 @@ is still filling, that trade is backwards: an empty cache means every theme a vi
 cold render, so the fastest route to a *responsive* box is to let the optimizer have the machine for
 a few hours and then hand it back.
 
+> **One line, no backslashes.** `.env` is not a shell script: docker compose reads every line as its
+> own `KEY=VALUE`, so a trailing `\` becomes part of the value and the continuation lines are parsed
+> as junk keys. That backslash then reaches `JAVA_TOOL_OPTIONS`, the JVM refuses to start on an
+> unrecognised option, and the container restart-loops behind a 502 — with nothing in the compose
+> output naming the cause. This example is long; keep it on one line anyway.
+
 ```
-SERVE_JAVA_OPTS=-Dcomposeai.serve.themeOptimizationIdleMillis=10000 \
-  -Dcomposeai.serve.optimizerStopLoadPerCpu=3.0 \
-  -Dcomposeai.serve.optimizerResumeLoadPerCpu=2.0 \
-  -Dcomposeai.serve.optimizerStopCpuUtilization=0.98 \
-  -Dcomposeai.serve.optimizerResumeCpuUtilization=0.92 \
-  -Dcomposeai.serve.optimizerResumeQuietMillis=5000
+SERVE_JAVA_OPTS=-Dcomposeai.serve.themeOptimizationIdleMillis=10000 -Dcomposeai.serve.optimizerResumeQuietMillis=5000 -Dcomposeai.serve.optimizerStopLoadPerCpu=3.0 -Dcomposeai.serve.optimizerResumeLoadPerCpu=2.0 -Dcomposeai.serve.optimizerStopCpuUtilization=0.98 -Dcomposeai.serve.optimizerResumeCpuUtilization=0.92
 ```
 
 Read that as: start a pass after ten seconds of quiet rather than sixty, only stand down when the

@@ -77,4 +77,30 @@ ENV_FILE="${tmp}/absent" "${here}/env-redundant.sh" >/dev/null 2>&1 || {
 }
 echo "PASS: a missing .env exits cleanly"
 
+# 7. A trailing backslash is fatal and must be reported as such — this is the failure that took
+#    preview.coo.ee down: .env is not a shell script, so the backslash lands in the value, reaches
+#    JAVA_TOOL_OPTIONS, and the JVM refuses to start behind a 502 with nothing naming the cause.
+cat > "${tmp}/.env-cont" <<'ENV'
+SERVE_JAVA_OPTS=-Dcomposeai.serve.themeOptimizationIdleMillis=10000 \
+  -Dcomposeai.serve.optimizerResumeQuietMillis=5000
+ENV
+if ENV_FILE="${tmp}/.env-cont" "${here}/env-redundant.sh" >/dev/null 2>&1; then
+  echo "FAIL: a line ending in a backslash must be reported and must exit non-zero" >&2
+  exit 1
+fi
+cont_out="$(ENV_FILE="${tmp}/.env-cont" "${here}/env-redundant.sh" 2>&1 || true)"
+grep -q "SERVE_JAVA_OPTS" <<<"${cont_out}" || {
+  echo "FAIL: the offending key was not named" >&2
+  echo "${cont_out}" >&2
+  exit 1
+}
+echo "PASS: a trailing backslash is reported as fatal"
+
+# 8. ...and a normal file must not trip that check.
+ENV_FILE="${tmp}/.env" "${here}/env-redundant.sh" >/dev/null || {
+  echo "FAIL: a well-formed .env must still exit cleanly" >&2
+  exit 1
+}
+echo "PASS: a well-formed .env is unaffected"
+
 echo "PASS: all env-redundant checks"
