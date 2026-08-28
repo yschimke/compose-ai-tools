@@ -642,6 +642,16 @@ class ServeStatusTest {
     assertTrue(partial.contains("5/8 cached"), partial)
     assertTrue(partial.contains("3 awaiting re-render"), partial)
 
+    // Every target cached AND some of them failing to regenerate. This is the state the dirty
+    // failure count exists for — nothing else on the row moves, because `cached` is already at
+    // `total` — so the branch that renders a fully-warm catalog has to print the count too. It did
+    // not, and the meter's colour was the only signal.
+    val warmAndFailing = rowFor(cached = 8, dirty = 8, failed = 2)
+    assertTrue(
+      warmAndFailing.contains("themes optimized 8/8 · 2 failed · 8 awaiting re-render"),
+      "a fully warm catalog whose re-renders are failing must say so in words: $warmAndFailing",
+    )
+
     // A failure still wins the meter's tone — a queued render is not an error, it is unfinished
     // work.
     val broken = rowFor(cached = 5, dirty = 3, failed = 2)

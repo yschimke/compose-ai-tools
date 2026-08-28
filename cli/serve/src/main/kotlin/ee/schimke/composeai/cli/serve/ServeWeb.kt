@@ -7326,15 +7326,21 @@ ${captureControlsHtml().prependIndent("          ")}
               // boundary deliberately does not.
               val queued =
                 if (optimization.dirty > 0) " · ${optimization.dirty} awaiting re-render" else ""
+              val failed = if (optimization.failed > 0) " · ${optimization.failed} failed" else ""
               val detail =
                 if (optimization.converged) {
                   "themes optimized ${optimization.cached}/${optimization.total}"
                 } else if (optimization.fullyOptimized) {
-                  "themes optimized ${optimization.cached}/${optimization.total}$queued"
+                  // `failed` belongs here too, and this is the branch that needs it most. A
+                  // fully-warm catalog whose dirty re-renders keep failing is exactly the state the
+                  // dirty failure count was added to make visible: every target is cached, so
+                  // nothing else on the row moves, and without this the only signal was the meter's
+                  // colour.
+                  "themes optimized ${optimization.cached}/${optimization.total}$failed$queued"
                 } else {
                   "theme optimization ${optimization.state} · " +
                     "${optimization.cached}/${optimization.total} cached" +
-                    (if (optimization.failed > 0) " · ${optimization.failed} failed" else "") +
+                    failed +
                     queued
                 }
               "<div class=\"cp-muted\">${esc(detail)}</div>" +

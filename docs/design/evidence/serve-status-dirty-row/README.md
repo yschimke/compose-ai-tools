@@ -11,6 +11,16 @@ through the pages harness. The only difference is the optimization line on the
 | before | `theme optimization degraded · 232/240 cached · 3 failed · 24 inherited, re-rendering` |
 | after | `theme optimization degraded · 232/240 cached · 3 failed · 24 awaiting re-render` |
 
+`after.png` was refreshed in the follow-up that corrected the summary cards, so it now also reads
+`5/5 loaded` and `106 rendered` — the fixture gained a fifth catalog and its previews, and both
+cards are derived from the catalog list by production code.
+
+One state deliberately has **no** fixture: a catalog that is fully warm *and* failing to
+regenerate, which is the branch `· N failed` was added to. It differs from the `wear-m3` row only in
+losing the `232/240 cached` clause, so a sixth catalog would grow the page for very little; it is
+pinned instead by `ServeStatusTest`, asserting the exact string
+`themes optimized 8/8 · 2 failed · 8 awaiting re-render`.
+
 Two things are being shown, and only the first is visible here:
 
 1. **The wording.** `regenerate` marks *this* build's renders dirty too, so
