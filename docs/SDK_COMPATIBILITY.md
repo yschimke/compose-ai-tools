@@ -38,7 +38,7 @@ The matrix exercises both, with cells deliberately crossing each constraint's th
 
 | Axis | Values | Why |
 | --- | --- | --- |
-| **JDK** | 17, 21 | Constraint #1 above. The project itself runs on JDK 17 (per [`docs/AGENTS.md`](AGENTS.md)), but consumers can be on either. |
+| **JDK** | 17, 21 | Constraint #1 above. The project itself runs on JDK 17 (per [`docs/AGENT_GUIDE.md`](AGENT_GUIDE.md)), but consumers can be on either. |
 | **compileSdk** | 35, 36, 37 | 35 is the Play Store new-app target floor since Aug 2025; below that is non-sensical for any active app. 36 is the current AGP default. 37 covers consumers pulled forward by transitive `minCompileSdk` requirements (e.g. `wear-tiles-renderer`, `compose-remote` alpha). |
 | **targetSdk** | 35, 36, 37 (subset) | Constrained to `targetSdk ≤ compileSdk` per AGP. The matrix doesn't include combinations like `targetSdk = 24, compileSdk = 36` — implausible for any active app. |
 | **minSdk** | 24, 36 | The PackageParser check is gated by `minSdk`. The matrix spans low-floor (`24`, typical consumer default) and tightly-targeting (`36`, an app explicitly requiring the latest framework). |

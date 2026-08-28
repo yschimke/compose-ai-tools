@@ -21,7 +21,7 @@ export interface RemoteComposeSnapshot {
 /**
  * The host-authoritative per-preview override state for the edit→render loop.
  *
- * This is one of the state seams described in `docs/AGENTS.md` § "State seams",
+ * This is one of the state seams described in `docs/AGENT_GUIDE.md` § "State seams",
  * and it exists because `extension.ts` had grown four module-level collections
  * keyed by the same `previewId`, with the same activation-lifetime scope, that
  * were only ever read together through one `buildPreviewOverrides` helper:

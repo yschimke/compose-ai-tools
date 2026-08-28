@@ -70,7 +70,7 @@ Document the reporting → triage → acceptance → verification → closure lo
 This is the **consumer-facing** half. `COMPONENT_PARITY_WORKFLOW.md` is the design record — why each
 rule exists and what breaks without it — and it should stay that.
 
-**But note where consumer docs actually live.** [`docs/AGENTS.md`](../../AGENTS.md) draws a hard line:
+**But note where consumer docs actually live.** [`docs/AGENT_GUIDE.md`](../../AGENT_GUIDE.md) draws a hard line:
 this file and `docs/` are **contributor** docs for working on *this* repo, while consumer docs for the
 published plugin and CLI live in [`yschimke/skills`](https://github.com/yschimke/skills). #3812 names
 `docs/public-preview-server.md`, which is right for the contributor-facing half — how the server

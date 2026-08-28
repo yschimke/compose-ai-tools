@@ -28,7 +28,19 @@ There is a second, harder limit. Codex embeds at most `project_doc_max_bytes` of
 `AGENTS.md` into its first-turn instructions — **32768 bytes by default** — and
 stops adding content once the budget is spent. It does not warn; the tail is simply
 gone. So root `AGENTS.md` has a hard size ceiling, which is why detail lives in
-[`docs/AGENTS.md`](AGENTS.md) and gets read on demand instead.
+[`docs/AGENT_GUIDE.md`](AGENT_GUIDE.md) and gets read on demand instead.
+
+That ceiling is not the root file's alone, and this is the part that is easy to
+miss: Codex loads **every** `AGENTS.md` from the repository root down to its
+working directory. A file with that name in a subdirectory is therefore a real
+entrypoint for any session started there or below, under the same budget. The
+contributor guide *was* `docs/AGENTS.md`, at 70-odd KiB — so a Codex session
+opened in `docs/` inlined a truncated slab of it into every turn, and neither this
+table nor the gate could see it, because both only ever measured the root. Hence
+the name it has now, and hence
+[`check-agent-entrypoints.sh`](../scripts/check-agent-entrypoints.sh) failing on
+any nested `AGENTS.md` that reappears. **`AGENTS.md` is a reserved filename in this
+tree: the root one, and nowhere else.**
 
 ## What this cost before it was fixed
 
@@ -58,11 +70,11 @@ ignore is now scoped so the shared agent config (hooks, settings, skills) is che
 in and per-machine session state still is not.
 
 **And the obvious fix would not have worked.** Pointing Codex straight at the
-existing `docs/AGENTS.md` (74,203 bytes) would have exceeded the 32 KiB budget by
+existing `docs/AGENT_GUIDE.md` (74,203 bytes) would have exceeded the 32 KiB budget by
 more than double: only the first 44% would load, and the cut lands between
 `## State seams` (byte 30,188) and `## Git conventions` (byte 34,450). Every Git
 convention, the entire PR workflow, and all of `## Important constraints` sit past
-the cut. A symlink from `AGENTS.md` to `docs/AGENTS.md` would have looked like a fix
+the cut. A symlink from `AGENTS.md` to `docs/AGENT_GUIDE.md` would have looked like a fix
 and delivered **0 of 5** invariants.
 
 ## What it costs now
@@ -78,7 +90,7 @@ writing:
 | Copilot | `.github/copilot-instructions.md` + `AGENTS.md` | 8,029 | ~2,000 | 5 of 5 |
 
 `~tokens` is bytes/4, the usual rough estimate, and is paid on every turn.
-`docs/AGENTS.md` (~73 KB, ~18,000 tokens) is **not** in this table: no agent loads it
+`docs/AGENT_GUIDE.md` (~73 KB, ~18,000 tokens) is **not** in this table: no agent loads it
 automatically, and it should stay that way.
 
 Claude Code's per-turn cost went *down* — from 11,088 bytes of invariants plus PR
@@ -90,7 +102,7 @@ while the other three went from nothing to complete coverage.
 | Tier | Home | Audience |
 | --- | --- | --- |
 | CI-enforced invariants + normative PR workflow | root [`AGENTS.md`](../AGENTS.md) | every agent, every turn |
-| Architecture, commands, constraints, rationale, worked examples | [`docs/AGENTS.md`](AGENTS.md) and the rest of `docs/` | read on demand, cited from `AGENTS.md` |
+| Architecture, commands, constraints, rationale, worked examples | [`docs/AGENT_GUIDE.md`](AGENT_GUIDE.md) and the rest of `docs/` | read on demand, cited from `AGENTS.md` |
 | Harness mechanics — `subscribe_pr_activity`, `send_later` check-ins, skill triggering | [`CLAUDE.md`](../CLAUDE.md) and [`.claude/skills/`](../.claude/skills/) | Claude Code only |
 
 Two rules keep it honest:

@@ -1615,7 +1615,7 @@ abstract class RobolectricRenderTestBase(
           // connector modules) and either register a `DataExtension<PreviewOverrides>`
           // planner here or wrap content with the extension's `AroundComposable` directly,
           // matching the existing ambient / wallpaper / theme pattern. Per-feature renderer
-          // branches are a smell — see `docs/AGENTS.md` § "Architecture rules".
+          // branches are a smell — see `docs/AGENT_GUIDE.md` § "Architecture rules".
           val anyFocusCapture = preview.captures.any { it.focus != null || it.focusGif != null }
           val focusExtension = if (anyFocusCapture) FocusOverrideExtension() else null
           // Soft-keyboard (IME) overlay: always-on. The around-composable shadows

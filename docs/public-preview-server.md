@@ -386,7 +386,7 @@ link actually arrives.
 > declared value set. `previewOverrideChoice` is part of the *published* authoring surface, so the
 > guidance for someone applying the plugin to their own project belongs in the
 > [`compose-preview` skill](https://github.com/yschimke/skills/tree/main/skills/compose-preview),
-> not here. See [AGENTS.md](AGENTS.md) on the two doc trees.
+> not here. See [AGENT_GUIDE.md](AGENT_GUIDE.md) on the two doc trees.
 
 ## Historical permalinks: `?at=<sha>`
 
@@ -2908,7 +2908,7 @@ curl -sS -H "Authorization: Bearer $(gh auth token)" \
   `markdown` is the finished embed line, so a caller never has to assemble it. That removes the
   assembly mistakes, not the ``![alt](`url`)`` backtick form itself — those backticks are usually
   injected in transit rather than authored, and the [`PR Body Syntax`](../.github/workflows/pr-body-syntax.yml)
-  workflow is what strips them from a PR description (see [AGENTS.md](AGENTS.md), which covers what
+  workflow is what strips them from a PR description (see [AGENT_GUIDE.md](AGENT_GUIDE.md), which covers what
   that net does and does not reach). `?name=` is a display label and the alt text — never a path,
   never the format decision.
 - **`GET /i/<id>.png`** — the image itself, with `X-Content-Type-Options: nosniff` and a

@@ -39,7 +39,7 @@ class DecideSkip(unittest.TestCase):
     """PRs whose every file is ignore-listed → skip the external matrix."""
 
     def test_docs_only(self):
-        self.assertEqual(decide(["docs/AGENTS.md", "docs/SDK_COMPATIBILITY.md"]), "false")
+        self.assertEqual(decide(["docs/AGENT_GUIDE.md", "docs/SDK_COMPATIBILITY.md"]), "false")
 
     def test_readme_anywhere(self):
         # `**/*.md` matches a README nested inside an otherwise-relevant module.

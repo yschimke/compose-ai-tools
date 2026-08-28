@@ -279,7 +279,8 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
       return null
     }
     val sheet = ContactSheet.stitch(tiles) ?: return null
-    // Production IO goes through the injected Okio FileSystem (docs/AGENTS.md), so tests can drive
+    // Production IO goes through the injected Okio FileSystem (docs/AGENT_GUIDE.md), so tests can
+    // drive
     // the write through a FakeFileSystem; bridge back to File only for the reported path.
     val targetPath =
       contactSheetExplicitPath?.toPath()

@@ -1,7 +1,7 @@
 # The design spec leads the pair on the `/compare` wall
 
 Committed evidence for the layout rule now written down in
-[`docs/AGENTS.md`](../../docs/AGENTS.md#important-constraints): **the Figma spec
+[`docs/AGENT_GUIDE.md`](../../docs/AGENT_GUIDE.md#important-constraints): **the Figma spec
 goes on the left, the render on the right, on every surface that shows both.**
 
 Both shots come from the existing `serve-format-compare` page fixture through the

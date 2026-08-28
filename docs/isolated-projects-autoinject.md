@@ -9,7 +9,7 @@ that would actually fix it.
 - IP is **not** enabled in this repo's `gradle.properties`, and the plugin +
   init scripts **warn** when IP is detected. See the rationale in
   [gradle.properties](../gradle.properties) and the "Isolated Projects"
-  constraint in [AGENTS.md](AGENTS.md).
+  constraint in [AGENT_GUIDE.md](AGENT_GUIDE.md).
 - The auto-inject init script applies the plugin to every project via
   `allprojects { buildscript { … } }`. That is a cross-project configuration
   IP rejects outright, and the Tooling API daemon honours whatever a project's

@@ -77,9 +77,9 @@ public object ClassloaderForensics {
    * appended.
    *
    * The same trap applies to the `fileSystem` parameter itself: adding it to satisfy the injected-
-   * `FileSystem` convention in `docs/AGENTS.md` is source-compatible for ordinary Kotlin callers
-   * but silently binary-incompatible for a reflective one. Any future signature change here needs
-   * `ClassloaderForensicsDaemonTest` re-run, since that is the only thing that exercises the
+   * `FileSystem` convention in `docs/AGENT_GUIDE.md` is source-compatible for ordinary Kotlin
+   * callers but silently binary-incompatible for a reflective one. Any future signature change here
+   * needs `ClassloaderForensicsDaemonTest` re-run, since that is the only thing that exercises the
    * reflective path.
    */
   @JvmOverloads

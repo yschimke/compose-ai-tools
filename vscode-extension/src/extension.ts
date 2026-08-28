@@ -391,7 +391,7 @@ let warnedJdkImageThisSession = false;
  *  JDK than Gradle is running). */
 let warnedClassVersionThisSession = false;
 const JDK_DOCS_URL =
-    "https://github.com/yschimke/compose-ai-tools/blob/main/docs/AGENTS.md#important-constraints";
+    "https://github.com/yschimke/compose-ai-tools/blob/main/docs/AGENT_GUIDE.md#important-constraints";
 
 function startEditJourney(moduleId: string): void {
     editJourneyByModule.set(moduleId, Date.now());

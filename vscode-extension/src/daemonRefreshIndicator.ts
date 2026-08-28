@@ -42,7 +42,7 @@ export const DAEMON_REFRESH_SAFETY_MS = 12000;
  * always was: `daemonRefreshActive` / `daemonRefreshLabel` / `daemonRefreshPct`
  * / `daemonRefreshTick` / `daemonRefreshSafety` were one state machine spread
  * across five mutable globals in `extension.ts`, with five free functions
- * reaching into them. `docs/AGENTS.md` § "State seams" already makes this point
+ * reaching into them. `docs/AGENT_GUIDE.md` § "State seams" already makes this point
  * about the file — and notes that `RefreshQueue` replaced the earlier
  * `firstSaveSeen` / `pendingSavePath` / `debounceElapsed` / `refreshInFlight`
  * quartet for the same reason. This quintet was declared twenty lines below
