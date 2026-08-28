@@ -577,6 +577,136 @@ class ResourceSizeAwareToleranceTest(unittest.TestCase):
         )
 
 
+class TransparentLightContentTest(unittest.TestCase):
+    """Light content on transparency, which pixelmatch cannot see on its own.
+
+    Both pairs are real `remote-m3` captures from wear-m3-catalog, before and
+    after yschimke/wear-m3-catalog#92 — a star → plus glyph swap on the
+    standalone `RemoteIcon`, and a 72dp → full-bleed circular progress rail.
+    Both are unmistakable changes; both counted **zero** differing pixels, at
+    either threshold, and went out under "Unchanged".
+
+    The cause is not the budgets: it is that pixelmatch blends a
+    semi-transparent pixel with white before taking its colour delta, and these
+    stickers rasterise light content onto transparency. A `(255,255,255,255)`
+    glyph pixel and a `(0,0,0,0)` one both blend to white and cancel exactly.
+    See `_COMPARE_BACKDROPS`."""
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            from pixelmatch.contrib.PIL import pixelmatch  # noqa: F401
+            from PIL import Image  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("pixelmatch/Pillow not installed")
+        cls.fixtures = (
+            Path(__file__).resolve().parent / "fixtures" / "transparent-light-content"
+        )
+        cls.pairs = [
+            ("IconRemote_star.png", "IconRemote_add.png"),
+            (
+                "DisabledCircularProgressRemote_inset.png",
+                "DisabledCircularProgressRemote_fullbleed.png",
+            ),
+        ]
+        for a, b in cls.pairs:
+            if not (cls.fixtures / a).exists() or not (cls.fixtures / b).exists():
+                raise unittest.SkipTest("transparent-light-content fixture PNGs not present")
+
+    def test_light_on_transparency_changes_are_flagged(self):
+        for a, b in self.pairs:
+            with self.subTest(pair=a):
+                self.assertTrue(
+                    cp._perceptually_changed(self.fixtures / a, self.fixtures / b)
+                )
+
+    def test_they_are_invisible_to_pixelmatch_without_a_backdrop(self):
+        # Pins WHY they were missed. Not a near-miss on a budget — pixelmatch
+        # counts nothing at all, so no tolerance could have caught these.
+        from pixelmatch.contrib.PIL import pixelmatch
+        from PIL import Image
+
+        for a, b in self.pairs:
+            with self.subTest(pair=a):
+                with Image.open(self.fixtures / a) as ia, Image.open(self.fixtures / b) as ib:
+                    for threshold in (0.1, cp._HIGH_CONTRAST_THRESHOLD):
+                        self.assertEqual(
+                            pixelmatch(ia, ib, threshold=threshold, includeAA=False), 0
+                        )
+
+    def test_a_dark_backdrop_is_what_reveals_them(self):
+        # And the light one does not, which is why the pair of backdrops is not
+        # one backdrop. A single well-chosen backdrop only moves the blind spot.
+        from pixelmatch.contrib.PIL import pixelmatch
+        from PIL import Image
+
+        for a, b in self.pairs:
+            with self.subTest(pair=a):
+                with Image.open(self.fixtures / a) as ia, Image.open(self.fixtures / b) as ib:
+                    black, white = cp._COMPARE_BACKDROPS
+                    self.assertGreater(
+                        pixelmatch(
+                            cp._flatten(ia, black), cp._flatten(ib, black), includeAA=False
+                        ),
+                        cp._PERCEPTUAL_PIXEL_TOLERANCE,
+                    )
+                    self.assertEqual(
+                        pixelmatch(
+                            cp._flatten(ia, white), cp._flatten(ib, white), includeAA=False
+                        ),
+                        0,
+                    )
+
+    def test_backdrops_do_not_resurrect_the_known_flakes(self):
+        # The risk of compositing is the same as the risk of the high-contrast
+        # pass: re-flagging what the budgets deliberately absorb. Both real
+        # noise fixtures must stay collapsed through the new path, at the
+        # tolerance each of them is scored under.
+        here = Path(__file__).resolve().parent / "fixtures"
+        self.assertFalse(
+            cp._perceptually_changed(
+                here / "issue-190/ActivityListLongPreview_A.png",
+                here / "issue-190/ActivityListLongPreview_B.png",
+            )
+        )
+        self.assertFalse(
+            cp._perceptually_changed(
+                here / "adaptive-icon-flake/ic_launcher_LEGACY_A.png",
+                here / "adaptive-icon-flake/ic_launcher_LEGACY_B.png",
+                size_aware=True,
+            )
+        )
+
+    def test_an_opaque_pair_still_takes_the_single_comparison(self):
+        # `issue-190` is the one fully opaque fixture here, so it is what pins
+        # that the compositing path is entered only when there is transparency
+        # to account for.
+        from PIL import Image
+
+        here = Path(__file__).resolve().parent / "fixtures" / "issue-190"
+        with Image.open(here / "ActivityListLongPreview_A.png") as opaque:
+            self.assertFalse(cp._has_transparency(opaque))
+        with Image.open(self.fixtures / "IconRemote_star.png") as transparent:
+            self.assertTrue(cp._has_transparency(transparent))
+
+    def test_gif_frames_opt_out_of_the_backdrops(self):
+        # `backdrops=False` is not decoration: a 1-bit-alpha GIF frame turns
+        # every AA-edge flip into a maximum-contrast difference on an opaque
+        # backdrop, which is what the per-frame budget is tuned to absorb. Pin
+        # the opt-out with the pair that is invisible without it — same images,
+        # opposite answers, so the flag cannot be dropped silently.
+        from PIL import Image
+
+        with Image.open(self.fixtures / "IconRemote_star.png") as a, Image.open(
+            self.fixtures / "IconRemote_add.png"
+        ) as b:
+            a = a.convert("RGBA")
+            b = b.convert("RGBA")
+            limit = cp._PERCEPTUAL_PIXEL_TOLERANCE
+            self.assertTrue(cp._over_budget(a, b, limit))
+            self.assertFalse(cp._over_budget(a, b, limit, backdrops=False))
+
+
 class GenerateTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
