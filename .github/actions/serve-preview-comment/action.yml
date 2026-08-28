@@ -240,15 +240,35 @@ runs:
         PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
         BODY=$(cat _serve_comment_body.md)
         MARKER="<!-- serve-preview-diff -->"
+        # The marker this pipeline used before the rename. A PR opened while the old
+        # name was live already carries a sticky comment stamped with it; searching
+        # only for the new marker would miss that comment, post a second one, and
+        # leave the first sitting there with a stale table under a heading naming a
+        # component this repository no longer contains. Falling back to it patches
+        # the existing comment instead, so each PR keeps exactly one current report.
+        #
+        # Transitional. Once no open PR predates the rename this can go — nothing
+        # writes the legacy marker any more.
+        LEGACY_MARKER="<!-- vscode-preview-diff -->"
+
+        find_comment() {
+          gh api \
+            "repos/${REPO}/issues/${PR_NUMBER}/comments" \
+            --paginate \
+            --jq ".[] | select(.body | startswith(\"$1\")) | .id" \
+            | head -1
+        }
 
         # `gh` isn't available on this self-hosted env in some contexts, but
         # it's preinstalled on github-hosted ubuntu-latest where this action
         # actually runs — same as the composable preview-comment action.
-        COMMENT_ID=$(gh api \
-          "repos/${REPO}/issues/${PR_NUMBER}/comments" \
-          --paginate \
-          --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" \
-          | head -1)
+        COMMENT_ID=$(find_comment "$MARKER")
+        if [ -z "$COMMENT_ID" ]; then
+          COMMENT_ID=$(find_comment "$LEGACY_MARKER")
+          if [ -n "$COMMENT_ID" ]; then
+            echo "Patching the pre-rename sticky comment ${COMMENT_ID} (legacy marker)."
+          fi
+        fi
 
         if grep -qF "No visual changes detected." _serve_comment_body.md \
            && [ "$COMMENT_ON_EMPTY_DIFF" != "true" ] \
