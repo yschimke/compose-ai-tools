@@ -38,7 +38,48 @@ internal object PackPreviewIdExclusions {
    * command line can narrow an inherited environment.
    */
   fun fromArgs(args: List<String>, env: (String) -> String? = System::getenv): List<String> =
-    patternsFor(args, "--exclude-preview-id", ENV_VAR, env)
+    fileFromArgs(args)?.let(::linesOf) ?: patternsFor(args, "--exclude-preview-id", ENV_VAR, env)
+
+  /** The Gradle property carrying a PATH to a newline-delimited exclusion list. */
+  const val FILE_GRADLE_PROPERTY = "composePreview.idExcludeFile"
+
+  /**
+   * `--exclude-preview-id-file <path>`, the delimiter-free form of `--exclude-preview-id`.
+   *
+   * A preview id may contain a comma — `@Preview(widthDp = …, heightDp = …)` mints
+   * `…CustomShapeRemoteButton_width=227dp, height=100dp, dpi=320` — so the comma-separated flag
+   * cannot carry one. Joining and re-splitting shatters each id into fragments, and because a plain
+   * pattern matches on **substring**, a fragment like `dpi=320` matches every preview in the
+   * module: a list deferring 47 of 58 previews excluded all 58 and the render died with "nothing
+   * would render". One pattern per line has no such ambiguity, because a line break cannot occur
+   * inside an id.
+   *
+   * Returns the file, not its contents, because both consumers need it: the semantics capture reads
+   * the lines here, and the render is handed the PATH (via [FILE_GRADLE_PROPERTY]) so nothing
+   * re-joins them downstream.
+   */
+  fun fileFromArgs(args: List<String>): java.io.File? =
+    args
+      .flagValuesAll("--exclude-preview-id-file")
+      .lastOrNull()
+      ?.trim()
+      ?.takeIf(String::isNotEmpty)
+      ?.let { java.io.File(it) }
+
+  /**
+   * The patterns in [file], one per line, blanks dropped.
+   *
+   * An unreadable file throws rather than yielding an empty list: an exclusion set that silently
+   * became "exclude nothing" renders the whole sheet and reports success, which is exactly the
+   * quiet failure this path exists to prevent.
+   */
+  fun linesOf(file: java.io.File): List<String> {
+    check(file.isFile) {
+      "--exclude-preview-id-file '${file.path}' is not a readable file. Refusing to fall back to " +
+        "an empty exclusion list, which would render every preview and look like success."
+    }
+    return file.readLines().map(String::trim).filter(String::isNotEmpty)
+  }
 
   /** The Gradle property carrying `@PreviewParameter` **row** label exclusions. */
   const val ROW_GRADLE_PROPERTY = "composePreview.rowExclude"

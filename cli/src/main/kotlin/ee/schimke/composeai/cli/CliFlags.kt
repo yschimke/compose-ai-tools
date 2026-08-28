@@ -31,6 +31,7 @@ internal object CliFlags {
       "--filter",
       "--id",
       "--exclude-preview-id",
+      "--exclude-preview-id-file",
       "--exclude-preview-row",
       "--output",
       // The short alias, classified for the same reason as its long form: it consumes the next

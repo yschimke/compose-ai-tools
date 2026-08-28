@@ -157,6 +157,17 @@ class BundleCommand(args: List<String>) : Command(args) {
                             -PcomposePreview.idExclude; also read from the
                             ORG_GRADLE_PROJECT_composePreview.idExclude env var when the flag is
                             absent, so an env-only setup thins the semantics pass too.
+        --exclude-preview-id-file <path>
+                            The same exclusions, one per line, read from a file. Use this for a
+                            GENERATED list: a preview id may itself contain a comma (a
+                            @Preview(widthDp = …, heightDp = …) mints
+                            `…Button_width=227dp, height=100dp, dpi=320`), which the
+                            comma-separated flag above cannot carry — the split shatters each id
+                            into fragments and, since a plain pattern matches on substring, a
+                            fragment like `dpi=320` excludes the whole module. Forwarded to Gradle
+                            as -PcomposePreview.idExcludeFile (a path, never re-joined). Wins over
+                            --exclude-preview-id and the env var. An unreadable path is an error,
+                            not an empty exclusion list.
         --exclude-preview-row <label|glob>
                             Skip rendering the @PreviewParameter rows whose label matches — the fan-out
                             --exclude-preview-id can't reach, because discovery never sees the rows
@@ -274,6 +285,17 @@ private class PackSubcommand(private val args: List<String>) {
   private val excludePreviewIds: List<String> = PackPreviewIdExclusions.fromArgs(args)
 
   /**
+   * `--exclude-preview-id-file`, when one was passed: the same patterns as [excludePreviewIds], but
+   * kept as a FILE so the render can be handed the path instead of a comma-joined string.
+   *
+   * That distinction is the whole point of the flag. A preview id may contain a comma, so joining
+   * the list for `-PcomposePreview.idExclude` and splitting it back shatters each id into
+   * fragments; because a plain pattern matches on substring, a fragment such as `dpi=320` then
+   * excludes every preview in the module.
+   */
+  private val excludePreviewIdFile: java.io.File? = PackPreviewIdExclusions.fileFromArgs(args)
+
+  /**
    * `--exclude-preview-row` labels — the `@PreviewParameter` rows this pack must not render. Render
    * only: the semantics capture is per preview, so a parameterized preview costs one capture
    * whatever its provider fans out to and there is nothing to thin there.
@@ -320,7 +342,15 @@ private class PackSubcommand(private val args: List<String>) {
               // `--exclude-preview-id` convention. Passed explicitly rather than relying on the
               // inherited env var so `--exclude-preview-id` works from any shell, and so the
               // patterns the semantics pass below skips are provably the same ones the render did.
-              if (excludePreviewIds.isNotEmpty())
+              // The FILE form when there is one — see [excludePreviewIdFile] for why joining is
+              // not equivalent. Absolute, because the render's Gradle build runs in the module's
+              // own directory rather than the CLI's.
+              if (excludePreviewIdFile != null)
+                add(
+                  "-P${PackPreviewIdExclusions.FILE_GRADLE_PROPERTY}=" +
+                    excludePreviewIdFile.absolutePath
+                )
+              else if (excludePreviewIds.isNotEmpty())
                 add(
                   "-P${PackPreviewIdExclusions.GRADLE_PROPERTY}=" +
                     excludePreviewIds.joinToString(",")
@@ -479,7 +509,15 @@ private class PackSubcommand(private val args: List<String>) {
               // them off here would accept the flags and then render every excluded preview/row
               // anyway. `--id` still selects which previews get *packed*; these thin what is
               // *drawn*.
-              if (excludePreviewIds.isNotEmpty())
+              // The FILE form when there is one — see [excludePreviewIdFile] for why joining is
+              // not equivalent. Absolute, because the render's Gradle build runs in the module's
+              // own directory rather than the CLI's.
+              if (excludePreviewIdFile != null)
+                add(
+                  "-P${PackPreviewIdExclusions.FILE_GRADLE_PROPERTY}=" +
+                    excludePreviewIdFile.absolutePath
+                )
+              else if (excludePreviewIds.isNotEmpty())
                 add(
                   "-P${PackPreviewIdExclusions.GRADLE_PROPERTY}=" +
                     excludePreviewIds.joinToString(",")
