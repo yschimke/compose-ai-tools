@@ -352,43 +352,53 @@ export function catalogOwnsNode(node, classes, directories) {
 }
 
 /**
- * Whether [node]'s code handle points inside a directory this catalog publishes from.
+ * Whether [node]'s code handle names a source file this catalog publishes from.
  *
- * The module half of ownership. `sourceDirectory` is the producing project's REPOSITORY-relative
- * directory as the bundle recorded it (see `apply-source-files.mjs`), and a code handle is that
- * directory joined to a module-relative source file — so a prefix test is the same question as
- * "did this come out of one of my modules?".
+ * The module half of ownership, and an EXACT test rather than a containment one. Directory
+ * containment reads a nested Gradle project as its parent's: `:app` at `app/` lexically contains
+ * `:app:feature` at `app/feature/`, and the root project's `""` contains the entire repository, so
+ * a prefix test hands the parent every node its children declare — precisely the collision this is
+ * here to reject, in the layout where it is most likely.
  *
- * The root project stamps `""`, a real answer meaning "already repository-relative". It cannot
- * exclude anything, so it matches everything: a root-project catalog is back to the class test
- * alone, which is correct — it has no sibling module to be confused with.
+ * Exact repository paths have no such ambiguity. `codeForNode` builds a handle as the component's
+ * `sourceDirectory` joined to its module-relative `sourceFile`, so the set of handles this catalog
+ * could have published IS the set of those joins, and a node either names one or does not. Same
+ * granularity as the declaring-class test beside it — the file a preview is declared in — with the
+ * module ambiguity removed.
  */
-function nodeIsUnderOurModules(node, directories) {
-  if (!directories || directories.size === 0) return true;
+function nodeIsUnderOurModules(node, sourcePaths) {
+  if (!sourcePaths || sourcePaths.size === 0) return true;
   const code = typeof node?.code === "string" ? node.code.trim() : "";
   if (code === "") return true;
   const file = code.split("#", 1)[0].replace(/^\/+/, "");
   if (file === "") return true;
-  return [...directories].some(
-    (dir) => dir === "" || file === dir || file.startsWith(`${dir}/`),
-  );
+  return sourcePaths.has(file);
 }
 
 /**
- * The repository-relative project directories this catalog publishes components from.
+ * The repository-relative source files this catalog publishes components from.
  *
- * Empty for a bundle predating `sourceDirectory`, which is what makes [catalogOwnsNode]'s module
- * test fail open for one.
+ * `sourceDirectory` is the producing project's repository-relative directory as the bundle recorded
+ * it and `sourceFile` is module-relative, so joining them is the same path `codeForNode` emits.
+ * The root project stamps `""` — a real answer meaning "already repository-relative" — and joins to
+ * the bare file.
+ *
+ * Empty for a bundle predating either field, which is what makes [catalogOwnsNode]'s module test
+ * fail open for one.
  */
 export function publishingDirectories(catalog) {
-  const directories = new Set();
+  const paths = new Set();
   for (const component of catalog?.components ?? []) {
-    // `""` is the root project and belongs in the set; `undefined` is a bundle that never recorded
+    // `""` is the root project and is a usable answer; `undefined` is a bundle that never recorded
     // the field and must not be read as one.
     if (typeof component?.sourceDirectory !== "string") continue;
-    directories.add(component.sourceDirectory.trim().replace(/^\/+|\/+$/g, ""));
+    if (typeof component?.sourceFile !== "string") continue;
+    const dir = component.sourceDirectory.trim().replace(/^\/+|\/+$/g, "");
+    const file = component.sourceFile.trim().replace(/^\/+/, "");
+    if (file === "") continue;
+    paths.add(dir === "" ? file : `${dir}/${file}`);
   }
-  return directories;
+  return paths;
 }
 
 /**
@@ -449,7 +459,8 @@ export function planDesignPages({ manifest, spec, catalog }) {
   // Which files this catalog actually publishes previews from — the test for whether an incoming
   // `code` claim can be ours at all.
   const classes = declaringClasses(catalog);
-  // …and out of which modules. A class name alone cannot tell two sibling modules apart; see
+  // …and out of which files, at full repository paths. A class name alone cannot tell two
+  // modules apart, and a directory cannot tell a project from its own nested ones; see
   // [catalogOwnsNode].
   const directories = publishingDirectories(catalog);
 

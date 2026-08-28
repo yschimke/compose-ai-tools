@@ -170,6 +170,36 @@ NON_COMPILING = (".md",)
 MAX_REPORTED = 5
 
 
+def subtree_globs_for(directory: str) -> list[str]:
+    """The whole-subtree patterns that would cover `directory` — its own, and each ancestor's.
+
+    An ancestor counts: `render-session/**` legitimately covers `render-session/api`, and demanding
+    one entry per project would fail a correct file.
+    """
+    parts = directory.split("/")
+    return [f"{'/'.join(parts[: i + 1])}/**" for i in range(len(parts))]
+
+
+def covering_subtree_glob(directory: str, globs: list[str]) -> str | None:
+    """The group's whole-subtree glob for `directory`, or None.
+
+    The only TOTAL statement available here. Every check below it samples — real files and
+    representative shapes are both finite sets of paths, and a finite sample cannot prove that a
+    pattern set covers a subtree: globs enumerating `daemon/core/*.kt`, `*.kts`, `api/**` and the
+    existing source directories miss a future `src/main/resources/schema.json` with no sample to
+    catch it, and the PR adding that file does not schedule the probe either, so nothing ever
+    notices. Requiring the pattern itself makes the answer independent of what exists today.
+
+    Matched literally, not by shape. The two earlier attempts at this check both INFERRED coverage
+    from a pattern's shape and were wrong (a prefix test accepted `daemon/core/**/*.kt`; a
+    trailing-slash test accepted `daemon/core/`, which selects nothing) — so this asks for one of a
+    known-good set of spellings, and `uncovered_paths` then verifies with the classifier's own
+    matcher that the spelling behaves.
+    """
+    wanted = set(subtree_globs_for(directory))
+    return next((g for g in globs if g.strip() in wanted), None)
+
+
 def module_files(root: pathlib.Path, directory: str) -> list[str]:
     """Every tracked file under `directory` that can change what the module builds.
 
@@ -286,6 +316,15 @@ def check(root: pathlib.Path = REPO) -> int:
 
     to_regex = path_matcher(root)
     for path, directory in sorted(resolved.items()):
+        if covering_subtree_glob(directory, globs) is None:
+            problems.append(
+                f"{CI_PATHS}: '{CI_GROUP}' has no whole-subtree glob for {directory} (for "
+                f"{path}) — add '{directory}/**'. Patterns naming particular files or source "
+                "directories cover what exists today and silently stop covering the module the "
+                "moment someone adds a file of a shape nobody listed"
+            )
+            # Its representative and real-file misses would all be noise beside that.
+            continue
         missed = uncovered_paths(root, directory, globs, to_regex)
         if missed:
             problems.append(

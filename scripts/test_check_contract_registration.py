@@ -94,6 +94,39 @@ class Coverage(unittest.TestCase):
         missed = self.missed("daemon/core", ["daemon/core/src/main/kotlin/**"])
         self.assertIn("daemon/core/api/core.api", missed)
 
+    def test_a_subtree_glob_is_required_not_inferred(self):
+        # The total statement. Real files and representative shapes are both finite samples, and a
+        # sample cannot prove a pattern set covers a subtree — Codex's case on #4709: globs
+        # enumerating the current file kinds pass every sample while missing a future
+        # `src/main/resources/schema.json`, whose own PR does not schedule the probe either.
+        enumerated = [
+            "daemon/core/*.kt",
+            "daemon/core/*.kts",
+            "daemon/core/api/**",
+            "daemon/core/src/main/kotlin/**",
+            "daemon/core/src/main/java/**",
+            "daemon/core/src/test/kotlin/**",
+        ]
+        self.assertIsNone(mod.covering_subtree_glob("daemon/core", enumerated))
+        self.assertEqual(
+            mod.covering_subtree_glob("daemon/core", ["daemon/core/**"]),
+            "daemon/core/**",
+        )
+
+    def test_an_ancestor_subtree_glob_counts(self):
+        # `render-session/**` legitimately covers `render-session/api`; demanding one entry per
+        # project would fail a correct file.
+        self.assertEqual(
+            mod.covering_subtree_glob("render-session/api", ["render-session/**"]),
+            "render-session/**",
+        )
+
+    def test_a_subtree_glob_is_matched_literally_not_by_shape(self):
+        # Both earlier attempts inferred coverage from a pattern's shape and were wrong. These two
+        # read as whole-module coverage and are not — `daemon/core/` selects no file at all.
+        self.assertIsNone(mod.covering_subtree_glob("daemon/core", ["daemon/core/**/*.kt"]))
+        self.assertIsNone(mod.covering_subtree_glob("daemon/core", ["daemon/core/"]))
+
     def test_a_trailing_slash_pattern_matches_nothing(self):
         # `glob_to_regex` compiles `daemon/core/` to an exact path, so it selects no file under
         # the module — the shape the previous version of this check accepted as coverage.

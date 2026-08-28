@@ -886,8 +886,8 @@ test("a sibling module compiling the same class is not ours", () => {
     ],
   };
   const classes = declaringClasses(catalog);
-  const directories = publishingDirectories(catalog);
-  assert.deepEqual([...directories], ["app"]);
+  const paths = publishingDirectories(catalog);
+  assert.deepEqual([...paths], ["app/src/main/kotlin/app/sections/Buttons.kt"]);
 
   const ourNode = {
     previewId: "app.sections.ButtonsKt.FilledButton",
@@ -903,30 +903,94 @@ test("a sibling module compiling the same class is not ours", () => {
   assert.equal(catalogOwnsNode(ourNode, classes), true);
   assert.equal(catalogOwnsNode(siblingNode, classes), true);
 
-  assert.equal(catalogOwnsNode(ourNode, classes, directories), true);
-  assert.equal(catalogOwnsNode(siblingNode, classes, directories), false);
+  assert.equal(catalogOwnsNode(ourNode, classes, paths), true);
+  assert.equal(catalogOwnsNode(siblingNode, classes, paths), false);
 });
 
-test("ownership falls open when either side names no module", () => {
-  const withDir = {
+test("a nested Gradle project is not the parent's", () => {
+  // Directory containment would hand `:app` every node `:app:feature` declares, and the root
+  // project's `""` the whole repository — the same collision, in the layout where it is most
+  // likely. Exact source paths have no such ambiguity.
+  const parent = {
     components: [
       {
         componentId: "Button/Filled",
         sourceDirectory: "app",
+        sourceFile: "src/main/kotlin/app/sections/Buttons.kt",
         images: [{ previewId: "app.sections.ButtonsKt.FilledButton" }],
       },
     ],
   };
-  const classes = declaringClasses(withDir);
-  const directories = publishingDirectories(withDir);
+  const nestedNode = {
+    previewId: "app.sections.ButtonsKt.FilledButton",
+    code: "app/feature/src/main/kotlin/app/sections/Buttons.kt#FilledButton",
+  };
+  assert.equal(
+    catalogOwnsNode(nestedNode, declaringClasses(parent), publishingDirectories(parent)),
+    false,
+  );
+
+  // And the root project cannot claim its own children either.
+  const root = {
+    components: [
+      {
+        componentId: "Button/Filled",
+        sourceDirectory: "",
+        sourceFile: "src/main/kotlin/app/sections/Buttons.kt",
+        images: [{ previewId: "app.sections.ButtonsKt.FilledButton" }],
+      },
+    ],
+  };
+  const rootPaths = publishingDirectories(root);
+  assert.deepEqual([...rootPaths], ["src/main/kotlin/app/sections/Buttons.kt"]);
+  assert.equal(
+    catalogOwnsNode(
+      {
+        previewId: "app.sections.ButtonsKt.FilledButton",
+        code: "modules/x/src/main/kotlin/app/sections/Buttons.kt#FilledButton",
+      },
+      declaringClasses(root),
+      rootPaths,
+    ),
+    false,
+  );
+  // Its own bare, already-repository-relative handle still resolves.
+  assert.equal(
+    catalogOwnsNode(
+      {
+        previewId: "app.sections.ButtonsKt.FilledButton",
+        code: "src/main/kotlin/app/sections/Buttons.kt#FilledButton",
+      },
+      declaringClasses(root),
+      rootPaths,
+    ),
+    true,
+  );
+});
+
+test("ownership falls open when either side names no module", () => {
+  const withPath = {
+    components: [
+      {
+        componentId: "Button/Filled",
+        sourceDirectory: "app",
+        sourceFile: "src/main/kotlin/app/sections/Buttons.kt",
+        images: [{ previewId: "app.sections.ButtonsKt.FilledButton" }],
+      },
+    ],
+  };
 
   // A node with no code handle: nothing to place it in, so the class match stands alone.
   assert.equal(
-    catalogOwnsNode({ previewId: "app.sections.ButtonsKt.FilledButton" }, classes, directories),
+    catalogOwnsNode(
+      { previewId: "app.sections.ButtonsKt.FilledButton" },
+      declaringClasses(withPath),
+      publishingDirectories(withPath),
+    ),
     true,
   );
 
-  // A bundle predating `sourceDirectory` stamps none, and every node keeps the old behaviour.
+  // A bundle predating the identity fields records none, and every node keeps the old behaviour.
   const legacy = {
     components: [
       {
@@ -944,32 +1008,6 @@ test("ownership falls open when either side names no module", () => {
       },
       declaringClasses(legacy),
       publishingDirectories(legacy),
-    ),
-    true,
-  );
-});
-
-test("a root-project catalog owns by class alone", () => {
-  // `""` is the root project — a real answer meaning "already repository-relative". It cannot
-  // exclude any path, and a root project has no sibling module to be confused with.
-  const root = {
-    components: [
-      {
-        componentId: "Button/Filled",
-        sourceDirectory: "",
-        images: [{ previewId: "app.sections.ButtonsKt.FilledButton" }],
-      },
-    ],
-  };
-  assert.deepEqual([...publishingDirectories(root)], [""]);
-  assert.equal(
-    catalogOwnsNode(
-      {
-        previewId: "app.sections.ButtonsKt.FilledButton",
-        code: "anywhere/Buttons.kt#FilledButton",
-      },
-      declaringClasses(root),
-      publishingDirectories(root),
     ),
     true,
   );
