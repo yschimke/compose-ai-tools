@@ -1711,3 +1711,50 @@ test("an entry-deferred component keeps a card per reseed, each addressed by its
     ],
   );
 });
+
+test("a keyed variant deferral selects its cell instead of expanding over every candidate", () => {
+  // A `priority: "deferred"` spec variant names its cell but no theme, so it lands in the expansion
+  // branch. Expanding every candidate there emitted the base AND its reseed carrying the same
+  // `props` — `catalogImagePath` derives one path from those axes, so the manifest got a single
+  // route with two conflicting `previewId`s. The expansion is for a record that names no axes at
+  // all; one that names a cell selects it.
+  const spec = { groups: [{ components: [{ componentId: "B", preview: "Button" }] }] };
+  const preview = (id, night, overrides) => ({
+    id,
+    functionName: "Button",
+    params: { uiMode: night ? "UI_MODE_NIGHT_YES" : "UI_MODE_NIGHT_NO" },
+    ...(overrides ? { overrides } : {}),
+  });
+  const axisProps = [{ key: "size", value: "xl" }];
+  const bundle = {
+    previews: [
+      preview("Button_Light", false),
+      preview("Button_Dark", true),
+      preview("Button_Light_VARIANT_xl", false, { name: "xl", props: axisProps }),
+      preview("Button_Dark_VARIANT_xl", true, { name: "xl", props: axisProps }),
+    ],
+  };
+  const expand = (record) =>
+    expandDeferredRecords([{ componentId: "B", preview: "Button", ...record }], spec, [bundle]);
+
+  assert.deepEqual(
+    expand({ reason: "variant", props: { size: "xl" } }).map((r) => r.previewId),
+    ["Button_Light_VARIANT_xl", "Button_Dark_VARIANT_xl"],
+  );
+
+  // The invariant underneath: no two records may share the axes a route is derived from, whichever
+  // deferral produced them — a duplicate there is one path claiming two different renders.
+  for (const record of [
+    { reason: "variant", props: { size: "xl" } },
+    { reason: "entry" },
+  ]) {
+    const routes = expand(record).map((r) =>
+      JSON.stringify([r.componentId, r.theme ?? null, r.state ?? null, r.size ?? null, r.props ?? null]),
+    );
+    assert.equal(
+      new Set(routes).size,
+      routes.length,
+      `two records share a derived route for ${JSON.stringify(record)}: ${routes.join(" | ")}`,
+    );
+  }
+});

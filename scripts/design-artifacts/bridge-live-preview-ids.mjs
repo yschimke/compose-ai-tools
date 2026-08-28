@@ -423,8 +423,7 @@ function sizeForCandidateOf(spec) {
  * would have named them one path); first listed wins.
  */
 /**
- * Narrow a function's candidates to the annotation a deferred record identifies — for the branch
- * that picks ONE, never for the expansion below.
+ * The reseeds a deferred record EXPLICITLY names, or null when it names none.
  *
  * `pickVariantId` scores theme, size and font scale. It has no opinion about an `@OverrideVariant`
  * reseed, and a reseed shares its base's function and every one of those annotation parameters. So
@@ -442,22 +441,16 @@ function sizeForCandidateOf(spec) {
  *     identity there, matching a kit by property rather than by spelling.
  *
  * Reading only the first would route every axis cell to its base, which is the same defect one
- * spelling over. A record that identifies neither takes the base annotations.
- *
- * An empty narrowing always falls back to the full list: an identification this function has no
- * reseed for is something nothing can act on, and dropping the route would lose a card rather than
- * mis-address one.
- *
- * NOT applied to the expansion loop below, which exists to enumerate every annotation a record
- * names no axes for — a component deferred whole should get the live-only cards its baked sheet
- * would have shown, reseeds included, and narrowing there deletes exactly those.
+ * spelling over. Null for a record that names neither, and null rather than an empty list when it
+ * names one this function has no reseed for: that is a spelling nothing can act on, and dropping
+ * the route would lose a card rather than mis-address one.
  */
-function overrideCandidates(candidates, record) {
+function keyedCandidates(candidates, record) {
   const state = record?.state;
   const named = typeof state === "string" && state !== "" && state !== "default" ? state : null;
   if (named) {
     const byName = candidates.filter((c) => c.overrideName === named);
-    return byName.length > 0 ? byName : candidates;
+    return byName.length > 0 ? byName : null;
   }
   const wanted = record?.props;
   if (wanted && typeof wanted === "object") {
@@ -470,6 +463,11 @@ function overrideCandidates(candidates, record) {
     );
     if (byProps.length > 0) return byProps;
   }
+  return null;
+}
+
+/** The base annotations, for a record naming no reseed; the whole list when a function is all reseeds. */
+function baseCandidates(candidates) {
   const base = candidates.filter((c) => c.overrideName === null);
   return base.length > 0 ? base : candidates;
 }
@@ -487,9 +485,14 @@ export function expandDeferredRecords(deferred, spec, bundles) {
     }
     // Axes already known (a mode deferral), or a single-annotation function: one record, routed to
     // the annotation those axes select — exactly a baked sticker's resolution.
+    // What this record names, if anything. Read BEFORE the branch: an axis-keyed record with no
+    // theme falls into the expansion below, and expanding every candidate there emitted the base
+    // AND its reseed carrying the same `props` — one derived path with two conflicting `previewId`s.
+    // The expansion is for a record that names no axes at all; one that names a cell selects it.
+    const keyed = keyedCandidates(candidates, record);
     if (record?.theme || candidates.length === 1) {
       const daemonId = pickVariantId(
-        overrideCandidates(candidates, record),
+        keyed ?? baseCandidates(candidates),
         record ?? {},
         breakpointForSize,
       );
@@ -503,9 +506,10 @@ export function expandDeferredRecords(deferred, spec, bundles) {
     // annotation shares its unscaled sibling's theme and size, so the key below would call the two
     // one sticker and the large-text live-only route would never be published at all.
     const wantedScale = requestedFontScale(record?.props);
+    const expandable = keyed ?? candidates;
     const scaled =
-      wantedScale === null ? candidates : candidates.filter((c) => c.fontScale === wantedScale);
-    const pool = scaled.length > 0 ? scaled : candidates;
+      wantedScale === null ? expandable : expandable.filter((c) => c.fontScale === wantedScale);
+    const pool = scaled.length > 0 ? scaled : expandable;
     const seen = new Set();
     for (const candidate of pool) {
       const theme =
