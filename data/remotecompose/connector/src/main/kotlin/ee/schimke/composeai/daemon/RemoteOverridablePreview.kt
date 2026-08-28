@@ -132,8 +132,14 @@ fun RemoteOverridablePreview(
   val context = LocalContext.current
 
   val displayMetrics = context.resources.displayMetrics
-  // Capture in `Legacy` density behavior, which is the only value that describes what
-  // `remote-creation-compose` actually writes.
+  // Capture in `Legacy` density behavior — the library's own default, and the only value that
+  // describes what `remote-creation-compose` actually writes.
+  //
+  // `RemoteDensityBehavior.Legacy` is what both `RemoteCreationDisplayInfo` overloads default to,
+  // and what `CoreDocument.DEFAULT_DENSITY_BEHAVIOR` is. Its kdoc — "Values are interpreted as
+  // pixels" — accurately describes the document the creation library produces. Passing it is
+  // therefore not a workaround; it undoes an override that asserted something untrue about our own
+  // capture.
   //
   // The header is a single global flag, but the document it describes is MIXED, and the creation
   // library's choice does not follow the flag — a document captured under `Dp` and one captured
@@ -143,24 +149,29 @@ fun RemoteOverridablePreview(
   //   heightIn / widthIn                                    DP     (relies on core to scale)
   //   height / width                                        EXACT_DP, self-describing
   //
-  // And remote-core's `updateVariables` applies a DIFFERENT predicate per op:
+  // And remote-core applies a DIFFERENT density predicate per op:
   //
-  //   PaddingModifierOperation          scales when behavior == DP
-  //   DimensionInModifierOperation      scales when behavior != PIXELS
-  //   RoundedClipRectModifierOperation  never scales
+  //   PaddingModifierOperation          updateVariables  scales when behavior == DP
+  //   RoundedClipRectModifierOperation  paint            scales when behavior == DP
+  //   DimensionInModifierOperation      updateVariables  scales when behavior != PIXELS
+  //   DimensionModifierOperation        —                never; branches on EXACT / EXACT_DP
   //
-  // So no single flag is right for every op, and only `Legacy` is right for every op *as the
-  // library writes them*: padding is left alone (it is already px) and `heightIn` is scaled (it is
-  // dp). `Dp` — what this used to declare — asserts that padding is dp, so core multiplied
-  // already-scaled pixels a second time. That is one bug, and it surfaced three times: the
-  // outlined card's border (wear-m3-catalog#89, via this player's matching assumption in
-  // `ClipModifier`), the compact button's height (#90), and `RemoteButtonGroup`'s 4dp gap rendering
-  // at 8dp.
+  // So no non-default flag is right for every op, and `Legacy` is right for all of them *as the
+  // library writes them*: padding and clip radii are left alone (already px) and `heightIn` is
+  // scaled (it is dp). `Dp` — what this used to declare — asserts that padding is dp, so core
+  // multiplied already-scaled pixels a second time. That is one bug, and it surfaced three times:
+  // the outlined card's border (wear-m3-catalog#89), the compact button's height (#90), and
+  // `RemoteButtonGroup`'s 4dp gap rendering at 8dp.
+  //
+  // What this costs: `Legacy` is safe and correct today, but it is the legacy track, and its own
+  // kdoc concedes that "historically some layout properties might have behaved differently" — the
+  // `!= PIXELS` predicate above is one of those. The forward-looking value is `Dp`, and it stays
+  // unusable until the creation library honours it. Tracked in #4735.
   //
   // The comment this replaces rejected `Legacy` because "Material3 button/card fills and the
-  // circular-progress indicator come out ~1/density too small". That does not reproduce: measured
-  // across the 57-sticker `remote-catalog` sheet, `Legacy` renders 56 byte-identical to `Dp` and
-  // fixes the 57th. The original symptom was a player-side bug, not a serialisation one.
+  // circular-progress indicator come out ~1/density too small". That description was wrong —
+  // measured across the 57-sticker `remote-catalog` sheet, `Legacy` renders 56 byte-identical to
+  // `Dp` and fixes the 57th. The symptom behind it was a player-side bug, not a serialisation one.
   //
   // `DOC_DENSITY_AT_GENERATION` is still stamped below: the alpha writer records DOC_WIDTH/HEIGHT
   // in px and the behavior but not the density value, and the player needs it to resolve the
