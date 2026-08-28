@@ -1,5 +1,6 @@
 /**
- * The two pure joins behind a catalog's cross-system compare page (`matches.html`).
+ * The pure joins behind a catalog's cross-system pairing — the `matches.html` compare page, and
+ * what the published manifest tells a preview server about that pairing.
  *
  * `compareWith` used to be a bare slug and could only ever name a SIBLING MODULE of the same
  * project: the driver resolved its spec at `samples/design-catalog-<slug>/catalog.spec.json` in
@@ -40,6 +41,44 @@ export function normalizeCompareWith(compareWith) {
   // URL — a pairing that is configured, invalid, and published rather than skipped.
   if (typeof compareWith.system !== "string" || compareWith.system.trim() === "") return null;
   return compareWith;
+}
+
+/**
+ * What a `compareWith` declaration looks like on the PUBLISHED manifest (`catalog.json` `meta`).
+ *
+ * `compareWith` has been publish-time-only: `generate-design-catalog.mjs` reads it to build
+ * `matches.html` and nothing carries it any further, so a preview server serving the catalog knows
+ * each component's `parallel` counterpart id (it is on the wire, `PreviewData.kt`) but not WHICH
+ * SYSTEM that id belongs to. Half a pairing is not resolvable: the server cannot turn `parallel`
+ * into a render without the sibling's slug. Carrying the slug is what lets it (issue #4621).
+ *
+ * Deliberately NARROWER than [normalizeCompareWith]. Only the fields a consumer of the published
+ * catalog can act on travel:
+ *
+ *   * `system` — the sibling's slug, which is also its path on a preview server serving both.
+ *   * `repo` — carried exactly when the spec declares one, so a consumer that does not already
+ *     host the sibling knows where to look. The common same-repo pairing declares none and
+ *     publishes none.
+ *
+ * `spec` is a path in the producing checkout and means nothing to a reader of the manifest;
+ * `designTitle` and `design` are `matches.html`'s presentation and belong to that page. Publishing
+ * them would invite a consumer to depend on build-time layout of a repository it cannot see.
+ *
+ * Takes no "self repo" to diff against on purpose. The generator's own `repo` is resolved well
+ * after the catalog is built (it can shell out to `git`), and hoisting it just to elide a
+ * redundant `repo:` would move that side effect above the argument validation that currently
+ * exits first. Echoing a declared repo is harmless; reordering process startup to avoid echoing
+ * it is not worth it.
+ *
+ * @param {Parameters<typeof normalizeCompareWith>[0]} compareWith the raw spec field
+ * @returns {{system: string, repo?: string}|null} null when there is no usable pairing
+ */
+export function manifestCompareWith(compareWith) {
+  const normalized = normalizeCompareWith(compareWith);
+  if (!normalized) return null;
+  const system = normalized.system.trim();
+  const repo = typeof normalized.repo === "string" ? normalized.repo.trim() : "";
+  return repo ? { system, repo } : { system };
 }
 
 /**

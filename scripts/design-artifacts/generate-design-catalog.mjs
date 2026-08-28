@@ -76,6 +76,7 @@ import { renderFailuresFromBundles } from "./render-failures.mjs";
 import { renderCompareHtml } from "./render-compare-html.mjs";
 import { renderCrossSystemHtml } from "./render-cross-system-html.mjs";
 import {
+  manifestCompareWith,
   normalizeCompareWith,
   primaryReferencesByComponentId,
 } from "./cross-system-compare.mjs";
@@ -758,6 +759,13 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
     // carried through onto catalog.json so the preview server reads them instead
     // of inferring — see catalog.spec.schema.json `display`.
     ...(spec.display ? { display: spec.display } : {}),
+    // The cross-system pairing, for a consumer of the published catalog. Each component already
+    // carries `parallel` (its counterpart's componentId) on the wire, but not which SYSTEM that id
+    // belongs to — so a preview server serving both catalogs could not resolve the pair. This is
+    // the missing half; see `manifestCompareWith` for why it is narrower than the spec field.
+    ...(manifestCompareWith(spec.compareWith)
+      ? { compareWith: manifestCompareWith(spec.compareWith) }
+      : {}),
   };
 
   // `opts.themes` is forwarded explicitly: this join is a VENDORED copy of the published
