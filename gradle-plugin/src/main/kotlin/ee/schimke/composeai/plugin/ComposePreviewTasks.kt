@@ -1556,10 +1556,37 @@ internal object ComposePreviewTasks {
    * (issue #2977); see [previewIdFilterProperty] for how it reaches the Android render.
    */
   internal fun previewIdExcludeProperty(project: Project): Provider<List<String>> =
-    project.providers
-      .gradleProperty("composePreview.idExclude")
-      .map { v -> v.split(",").map(String::trim).filter(String::isNotEmpty) }
+    previewIdExcludeFileProperty(project)
+      .map { path ->
+        val file = java.io.File(path)
+        check(file.isFile) {
+          "composePreview.idExcludeFile names '$path', which is not a readable file. Refusing to " +
+            "fall back to an empty exclusion list, which would render every preview and look " +
+            "like success."
+        }
+        file.readLines().map(String::trim).filter(String::isNotEmpty)
+      }
+      .orElse(
+        project.providers.gradleProperty("composePreview.idExclude").map { v ->
+          v.split(",").map(String::trim).filter(String::isNotEmpty)
+        }
+      )
       .orElse(emptyList())
+
+  /**
+   * `Provider<String>` for the `composePreview.idExcludeFile` Gradle property — a **path** to a
+   * newline-delimited exclusion list, the delimiter-free form of [previewIdExcludeProperty].
+   *
+   * Exists because a preview id may contain a comma (`@Preview(widthDp = …, heightDp = …)` mints
+   * `…_width=227dp, height=100dp, dpi=320`), so the comma-separated property cannot carry one: the
+   * split shatters each id into fragments, and since a plain pattern matches on substring, a
+   * fragment like `dpi=320` then excludes the entire module. Set by `bundle pack
+   * --exclude-preview-id-file`. When present it REPLACES `composePreview.idExclude`.
+   */
+  internal fun previewIdExcludeFileProperty(project: Project): Provider<String> =
+    project.providers.gradleProperty("composePreview.idExcludeFile").map(String::trim).filter {
+      it.isNotEmpty()
+    }
 
   /**
    * `Provider<List<String>>` for the `composePreview.rowExclude` Gradle property — the

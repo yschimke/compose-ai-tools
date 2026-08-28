@@ -42,6 +42,23 @@ public object PreviewFilter {
   /** System property carrying the comma-separated `--exclude-preview-id` id patterns. */
   public const val ID_EXCLUDE_PROPERTY: String = "composeai.preview.idExclude"
 
+  /**
+   * System property carrying a **path** to a newline-delimited `--exclude-preview-id` pattern file.
+   *
+   * The comma-delimited [ID_EXCLUDE_PROPERTY] cannot express a pattern that contains a comma, and
+   * preview ids routinely do: an `@Preview(widthDp = …, heightDp = …)` mints
+   * `…CustomShapeRemoteButton_width=227dp, height=100dp, dpi=320`. Joining such ids and splitting
+   * them back shatters each into three fragments, and because a plain pattern matches on
+   * **substring**, the fragment `dpi=320` then matches every preview in the module — an exclusion
+   * list meant to defer 47 of 58 previews excluded all 58 and the render failed with "nothing would
+   * render" (yschimke/wear-m3-catalog `:remote-catalog`).
+   *
+   * One pattern per line has no such ambiguity: a line break cannot occur inside an id. When this
+   * property is set it REPLACES [ID_EXCLUDE_PROPERTY] rather than adding to it, so a caller that
+   * can write a file never pays the delimiter's cost.
+   */
+  public const val ID_EXCLUDE_FILE_PROPERTY: String = "composeai.preview.idExcludeFile"
+
   /** System property carrying the comma-separated `--exclude-preview-row` label patterns. */
   public const val ROW_EXCLUDE_PROPERTY: String = "composeai.preview.rowExclude"
 
@@ -56,6 +73,36 @@ public object PreviewFilter {
     read: (String) -> String? = System::getProperty,
   ): List<String> =
     read(property)?.split(",")?.map(String::trim)?.filter(String::isNotEmpty) ?: emptyList()
+
+  /**
+   * The `--exclude-preview-id` patterns: the newline-delimited file named by [fileProperty] when
+   * that property is set and readable, else the comma-separated [property].
+   *
+   * The file wins outright instead of merging — a caller passing a file is expressing the whole
+   * exclusion set, and merging would silently reinstate a comma-shattered copy of it.
+   *
+   * A file that is named but cannot be read is an error, not an empty list: a filter that silently
+   * became "exclude nothing" renders the full sheet and looks like success, which is the failure
+   * mode this whole path exists to avoid.
+   */
+  public fun idExcludesFrom(
+    property: String = ID_EXCLUDE_PROPERTY,
+    fileProperty: String = ID_EXCLUDE_FILE_PROPERTY,
+    read: (String) -> String? = System::getProperty,
+    readFile: (String) -> List<String>? = { path ->
+      java.io.File(path).takeIf(java.io.File::isFile)?.readLines()
+    },
+  ): List<String> {
+    val path =
+      read(fileProperty)?.trim()?.takeIf(String::isNotEmpty) ?: return patternsFrom(property, read)
+    val lines =
+      readFile(path)
+        ?: throw IllegalStateException(
+          "$fileProperty names '$path', which is not a readable file. Refusing to fall back to " +
+            "an empty exclusion list, which would render every preview and look like success."
+        )
+    return lines.map(String::trim).filter(String::isNotEmpty)
+  }
 
   /**
    * True when [functionName] (owned by [className]) matches at least one of [patterns], or when

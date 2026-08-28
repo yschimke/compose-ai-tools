@@ -5,6 +5,109 @@ import kotlin.test.assertEquals
 
 class PackPreviewIdExclusionsTest {
 
+  private val tmpRoot: java.io.File =
+    java.nio.file.Files.createTempDirectory("pack-id-exclusions-").toFile().also {
+      it.deleteOnExit()
+    }
+
+  /**
+   * The id shape that motivated the file flag: `@Preview(widthDp = …, heightDp = …)` mints an id
+   * with commas in it, so the comma-separated flag cannot carry one.
+   */
+  private val commaBearingIds =
+    listOf(
+      "ee.schimke.wearm3catalog.remote.CatalogPreviewsKt." +
+        "CustomShapeRemoteButton_width=227dp, height=100dp, dpi=320",
+      "ee.schimke.wearm3catalog.remote.CatalogPreviewsKt." +
+        "NamedLabelRemoteButton_width=227dp, height=100dp, dpi=320",
+    )
+
+  private fun fileWith(lines: List<String>): java.io.File =
+    java.io.File.createTempFile("excludes-", ".txt", tmpRoot).apply {
+      deleteOnExit()
+      writeText(lines.joinToString("\n"))
+    }
+
+  @Test
+  fun `a file carries an id that contains commas, intact`() {
+    val f = fileWith(commaBearingIds)
+    assertEquals(
+      commaBearingIds,
+      PackPreviewIdExclusions.fromArgs(
+        listOf("pack", "--exclude-preview-id-file", f.path),
+        noEnv,
+      ),
+    )
+  }
+
+  @Test
+  fun `the comma flag shatters the same ids - the regression the file flag exists for`() {
+    // Not aspirational: this is what `--exclude-preview-id` does, and why it must not be used for
+    // a generated list. Each id becomes three fragments.
+    val shattered =
+      PackPreviewIdExclusions.fromArgs(
+        listOf("pack", "--exclude-preview-id", commaBearingIds.joinToString(",")),
+        noEnv,
+      )
+    assertEquals(6, shattered.size)
+    assertEquals(true, shattered.contains("dpi=320"))
+  }
+
+  @Test
+  fun `a shattered fragment excludes every preview, but the file form excludes only its own`() {
+    // The live failure: `dpi=320` is a substring of every id in the module, and a plain pattern
+    // matches on substring — so the render was left with nothing to draw.
+    val all = commaBearingIds + listOf("ee.schimke.Other.ThirdSticker_width=227dp, dpi=320")
+    val shattered =
+      PackPreviewIdExclusions.fromArgs(
+        listOf("pack", "--exclude-preview-id", commaBearingIds.joinToString(",")),
+        noEnv,
+      )
+    assertEquals(emptyList(), PackPreviewIdExclusions.retain(all, shattered))
+
+    val f = fileWith(commaBearingIds)
+    val fromFile =
+      PackPreviewIdExclusions.fromArgs(listOf("pack", "--exclude-preview-id-file", f.path), noEnv)
+    assertEquals(listOf(all[2]), PackPreviewIdExclusions.retain(all, fromFile))
+  }
+
+  @Test
+  fun `the file wins over both the flag and the env var`() {
+    val f = fileWith(listOf("OnlyThis"))
+    assertEquals(
+      listOf("OnlyThis"),
+      PackPreviewIdExclusions.fromArgs(
+        listOf("pack", "--exclude-preview-id-file", f.path, "--exclude-preview-id", "Ignored"),
+        envWith("AlsoIgnored"),
+      ),
+    )
+  }
+
+  @Test
+  fun `blank lines are dropped and entries trimmed`() {
+    val f = fileWith(listOf("  Foo_Dark  ", "", "   ", "Bar_Dark"))
+    assertEquals(
+      listOf("Foo_Dark", "Bar_Dark"),
+      PackPreviewIdExclusions.fromArgs(listOf("pack", "--exclude-preview-id-file", f.path), noEnv),
+    )
+  }
+
+  @Test
+  fun `a missing file fails loudly rather than excluding nothing`() {
+    val missing = java.io.File(tmpRoot, "nope.txt")
+    val e =
+      kotlin
+        .runCatching {
+          PackPreviewIdExclusions.fromArgs(
+            listOf("pack", "--exclude-preview-id-file", missing.path),
+            noEnv,
+          )
+        }
+        .exceptionOrNull()
+    assertEquals(true, e is IllegalStateException)
+    assertEquals(true, e!!.message!!.contains("not a readable file"))
+  }
+
   private val noEnv: (String) -> String? = { null }
 
   private fun envWith(value: String): (String) -> String? = { name ->

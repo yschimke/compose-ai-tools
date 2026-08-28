@@ -17,6 +17,18 @@ class PreviewFilterSystemPropsProviderTest {
   private fun list(vararg v: String) =
     project.objects.listProperty(String::class.java).apply { set(v.toList()) }
 
+  /** No `--exclude-preview-id-file`: the comma-joined wire format stays in force. */
+  private val noFile = project.objects.property(String::class.java)
+
+  private fun fileWith(lines: List<String>): java.io.File =
+    java.io.File.createTempFile("excludes-", ".txt").apply {
+      deleteOnExit()
+      writeText(lines.joinToString("\n"))
+    }
+
+  private fun path(f: java.io.File) =
+    project.objects.property(String::class.java).apply { set(f.path) }
+
   @Test
   fun `emits one comma-joined -D per non-empty filter`() {
     val args =
@@ -24,6 +36,7 @@ class PreviewFilterSystemPropsProviderTest {
           nameFilters = list("Foo", "Bar"),
           idFilters = list("*_Light"),
           idExcludes = list("*_Dark"),
+          idExcludeFile = noFile,
           rowExcludes = list("Dark", "ExtraDark"),
           permutations = list("accessibility"),
         )
@@ -47,6 +60,7 @@ class PreviewFilterSystemPropsProviderTest {
           nameFilters = list(),
           idFilters = list(),
           idExcludes = list(),
+          idExcludeFile = noFile,
           rowExcludes = list(),
           permutations = list(),
         )
@@ -63,6 +77,7 @@ class PreviewFilterSystemPropsProviderTest {
           nameFilters = list(" Foo ", "", "  "),
           idFilters = list(),
           idExcludes = list(),
+          idExcludeFile = noFile,
           rowExcludes = list(),
           permutations = list(),
         )
@@ -82,6 +97,7 @@ class PreviewFilterSystemPropsProviderTest {
           nameFilters = list(),
           idFilters = list(),
           idExcludes = list(),
+          idExcludeFile = noFile,
           rowExcludes = list("Dark", " ExtraDark "),
           permutations = list(),
         )
@@ -98,6 +114,7 @@ class PreviewFilterSystemPropsProviderTest {
           nameFilters = list(),
           idFilters = list(),
           idExcludes = list(),
+          idExcludeFile = noFile,
           rowExcludes = list(),
           permutations = list(" accessibility,foo ", "accessibility"),
         )
@@ -105,5 +122,52 @@ class PreviewFilterSystemPropsProviderTest {
         .toList()
 
     assertThat(args).containsExactly("-Dcomposeai.preview.permutations=accessibility,foo")
+  }
+
+  /**
+   * The reason the file form exists: a preview id may contain a comma, so the joined property
+   * cannot carry it. When the file is the source of the patterns, the PATH travels instead —
+   * absolute, because the render's Gradle build runs in the module directory, not the CLI's.
+   */
+  @Test
+  fun `a file-sourced exclusion list travels as a path, not a joined string`() {
+    val ids = listOf("Foo_width=227dp, dpi=320", "Bar_width=227dp, dpi=320")
+    val f = fileWith(ids)
+    val args =
+      AndroidPreviewSupport.PreviewFilterSystemPropsProvider(
+          nameFilters = list(),
+          idFilters = list(),
+          idExcludes = list(*ids.toTypedArray()),
+          idExcludeFile = path(f),
+          rowExcludes = list(),
+          permutations = list(),
+        )
+        .asArguments()
+        .toList()
+
+    assertThat(args).containsExactly("-Dcomposeai.preview.idExcludeFile=${f.absolutePath}")
+  }
+
+  /**
+   * `--exclude-preview-id` on the task overrides the property convention, so a stale
+   * `-PcomposePreview.idExcludeFile` must not win. The resolved lists differing is what marks the
+   * override.
+   */
+  @Test
+  fun `an overridden exclusion list ignores the file and travels joined`() {
+    val f = fileWith(listOf("FromFile"))
+    val args =
+      AndroidPreviewSupport.PreviewFilterSystemPropsProvider(
+          nameFilters = list(),
+          idFilters = list(),
+          idExcludes = list("TypedOnTheCommandLine"),
+          idExcludeFile = path(f),
+          rowExcludes = list(),
+          permutations = list(),
+        )
+        .asArguments()
+        .toList()
+
+    assertThat(args).containsExactly("-Dcomposeai.preview.idExclude=TypedOnTheCommandLine")
   }
 }

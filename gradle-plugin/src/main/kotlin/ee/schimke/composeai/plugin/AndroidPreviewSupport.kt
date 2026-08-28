@@ -2456,6 +2456,7 @@ internal object AndroidPreviewSupport {
             nameFilters = previewFilters,
             idFilters = previewIdFilters,
             idExcludes = previewIdExcludes,
+            idExcludeFile = ComposePreviewTasks.previewIdExcludeFileProperty(project),
             rowExcludes = previewRowExcludes,
             permutations = permutations,
           )
@@ -2924,6 +2925,7 @@ internal object AndroidPreviewSupport {
             nameFilters = ComposePreviewTasks.previewFilterProperty(project),
             idFilters = ComposePreviewTasks.previewIdFilterProperty(project),
             idExcludes = ComposePreviewTasks.previewIdExcludeProperty(project),
+            idExcludeFile = ComposePreviewTasks.previewIdExcludeFileProperty(project),
             // Forwarded for uniformity; the XR subspace render has no `@PreviewParameter` fan-out
             // to thin, so it is inert there rather than meaningful.
             rowExcludes = ComposePreviewTasks.previewRowExcludeProperty(project),
@@ -3750,6 +3752,13 @@ internal object AndroidPreviewSupport {
     @get:org.gradle.api.tasks.Input val nameFilters: org.gradle.api.provider.Provider<List<String>>,
     @get:org.gradle.api.tasks.Input val idFilters: org.gradle.api.provider.Provider<List<String>>,
     @get:org.gradle.api.tasks.Input val idExcludes: org.gradle.api.provider.Provider<List<String>>,
+    /**
+     * Path to the newline-delimited exclusion file, when the build was given one. `@Internal`
+     * deliberately: [idExcludes] already carries this file's RESOLVED lines, so the contents drive
+     * the up-to-date check and the path itself must not — a workspace that moves would otherwise
+     * invalidate a render whose exclusion set never changed.
+     */
+    @get:org.gradle.api.tasks.Internal val idExcludeFile: org.gradle.api.provider.Provider<String>,
     @get:org.gradle.api.tasks.Input val rowExcludes: org.gradle.api.provider.Provider<List<String>>,
     @get:org.gradle.api.tasks.Input
     val permutations: org.gradle.api.provider.Provider<List<String>>,
@@ -3757,7 +3766,30 @@ internal object AndroidPreviewSupport {
     override fun asArguments(): Iterable<String> = buildList {
       arg("composeai.preview.filter", nameFilters.getOrElse(emptyList()))
       arg("composeai.preview.idFilter", idFilters.getOrElse(emptyList()))
-      arg("composeai.preview.idExclude", idExcludes.getOrElse(emptyList()))
+      // The FILE wins when there is one, and the comma-joined form is then not emitted at all.
+      // Re-joining here is what the file exists to avoid: a preview id may contain a comma, so the
+      // round trip shatters each id into fragments that — matching by substring — exclude the whole
+      // module. Pass the path and let `PreviewFilter.idExcludesFrom` read the lines.
+      // …but only while the file is still what [idExcludes] came FROM. `--exclude-preview-id` on
+      // the task overrides the property convention (see RenderPreviewsTask's option help), and the
+      // file property is read independently, so forwarding the path unconditionally would let a
+      // stale `-PcomposePreview.idExcludeFile` silently win over an explicit option. Comparing the
+      // resolved lists is what tells the two apart: equal ⇒ the file is the source and travels as
+      // a path; different ⇒ the caller overrode it and their patterns travel as before.
+      val excludeFile = idExcludeFile.orNull?.trim().orEmpty()
+      val resolved = idExcludes.getOrElse(emptyList()).map(String::trim).filter(String::isNotEmpty)
+      val fromFile =
+        java.io
+          .File(excludeFile)
+          .takeIf { excludeFile.isNotEmpty() && it.isFile }
+          ?.readLines()
+          ?.map(String::trim)
+          ?.filter(String::isNotEmpty)
+      if (fromFile != null && fromFile == resolved) {
+        add("-Dcomposeai.preview.idExcludeFile=${java.io.File(excludeFile).absolutePath}")
+      } else {
+        arg("composeai.preview.idExclude", resolved)
+      }
       // The `@PreviewParameter` row axis. It has to travel separately from the id patterns because
       // this backend, like the desktop one, applies the id filters to DISCOVERED entries — before
       // `expandParameterProvider` mints the per-row ids — so an id pattern can never name a row.
