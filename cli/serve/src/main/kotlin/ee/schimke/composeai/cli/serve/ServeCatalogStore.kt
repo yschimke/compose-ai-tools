@@ -685,6 +685,7 @@ class ServeCatalogStore(
           size = record.size?.takeIf { it.isNotBlank() },
           componentId = record.componentId?.takeIf { it.isNotBlank() },
           fixedTheme = record.fixedTheme,
+          secondary = record.secondary,
           section = section,
           group = group,
           order = if (section != null || group != null) count + deferredIds.size - 1 else null,
@@ -2841,6 +2842,15 @@ class ServeCatalogStore(
      * theme with nothing to fall back to.
      */
     val fixedTheme: Boolean = false,
+    /**
+     * Discovery-time `@OverrideVariant(secondary = true)` — see [VariantMeta.secondary].
+     *
+     * Here for the same reason [fixedTheme] is. A second-tier cell CI declared live-only is
+     * described by this record and by nothing else, so without the field the flag had no route to
+     * the browse surface and the cell stayed listed in the variant tree — the flag going missing
+     * for precisely the deferred coverage it exists to thin out.
+     */
+    val secondary: Boolean = false,
   ) {
     /** The daemon preview to render this record through, or null when it has no live twin. */
     val daemonId: String?

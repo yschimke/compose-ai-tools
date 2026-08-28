@@ -194,16 +194,30 @@ export function applyCatalogPreviewDeclarations(manifest, bundles) {
   // one: its only render is the live one, so without it the browse surface re-renders it under
   // every declared theme with no baked pixels to fall back to.
   //
-  // Only `fixedTheme` is stamped here. The knob declarations describe controls the viewer offers
-  // once a daemon is open, and a deferred record already resolves those through its live twin;
-  // `fixedTheme` is the one that has to be known BEFORE anything is opened, because it decides
-  // whether the card is asked to re-render at all.
+  // Only `fixedTheme` and `secondary` are stamped here. The knob declarations describe controls the
+  // viewer offers once a daemon is open, and a deferred record already resolves those through its
+  // live twin; these two have to be known BEFORE anything is opened, because they decide whether
+  // the card is asked to re-render at all and whether it is listed in the variant tree.
+  //
+  // `secondary` needs this as much as `fixedTheme` does. A second-tier cell that CI declared
+  // live-only — because its catalog variant or theme took deferred priority — reaches the browse
+  // surface through this loop and nowhere else, so leaving it out kept exactly those cells in the
+  // variant tree: the flag went missing for the coverage it was added to thin out.
   for (const record of manifest.deferred ?? []) {
     const previewId = record.previewId ?? (record.previewIds?.length === 1 ? record.previewIds[0] : null);
     if (!previewId) continue;
-    if (byId.get(previewId)?.fixedTheme !== true) continue;
-    record.fixedTheme = true;
-    stamped += 1;
+    const declarations = byId.get(previewId);
+    if (!declarations) continue;
+    let carried = false;
+    if (declarations.fixedTheme === true && record.fixedTheme !== true) {
+      record.fixedTheme = true;
+      carried = true;
+    }
+    if (declarations.secondary === true && record.secondary !== true) {
+      record.secondary = true;
+      carried = true;
+    }
+    if (carried) stamped += 1;
   }
   return stamped;
 }

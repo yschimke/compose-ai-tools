@@ -373,3 +373,54 @@ test("an underscore-separated RTL locale still swaps the physical edges", () => 
     previewParams: { captureGutter: { left: 4, top: 4, right: 12, bottom: 5 } },
   });
 });
+
+test("stamps secondary onto a deferred (live-only) second-tier cell", () => {
+  // A second-tier cell CI declared live-only — its catalog variant or theme took deferred priority
+  // — reaches the browse surface through the deferred loop and nowhere else. Stamping only
+  // `fixedTheme` there left exactly those cells listed in the variant tree: the flag went missing
+  // for the coverage it exists to thin out.
+  const manifest = {
+    components: [],
+    deferred: [
+      { previewId: "Segmented_VARIANT_segments-13", componentId: "Progress/Segmented" },
+      { previewId: "Segmented_VARIANT_disabled", componentId: "Progress/Segmented" },
+      { previewIds: ["Solo_VARIANT_wide"], componentId: "Solo" },
+    ],
+  };
+  const bundle = {
+    previews: [
+      { id: "Segmented_VARIANT_segments-13", captures: [], overrides: { name: "s13", secondary: true } },
+      { id: "Segmented_VARIANT_disabled", captures: [], overrides: { name: "disabled" } },
+      { id: "Solo_VARIANT_wide", captures: [], overrides: { name: "wide", secondary: true } },
+    ],
+    entries: {},
+  };
+
+  applyCatalogPreviewDeclarations(manifest, [bundle]);
+
+  assert.equal(manifest.deferred[0].secondary, true);
+  assert.equal(manifest.deferred[1].secondary, undefined, "an ordinary deferred cell is untouched");
+  assert.equal(manifest.deferred[2].secondary, true, "a single-entry previewIds resolves");
+});
+
+test("a deferred record carrying both flags is counted once", () => {
+  const manifest = {
+    components: [],
+    deferred: [{ previewId: "themecatalog__Brand", componentId: "Theme/Brand" }],
+  };
+  const bundle = {
+    previews: [
+      {
+        id: "themecatalog__Brand",
+        captures: [],
+        fixedTheme: true,
+        overrides: { name: "brand", secondary: true },
+      },
+    ],
+    entries: {},
+  };
+
+  assert.equal(applyCatalogPreviewDeclarations(manifest, [bundle]), 1);
+  assert.equal(manifest.deferred[0].fixedTheme, true);
+  assert.equal(manifest.deferred[0].secondary, true);
+});

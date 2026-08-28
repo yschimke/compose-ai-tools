@@ -3717,6 +3717,52 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `a deferred record's second-tier flag reaches the browse surface`() {
+    // A second-tier cell CI declared live-only is described by its deferred record and by nothing
+    // else — it has no image for the components loop to carry the flag on. Without the field the
+    // flag had no route here at all, so exactly the cells `secondary` exists to thin out stayed
+    // listed in the component's variant tree, on the catalogs that defer the most of them.
+    val json =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "liveBundle":{"path":"bundle/","file":"compose-m3-bundle.png"},
+       "components":[{"componentId":"Progress/Segmented","section":"Components","group":"Progress",
+         "images":[
+           {"path":"images/progress-segmented/ideal__default.png","state":"default","previewId":"Segmented"}]}],
+       "deferred":[
+         {"componentId":"Progress/Segmented","section":"Components","group":"Progress","reason":"variant",
+          "path":"images/progress-segmented/ideal__segments-13.png","state":"segments-13",
+          "preview":"SegmentedProgress","previewId":"Segmented_VARIANT_segments-13",
+          "secondary":true},
+         {"componentId":"Progress/Segmented","section":"Components","group":"Progress","reason":"variant",
+          "path":"images/progress-segmented/ideal__disabled.png","state":"disabled",
+          "preview":"SegmentedProgress","previewId":"Segmented_VARIANT_disabled"}]}
+      """
+        .trimIndent()
+    var fronted: ServeHost? = null
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { trustedBranches },
+        fetch = deferredFetcher(json),
+        buildTrustedBundle = { _, _, _, _, bakedFallback, _ ->
+          fronted = bakedFallback()
+          true
+        },
+      )
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+
+    val host = fronted as ServeBundleHost
+    val tiered = host.previews.single { it.state == "segments-13" }
+    assertTrue(tiered.secondary, "the deferred record's tier survives into the variant metadata")
+    // It is listed differently, not served differently: everything else a deferred cell carries is
+    // untouched, and an ordinary deferred cell beside it is not silently promoted.
+    assertEquals("Components" to "Progress", tiered.section to tiered.group)
+    assertFalse(host.previews.single { it.state == "disabled" }.secondary)
+  }
+
+  @Test
   fun `a wholly deferred component's pairing reaches the server's parallel lookup`() {
     // The generator writes a wholly deferred component's `parallel` onto its DEFERRED record —
     // such a component short-circuits before it ever reaches `components[]`, so that is the only
