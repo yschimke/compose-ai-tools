@@ -1072,14 +1072,14 @@
     "serve-motion-index-motion-index-playing.dark.png": {
       "fixture": "serve-motion-index-motion-index-playing",
       "theme": "dark",
-      "sha256": "d04b17ad266c89b2f3b160991a6203d810f99b46d38eea0746e1c8dfd89bd396",
-      "size": 126200
+      "sha256": "20a76de0926410bf568bd9cdf7b6adc1823821d80c339eebd9044b33f6039735",
+      "size": 121454
     },
     "serve-motion-index-motion-index-playing.light.png": {
       "fixture": "serve-motion-index-motion-index-playing",
       "theme": "light",
-      "sha256": "43f971acbcac890cc948b5bbaff0e50c61a70ee4686f9a1d8d6ec1b464ef6f6c",
-      "size": 123923
+      "sha256": "fe6c274d03d112ff98e1a6e2eea507dacc298dd295fa1d044e268b4ec4f0b2da",
+      "size": 119291
     },
     "serve-motion-index.dark.png": {
       "fixture": "serve-motion-index",
