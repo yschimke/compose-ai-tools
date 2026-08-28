@@ -1,5 +1,7 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.data.overrides.OverrideVariantInteraction
+import ee.schimke.composeai.data.overrides.OverrideVariantSpec
 import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
@@ -63,6 +65,91 @@ class OverrideIntegrationTest {
       assertEquals("heightPx override should reach the RenderSpec", 128, large.height)
     } finally {
       host.shutdown()
+    }
+  }
+
+  /**
+   * Issue #4639 — a `_VARIANT_hovered` / `_VARIANT_focused` / `_VARIANT_pressed` preview must
+   * render the state it names, not the resting one.
+   *
+   * The seed half of an `@OverrideVariant` reaches the composition as data (#3652 / #4638); an
+   * interaction is something that has to be *done* to the composition, and the daemon's
+   * one-frame-per-id path did nothing at all. Everything read off that render — the PNG, the
+   * semantics and layout trees, the `compose/figma-svg` built from them — therefore described the
+   * resting state under a filename claiming otherwise.
+   *
+   * The two halves arrive by different routes and this covers both: focus and press ride
+   * `spec.overrides.focus` (via `OverrideVariantSpec.toPreviewOverrides`) into the connector's
+   * `FocusOverrideExtension`, which does its work inside composition; hover is dispatched by the
+   * host from [RenderEngine], because positional input has no in-composition half.
+   *
+   * Pixels rather than the exported vector, matching this file's idiom — and the stronger assertion
+   * of the two, since every structured product is projected from the same composition these pixels
+   * were captured from.
+   */
+  @Test
+  fun interactionVariantsRenderTheStateTheyName() {
+    val outputDir = tempFolder.newFolder("renders-interaction")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val previewsJson = tempFolder.newFile("previews-interaction.json")
+    // `staticHoverFor` reads the hover intent off the preview index, so the engine needs one on
+    // disk — the same sysprop the gradle plugin sets on a production daemon JVM.
+    previewsJson.writeText(
+      """
+      {"previews":[
+        {"id":"interaction-hovered","functionName":"InteractionStateSquare",
+         "className":"ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+         "overrides":{"name":"hovered","seeds":[],"interaction":"Hovered"}}
+      ]}
+      """
+        .trimIndent()
+    )
+    val previousPreviewsJson = System.getProperty(PreviewIndex.PREVIEWS_JSON_PATH_PROP)
+    System.setProperty(PreviewIndex.PREVIEWS_JSON_PATH_PROP, previewsJson.absolutePath)
+    fun entry(id: String, interaction: OverrideVariantInteraction? = null) =
+      PreviewManifestEntry(
+        id = id,
+        className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+        functionName = "InteractionStateSquare",
+        widthPx = 48,
+        heightPx = 48,
+        density = 1.0f,
+        outputBaseName = id,
+        overrides =
+          interaction?.let { OverrideVariantSpec(name = it.name.lowercase(), interaction = it) },
+      )
+    val host =
+      PreviewManifestRouter(
+        manifest =
+          PreviewManifest(
+            previews =
+              listOf(
+                entry("interaction-base"),
+                entry("interaction-hovered", OverrideVariantInteraction.Hovered),
+                entry("interaction-focused", OverrideVariantInteraction.Focused),
+                entry("interaction-pressed", OverrideVariantInteraction.Pressed),
+              )
+          )
+      )
+    host.start()
+    try {
+      fun renderedIs(id: String, rgb: Int): Double =
+        pixelMatchPct(renderAndDecode(host, "previewId=$id", id), rgb, 8)
+      assertTrue("resting render must stay red", renderedIs("interaction-base", 0xEF5350) > 0.9)
+      assertTrue("hovered render must be blue", renderedIs("interaction-hovered", 0x42A5F5) > 0.9)
+      assertTrue(
+        "focused render must be orange",
+        renderedIs("interaction-focused", 0xFFA726) > 0.9,
+      )
+      assertTrue("pressed render must be green", renderedIs("interaction-pressed", 0x66BB6A) > 0.9)
+    } finally {
+      host.shutdown()
+      if (previousPreviewsJson == null) {
+        System.clearProperty(PreviewIndex.PREVIEWS_JSON_PATH_PROP)
+      } else {
+        System.setProperty(PreviewIndex.PREVIEWS_JSON_PATH_PROP, previousPreviewsJson)
+      }
     }
   }
 

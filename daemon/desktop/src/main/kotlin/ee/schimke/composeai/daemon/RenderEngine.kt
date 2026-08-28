@@ -23,6 +23,8 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.semantics.ScrollAxisRange
@@ -255,6 +257,12 @@ class RenderEngine(
         // nothing to scroll until it has arrived.
         trace.section("render:settle") { applyStaticSettle(state) }
         trace.section("render:scrollToEnd") { driveStaticScrollToEnd(state) }
+        // `@OverrideVariant(interaction = …)` — put the composition into the hovered / pressed
+        // state before the capture, for the same reason the scroll drive runs here: the PNG *and*
+        // every tree read off the same scene (semantics, layout, figma-svg) have to describe the
+        // state the sticker claims. After the scroll, because a hover target has to be where the
+        // settled frame put it.
+        trace.section("render:interaction") { driveStaticInteraction(state) }
         val driveNs = System.nanoTime() - driveStartNs
         trace.section("render:once") {
           renderOnce(
@@ -1822,6 +1830,213 @@ class RenderEngine(
   }
 
   /**
+   * `@OverrideVariant(interaction = Hovered | Focused | Pressed)` — put the scene into the
+   * interaction state the sticker names, before the capture.
+   *
+   * An interaction has two halves and this is the **host** half. `FocusOverrideExtension` keeps the
+   * other one, and it is not optional: it flips `LocalInputModeManager` to keyboard mode from
+   * inside composition, and without that `Focusability.SystemDefined` refuses focus outright, so
+   * nothing here would land. The bag that turns it on is `spec.overrides.focus` (see
+   * `OverrideVariantSpec.toPreviewOverrides`).
+   *
+   * What the extension does **not** manage to do is land the walk. `moveFocus(Enter)` + N × `Next`
+   * does not take inside an [ImageComposeScene] — a probe for issue #4639 left the target reporting
+   * `Focused=false` after forty frames, while a `FocusRequester` on that same node in that same
+   * scene landed on the first. So focus is *targeted* here instead, through the public
+   * `SemanticsActions.RequestFocus`, the same way [driveStaticScrollToEnd] reaches
+   * `SemanticsActions.ScrollBy`. `:renderer-android`'s `driveFocusPreview` does the same for the
+   * other backend and for the same reason.
+   *
+   * * **Hovered** moves a mouse to the centre of the `interactionIndex`-th *interactive* node.
+   * * **Focused** requests focus on the `tabIndex`-th *focusable* node — a narrower set, and
+   *   deliberately so: `tabIndex` is a focus-order index on both lanes, and hover's is not.
+   * * **Pressed** is focus plus a press on whatever took it. That is what discovery asks for (a
+   *   pressed variant is `FocusCapture(tabIndex, pressed = true)`), so pressing without focusing
+   *   would publish a press with no indication under it and disagree with the baked PNG.
+   *
+   * The press is a touch, not a mouse: a mouse press also raises `HoverInteraction.Enter`, and a
+   * sticker labelled "pressed" should not be documenting hover as well. It is never released — a
+   * release would end the press before the frame is captured and catch the ripple mid-retreat, and
+   * the held state is the one this render exists to show. [tearDown] disposes the scene, so nothing
+   * outlives the capture.
+   *
+   * Every failure is a **decline with a reason on stderr**, never a silent fallback: a sticker of a
+   * component that refused the state is the plausible-but-wrong picture this whole change is
+   * against, and is harder to notice than the honest duplicate it replaces.
+   *
+   * No-ops — leaving the frame clock exactly where the scroll drive left it, so an ordinary
+   * preview's capture stays bit-for-bit what it was — when the preview asks for no interaction.
+   */
+  @OptIn(
+    androidx.compose.ui.InternalComposeUiApi::class,
+    androidx.compose.ui.ExperimentalComposeUiApi::class,
+  )
+  internal fun driveStaticInteraction(state: SceneState) {
+    val hoverIndex = state.spec.previewId?.let { loadPreviewIndexLazily().staticHoverFor(it) }
+    val focus = state.spec.overrides?.focus
+    // A direction-addressed override is a traversal script, which is the extension's walk to run
+    // and not a target this can name. Left exactly as it was.
+    val focusIndex = if (focus != null && focus.direction == null) focus.tabIndex ?: 0 else null
+    if (hoverIndex == null && focusIndex == null) return
+    // Under the same JVM-default-`Locale` override every other frame-driving pass runs in: a press
+    // can compose new content, and `rememberResourceEnvironment` caches what it resolves.
+    withPreviewLocale(state.spec.localeTag) {
+      driveStaticInteractionLocalized(state, hoverIndex, focusIndex, focus?.pressed == true)
+    }
+  }
+
+  @OptIn(
+    androidx.compose.ui.InternalComposeUiApi::class,
+    androidx.compose.ui.ExperimentalComposeUiApi::class,
+  )
+  private fun driveStaticInteractionLocalized(
+    state: SceneState,
+    hoverIndex: Int?,
+    focusIndex: Int?,
+    pressFocused: Boolean,
+  ) {
+    // Semantics only exist once the scene has laid out, and `setUp` deliberately doesn't render.
+    // At the cursor's current position and without moving it — same guarantee (and the same reason)
+    // as the scroll drive's probe render.
+    if (state.virtualFrameNanos > 0L) state.scene.render(nanoTime = state.virtualFrameNanos)
+    else state.scene.render()
+
+    if (hoverIndex != null) {
+      val target = interactiveNodes(state).getOrNull(hoverIndex)
+      if (target == null) {
+        System.err.println(
+          "@OverrideVariant hover on ${state.spec.outputBaseName}: no interactive node at index " +
+            "$hoverIndex — capturing the undriven state."
+        )
+        return
+      }
+      state.scene.sendPointerEvent(
+        eventType = PointerEventType.Move,
+        position = target.boundsInRoot.center,
+        type = PointerType.Mouse,
+      )
+      settleInteraction(state)
+      return
+    }
+
+    val label = if (pressFocused) "pressed" else "focused"
+    val target = focusableNodes(state).getOrNull(focusIndex!!)
+    if (target == null) {
+      System.err.println(
+        "@OverrideVariant $label on ${state.spec.outputBaseName}: no focusable node at index " +
+          "$focusIndex — capturing the undriven state."
+      )
+      return
+    }
+    target.config.getOrNull(SemanticsActions.RequestFocus)?.action?.invoke()
+    settleInteraction(state)
+
+    // Verify rather than assume. `RequestFocus` returns before the focus state has propagated, and
+    // a component can refuse focus outright — publishing a "focused" sticker of a component that
+    // declined is the class of plausible-but-wrong picture this whole change is against.
+    val focused = focusedNode(state)
+    if (focused == null) {
+      System.err.println(
+        "@OverrideVariant $label on ${state.spec.outputBaseName}: nothing took focus — " +
+          "capturing the undriven state."
+      )
+      return
+    }
+    if (pressFocused) {
+      state.scene.sendPointerEvent(
+        eventType = PointerEventType.Press,
+        position = focused.boundsInRoot.center,
+        type = PointerType.Touch,
+      )
+      settleInteraction(state)
+    }
+  }
+
+  /**
+   * Every node carrying an interactive action, in traversal order — the hover addressing space.
+   *
+   * The same predicate `:renderer-desktop`'s `interactiveNodeMatcher` and `RobolectricRenderTest`'s
+   * namesake apply, reproduced against the raw semantics tree because [ImageComposeScene] has no
+   * `onAllNodes`. An index that means a different element on the two lanes would be worse than no
+   * hover at all, so the predicate is duplicated deliberately rather than approximated.
+   */
+  @OptIn(
+    androidx.compose.ui.InternalComposeUiApi::class,
+    androidx.compose.ui.ExperimentalComposeUiApi::class,
+  )
+  private fun interactiveNodes(state: SceneState): List<SemanticsNode> {
+    val root =
+      state.scene.semanticsOwners.firstOrNull()?.unmergedRootSemanticsNode ?: return emptyList()
+    val out = mutableListOf<SemanticsNode>()
+    fun walk(node: SemanticsNode) {
+      val config = node.config
+      if (
+        config.getOrNull(SemanticsActions.OnClick) != null ||
+          config.getOrNull(SemanticsActions.SetProgress) != null ||
+          config.getOrNull(SemanticsActions.SetText) != null ||
+          config.getOrNull(SemanticsActions.RequestFocus) != null
+      ) {
+        out.add(node)
+      }
+      node.children.forEach(::walk)
+    }
+    walk(root)
+    return out
+  }
+
+  /** Every node that can take focus, in traversal order — the `tabIndex` addressing space. */
+  @OptIn(
+    androidx.compose.ui.InternalComposeUiApi::class,
+    androidx.compose.ui.ExperimentalComposeUiApi::class,
+  )
+  private fun focusableNodes(state: SceneState): List<SemanticsNode> {
+    val root =
+      state.scene.semanticsOwners.firstOrNull()?.unmergedRootSemanticsNode ?: return emptyList()
+    val out = mutableListOf<SemanticsNode>()
+    fun walk(node: SemanticsNode) {
+      if (node.config.getOrNull(SemanticsActions.RequestFocus) != null) out.add(node)
+      node.children.forEach(::walk)
+    }
+    walk(root)
+    return out
+  }
+
+  @OptIn(
+    androidx.compose.ui.InternalComposeUiApi::class,
+    androidx.compose.ui.ExperimentalComposeUiApi::class,
+  )
+  private fun focusedNode(state: SceneState): SemanticsNode? {
+    val root = state.scene.semanticsOwners.firstOrNull()?.unmergedRootSemanticsNode ?: return null
+    var found: SemanticsNode? = null
+    fun walk(node: SemanticsNode) {
+      if (found != null) return
+      if (node.config.getOrNull(SemanticsProperties.Focused) == true) {
+        found = node
+        return
+      }
+      node.children.forEach(::walk)
+    }
+    walk(root)
+    return found
+  }
+
+  /**
+   * Frames for the indication the pointer event started — a Material state layer crossfade, or a
+   * ripple — to reach its resting opacity before the capture.
+   *
+   * [INTERACTION_SETTLE_FRAMES] is `FocusController.SETTLE_MS` worth of frames, which is the window
+   * both standalone renderers give the same crossfade. A capture taken mid-fade is a picture of an
+   * animation rather than of a state, and would differ from the baked PNG by however much of the
+   * fade each lane happened to catch.
+   */
+  @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+  private fun settleInteraction(state: SceneState) {
+    repeat(INTERACTION_SETTLE_FRAMES) {
+      state.scene.render(nanoTime = state.nextVirtualFrameNanos())
+    }
+  }
+
+  /**
    * Measures the tallest vertically-scrollable node in [scene] and how far its composed content
    * reaches, or null when nothing is vertically scrollable. Used by [runScrollSvgScenario] to size
    * the full-page render by *geometry* rather than the LazyList scroll-range estimate (which is
@@ -1958,6 +2173,13 @@ class RenderEngine(
 
     /** Sub-pixel scroll movement that counts as "didn't move". */
     private const val SCROLL_SETTLED_EPSILON_PX: Float = 0.5f
+
+    /**
+     * Frames [driveStaticInteraction] lets a state-layer / ripple crossfade run for before the
+     * capture — `FocusController.SETTLE_MS` (250 ms) at [FRAME_INTERVAL_NANOS], the same window
+     * both standalone renderers give it.
+     */
+    private const val INTERACTION_SETTLE_FRAMES: Int = 15
 
     /**
      * Frames [driveStaticScrollToEnd] lets an animated `ScrollBy` run for before re-reading the

@@ -515,13 +515,10 @@ data class PreviewManifestEntry(
     val previewParameterProviderClassName =
       previewParameterProviderClassName ?: p?.previewParameterProviderClassName
     val previewParameterLimit = previewParameterLimit ?: p?.previewParameterLimit ?: Int.MAX_VALUE
-    // An all-unparseable seed set yields an empty map, which is "no seed" rather than "seed
-    // nothing" — `takeIf` keeps it null so the router forwards the inbound token untouched.
-    val bakedOverrides =
-      overrides
-        ?.toNamedOverrides()
-        ?.takeIf { it.isNotEmpty() }
-        ?.let { PreviewOverrides(namedOverrides = it) }
+    // Seeds AND the harness interaction, in one shared translation — see `toPreviewOverrides`
+    // for why that function has exactly one home. Null when the variant asks for nothing this bag
+    // can carry, so the router forwards the inbound token untouched.
+    val bakedOverrides = overrides?.toPreviewOverrides()
     return ResolvedRenderParams(
       widthPx = widthPx,
       heightPx = heightPx,

@@ -786,6 +786,41 @@ class RenderEngine(
               }
             }
 
+            // `@OverrideVariant(interaction = Hovered)`: move a mouse onto the target and let its
+            // state layer settle, for exactly the reason the scroll drive above runs here — the
+            // PNG, the semantics / layout trees and the `compose/figma-svg` built from them all
+            // read the composition as it stands at this point, so a missing drive publishes a
+            // hovered sticker that is byte-identical to its resting sibling (issue #4639).
+            //
+            // `driveHoverPreview` is `:renderer-android`'s, not a copy: the index has to name the
+            // same node on both lanes or the two pictures of "hover the second chip" differ.
+            environment.staticHover?.let { hoverIndex ->
+              trace.section("compose:hover") {
+                ee.schimke.composeai.renderer.driveHoverPreview(rule, hoverIndex)
+              }
+            }
+
+            // `@OverrideVariant(interaction = Focused | Pressed)`, and every other daemon caller of
+            // `renderNow.overrides.focus`. The connector's `FocusOverrideExtension` supplies the
+            // half that has to happen inside composition — the `LocalInputModeManager` flip — but
+            // its `moveFocus` walk does not land in a daemon render, so the host addresses the
+            // target instead. See `driveFocusPreview`.
+            //
+            // A direction-addressed override is a traversal script rather than a target this can
+            // name, so it is left to the extension exactly as before.
+            spec.overrides
+              ?.focus
+              ?.takeIf { it.direction == null }
+              ?.let { focus ->
+                trace.section("compose:focus") {
+                  ee.schimke.composeai.renderer.driveFocusPreview(
+                    rule = rule,
+                    tabIndex = focus.tabIndex ?: 0,
+                    pressed = focus.pressed,
+                  )
+                }
+              }
+
             outputFile.parentFile?.mkdirs()
             // `applyDeviceCrop = true` is what produces the circular alpha mask Roborazzi paints
             // over the captured bitmap; the `round` resource qualifier set above only affects
@@ -2269,6 +2304,19 @@ class RenderEngine(
      * with motion enabled.
      */
     val staticScroll: ScrollCaptureDto?,
+    /**
+     * `@OverrideVariant(interaction = Hovered)` — the interactive-node index this render owes a
+     * mouse-hover before it captures, resolved from the preview index (see
+     * [PreviewIndex.staticHoverFor]).
+     *
+     * Hover is the one interaction with nothing on the wire to carry it. Focus and press ride
+     * `spec.overrides.focus`, which exists because the connector's `FocusOverrideExtension` has an
+     * in-composition half to perform (the `LocalInputModeManager` flip); a hover has no such half,
+     * so the intent has no reason to be in the override bag and is read off the index instead.
+     * Resolved here beside [staticScroll] for symmetry — unlike the scroll it carries no
+     * composition local, so it could equally be read at the drive site.
+     */
+    val staticHover: Int?,
     val sizeOverrides: PreviewOverrides?,
     val sandboxWidthPx: Int,
     val sandboxHeightPx: Int,
@@ -2300,6 +2348,7 @@ class RenderEngine(
     // `RobolectricRenderTest`, which reads the same flag off the preview's captures and wraps
     // `setContent` in the provider.
     val staticScroll = spec.previewId?.let { loadPreviewIndexLazily().staticScrollFor(it) }
+    val staticHover = spec.previewId?.let { loadPreviewIndexLazily().staticHoverFor(it) }
     val wearReduceMotionLocal =
       if (flattenWearScroll || staticScroll?.reduceMotion == true)
         ee.schimke.composeai.renderer.WearReduceMotionLocal.get(classLoader)
@@ -2361,6 +2410,7 @@ class RenderEngine(
       flattenWearScroll = flattenWearScroll,
       wearReduceMotionLocal = wearReduceMotionLocal,
       staticScroll = staticScroll,
+      staticHover = staticHover,
       sizeOverrides = sizeOverrides,
       sandboxWidthPx = sandboxWidthPx,
       sandboxHeightPx = sandboxHeightPx,

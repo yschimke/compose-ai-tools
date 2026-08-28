@@ -4,6 +4,7 @@ import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.WallpaperOverride
 import ee.schimke.composeai.data.overrides.OverrideSeed
 import ee.schimke.composeai.data.overrides.OverrideSeedKind
+import ee.schimke.composeai.data.overrides.OverrideVariantInteraction
 import ee.schimke.composeai.data.overrides.OverrideVariantSpec
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import java.io.ByteArrayInputStream
@@ -157,6 +158,104 @@ class OverrideIntegrationTest {
       assertNotEquals("base and variant SVGs must not collide", baseSvg, variantSvg)
     } finally {
       host.shutdown()
+    }
+  }
+
+  /**
+   * Issue #4639 — a `_VARIANT_hovered` / `_VARIANT_pressed` preview must export the state it names,
+   * not the resting one.
+   *
+   * The seed half of an `@OverrideVariant` reaches the composition as data (#4638). An interaction
+   * does not: it is something the render **host** has to do to the scene, and the daemon's
+   * one-frame-per-id path did nothing at all — so every published catalog's hovered / focused /
+   * pressed vectors were byte-identical to their base beside a correct PNG.
+   *
+   * [InteractionStateSquare] paints red / blue / green off the interaction source it hands
+   * `Modifier.clickable`, so these assertions fail unless a real pointer event reached that source.
+   * Driven through [PreviewManifestRouter] — the production lane on this backend — so the whole
+   * chain is under test: manifest entry → `toPreviewOverrides` → routed payload → engine drive.
+   */
+  @Test
+  fun interactionVariantsExportTheStateTheyName() {
+    val outputDir = tempFolder.newFolder("renders-interaction-variants")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val previewsJson = tempFolder.newFile("previews-interaction.json")
+    val baseId = "InteractionSquare_Light"
+    val hoveredId = "InteractionSquare_Light_VARIANT_hovered"
+    val focusedId = "InteractionSquare_Light_VARIANT_focused"
+    val pressedId = "InteractionSquare_Light_VARIANT_pressed"
+    // `staticHoverFor` reads the hover intent off the preview index, so the engine needs one on
+    // disk — the same sysprop the gradle plugin sets on a production daemon JVM.
+    previewsJson.writeText(
+      """
+      {"previews":[
+        {"id":"$baseId","functionName":"InteractionStateSquare",
+         "className":"ee.schimke.composeai.daemon.RedFixturePreviewsKt"},
+        {"id":"$hoveredId","functionName":"InteractionStateSquare",
+         "className":"ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+         "overrides":{"name":"hovered","seeds":[],"interaction":"Hovered"}},
+        {"id":"$focusedId","functionName":"InteractionStateSquare",
+         "className":"ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+         "overrides":{"name":"focused","seeds":[],"interaction":"Focused"}},
+        {"id":"$pressedId","functionName":"InteractionStateSquare",
+         "className":"ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+         "overrides":{"name":"pressed","seeds":[],"interaction":"Pressed"}}
+      ]}
+      """
+        .trimIndent()
+    )
+    val previousPreviewsJson = System.getProperty(PreviewIndex.PREVIEWS_JSON_PATH_PROP)
+    System.setProperty(PreviewIndex.PREVIEWS_JSON_PATH_PROP, previewsJson.absolutePath)
+    fun entry(id: String, interaction: OverrideVariantInteraction? = null) =
+      PreviewManifestEntry(
+        id = id,
+        className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+        functionName = "InteractionStateSquare",
+        widthPx = 32,
+        heightPx = 32,
+        density = 1.0f,
+        outputBaseName = id,
+        overrides =
+          interaction?.let { OverrideVariantSpec(name = it.name.lowercase(), interaction = it) },
+      )
+    val host =
+      PreviewManifestRouter(
+        manifest =
+          PreviewManifest(
+            previews =
+              listOf(
+                entry(baseId),
+                entry(hoveredId, OverrideVariantInteraction.Hovered),
+                entry(focusedId, OverrideVariantInteraction.Focused),
+                entry(pressedId, OverrideVariantInteraction.Pressed),
+              )
+          ),
+        engine =
+          RenderEngine(
+            previewOverrideExtensions =
+              PreviewOverrideExtensions(
+                listOf(PreviewOverridesPreviewOverrideExtension(), FocusPreviewOverrideExtension())
+              )
+          ),
+      )
+    host.start()
+    try {
+      for (id in listOf(baseId, hoveredId, focusedId, pressedId)) {
+        host.submit(RenderRequest.Render(payload = "previewId=$id"), timeoutMs = 60_000)
+      }
+      val dataDir = outputDir.parentFile!!.resolve("data")
+      fun svg(id: String) = dataDir.resolve(id).resolve("compose-figma.svg").readText()
+      assertTrue("resting export must stay red", svg(baseId).contains("#EF5350"))
+      assertTrue("hovered export must be blue", svg(hoveredId).contains("#42A5F5"))
+      assertTrue("focused export must be orange", svg(focusedId).contains("#FFA726"))
+      assertTrue("pressed export must be green", svg(pressedId).contains("#66BB6A"))
+    } finally {
+      host.shutdown()
+      if (previousPreviewsJson == null) {
+        System.clearProperty(PreviewIndex.PREVIEWS_JSON_PATH_PROP)
+      } else {
+        System.setProperty(PreviewIndex.PREVIEWS_JSON_PATH_PROP, previousPreviewsJson)
+      }
     }
   }
 

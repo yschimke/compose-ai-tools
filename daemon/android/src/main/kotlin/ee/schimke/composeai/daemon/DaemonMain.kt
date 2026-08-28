@@ -795,11 +795,7 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
   // inbound live `renderNow.overrides` is layered OVER this in
   // `RobolectricHost.reshapeRenderPayload`
   // so live wins per key; the baked seed applies even with zero live overrides.
-  val bakedOverrides =
-    info.overrides
-      ?.toNamedOverrides()
-      ?.takeIf { it.isNotEmpty() }
-      ?.let { ee.schimke.composeai.daemon.protocol.PreviewOverrides(namedOverrides = it) }
+  val bakedOverrides = info.overrides?.toPreviewOverrides()
   val defaults =
     RenderSpec(
       previewId = info.id,
