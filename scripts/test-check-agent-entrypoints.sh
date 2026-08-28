@@ -107,6 +107,22 @@ d="$tmp/fenced-import"; make_good "$d"
 printf 'Put this at the top of the file:\n\n```\n@AGENTS.md\n```\n' > "$d/CLAUDE.md"
 check "an @AGENTS.md inside a fence is not accepted as an import" 1 "$(run "$d")"
 
+# A literal ~~~ inside a backtick fence does NOT close it. Toggling on either
+# marker without remembering the opener re-opened the file mid-block, so the
+# `@AGENTS.md` on the next line — still fenced, still inert — certified as an
+# import.
+d="$tmp/mixed-fence"; make_good "$d"
+printf 'Example:\n\n```\n~~~\n@AGENTS.md\n```\n' > "$d/CLAUDE.md"
+check "a ~~~ inside a backtick fence does not re-open the file" 1 "$(run "$d")"
+
+# The import regex must keep its literal dots. `awk -v re=...` consumes C string
+# escapes, so `\.` arrives as a wildcard and a pointer that names no real file
+# passes the gate. The regex goes to grep -E and nowhere else.
+d="$tmp/wildcard-dots"; make_good "$d"
+printf '@xAGENTSymd\n' > "$d/CLAUDE.md"
+printf '@xAGENTSymd\n' > "$d/GEMINI.md"
+check "a pointer matching only via wildcarded dots is rejected" 1 "$(run "$d")"
+
 d="$tmp/no-copilot"; make_good "$d"; rm "$d/.github/copilot-instructions.md"
 check "missing copilot-instructions.md is rejected" 1 "$(run "$d")"
 

@@ -130,17 +130,50 @@ fi
 
 # ----------------------------------------------------------------- 4 + 5. entrypoints
 #
-# Does <file> carry a live <regex> import — one on its own line, outside every
-# fenced code block? Fences toggle on a line whose first non-space characters are
-# ``` or ~~~, which is how both CommonMark and every generator in this repo write
-# them.
-import_line_outside_code() {
-  awk -v re="$2" '
-    /^[[:space:]]*(```|~~~)/ { fence = 1 - fence; next }
-    fence { next }
-    $0 ~ re { found = 1 }
-    END { exit found ? 0 : 1 }
+# Print <file> with every fenced code block removed, so the import matcher below
+# sees only lines an agent would actually act on.
+#
+# The fence state tracks the OPENING delimiter, not just "a fence marker seen".
+# CommonMark closes a fence only on the same character, at least as long as the
+# opener, with nothing after it — so a literal ~~~ line inside a ``` block is
+# content, and treating it as a close would re-open the file to the `@AGENTS.md`
+# on the next line. An inert pointer certified as reachable is the exact failure
+# this gate exists to prevent, so it is worth the extra state.
+strip_fenced_blocks() {
+  awk '
+    {
+      marker = ""
+      if (match($0, /^[ \t]*(`+|~+)/)) {
+        marker = substr($0, RSTART, RLENGTH)
+        gsub(/^[ \t]*/, "", marker)
+      }
+      len = length(marker)
+      if (len >= 3) {
+        ch = substr(marker, 1, 1)
+        if (!fence) {
+          # An opener may carry an info string ("```sh"); a closer may not.
+          fence = 1; fence_ch = ch; fence_len = len
+          next
+        }
+        rest = substr($0, RSTART + RLENGTH)
+        if (ch == fence_ch && len >= fence_len && rest ~ /^[ \t]*$/) {
+          fence = 0
+          next
+        }
+      }
+      if (!fence) print
+    }
   ' "$1"
+}
+
+# Does <file> carry a live <regex> import — one on its own line, outside every
+# fenced code block?
+#
+# The regex is handed to `grep -E`, never to `awk -v`: awk processes C string
+# escapes in a -v assignment, so `\.` arrives as a bare `.` — a wildcard — and
+# `@xAGENTSymd` would certify as an import. One ERE, one engine.
+import_line_outside_code() {
+  strip_fenced_blocks "$1" | grep -Eq "$2"
 }
 
 # check_import <label> <file> <regex> <human-readable mechanism>
