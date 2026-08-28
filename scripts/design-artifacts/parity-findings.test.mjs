@@ -183,3 +183,58 @@ test("a missing report path costs the link, not the verdict", () => {
   assert.equal(scoped.reportUrl, undefined);
   assert.equal(scoped.findings[0].message, "padding drifted");
 });
+
+test("a run publishing a schema this driver does not know is dropped, not relabelled", () => {
+  // The join REWRITES a run's records and republishes them under FINDINGS_SCHEMA. An external
+  // caller runs a release-pinned driver, so a producer that has moved on would otherwise have a
+  // v2's set semantics restamped as trusted v1 by a driver too old to know the difference.
+  const { document, warnings } = build({
+    runFindings: { ...runFindings, schema: "compose-preview-parity-findings/v2" },
+  });
+  assert.equal(document, null);
+  assert.match(warnings[0], /v2.*not compose-preview-parity-findings\/v1/);
+});
+
+test("a run that stamps no schema at all still publishes", () => {
+  // The first producer to ship this file predates the field; absent is not a mismatch.
+  const { previews } = build({ runFindings: { previews: runFindings.previews } }).document;
+  const set0 = previews["button-filled__ideal__default__light"][0];
+  assert.equal(set0.findings[0].message, "padding drifted");
+});
+
+test("a structurally malformed run.json drops the panel rather than throwing", () => {
+  // The emitter runs under `set -e`: a `for...of` over a non-array would cost the catalog its
+  // render over an optional enhancement.
+  const { document, warnings } = build({
+    runManifest: { entries: { code: "ui/Button.kt#Filled" } },
+  });
+  assert.equal(document, null);
+  assert.match(warnings[0], /entries are not a list/);
+});
+
+test("a code handle named after an inherited member is a lookup miss, not a crash", () => {
+  // `previews.constructor` on a plain JSON object resolves to Object's constructor, and
+  // `(previews[id] ??= []).push(...)` would then throw on a perfectly valid catalog route id.
+  const proto = [
+    {
+      id: "constructor-0",
+      previewId: "constructor",
+      source: { attributes: { code: "toString" } },
+    },
+  ];
+  const { document } = build({
+    references: proto,
+    runManifest: { entries: [{ code: "toString", reportPath: "toString/report.html" }] },
+    runFindings: { previews: { toString: [set("drifted")] } },
+  });
+  assert.deepEqual(Object.keys(document.previews), ["constructor"]);
+  assert.equal(document.previews.constructor[0].findings[0].message, "drifted");
+});
+
+test("a code handle that only INHERITS from the run's map publishes nothing", () => {
+  const { document } = build({
+    runManifest: { entries: [{ code: "hasOwnProperty", reportPath: "x/report.html" }] },
+    runFindings: { previews: {} },
+  });
+  assert.equal(document, null);
+});

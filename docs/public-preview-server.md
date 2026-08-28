@@ -1978,7 +1978,10 @@ serves exactly as it did before the panel existed.
 A finding with no anchors keeps its sentence and is never offered as a control — no `tabindex`, no
 pointer affordance — because a promise of a highlight that cannot come is worse than plain text.
 Everything is fail-soft in the same way the reference and annotation manifests are: an unreadable
-record costs the reader that row, never the comparison. And nothing is drawn on a **pinned**
+record costs the reader that row, never the comparison — and a run that publishes a schema the
+publishing driver does not know drops the panel outright rather than relabelling its records as
+v1, because the join rewrites what it republishes and an external caller runs a release-pinned
+driver that can be older than the producer. And nothing is drawn on a **pinned**
 revision, because a finding's anchors are bounds in today's render and its prose is a claim about
 today's code.
 
