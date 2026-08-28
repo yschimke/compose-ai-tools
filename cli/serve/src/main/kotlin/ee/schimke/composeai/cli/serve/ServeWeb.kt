@@ -323,6 +323,17 @@ object ServeWeb {
     val pinned: String? = null,
     val revisions: List<ServeCatalogRevision.Revision> = emptyList(),
     val repo: String? = null,
+    /**
+     * The delivery-branch commit the page is being assembled **from** — the generation every frame
+     * URL on it is scoped to ([ServeCacheGeneration]). Null for a session with no delivery branch,
+     * which is the same set that gets no revision surface at all.
+     *
+     * It rides here rather than as a parameter of its own because a page's pin and its generation
+     * are one question — *which publish is this page about* — and every page that draws a frame
+     * already has to answer it. Keeping them apart is how a page would end up writing a pin on the
+     * `<img>` and a generation on the `data-` twin beside it.
+     */
+    val generation: String? = null,
   ) {
     /** Nothing to say: no history to offer and no pin to announce. */
     val isEmpty: Boolean
@@ -508,6 +519,22 @@ object ServeWeb {
       else -> "$link&$param"
     }
   }
+
+  /**
+   * The query every **published frame URL** on a page carries: the page's own query, plus the
+   * publish that page is about.
+   *
+   * One helper rather than a `withPin` here and a `scope` there, because the two are alternatives
+   * and choosing wrongly is silent. A pinned page's frames take the pin: the reader asked for that
+   * publish, and [ServeCacheGeneration] would only restate what `at=` already fixes — with a second
+   * sha to disagree with the first. An unpinned page's frames take its generation, which is what
+   * stops a browser pairing this page's verdict with the next publish's pixels (issue #4695).
+   *
+   * Never applied to a *page* link. See [ServeCacheGeneration.scope].
+   */
+  private fun assetQuery(query: String, revisions: CatalogRevisions): String =
+    if (revisions.pinned != null) withPin(query, revisions.pinned)
+    else ServeCacheGeneration.scope(query, revisions.generation)
 
   /** Canonical source repo, used for the "source" / branch / workflow links. */
   private const val SOURCE_REPO = "yschimke/compose-ai-tools"
@@ -9250,12 +9277,25 @@ ${captureControlsHtml().prependIndent("          ")}
      * page's RSS alternate. Empty when the server runs with the feed lane off. See [siteFooter].
      */
     changelogHref: String = "",
+    /**
+     * The delivery-branch commit this wall was assembled from, scoping every published frame it
+     * draws ([ServeCacheGeneration]). Null for a session with no delivery branch.
+     *
+     * The wall carries per-row match scores, which are the same kind of claim the focused
+     * comparison's verdict is: a number measured against one publish's pixels. Leaving the wall
+     * unscoped while the page it links to is scoped would leave the two disagreeing about which
+     * frame a score describes.
+     */
+    generation: String? = null,
   ): String {
     // The session id links may carry. Null on a rooted site (and for the default session): the
     // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
     // per-catalog localStorage entries and the dark-first lookup, which a site still needs.
     val linkSessionId = if (sessionInOrigin) null else sessionId
     val q = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
+    // The frame query: the page query plus the publish this wall is about. This page takes no pin
+    // — it is always the current catalog — so the generation is the whole of it.
+    val assetQ = ServeCacheGeneration.scope(q, generation)
     val navSuffix =
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     val heading = catalogHeading(displayTitle, moduleLabel)
@@ -9330,8 +9370,12 @@ ${captureControlsHtml().prependIndent("          ")}
     val previewIdsByCard =
       previews.groupBy(::comparisonCardKey).mapValues { (_, values) -> values.map { it.id } }
 
+    // Only the raster is generation-scoped. The vector and player products are made for the
+    // request and served `no-store`, so they are never the cached half of a mismatched pair — and
+    // the render lane ignores a `gen=` on them for exactly that reason.
     fun path(preview: ServePreview, extension: String): String =
-      "$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.$extension$q"
+      "$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.$extension" +
+        (if (extension == "png") assetQ else q)
 
     fun attrs(
       kind: String,
@@ -9383,7 +9427,7 @@ ${captureControlsHtml().prependIndent("          ")}
 
     fun referenceAttrs(theme: String, preview: ServePreview?): String {
       val reference = preview?.let { referencesFor(it.id).firstOrNull() } ?: return ""
-      val raster = "$basePath/reference/${WebEscaping.urlEncodeSegment(reference.id)}.png$q"
+      val raster = "$basePath/reference/${WebEscaping.urlEncodeSegment(reference.id)}.png$assetQ"
       val detail = detailHref(preview, reference)
       // The published score rides along with the pair it describes, per variant, because the pair
       // is per variant: a row's light and dark references are two independently-exported drawings
@@ -10000,8 +10044,11 @@ $rows
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     val heading = catalogHeading(displayTitle, moduleLabel)
     // Both panels take the pin, or neither does. A pinned render scored against the current mock
-    // would be a comparison across time rather than between the two sides.
-    val assetQuery = withPin(q, revisions.pinned)
+    // would be a comparison across time rather than between the two sides. Unpinned, both take the
+    // page's generation for the same reason one step removed: the verdict below was measured on
+    // this publish's frame, so a panel that quietly refreshed into the next publish's would put a
+    // claim about padding over pixels nobody measured ([ServeCacheGeneration]).
+    val assetQuery = assetQuery(q, revisions)
     val actual = "$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.png$assetQuery"
     val raster = "$basePath/reference/${WebEscaping.urlEncodeSegment(reference.id)}.png$assetQuery"
     // The ground all three panels sit on. Both sides get the SAME one on purpose: the diff panel is
@@ -11196,6 +11243,15 @@ $cards
      * page's RSS alternate. Empty when the server runs with the feed lane off. See [siteFooter].
      */
     changelogHref: String = "",
+    /**
+     * The delivery-branch commit this dashboard was assembled from, scoping the render/reference
+     * pair each row hands the in-browser acceptance engine ([ServeCacheGeneration]).
+     *
+     * This is the surface where a mismatched pair is least visible and most consequential: the
+     * engine decodes both images and reports a percentage, and nothing on the page shows the reader
+     * which frame the number came from. Scoping both halves keeps a score about one publish.
+     */
+    generation: String? = null,
   ): String {
     // The session id links may carry. Null on a rooted site (and for the default session): the
     // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
@@ -11203,6 +11259,10 @@ $cards
     val linkSessionId = if (sessionInOrigin) null else sessionId
     fun esc(s: String) = WebEscaping.htmlEscape(s)
     val q = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
+    // The frame query: the page query plus the publish this dashboard is about. Both halves of
+    // every scored pair take it, or neither does — a scored pair split across two publishes is a
+    // number about nothing.
+    val assetQ = ServeCacheGeneration.scope(q, generation)
     val navSuffix =
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     val heading = catalogHeading(displayTitle, moduleLabel)
@@ -11523,9 +11583,9 @@ $cards
               component.referenceId
                 ?.let { referenceId ->
                   val actualUrl =
-                    "$basePath/render/${WebEscaping.urlEncodeSegment(component.previewId)}.png$q"
+                    "$basePath/render/${WebEscaping.urlEncodeSegment(component.previewId)}.png$assetQ"
                   val referenceUrl =
-                    "$basePath/reference/${WebEscaping.urlEncodeSegment(referenceId)}.png$q"
+                    "$basePath/reference/${WebEscaping.urlEncodeSegment(referenceId)}.png$assetQ"
                   " data-parity-comparison data-reference=\"${esc(referenceUrl)}\"" +
                     " data-actual=\"${esc(actualUrl)}\" data-name=\"${esc(component.name)}\"" +
                     " data-review=\"${esc(previewHref(component.previewId))}\""
@@ -12334,7 +12394,7 @@ ${scriptTag("known-differences.js")}
     // genuinely has a historical answer. Comparing this publish's render against this publish's
     // spec is also the comparison a pinned page is *for*.
     val specRasterUrl = designReference?.let {
-      "$basePath/reference/${WebEscaping.urlEncodeSegment(it.id)}.png${withPin(q, pinned)}"
+      "$basePath/reference/${WebEscaping.urlEncodeSegment(it.id)}.png${assetQuery(q, revisions)}"
     }
     // The focused Reference / Diff / Actual page for this exact mapping — the same link the
     // comparison grid offers, so the picker's neighbour steps from "look at the spec" to "diff it".
@@ -13623,6 +13683,13 @@ ${scriptTag("known-differences.js")}
     val revisionBanner = revisionBannerHtml(revisions, revisionHref)
     val pinnedAttr =
       revisions.pinned?.let { " data-pinned-at=\"${WebEscaping.htmlEscape(it)}\"" }.orEmpty()
+    // The publish this page was assembled from. The viewer builds its own frame URL from the
+    // controls, so the coupling every server-written frame URL carries has to reach it as data —
+    // otherwise this one page keeps the gap the parameter exists to close ([ServeCacheGeneration]).
+    // Emitted alongside the pin and not instead of it: the script decides between them, on the same
+    // rule [assetQuery] uses.
+    val generationAttr =
+      revisions.generation?.let { " data-generation=\"${WebEscaping.htmlEscape(it)}\"" }.orEmpty()
     // The axes the URL named and this page withheld, for `hydrateFromUrl` to defer on. Sorted so
     // the markup is stable across requests; absent entirely on the ordinary page.
     //
@@ -13761,7 +13828,7 @@ ${scriptTag("known-differences.js")}
         </span>
       </div>
       $historyInlineHtml
-      <div class="cp-viewer"$bgThemeAttr$alwaysDarkAttr$irReplayAttr$replayThemesAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY" data-fold-scope="${foldStorageScope(sessionId, basePath)}"$unseededAttr$wasmAttr$rcAttr$historyAttrs$pinnedAttr>
+      <div class="cp-viewer"$bgThemeAttr$alwaysDarkAttr$irReplayAttr$replayThemesAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY" data-fold-scope="${foldStorageScope(sessionId, basePath)}"$unseededAttr$wasmAttr$rcAttr$historyAttrs$pinnedAttr$generationAttr>
         $navDrawer
         <div class="cp-stage"><cp-backend-badge class="cp-backend" id="cp-backend" role="status" aria-live="polite"></cp-backend-badge><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$motionImg$motionPlayer$sourcePanelHtml$specCompare$inspectLayerHtml$stageLiveHint<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         $inspectLegendHtml

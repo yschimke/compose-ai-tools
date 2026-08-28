@@ -506,6 +506,55 @@ revision list is also a tail, not an archive — about the last dozen publishes 
 that window still resolves, because what decides it is whether the branch still answers, not whether
 the sha is still on the page.
 
+## One cache generation: `gen=<sha>`
+
+A permalink is a **reader** asking for an older publish. The same branch history answers a second,
+quieter question the server has to ask itself: *is the frame this page is drawing the frame this page
+was assembled from?*
+
+It was not always. A comparison page's HTML is served `public, max-age=60, stale-while-revalidate=300`
+and the render it points at was served `public, max-age=300, stale-while-revalidate=3600` — two
+independent lifetimes over content that is regenerated in place, so after a catalog refresh a browser
+or a CDN could hold one generation's HTML beside another generation's pixels. That was tolerable while
+the only thing riding on the pairing was the annotation redline: boxes one publish out of date are a
+reading aid slightly out of date. It stopped being tolerable when the page started carrying a parity
+**verdict** — "padding is 24 where the spec says 16" drawn over the wrong frame is a false claim with
+a highlight pointing at it (issue #4695) — and, worse, a tag selection persists the index's bounds as
+an acceptance baseline, so bounds measured on another frame survive into a record that later reports
+an unchanged element as moved.
+
+So every published frame URL a catalog page writes now names the publish that page was assembled from:
+`…/render/<id>.png?gen=<sha>`, on the comparison page, the comparison wall, the viewer, the parity
+dashboard's scored pairs, and the render URL the issue reporter embeds. The pairing is then decided
+inside the asset lane rather than by a race between two `max-age`s:
+
+- **The generation on disk** ⇒ the ordinary browse, and the URL is now content-addressed — a
+  republish moves the page's generation and therefore the URL — so the response is `immutable` on the
+  same terms as `/hero/` and `?thumb=` rather than merely short-lived.
+- **Any other generation** ⇒ the page asking is a publish behind, and the frame it needs is that
+  publish's. The delivery branch still has it, so this resolves through the pinned lane above — the
+  same fetch, the same bounds, the same rules about what a sha may name. A generation the branch
+  cannot answer is a `404`, never today's pixels.
+
+`gen=` and `at=` are deliberately two parameters over one mechanism, because they claim different
+things. `at=` is a request: a person asked for an older publish, the page announces the pin, and the
+redline and the verdict are withheld because they describe today's render. `gen=` is a coherence note
+the server made to itself, invisible to the reader, withholding nothing — and it is written only onto
+**asset** URLs, never onto a `/p/` or `/compare/` link somebody might copy, where it would read as a
+permalink that is not one. A pinned page writes the pin and no generation: the pin already fixes which
+publish every frame comes from, and a second sha beside it is only something to disagree with.
+
+Where a pin **refuses** a URL that also asks for a product made to order (`?at=…&fontScale=1.5`, or
+`.svg` / `.slots` / `.a11y` / `.annotations` / `.rc`), a generation **steps aside** for one. Those
+responses are `no-store` and reflect no published bytes at all, so there is no pair for a cache to
+hold wrongly and nothing to reconcile — and refusing would cost the one interaction this coupling must
+not: turning a knob on a page that a refresh overtook. A `gen=` that is not a sha is a `400`, for the
+same reason `?at=main` is.
+
+Sessions with no delivery branch — an uploaded bundle, a local project, a daemon-backed module —
+write no generation. They have no published-per-generation bytes to reconcile and no branch to read an
+older generation from, so their frames stay exactly where they were.
+
 ## Filtering by what a preview *calls* — `uses:` (Dev mode)
 
 The landing page's filter box matches a card's label and its id. Those are names the catalog chose,

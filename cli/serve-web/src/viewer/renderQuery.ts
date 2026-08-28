@@ -197,3 +197,28 @@ export function sizeOverrides(
     }
     return overrides;
 }
+
+/**
+ * Whether the render URL should carry the page's **cache generation** (`gen=<sha>`).
+ *
+ * The viewer builds its own frame URL from the controls, so the coupling the server writes onto
+ * every other surface has to be reproduced here or this one page keeps the gap: a viewer left open
+ * across a catalog refresh would re-fetch the *current* frame while still showing the published
+ * typography, score and redline measured on the one it was served with.
+ *
+ * Three conditions, and each of them is the parameter meaning what it says:
+ * - there is a generation to name — a session with no delivery branch has none, and the render lane
+ *   has nothing to answer it with;
+ * - the page is not pinned — `at=` already fixes which publish every frame comes from, and a second
+ *   sha on the same URL is only something to disagree with;
+ * - nothing has been overridden. An override routes to the daemon for a render made to order: it
+ *   reflects no published bytes, it is served `no-store`, and it is not the frame any published
+ *   measurement describes. Naming a generation there would claim a coherence that does not exist.
+ */
+export function generationEmitted(
+    generation: string,
+    pinned: string,
+    overridden: boolean,
+): boolean {
+    return !!generation && !pinned && !overridden;
+}
