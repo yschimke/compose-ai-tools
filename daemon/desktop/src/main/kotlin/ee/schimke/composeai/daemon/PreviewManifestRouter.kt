@@ -2,6 +2,8 @@ package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.devices.frameDpOverriddenBy
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.data.overrides.OverrideVariantSpec
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.Serializable
@@ -209,7 +211,14 @@ class PreviewManifestRouter(
       inbound["inspectionMode"]?.let { append("inspectionMode=").append(it).append(';') }
       inbound["slotMode"]?.let { append("slotMode=").append(it).append(';') }
       inbound["clearBackground"]?.let { append("clearBackground=").append(it).append(';') }
-      inbound["overrides"]?.let { append("overrides=").append(it).append(';') }
+      // A synthetic `_VARIANT_` preview carries its `@OverrideVariant` seed on the manifest entry,
+      // not on the wire — the inbound payload for a batch render is `previewId=<id>` and nothing
+      // else. Merge the two rather than forwarding the inbound token alone, or the baked seed is
+      // dropped and every variant composes its base state (issue #3616, and yschimke/m3-catalog#201
+      // for the desktop half that this router lane kept reproducing).
+      overridesTokenFor(inbound["overrides"], resolved.overrides)?.let {
+        append("overrides=").append(it).append(';')
+      }
       // `@PreviewWrapper(SomeProvider::class)` FQN sourced from `previews.json` (the
       // gradle plugin's `extractWrapperFqn` reads it off the class-file annotation tables
       // — the upstream annotation is `AnnotationRetention.BINARY` and invisible to
@@ -280,6 +289,33 @@ class PreviewManifestRouter(
     return map
   }
 
+  /**
+   * Layers a live request override over the synthetic preview's baked `@OverrideVariant` seed.
+   *
+   * The inbound token is the sparse per-call bag a knob edit sends; the baked one is the whole
+   * variant. Layering (rather than picking a side) is what lets a served `?knob.size=l` edit of a
+   * `_VARIANT_disabled` sticker keep the disabled seed it did not touch — the same merge
+   * `DesktopHost.specFromPreviewIdPayload` performs on the resolver lane.
+   */
+  private fun overridesTokenFor(inboundToken: String?, baseOverrides: PreviewOverrides?): String? {
+    if (baseOverrides == null) return inboundToken
+    val inbound = inboundToken?.let {
+      runCatching {
+        json.decodeFromString(
+          PreviewOverrides.serializer(),
+          String(java.util.Base64.getUrlDecoder().decode(it), Charsets.UTF_8),
+        )
+      }
+        .getOrNull()
+    }
+    val merged = inbound.layeredOver(baseOverrides) ?: return inboundToken
+    return java.util.Base64.getUrlEncoder()
+      .withoutPadding()
+      .encodeToString(
+        json.encodeToString(PreviewOverrides.serializer(), merged).toByteArray(Charsets.UTF_8)
+      )
+  }
+
   companion object {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -308,7 +344,7 @@ class PreviewManifestRouter(
      * which collapses cleanly into the host's existing "no resolver match → throw
      * UnsupportedOperationException" path.
      */
-    private fun manifestPreviewSpecResolver(
+    internal fun manifestPreviewSpecResolver(
       byId: Map<String, PreviewManifestEntry>
     ): (String) -> RenderSpec? = { previewId ->
       // Row-addressed ids (issue #3749) resolve here too, so a held session — `interactive/start`,
@@ -338,6 +374,10 @@ class PreviewManifestRouter(
           // follow-up).
           uiMode = if ((resolved.uiMode and 0x30) == 0x20) RenderSpec.SpecUiMode.DARK else null,
           wrapperClassName = resolved.wrapperClassName,
+          // The baked `@OverrideVariant` seed, so a held interactive / recording session of a
+          // `_VARIANT_` id composes its own state. `DesktopHost.specFromPreviewIdPayload` layers
+          // any live per-call bag over this one.
+          overrides = resolved.overrides,
           previewParameterProviderClassName = resolved.previewParameterProviderClassName,
           previewParameterLimit = resolved.previewParameterLimit,
           previewParameterRow = split?.row,
@@ -384,6 +424,8 @@ data class PreviewManifestEntry(
    * the flat fields below.
    */
   val params: PreviewParamsEntry? = null,
+  /** Baked state seed for a synthetic `_VARIANT_` preview emitted by discovery. */
+  val overrides: OverrideVariantSpec? = null,
   val widthPx: Int? = null,
   val heightPx: Int? = null,
   val density: Float? = null,
@@ -473,6 +515,13 @@ data class PreviewManifestEntry(
     val previewParameterProviderClassName =
       previewParameterProviderClassName ?: p?.previewParameterProviderClassName
     val previewParameterLimit = previewParameterLimit ?: p?.previewParameterLimit ?: Int.MAX_VALUE
+    // An all-unparseable seed set yields an empty map, which is "no seed" rather than "seed
+    // nothing" — `takeIf` keeps it null so the router forwards the inbound token untouched.
+    val bakedOverrides =
+      overrides
+        ?.toNamedOverrides()
+        ?.takeIf { it.isNotEmpty() }
+        ?.let { PreviewOverrides(namedOverrides = it) }
     return ResolvedRenderParams(
       widthPx = widthPx,
       heightPx = heightPx,
@@ -484,6 +533,7 @@ data class PreviewManifestEntry(
       uiMode = uiMode,
       outputBaseName = outputBaseName ?: id,
       wrapperClassName = wrapperClassName,
+      overrides = bakedOverrides,
       kind = p?.kind,
       assetPath = p?.assetPath,
       wrapWidth = wrapWidth,
@@ -587,6 +637,8 @@ data class ResolvedRenderParams(
   val uiMode: Int = 0,
   val outputBaseName: String,
   val wrapperClassName: String? = null,
+  /** Baked state seed for a synthetic `_VARIANT_` preview. */
+  val overrides: PreviewOverrides? = null,
   val kind: String? = null,
   val assetPath: String? = null,
   /**
