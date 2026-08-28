@@ -1,8 +1,22 @@
 #!/usr/bin/env python3
-"""Resolve affected Gradle `test` tasks for a pull request.
+"""Resolve the affected Gradle verification tasks for a pull request.
 
 Prints `full`, `none`, or a space-separated task list. Any ambiguity fails
 open to `full`; non-PR callers should bypass this script and run the full suite.
+
+Emits `:<project>:test` and, where the project has one, `:<project>:checkKotlinAbi`.
+
+The ABI half is not decoration. Every module with a published surface wires
+`checkKotlinAbi` into `check` and says in a comment that a gate is only worth having
+if it runs — but this resolver named `test`, and `test` does not imply `check`, so the
+ABI gate never ran for the module whose sources changed. Three stale dumps reached
+main in a single day that way (#4673, #4685, #4716), each one red for every branch
+that merged it afterwards. A gate wired into a task nobody invokes is the thing those
+comments were trying to prevent.
+
+`checkKotlinAbi` is emitted per project rather than for all of them because naming a
+task a project does not have fails the entire invocation ("Cannot locate tasks that
+match ..."), not just that task — the same trap ci.yml documents for the iOS targets.
 """
 
 from __future__ import annotations
@@ -57,12 +71,18 @@ def resolve(files: list[str], config: dict, projects: list[dict], workspace: Pat
 
     affected = scope.reverse_closure(changed, projects)
     excluded = set(config.get("excludeProjects", []))
-    tasks = sorted(
-        f"{project['path']}:test" if project["path"] != ":" else ":test"
+    selected = [
+        project
         for project in projects
-        if project.get("hasTestTask")
-        and project.get("path") in affected
-        and project.get("path") not in excluded
+        if project.get("path") in affected and project.get("path") not in excluded
+    ]
+
+    def task(path: str, name: str) -> str:
+        return f"{path}:{name}" if path != ":" else f":{name}"
+
+    tasks = sorted(
+        [task(p["path"], "test") for p in selected if p.get("hasTestTask")]
+        + [task(p["path"], "checkKotlinAbi") for p in selected if p.get("hasAbiCheck")]
     )
     return " ".join(tasks) if tasks else "none"
 

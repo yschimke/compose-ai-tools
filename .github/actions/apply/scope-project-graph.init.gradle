@@ -48,6 +48,10 @@ if (outPath != null) {
         dir: p.projectDir.absolutePath,
         hasPreviewPlugin: hasPlugin,
         hasTestTask: p.tasks.findByName('test') != null,
+        // `checkKotlinAbi` exists only where a module opted into `abiValidation()`. The
+        // affected-tests resolver needs to know per project, because naming a task that a
+        // project does not have fails the whole Gradle invocation rather than that one task.
+        hasAbiCheck: p.tasks.findByName('checkKotlinAbi') != null,
         dependencies: deps.toList(),
       ])
     }
