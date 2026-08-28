@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { applyParallels } from "./apply-parallels.mjs";
+import { applyParallels, parallelIndex } from "./apply-parallels.mjs";
 
 const comp = (componentId, extra = {}) => ({
   componentId,
@@ -132,4 +132,74 @@ test("tolerates missing/empty groups and components without throwing", () => {
     0,
   );
   assert.equal(applyParallels({ components: [comp("X")] }, undefined), 0);
+});
+
+// --- parallelIndex, the map both stampers read ------------------------------------------------
+//
+// A WHOLLY deferred component never reaches `manifest.components` — the generator short-circuits it
+// into `deferred[]` — so `applyParallels` cannot see it and its declared counterpart was dropped,
+// on a catalog that publishes `compareWith` and whose whole point is the cross-system comparison.
+// The deferred records are attached after `applyParallels` runs, so they stamp from this index
+// instead; exporting it is what keeps the two from growing different ideas of the blank rule.
+
+test("indexes every component that declares a parallel", () => {
+  const index = parallelIndex({
+    groups: [
+      { components: [{ componentId: "Button", parallel: "Button/Filled" }] },
+      { components: [{ componentId: "Card", parallel: "TitleCard" }] },
+    ],
+  });
+  assert.equal(index.get("Button"), "Button/Filled");
+  assert.equal(index.get("Card"), "TitleCard");
+  assert.equal(index.size, 2);
+});
+
+test("applies the same blank and trim rules the stamper does", () => {
+  const index = parallelIndex({
+    groups: [
+      {
+        components: [
+          { componentId: "Blank", parallel: "" },
+          { componentId: "Spaces", parallel: "   " },
+          { componentId: "Padded", parallel: "  Button/Filled  " },
+          { componentId: "Absent" },
+          { componentId: "NotAString", parallel: 7 },
+        ],
+      },
+    ],
+  });
+  assert.equal(index.has("Blank"), false);
+  assert.equal(index.has("Spaces"), false);
+  assert.equal(index.get("Padded"), "Button/Filled");
+  assert.equal(index.has("Absent"), false);
+  assert.equal(index.has("NotAString"), false);
+});
+
+test("is the index applyParallels itself stamps from", () => {
+  // The property that makes exporting it worth anything: one reader, so a deferred record and a
+  // published component can never disagree about what a spec entry declares.
+  const spec = {
+    groups: [
+      {
+        components: [
+          { componentId: "Button", parallel: "  Button/Filled " },
+          { componentId: "Blank", parallel: "" },
+        ],
+      },
+    ],
+  };
+  const manifest = {
+    components: [{ componentId: "Button" }, { componentId: "Blank" }],
+  };
+  applyParallels(manifest, spec);
+  const index = parallelIndex(spec);
+  for (const component of manifest.components) {
+    assert.equal(component.parallel, index.get(component.componentId));
+  }
+});
+
+test("tolerates a spec with no groups at all", () => {
+  assert.equal(parallelIndex(undefined).size, 0);
+  assert.equal(parallelIndex({}).size, 0);
+  assert.equal(parallelIndex({ groups: [] }).size, 0);
 });
