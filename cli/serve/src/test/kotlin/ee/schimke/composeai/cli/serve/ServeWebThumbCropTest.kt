@@ -45,7 +45,7 @@ class ServeWebThumbCropTest {
     // shrink it on a narrow card) rather than a fixed height.
     assertTrue(
       html.contains(
-        "class=\"cp-crop\" style=\"--cp-crop-w-per-cap:1;--cp-crop-max-w:120px;aspect-ratio:120/48\""
+        "class=\"cp-crop\" style=\"--cp-crop-w-per-cap:1;--cp-crop-w-per-h:2.5;--cp-crop-max-w:120px;aspect-ratio:120/48\""
       ),
       "clip window sized to the box by aspect-ratio",
     )
@@ -80,7 +80,7 @@ class ServeWebThumbCropTest {
     val html = ServeWeb.homeIndexPage(listOf(system), token = "t", isPublic = true)
     assertTrue(
       html.contains(
-        "class=\"cp-crop\" style=\"--cp-crop-w-per-cap:1;--cp-crop-max-w:120px;aspect-ratio:120/48\""
+        "class=\"cp-crop\" style=\"--cp-crop-w-per-cap:1;--cp-crop-w-per-h:2.5;--cp-crop-max-w:120px;aspect-ratio:120/48\""
       ),
       "hero framed to its box",
     )
@@ -127,9 +127,14 @@ class ServeWebThumbCropTest {
     // 300 wide per 300 of cap = 1, ceiling 300px → min(300px, 1 * 240px) = 240px at the desktop
     // cap and min(300px, 1 * 200px) = 200px at the narrow one: the same ratio the plain <img>'s
     // 240 -> 200 `max-height` drop applies.
+    //
+    // The two ratios DIFFER here — 1 against the largest edge, 3 against the height — because this
+    // is a content crop, whose cap axis is `max(box.w, box.h)`. That gap is why the front door's
+    // fixed-height hero well sizes on `--cp-crop-w-per-h`: reading the cap ratio there would have
+    // shrunk this landscape window to 196x65 in a well it already fits.
     assertTrue(
       html.contains(
-        "class=\"cp-crop\" style=\"--cp-crop-w-per-cap:1;--cp-crop-max-w:300px;aspect-ratio:240/80\""
+        "class=\"cp-crop\" style=\"--cp-crop-w-per-cap:1;--cp-crop-w-per-h:3;--cp-crop-max-w:300px;aspect-ratio:240/80\""
       ),
       "window width published as a ratio of the cap",
     )
@@ -149,9 +154,13 @@ class ServeWebThumbCropTest {
         basePath = "/wear-m3",
         thumbCrop = { gutter },
       )
+    // Both ratios, and here they are the SAME number — which is the invariant worth pinning: for a
+    // gutter crop the cap axis IS the height, so `--cp-crop-w-per-h` adds nothing. It is the
+    // content-crop case above (`--cp-crop-w-per-cap:1` against `--cp-crop-w-per-h:3`) where they
+    // part company, and a well that sizes on its own height has to read the second one.
     assertTrue(
-      html.contains("--cp-crop-w-per-cap:1.9762;--cp-crop-max-w:249px"),
-      "gutter window width published per cap PIXEL of height (249/126)",
+      html.contains("--cp-crop-w-per-cap:1.9762;--cp-crop-w-per-h:1.9762;--cp-crop-max-w:249px"),
+      "gutter window width published per cap PIXEL of height (249/126), the cap axis being height",
     )
   }
 
@@ -217,18 +226,25 @@ class ServeWebThumbCropTest {
     // narrow block, visibly short beside the prebaked hero beside it. Pinned here, next to the two
     // caps it has to agree with, because these three drifting apart is the whole bug.
     //
-    // 196px rather than 220px, and both halves are load-bearing:
-    //  - the row's CONTENT height, since `.cp-imgwrap` carries 12px of padding under the
-    //    border-box `*` rule; the row height itself would overflow the well by 12px each way and,
-    //    in the narrow block, would push the window UP from 200px;
-    //  - `--bleed` only, the capture-gutter window, because that is the one crop whose published
-    //    `--cp-crop-w-per-cap` is width per 1px of HEIGHT. A content crop's ratio is against its
-    //    largest edge, so a height handed to it shrinks a landscape window for nothing.
+    // 196px rather than 220px: the row's CONTENT height, since `.cp-imgwrap` carries 12px of
+    // padding under the border-box `*` rule. The row height itself would overflow the well by 12px
+    // each way and, in the narrow block, would push the window UP from 200px.
     assertTrue(
-      css.contains(".cp-syslist .cp-crop--bleed { --cp-thumb-cap: 196px; }"),
-      "a system-card gutter window tracks its row's content height, not the grid cap",
+      css.contains(
+        "width: min(var(--cp-crop-max-w, 100%), calc(var(--cp-crop-w-per-h, var(--cp-crop-w-per-cap, 9999)) * 196px)); }"
+      ),
+      "a system-card window sizes against the box's own height, capped at the well's 196px",
     )
-    // The padding that makes it 196 rather than 220 — if this moves, so must the cap above.
+    // NOT `--bleed`, and not `--cp-thumb-cap`. `natCapAxis` is the height for a gutter crop and
+    // the largest edge for a content one, and `clip` does not separate them either —
+    // `ServeBundleHost` clears it on a vector crop over a guttered render. So a landscape 300x100
+    // window carries `--bleed` with a largest-edge ratio, and sizing it off the well's height
+    // shrank it 240x80 -> 196x65 for nothing.
+    assertFalse(
+      css.contains(".cp-syslist .cp-crop--bleed { --cp-thumb-cap:"),
+      "--bleed is not a proxy for a height-capped crop",
+    )
+    // The padding that makes it 196 rather than 220 — if this moves, so must the number above.
     assertTrue(
       css.contains("background: var(--cp-surface); padding: 12px; }"),
       "the image well's padding, which the hero cap is derived from",
