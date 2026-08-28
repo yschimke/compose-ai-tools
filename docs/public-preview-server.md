@@ -544,12 +544,33 @@ the server made to itself, invisible to the reader, withholding nothing — and 
 permalink that is not one. A pinned page writes the pin and no generation: the pin already fixes which
 publish every frame comes from, and a second sha beside it is only something to disagree with.
 
-Where a pin **refuses** a URL that also asks for a product made to order (`?at=…&fontScale=1.5`, or
-`.svg` / `.slots` / `.a11y` / `.annotations` / `.rc`), a generation **steps aside** for one. Those
-responses are `no-store` and reflect no published bytes at all, so there is no pair for a cache to
-hold wrongly and nothing to reconcile — and refusing would cost the one interaction this coupling must
-not: turning a knob on a page that a refresh overtook. A `gen=` that is not a sha is a `400`, for the
-same reason `?at=main` is.
+Exactly one thing makes a stale generation **step aside**: a render made to order. An override, a
+scroll capture, a player selection, an exploded projection — the visitor asked for pixels that reflect
+no published bytes, the response is `no-store`, and there is nothing for a cache to pair wrongly.
+Refusing there would cost the one interaction this coupling must not: turning a knob on a page a
+refresh overtook.
+
+Everything else either answers for the generation named or **refuses with a `409`**, and the second
+half matters as much as the first. The products that *describe* a frame — the published tag index at
+`/tags/<id>`, and the `.annotations`, `.a11y` and `.slots` passes the redline and the element picker
+read — are measured against the catalog on disk, and the branch publishes no per-revision copy of
+them. Answering a stale generation with today's bounds would hand a page from one publish a
+measurement of another's, which is the record corruption the coupling exists to prevent, arriving
+through the door "step aside" would leave open: a tag selection persists those bounds as an
+acceptance baseline. So the picker fails closed and the page reloads. The catalog's staged
+`/rc-compare/` player rasters follow the same rule for the same reason — their mismatch percentages
+are baked into the cached wall.
+
+Two smaller places the parameter has to be honoured rather than merely accepted. The prebaked
+`?thumb=<hash>` fast path is downscaled from the catalog on disk, so it is *this* generation's by
+definition and sits ahead of the routing that would fetch another's; a stale `gen=` leaves the lane
+rather than being answered `200` and `immutable` from a generation the URL says it is not. And the
+render lane's reading of "made to order" is deliberately narrower than the pin's in one place: `mode=`
+presents the SVG export and does nothing whatever on the raster lane, while it is ordinary page state
+that a shared viewer link carries and the frame URL inherits — reading it as produced-on-demand there
+would opt the commonest shared link straight back out of the coupling.
+
+A `gen=` that is not a sha is a `400`, for the same reason `?at=main` is.
 
 Sessions with no delivery branch — an uploaded bundle, a local project, a daemon-backed module —
 write no generation. They have no published-per-generation bytes to reconcile and no branch to read an
