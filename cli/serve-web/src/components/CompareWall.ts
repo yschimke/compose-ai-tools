@@ -286,7 +286,14 @@ export class CompareWall extends LitElement {
         // changes which pair each row shows, so a row already dressed for the previous lane has to
         // be dressed again for this one.
         this.dressedRows = new Set();
-        this.applySearch();
+        // Reset BEFORE the filter pass, or that pass reads the previous run's set and chain and
+        // queues every visible row a second time — once here and once in the sorted loop below.
+        this.scoredRows = new Set();
+        this.scoreChain = Promise.resolve();
+        // `schedule: false`: this pass is not the one that decides measuring order. The loop below
+        // queues the same rows in BAKED-SCORE order, which is the whole point of sorting first —
+        // the worst comparisons are measured, and shown, before the rest of the wall.
+        this.applySearch(false);
         const visible = this.rows.filter((row) => !row.hidden);
         // Ordered on the published numbers BEFORE anything is measured. The server already served
         // the reference lane in this order, so on first load this is a no-op; it earns its keep on
@@ -299,10 +306,18 @@ export class CompareWall extends LitElement {
 
         // Serial, not parallel: each row decodes two full frames and scores them, and a wall of
         // thirty racing each other is what made this page unusable on a laptop.
+        //
+        // The chain is kept on the instance so a row a WIDENED filter reveals can be appended to
+        // it — `applySearch` has no run of its own to start. Without that a revealed row sits at
+        // the server's `waiting…` for the rest of the run: it was never in this snapshot, so
+        // nothing ever measured it. That gap predates dressing lazily (a hidden row was left out of
+        // `visible` before this change too), but reveal now has one place to be handled from.
+        for (const row of visible) this.scoredRows.add(row);
         let chain: Promise<unknown> = Promise.resolve();
         for (const row of visible) {
             chain = chain.then(() => this.scoreRow(row, runId));
         }
+        this.scoreChain = chain;
         void chain.then(() => {
             if (runId !== this.sequence) return;
             visible.sort((a, b) =>
@@ -395,7 +410,7 @@ export class CompareWall extends LitElement {
             "Measured when this catalog was published — re-measured here as the row loads";
     }
 
-    private applySearch(): void {
+    private applySearch(schedule = true): void {
         const query = this.search?.value ?? "";
         if (this.lanesActive()) {
             window.cpRcLanes?.filter(query);
@@ -406,6 +421,7 @@ export class CompareWall extends LitElement {
         const preview =
             new URLSearchParams(location.search).get("preview") ?? "";
         let visible = 0;
+        const revealed: HTMLElement[] = [];
         for (const row of this.rows) {
             const keep = keepRow(
                 {
@@ -427,7 +443,23 @@ export class CompareWall extends LitElement {
             // a Back to a wider query) from appearing with no pictures in it.
             const show = keep && this.ensureDressed(row);
             row.hidden = !show;
-            if (show) visible++;
+            if (show) {
+                visible++;
+                revealed.push(row);
+            }
+        }
+        // Measure what this pass has just put on screen and nothing else. Appended to the run's own
+        // chain rather than raced beside it, for the reason the chain is serial in the first place:
+        // each row decodes two full frames, and a widening that revealed twenty of them all at once
+        // is exactly the stampede `run` avoids.
+        for (const row of schedule ? revealed : []) {
+            if (this.scoredRows.has(row)) continue;
+            this.scoredRows.add(row);
+            const runId = this.sequence;
+            this.scoreChain = this.scoreChain.then(() =>
+                this.scoreRow(row, runId),
+            );
+            void this.scoreChain;
         }
         if (this.count) this.count.textContent = countLabel(visible);
         if (this.empty) this.empty.hidden = visible !== 0;
@@ -441,6 +473,18 @@ export class CompareWall extends LitElement {
      * or theme switch goes through.
      */
     private dressedRows = new Set<HTMLElement>();
+
+    /**
+     * Rows already queued for measurement this run, so a filter change that reveals one schedules
+     * it once rather than on every keystroke. Reset by {@link run} beside {@link dressedRows}.
+     */
+    private scoredRows = new Set<HTMLElement>();
+
+    /**
+     * The run's serial measuring chain, so {@link applySearch} can append a revealed row to the
+     * back of it instead of starting a second one beside it.
+     */
+    private scoreChain: Promise<unknown> = Promise.resolve();
 
     /**
      * {@link dressRow} once per row per run, remembering the outcome.

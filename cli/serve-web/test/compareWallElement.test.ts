@@ -361,6 +361,79 @@ describe("<cp-compare-wall>", () => {
         assert.equal(count(), "2 comparisons");
     });
 
+    it("measures a row a widened filter reveals, not just its pictures", async () => {
+        // Dressing a revealed row gives it its pictures; it still needs a NUMBER. The row was never
+        // in the run's `visible` snapshot, so nothing scheduled it — it would sit at the server's
+        // `waiting…` for the rest of the run, and be left out of the score-based reordering.
+        const scorer = stubScorer({
+            "/a/Button-svg-light": 90,
+            "/a/Card-svg-light": 40,
+            "/a/Button-svg-dark": 90,
+            "/a/Card-svg-dark": 40,
+        });
+        await mount({ rows: bothThemes });
+        await settle();
+
+        const search =
+            document.querySelector<HTMLInputElement>("#cp-compare-search")!;
+        search.value = "card";
+        search.dispatchEvent(new Event("input"));
+        await flush();
+        document
+            .querySelector<HTMLElement>('[data-compare-theme="dark"]')!
+            .click();
+        await settle();
+        // Only the visible row was measured on this run — `calls` also holds the initial light
+        // pass, so the assertion is about what THIS run added.
+        assert.deepEqual(scorer.calls.slice(-1), ["/a/Card-svg-dark"]);
+        assert.equal(
+            scorer.calls.filter((c) => c.endsWith("dark")).length,
+            1,
+            `the filtered-out row is not measured: ${scorer.calls.join(", ")}`,
+        );
+
+        search.value = "";
+        search.dispatchEvent(new Event("input"));
+        await settle();
+
+        assert.ok(
+            scorer.calls.includes("/a/Button-svg-dark"),
+            `the revealed row is measured: ${scorer.calls.join(", ")}`,
+        );
+        assert.equal(
+            document
+                .querySelector<HTMLElement>('[data-label="Button"]')!
+                .getAttribute("data-score"),
+            "90",
+        );
+    });
+
+    it("schedules a revealed row once, not on every keystroke", async () => {
+        // `applySearch` runs per input event, and each measurement decodes two full frames.
+        const scorer = stubScorer({
+            "/a/Button-svg-light": 90,
+            "/a/Card-svg-light": 40,
+        });
+        await mount({ rows: bothThemes });
+        await settle();
+        const before = scorer.calls.length;
+
+        const search =
+            document.querySelector<HTMLInputElement>("#cp-compare-search")!;
+        for (const value of ["", "b", "", "bu", ""]) {
+            search.value = value;
+            search.dispatchEvent(new Event("input"));
+            await flush();
+        }
+        await settle();
+
+        assert.equal(
+            scorer.calls.length,
+            before,
+            `already-measured rows are not re-queued: ${scorer.calls.join(", ")}`,
+        );
+    });
+
     it("says so when the filter leaves nothing", async () => {
         stubScorer({ "/a/Button-svg-light": 90, "/a/Card-svg-light": 90 });
         await mount();
