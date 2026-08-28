@@ -460,8 +460,8 @@ public interface ServeOptions {
    * Raw `--agent-grant-capabilities`, unparsed.
    *
    * The CLI reads the flag; the server decides what the names mean. A capability list is a server
-   * policy, and parsing it here would put `ServeAgentGrantCapability` on the CLI's classpath for
-   * the sake of a string split.
+   * policy, and parsing it here would put `AgentGrantCapability` on the CLI's classpath for the
+   * sake of a string split.
    */
   public val agentGrantCapabilitiesFlag: String?
 

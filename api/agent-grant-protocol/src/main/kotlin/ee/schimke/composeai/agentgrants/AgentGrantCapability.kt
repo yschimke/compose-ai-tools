@@ -1,13 +1,12 @@
-package ee.schimke.composeai.cli.serve
+package ee.schimke.composeai.agentgrants
 
 /**
  * What a grant may do **beside** its scope rung — see
  * [docs/design/AGENT_ACCESS_GRANTS.md](../../../../../../../../docs/design/AGENT_ACCESS_GRANTS.md).
  *
- * [ServeAgentGrantScope] is a ladder: each rung implies the ones below it, because each names a
- * strictly larger amount of this box's CPU and trust. A capability is the other shape — an
- * **independent** permission that does not sit anywhere on that ladder and must not be dragged
- * along by it.
+ * [AgentGrantScope] is a ladder: each rung implies the ones below it, because each names a strictly
+ * larger amount of this box's CPU and trust. A capability is the other shape — an **independent**
+ * permission that does not sit anywhere on that ladder and must not be dragged along by it.
  *
  * [IMAGES] is the worked example, and the reason this type exists rather than a fourth rung.
  * Uploading a PNG is not "more" than opening a render daemon and not "less" than running a Kotlin
@@ -21,11 +20,11 @@ package ee.schimke.composeai.cli.serve
  * these as checkboxes where the scopes are radios: independent boxes describe independent
  * permissions honestly.
  */
-enum class ServeAgentGrantCapability(
+public enum class AgentGrantCapability(
   /** The wire/CLI name — lowercase, stable, what `--capability` and the JSON carry. */
-  val wire: String,
+  public val wire: String,
   /** One line for the approval page: what the human is actually agreeing to. */
-  val humanDescription: String,
+  public val humanDescription: String,
 ) {
   /**
    * Upload rendered images through the image lane (`POST /images`), so the returned URLs can be
@@ -47,9 +46,9 @@ enum class ServeAgentGrantCapability(
     "Upload rendered preview images, published at unlisted URLs on this server until they expire",
   );
 
-  companion object {
+  public companion object {
     /** Parse one wire name, case-insensitively; null when it names nothing. */
-    fun parse(value: String?): ServeAgentGrantCapability? {
+    public fun parse(value: String?): AgentGrantCapability? {
       val wanted = value?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return null
       return entries.firstOrNull { it.wire == wanted }
     }
@@ -59,9 +58,9 @@ enum class ServeAgentGrantCapability(
      *
      * **Throws** on a name that means nothing, so a typo in `--agent-grant-capabilities` fails the
      * server's startup instead of silently withholding a capability the operator believes they
-     * enabled — the same trade [ServeAgentGrantScope.parseHighest] makes, for the same reason.
+     * enabled — the same trade [AgentGrantScope.parseHighest] makes, for the same reason.
      */
-    fun parseAll(list: String?): Set<ServeAgentGrantCapability> {
+    public fun parseAll(list: String?): Set<AgentGrantCapability> {
       val names =
         list
           ?.split(',', ' ')
@@ -82,7 +81,7 @@ enum class ServeAgentGrantCapability(
     }
 
     /** Wire names, in declaration order — for JSON, the CLI and the audit line. */
-    fun wireNames(capabilities: Set<ServeAgentGrantCapability>): List<String> =
+    public fun wireNames(capabilities: Set<AgentGrantCapability>): List<String> =
       entries.filter { it in capabilities }.map { it.wire }
   }
 }

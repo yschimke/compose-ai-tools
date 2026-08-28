@@ -1,6 +1,6 @@
 package ee.schimke.composeai.cli
 
-import ee.schimke.composeai.cli.serve.ServeAgentGrantScope
+import ee.schimke.composeai.agentgrants.AgentGrantScope
 import ee.schimke.composeai.cli.serve.ServeAgentGrantStore
 import ee.schimke.composeai.cli.serve.ServeBundleHost
 import ee.schimke.composeai.cli.serve.ServeHttpServer
@@ -29,7 +29,7 @@ class AgentAccessClientIntegrationTest {
   private val registry = ServeSessionRegistry(open = { null })
 
   private val grants =
-    ServeAgentGrantStore(maxScope = ServeAgentGrantScope.PLAYGROUND, maxGrantTtlSeconds = 3600)
+    ServeAgentGrantStore(maxScope = AgentGrantScope.PLAYGROUND, maxGrantTtlSeconds = 3600)
 
   private val server: ServeHttpServer by lazy {
     val dir = Files.createTempDirectory("client-grants").toFile().also { it.deleteOnExit() }
@@ -113,7 +113,7 @@ class AgentAccessClientIntegrationTest {
     assertEquals("pending", ok(c.poll(opened.requestId, opened.deviceSecret)).status)
 
     // The human's half, driven directly — the browser flow itself is covered by the routing test.
-    grants.approve(opened.requestId, "@yuri", ServeAgentGrantScope.LIVE, 900)
+    grants.approve(opened.requestId, "@yuri", AgentGrantScope.LIVE, 900)
 
     val approved = ok(c.poll(opened.requestId, opened.deviceSecret))
     assertEquals("approved", approved.status)
@@ -143,7 +143,7 @@ class AgentAccessClientIntegrationTest {
   fun `a wrong device secret reads as unknown and carries no token`() {
     val c = client()
     val opened = ok(c.open(label = "", scope = "preview", ttlSeconds = 600))
-    grants.approve(opened.requestId, "@yuri", ServeAgentGrantScope.PREVIEW, 600)
+    grants.approve(opened.requestId, "@yuri", AgentGrantScope.PREVIEW, 600)
     val polled = ok(c.poll(opened.requestId, "not-the-secret"))
     assertEquals("unknown", polled.status)
     assertEquals(null, polled.token)
@@ -172,7 +172,7 @@ class AgentAccessClientIntegrationTest {
     assertNull(store.tokenFor(c.origin))
     assertNotNull(store.pendingFor(c.origin))
 
-    grants.approve(opened.requestId, "@yuri", ServeAgentGrantScope.LIVE, 900)
+    grants.approve(opened.requestId, "@yuri", AgentGrantScope.LIVE, 900)
 
     AuthCommand(listOf("status", "--server", c.origin), store).run()
     assertNotNull(store.tokenFor(c.origin), "the approved token should have been collected")
@@ -184,7 +184,7 @@ class AgentAccessClientIntegrationTest {
   fun `auth status drops a grant the server no longer honours`() {
     val c = client()
     val opened = ok(c.open(label = "revoked soon", scope = "live", ttlSeconds = 900))
-    grants.approve(opened.requestId, "@yuri", ServeAgentGrantScope.LIVE, 900)
+    grants.approve(opened.requestId, "@yuri", AgentGrantScope.LIVE, 900)
     val token = ok(c.poll(opened.requestId, opened.deviceSecret)).token!!
     val store = tempStore()
     store.save(
@@ -222,7 +222,7 @@ class AgentAccessClientIntegrationTest {
       )
     )
     assertNotNull(wedged.pendingFor(c.origin))
-    grants.approve(opened.requestId, "@yuri", ServeAgentGrantScope.LIVE, 900)
+    grants.approve(opened.requestId, "@yuri", AgentGrantScope.LIVE, 900)
 
     // The store cannot write, so collection fails — and must not take the secret down with it.
     AuthCommand(listOf("status", "--server", c.origin), wedged).run()

@@ -1,8 +1,8 @@
 package ee.schimke.composeai.cli
 
-import ee.schimke.composeai.cli.serve.ServeAgentGrantCapability
-import ee.schimke.composeai.cli.serve.ServeAgentGrantScope
-import ee.schimke.composeai.cli.serve.ServeAgentGrants
+import ee.schimke.composeai.agentgrants.AgentGrantCapability
+import ee.schimke.composeai.agentgrants.AgentGrantProtocol
+import ee.schimke.composeai.agentgrants.AgentGrantScope
 import kotlin.system.exitProcess
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -138,10 +138,10 @@ internal class AuthCommand(
     // default, and the agent would spend a human's attention on a request for less access than it
     // meant to ask for.
     val scope = args.flagValue("--scope")?.trim().orEmpty()
-    if (scope.isNotEmpty() && ServeAgentGrantScope.parse(scope) == null) {
+    if (scope.isNotEmpty() && AgentGrantScope.parse(scope) == null) {
       fail(
         "unknown --scope '$scope' — expected one of " +
-          ServeAgentGrantScope.entries.joinToString(", ") { it.wire },
+          AgentGrantScope.entries.joinToString(", ") { it.wire },
         code = 64,
       )
     }
@@ -155,17 +155,17 @@ internal class AuthCommand(
         .map { it.trim() }
         .filter { it.isNotEmpty() }
         .map { raw ->
-          ServeAgentGrantCapability.parse(raw)?.wire
+          AgentGrantCapability.parse(raw)?.wire
             ?: fail(
               "unknown --capability '$raw' — expected one of " +
-                ServeAgentGrantCapability.entries.joinToString(", ") { it.wire },
+                AgentGrantCapability.entries.joinToString(", ") { it.wire },
               code = 64,
             )
         }
         .distinct()
     val ttlRaw = args.flagValue("--ttl")
     val ttl =
-      ServeAgentGrants.parseDurationSeconds(ttlRaw)
+      AgentGrantProtocol.parseDurationSeconds(ttlRaw)
         ?: if (ttlRaw.isNullOrBlank()) DEFAULT_TTL_SECONDS
         else fail("unrecognised --ttl '$ttlRaw' — try 45m, 2h, or a number of seconds", code = 64)
     val label = args.flagValue("--label")?.trim().orEmpty().ifEmpty { defaultLabel() }
@@ -223,7 +223,7 @@ internal class AuthCommand(
           "could collect the token once it was approved. Fix the credential file's directory and " +
           "run this again, or use --json, which prints the device secret for you to poll with. " +
           "The unsaved request expires on its own in " +
-          ServeAgentGrants.formatDuration(opened.expiresInSeconds) +
+          AgentGrantProtocol.formatDuration(opened.expiresInSeconds) +
           "; nobody has been asked to approve anything."
       )
     }
@@ -266,7 +266,7 @@ internal class AuthCommand(
         else " + ${opened.requestedCapabilities.joinToString(", ")}"
       println(
         "  They will be asked to grant: ${opened.requestedScope}$requestedCapabilities · " +
-          ServeAgentGrants.formatDuration(opened.requestedTtlSeconds) +
+          AgentGrantProtocol.formatDuration(opened.requestedTtlSeconds) +
           (if (label.isNotEmpty()) " · \"$label\"" else "")
       )
       println("  The code above must match what they see on that page.")
@@ -283,7 +283,7 @@ internal class AuthCommand(
       }
       println(
         "Waiting for approval (this request expires in " +
-          "${ServeAgentGrants.formatDuration(opened.expiresInSeconds)})…"
+          "${AgentGrantProtocol.formatDuration(opened.expiresInSeconds)})…"
       )
     }
 
@@ -328,7 +328,7 @@ internal class AuthCommand(
     println(
       "Access granted by ${outcome.approvedBy ?: "an approver"} — " +
         "${outcome.scopes.joinToString(", ")} for " +
-        ServeAgentGrants.formatDuration(outcome.expiresInSeconds ?: 0) +
+        AgentGrantProtocol.formatDuration(outcome.expiresInSeconds ?: 0) +
         "."
     )
     println(
@@ -489,7 +489,7 @@ internal class AuthCommand(
         if (entry.capabilities.isEmpty()) "" else " + ${entry.capabilities.joinToString(", ")}"
       println(
         "${entry.origin} — ${entry.scopes.joinToString(", ").ifEmpty { "preview" }}$capabilities · " +
-          "expires in ${ServeAgentGrants.formatDuration(left)}" +
+          "expires in ${AgentGrantProtocol.formatDuration(left)}" +
           (if (entry.approvedBy.isNotEmpty()) " · approved by ${entry.approvedBy}" else "") +
           (if (entry.label.isNotEmpty()) " · \"${entry.label}\"" else "") +
           suffix
@@ -505,7 +505,7 @@ internal class AuthCommand(
         continue
       }
       println(
-        "${p.origin} — waiting for approval (${ServeAgentGrants.formatDuration(
+        "${p.origin} — waiting for approval (${AgentGrantProtocol.formatDuration(
           p.secondsUntilExpiry(now)
         )} left)"
       )

@@ -1,5 +1,8 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.agentgrants.AgentGrantCapability
+import ee.schimke.composeai.agentgrants.AgentGrantProtocol
+import ee.schimke.composeai.agentgrants.AgentGrantScope
 import ee.schimke.composeai.bundle.BundleVerifier
 import ee.schimke.composeai.data.overrides.PreviewOverrideOption
 import ee.schimke.composeai.data.render.PreviewBackdrop
@@ -5562,17 +5565,17 @@ ${captureControlsHtml().prependIndent("          ")}
     userCode: String,
     label: String,
     client: String,
-    requestedScope: ServeAgentGrantScope,
+    requestedScope: AgentGrantScope,
     requestedTtlSeconds: Long,
     expiresInSeconds: Long,
     approver: String,
-    selectableScopes: List<ServeAgentGrantScope>,
+    selectableScopes: List<AgentGrantScope>,
     maxTtlSeconds: Long,
     /**
      * Independent permissions this approver may tick, already narrowed like [selectableScopes].
      * Empty on almost every box — the whole feature is opt-in twice over.
      */
-    selectableCapabilities: List<ServeAgentGrantCapability> = emptyList(),
+    selectableCapabilities: List<AgentGrantCapability> = emptyList(),
     approveCsrf: String,
     denyCsrf: String,
     /**
@@ -5587,9 +5590,9 @@ ${captureControlsHtml().prependIndent("          ")}
      * Named only when the approver's own rights are what capped [selectableScopes] — so the page
      * says "you can't grant this" rather than silently omitting a row the agent asked for.
      */
-    withheldScopes: List<ServeAgentGrantScope> = emptyList(),
+    withheldScopes: List<AgentGrantScope> = emptyList(),
     /** Capabilities the agent asked for that this approver may not pass on. Same treatment. */
-    withheldCapabilities: List<ServeAgentGrantCapability> = emptyList(),
+    withheldCapabilities: List<AgentGrantCapability> = emptyList(),
     withheldReason: String = "",
   ): String {
     val esc = WebEscaping::htmlEscape
@@ -5610,7 +5613,7 @@ ${captureControlsHtml().prependIndent("          ")}
       selectableScopes.joinToString("\n") { scope ->
         val checked = if (scope == defaultScope) " checked" else ""
         val includes =
-          ServeAgentGrantScope.upTo(scope).filter { it != scope }.joinToString(", ") { it.wire }
+          AgentGrantScope.upTo(scope).filter { it != scope }.joinToString(", ") { it.wire }
         val alsoIncludes =
           if (includes.isEmpty()) ""
           else "<span class=\"cp-grant-scope-implies\">also includes ${esc(includes)}</span>"
@@ -5673,7 +5676,7 @@ ${captureControlsHtml().prependIndent("          ")}
     val ttlOptions =
       ttlChoices(requestedTtlSeconds, maxTtlSeconds).joinToString("\n") { seconds ->
         val selected = if (seconds == requestedTtlSeconds) " selected" else ""
-        "<option value=\"$seconds\"$selected>${esc(ServeAgentGrants.formatDuration(seconds))}</option>"
+        "<option value=\"$seconds\"$selected>${esc(AgentGrantProtocol.formatDuration(seconds))}</option>"
       }
     return document(
       title = "Grant agent access — compose-preview",
@@ -5700,7 +5703,7 @@ ${captureControlsHtml().prependIndent("          ")}
           <dt>Purpose</dt><dd>${if (label.isBlank()) "<em>none given</em>" else esc(label)}</dd>
           <dt>Asked from</dt><dd>${esc(client)}</dd>
           <dt>Approving as</dt><dd>${esc(approver)}</dd>
-          <dt>This request expires in</dt><dd>${esc(ServeAgentGrants.formatDuration(expiresInSeconds))}</dd>
+          <dt>This request expires in</dt><dd>${esc(AgentGrantProtocol.formatDuration(expiresInSeconds))}</dd>
         </dl>
 
         <form class="cp-grant-form" method="post" action="${esc(formAction)}">

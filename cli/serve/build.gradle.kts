@@ -78,6 +78,7 @@ dependencies {
   api(project(":preview-data-api"))
   implementation(project(":common-image-crop"))
   api(project(":bundle-format"))
+  api(project(":agent-grant-protocol"))
   api(project(":bundle-coordinates"))
   api(project(":daemon:core"))
   api(project(":daemon-client"))

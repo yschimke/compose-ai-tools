@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.agentgrants.AgentGrantCapability
+import ee.schimke.composeai.agentgrants.AgentGrantScope
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.overrides.PreviewOverrideType
@@ -3050,17 +3052,17 @@ class ServeWebFixtureTest {
         userCode = "KX7M-9QD4",
         label = "fix wear-m3-catalog#68 <the focus ring>",
         client = "203.0.113.42",
-        requestedScope = ServeAgentGrantScope.PLAYGROUND,
+        requestedScope = AgentGrantScope.PLAYGROUND,
         requestedTtlSeconds = 7200,
         expiresInSeconds = 540,
         approver = "@yschimke",
-        selectableScopes = listOf(ServeAgentGrantScope.PREVIEW, ServeAgentGrantScope.LIVE),
+        selectableScopes = listOf(AgentGrantScope.PREVIEW, AgentGrantScope.LIVE),
         maxTtlSeconds = 8 * 3600,
         approveCsrf = "fixed-approve-seal",
         denyCsrf = "fixed-deny-seal",
         formAction = "/agent-access/9c2Qk1pTf0Xb7hLm4nRzQA",
         version = version,
-        withheldScopes = listOf(ServeAgentGrantScope.PLAYGROUND),
+        withheldScopes = listOf(AgentGrantScope.PLAYGROUND),
         withheldReason = "you do not hold it yourself on this server, so you cannot pass it on",
       )
 
@@ -3075,12 +3077,12 @@ class ServeWebFixtureTest {
         userCode = "KX7M-9QD4",
         label = "embed the before/after in the PR body",
         client = "203.0.113.42",
-        requestedScope = ServeAgentGrantScope.LIVE,
+        requestedScope = AgentGrantScope.LIVE,
         requestedTtlSeconds = 1800,
         expiresInSeconds = 540,
         approver = "@yschimke",
-        selectableScopes = listOf(ServeAgentGrantScope.PREVIEW, ServeAgentGrantScope.LIVE),
-        selectableCapabilities = listOf(ServeAgentGrantCapability.IMAGES),
+        selectableScopes = listOf(AgentGrantScope.PREVIEW, AgentGrantScope.LIVE),
+        selectableCapabilities = listOf(AgentGrantCapability.IMAGES),
         maxTtlSeconds = 8 * 3600,
         approveCsrf = "fixed-approve-seal",
         denyCsrf = "fixed-deny-seal",
