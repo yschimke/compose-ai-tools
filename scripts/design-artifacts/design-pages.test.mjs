@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   PAGES_VERSION,
   catalogOwnsNode,
+  declaringClassOf,
   declaringClasses,
   moduleDirectory,
   pageImageName,
@@ -1023,4 +1024,38 @@ test("previewFunctionOf keeps an underscore that belongs to the function name", 
   // Unrecognised suffixes survive whole: too long still points at the right file, truncated points
   // nowhere.
   assert.equal(fnFor("app.PreviewsKt.Odd_Name_Here"), "Odd_Name_Here");
+});
+
+test("a dotted @Preview name does not split the declaring class", () => {
+  // `sanitizeForPath` deliberately keeps dots so an id stays lossless, so `@Preview(name = "Phone.v2")`
+  // ends `…FooKt.Render_Phone.v2`. Splitting at the last dot put two variants of ONE function in
+  // different "classes", and the unbaked one then read as foreign.
+  assert.equal(declaringClassOf("pkg.FooKt.Render_Phone.v2"), "pkg.FooKt");
+  assert.equal(declaringClassOf("pkg.FooKt.Render_Tablet.v3"), "pkg.FooKt");
+  assert.equal(
+    declaringClassOf("ee.app.sections.ButtonsKt.TextAction"),
+    "ee.app.sections.ButtonsKt",
+  );
+  assert.equal(declaringClassOf("nodots"), "");
+
+  // …so both variants place under one class, and neither is mistaken for a sibling's work.
+  const dotted = {
+    components: [
+      {
+        componentId: "Render",
+        images: [
+          {
+            path: "images/render/a.png",
+            previewId: "pkg.FooKt.Render_Phone.v2",
+          },
+        ],
+      },
+    ],
+  };
+  const classes = declaringClasses(dotted);
+  assert.deepEqual([...classes], ["pkg.FooKt"]);
+  assert.equal(
+    catalogOwnsNode({ previewId: "pkg.FooKt.Render_Tablet.v3" }, classes),
+    true,
+  );
 });

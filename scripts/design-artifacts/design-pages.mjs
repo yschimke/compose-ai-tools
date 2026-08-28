@@ -339,14 +339,35 @@ export function componentForNodeReference(node, byReference) {
  * exactly what a `code` handle claims. A catalog either publishes previews out of that file or it
  * does not, and no ambiguity or bake-time choice can change the answer.
  */
+/**
+ * The declaring class inside a discovery id — `ee.app.sections.ButtonsKt` out of
+ * `ee.app.sections.ButtonsKt.TextAction`.
+ *
+ * NOT the last dot. `buildVariantSuffix` appends `@Preview(name = …)` / `group` through
+ * `sanitizeForPath`, which deliberately leaves DOTS INTACT so an id stays lossless — a preview
+ * named `Phone.v2` ends `…FooKt.Render_Phone.v2`. Splitting at the last dot would read that class
+ * as `…FooKt.Render_Phone`, putting two variants of ONE function in different "classes" and making
+ * a legitimate node read as foreign.
+ *
+ * The boundary is structural instead: a Kotlin package is lowercase by convention and the file
+ * class is the first segment that is not, so the class is the prefix up to and including the first
+ * capitalised segment. An id with no capitalised segment falls back to the last dot — the previous
+ * behaviour, and no worse than it.
+ */
+export function declaringClassOf(previewId) {
+  if (typeof previewId !== "string" || !previewId.includes(".")) return "";
+  const segments = previewId.split(".");
+  const classAt = segments.findIndex((segment) => /^[A-Z]/.test(segment));
+  if (classAt > 0) return segments.slice(0, classAt + 1).join(".");
+  return previewId.slice(0, previewId.lastIndexOf("."));
+}
+
 export function declaringClasses(catalog) {
   const classes = new Set();
   for (const component of catalog?.components ?? []) {
     for (const image of component?.images ?? []) {
-      const previewId =
-        typeof image?.previewId === "string" ? image.previewId : "";
-      const lastDot = previewId.lastIndexOf(".");
-      if (lastDot > 0) classes.add(previewId.slice(0, lastDot));
+      const declaring = declaringClassOf(image?.previewId);
+      if (declaring !== "") classes.add(declaring);
     }
   }
   return classes;
@@ -371,14 +392,13 @@ export function catalogOwnsNode(node, classes) {
   // foreignness: judging on it would unlink every node such a catalog has, which is the whole page
   // surface. Unable to judge ⇒ keep, exactly as before this test existed.
   if (!classes || classes.size === 0) return true;
-  const previewId = typeof node?.previewId === "string" ? node.previewId : "";
-  const lastDot = previewId.lastIndexOf(".");
-  if (lastDot <= 0) {
+  const declaring = declaringClassOf(node?.previewId);
+  if (declaring === "") {
     // No declared id to place. Nothing here can prove the claim foreign, so it is kept — the
     // pre-existing behaviour for every manifest that names no preview ids at all.
     return true;
   }
-  return classes.has(previewId.slice(0, lastDot));
+  return classes.has(declaring);
 }
 
 /**
