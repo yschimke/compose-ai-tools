@@ -31,7 +31,7 @@ import okio.Path.Companion.toPath
  * — the shape the design-parity static bundle reader consumes (issue #1843).
  *
  * The standalone `composePreviewRender` Gradle task is "normal render only" and never produces
- * semantics — the daemon is the single producer (see `docs/AGENTS.md`). So unlike the rest of
+ * semantics — the daemon is the single producer (see `docs/AGENT_GUIDE.md`). So unlike the rest of
  * `pack` (which is pure Gradle), the semantics blob is obtained by spinning up the same daemon the
  * VS Code extension / MCP server / `compose-preview a11y` use, fetching, and shutting it down.
  *

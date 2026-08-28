@@ -35,7 +35,7 @@ checks that catch the most here, in order:
 3. **A new or changed module must apply `composeai.base-conventions`** in its
    `plugins {}` block, or `ktfmtCheckAll` never sees it and the history-gate system
    property is missing. See
-   [Important constraints](../../../docs/AGENTS.md#important-constraints).
+   [Important constraints](../../../docs/AGENT_GUIDE.md#important-constraints).
 4. **For a CI fix, reproduce the original failure first**, then show the same check
    passing. A render task in particular goes `UP-TO-DATE` off a stale `.error.json`
    sidecar — verify a render fix with `--rerun`, never a plain re-invocation.
@@ -60,7 +60,7 @@ state — it is never "waiting on review".
 - **A delivery-branch or design-artifacts render that lags `main`.** Renderer,
   plugin and CLI changes deliberately do **not** regenerate the
   `design-artifacts/<system>` branches on merge — see
-  [PR workflow](../../../docs/AGENTS.md#pr-workflow) for the trigger scoping and the
+  [PR workflow](../../../docs/AGENT_GUIDE.md#pr-workflow) for the trigger scoping and the
   manual dispatch. Stale published renders are drift, not a regression in your diff.
 - **A changed preview whose source your PR does not touch.** Clocks, timestamps,
   randomness, animation frames, network-loaded images: that is instability, not a
@@ -93,7 +93,7 @@ job only to confirm one of the cases above, or if it died before any test body r
   Over 27–28 Aug 2026 the reviewer raised this 22 times across this repo and
   `design-parity` and was right once, on a cherry-pick the gate had already failed.
   If the **gate itself** is red, that is the real thing and it is yours to fix
-  ([Git conventions](../../../docs/AGENTS.md#git-conventions)) — usually an amend or
+  ([Git conventions](../../../docs/AGENT_GUIDE.md#git-conventions)) — usually an amend or
   cherry-pick that took `user.email` from the container instead of the
   `-c user.name=… -c user.email=…` the branch's other commits carry. Installing the
   hooks (`scripts/install-git-hooks.sh`) stops it happening at all.

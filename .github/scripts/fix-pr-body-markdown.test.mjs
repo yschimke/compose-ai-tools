@@ -43,7 +43,7 @@ test('repairs relative paths and anchors', () => {
     fixPrBodyMarkdown('![w](``docs/design/evidence/a.png)``'),
     '![w](docs/design/evidence/a.png)',
   )
-  assert.equal(fixPrBodyMarkdown('[why](`./docs/AGENTS.md#pr-workflow`)'), '[why](./docs/AGENTS.md#pr-workflow)')
+  assert.equal(fixPrBodyMarkdown('[why](`./docs/AGENT_GUIDE.md#pr-workflow`)'), '[why](./docs/AGENT_GUIDE.md#pr-workflow)')
 })
 
 test('repairs several links on one line and across a body', () => {
@@ -68,7 +68,7 @@ test('is idempotent', () => {
 })
 
 test('leaves well-formed markdown alone', () => {
-  const body = `## Summary\n\n![alt](${URL_})\n\nRun \`./gradlew check\` — see [docs](docs/AGENTS.md).\n`
+  const body = `## Summary\n\n![alt](${URL_})\n\nRun \`./gradlew check\` — see [docs](docs/AGENT_GUIDE.md).\n`
   assert.equal(fixPrBodyMarkdown(body), body)
 })
 

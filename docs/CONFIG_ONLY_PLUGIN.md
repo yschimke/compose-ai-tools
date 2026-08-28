@@ -139,5 +139,5 @@ runtime:
 - [Isolated Projects vs. the auto-inject workflow](isolated-projects-autoinject.md) — how the CLI
   injects the runtime plugin, and why.
 - [How it works](HOW_IT_WORKS.md) — the discovery → render pipeline the runtime plugin drives.
-- [Architecture (contributor)](AGENTS.md) — the `:gradle-plugin-config` module split, class by
+- [Architecture (contributor)](AGENT_GUIDE.md) — the `:gradle-plugin-config` module split, class by
   class.

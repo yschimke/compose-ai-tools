@@ -483,8 +483,8 @@ public data class PreviewResult(
    * [AccessibilityEntry], `dataExtensions["theme"]` against the theme extension's published DTOs,
    * and so on.
    *
-   * The data API has no business knowing which extensions exist — see `docs/AGENTS.md` "Important
-   * constraints" / "No hardcoded special-case logic for extensions."
+   * The data API has no business knowing which extensions exist — see `docs/AGENT_GUIDE.md`
+   * "Important constraints" / "No hardcoded special-case logic for extensions."
    */
   val dataExtensions: Map<String, ExtensionPayload> = emptyMap(),
 ) {

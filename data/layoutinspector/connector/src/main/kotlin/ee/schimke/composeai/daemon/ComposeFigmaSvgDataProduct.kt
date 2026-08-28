@@ -324,7 +324,8 @@ object ComposeFigmaSvgDataProducer {
         val face =
           fontFaceCache[cacheKey]
             ?: run {
-              // Read through the injected FileSystem (Okio, per docs/AGENTS.md) — a caller using a
+              // Read through the injected FileSystem (Okio, per docs/AGENT_GUIDE.md) — a caller
+              // using a
               // fake / in-memory FileSystem must see the bytes it exposed, not the host disk.
               val bytes =
                 runCatching { fileSystem.read(fontPath) { readByteArray() } }
@@ -590,7 +591,7 @@ object ComposeFigmaSvgDataProducer {
    * The `(width, height)` in pixels of the image at [file], read via `ImageIO`'s reader header
    * without decoding the pixels; null on any read/parse failure so a missing size degrades to the
    * extent-based background sizing rather than stranding the SVG. Bytes come through the injected
-   * [fileSystem] so a fake/in-memory filesystem is honoured (docs/AGENTS.md).
+   * [fileSystem] so a fake/in-memory filesystem is honoured (docs/AGENT_GUIDE.md).
    */
   private fun readImageSize(file: File, fileSystem: FileSystem): Pair<Int, Int>? = runCatching {
     val bytes = fileSystem.read(file.path.toPath()) { readByteArray() }

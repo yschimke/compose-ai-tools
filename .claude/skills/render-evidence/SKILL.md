@@ -56,7 +56,7 @@ For the **before** side, render at the base commit (`git stash`, or a worktree a
   software path draws offscreen. If a desktop render looks broken in a sandbox, it
   is almost never the windowing system: check the JDK 17 toolchain and the native
   deps first, per
-  [Common commands](../../../docs/AGENTS.md#common-commands) and
+  [Common commands](../../../docs/AGENT_GUIDE.md#common-commands) and
   [`docs/DESKTOP_NATIVE_DEPS.md`](../../../docs/DESKTOP_NATIVE_DEPS.md).
 - **The Android/Robolectric lane needs an Android SDK**, which a fresh container
   does not have. `scripts/install.sh --android-sdk` installs it (and a JDK when
@@ -65,7 +65,7 @@ For the **before** side, render at the base commit (`git stash`, or a worktree a
   **`platforms;android-37.0`**, not `android-37`, and that the wrong name fails the
   entire `sdkmanager` invocation it appears in, taking the SDK 36 packages down with
   it — are written up under
-  [Bringing up a fresh sandbox](../../../docs/AGENTS.md#important-constraints).
+  [Bringing up a fresh sandbox](../../../docs/AGENT_GUIDE.md#important-constraints).
   Read that before improvising. Cold end-to-end run is about 3 minutes.
 
 ## Surfaces the `@Preview` pipeline does not reach
@@ -94,7 +94,7 @@ For the **before** side, render at the base commit (`git stash`, or a worktree a
    are injected between the agent and GitHub, and the `PR Body Syntax` workflow
    repairs them in place. The three cases it does not cover — review comments,
    destinations mangled past recognition, and a picture that still did not render —
-   are in [PR workflow](../../../docs/AGENTS.md#pr-workflow).
+   are in [PR workflow](../../../docs/AGENT_GUIDE.md#pr-workflow).
 4. Verify the pixels actually render on the published page before claiming evidence.
    `WebFetch` caches per URL for ~15 minutes; bust it with a throwaway query
    parameter rather than chasing a bug you already fixed.

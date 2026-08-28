@@ -163,7 +163,7 @@ jobs:
           path: gradle-plugin/build/reports/tests/
 
   renderer-android-tests:
-    # `:renderer-android:test` is documented in docs/AGENTS.md but had no CI leg, so its suite —
+    # `:renderer-android:test` is documented in docs/AGENT_GUIDE.md but had no CI leg, so its suite —
     # including `WearScrollSvgGrowthTest`'s drift guard over the committed
     # `serve-wear-scroll-long-capsule.html` page fixture — could only fail on someone's laptop.
     # That guard is what stops `vscode-preview-diff` screenshotting a stale capsule after a

@@ -12,13 +12,13 @@ with `./gradlew` against the local tree.
 
 Rules live in **[root AGENTS.md](../AGENTS.md)** — the short, canonical file every
 agent loads on every turn. This tree is the detail behind it: start with
-**[AGENTS.md](AGENTS.md)** for the architecture map and the rationale, and treat
+**[AGENT_GUIDE.md](AGENT_GUIDE.md)** for the architecture map and the rationale, and treat
 this index as the map of everything else.
 
 ## Orientation
 
 - [root AGENTS.md](../AGENTS.md) — the CI-enforced invariants and the normative PR workflow, stated once. Every agent loads it on every turn.
-- [AGENTS.md](AGENTS.md) — class-by-class architecture, commands, constraints, and the rationale behind the rules. **Read first.**
+- [AGENT_GUIDE.md](AGENT_GUIDE.md) — class-by-class architecture, commands, constraints, and the rationale behind the rules. **Read first.**
 - [HOW_IT_WORKS.md](HOW_IT_WORKS.md) — end-to-end: how a `@Preview` becomes a PNG.
 - [DEVELOPMENT.md](DEVELOPMENT.md) — building the plugin, CLI, and extension from source.
 - [RENDER_FILENAMES.md](RENDER_FILENAMES.md) — render output layout and filename normalization.

@@ -7,7 +7,7 @@ are **enforced by CI**, plus a map to where everything else lives.
 Keep it small. Codex CLI embeds at most `project_doc_max_bytes` of this file into
 its first-turn instructions — **32 KiB by default**, silently truncating the rest
 — and every agent pays for it on every turn. Detail, rationale and worked
-examples belong in [`docs/AGENTS.md`](docs/AGENTS.md) and the rest of
+examples belong in [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md) and the rest of
 [`docs/`](docs/README.md), which agents read on demand. How each agent resolves
 its way here, and what that costs, is measured in
 [`docs/AGENT_ENTRYPOINTS.md`](docs/AGENT_ENTRYPOINTS.md).
@@ -18,7 +18,7 @@ A Gradle plugin (`ee.schimke.composeai.preview`) plus supporting tools that
 discover `@Preview` composables in compiled Kotlin classes and render them to PNG
 outside Android Studio — Jetpack Compose (Android, via Robolectric) and Compose
 Multiplatform Desktop (via `ImageComposeScene`). Architecture, commands, state
-seams and the load-bearing constraints: [`docs/AGENTS.md`](docs/AGENTS.md).
+seams and the load-bearing constraints: [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md).
 
 ## The CI-enforced invariants
 
@@ -58,7 +58,7 @@ it itself** — that hook lives in `.claude/settings.json` and never fires in a
 Codex, Gemini or Copilot session, so those clones have no local check at all
 until someone runs the script. `--no-verify` bypasses the local hooks; CI
 still won't. Why the PR body matters and how a trailer reached `main` anyway:
-[`docs/AGENTS.md` → Git conventions](docs/AGENTS.md#git-conventions).
+[`docs/AGENT_GUIDE.md` → Git conventions](docs/AGENT_GUIDE.md#git-conventions).
 
 <!-- invariant: branch-prefix -->
 ### Branch names are always `agent/…`
@@ -100,7 +100,7 @@ in `origin/main` (or read the PR's `state` / `merged`). If the PR has landed,
 ## PR workflow
 
 The rules below are normative; the detail, the failure modes and the worked
-examples are in [`docs/AGENTS.md` → PR workflow](docs/AGENTS.md#pr-workflow).
+examples are in [`docs/AGENT_GUIDE.md` → PR workflow](docs/AGENT_GUIDE.md#pr-workflow).
 
 - **Open a PR automatically when a coding task is finished, committed and
   pushed.** Conventional-commit title, short summary + test plan. Check first
@@ -118,7 +118,7 @@ examples are in [`docs/AGENTS.md` → PR workflow](docs/AGENTS.md#pr-workflow).
   injected between the agent and GitHub, not authored, and the
   [`PR Body Syntax`](.github/workflows/pr-body-syntax.yml) workflow repairs them
   in place. Do not hand-fix or re-post to "correct" the syntax. The three cases
-  the repair does not cover are listed in `docs/AGENTS.md`.
+  the repair does not cover are listed in `docs/AGENT_GUIDE.md`.
 - **Wire new visual surfaces into the preview workflow** so the next change to
   them is diffed without anyone remembering to do it.
 - **Don't auto-merge.** Opening, tracking and fix-up commits are automatic;
@@ -128,7 +128,7 @@ examples are in [`docs/AGENTS.md` → PR workflow](docs/AGENTS.md#pr-workflow).
 
 | You need | Read |
 | --- | --- |
-| Architecture, commands, state seams, constraints | [`docs/AGENTS.md`](docs/AGENTS.md) |
+| Architecture, commands, state seams, constraints | [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md) |
 | The contributor doc index | [`docs/README.md`](docs/README.md) |
 | Releasing, versioning | [`docs/RELEASING.md`](docs/RELEASING.md), [`docs/VERSIONING.md`](docs/VERSIONING.md) |
 | Invoking an agent from an issue or PR | [`docs/AGENT_INVOCATION.md`](docs/AGENT_INVOCATION.md) |
