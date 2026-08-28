@@ -6,7 +6,7 @@ import {
   catalogOwnsNode,
   declaringClassOf,
   declaringClasses,
-  publishingDirectories,
+  publishingSourcePaths,
   pageImageName,
   planDesignPages,
 } from "./design-pages.mjs";
@@ -886,8 +886,11 @@ test("a sibling module compiling the same class is not ours", () => {
     ],
   };
   const classes = declaringClasses(catalog);
-  const paths = publishingDirectories(catalog);
-  assert.deepEqual([...paths], ["app/src/main/kotlin/app/sections/Buttons.kt"]);
+  const paths = publishingSourcePaths(catalog);
+  assert.deepEqual(
+    [...paths.get("app.sections.ButtonsKt")],
+    ["app/src/main/kotlin/app/sections/Buttons.kt"],
+  );
 
   const ourNode = {
     previewId: "app.sections.ButtonsKt.FilledButton",
@@ -926,7 +929,7 @@ test("a nested Gradle project is not the parent's", () => {
     code: "app/feature/src/main/kotlin/app/sections/Buttons.kt#FilledButton",
   };
   assert.equal(
-    catalogOwnsNode(nestedNode, declaringClasses(parent), publishingDirectories(parent)),
+    catalogOwnsNode(nestedNode, declaringClasses(parent), publishingSourcePaths(parent)),
     false,
   );
 
@@ -941,8 +944,11 @@ test("a nested Gradle project is not the parent's", () => {
       },
     ],
   };
-  const rootPaths = publishingDirectories(root);
-  assert.deepEqual([...rootPaths], ["src/main/kotlin/app/sections/Buttons.kt"]);
+  const rootPaths = publishingSourcePaths(root);
+  assert.deepEqual(
+    [...rootPaths.get("app.sections.ButtonsKt")],
+    ["src/main/kotlin/app/sections/Buttons.kt"],
+  );
   assert.equal(
     catalogOwnsNode(
       {
@@ -968,6 +974,59 @@ test("a nested Gradle project is not the parent's", () => {
   );
 });
 
+test("a partly-stamped catalog does not disown its own unstamped components", () => {
+  // `applySourceFiles` stamps identity per component, and only when discovery resolved that
+  // component's preview function — so a catalog can carry it for some components and not others.
+  // Judging every node against one catalog-wide path set would then call the unstamped
+  // component's OWN node foreign as soon as any sibling was stamped, which is worse than the
+  // class test alone. Identity is scoped per declaring class for exactly this reason.
+  const mixed = {
+    components: [
+      {
+        componentId: "Button/Filled",
+        sourceDirectory: "app",
+        sourceFile: "src/main/kotlin/app/sections/Buttons.kt",
+        images: [{ previewId: "app.sections.ButtonsKt.FilledButton" }],
+      },
+      {
+        // Discovery could not resolve this one, so it carries no source identity at all.
+        componentId: "Card/Elevated",
+        images: [{ previewId: "app.sections.CardsKt.ElevatedCard" }],
+      },
+    ],
+  };
+  const classes = declaringClasses(mixed);
+  const paths = publishingSourcePaths(mixed);
+
+  // The stamped class is placed, so a foreign node carrying it is still rejected.
+  assert.equal(paths.has("app.sections.ButtonsKt"), true);
+  assert.equal(
+    catalogOwnsNode(
+      {
+        previewId: "app.sections.ButtonsKt.FilledButton",
+        code: "feature/src/main/kotlin/app/sections/Buttons.kt#FilledButton",
+      },
+      classes,
+      paths,
+    ),
+    false,
+  );
+
+  // The unstamped class is not in the map, so its own node keeps the class test's answer.
+  assert.equal(paths.has("app.sections.CardsKt"), false);
+  assert.equal(
+    catalogOwnsNode(
+      {
+        previewId: "app.sections.CardsKt.ElevatedCard",
+        code: "app/src/main/kotlin/app/sections/Cards.kt#ElevatedCard",
+      },
+      classes,
+      paths,
+    ),
+    true,
+  );
+});
+
 test("ownership falls open when either side names no module", () => {
   const withPath = {
     components: [
@@ -985,7 +1044,7 @@ test("ownership falls open when either side names no module", () => {
     catalogOwnsNode(
       { previewId: "app.sections.ButtonsKt.FilledButton" },
       declaringClasses(withPath),
-      publishingDirectories(withPath),
+      publishingSourcePaths(withPath),
     ),
     true,
   );
@@ -999,7 +1058,7 @@ test("ownership falls open when either side names no module", () => {
       },
     ],
   };
-  assert.deepEqual([...publishingDirectories(legacy)], []);
+  assert.equal(publishingSourcePaths(legacy).size, 0);
   assert.equal(
     catalogOwnsNode(
       {
@@ -1007,7 +1066,7 @@ test("ownership falls open when either side names no module", () => {
         code: "feature/src/main/kotlin/app/sections/Buttons.kt#FilledButton",
       },
       declaringClasses(legacy),
-      publishingDirectories(legacy),
+      publishingSourcePaths(legacy),
     ),
     true,
   );

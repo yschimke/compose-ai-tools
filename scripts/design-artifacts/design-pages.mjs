@@ -348,11 +348,11 @@ export function catalogOwnsNode(node, classes, directories) {
   // So when BOTH sides name a module, they have to agree. Fail-open otherwise, like everything
   // above: a bundle too old to carry `sourceDirectory` and a node with no code handle each leave
   // the class match standing on its own, which is the behaviour that shipped.
-  return nodeIsUnderOurModules(node, directories);
+  return nodeIsUnderOurModules(node, directories, declaring);
 }
 
 /**
- * Whether [node]'s code handle names a source file this catalog publishes from.
+ * Whether [node]'s code handle names a source file this catalog publishes [declaring] from.
  *
  * The module half of ownership, and an EXACT test rather than a containment one. Directory
  * containment reads a nested Gradle project as its parent's: `:app` at `app/` lexically contains
@@ -362,32 +362,42 @@ export function catalogOwnsNode(node, classes, directories) {
  *
  * Exact repository paths have no such ambiguity. `codeForNode` builds a handle as the component's
  * `sourceDirectory` joined to its module-relative `sourceFile`, so the set of handles this catalog
- * could have published IS the set of those joins, and a node either names one or does not. Same
- * granularity as the declaring-class test beside it — the file a preview is declared in — with the
- * module ambiguity removed.
+ * could have published IS the set of those joins, and a node either names one or does not.
+ *
+ * Scoped PER DECLARING CLASS, which is what keeps an exact test safe on a partly-stamped catalog.
+ * `applySourceFiles` stamps identity per component and only when discovery resolved that
+ * component's preview function, so a catalog may carry it for some and not others. Judging every
+ * node against one catalog-wide set would then call an unstamped component's own node foreign the
+ * moment any sibling was stamped — a regression against the class test alone. A class we hold no
+ * identity for is one we cannot place, so it keeps the answer the class test gave.
  */
-function nodeIsUnderOurModules(node, sourcePaths) {
+function nodeIsUnderOurModules(node, sourcePaths, declaring) {
   if (!sourcePaths || sourcePaths.size === 0) return true;
+  const known = sourcePaths.get(declaring);
+  if (!known || known.size === 0) return true;
   const code = typeof node?.code === "string" ? node.code.trim() : "";
   if (code === "") return true;
   const file = code.split("#", 1)[0].replace(/^\/+/, "");
   if (file === "") return true;
-  return sourcePaths.has(file);
+  return known.has(file);
 }
 
 /**
- * The repository-relative source files this catalog publishes components from.
+ * The repository-relative source files this catalog publishes, indexed by declaring class.
  *
  * `sourceDirectory` is the producing project's repository-relative directory as the bundle recorded
  * it and `sourceFile` is module-relative, so joining them is the same path `codeForNode` emits.
  * The root project stamps `""` — a real answer meaning "already repository-relative" — and joins to
  * the bare file.
  *
- * Empty for a bundle predating either field, which is what makes [catalogOwnsNode]'s module test
- * fail open for one.
+ * A component contributes only when it carries BOTH fields, so the map's keys are exactly the
+ * classes this catalog can place. Empty for a bundle predating them, which is what makes
+ * [catalogOwnsNode]'s module test fail open for one.
+ *
+ * @returns Map of declaring class → the repository paths this catalog publishes it from.
  */
-export function publishingDirectories(catalog) {
-  const paths = new Set();
+export function publishingSourcePaths(catalog) {
+  const byClass = new Map();
   for (const component of catalog?.components ?? []) {
     // `""` is the root project and is a usable answer; `undefined` is a bundle that never recorded
     // the field and must not be read as one.
@@ -396,9 +406,16 @@ export function publishingDirectories(catalog) {
     const dir = component.sourceDirectory.trim().replace(/^\/+|\/+$/g, "");
     const file = component.sourceFile.trim().replace(/^\/+/, "");
     if (file === "") continue;
-    paths.add(dir === "" ? file : `${dir}/${file}`);
+    const path = dir === "" ? file : `${dir}/${file}`;
+    for (const image of component?.images ?? []) {
+      const declaring = declaringClassOf(image?.previewId);
+      if (declaring === "") continue;
+      const paths = byClass.get(declaring) ?? new Set();
+      paths.add(path);
+      byClass.set(declaring, paths);
+    }
   }
-  return paths;
+  return byClass;
 }
 
 /**
@@ -462,7 +479,7 @@ export function planDesignPages({ manifest, spec, catalog }) {
   // …and out of which files, at full repository paths. A class name alone cannot tell two
   // modules apart, and a directory cannot tell a project from its own nested ones; see
   // [catalogOwnsNode].
-  const directories = publishingDirectories(catalog);
+  const directories = publishingSourcePaths(catalog);
 
   const images = [];
   const seen = new Set();
