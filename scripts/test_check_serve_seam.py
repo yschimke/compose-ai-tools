@@ -348,10 +348,14 @@ class MappingOwnership(unittest.TestCase):
 
     Prefix matching alone accepted `ee.schimke.composeai.daemon.bta -> daemon-bta-host` purely
     because the package name resembled the module name. It does not: that package is declared by
-    BOTH `:daemon:core` and `:daemon:bta-host`, and the two types serve imports from it
-    (`BtaCompileSession`, `DiagnosticCollector`) are the `daemon-core` ones. The wrong mapping
-    invented a split blocker that does not exist, and prefix matching would have hidden a genuinely
-    new `daemon.*` package owned by a different module the same way.
+    TWO modules, and the two types serve imports from it (`BtaCompileSession`,
+    `DiagnosticCollector`) belong to the published one. The wrong mapping invented a split blocker
+    that does not exist, and prefix matching would have hidden a genuinely new `daemon.*` package
+    owned by a different module the same way.
+
+    The published owner was `:daemon:core` when this test was written and is `:daemon-bta` since
+    #4715, which split the in-process compile out. The pairing that matters is unchanged — these
+    types against the module that publishes them, never against unpublished `:daemon:bta-host`.
     """
 
     @classmethod
@@ -407,11 +411,20 @@ class MappingOwnership(unittest.TestCase):
                         mismatches.append(f"{fqn}: mapped to {want}, declared by {sorted(owners)}")
         self.assertEqual(mismatches, [], "\n".join(mismatches))
 
-    def test_the_bta_types_come_from_daemon_core(self):
-        """The specific error this test exists to prevent."""
+    def test_the_bta_types_come_from_the_published_module(self):
+        """The specific error this test exists to prevent.
+
+        Asserted against the allowlist's own mapping rather than a literal, so the next time the
+        published owner moves this fails only if the mapping and the sources disagree — which is
+        the bug — instead of failing merely because the module was renamed. #4715 moved the owner
+        from `daemon-core` to `daemon-bta` and this assertion, as a literal, went red on main.
+        """
+        mapping = mod.load_allowlist()["contractPackages"]
         for name in ("BtaCompileSession", "DiagnosticCollector"):
             fqn = f"ee.schimke.composeai.daemon.bta.{name}"
-            self.assertEqual(self.declared_by.get(fqn), {"daemon-core"}, fqn)
+            want = self.mapped_module(mod.package_of(fqn), mapping)
+            self.assertEqual(self.declared_by.get(fqn), {want}, fqn)
+            self.assertNotEqual(want, "daemon-bta-host", fqn)
 
     def test_there_is_no_unpublished_blocker_today(self):
         self.assertEqual(mod.load_allowlist()["unpublishedContracts"], {})
