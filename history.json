@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "f1daa67288d3927ebcbc4dbc28ae1a7302027830",
+    "generatedFrom": "883113985ed0d815df81cfcbb848e31add96597f",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -6901,6 +6901,13 @@
             "path": "renders/samples:remotecompose/RemoteButtonWithBorderPreview-298b3408.png",
             "versions": [
                 {
+                    "blob": "49a8f93d89144f94d1897ca61f9dcaed69606189",
+                    "commit": "883113985ed0d815df81cfcbb848e31add96597f",
+                    "date": "2026-08-28T16:31:19Z",
+                    "sourceSha": "d0bec30a",
+                    "commits": 1
+                },
+                {
                     "blob": "457a5c7ac605301ce0741c74729ffaf06176b31f",
                     "commit": "f1daa67288d3927ebcbc4dbc28ae1a7302027830",
                     "date": "2026-08-28T15:15:49Z",
@@ -6929,13 +6936,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 4,
+            "observations": 5,
             "unstable": false,
             "flapCount": 0
         },
         "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithNamedLabelPreview": {
             "path": "renders/samples:remotecompose/RemoteButtonWithNamedLabelPreview-f3014b8f.png",
             "versions": [
+                {
+                    "blob": "2279714424a87d219d7eba9c019479073df4a37c",
+                    "commit": "883113985ed0d815df81cfcbb848e31add96597f",
+                    "date": "2026-08-28T16:31:19Z",
+                    "sourceSha": "d0bec30a",
+                    "commits": 1
+                },
                 {
                     "blob": "b3713128e1a9d156b637c552c9c3171544680af9",
                     "commit": "f1daa67288d3927ebcbc4dbc28ae1a7302027830",
@@ -6965,7 +6979,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 4,
+            "observations": 5,
             "unstable": false,
             "flapCount": 0
         },
