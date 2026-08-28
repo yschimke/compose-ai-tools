@@ -1,4 +1,4 @@
-package ee.schimke.composeai.daemon
+package ee.schimke.composeai.daemon.protocol
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json

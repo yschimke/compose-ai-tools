@@ -1,7 +1,7 @@
 package ee.schimke.composeai.render.session.embedded
 
-import ee.schimke.composeai.daemon.DaemonLaunchDescriptor
 import ee.schimke.composeai.daemon.client.DaemonClient
+import ee.schimke.composeai.daemon.protocol.DaemonLaunchDescriptor
 import ee.schimke.composeai.daemon.protocol.InitializeResult
 import ee.schimke.composeai.daemon.runDaemon
 import ee.schimke.composeai.io.SystemFileSystem

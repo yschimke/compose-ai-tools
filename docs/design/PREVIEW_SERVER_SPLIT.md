@@ -170,7 +170,7 @@ wider, and that two of the entries drag things a server should not carry.
 | Contract | Status |
 | --- | --- |
 | `daemon-protocol` | published — **split out of `daemon-core`**, see below |
-| `daemon-core` (`devices`, `DaemonLaunchDescriptor`) | published; carries a leak (below) |
+| `daemon-core` (`devices`, `bta`) | published; carries a leak (below) |
 | `preview-data-api` (`designpages`) | published |
 | `render-session-api` | published |
 | `render-session-subprocess` | published; carries a leak (below) |
@@ -221,9 +221,23 @@ Measured on the ABI dumps: `daemon-core` 7,317 lines → 2,479, with `daemon-pro
 package did not move (`ee.schimke.composeai.daemon.protocol` is unchanged) and `:daemon:core`
 exposes the new module as `api`, so no consumer needed an import change.
 
-What is left of serve's coupling to `daemon-core` is now legible as exactly five imports:
-`DaemonLaunchDescriptor`, `DeviceDimensions`, `frameDpOverriddenBy`, `BtaCompileSession`,
-`DiagnosticCollector`.
+What is left of serve's coupling to `daemon-core` is now four imports, in two groups that want
+different answers:
+
+- `DeviceDimensions` and `frameDpOverriddenBy` — a device catalog and the dp-override arithmetic
+  over it. Pure table plus arithmetic, no IO, and both ends have to agree on it: serve builds the
+  device menu from the same catalog the backend resolves against. The same shape as
+  `data-pseudolocale-core`, and a contract by the same reasoning.
+- `BtaCompileSession` and `DiagnosticCollector` — the playground's in-process Kotlin compile.
+  This is behaviour, not a shape, and it is genuine coupling rather than an accident of module
+  layout: a preview server that offers a playground really does need a compiler. Whether an
+  extracted server keeps the playground, or reaches a compile service, is a product question and
+  not one the module graph can answer.
+
+`DaemonLaunchDescriptor` was the third group and is now in `:daemon-protocol` — it is the
+`daemon-launch.json` file shape, written by the gradle plugin and read by the daemon JVM, the CLI
+doctor, the VS Code extension and serve. A format four programs agree on is the definition of a
+protocol; it sat in `:daemon:core` only because that is where the daemon was written.
 
 > **Correction.** An earlier revision of this document listed `:daemon:bta-host` as unpublished and
 > therefore a split blocker, because serve imports `BtaCompileSession` and `DiagnosticCollector`

@@ -1,7 +1,7 @@
 package ee.schimke.composeai.mcp
 
 import com.google.common.truth.Truth.assertThat
-import ee.schimke.composeai.daemon.DaemonLaunchDescriptor
+import ee.schimke.composeai.daemon.protocol.DaemonLaunchDescriptor
 import kotlinx.serialization.json.Json
 import org.junit.Test
 
