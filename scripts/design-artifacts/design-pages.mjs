@@ -122,7 +122,12 @@ function resolveServePreviewId(
     const matches = matchesForPreviewId(byPreviewId, declared);
     return matches.length > 0 ? servePreviewId(matches[0].image?.path) : null;
   }
-  const fn = functionNameOf(node?.code);
+  // The function join is in the PRODUCING MODULE's namespace, so it is only offered for a node this
+  // catalog owns. A foreign node's `#Member` can collide with an unrelated local preview — a bare
+  // `DefaultPreview` is the obvious case — and taking it would pair one component's code (rewritten
+  // from the reference) with another component's render, corrupting the very score this surface
+  // publishes. A foreign node goes straight to the reference join.
+  const fn = ours ? functionNameOf(node?.code) : null;
   if (fn) {
     const matches = byFunction.get(fn) ?? [];
     // Refuse an AMBIGUOUS fallback. `byFunction` is keyed by the bare member name, so two
@@ -185,13 +190,14 @@ export function codeForNode(node, { byReference, classes, moduleDir }) {
     // to go back on — the same join the serve host makes to build a source link. Without a
     // directory to prefix there is nothing honest to say, so the claim is dropped rather than
     // published one namespace out.
-    const dir = moduleDir ? moduleDir(referenced.sourceModule) : "";
-    if (file !== "" && dir !== "") {
+    const dir = moduleDir ? moduleDir(referenced.sourceModule) : null;
+    if (file !== "" && dir !== null) {
       // OUR function, not the incoming one. Keeping the sibling's `#Member` beside our file names a
       // function that does not exist in it — `CatalogPreviews.kt#FilledButton` when the preview is
       // `FilledRemoteButton` — which is a worse link than no link, because it looks resolvable.
       const fn = previewFunctionOf(referenced);
-      const path = `${dir}/${file}`;
+      // The root project prefixes nothing — its files are already repository-relative.
+      const path = dir === "" ? file : `${dir}/${file}`;
       return fn ? `${path}#${fn}` : path;
     }
   }
@@ -210,11 +216,33 @@ export function previewFunctionOf(component) {
   for (const image of component?.images ?? []) {
     const previewId =
       typeof image?.previewId === "string" ? image.previewId : "";
+    if (!previewId.includes(".")) continue;
     const member = previewId.slice(previewId.lastIndexOf(".") + 1);
-    const fn = member.split("_")[0];
-    if (previewId.includes(".") && fn !== "") return fn;
+    const fn = stripPreviewSuffixes(member);
+    if (fn !== "") return fn;
   }
   return null;
+}
+
+/**
+ * The `@Preview` axes and variant markers discovery appends to a member name.
+ *
+ * Anchored to the axis VOCABULARY rather than to the first underscore, because a Kotlin function
+ * name may contain one: `Filled_Button_Light` truncated at the first `_` publishes `#Filled`, a
+ * handle that names no function at all. Only a recognised suffix is removed, so an unrecognised
+ * name survives whole — which is the safe direction, since a too-long name still points at the
+ * right file while a truncated one points nowhere.
+ */
+const PREVIEW_SUFFIX = new RegExp(
+  [
+    "_VARIANT_.*$",
+    "_(?:width|height|dpi|density|fontScale|locale|uiMode|device|apiLevel|group|showBackground|backgroundColor|wallpaper)_.*$",
+    "_(?:Light|Dark)$",
+  ].join("|"),
+);
+
+function stripPreviewSuffixes(member) {
+  return member.replace(PREVIEW_SUFFIX, "");
 }
 
 /**
@@ -222,8 +250,11 @@ export function previewFunctionOf(component) {
  *
  * Gradle's own default, and the same join the serve host makes to turn a component's module-relative
  * `sourceFile` into a link. A `settings.gradle.kts` may remap a project's directory, and nothing in
- * a published catalog records that — so this returns "" for anything it cannot derive plainly, and
- * the caller drops the claim instead of publishing a path that resolves to nothing.
+ * a published catalog records that — so this returns `null` for anything it cannot derive plainly,
+ * and the caller drops the claim instead of publishing a path that resolves to nothing.
+ *
+ * `":"` — the root project — returns `""`, which is a real answer and not a refusal: such a
+ * catalog's `sourceFile` is already repository-relative and needs no prefix.
  */
 export function moduleDirectory(modulePath, fallback) {
   const raw =
@@ -231,9 +262,12 @@ export function moduleDirectory(modulePath, fallback) {
       ? modulePath
       : fallback;
   const path = typeof raw === "string" ? raw.trim() : "";
-  if (path === "" || !path.startsWith(":")) return "";
+  if (path === "" || !path.startsWith(":")) return null;
   const segments = path.slice(1).split(":").filter(Boolean);
-  return segments.length > 0 ? segments.join("/") : "";
+  // `":"` is the ROOT project, and its answer is the empty prefix — a root-project catalog's
+  // `sourceFile` is already repository-relative. Distinct from `null`, which means the path could
+  // not be derived at all; conflating the two dropped every rewritable node of a root catalog.
+  return segments.join("/");
 }
 
 /**
@@ -331,6 +365,12 @@ export function declaringClasses(catalog) {
  * written for my sibling" exactly, and is a no-op for every single-catalog repo.
  */
 export function catalogOwnsNode(node, classes) {
+  // A catalog whose images carry NO discovery ids at all — everything folded in through the
+  // generator's `--extra-renders`, which deliberately publishes none (see
+  // [narrowToMappedPreviewId]) — cannot place any claim. That is ignorance, not evidence of
+  // foreignness: judging on it would unlink every node such a catalog has, which is the whole page
+  // surface. Unable to judge ⇒ keep, exactly as before this test existed.
+  if (!classes || classes.size === 0) return true;
   const previewId = typeof node?.previewId === "string" ? node.previewId : "";
   const lastDot = previewId.lastIndexOf(".");
   if (lastDot <= 0) {
@@ -461,17 +501,28 @@ export function planDesignPages({ manifest, spec, catalog }) {
       const declaredLink = LINK_METHODS.has(node?.link)
         ? node.link
         : "unlinked";
+      const ours = catalogOwnsNode(node, classes);
       const code =
         declaredLink === "unlinked"
           ? null
           : codeForNode(node, { byReference, classes, moduleDir });
+      // Whether the reference join REPLACED this node's mapping rather than inheriting it. None of
+      // the owner's provenance survives that swap: its `confidence` grades a link we did not make,
+      // and its `cell` says the id it declared is an override capture — a claim about a preview id
+      // in the sibling's namespace, not about ours. Republishing either would label our component
+      // with the other catalog's bookkeeping.
+      const rewritten = declaredLink !== "unlinked" && !ours && code !== null;
       // A claim this catalog cannot substantiate is not a link. Dropping the handle while keeping
       // `link` would publish a linked node with nothing behind it — the contradiction
       // `renderablePreviewId` already refuses to draw — so the two move together.
       const link =
         declaredLink !== "unlinked" && code === null
           ? "unlinked"
-          : declaredLink;
+          : rewritten
+            ? // Our own catalog metadata tied this node to a component — the `reference` handle on
+              // it — so the method is `manifest` however the owner came by its link.
+              "manifest"
+            : declaredLink;
       if (declaredLink !== "unlinked" && link === "unlinked") foreign += 1;
       const previewId =
         link === "unlinked"
@@ -514,7 +565,7 @@ export function planDesignPages({ manifest, spec, catalog }) {
         // unrecognised value there is a parse failure for the WHOLE manifest — one bad string in
         // one node would hide every page the catalog publishes. Dropping the field costs only a
         // styling hint.
-        ...(CONFIDENCE_VALUES.has(node?.confidence)
+        ...(!rewritten && CONFIDENCE_VALUES.has(node?.confidence)
           ? { confidence: node.confidence }
           : {}),
         // A grouping whose contents are listed below it — a COMPONENT_SET, whose children are the
@@ -540,7 +591,9 @@ export function planDesignPages({ manifest, spec, catalog }) {
         // actually linked: an unlinked node carries no claim about what is behind it, and a stale
         // `previewId` left beside `link: unlinked` is exactly the contradiction
         // `renderablePreviewId` refuses to draw.
-        ...(link !== "unlinked" && isCellNode(node) ? { cell: true } : {}),
+        ...(link !== "unlinked" && !rewritten && isCellNode(node)
+          ? { cell: true }
+          : {}),
       });
     }
     if (foreign > 0) {

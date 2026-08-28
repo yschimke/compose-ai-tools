@@ -802,11 +802,36 @@ test("moduleDirectory derives a project's directory, and declines what it cannot
   // Falls back to the catalog's own module when a component records none.
   assert.equal(moduleDirectory(undefined, ":catalog"), "catalog");
   assert.equal(moduleDirectory("", ":catalog"), "catalog");
-  // A settings.gradle.kts may remap a project's directory and no published catalog records that, so
-  // anything not plainly derivable returns "" and the caller drops the claim.
-  assert.equal(moduleDirectory("catalog"), "");
+  // The ROOT project is a real answer, not a refusal: its sourceFile is already repo-relative, so
+  // the prefix is empty and the handle is published bare. Conflating this with "cannot derive"
+  // dropped every rewritable node of a root-project catalog.
   assert.equal(moduleDirectory(":"), "");
-  assert.equal(moduleDirectory(undefined, undefined), "");
+  // A settings.gradle.kts may remap a project's directory and no published catalog records that, so
+  // anything not plainly derivable returns null and the caller drops the claim.
+  assert.equal(moduleDirectory("catalog"), null);
+  assert.equal(moduleDirectory(undefined, undefined), null);
+});
+
+test("a root-project catalog publishes its bare, already-repo-relative sourceFile", () => {
+  const rootCatalog = {
+    source: { module: ":" },
+    components: [
+      {
+        ...parallelCatalog.components[0],
+        sourceModule: ":",
+        sourceFile: "app/src/main/kotlin/app/remote/RemotePreviews.kt",
+      },
+    ],
+  };
+  const result = planDesignPages({
+    manifest: sharedImport,
+    spec: {},
+    catalog: rootCatalog,
+  });
+  assert.equal(
+    onlyNode(result).code,
+    "app/src/main/kotlin/app/remote/RemotePreviews.kt#FilledRemoteButton",
+  );
 });
 
 test("declaringClasses reads the files a catalog publishes previews from", () => {
@@ -862,4 +887,140 @@ test("previewFunctionOf strips the axis and variant suffixes discovery appends",
   );
   assert.equal(previewFunctionOf({ images: [] }), null);
   assert.equal(previewFunctionOf({}), null);
+});
+
+// ---- Review findings on the shared-import fix (#4680) ------------------------------------------
+
+test("an extra-renders catalog keeps its links instead of losing every one", () => {
+  // `--extra-renders` images deliberately carry no `previewId` (design-references.mjs), so the
+  // declaring-class set is EMPTY. That is ignorance, not evidence of foreignness — judging on it
+  // would unlink the whole page surface for such a catalog.
+  const extraRenders = {
+    source: { module: ":catalog" },
+    components: [
+      {
+        componentId: "Button/Filled",
+        sourceFile: "src/main/kotlin/app/sections/Buttons.kt",
+        images: [{ path: "images/button-filled/ideal__default.png" }],
+      },
+    ],
+  };
+  const result = planDesignPages({
+    manifest: sharedImport,
+    spec: {},
+    catalog: extraRenders,
+  });
+  const node = onlyNode(result);
+  assert.equal(node.link, "manifest", "unable to judge ⇒ the claim is kept");
+  assert.equal(
+    node.code,
+    "catalog/src/main/kotlin/app/sections/Buttons.kt#FilledButton",
+  );
+});
+
+test("a foreign node never resolves through a colliding local function name", () => {
+  // The function join is in the PRODUCING module's namespace. A generic `#Member` shared with an
+  // unrelated local preview would pair one component's code with another's render.
+  const collidingSpec = {
+    groups: [
+      {
+        components: [
+          { componentId: "Unrelated/Thing", preview: "FilledButton" },
+        ],
+      },
+    ],
+  };
+  const colliding = {
+    source: { module: ":remote-catalog" },
+    components: [
+      // Same @Preview function name as the owner's node, but a different component entirely, and
+      // it claims no reference.
+      {
+        componentId: "Unrelated/Thing",
+        sourceFile: "src/main/kotlin/app/remote/Unrelated.kt",
+        sourceModule: ":remote-catalog",
+        images: [
+          {
+            path: "images/unrelated-thing/ideal__default.png",
+            previewId: "app.remote.UnrelatedKt.FilledButton",
+          },
+        ],
+      },
+    ],
+  };
+  const result = planDesignPages({
+    manifest: sharedImport,
+    spec: collidingSpec,
+    catalog: colliding,
+  });
+  const node = onlyNode(result);
+  assert.equal(
+    node.link,
+    "unlinked",
+    "no reference claims this node, so nothing substantiates it",
+  );
+  assert.equal(
+    node.previewId,
+    undefined,
+    "and emphatically not the colliding component's render",
+  );
+});
+
+test("a rewritten node drops the owner's provenance rather than wearing it", () => {
+  // `confidence` grades a link we did not make; `cell` describes an override capture named in the
+  // SIBLING's id namespace. Neither is true of our component.
+  const owned = {
+    ...sharedImport,
+    pages: [
+      {
+        ...sharedImport.pages[0],
+        nodes: [
+          {
+            ...sharedImport.pages[0].nodes[0],
+            link: "code-connect",
+            confidence: "high",
+            previewId: "app.sections.ButtonsKt.FilledButton_VARIANT_off",
+          },
+        ],
+      },
+    ],
+  };
+  const result = planDesignPages({
+    manifest: owned,
+    spec: {},
+    catalog: parallelCatalog,
+  });
+  const node = onlyNode(result);
+  assert.equal(
+    node.link,
+    "manifest",
+    "our own reference tied this, not the owner's Code Connect",
+  );
+  assert.equal("confidence" in node, false);
+  assert.equal(
+    "cell" in node,
+    false,
+    "the override-variant claim was about the sibling's id",
+  );
+
+  // …and the owning catalog keeps all of it, because nothing was replaced.
+  const kept = onlyNode(
+    planDesignPages({ manifest: owned, spec: {}, catalog: ownerCatalog }),
+  );
+  assert.equal(kept.link, "code-connect");
+  assert.equal(kept.confidence, "high");
+  assert.equal(kept.cell, true);
+});
+
+test("previewFunctionOf keeps an underscore that belongs to the function name", () => {
+  // `Filled_Button_Light` truncated at the first underscore publishes `#Filled` — a handle naming
+  // no function at all. Only a recognised axis or variant suffix is stripped.
+  const fnFor = (previewId) => previewFunctionOf({ images: [{ previewId }] });
+  assert.equal(fnFor("app.PreviewsKt.Filled_Button_Light"), "Filled_Button");
+  assert.equal(fnFor("app.PreviewsKt.Filled_Button"), "Filled_Button");
+  assert.equal(fnFor("app.PreviewsKt.Sticker_width_227dp_dpi_320"), "Sticker");
+  assert.equal(fnFor("app.PreviewsKt.Sticker_VARIANT_disabled"), "Sticker");
+  // Unrecognised suffixes survive whole: too long still points at the right file, truncated points
+  // nowhere.
+  assert.equal(fnFor("app.PreviewsKt.Odd_Name_Here"), "Odd_Name_Here");
 });
