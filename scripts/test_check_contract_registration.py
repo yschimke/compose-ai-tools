@@ -66,6 +66,15 @@ class Coverage(unittest.TestCase):
         self.assertIn("daemon/core/build.gradle.kts", missed)
         self.assertIn("daemon/core/src/main/java/ee/schimke/composeai/X.java", missed)
 
+    def test_globs_crafted_for_the_sample_do_not_count(self):
+        # Five globs written to match exactly the five plausible paths would satisfy a fixed
+        # sample while no real source selects the job. The nonce probes are what make this a
+        # subtree requirement rather than a sample.
+        crafted = [f"daemon/core/{s}" for s in mod.REPRESENTATIVE[:5]]
+        missed = self.missed("daemon/core", crafted)
+        self.assertEqual(len(missed), 2)
+        self.assertTrue(all("q7v3" in m for m in missed))
+
     def test_a_trailing_slash_pattern_matches_nothing(self):
         # `glob_to_regex` compiles `daemon/core/` to an exact path, so it selects no file under
         # the module — the shape the previous version of this check accepted as coverage.
