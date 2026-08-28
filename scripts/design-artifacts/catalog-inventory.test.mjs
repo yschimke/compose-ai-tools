@@ -208,6 +208,81 @@ test("inventoryFromPreviews folds VARIANT entries under their parent by componen
   ]);
 });
 
+test("inventoryFromPreviews carries a variant's own kit correspondence onto the variant", () => {
+  // A variant is compared in its own right, not through its parent: `Button/Compact-IconOnly` and
+  // `Button/Compact` are different renders that can diverge from the kit independently. Folding
+  // the first under the second must not hand its parity over to the parent.
+  const { groups } = inventoryFromPreviews([
+    component("CompactButton", { componentId: "Button/Compact", group: "Buttons" }),
+    variant("CompactIconOnlyButton", {
+      componentId: "Button/Compact",
+      props: [{ key: "content", value: "icon-only" }],
+      parallel: "Button/Compact",
+      noReference: "The kit exports no `Text=No` cell.",
+    }),
+  ]);
+  assert.deepEqual(groups[0].components[0].variants, [
+    {
+      preview: "CompactIconOnlyButton",
+      props: { content: "icon-only" },
+      parallel: "Button/Compact",
+      noReference: "The kit exports no `Text=No` cell.",
+    },
+  ]);
+});
+
+test("inventoryFromPreviews lets sibling variants of one parent share a parallel", () => {
+  // The sibling system often draws one component where this one draws a family, so several
+  // variants legitimately name the same counterpart. Nothing dedupes them.
+  const { groups } = inventoryFromPreviews([
+    component("CompactButton", { componentId: "Button/Compact", group: "Buttons" }),
+    variant("CompactIconOnly", {
+      componentId: "Button/Compact",
+      props: [{ key: "content", value: "icon-only" }],
+      parallel: "Button/Compact",
+    }),
+    variant("CompactTextOnly", {
+      componentId: "Button/Compact",
+      props: [{ key: "content", value: "text-only" }],
+      parallel: "Button/Compact",
+    }),
+  ]);
+  assert.deepEqual(
+    groups[0].components[0].variants.map((v) => v.parallel),
+    ["Button/Compact", "Button/Compact"],
+  );
+});
+
+test("inventoryFromPreviews carries a variant's own reference and referenceContentsOnly", () => {
+  const { groups } = inventoryFromPreviews([
+    component("Card", { componentId: "Card", group: "Containment" }),
+    variant("OutlinedCard", {
+      componentId: "Card",
+      props: [{ key: "style", value: "outlined" }],
+      reference: "figma:FILE/1:2",
+      referenceSet: "figma:FILE/1:1",
+      referenceContentsOnly: false,
+    }),
+  ]);
+  assert.deepEqual(groups[0].components[0].variants[0], {
+    preview: "OutlinedCard",
+    props: { style: "outlined" },
+    reference: "figma:FILE/1:2",
+    referenceSet: "figma:FILE/1:1",
+    referenceContentsOnly: false,
+  });
+});
+
+test("inventoryFromPreviews leaves a variant that declares no kit correspondence unchanged", () => {
+  const { groups } = inventoryFromPreviews([
+    component("FilledButton", { componentId: "Button/Filled", group: "Buttons" }),
+    variant("FilledButtonPressed", { componentId: "Button/Filled", state: "pressed" }),
+  ]);
+  assert.deepEqual(groups[0].components[0].variants, [
+    { preview: "FilledButtonPressed", state: "pressed" },
+  ]);
+});
+
 test("inventoryFromPreviews reports a variant whose parent component is absent", () => {
   const { groups, orphanVariants } = inventoryFromPreviews([
     variant("FilledButtonPressed", { componentId: "Button/Filled", state: "pressed" }),
