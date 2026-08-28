@@ -168,6 +168,46 @@ point: that edit is drift from `main`.
 > docker compose exec preview cat /config/catalogs.json
 > ```
 
+### Regenerating a catalog's warmed theme renders
+
+Two admin routes for pixels you suspect are wrong for a reason no fingerprint sees — a base-image
+bump that changed the installed fonts being the case that motivated them.
+
+```bash
+# Mark this catalog's warmed renders for re-render. Nothing is deleted: every preview keeps
+# serving while the background pass replaces them. Answers {"queued": true, "entries": N}.
+curl -sX POST -H "X-Compose-Preview-Admin-Token: $SERVE_ADMIN_TOKEN" \
+  https://<host>/admin/catalogs/m3-catalog/theme-cache/regenerate
+
+# Take them instead. Every preview for that catalog goes cold at once and is re-rendered from
+# nothing — the cost `regenerate` exists to avoid, so this is the second choice of the two.
+curl -sX POST -H "X-Compose-Preview-Admin-Token: $SERVE_ADMIN_TOKEN" \
+  https://<host>/admin/catalogs/m3-catalog/theme-cache/drop
+```
+
+Both wake the catalog's optimizer, so the work starts with the response rather than waiting on the
+next rotation. A mistyped system is a `404`, not a silent success.
+
+**A `409` from either is "contended, retry"** — a render held the generation write lock as you
+called, and reporting that as success is the one failure mode a drop must not have. From
+`regenerate` it can also mean the request could not be made durable (a full or read-only cache
+volume) or that theme optimization is switched off on this box, so nothing would ever work the
+queue. Each route reports the refusal in its **own** field: `regenerate` answers `"queued": false`
+rather than a count, and `drop` answers `"dropped": false`. Retry logic reading the wrong one finds
+it absent and takes a refusal for a success.
+
+**Deliberately not buttons on `/status`.** That page authenticates with `SERVE_TOKEN`; these routes
+require `SERVE_ADMIN_TOKEN`, which is a different and much smaller audience. A button would have to
+bridge that gap, and every way of bridging it either puts the admin credential in a page that
+merely holding the serve token can read, or invents a second, weaker way into an admin route. These
+are rare operator actions, and a drop takes a warm catalog cold across every one of its renders —
+not a thing to make one click away from a page a wider audience can already see.
+
+What `/status` *does* show is when a catalog needs one: a row reading
+`themes optimized 10440/10440 · 10440 inherited, re-rendering` is warm everywhere and finished
+nowhere — every render came from a build that is no longer running, and the pass is replacing them.
+`/status.json` carries the same figure as `catalogList[].themeOptimization.dirty`.
+
 ### GitHub auth on `preview.coo.ee`
 
 To keep catalog browsing public while requiring GitHub sign-in for live sessions and playground,
@@ -265,6 +305,46 @@ catalog 'compose-m3'` appears on the first run, and until then `/playground` rep
 unavailable. Once resolved it is **pinned for the life of the process**: a later catalog refresh
 does not move it, because live snippet JVMs hold those jars open. Restart the container to compile
 against a newer catalog ABI.
+
+### Image lane on `preview.coo.ee`
+
+`POST /images` lets an agent that just rendered a preview hand the PNG to this box and get back an
+embeddable `/i/<id>.png` for a pull-request body — the mechanism
+[`share-preview --mechanism serve`](../../docs/public-preview-server.md#uploading-a-preview-image---accept-images)
+uses when it has neither `gh` nor push rights. Uploading is **never anonymous, on a `--public` box
+too**: the caller presents `Authorization: Bearer <github-token>` and GitHub itself is asked whether
+that account has access to the gating repository. Reading is open by design — GitHub's image proxy
+fetches an embedded image anonymously, so the unguessable 128-bit id is the whole grant.
+
+Turning it on is naming that repository:
+
+```bash
+SERVE_IMAGE_UPLOAD_REPO=yschimke/compose-ai-tools
+# optional: SERVE_IMAGE_TTL=604800 (7d default) · SERVE_IMAGE_RATE_LIMIT=60 (uploads/min/account)
+```
+
+`SERVE_ACCEPT_IMAGES` is derived from it (`entrypoint.sh`, guarded by
+[`test-image-lane-default.sh`](test-image-lane-default.sh)), because that variable exists for
+nothing but this lane — naming it and still getting a 404 from `POST /images` is nobody's intent,
+and the miss is silent at both ends. Set `SERVE_ACCEPT_IMAGES=0` to keep the lane shut with the
+repository named, or `=1` without one to get the server's own startup refusal.
+
+The derivation deliberately does **not** key on GitHub auth being configured, the way
+`SERVE_AGENT_GRANTS` does. The gating repository falls back to `SERVE_GITHUB_AUTH_REPO`, which this
+image defaults to `yschimke/compose-ai-tools` for the playground — so keying on auth would open an
+upload lane on every adopter's box gated by *our* collaborators rather than theirs. An operator who
+wants that fallback still gets it by naming the repository explicitly.
+
+Verify after a roll — the row on `/status`, and the refusal an unauthenticated caller gets, which is
+the same route answering rather than a 404:
+
+```bash
+curl -s https://preview.coo.ee/status.json | jq '.config | {acceptImages, imageUploadRepository}'
+curl -sS -o /dev/null -w '%{http_code}\n' -X POST --data-binary @render.png \
+  'https://preview.coo.ee/images?name=after.png'                       # 401 — lane is up, no credential
+curl -sS -H "Authorization: Bearer $(gh auth token)" --data-binary @render.png \
+  'https://preview.coo.ee/images?name=after.png'                       # 201 + the markdown to paste
+```
 
 ### Widening the background render lane (`SERVE_BACKGROUND_RENDERS`)
 

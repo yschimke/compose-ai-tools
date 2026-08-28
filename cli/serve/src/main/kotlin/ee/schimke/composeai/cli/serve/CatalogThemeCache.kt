@@ -744,13 +744,28 @@ class CatalogThemeCache(
     val permitWait = permitWaitMillis.get()
     val waiting = gateWait + permitWait
     val rate = ratePerMinute(render + waiting)
+    // Read the dirty tier ONCE, here, for the same reason the counters above are read once — and
+    // with one extra constraint: `dirtyCount` is where the rollout reconcile hangs, so calling it
+    // in the `dirty` field below would run that reconcile *after* `failed` had already asked
+    // `isDirty` about each failed key. A key the reconcile re-dirties would then land in one field
+    // and not the other. Reconciling first makes both fields describe the same instant.
+    val dirtyTotal = persistence?.dirtyCount() ?: 0
     return ThemeOptimizationSnapshot(
       state =
         if (complete) "complete" else state.get().let { if (it == "complete") "paused" else it },
       total = total,
       cached = cachedTargets,
       remaining = (total - cachedTargets).coerceAtLeast(0),
-      failed = failedKeys.count { it in targetKeys && !contains(it) },
+      // A failed key that is now cached has been rendered since, so it is no longer a failure —
+      // EXCEPT when what is cached is another build's work. A dirty entry is `contains` by design
+      // (that is the whole point of serving it while the pass replaces it), so `!contains` alone
+      // counted a repeatedly-failing dirty re-render as zero, and the status row this catalog's
+      // dirty state exists to drive could never report one. Cheap despite the per-key question:
+      // this walks `failedKeys`, which is empty on a healthy catalog, not the 10,440 target keys.
+      failed =
+        failedKeys.count {
+          it in targetKeys && (!contains(it) || persistence?.isDirty(it) == true)
+        },
       cachedBytes = byteCount.get(),
       fullyOptimized = complete,
       startedAtEpochMillis = startedAt.get().takeIf { it > 0 },
@@ -776,8 +791,9 @@ class CatalogThemeCache(
       maxBatchWidth = maxBatchWidth.get(),
       // The store's own count, not `dirtyTargets().size`: `/status` snapshots every catalog on
       // every request and m3-catalog alone declares 10,440 targets, so the filtered walk belongs on
-      // the optimizer's path — which runs per slice — and not on this one.
-      dirty = persistence?.dirtyCount() ?: 0,
+      // the optimizer's path — which runs per slice — and not on this one. Read above, so the
+      // reconcile it carries runs before `failed` reads the same state.
+      dirty = dirtyTotal,
     )
   }
 

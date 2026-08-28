@@ -10,13 +10,15 @@ with `./gradlew` against the local tree.
 > (`compose-preview`, `compose-preview-review`). Don't duplicate consumer
 > guidance here.
 
-Start with **[AGENTS.md](AGENTS.md)** — the architecture map and the
-conventions every change must follow. This index is just the map of everything
-else.
+Rules live in **[root AGENTS.md](../AGENTS.md)** — the short, canonical file every
+agent loads on every turn. This tree is the detail behind it: start with
+**[AGENTS.md](AGENTS.md)** for the architecture map and the rationale, and treat
+this index as the map of everything else.
 
 ## Orientation
 
-- [AGENTS.md](AGENTS.md) — class-by-class architecture, commands, constraints, conventions. **Read first.**
+- [root AGENTS.md](../AGENTS.md) — the CI-enforced invariants and the normative PR workflow, stated once. Every agent loads it on every turn.
+- [AGENTS.md](AGENTS.md) — class-by-class architecture, commands, constraints, and the rationale behind the rules. **Read first.**
 - [HOW_IT_WORKS.md](HOW_IT_WORKS.md) — end-to-end: how a `@Preview` becomes a PNG.
 - [DEVELOPMENT.md](DEVELOPMENT.md) — building the plugin, CLI, and extension from source.
 - [RENDER_FILENAMES.md](RENDER_FILENAMES.md) — render output layout and filename normalization.
@@ -46,6 +48,7 @@ else.
 - [VERSIONING.md](VERSIONING.md) — versioning policy for public surfaces.
 - [API_STABILITY.md](API_STABILITY.md) — what counts as a public contract.
 - [AGENT_INVOCATION.md](AGENT_INVOCATION.md) — summoning an agent onto an issue/PR.
+- [AGENT_ENTRYPOINTS.md](AGENT_ENTRYPOINTS.md) — **measurement**: which instruction file each agent (Claude Code, Codex, Gemini, Copilot) actually resolves, why none of them follows a markdown link, what the old layout cost the three non-Claude agents, and the CI gate that keeps every CI-enforced invariant reachable from all four.
 - [PR_REVIEW_WORKFLOW.md](PR_REVIEW_WORKFLOW.md) — preview-gated AI PR review.
 - [TOKEN_USAGE.md](TOKEN_USAGE.md) — token-budget reference for agent recipes.
 - [CLOUD-TESTING.md](CLOUD-TESTING.md) — testing the extension in a cloud sandbox.

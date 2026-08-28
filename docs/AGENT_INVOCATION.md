@@ -40,7 +40,8 @@ claude.ai/code).
   replies" is covered; drive-by comments from strangers are not runnable.
 - **Context**: the action feeds Claude the issue/PR body, **all comments**,
   the diff, and a full checkout. Repo conventions load automatically from
-  `CLAUDE.md` / `docs/AGENTS.md`, and the workflow appends a system prompt
+  `CLAUDE.md`, which imports root [`AGENTS.md`](../AGENTS.md); the workflow
+  appends a system prompt
   enforcing the visual-evidence contract below.
 - **Where changes go**:
   - mention on an **open PR** → commits pushed directly to the PR's branch;
@@ -64,7 +65,7 @@ behaves exactly like resuming the session.
 
 ### Visual evidence contract
 
-The appended system prompt makes the repo rule from `CLAUDE.md` operational
+The appended system prompt makes the repo rule from [`AGENTS.md`](../AGENTS.md#pr-workflow) operational
 inside the action:
 
 1. Render affected `@Preview`s **before and after** with the compose-preview

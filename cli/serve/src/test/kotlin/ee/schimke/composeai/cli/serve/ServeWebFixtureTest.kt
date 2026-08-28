@@ -3230,6 +3230,47 @@ class ServeWebFixtureTest {
                       evictions = 0,
                     ),
                 ),
+                // A catalog part way through replacing another build's renders, with some of them
+                // refusing to re-render. Every other catalog here is converged, so without this
+                // entry the whole dirty/failed half of the optimization row — the wording, the
+                // failure count and the meter's tone — was rendered by no fixture and therefore
+                // diffed by nothing, which is how a status row can change unnoticed.
+                ServeWeb.StatusCatalog(
+                  id = "wear-m3",
+                  title = "Wear Material 3",
+                  listed = true,
+                  trust = "branch:yschimke/wear-m3-catalog@design-artifacts/wear-m3",
+                  previews = 30,
+                  live = true,
+                  running = true,
+                  degradation = null,
+                  provenance =
+                    provenance.copy(
+                      repo = "yschimke/wear-m3-catalog",
+                      branch = "design-artifacts/wear-m3",
+                    ),
+                  themeOptimization =
+                    ThemeOptimizationSnapshot(
+                      state = "degraded",
+                      total = 240,
+                      cached = 232,
+                      remaining = 8,
+                      // Non-zero only because a *dirty* entry can now be counted: these are cached,
+                      // so the old "not cached" rule reported this catalog as having no failures.
+                      failed = 3,
+                      cachedBytes = 11_403_264,
+                      fullyOptimized = false,
+                      dirty = 24,
+                      startedAtEpochMillis = 1_721_209_800_000,
+                    ),
+                  renderCache =
+                    CatalogRenderCacheSnapshot(
+                      entries = 240,
+                      bytes = 4L * 1024 * 1024,
+                      maxBytes = 128L * 1024 * 1024,
+                      evictions = 0,
+                    ),
+                ),
                 ServeWeb.StatusCatalog(
                   id = "remote-m3",
                   title = "Remote Compose Material 3",

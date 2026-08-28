@@ -55,7 +55,27 @@ data class ServeCatalogsConfig(
 ) {
   /** One front-page section: its stable [id], the [heading] shown, and its count [noun]. */
   @Serializable
-  data class Group(val id: String, val heading: String, val noun: String = DEFAULT_NOUN)
+  data class Group(
+    val id: String,
+    val heading: String,
+    val noun: String = DEFAULT_NOUN,
+    /**
+     * **Front-page section order**, highest first; ties keep first-appearance order. Default 0, so
+     * a config that says nothing renders exactly as it always did.
+     *
+     * Section order was purely positional — first appearance while walking the catalog list — so
+     * the only way to lift a section was to reorder the catalogs under it, and a catalog published
+     * through the admin API is appended, which put its whole section last however the file reads.
+     * The box's reference design systems could therefore end up below the sample apps
+     * (issue #4601). This decouples the two orders: the catalog list still orders the cards inside
+     * a section, this orders the sections themselves.
+     *
+     * Only *declared* groups carry one. A card that falls back to its source repo's owner heading
+     * sits at the default 0, and the unattributed "Other" bucket stays pinned last whatever any
+     * priority says.
+     */
+    val priority: Int = 0,
+  )
 
   /** One published catalog. */
   @Serializable
