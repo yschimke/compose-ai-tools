@@ -21,11 +21,17 @@ name: No Agent Attribution
 # neither local hook ever sees the text that becomes the commit. This repo also
 # sets `squash_merge_commit_message=BLANK`, which drops the body — so a
 # `Co-authored-by:` line in a PR description does not in fact reach `main` today.
-# It is scanned anyway, and deliberately: that is a repository *setting*, not
-# anything a diff can guarantee, and a merger can edit the message by hand. So we
+# It is scanned anyway, and deliberately: BLANK is a repository *setting* that no
+# diff can guarantee, so the scan holds whether or not it is still set. So we
 # scan the PR title, the PR body, and every commit message in the range — but
 # only at trailer position (start of line), so prose that merely *mentions* a
 # trailer (like this very PR) does not trip the gate.
+#
+# What this job CANNOT cover is a merger editing the squash message by hand:
+# that happens after the required check has read the title, the body and the
+# commit range, so none of its inputs contain the new text. `drift` below is
+# what catches that, on the push to `main` — after the fact rather than before,
+# which is the honest boundary between the two jobs.
 #
 # The path that DOES reach `main`, and the one that actually bit us: GitHub's
 # squash credits every distinct **commit author** of the branch as a co-author,
