@@ -68,9 +68,37 @@ const LIGHT_MODE = "Light";
 /** The tag discovery puts in the id of an `@OverrideVariant` reseed: `…_VARIANT_<name>`. */
 const VARIANT_TAG = "_VARIANT_";
 
+/**
+ * The head of a capture's id with the `_VARIANT_<name>` reseed suffix removed, and whether there
+ * was one — `{ head, reseed }`.
+ *
+ * `_VARIANT_` is a legal substring of a Kotlin function name, so a plain `includes()` read the BASE
+ * capture of a composable called `Icon_VARIANT_Only` as a generated reseed. Every `continue` guarded
+ * by that test then dropped the composable outright, including its explicit `noReference` — a
+ * record whose whole purpose is to survive into the diagnostics.
+ *
+ * Discovery appends the tag to the id it has already built (`base.id + "_VARIANT_<name>"`), so the
+ * marker of an actual reseed is the LAST one and the function's own name is still in front of it.
+ * Splitting there and requiring the `.<functionName>` marker to survive in the head distinguishes
+ * the two: `…FooKt.Icon_VARIANT_Only_Light` splits to `…FooKt.Icon`, which no longer contains
+ * `.Icon_VARIANT_Only`, so it is a base capture; a real reseed of `Icon`,
+ * `…FooKt.Icon_Light_VARIANT_pressed`, splits to `…FooKt.Icon_Light`, which still contains `.Icon`.
+ *
+ * A capture that names no function cannot be told apart this way, so it keeps the old reading.
+ */
+function splitVariantTag(preview) {
+  const id = String(preview.id ?? "");
+  const at = id.lastIndexOf(VARIANT_TAG);
+  if (at < 0) return { head: id, reseed: false };
+  const head = id.slice(0, at);
+  const marker = preview.functionName ? `.${preview.functionName}` : null;
+  if (marker && !head.includes(marker)) return { head: id, reseed: false };
+  return { head, reseed: true };
+}
+
 /** Whether a capture is an `@OverrideVariant` reseed rather than a base capture. */
 function isVariantCapture(preview) {
-  return String(preview.id ?? "").includes(VARIANT_TAG);
+  return splitVariantTag(preview).reseed;
 }
 
 /**
@@ -80,13 +108,14 @@ function isVariantCapture(preview) {
  * is the `@Preview` name a multipreview gives the capture — `Light` / `Dark` for a themed pair, and
  * EMPTY for an unnamed single capture. Splitting on the function name rather than pattern-matching
  * the tail is what lets a dark-first catalog be recognised at all: its ids carry no mode segment to
- * match against.
+ * match against. The reseed suffix comes off first, via [splitVariantTag] rather than a bare
+ * substring split, so a function whose own name contains `_VARIANT_` keeps its whole identity.
  *
  * A capture whose id does not contain its own function name is left as its own subject with an
  * empty mode — it cannot be grouped with anything, so it selects itself.
  */
 export function captureIdentity(preview) {
-  const head = String(preview.id ?? "").split(VARIANT_TAG)[0];
+  const { head } = splitVariantTag(preview);
   const marker = preview.functionName ? `.${preview.functionName}` : null;
   const at = marker ? head.lastIndexOf(marker) : -1;
   if (at < 0) return { subject: head, mode: "" };
@@ -519,8 +548,28 @@ export function variantRendersByComponent(previews, selection = selectCaptures(p
     const seeds = variantSeeds(preview);
     if (!seeds.length) continue;
 
+    // A `@CatalogVariant` may state its OWN kit correspondence, and either spelling changes what a
+    // resolver should do with this render. Without reading them here a variant's declaration is
+    // emitted under the parent's `reference` regardless — which is precisely the mispairing the two
+    // fields were added to prevent.
+    //
+    // `noReference` says the kit exports no cell this render could honestly pair with. Handing it
+    // to the resolver anyway scores it against the PARENT's picture, so it is dropped: the absence
+    // is already reported once, as a stated absence, and a render that says "there is nothing to
+    // compare me to" must not then be compared.
+    if (isCatalogVariant && catalog.noReference) continue;
+
     const list = byComponent.get(catalog.componentId) ?? [];
-    list.push({ previewId: preview.id, name: variantName(preview, seeds), seeds });
+    list.push({
+      previewId: preview.id,
+      name: variantName(preview, seeds),
+      seeds,
+      // `reference` names the variant's own kit cell. Carried onto the render so a resolver pairs
+      // that handle instead of deriving one from the parent's by seed. Additive to the sidecar's
+      // shape — a resolver that does not read it sees exactly what it saw before, which is why the
+      // schema string does not move.
+      ...(isCatalogVariant && catalog.reference ? { reference: catalog.reference } : {}),
+    });
     byComponent.set(catalog.componentId, list);
   }
   return byComponent;
@@ -608,7 +657,14 @@ export function projectDesignMap(previews, opts = {}) {
     if (catalog.noReference) {
       statedAbsentIds.set(`component:${id}`, { label: id, reason: catalog.noReference });
       statedAbsentComponentIds.add(id);
-    } else if (!statedAbsentIds.has(id)) unmappedIds.set(id, true);
+      // Unconditional: [unmapped] below filters this set through [statedAbsentComponentIds], which
+      // is the only correct place for it — a component's stated absence may be read from a LATER
+      // capture than the one that first reports it unmapped, and a guard here can only see what has
+      // been read so far. The guard that used to stand here tested a bare `id` against a map now
+      // keyed `component:<id>` / `subject:<id>`, so for an ordinary id it never matched, and for a
+      // component legally named `component:X` it matched the wrong entry and dropped it from
+      // `unmapped` — letting `--strict` pass over a component with no reference and no reason.
+    } else unmappedIds.set(id, true);
   }
   /** Components carrying neither a reference nor a stated reason for its absence. */
   const unmapped = [...unmappedIds.keys()].filter((id) => !statedAbsentComponentIds.has(id));
