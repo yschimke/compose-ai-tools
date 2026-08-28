@@ -34,7 +34,8 @@ git show FETCH_HEAD:bundle/bundle.png > bundle.png
 #     live in THIS repository.)
 
 # 2. stage the documents once (shared by both embedded lanes)
-node rc-compare.mjs --bundle bundle.png --player <rc-player>/bundle.js --out out --stage-embedded rc-in
+node scripts/design-artifacts/rc-compare.mjs --bundle bundle.png \
+  --player cli/serve/src/main/resources/rc-player/bundle.js --out out --stage-embedded rc-in
 #    -> rc-compare: staged 24 document(s)
 
 # 3. Android embedded lane
@@ -46,7 +47,8 @@ node rc-compare.mjs --bundle bundle.png --player <rc-player>/bundle.js --out out
   -Prc.jvm.input=rc-in -Prc.jvm.output=rc-jvm-out                  # BUILD SUCCESSFUL; 24 PNGs, 0 errors
 
 # 5. render the four-lane page
-node rc-compare.mjs --bundle bundle.png --player <rc-player>/bundle.js --out out \
+node scripts/design-artifacts/rc-compare.mjs --bundle bundle.png \
+  --player cli/serve/src/main/resources/rc-player/bundle.js --out out \
   --system remote-m3 --title remote-m3 --embedded rc-out --embedded-jvm rc-jvm-out
 #    -> 24/24 rendered, mean mismatch 1.16%
 ```
