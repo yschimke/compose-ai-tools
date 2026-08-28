@@ -618,6 +618,91 @@ class ThemeCachePersistenceTest {
   }
 
   @Test
+  fun `an eviction makes the outgoing replica's repopulated renders dirty`() {
+    // The rollout this store was built for is zero-downtime: the outgoing replica keeps serving,
+    // and keeps writing PNGs, against the same volume while the incoming one boots and evicts.
+    // `evictAll` runs before this process opens anything, so it cannot race THIS process — which
+    // was the whole of the old reasoning, and is a single-process argument about a volume that is
+    // not single-process. Everything the old replica publishes in that window is precisely the
+    // pixels the eviction was meant to destroy, landing after the deletion with fresh timestamps.
+    val root = tempDir()
+    val grace = 60 * 60_000L
+
+    val outgoing = ThemeCacheStore(root, graceMillis = grace)
+    val old = assertNotNull(outgoing.open("m3-catalog", "fp-a", inputs("fp-a")))
+    old.put("preview|dark", ByteArray(8) { 1 })
+
+    // The incoming replica evicts. SAME build: an operator who knows the pixels moved does not need
+    // a release to say so, and that is the case a version comparison alone cannot see — the early
+    // return would fire on the matching version and keep whatever boundary was already recorded.
+    val incoming = ThemeCacheStore(root, graceMillis = grace)
+    assertEquals(1, incoming.evictAll())
+    assertTrue(File(root, ThemeCacheStore.EVICTED_NAME).isFile, "the boundary is on the volume")
+
+    // The old replica, still serving, repopulates the same fingerprint after the deletion.
+    val repopulated = assertNotNull(outgoing.open("m3-catalog", "fp-a", inputs("fp-a")))
+    repopulated.put("preview|dark", ByteArray(8) { 1 })
+
+    // The incoming replica now opens what looks like a fresh generation full of fresh timestamps.
+    val adopted = assertNotNull(incoming.open("m3-catalog", "fp-a", inputs("fp-a")))
+    assertTrue(
+      adopted.isDirty("preview|dark"),
+      "a render written after an eviction by a writer the eviction could not stop is not trusted",
+    )
+    assertTrue(adopted.contains("preview|dark"), "dirty is not absent — it stays warm meanwhile")
+  }
+
+  @Test
+  fun `renders written past the eviction's grace window are clean again`() {
+    // The boundary is a window, not a permanent condemnation of the volume. Once every writer that
+    // could predate the eviction has had the rollout's grace to stop, what lands next is this
+    // build's own work; re-rendering it forever would be a treadmill rather than a safeguard.
+    //
+    // An eviction stamped in the past with no grace, so every real render timestamp is past it.
+    val root = tempDir()
+    val store = ThemeCacheStore(root, graceMillis = 0, clock = { 1_000_000L })
+    assertEquals(0, store.evictAll())
+
+    val generation = assertNotNull(store.open("m3-catalog", "fp-a", inputs("fp-a")))
+    generation.put("preview|dark", ByteArray(8) { 1 })
+
+    assertFalse(generation.isDirty("preview|dark"))
+    assertEquals(0, generation.dirtyCount())
+  }
+
+  @Test
+  fun `a store that was never evicted carries no boundary`() {
+    val root = tempDir()
+    val store = ThemeCacheStore(root, graceMillis = 60 * 60_000)
+    val generation = assertNotNull(store.open("m3-catalog", "fp-a", inputs("fp-a")))
+    generation.put("preview|dark", ByteArray(8) { 1 })
+
+    assertFalse(generation.isDirty("preview|dark"), "nothing to be on the wrong side of")
+    assertFalse(File(root, ThemeCacheStore.EVICTED_NAME).exists())
+  }
+
+  @Test
+  fun `the eviction marker survives the sweep and a later eviction moves it forward`() {
+    // It lives at the store root beside the system directories, and both walks filter to
+    // directories. A marker a sweep could reclaim would quietly reopen the window it closes.
+    val root = tempDir()
+    var now = 1_000_000L
+    val store = ThemeCacheStore(root, graceMillis = 0, clock = { now })
+    assertNotNull(store.open("m3-catalog", "fp-a", inputs("fp-a")))
+    store.evictAll()
+    val marker = File(root, ThemeCacheStore.EVICTED_NAME)
+    assertEquals("1000000", marker.readText())
+
+    now += 1_000
+    store.sweep(live = emptySet())
+    assertEquals("1000000", marker.readText(), "a sweep must not reclaim the boundary")
+
+    now += 1_000
+    store.evictAll()
+    assertEquals("1002000", marker.readText(), "a second eviction moves the boundary forward")
+  }
+
+  @Test
   fun `an unreadable classpath declines to name the generation at all`() {
     // Null means "do not persist". Inventing an identity for a classpath we could not read is how
     // two different generations end up agreeing on a name, which is the origin of every wrong pixel
@@ -639,6 +724,130 @@ class ThemeCachePersistenceTest {
     jar(classes, "Button.class", "v2")
 
     assertNotEquals(before, fingerprint(listOf(classes)))
+  }
+
+  // ---- renderer identity ----------------------------------------------------------------------
+
+  @Test
+  fun `a bumped JVM is a different generation, with the classpath untouched`() {
+    // The case the tool version used to stand proxy for and failed open on: a base-image bump moves
+    // the renderer while every hashed catalog input holds still. Before this was keyed on, the only
+    // thing standing between that and a wrong pixel was a five-entry sample.
+    val dir = tempDir()
+    val classpath = listOf(jar(dir, "catalog.jar", "CLASSES"))
+
+    fun withJvm(version: String) =
+      ThemeCacheFingerprint.of(
+        classpath = classpath,
+        variant = "desktop",
+        renderConfig = "density=2",
+        renderer =
+          ThemeCacheFingerprint.rendererIdentity(
+            systemProperties = mapOf("java.vm.vendor" to "Eclipse", "java.vm.version" to version),
+            fontRoots = emptyList(),
+            libraryRoots = emptyList(),
+          ),
+      )
+
+    assertNotEquals(withJvm("21.0.12+8"), withJvm("21.0.13+11"))
+    assertEquals(withJvm("21.0.12+8"), withJvm("21.0.12+8"), "an unchanged JVM must not re-warm")
+  }
+
+  @Test
+  fun `a swapped system font is a different generation`() {
+    val fonts = tempDir()
+    val dir = tempDir()
+    val classpath = listOf(jar(dir, "catalog.jar", "CLASSES"))
+    jar(fonts, "truetype/Roboto-Regular.ttf", "GLYPHS")
+
+    fun now() =
+      ThemeCacheFingerprint.of(
+        classpath = classpath,
+        variant = "desktop",
+        renderConfig = "density=2",
+        renderer =
+          ThemeCacheFingerprint.rendererIdentity(
+            systemProperties = emptyMap(),
+            fontRoots = listOf(fonts),
+            libraryRoots = emptyList(),
+          ),
+      )
+
+    val before = now()
+    // Size, not content: the inventory stats rather than reads, because a fontconfig image carries
+    // hundreds of megabytes here and this runs on the catalog-load path.
+    jar(fonts, "truetype/Roboto-Regular.ttf", "DIFFERENT GLYPHS")
+    assertNotEquals(before, now(), "a font package swap must not read the old renderer's pixels")
+
+    val after = now()
+    jar(fonts, "truetype/NotoSans-Regular.ttf", "MORE")
+    assertNotEquals(after, now(), "an ADDED font changes what fontconfig will fall back to")
+  }
+
+  @Test
+  fun `a bumped rasteriser library is a different generation, and unrelated libraries are not`() {
+    // freetype decides how a glyph is rasterised on the Android path with nothing else moving at
+    // all. The filter is what keeps this from being a hash of /usr/lib.
+    val libs = tempDir()
+    val dir = tempDir()
+    val classpath = listOf(jar(dir, "catalog.jar", "CLASSES"))
+    jar(libs, "libfreetype.so.6", "FT")
+    jar(libs, "libcurl.so.4", "UNRELATED")
+    // The versioned real file behind the soname link. Matched on the soname alone, so a package
+    // upgrade that renames this does not move the fingerprint a second time.
+    jar(libs, "libfreetype.so.6.18.3", "FT")
+
+    fun now() =
+      ThemeCacheFingerprint.of(
+        classpath = classpath,
+        variant = "desktop",
+        renderConfig = "density=2",
+        renderer =
+          ThemeCacheFingerprint.rendererIdentity(
+            systemProperties = emptyMap(),
+            fontRoots = emptyList(),
+            libraryRoots = listOf(libs),
+          ),
+      )
+
+    val before = now()
+    jar(libs, "libcurl.so.4", "A DIFFERENT UNRELATED LIBRARY")
+    assertEquals(before, now(), "a library that cannot touch a pixel must not orphan the cache")
+
+    jar(libs, "libfreetype.so.6", "FT UPGRADED")
+    assertNotEquals(before, now())
+  }
+
+  @Test
+  fun `a missing font root is absence, not a refusal to persist`() {
+    // Unlike a classpath entry, a font root that is not there is the ordinary state of most
+    // machines. Declining to persist on a developer laptop would be a bug, not caution.
+    val dir = tempDir()
+    val classpath = listOf(jar(dir, "catalog.jar", "CLASSES"))
+
+    assertNotNull(
+      ThemeCacheFingerprint.of(
+        classpath = classpath,
+        variant = "desktop",
+        renderConfig = "density=2",
+        renderer =
+          ThemeCacheFingerprint.rendererIdentity(
+            systemProperties = emptyMap(),
+            fontRoots = listOf(File(dir, "no-such-font-root")),
+            libraryRoots = listOf(File(dir, "no-such-lib-root")),
+          ),
+      )
+    )
+  }
+
+  @Test
+  fun `the process renderer identity is stable across calls`() {
+    // It walks the real font roots, so it is cached; a default that changed between two bundles of
+    // one multi-module catalog would give the catalog a fingerprint per module load.
+    assertEquals(
+      ThemeCacheFingerprint.currentRendererIdentity,
+      ThemeCacheFingerprint.currentRendererIdentity,
+    )
   }
 
   @Test

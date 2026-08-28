@@ -816,10 +816,14 @@ stays a 128 MB window onto it — a fully warmed catalog is several times that �
 through to disk and promote, and `cached` counts both tiers.
 
 Reuse is decided by a **fingerprint of what produced the pixels**, not by the cache key alone: the
-content hash of the classpath the daemon renders with, the daemon variant, the tool version, and the
-render config. Each `(system, fingerprint)` pair is its own directory, so a new catalog revision or
-a new server build simply writes a new generation and reads none of the old one — invalidation is
-structural rather than something a reader must remember to check. Generations nothing can read any
+content hash of the classpath the daemon renders with, the daemon variant, the render config, the
+id-to-daemon routing, and the **render environment** — the JVM, the rasteriser shared objects and
+the installed system fonts, none of which the classpath can reach. Deliberately *not* the tool
+version: it moved on every release while holding still on the base-image bump it was supposed to
+cover, so the environment it stood proxy for is keyed on directly instead. Each
+`(system, fingerprint)` pair is its own directory, so a new catalog revision or a new base image
+simply writes a new generation and reads none of the old one — invalidation is structural rather
+than something a reader must remember to check. Generations nothing can read any
 more are swept once the catalog pass finishes; a live set that exceeds `--theme-cache-max-bytes` is
 reported rather than evicted, because deleting what is currently being warmed would just make the
 optimizer render it again.

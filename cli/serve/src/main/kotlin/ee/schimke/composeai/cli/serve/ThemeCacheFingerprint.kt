@@ -29,8 +29,16 @@ import java.security.MessageDigest
  *   worth paying for: it is the only input that is derived from the thing itself rather than
  *   asserted about it.
  * - **The daemon variant.** Desktop and Android/Robolectric are different renderers reading the
- *   same classpath, and they do not agree pixel-for-pixel. What is deliberately **not** keyed on,
- *   and why:
+ *   same classpath, and they do not agree pixel-for-pixel.
+ * - **The render environment** — the JVM, the rasteriser shared objects and the installed system
+ *   fonts, none of which the classpath can reach. See [ThemeCacheFingerprint.rendererIdentity] for
+ *   what is read and why it is stat rather than bytes. This is the input the tool version used to
+ *   stand proxy for, keyed on directly.
+ * - **The render config.** The server-side defaults that never appear in a cache key — density,
+ *   default device, font scale, image encoding. The easiest inputs to forget precisely *because*
+ *   they are absent from the key, so they are named explicitly by the caller.
+ *
+ * What is deliberately **not** keyed on, and why:
  * - **The tool version.** It used to be, and that made a release throw away every warmed render on
  *   the box. Measured on preview.coo.ee, whose theme optimization needs the better part of a day to
  *   fill 18,604 entries: four versions shipped inside four hours, each one starting the pass again
@@ -38,28 +46,30 @@ import java.security.MessageDigest
  *   can be filled is not a cache.
  *
  *   The version was never proof of anything — it stood *proxy* for the renderer and the container
- *   image (the JVM, Skia, the installed fonts), none of which are visible from here, and the class
+ *   image (the JVM, Skia, the installed fonts), none of which were visible from here, and the class
  *   doc above already conceded that proxying is an assumption rather than a proof: a base-image
  *   bump shipping without a release slipped through it either way. So it was a key that failed open
  *   on the case it was supposed to cover, while failing closed on every case it was not.
  *
- *   What actually catches a renderer that moved is [CatalogThemeCache.verifySample], which
- *   re-renders a sample of the adopted entries against the running renderer and discards the whole
- *   generation on any mismatch — the same net that was always covering the unenumerated inputs.
- *   Crossing a version boundary is now exactly that case: every entry reads as adopted (it came
- *   from another process), so it is withheld from the read path until the sample settles. A version
- *   that renders differently costs a re-warm; it does not serve a wrong pixel.
+ *   [rendererIdentity] is what replaced it, and the substitution is the point: it moves when the
+ *   *image* moves and holds still when only the build number does, which is the exact opposite of
+ *   the version on both halves. Four builds shipped out of one base image share a generation; one
+ *   build shipped on a bumped base image does not.
  *
- *   The version is still recorded in the generation manifest, so which build last wrote a
- *   generation stays answerable, and `--theme-cache-evict` discards the store outright for the case
- *   where an operator *knows* the pixels moved and does not want to wait for a sample to notice.
- * - **The render config.** The server-side defaults that never appear in a cache key — density,
- *   default device, font scale, image encoding. The easiest inputs to forget precisely *because*
- *   they are absent from the key, so they are named explicitly by the caller.
+ *   Behind that sits [CatalogThemeCache.verifySample], which re-renders a sample of the adopted
+ *   entries against the running renderer and discards the whole generation on any mismatch. It is
+ *   the net for inputs nobody enumerated, and it is a *sample* — the first five sorted adopted keys
+ *   — so it is a backstop and not a substitute for keying on an input that can be named. Anything
+ *   the key covers is caught structurally, before a wrong pixel is ever a candidate.
  *
- * Nothing here is asserted by hand: change the renderer and the version moves, change the catalog
- * and the classpath moves. There is no cache-version constant to remember to bump, because a
- * constant someone must remember is a constant that will eventually be wrong.
+ *   The version is still recorded in the generation manifest — as the build that last **opened**
+ *   the generation, see [GenerationInputs.toolVersion] — and `--theme-cache-evict` discards the
+ *   store outright for the case where an operator *knows* the pixels moved and does not want to
+ *   wait for a sample to notice.
+ *
+ * Nothing here is asserted by hand: change the image and the renderer identity moves, change the
+ * catalog and the classpath moves. There is no cache-version constant to remember to bump, because
+ * a constant someone must remember is a constant that will eventually be wrong.
  */
 object ThemeCacheFingerprint {
 
@@ -98,13 +108,25 @@ object ThemeCacheFingerprint {
      * pixels, and a five-entry verification sample would very likely miss the one row that moved.
      */
     routing: String = "",
+    /**
+     * Digest of the render *environment* this generation's pixels come out of — see
+     * [rendererIdentity].
+     *
+     * The one input the classpath cannot reach. Everything else here is derived from files the
+     * catalog carries; this is derived from the container image underneath them, and a base image
+     * that swaps the JVM, freetype or the installed fonts moves the pixels without moving a single
+     * byte of the classpath.
+     */
+    renderer: String = currentRendererIdentity,
   ): String? {
     if (classpath.isEmpty() || classpath.size > MAX_CLASSPATH_ENTRIES) return null
     val digest = MessageDigest.getInstance("SHA-256")
     digest.line("schema", SCHEMA)
     digest.line("variant", variant)
     // NOT the tool version — see the class doc. A release must not orphan the warmed renders; the
-    // load-time sample verification is what covers a renderer that actually moved.
+    // load-time sample verification is what covers a renderer that actually moved. The *renderer*
+    // is keyed on directly instead, which is the thing the version only ever stood proxy for.
+    digest.line("renderer", renderer)
     digest.line("renderConfig", renderConfig)
     digest.line("routing", routing)
     // Hashed in the order the descriptor lists them, NOT sorted. Classpath order is semantically
@@ -199,6 +221,161 @@ object ThemeCacheFingerprint {
     value.startsWith(File.separator) ||
       value.contains("=${File.separator}") ||
       Regex("^[A-Za-z]:[\\\\/]").containsMatchIn(value)
+
+  /**
+   * Digest of the render environment — the container image's half of what produces a pixel.
+   *
+   * ### The hole this fills
+   *
+   * Dropping the tool version from [of] was right for the reason the class doc gives, but it left
+   * the thing the version stood *proxy* for uncovered: the JVM, the native rasteriser and the
+   * installed fonts all live in the image rather than in the catalog, so a base-image bump changes
+   * the pixels while every hashed input holds still. The only remaining net was
+   * [CatalogThemeCache.verifySample], and that net has a known-size hole — it re-renders the first
+   * five sorted adopted keys, so a change touching any of the other 18,599 entries passes the
+   * sample and the whole generation is then trusted. Keying on the environment directly closes the
+   * case rather than sampling for it: a moved renderer gets a different generation directory and
+   * nothing is adopted at all.
+   *
+   * Unlike the version, this does **not** move on a release. Four builds shipped in four hours out
+   * of the same base image produce four identical identities, so the pathology that got the version
+   * removed does not come back.
+   *
+   * ### What it reads, and why stat rather than bytes
+   *
+   * - **The JVM**, from its own system properties. `eclipse-temurin:21.0.12_8` and `21.0.13_11` are
+   *   different text here, which is the whole requirement.
+   * - **The architecture**, because the native halves of both renderers are per-arch binaries.
+   * - **The system font inventory** — every file under the standard font roots, by relative path
+   *   and size. Not by content: these are hundreds of megabytes on a fontconfig-equipped image and
+   *   this runs on the catalog-load path. Not by mtime either, because a package layer rebuilt from
+   *   identical sources restamps mtimes and that would reintroduce churn-per-build. A base image
+   *   that swaps or upgrades a font package moves a name or a size; one that does not, does not.
+   *   (The *downloadable* font cache is a different thing and is already hashed by content — see
+   *   [CONTENT_PATH_PROPERTIES].)
+   * - **The rasteriser libraries** — freetype, fontconfig and harfbuzz, by name and size. A
+   *   freetype bump changes glyph rasterisation on the Android/Robolectric path with nothing else
+   *   moving at all, and it is the same cheap stat walk.
+   *
+   * Anything unreadable is simply recorded as absent rather than failing the fingerprint: unlike a
+   * classpath entry, a missing font root is the ordinary state of most machines, and refusing to
+   * persist on a developer laptop with no `/usr/share/fonts` would be a bug rather than caution.
+   */
+  fun rendererIdentity(
+    systemProperties: Map<String, String> = jvmProperties(),
+    fontRoots: List<File> = DEFAULT_FONT_ROOTS,
+    libraryRoots: List<File> = DEFAULT_LIBRARY_ROOTS,
+  ): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    digest.line("schema", SCHEMA)
+    for (key in RENDERER_PROPERTIES) digest.line(key, systemProperties[key].orEmpty())
+    for (root in fontRoots) {
+      digest.line("fonts", inventory(root, FONT_ROOT_DEPTH) { true })
+    }
+    for (root in libraryRoots) {
+      digest.line("libs", inventory(root, LIBRARY_ROOT_DEPTH) { it in RASTERISER_LIBRARIES })
+    }
+    return digest.digest().hex()
+  }
+
+  /**
+   * `<relative path>:<size>` for every accepted file under [root], sorted, or `""` when [root] is
+   * not there.
+   *
+   * Two bounds, and both of them are about not hanging a catalog load rather than about tidiness:
+   * - **[maxDepth]**, because a font root is a shallow tree and a library root is one directory,
+   *   while `/usr/lib` beneath it is neither. Recursing it would stat tens of thousands of files to
+   *   find three.
+   * - **[MAX_CLASSPATH_ENTRIES] against files VISITED, not files kept.** Counting only the kept
+   *   ones would let a filtered walk — the library one, which keeps almost nothing — run without
+   *   limit down a symlink loop, and `walkTopDown` follows directory symlinks. The overflow answer
+   *   is the root's name alone: stable across boots, and honestly saying "this root is bigger than
+   *   I will read" rather than a truncated inventory that would look like an identity while
+   *   truncating somewhere different each time.
+   */
+  private fun inventory(root: File, maxDepth: Int, accept: (String) -> Boolean): String =
+    runCatching {
+      if (!root.isDirectory) return@runCatching ""
+      val entries = mutableListOf<String>()
+      var visited = 0
+      for (file in root.walkTopDown().maxDepth(maxDepth)) {
+        if (file.isDirectory) continue
+        if (++visited > MAX_CLASSPATH_ENTRIES) return@runCatching "${root.name}:overflow"
+        if (!accept(file.name)) continue
+        entries += "${file.relativeTo(root).invariantPath()}:${file.length()}"
+      }
+      entries.sorted().joinToString("\n")
+    }
+    // An unreadable root is "nothing here", not a reason to decline to persist — see
+    // [rendererIdentity].
+    .getOrDefault("")
+
+  /** Deep enough for `/usr/share/fonts/truetype/<family>/<face>.ttf` and its usual variations. */
+  private const val FONT_ROOT_DEPTH = 6
+
+  /** A rasteriser shared object sits directly in its library directory; below that is not ours. */
+  private const val LIBRARY_ROOT_DEPTH = 1
+
+  /**
+   * [rendererIdentity] for the process this is running in, computed once.
+   *
+   * Cached because it walks the font roots and a multi-module catalog fingerprints once per bundle,
+   * so an uncached default would stat the same few thousand files several times per load for an
+   * answer that cannot change without the process being replaced.
+   */
+  val currentRendererIdentity: String by lazy { rendererIdentity() }
+
+  /** The JVM's own description of itself, for [rendererIdentity]. */
+  private fun jvmProperties(): Map<String, String> = RENDERER_PROPERTIES.associateWith {
+    System.getProperty(it).orEmpty()
+  }
+
+  /**
+   * System properties naming the renderer's environment rather than the catalog's configuration.
+   *
+   * Deliberately not `java.home` or any other path: the value would churn across hosts that render
+   * identically. What is wanted is the JVM's *identity*, and these three carry it.
+   */
+  val RENDERER_PROPERTIES: List<String> =
+    listOf("java.vm.vendor", "java.vm.version", "java.runtime.version", "os.arch")
+
+  /** Where a Linux/macOS/Windows image keeps the fonts fontconfig will hand the rasteriser. */
+  val DEFAULT_FONT_ROOTS: List<File> =
+    listOf(
+        "/usr/share/fonts",
+        "/usr/local/share/fonts",
+        "/System/Library/Fonts",
+        "/Library/Fonts",
+        System.getProperty("user.home")?.let { "$it/.fonts" },
+        System.getProperty("user.home")?.let { "$it/.local/share/fonts" },
+        System.getenv("WINDIR")?.let { "$it\\Fonts" },
+      )
+      .filterNotNull()
+      .map(::File)
+
+  /** Where the rasteriser shared objects named in [RASTERISER_LIBRARIES] live. */
+  val DEFAULT_LIBRARY_ROOTS: List<File> =
+    listOf("/usr/lib/${System.getProperty("os.arch") ?: ""}-linux-gnu", "/usr/lib", "/usr/lib64")
+      .map(::File)
+
+  /**
+   * Shared objects whose version decides how a glyph is rasterised.
+   *
+   * Matched on the **soname**, not on a prefix. A prefix match would also take
+   * `libfreetype.so.6.18.3`, and Debian ships that as a real file beside the `libfreetype.so.6`
+   * symlink pointing at it — so a package upgrade that renames the versioned file would move the
+   * fingerprint twice over, while the soname link the loader actually resolves already carries the
+   * change through its own size.
+   */
+  val RASTERISER_LIBRARIES: Set<String> =
+    setOf(
+      "libfreetype.so",
+      "libfreetype.so.6",
+      "libfontconfig.so",
+      "libfontconfig.so.1",
+      "libharfbuzz.so",
+      "libharfbuzz.so.0",
+    )
 
   /** Stable digest of a catalog-id to daemon-id map, for [of]'s `routing`. */
   fun routingDigest(alias: Map<String, String>): String {
@@ -315,6 +492,10 @@ object ThemeCacheFingerprint {
    * Bumped only when the fingerprint's own *composition* changes in a way that should invalidate
    * everything already on disk. Not a cache version anyone has to remember for ordinary changes —
    * the inputs cover those on their own.
+   *
+   * `/2` folded the render environment in ([rendererIdentity]). Every generation written under `/1`
+   * was named without it, so none of them can be adopted: on a box mid-warm that is one re-warm,
+   * paid once, for a key that stops depending on a five-entry sample to notice the image moved.
    */
-  private const val SCHEMA = "theme-cache/1"
+  private const val SCHEMA = "theme-cache/2"
 }
