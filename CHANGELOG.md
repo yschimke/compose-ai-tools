@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.43.1](https://github.com/yschimke/compose-ai-tools/compare/v1.43.0...v1.43.1) (2026-08-28)
+
+
+### Bug Fixes
+
+* **agents:** cap fence indentation at three spaces in the entrypoint gate ([#4675](https://github.com/yschimke/compose-ai-tools/issues/4675)) ([03cb9b0](https://github.com/yschimke/compose-ai-tools/commit/03cb9b0e9d819348fb9d1028a25d79e5831da716))
+* **data-render-core:** record PreviewFilter's id-exclude-file surface in the ABI dump ([#4685](https://github.com/yschimke/compose-ai-tools/issues/4685)) ([94d5013](https://github.com/yschimke/compose-ai-tools/commit/94d5013275e1221d043887186b432ee973190d8f))
+* **design-artifacts:** keep cross-system row anchors unique, and reserve a wrapped heading ([#4681](https://github.com/yschimke/compose-ai-tools/issues/4681)) ([c25f88c](https://github.com/yschimke/compose-ai-tools/commit/c25f88cf0d3471ca0d5fd3dfc0e2346a48a6ecfe))
+* **design-artifacts:** publish each catalog's own components on a shared design page ([#4680](https://github.com/yschimke/compose-ai-tools/issues/4680)) ([5f9eaff](https://github.com/yschimke/compose-ai-tools/commit/5f9eaff59b4afeb52f23d7fcb7645d0f458b62ce))
+* **serve:** give a cropped system-card hero the same 220px row its plain sibling gets ([#4678](https://github.com/yschimke/compose-ai-tools/issues/4678)) ([4a3e656](https://github.com/yschimke/compose-ai-tools/commit/4a3e65693461d26849ce1c85db7e5533d464797c))
+* **serve:** honour a catalog's declared dark surface in the viewer's Theme control ([#4683](https://github.com/yschimke/compose-ai-tools/issues/4683)) ([59d475f](https://github.com/yschimke/compose-ai-tools/commit/59d475f5b4bb6568b56524a23450e1d12cd6811c))
+* **serve:** never print a clean parity verdict over a report this build could not read ([#4676](https://github.com/yschimke/compose-ai-tools/issues/4676)) ([79f79bb](https://github.com/yschimke/compose-ai-tools/commit/79f79bb6d5adaa1f98984f58bf005b82752f89b4))
+
 ## [1.43.0](https://github.com/yschimke/compose-ai-tools/compare/v1.42.0...v1.43.0) (2026-08-28)
 
 
