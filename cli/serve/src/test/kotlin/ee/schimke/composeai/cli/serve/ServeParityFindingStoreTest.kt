@@ -213,6 +213,54 @@ class ServeParityFindingStoreTest {
   }
 
   @Test
+  fun `a report this build could not read never reads as a clean run`() {
+    // The sharpest failure available to this panel: a producer says `pass` over findings that all
+    // get rejected here, and the page prints "Pass · No findings." over a report nobody could
+    // read. Silence says "unknown"; a green chip says "checked", and only one of those is honest.
+    val json =
+      """{"schema":"compose-preview-parity-findings/v1","previews":{"p":[
+         {"referenceId":"a","status":"pass","findings":[
+           {"kind":"token","severity":"warn"},
+           {"kind":"invented","severity":"warn","message":"m"}]}]}}"""
+    assertTrue(store(json).isEmpty)
+  }
+
+  @Test
+  fun `one preview cannot store more than disk and heap should hold`() {
+    // The page budget is spent at read time, so it bounds a comparison and not the store. This
+    // bounds the store, which is held in memory and reserialized into the staging tree.
+    fun finding(index: Int) =
+      """{"kind":"layout","severity":"warn","message":"m$index","anchors":[
+         {"side":"actual","bounds":{"x":0,"y":0,"width":4,"height":4}},
+         {"side":"reference","bounds":{"x":0,"y":0,"width":4,"height":4}}]}"""
+    fun set(reference: Int) =
+      """{"referenceId":"r$reference","findings":[
+         ${(1..200).joinToString(",") { finding(it) }}]}"""
+    val json =
+      """{"schema":"compose-preview-parity-findings/v1","previews":{"p":[
+         ${(1..20).joinToString(",") { set(it) }}]}}"""
+    val stored = store(json).forPreview("p").flatMap { it.findings }
+    assertEquals(1000, stored.size)
+    assertEquals(2000, stored.sumOf { it.anchors.size })
+  }
+
+  @Test
+  fun `a real multi-board verdict passes the storage ceiling untouched`() {
+    // The ceiling must not trim anything a genuine run publishes, or it would silently answer a
+    // later comparison with less than its board said.
+    fun finding(index: Int) = """{"kind":"layout","severity":"warn","message":"m$index"}"""
+    fun set(reference: String) =
+      """{"referenceId":"$reference","findings":[${(1..150).joinToString(",") { finding(it) }}]}"""
+    val json =
+      """{"schema":"compose-preview-parity-findings/v1","previews":{"p":[
+         ${listOf("ideal", "layout", "dark", "large").joinToString(",") { set(it) }}]}}"""
+    val loaded = store(json)
+    for (reference in listOf("ideal", "layout", "dark", "large")) {
+      assertEquals(150, loaded.forComparison("p", reference).single().findings.size, reference)
+    }
+  }
+
+  @Test
   fun `the page budget is spent per comparison, not across references a page never shows`() {
     // Reference-scoped sets are mutually exclusive on screen. Charging them against one shared
     // allowance let the first two boards exhaust it and left the third comparison blank, for a
