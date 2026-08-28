@@ -103,4 +103,173 @@ ENV_FILE="${tmp}/.env" "${here}/env-redundant.sh" >/dev/null || {
 }
 echo "PASS: a well-formed .env is unaffected"
 
+# 9. A DUPLICATED key: Compose uses the last assignment, so classifying each line independently
+#    told an operator the final SERVE_PUBLIC=1 was safe to delete while an earlier SERVE_PUBLIC=0
+#    was still in the file. Deleting it exposes the 0 — the box goes from public to token-gated,
+#    and fails to start if no token is configured. This is a config change dressed as tidying.
+cat > "${tmp}/.env-dup" <<'ENV'
+SERVE_PUBLIC=0
+SERVE_LIVE_SEATS=8
+SERVE_PUBLIC=1
+ENV
+dup_out="$(ENV_FILE="${tmp}/.env-dup" "${here}/env-redundant.sh")"
+grep -q "^DUPLICATED" <<<"${dup_out}" || {
+  echo "FAIL: a duplicated key was not reported before the deletion advice" >&2
+  echo "${dup_out}" >&2
+  exit 1
+}
+grep -q "SERVE_PUBLIC (2 assignments" <<<"${dup_out}" || {
+  echo "FAIL: the duplicate report does not name the key and its count" >&2
+  echo "${dup_out}" >&2
+  exit 1
+}
+# And the classification follows the WINNER (=1, the compose default), not the first line.
+grep -q "^  SERVE_PUBLIC=1$" <<<"${dup_out}" || {
+  echo "FAIL: the effective (last) assignment is not the one classified" >&2
+  echo "${dup_out}" >&2
+  exit 1
+}
+echo "PASS: a duplicated key is reported, and the last assignment is the one classified"
+
+# 10. An inline comment on an unquoted value. The README hands out copyable lines in exactly this
+#     form, and keeping the comment made the one line that IS pure decoration read as live config.
+cat > "${tmp}/.env-comment" <<'ENV'
+SERVE_THEME_CACHE_DIR=/theme-cache # the default
+SERVE_ADMIN_TOKEN="a value # with a hash inside it"
+ENV
+com_out="$(ENV_FILE="${tmp}/.env-comment" "${here}/env-redundant.sh")"
+grep -q "^  SERVE_THEME_CACHE_DIR=/theme-cache$" <<<"${com_out}" || {
+  echo "FAIL: an inline comment was not stripped before comparing" >&2
+  echo "${com_out}" >&2
+  exit 1
+}
+# A quoted value keeps its hash — it is not a comment inside quotes — and stays active, by name.
+grep -q "  SERVE_ADMIN_TOKEN$" <<<"${com_out}" || {
+  echo "FAIL: a hash inside a quoted value must not be treated as a comment" >&2
+  echo "${com_out}" >&2
+  exit 1
+}
+if grep -qF "with a hash inside it" <<<"${com_out}"; then
+  echo "FAIL: a quoted value reached stdout" >&2
+  exit 1
+fi
+echo "PASS: inline comments are stripped, and a hash inside quotes is not one"
+
+# 11. The entrypoint's default beats an EMPTY compose pass-through. `${VAR:-}` in the compose file
+#     declares a pass-through, not a value; first-wins recorded the empty string and reported the
+#     entrypoint's own default as a genuine deviation.
+cat > "${tmp}/compose-passthrough.yml" <<'YML'
+services:
+  preview:
+    environment:
+      SERVE_TIMEOUT: ${SERVE_TIMEOUT:-}
+YML
+cat > "${tmp}/entrypoint-defaults.sh" <<'SH'
+: "${SERVE_TIMEOUT:-1800}"
+SH
+printf 'SERVE_TIMEOUT=1800\n' > "${tmp}/.env-passthrough"
+pass_out="$(
+  ENV_FILE="${tmp}/.env-passthrough" \
+  COMPOSE_FILE_UNDER_TEST="${tmp}/compose-passthrough.yml" \
+  ENTRYPOINT_FILE="${tmp}/entrypoint-defaults.sh" \
+  "${here}/env-redundant.sh"
+)"
+grep -q "^  SERVE_TIMEOUT=1800$" <<<"${pass_out}" || {
+  echo "FAIL: an empty compose pass-through must not shadow the entrypoint's default" >&2
+  echo "${pass_out}" >&2
+  exit 1
+}
+echo "PASS: the entrypoint's default replaces an empty compose pass-through"
+
+# 12. COMPOSE_FILE selects the overlay too. The documented deployment enables
+#     docker-compose.deploy-config.yml, whose own defaults are invisible to a reader pinned to the
+#     base file — so an operator restating one was told it differed from stock.
+cat > "${tmp}/base.yml" <<'YML'
+services:
+  preview:
+    environment:
+      SERVE_LIVE_SEATS: ${SERVE_LIVE_SEATS:-4}
+YML
+cat > "${tmp}/overlay.yml" <<'YML'
+services:
+  preview:
+    environment:
+      DEPLOY_CONFIG_DIR: ${DEPLOY_CONFIG_DIR:-../preview.coo.ee}
+YML
+printf 'DEPLOY_CONFIG_DIR=../preview.coo.ee\n' > "${tmp}/.env-overlay"
+ovl_out="$(
+  ENV_FILE="${tmp}/.env-overlay" \
+  COMPOSE_FILE_UNDER_TEST="${tmp}/base.yml:${tmp}/overlay.yml" \
+  ENTRYPOINT_FILE="${tmp}/entrypoint-defaults.sh" \
+  "${here}/env-redundant.sh"
+)"
+grep -q "DEPLOY_CONFIG_DIR=../preview.coo.ee" <<<"${ovl_out}" || {
+  echo "FAIL: an overlay's default was not read" >&2
+  echo "${ovl_out}" >&2
+  exit 1
+}
+echo "PASS: every compose file COMPOSE_FILE selects is read"
+
+# 13. An empty DEPLOY_HOOK_TOKEN is NOT the same as unset: setup.sh backfills a generated token
+#     when no assignment is present, so deleting the line arms the instant-roll webhook an operator
+#     deliberately disarmed.
+printf 'DEPLOY_HOOK_TOKEN=\nSERVE_CATALOG_MAX_IMAGES=\n' > "${tmp}/.env-hook"
+hook_out="$(ENV_FILE="${tmp}/.env-hook" "${here}/env-redundant.sh")"
+grep -q "NOT the same as unset" <<<"${hook_out}" || {
+  echo "FAIL: an empty migration-sensitive key was not separated from the deletable ones" >&2
+  echo "${hook_out}" >&2
+  exit 1
+}
+awk '/^Set but empty — same as unset/,/^$/' <<<"${hook_out}" | grep -q "DEPLOY_HOOK_TOKEN" && {
+  echo "FAIL: DEPLOY_HOOK_TOKEN was listed as safe to delete" >&2
+  echo "${hook_out}" >&2
+  exit 1
+}
+awk '/^Set but empty — same as unset/,/^$/' <<<"${hook_out}" | grep -q "SERVE_CATALOG_MAX_IMAGES" || {
+  echo "FAIL: an ordinary empty key must still be reported as deletable" >&2
+  echo "${hook_out}" >&2
+  exit 1
+}
+echo "PASS: an empty migration-sensitive key is not advertised as deletable"
+
+# 14. A malformed continuation's second line has no `=`, so naming "the key" printed the whole
+#     line — a value fragment on stderr, from the one tool whose output is meant to be pasteable.
+cat > "${tmp}/.env-frag" <<'ENV'
+SERVE_JAVA_OPTS=-Dfirst=1 \
+  --token sup3rs3cr3t-fragment \
+ENV
+frag_out="$(ENV_FILE="${tmp}/.env-frag" "${here}/env-redundant.sh" 2>&1 || true)"
+if grep -qF "sup3rs3cr3t-fragment" <<<"${frag_out}"; then
+  echo "FAIL: a value fragment from a malformed continuation reached the output" >&2
+  echo "${frag_out}" >&2
+  exit 1
+fi
+grep -q "line 1: SERVE_JAVA_OPTS" <<<"${frag_out}" || {
+  echo "FAIL: the offending line number and key were not named" >&2
+  echo "${frag_out}" >&2
+  exit 1
+}
+grep -q "line 2:" <<<"${frag_out}" || {
+  echo "FAIL: the second offending line was not reported at all" >&2
+  echo "${frag_out}" >&2
+  exit 1
+}
+echo "PASS: a malformed continuation is located by line, never by value"
+
+# 15. A final line with no terminating newline. `read` assigns it and then returns failure, so the
+#     loop body never saw it — a file ending in exactly the fatal typo this guard exists for exited
+#     0 with nothing said.
+printf 'SERVE_JAVA_OPTS=-Dfirst=1 \\' > "${tmp}/.env-noeol"
+if ENV_FILE="${tmp}/.env-noeol" "${here}/env-redundant.sh" >/dev/null 2>&1; then
+  echo "FAIL: an unterminated final line ending in a backslash must still be fatal" >&2
+  exit 1
+fi
+noeol_out="$(ENV_FILE="${tmp}/.env-noeol" "${here}/env-redundant.sh" 2>&1 || true)"
+grep -q "line 1: SERVE_JAVA_OPTS" <<<"${noeol_out}" || {
+  echo "FAIL: the unterminated final line was not named" >&2
+  echo "${noeol_out}" >&2
+  exit 1
+}
+echo "PASS: an unterminated final line is still examined"
+
 echo "PASS: all env-redundant checks"

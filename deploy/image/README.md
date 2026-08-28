@@ -232,10 +232,26 @@ genuinely explain why this box differs from stock are buried.
 
 It first refuses any line ending in a backslash — `.env` is not a shell script, and that typo takes
 the box down with a 502 and no explanation. Then it reports which entries restate a compose or
-entrypoint default and which are set but empty (the same
-as unset), then lists the keys that genuinely differ — **by name only**. It never prints a value:
-the file holds `SERVE_TOKEN`, `SERVE_ADMIN_TOKEN`, the GitHub OAuth secret and the deploy hook
-token, and the output is meant to be safe to paste into an issue or a chat.
+entrypoint default and which are set but empty (the same as unset), then lists the keys that
+genuinely differ — **by name only**. It never prints a value: the file holds `SERVE_TOKEN`,
+`SERVE_ADMIN_TOKEN`, the GitHub OAuth secret and the deploy hook token, and the output is meant to
+be safe to paste into an issue or a chat. A malformed line is located by **line number**, for the
+same reason — a broken continuation's second line is a value fragment, not a key.
+
+Its advice is acted on by deleting a line, so it follows Compose's own reading rather than
+approximating it, and two of its sections exist because deleting is not always reversible:
+
+- **`DUPLICATED`** comes first when a key is assigned twice. Compose uses the last assignment, so
+  deleting the winning line exposes an earlier one — `SERVE_PUBLIC=1` over `SERVE_PUBLIC=0` takes a
+  public box token-gated. Resolve those before acting on anything below.
+- **"Set but empty, and NOT the same as unset"** covers keys whose `setup.sh` migration
+  distinguishes missing from empty. `DEPLOY_HOOK_TOKEN=` left deliberately empty disarms the
+  instant-roll webhook; deleting the line has `setup.sh` generate a token and arm it again.
+
+It reads every compose file `COMPOSE_FILE` selects, so the deploy overlay's defaults count as stock;
+it strips an inline comment from an unquoted value the way Compose does, so a line copied from this
+README complete with its `# the default` still reads as redundant; and where a compose file only
+passes a variable through (`${VAR:-}`), the entrypoint's default is the one compared against.
 
 ### Warming the theme cache aggressively
 
