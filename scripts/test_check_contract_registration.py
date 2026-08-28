@@ -46,8 +46,27 @@ class Covered(unittest.TestCase):
         # `bundle/format2` is not covered by `bundle/format/**`.
         self.assertFalse(mod.covered("bundle/format2", ["bundle/format/**"]))
 
+    def test_a_selective_glob_is_not_whole_module_coverage(self):
+        # Same directory prefix, but a change to the module's build file or a Java source under
+        # it would not select the group — and other groups classify those paths, so the
+        # classifier does not fail open. A partial glob reads as coverage without being it.
+        self.assertFalse(mod.covered("daemon/core", ["daemon/core/**/*.kt"]))
+        self.assertTrue(mod.covered("daemon/core", ["daemon/core/**"]))
+
     def test_no_globs_covers_nothing(self):
         self.assertFalse(mod.covered("common/io", []))
+
+
+class ModulePackages(unittest.TestCase):
+    def test_java_sources_are_scanned(self):
+        # No contract module has Java sources today; the point is that adding one cannot open a
+        # hole. A JVM consumer imports a Java declaration exactly like a Kotlin one.
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        main = tmp / "m" / "src" / "main" / "java" / "ee" / "x"
+        main.mkdir(parents=True)
+        (main / "T.java").write_text("package ee.x;\n\npublic final class T {}\n")
+        self.assertEqual(mod.module_packages(tmp, "m"), {"ee.x"})
 
 
 class RealTree(unittest.TestCase):
@@ -83,7 +102,9 @@ class Omissions(unittest.TestCase):
             # One stub per declared package instead of the real sources: the checker only
             # reads `package` lines, and copying every module's main source set to run a
             # regex over it would make the fixture cost more than the gate it tests.
-            for i, package in enumerate(mod.package_roots(mod.module_packages(REPO, d))):
+            # Every package, not just the roots — the key-ownership check resolves nested
+            # entries like `…daemon.bta` against the module that declares them.
+            for i, package in enumerate(sorted(mod.module_packages(REPO, d))):
                 stub = self.root / d / "src" / "main" / "kotlin" / f"Stub{i}.kt"
                 stub.parent.mkdir(parents=True, exist_ok=True)
                 stub.write_text(f"package {package}\n")
@@ -138,6 +159,19 @@ class Omissions(unittest.TestCase):
             lambda m: m.__setitem__("ee.schimke.composeai.imagecrop", "common-image-kropp")
         )
         self.assertIn("which no project in", self._failure())
+
+    def test_a_nested_package_mapped_to_the_wrong_contract_fails(self):
+        # The per-module check below only reaches a module's *root* packages, so a nested entry
+        # is invisible to it: `daemon-core` reduces to `…daemon`, and the value check only asks
+        # whether `daemon-client` exists at all. This is the key-ownership check instead.
+        self._rewrite_allowlist(
+            lambda m: m.__setitem__("ee.schimke.composeai.daemon.bta", "daemon-client")
+        )
+        self.assertIn(
+            "maps 'ee.schimke.composeai.daemon.bta' to 'daemon-client', which declares no such "
+            "package",
+            self._failure(),
+        )
 
     def test_contract_package_naming_the_wrong_contract_fails(self):
         # A parent entry swallowing a child module's package — `…daemon.client` reading as

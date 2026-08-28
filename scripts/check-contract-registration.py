@@ -87,12 +87,19 @@ def contract_packages(root: pathlib.Path) -> dict[str, str]:
 
 
 def module_packages(root: pathlib.Path, directory: str) -> set[str]:
-    """Every package declared in a module's main source set."""
+    """Every package declared in a module's main source set.
+
+    Java as well as Kotlin: a JVM consumer imports a Java declaration exactly like a Kotlin
+    one, so a Java-only package in a contract is as much part of the seam. No contract module
+    has Java sources today — which is the reason to include them now, while it costs a glob.
+    """
     packages: set[str] = set()
-    for source in (root / directory / "src" / "main").rglob("*.kt"):
-        match = re.search(r"^package\s+([\w.]+)", source.read_text(), re.M)
-        if match:
-            packages.add(match.group(1))
+    main = root / directory / "src" / "main"
+    for pattern in ("*.kt", "*.java"):
+        for source in main.rglob(pattern):
+            match = re.search(r"^\s*package\s+([\w.]+)", source.read_text(), re.M)
+            if match:
+                packages.add(match.group(1))
     return packages
 
 
@@ -125,8 +132,16 @@ def covered(directory: str, globs: list[str]) -> bool:
     A prefix test rather than an equality test on purpose: `render-session/**` legitimately
     covers both `render-session/api` and `render-session/subprocess`, and demanding an exact
     entry per project would fail a correct file.
+
+    But only a glob that takes the *whole* subtree counts. `daemon/core/**/*.kt` has the same
+    directory prefix and does not schedule the job for a change to that module's build file or
+    to a Java source under it — and those paths are classified by other groups, so the
+    classifier does not fail open and the probe is simply skipped. A partial glob is worse than
+    a missing one: it reads as coverage.
     """
     for glob in globs:
+        if glob != "**" and not glob.endswith("/**") and not glob.endswith("/"):
+            continue  # not whole-subtree coverage; see above
         prefix = glob.split("*", 1)[0].rstrip("/")
         if prefix and (directory == prefix or directory.startswith(prefix + "/")):
             return True
@@ -163,6 +178,28 @@ def check(root: pathlib.Path = REPO) -> int:
             f"project in {SHELL} publishes — the seam checker would credit those imports to a "
             "contract that does not exist"
         )
+
+    # Every mapping key names a package; the artifact it names must be the one that ships it.
+    # The per-module loop below only reaches a module's *root* packages, so a nested entry —
+    # `…daemon.bta` pointed at `daemon-client` while its sources sit in `daemon-core` — is
+    # invisible there: `daemon-core` reduces to `…daemon`, and the value check only asks
+    # whether `daemon-client` exists at all.
+    owned: dict[str, set[str]] = {}
+    for path, directory in resolved.items():
+        artifact = ids[path]
+        if artifact is not None:
+            owned.setdefault(artifact, set()).update(module_packages(root, directory))
+    for package, artifact in sorted(mapping.items()):
+        if artifact not in named:
+            continue  # already reported above, with a better message
+        packages = owned.get(artifact, set())
+        if not any(p == package or p.startswith(package + ".") for p in packages):
+            elsewhere = sorted(a for a, ps in owned.items() if any(p == package for p in ps))
+            hint = f" — it ships in {', '.join(elsewhere)}" if elsewhere else ""
+            problems.append(
+                f"{ALLOWLIST}: `contractPackages` maps '{package}' to '{artifact}', which "
+                f"declares no such package{hint}"
+            )
 
     for path, directory in sorted(resolved.items()):
         artifact = ids[path]
