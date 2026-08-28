@@ -1,0 +1,62 @@
+name: Agent Entrypoints
+
+# Reachability gate for the repository's agent instructions.
+#
+# More than one coding agent works this repo, and each resolves its instructions
+# from a different file by a different mechanism — Claude Code from CLAUDE.md
+# (@path imports inlined at launch), Codex CLI from root AGENTS.md (directory-walk
+# concatenation, no include directive at all), Gemini CLI from GEMINI.md (@path.md
+# memory imports), Copilot from .github/copilot-instructions.md and root AGENTS.md.
+# None of them follows an ordinary markdown link.
+#
+# So moving a rule behind a link, or letting root AGENTS.md grow past Codex's
+# 32 KiB project_doc_max_bytes, makes that rule invisible to an agent — and the
+# damage is worst exactly where the rule is CI-ENFORCED, because the agent does not
+# merely deviate, it goes red on a gate it was never shown. That failure is silent
+# in the repository and expensive on the PR, which is why it gets a gate of its own
+# rather than a comment asking someone to remember.
+#
+# Runs on every PR and every push: the files it guards are markdown, which the
+# path-scoped CI classifier deliberately ignores, so this workflow carries no path
+# filter.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-entrypoints-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Invariants reachable from every agent
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check agent entrypoints
+        run: scripts/check-agent-entrypoints.sh --report
+
+  self-test:
+    # The gate fails the same silent way it exists to catch: a matcher that stops
+    # matching still prints "all invariants reachable" and still exits 0. So it
+    # gets its own tests, driving the real script against synthetic trees in both
+    # directions.
+    name: Gate self-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run the entrypoint gate self-test
+        run: scripts/test-check-agent-entrypoints.sh

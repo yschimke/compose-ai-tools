@@ -230,7 +230,7 @@ jobs:
           set -euo pipefail
 
           # github-actions[bot] only ever authors branch commits, never the
-          # squash-authored main — the house rule in CLAUDE.md.
+          # squash-authored main — the house rule in AGENTS.md.
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           # checkout deliberately does not persist its token; wire gh's credential

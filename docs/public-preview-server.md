@@ -2823,7 +2823,7 @@ On the deployed image set `SERVE_ACCEPT_DOCS=1` (plus optional `SERVE_DOC_TTL`,
 ## Uploading a preview image (`--accept-images`)
 
 An agent that just changed a composable has the pixels — a rendered PNG on local disk — and one
-problem left: [this repo's PR rule](../CLAUDE.md) says the before/after must be **embedded and
+problem left: [this repo's PR rule](../AGENTS.md#pr-workflow) says the before/after must be **embedded and
 viewable inline** in the pull-request body, and `![](file:///tmp/before.png)` is not a URL GitHub can
 fetch. `compose-preview share-preview` solves that with a gist or a pushed capture branch, both of
 which need credentials a hosted agent session often doesn't have (`gh`, or push rights on the repo).
