@@ -257,6 +257,12 @@ class ServeHttpRoutingTest {
     parityFeed: Boolean = false,
     stagesRcCompare: Boolean = false,
     tagIndex: Boolean = false,
+    /**
+     * False builds the shape `--bundles` and an upload produce: the same host type with no
+     * `catalog.json` behind it. Defaults true because every other fixture here stands in for a
+     * published catalog.
+     */
+    isCatalog: Boolean = true,
   ): ServeBundleHost {
     val dir = Files.createTempDirectory("routing-$label").toFile().also { it.deleteOnExit() }
     File(dir, "index.html").writeText("<html></html>")
@@ -402,6 +408,7 @@ class ServeHttpRoutingTest {
     return ServeBundleHost(
       dir,
       label = label,
+      isCatalog = isCatalog,
       title = title,
       degradations = degradations,
       stagesRcCompare = stagesRcCompare,
@@ -436,7 +443,7 @@ class ServeHttpRoutingTest {
         """
           .trimIndent()
       )
-    return ServeBundleHost(dir, label = label, figmaDir = figma)
+    return ServeBundleHost(dir, label = label, figmaDir = figma, isCatalog = true)
   }
 
   private val registry = ServeSessionRegistry(open = { null })
@@ -476,6 +483,14 @@ class ServeHttpRoutingTest {
     registry.register(
       "staging-rc",
       host = bundle("staging-rc", rcDoc = rcDocBytes, stagesRcCompare = true),
+      pinned = true,
+    )
+    // A PLAIN BUNDLE — the shape `--bundles` and an upload produce: the same `ServeBundleHost`
+    // type with no `catalog.json` behind it. Kept off `catalogSessions` like `baked-only` so the
+    // home-index test is unaffected.
+    registry.register(
+      "plain-bundle",
+      host = bundle("plain-bundle", isCatalog = false),
       pinned = true,
     )
     registry.register("burst", host = burstHost, pinned = true)
@@ -1757,6 +1772,25 @@ class ServeHttpRoutingTest {
   }
 
   @Test
+  fun `a plain bundle is not a catalog and offers no catalog tracker`() {
+    // `ServeBundleHost` backs three different things: a catalog published by `ServeCatalogStore`, a
+    // `--bundles` directory, and an uploaded portable bundle. Only the first has a `catalog.json`.
+    // Testing the host TYPE read all three as catalogs, so an upload was offered a report about
+    // "this catalog" against the fallback compose-ai-tools repo — the same defect as the plain
+    // module one door along, arriving through a host that IS a `ServeBundleHost`.
+    val (code, landing) = get("/plain-bundle")
+    assertEquals(200, code, "the plain bundle's landing is served: $landing")
+    assertTrue(
+      !landing.contains("id=\"cp-report\""),
+      "a plain bundle carries no catalog report row: $landing",
+    )
+    assertTrue(
+      !landing.contains("data-cp-subject=\"this catalog\""),
+      "and claims no catalog it does not have: $landing",
+    )
+  }
+
+  @Test
   fun `a page-scoped report pins the presentation mode it was filed from`() {
     // The report link is read by a triager who does not have the reporter's cookie. Mode is
     // deliberately a property of the visitor rather than of each URL, but `?chrome=` was kept
@@ -1775,6 +1809,24 @@ class ServeHttpRoutingTest {
     assertTrue(
       !catalog.contains("chrome%3Dcatalog%26chrome") && !catalog.contains("chrome=catalog&chrome"),
       "the pin is not appended to a URL that already carries one: $catalog",
+    )
+
+    // An UNRECOGNISED pin is replaced, not kept: `interfaceMode` accepts only `catalog`/`dev`, so
+    // the request fell back to the cookie or the server default and the raw value names a mode the
+    // page was never served in. Keeping it pins the wrong surface through the one value nobody
+    // validated; appending would leave two `chrome=` for the reader's parser to break.
+    val (_, bogus) = get("/compose-m3?chrome=invalid")
+    // Scoped to the report form: the raw query legitimately survives elsewhere on the page (the
+    // canonical `og:url` is the URL as requested). What must not carry it is the report.
+    val report = bogus.substringAfter("id=\"cp-report\"", "").substringBefore("</form>")
+    assertTrue(report.isNotEmpty(), "the catalog report row is present: $bogus")
+    assertTrue(
+      report.contains("chrome%3Ddev") || report.contains("chrome=dev"),
+      "an unrecognised pin is replaced with the resolved mode: $report",
+    )
+    assertTrue(
+      !report.contains("chrome%3Dinvalid") && !report.contains("chrome=invalid"),
+      "and the unrecognised value does not survive into the report: $report",
     )
   }
 

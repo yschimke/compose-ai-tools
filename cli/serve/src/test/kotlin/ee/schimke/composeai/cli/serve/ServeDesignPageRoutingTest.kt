@@ -57,7 +57,9 @@ class ServeDesignPageRoutingTest {
       File(dir, "${ServeDesignPageStore.DIRECTORY}/shape.svg").writeText(svg)
       File(dir, "${ServeDesignPageStore.DIRECTORY}/icons.svg").writeText(svg)
     }
-    return ServeBundleHost(dir, label = label)
+    // A catalog: these fixtures serve design pages and assert the catalog tracker. Plain bundles
+    // (`--bundles`, uploads) construct without this and are correctly excluded.
+    return ServeBundleHost(dir, label = label, isCatalog = true)
   }
 
   private val manifest =

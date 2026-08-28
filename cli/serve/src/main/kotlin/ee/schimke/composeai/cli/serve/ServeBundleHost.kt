@@ -42,6 +42,24 @@ class ServeBundleHost(
    */
   val trust: BundleVerifier.Verdict = BundleVerifier.Verdict.Unverified("not checked"),
   /**
+   * Whether this host serves a **design-system catalog** rather than a plain bundle.
+   *
+   * The type cannot answer this. `ServeBundleHost` backs three different things — a catalog
+   * published by [ServeCatalogStore], a `--bundles` directory ([ServeRunner]), and an uploaded
+   * portable bundle ([ServeBundleStore]) — and only the first has a `catalog.json` behind it. The
+   * other two are plain bundles that happen to share the implementation, so an `is ServeBundleHost`
+   * test reads them as catalogs too.
+   *
+   * Set true only where a catalog is actually being built. Callers that speak *about a catalog* —
+   * the page-scoped issue report says "this catalog" — need this rather than the type, or a plain
+   * uploaded bundle is offered a report naming a catalog it does not have (#4728 review).
+   *
+   * Not inferred from [title] / [provenance] / [catalogSource]: those are all individually optional
+   * on a real catalog, so absence proves nothing and a catalog declaring none of them would be
+   * misread as plain.
+   */
+  val isCatalog: Boolean = false,
+  /**
    * Human display title for a design-system catalog (e.g. "Compose Material 3"), taken from
    * `catalog.json`'s `title`. Null for a plain uploaded bundle (no such metadata). Surfaced on the
    * public server's home index so each system card reads as a name, not a bare id.
