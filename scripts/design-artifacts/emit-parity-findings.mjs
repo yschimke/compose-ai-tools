@@ -130,13 +130,52 @@ function showFromBranch(ref, file) {
   }
 }
 
+/**
+ * Where to fetch the parity branch from.
+ *
+ * `origin`, unless the workflow handed us a token. The calling repo is checked out with
+ * `persist-credentials: false`, so its `origin` carries no credential and a fetch against a
+ * PRIVATE repo fails — on a publishing run as much as any other, because the token this job holds
+ * never reached git. Same inline-token URL `push-branch.sh` builds, for the same reason.
+ *
+ * Absent token, absent slug, or a public repo: plain `origin`, exactly as before.
+ */
+function parityRemote() {
+  const token = process.env.GITHUB_TOKEN_INLINE || "";
+  const slug = process.env.GITHUB_REPOSITORY || "";
+  if (!token || !slug) return "origin";
+  return `https://x-access-token:${token}@github.com/${slug}.git`;
+}
+
+/**
+ * Record that the branch could not be READ — which is not the same as it having nothing to say.
+ *
+ * Both exit through "nothing to publish", and the publish step treats them oppositely: a branch
+ * that says a catalog is at parity SHOULD retire the stale verdict, while a branch we could not
+ * reach must not be allowed to delete one. The publish snapshots `out/` wholesale, so without this
+ * a transient fetch failure silently drops a good `parity/findings.json` from the served bundle.
+ *
+ * Best-effort and one-directional: it only ever asks for the file to be preserved. A workflow too
+ * old to read the flag carries nothing forward, which is the behaviour that exists today.
+ */
+function reportUnreadableBranch() {
+  const file = process.env.GITHUB_ENV;
+  if (!file) return;
+  try {
+    fs.appendFileSync(file, "PARITY_FINDINGS_UNREADABLE=1\n");
+  } catch {
+    // The panel is an enhancement; failing to hint at carry-forward must not cost the render.
+  }
+}
+
 // The branch is not in a shallow clone by default; fetch it before reading. Best-effort for the
-// same reasons the activity lane's deepen is: a private caller checked out without credentials
-// cannot fetch, and the panel is then simply absent.
+// same reasons the activity lane's deepen is: a caller we hold no credential for cannot fetch,
+// and the panel is then simply absent.
+const REMOTE = parityRemote();
 for (const ref of [`refs/remotes/origin/${PARITY_BRANCH}`, PARITY_BRANCH]) {
   if (showFromBranch(ref, RUN_MANIFEST_FILE)) break;
   try {
-    execFileSync("git", ["fetch", "--depth=1", "origin", `+${PARITY_BRANCH}:${ref}`], {
+    execFileSync("git", ["fetch", "--depth=1", REMOTE, `+${PARITY_BRANCH}:${ref}`], {
       cwd: REPO,
       stdio: "ignore",
     });
@@ -152,7 +191,11 @@ const ref =
   ) ?? null;
 
 if (!ref) {
+  // Unreachable OR nonexistent — from here they look identical, so assume the branch may exist and
+  // ask the publish step to keep whatever verdict is already served. A repo that has genuinely
+  // never run parity has no `parity/findings.json` on its branch, so preserving it is a no-op.
   console.log(`parity-findings: no ${PARITY_BRANCH} branch to read — nothing to publish`);
+  reportUnreadableBranch();
   process.exit(0);
 }
 

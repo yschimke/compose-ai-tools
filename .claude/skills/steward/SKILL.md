@@ -28,6 +28,24 @@ checks that catch the most here, in order:
    every other failure. TypeScript: `npm --prefix vscode-extension run format`.
    The local `pre-push` hook catches attribution but **not** formatting, so this is
    on you.
+
+   **`preview-server/` is a separate Gradle build and neither `ktfmtCheckAll` nor
+   the `pre-commit` hook reaches it.** It is absent from the root
+   `settings.gradle.kts` and carries its own ktfmt, run only inside the
+   `Preview Server Contracts` job — so a Kotlin edit there passes every local check
+   and goes red in CI. `ContractSurface.kt` did it three times in one day
+   (#4693, #4697, #4709). Drive that build directly, with its own JVM home:
+
+   ```
+   ./gradlew -p preview-server :contract-probe:ktfmtFormatMain \
+     --no-daemon -Dorg.gradle.java.home=/root/.cache/coo-ee/jdk-gl/17
+   ```
+
+   Both flags are load-bearing in a sandbox: without `org.gradle.java.home` the
+   daemon starts on the wrong JVM and the build dies with a context mismatch, and
+   `--no-daemon` avoids reusing one already started on it. Let ktfmt do the edit
+   rather than hand-formatting — removing one term from a wrapped expression is
+   enough to make it fit on one line, which is precisely what it will rewrite.
 2. **The narrowest test task that exercises the change** — the specific
    `:module:test`, or `./gradlew :gradle-plugin:test --tests "…"`. `./gradlew check`
    is the full plugin + functional + CLI suite and is a post-push confirmation, not

@@ -6,6 +6,7 @@ import {
   catalogOwnsNode,
   declaringClassOf,
   declaringClasses,
+  publishingSourcePaths,
   pageImageName,
   planDesignPages,
 } from "./design-pages.mjs";
@@ -861,6 +862,213 @@ test("catalogOwnsNode places a claim by its declaring file", () => {
     catalogOwnsNode({}, classes),
     true,
     "nothing to place ⇒ nothing proves it foreign",
+  );
+});
+
+test("a sibling module compiling the same class is not ours", () => {
+  // The class half of ownership cannot separate two modules: a discovery id is `classInfo.name` +
+  // `method.name` and names no module, while nothing stops `:app` and `:feature` each compiling an
+  // `ee/app/sections/Buttons.kt`. Without the module half the sibling's node reads as local, and
+  // the page then pairs our render with its code or drops one the reference join would have found.
+  const catalog = {
+    components: [
+      {
+        componentId: "Button/Filled",
+        sourceDirectory: "app",
+        sourceFile: "src/main/kotlin/app/sections/Buttons.kt",
+        images: [
+          {
+            path: "images/button-filled/ideal__default.png",
+            previewId: "app.sections.ButtonsKt.FilledButton",
+          },
+        ],
+      },
+    ],
+  };
+  const classes = declaringClasses(catalog);
+  const paths = publishingSourcePaths(catalog);
+  assert.deepEqual(
+    [...paths.get("app.sections.ButtonsKt")],
+    ["app/src/main/kotlin/app/sections/Buttons.kt"],
+  );
+
+  const ourNode = {
+    previewId: "app.sections.ButtonsKt.FilledButton",
+    code: "app/src/main/kotlin/app/sections/Buttons.kt#FilledButton",
+  };
+  const siblingNode = {
+    previewId: "app.sections.ButtonsKt.FilledButton",
+    code: "feature/src/main/kotlin/app/sections/Buttons.kt#FilledButton",
+  };
+
+  // Both nodes carry the SAME declaring class, so the class test alone says yes to both — which is
+  // what makes this a module question rather than a naming one.
+  assert.equal(catalogOwnsNode(ourNode, classes), true);
+  assert.equal(catalogOwnsNode(siblingNode, classes), true);
+
+  assert.equal(catalogOwnsNode(ourNode, classes, paths), true);
+  assert.equal(catalogOwnsNode(siblingNode, classes, paths), false);
+});
+
+test("a nested Gradle project is not the parent's", () => {
+  // Directory containment would hand `:app` every node `:app:feature` declares, and the root
+  // project's `""` the whole repository — the same collision, in the layout where it is most
+  // likely. Exact source paths have no such ambiguity.
+  const parent = {
+    components: [
+      {
+        componentId: "Button/Filled",
+        sourceDirectory: "app",
+        sourceFile: "src/main/kotlin/app/sections/Buttons.kt",
+        images: [{ previewId: "app.sections.ButtonsKt.FilledButton" }],
+      },
+    ],
+  };
+  const nestedNode = {
+    previewId: "app.sections.ButtonsKt.FilledButton",
+    code: "app/feature/src/main/kotlin/app/sections/Buttons.kt#FilledButton",
+  };
+  assert.equal(
+    catalogOwnsNode(nestedNode, declaringClasses(parent), publishingSourcePaths(parent)),
+    false,
+  );
+
+  // And the root project cannot claim its own children either.
+  const root = {
+    components: [
+      {
+        componentId: "Button/Filled",
+        sourceDirectory: "",
+        sourceFile: "src/main/kotlin/app/sections/Buttons.kt",
+        images: [{ previewId: "app.sections.ButtonsKt.FilledButton" }],
+      },
+    ],
+  };
+  const rootPaths = publishingSourcePaths(root);
+  assert.deepEqual(
+    [...rootPaths.get("app.sections.ButtonsKt")],
+    ["src/main/kotlin/app/sections/Buttons.kt"],
+  );
+  assert.equal(
+    catalogOwnsNode(
+      {
+        previewId: "app.sections.ButtonsKt.FilledButton",
+        code: "modules/x/src/main/kotlin/app/sections/Buttons.kt#FilledButton",
+      },
+      declaringClasses(root),
+      rootPaths,
+    ),
+    false,
+  );
+  // Its own bare, already-repository-relative handle still resolves.
+  assert.equal(
+    catalogOwnsNode(
+      {
+        previewId: "app.sections.ButtonsKt.FilledButton",
+        code: "src/main/kotlin/app/sections/Buttons.kt#FilledButton",
+      },
+      declaringClasses(root),
+      rootPaths,
+    ),
+    true,
+  );
+});
+
+test("a partly-stamped catalog does not disown its own unstamped components", () => {
+  // `applySourceFiles` stamps identity per component, and only when discovery resolved that
+  // component's preview function — so a catalog can carry it for some components and not others.
+  // Judging every node against one catalog-wide path set would then call the unstamped
+  // component's OWN node foreign as soon as any sibling was stamped, which is worse than the
+  // class test alone. Identity is scoped per declaring class for exactly this reason.
+  const mixed = {
+    components: [
+      {
+        componentId: "Button/Filled",
+        sourceDirectory: "app",
+        sourceFile: "src/main/kotlin/app/sections/Buttons.kt",
+        images: [{ previewId: "app.sections.ButtonsKt.FilledButton" }],
+      },
+      {
+        // Discovery could not resolve this one, so it carries no source identity at all.
+        componentId: "Card/Elevated",
+        images: [{ previewId: "app.sections.CardsKt.ElevatedCard" }],
+      },
+    ],
+  };
+  const classes = declaringClasses(mixed);
+  const paths = publishingSourcePaths(mixed);
+
+  // The stamped class is placed, so a foreign node carrying it is still rejected.
+  assert.equal(paths.has("app.sections.ButtonsKt"), true);
+  assert.equal(
+    catalogOwnsNode(
+      {
+        previewId: "app.sections.ButtonsKt.FilledButton",
+        code: "feature/src/main/kotlin/app/sections/Buttons.kt#FilledButton",
+      },
+      classes,
+      paths,
+    ),
+    false,
+  );
+
+  // The unstamped class is not in the map, so its own node keeps the class test's answer.
+  assert.equal(paths.has("app.sections.CardsKt"), false);
+  assert.equal(
+    catalogOwnsNode(
+      {
+        previewId: "app.sections.CardsKt.ElevatedCard",
+        code: "app/src/main/kotlin/app/sections/Cards.kt#ElevatedCard",
+      },
+      classes,
+      paths,
+    ),
+    true,
+  );
+});
+
+test("ownership falls open when either side names no module", () => {
+  const withPath = {
+    components: [
+      {
+        componentId: "Button/Filled",
+        sourceDirectory: "app",
+        sourceFile: "src/main/kotlin/app/sections/Buttons.kt",
+        images: [{ previewId: "app.sections.ButtonsKt.FilledButton" }],
+      },
+    ],
+  };
+
+  // A node with no code handle: nothing to place it in, so the class match stands alone.
+  assert.equal(
+    catalogOwnsNode(
+      { previewId: "app.sections.ButtonsKt.FilledButton" },
+      declaringClasses(withPath),
+      publishingSourcePaths(withPath),
+    ),
+    true,
+  );
+
+  // A bundle predating the identity fields records none, and every node keeps the old behaviour.
+  const legacy = {
+    components: [
+      {
+        componentId: "Button/Filled",
+        images: [{ previewId: "app.sections.ButtonsKt.FilledButton" }],
+      },
+    ],
+  };
+  assert.equal(publishingSourcePaths(legacy).size, 0);
+  assert.equal(
+    catalogOwnsNode(
+      {
+        previewId: "app.sections.ButtonsKt.FilledButton",
+        code: "feature/src/main/kotlin/app/sections/Buttons.kt#FilledButton",
+      },
+      declaringClasses(legacy),
+      publishingSourcePaths(legacy),
+    ),
+    true,
   );
 });
 

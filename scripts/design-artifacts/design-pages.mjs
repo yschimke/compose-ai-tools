@@ -104,7 +104,7 @@ export function pageImageName(pageId) {
  */
 function resolveServePreviewId(
   node,
-  { byPreviewId, byFunction, byReference, classes },
+  { byPreviewId, byFunction, byReference, classes, directories },
 ) {
   const declared = typeof node?.previewId === "string" ? node.previewId : "";
   // A declared id is only a refusal when it is OURS. The terminal rule below reads an empty match
@@ -112,7 +112,7 @@ function resolveServePreviewId(
   // namespace and false of a sibling module's — that one never named anything of ours to begin
   // with, so treating it as a refusal would suppress the reference join for every node on a shared
   // import. See [catalogOwnsNode].
-  const ours = catalogOwnsNode(node, classes ?? new Set());
+  const ours = catalogOwnsNode(node, classes ?? new Set(), directories);
   if (declared !== "" && ours) {
     // Terminal: a declared id that resolves to nothing must NOT fall through to the function name.
     // [matchesForPreviewId] returns empty for a *sanitised bundle-id collision* — a family where an
@@ -170,7 +170,7 @@ function resolveServePreviewId(
  *  * neither ⇒ null. The claim is demonstrably another module's, and publishing it would overstate
  *    this catalog's coverage with work it could never do.
  */
-export function codeForNode(node, { byReference, classes }) {
+export function codeForNode(node, { byReference, classes, directories }) {
   const incoming =
     typeof node?.code === "string" && node.code !== ""
       ? String(node.code)
@@ -178,7 +178,8 @@ export function codeForNode(node, { byReference, classes }) {
   // OURS first, and kept verbatim. The incoming handle is repo-relative and already correct for the
   // module the import was written against, so a catalog that owns the node publishes exactly what
   // it published before — no rewrite, no chance of moving a working source link.
-  if (incoming && catalogOwnsNode(node, classes ?? new Set())) return incoming;
+  if (incoming && catalogOwnsNode(node, classes ?? new Set(), directories))
+    return incoming;
   // Not ours, but we reproduce the same design node: restate the handle from OUR component, using
   // only what the producer CARRIED. `sourceDirectory` and `sourceFunction` are stamped by
   // `apply-source-files.mjs` from the bundle's own record; neither is derivable from what the
@@ -323,7 +324,7 @@ export function declaringClasses(catalog) {
  * and `remote-m3` owns 0. So this separates "the manifest was written for me" from "the manifest was
  * written for my sibling" exactly, and is a no-op for every single-catalog repo.
  */
-export function catalogOwnsNode(node, classes) {
+export function catalogOwnsNode(node, classes, directories) {
   // A catalog whose images carry NO discovery ids at all — everything folded in through the
   // generator's `--extra-renders`, which deliberately publishes none (see
   // [narrowToMappedPreviewId]) — cannot place any claim. That is ignorance, not evidence of
@@ -336,7 +337,85 @@ export function catalogOwnsNode(node, classes) {
     // pre-existing behaviour for every manifest that names no preview ids at all.
     return true;
   }
-  return classes.has(declaring);
+  if (!classes.has(declaring)) return false;
+  // The class matches, which is not the same as the claim being ours. A discovery id is
+  // `classInfo.name` + `method.name` and carries NO module, while two sibling Gradle modules may
+  // legally compile the same fully-qualified class — nothing stops `:app` and `:feature` each
+  // having an `ee/app/sections/Buttons.kt`. On a shared design-page import that reads the
+  // sibling's node as ours, and then either pairs our render with its code (when the member names
+  // coincide) or drops a render the reference join would have resolved (when they differ).
+  //
+  // So when BOTH sides name a module, they have to agree. Fail-open otherwise, like everything
+  // above: a bundle too old to carry `sourceDirectory` and a node with no code handle each leave
+  // the class match standing on its own, which is the behaviour that shipped.
+  return nodeIsUnderOurModules(node, directories, declaring);
+}
+
+/**
+ * Whether [node]'s code handle names a source file this catalog publishes [declaring] from.
+ *
+ * The module half of ownership, and an EXACT test rather than a containment one. Directory
+ * containment reads a nested Gradle project as its parent's: `:app` at `app/` lexically contains
+ * `:app:feature` at `app/feature/`, and the root project's `""` contains the entire repository, so
+ * a prefix test hands the parent every node its children declare — precisely the collision this is
+ * here to reject, in the layout where it is most likely.
+ *
+ * Exact repository paths have no such ambiguity. `codeForNode` builds a handle as the component's
+ * `sourceDirectory` joined to its module-relative `sourceFile`, so the set of handles this catalog
+ * could have published IS the set of those joins, and a node either names one or does not.
+ *
+ * Scoped PER DECLARING CLASS, which is what keeps an exact test safe on a partly-stamped catalog.
+ * `applySourceFiles` stamps identity per component and only when discovery resolved that
+ * component's preview function, so a catalog may carry it for some and not others. Judging every
+ * node against one catalog-wide set would then call an unstamped component's own node foreign the
+ * moment any sibling was stamped — a regression against the class test alone. A class we hold no
+ * identity for is one we cannot place, so it keeps the answer the class test gave.
+ */
+function nodeIsUnderOurModules(node, sourcePaths, declaring) {
+  if (!sourcePaths || sourcePaths.size === 0) return true;
+  const known = sourcePaths.get(declaring);
+  if (!known || known.size === 0) return true;
+  const code = typeof node?.code === "string" ? node.code.trim() : "";
+  if (code === "") return true;
+  const file = code.split("#", 1)[0].replace(/^\/+/, "");
+  if (file === "") return true;
+  return known.has(file);
+}
+
+/**
+ * The repository-relative source files this catalog publishes, indexed by declaring class.
+ *
+ * `sourceDirectory` is the producing project's repository-relative directory as the bundle recorded
+ * it and `sourceFile` is module-relative, so joining them is the same path `codeForNode` emits.
+ * The root project stamps `""` — a real answer meaning "already repository-relative" — and joins to
+ * the bare file.
+ *
+ * A component contributes only when it carries BOTH fields, so the map's keys are exactly the
+ * classes this catalog can place. Empty for a bundle predating them, which is what makes
+ * [catalogOwnsNode]'s module test fail open for one.
+ *
+ * @returns Map of declaring class → the repository paths this catalog publishes it from.
+ */
+export function publishingSourcePaths(catalog) {
+  const byClass = new Map();
+  for (const component of catalog?.components ?? []) {
+    // `""` is the root project and is a usable answer; `undefined` is a bundle that never recorded
+    // the field and must not be read as one.
+    if (typeof component?.sourceDirectory !== "string") continue;
+    if (typeof component?.sourceFile !== "string") continue;
+    const dir = component.sourceDirectory.trim().replace(/^\/+|\/+$/g, "");
+    const file = component.sourceFile.trim().replace(/^\/+/, "");
+    if (file === "") continue;
+    const path = dir === "" ? file : `${dir}/${file}`;
+    for (const image of component?.images ?? []) {
+      const declaring = declaringClassOf(image?.previewId);
+      if (declaring === "") continue;
+      const paths = byClass.get(declaring) ?? new Set();
+      paths.add(path);
+      byClass.set(declaring, paths);
+    }
+  }
+  return byClass;
 }
 
 /**
@@ -397,6 +476,10 @@ export function planDesignPages({ manifest, spec, catalog }) {
   // Which files this catalog actually publishes previews from — the test for whether an incoming
   // `code` claim can be ours at all.
   const classes = declaringClasses(catalog);
+  // …and out of which files, at full repository paths. A class name alone cannot tell two
+  // modules apart, and a directory cannot tell a project from its own nested ones; see
+  // [catalogOwnsNode].
+  const directories = publishingSourcePaths(catalog);
 
   const images = [];
   const seen = new Set();
@@ -455,11 +538,11 @@ export function planDesignPages({ manifest, spec, catalog }) {
       const declaredLink = LINK_METHODS.has(node?.link)
         ? node.link
         : "unlinked";
-      const ours = catalogOwnsNode(node, classes);
+      const ours = catalogOwnsNode(node, classes, directories);
       const code =
         declaredLink === "unlinked"
           ? null
-          : codeForNode(node, { byReference, classes });
+          : codeForNode(node, { byReference, classes, directories });
       // A reference match is an IDENTITY — this catalog's component names the very design node the
       // page is drawing — so it stands on its own. The code handle is a label over the top of it and
       // may be missing (a catalog published before the producer carried `sourceDirectory` /
@@ -496,6 +579,7 @@ export function planDesignPages({ manifest, spec, catalog }) {
               byFunction,
               byReference,
               classes,
+              directories,
             });
       if (link !== "unlinked" && previewId === null) unresolved += 1;
       nodes.push({
