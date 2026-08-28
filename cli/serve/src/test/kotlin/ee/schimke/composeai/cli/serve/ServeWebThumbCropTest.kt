@@ -209,6 +209,17 @@ class ServeWebThumbCropTest {
     assertTrue(css.contains(".cp-crop { --cp-thumb-cap: 200px; }"), "narrow-viewport cap")
     // ...and it must drop in lockstep with the plain image's cap, or the mismatch just moves.
     assertTrue(css.contains(".cp-imgwrap img { max-height: 200px; }"), "plain image's narrow cap")
+    // A front-door system card's hero is a different well: `.cp-syslist .cp-imgwrap` is a fixed
+    // 220px row at every width, and the plain hero in it is exempted from the grid's image cap
+    // (`max-height: none`) for exactly that reason. A CROPPED hero takes its cap through the
+    // variable instead, so the exemption has to be spelled the other way or it draws to the grid's
+    // number in a row that is not the grid's — 240px at desktop, overflowing, and 200px in the
+    // narrow block, visibly short beside the prebaked hero beside it. Pinned here, next to the two
+    // caps it has to agree with, because these three drifting apart is the whole bug.
+    assertTrue(
+      css.contains(".cp-syslist .cp-crop { --cp-thumb-cap: 220px; }"),
+      "a system-card hero window tracks its 220px row, not the grid cap",
+    )
   }
 
   /** The section an operator's `catalogs.json` declares for Android's samples. */
