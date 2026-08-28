@@ -1,9 +1,14 @@
 import { writeFileSync } from "node:fs";
-// Resolved from this file rather than an absolute path, so the documented reproduction works in
-// any checkout. Point it at a worktree's copy for the "before" shot.
-const { renderCrossSystemHtml } = await import(
+// Resolved from this file rather than an absolute path, so the documented reproduction works in any
+// checkout. `CROSS_SYSTEM_RENDERER` points it at a different copy of the renderer — that is how the
+// BEFORE shot is taken: this fixture, unchanged, against a renderer checked out at a pinned commit.
+// Running an older checkout's own copy of the fixture would not do, because the fixture itself has
+// been fixed since; the fixture is the constant and the renderer is the variable.
+const RENDERER =
+  process.env.CROSS_SYSTEM_RENDERER ??
   new URL("../../../../scripts/design-artifacts/render-cross-system-html.mjs", import.meta.url)
-);
+    .pathname;
+const { renderCrossSystemHtml } = await import(RENDERER);
 
 /** A flat coloured PNG-ish swatch as an inline SVG data URI, labelled so the pick is visible. */
 const swatch = (label, fill, w, h) =>

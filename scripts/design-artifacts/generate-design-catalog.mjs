@@ -2360,7 +2360,11 @@ if (compare) {
           otherManifest?.meta?.title,
         repo,
         otherRepo,
-        designRefById,
+        // OMITTED, not passed empty, when the spec turns the column off. The renderer reads an
+        // empty map as "the column is on and nothing resolved" — which is what lets a stated
+        // absence carry the column on its own — so handing it one here would give an author who
+        // wrote `design: false` the column back through the side door.
+        ...(compare.design === false ? {} : { designRefById }),
         designTitle: compare.designTitle,
         previewBase,
       }),

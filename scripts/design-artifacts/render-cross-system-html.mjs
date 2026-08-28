@@ -359,6 +359,11 @@ export function renderCrossSystemHtml(catalog, opts = {}) {
   const otherIndexUrl = `https://htmlpreview.github.io/?https://github.com/${otherRepo}/blob/${otherBranch}/index.html`;
   const previewBase = opts.previewBase ?? DEFAULT_PREVIEW_BASE;
   const otherHeroById = heroIndex(opts.otherManifest);
+  // Three states, not two. `undefined` is "this page offers no kit column at all" — the generator
+  // omits the key when the spec sets `compareWith.design: false`, and an author who turned the
+  // column off must not have it handed back by a stated absence. An EMPTY MAP is the different
+  // statement "the column is on, and nothing resolved", which is the absence-only case below.
+  const designOffered = opts.designRefById != null;
   const kitRefs = opts.designRefById?.size ? opts.designRefById : null;
   const designTitle = opts.designTitle ?? "Design kit";
 
@@ -375,7 +380,8 @@ export function renderCrossSystemHtml(catalog, opts = {}) {
   // A stated absence is exactly the finding this column exists to publish, so it earns the column
   // on its own.
   const statedAbsences = paired.filter((p) => statedAbsence(p.local)).length;
-  const designRefById = kitRefs ?? (statedAbsences ? EMPTY_DESIGN_REFS : null);
+  const designRefById =
+    kitRefs ?? (designOffered && statedAbsences ? EMPTY_DESIGN_REFS : null);
 
   const rowOpts = {
     otherSystem,
@@ -421,7 +427,9 @@ export function renderCrossSystemHtml(catalog, opts = {}) {
     // otherwise announce "0 against a kit reference", which reads as a failure rather than as the
     // audited absence it is.
     ...(kitRefs ? [`${designed} against a kit reference`] : []),
-    ...(statedAbsences ? [`${statedAbsences} with a stated absence`] : []),
+    // Gated on the COLUMN, not merely on the count: this line describes what the kit column shows,
+    // and on a page that has no such column it would name a finding the reader has no way to see.
+    ...(designRefById && statedAbsences ? [`${statedAbsences} with a stated absence`] : []),
   ];
 
   return `<!doctype html>
@@ -503,12 +511,17 @@ ${previewEmbedStyles({ accent: "var(--link)", muted: "var(--muted)" })}
   click, where the component re-renders under other themes / locales / devices. A parallel that isn't
   catalogued in ${esc(otherSystem)} yet is flagged <span class="badge">unpaired</span>. Components with
   no parallel on either side are listed below the table.${
-    designRefById
+    kitRefs
       ? ` The leading <strong>${esc(designTitle)}</strong> column is the published design reference BOTH
   implementations are reproducing, which is what lets a divergence be attributed to one of them rather
   than merely observed between them. It is contributed by whichever catalog carries the
   <code>figma:</code> mapping; rows where neither does read "no kit reference".`
-      : ""
+      : designRefById
+        ? ` The leading <strong>${esc(designTitle)}</strong> column carries no reference on this page:
+  nothing in either catalog resolved to a <code>figma:</code> mapping. It is here for the rows whose
+  absence was <em>stated</em> — a component that says WHY the kit has nothing to point at is an
+  audited finding, not a gap, and that reason is the only thing this column has to publish here.`
+        : ""
   }</p>
 </header>
 <main>
