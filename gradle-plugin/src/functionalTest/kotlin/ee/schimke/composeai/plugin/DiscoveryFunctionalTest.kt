@@ -1000,6 +1000,11 @@ class DiscoveryFunctionalTest {
           val state: String = "",
           val caption: String = "",
           val props: Array<String> = [],
+          val parallel: String = "",
+          val reference: String = "",
+          val referenceSet: String = "",
+          val noReference: String = "",
+          val referenceContentsOnly: Boolean = true,
         )
 
         @Retention(AnnotationRetention.BINARY)
@@ -1041,6 +1046,17 @@ class DiscoveryFunctionalTest {
           caption = "Held press -> pressed state layer.",
         )
         @Preview @Composable fun FilledButtonPressed() {}
+
+        // A variant with kit correspondence of its own. It is compared in its own right rather
+        // than through its parent, so the pairing and the stated absence travel with the variant.
+        @CatalogVariant(
+          of = "Button/Filled",
+          props = ["content=icon-only"],
+          parallel = "CompactButton",
+          noReference = "the kit exports no Text=No cell for this set",
+          referenceContentsOnly = false,
+        )
+        @Preview @Composable fun FilledButtonIconOnly() {}
 
         // No arguments: id defaults to the function name, group to the file `@CatalogGroup`.
         @CatalogComponent
@@ -1108,6 +1124,24 @@ class DiscoveryFunctionalTest {
     assertThat(pressed.componentId).isEqualTo("Button/Filled")
     assertThat(pressed.state).isEqualTo("pressed")
     assertThat(pressed.props).containsExactly(CatalogVariantProp("content", "icon+label"))
+    // A variant that declares none stays silent, exactly like a component that declares none.
+    assertThat(pressed.parallel).isNull()
+    assertThat(pressed.reference).isNull()
+    assertThat(pressed.noReference).isNull()
+    assertThat(pressed.referenceContentsOnly).isTrue()
+
+    // Variant kit correspondence: read off the variant annotation, not inherited from the parent.
+    // Without this a render folded under a parent would lose its cross-system pairing and the
+    // stated reason it has no kit cell -- both of which are about the variant, not the parent.
+    val iconOnly = byFn.getValue("FilledButtonIconOnly").catalog
+    assertThat(iconOnly).isNotNull()
+    assertThat(iconOnly!!.role).isEqualTo(CatalogRole.VARIANT)
+    assertThat(iconOnly.componentId).isEqualTo("Button/Filled")
+    assertThat(iconOnly.parallel).isEqualTo("CompactButton")
+    assertThat(iconOnly.noReference).isEqualTo("the kit exports no Text=No cell for this set")
+    assertThat(iconOnly.referenceContentsOnly).isFalse()
+    // The parent's own `parallel` is untouched by the variant declaring one.
+    assertThat(filled.parallel).isEqualTo("FilledButton")
 
     // Defaulted component: id falls back to the function name, group to the file default.
     val plain = byFn.getValue("PlainSticker").catalog

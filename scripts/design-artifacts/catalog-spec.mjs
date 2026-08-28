@@ -636,6 +636,15 @@ export function validateSpec(spec, opts = {}) {
               "select",
               "capture",
               "priority",
+              // Kit correspondence, the same five fields a component carries. A variant is
+              // compared in its own right rather than through its parent, so nesting a render
+              // under one does not cost it its `parallel` (what the cross-system compare page
+              // pairs on) or its reference.
+              "parallel",
+              "reference",
+              "referenceSet",
+              "noReference",
+              "referenceContentsOnly",
             ]);
             for (const key of Object.keys(v ?? {})) {
               if (!allowedKeys.has(key)) {
@@ -670,6 +679,20 @@ export function validateSpec(spec, opts = {}) {
             }
             if (v?.theme !== undefined && v.theme !== "light" && v.theme !== "dark") {
               errors.push(`${vp}.theme must be "light" or "dark" when present`);
+            }
+            // Typed here rather than left to the JSON schema: `catalog.spec.schema.json` is a
+            // `$schema` hint for editors and is not enforced by any build step, so this function
+            // is the only gate a malformed spec actually meets.
+            for (const key of ["parallel", "reference", "referenceSet", "noReference"]) {
+              if (v?.[key] !== undefined && typeof v[key] !== "string") {
+                errors.push(`${vp}.${key} must be a string when present`);
+              }
+            }
+            if (
+              v?.referenceContentsOnly !== undefined &&
+              typeof v.referenceContentsOnly !== "boolean"
+            ) {
+              errors.push(`${vp}.referenceContentsOnly must be a boolean when present`);
             }
             errors.push(...priorityErrors(v, vp));
           });
