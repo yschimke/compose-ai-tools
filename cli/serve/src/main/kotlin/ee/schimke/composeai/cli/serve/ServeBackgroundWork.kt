@@ -51,9 +51,16 @@ class ServeBackgroundWork(
    * that permit and 43.5% of what remained spent *re-warming* daemons that got yielded before they
    * rendered anything: 10,120 entries with 8 cached after half an hour, an ETA of 21 days.
    *
-   * Capping the passes fixes what capping the renders cannot. Two at a time still saturates an
-   * 8-permit render lane (each pass batches up to five wide), while leaving the rest parked cheaply
-   * instead of parked expensively.
+   * Capping the passes fixes what capping the renders cannot: the rest are parked cheaply instead
+   * of parked expensively.
+   *
+   * **This must not be set below [maxConcurrentRenders].** A pass takes one permit for the whole of
+   * its batch — `withRenderPermit { renderOptimizerBatch(...) }` — so it holds exactly one however
+   * wide the batch is, and every permit past the lane count is unreachable. An earlier note here
+   * claimed the opposite, that two passes saturate an eight-permit lane "because each pass batches
+   * up to five wide"; the batch runs *inside* the one permit, so they saturate two. `ServeCommand`
+   * consequently passes the render lane for both, which also means an admitted pass never waits at
+   * the permit — the waiting this cap exists to prevent.
    */
   maxConcurrentOptimizers: Int = DEFAULT_MAX_CONCURRENT_OPTIMIZERS,
   private val hostCoordinator: OptimizerHostCoordinator = OptimizerHostCoordinator.NONE,

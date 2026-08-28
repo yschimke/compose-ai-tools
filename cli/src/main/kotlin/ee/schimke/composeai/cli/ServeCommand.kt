@@ -928,15 +928,29 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
 
   private val backgroundWork by lazy {
     val pressureSampler = LinuxHostResourceSampler()
+    // One number, used three times deliberately.
+    //
+    // A pass holds ONE render permit for the whole of its batch —
+    // `withRenderPermit { renderOptimizerBatch(...) }` — so the number of passes admitted, not the
+    // width of a batch, is what bounds concurrent background renders. Leaving the lane count at its
+    // own default therefore left every permit past the second unreachable: the derived lane clamps
+    // at MAX_DERIVED_CONCURRENT_RENDERS (3) against DEFAULT_MAX_CONCURRENT_OPTIMIZERS (2), so even
+    // with no override the third permit was dead, and `--background-renders 5` — which this help
+    // text offers as the way past the derivation's ceiling — bought nothing at all.
+    //
+    // Matching them also removes permit contention rather than merely allowing it: every admitted
+    // pass holds a permit already, so no pass sits inside the door holding a warm daemon and a live
+    // seat while it waits for one. That waiting is what the lane cap was introduced to stop.
+    //
+    // The cross-replica coordinator takes the same number because it caps passes for the physical
+    // host; left at the old default it would re-impose the ceiling this removes.
+    val renderLane = backgroundRenders ?: ServeBackgroundWork.renderLaneFor(liveSeatLimiter)
     ServeBackgroundWork(
-      maxConcurrentRenders =
-        backgroundRenders ?: ServeBackgroundWork.renderLaneFor(liveSeatLimiter),
+      maxConcurrentRenders = renderLane,
+      maxConcurrentOptimizers = renderLane,
       hostCoordinator =
         optimizerCoordinationDirectory?.let {
-          FileOptimizerHostCoordinator(
-            directory = it,
-            lanes = ServeBackgroundWork.DEFAULT_MAX_CONCURRENT_OPTIMIZERS,
-          )
+          FileOptimizerHostCoordinator(directory = it, lanes = renderLane)
         } ?: OptimizerHostCoordinator.NONE,
       pressureGate =
         OptimizerPressureGate(
