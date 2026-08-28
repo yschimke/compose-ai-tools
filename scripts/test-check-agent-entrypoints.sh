@@ -123,6 +123,19 @@ printf '@xAGENTSymd\n' > "$d/CLAUDE.md"
 printf '@xAGENTSymd\n' > "$d/GEMINI.md"
 check "a pointer matching only via wildcarded dots is rejected" 1 "$(run "$d")"
 
+# CommonMark caps fence indentation at three spaces: at four, a same-delimiter
+# line is an indented code block — content — not a closer. Accepting unlimited
+# leading whitespace re-opened the document at that line and certified the still
+# fenced @AGENTS.md below it.
+d="$tmp/overindented-fence"; make_good "$d"
+printf '```\n    ```\n@AGENTS.md\n```\n' > "$d/CLAUDE.md"
+check "a four-space-indented fence marker does not close the block" 1 "$(run "$d")"
+
+# ...and three spaces still does, so the limit does not simply reject everything.
+d="$tmp/indented-fence-ok"; make_good "$d"
+printf '@AGENTS.md\n\n   ```\nfenced\n   ```\n' > "$d/CLAUDE.md"
+check "a three-space-indented fence still opens and closes" 0 "$(run "$d")"
+
 d="$tmp/no-copilot"; make_good "$d"; rm "$d/.github/copilot-instructions.md"
 check "missing copilot-instructions.md is rejected" 1 "$(run "$d")"
 
