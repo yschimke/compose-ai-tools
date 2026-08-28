@@ -431,7 +431,7 @@ From #3824's follow-up investigation, with what has landed marked.
     else's.
 
     The capture surface is preserved rather than merely relocated, which was the constraint from
-    [CLAUDE.md](../../CLAUDE.md): a surface that stops being auto-captured is a regression, not a
+    [AGENTS.md](../../AGENTS.md): a surface that stops being auto-captured is a regression, not a
     saving. Both harnesses still write `<name>.<theme>.png`, `vscode-preview-comment` merges the two
     `out/` directories before diffing, and capture names are unique across them — so the baselines
     on `vscode-preview/main` matched unchanged and nothing needed regenerating. Two coverage gaps

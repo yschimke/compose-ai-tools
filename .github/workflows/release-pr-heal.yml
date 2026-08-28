@@ -28,7 +28,7 @@ name: Release PR Heal
 #   * Manifest resolution is a strict per-key semver max — never invents or
 #     downgrades a version; if either side isn't plain `X.Y.Z`, it bails.
 #   * Commits as github-actions[bot], which by house rule only ever lands on
-#     branches and never reaches squash-authored main (see CLAUDE.md).
+#     branches and never reaches squash-authored main (see AGENTS.md).
 
 on:
   schedule:

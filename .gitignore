@@ -26,7 +26,16 @@ replay_pid*
 Thumbs.db
 
 # AI
-.claude/
+# `.claude/` holds two different kinds of thing. The repo's shared agent config
+# — hooks, settings, and the repo-local skills under `skills/` — is checked in
+# and is what makes a session behave the same for everyone. Everything else is
+# per-machine session state. Ignore the directory by default and re-include the
+# shared parts, so a new skill lands in git instead of silently staying local.
+.claude/*
+!.claude/hooks/
+!.claude/settings.json
+!.claude/skills/
+.claude/settings.local.json
 .gemini/
 
 # Local properties
