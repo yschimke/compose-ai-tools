@@ -7309,20 +7309,36 @@ ${captureControlsHtml().prependIndent("          ")}
           val loadError = c.loadError?.let { "<div class=\"cp-muted\">${esc(it)}</div>" } ?: ""
           val themeOptimization =
             c.themeOptimization?.let { optimization ->
+              // Dirty renders are the case this row used to report as finished. They are warm and
+              // served, so `cached` counts them and `fullyOptimized` is true — but they were
+              // written by a DIFFERENT build, and the pass is still working through re-rendering
+              // them. A catalog that has adopted its predecessor's whole cache would otherwise
+              // read "themes optimized 10440/10440" while every one of those pixels came from a
+              // renderer that is no longer running, which is precisely the thing an operator
+              // checking this page needs to be told.
+              val inherited =
+                if (optimization.dirty > 0) " · ${optimization.dirty} inherited, re-rendering"
+                else ""
               val detail =
-                if (optimization.fullyOptimized) {
+                if (optimization.converged) {
                   "themes optimized ${optimization.cached}/${optimization.total}"
+                } else if (optimization.fullyOptimized) {
+                  "themes optimized ${optimization.cached}/${optimization.total}$inherited"
                 } else {
                   "theme optimization ${optimization.state} · " +
                     "${optimization.cached}/${optimization.total} cached" +
-                    if (optimization.failed > 0) " · ${optimization.failed} failed" else ""
+                    (if (optimization.failed > 0) " · ${optimization.failed} failed" else "") +
+                    inherited
                 }
               "<div class=\"cp-muted\">${esc(detail)}</div>" +
                 inlineMeter(
                   detail,
                   optimization.cached.toLong(),
                   optimization.total.toLong(),
-                  if (optimization.failed > 0) "warning" else "primary",
+                  // Inherited renders are not a failure — they are serving — but they are not
+                  // finished either, so the meter must not read the same as a converged catalog.
+                  if (optimization.failed > 0) "warning"
+                  else if (optimization.dirty > 0) "secondary" else "primary",
                 )
             } ?: ""
           val renderCache =
