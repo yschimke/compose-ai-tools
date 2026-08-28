@@ -143,7 +143,11 @@ fi
 # name but this one.
 nested=""
 if git -C "$root" rev-parse --git-dir >/dev/null 2>&1; then
-  nested="$(git -C "$root" ls-files -- '*AGENTS.md' 2>/dev/null | grep -v '^AGENTS\.md$')"
+  # `:(glob)**/AGENTS.md` matches the BASENAME, the way the `find` fallback below does.
+  # A bare `*AGENTS.md` pathspec is a suffix match, so it would also flag a document
+  # merely ENDING in that name — `docs/MYAGENTS.md` — which Codex does not treat
+  # specially and which this gate has no business failing.
+  nested="$(git -C "$root" ls-files -- ':(glob)**/AGENTS.md' 2>/dev/null | grep -v '^AGENTS\.md$')"
 else
   nested="$(find "$root" -name 'AGENTS.md' -not -path '*/.git/*' 2>/dev/null \
             | sed "s|^$root/||" | grep -v '^AGENTS\.md$')"
