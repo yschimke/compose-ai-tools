@@ -36,6 +36,7 @@ CONTRACT_PROJECTS=(
   ":render-session-api"
   ":render-session-subprocess"
   ":common-io"
+  ":common-image-crop"
   ":data-layoutinspector-core"
   ":data-preview-overrides-core"
   ":data-remotecompose-core"

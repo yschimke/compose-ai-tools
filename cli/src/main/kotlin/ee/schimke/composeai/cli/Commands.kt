@@ -137,9 +137,14 @@ abstract class Command(
   protected val args: List<String>,
   protected val fileSystem: FileSystem = SystemFileSystem,
 ) {
-  protected val explicitModule: String? = args.flagValue("--module")
-  protected val filter: String? = args.flagValue("--filter")
-  protected val exactId: String? = args.flagValue("--id")
+  // The six members below are `public` rather than `protected` because `:cli:serve`'s
+  // `ServeOptions` declares them: the preview server reads `--module` / `--id` / `--filter` /
+  // `--preview` and the Gradle timeout, and a contract cannot be satisfied by a protected member.
+  // They are the selectors every command shares, so exposing them is describing what they already
+  // are; `:cli` is not a published module, so this widens nothing outside this build.
+  val explicitModule: String? = args.flagValue("--module")
+  val filter: String? = args.flagValue("--filter")
+  val exactId: String? = args.flagValue("--id")
 
   /**
    * `--preview <ref>` — the third, *loose* selector, and the one the rest of the toolchain already
@@ -158,7 +163,7 @@ abstract class Command(
    * `--id` stays exact-match and `--filter` stays a case-insensitive substring; combining flags
    * intersects them, as `--id` + `--filter` already did.
    */
-  protected val previewRef: String? = args.flagValue("--preview")?.takeIf { it.isNotBlank() }
+  val previewRef: String? = args.flagValue("--preview")?.takeIf { it.isNotBlank() }
 
   /**
    * Whether this command can turn a `@PreviewParameter` fan-out into addressable **row ids**, and
@@ -179,12 +184,12 @@ abstract class Command(
    * motivated it. Those keep the strict lane, and a row selector still fails fast there rather than
    * after a render.
    */
-  protected open val rowAwareSelection: Boolean
+  open val rowAwareSelection: Boolean
     get() = false
 
   protected val verbose: Boolean = "--verbose" in args || "-v" in args
   protected val progress: Boolean = verbose || "--progress" in args
-  protected val timeoutSeconds: Long =
+  val timeoutSeconds: Long =
     args.flagValue("--timeout")?.toLongOrNull() ?: GradleConnection.DEFAULT_TIMEOUT_SECONDS
   /** When true, drop previews with no `changed=true` capture from JSON output. */
   protected val changedOnly: Boolean = "--changed-only" in args

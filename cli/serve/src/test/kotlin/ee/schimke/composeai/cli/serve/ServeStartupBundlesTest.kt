@@ -1,5 +1,8 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.bundle.BundleVerifier
+import ee.schimke.composeai.bundle.TrustStore
+import ee.schimke.composeai.bundle.TrustedBranch
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

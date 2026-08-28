@@ -1,11 +1,13 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.bundle.BundleVerifier
 import ee.schimke.composeai.data.overrides.PreviewOverrideOption
 import ee.schimke.composeai.data.render.PreviewBackdrop
 import ee.schimke.composeai.data.render.PreviewBackground
 import ee.schimke.composeai.data.render.PreviewClip
 import ee.schimke.composeai.designpages.DesignPage
 import ee.schimke.composeai.designpages.PageNode
+import ee.schimke.composeai.imagecrop.ContentCrop
 import java.time.Instant
 import java.util.Locale
 import kotlinx.serialization.json.Json

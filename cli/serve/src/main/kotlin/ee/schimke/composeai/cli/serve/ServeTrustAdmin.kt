@@ -1,5 +1,9 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.bundle.TrustStore
+import ee.schimke.composeai.bundle.TrustedBranch
+import ee.schimke.composeai.bundle.TrustedIdentity
+import ee.schimke.composeai.bundle.TrustedKey
 import ee.schimke.composeai.io.SystemFileSystem
 import kotlinx.serialization.Serializable
 import okio.FileSystem

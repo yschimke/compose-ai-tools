@@ -2,12 +2,12 @@ package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.bundle.BundleReader
 import ee.schimke.composeai.bundle.BundleSigning
+import ee.schimke.composeai.bundle.BundleVerifier
+import ee.schimke.composeai.bundle.TrustStore
+import ee.schimke.composeai.bundle.TrustedBranch
+import ee.schimke.composeai.bundle.TrustedIdentity
+import ee.schimke.composeai.bundle.TrustedKey
 import ee.schimke.composeai.bundle.injectRawZipEntries
-import ee.schimke.composeai.cli.serve.BundleVerifier
-import ee.schimke.composeai.cli.serve.TrustStore
-import ee.schimke.composeai.cli.serve.TrustedBranch
-import ee.schimke.composeai.cli.serve.TrustedIdentity
-import ee.schimke.composeai.cli.serve.TrustedKey
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File

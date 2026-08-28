@@ -670,6 +670,96 @@ public final class ee/schimke/composeai/bundle/BundleSigning$Signatures$Companio
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public final class ee/schimke/composeai/bundle/BundleVerifier {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/BundleVerifier;
+	public final fun summary (Lee/schimke/composeai/bundle/BundleVerifier$Verdict;)Ljava/lang/String;
+	public final fun verify (Ljava/io/File;Lee/schimke/composeai/bundle/TrustStore;Lee/schimke/composeai/bundle/BundleVerifier$Origin;)Lee/schimke/composeai/bundle/BundleVerifier$Verdict;
+	public final fun verify ([BLee/schimke/composeai/bundle/TrustStore;Lee/schimke/composeai/bundle/BundleVerifier$Origin;)Lee/schimke/composeai/bundle/BundleVerifier$Verdict;
+	public static synthetic fun verify$default (Lee/schimke/composeai/bundle/BundleVerifier;Ljava/io/File;Lee/schimke/composeai/bundle/TrustStore;Lee/schimke/composeai/bundle/BundleVerifier$Origin;ILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleVerifier$Verdict;
+	public static synthetic fun verify$default (Lee/schimke/composeai/bundle/BundleVerifier;[BLee/schimke/composeai/bundle/TrustStore;Lee/schimke/composeai/bundle/BundleVerifier$Origin;ILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleVerifier$Verdict;
+}
+
+public abstract interface class ee/schimke/composeai/bundle/BundleVerifier$Basis {
+}
+
+public final class ee/schimke/composeai/bundle/BundleVerifier$Basis$Branch : ee/schimke/composeai/bundle/BundleVerifier$Basis {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/bundle/BundleVerifier$Basis$Branch;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/BundleVerifier$Basis$Branch;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleVerifier$Basis$Branch;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBranch ()Ljava/lang/String;
+	public final fun getRepo ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/bundle/BundleVerifier$Basis$Provenance : ee/schimke/composeai/bundle/BundleVerifier$Basis {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/bundle/BundleVerifier$Basis$Provenance;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/BundleVerifier$Basis$Provenance;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleVerifier$Basis$Provenance;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getIdentity ()Ljava/lang/String;
+	public final fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/bundle/BundleVerifier$Basis$Signature : ee/schimke/composeai/bundle/BundleVerifier$Basis {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/bundle/BundleVerifier$Basis$Signature;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/BundleVerifier$Basis$Signature;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleVerifier$Basis$Signature;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getKeyId ()Ljava/lang/String;
+	public final fun getProducer ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/bundle/BundleVerifier$Origin {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/bundle/BundleVerifier$Origin;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/BundleVerifier$Origin;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleVerifier$Origin;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBranch ()Ljava/lang/String;
+	public final fun getRepo ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class ee/schimke/composeai/bundle/BundleVerifier$Verdict {
+}
+
+public final class ee/schimke/composeai/bundle/BundleVerifier$Verdict$Trusted : ee/schimke/composeai/bundle/BundleVerifier$Verdict {
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Lee/schimke/composeai/bundle/BundleVerifier$Verdict$Trusted;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/BundleVerifier$Verdict$Trusted;Ljava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleVerifier$Verdict$Trusted;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBases ()Ljava/util/List;
+	public final fun getPrimary ()Lee/schimke/composeai/bundle/BundleVerifier$Basis;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/bundle/BundleVerifier$Verdict$Unverified : ee/schimke/composeai/bundle/BundleVerifier$Verdict {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lee/schimke/composeai/bundle/BundleVerifier$Verdict$Unverified;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/BundleVerifier$Verdict$Unverified;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/bundle/BundleVerifier$Verdict$Unverified;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class ee/schimke/composeai/bundle/FigmaRasterScalingKt {
 	public static final field MAX_FIGMA_RASTER_EDGE_PX I
 	public static final fun downscaleRaster ([BI)[B
@@ -704,5 +794,139 @@ public final class ee/schimke/composeai/bundle/PreviewBundleFormatKt {
 	public static final fun resolveInBundleTarget (Ljava/lang/String;Ljava/lang/String;Z)Ljava/lang/String;
 	public static final fun rewriteRawZipEntries (Ljava/io/File;Ljava/util/Map;Ljava/util/Set;Lokio/FileSystem;)V
 	public static synthetic fun rewriteRawZipEntries$default (Ljava/io/File;Ljava/util/Map;Ljava/util/Set;Lokio/FileSystem;ILjava/lang/Object;)V
+}
+
+public final class ee/schimke/composeai/bundle/TrustStore {
+	public static final field Companion Lee/schimke/composeai/bundle/TrustStore$Companion;
+	public fun <init> ()V
+	public fun <init> (Ljava/util/List;Ljava/util/List;Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/util/List;Ljava/util/List;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;Ljava/util/List;Ljava/util/List;)Lee/schimke/composeai/bundle/TrustStore;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/TrustStore;Ljava/util/List;Ljava/util/List;Ljava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/bundle/TrustStore;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBranches ()Ljava/util/List;
+	public final fun getKeys ()Ljava/util/List;
+	public final fun getOidc ()Ljava/util/List;
+	public fun hashCode ()I
+	public final fun keyName (Ljava/lang/String;)Ljava/lang/String;
+	public final fun publicKeyFor (Ljava/lang/String;)Ljava/security/PublicKey;
+	public fun toString ()Ljava/lang/String;
+	public final fun trustsBranch (Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun trustsIdentity (Ljava/lang/String;)Z
+}
+
+public final synthetic class ee/schimke/composeai/bundle/TrustStore$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/TrustStore$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/bundle/TrustStore;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/bundle/TrustStore;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/TrustStore$Companion {
+	public final fun encode (Lee/schimke/composeai/bundle/TrustStore;)Ljava/lang/String;
+	public final fun getEMPTY ()Lee/schimke/composeai/bundle/TrustStore;
+	public final fun globMatch (Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun load (Ljava/io/File;)Lee/schimke/composeai/bundle/TrustStore;
+	public final fun parse (Ljava/lang/String;)Lee/schimke/composeai/bundle/TrustStore;
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+	public final fun validateBranch (Lee/schimke/composeai/bundle/TrustedBranch;)Ljava/lang/String;
+	public final fun validateIdentity (Lee/schimke/composeai/bundle/TrustedIdentity;)Ljava/lang/String;
+	public final fun validateKey (Lee/schimke/composeai/bundle/TrustedKey;)Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/bundle/TrustedBranch {
+	public static final field Companion Lee/schimke/composeai/bundle/TrustedBranch$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/bundle/TrustedBranch;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/TrustedBranch;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/bundle/TrustedBranch;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBranch ()Ljava/lang/String;
+	public final fun getRepo ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/bundle/TrustedBranch$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/TrustedBranch$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/bundle/TrustedBranch;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/bundle/TrustedBranch;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/TrustedBranch$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/TrustedIdentity {
+	public static final field Companion Lee/schimke/composeai/bundle/TrustedIdentity$Companion;
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lee/schimke/composeai/bundle/TrustedIdentity;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/TrustedIdentity;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/bundle/TrustedIdentity;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getIdentity ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/bundle/TrustedIdentity$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/TrustedIdentity$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/bundle/TrustedIdentity;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/bundle/TrustedIdentity;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/TrustedIdentity$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/TrustedKey {
+	public static final field Companion Lee/schimke/composeai/bundle/TrustedKey$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/bundle/TrustedKey;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/TrustedKey;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/bundle/TrustedKey;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getKeyId ()Ljava/lang/String;
+	public final fun getName ()Ljava/lang/String;
+	public final fun getPublicKey ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/bundle/TrustedKey$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/TrustedKey$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/bundle/TrustedKey;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/bundle/TrustedKey;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/TrustedKey$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 

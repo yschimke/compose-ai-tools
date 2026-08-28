@@ -1,8 +1,8 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.bundle.BundleSigning
-import ee.schimke.composeai.cli.serve.BundleVerifier
-import ee.schimke.composeai.cli.serve.TrustStore
+import ee.schimke.composeai.bundle.BundleVerifier
+import ee.schimke.composeai.bundle.TrustStore
 import java.io.File
 import kotlin.system.exitProcess
 

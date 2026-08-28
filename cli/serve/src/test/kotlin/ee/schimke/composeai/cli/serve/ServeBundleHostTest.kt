@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.imagecrop.ContentCrop
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals

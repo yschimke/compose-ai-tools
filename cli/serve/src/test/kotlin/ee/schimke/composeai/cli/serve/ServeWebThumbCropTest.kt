@@ -1,5 +1,8 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.imagecrop.ContentCrop
+import ee.schimke.composeai.imagecrop.computeGutterCrop
+import ee.schimke.composeai.imagecrop.computeThumbCrop
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.cli.serve.ServeBackgroundWork
 import ee.schimke.composeai.cli.serve.ServeCatalogStore
+import ee.schimke.composeai.cli.serve.ServeRunner
 import ee.schimke.composeai.cli.serve.ServeUrls
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -72,11 +73,23 @@ class ServeCommandTest {
     assertEquals(5, command.backgroundWork().optimizerAdmissionSnapshot().lanes)
   }
 
+  /**
+   * `backgroundWork` moved to `ServeRunner` when the server body left `:cli`, so this reflects
+   * there rather than on the command.
+   *
+   * The assertion is unchanged and still spans both halves — a flag parsed by `ServeCommand`
+   * reaching a lane count inside the server — which is exactly what makes it worth keeping on this
+   * side of the boundary: it is the wiring, not the server, that it checks.
+   */
   @Suppress("UNCHECKED_CAST")
-  private fun ServeCommand.backgroundWork(): ServeBackgroundWork =
-    (javaClass.getDeclaredField("backgroundWork\$delegate").apply { isAccessible = true }.get(this)
-        as Lazy<ServeBackgroundWork>)
+  private fun ServeCommand.backgroundWork(): ServeBackgroundWork {
+    val runner = ServeRunner(this)
+    return (runner.javaClass
+        .getDeclaredField("backgroundWork\$delegate")
+        .apply { isAccessible = true }
+        .get(runner) as Lazy<ServeBackgroundWork>)
       .value
+  }
 
   @Suppress("UNCHECKED_CAST")
   private fun <T> Any.field(name: String): T =
