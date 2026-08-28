@@ -170,7 +170,7 @@ function resolveServePreviewId(
  *  * neither ⇒ null. The claim is demonstrably another module's, and publishing it would overstate
  *    this catalog's coverage with work it could never do.
  */
-export function codeForNode(node, { byReference, classes, moduleDir }) {
+export function codeForNode(node, { byReference, classes }) {
   const incoming =
     typeof node?.code === "string" && node.code !== ""
       ? String(node.code)
@@ -179,95 +179,33 @@ export function codeForNode(node, { byReference, classes, moduleDir }) {
   // module the import was written against, so a catalog that owns the node publishes exactly what
   // it published before — no rewrite, no chance of moving a working source link.
   if (incoming && catalogOwnsNode(node, classes ?? new Set())) return incoming;
-  // Not ours, but we reproduce the same design node: restate the handle from OUR component.
+  // Not ours, but we reproduce the same design node: restate the handle from OUR component, using
+  // only what the producer CARRIED. `sourceDirectory` and `sourceFunction` are stamped by
+  // `apply-source-files.mjs` from the bundle's own record; neither is derivable from what the
+  // catalog published before, and both were previously guessed — the directory from the logical
+  // Gradle path (wrong for all 100 remapped projects in this repository) and the function by
+  // splitting a preview id that an arbitrary `@Preview(name = …)` makes unsplittable.
+  //
+  // Absent ⇒ no handle. That costs the row its source text on a catalog published before the fields
+  // existed; it does NOT cost the render, which [resolveServePreviewId] establishes from the design
+  // node itself.
   const referenced = componentForNodeReference(node, byReference ?? new Map());
-  if (referenced) {
-    const file =
-      typeof referenced.sourceFile === "string"
-        ? referenced.sourceFile.trim()
-        : "";
-    // `sourceFile` is MODULE-relative and the handle is REPO-relative, so the module's directory has
-    // to go back on — the same join the serve host makes to build a source link. Without a
-    // directory to prefix there is nothing honest to say, so the claim is dropped rather than
-    // published one namespace out.
-    const dir = moduleDir ? moduleDir(referenced.sourceModule) : null;
-    if (file !== "" && dir !== null) {
-      // OUR function, not the incoming one. Keeping the sibling's `#Member` beside our file names a
-      // function that does not exist in it — `CatalogPreviews.kt#FilledButton` when the preview is
-      // `FilledRemoteButton` — which is a worse link than no link, because it looks resolvable.
-      const fn = previewFunctionOf(referenced);
-      // The root project prefixes nothing — its files are already repository-relative.
-      const path = dir === "" ? file : `${dir}/${file}`;
-      return fn ? `${path}#${fn}` : path;
-    }
-  }
-  return null;
-}
-
-/**
- * The `@Preview` function name behind a component, from its own published previews.
- *
- * A discovery id is `<package>.<File>Kt.<Function>` with an optional axis/variant suffix
- * (`_VARIANT_disabled`, `_width_227dp_…`), so the function is the last dot-segment up to its first
- * underscore. Null when the component publishes no usable id, which leaves the handle as a bare
- * file path — still true, just less precise.
- */
-export function previewFunctionOf(component) {
-  for (const image of component?.images ?? []) {
-    const previewId =
-      typeof image?.previewId === "string" ? image.previewId : "";
-    if (!previewId.includes(".")) continue;
-    const member = previewId.slice(previewId.lastIndexOf(".") + 1);
-    const fn = stripPreviewSuffixes(member);
-    if (fn !== "") return fn;
-  }
-  return null;
-}
-
-/**
- * The `@Preview` axes and variant markers discovery appends to a member name.
- *
- * Anchored to the axis VOCABULARY rather than to the first underscore, because a Kotlin function
- * name may contain one: `Filled_Button_Light` truncated at the first `_` publishes `#Filled`, a
- * handle that names no function at all. Only a recognised suffix is removed, so an unrecognised
- * name survives whole — which is the safe direction, since a too-long name still points at the
- * right file while a truncated one points nowhere.
- */
-const PREVIEW_SUFFIX = new RegExp(
-  [
-    "_VARIANT_.*$",
-    "_(?:width|height|dpi|density|fontScale|locale|uiMode|device|apiLevel|group|showBackground|backgroundColor|wallpaper)_.*$",
-    "_(?:Light|Dark)$",
-  ].join("|"),
-);
-
-function stripPreviewSuffixes(member) {
-  return member.replace(PREVIEW_SUFFIX, "");
-}
-
-/**
- * The repository directory a Gradle project path lives in — `:remote-catalog` → `remote-catalog`.
- *
- * Gradle's own default, and the same join the serve host makes to turn a component's module-relative
- * `sourceFile` into a link. A `settings.gradle.kts` may remap a project's directory, and nothing in
- * a published catalog records that — so this returns `null` for anything it cannot derive plainly,
- * and the caller drops the claim instead of publishing a path that resolves to nothing.
- *
- * `":"` — the root project — returns `""`, which is a real answer and not a refusal: such a
- * catalog's `sourceFile` is already repository-relative and needs no prefix.
- */
-export function moduleDirectory(modulePath, fallback) {
-  const raw =
-    typeof modulePath === "string" && modulePath.trim() !== ""
-      ? modulePath
-      : fallback;
-  const path = typeof raw === "string" ? raw.trim() : "";
-  if (path === "" || !path.startsWith(":")) return null;
-  const segments = path.slice(1).split(":").filter(Boolean);
-  // `":"` is the ROOT project, and its answer is the empty prefix — a root-project catalog's
-  // `sourceFile` is already repository-relative. Distinct from `null`, which means the path could
-  // not be derived at all; conflating the two dropped every rewritable node of a root catalog.
-  return segments.join("/");
+  if (!referenced) return null;
+  const file =
+    typeof referenced.sourceFile === "string"
+      ? referenced.sourceFile.trim()
+      : "";
+  const dir =
+    typeof referenced.sourceDirectory === "string"
+      ? referenced.sourceDirectory.trim().replace(/^\/+|\/+$/g, "")
+      : null;
+  if (file === "" || dir === null) return null;
+  const path = dir === "" ? file : `${dir}/${file}`;
+  const fn =
+    typeof referenced.sourceFunction === "string"
+      ? referenced.sourceFunction.trim()
+      : "";
+  return fn !== "" ? `${path}#${fn}` : path;
 }
 
 /**
@@ -459,10 +397,6 @@ export function planDesignPages({ manifest, spec, catalog }) {
   // Which files this catalog actually publishes previews from — the test for whether an incoming
   // `code` claim can be ours at all.
   const classes = declaringClasses(catalog);
-  // A component's own module when it records one, else the catalog's — repository-wide catalogs
-  // set `sourceModule` per component, single-module ones leave it to `source.module`.
-  const moduleDir = (sourceModule) =>
-    moduleDirectory(sourceModule, catalog?.source?.module);
 
   const images = [];
   const seen = new Set();
@@ -525,18 +459,28 @@ export function planDesignPages({ manifest, spec, catalog }) {
       const code =
         declaredLink === "unlinked"
           ? null
-          : codeForNode(node, { byReference, classes, moduleDir });
+          : codeForNode(node, { byReference, classes });
+      // A reference match is an IDENTITY — this catalog's component names the very design node the
+      // page is drawing — so it stands on its own. The code handle is a label over the top of it and
+      // may be missing (a catalog published before the producer carried `sourceDirectory` /
+      // `sourceFunction`); losing the label must not cost the render, which is the whole point of
+      // the surface.
+      const referencedHere =
+        componentForNodeReference(node, byReference) !== null;
       // Whether the reference join REPLACED this node's mapping rather than inheriting it. None of
       // the owner's provenance survives that swap: its `confidence` grades a link we did not make,
       // and its `cell` says the id it declared is an override capture — a claim about a preview id
       // in the sibling's namespace, not about ours. Republishing either would label our component
       // with the other catalog's bookkeeping.
-      const rewritten = declaredLink !== "unlinked" && !ours && code !== null;
+      const rewritten =
+        declaredLink !== "unlinked" &&
+        !ours &&
+        (code !== null || referencedHere);
       // A claim this catalog cannot substantiate is not a link. Dropping the handle while keeping
       // `link` would publish a linked node with nothing behind it — the contradiction
       // `renderablePreviewId` already refuses to draw — so the two move together.
       const link =
-        declaredLink !== "unlinked" && code === null
+        declaredLink !== "unlinked" && code === null && !referencedHere
           ? "unlinked"
           : rewritten
             ? // Our own catalog metadata tied this node to a component — the `reference` handle on

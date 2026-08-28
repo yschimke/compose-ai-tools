@@ -64,6 +64,10 @@ export function applySourceFiles(manifest, spec, sourceByFn) {
       ) {
         component.sourceModule = source.module;
       }
+      // The same identity fields, on the same condition: the exporter kept the path, so the module
+      // that produced it is still the one this join resolved.
+      if (source?.sourceFile === component.sourceFile)
+        stampIdentity(component, source);
       continue;
     }
     if (source?.sourceFile) {
@@ -76,8 +80,46 @@ export function applySourceFiles(manifest, spec, sourceByFn) {
       if (typeof source.bodyLine === "number" && source.bodyLine > 0) {
         component.bodyLine = source.bodyLine;
       }
+      stampIdentity(component, source);
       stamped += 1;
     }
   }
   return stamped;
+}
+
+/**
+ * The two identity fields a consumer needs to build a REPOSITORY path and a source anchor, neither
+ * of which is recoverable from what the catalog published before.
+ *
+ * * `sourceDirectory` — the producing project's directory relative to the repository root, as the
+ *   BUNDLE recorded it. `sourceModule` beside it is a LOGICAL Gradle path, and
+ *   `project(":x").projectDir = file("a/b")` may put the project anywhere: this repository remaps
+ *   100 projects and not one derives correctly from its path. Joined to the module-relative
+ *   `sourceFile`, this is what makes a repository path true rather than plausible.
+ * * `sourceFunction` — discovery's own `@Preview` function name. `buildVariantSuffix` appends an
+ *   arbitrary `@Preview(name = …)` / `group` through `sanitizeForPath`, which passes spaces and
+ *   dots through verbatim, so a preview id does not split back into function and label. Carrying
+ *   the name is the only way to state it.
+ *
+ * Written only when the producer supplied them, so an older bundle stamps neither and its consumers
+ * behave exactly as they did.
+ */
+function stampIdentity(component, source) {
+  // A string, INCLUDING the empty one. `""` is the root project — a real, usable answer meaning
+  // "already repository-relative" — while `undefined` is a bundle that never recorded the field.
+  // Requiring a non-empty value stamped nothing for a root-project catalog, so its handles were
+  // dropped as if the directory were unknown.
+  if (
+    component.sourceDirectory === undefined &&
+    typeof source?.directory === "string"
+  ) {
+    component.sourceDirectory = source.directory;
+  }
+  if (
+    component.sourceFunction === undefined &&
+    typeof source?.functionName === "string" &&
+    source.functionName.length > 0
+  ) {
+    component.sourceFunction = source.functionName;
+  }
 }

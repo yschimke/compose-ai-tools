@@ -23,11 +23,17 @@ const record = (module, functions) => ({
     previews: functions.map((fn) => ({
       id: `${module}.${fn}`,
       functionName: fn,
-      params: { group: fn === "Grouped" ? "Controls" : null, name: `${fn} caption` },
+      params: {
+        group: fn === "Grouped" ? "Controls" : null,
+        name: `${fn} caption`,
+      },
     })),
     entries: { [`${module}.entry`]: module },
   },
-  candidates: functions.map((fn) => ({ componentId: fn, images: [{ path: `${fn}.png` }] })),
+  candidates: functions.map((fn) => ({
+    componentId: fn,
+    images: [{ path: `${fn}.png` }],
+  })),
 });
 
 test("additional modules are sorted and duplicate functions are deterministically namespaced", () => {
@@ -38,9 +44,18 @@ test("additional modules are sorted and duplicate functions are deterministicall
   assert.equal(primary.module, ":catalog");
   assert.equal(a.module, ":a");
   assert.equal(z.module, ":z");
-  assert.deepEqual(primary.candidates.map((it) => it.functionName), ["Shared", "CatalogOnly"]);
-  assert.deepEqual(a.candidates.map((it) => it.functionName), [":a::Shared", "AOnly"]);
-  assert.deepEqual(z.candidates.map((it) => it.functionName), [":z::Shared"]);
+  assert.deepEqual(
+    primary.candidates.map((it) => it.functionName),
+    ["Shared", "CatalogOnly"],
+  );
+  assert.deepEqual(
+    a.candidates.map((it) => it.functionName),
+    [":a::Shared", "AOnly"],
+  );
+  assert.deepEqual(
+    z.candidates.map((it) => it.functionName),
+    [":z::Shared"],
+  );
 });
 
 test("additional modules namespace equal preview ids and every keyed sidecar", () => {
@@ -66,7 +81,13 @@ test("additional modules namespace equal preview ids and every keyed sidecar", (
         "previews/ScreenPreview-deadbeef.gif": bytes(`motion:${module}`),
         "previews.json": bytes(
           JSON.stringify({
-            previews: [{ id: "pkg.ScreenPreview", functionName: "ScreenPreview", targets: [] }],
+            previews: [
+              {
+                id: "pkg.ScreenPreview",
+                functionName: "ScreenPreview",
+                targets: [],
+              },
+            ],
           }),
         ),
       },
@@ -80,41 +101,51 @@ test("additional modules namespace equal preview ids and every keyed sidecar", (
     ],
   });
 
-  const [primary, additional] = namespaceModuleRecords(collisionRecord(":app"), [
-    collisionRecord(":feature"),
-  ]);
+  const [primary, additional] = namespaceModuleRecords(
+    collisionRecord(":app"),
+    [collisionRecord(":feature")],
+  );
   const additionalId = additional.bundle.previews[0].id;
   assert.equal(primary.bundle.previews[0].id, "pkg.ScreenPreview");
   assert.notEqual(additionalId, "pkg.ScreenPreview");
   assert.equal(additional.candidates[0].previewId, additionalId);
   assert.equal(additional.candidates[0].images[0].previewId, additionalId);
-  const additionalMotion = additional.bundle.previews[0].captures[0].renderOutput;
+  const additionalMotion =
+    additional.bundle.previews[0].captures[0].renderOutput;
   assert.notEqual(additionalMotion, "previews/ScreenPreview-deadbeef.gif");
   assert.ok(additional.bundle.entries[additionalMotion]);
   assert.ok(additional.bundle.entries[`previews/${additionalId}.png`]);
-  assert.ok(additional.bundle.entries[`previews/${additionalId}.semantics.json`]);
-  assert.ok(additional.bundle.entries[`previews/${additionalId}.figma-raster/node.png`]);
+  assert.ok(
+    additional.bundle.entries[`previews/${additionalId}.semantics.json`],
+  );
+  assert.ok(
+    additional.bundle.entries[`previews/${additionalId}.figma-raster/node.png`],
+  );
   assert.deepEqual(
-    Object.keys(combinedBundleEntries([primary.bundle, additional.bundle])).filter((path) =>
-      path.endsWith(".semantics.json"),
-    ),
+    Object.keys(
+      combinedBundleEntries([primary.bundle, additional.bundle]),
+    ).filter((path) => path.endsWith(".semantics.json")),
     [
       "previews/pkg.ScreenPreview.semantics.json",
       `previews/${additionalId}.semantics.json`,
     ],
   );
-  const raw = JSON.parse(new TextDecoder().decode(additional.bundle.entries["previews.json"]));
+  const raw = JSON.parse(
+    new TextDecoder().decode(additional.bundle.entries["previews.json"]),
+  );
   assert.equal(raw.previews[0].id, additionalId);
   assert.equal(raw.previews[0].functionName, ":feature::ScreenPreview");
 });
 
 test("fallback inventory groups by Gradle module and preview group and skips curated previews", () => {
-  const records = namespaceModuleRecords(
-    record(":catalog", ["Curated"]),
-    [record(":feature", ["Grouped", "Plain"])],
-  );
+  const records = namespaceModuleRecords(record(":catalog", ["Curated"]), [
+    record(":feature", ["Grouped", "Plain"]),
+  ]);
   const claimed = claimedPreviewFunctions([
-    { name: "Authored", components: [{ componentId: "curated", preview: "Curated" }] },
+    {
+      name: "Authored",
+      components: [{ componentId: "curated", preview: "Curated" }],
+    },
   ]);
   assert.deepEqual(generatedFallbackGroups(records, claimed), [
     {
@@ -132,7 +163,11 @@ test("fallback inventory groups by Gradle module and preview group and skips cur
       name: "Previews",
       section: ":feature",
       components: [
-        { componentId: "feature/Plain", preview: "Plain", caption: "Plain caption" },
+        {
+          componentId: "feature/Plain",
+          preview: "Plain",
+          caption: "Plain caption",
+        },
       ],
     },
   ]);
@@ -201,6 +236,43 @@ test("additional renders allow live bundles but reject a single source module", 
     }),
     null,
   );
-  assert.equal(additionalBundleLiveConflict({ "additional-renders": ["feature.png"] }), null);
-  assert.equal(additionalBundleLiveConflict({ "publish-live-bundle": true }), null);
+  assert.equal(
+    additionalBundleLiveConflict({ "additional-renders": ["feature.png"] }),
+    null,
+  );
+  assert.equal(
+    additionalBundleLiveConflict({ "publish-live-bundle": true }),
+    null,
+  );
+});
+
+test("namespacing keeps the declared function name beside the join key", () => {
+  // A colliding name becomes `:module::Foo` so two modules can share a catalog. That key is not a
+  // Kotlin identifier, so publishing it as a source anchor emits `File.kt#:feature::Foo`, which
+  // names nothing — the declared name rides along for anything that has to state it.
+  const record = (module, fn) => ({
+    bundle: {
+      manifest: {
+        modulePath: module,
+        previewIds: [`${fn}_p`],
+        rawPreviewIds: [`${fn}_p`],
+      },
+      previews: [{ id: `${fn}_p`, functionName: fn }],
+    },
+    candidates: [],
+  });
+  const [, additional] = namespaceModuleRecords(record(":app", "Foo"), [
+    record(":feature", "Foo"),
+  ]);
+  const preview = additional.bundle.previews[0];
+  assert.equal(
+    preview.functionName,
+    ":feature::Foo",
+    "the join key is namespaced",
+  );
+  assert.equal(
+    preview.declaredFunctionName,
+    "Foo",
+    "the source still declares Foo",
+  );
 });

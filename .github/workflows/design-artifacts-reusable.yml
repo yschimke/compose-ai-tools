@@ -348,6 +348,10 @@ env:
   INPUT_EMBED_DEPS: ${{ inputs.embed-deps }}
   INPUT_RENDER_TIMEOUT: ${{ inputs.render-timeout }}
   INPUT_SPEC: ${{ inputs.spec }}
+  # Where the rendered Gradle BUILD sits in the checkout. The plugin records each project's
+  # directory relative to its own `rootDir`, which for a separate-build monorepo is the sample's
+  # root — so the catalog step lifts those to repository-relative paths with this.
+  INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
   INPUT_LIVE_RERENDER_SOURCE: ${{ inputs.live-rerender-source }}
   INPUT_ALLOW_INCOMPLETE: ${{ inputs.allow-incomplete }}
   INPUT_PUBLISH_LIVE_BUNDLE: ${{ inputs.publish-live-bundle }}
@@ -1357,6 +1361,7 @@ jobs:
             "${fallback[@]}" \
             --out "$GITHUB_WORKSPACE/out" \
             --renderer "$(compose-preview --version | head -1)" \
+            --build-root "$INPUT_WORKING_DIRECTORY" \
             "${source_args[@]}" \
             "${live[@]}" \
             "${incomplete[@]}"
