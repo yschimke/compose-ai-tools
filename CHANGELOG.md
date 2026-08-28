@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.46.1](https://github.com/yschimke/compose-ai-tools/compare/v1.46.0...v1.46.1) (2026-08-28)
+
+
+### Bug Fixes
+
+* **catalog:** carry a second-tier cell's tier to every catalog that can list it ([#4741](https://github.com/yschimke/compose-ai-tools/issues/4741)) ([0559903](https://github.com/yschimke/compose-ai-tools/commit/055990354389e6e52636eea433152c4d5349f0f1))
+* **design-artifacts:** let a stated absence earn the kit column, and fix the evidence fixture ([#4742](https://github.com/yschimke/compose-ai-tools/issues/4742)) ([8597078](https://github.com/yschimke/compose-ai-tools/commit/859707855cdaca4c83389f7c64ea9a47ede00ece))
+* **design-artifacts:** respect the design-column opt-out, and say what an absence-only column is ([#4746](https://github.com/yschimke/compose-ai-tools/issues/4746)) ([48a49be](https://github.com/yschimke/compose-ai-tools/commit/48a49befb3e684fa24af42e652d17abd629690bb))
+* **design-artifacts:** route a deferred override state to its own reseed ([#4747](https://github.com/yschimke/compose-ai-tools/issues/4747)) ([9a99dac](https://github.com/yschimke/compose-ai-tools/commit/9a99dac4f19e3738698962da8970b8064b830dd5))
+* **rc-player:** stop the CMP player doubling the rounded clip radius ([#4744](https://github.com/yschimke/compose-ai-tools/issues/4744)) ([fd76e68](https://github.com/yschimke/compose-ai-tools/commit/fd76e6838ec46eb2cd600c5fa130f0116bf1fc70))
+* **serve:** decode a query name before dropping the stale chrome pin ([#4743](https://github.com/yschimke/compose-ai-tools/issues/4743)) ([6185f5b](https://github.com/yschimke/compose-ai-tools/commit/6185f5b64a00e3a50965338897c8472fa1f2dd29))
+
 ## [1.46.0](https://github.com/yschimke/compose-ai-tools/compare/v1.45.0...v1.46.0) (2026-08-28)
 
 
