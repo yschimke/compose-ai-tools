@@ -1,3 +1,20 @@
+public final class ee/schimke/composeai/imagecrop/ContentBox {
+	public fun <init> (IIII)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun copy (IIII)Lee/schimke/composeai/imagecrop/ContentBox;
+	public static synthetic fun copy$default (Lee/schimke/composeai/imagecrop/ContentBox;IIIIILjava/lang/Object;)Lee/schimke/composeai/imagecrop/ContentBox;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getH ()I
+	public final fun getW ()I
+	public final fun getX ()I
+	public final fun getY ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class ee/schimke/composeai/imagecrop/ContentCrop {
 	public fun <init> (IIIIIIZII)V
 	public synthetic fun <init> (IIIIIIZIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -27,32 +44,15 @@ public final class ee/schimke/composeai/imagecrop/ContentCrop {
 }
 
 public final class ee/schimke/composeai/imagecrop/ContentCropGeometryKt {
-	public static final fun clampTo (Lee/schimke/composeai/imagecrop/SvgContentBox;II)Lee/schimke/composeai/imagecrop/SvgContentBox;
+	public static final fun clampTo (Lee/schimke/composeai/imagecrop/ContentBox;II)Lee/schimke/composeai/imagecrop/ContentBox;
 	public static final fun computeGutterCrop (IIIIIII)Lee/schimke/composeai/imagecrop/ContentCrop;
 	public static synthetic fun computeGutterCrop$default (IIIIIIIILjava/lang/Object;)Lee/schimke/composeai/imagecrop/ContentCrop;
-	public static final fun computeThumbCrop (Ljava/lang/String;IILee/schimke/composeai/imagecrop/SvgContentBox;I)Lee/schimke/composeai/imagecrop/ContentCrop;
-	public static synthetic fun computeThumbCrop$default (Ljava/lang/String;IILee/schimke/composeai/imagecrop/SvgContentBox;IILjava/lang/Object;)Lee/schimke/composeai/imagecrop/ContentCrop;
-	public static final fun contentBoxFillsRender (Lee/schimke/composeai/imagecrop/SvgContentBox;II)Z
-	public static final fun pngAlphaBounds ([BI)Lee/schimke/composeai/imagecrop/SvgContentBox;
-	public static synthetic fun pngAlphaBounds$default ([BIILjava/lang/Object;)Lee/schimke/composeai/imagecrop/SvgContentBox;
-	public static final fun svgContentBox (Ljava/lang/String;)Lee/schimke/composeai/imagecrop/SvgContentBox;
-	public static final fun union (Lee/schimke/composeai/imagecrop/SvgContentBox;Lee/schimke/composeai/imagecrop/SvgContentBox;)Lee/schimke/composeai/imagecrop/SvgContentBox;
-}
-
-public final class ee/schimke/composeai/imagecrop/SvgContentBox {
-	public fun <init> (IIII)V
-	public final fun component1 ()I
-	public final fun component2 ()I
-	public final fun component3 ()I
-	public final fun component4 ()I
-	public final fun copy (IIII)Lee/schimke/composeai/imagecrop/SvgContentBox;
-	public static synthetic fun copy$default (Lee/schimke/composeai/imagecrop/SvgContentBox;IIIIILjava/lang/Object;)Lee/schimke/composeai/imagecrop/SvgContentBox;
-	public fun equals (Ljava/lang/Object;)Z
-	public final fun getH ()I
-	public final fun getW ()I
-	public final fun getX ()I
-	public final fun getY ()I
-	public fun hashCode ()I
-	public fun toString ()Ljava/lang/String;
+	public static final fun computeThumbCrop (Ljava/lang/String;IILee/schimke/composeai/imagecrop/ContentBox;I)Lee/schimke/composeai/imagecrop/ContentCrop;
+	public static synthetic fun computeThumbCrop$default (Ljava/lang/String;IILee/schimke/composeai/imagecrop/ContentBox;IILjava/lang/Object;)Lee/schimke/composeai/imagecrop/ContentCrop;
+	public static final fun contentBoxFillsRender (Lee/schimke/composeai/imagecrop/ContentBox;II)Z
+	public static final fun pngAlphaBounds ([BI)Lee/schimke/composeai/imagecrop/ContentBox;
+	public static synthetic fun pngAlphaBounds$default ([BIILjava/lang/Object;)Lee/schimke/composeai/imagecrop/ContentBox;
+	public static final fun svgContentBox (Ljava/lang/String;)Lee/schimke/composeai/imagecrop/ContentBox;
+	public static final fun union (Lee/schimke/composeai/imagecrop/ContentBox;Lee/schimke/composeai/imagecrop/ContentBox;)Lee/schimke/composeai/imagecrop/ContentBox;
 }
 
