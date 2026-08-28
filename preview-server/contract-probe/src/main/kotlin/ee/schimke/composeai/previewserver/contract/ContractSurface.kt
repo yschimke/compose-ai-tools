@@ -4,6 +4,7 @@ import ee.schimke.composeai.bundle.BundleReader
 import ee.schimke.composeai.bundle.WebEmbed
 import ee.schimke.composeai.bundle.coordinates.CoordinateResolver
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
+import ee.schimke.composeai.daemon.devices.frameDpOverriddenBy
 import ee.schimke.composeai.daemon.protocol.DaemonLaunchDescriptor
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
@@ -125,6 +126,22 @@ object ContractSurface {
       out.previewCount +
       WebEmbed.SCRIPT_NAME.length +
       WebEmbed.INDEX_NAME.length
+  }
+
+  /**
+   * The device catalog, `:daemon-devices` since #3824.
+   *
+   * `DeviceDimensions::class` above proves the type resolves. It does not prove `resolve` still
+   * takes one argument with the rest defaulted, that the result still carries `isRound`, or that
+   * `frameDpOverriddenBy` is still an extension on `DeviceSpec` — all of which `ServeRenderHost`
+   * relies on. Compiled here for the same reason as the web surfaces: a reference that names a type
+   * is not a check on its members.
+   */
+  @Suppress("unused")
+  private fun serveDeviceCalls(widthDp: Int?, heightDp: Int?): Boolean {
+    val resolved: DeviceDimensions.DeviceSpec = DeviceDimensions.resolve("pixel_5")
+    val (w, h) = resolved.frameDpOverriddenBy(widthDp, heightDp)
+    return resolved.isRound && w > 0 && h > 0
   }
 
   /** File IO. The server funnels reads/writes through `:common-io` like every other module. */

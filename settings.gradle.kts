@@ -499,6 +499,13 @@ include(":daemon-protocol")
 
 project(":daemon-protocol").projectDir = file("daemon/protocol")
 
+// The device catalog, split out of `:daemon:core` for #3824. Serve resolves the same table the
+// backend renders against; while it lived in the daemon implementation, naming a screen size cost
+// an extracted server the whole daemon. Flat project name for the same reason as above.
+include(":daemon-devices")
+
+project(":daemon-devices").projectDir = file("daemon/devices")
+
 // Per-product data-product modules — each `data/<product>/` carries a `core` (generic Android /
 // Compose / AndroidX-test code, published) and a `connector` (daemon glue, unpublished) module.
 // See docs/daemon/DATA-PRODUCTS.md § "Module split (D2.2)".
