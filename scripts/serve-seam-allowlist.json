@@ -240,6 +240,7 @@
       "serve.PreviewHistoryManifest",
       "serve.ServeAgentGrantScope",
       "serve.ServeAgentGrantStore",
+      "serve.ServeBackgroundWork",
       "serve.ServeBundleHost",
       "serve.ServeCatalogStore",
       "serve.ServeHttpServer",

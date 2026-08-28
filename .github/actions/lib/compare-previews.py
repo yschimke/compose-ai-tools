@@ -125,6 +125,44 @@ _RESOURCE_PIXEL_CAP = 256
 _HIGH_CONTRAST_THRESHOLD = 0.25
 _HIGH_CONTRAST_PIXEL_TOLERANCE = 4
 
+# The backdrops a *transparent still* is composited onto before it is compared,
+# and why there are two of them.
+#
+# pixelmatch blends a semi-transparent pixel with WHITE before taking its colour
+# delta (`blend(c, a) = 255 + (c - 255) * a`, upstream `color_delta`). That is
+# right for a screenshot and wrong for a sticker: these renders rasterise onto
+# transparency, so a *white* pixel and a *transparent* one both blend to
+# (255,255,255) and cancel exactly. A catalog tagged `display.surface: "dark"`
+# draws light content on nothing, which is precisely the pixels that vanish —
+# and they vanish silently, reported as "Unchanged".
+#
+# Measured on the fixture pairs in `fixtures/transparent-light-content/`, real
+# wear-m3-catalog `remote-m3` captures across a star → plus glyph swap and a
+# 72dp → full-bleed progress rail:
+#
+#                                     as-is   on black   on white
+#   IconRemote (pure white glyph)         0       7044          0
+#   DisabledCircularProgressRemote        0      26002          0
+#
+# Zero, at either threshold — not a near-miss on a budget, so no tolerance could
+# have caught them. Composite BOTH images onto an opaque backdrop first, and use
+# two backdrops rather than one: black alone fixes today's light-on-transparency
+# catalogs and leaves the mirror bug for a dark-on-transparency one, while the
+# pair (black, white) is lossless — over-white is `C·a + 255(1-a)` and over-black
+# is `C·a`, which together determine both C and a, so no change in colour OR in
+# alpha can hide from it. Mid-grey, which `rc-compare-pixels.mjs` uses on the
+# parity lane, is a better single backdrop than white and still a single
+# backdrop: mid-grey content cancels against it.
+#
+# An opaque pair skips this and compares exactly as it always did, so the cost is
+# paid only where it buys something. So does an animated GIF, deliberately: its
+# frames are 1-bit alpha, the per-frame budget below is tuned around an AA edge
+# that thresholds into a handful of flipping pixels per run, and on an opaque
+# backdrop every one of those flips becomes a maximum-contrast difference. The
+# GIF path has no demonstrated miss to weigh against that — the two motion
+# captures in the change these fixtures come from were both reported correctly.
+_COMPARE_BACKDROPS = ((0, 0, 0, 255), (255, 255, 255, 255))
+
 
 def _perceptually_changed(
     prior_png: Path, current_png: Path, *, size_aware: bool = False
@@ -179,15 +217,48 @@ def _perceptually_changed(
             for pf, cf in zip(
                 ImageSequence.Iterator(prior), ImageSequence.Iterator(current)
             ):
-                if _over_budget(pf.convert("RGBA"), cf.convert("RGBA"), limit):
+                if _over_budget(
+                    pf.convert("RGBA"), cf.convert("RGBA"), limit, backdrops=False
+                ):
                     return True
             return False
     except Exception:
         return True
 
 
-def _over_budget(prior, current, limit: int) -> bool:
+def _has_transparency(image) -> bool:
+    """Whether any pixel of ``image`` is less than fully opaque."""
+    rgba = image if image.mode == "RGBA" else image.convert("RGBA")
+    return rgba.getchannel("A").getextrema()[0] < 255
+
+
+def _flatten(image, backdrop):
+    """``image`` composited onto an opaque ``backdrop``, as RGBA."""
+    from PIL import Image
+
+    rgba = image if image.mode == "RGBA" else image.convert("RGBA")
+    return Image.alpha_composite(Image.new("RGBA", rgba.size, backdrop), rgba)
+
+
+def _over_budget(prior, current, limit: int, *, backdrops: bool = True) -> bool:
     """Whether one image pair differs by more than rounding noise.
+
+    A transparent pair is compared once per backdrop in ``_COMPARE_BACKDROPS``
+    and is changed if it is over budget on either — see that constant for why
+    pixelmatch cannot be handed these images directly, and why an animated GIF
+    passes ``backdrops=False`` to opt out. An opaque pair takes the single
+    comparison it always took either way.
+    """
+    if backdrops and (_has_transparency(prior) or _has_transparency(current)):
+        return any(
+            _over_budget_flat(_flatten(prior, bg), _flatten(current, bg), limit)
+            for bg in _COMPARE_BACKDROPS
+        )
+    return _over_budget_flat(prior, current, limit)
+
+
+def _over_budget_flat(prior, current, limit: int) -> bool:
+    """``_over_budget`` for one pair, with no backdrop compositing.
 
     Two passes, because "how many pixels" and "how different is a pixel" catch
     different things. The permissive pass (pixelmatch's default 0.1) with the
