@@ -157,6 +157,7 @@ import {
   unbridgeableFunctions,
 } from "./extra-render-fold.mjs";
 import { applyParallels, parallelIndex } from "./apply-parallels.mjs";
+import { applyVariantParity } from "./apply-variant-parity.mjs";
 import { applySpecSections } from "./apply-spec-sections.mjs";
 import { applySourceFiles } from "./apply-source-files.mjs";
 import {
@@ -1675,6 +1676,16 @@ if (values["publish-live-bundle"]) {
   if (stampedParallels > 0) {
     console.log(
       `[${spec.system}] stamped parallel on ${stampedParallels} component(s) from spec components`,
+    );
+  }
+  // The same gap, one level down: a variant's pixels reach the manifest (folded onto the parent's
+  // `images[]`) but its identity does not, so the compare page cannot tell that one of those tagged
+  // images is a distinct render with a counterpart of its own. Only variants declaring kit
+  // correspondence are carried — see `apply-variant-parity.mjs`.
+  const stampedVariants = applyVariantParity(manifest, spec);
+  if (stampedVariants > 0) {
+    console.log(
+      `[${spec.system}] stamped compared variants on ${stampedVariants} component(s) from spec`,
     );
   }
   if (webRender) manifest.webRender = webRender;
