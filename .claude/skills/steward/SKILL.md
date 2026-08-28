@@ -85,45 +85,20 @@ job only to confirm one of the cases above, or if it died before any test body r
 - Larger asks from a **human** reviewer on a PR you did not open: reply with your
   proposal; the author decides.
 - After pushing for a changes-requested review, re-request that reviewer.
-- One finding is wrong often enough to need its own handling: a reported **agent
-  commit identity**. See below.
+- **A reported agent commit identity is the one finding to skip.** Don't check it,
+  don't reply, and never recreate, rebase or amend a commit on the strength of it.
+  `Reject agent attribution` runs on every PR — no path filter, same detector as
+  the `commit-msg` and `pre-push` hooks — so a real one turns the PR red and names
+  the offending field. The gate is the authority; the comment adds nothing to it.
+  Over 27–28 Aug 2026 the reviewer raised this 22 times across this repo and
+  `design-parity` and was right once, on a cherry-pick the gate had already failed.
+  If the **gate itself** is red, that is the real thing and it is yours to fix
+  ([Git conventions](../../../docs/AGENTS.md#git-conventions)) — usually an amend or
+  cherry-pick that took `user.email` from the container instead of the
+  `-c user.name=… -c user.email=…` the branch's other commits carry. Installing the
+  hooks (`scripts/install-git-hooks.sh`) stops it happening at all.
 
 An approval you would lose is never a reason to hold a fix.
-
-### A reported agent commit identity
-
-The review bot periodically reports that a commit's author or committer is an agent
-(`Codex`, `Claude`, an `@openai.com` address) and asks for the commit to be
-recreated. Over 27–28 Aug 2026 it raised this 22 times across this repo and
-`design-parity`. **One** was right: a `git cherry-pick` had left the committer as
-`Claude <noreply@anthropic.com>`. The other 21 landed on commits authored by a human
-or by `renovate[bot]` / `github-actions[bot]`, and seven cited SHAs that do not
-exist in the repository at all.
-
-So it is neither trustworthy nor safely ignorable — it is the one finding to
-**verify before believing**, rather than treating as a bug report like the rest:
-
-```sh
-git log -1 --format='A=%an <%ae> | C=%cn <%ce>' <head>
-.github/scripts/agent-attribution-scan.sh --range 'origin/main..<branch>'
-```
-
-- **Human identities, scanner exits 0** → false positive. Reply with those two
-  lines of output and react 👎 on the comment (the bot's own feedback channel), then
-  change nothing. Never recreate, rebase or amend a commit on the claim alone —
-  on someone else's branch that is also a "never" outright.
-- **The scan does find an agent identity** → a bug to fix, not a default to
-  tolerate ([Git conventions](../../../docs/AGENTS.md#git-conventions)). The usual
-  cause is a cherry-pick or amend that took `user.email` from the container instead
-  of the `-c user.name=… -c user.email=…` the branch's other commits carry.
-- **The cited SHA does not resolve** (`git cat-file -e <sha>`) → say so. A scan of a
-  commit that is not in the repository is not evidence of anything.
-
-Agent containers here really do default `user.email` to `noreply@anthropic.com`, so
-the underlying risk is real even though most reports of it are not. Installing the
-hooks (`scripts/install-git-hooks.sh` — the `SessionStart` hook normally does it)
-closes it at the source: `pre-push` scans every commit a push would add, including
-the cherry-picked and amended ones `commit-msg` never sees.
 
 ## Evidence and tracking
 
