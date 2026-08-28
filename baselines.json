@@ -472,38 +472,38 @@
     "serve-format-compare-reference-lane.dark.png": {
       "fixture": "serve-format-compare-reference-lane",
       "theme": "dark",
-      "sha256": "586fcc8691baedfae8e8ece4454ed95409a35bf7f92eac40c6c9497b9136adf7",
-      "size": 66871
+      "sha256": "7fbb1f3ab454c99edb1d46311d23ed426d231f2ffff41ad21494a377b2d86566",
+      "size": 70552
     },
     "serve-format-compare-reference-lane.light.png": {
       "fixture": "serve-format-compare-reference-lane",
       "theme": "light",
-      "sha256": "8d405b2c8a93214519dfed1701b641400a608814679f6fdd85b6bb53d859ce14",
-      "size": 65359
+      "sha256": "c2e834e60d922bb7ca09fc300b4cc69437699a63c770bc421ce591c6dd14c404",
+      "size": 68940
     },
     "serve-format-compare-report-menu.dark.png": {
       "fixture": "serve-format-compare-report-menu",
       "theme": "dark",
-      "sha256": "2fbf274145ee9369678b8710f4df78e8bc148c428e69aab26e35aafbcdd6a35d",
-      "size": 115197
+      "sha256": "1eeae888382ade687088a97d947113690ce7de3eb54231939519feeb6259657d",
+      "size": 116348
     },
     "serve-format-compare-report-menu.light.png": {
       "fixture": "serve-format-compare-report-menu",
       "theme": "light",
-      "sha256": "6df988ca2d7b47780bb3de13d83f3873dda865e9c285bfe9d99572f99da6378b",
-      "size": 113312
+      "sha256": "f4ffbfb61a2b35fcae17e8c5432458ac7878e015c40a5356725387abdc0f977e",
+      "size": 114379
     },
     "serve-format-compare.dark.png": {
       "fixture": "serve-format-compare",
       "theme": "dark",
-      "sha256": "a2197948ef3a766cd3cf2315ab9bff0226eb43e2fa3a4dd9f4d360bb6a1bbcf7",
-      "size": 71605
+      "sha256": "302ce72cb77d1e433fe6699ae7a2797b871d1cfa76d1069fa847de86c549bf96",
+      "size": 76267
     },
     "serve-format-compare.light.png": {
       "fixture": "serve-format-compare",
       "theme": "light",
-      "sha256": "a92812f52c28890b7c6d7e99cf941dcc75bca95064b715dd0d86df53ba4fff7e",
-      "size": 70160
+      "sha256": "9135da7622530d0a64f1e3a840f4b0ff47b872d4a757883b46c8b2004ec8b15f",
+      "size": 74662
     },
     "serve-home-index-card-hover-round.dark.png": {
       "fixture": "serve-home-index-card-hover-round",
