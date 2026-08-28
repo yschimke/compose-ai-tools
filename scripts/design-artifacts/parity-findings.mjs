@@ -74,6 +74,21 @@ export function reportUrlFor({ repoSlug, branch, reportPath }) {
 }
 
 /**
+ * The sets a run published under one key, as a list.
+ *
+ * An own-property read for the same reason `previews` is prototype-free below: `previews.toString`
+ * on a plain object from `JSON.parse` is inherited, not absent, and would sail past a bare
+ * truthiness check.
+ */
+function findingsFor(runFindings, code) {
+  const map = runFindings?.previews;
+  if (!map || typeof map !== "object") return [];
+  if (!Object.prototype.hasOwnProperty.call(map, code)) return [];
+  const sets = map[code];
+  return Array.isArray(sets) ? sets : [];
+}
+
+/**
  * Build the served manifest from a run's published artifacts.
  *
  * Driven by `run.json`'s entries rather than by the findings map's keys, because the entry is the
@@ -83,6 +98,14 @@ export function reportUrlFor({ repoSlug, branch, reportPath }) {
  *
  * Every drop is reported rather than silently swallowed — a component whose verdict cannot reach a
  * page is exactly the thing an operator would otherwise never learn.
+ *
+ * The producer's own `schema` is checked before any of it is read. This driver rewrites a run's
+ * records and republishes them under `FINDINGS_SCHEMA` — a claim that the sets mean what a v1
+ * reader believes they mean. A producer that has moved to a v2 with different set semantics would
+ * otherwise have those records relabelled as trusted v1 data by whatever driver revision an
+ * external caller happens to be pinned to. Dropping the panel is the honest answer: it is an
+ * enhancement, and a wrong verdict is worse than an absent one. An UNSTAMPED document is accepted,
+ * because the first producer to ship this file predates the field.
  */
 export function buildServedFindings({
   runManifest,
@@ -92,15 +115,42 @@ export function buildServedFindings({
   branch,
 }) {
   const byCode = referencesByCode(references);
-  const previews = {};
+  // No prototype, because both key spaces here are producer- and catalog-controlled strings: a
+  // component legitimately named `constructor` or `toString` would otherwise resolve to the
+  // inherited member rather than a missing entry, and `??= []` would never fire.
+  const previews = Object.create(null);
   const warnings = [];
   let mapped = 0;
 
-  for (const entry of runManifest?.entries ?? []) {
+  const schema = runFindings?.schema;
+  if (schema != null && schema !== FINDINGS_SCHEMA) {
+    return {
+      document: null,
+      warnings: [
+        `the run publishes ${JSON.stringify(String(schema))}, not ${FINDINGS_SCHEMA}; ` +
+          `its verdict is not published`,
+      ],
+      mapped: 0,
+    };
+  }
+
+  // A structurally malformed `run.json` is a dropped panel, never a failed publish: the emitter
+  // runs under `set -e`, so letting `for...of` throw on a non-array would cost the catalog its
+  // render over an optional enhancement.
+  const entries = runManifest?.entries;
+  if (entries != null && !Array.isArray(entries)) {
+    return {
+      document: null,
+      warnings: [`the run's entries are not a list; its verdict is not published`],
+      mapped: 0,
+    };
+  }
+
+  for (const entry of entries ?? []) {
     const code = entry?.code;
     if (!code) continue;
-    const all = runFindings?.previews?.[code];
-    if (!Array.isArray(all) || all.length === 0) continue;
+    const all = findingsFor(runFindings, code);
+    if (all.length === 0) continue;
 
     // One code handle can be diffed against SEVERAL sources, and those results share a code handle
     // and a candidate preview id — the run tells them apart only by the `source` it stamps on each
