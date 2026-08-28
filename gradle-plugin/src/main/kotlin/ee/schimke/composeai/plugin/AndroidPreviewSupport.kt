@@ -2215,6 +2215,7 @@ internal object AndroidPreviewSupport {
         group = "compose preview"
         description = "Generate package-level robolectric.properties for composePreviewRender"
         useConsumerApplication.set(extension.useConsumerApplication)
+        appTourUseConsumerApplication.set(extension.appTourUseConsumerApplication)
         wireSdkInputs(this, extension.sdkVersion, consumerCompileSdk)
         outputDir.set(robolectricPropertiesDir)
       }
@@ -2521,6 +2522,14 @@ internal object AndroidPreviewSupport {
         } else {
           include("**/RobolectricRenderTest.class")
         }
+        // The app-tour lane is a class of its own in a package of its own, because Robolectric
+        // resolves the Application per test class and an Activity needs the manifest's while a
+        // composable wants the stub (see `AppTourRobolectricRenderTest`). It is included either way
+        // and never sharded: a module has at most a handful of app-level previews, and the cost
+        // that matters is the Application init the class pays once per sandbox — which sharding
+        // would multiply rather than divide. `PreviewManifestLoader.Lane` keeps the two classes'
+        // selections disjoint, so nothing renders twice.
+        include("**/AppTourRobolectricRenderTest.class")
         useJUnit()
 
         // Locale-proof this task's reporting — see [configureRenderTaskReporting] for why a

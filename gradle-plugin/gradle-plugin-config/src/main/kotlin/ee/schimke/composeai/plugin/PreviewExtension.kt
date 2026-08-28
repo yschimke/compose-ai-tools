@@ -92,9 +92,9 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
    * lanes honour it (Android/Robolectric and Desktop/CMP), because it is a runtime-level flag with
    * no platform-specific interception, unlike [fixedTime].
    *
-   * **Whole-run, not per-preview.** The runtime latches the flag at the first composition in a
-   * JVM (on Android, in a Robolectric sandbox), and the lanes here render many previews per JVM —
-   * so this selects a composer for the whole render, which is also how the runtime team frames it
+   * **Whole-run, not per-preview.** The runtime latches the flag at the first composition in a JVM
+   * (on Android, in a Robolectric sandbox), and the lanes here render many previews per JVM — so
+   * this selects a composer for the whole render, which is also how the runtime team frames it
    * ("set the flag before you compose any content").
    *
    * `true` here means **required**: against a Compose runtime with no such flag — an older one, or
@@ -179,6 +179,32 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
    */
   val useConsumerApplication: Property<Boolean> =
     objects.property(Boolean::class.java).convention(false)
+
+  /**
+   * The same choice, for `kind=ACTIVITY` / `kind=APP_TOUR` previews only. Default: `true` — the
+   * opposite of [useConsumerApplication], and deliberately so.
+   *
+   * An isolated composable has no business running the consumer's `Application.onCreate()`. An
+   * *Activity* is a different proposition: it **is** the app, and denying it the manifest-declared
+   * Application denies it the thing it was written against. A Hilt Activity launched against the
+   * stub fails on contact with "Hilt Activity must be attached to an @HiltAndroidApp Application";
+   * so does a Koin one, and one whose `AppComponentFactory` constructs it through DI. Before the
+   * two lanes were split that accounted for 39 of 45 activity-tour renders across the catalog fleet
+   * — no app using app-level DI could tour at all.
+   *
+   * The lanes are separate test classes in separate packages
+   * (`ee.schimke.composeai.renderer.RobolectricRenderTest` and
+   * `ee.schimke.composeai.apptour.AppTourRobolectricRenderTest`), each with its own generated
+   * `robolectric.properties`, because Robolectric settles the Application per test class rather
+   * than per test method. So this flag costs a module's composable previews nothing.
+   *
+   * Set it to `false` when the consumer's `Application.onCreate()` cannot survive the sandbox and
+   * its activities render better without one — the tours then go back to the stub, and any that
+   * needed real DI go back to failing. [useConsumerApplication] `= true` makes both lanes use the
+   * manifest Application regardless of this value.
+   */
+  val appTourUseConsumerApplication: Property<Boolean> =
+    objects.property(Boolean::class.java).convention(true)
 
   /**
    * When `true`, `composePreviewDiscover` fails the build if it finds zero `@Preview`-annotated
