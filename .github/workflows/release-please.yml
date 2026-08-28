@@ -97,6 +97,10 @@ jobs:
   # half now and keep the candidate release PR current. On a release-PR merge,
   # wait for `reconcile-release-pr` instead: it runs only after the new release is
   # tagged and published, preventing the transient stale-version PR.
+  #
+  # `release_created != 'true'` says only that THIS run cut nothing — it says nothing about a
+  # release cut by another run that is still publishing. The race guard covers that; see the
+  # steps below and `.github/scripts/release-pr-race-guard.sh`.
   update-release-pr:
     needs: release-please
     if: ${{ !cancelled() && needs.release-please.outputs.release_created != 'true' }}
@@ -104,12 +108,53 @@ jobs:
     permissions:
       contents: write        # update the release branch
       pull-requests: write   # open/update the release PR
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Skipping the release run's own PR half is not enough: an ordinary push and a release-PR
+      # merge deliberately hold SEPARATE concurrency slots (see `concurrency` above), so a feature
+      # merged seconds before the release PR leaves this job running straight through the cut —
+      # with a baseline that still reads the previous release, because ours are drafts until
+      # `finalize-release`. It then re-proposes the version being released, force-updating the
+      # release branch and opening a duplicate PR (#4645). The guard asks whether a release is in
+      # flight; `reconcile-release-pr` picks the release PR up afterwards either way, so skipping
+      # here loses nothing.
+      - name: Check whether a release is in flight
+        id: preflight
+        env:
+          MODE: check
+        run: ./.github/scripts/release-pr-race-guard.sh
+
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: rp
+        if: ${{ steps.preflight.outputs.in_flight != 'true' }}
+        # The failure this tolerates is the race's own: release-please updating a release PR that
+        # merged out from under it dies with "state cannot be changed. The pull request cannot be
+        # reopened." The repair step below re-raises anything that is not that.
+        continue-on-error: true
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           skip-github-release: true
+
+      # The pre-flight check cannot close the window on its own — the release PR can merge while
+      # release-please is mid-invocation, which is precisely what produced #4645. Ask again, and
+      # if a release went in flight, close whatever this run opened for it.
+      - name: Discard a release PR the race produced
+        id: repair
+        if: ${{ always() && steps.preflight.outputs.in_flight != 'true' }}
+        env:
+          MODE: repair
+          RP_PR: ${{ steps.rp.outputs.pr }}
+        run: ./.github/scripts/release-pr-race-guard.sh
+
+      - name: Re-raise a release-please failure the race does not explain
+        if: ${{ always() && steps.rp.outcome == 'failure' && steps.repair.outputs.raced != 'true' }}
+        run: |
+          echo "::error::release-please failed and no release was in flight — see the step above."
+          exit 1
 
   # Build and publish the artifacts whenever release-please actually cuts a
   # release. Skipped on "just updating the release PR" runs.
