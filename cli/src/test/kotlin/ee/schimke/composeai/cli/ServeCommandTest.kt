@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.cli.serve.ServeBackgroundWork
 import ee.schimke.composeai.cli.serve.ServeCatalogStore
 import ee.schimke.composeai.cli.serve.ServeUrls
 import kotlin.test.Test
@@ -54,6 +55,28 @@ class ServeCommandTest {
     assertFalse(command.field("allowRenderTrusted"))
     assertEquals(ServeCatalogStore.DEFAULT_MAX_IMAGES, command.field<Int>("catalogMaxImages"))
   }
+
+  /**
+   * `--background-renders` widens the passes, not just the permits.
+   *
+   * A pass takes ONE render permit for the whole of its batch, so the permits are reachable only up
+   * to the number of passes admitted. Wiring the render lane while leaving the optimizer lanes at
+   * their own default made every permit past the second dead: the flag documented as the way past
+   * the derivation's ceiling bought nothing above 2, and the cross-replica coordinator re-imposed
+   * the same ceiling on the physical host.
+   */
+  @Test
+  fun `the optimizer lane count follows the background render lane`() {
+    val command = ServeCommand(listOf("--background-renders", "5"))
+
+    assertEquals(5, command.backgroundWork().optimizerAdmissionSnapshot().lanes)
+  }
+
+  @Suppress("UNCHECKED_CAST")
+  private fun ServeCommand.backgroundWork(): ServeBackgroundWork =
+    (javaClass.getDeclaredField("backgroundWork\$delegate").apply { isAccessible = true }.get(this)
+        as Lazy<ServeBackgroundWork>)
+      .value
 
   @Suppress("UNCHECKED_CAST")
   private fun <T> Any.field(name: String): T =
