@@ -2899,12 +2899,14 @@ html:not(.cp-bg-transparent) #cp-reference-compare[data-cp-stage-clip] .cp-refer
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--md-sys-shape-corner-small);
   background: var(--md-sys-color-surface); font-size: 0.76rem; }
-/* Only an ANCHORED row is interactive, and it is the row itself that says so: the server omits
-   `tabindex`/`role` where a finding has no geometry, so a hover affordance is never offered for a
-   highlight that cannot come. */
-.cp-parity-finding[data-cp-parity-finding] { cursor: pointer; }
-.cp-parity-finding[data-cp-parity-finding]:hover,
-.cp-parity-finding[data-cp-parity-finding]:focus-visible,
+/* Keyed on `role="button"`, which `<cp-reference-compare>` sets only after it has built the boxes
+   — NOT on `data-cp-parity-finding`, which the server writes for every anchored finding. The two
+   differ exactly where it matters: with script off, blocked, or failed the ids are in the document
+   and no highlight can be drawn, and a pointer cursor there would promise one. A row that is not a
+   control does not look like one. */
+.cp-parity-finding[role="button"] { cursor: pointer; }
+.cp-parity-finding[role="button"]:hover,
+.cp-parity-finding[role="button"]:focus-visible,
 .cp-parity-finding[aria-pressed="true"] {
   border-color: var(--md-sys-color-primary);
   background: var(--md-sys-color-surface-container-high); outline: none; }

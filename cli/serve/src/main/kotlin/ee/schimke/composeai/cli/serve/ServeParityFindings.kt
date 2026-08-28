@@ -4,6 +4,11 @@ import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.decodeFromJsonElement
 import okio.FileSystem
 import okio.Path.Companion.toOkioPath
 import okio.Path.Companion.toPath
@@ -198,9 +203,18 @@ fun encodeParityAnchorPayload(payload: ParityAnchorPayload): String =
 /**
  * Validated, read-only view of a bundle/catalog's `parity/findings.json`.
  *
- * Every cap below exists because this file is authored by another repository and rendered into a
- * page: an unbounded finding list is a page nobody can scroll, and an unbounded message is a layout
- * break rather than information.
+ * Every record is decoded ONE AT A TIME, through raw [JsonElement]s, for the reason
+ * [ServeDesignReferenceStore] does the same: decoding the whole document in one call makes any
+ * single malformed record — a finding with no `message`, a number where a detail string belongs, a
+ * `bounds` missing a field — throw while parsing the envelope, and the whole catalog's verdict goes
+ * dark on every page. That is the opposite of the per-record salvage this class promises, and the
+ * validation below never gets to run.
+ *
+ * Every cap exists because this file is authored by another repository and rendered into a page: an
+ * unbounded finding list is a page nobody can scroll, and an unbounded message is a layout break
+ * rather than information. The per-preview aggregates are the ones that bind — nested ceilings
+ * multiply, so twenty sets of two hundred findings is four thousand rows and a browser that stops
+ * responding while the anchors are placed.
  */
 class ServeParityFindingStore
 private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) {
@@ -221,7 +235,27 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
     private const val MAX_PREVIEWS = 5000
     private const val MAX_SETS_PER_PREVIEW = 20
     private const val MAX_FINDINGS_PER_SET = 200
+
+    /**
+     * What ONE comparison may put on a page, across every set it shows.
+     *
+     * The per-set ceiling alone is not a limit on anything a reader meets: the page renders every
+     * set for a preview at once, so twenty of them is twenty times whatever that ceiling says. This
+     * is the number that describes the page — beyond it a verdict has stopped being something
+     * anyone reads and become something that has to be scrolled past.
+     */
+    private const val MAX_FINDINGS_PER_PREVIEW = 300
     private const val MAX_ANCHORS_PER_FINDING = 40
+
+    /**
+     * And what one comparison may DRAW, which is the tighter constraint of the two.
+     *
+     * A finding row is a few hundred bytes of HTML; an anchor is an element the client creates,
+     * positions on every reflow, and repositions on every resize. The page stays readable long
+     * after it has stopped being responsive, so the boxes get their own budget rather than riding
+     * the row count.
+     */
+    private const val MAX_ANCHORS_PER_PREVIEW = 600
     private const val MAX_DETAIL_KEYS = 24
     private const val MAX_MESSAGE = 400
     private const val MAX_DETAIL_VALUE = 200
@@ -232,45 +266,149 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
     /** Empty store — a catalog that publishes no parity verdict at all. */
     val EMPTY = ServeParityFindingStore(emptyMap())
 
+    /**
+     * The document as read from disk, with its records left as raw JSON.
+     *
+     * [ParityFindings] is the schema producers write against; this is what a fail-soft READER
+     * needs. Raw at EVERY level, because a producer can be wrong at any of them and the blast
+     * radius has to stop at the record that is wrong: a preview whose value is not a list must not
+     * cost the catalog its other previews, a malformed SET must not cost the preview its other
+     * sets, a malformed FINDING must not cost the set, and a malformed ANCHOR must not cost the
+     * finding its sentence. Typing `previews` as `Map<String, List<JsonElement>>` looks tolerant
+     * and is not — one entry holding a string throws while the map is decoded, which is the whole
+     * document again.
+     */
+    @Serializable
+    private data class RawManifest(
+      val schema: String = ParityFindings.SCHEMA,
+      val previews: Map<String, JsonElement> = emptyMap(),
+    )
+
+    @Serializable
+    private data class RawSet(
+      val referenceId: JsonElement? = null,
+      val status: String? = null,
+      val reportUrl: String? = null,
+      val findings: List<JsonElement> = emptyList(),
+    )
+
+    @Serializable
+    private data class RawFinding(
+      val kind: String = "",
+      val severity: String = "",
+      val message: String = "",
+      /**
+       * Values as raw JSON, then coerced. A producer that emits `"expected": 16` rather than `"16"`
+       * is writing the same fact; refusing it would drop the delta row over a type the wire format
+       * never needed to be strict about.
+       */
+      val detail: Map<String, JsonElement> = emptyMap(),
+      val anchors: List<JsonElement> = emptyList(),
+    )
+
     fun load(
       bundleDir: File,
       fileSystem: FileSystem = SystemFileSystem,
     ): ServeParityFindingStore {
       val path =
         bundleDir.toOkioPath() / ParityFindings.DIRECTORY.toPath() / ParityFindings.FILE.toPath()
-      val raw =
+      val text =
         runCatching {
           if (!fileSystem.exists(path)) return@runCatching null
-          JSON.decodeFromString<ParityFindings>(fileSystem.read(path) { readUtf8() })
+          fileSystem.read(path) { readUtf8() }
         }
           .getOrNull() ?: return EMPTY
-      return sanitize(raw)
+      val document = sanitizeDocument(text) ?: return EMPTY
+      return ServeParityFindingStore(document.previews)
     }
 
-    fun sanitize(raw: ParityFindings): ServeParityFindingStore {
-      if (raw.schema != ParityFindings.SCHEMA) return EMPTY
+    /**
+     * Parse and validate a manifest, returning the cleaned document or null when nothing survives.
+     *
+     * Shared with [ServeCatalogStore]'s staging path so a published catalog is validated by the
+     * very code that will later read it: staging writes what this returns, not what the branch
+     * said, and a manifest that could not survive the reader never reaches the staged tree at all.
+     */
+    fun sanitizeDocument(text: String): ParityFindings? {
+      val raw = runCatching { JSON.decodeFromString<RawManifest>(text) }.getOrNull() ?: return null
+      if (raw.schema != ParityFindings.SCHEMA) return null
       val previews =
         raw.previews.entries
           .asSequence()
           .filter { (previewId, _) -> ID.matches(previewId) }
           .take(MAX_PREVIEWS)
-          .mapNotNull { (previewId, sets) ->
-            val kept =
-              sets.take(MAX_SETS_PER_PREVIEW).mapNotNull(::sanitizeSet).takeIf { it.isNotEmpty() }
-            kept?.let { previewId to it }
+          .mapNotNull { (previewId, value) ->
+            val sets = value as? JsonArray ?: return@mapNotNull null
+            sanitizePreview(sets)?.let { previewId to it }
           }
           .toMap()
-      return ServeParityFindingStore(previews)
+      if (previews.isEmpty()) return null
+      return ParityFindings(previews = previews)
     }
 
-    private fun sanitizeSet(raw: ParityFindingSet): ParityFindingSet? {
-      val findings =
-        raw.findings.take(MAX_FINDINGS_PER_SET).mapNotNull(::sanitizeFinding).sortedBy {
-          ParityFindingSeverity.rank(it.severity)
+    /**
+     * One preview's sets, held to what a single comparison may show and draw.
+     *
+     * Trimmed rather than dropped: the budget is exhausted in the order the producer wrote, and a
+     * verdict past it has already said far more than a reader will get through. Findings are
+     * severity-ordered within a set before the trim, so what survives is the worst of what was
+     * published rather than whatever happened to be written first.
+     */
+    private fun sanitizePreview(sets: JsonArray): List<ParityFindingSet>? {
+      var findingBudget = MAX_FINDINGS_PER_PREVIEW
+      var anchorBudget = MAX_ANCHORS_PER_PREVIEW
+      val kept = mutableListOf<ParityFindingSet>()
+      for (element in sets.take(MAX_SETS_PER_PREVIEW)) {
+        if (findingBudget <= 0) break
+        val set =
+          runCatching { JSON.decodeFromJsonElement<RawSet>(element) }.getOrNull() ?: continue
+        val sanitized = sanitizeSet(set, findingBudget, anchorBudget) ?: continue
+        findingBudget -= sanitized.findings.size
+        anchorBudget -= sanitized.findings.sumOf { it.anchors.size }
+        kept += sanitized
+      }
+      return kept.takeIf { it.isNotEmpty() }
+    }
+
+    private fun sanitizeSet(
+      raw: RawSet,
+      findingBudget: Int,
+      anchorBudget: Int,
+    ): ParityFindingSet? {
+      // A supplied id that does not validate is NOT the same as an absent one, and treating it as
+      // one is the worst reading available: `forComparison` takes null as "describes the render
+      // whichever reference it is read against", so a producer's malformed scope would print this
+      // verdict under every other reference's panels — a plausible, wrong claim rather than a
+      // missing one. Absent stays unscoped; present-and-broken drops the set.
+      val referenceId =
+        when (val supplied = raw.referenceId) {
+          null,
+          JsonNull -> null
+          else -> {
+            val text = (supplied as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()
+            if (text == null || !ID.matches(text)) return null
+            text
+          }
         }
+      var anchorsLeft = anchorBudget
+      val findings =
+        raw.findings
+          .take(MAX_FINDINGS_PER_SET)
+          .mapNotNull { element ->
+            runCatching { JSON.decodeFromJsonElement<RawFinding>(element) }.getOrNull()
+          }
+          .mapNotNull(::sanitizeFinding)
+          .sortedBy { ParityFindingSeverity.rank(it.severity) }
+          .take(findingBudget.coerceAtLeast(0))
+          .map { finding ->
+            val room = anchorsLeft.coerceAtLeast(0)
+            anchorsLeft -= finding.anchors.size.coerceAtMost(room)
+            if (finding.anchors.size <= room) finding
+            else finding.copy(anchors = finding.anchors.take(room))
+          }
       if (findings.isEmpty()) return null
       return ParityFindingSet(
-        referenceId = raw.referenceId?.trim()?.takeIf(ID::matches),
+        referenceId = referenceId,
         status = raw.status?.trim()?.lowercase()?.takeIf(STATUSES::contains),
         // Only an absolute https link, and only as a link: this string is written by another
         // repository and lands in an `href`, so a `javascript:` or a protocol-relative host would
@@ -281,7 +419,7 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
       )
     }
 
-    private fun sanitizeFinding(raw: ParityFinding): ParityFinding? {
+    private fun sanitizeFinding(raw: RawFinding): ParityFinding? {
       val kind =
         raw.kind.trim().lowercase().takeIf(ParityFindingKind.KNOWN::contains) ?: return null
       val severity =
@@ -296,10 +434,28 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
           raw.detail.entries
             .asSequence()
             .filter { (key, _) -> key.isNotBlank() && key.length <= 80 }
+            .mapNotNull { (key, value) -> detailValue(value)?.let { key.trim() to it } }
             .take(MAX_DETAIL_KEYS)
-            .associate { (key, value) -> key.trim() to clamp(value.trim(), MAX_DETAIL_VALUE) },
-        anchors = raw.anchors.take(MAX_ANCHORS_PER_FINDING).filter(::isUsable),
+            .toMap(),
+        anchors =
+          raw.anchors
+            .take(MAX_ANCHORS_PER_FINDING)
+            .mapNotNull { runCatching { JSON.decodeFromJsonElement<ParityAnchor>(it) }.getOrNull() }
+            .filter(::isUsable),
       )
+    }
+
+    /**
+     * A detail value as text, or null when it is not a value at all.
+     *
+     * Primitives are printed as written — a number stays `16`, not `16.0` — and an object or array
+     * is dropped rather than stringified: a hover card is a readout, and JSON in it is noise the
+     * reader cannot act on.
+     */
+    private fun detailValue(value: JsonElement): String? {
+      val primitive = value as? JsonPrimitive ?: return null
+      if (primitive is JsonNull) return null
+      return clamp(primitive.content.trim(), MAX_DETAIL_VALUE).takeIf { it.isNotEmpty() }
     }
 
     /**

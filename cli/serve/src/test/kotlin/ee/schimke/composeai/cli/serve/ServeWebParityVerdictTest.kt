@@ -123,13 +123,18 @@ class ServeWebParityVerdictTest {
           )
         )
       )
-    // One row is a button with somewhere to point…
+    // One row carries an anchor id…
     assertEquals(1, Regex("data-cp-parity-finding=").findAll(html).count(), html)
     assertTrue("1 region" in html, html)
-    // …and the other is plain text. A `tabindex` on it would put a stop in the keyboard order that
-    // does nothing when it is reached.
+    // …and the other is plain text.
     assertTrue("prose only" in html, html)
-    assertEquals(1, Regex("tabindex=\"0\" role=\"button\"").findAll(html).count(), html)
+    // Neither is announced as a control by the SERVER. Script may be disabled, blocked or fail to
+    // load, and on any of those no highlight can be drawn — a pressed-state button with a tab stop
+    // and no handler is worse than prose on the one page whose no-script behaviour is the point.
+    // `<cp-reference-compare>` promotes the anchored row once it has actually built the boxes.
+    assertFalse("tabindex" in html, html)
+    assertFalse("aria-pressed" in html, html)
+    assertFalse("role=\"button\"" in html, html)
     // The hint is only claimed because something can respond to it.
     assertTrue("Hover a finding" in html, html)
   }

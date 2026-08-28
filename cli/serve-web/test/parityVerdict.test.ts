@@ -131,10 +131,10 @@ function markup(anchors: unknown): string {
         <p class="cp-reference-result">comparing…</p>
         <section class="cp-parity-verdict">
           <ul class="cp-parity-list">
-            <li class="cp-parity-finding cp-parity-finding--error" tabindex="0" role="button"
-                aria-pressed="false" data-cp-parity-finding="tokens-0" id="row-token">t</li>
-            <li class="cp-parity-finding cp-parity-finding--warn" tabindex="0" role="button"
-                aria-pressed="false" data-cp-parity-finding="a11y-3" id="row-orphan">o</li>
+            <li class="cp-parity-finding cp-parity-finding--error"
+                data-cp-parity-finding="tokens-0" id="row-token">t</li>
+            <li class="cp-parity-finding cp-parity-finding--warn"
+                data-cp-parity-finding="a11y-3" id="row-orphan">o</li>
             <li class="cp-parity-finding cp-parity-finding--info" id="row-prose">p</li>
           </ul>
         </section>
@@ -242,15 +242,39 @@ describe("<cp-reference-compare> parity highlights", () => {
         assert.equal(lit(), 2);
     });
 
-    it("takes the affordance back from a row with nowhere to point", async () => {
+    it("promotes a row to a control only once its boxes exist", async () => {
+        // The server ships every row as an ordinary list item, because with script off, blocked or
+        // failed there is no highlight to give and a tab stop that does nothing is worse than
+        // prose. Only the row that got boxes becomes a button.
+        await mount();
+        const wired = row("row-token");
+        assert.equal(wired.getAttribute("tabindex"), "0");
+        assert.equal(wired.getAttribute("role"), "button");
+        assert.equal(wired.getAttribute("aria-pressed"), "false");
+    });
+
+    it("leaves a row with nowhere to point as prose, and drops its id", async () => {
         await mount();
         const orphan = row("row-orphan");
         assert.equal(orphan.getAttribute("tabindex"), null);
         assert.equal(orphan.getAttribute("role"), null);
         assert.equal(orphan.hasAttribute("data-cp-parity-finding"), false);
-        // …and the prose-only row is untouched: the server never offered it as a control.
+        // …and the prose-only row is untouched: the server never gave it an id to wire.
         assert.equal(row("row-prose").getAttribute("tabindex"), null);
         assert.equal(row("row-prose").textContent, "p");
+    });
+
+    it("leaves every row plain when the payload cannot be read", async () => {
+        stubResizeObserver();
+        document.body.innerHTML = markup(ANCHORS).replace(
+            /(<script id="cp-parity-anchors"[^>]*>)[^<]*/,
+            "$1{ not json",
+        );
+        await flush();
+        // The no-script path, reached with script running: nothing was promoted, so nothing
+        // announces itself as a control it cannot be.
+        assert.equal(row("row-token").getAttribute("role"), null);
+        assert.equal(row("row-token").getAttribute("tabindex"), null);
     });
 
     it("renders the page unchanged when the payload is unreadable", async () => {

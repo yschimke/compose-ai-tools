@@ -143,6 +143,78 @@ class ServeParityFindingStoreTest {
   }
 
   @Test
+  fun `one unreadable record costs only itself, not the whole catalog`() {
+    // The failure this guards is silent and total: decoding the document in one call makes any
+    // single malformed record throw while parsing the envelope, and every valid verdict in the
+    // catalog disappears with it.
+    val json =
+      """{"schema":"compose-preview-parity-findings/v1","previews":{
+         "p":[
+           {"findings":[{"kind":"token","severity":"warn"}]},
+           {"findings":[{"kind":"token","severity":"warn","message":"kept"}]}],
+         "q":[{"findings":[{"kind":"a11y","severity":"warn","message":"also kept",
+                            "anchors":[
+                              {"side":"actual","bounds":{"x":1,"width":4,"height":4}},
+                              {"side":"actual","bounds":{"x":1,"y":2,"width":4,"height":4}}]}]}],
+         "r":"not a list at all"}}"""
+    val loaded = store(json)
+    assertEquals(listOf("kept"), loaded.forPreview("p").single().findings.map { it.message })
+    val q = loaded.forPreview("q").single().findings.single()
+    assertEquals("also kept", q.message)
+    // The anchor missing `y` is dropped; the finding and its good anchor survive.
+    assertEquals(1, q.anchors.size)
+    assertTrue(loaded.forPreview("r").isEmpty())
+  }
+
+  @Test
+  fun `a detail value that is not a string is coerced rather than thrown away`() {
+    val json =
+      """{"schema":"compose-preview-parity-findings/v1","previews":{"p":[{"findings":[
+         {"kind":"token","severity":"error","message":"m",
+          "detail":{"expected":16,"actual":"24","unverified":false,"nested":{"a":1},
+                    "missing":null}}]}]}}"""
+    val detail = store(json).forPreview("p").single().findings.single().detail
+    assertEquals("16", detail["expected"])
+    assertEquals("24", detail["actual"])
+    assertEquals("false", detail["unverified"])
+    // An object is not a readout — JSON in a hover card is noise the reader cannot act on.
+    assertNull(detail["nested"])
+    assertNull(detail["missing"])
+  }
+
+  @Test
+  fun `a supplied reference id that does not validate drops its set`() {
+    // The worst available reading of a malformed scope is the one this prevents: `forComparison`
+    // takes null as "applies to every reference", so nulling an invalid id would print this
+    // verdict under every OTHER reference's panels — a plausible, wrong claim.
+    val json =
+      """{"schema":"compose-preview-parity-findings/v1","previews":{"p":[
+         {"referenceId":"   ","findings":[{"kind":"token","severity":"warn","message":"bad"}]},
+         {"referenceId":42,"findings":[{"kind":"token","severity":"warn","message":"also bad"}]},
+         {"findings":[{"kind":"token","severity":"warn","message":"absent is unscoped"}]}]}}"""
+    val sets = store(json).forComparison("p", "anything")
+    assertEquals(listOf("absent is unscoped"), sets.flatMap { it.findings }.map { it.message })
+  }
+
+  @Test
+  fun `one comparison cannot publish more than a page can hold`() {
+    // Nested ceilings multiply — twenty sets of two hundred findings is four thousand rows and a
+    // browser that stops responding while their boxes are placed. The aggregate is the one that
+    // describes the page.
+    fun finding(index: Int) =
+      """{"kind":"layout","severity":"warn","message":"m$index","anchors":[
+         {"side":"actual","bounds":{"x":0,"y":0,"width":4,"height":4}},
+         {"side":"reference","bounds":{"x":0,"y":0,"width":4,"height":4}}]}"""
+    val set = """{"findings":[${(1..200).joinToString(",") { finding(it) }}]}"""
+    val json =
+      """{"schema":"compose-preview-parity-findings/v1","previews":{"p":[
+         ${(1..20).joinToString(",") { set }}]}}"""
+    val findings = store(json).forPreview("p").flatMap { it.findings }
+    assertEquals(300, findings.size)
+    assertEquals(600, findings.sumOf { it.anchors.size })
+  }
+
+  @Test
   fun `a long message is clamped rather than dropped`() {
     val json =
       """{"schema":"compose-preview-parity-findings/v1","previews":{"p":[{"findings":[

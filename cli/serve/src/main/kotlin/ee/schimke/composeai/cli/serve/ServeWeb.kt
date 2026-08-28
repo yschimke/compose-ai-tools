@@ -1371,9 +1371,17 @@ ${captureControlsHtml().prependIndent("          ")}
   /**
    * One finding row.
    *
-   * A row is only made interactive when it HAS somewhere to point. A `tabindex` on a finding with
-   * no anchors puts a stop in the keyboard order that does nothing when it is reached, and a hover
-   * affordance on it promises a highlight that never comes — both worse than plain text.
+   * A row carries its anchor id when it HAS somewhere to point, and nothing else — no `tabindex`,
+   * no `role`, no `aria-pressed`. Those are added by `<cp-reference-compare>` once it has parsed
+   * the payload and actually built the boxes, because only then is the row a control.
+   *
+   * The server cannot know that. Script may be disabled, blocked by a policy, or simply fail to
+   * load, and on any of those the page still renders — that is the point of putting the prose in
+   * the document. Announcing every anchored row as a pressed-state button up front would hand a
+   * screen-reader or keyboard user a tab stop that does nothing when they reach it, on the one page
+   * whose no-script behaviour was the reason to render it server-side at all. The same is true of a
+   * payload keyed to a row the panels cannot place: the client drops the id, and a row that never
+   * became a control never looked like one.
    */
   private fun parityFindingRowHtml(id: String, finding: ParityFinding): String {
     val expected = finding.detail["expected"]
@@ -1401,9 +1409,7 @@ ${captureControlsHtml().prependIndent("          ")}
         .joinToString(" · ") { (key, value) -> "$key $value" }
     val title = if (rest.isEmpty()) "" else " title=\"${WebEscaping.htmlEscape(rest)}\""
     val anchored = finding.anchors.isNotEmpty()
-    val interactive =
-      if (!anchored) ""
-      else " tabindex=\"0\" role=\"button\" aria-pressed=\"false\" data-cp-parity-finding=\"$id\""
+    val interactive = if (!anchored) "" else " data-cp-parity-finding=\"$id\""
     val where =
       if (!anchored) ""
       else

@@ -606,6 +606,64 @@ class ServeCatalogStoreTest {
     assertEquals("button-figma", loaded.issues.single().referenceIds.single())
   }
 
+  @Test
+  fun `catalog stages the published parity verdict`() {
+    // The staging path is where this feature is invisible when it is missing: the host reads the
+    // staged tree, so a manifest nothing fetches is one it correctly reports as absent, and the
+    // verdict panel would be dark on every published catalog — the one environment it exists for —
+    // with no error anywhere to say why.
+    val root = tempRoot()
+    val requested = CopyOnWriteArrayList<String>()
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png"}]}]}
+      """
+        .trimIndent()
+    val findings =
+      """
+      {"schema":"compose-preview-parity-findings/v1","previews":{"button":[
+        {"referenceId":"button-figma","status":"fail","findings":[
+          {"kind":"token","severity":"error","message":"spacing.padding: 24 vs spec 16",
+           "detail":{"token":"spacing.padding","expected":16,"actual":24},
+           "anchors":[{"side":"actual","bounds":{"x":2,"y":3,"width":40,"height":12}}]},
+          {"kind":"invented","severity":"warn","message":"a kind this build cannot place"}]}]}}
+      """
+        .trimIndent()
+    val store =
+      ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        fetch = { url ->
+          requested += url
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.encodeToByteArray()
+            url.endsWith("/parity/findings.json") -> findings.encodeToByteArray()
+            url.endsWith("/images/button.png") -> png()
+            else -> null
+          }
+        },
+      )
+
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+
+    assertTrue(requested.any { it.endsWith("/parity/findings.json") }, "the verdict is fetched")
+    val loaded = registered.getValue("compose-m3").parityFindingsFor("button", "button-figma")
+    assertEquals(1, loaded.size, "the verdict reached the host through the staging tree")
+    assertEquals("fail", loaded.single().status)
+    // Staging writes what the READER would keep, not what the branch said: the unplaceable kind is
+    // already gone from disk, and the numeric detail has been coerced once rather than per request.
+    val finding = loaded.single().findings.single()
+    assertEquals("16", finding.detail["expected"])
+    assertEquals(1, finding.anchors.size)
+    // …and a set scoped to another reference is not shown against this one.
+    assertTrue(
+      registered.getValue("compose-m3").parityFindingsFor("button", "other").isEmpty(),
+      "a scoped set stays scoped through staging",
+    )
+  }
+
   /**
    * A document the derivation refuses **whole** — an unknown document-level member. Using it is
    * what makes "the index was copied" distinguishable from "the list was re-derived": if the

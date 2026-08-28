@@ -342,14 +342,16 @@ export class ReferenceCompare extends LitElement {
             if (!boxes.length) {
                 // Nothing on THIS page to point at — a payload keyed to a row the panels cannot
                 // place, or a side this comparison does not show. The row keeps its sentence and
-                // gives up its affordance: leaving the `tabindex` and the pointer cursor behind
-                // would put a stop in the keyboard order that does nothing when it is reached.
-                row.removeAttribute("tabindex");
-                row.removeAttribute("role");
-                row.removeAttribute("aria-pressed");
+                // never becomes a control: the id goes too, so the stylesheet's `[role="button"]`
+                // rules and any later pass both read the same answer.
                 row.removeAttribute("data-cp-parity-finding");
                 continue;
             }
+            // The row becomes a control HERE and nowhere else. The server ships it as an ordinary
+            // list item, because with script off, blocked or failed there is no highlight to give
+            // and a tab stop that does nothing is worse than plain prose.
+            row.setAttribute("tabindex", "0");
+            row.setAttribute("role", "button");
             this.wireParityRow(row, boxes);
         }
     }
