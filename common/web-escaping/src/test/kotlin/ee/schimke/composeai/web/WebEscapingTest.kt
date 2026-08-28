@@ -1,6 +1,5 @@
-package ee.schimke.composeai.cli.serve
+package ee.schimke.composeai.web
 
-import ee.schimke.composeai.web.WebEscaping
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

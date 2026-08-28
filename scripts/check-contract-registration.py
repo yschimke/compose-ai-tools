@@ -26,6 +26,7 @@ it a build failure instead of a thing to remember.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import pathlib
 import re
@@ -38,6 +39,7 @@ SHELL = "scripts/check-preview-server-contracts.sh"
 CI_PATHS = ".github/ci/ci-paths.json"
 SETTINGS = "settings.gradle.kts"
 ALLOWLIST = "scripts/serve-seam-allowlist.json"
+PATH_SCOPE = ".github/ci/path-scope.py"
 CI_GROUP = "preview_server_contracts"
 
 
@@ -126,26 +128,43 @@ def mapping_for(package: str, mapping: dict[str, str]) -> tuple[str | None, str 
     return key, mapping[key]
 
 
-def covered(directory: str, globs: list[str]) -> bool:
-    """True when some glob in the CI group schedules the probe for `directory`.
+def path_matcher(root: pathlib.Path):
+    """`glob_to_regex` from the CI path classifier itself.
 
-    A prefix test rather than an equality test on purpose: `render-session/**` legitimately
-    covers both `render-session/api` and `render-session/subprocess`, and demanding an exact
-    entry per project would fail a correct file.
-
-    But only a glob that takes the *whole* subtree counts. `daemon/core/**/*.kt` has the same
-    directory prefix and does not schedule the job for a change to that module's build file or
-    to a Java source under it — and those paths are classified by other groups, so the
-    classifier does not fail open and the probe is simply skipped. A partial glob is worse than
-    a missing one: it reads as coverage.
+    Reimplementing the matching was the bug: a prefix test accepted `daemon/core/**/*.kt` and a
+    trailing-slash test accepted `daemon/core/`, neither of which selects the group for a change
+    to that module's build file — `daemon/core/` in fact matches nothing at all. The only
+    trustworthy answer to "does this glob schedule the job for this path" comes from the code
+    that decides it.
     """
-    for glob in globs:
-        if glob != "**" and not glob.endswith("/**") and not glob.endswith("/"):
-            continue  # not whole-subtree coverage; see above
-        prefix = glob.split("*", 1)[0].rstrip("/")
-        if prefix and (directory == prefix or directory.startswith(prefix + "/")):
-            return True
-    return False
+    spec = importlib.util.spec_from_file_location("path_scope", root / PATH_SCOPE)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.glob_to_regex
+
+
+# What a change to a contract module can plausibly touch. A glob only counts as covering the
+# module when it selects the group for *every* one of these: a partial glob reads as coverage
+# without being it, and the paths it misses are classified by other groups, so the classifier
+# does not fail open — the probe is simply skipped.
+REPRESENTATIVE = (
+    "build.gradle.kts",
+    "api/x.api",
+    "src/main/kotlin/ee/schimke/composeai/X.kt",
+    "src/main/java/ee/schimke/composeai/X.java",
+    "src/test/kotlin/ee/schimke/composeai/XTest.kt",
+)
+
+
+def uncovered_paths(directory: str, globs: list[str], to_regex) -> list[str]:
+    """The representative paths under `directory` that no glob in the group selects."""
+    patterns = [to_regex(g) for g in globs]
+    missed = []
+    for suffix in REPRESENTATIVE:
+        path = f"{directory}/{suffix}"
+        if not any(p.match(path) for p in patterns):
+            missed.append(path)
+    return missed
 
 
 def check(root: pathlib.Path = REPO) -> int:
@@ -220,12 +239,14 @@ def check(root: pathlib.Path = REPO) -> int:
                     f"add an explicit '{package}': '{artifact}' entry"
                 )
 
+    to_regex = path_matcher(root)
     for path, directory in sorted(resolved.items()):
-        if not covered(directory, globs):
+        missed = uncovered_paths(directory, globs, to_regex)
+        if missed:
             problems.append(
-                f"{CI_PATHS}: '{CI_GROUP}' does not cover {directory}/ (for {path}), so the "
-                "contract probe is not scheduled for changes to it — the gate would exist "
-                "without running"
+                f"{CI_PATHS}: '{CI_GROUP}' does not select the contract probe for "
+                f"{', '.join(missed)} (for {path}) — the gate would exist without running for "
+                "those changes"
             )
 
     if problems:

@@ -1,6 +1,7 @@
 package ee.schimke.composeai.previewserver.contract
 
 import ee.schimke.composeai.bundle.BundleReader
+import ee.schimke.composeai.bundle.WebEmbed
 import ee.schimke.composeai.bundle.coordinates.CoordinateResolver
 import ee.schimke.composeai.daemon.DaemonLaunchDescriptor
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
@@ -18,6 +19,7 @@ import ee.schimke.composeai.imagecrop.ContentCrop
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.render.session.RenderSessionFactory
 import ee.schimke.composeai.render.session.subprocess.SubprocessRenderSessions
+import ee.schimke.composeai.web.WebEscaping
 import kotlin.reflect.KClass
 import okio.FileSystem
 
@@ -77,6 +79,17 @@ object ContractSurface {
    * consumers, not a privileged caller.
    */
   val renderSessions: RenderSessionFactory = SubprocessRenderSessions
+
+  /**
+   * The two web surfaces #4666 extracted. Naming the module in `contracts` proves an artifact with
+   * that coordinate resolves; it does not prove the type inside it is still there, still public,
+   * and still shaped the way serve calls it. These two references are what make that a checked
+   * claim — if `WebEscaping.attr` is renamed or `WebEmbed` moves again, this file stops compiling
+   * against the published jars, which is the whole point of the probe.
+   */
+  val webEscaping: WebEscaping = WebEscaping
+
+  val webEmbed: WebEmbed = WebEmbed
 
   /** File IO. The server funnels reads/writes through `:common-io` like every other module. */
   val fileSystem: FileSystem = SystemFileSystem
