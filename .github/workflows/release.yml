@@ -650,12 +650,12 @@ jobs:
             gh release upload "$TAG_NAME" \
               --clobber \
               artifacts/*.zip \
-              artifacts/*.tar.gz \
+              artifacts/*.tar.gz
           else
             echo "Release $TAG_NAME does not exist — creating."
             gh release create "$TAG_NAME" \
               --title "compose-ai-tools ${TAG_NAME#v}" \
               --generate-notes \
               artifacts/*.zip \
-              artifacts/*.tar.gz \
+              artifacts/*.tar.gz
           fi

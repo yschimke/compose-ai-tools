@@ -71,3 +71,6 @@ site/vendor/
 # for checkouts that still carry a pre-#3407 `<moduleDir>/.compose-preview-history/`, which the
 # daemon keeps using when present. Ignore at any depth.
 .compose-preview-history/
+
+# CI checks the extension out here so the cross-repo daemon-launch schema check is real.
+.compose-preview-vscode/

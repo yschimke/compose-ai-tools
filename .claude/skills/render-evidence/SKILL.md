@@ -73,7 +73,7 @@ For the **before** side, render at the base commit (`git stash`, or a worktree a
 - **VS Code panel UI** ([`src/webview/`](https://github.com/yschimke/compose-preview-vscode/blob/main/src/webview/), `media/preview*.css`) has
   its own capture path: the preview-harness boots the real `<preview-app>` bundle
   headlessly against fixture JSON. Loop and fixture authoring are in
-  [[`preview-harness/README.md`](https://github.com/yschimke/compose-preview-vscode/blob/main/preview-harness/README.md)](https://github.com/yschimke/compose-preview-vscode/blob/main/preview-harness/README.md#agent-workflow);
+  [`preview-harness/README.md`](https://github.com/yschimke/compose-preview-vscode/blob/main/preview-harness/README.md#agent-workflow);
   seed fixtures are `grid-default` and `a11y-findings`.
 - **A semantics overlay** has a renderable proxy: the `compose/semantics-wireframe`
   SVG.

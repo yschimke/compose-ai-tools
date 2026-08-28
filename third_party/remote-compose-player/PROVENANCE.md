@@ -29,7 +29,7 @@ for the one part of ours that survived the swap.
 
 Vendored from the upstream path above (`src/`, `package.json`,
 `package-lock.json`, `tsconfig.json`, `README.md`, `BUILDING.md`). Upstream's own
-`packaging/`, `compose-preview-vscode/`, and standalone-site tooling are intentionally
+`packaging/`, `vscode-extension/`, and standalone-site tooling are intentionally
 not vendored; only the library source needed to build the browser bundle.
 
 Local deltas over that snapshot (each also filed upstream):

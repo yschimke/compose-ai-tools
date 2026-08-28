@@ -25,7 +25,7 @@ checks that catch the most here, in order:
 1. **`./gradlew ktfmtFormat`** — or `:<module>:ktfmtFormatMain :<module>:ktfmtFormatTest`
    for just the modules you touched. `ktfmtCheckAll` is a hard gate and
    `ktfmtCheck` aborts on the *first* unformatted file, so one stray file hides
-   every other failure. TypeScript: `npm --prefix compose-preview-vscode run format`.
+   every other failure. TypeScript: `npm --prefix cli/serve-web run format`.
    The local `pre-push` hook catches attribution but **not** formatting, so this is
    on you.
 

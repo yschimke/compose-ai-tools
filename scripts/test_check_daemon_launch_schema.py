@@ -27,6 +27,16 @@ mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(mod)
 
 
+
+# The TypeScript half of this checker reads yschimke/compose-preview-vscode, which is a separate
+# repository. These tests need a checkout; without one they skip rather than fail, since "you have
+# not cloned the other repo" is not a drift signal. CI sets COMPOSE_PREVIEW_VSCODE_ROOT, so the
+# coverage is not lost where it counts.
+requires_ts_checkout = unittest.skipIf(
+    mod._ts_root is None,
+    "no compose-preview-vscode checkout (set COMPOSE_PREVIEW_VSCODE_ROOT)",
+)
+
 class SplitParams(unittest.TestCase):
     def test_a_generic_type_argument_comma_is_not_a_separator(self):
         # The regression that motivated the splitter: `Map<String, String>` was truncated to
@@ -122,6 +132,7 @@ class Parsers(unittest.TestCase):
         self.assertFalse(w["schemaVersion"][1], "schemaVersion must have no default")
         self.assertTrue(w["btaCompile"][1], "btaCompile must default to null")
 
+    @requires_ts_checkout
     def test_the_ts_reader_parses_and_marks_required_fields(self):
         t = mod.ts_interface(mod.TS_READER, "DaemonLaunchDescriptor")
         self.assertEqual(t["systemProperties"][0], "Record<string, string>")
@@ -220,12 +231,14 @@ class RealTree(unittest.TestCase):
     def test_repo_is_green(self):
         self.assertEqual(mod.check(), 0)
 
+    @requires_ts_checkout
     def test_every_registered_version_site_still_declares_its_symbol(self):
         for site in self.allowlist["schemaVersionSites"]:
             rel, symbol = site["file"], site["symbol"]
             consts = mod.ts_consts(rel) if rel.endswith(".ts") else mod.kotlin_consts(rel)
             self.assertIn(symbol, consts, f"{rel} no longer declares {symbol}")
 
+    @requires_ts_checkout
     def test_discovery_finds_every_registered_site(self):
         # If discovery stopped seeing a site, rule 1's "unregistered mirror" arm would go blind
         # while everything still reported green.
@@ -243,6 +256,7 @@ class RealTree(unittest.TestCase):
             self.assertIn(field, jvm)
             self.assertTrue(jvm[field][1], f"{field} must default — the plugin never writes it")
 
+    @requires_ts_checkout
     def test_each_writer_only_field_really_is_absent_from_the_readers_it_claims(self):
         readers = {
             "jvm": mod.kotlin_data_class(mod.JVM_READER, "DaemonLaunchDescriptor"),
@@ -376,6 +390,7 @@ class RealTree(unittest.TestCase):
         for rel in spec["alsoAppearsIn"]:
             self.assertIn("composeai.daemon.sandboxCount", mod.read(rel))
 
+    @requires_ts_checkout
     def test_a_stamp_resolves_by_package_not_by_bare_name(self):
         # `DaemonLaunchBuilder.kt` stamps a constant declared in a sibling file of the same
         # package, which must pass; a same-named symbol in an unrelated package must not.

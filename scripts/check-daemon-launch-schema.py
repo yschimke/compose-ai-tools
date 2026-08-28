@@ -77,11 +77,56 @@ ALLOWLIST = Path(__file__).resolve().parent / "daemon-launch-schema-allowlist.js
 
 WRITER = "gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonClasspathDescriptor.kt"
 JVM_READER = "daemon/protocol/src/main/kotlin/ee/schimke/composeai/daemon/protocol/DaemonLaunchDescriptor.kt"
-TS_READER = "https://github.com/yschimke/compose-preview-vscode's `src/daemon/`daemonProtocol.ts"
+# The TypeScript reader moved to yschimke/compose-preview-vscode with the extension. It is still
+# one of the three copies of this schema — and the only reader that *gates* on the version — so
+# dropping it from this checker would retire the check that matters most, on the copy furthest from
+# the writer.
+#
+# It is resolved from a checkout instead: `COMPOSE_PREVIEW_VSCODE_ROOT` (what CI sets), then a
+# sibling `../compose-preview-vscode`. When neither is present the TypeScript half SKIPS and the
+# Kotlin half still runs, because "the other repository is not checked out" is not a drift signal
+# and this script is wired into `check`, which every contributor runs.
+TS_READER_REL = "src/daemon/daemonProtocol.ts"
+
+
+def ts_root() -> Path | None:
+    """Root of a compose-preview-vscode checkout, or None when there is none."""
+    explicit = os.environ.get("COMPOSE_PREVIEW_VSCODE_ROOT", "").strip()
+    if explicit:
+        root = Path(explicit).resolve()
+        if not (root / TS_READER_REL).is_file():
+            raise SystemExit(
+                f"COMPOSE_PREVIEW_VSCODE_ROOT={explicit} does not contain {TS_READER_REL}"
+            )
+        return root
+    sibling = REPO_ROOT.parent / "compose-preview-vscode"
+    return sibling if (sibling / TS_READER_REL).is_file() else None
+
+
+_ts_root = ts_root()
+TS_READER = TS_READER_REL if _ts_root is not None else ""
+
+
+def resolve(rel: str) -> Path | None:
+    """Map a path from this script or the allowlist onto disk.
+
+    Kotlin paths are this repository's. TypeScript paths are the VS Code extension's, and the
+    extension is a separate repository now — so a `.ts` path resolves against the checkout
+    `ts_reader_path` found, and is None when there is none.
+    """
+    if rel.endswith(".ts"):
+        root = _ts_root
+        return (root / rel) if root is not None else None
+    return REPO_ROOT / rel
 
 
 def read(rel: str) -> str:
-    return (REPO_ROOT / rel).read_text(encoding="utf-8")
+    path = resolve(rel)
+    if path is None:
+        raise FileNotFoundError(
+            f"{rel} lives in yschimke/compose-preview-vscode; set COMPOSE_PREVIEW_VSCODE_ROOT"
+        )
+    return path.read_text(encoding="utf-8")
 
 
 def stripped(rel: str) -> str:
@@ -373,6 +418,8 @@ def check_versions(allowlist: dict, failures: list[str]) -> None:
 
     for site in sites:
         rel, symbol = site["file"], site["symbol"]
+        if rel.endswith(".ts") and _ts_root is None:
+            continue  # extension not checked out; see `ts_root`
         consts = ts_consts(rel) if rel.endswith(".ts") else kotlin_consts(rel)
         if symbol not in consts:
             failures.append(
@@ -408,6 +455,9 @@ def check_versions(allowlist: dict, failures: list[str]) -> None:
     # does (no import needed), or imports it by name.
     by_package: dict[str, set[str]] = {}
     for s in sites:
+        # TypeScript sites have no Kotlin package and, post-split, may not be on disk at all.
+        if s["file"].endswith(".ts"):
+            continue
         by_package.setdefault(s["symbol"], set()).add(package_declared_in(s["file"]))
     # Scoped, not global. Binding `schemaVersionSites` by package while leaving aliases as a bare
     # name set was an inconsistency in my own fix: any writer with a local `schemaVersion` property
@@ -685,20 +735,28 @@ def walk_sources() -> list[tuple[str, str]]:
     to discard the results costs more than every other check here put together.
     """
     out: list[tuple[str, str]] = []
-    for dirpath, dirnames, filenames in os.walk(REPO_ROOT):
-        dirnames[:] = sorted(d for d in dirnames if d not in PRUNE and not d.startswith("."))
-        for filename in sorted(filenames):
-            if not filename.endswith((".kt", ".ts")):
-                continue
-            path = Path(dirpath) / filename
-            out.append(
-                (
-                    path.relative_to(REPO_ROOT).as_posix(),
-                    strip_comments(
-                        path.read_text(encoding="utf-8"), nested=not filename.endswith(".ts")
-                    ),
-                )
+    # Both roots, so the "unregistered mirror" arm still sees TypeScript. The extension's sources
+    # left this repo with it; scanning only REPO_ROOT would let a new TS mirror appear unregistered
+    # and keep reporting green — the exact blindness this discovery exists to prevent. Paths from
+    # the extension are relative to ITS root, which is how the allowlist spells them.
+    roots = [REPO_ROOT] + ([_ts_root] if _ts_root is not None else [])
+    for root in roots:
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = sorted(
+                d for d in dirnames if d not in PRUNE and not d.startswith(".")
             )
+            for filename in sorted(filenames):
+                if not filename.endswith((".kt", ".ts")):
+                    continue
+                path = Path(dirpath) / filename
+                out.append(
+                    (
+                        path.relative_to(root).as_posix(),
+                        strip_comments(
+                            path.read_text(encoding="utf-8"), nested=not filename.endswith(".ts")
+                        ),
+                    )
+                )
     return out
 
 
@@ -919,15 +977,23 @@ def check() -> int:
         failures,
         ts=False,
     )
-    check_reader(
-        "vscode",
-        TS_READER,
-        ts_interface(TS_READER, "DaemonLaunchDescriptor"),
-        writer,
-        allowlist,
-        failures,
-        ts=True,
-    )
+    if TS_READER:
+        check_reader(
+            "vscode",
+            TS_READER,
+            ts_interface(TS_READER, "DaemonLaunchDescriptor"),
+            writer,
+            allowlist,
+            failures,
+            ts=True,
+        )
+    else:
+        print(
+            "check-daemon-launch-schema: SKIPPING the TypeScript reader — no "
+            "compose-preview-vscode checkout (set COMPOSE_PREVIEW_VSCODE_ROOT). "
+            "The Kotlin reader is still checked.",
+            file=sys.stderr,
+        )
     check_unknown_key_tolerance(allowlist, failures)
     check_mirrored_constants(allowlist, failures)
     check_raw_key_readers(writer, allowlist, failures)
@@ -974,22 +1040,25 @@ def check() -> int:
                 f"than letting it through unexamined."
             )
 
-    # `BtaCompileConfig` claims to be field-for-field across the two languages.
-    kt_bta = kotlin_data_class(WRITER, "BtaCompileConfig")
-    ts_bta = ts_interface(TS_READER, "BtaCompileConfig")
-    if list(kt_bta) != list(ts_bta):
-        failures.append(
-            f"  BtaCompileConfig is not field-for-field across the two languages.\n"
-            f"    kotlin: {list(kt_bta)}\n    typescript: {list(ts_bta)}"
-        )
-    else:
-        for field, (ktype, _) in kt_bta.items():
-            if not ts_types_agree(ktype, ts_bta[field][0]):
-                failures.append(
-                    f"  BtaCompileConfig.{field}: `{ktype}` in Kotlin vs "
-                    f"`{ts_bta[field][0]}` in TypeScript "
-                    f"(expected `{kotlin_to_ts(ktype)}`)."
-                )
+    # `BtaCompileConfig` claims to be field-for-field across the two languages. Only checkable
+    # with the extension checked out; see `ts_root`. Guarded with `if`, never an early `return` —
+    # the exit-code handling below has to run either way.
+    if TS_READER:
+        kt_bta = kotlin_data_class(WRITER, "BtaCompileConfig")
+        ts_bta = ts_interface(TS_READER, "BtaCompileConfig")
+        if list(kt_bta) != list(ts_bta):
+            failures.append(
+                f"  BtaCompileConfig is not field-for-field across the two languages.\n"
+                f"    kotlin: {list(kt_bta)}\n    typescript: {list(ts_bta)}"
+            )
+        else:
+            for field, (ktype, _) in kt_bta.items():
+                if not ts_types_agree(ktype, ts_bta[field][0]):
+                    failures.append(
+                        f"  BtaCompileConfig.{field}: `{ktype}` in Kotlin vs "
+                        f"`{ts_bta[field][0]}` in TypeScript "
+                        f"(expected `{kotlin_to_ts(ktype)}`)."
+                    )
 
     if failures:
         print("check-daemon-launch-schema: FAILED", file=sys.stderr)

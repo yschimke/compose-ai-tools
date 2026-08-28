@@ -516,10 +516,11 @@ internal const val LEGACY_HISTORY_DIRNAME: String = ".compose-preview-history"
  *
  * **Mirror of `common/io`'s `composeAiHistoryDir` — the plugin can't depend on that module, so the
  * layout is inlined here.** A third implementation lives in the VS Code extension
- * ([`src/historyPaths.ts`](https://github.com/yschimke/compose-preview-vscode/blob/main/src/historyPaths.ts)), which reads the archive the daemon writes. All three
- * must agree byte-for-byte; they're pinned by `HistoryPathsTest` (`:common-io`),
- * `AndroidPreviewClasspathTest` (here) and `historyPaths.test.ts` sharing the same golden vectors.
- * A drift between them doesn't crash — it silently gives the reader an empty history drawer.
+ * ([`src/historyPaths.ts`](https://github.com/yschimke/compose-preview-vscode/blob/main/src/historyPaths.ts)),
+ * which reads the archive the daemon writes. All three must agree byte-for-byte; they're pinned by
+ * `HistoryPathsTest` (`:common-io`), `AndroidPreviewClasspathTest` (here) and
+ * `historyPaths.test.ts` sharing the same golden vectors. A drift between them doesn't crash — it
+ * silently gives the reader an empty history drawer.
  *
  * History used to live at `<projectDir>/.compose-preview-history`, which grew an untracked
  * directory next to every previewed module's sources. It's a semi-persistent timeline of local

@@ -886,6 +886,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # The daemon-launch schema has three copies and one of them — the TypeScript reader, the
+      # only one that GATES on the version — moved to yschimke/compose-preview-vscode. The checker
+      # and its tests SKIP the TypeScript half without a checkout, which is right for a
+      # contributor's `check` and wrong here: CI is where the cross-repo half has to be real.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: yschimke/compose-preview-vscode
+          persist-credentials: false
+          path: .compose-preview-vscode
+          fetch-depth: 1
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
@@ -895,6 +905,10 @@ jobs:
       # and test its source here so removing that packaging matrix does not also
       # remove the viewer's only automated coverage.
       - name: Build CLI and bundle viewer
+        env:
+          # `:cli:check` runs `checkDaemonLaunchSchema`, whose TypeScript reader lives in the
+          # extension repo. Without this it silently checks only the Kotlin half.
+          COMPOSE_PREVIEW_VSCODE_ROOT: ${{ github.workspace }}/.compose-preview-vscode
         run: ./gradlew :cli:build :bundle-viewer:build
 
   # End-to-end gate for the XR composite still: build the native xr-composite binary, then run
@@ -979,7 +993,7 @@ jobs:
           xvfb-run -a -s "-screen 0 2000x1400x24" \
             python3 renderers/xr-composite/test/serve_smoke.py \
               "$PWD/dist/xr-composite" "$PWD/dist/materials" \
-              "$PWD/renderers/xr-composite/test/fixtures/spatial-scene"
+              "$PWD/schema/fixtures/spatial-scene"
       # Exercise the JVM client (:renderer-xr-client) against the real native server: unit tests
       # plus the XR_COMPOSITE_BIN-gated XrRenderServerIntegrationTest, which spawns the dist binary
       # and asserts a per-frame panel update changes the image. Mirrors the python smoke from Kotlin.
@@ -1210,6 +1224,16 @@ jobs:
       # install the way those are: a fallback is right for a diff that can
       # degrade to strict bytes, and wrong for the tests that prove the diff.
       # `PerceptualLibrariesTest` fails the suite if this step is ever dropped.
+      # The daemon-launch schema has three copies and one of them — the TypeScript reader, the
+      # only one that GATES on the version — moved to yschimke/compose-preview-vscode. The checker
+      # and its tests SKIP the TypeScript half without a checkout, which is right for a
+      # contributor's `check` and wrong here: CI is where the cross-repo half has to be real.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: yschimke/compose-preview-vscode
+          persist-credentials: false
+          path: .compose-preview-vscode
+          fetch-depth: 1
       - name: Install perceptual-diff libraries
         run: python3 -m pip install --quiet 'pixelmatch==0.4.0' 'Pillow>=10'
       - name: Run compare-previews tests
@@ -1256,7 +1280,17 @@ jobs:
       # version. Two of those copies carry a comment asking a human to keep them in sync; this is
       # the gate that makes it enforceable. Runs the check against the real tree too.
       - name: Run daemon-launch schema gate tests
-        run: python3 scripts/test_check_daemon_launch_schema.py -v
+        env:
+          COMPOSE_PREVIEW_VSCODE_ROOT: ${{ github.workspace }}/.compose-preview-vscode
+        run: |
+          set -euo pipefail
+          out=$(python3 scripts/test_check_daemon_launch_schema.py -v 2>&1) || { echo "$out"; exit 1; }
+          echo "$out"
+          # A skipped cross-repo test reports the same green as a passing one.
+          if grep -q "skipped" <<<"$out"; then
+            echo "::error::the cross-repo TypeScript schema tests SKIPPED — COMPOSE_PREVIEW_VSCODE_ROOT did not resolve"
+            exit 1
+          fi
       # The AdaptiveJetStream XR cell renders the sample's Subspaces with OUR compose-testing
       # against ITS compose. A version skew there fails only on main (the XR step is skipped on
       # PRs) and only at runtime, with a message that points nowhere near the cause.
