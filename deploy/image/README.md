@@ -204,9 +204,16 @@ are rare operator actions, and a drop takes a warm catalog cold across every one
 not a thing to make one click away from a page a wider audience can already see.
 
 What `/status` *does* show is when a catalog needs one: a row reading
-`themes optimized 10440/10440 · 10440 inherited, re-rendering` is warm everywhere and finished
-nowhere — every render came from a build that is no longer running, and the pass is replacing them.
-`/status.json` carries the same figure as `catalogList[].themeOptimization.dirty`.
+`themes optimized 10440/10440 · 10440 awaiting re-render` is warm everywhere and finished nowhere —
+every one of those renders is still queued for replacement, and until the pass gets to them the
+catalog is serving pixels it does not consider current. `/status.json` carries the same figure as
+`catalogList[].themeOptimization.dirty`.
+
+The row deliberately does not say where those pixels came from or what the pass is doing right now.
+Both are usually "another build" and "re-rendering", but `regenerate` marks *this* build's renders
+too, and the queue can be paused or waiting on admission — the count cannot tell you which, so it
+does not claim to. A `· N failed` beside it is the one to act on: those are targets the pass has
+given up re-rendering, and they stay on the old pixels until something changes.
 
 ### GitHub auth on `preview.coo.ee`
 

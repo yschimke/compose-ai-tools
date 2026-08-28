@@ -3117,22 +3117,26 @@ class ServeWebFixtureTest {
             healthHref = "#recent-daemon-failures",
             summary =
               listOf(
+                // Both cards are derived from the catalog list by production
+                // `ServeStatusSnapshot.toView()`, so they have to move with it: the `wear-m3` entry
+                // below adds a fifth catalog and its 30 previews. A fixture whose summary disagrees
+                // with its own table is a golden screenshot of a state the server cannot produce.
                 ServeWeb.Stat(
                   "Catalogs",
-                  "4/4 loaded",
+                  "5/5 loaded",
                   ServeWeb.Meter(
-                    total = 4,
-                    segments = listOf(ServeWeb.MeterSegment("loaded", 4, "primary")),
+                    total = 5,
+                    segments = listOf(ServeWeb.MeterSegment("loaded", 5, "primary")),
                   ),
                 ),
                 ServeWeb.Stat(
                   "Published catalog renders",
-                  "76 rendered · 1 failed · 0 deferred",
+                  "106 rendered · 1 failed · 0 deferred",
                   ServeWeb.Meter(
-                    total = 77,
+                    total = 107,
                     segments =
                       listOf(
-                        ServeWeb.MeterSegment("rendered", 76, "primary"),
+                        ServeWeb.MeterSegment("rendered", 106, "primary"),
                         ServeWeb.MeterSegment("failed", 1, "warning"),
                       ),
                   ),
