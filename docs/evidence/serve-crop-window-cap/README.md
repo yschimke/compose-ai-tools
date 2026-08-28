@@ -49,7 +49,8 @@ still never upscaled — and never wrongly *shrunk* by a lower cap it was alread
 ## Pictures
 
 A 400×300 component published twice: once gutter-less (the plain card) and once captured with a
-20px gutter (the cropped card). They are the same component and must draw the same size.
+20px gutter (the cropped card). They are the same component and must draw the same size. The first
+two figures in each shot are that pair; the last two are the system-card heroes below.
 
 ### Narrow viewport (560px — the `max-width: 640px` block is in force)
 
@@ -67,24 +68,76 @@ Both are 320×240 before and after: the fix re-derives the same number at the 24
 | --- | --- |
 | ![Desktop before](desktop-before.png) | ![Desktop after](desktop-after.png) |
 
+## The system-card hero, which is a different well
+
+A front-door system card's hero is not a grid thumbnail: `.cp-syslist .cp-imgwrap` is a fixed
+**220px** row at every width, and the plain hero in it is exempted from the grid's image cap for
+exactly that reason —
+
+```css
+.cp-syslist .cp-imgwrap { height: 220px; }
+.cp-syslist .cp-imgwrap > img { max-height: none; }
+```
+
+A **cropped** hero — the fallback `homeIndexPage` renders when hero prebaking failed and it falls
+back to `heroPreviewId` + `heroCrop` — never got the matching exemption. It takes its cap through
+`--cp-thumb-cap` rather than through `max-height`, so it drew to the grid's number in a row that is
+not the grid's: 240px at desktop, overflowing the row, and 200px in the narrow block, leaving it
+visibly short beside the prebaked hero next to it. Only cropped fallback heroes were affected,
+which is why it survived the #4544 fix.
+
+```css
+.cp-syslist .cp-crop--bleed { --cp-thumb-cap: 196px; }
+```
+
+**196px, not the row's 220px.** `.cp-imgwrap` carries 12px of padding under the border-box `*`
+rule, so the row has 196px of *content* height — which is exactly what the prebaked hero measures.
+The row height would overflow the well by 12px each way, and in the narrow block would push the
+window up from 200px to 220px: a bigger mismatch than the one being fixed.
+
+**`--bleed` only.** `ServeWeb` emits that class for `!crop.clip` — the capture-gutter window, and
+the one crop whose published `--cp-crop-w-per-cap` is box width per 1px of *height*, because
+`computeGutterCrop` caps on height. A content crop's ratio is against its largest edge, so handing
+it a height would shrink a landscape window that never threatened the row.
+
+| before | after |
+| --- | --- |
+| ![Narrow before](narrow-before.png) | ![Narrow after](narrow-after.png) |
+
+The third and fourth figures in each shot are the two heroes, and both now come off the same
+guttered source: `ServeHeroImages.bake` keeps the whole canvas for a gutter crop
+(`crop?.takeIf { it.clip }`), so the prebaked path shows the gutter rather than a close crop.
+Before, the cropped one is 267×200 in a well with 196px of content height; after, it is 261×196 —
+the well exactly, at both widths.
+
 ## Reproducing
 
 `harness.mjs` loads the **shipped** `serve.css` and reproduces the exact markup `thumbImg` emits,
-so the pictures track the stylesheet rather than a hand-drawn mock; `before` pins the frozen-px
-window the server used to bake in.
+so the pictures track the stylesheet rather than a hand-drawn mock; `before` pins the values the
+server (and the stylesheet) used to produce.
+
+It needs Playwright, which this repository declares in **one** place — the `preview-server`
+harness workspace. From the repository root:
 
 ```
-cd cli/serve-web && npm ci        # playwright
+npm --prefix preview-server/preview-harness ci
+npx --prefix preview-server/preview-harness playwright install chromium
 node docs/evidence/serve-crop-window-cap/harness.mjs
 ```
+
+Set `CHROME_PATH` to a Chromium you already have to skip that second line. Every command runs from
+the repository root — an earlier version of this file said `cd cli/serve-web && npm ci`, which both
+left the shell somewhere `docs/evidence/...` does not resolve from and installed a workspace that
+has never declared Playwright.
 
 It prints the measured sizes it screenshots, which is the assertion in picture form:
 
 ```
-before narrow  plain 267x200  window 320x240
-before desktop plain 320x240  window 320x240
-after  narrow  plain 267x200  window 267x200
-after  desktop plain 320x240  window 320x240
+before narrow  plain 267x200  window 320x240  hero 454x196  hero-window 267x200
+before desktop plain 320x240  window 320x240  hero 454x196  hero-window 320x240
+after  narrow  plain 267x200  window 267x200  hero 454x196  hero-window 261x196
+after  desktop plain 320x240  window 320x240  hero 454x196  hero-window 261x196
 ```
 
-Set `CHROME_PATH` to skip playwright's browser download when a Chromium is already installed.
+`hero` is the prebaked hero, unchanged throughout — which is the point: it is the cropped one that
+moves onto it.

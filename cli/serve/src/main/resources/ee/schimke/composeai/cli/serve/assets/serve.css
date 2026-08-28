@@ -1477,6 +1477,22 @@ cp-parity-scores { display: contents; }
 .cp-syslist .cp-imgwrap { min-height: 0; height: 220px; overflow: visible;
   border-radius: var(--md-sys-shape-corner-medium) var(--md-sys-shape-corner-medium) 0 0; }
 .cp-syslist .cp-imgwrap > img { width: 100%; height: 100%; max-height: none; object-fit: contain; }
+/* …and a CROPPED hero gets the same exemption, in the only form a clip window can take it. The
+   line above frees a plain hero from the grid's image cap because this row is a fixed 220px; a
+   clip window is capped through `--cp-thumb-cap` instead (see `.cp-crop`), so it has to be told
+   the equivalent number or it draws to the grid's — 240px at desktop, overflowing the row, and
+   200px in the narrow block, leaving a fallback hero visibly short beside the prebaked one.
+
+   196px, not 220px. `.cp-imgwrap` carries 12px of padding under the border-box `*` rule, so the
+   220px row has 196px of CONTENT height — which is exactly what the plain hero measures. The row
+   height would overflow the well by 12px each way, and in the narrow block would push the window
+   UP from 200px to 220px: a bigger mismatch than the one being fixed.
+
+   `--bleed` only. `ServeWeb` emits that class for `!crop.clip`, the capture-gutter window, and it
+   is the one crop whose published `--cp-crop-w-per-cap` is box width per 1px of HEIGHT, because
+   `computeGutterCrop` caps on height. A content crop's ratio is against its LARGEST EDGE, so
+   handing it a height would shrink a landscape window that never threatened the row at all. */
+.cp-syslist .cp-crop--bleed { --cp-thumb-cap: 196px; }
 /* A front-door card is a poster, not a table row: the meta block gets its own padding, the title
    and the library coordinate sit on separate rhythms, and the count line is divided off so a
    three-line coordinate can't run straight into it. */
