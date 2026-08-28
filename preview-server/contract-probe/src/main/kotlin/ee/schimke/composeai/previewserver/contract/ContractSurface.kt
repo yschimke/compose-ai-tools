@@ -81,15 +81,29 @@ object ContractSurface {
   val renderSessions: RenderSessionFactory = SubprocessRenderSessions
 
   /**
-   * The two web surfaces #4666 extracted. Naming the module in `contracts` proves an artifact with
-   * that coordinate resolves; it does not prove the type inside it is still there, still public,
-   * and still shaped the way serve calls it. These two references are what make that a checked
-   * claim — if `WebEscaping.attr` is renamed or `WebEmbed` moves again, this file stops compiling
-   * against the published jars, which is the whole point of the probe.
+   * The two web surfaces #4666 extracted.
+   *
+   * Bound as typed function references rather than as the objects themselves, and that distinction
+   * is the finding this block exists to answer. `val webEscaping: WebEscaping = WebEscaping` proves
+   * only that a public object of that name exists in the published jar; every member could be
+   * renamed, hidden or re-signed underneath it and this file would still compile. A `::member`
+   * reference with an explicit function type pins the name *and* the signature, so a parameter
+   * added or a return type changed fails here — which is the regression the probe is for.
+   *
+   * These are exactly the members serve calls, drawn from its real import set.
    */
-  val webEscaping: WebEscaping = WebEscaping
+  val htmlEscape: (String) -> String = WebEscaping::htmlEscape
+  val jsString: (String) -> String = WebEscaping::jsString
+  val urlEncodeSegment: (String) -> String = WebEscaping::urlEncodeSegment
+  val formatPercent: (Double, Int) -> String = WebEscaping::formatPercent
+  val pngDimensions: (ByteArray) -> Pair<Int, Int> = WebEscaping::pngDimensions
 
-  val webEmbed: WebEmbed = WebEmbed
+  val webEmbedGenerate:
+    (String, String, List<WebEmbed.Preview>, WebEmbed.InlineMode) -> WebEmbed.Output =
+    WebEmbed::generate
+
+  val webEmbedScriptName: String = WebEmbed.SCRIPT_NAME
+  val webEmbedIndexName: String = WebEmbed.INDEX_NAME
 
   /** File IO. The server funnels reads/writes through `:common-io` like every other module. */
   val fileSystem: FileSystem = SystemFileSystem
