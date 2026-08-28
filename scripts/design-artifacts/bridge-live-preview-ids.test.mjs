@@ -1508,3 +1508,55 @@ test("separate LTR and RTL annotations resolve to their own preview, not the fir
     rtl: "pkg.CatalogKt.FilledButton_ar",
   });
 });
+
+test("a second-tier cell's tier is stamped in the same pass, so a baked-only catalog carries it", () => {
+  // `applyCatalogPreviewDeclarations` joins on `image.previewId`, which only the live bridge
+  // writes, and it runs only when a live lane or a buildable source exists. A baked-only catalog
+  // — which the public server explicitly serves — therefore never saw `secondary` at all and
+  // listed its second-tier cells in full, defeating the flag exactly where nothing can re-render.
+  // The annotation that drew the pixels is resolved here without a bridge or a previewId.
+  const spec = {
+    groups: [{ components: [{ componentId: "Progress/Segmented", preview: "SegmentedProgress" }] }],
+  };
+  const manifest = {
+    components: [
+      {
+        componentId: "Progress/Segmented",
+        images: [
+          { state: "default", path: "base.png" },
+          { state: "segments-13", path: "s13.png" },
+          { state: "disabled", path: "disabled.png" },
+        ],
+      },
+    ],
+  };
+  const bundle = {
+    previews: [
+      { id: "SegmentedProgress", functionName: "SegmentedProgress", params: { density: 2 } },
+      {
+        id: "SegmentedProgress_VARIANT_segments-13",
+        functionName: "SegmentedProgress",
+        params: { density: 2 },
+        overrides: { name: "segments-13", secondary: true },
+      },
+      {
+        id: "SegmentedProgress_VARIANT_disabled",
+        functionName: "SegmentedProgress",
+        params: { density: 2 },
+        overrides: { name: "disabled" },
+      },
+    ],
+  };
+
+  stampPreviewDensities(manifest, spec, [bundle]);
+
+  assert.deepEqual(
+    manifest.components[0].images.map((i) => i.secondary),
+    [undefined, true, undefined],
+  );
+  // No previewId was needed, and none was invented.
+  assert.deepEqual(
+    manifest.components[0].images.map((i) => i.previewId),
+    [undefined, undefined, undefined],
+  );
+});

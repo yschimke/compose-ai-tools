@@ -122,6 +122,12 @@ function variantIdentity(preview) {
     // lays its images out exactly like a bridged one's (m3-catalog#179).
     captureGutter: params.captureGutter ?? null,
     locale: typeof params.locale === "string" ? params.locale : null,
+    // Also not an identity field, and carried for exactly the reason the gutter is: a
+    // second-tier cell is a fact about the ANNOTATION that drew this image, and the declarations
+    // pass that also publishes it joins on `image.previewId` and runs only where a live lane or a
+    // buildable source exists. A baked-only catalog — which the public server serves read-only —
+    // therefore never saw the flag and listed every second-tier cell in full.
+    secondary: preview.overrides?.secondary === true,
   };
 }
 
@@ -577,6 +583,10 @@ export function stampPreviewDensities(manifest, spec, bundles) {
         image.density = density;
         stamped++;
       }
+      // The tier rides the same resolution, for the same reason the gutter does: this is the one
+      // pass that reaches every catalog, and it needs no `previewId` to know which annotation drew
+      // the pixels. See [variantIdentity] for what the declarations pass misses.
+      if (resolved?.secondary === true) image.secondary = true;
       // The gutter rides on the same resolution: pixels need the density this pass just picked, so
       // there is no second place that could disagree about which annotation rendered this image.
       const gutter = captureGutterPx(resolved?.captureGutter, {
