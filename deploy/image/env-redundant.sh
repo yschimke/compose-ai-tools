@@ -38,6 +38,24 @@ done < <(
   } | sed 's/^\${//; s/}$//'
 )
 
+# A trailing backslash is not a continuation here, it is a fatal typo — and a silent one. Compose
+# reads every line as its own KEY=VALUE, so the backslash becomes part of the value and the lines
+# below it are parsed as junk keys. When the value is SERVE_JAVA_OPTS that backslash reaches
+# JAVA_TOOL_OPTIONS, the JVM refuses to start on an unrecognised option, and the box serves 502
+# behind a restart-looping container with nothing in the compose output naming the cause.
+continuations=()
+while IFS= read -r line; do
+  [[ "${line}" =~ ^[[:space:]]*# ]] && continue
+  [[ "${line}" == *\\ ]] && continuations+=("${line%%=*}")
+done < "${env_file}"
+
+if ((${#continuations[@]})); then
+  echo "BROKEN — these lines end in a backslash, which .env does not treat as a continuation:" >&2
+  printf '  %s\n' "${continuations[@]}" >&2
+  echo "Join each onto one line. Left as is, the container will not start." >&2
+  exit 1
+fi
+
 redundant=()
 empty=()
 active=()
