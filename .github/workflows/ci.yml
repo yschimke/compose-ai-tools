@@ -339,7 +339,19 @@ jobs:
             # `gradle/libs.versions.toml` resolves to. Without it, an ABI-changing edit that also
             # trips a global path skips the gate entirely — which is how the gate ends up existing
             # without running, the exact failure this was added to stop.
+            #
+            # The four `rc-player-*` modules are excluded because the macOS job below already owns
+            # them: their dumps are klib dumps covering the iOS targets, and that is the repo's one
+            # macOS job. Excluded rather than merely duplicated — this branch runs on
+            # `ubuntu-latest`, and while the checks do pass on Linux (verified with
+            # `--rerun-tasks`), that was in a container with the Kotlin/Native toolchain already
+            # warm, which a fresh runner is not. Their coverage is not weakened: the macOS job runs
+            # exactly these four unconditionally.
             ./gradlew test checkKotlinAbi --continue \
+              -x :rc-player-trace:checkKotlinAbi \
+              -x :rc-player-protocol:checkKotlinAbi \
+              -x :rc-player-runtime:checkKotlinAbi \
+              -x :rc-player-compose:checkKotlinAbi \
               -x :samples:android:test \
               -x :samples:android-alpha:test \
               -x :samples:android-library:test \
