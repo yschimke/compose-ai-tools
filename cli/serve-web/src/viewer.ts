@@ -1899,7 +1899,12 @@ function specSrcRaw(): string {
     return specLane ? specLane.getAttribute("data-spec-src") || "" : "";
 }
 var specSrc = specSrcRaw();
-var specLoaded = false; // the raster is requested once, on the lane's first entry
+var specLoaded = false; // the raster is requested once per source, on the lane's entry
+// …and the failure handler is bound once for the LIFE of the element, not once per request.
+// `specLoaded` is cleared on every source switch so the new source's raster is fetched, and
+// binding beside that fetch added a listener each time — after two switches a single failed load
+// reported the same error three times.
+var specErrorBound = false;
 // Same treatment as the Wasm iframe's src (see wasmBaseSrc): the URL comes from a server-set
 // data- attribute, but it is resolved against our own origin and refused unless it stays on it,
 // so a `javascript:`/`data:` URL can never reach the stage even if the attribute were ever
@@ -1929,11 +1934,14 @@ function openSpec() {
     img.style.display = "none";
     canvas.hidden = true;
     specImg!.hidden = false;
-    if (!specLoaded) {
-        specLoaded = true;
+    if (!specErrorBound) {
+        specErrorBound = true;
         specImg!.addEventListener("error", function () {
             showModeError("The design spec could not be loaded.");
         });
+    }
+    if (!specLoaded) {
+        specLoaded = true;
         // A property write, like every other image/frame lane here (`img.src`, `wasmFrame.src`),
         // of an origin-checked URL.
         specImg!.src = specRasterSrc();
