@@ -2758,12 +2758,24 @@ private fun Modifier.applyPaintDecorator(
         val contentScope = this
         clipRect { contentScope.drawContent() }
       }
+    // The four corners are pixels whatever the document's density behavior says, so there is no
+    // `dpTypedPixels` here. `remote-creation-compose` writes a rounded clip radius through
+    // `RemoteDp.toPx()` at capture time and remote-core's `RoundedClipRectModifierOperation` never
+    // rescales it, so a 26dp corner is on the wire as `26` at density 1.0 and `52` at density 2.0.
+    // Measured on the `AppCardRemote-640x480` fixture: header density 2.0, DENSITY_BEHAVIOR_DP, and
+    // four literal `52f` corners for a 26dp card — see `RcRoundedClipDensityTest`.
+    //
+    // Scaling them again doubled every rounded clip at density 2.0, the same bug #4710 fixed in the
+    // embedded player. It hides on stadium and circle shapes, where `RoundRect` normalizes an
+    // oversized corner straight back to the shape it should have been; only a corner genuinely
+    // smaller than half its box keeps the doubling, which is why cards showed it and buttons did
+    // not. And at density 1.0 the multiply is a no-op, which is the density every unit test used.
     is RcRoundedClipRectModifier ->
       drawWithContent {
-        val topStart = state.dpTypedPixels(state.resolve(operation.topStart), localDensity)
-        val topEnd = state.dpTypedPixels(state.resolve(operation.topEnd), localDensity)
-        val bottomStart = state.dpTypedPixels(state.resolve(operation.bottomStart), localDensity)
-        val bottomEnd = state.dpTypedPixels(state.resolve(operation.bottomEnd), localDensity)
+        val topStart = state.resolve(operation.topStart)
+        val topEnd = state.resolve(operation.topEnd)
+        val bottomStart = state.resolve(operation.bottomStart)
+        val bottomEnd = state.resolve(operation.bottomEnd)
         val path =
           Path().apply {
             addRoundRect(
