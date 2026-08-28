@@ -1840,6 +1840,33 @@ const FIXTURE_STATES = [
           )
         );
       });
+      // …and then every card has to be RESTING on that recording's last frame.
+      //
+      // `complete` above says the APNG has DECODED, not that it has finished playing, and the
+      // two are 560 ms apart: the stub is 14 frames at 40 ms with `acTL` plays=1. Four cards
+      // whose `src` swaps land at slightly different moments then put the shutter on whichever
+      // frame each one happened to be showing, which made this the one nondeterministic capture
+      // in the set — eight `--rerun`-equivalent renders of `ca7196ce11` produced THREE distinct
+      // hashes, all of them differing only in the cards' switch knobs mid-travel. The diff bot
+      // reported it as changed on PRs that touch none of this.
+      //
+      // Rest is what the comment above promises, and rest is observable without hard-coding the
+      // stub's duration: poll the grid's pixels and require two consecutive reads to agree. The
+      // interval is wider than one frame, so a still-playing card cannot produce the same bytes
+      // twice, and a rested one always does. Bounded, like the decode wait beside it.
+      const motionGrid = page.locator("#cp-motion-index");
+      let priorGrid = null;
+      await expect
+        .poll(
+          async () => {
+            const shot = (await motionGrid.screenshot()).toString("base64");
+            const settled = shot === priorGrid;
+            priorGrid = shot;
+            return settled;
+          },
+          { intervals: Array(40).fill(120), timeout: 20_000 },
+        )
+        .toBe(true);
       // The pointer is a means here, not the subject: left on the button it bakes a hover ring
       // into a baseline about the cards.
       await page.mouse.move(0, 0);
