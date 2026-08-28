@@ -4540,13 +4540,19 @@ class ServeHttpServer(
    * right last resort for it — "better than nothing, and usually the same project". Gating on the
    * repo instead would silently drop the tracker from every such catalog, which
    * `ServeDesignPageRoutingTest` and `ServeHttpRoutingTest` both assert it must not.
+   *
+   * [ServeBundleHost.isCatalog] rather than the host type, because `ServeBundleHost` also backs a
+   * `--bundles` directory and an uploaded portable bundle. Those are plain bundles with no
+   * `catalog.json`, and the type alone read them as catalogs — so an upload was offered a report
+   * about "this catalog" against the fallback repo, the same defect as the plain module one door
+   * along (#4728 review).
    */
   private fun RoutingContext.pageScopedReportIssue(
     renderHost: ServeHost,
     sessionId: String,
     subject: String,
   ): ServeWeb.ReportIssue? {
-    val bundleHost = catalogBundleHost(renderHost) ?: return null
+    val bundleHost = catalogBundleHost(renderHost)?.takeIf { it.isCatalog } ?: return null
     val context =
       ServeIssueReport.Context(
         repo = ServeIssueReport.repoFor(bundleHost.catalogSource, bundleHost.provenance),
@@ -4582,9 +4588,21 @@ class ServeHttpServer(
    */
   private fun RoutingContext.pageUrlPinningChrome(): String {
     val url = externalPageUrl()
-    if (call.request.queryParameters[CHROME_PARAM] != null) return url
+    // A RECOGNISED pin is left alone: `componentBrowserMode` honours it, so the URL already names
+    // the mode the page was served in. An UNRECOGNISED one is not — `interfaceMode` returns null
+    // for anything but `catalog`/`dev`, and the request falls back to the cookie or the server
+    // default. Carrying that value into the report would pin a mode the page was never in, which
+    // is the wrong-surface failure this exists to prevent arriving through the one value nobody
+    // validated. So it is REPLACED rather than kept or appended to — a second `chrome=` would
+    // leave the reader's own parser to break the tie.
+    if (interfaceMode(call.request.queryParameters[CHROME_PARAM]) != null) return url
     val mode = if (componentBrowserMode()) "catalog" else "dev"
-    return url + (if ('?' in url) "&" else "?") + "$CHROME_PARAM=$mode"
+    val base = url.substringBefore('?')
+    val kept =
+      url.substringAfter('?', "").split('&').filter {
+        it.isNotEmpty() && it.substringBefore('=') != CHROME_PARAM
+      }
+    return "$base?" + (kept + "$CHROME_PARAM=$mode").joinToString("&")
   }
 
   private fun catalogBundleHost(host: ServeHost): ServeBundleHost? =

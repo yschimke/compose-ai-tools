@@ -898,6 +898,9 @@ class ServeCatalogStore(
           dir,
           safe,
           verdict,
+          // The one construction site with a `catalog.json` behind it. See
+          // [ServeBundleHost.isCatalog].
+          isCatalog = true,
           title = catalog.title?.takeIf { it.isNotBlank() },
           subtitle =
             catalog.library.filter { it.isNotBlank() }.take(2).joinToString(" · ").ifBlank { null },
