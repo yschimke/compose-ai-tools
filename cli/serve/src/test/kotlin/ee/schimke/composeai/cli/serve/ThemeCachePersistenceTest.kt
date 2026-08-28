@@ -12,6 +12,7 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.Json
 
 /**
  * The disk tier for warmed theme renders, and the identity that decides when it may be read.
@@ -1038,6 +1039,16 @@ class ThemeCachePersistenceTest {
     pngs.forEach { assertTrue(it.setLastModified(at), "could not backdate ${it.name}") }
   }
 
+  /** The durable dirty boundary recorded in a generation's manifest. */
+  private fun boundaryOf(root: File, fingerprint: String): Long = Json {
+    ignoreUnknownKeys = true
+  }
+    .decodeFromString(
+      GenerationInputs.serializer(),
+      File(File(File(root, "m3-catalog"), fingerprint), ThemeCacheStore.MANIFEST_NAME).readText(),
+    )
+    .dirtyBeforeEpochMillis
+
   private fun inputs(fingerprint: String) =
     GenerationInputs(
       system = "m3-catalog",
@@ -1420,6 +1431,112 @@ class ThemeCachePersistenceTest {
         )
       }
     }
+  }
+
+  /**
+   * The reconcile's convergence clear races the operator's regenerate, and used to lose it.
+   *
+   * `dirtyCount()` can reach the clear concurrently with `markAllDirty`, and unlike the clear
+   * inside `put` it held no generation write lock. It could observe both sets empty; `markAllDirty`
+   * could then take the lock, persist a fresh boundary, repopulate the queue and answer the admin
+   * route `{"queued": true, "entries": N}`; and the reconcile — still acting on what it saw before
+   * any of that — would write a zero boundary over the new mark and clear the queue it never looked
+   * at. A durable request, promised to survive the next roll, gone in both tiers.
+   */
+  @Test
+  fun `the convergence clear is refused while the generation write lock is held`() {
+    val root = tempDir()
+    val fp = "c".repeat(64)
+    val grace = 60 * 60_000L
+    // Anchored to the real clock, then advanced by hand: the dirty boundary is compared against
+    // FILE timestamps, so a clock starting anywhere else classifies every render as current.
+    var now = System.currentTimeMillis()
+
+    // A previous build's render, so the cross-build open dates a boundary into the future and the
+    // overlap bookkeeping is in play at all.
+    store(root).open("m3-catalog", fp, inputs(fp))!!.put("one", byteArrayOf(1))
+    ageRenders(root, "m3-catalog", fp, byMillis = 10_000)
+
+    val rolling = ThemeCacheStore(root, graceMillis = grace, clock = { now })
+    val generation =
+      assertNotNull(rolling.open("m3-catalog", fp, inputs(fp).copy(toolVersion = "1.15.0")))
+    val boundary = now + grace
+    assertEquals(1, generation.dirtyCount(), "the previous build's render is queued")
+    assertEquals(boundary, boundaryOf(root, fp))
+
+    // Re-rendered inside the overlap window: the dirty queue empties, but the write is at risk of a
+    // co-replica renaming over it, so convergence is not reached yet.
+    generation.put("one", byteArrayOf(2), replaceExisting = true)
+    assertEquals(0, generation.dirtyCount())
+    assertEquals(boundary, boundaryOf(root, fp), "still future-dated — the overlap is not over")
+
+    // The overlap closes. The reconcile now has nothing left to re-dirty and would clear.
+    now += grace + 1_000
+    val lockFile = File(File(File(root, "m3-catalog"), fp), ".write.lock")
+    RandomAccessFile(lockFile, "rw").use { raf ->
+      raf.channel.lock().use {
+        generation.dirtyCount()
+        assertEquals(
+          boundary,
+          boundaryOf(root, fp),
+          "the clear is deferred rather than racing whatever holds the lock",
+        )
+      }
+    }
+
+    // And deferred is not lost: the next call retries, which is why an empty at-risk map is no
+    // longer an early return.
+    generation.dirtyCount()
+    assertEquals(0L, boundaryOf(root, fp), "convergence lands once the lock is free")
+  }
+
+  @Test
+  fun `an operator's regenerate is not erased by a converging reconcile`() {
+    // The same interleaving from the other side: whichever of the two gets the lock first, the
+    // other sees its result rather than a stale copy of the state it replaced.
+    val root = tempDir()
+    val fp = "d".repeat(64)
+    val grace = 60 * 60_000L
+    var now = System.currentTimeMillis()
+
+    store(root).open("m3-catalog", fp, inputs(fp))!!.put("one", byteArrayOf(1))
+    ageRenders(root, "m3-catalog", fp, byMillis = 10_000)
+    val rolling = ThemeCacheStore(root, graceMillis = grace, clock = { now })
+    val generation =
+      assertNotNull(rolling.open("m3-catalog", fp, inputs(fp).copy(toolVersion = "1.15.0")))
+    generation.put("one", byteArrayOf(2), replaceExisting = true)
+    now += grace + 1_000
+
+    // The operator marks first.
+    assertEquals(1, generation.markAllDirty(), "the regenerate takes the lock and lands")
+    assertEquals(now, boundaryOf(root, fp))
+
+    // The reconcile runs afterwards and must leave the mark alone: it re-reads the condition under
+    // the lock, and the queue is no longer empty.
+    assertEquals(1, generation.dirtyCount(), "the operator's request survives")
+    assertEquals(now, boundaryOf(root, fp), "on disk too, so it survives the next roll")
+  }
+
+  @Test
+  fun `a disabled optimizer has no targets to wake, even though it still persists`() {
+    // `-Dcomposeai.serve.themeOptimization=false` configures the persistable set and deliberately
+    // leaves the target set empty: renders still reach disk, but no pass has a queue to work. The
+    // regenerate route already refuses on this (`markPersistedDirty` answers -1); the drop route
+    // succeeded and then woke the optimizer anyway, resuming a suspended host and carrying
+    // `keepLiveWarm` on into `scheduleWarm` — an Android daemon cold start and a live seat spent on
+    // a refill that cannot happen.
+    val root = tempDir()
+    val fp = "e".repeat(64)
+    val generation = assertNotNull(store(root).open("m3-catalog", fp, inputs(fp)))
+    val cache = CatalogThemeCache(persistence = generation)
+    cache.configurePersistable(listOf("one", "two"))
+
+    assertFalse(cache.hasOptimizationTargets, "nothing would work a queue")
+    assertEquals(-1, cache.markPersistedDirty(), "and regenerate says so")
+    assertTrue(cache.dropPersisted(), "but the drop itself still succeeds — no pass is needed")
+
+    cache.configureTargets(listOf("one", "two"))
+    assertTrue(cache.hasOptimizationTargets, "an enabled pass is worth waking")
   }
 
   @Test

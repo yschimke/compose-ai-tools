@@ -548,9 +548,19 @@ class ThemeCacheStore(
      * Costs one `stat` per at-risk write, once: the map is emptied on the way out and never
      * refilled, because past [dirtyBefore] no other replica is still writing here. Anything that
      * moved under us goes back on the dirty queue to be rendered again.
+     *
+     * An **empty** at-risk map is not an early return, even though it has nothing to stat. The
+     * convergence clear below can be refused — it is try-lock, and a foreground render publishing
+     * at that instant holds the lock — and the map is drained by the loop whether or not the clear
+     * that follows it succeeds. Returning early on an empty map would therefore strand a
+     * future-dated boundary in the manifest permanently, on the one interleaving where the clear
+     * had to be deferred: every later call would see nothing to reconcile and never reach the
+     * retry. The cost of not returning is three field reads in
+     * [clearBoundaryIfConvergedUnderLock]'s own pre-check, which is what keeps the status path off
+     * the file lock.
      */
     private fun reconcileAtRiskWrites() {
-      if (atRiskWrites.isEmpty() || clock() < dirtyBefore) return
+      if (clock() < dirtyBefore) return
       for ((name, writtenAt) in atRiskWrites.toList()) {
         atRiskWrites.remove(name)
         if (name !in present) continue
@@ -564,7 +574,7 @@ class ThemeCacheStore(
       // some time ago and the at-risk set empties here, with no further write to notice. Leaving
       // the clear to `put` alone stranded the future-dated boundary in the manifest for exactly the
       // rollout this bookkeeping exists to serve.
-      clearBoundaryIfConverged()
+      clearBoundaryIfConvergedUnderLock()
     }
 
     /**
@@ -573,9 +583,45 @@ class ThemeCacheStore(
      *
      * Called from both places convergence can be reached — the write that clears the last dirty
      * name, and the reconcile that clears the last at-risk one — because either can be the last.
+     *
+     * **The caller must hold the generation write lock.** The condition read here is exactly the
+     * one [markAllDirty] inverts, so a reader that decides outside the lock is deciding about a
+     * state that can have been replaced by the time it acts. See
+     * [clearBoundaryIfConvergedUnderLock].
      */
     private fun clearBoundaryIfConverged() {
       if (dirtyBefore > 0L && dirtyNames.isEmpty() && atRiskWrites.isEmpty()) clearDirtyBoundary()
+    }
+
+    /**
+     * [clearBoundaryIfConverged] for a caller that does **not** already hold the generation write
+     * lock — the rollout reconcile, which reaches convergence from `dirtyCount()` on the status
+     * path rather than from inside a write.
+     *
+     * The interleaving this closes loses an operator's regenerate outright. The reconcile observes
+     * both sets empty; [markAllDirty] then takes the lock, persists a fresh boundary, repopulates
+     * `dirtyNames` and answers the admin route `{"queued": true, "entries": N}`; and the reconcile,
+     * still acting on what it saw before any of that, writes a zero boundary over the new mark and
+     * clears the queue it never looked at. The endpoint has promised a request that survives the
+     * next roll and there is nothing left of it, in memory or on disk.
+     *
+     * So the decision is re-taken under the lock, and `markAllDirty` — which is already try-lock
+     * and already answers `-1` when it cannot have the lock — reports an honest failure instead of
+     * a mark that is about to be erased. Whichever of the two gets the lock first, the other sees
+     * its result rather than a stale copy of the state it replaced.
+     *
+     * The pre-check outside the lock is not the decision, only an early exit: `dirtyCount()` is on
+     * the status path and the ordinary answer is "there is no boundary to clear", which should not
+     * cost a file lock per call.
+     */
+    private fun clearBoundaryIfConvergedUnderLock() {
+      if (dirtyBefore == 0L || dirtyNames.isNotEmpty() || atRiskWrites.isNotEmpty()) return
+      val generationWriteLock = tryGenerationWriteLock() ?: return
+      try {
+        clearBoundaryIfConverged()
+      } finally {
+        generationWriteLock.close()
+      }
     }
 
     /** Whether [cacheKey] is on disk from an older build and has not been re-rendered since. */
