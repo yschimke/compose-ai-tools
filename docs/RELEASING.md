@@ -159,11 +159,11 @@ republishing the release.
 2. Builds the **CLI** and the standalone **MCP server** as `.zip` / `.tar.gz` distributions:
    - `compose-preview-<ver>.{zip,tar.gz}` — the CLI; tarball already implementation-bundles `:mcp` and the desktop renderer.
    - `compose-preview-mcp-<ver>.{zip,tar.gz}` — the MCP server standalone for consumers who want to wire it into an MCP client without dragging the CLI in.
-3. Packages the **VS Code extension** as a `.vsix` file and publishes it to the **VS Code Marketplace** and **Open VSX** (runs alongside the Release upload, so a marketplace outage can't block the GitHub Release).
+3. ~~Packages the **VS Code extension**~~ — **moved.** The extension is released from [`yschimke/compose-preview-vscode`](https://github.com/yschimke/compose-preview-vscode) on its own cadence; `release.yml` here no longer builds, uploads or publishes a `.vsix`, and nothing in this repository's release depends on one.
 4. Publishes **`@yschimke/compose-design-map`** (the `design-map/` package — the annotations→`design-map.json` projection) to **npm**, at the tag's version. Uses npm Trusted Publishing (OIDC), so there is no npm token to rotate; provenance is attached automatically. Like the marketplace publishes it is tolerated rather than blocking, and it skips a version already on npm, so re-running it is safe. Unlike the other steps, its recovery is **re-running the failed job in the original release run**, not a `workflow_dispatch` of `release.yml` — see the trusted-publisher note below.
 5. Publishes **`@yschimke/remote-compose-player-cmp`** (the CMP/Wasm Remote Compose player bundle, staged by `:rc-player-wasm:rcPlayerNpmPackage`) to **npm**, at the tag's version, and attaches the same bundle to the Release as `rc-player-wasm.zip` for consumers who do not want npm. Same OIDC trusted-publishing arrangement, same tolerated-not-blocking posture, same re-run-the-job recovery as the design map. Its **embed contract** — `?src=`, `window.rcPlayerLoad`, the readiness marker — is versioned separately from the release; see [docs/design/RC_PLAYER_EMBED.md](design/RC_PLAYER_EMBED.md).
 6. ~~Publishes the **iOS XCFramework**~~ — **disabled, see [#4222](https://github.com/yschimke/compose-ai-tools/issues/4222).** The Kotlin/Native release link runs out of heap on `macos-15`, and because `finalize-release` gates on the whole of `release.yml` succeeding, a failure here would leave the Release a draft *after* Maven Central had already been published to. The job is skipped rather than deleted; re-enable it by dropping the `if: ${{ false }}` on `publish-xcframework` once the link completes in CI. Nothing regressed by disabling it — the job landed after `v1.15.0` and never completed a release, so no version has ever carried the asset. What it does when enabled: uploads `RcComposePlayer.xcframework.zip` to the Release, rewrites `Package.swift` to point at it, and tags that commit with a bare `<version>` (e.g. `1.16.0`) — deliberately *not* `v<version>`, and deliberately not prefixed. The Swift tag exists because SPM verifies a checksum that can only be written *after* the asset is uploaded, and it is bare because SwiftPM only resolves `X.Y.Z`/`vX.Y.Z` refs as versions; see [docs/design/RC_PLAYER_SWIFT.md](design/RC_PLAYER_SWIFT.md).
-7. Uploads the CLI, MCP, XR compositor, and VS Code extension artifacts onto the GitHub Release that release-please created (falling back to creating the Release itself if invoked outside the release-please path, e.g. from a manual tag push).
+7. Uploads the CLI, MCP and XR compositor artifacts onto the GitHub Release that release-please created (falling back to creating the Release itself if invoked outside the release-please path, e.g. from a manual tag push).
 
 Alongside `release.yml`, the automatic release chain starts
 `preview-host-image.yml` immediately after tag creation. That job builds only
@@ -197,8 +197,6 @@ Required secrets on the repository:
 | `SIGNING_KEY` | ASCII-armored GPG private key (Maven Central requires signed artifacts) |
 | `SIGNING_KEY_ID` | Short (8-hex) key ID |
 | `SIGNING_KEY_PASSWORD` | Passphrase for the GPG key |
-| `VSCE_PAT` | Azure DevOps PAT for the `yuri-schimke` VS Code Marketplace publisher (scope: Marketplace → Manage, all accessible orgs) |
-| `OVSX_PAT` | Open VSX PAT for the `yuri-schimke` namespace (https://open-vsx.org/user-settings/tokens) |
 
 `GITHUB_TOKEN` is provided automatically and is used by the `release` job to upload assets onto the GitHub Release.
 
@@ -220,9 +218,8 @@ recovery path for Maven Central and the GitHub Release assets, but for npm the r
 the run → "Re-run failed jobs"). The step skips a version already on npm, so it is idempotent.
 
 The package's committed version is a placeholder (`0.0.0`); the release job stamps the tag onto it,
-exactly as `build-compose-preview-vscode` does for the extension, so nothing in the tree needs bumping.
+the same way the extension's own release stamps its version, so nothing in the tree needs bumping.
 
-Marketplace publishes are idempotent on re-runs: if the version is already published (e.g. on a `workflow_dispatch` retry for an existing tag), the step logs the "already published" message and exits 0 rather than failing.
 
 ## Snapshots
 
@@ -356,7 +353,9 @@ from the VS Code Marketplace, or from the command line:
 code --install-extension yuri-schimke.compose-preview
 ```
 
-The `.vsix` is also attached to each GitHub Release as a fallback.
+The extension is built and published from [`yschimke/compose-preview-vscode`](https://github.com/yschimke/compose-preview-vscode) — its
+marketplace credentials (`VSCE_PAT`, `OVSX_PAT`), its release procedure and its `.vsix`
+assets all live there. Nothing in this repository's release produces one.
 
 ## Versioning
 

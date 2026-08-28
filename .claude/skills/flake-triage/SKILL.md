@@ -47,7 +47,7 @@ md5sum out/<capture>.light.png
 # Run from `compose-preview-vscode/`, not from inside the harness directory, and build
 # the webview bundle first: the fixtures load it, so a stale one moves pixels for
 # reasons no commit explains.
-cd compose-preview-vscode
+cd ../compose-preview-vscode
 node esbuild.webview.mjs
 HARNESS_CHROMIUM=/path/to/chromium HARNESS_FIXTURE=<fixture> HARNESS_THEME=light \
   npx playwright test -c preview-harness/playwright.config.mjs snapshot.spec.mjs

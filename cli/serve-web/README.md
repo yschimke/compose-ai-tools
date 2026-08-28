@@ -117,8 +117,8 @@ against a moving fixture baseline:
    ```
 5. Confirm the pixels didn't move:
    ```
-   cd compose-preview-vscode
-   npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot
+   cd preview-server/preview-harness
+   npm run harness:pages
    ```
    Set `HARNESS_CHROMIUM` when the sandbox's Chromium build doesn't match the
    pinned Playwright (`/opt/pw-browsers/chromium-*/chrome-linux/chrome`).
