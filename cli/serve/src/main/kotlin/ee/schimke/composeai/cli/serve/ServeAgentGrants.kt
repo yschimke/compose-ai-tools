@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.agentgrants.AgentGrantCapability
+import ee.schimke.composeai.agentgrants.AgentGrantScope
 import java.security.SecureRandom
 import java.util.Base64
 import javax.crypto.Mac
@@ -41,17 +43,15 @@ object ServeAgentGrants {
   data class OpenRequest(
     /** What the access is for, shown to the approver. Free text; displayed escaped. */
     val label: String = "",
-    /**
-     * Highest scope wanted, by wire name. Unknown/absent ⇒ [ServeAgentGrantScope.DEFAULT_REQUEST].
-     */
+    /** Highest scope wanted, by wire name. Unknown/absent ⇒ [AgentGrantScope.DEFAULT_REQUEST]. */
     val scope: String = "",
     /** Requested lifetime. Clamped to the box's `--agent-grant-max-ttl`. */
     @SerialName("ttlSeconds") val ttlSeconds: Long = 0,
     /**
-     * Independent permissions wanted beside [scope], by wire name ([ServeAgentGrantCapability]).
-     * Unknown names are ignored rather than refused: this is an agent describing what it would
-     * like, and a newer client naming a capability this server has never heard of should get the
-     * rest of its request honoured, not a 400.
+     * Independent permissions wanted beside [scope], by wire name ([AgentGrantCapability]). Unknown
+     * names are ignored rather than refused: this is an agent describing what it would like, and a
+     * newer client naming a capability this server has never heard of should get the rest of its
+     * request honoured, not a 400.
      */
     val capabilities: List<String> = emptyList(),
   )
@@ -138,7 +138,7 @@ object ServeAgentGrants {
    * Who is approving, and what they are themselves allowed to pass on.
    *
    * The second half is the rule that matters: **an approver may never grant a capability they do
-   * not hold**. On a GitHub-gated box, [ceiling] drops to [ServeAgentGrantScope.LIVE] for a visitor
+   * not hold**. On a GitHub-gated box, [ceiling] drops to [AgentGrantScope.LIVE] for a visitor
    * without access to `--github-auth-repo`, because that repo check is exactly the playground's own
    * gate — letting them tick the playground box would be a privilege escalation dressed as a
    * delegation.
@@ -146,36 +146,36 @@ object ServeAgentGrants {
   data class Approver(
     /** Display name, and what the audit line records: a GitHub login, or `operator (token)`. */
     val name: String,
-    val ceiling: ServeAgentGrantScope,
+    val ceiling: AgentGrantScope,
     /**
      * The capabilities this approver may pass on — the same "never grant what you do not hold"
      * rule, applied to the half of a grant that is not a rung.
      *
-     * [ServeAgentGrantCapability.IMAGES] is the case that makes it concrete. The image lane admits
-     * a caller who has **write access to the gating repository**, so a signed-in visitor without
-     * that access cannot upload — and must not be able to hand an agent a token that does. It is
-     * the identical argument to the playground's, which is why the two are computed from the same
+     * [AgentGrantCapability.IMAGES] is the case that makes it concrete. The image lane admits a
+     * caller who has **write access to the gating repository**, so a signed-in visitor without that
+     * access cannot upload — and must not be able to hand an agent a token that does. It is the
+     * identical argument to the playground's, which is why the two are computed from the same
      * `repositoryAccess` bit.
      */
-    val capabilityCeiling: Set<ServeAgentGrantCapability> = emptySet(),
+    val capabilityCeiling: Set<AgentGrantCapability> = emptySet(),
   ) {
     companion object {
       /** The holder of `--token` on a box with no GitHub auth: the operator, so no narrowing. */
       fun operator(
-        storeCeiling: ServeAgentGrantScope,
-        storeCapabilities: Set<ServeAgentGrantCapability> = emptySet(),
+        storeCeiling: AgentGrantScope,
+        storeCapabilities: Set<AgentGrantCapability> = emptySet(),
       ): Approver = Approver("operator (token)", storeCeiling, storeCapabilities)
 
       fun github(
         login: String,
         repositoryAccess: Boolean,
-        storeCeiling: ServeAgentGrantScope,
-        storeCapabilities: Set<ServeAgentGrantCapability> = emptySet(),
+        storeCeiling: AgentGrantScope,
+        storeCapabilities: Set<AgentGrantCapability> = emptySet(),
       ) =
         Approver(
           name = "@$login",
           ceiling =
-            if (repositoryAccess) storeCeiling else minOf(storeCeiling, ServeAgentGrantScope.LIVE),
+            if (repositoryAccess) storeCeiling else minOf(storeCeiling, AgentGrantScope.LIVE),
           capabilityCeiling = if (repositoryAccess) storeCapabilities else emptySet(),
         )
     }
@@ -235,46 +235,15 @@ object ServeAgentGrants {
    * never offer something the POST would then refuse.
    */
   fun selectableCapabilities(
-    requested: Set<ServeAgentGrantCapability>,
+    requested: Set<AgentGrantCapability>,
     approver: Approver,
-    storeCeiling: Set<ServeAgentGrantCapability>,
-  ): Set<ServeAgentGrantCapability> =
+    storeCeiling: Set<AgentGrantCapability>,
+  ): Set<AgentGrantCapability> =
     requested intersect approver.capabilityCeiling intersect storeCeiling
 
   fun selectableScopes(
-    requested: ServeAgentGrantScope,
+    requested: AgentGrantScope,
     approver: Approver,
-    storeCeiling: ServeAgentGrantScope,
-  ): List<ServeAgentGrantScope> =
-    ServeAgentGrantScope.upTo(minOf(requested, approver.ceiling, storeCeiling))
-
-  /**
-   * Turn `"2h"`, `"45m"`, `"90s"`, or a bare number of seconds into seconds. Null for anything
-   * unparseable, so a caller can fall back rather than silently granting a duration nobody chose.
-   */
-  fun parseDurationSeconds(raw: String?): Long? {
-    val text = raw?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return null
-    val match = DURATION.matchEntire(text) ?: return null
-    val value = match.groupValues[1].toLongOrNull() ?: return null
-    if (value <= 0) return null
-    return when (match.groupValues[2]) {
-      "h" -> value * 3600
-      "m" -> value * 60
-      else -> value
-    }
-  }
-
-  /** `2h 15m`, `45m`, `30s` — how a duration is shown on the page and in the CLI's output. */
-  fun formatDuration(seconds: Long): String {
-    if (seconds < 60) return "${seconds}s"
-    val hours = seconds / 3600
-    val minutes = (seconds % 3600) / 60
-    return when {
-      hours == 0L -> "${minutes}m"
-      minutes == 0L -> "${hours}h"
-      else -> "${hours}h ${minutes}m"
-    }
-  }
-
-  private val DURATION = Regex("(\\d+)\\s*([hms]?)(?:ec|in|our)?s?")
+    storeCeiling: AgentGrantScope,
+  ): List<AgentGrantScope> = AgentGrantScope.upTo(minOf(requested, approver.ceiling, storeCeiling))
 }

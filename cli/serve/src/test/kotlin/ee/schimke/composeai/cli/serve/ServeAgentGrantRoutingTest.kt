@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.agentgrants.AgentGrantScope
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.AfterTest
@@ -33,7 +34,7 @@ class ServeAgentGrantRoutingTest {
   private val registry = ServeSessionRegistry(open = { null })
 
   private val grants =
-    ServeAgentGrantStore(maxScope = ServeAgentGrantScope.PLAYGROUND, maxGrantTtlSeconds = 3600)
+    ServeAgentGrantStore(maxScope = AgentGrantScope.PLAYGROUND, maxGrantTtlSeconds = 3600)
 
   private val server: ServeHttpServer by lazy {
     val dir = Files.createTempDirectory("grants").toFile().also { it.deleteOnExit() }

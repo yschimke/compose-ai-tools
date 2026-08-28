@@ -213,6 +213,7 @@ dependencies {
   // subcommands stay here. `api` for source-compat: the types kept their `ee.schimke.composeai.cli`
   // package, so every existing call site (including `serve`) resolves them unchanged.
   api(project(":bundle-format"))
+  api(project(":agent-grant-protocol"))
 
   // Turning a bundle's recorded Maven coordinates back into local jars — the `bundle daemon` and
   // `bundle render` subcommands and `serve` all need it. Split out of this module for #3824

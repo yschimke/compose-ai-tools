@@ -287,6 +287,13 @@ include(":common-image-crop")
 
 project(":common-image-crop").projectDir = file("common/image-crop")
 
+// The scope/capability vocabulary, duration grammar and token fingerprint shared by the preview
+// server that mints agent grants and the `auth` client that asks for them. Extracted from
+// `:cli:serve` so the client half stops reaching into the server to parse its own `--ttl`.
+include(":agent-grant-protocol")
+
+project(":agent-grant-protocol").projectDir = file("api/agent-grant-protocol")
+
 // Step B of the clean-API carve-out: the Gradle Tooling-API render pipeline that previously
 // lived inside `:cli`'s `Command` base class. Exposes a `GradlePreviewDriver` library so
 // external consumers (contrib scripting, third-party tooling) can render previews and read the

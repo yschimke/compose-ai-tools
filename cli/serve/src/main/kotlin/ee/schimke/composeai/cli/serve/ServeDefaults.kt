@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.agentgrants.AgentGrantProtocol
+
 /**
  * Server defaults shared by the two halves of `serve`.
  *
@@ -98,7 +100,7 @@ public object ServeDefaults {
   public const val MAX_DERIVED_CONCURRENT_RENDERS: Int =
     ServeBackgroundWork.MAX_DERIVED_CONCURRENT_RENDERS
   public const val AGENT_GRANT_HARD_MAX_TTL_SECONDS: Long =
-    ServeAgentGrantStore.HARD_MAX_GRANT_TTL_SECONDS
+    AgentGrantProtocol.HARD_MAX_GRANT_TTL_SECONDS
   public const val AGENT_GRANT_MAX_ACTIVE: Int = ServeAgentGrantStore.DEFAULT_MAX_ACTIVE_GRANTS
   public const val AGENT_GRANT_MAX_TTL_SECONDS: Long =
     ServeAgentGrantStore.DEFAULT_MAX_GRANT_TTL_SECONDS
