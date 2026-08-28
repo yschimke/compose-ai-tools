@@ -56,6 +56,22 @@ class ServeCacheGenerationTest {
     """
       .trimIndent()
 
+  /**
+   * A published tag index for the preview on the fixture's comparison page.
+   *
+   * Present so the tag picker is actually offered: the coupling between this index and the frame is
+   * the whole subject of the P1 the review raised, and a fixture that publishes none would let the
+   * assertions about it pass without testing anything.
+   */
+  private val tagsJson =
+    """
+    {"schema":"compose-preview-tags/v1","previews":{
+      "$previewId":{
+        "glyph":{"count":1,"bounds":{"x":0,"y":0,"width":2,"height":2},"space":"render-pixels"}
+      }}}
+    """
+      .trimIndent()
+
   private val previewIndexJson =
     """
     {"schema":"compose-preview-revision-index/v1","current":["$previewId"],"revisions":[
@@ -92,6 +108,8 @@ class ServeCacheGenerationTest {
       "${byBranch}preview-index.json" -> previewIndexJson.encodeToByteArray()
       "${tip}references/index.json",
       "${byBranch}references/index.json" -> referencesJson.encodeToByteArray()
+      "${tip}tags/index.json",
+      "${byBranch}tags/index.json" -> tagsJson.encodeToByteArray()
       "${tip}references/button.png",
       "${byBranch}references/button.png" -> currentReference
       "${tip}images/button-filled/ideal__default__dark.png",
@@ -154,6 +172,20 @@ class ServeCacheGenerationTest {
     val ogImage =
       Regex("<meta property=\"og:image\" content=\"([^\"]+)\"").find(page)?.groupValues?.get(1)
     assertTrue(ogImage?.contains("gen=$newCommit") == true, page)
+  }
+
+  @Test
+  fun `Catalog mode hides the revision control without dropping the generation`() {
+    val port = start().port
+
+    val page = text("http://127.0.0.1:$port/$system/p/$previewId?chrome=catalog")
+
+    // The embedded component browser has no business offering a publish history — but the
+    // generation is not a control, it is which publish this HTML is. Dropping it left the
+    // browser-built stage URL unscoped while the server-built card and report URLs beside it still
+    // named the publish: one page, two generations.
+    assertFalse(page.contains("cp-revisions"), page)
+    assertTrue(page.contains("data-generation=\"$newCommit\""), page)
   }
 
   @Test
@@ -244,6 +276,75 @@ class ServeCacheGenerationTest {
     assertNotEquals(
       400,
       get("http://127.0.0.1:$port/$system/render/$previewId.annotations?gen=$oldCommit").first,
+    )
+  }
+
+  @Test
+  fun `a lane that can only describe today refuses a stale generation rather than answering`() {
+    val port = start().port
+
+    // Every product that *describes* the frame — the published tag index, and the semantics,
+    // typography and a11y passes the redline and the element picker read — is measured against the
+    // catalog on disk. There is no older copy to serve, so answering would hand a page from one
+    // publish a measurement of another's: the record corruption the coupling exists to prevent,
+    // arriving through the one door "step aside" left open.
+    assertEquals(
+      409,
+      get("http://127.0.0.1:$port/$system/tags/$previewId?gen=$oldCommit").first,
+    )
+    for (suffix in listOf(".annotations", ".a11y", ".slots", ".svg", ".rc")) {
+      assertEquals(
+        409,
+        get("http://127.0.0.1:$port/$system/render/$previewId$suffix?gen=$oldCommit").first,
+        suffix,
+      )
+    }
+    // The current generation is the ordinary browse and answers as it always did.
+    assertEquals(200, get("http://127.0.0.1:$port/$system/tags/$previewId?gen=$newCommit").first)
+    assertEquals(200, get("http://127.0.0.1:$port/$system/tags/$previewId").first)
+  }
+
+  @Test
+  fun `the comparison scopes the tag index to the same publish as the frame`() {
+    val port = start().port
+
+    val page = text("http://127.0.0.1:$port/$system/compare/$previewId")
+
+    // Clicking a tag entry persists its bounds as an acceptance baseline, so the index and the
+    // pixels have to be one publish. Scoping the URL is what lets the lane refuse a stale one.
+    assertTrue(page.contains("data-cp-tags="), page)
+    assertTrue(page.contains("/tags/$previewId?gen=$newCommit"), page)
+  }
+
+  @Test
+  fun `a prebaked thumbnail never answers for a generation it is not`() {
+    val port = start().port
+
+    // The thumbnail is downscaled from the catalog on disk, so it is this generation's by
+    // definition — and its fast path sits ahead of the routing that would fetch the named
+    // publish's bytes. A 200 marked `immutable` from the wrong generation is the worst shape
+    // available, so a stale `gen=` has to leave the lane before it is reached.
+    val hash =
+      Regex("[?&]${ServeHeroImages.THUMB_PARAM}=([A-Za-z0-9_-]+)")
+        .find(text("http://127.0.0.1:$port/$system/"))
+        ?.groupValues
+        ?.get(1)
+    assertTrue(hash != null, "the fixture published no grid thumbnail to test the fast path with")
+    val stale =
+      get(
+        "http://127.0.0.1:$port/$system/render/$previewId.png" +
+          "?${ServeHeroImages.THUMB_PARAM}=$hash&gen=$oldCommit"
+      )
+    assertEquals(200, stale.first)
+    assertContentEquals(historicalRender, stale.second)
+    // …and the current generation stays on the fast path, which is what keeps a scoped card cheap.
+    assertEquals(
+      200,
+      get(
+          "http://127.0.0.1:$port/$system/render/$previewId.png" +
+            "?${ServeHeroImages.THUMB_PARAM}=$hash&gen=$newCommit"
+        )
+        .first,
     )
   }
 
