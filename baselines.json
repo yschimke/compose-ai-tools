@@ -1,4 +1,12 @@
 {
+  "jetstream/activity__MainActivity": {
+    "captureLabel": "",
+    "functionName": "MainActivity",
+    "module": "jetstream",
+    "renderBasename": "activity__MainActivity.png",
+    "sha256": "d50bfec20fd63a55d6ba1bb569e8e588a734fda7db0d0f4fc18c18fa0ecff373",
+    "sourceFile": null
+  },
   "jetstream/com.google.jetstream.presentation.components.ComponentScreenshotTestsKt.BackButtonScreenshot": {
     "captureLabel": "",
     "functionName": "BackButtonScreenshot",
@@ -854,6 +862,14 @@
     "renderBasename": "AboutSectionExpandedPreview_TV-d03533f7.png",
     "sha256": "5ea7937feac0a234117e3b0e974c9a731000b9df2efaa3bd89ace625e3816b06",
     "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/profile/compoents/AboutSection.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.compoents.AccountsSectionKt.AccountsSection_TV": {
+    "captureLabel": "",
+    "functionName": "AccountsSection",
+    "module": "jetstream",
+    "renderBasename": "AccountsSection_TV-bb442978.png",
+    "sha256": "541baf339b15330351e36e33010d5e78a2721d2286b3d9a38df145a97c4aa483",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/profile/compoents/AccountsSection.kt"
   },
   "jetstream/com.google.jetstream.presentation.screens.profile.compoents.AccountsSectionKt.SingleColumnAccountPreview_Foldable": {
     "captureLabel": "",

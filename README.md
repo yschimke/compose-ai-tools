@@ -24,22 +24,11 @@ Auto-rendered by the integration matrix from [`android/adaptive-apps-samples@mai
 - Source: [`android/adaptive-apps-samples@main`](https://github.com/android/adaptive-apps-samples/tree/main)
 - Consumer patch(es) applied before configuring the build: `adaptive-apps-samples-xr-upgrade.patch adaptive-apps-samples-xr-spatial-previews.patch adaptive-apps-samples-coil-fake-images.patch` (idempotent — auto-skipped once the change lands upstream).
 
-> [!WARNING]
-> 2 preview(s) failed to render in the latest update (2 with no prior baseline to retain). See **Render Failures** below.
-
-## Render Failures
-
-The render task completed but no PNG was produced for these previews. Entries with a prior baseline keep their previous image; the rest are absent from the gallery until a successful render lands.
-
-| Preview | Module | Function | Source | Baseline |
-|---------|--------|----------|--------|----------|
-| `jetstream/activity__MainActivity` | jetstream | `MainActivity` | `—` | none |
-| `jetstream/com.google.jetstream.presentation.screens.profile.compoents.AccountsSectionKt.AccountsSection_TV` | jetstream | `AccountsSection` | `src/main/java/com/google/jetstream/presentation/screens/profile/compoents/AccountsSection.kt` | none |
-
 ## jetstream
 
 | Preview | Image |
 |---------|-------|
+| `MainActivity` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/jetstream-xr/renders/jetstream/activity__MainActivity.png" width="150" /> |
 | `BackButtonScreenshot` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/jetstream-xr/renders/jetstream/BackButtonScreenshot-2e667f37.png" width="150" /> |
 | `ErrorScreenshot` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/jetstream-xr/renders/jetstream/ErrorScreenshot-a461ee2b.png" width="150" /> |
 | `LoadingScreenshot` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/jetstream-xr/renders/jetstream/LoadingScreenshot-f25393a3.png" width="150" /> |
@@ -147,6 +136,7 @@ The render task completed but no PNG was produced for these previews. Entries wi
 | `AboutSectionCompactPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/jetstream-xr/renders/jetstream/AboutSectionCompactPreview_Foldable-44cd8761.png" width="150" /> |
 | `AboutSectionCompactPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/jetstream-xr/renders/jetstream/AboutSectionCompactPreview_Phone-05dbe7d6.png" width="150" /> |
 | `AboutSectionExpandedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/jetstream-xr/renders/jetstream/AboutSectionExpandedPreview_TV-d03533f7.png" width="150" /> |
+| `AccountsSection` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/jetstream-xr/renders/jetstream/AccountsSection_TV-bb442978.png" width="150" /> |
 | `SingleColumnAccountPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/jetstream-xr/renders/jetstream/SingleColumnAccountPreview_Foldable-357c1aa7.png" width="150" /> |
 | `SingleColumnAccountPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/jetstream-xr/renders/jetstream/SingleColumnAccountPreview_Phone-7dc1a239.png" width="150" /> |
 | `AccountSelectionItemPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/jetstream-xr/renders/jetstream/AccountSelectionItemPreview_Foldable-f422a80a.png" width="150" /> |
