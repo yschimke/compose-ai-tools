@@ -1,13 +1,14 @@
 package ee.schimke.composeai.daemon.history
 
+import ee.schimke.composeai.daemon.protocol.A11yDelta
+import ee.schimke.composeai.daemon.protocol.A11yFieldChange
+import ee.schimke.composeai.daemon.protocol.A11yFindingChange
+import ee.schimke.composeai.daemon.protocol.A11yFindingSummary
+import ee.schimke.composeai.daemon.protocol.HistoryDataDelta
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
-import ee.schimke.composeai.data.layoutinspector.SemanticsDelta
 import ee.schimke.composeai.data.layoutinspector.SemanticsDiff
-import ee.schimke.composeai.data.theme.ThemeDelta
 import ee.schimke.composeai.data.theme.ThemeDiff
 import ee.schimke.composeai.data.theme.ThemePayload
-import kotlinx.serialization.EncodeDefault
-import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -32,10 +33,6 @@ import kotlinx.serialization.json.JsonElement
 // consumers keeping their own mirrors. Only the handful of fields the diff
 // needs are mirrored; `ignoreUnknownKeys` skips the rest.
 // ---------------------------------------------------------------------------
-
-public object HistoryDataDiffProduct {
-  public const val SCHEMA: String = "history-data-diff/v1"
-}
 
 public object HistoryDataDiff {
 
@@ -88,28 +85,9 @@ public object HistoryDataDiff {
       ?: emptyList()
 }
 
-@OptIn(ExperimentalSerializationApi::class)
-@Serializable
-public data class HistoryDataDelta(
-  // `@EncodeDefault` so the versioned schema discriminator rides the wire even under
-  // `encodeDefaults = false`, matching the `SemanticsDelta` / `ThemeDelta` contract.
-  @EncodeDefault val schema: String = HistoryDataDiffProduct.SCHEMA,
-  val semantics: SemanticsDelta? = null,
-  val a11y: A11yDelta? = null,
-  val theme: ThemeDelta? = null,
-) {
-  /** True when every compared section is absent or carries no changes. */
-  val isEmpty: Boolean
-    get() = (semantics?.isEmpty ?: true) && (a11y?.isEmpty ?: true) && (theme?.isEmpty ?: true)
-}
-
 // ---------------------------------------------------------------------------
 // a11y findings diff (a11y-diff/v1)
 // ---------------------------------------------------------------------------
-
-public object A11yDiffProduct {
-  public const val SCHEMA: String = "a11y-diff/v1"
-}
 
 /**
  * Diffs two entries' ATF findings (`a11y/atf`). Each finding is keyed by its rule [type] plus the
@@ -200,41 +178,6 @@ public object A11yDiff {
         boundsInScreen = finding.boundsInScreen,
       )
   }
-}
-
-@Serializable
-public data class A11yFieldChange(
-  val field: String,
-  val from: String? = null,
-  val to: String? = null,
-)
-
-@Serializable
-public data class A11yFindingSummary(
-  val ref: String? = null,
-  val type: String,
-  val level: String,
-  val message: String,
-  val boundsInScreen: String? = null,
-)
-
-@Serializable
-public data class A11yFindingChange(
-  val ref: String? = null,
-  val type: String,
-  val changes: List<A11yFieldChange>,
-)
-
-@OptIn(ExperimentalSerializationApi::class)
-@Serializable
-public data class A11yDelta(
-  @EncodeDefault val schema: String = A11yDiffProduct.SCHEMA,
-  val added: List<A11yFindingSummary> = emptyList(),
-  val removed: List<A11yFindingSummary> = emptyList(),
-  val changed: List<A11yFindingChange> = emptyList(),
-) {
-  val isEmpty: Boolean
-    get() = added.isEmpty() && removed.isEmpty() && changed.isEmpty()
 }
 
 // ---------------------------------------------------------------------------

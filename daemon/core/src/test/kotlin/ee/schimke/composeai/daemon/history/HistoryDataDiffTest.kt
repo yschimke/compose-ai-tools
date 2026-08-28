@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon.history
 
+import ee.schimke.composeai.daemon.protocol.HistoryDataDiffProduct
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import org.junit.Assert.assertEquals
