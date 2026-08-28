@@ -4004,7 +4004,9 @@ class ServeHttpServer(
     call.respondText(
       JSON.encodeToString(
         AdminGroupsResponse.serializer(),
-        AdminGroupsResponse(groups = groups.map { AdminGroupDto(it.id, it.heading, it.noun) }),
+        AdminGroupsResponse(
+          groups = groups.map { AdminGroupDto(it.id, it.heading, it.noun, it.priority) }
+        ),
       ),
       ContentType.Application.Json,
     )
@@ -10724,7 +10726,13 @@ private data class AdminCatalogResult(
 
 /** One front-page section on `GET /admin/groups`. */
 @Serializable
-private data class AdminGroupDto(val id: String, val heading: String, val noun: String)
+private data class AdminGroupDto(
+  val id: String,
+  val heading: String,
+  val noun: String,
+  /** Section order on the front page, highest first ([ServeCatalogsConfig.Group.priority]). */
+  val priority: Int = 0,
+)
 
 @Serializable
 private data class AdminGroupsResponse(
