@@ -920,3 +920,86 @@ test("an override cell rides the base breakpoint, and is not repeated at every s
     ["240dp", "month"],
   );
 });
+
+test("a component named like a namespaced absence key still reports as unmapped", () => {
+  // `statedAbsentIds` is keyed `component:<id>` / `subject:<id>`, and a `@CatalogComponent(id = …)`
+  // may legally be spelled the same way. Testing the bare id against that map read the FIRST
+  // component's entry as the SECOND's, and dropped the second from `unmapped` — `--strict` then
+  // passed over a component with no reference and no stated reason.
+  const { diagnostics } = projectDesignMap([
+    component("Icon", { componentId: "X", noReference: "retired in the kit" }),
+    component("Chip", { componentId: "component:X" }),
+  ]);
+  assert.deepEqual(diagnostics.unmapped, ["component:X"]);
+  assert.deepEqual(
+    diagnostics.statedAbsent,
+    [{ componentId: "X", reason: "retired in the kit" }],
+  );
+});
+
+test("a function whose own name contains _VARIANT_ is a base capture, not a reseed", () => {
+  // `Icon_VARIANT_Only` is a legal Kotlin name, so its base id carries the marker discovery uses
+  // for a generated reseed. Read as a reseed, the component was skipped everywhere the marker
+  // gates — losing its explicit `noReference`, the one record that diagnostic exists to keep.
+  const marked = {
+    id: "com.example.CatalogKt.Icon_VARIANT_Only_Light",
+    functionName: "Icon_VARIANT_Only",
+    sourceFile: "Catalog.kt",
+    catalog: {
+      role: "COMPONENT",
+      componentId: "Icon_VARIANT_Only",
+      noReference: "the kit draws no icon-only cell",
+    },
+  };
+  const { diagnostics } = projectDesignMap([marked]);
+  assert.deepEqual(diagnostics.statedAbsent, [
+    { componentId: "Icon_VARIANT_Only", reason: "the kit draws no icon-only cell" },
+  ]);
+  // And its reseeds are still reseeds: the marker discovery appended is the LAST one.
+  const { variants } = projectDesignMap([
+    { ...marked, catalog: { ...marked.catalog, noReference: undefined, reference: ref("1:2") } },
+    {
+      id: "com.example.CatalogKt.Icon_VARIANT_Only_Light_VARIANT_pressed",
+      functionName: "Icon_VARIANT_Only",
+      sourceFile: "Catalog.kt",
+      catalog: { role: "COMPONENT", componentId: "Icon_VARIANT_Only" },
+      overrides: { name: "pressed", seeds: [{ key: "state", raw: "pressed" }] },
+    },
+  ]);
+  assert.deepEqual(
+    variants.components[0].renders.map((r) => r.name),
+    ["pressed"],
+  );
+});
+
+test("a variant that states its absence is not handed to the parent's resolver", () => {
+  // The declaration resolves against the PARENT's reference, so emitting a render whose annotation
+  // says the kit exports no cell for it scores it against the parent's picture — the mispairing
+  // `noReference` exists to prevent. Reported once, as a stated absence, and never paired.
+  const { variants, diagnostics } = projectDesignMap([
+    component("Button", { reference: ref("1:2") }),
+    catalogVariant("ButtonTextless", "Button", {
+      state: "textless",
+      noReference: "the kit exports no Text=No cell",
+    }),
+  ]);
+  assert.deepEqual(variants.components, []);
+  assert.deepEqual(diagnostics.statedAbsent, [
+    { componentId: "Button [state=textless]", reason: "the kit exports no Text=No cell" },
+  ]);
+});
+
+test("a variant's own reference rides its render into the sidecar", () => {
+  const { variants } = projectDesignMap([
+    component("Button", { reference: ref("1:2") }),
+    catalogVariant("ButtonCompact", "Button", { state: "compact", reference: ref("9:9") }),
+    catalogVariant("ButtonLoud", "Button", { state: "loud" }),
+  ]);
+  assert.deepEqual(
+    variants.components[0].renders.map((r) => [r.name, r.reference]),
+    [
+      ["compact", ref("9:9")],
+      ["loud", undefined],
+    ],
+  );
+});
