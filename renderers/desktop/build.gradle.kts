@@ -26,6 +26,52 @@ val skikoEncodeProbe =
   }
 
 /**
+ * `compose-multiplatform-forward` must stay strictly ahead of `compose-multiplatform`.
+ *
+ * The forward runtime is only worth resolving if it is the *next* Compose line. Level with the
+ * production pin it runs the invariant twice on the same graph; below it, Gradle conflict
+ * resolution hands the task a **downgraded** one — and in both cases the task still passes, so
+ * compatibility regressions in the line this exists to watch stop being covered with nothing
+ * reporting it. That is not hypothetical: the two pins moved independently once already, and the
+ * gap was only visible to someone who happened to read both lines of the catalog.
+ *
+ * A pre-release sorts below the release it precedes, so a production bump to `1.12.0` final fails
+ * here against a forward pin of `1.12.0-rc01` rather than silently levelling.
+ */
+fun composeVersionIsNewer(candidate: String, than: String): Boolean {
+  fun core(version: String) = version.substringBefore('-').split('.').map { it.toIntOrNull() ?: 0 }
+
+  val candidateCore = core(candidate)
+  val thanCore = core(than)
+  for (index in 0 until maxOf(candidateCore.size, thanCore.size)) {
+    val left = candidateCore.getOrElse(index) { 0 }
+    val right = thanCore.getOrElse(index) { 0 }
+    if (left != right) return left > right
+  }
+  val candidatePre = candidate.substringAfter('-', "")
+  val thanPre = than.substringAfter('-', "")
+  return when {
+    candidatePre.isEmpty() && thanPre.isEmpty() -> false
+    candidatePre.isEmpty() -> true
+    thanPre.isEmpty() -> false
+    else -> candidatePre > thanPre
+  }
+}
+
+// `asProvider()` because `compose-multiplatform-forward` shares this alias's prefix, which makes
+// `libs.versions.compose.multiplatform` a group node rather than the leaf version.
+val productionCompose = libs.versions.compose.multiplatform.asProvider().get()
+val forwardCompose = libs.versions.compose.multiplatform.forward.get()
+
+require(composeVersionIsNewer(forwardCompose, productionCompose)) {
+  "compose-multiplatform-forward ($forwardCompose) must be strictly newer than " +
+    "compose-multiplatform ($productionCompose). forwardComposeSystemThemeTest exists to run the " +
+    "renderer invariant on the next Compose line; at or below the production pin it runs on an " +
+    "identical or downgraded graph and passes while covering nothing. Bump the forward pin in " +
+    "gradle/libs.versions.toml."
+}
+
+/**
  * The newest Compose line catalogs are allowed to run on, used only by the theme regression test.
  *
  * Extending the ordinary test runtime keeps this module's own compiled output and non-Compose
@@ -118,9 +164,7 @@ dependencies {
   // Keep this explicit rather than deriving it from the production pin: the point of the task is
   // to preserve a second, forward runtime line. `currentOs` chooses the correct native Skiko
   // artifact on macOS/Linux/Windows; the strict version upgrades that distribution from 1.11.1.
-  composeForwardTestRuntime(compose.desktop.currentOs) {
-    version { strictly(libs.versions.compose.multiplatform.forward.get()) }
-  }
+  composeForwardTestRuntime(compose.desktop.currentOs) { version { strictly(forwardCompose) } }
 }
 
 tasks.withType<Test>().configureEach {
@@ -138,7 +182,9 @@ tasks.withType<Test>().configureEach {
 val forwardComposeSystemThemeTest =
   tasks.register<Test>("forwardComposeSystemThemeTest") {
     group = "verification"
-    description = "Runs the light/dark renderer invariant on Compose Multiplatform 1.12.0-rc01."
+    // Derived, not spelled out: a hardcoded number here goes stale on the next forward bump and
+    // then describes a runtime the task is not using.
+    description = "Runs the light/dark renderer invariant on Compose Multiplatform $forwardCompose."
     val testSourceSet = sourceSets.test.get()
     testClassesDirs = testSourceSet.output.classesDirs
     classpath = testSourceSet.output + sourceSets.main.get().output + composeForwardTestRuntime
