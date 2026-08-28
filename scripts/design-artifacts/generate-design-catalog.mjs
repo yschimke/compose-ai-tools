@@ -136,6 +136,7 @@ import {
   extraOnlyFunctions,
   unbridgeableFunctions,
 } from "./extra-render-fold.mjs";
+import { applyParallels } from "./apply-parallels.mjs";
 import { applySpecSections } from "./apply-spec-sections.mjs";
 import { applySourceFiles } from "./apply-source-files.mjs";
 import {
@@ -1531,6 +1532,17 @@ if (values["publish-live-bundle"]) {
   // agreeing is what lets the stamp be deleted rather than hunted for.
   const publishedCompareWith = manifestCompareWith(spec.compareWith);
   if (publishedCompareWith) manifest.compareWith = publishedCompareWith;
+  // The other half of that pairing, dropped by the same allow-list for the same reason: the
+  // manifest's `compareWith` names the sibling SYSTEM, each component's `parallel` names the
+  // counterpart COMPONENT in it, and a consumer needs both to resolve anything. Measured before
+  // being fixed: `remote-m3`'s published catalog carried 51 components and zero `parallel` fields,
+  // on a sheet whose whole purpose is the cross-system comparison.
+  const stampedParallels = applyParallels(manifest, spec);
+  if (stampedParallels > 0) {
+    console.log(
+      `[${spec.system}] stamped parallel on ${stampedParallels} component(s) from spec components`,
+    );
+  }
   if (webRender) manifest.webRender = webRender;
   if (liveBundle) manifest.liveBundle = liveBundle;
   if (liveBundles.length > 0) manifest.liveBundles = liveBundles;
