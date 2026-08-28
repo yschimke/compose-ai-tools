@@ -65,6 +65,28 @@ class FigmaSvgVectorIconTest {
   }
 
   @Test
+  fun aGroupTransformRidesOnThePathItPlaces() {
+    // An `ImageVector` group's translate/scale reaches the emitter as the path's own SVG transform,
+    // so the geometry stays where the render drew it without the `d` string being rewritten
+    // (yschimke/m3-catalog#200).
+    val translated =
+      star.copy(paths = star.paths.map { it.copy(transform = "translate(2 2) scale(1.2 1.2)") })
+    val m = model(iconNode(translated))
+    assertNull("a transformed vector icon is still not an <image> leaf", m.root.raster)
+    assertTrue("no raster crops are scheduled for it", m.rasterTargets.isEmpty())
+
+    val svg = FigmaLayeredSvg.render(m)
+    assertFalse("no <image> for a vectorised icon", svg.contains("<image"))
+    assertTrue(
+      "the group transform lands on the <path>, inside the placement group:\n$svg",
+      svg.contains(
+        """<path d="M12 0L15 9L24 9L17 14L20 24L12 18L4 24L7 14L0 9L9 9Z" """ +
+          """transform="translate(2 2) scale(1.2 1.2)""""
+      ),
+    )
+  }
+
+  @Test
   fun bitmapBackedIconStillRasters() {
     // No captured graphic (a BitmapPainter-backed Icon/Image) ⇒ the opaque-by-name raster fallback.
     val m = model(iconNode(graphic = null))

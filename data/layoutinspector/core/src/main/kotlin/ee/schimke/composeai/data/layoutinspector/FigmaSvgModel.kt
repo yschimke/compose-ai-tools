@@ -193,6 +193,11 @@ public data class FigmaSvgVectorPath(
   /** SVG `stroke-linejoin` (`"round"`/`"bevel"`); null = miter. */
   val strokeJoin: String? = null,
   val evenOdd: Boolean = false,
+  /**
+   * The SVG transform list placing this path inside the viewport — the composed transform of the
+   * `ImageVector` groups above it. Null when no group transformed it.
+   */
+  val transform: String? = null,
 )
 
 /**
@@ -972,6 +977,7 @@ public data class FigmaSvgModel(
               strokeCap = it.strokeCap,
               strokeJoin = it.strokeJoin,
               evenOdd = it.evenOdd,
+              transform = it.transform,
             )
           }
       return if (emittable.isEmpty()) null
