@@ -167,16 +167,22 @@ that file deliberately leaves out.
 **Why the attribution gate scans the PR description, and why it caught something
 the hooks could not.** PRs here are squash-merged with
 `squash_merge_commit_message=BLANK`, so the squashed commit carries the **PR title
-only** and every body — PR and commit alike — is discarded. Verify in one
-command: `git log --format='%b' -5 origin/main` prints nothing. That also means a
-`Co-authored-by:` trailer in a *branch* commit never lands on `main` either; the
-CI gate, not the merge, is what makes scrubbing necessary. There is a second path
-to a trailer on `main`, and it is the one that actually bit us: GitHub's squash
-credits every distinct **commit author** of the branch as a co-author, so a branch
-commit authored by an agent lands `Co-authored-by: Claude <noreply@anthropic.com>`
-on `main` even when the title and body are clean (commit `5aacb786`). The identity
-check is therefore not just about the branch — it is what keeps the trailer off
-`main`.
+only** and every body a human *writes* — PR and commit alike — is discarded. That
+also means a `Co-authored-by:` trailer in a *branch* commit never lands on `main`
+that way; the CI gate, not the merge, is what makes scrubbing necessary. There is
+a second path to a trailer on `main`, and it is the one that actually bit us:
+GitHub's squash credits every distinct **commit author** of the branch as a
+co-author, so a branch commit authored by an agent lands
+`Co-authored-by: Claude <noreply@anthropic.com>` on `main` even when the title and
+body are clean (commit `5aacb786`). The identity check is therefore not just about
+the branch — it is what keeps the trailer off `main`.
+
+`git log --format='%b' -5 origin/main` usually prints nothing, and that is the
+quick confirmation of the first half — but **an empty `%b` is not the rule**, and
+reading it as one hides the second half entirely. BLANK discards the body you
+wrote; it does not stop GitHub synthesizing one. `8f5fcce` and `f82b02a` both
+carry a `github-actions[bot]` co-author trailer in their bodies, and `5aacb786`
+carries an agent's. Branch author identities do reach `main`.
 
 The detector has its own tests — [`scripts/test-agent-attribution.sh`](../scripts/test-agent-attribution.sh),
 run by CI on every PR — so change it only with those passing, and keep the shared
