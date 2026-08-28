@@ -195,15 +195,21 @@ class RcJvmFigmaSvgExportTest {
     assert(!svg.contains("href=\"figma-raster/")) {
       "AppCard production SVG contains a dangling raster layer"
     }
+    // The three numbers here have each moved once, for a reason worth keeping written down.
+    //
     // rx=52, not 104: the fixture's corner arrives from remote-core as `52` at DENSITY=2f (a 26dp
     // card corner with the density already folded in), and the player passes it through. This
     // asserted 104 while `RemoteRoundedClipShape` multiplied by density a second time — the
     // doubling that clipped the corners off `RemoteOutlinedCard`'s border
-    // (yschimke/wear-m3-catalog#89). 104 survives here for the same reason it survived there: on a
-    // 640x216 box a 104 radius is still under half the height, so nothing clamps it back.
+    // (yschimke/wear-m3-catalog#89).
+    //
+    // y=156 h=168, not y=132 h=216: the card's own padding was applied twice, so it was 48px
+    // taller and sat 24px higher. `PaddingModifier` now reads the source edges rather than the
+    // ones `updateVariables` re-scales (yschimke/wear-m3-catalog#90), and the card is the size its
+    // content asks for.
     assert(
       Regex(
-          "<clipPath[^>]*>\\s*<rect[^>]*x=\"0\"[^>]*y=\"132\"[^>]*width=\"640\"[^>]*height=\"216\"[^>]*rx=\"52\""
+          "<clipPath[^>]*>\\s*<rect[^>]*x=\"0\"[^>]*y=\"156\"[^>]*width=\"640\"[^>]*height=\"168\"[^>]*rx=\"52\""
         )
         .containsMatchIn(svg)
     ) {
