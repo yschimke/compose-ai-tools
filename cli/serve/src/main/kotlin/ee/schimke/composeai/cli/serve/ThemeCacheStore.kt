@@ -89,6 +89,8 @@ class ThemeCacheStore(
   private val knownGenerationsBySystem = AtomicReference<Map<String, Int>>(emptyMap())
   private val lastFailure = ConcurrentHashMap<String, String>()
   private val tempSequence = AtomicLong()
+  /** Cache for [evictedAtEpochMillis]; -1 until the marker has been looked for. */
+  private val evictedAt = AtomicLong(-1)
   /** Distinguishes this process's in-flight writes from a concurrently deployed replica's. */
   private val writerId: String =
     ProcessHandle.current().pid().toString(36) + "-" + System.identityHashCode(this).toString(36)
@@ -123,9 +125,19 @@ class ThemeCacheStore(
    * decision and the manifest is only commentary. That held while the fingerprint keyed on the tool
    * version, because a new build could never reach an existing generation. It no longer does — a
    * release now adopts its predecessor's renders (see [ThemeCacheFingerprint]) — so leaving the
-   * manifest alone would have it name a build that has not written here since, which is precisely
-   * the question the manifest exists to answer when someone is working out whether the pixels on
-   * this volume can be trusted.
+   * manifest alone would have it name a build that has not been near this directory since.
+   *
+   * What the refreshed manifest then records is the build that last **opened** the generation, and
+   * [GenerationInputs.toolVersion] says so. It is deliberately not the build that last *wrote* a
+   * PNG here, and the difference is load-bearing during a rollout: this rewrite happens at open,
+   * before this process has rendered anything, and the incoming replica can fail readiness
+   * immediately afterwards while the outgoing one carries on as the volume's only real writer. An
+   * investigator reading `toolVersion` as "who made these pixels" would be pointed at a build that
+   * made none of them. Deferring the rewrite to the first successful [Generation.put] would fix
+   * that half and break the other: [dirtyBeforeEpochMillis] has to be on disk *before* a single
+   * render is served from this directory, or the adopted set is trusted for however long the first
+   * write takes. The boundary is the correctness half, so it wins, and the version is documented as
+   * what it actually is.
    *
    * [GenerationInputs.createdAtEpochMillis] is preserved across the rewrite: it is what the sweep's
    * grace window reads to spare a generation belonging to a replica that is still serving, and
@@ -140,9 +152,24 @@ class ThemeCacheStore(
       } else {
         null
       }
+    // Everything on this volume older than the last eviction plus the rollout grace window is
+    // untrusted, whoever wrote it and whatever build they were — see [evictAll]. `+ graceMillis`
+    // for the same reason the cross-build boundary uses it: the writes that have to be caught are
+    // the OUTGOING replica's, and those land after the eviction instant, not before it.
+    val evictionBoundary = evictedAtEpochMillis().takeIf { it > 0 }?.plus(graceMillis) ?: 0L
     // An unreadable manifest beside a live generation is rewritten rather than left: the sweep
     // falls back to the directory's own timestamp for it, and a readable one is strictly better.
-    if (existing != null && existing.toolVersion == inputs.toolVersion)
+    //
+    // The eviction clause is what stops the same-build case slipping through. An operator can evict
+    // and restart WITHOUT a release — that is the ordinary shape of "I know the pixels moved" — and
+    // then the outgoing replica carries this build's own version string, the early return fires on
+    // it, and the boundary it repopulated the generation under is whatever the previous manifest
+    // said. Which is usually zero.
+    if (
+      existing != null &&
+        existing.toolVersion == inputs.toolVersion &&
+        existing.dirtyBeforeEpochMillis >= evictionBoundary
+    )
       return MarkOutcome.NOT_NEEDED
     val createdAt = existing?.createdAtEpochMillis?.takeIf { it > 0 } ?: clock()
     // Renders are here that this build did not write. Usually the manifest says so; when it is
@@ -166,7 +193,14 @@ class ThemeCacheStore(
     //
     // The cost is that some of this build's OWN early renders fall under the boundary and are
     // re-rendered once. That is the right direction to be wrong in.
-    val boundary = if (inherited) clock() + graceMillis else 0L
+    //
+    // `maxOf` with the eviction boundary rather than either one alone: the two answer different
+    // questions ("did another BUILD write here" and "was this volume evicted under a writer that
+    // is still going"), a generation can be in both states at once, and the later line is the only
+    // one that makes both answers safe. The eviction half applies even to a directory this process
+    // created — a generation deleted by the eviction and recreated under the same fingerprint by
+    // the outgoing replica reaches here as brand new, which is precisely the case.
+    val boundary = maxOf(if (inherited) clock() + graceMillis else 0L, evictionBoundary)
     val wrote = runCatching {
       file.writeText(
         json.encodeToString(
@@ -186,6 +220,7 @@ class ThemeCacheStore(
     // re-render of a catalog the volume could not record anything about, which is the right
     // direction to be wrong in.
     return when {
+      // Nothing on disk to be on the wrong side of either boundary.
       !inherited -> MarkOutcome.NOT_NEEDED
       wrote -> MarkOutcome.RECORDED
       else -> MarkOutcome.UNRECORDED
@@ -220,14 +255,32 @@ class ThemeCacheStore(
   /**
    * Delete every generation in the store, unconditionally, and report how many went.
    *
-   * The escape hatch for "the pixels on this volume are wrong and I already know it" — a base-image
-   * bump that changed the installed fonts, say, which no fingerprint sees and which a five-entry
-   * verification sample can miss. [sweep] cannot serve this purpose: it deliberately spares any
-   * generation inside its grace window, which is exactly the freshly-written one an operator wants
-   * gone.
+   * The escape hatch for "the pixels on this volume are wrong and I already know it" — a change to
+   * the render environment that [ThemeCacheFingerprint.rendererIdentity] does not read, say, which
+   * no fingerprint sees and which a five-entry verification sample can miss. [sweep] cannot serve
+   * this purpose: it deliberately spares any generation inside its grace window, which is exactly
+   * the freshly-written one an operator wants gone.
    *
-   * Called only from an explicit `--theme-cache-evict`, and only before any generation is opened,
-   * so it can never race a live [Generation]'s writes.
+   * ### Deleting is not enough on a shared volume
+   *
+   * This is called before this process opens a generation, so it cannot race **this** process's
+   * writes — and that used to be the whole of the reasoning, which was a single-process argument
+   * about a volume that is not single-process. The deployment this store was built for performs a
+   * **zero-downtime rollout**: the outgoing replica keeps serving, and keeps writing PNGs, against
+   * the same mounted `/config` volume while the incoming one boots and evicts. Every render it
+   * publishes in that window repopulates a generation with precisely the pixels the eviction was
+   * meant to destroy, and they land *after* the deletion, so they carry fresh timestamps and read
+   * as this build's own work.
+   *
+   * So the deletion also leaves a mark. [EVICTED_NAME] records when it happened, and every
+   * generation opened from here on treats anything written before that instant plus the rollout
+   * grace window as dirty — the same boundary mechanism, and the same grace window, that
+   * [writeManifest] already uses for the cross-build case, because it is the same question about
+   * the same other replica. An operator gets the eviction they asked for without having to prove
+   * that every other writer has stopped first.
+   *
+   * The mark is not a lock and does not claim to be one. It cannot stop the old replica writing; it
+   * makes what the old replica writes untrusted, which is the outcome that was wanted.
    */
   fun evictAll(): Int {
     var deleted = 0
@@ -238,10 +291,36 @@ class ThemeCacheStore(
       }
       if (systemDir.listFiles()?.isEmpty() == true) systemDir.delete()
     }
+    // Stamped AFTER the deletion, so a crash midway leaves the volume looking un-evicted rather
+    // than leaving surviving generations under a boundary nothing has been deleted against. The
+    // operator re-runs the flag; the alternative silently reports a completed eviction that only
+    // half happened.
+    val at = clock()
+    val stamped = runCatching { File(root, EVICTED_NAME).writeText(at.toString()) }.isSuccess
+    if (stamped) evictedAt.set(at)
+    // A volume that cannot record the eviction cannot make the old replica's repopulated renders
+    // dirty either, and that is worth saying out loud rather than reporting a clean eviction.
+    else recordFailure("store", "evicted but could not record the boundary in $EVICTED_NAME")
     knownGenerations.set(0)
     knownGenerationsBySystem.set(emptyMap())
     knownBytes.set(0)
     return deleted
+  }
+
+  /**
+   * When this store was last evicted, or 0 when it never was.
+   *
+   * Read off disk once and remembered: it is consulted on every [open] and it can only be changed
+   * by an [evictAll] in this same process, which updates the cached value itself. A concurrently
+   * deployed replica evicting under us is not a case worth polling for — that replica is the one
+   * booting, and the boundary it writes is read by the *next* open on either side.
+   */
+  private fun evictedAtEpochMillis(): Long = evictedAt.updateAndGet { cached ->
+    if (cached >= 0) cached
+    else
+      runCatching { File(root, EVICTED_NAME).readText().trim().toLong() }
+        .getOrDefault(0L)
+        .coerceAtLeast(0L)
   }
 
   /**
@@ -901,6 +980,16 @@ class ThemeCacheStore(
     /** Long enough to cover a rollout's readiness window, short enough to reclaim the same day. */
     const val DEFAULT_SWEEP_GRACE_MILLIS: Long = 60L * 60 * 1000
     const val MANIFEST_NAME: String = "manifest.json"
+
+    /**
+     * Store-root marker recording the epoch millis of the last [evictAll].
+     *
+     * At the ROOT rather than inside a generation, because the generations it applies to are the
+     * ones that do not exist yet: an eviction deletes what is on the volume, and what it has to
+     * survive is what gets written next. A plain integer in a plain file so that an operator
+     * looking at a mounted volume can read and clear it without tooling.
+     */
+    const val EVICTED_NAME: String = "evicted-at"
     const val MAX_REASON_CHARS: Int = 200
     private const val PNG_SUFFIX = ".png"
     private const val TEMP_SUFFIX = ".png.tmp"
@@ -947,6 +1036,15 @@ class ThemeCacheStore(
 data class GenerationInputs(
   val system: String,
   val fingerprint: String,
+  /**
+   * The build that last **opened** this generation — not necessarily one that wrote a PNG into it.
+   *
+   * Rewritten by [ThemeCacheStore.writeManifest] at open time, before this process has rendered
+   * anything, so a replica that fails readiness still leaves its version here. Read it as "the last
+   * build that thought this generation was its own", which is the question the dirty boundary
+   * beside it was set to answer; do not read it as authorship of the pixels. See that function's
+   * doc for why it is stamped at open rather than on the first write.
+   */
   val toolVersion: String,
   val variant: String,
   val renderConfig: String,

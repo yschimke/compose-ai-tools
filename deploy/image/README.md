@@ -279,8 +279,9 @@ Undo it by removing the properties and restarting once the catalogs report conve
 
 ### Regenerating a catalog's warmed theme renders
 
-Two admin routes for pixels you suspect are wrong for a reason no fingerprint sees — a base-image
-bump that changed the installed fonts being the case that motivated them.
+Two admin routes for pixels you suspect are wrong for a reason no fingerprint sees. A base-image
+bump that changed the installed fonts was the case that motivated them; the fingerprint now reads
+the font inventory and the rasteriser sonames itself, so these are for whatever is left over.
 
 ```bash
 # Mark this catalog's warmed renders for re-render. Nothing is deleted: every preview keeps
@@ -585,25 +586,39 @@ that decides the pixels; because an input nobody thought of could still escape i
 re-renders a sample of the adopted entries at startup and discards the entire generation on any
 mismatch, so a fingerprint miss costs a re-render rather than serving wrong pixels.
 
-**A release keeps the warmed renders.** The tool version used to be part of that fingerprint, which
-meant every release orphaned the whole store — and with four versions shipping inside four hours
-here against a pass that needs the better part of a day, the cache was invalidated faster than it
-could ever fill and was adopted exactly zero times. The version was never proof of anything anyway:
-it stood *proxy* for the container image, which a base-image bump changes without moving the version
-at all. Renders written by another build are now adopted, and treated exactly like any other adopted
-entry — withheld from reads until the re-rendered sample agrees, whole generation discarded when it
-does not. The version stays in each generation's manifest, so which build last wrote a generation
-remains answerable.
+**A release keeps the warmed renders; a new base image does not.** The tool version used to be part
+of that fingerprint, which meant every release orphaned the whole store — and with four versions
+shipping inside four hours here against a pass that needs the better part of a day, the cache was
+invalidated faster than it could ever fill and was adopted exactly zero times. The version was never
+proof of anything anyway: it stood *proxy* for the container image, which a base-image bump changes
+without moving the version at all.
 
-For the case where you already **know** the pixels moved — a base image that changed the installed
-fonts, which no fingerprint sees and a five-entry sample can miss — evict the store outright:
+So the fingerprint reads the **render environment** directly instead — the JVM's own version, the
+architecture, the inventory of `/usr/share/fonts` and friends, and the freetype / fontconfig /
+harfbuzz sonames. Four builds out of one base image share a generation and adopt each other's
+renders; one build on a bumped base image gets its own directory and warms from cold, which is the
+correct answer and used to depend on a five-entry sample happening to draw one of the rows that
+moved. Renders written by another build of the same image are adopted and treated like any other
+adopted entry — withheld from reads until the re-rendered sample agrees, whole generation discarded
+when it does not. Each generation's manifest names the build that last **opened** it (not
+necessarily one that wrote a PNG there — a replica that fails readiness still leaves its version
+behind).
+
+For the case where you already **know** the pixels moved for a reason none of that reads, evict the
+store outright:
 
 ```
 SERVE_THEME_CACHE_EVICT=1
 ```
 
-It fires on **every** start while set, so leave it in for one roll and then take it out again. An
-ordinary renderer change needs none of this; the sample verification is what that is for.
+It fires on **every** start while set, so leave it in for one roll and then take it out again. The
+eviction also leaves an `evicted-at` marker at the store root, because the rollout is zero-downtime:
+the outgoing replica keeps rendering into the same volume while the incoming one boots, and anything
+it writes inside the following grace window would otherwise repopulate the generation with exactly
+the pixels you evicted. The marker makes those renders dirty instead, so you do not have to stop
+every writer first. Clearing the marker by hand is safe once the roll has settled. An ordinary
+renderer change needs none of this; the fingerprint and the sample verification are what that is
+for.
 
 Read `themeCache` on [`/status.json`](https://preview.coo.ee/status.json) to confirm it is on — it
 is `null` when there is no disk tier, and each catalog's `renderCache.persisted` is `null` beside
