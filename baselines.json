@@ -1360,14 +1360,14 @@
     "serve-status.dark.png": {
       "fixture": "serve-status",
       "theme": "dark",
-      "sha256": "2b4091b582cd6c9097876ff79b98b9407fdb8e4010f76453a3fe1855ad6926bf",
-      "size": 256994
+      "sha256": "fbbc7b8824a3d6ab427b89143b58b5656e21e604ecfc0a1a99be24f24266f437",
+      "size": 257658
     },
     "serve-status.light.png": {
       "fixture": "serve-status",
       "theme": "light",
-      "sha256": "b12fdb10bcf0314b67bb4ab5e75002e18501092369ab554d28e5896bf4cad93e",
-      "size": 251613
+      "sha256": "b019d13cd11afb0537af44a1079bf432bc8108898075aaff884d18de33750b39",
+      "size": 252231
     },
     "serve-viewer-axes-folded-disclosures-open.dark.png": {
       "fixture": "serve-viewer-axes-folded-disclosures-open",
