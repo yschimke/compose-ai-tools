@@ -2453,6 +2453,10 @@ object PreviewDiscovery {
             "keeping kitProps and ignoring the singular pair. Declare one or the other."
         )
       }
+      // `runCatching` for the same reason `kitProps` above needs it: a consumer compiled against an
+      // older preview-annotations has no `secondary` parameter, and `getValue` throws for one that
+      // is absent rather than answering its default.
+      val secondary = (runCatching { pv.getValue("secondary") }.getOrNull() as? Boolean) ?: false
       val spec =
         OverrideVariantSpec(
           name = name,
@@ -2462,6 +2466,7 @@ object PreviewDiscovery {
           kitAxis = kitAxis.takeIf { kitProps.isEmpty() },
           kitValue = kitValue.takeIf { kitProps.isEmpty() },
           kitProps = kitProps,
+          secondary = secondary,
         )
       val existing = specs.putIfAbsent(name, spec)
       // Only a *conflicting* duplicate is worth a warning. The same annotation reached twice — once

@@ -3107,10 +3107,17 @@ ${captureControlsHtml().prependIndent("          ")}
     // property of the whole set (see [variantLabel]), so nothing can be named until both passes
     // have run.
     val rows = LinkedHashMap<String, Pair<ServePreview, String>>()
+    // A second-tier cell is never a ROW here — that is what the tier means — but the render on
+    // screen is always its own subtree's subject, so it is exempt from its own filter. Arriving on
+    // one by its link (from a kit page, say) must show a page that says where it is, not a tree of
+    // everything except it. `componentSubtreeHtml` re-adds it if these passes do not, so this only
+    // decides whether it is labelled by its axis or by its name.
+    fun listed(p: ServePreview) = !p.secondary || p.id == current.id
     // This render's own state axis, holding its props fixed.
     val stateKey = switcherStateKey(current)
     val byState = LinkedHashMap<String, ServePreview>()
     for (p in all) {
+      if (!listed(p)) continue
       if (switcherStateKey(p) != stateKey || themeLane(p, darkFirst) != lane) continue
       byState.putIfAbsent(p.state ?: "default", p)
     }
@@ -3119,6 +3126,7 @@ ${captureControlsHtml().prependIndent("          ")}
     val curState = current.state ?: "default"
     val byProps = LinkedHashMap<String, ServePreview>()
     for (p in all) {
+      if (!listed(p)) continue
       if (switcherPropsKey(p) != propsKey || themeLane(p, darkFirst) != lane) continue
       if ((p.state ?: "default") != curState) continue
       byProps.putIfAbsent(propsSignature(p.props), p)
@@ -3129,6 +3137,7 @@ ${captureControlsHtml().prependIndent("          ")}
     val bySize = LinkedHashMap<String, ServePreview>()
     for (p in all) {
       if (p.size == null) continue
+      if (!listed(p)) continue
       if (switcherSizeKey(p) != sizeKey || themeLane(p, darkFirst) != lane) continue
       bySize.putIfAbsent(p.size, p)
     }
@@ -3223,6 +3232,13 @@ ${captureControlsHtml().prependIndent("          ")}
    * theme because the card already swaps it in place, the rest because they multiply every row by a
    * matrix nobody navigates by.
    *
+   * A state cell can now declare itself secondary too ([ServePreview.secondary], from
+   * `@OverrideVariant(secondary = true)`), and it is dropped here on the same ground: an
+   * exhaustively drawn kit set is a matrix nobody navigates by either. Only the LISTING changes —
+   * such a render is still served, still addressed by its own URL, and still paired with its kit
+   * node — so a link from a kit page or a design-map pairing lands on it, and its own subtree still
+   * offers the primary rows to get back by.
+   *
    * The viewer's own subtree ([componentSubtreeHtml]) is built from this same function, so the two
    * cannot offer different sets: one definition of what a component's renders are, drawn twice.
    */
@@ -3248,6 +3264,7 @@ ${captureControlsHtml().prependIndent("          ")}
     val stateKey = switcherStateKey(default)
     val seenStates = LinkedHashMap<String, ServePreview>()
     for (p in all) {
+      if (p.secondary) continue
       if (switcherStateKey(p) != stateKey) continue
       if (themeLane(p, darkFirst) != lane) continue
       if (!hasNonDefaultProps(p) && isNonDefaultState(p)) {
@@ -3259,6 +3276,7 @@ ${captureControlsHtml().prependIndent("          ")}
     val propsKey = switcherPropsKey(default)
     val seenProps = LinkedHashMap<String, ServePreview>()
     for (p in all) {
+      if (p.secondary) continue
       if (switcherPropsKey(p) != propsKey) continue
       if (themeLane(p, darkFirst) != lane) continue
       if ((p.state ?: "default") != defaultState) continue

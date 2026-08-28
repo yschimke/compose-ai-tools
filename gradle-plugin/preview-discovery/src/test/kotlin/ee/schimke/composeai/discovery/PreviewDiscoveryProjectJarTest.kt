@@ -121,6 +121,33 @@ class PreviewDiscoveryProjectJarTest {
   }
 
   @Test
+  fun `an override variant's tier is read off the annotation`() {
+    // The read matters more than the field: discovery has to answer `false` for a catalog compiled
+    // against an annotations jar that predates the parameter (ClassGraph throws for one that is
+    // absent rather than handing back its default), and `true` for one that declares it.
+    val jar = File(tempDir.root, "secondary-variant-classes.jar")
+    writeSecondaryVariantClassJar(jar)
+
+    val outcome =
+      PreviewDiscovery.discover(
+        PreviewDiscovery.Input(
+          classDirs = emptyList(),
+          dependencyJars = emptyList(),
+          sourceFiles = emptyList(),
+          moduleName = ":catalog",
+          variantName = "debug",
+          projectDirectory = tempDir.root,
+          failOnEmpty = true,
+          projectClassJars = listOf(jar),
+        )
+      ) as PreviewDiscovery.Outcome.Success
+
+    val variants = outcome.manifest.previews.mapNotNull { it.overrides }.associateBy { it.name }
+    assertThat(variants.getValue("segments-13").secondary).isTrue()
+    assertThat(variants.getValue("disabled").secondary).isFalse()
+  }
+
+  @Test
   fun `a CatalogVariant's design kit correspondence is discovered`() {
     // The other half of the same idea: a folded component names the kit's spelling for the axis
     // its one prop turns, so `type=range` can stay the Compose word while the join uses the kit's
@@ -205,6 +232,58 @@ class PreviewDiscoveryProjectJarTest {
       visit("kitValue", "Full-screen (range)")
       visitArray("props").apply {
         visit(null, "type=range")
+        visitEnd()
+      }
+      visitEnd()
+    }
+    mv.visitCode()
+    mv.visitInsn(Opcodes.RETURN)
+    mv.visitMaxs(0, 0)
+    mv.visitEnd()
+    cw.visitEnd()
+
+    JarOutputStream(jar.outputStream()).use { jos ->
+      jos.putNextEntry(JarEntry("$internalName.class"))
+      jos.write(cw.toByteArray())
+      jos.closeEntry()
+    }
+  }
+
+  /** Writes two `@OverrideVariant`s, one of them declaring itself second-tier. */
+  private fun writeSecondaryVariantClassJar(jar: File) {
+    val internalName = "test/SecondaryVariantPreviewKt"
+    val cw = ClassWriter(0)
+    cw.visit(
+      Opcodes.V17,
+      Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL or Opcodes.ACC_SUPER,
+      internalName,
+      null,
+      "java/lang/Object",
+      null,
+    )
+    val mv =
+      cw.visitMethod(
+        Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC,
+        "SegmentedProgress",
+        "()V",
+        null,
+        null,
+      )
+    mv.visitAnnotation("Landroidx/compose/ui/tooling/preview/Preview;", false).visitEnd()
+    mv.visitAnnotation("Lee/schimke/composeai/preview/OverrideVariant;", false).apply {
+      visit("name", "segments-13")
+      visit("secondary", true)
+      visitArray("ints").apply {
+        visit(null, "segmentCount=13")
+        visitEnd()
+      }
+      visitEnd()
+    }
+    // The one a reader browses by: same shape, no tier declared, so it stays primary.
+    mv.visitAnnotation("Lee/schimke/composeai/preview/OverrideVariant;", false).apply {
+      visit("name", "disabled")
+      visitArray("booleans").apply {
+        visit(null, "enabled=false")
         visitEnd()
       }
       visitEnd()

@@ -339,6 +339,43 @@ The dark lane is unchanged, and an untagged render now links back to the primary
 well as forward to its siblings — the relation is symmetric because both sides resolve to a lane
 string rather than one of them being `null`.
 
+## The second tier: a cell that is compared but not listed
+
+The tree has always had two tiers. `state` and `props` are **primary** — a different thing to look
+at — and go in it; theme, breakpoint, font scale and locale are **secondary** — a different
+rendering of one thing — and stay out, because listing them multiplies every row by a matrix nobody
+navigates by.
+
+`@OverrideVariant(secondary = true)` lets a state cell say the same about itself:
+
+```kotlin
+@OverrideVariant(
+  name = "segments-13-small-stroke-overflow",
+  ints = ["segmentCount=13"],
+  strings = ["stroke=small"],
+  floats = ["progress=1.4"],
+  kitProps = ["Segments=13", "Stroke Width=Small", "Progress=Overflow"],
+  secondary = true,
+)
+```
+
+Only the **listing** changes. The cell renders, it bakes, it keeps its own `/p/<id>`, and it pairs
+with its design-kit node exactly as before — so a link from an imported kit page, a design-map
+pairing or a search result lands on it, and the page it lands on is a whole page: the viewer's
+subtree always carries the render on screen as a row, with the primary cells under it as the way
+back.
+
+It exists for the catalog that draws a kit set exhaustively. `wear-m3-catalog`'s segmented progress
+indicator is 90 cells — 14 segment counts by two stroke widths by four progress values by disabled —
+every one of them a kit node worth comparing and none of them something a reader browses to by name
+([wear-m3-catalog#101](https://github.com/yschimke/wear-m3-catalog/issues/101)). Without the flag a
+catalog buys a readable menu by not drawing the cells, which trades away the comparison to shorten
+a list.
+
+The flag travels annotation → discovery (`previews.json`) → the publisher's per-preview
+declarations → `previews/variants.json` → `ServePreview.secondary`, and `primaryVariantRows` is the
+one place that reads it. Nothing about rendering, addressing or parity consults it.
+
 ## Value sets: a knob that says what it may be
 
 A `previewOverride*` knob publishes its current value, and until it also publishes its **value set**

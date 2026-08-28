@@ -1181,6 +1181,15 @@ data class OverrideVariantSpec(
    * happen to alias to. See the annotation for why the two are kept apart.
    */
   val kitProps: List<CatalogVariantProp> = emptyList(),
+  /**
+   * Whether this cell is **second-tier** — `@OverrideVariant.secondary`.
+   *
+   * Carried through the manifest so a browse surface can list the cells a reader navigates by and
+   * leave an exhaustive matrix out of the menu, without changing what is rendered, what it is
+   * addressed by, or what it is compared against. False for every cell that declares nothing, which
+   * is every cell authored before the field existed.
+   */
+  val secondary: Boolean = false,
 )
 
 @Serializable

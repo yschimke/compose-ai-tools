@@ -148,6 +148,18 @@ data class ServePreview(
    */
   val fixedTheme: Boolean = false,
   /**
+   * Whether this render is a **second-tier** variant cell: it renders, it keeps its own URL and its
+   * design-kit pairing, but it is not listed in the component's variant tree or in the viewer's
+   * subtree. From `@OverrideVariant(secondary = true)` by way of `previews/variants.json`.
+   *
+   * The tree has always had two tiers — `state` and `props` in it, theme / breakpoint / font scale
+   * / locale out of it, because those are a different rendering of one thing rather than a
+   * different thing to look at. This lets a state cell say the same about itself, which is what a
+   * catalog that draws a kit set exhaustively needs: 90 cells of one progress indicator are 90 real
+   * comparisons and one menu nobody can read.
+   */
+  val secondary: Boolean = false,
+  /**
    * The baked component **state** this preview render represents — `"unchecked"`, `"pressed"`,
    * `"disabled"`, `"unselected"`, … — or `null`/`"default"` for the default render (and for plain
    * bundles / app screens that carry no state). Carried from the catalog's `previews/variants.json`

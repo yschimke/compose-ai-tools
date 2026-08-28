@@ -139,6 +139,12 @@ export function declarationsByPreviewId(bundles) {
       // this card under a theme override, and it has to know that from catalog.json alone —
       // deciding it lazily would mean the specimen re-themes until its daemon happens to be opened.
       const fixedTheme = preview.fixedTheme === true;
+      // `@OverrideVariant(secondary = true)`: a cell that is rendered and compared but kept out of
+      // the browse surface's variant tree. It rides here rather than on the image's `state`,
+      // because it says nothing about WHICH cell this is — only about how prominently to list it —
+      // and because the browse surface has to know it from catalog.json alone, before any daemon is
+      // opened, exactly as `fixedTheme` does.
+      const secondary = preview.overrides?.secondary === true;
       // What ground this render sits on and what device frame it was captured in. These live ONLY
       // in the bundle's root `previews.json`, which a published catalog does not stage — it carries
       // per-preview metadata on `previews/variants.json` instead. Without lifting them here, every
@@ -153,6 +159,7 @@ export function declarationsByPreviewId(bundles) {
         supportsFocus ||
         supportsGestures ||
         fixedTheme ||
+        secondary ||
         previewParams
       ) {
         out.set(preview.id, {
@@ -161,6 +168,7 @@ export function declarationsByPreviewId(bundles) {
           ...(supportsFocus ? { supportsFocus: true } : {}),
           ...(supportsGestures ? { supportsGestures: true } : {}),
           ...(fixedTheme ? { fixedTheme: true } : {}),
+          ...(secondary ? { secondary: true } : {}),
           ...(previewParams ? { previewParams } : {}),
         });
       }

@@ -192,6 +192,58 @@ class PreviewDataTest {
   }
 
   @Test
+  fun `a second-tier cell says so through the preview manifest`() {
+    // The cell is otherwise ordinary: it seeds knobs, it names a kit assignment, it renders. What
+    // `secondary` carries is how prominently a browse surface should LIST it — an exhaustive kit
+    // matrix is a comparison per cell and a menu nobody can read.
+    val preview =
+      PreviewInfo(
+        id = "test.SegmentedProgress_VARIANT_segments-13-small-stroke",
+        functionName = "SegmentedProgress",
+        className = "test.ProgressKt",
+        overrides =
+          OverrideVariantSpec(
+            name = "segments-13-small-stroke",
+            seeds =
+              listOf(
+                OverrideSeed(key = "segmentCount", kind = OverrideSeedKind.INT, raw = "13"),
+                OverrideSeed(key = "stroke", kind = OverrideSeedKind.STRING, raw = "small"),
+              ),
+            secondary = true,
+          ),
+      )
+    val manifest = PreviewManifest(module = "app", variant = "debug", previews = listOf(preview))
+
+    val decoded = json.decodeFromString<PreviewManifest>(json.encodeToString(manifest))
+
+    assertThat(decoded.previews.single().overrides?.secondary).isTrue()
+    // And the seeds are untouched by it: the tier decides the listing, never the render.
+    assertThat(decoded.previews.single().overrides?.seeds?.map { it.key })
+      .containsExactly("segmentCount", "stroke")
+  }
+
+  @Test
+  fun `a cell that declares no tier is primary`() {
+    val preview =
+      PreviewInfo(
+        id = "test.Switch_VARIANT_off",
+        functionName = "SwitchOn",
+        className = "test.SwitchKt",
+        overrides =
+          OverrideVariantSpec(
+            name = "off",
+            seeds =
+              listOf(OverrideSeed(key = "checked", kind = OverrideSeedKind.BOOLEAN, raw = "false")),
+          ),
+      )
+    val manifest = PreviewManifest(module = "app", variant = "debug", previews = listOf(preview))
+
+    val decoded = json.decodeFromString<PreviewManifest>(json.encodeToString(manifest))
+
+    assertThat(decoded.previews.single().overrides?.secondary).isFalse()
+  }
+
+  @Test
   fun `a cell that declares no kit assignment carries an empty one`() {
     val preview =
       PreviewInfo(
