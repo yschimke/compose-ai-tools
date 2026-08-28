@@ -22,16 +22,34 @@ import kotlin.math.roundToInt
  * [computeThumbCrop] returns `null` (no-op) for them — only the framed-in-a-canvas stickers get
  * cropped.
  */
+/** A width/height pair, in the crop's output pixels. */
+public data class CropSize(val w: Int, val h: Int)
+
+/**
+ * Where the render sits under the clip window, in the crop's output pixels.
+ *
+ * Normally NEGATIVE on both axes: the window's origin is the component's top-left, so the render
+ * has to be shifted up and left to bring that corner to it.
+ */
+public data class CropOffset(val left: Int, val top: Int)
+
+/**
+ * A clip window over a render, and the render's position under it.
+ *
+ * Grouped rather than flat, and that is the point: this carried six bare `Int`s in a row — window
+ * width and height, render width and height, and the two offsets — so any permutation of them
+ * compiled. It is a published contract that an extracted preview server will build catalog pages
+ * from, and a transposed pair there is a silently wrong crop rather than a build failure.
+ * [CropSize] and [CropOffset] make the transposition a type error; the two dimensions left inside
+ * each of them are in the conventional order and mean the same kind of thing.
+ */
 public data class ContentCrop(
-  /** Clip-window size (px) — the component box scaled to fit [CAP]. */
-  val boxW: Int,
-  val boxH: Int,
-  /** The full render `<img>` size (px) at the same scale; larger than the box, clipped by it. */
-  val imgW: Int,
-  val imgH: Int,
-  /** Negative offsets that shift the render so the component's top-left meets the clip origin. */
-  val left: Int,
-  val top: Int,
+  /** Clip-window size — the component box scaled to fit [CAP]. */
+  val window: CropSize,
+  /** The full render `<img>` size at the same scale; larger than the window, clipped by it. */
+  val render: CropSize,
+  /** The shift that brings the component's top-left to the window origin. */
+  val offset: CropOffset,
   /**
    * Whether what falls outside the window is hidden.
    *
@@ -44,17 +62,17 @@ public data class ContentCrop(
    */
   val clip: Boolean = true,
   /**
-   * The box width in NATIVE render pixels — the window's 1x ceiling, before [CAP] is applied. Zero
-   * when unknown (a hand-assembled crop), which makes the page fall back to a fixed-px window.
+   * The window width in NATIVE render pixels — its 1x ceiling, before [CAP] is applied. Zero when
+   * unknown (a hand-assembled crop), which makes the page fall back to a fixed-px window.
    */
-  val natBoxW: Int = 0,
+  val nativeWindowW: Int = 0,
   /**
    * The native length of the axis [CAP] bounds — the largest edge for a content crop, the height
-   * for a gutter crop. With [natBoxW] this is enough to re-derive the window's width for ANY cap,
-   * which is what lets the stylesheet shrink it at a narrow viewport (`width = natBoxW * min(1, cap
-   * / natCapAxis)`). Zero when unknown.
+   * for a gutter crop. With [nativeWindowW] this is enough to re-derive the window's width for ANY
+   * cap, which is what lets the stylesheet shrink it at a narrow viewport (`width = nativeWindowW *
+   * min(1, cap / nativeCapAxis)`). Zero when unknown.
    */
-  val natCapAxis: Int = 0,
+  val nativeCapAxis: Int = 0,
 )
 
 /** Largest edge (px) a cropped thumbnail is scaled to — mirrors the static gallery's `cap`. */
@@ -203,15 +221,13 @@ public fun computeGutterCrop(
   // live in CSS: constraining its height there squashes the box rather than scaling it.
   val scale = min(1.0, cap / boxH.toDouble())
   return ContentCrop(
-    boxW = max(1, (boxW * scale).roundToInt()),
-    boxH = max(1, (boxH * scale).roundToInt()),
-    imgW = (renderW * scale).roundToInt(),
-    imgH = (renderH * scale).roundToInt(),
-    left = (-left * scale).roundToInt(),
-    top = (-top * scale).roundToInt(),
+    window =
+      CropSize(w = max(1, (boxW * scale).roundToInt()), h = max(1, (boxH * scale).roundToInt())),
+    render = CropSize(w = (renderW * scale).roundToInt(), h = (renderH * scale).roundToInt()),
+    offset = CropOffset(left = (-left * scale).roundToInt(), top = (-top * scale).roundToInt()),
     clip = false,
-    natBoxW = boxW,
-    natCapAxis = boxH,
+    nativeWindowW = boxW,
+    nativeCapAxis = boxH,
   )
 }
 
@@ -230,14 +246,12 @@ public fun computeThumbCrop(
   // Don't upscale past 1× — a tiny component shows at its native pixels, not blown up.
   val scale = min(1.0, cap / max(box.w, box.h).toDouble())
   return ContentCrop(
-    boxW = max(1, (box.w * scale).roundToInt()),
-    boxH = max(1, (box.h * scale).roundToInt()),
-    imgW = (renderW * scale).roundToInt(),
-    imgH = (renderH * scale).roundToInt(),
-    // `left`/`top` are the render's offset under the clip window: negative of the box origin.
-    left = (-box.x * scale).roundToInt(),
-    top = (-box.y * scale).roundToInt(),
-    natBoxW = box.w,
-    natCapAxis = max(box.w, box.h),
+    window =
+      CropSize(w = max(1, (box.w * scale).roundToInt()), h = max(1, (box.h * scale).roundToInt())),
+    render = CropSize(w = (renderW * scale).roundToInt(), h = (renderH * scale).roundToInt()),
+    // The offset is the render's position under the clip window: negative of the box origin.
+    offset = CropOffset(left = (-box.x * scale).roundToInt(), top = (-box.y * scale).roundToInt()),
+    nativeWindowW = box.w,
+    nativeCapAxis = max(box.w, box.h),
   )
 }

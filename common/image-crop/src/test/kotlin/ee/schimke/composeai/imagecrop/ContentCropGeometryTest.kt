@@ -30,13 +30,13 @@ class ServeThumbCropTest {
     val crop = computeThumbCrop(svg("0 0 120 48", "translate(-167, -203)"), 454, 454)
     assertNotNull(crop)
     // maxEdge 120 < cap 240 → scale clamps to 1 (no upscaling).
-    assertEquals(120, crop.boxW)
-    assertEquals(48, crop.boxH)
-    assertEquals(454, crop.imgW)
-    assertEquals(454, crop.imgH)
+    assertEquals(120, crop.window.w)
+    assertEquals(48, crop.window.h)
+    assertEquals(454, crop.render.w)
+    assertEquals(454, crop.render.h)
     // Negative offsets shift the render so the component's top-left meets the clip origin.
-    assertEquals(-167, crop.left)
-    assertEquals(-203, crop.top)
+    assertEquals(-167, crop.offset.left)
+    assertEquals(-203, crop.offset.top)
   }
 
   @Test
@@ -53,24 +53,24 @@ class ServeThumbCropTest {
     val crop = computeThumbCrop(svg("0 0 300 100", "translate(-150, -250)"), 600, 600)
     assertNotNull(crop)
     // scale = 240 / max(300,100) = 0.8
-    assertEquals(240, crop.boxW) // 300 * 0.8
+    assertEquals(240, crop.window.w) // 300 * 0.8
     // The NATIVE box and the axis the cap acted on travel with the crop, so the page can re-derive
     // the window's width for a different cap (the narrow-viewport one) instead of freezing 240px.
-    assertEquals(300, crop.natBoxW)
-    assertEquals(300, crop.natCapAxis) // largest edge
-    assertEquals(80, crop.boxH) //  100 * 0.8
-    assertEquals(480, crop.imgW) // 600 * 0.8
-    assertEquals(480, crop.imgH)
-    assertEquals(-120, crop.left) // -150 * 0.8
-    assertEquals(-200, crop.top) // -250 * 0.8
+    assertEquals(300, crop.nativeWindowW)
+    assertEquals(300, crop.nativeCapAxis) // largest edge
+    assertEquals(80, crop.window.h) //  100 * 0.8
+    assertEquals(480, crop.render.w) // 600 * 0.8
+    assertEquals(480, crop.render.h)
+    assertEquals(-120, crop.offset.left) // -150 * 0.8
+    assertEquals(-200, crop.offset.top) // -250 * 0.8
   }
 
   @Test
   fun `a missing translate defaults the component box to the render origin`() {
     val crop = computeThumbCrop(svg("0 0 120 48", null), 454, 454)
     assertNotNull(crop)
-    assertEquals(0, crop.left)
-    assertEquals(0, crop.top)
+    assertEquals(0, crop.offset.left)
+    assertEquals(0, crop.offset.top)
   }
 
   @Test
@@ -126,10 +126,10 @@ class ServeThumbCropTest {
     val crop = computeThumbCrop(svg("0 0 166 136", "translate(-144, -159)"), 454, 454, alpha)
     assertNotNull(crop)
     // Box grew to the unioned 175×145 (< cap 240 → scale 1); origin is the unioned top-left.
-    assertEquals(175, crop.boxW)
-    assertEquals(145, crop.boxH)
-    assertEquals(-140, crop.left)
-    assertEquals(-155, crop.top)
+    assertEquals(175, crop.window.w)
+    assertEquals(145, crop.window.h)
+    assertEquals(-140, crop.offset.left)
+    assertEquals(-155, crop.offset.top)
   }
 
   @Test
@@ -138,10 +138,10 @@ class ServeThumbCropTest {
     val alpha = pngAlphaBounds(opaqueRectPng(x = 170, y = 210, w = 100, h = 40))
     val crop = computeThumbCrop(svg("0 0 120 48", "translate(-167, -203)"), 454, 454, alpha)
     assertNotNull(crop)
-    assertEquals(120, crop.boxW)
-    assertEquals(48, crop.boxH)
-    assertEquals(-167, crop.left)
-    assertEquals(-203, crop.top)
+    assertEquals(120, crop.window.w)
+    assertEquals(48, crop.window.h)
+    assertEquals(-167, crop.offset.left)
+    assertEquals(-203, crop.offset.top)
   }
 
   @Test
@@ -166,14 +166,14 @@ class ServeThumbCropTest {
     // (m3-catalog#179). Subtracting the gutter gives the sibling's box back, to the pixel.
     val crop = computeGutterCrop(11, 11, 11, 13, 271, 150)
     assertNotNull(crop)
-    assertEquals(249, crop.boxW)
-    assertEquals(126, crop.boxH)
-    assertEquals(271, crop.imgW)
-    assertEquals(150, crop.imgH)
-    assertEquals(-11, crop.left)
-    assertEquals(-11, crop.top)
-    assertEquals(249, crop.natBoxW)
-    assertEquals(126, crop.natCapAxis) // a gutter crop caps on HEIGHT, not the largest edge
+    assertEquals(249, crop.window.w)
+    assertEquals(126, crop.window.h)
+    assertEquals(271, crop.render.w)
+    assertEquals(150, crop.render.h)
+    assertEquals(-11, crop.offset.left)
+    assertEquals(-11, crop.offset.top)
+    assertEquals(249, crop.nativeWindowW)
+    assertEquals(126, crop.nativeCapAxis) // a gutter crop caps on HEIGHT, not the largest edge
     // The shadow lives in those 11px, so the window lines the box up without hiding what spills.
     assertFalse(crop.clip)
   }
@@ -188,8 +188,8 @@ class ServeThumbCropTest {
     val crop = computeGutterCrop(4, 4, 4, 4, 400, 400)
     assertNotNull(crop)
     // 392 tall is past the 240 cap, so the box comes back scaled — square in, square out.
-    assertEquals(240, crop.boxW)
-    assertEquals(240, crop.boxH)
+    assertEquals(240, crop.window.w)
+    assertEquals(240, crop.window.h)
   }
 
   @Test
@@ -200,12 +200,12 @@ class ServeThumbCropTest {
     // an aspect-ratio, and constraining its height there squashes it instead of scaling it.)
     val crop = computeGutterCrop(11, 11, 11, 11, 967, 1282)
     assertNotNull(crop)
-    assertEquals(180, crop.boxW)
-    assertEquals(240, crop.boxH)
-    assertEquals(184, crop.imgW)
-    assertEquals(244, crop.imgH)
-    assertEquals(-2, crop.left)
-    assertEquals(-2, crop.top)
+    assertEquals(180, crop.window.w)
+    assertEquals(240, crop.window.h)
+    assertEquals(184, crop.render.w)
+    assertEquals(244, crop.render.h)
+    assertEquals(-2, crop.offset.left)
+    assertEquals(-2, crop.offset.top)
   }
 
   @Test
@@ -215,8 +215,8 @@ class ServeThumbCropTest {
     // 3.6% smaller than the four beside it: the very mismatch this window removes.
     val crop = computeGutterCrop(11, 11, 11, 13, 271, 150)
     assertNotNull(crop)
-    assertEquals(249, crop.boxW)
-    assertEquals(126, crop.boxH)
+    assertEquals(249, crop.window.w)
+    assertEquals(126, crop.window.h)
   }
 
   @Test

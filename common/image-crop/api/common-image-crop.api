@@ -16,29 +16,23 @@ public final class ee/schimke/composeai/imagecrop/ContentBox {
 }
 
 public final class ee/schimke/composeai/imagecrop/ContentCrop {
-	public fun <init> (IIIIIIZII)V
-	public synthetic fun <init> (IIIIIIZIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun component1 ()I
-	public final fun component2 ()I
-	public final fun component3 ()I
-	public final fun component4 ()I
+	public fun <init> (Lee/schimke/composeai/imagecrop/CropSize;Lee/schimke/composeai/imagecrop/CropSize;Lee/schimke/composeai/imagecrop/CropOffset;ZII)V
+	public synthetic fun <init> (Lee/schimke/composeai/imagecrop/CropSize;Lee/schimke/composeai/imagecrop/CropSize;Lee/schimke/composeai/imagecrop/CropOffset;ZIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lee/schimke/composeai/imagecrop/CropSize;
+	public final fun component2 ()Lee/schimke/composeai/imagecrop/CropSize;
+	public final fun component3 ()Lee/schimke/composeai/imagecrop/CropOffset;
+	public final fun component4 ()Z
 	public final fun component5 ()I
 	public final fun component6 ()I
-	public final fun component7 ()Z
-	public final fun component8 ()I
-	public final fun component9 ()I
-	public final fun copy (IIIIIIZII)Lee/schimke/composeai/imagecrop/ContentCrop;
-	public static synthetic fun copy$default (Lee/schimke/composeai/imagecrop/ContentCrop;IIIIIIZIIILjava/lang/Object;)Lee/schimke/composeai/imagecrop/ContentCrop;
+	public final fun copy (Lee/schimke/composeai/imagecrop/CropSize;Lee/schimke/composeai/imagecrop/CropSize;Lee/schimke/composeai/imagecrop/CropOffset;ZII)Lee/schimke/composeai/imagecrop/ContentCrop;
+	public static synthetic fun copy$default (Lee/schimke/composeai/imagecrop/ContentCrop;Lee/schimke/composeai/imagecrop/CropSize;Lee/schimke/composeai/imagecrop/CropSize;Lee/schimke/composeai/imagecrop/CropOffset;ZIIILjava/lang/Object;)Lee/schimke/composeai/imagecrop/ContentCrop;
 	public fun equals (Ljava/lang/Object;)Z
-	public final fun getBoxH ()I
-	public final fun getBoxW ()I
 	public final fun getClip ()Z
-	public final fun getImgH ()I
-	public final fun getImgW ()I
-	public final fun getLeft ()I
-	public final fun getNatBoxW ()I
-	public final fun getNatCapAxis ()I
-	public final fun getTop ()I
+	public final fun getNativeCapAxis ()I
+	public final fun getNativeWindowW ()I
+	public final fun getOffset ()Lee/schimke/composeai/imagecrop/CropOffset;
+	public final fun getRender ()Lee/schimke/composeai/imagecrop/CropSize;
+	public final fun getWindow ()Lee/schimke/composeai/imagecrop/CropSize;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -54,5 +48,31 @@ public final class ee/schimke/composeai/imagecrop/ContentCropGeometryKt {
 	public static synthetic fun pngAlphaBounds$default ([BIILjava/lang/Object;)Lee/schimke/composeai/imagecrop/ContentBox;
 	public static final fun svgContentBox (Ljava/lang/String;)Lee/schimke/composeai/imagecrop/ContentBox;
 	public static final fun union (Lee/schimke/composeai/imagecrop/ContentBox;Lee/schimke/composeai/imagecrop/ContentBox;)Lee/schimke/composeai/imagecrop/ContentBox;
+}
+
+public final class ee/schimke/composeai/imagecrop/CropOffset {
+	public fun <init> (II)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun copy (II)Lee/schimke/composeai/imagecrop/CropOffset;
+	public static synthetic fun copy$default (Lee/schimke/composeai/imagecrop/CropOffset;IIILjava/lang/Object;)Lee/schimke/composeai/imagecrop/CropOffset;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLeft ()I
+	public final fun getTop ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/imagecrop/CropSize {
+	public fun <init> (II)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun copy (II)Lee/schimke/composeai/imagecrop/CropSize;
+	public static synthetic fun copy$default (Lee/schimke/composeai/imagecrop/CropSize;IIILjava/lang/Object;)Lee/schimke/composeai/imagecrop/CropSize;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getH ()I
+	public final fun getW ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 

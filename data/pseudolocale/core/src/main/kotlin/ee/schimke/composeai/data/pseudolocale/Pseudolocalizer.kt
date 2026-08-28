@@ -34,7 +34,24 @@ public object Pseudolocalizer {
    * before transformation and any preview using bold / annotation / URLSpan resources would render
    * unstyled — see `PseudolocaleResources` in `:data-pseudolocale-connector`.
    */
-  public class TransformResult(public val text: String, public val indexMap: IntArray)
+  public class TransformResult
+  internal constructor(public val text: String, private val indices: IntArray) {
+
+    /** Number of source indices mapped — one more than the input's length, so an end index maps. */
+    public val size: Int
+      get() = indices.size
+
+    /**
+     * Where source index [sourceIndex] landed in [text].
+     *
+     * A method rather than the `IntArray` itself: handing out the array published a mutable
+     * reference to this result's own state, so any caller could rewrite another caller's mapping.
+     * Returning a defensive copy from a getter would be worse — `result.indexMap[i]` in a loop
+     * would copy the whole array per iteration — so the array stays private and the lookup is the
+     * API.
+     */
+    public fun indexAt(sourceIndex: Int): Int = indices[sourceIndex]
+  }
 
   public fun accent(input: CharSequence): String = transform(input.toString(), Pseudolocale.ACCENT)
 

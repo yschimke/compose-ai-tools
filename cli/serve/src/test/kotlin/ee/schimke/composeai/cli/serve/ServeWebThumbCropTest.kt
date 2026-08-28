@@ -1,6 +1,8 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.imagecrop.ContentCrop
+import ee.schimke.composeai.imagecrop.CropOffset
+import ee.schimke.composeai.imagecrop.CropSize
 import ee.schimke.composeai.imagecrop.computeGutterCrop
 import ee.schimke.composeai.imagecrop.computeThumbCrop
 import kotlin.test.Test
@@ -21,14 +23,11 @@ class ServeWebThumbCropTest {
     listOf(ServePreview(id = "filled-button__ideal__default__compact", label = "Filled"))
   private val crop =
     ContentCrop(
-      boxW = 120,
-      boxH = 48,
-      imgW = 454,
-      imgH = 454,
-      left = -167,
-      top = -203,
-      natBoxW = 120,
-      natCapAxis = 120,
+      window = CropSize(120, 48),
+      render = CropSize(454, 454),
+      offset = CropOffset(-167, -203),
+      nativeWindowW = 120,
+      nativeCapAxis = 120,
     )
 
   @Test
@@ -167,7 +166,11 @@ class ServeWebThumbCropTest {
   @Test
   fun `a crop with no native size keeps the fixed-px window`() {
     val handmade =
-      ContentCrop(boxW = 120, boxH = 48, imgW = 454, imgH = 454, left = -167, top = -203)
+      ContentCrop(
+        window = CropSize(120, 48),
+        render = CropSize(454, 454),
+        offset = CropOffset(-167, -203),
+      )
     val html =
       ServeWeb.landingPage(
         "wear-m3",

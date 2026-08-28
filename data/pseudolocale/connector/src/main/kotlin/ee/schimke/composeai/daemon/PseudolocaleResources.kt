@@ -89,15 +89,14 @@ internal class PseudolocaleResources(private val base: Resources, private val mo
     if (raw !is Spanned) return Pseudolocalizer.transform(raw.toString(), mode)
     val transformed = Pseudolocalizer.transformWithIndices(raw.toString(), mode)
     val sb = SpannableStringBuilder(transformed.text)
-    val map = transformed.indexMap
     val length = raw.length
     val outText = transformed.text
     for (span in raw.getSpans(0, length, Any::class.java)) {
       val srcStart = raw.getSpanStart(span).coerceIn(0, length)
       val srcEnd = raw.getSpanEnd(span).coerceIn(srcStart, length)
       val flags = raw.getSpanFlags(span)
-      var dstStart = map[srcStart]
-      var dstEnd = map[srcEnd]
+      var dstStart = transformed.indexAt(srcStart)
+      var dstEnd = transformed.indexAt(srcEnd)
       // SPAN_PARAGRAPH spans (BulletSpan, LeadingMarginSpan, …) must start at 0 or right after a
       // `\n`, and end at length or right after a `\n`. The transform prepends marker characters
       // (`[` in accent mode, RLO in bidi) which would shift a span starting at input 0 to output

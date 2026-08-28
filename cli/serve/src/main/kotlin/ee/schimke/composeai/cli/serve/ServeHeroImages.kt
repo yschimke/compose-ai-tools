@@ -270,13 +270,13 @@ class ServeHeroImages {
    * rounded or stale crop can't ask for pixels that aren't there.
    */
   private fun sourceRegion(renderW: Int, renderH: Int, crop: ContentCrop?): Region {
-    if (crop == null || crop.imgW <= 0) return Region(0, 0, renderW, renderH)
-    val scale = crop.imgW.toDouble() / renderW
+    if (crop == null || crop.render.w <= 0) return Region(0, 0, renderW, renderH)
+    val scale = crop.render.w.toDouble() / renderW
     if (scale <= 0.0) return Region(0, 0, renderW, renderH)
-    val x = (-crop.left / scale).roundToInt().coerceIn(0, renderW - 1)
-    val y = (-crop.top / scale).roundToInt().coerceIn(0, renderH - 1)
-    val w = (crop.boxW / scale).roundToInt().coerceIn(1, renderW - x)
-    val h = (crop.boxH / scale).roundToInt().coerceIn(1, renderH - y)
+    val x = (-crop.offset.left / scale).roundToInt().coerceIn(0, renderW - 1)
+    val y = (-crop.offset.top / scale).roundToInt().coerceIn(0, renderH - 1)
+    val w = (crop.window.w / scale).roundToInt().coerceIn(1, renderW - x)
+    val h = (crop.window.h / scale).roundToInt().coerceIn(1, renderH - y)
     return Region(x, y, w, h)
   }
 
