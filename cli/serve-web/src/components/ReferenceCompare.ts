@@ -26,6 +26,11 @@ import {
     type Bounds,
 } from "../annotate/match.js";
 import { clusterTypography } from "../annotate/clusters.js";
+import {
+    parseParityAnchors,
+    severityOf,
+    type ParitySide,
+} from "../annotate/verdict.js";
 import { rawScores, reportRenderUrl, resultLine } from "../annotate/report.js";
 import { reportBody } from "../report/body.js";
 import {
@@ -101,6 +106,12 @@ export class ReferenceCompare extends LitElement {
         void this.compare();
         this.wireOverlay();
         this.setUpAnnotations();
+        this.setUpParityVerdict();
+        // After BOTH layers, because they share the panels and the placement: the redline a
+        // producer authored and the regions a parity finding points at are drawn into one layer per
+        // side, so one observer keeps them pinned together rather than two racing to reposition the
+        // same boxes.
+        this.observePanels();
         return true;
     }
 
@@ -209,22 +220,16 @@ export class ReferenceCompare extends LitElement {
         );
         if (!this.toggles.length) return;
 
-        for (const shot of this.root.querySelectorAll<HTMLElement>(
-            "[data-cp-annotated]",
-        )) {
-            const side = shot.getAttribute("data-cp-annotated") ?? "";
-            if (side !== "reference" && side !== "actual") continue;
+        const drawn: Panel[] = [];
+        for (const side of ["reference", "actual"] as ParitySide[]) {
             const items = payload[side].filter((item) => item?.bounds);
             if (!items.length) continue;
-            const image = shot.querySelector("img");
-            if (!image) continue;
-            const layer = document.createElement("div");
-            layer.className = "cp-annotation-layer";
-            shot.appendChild(layer);
-            this.generated.push(layer);
-            this.panels.push({ shot, image, side, items, layer, boxes: [] });
+            const panel = this.panelFor(side);
+            if (!panel) continue;
+            panel.items = items;
+            drawn.push(panel);
         }
-        if (!this.panels.length) return;
+        if (!drawn.length) return;
 
         const referenceGroups = groupTypography(payload.reference);
         const actualGroups = groupTypography(payload.actual);
@@ -239,7 +244,7 @@ export class ReferenceCompare extends LitElement {
             );
         }
 
-        for (const panel of this.panels) {
+        for (const panel of drawn) {
             this.drawLayout(panel);
             this.drawTypography(
                 panel,
@@ -251,19 +256,155 @@ export class ReferenceCompare extends LitElement {
         for (const toggle of this.toggles) {
             this.on(toggle, "change", () => this.syncKinds());
         }
-        // Observed rather than only listening for `resize`: the panels are inside a responsive grid
-        // that can reflow without the window changing size at all.
-        if (typeof ResizeObserver === "function") {
-            this.resizes = new ResizeObserver(() => this.place());
-            for (const panel of this.panels) this.resizes.observe(panel.image);
-        } else {
-            this.on(window, "resize", () => this.place());
-        }
-        for (const panel of this.panels) {
-            if (!panel.image.complete)
-                this.on(panel.image, "load", () => this.place());
-        }
         this.syncKinds();
+    }
+
+    /**
+     * The panel over one side's image — created on first use and SHARED by both layers.
+     *
+     * One layer per side, not one per producer. The authored redline and a parity finding's regions
+     * are different claims about the same pixels, and giving each its own absolutely-positioned
+     * layer would mean two elements to keep sized against one image: they stay aligned only for as
+     * long as nobody adds a third caller, and the failure is a highlight that drifts off its box on
+     * a reflow rather than anything that throws.
+     */
+    private panelFor(side: ParitySide): Panel | null {
+        const existing = this.panels.find((panel) => panel.side === side);
+        if (existing) return existing;
+        const shot = this.root.querySelector<HTMLElement>(
+            `[data-cp-annotated="${side}"]`,
+        );
+        if (!shot) return null;
+        const image = shot.querySelector("img");
+        if (!image) return null;
+        const layer = document.createElement("div");
+        layer.className = "cp-annotation-layer";
+        shot.appendChild(layer);
+        this.generated.push(layer);
+        const panel: Panel = {
+            shot,
+            image,
+            side,
+            items: [],
+            layer,
+            boxes: [],
+        };
+        this.panels.push(panel);
+        return panel;
+    }
+
+    // ---- the parity verdict --------------------------------------------------
+
+    /**
+     * Light the region a finding is about when the reader asks which one it is.
+     *
+     * The verdict's prose is already on the page — the server rendered it, so it reads, searches and
+     * quotes with no script. What this adds is the answer to "where": a finding that says padding is
+     * 24 where the spec says 12 is a sentence until the box it is about lights up on both panels.
+     *
+     * Nothing is lit at rest, deliberately. A verdict routinely carries a dozen findings over one
+     * frame, and drawing all of their regions at once produces a panel covered in overlapping boxes
+     * that answers "where is this one" for none of them.
+     */
+    private setUpParityVerdict(): void {
+        const payloadNode = document.getElementById("cp-parity-anchors");
+        if (!payloadNode) return;
+        let raw: unknown;
+        try {
+            raw = JSON.parse(payloadNode.textContent ?? "");
+        } catch {
+            return;
+        }
+        const anchors = parseParityAnchors(raw);
+        if (!anchors.size) return;
+        for (const row of this.root.querySelectorAll<HTMLElement>(
+            "[data-cp-parity-finding]",
+        )) {
+            const id = row.getAttribute("data-cp-parity-finding") ?? "";
+            const regions = anchors.get(id);
+            const severity = severityOf(row);
+            const boxes: HTMLElement[] = [];
+            for (const anchor of regions ?? []) {
+                const panel = this.panelFor(anchor.side);
+                if (!panel) continue;
+                const box = document.createElement("div");
+                box.className = `cp-parity-anchor cp-parity-anchor--${severity}`;
+                if (anchor.label) {
+                    const caption = document.createElement("span");
+                    caption.className = "cp-parity-anchor-label";
+                    caption.textContent = anchor.label;
+                    box.appendChild(caption);
+                }
+                panel.layer.appendChild(box);
+                panel.boxes.push({ node: box, bounds: anchor.bounds });
+                boxes.push(box);
+            }
+            if (!boxes.length) {
+                // Nothing on THIS page to point at — a payload keyed to a row the panels cannot
+                // place, or a side this comparison does not show. The row keeps its sentence and
+                // never becomes a control: the id goes too, so the stylesheet's `[role="button"]`
+                // rules and any later pass both read the same answer.
+                row.removeAttribute("data-cp-parity-finding");
+                continue;
+            }
+            // The row becomes a control HERE and nowhere else. The server ships it as an ordinary
+            // list item, because with script off, blocked or failed there is no highlight to give
+            // and a tab stop that does nothing is worse than plain prose.
+            row.setAttribute("tabindex", "0");
+            row.setAttribute("role", "button");
+            this.wireParityRow(row, boxes);
+        }
+    }
+
+    /**
+     * Hover, focus and a pin, OR'd.
+     *
+     * The same rule the typography table follows and for the same reason — a pointer leaving a row
+     * that still has focus must not clear the highlight a keyboard reader is relying on — plus a
+     * third state the redline does not need. A finding is read against the panels: the reader hovers
+     * it, looks up at the box, and by the time their eye is on the frame the pointer has left the
+     * row and taken the highlight with it. Clicking pins it. Rows pin independently, so two findings
+     * can be held up against each other.
+     */
+    private wireParityRow(row: HTMLElement, boxes: HTMLElement[]): void {
+        let hovered = false;
+        let focused = false;
+        let pinned = false;
+        const sync = () => {
+            const on = hovered || focused || pinned;
+            for (const box of boxes)
+                box.classList.toggle("cp-parity-anchor-active", on);
+            row.setAttribute("aria-pressed", pinned ? "true" : "false");
+        };
+        const toggle = () => {
+            pinned = !pinned;
+            sync();
+        };
+        this.on(row, "mouseenter", () => {
+            hovered = true;
+            sync();
+        });
+        this.on(row, "mouseleave", () => {
+            hovered = false;
+            sync();
+        });
+        this.on(row, "focus", () => {
+            focused = true;
+            sync();
+        });
+        this.on(row, "blur", () => {
+            focused = false;
+            sync();
+        });
+        this.on(row, "click", toggle);
+        // The row is a `role="button"`, and a div does not get Enter/Space for free.
+        this.on(row, "keydown", (event) => {
+            const key = (event as KeyboardEvent).key;
+            if (key !== "Enter" && key !== " ") return;
+            event.preventDefault();
+            toggle();
+        });
+        sync();
     }
 
     /** Layout stays instance-level: one numbered box and one legend row per element. */
@@ -529,6 +670,27 @@ export class ReferenceCompare extends LitElement {
                 sync();
             });
         }
+    }
+
+    /**
+     * Keep every box pinned to the image it describes.
+     *
+     * Observed rather than only listening for `resize`: the panels are inside a responsive grid
+     * that can reflow without the window changing size at all.
+     */
+    private observePanels(): void {
+        if (!this.panels.length) return;
+        if (typeof ResizeObserver === "function") {
+            this.resizes = new ResizeObserver(() => this.place());
+            for (const panel of this.panels) this.resizes.observe(panel.image);
+        } else {
+            this.on(window, "resize", () => this.place());
+        }
+        for (const panel of this.panels) {
+            if (!panel.image.complete)
+                this.on(panel.image, "load", () => this.place());
+        }
+        this.place();
     }
 
     /**

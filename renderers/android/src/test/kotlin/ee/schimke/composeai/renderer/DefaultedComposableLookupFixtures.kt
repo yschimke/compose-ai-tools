@@ -42,3 +42,25 @@ fun requiredParameterFixture(label: String) {
 
 /** Not composable at all: the scan must not offer it up. */
 @Suppress("unused") fun plainFunctionFixture(label: String = "") = label
+
+/**
+ * Two fully-defaulted composable overloads of one name — the shape a review flagged as silently
+ * rendering the wrong one. Both are invocable with no arguments, and the manifest records only the
+ * name, so nothing at render time can tell which carried the `@Preview`.
+ *
+ * Legal to declare, but nearly unusable: every Kotlin call site of `ambiguousOverloadFixture()` is
+ * itself ambiguous. That is why the renderer diagnoses it instead of threading a JVM descriptor
+ * through the manifest to disambiguate.
+ */
+@Suppress("unused")
+@Composable
+fun ambiguousOverloadFixture(count: Int = 0) {
+  @Suppress("UNUSED_EXPRESSION") count
+}
+
+@Suppress("unused")
+@Composable
+fun ambiguousOverloadFixture(count: Int = 0, label: String = "") {
+  @Suppress("UNUSED_EXPRESSION") count
+  @Suppress("UNUSED_EXPRESSION") label
+}

@@ -1914,6 +1914,62 @@ It composes with the other rewrites of the same bytes — `?mode=web` (external 
 instead of embedded faces) and `?scroll=long` (the full-page export of a scrolling preview) — because
 all three are post-processing steps over one render.
 
+### The parity verdict on a comparison
+
+A comparison shows *that* two frames differ; with a producer's annotation redline it also shows what
+each side is. Neither says what a parity run **concluded** — that a label will truncate once it is
+localized, that padding is 24 where the spec asserts 12, that the two frames were not comparable in
+the first place. That is a third artifact, `parity/findings.json`
+(`compose-preview-parity-findings/v1`), and a catalog that publishes it grows a **Design parity**
+panel under the panels:
+
+```json
+{
+  "schema": "compose-preview-parity-findings/v1",
+  "previews": {
+    "button-filled__ideal__default__light": [{
+      "referenceId": "design-button-filled-light",
+      "status": "fail",
+      "reportUrl": "https://github.com/…/report.html",
+      "findings": [{
+        "kind": "token",
+        "severity": "error",
+        "message": "spacing.padding: 24 vs spec 16 (Δ8)",
+        "detail": { "token": "spacing.padding", "expected": "16", "actual": "24" },
+        "anchors": [
+          { "side": "actual", "bounds": { "x": 12, "y": 12, "width": 196, "height": 48 },
+            "label": "Button" }
+        ]
+      }]
+    }]
+  }
+}
+```
+
+`kind` is the diff engine's own vocabulary — `a11y`, `i18n`, `contrast`, `token`, `layout`,
+`semantic`, `visual`, `pairing` — and the page groups it the way a parity run reports: accessibility
+and i18n first, then tokens, then layout, then pairing, then the pixels. A set naming a
+`referenceId` describes that comparison; one that names none describes the render whichever
+reference it is read against, which is the right reading for a check about the code alone (a touch
+target, a contrast ratio) and the only shape a producer with one reference per preview has to think
+about.
+
+The findings are **rendered by the server into the page**, not built in the browser: a sentence a
+reader has to quote into a bug, search for, or read with script off is prose, and prose that only
+appears after a bundle has downloaded is prose nobody can cite. What cannot be prose is *where* each
+finding is, so `anchors` — regions in the same pixel space the annotation layers use, one per panel
+— travel as a payload beside the rows. Hovering or focusing a finding lights its regions on both
+panels; clicking pins it, so the highlight survives the reader's eye moving from the sentence up to
+the frame, and two findings can be held up against each other. Nothing is lit at rest: a dozen
+findings' regions drawn at once over one frame answer "where is this one" for none of them.
+
+A finding with no anchors keeps its sentence and is never offered as a control — no `tabindex`, no
+pointer affordance — because a promise of a highlight that cannot come is worse than plain text.
+Everything is fail-soft in the same way the reference and annotation manifests are: an unreadable
+record costs the reader that row, never the comparison. And nothing is drawn on a **pinned**
+revision, because a finding's anchors are bounds in today's render and its prose is a claim about
+today's code.
+
 ## Remote Compose players (`/<system>/compare?format=rc`)
 
 A catalog that ships Remote Compose documents gets a **Remote Compose players** lane on the same

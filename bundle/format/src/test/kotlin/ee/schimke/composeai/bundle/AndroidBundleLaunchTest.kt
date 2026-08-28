@@ -135,6 +135,38 @@ class AndroidBundleLaunchTest {
   }
 
   @Test
+  fun `writeRobolectricConfig also materialises the app-tour lane's file`() {
+    // `AndroidRendererMainKt` runs both render classes, and Robolectric resolves each one's
+    // Application from its OWN package's properties file. Without this second file the app-tour
+    // lane would fall back to whatever the shipped jar carries.
+    val root = tempDir()
+    AndroidBundleLaunch(sdkLevel = 35).writeRobolectricConfig(root)
+    val props = File(root, "ee/schimke/composeai/apptour/robolectric.properties")
+    assertTrue(props.isFile, "the app-tour lane needs its own package-level properties file")
+    assertTrue(props.readText().contains("sdk=35"))
+  }
+
+  @Test
+  fun `the app-tour lane leaves the Application to the manifest`() {
+    // An Activity IS the app: against the stub, every Hilt / Koin / AppComponentFactory activity
+    // fails on launch. Omitting `application=` hands it to the merged manifest — and the app-tour
+    // package is a SIBLING of the renderer package, so the stub the composable lane pins is not
+    // merged back in.
+    val body = AndroidBundleLaunch(sdkLevel = 34).appTourRobolectricPropertiesBody()
+    assertTrue(
+      body.lines().none { it.startsWith("application=") },
+      "app-tour lane must not pin an Application: $body",
+    )
+    // Everything else has to match the composable lane, or a module would render its activities at
+    // a different API level, or without the font shadow, than its composables.
+    val composable = AndroidBundleLaunch(sdkLevel = 34).robolectricPropertiesBody()
+    val carried = { text: String ->
+      text.lines().filter { !it.startsWith("application=") && it.isNotBlank() }
+    }
+    assertEquals(carried(composable), carried(body))
+  }
+
+  @Test
   fun `resolveAndroidJar reads sdk_dir from local properties and picks the highest platform`() {
     val sdk = tempDir()
     for (level in listOf(30, 34, 28)) {

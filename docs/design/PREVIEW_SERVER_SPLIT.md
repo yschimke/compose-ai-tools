@@ -169,7 +169,8 @@ wider, and that two of the entries drag things a server should not carry.
 
 | Contract | Status |
 | --- | --- |
-| `daemon-core` (protocol, `devices`, `DaemonLaunchDescriptor`) | published; carries a leak (below) |
+| `daemon-protocol` | published — **split out of `daemon-core`**, see below |
+| `daemon-core` (`devices`, `DaemonLaunchDescriptor`) | published; carries a leak (below) |
 | `preview-data-api` (`designpages`) | published |
 | `render-session-api` | published |
 | `render-session-subprocess` | published; carries a leak (below) |
@@ -193,6 +194,36 @@ this table — not a module at all, so an extracted server could not name it. It
 reads *published* like every other. **Nothing in this table is a blocker any more** — the
 remaining ones are two unpublished modules serve reaches by class name, recorded under
 `reflectiveDependencies` in the seam allowlist, which no import scan and no probe can see.
+
+### `daemon-core` was a contract 14× the size of the contract
+
+`daemon-core` was published, so the table read *published* and the row looked settled. Published is
+not the same as being the right size to depend on. Serve's imports of it, counted:
+
+| package | imports |
+| --- | --- |
+| `daemon.protocol` | 46 |
+| `daemon.bta` | 2 |
+| `daemon.devices` | 2 |
+| `daemon` (root) | 1 |
+
+Forty-six of fifty-one are wire shapes, and to name one of them an extracted server took the whole
+daemon with it: the JSON-RPC server, the APNG/GIF/ffmpeg encoders, the sandbox lifecycle,
+incremental discovery, the recording test generator, the XR session registry, the history archive.
+653 public declarations to reach the ones that describe a request.
+
+`:daemon-protocol` splits on **shape versus behaviour**, not client versus server. Anything that
+only describes what crosses the wire moved; anything that reads a file, opens a socket or computes
+a result stayed. `HistoryDataDelta` is the case that names the rule — the delta shape moved, while
+`HistoryDataDiff`, which reads two archived entries off disk to produce one, did not.
+
+Measured on the ABI dumps: `daemon-core` 7,317 lines → 2,479, with `daemon-protocol` at 4,843. The
+package did not move (`ee.schimke.composeai.daemon.protocol` is unchanged) and `:daemon:core`
+exposes the new module as `api`, so no consumer needed an import change.
+
+What is left of serve's coupling to `daemon-core` is now legible as exactly five imports:
+`DaemonLaunchDescriptor`, `DeviceDimensions`, `frameDpOverriddenBy`, `BtaCompileSession`,
+`DiagnosticCollector`.
 
 > **Correction.** An earlier revision of this document listed `:daemon:bta-host` as unpublished and
 > therefore a split blocker, because serve imports `BtaCompileSession` and `DiagnosticCollector`

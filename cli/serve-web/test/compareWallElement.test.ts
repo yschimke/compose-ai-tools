@@ -258,6 +258,109 @@ describe("<cp-compare-wall>", () => {
         );
     });
 
+    /** Rows carrying both themes, so a theme switch is a real re-run rather than an empty wall. */
+    const bothThemes = [
+        {
+            name: "Button",
+            have: ["png-light", "svg-light", "png-dark", "svg-dark"],
+        },
+        {
+            name: "Card",
+            have: ["png-light", "svg-light", "png-dark", "svg-dark"],
+        },
+    ];
+
+    it("does not load the pictures of a row the filter hides", async () => {
+        // Dressing assigns both image `src` values, so dressing every row and filtering afterwards
+        // had the browser fetch and decode the whole wall for a link showing one comparison. On the
+        // large catalogs this page exists for that is hundreds of full-resolution pairs for a single
+        // visible row.
+        stubScorer({
+            "/a/Button-svg-light": 90,
+            "/a/Card-svg-light": 90,
+            "/a/Button-svg-dark": 90,
+            "/a/Card-svg-dark": 90,
+        });
+        // Both themes on both rows, so the dark switch below has a pair to draw.
+        await mount({ rows: bothThemes });
+        await settle();
+
+        const pngOf = (label: string) =>
+            document
+                .querySelector<HTMLElement>(`[data-label="${label}"]`)!
+                .querySelector<HTMLImageElement>(".cp-compare-png")!;
+
+        // Narrow first, then blank what the previous pass drew, so what appears below is what THIS
+        // pass assigned rather than what was left over.
+        const search =
+            document.querySelector<HTMLInputElement>("#cp-compare-search")!;
+        search.value = "card";
+        search.dispatchEvent(new Event("input"));
+        await flush();
+        for (const label of ["Button", "Card"])
+            pngOf(label).removeAttribute("src");
+
+        // A theme switch is a full re-run: every row is redressed for the new pair.
+        document
+            .querySelector<HTMLElement>('[data-compare-theme="dark"]')!
+            .click();
+        await settle();
+
+        assert.equal(count(), "1 comparison");
+        assert.ok(
+            pngOf("Card").getAttribute("src"),
+            "the visible row is dressed",
+        );
+        assert.equal(
+            pngOf("Button").getAttribute("src"),
+            null,
+            "the filtered-out row loads nothing",
+        );
+    });
+
+    it("dresses a row a widened filter reveals, rather than showing it empty", async () => {
+        // The other half of dressing lazily: a row the run left hidden was never dressed, so
+        // clearing the search has to dress it on the way in or it appears with no pictures.
+        stubScorer({
+            "/a/Button-svg-light": 90,
+            "/a/Card-svg-light": 90,
+            "/a/Button-svg-dark": 90,
+            "/a/Card-svg-dark": 90,
+        });
+        await mount({ rows: bothThemes });
+        await settle();
+        const pngOf = (label: string) =>
+            document
+                .querySelector<HTMLElement>(`[data-label="${label}"]`)!
+                .querySelector<HTMLImageElement>(".cp-compare-png")!;
+        const search =
+            document.querySelector<HTMLInputElement>("#cp-compare-search")!;
+        search.value = "card";
+        search.dispatchEvent(new Event("input"));
+        await flush();
+        for (const label of ["Button", "Card"])
+            pngOf(label).removeAttribute("src");
+        document
+            .querySelector<HTMLElement>('[data-compare-theme="dark"]')!
+            .click();
+        await settle();
+        assert.equal(pngOf("Button").getAttribute("src"), null);
+
+        search.value = "";
+        search.dispatchEvent(new Event("input"));
+        await flush();
+
+        const button = document.querySelector<HTMLElement>(
+            '[data-label="Button"]',
+        )!;
+        assert.equal(button.hidden, false);
+        assert.ok(
+            pngOf("Button").getAttribute("src"),
+            "a revealed row carries its picture",
+        );
+        assert.equal(count(), "2 comparisons");
+    });
+
     it("says so when the filter leaves nothing", async () => {
         stubScorer({ "/a/Button-svg-light": 90, "/a/Card-svg-light": 90 });
         await mount();

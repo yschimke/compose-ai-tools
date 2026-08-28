@@ -1043,6 +1043,11 @@ jobs:
         with:
           rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
+      # Also run in Actions Tests, which is scheduled by the four registration files. Here it is
+      # scheduled by the contract *modules* instead, so moving or adding a package inside one is
+      # checked against `contractPackages` without listing those sources in a fifth place.
+      - name: Check contract registration
+        run: python3 scripts/check-contract-registration.py
       - name: Publish contracts and build the preview-server build against them
         run: scripts/check-preview-server-contracts.sh
 
@@ -1258,6 +1263,14 @@ jobs:
         run: python3 scripts/test_check_serve_seam.py -v
       - name: Run serve coupling measurement tests
         run: python3 scripts/test_measure_serve_coupling.py -v
+      # A preview-server contract is registered in four hand-maintained places, and three of
+      # them fail silently when one is forgotten — most sharply `ci-paths.json`, where a missing
+      # entry means the contract probe is never scheduled for the new module. That was forgotten
+      # twice in a row (#4634, #4656), each time caught by a human reading a diff.
+      - name: Run contract registration tests
+        run: python3 scripts/test_check_contract_registration.py -v
+      - name: Check contract registration
+        run: python3 scripts/check-contract-registration.py
       # `daemon-launch.json` is written by the gradle plugin and read by the daemon JVM, the CLI
       # doctor and the VS Code extension, each with its own copy of the shape and of the schema
       # version. Two of those copies carry a comment asking a human to keep them in sync; this is

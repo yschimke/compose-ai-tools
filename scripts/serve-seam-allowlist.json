@@ -85,8 +85,9 @@
     "ee.schimke.composeai.bundle.coordinates": "bundle-coordinates",
     "ee.schimke.composeai.daemon": "daemon-core",
     "ee.schimke.composeai.daemon.bta": "daemon-core",
+    "ee.schimke.composeai.daemon.client": "daemon-client",
     "ee.schimke.composeai.daemon.devices": "daemon-core",
-    "ee.schimke.composeai.daemon.protocol": "daemon-core",
+    "ee.schimke.composeai.daemon.protocol": "daemon-protocol",
     "ee.schimke.composeai.data.layoutinspector": "data-layoutinspector-core",
     "ee.schimke.composeai.data.overrides": "data-preview-overrides-core",
     "ee.schimke.composeai.data.pseudolocale": "data-pseudolocale-core",
@@ -99,7 +100,8 @@
     "ee.schimke.composeai.previewdata": "preview-data-api",
     "ee.schimke.composeai.render.session": "render-session-api",
     "ee.schimke.composeai.render.session.subprocess": "render-session-subprocess",
-    "ee.schimke.composeai.web": "common-web-escaping"
+    "ee.schimke.composeai.web": "common-web-escaping",
+    "ee.schimke.composeai.xr": "preview-data-api"
   },
   "unpublishedContracts": {},
   "reflectiveDependencies": {
@@ -135,6 +137,7 @@
       "serve.PreviewHistoryManifest",
       "serve.RenderFailureFrame",
       "serve.RenderOutcome",
+      "serve.ServeBuildHost",
       "serve.ServeBundleDaemon",
       "serve.ServeDefaults",
       "serve.ServeDiscovery",

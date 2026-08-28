@@ -96,6 +96,36 @@
           data-cp-base=""></cp-inspect-layers>
           <p class="cp-reference-result" role="status">comparing…</p>
 <div class="cp-acceptance" id="cp-acceptance" role="status" hidden></div>
+<section class="cp-parity-verdict" id="cp-parity-verdict" aria-labelledby="cp-parity-verdict-title">
+  <div class="cp-parity-verdict-head">
+    <h2 id="cp-parity-verdict-title">Design parity</h2>
+    <span class="cp-parity-status cp-parity-status--fail">Fail</span>
+    <span class="cp-parity-tally">1 error · 2 warnings · 1 note</span><a class="cp-parity-report" href="https://github.com/yschimke/compose-ai-tools/blob/design-parity/compose-m3/button-filled/report.html" rel="noopener">Full parity report</a>
+  </div>
+  <p class="cp-parity-hint">Hover a finding to light the region it describes on both panels; click to keep it lit.</p>
+  <div class="cp-parity-groups">
+    <section class="cp-parity-group" data-cp-parity-group="a11y">
+      <h3>Accessibility &amp; i18n<span class="cp-parity-count">2</span></h3>
+      <ul class="cp-parity-list">
+        <li class="cp-parity-finding cp-parity-finding--warn cp-parity-finding--kind-i18n" data-cp-parity-finding="a11y-0"><span class="cp-parity-sev">warn</span><span class="cp-parity-body"><span class="cp-parity-msg">&quot;Send&quot; risks truncation when localized: ≈154dp expanded vs 131dp available.</span></span><span class="cp-parity-where">1 region</span></li>
+        <li class="cp-parity-finding cp-parity-finding--info cp-parity-finding--kind-contrast" title="ratio 4.9 · required 4.5"><span class="cp-parity-sev">info</span><span class="cp-parity-body"><span class="cp-parity-msg">label on container: 4.9:1 — passes AA for 14sp text, below AAA (7:1).</span></span></li>
+      </ul>
+    </section>
+    <section class="cp-parity-group" data-cp-parity-group="tokens">
+      <h3>Token compliance<span class="cp-parity-count">1</span></h3>
+      <ul class="cp-parity-list">
+        <li class="cp-parity-finding cp-parity-finding--error cp-parity-finding--kind-token" data-cp-parity-finding="tokens-0"><span class="cp-parity-sev">error</span><span class="cp-parity-body"><span class="cp-parity-msg">spacing.padding: 24 vs spec 16 (Δ8)</span><span class="cp-parity-delta"><code>spacing.padding</code><span class="cp-parity-expected">expected 16</span><span class="cp-parity-actual">actual 24</span></span></span><span class="cp-parity-where">1 region</span></li>
+      </ul>
+    </section>
+    <section class="cp-parity-group" data-cp-parity-group="layout">
+      <h3>Layout<span class="cp-parity-count">1</span></h3>
+      <ul class="cp-parity-list">
+        <li class="cp-parity-finding cp-parity-finding--warn cp-parity-finding--kind-layout" data-cp-parity-finding="layout-0"><span class="cp-parity-sev">warn</span><span class="cp-parity-body"><span class="cp-parity-msg">layout &quot;Send&quot;: offset (1, -12), size Δ(41, 3) vs reference</span></span><span class="cp-parity-where">2 regions</span></li>
+      </ul>
+    </section>
+  </div>
+  <script type="application/json" id="cp-parity-anchors">{"findings":{"a11y-0":[{"side":"actual","bounds":{"x":46,"y":26,"width":128,"height":20},"label":"Label"}],"tokens-0":[{"side":"actual","bounds":{"x":12,"y":12,"width":196,"height":48},"label":"Button"}],"layout-0":[{"side":"reference","bounds":{"x":46,"y":26,"width":128,"height":20}},{"side":"actual","bounds":{"x":46,"y":26,"width":128,"height":20}}]}}</script>
+</section>
           <div class="cp-selection-controls" id="cp-element-selection" role="group"
      aria-label="Report a single element" data-cp-tags="/tags/button-filled__ideal__default__light?session=compose-m3">
   <span class="cp-compare-control-label">Report</span>

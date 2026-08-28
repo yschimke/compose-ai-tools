@@ -115,6 +115,26 @@ internal object PackPreviewIdExclusions {
       java.io.File(it)
     }
 
+  /**
+   * The previews `bundle pack` will select: the id file when one was passed, else `--id`.
+   *
+   * Extracted so the behaviour can be *exercised* rather than restated. The shattering below is the
+   * whole reason [idFileFromArgs] exists, and it was pinned by a test that rebuilt
+   * `args.drop(2).flatMap { it.split(',') }` by hand — which keeps passing if the real `--id`
+   * parsing stops splitting, changes its trimming, or loses the file's precedence over the flag. A
+   * regression test that cannot see the code it guards is not one.
+   *
+   * The file REPLACES `--id` rather than adding to it: a caller that has both has said the same
+   * thing twice, and the file is the form that survives a comma.
+   */
+  fun selectedIds(args: List<String>): List<String> =
+    idFileFromArgs(args)?.let(::linesOf)
+      ?: args
+        .flagValuesAll("--id")
+        .flatMap { it.split(',') }
+        .map(String::trim)
+        .filter(String::isNotEmpty)
+
   /** The Gradle property carrying `@PreviewParameter` **row** label exclusions. */
   const val ROW_GRADLE_PROPERTY = "composePreview.rowExclude"
 

@@ -1,8 +1,10 @@
 // Renderer-agnostic daemon core — see docs/daemon/DESIGN.md § 4
 // ("Renderer-agnostic surface").
 //
-// Plain JVM module: holds the JSON-RPC server, the @Serializable protocol
-// types, and the abstract `RenderHost` interface. Both
+// Plain JVM module: holds the JSON-RPC server and the abstract `RenderHost`
+// interface. The @Serializable protocol types it dispatches live in
+// `:daemon-protocol`, exposed here as `api` — see docs/design/PREVIEW_SERVER_SPLIT.md
+// ("`daemon-core` was a contract 14x the size of the contract"). Both
 // `:daemon:android` (Robolectric backend) and `:daemon:desktop` depend on
 // this module and contribute their own concrete `RenderHost` implementation.
 //
@@ -20,6 +22,13 @@ plugins {
 }
 
 dependencies {
+  // The wire shapes, split out for #3824. `api`, not `implementation`: this module's own public
+  // surface is stated in protocol types — `RenderHost` returns a `RenderNowResult`, `JsonRpcServer`
+  // dispatches protocol requests — and every existing consumer of
+  // `ee.schimke.composeai.daemon.protocol.*` reaches them through this module, so they stay on its
+  // compile ABI. The package did not move; only the module boundary around it did.
+  api(project(":daemon-protocol"))
+
   api(project(":data-render-core"))
 
   // Semantics-tree models + structural differ (issue #1785). `api`, not `implementation`: the

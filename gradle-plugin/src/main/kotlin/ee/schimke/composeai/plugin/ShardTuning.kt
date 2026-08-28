@@ -184,6 +184,11 @@ internal object ShardTuning {
    * *adds* rows, so this count is a safe lower bound: we may under-shard a provider-heavy module,
    * never over-shard it. A capture with no explicit `cost` (pre-0.8.0 manifest) is priced at 1.0,
    * matching the renderer's default.
+   *
+   * App-level previews are **excluded**: `kind=ACTIVITY` / `kind=APP_TOUR` entries render from
+   * `AppTourRobolectricRenderTest`, which is a lane of its own and never sharded, so counting them
+   * here would size the shards for rows they will not be given — and a module heavy on activities
+   * (Home Assistant declares 18 of them) would then spin up forks with nothing to do.
    */
   fun perPreviewRowCosts(manifestText: String): List<Double> {
     val previewsKey = manifestText.indexOf("\"previews\"")
@@ -215,7 +220,8 @@ internal object ShardTuning {
           '}' -> {
             depth--
             if (depth == 0 && entryStart >= 0) {
-              rows += rowCost(manifestText.substring(entryStart, i + 1))
+              val entry = manifestText.substring(entryStart, i + 1)
+              if (!isAppLevelEntry(entry)) rows += rowCost(entry)
               entryStart = -1
             }
           }
@@ -226,6 +232,19 @@ internal object ShardTuning {
     }
     return rows
   }
+
+  /**
+   * Whether this preview entry belongs to the app-tour lane rather than the sharded composable one.
+   *
+   * Matched on the entry's own `params.kind`. Anchoring to the two names rather than to "the first
+   * `kind` in the entry" is what makes the substring test safe: an entry's nested `dataProducts`
+   * carry a `kind` of their own (`render/scroll/gif` and friends), but none of those is ever
+   * `ACTIVITY` or `APP_TOUR`.
+   */
+  private val APP_LEVEL_KIND = Regex("\"kind\"\\s*:\\s*\"(ACTIVITY|APP_TOUR)\"")
+
+  private fun isAppLevelEntry(entryJson: String): Boolean =
+    APP_LEVEL_KIND.containsMatchIn(entryJson)
 
   /**
    * Cost of one preview entry: sum of its `cost` fields, or 1.0 per capture on a pre-cost manifest.

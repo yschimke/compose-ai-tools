@@ -491,6 +491,14 @@ project(":renderer-xr-client").projectDir = file("renderers/xr-client")
 
 include(":daemon:core")
 
+// The daemon's wire protocol, split out of `:daemon:core` for #3824. `:daemon:core` is the daemon
+// implementation and the preview server needs only the shapes; while they shared a module, an
+// extracted server's dependency floor was the whole daemon. Flat project name for the same reason
+// as the data-product modules above — a nested `:daemon:protocol` would resolve by leaf name.
+include(":daemon-protocol")
+
+project(":daemon-protocol").projectDir = file("daemon/protocol")
+
 // Per-product data-product modules — each `data/<product>/` carries a `core` (generic Android /
 // Compose / AndroidX-test code, published) and a `connector` (daemon glue, unpublished) module.
 // See docs/daemon/DATA-PRODUCTS.md § "Module split (D2.2)".

@@ -606,6 +606,64 @@ class ServeCatalogStoreTest {
     assertEquals("button-figma", loaded.issues.single().referenceIds.single())
   }
 
+  @Test
+  fun `catalog stages the published parity verdict`() {
+    // The staging path is where this feature is invisible when it is missing: the host reads the
+    // staged tree, so a manifest nothing fetches is one it correctly reports as absent, and the
+    // verdict panel would be dark on every published catalog — the one environment it exists for —
+    // with no error anywhere to say why.
+    val root = tempRoot()
+    val requested = CopyOnWriteArrayList<String>()
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png"}]}]}
+      """
+        .trimIndent()
+    val findings =
+      """
+      {"schema":"compose-preview-parity-findings/v1","previews":{"button":[
+        {"referenceId":"button-figma","status":"fail","findings":[
+          {"kind":"token","severity":"error","message":"spacing.padding: 24 vs spec 16",
+           "detail":{"token":"spacing.padding","expected":16,"actual":24},
+           "anchors":[{"side":"actual","bounds":{"x":2,"y":3,"width":40,"height":12}}]},
+          {"kind":"invented","severity":"warn","message":"a kind this build cannot place"}]}]}}
+      """
+        .trimIndent()
+    val store =
+      ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        fetch = { url ->
+          requested += url
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.encodeToByteArray()
+            url.endsWith("/parity/findings.json") -> findings.encodeToByteArray()
+            url.endsWith("/images/button.png") -> png()
+            else -> null
+          }
+        },
+      )
+
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+
+    assertTrue(requested.any { it.endsWith("/parity/findings.json") }, "the verdict is fetched")
+    val loaded = registered.getValue("compose-m3").parityFindingsFor("button", "button-figma")
+    assertEquals(1, loaded.size, "the verdict reached the host through the staging tree")
+    assertEquals("fail", loaded.single().status)
+    // Staging writes what the READER would keep, not what the branch said: the unplaceable kind is
+    // already gone from disk, and the numeric detail has been coerced once rather than per request.
+    val finding = loaded.single().findings.single()
+    assertEquals("16", finding.detail["expected"])
+    assertEquals(1, finding.anchors.size)
+    // …and a set scoped to another reference is not shown against this one.
+    assertTrue(
+      registered.getValue("compose-m3").parityFindingsFor("button", "other").isEmpty(),
+      "a scoped set stays scoped through staging",
+    )
+  }
+
   /**
    * A document the derivation refuses **whole** — an unknown document-level member. Using it is
    * what makes "the index was copied" distinguishable from "the list was re-derived": if the
@@ -3622,6 +3680,99 @@ class ServeCatalogStoreTest {
     assertEquals("Components" to "Buttons", preview.section to preview.group)
     // …and no baked PNG was invented for it.
     assertEquals(RenderOutcome.NotFound, host.render(deferredId, PreviewOverrides()))
+  }
+
+  @Test
+  fun `a wholly deferred component's pairing reaches the server's parallel lookup`() {
+    // The generator writes a wholly deferred component's `parallel` onto its DEFERRED record —
+    // such a component short-circuits before it ever reaches `components[]`, so that is the only
+    // copy of it in the manifest. Reading the lookup from `components` alone discarded it, and the
+    // deferred card was the one card that could not offer the sibling comparison source on a
+    // catalog that publishes `compareWith` precisely to have it.
+    val json =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "compareWith":{"system":"wear-m3-catalog"},
+       "liveBundle":{"path":"bundle/","file":"compose-m3-bundle.png"},
+       "components":[{"componentId":"Button/Filled","section":"Components","group":"Buttons",
+         "parallel":"Button/Filled",
+         "images":[
+           {"path":"images/button-filled/ideal__default__dark.png","state":"default","theme":"dark","previewId":"FilledButton_Dark"}]}],
+       "deferred":[
+         {"componentId":"Button/Filled","section":"Components","group":"Buttons","reason":"mode",
+          "path":"images/button-filled/ideal__default__light.png","state":"default","theme":"light",
+          "preview":"FilledButton","previewId":"FilledButton_Light",
+          "previewIds":["FilledButton_Light","FilledButton_Dark"]},
+         {"componentId":"Progress/Circular","section":"Components","group":"Progress",
+          "reason":"entry","parallel":"Progress/Circular",
+          "path":"images/progress-circular/ideal__default__light.png","state":"default","theme":"light",
+          "preview":"CircularProgress","previewId":"CircularProgress_Light",
+          "previewIds":["CircularProgress_Light"]}]}
+      """
+        .trimIndent()
+    var fronted: ServeHost? = null
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { trustedBranches },
+        fetch = deferredFetcher(json),
+        buildTrustedBundle = { _, _, _, _, bakedFallback, _ ->
+          fronted = bakedFallback()
+          true
+        },
+      )
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+
+    val host = fronted as ServeBundleHost
+    assertEquals("wear-m3-catalog", host.compareWithSystem)
+    assertEquals(
+      mapOf("Button/Filled" to "Button/Filled", "Progress/Circular" to "Progress/Circular"),
+      host.parallelByComponentId,
+      "the wholly deferred component's pairing is read off its deferred record",
+    )
+  }
+
+  @Test
+  fun `a component's own pairing outranks one inherited by its deferred variant record`() {
+    // A component that IS in `components[]` states its own pairing; a deferred VARIANT record
+    // sharing its id only inherits one. Components win, the same way the caption lookup resolves
+    // the mirror case.
+    val json =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "compareWith":{"system":"wear-m3-catalog"},
+       "liveBundle":{"path":"bundle/","file":"compose-m3-bundle.png"},
+       "components":[{"componentId":"Button/Filled","section":"Components","group":"Buttons",
+         "parallel":"Button/Authored",
+         "images":[
+           {"path":"images/button-filled/ideal__default__dark.png","state":"default","theme":"dark","previewId":"FilledButton_Dark"}]}],
+       "deferred":[
+         {"componentId":"Button/Filled","section":"Components","group":"Buttons","reason":"mode",
+          "parallel":"Button/Inherited",
+          "path":"images/button-filled/ideal__default__light.png","state":"default","theme":"light",
+          "preview":"FilledButton","previewId":"FilledButton_Light",
+          "previewIds":["FilledButton_Light","FilledButton_Dark"]}]}
+      """
+        .trimIndent()
+    var fronted: ServeHost? = null
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { trustedBranches },
+        fetch = deferredFetcher(json),
+        buildTrustedBundle = { _, _, _, _, bakedFallback, _ ->
+          fronted = bakedFallback()
+          true
+        },
+      )
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+
+    assertEquals(
+      mapOf("Button/Filled" to "Button/Authored"),
+      (fronted as ServeBundleHost).parallelByComponentId,
+    )
   }
 
   @Test

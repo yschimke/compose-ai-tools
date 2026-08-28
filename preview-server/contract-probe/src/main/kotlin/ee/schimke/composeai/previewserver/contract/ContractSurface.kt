@@ -14,6 +14,7 @@ import ee.schimke.composeai.data.remotecompose.RemoteComposeDocumentPayload
 import ee.schimke.composeai.data.render.PreviewBackground
 import ee.schimke.composeai.data.theme.ThemePayload
 import ee.schimke.composeai.designpages.DesignPagesManifest
+import ee.schimke.composeai.imagecrop.ContentCrop
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.render.session.RenderSessionFactory
 import ee.schimke.composeai.render.session.subprocess.SubprocessRenderSessions
@@ -95,4 +96,21 @@ object ContractSurface {
    * thing that made an extracted server depend on the CLI (preparation item 7).
    */
   val coordinateResolver: KClass<CoordinateResolver> = CoordinateResolver::class
+
+  /**
+   * Cropping a render down to the pixels that carry content — what the home page's hero thumbnails
+   * and the compare wall's cells are cut with (`ServeWeb`, `ServeHttpServer`).
+   *
+   * `:common-image-crop` was added to `CONTRACT_PROJECTS` without a reference here, and adding the
+   * artifact to the probe's `contracts` only proves that a JAR with that coordinate resolves. That
+   * is the weaker half of what this file is for: removing or renaming the exact crop surface serve
+   * calls would leave `checkContractSurface` green, which is the failure this whole file exists to
+   * make impossible.
+   *
+   * `ContentCrop` alone, because that is serve's whole import from the module — `ServeWeb` and
+   * `ServeHttpServer` name it and nothing else. The sibling `ContentBox` is published but unused
+   * here, and naming a type serve does not reach for would have this file assert a dependency floor
+   * higher than the real one.
+   */
+  val imageCrop: KClass<ContentCrop> = ContentCrop::class
 }

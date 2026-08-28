@@ -136,7 +136,7 @@ import {
   extraOnlyFunctions,
   unbridgeableFunctions,
 } from "./extra-render-fold.mjs";
-import { applyParallels } from "./apply-parallels.mjs";
+import { applyParallels, parallelIndex } from "./apply-parallels.mjs";
 import { applySpecSections } from "./apply-spec-sections.mjs";
 import { applySourceFiles } from "./apply-source-files.mjs";
 import {
@@ -1586,14 +1586,24 @@ if (values["publish-live-bundle"]) {
       );
     }
     const records = expandDeferredRecords(deferred, spec, allBundles);
+    // The same parallel index `applyParallels` stamped `manifest.components` from, applied to the
+    // deferred records too. A WHOLLY deferred component never reaches `manifest.components` — it
+    // short-circuits into `deferred[]` above — so stamping only there dropped its declared
+    // counterpart on the floor, and a server reconstructing the card could not resolve the sibling
+    // even though the catalog publishes `compareWith`. Read from one index rather than a second
+    // reader, so the two cannot disagree about the blank-means-none rule.
+    const deferredParallels = parallelIndex(spec);
     manifest.deferred = records.map((record) => {
       const ids = idsByFunction.get(record.preview) ?? [];
+      const parallel = deferredParallels.get(record.componentId);
       return {
         ...record,
         ...(mismatches.length === 0
           ? { path: catalogImagePath(record.componentId, record) }
           : {}),
         ...(ids.length > 0 ? { previewIds: ids } : {}),
+        // Never clobber a record that already carries one, matching `applyParallels`.
+        ...(parallel !== undefined && record.parallel === undefined ? { parallel } : {}),
       };
     });
     const addressable = manifest.deferred.filter((r) => r.path && r.previewId).length;

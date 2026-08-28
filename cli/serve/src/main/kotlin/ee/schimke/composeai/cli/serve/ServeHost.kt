@@ -73,6 +73,17 @@ interface ServeHost : AutoCloseable {
   fun parityIssues(): ParityIssues? = null
 
   /**
+   * The parity **verdict** this catalog published for one comparison (`parity/findings.json`) — the
+   * accessibility, i18n, token and layout findings a parity run concluded about this preview read
+   * against [referenceId]. Empty by default and for any catalog that publishes none.
+   *
+   * Keyed by the PAIR rather than by the preview alone because that is what a finding describes;
+   * see [ServeParityFindingStore.forComparison] for what an unscoped set means.
+   */
+  fun parityFindingsFor(previewId: String, referenceId: String): List<ParityFindingSet> =
+    emptyList()
+
+  /**
    * This catalog's committed known-difference document, **verbatim**, or null when it publishes
    * none — the common case, and the one every host defaults to.
    *

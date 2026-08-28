@@ -2878,6 +2878,98 @@ html:not(.cp-bg-transparent) #cp-reference-compare[data-cp-stage-clip] .cp-refer
 .cp-annotation-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 14px;
   margin: 14px 0 0; color: var(--cp-fg-muted); font-size: 0.8rem; }
 .cp-annotation-toggle { display: inline-flex; align-items: center; gap: 6px; }
+/* The design-parity verdict — what a parity run concluded about this comparison, grouped as the
+   run itself reports (a11y and i18n, then tokens, then layout, then pixels).
+
+   Rendered by the server, not the browser, so the sentences are readable, searchable and quotable
+   with no script. Only the highlight boxes below are built client-side, because only they are
+   geometry.
+
+   Severity reuses the score chips' `light-dark()` pairs (`.cp-match--good/warn/bad` above) rather
+   than minting a second palette: this page already states a verdict in those colours, and two
+   vocabularies for the same three states on one page is how a reader learns to distrust both. */
+.cp-parity-verdict { margin: 18px 0 0; padding: 14px 16px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-low); }
+.cp-parity-verdict-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; }
+.cp-parity-verdict-head h2 { margin: 0; font-size: 0.8rem; color: var(--cp-fg-muted);
+  text-transform: uppercase; letter-spacing: 0.06em; }
+.cp-parity-status { padding: 1px 9px; border-radius: 999px; font-size: 0.68rem; font-weight: 700;
+  letter-spacing: 0.04em; text-transform: uppercase; }
+.cp-parity-status--pass { color: light-dark(#10521f, #86dc9d);
+  background: light-dark(#d7f0dd, #0d3a1c); }
+.cp-parity-status--warn { color: light-dark(#573100, #ffd8a3);
+  background: light-dark(#ffdfb0, #4a3000); }
+.cp-parity-status--fail { color: light-dark(#6e1414, #ffb4ab);
+  background: light-dark(#ffdad6, #601410); }
+.cp-parity-tally { color: var(--cp-fg-muted); font-size: 0.74rem;
+  font-variant-numeric: tabular-nums; }
+.cp-parity-report { margin-left: auto; font-size: 0.74rem; }
+.cp-parity-hint { margin: 8px 0 0; color: var(--cp-fg-faint); font-size: 0.72rem; }
+.cp-parity-groups { display: grid; gap: 12px; margin-top: 12px; }
+.cp-parity-group h3 { display: flex; align-items: center; gap: 7px; margin: 0 0 6px;
+  font-size: 0.72rem; color: var(--cp-fg-muted); text-transform: uppercase;
+  letter-spacing: 0.05em; }
+.cp-parity-count { padding: 0 6px; border-radius: 999px; font-size: 0.66rem; font-weight: 700;
+  color: var(--cp-fg-muted); background: var(--md-sys-color-surface-container-high); }
+.cp-parity-list { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.cp-parity-finding { display: flex; align-items: flex-start; gap: 9px; padding: 7px 10px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface); font-size: 0.76rem; }
+/* Keyed on `role="button"`, which `<cp-reference-compare>` sets only after it has built the boxes
+   — NOT on `data-cp-parity-finding`, which the server writes for every anchored finding. The two
+   differ exactly where it matters: with script off, blocked, or failed the ids are in the document
+   and no highlight can be drawn, and a pointer cursor there would promise one. A row that is not a
+   control does not look like one. */
+.cp-parity-finding[role="button"] { cursor: pointer; }
+.cp-parity-finding[role="button"]:hover,
+.cp-parity-finding[role="button"]:focus-visible,
+.cp-parity-finding[aria-pressed="true"] {
+  border-color: var(--md-sys-color-primary);
+  background: var(--md-sys-color-surface-container-high); outline: none; }
+.cp-parity-sev { flex: none; padding: 1px 7px; border-radius: 999px; font-size: 0.62rem;
+  font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+.cp-parity-finding--info .cp-parity-sev { color: light-dark(#123a63, #b8d8ff);
+  background: light-dark(#dbeafe, #12314f); }
+.cp-parity-finding--warn .cp-parity-sev { color: light-dark(#573100, #ffd8a3);
+  background: light-dark(#ffdfb0, #4a3000); }
+.cp-parity-finding--error .cp-parity-sev { color: light-dark(#6e1414, #ffb4ab);
+  background: light-dark(#ffdad6, #601410); }
+.cp-parity-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.cp-parity-msg { color: var(--cp-fg); }
+.cp-parity-delta { display: flex; flex-wrap: wrap; gap: 8px; color: var(--cp-fg-muted);
+  font-size: 0.72rem; font-variant-numeric: tabular-nums; }
+.cp-parity-delta code { padding: 1px 5px; border-radius: 4px;
+  background: var(--md-sys-color-surface-container-high); }
+.cp-parity-expected { color: light-dark(#10521f, #86dc9d); }
+.cp-parity-actual { color: light-dark(#6e1414, #ffb4ab); }
+.cp-parity-where { flex: none; margin-left: auto; color: var(--cp-fg-faint); font-size: 0.68rem;
+  white-space: nowrap; }
+/* The highlight itself. Drawn into the same per-panel layer as the annotation redline and placed
+   by the same code, so a finding's region and the spec box over it cannot drift apart. Hidden
+   until a row is hovered, focused or pinned — this layer answers "where", and answering it for
+   every finding at once answers nothing.
+
+   The box colours are NOT a `light-dark()` pair, unlike the chips above: they are drawn over a
+   render, and the panel's ground is the catalog's stage rather than the page's scheme. A dark
+   catalog's sticker sits on a dark stage in a light page, so resolving these against the page
+   would pick the wrong contrast on exactly the surfaces the highlight has to survive. */
+.cp-parity-anchor { position: absolute; box-sizing: border-box; display: none;
+  border: 2px solid rgba(214, 51, 108, 0.95);
+  background: rgba(214, 51, 108, 0.14);
+  border-radius: 2px; }
+.cp-parity-anchor--info { border-color: rgba(37, 99, 235, 0.95);
+  background: rgba(37, 99, 235, 0.14); }
+.cp-parity-anchor--warn { border-color: rgba(217, 119, 6, 0.95);
+  background: rgba(217, 119, 6, 0.16); }
+.cp-parity-anchor--error { border-color: rgba(220, 38, 38, 0.95);
+  background: rgba(220, 38, 38, 0.16); }
+.cp-parity-anchor.cp-parity-anchor-active { display: block; }
+.cp-parity-anchor-label { position: absolute; left: 0; top: 100%; margin-top: 2px;
+  padding: 1px 5px; border-radius: 3px; font-size: 0.6rem; line-height: 1.35; font-weight: 600;
+  color: #fff; background: rgba(24, 24, 27, 0.92); white-space: nowrap; pointer-events: none; }
 /* The DERIVED semantics layers on the focused comparison — typography, theme and layout read off
    the render's own semantics tree by `<cp-inspect-layers>`, which the viewer has drawn for a long
    time and this page could not. Its boxes and badges are the viewer's (`.cp-inspect-*` below);

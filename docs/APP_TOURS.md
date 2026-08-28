@@ -79,12 +79,47 @@ Inside the Robolectric sandbox, a tour session:
 5. captures the resumed activity's `window.decorView` through `captureRoboImage` — the same
    hardware-capture path (`robolectric.pixelCopyRenderMode=hardware`) as every other preview.
 
-## Limitations (v1)
+## The Application an activity renders against
 
-- **Consumer `Application.onCreate()` does not run** (the generated `robolectric.properties` pins
-  `application=android.app.Application`, same as composable previews). Activities that require
-  app-level DI (Hilt) or SDK init will error; their `.error.json` sidecar says why. Set
-  `composePreview.useConsumerApplication = true` to restore the manifest Application.
+App-level previews run from **their own test class in their own package** —
+`ee.schimke.composeai.apptour.AppTourRobolectricRenderTest`, alongside
+`ee.schimke.composeai.renderer.RobolectricRenderTest` — and the split exists for exactly one
+reason: Robolectric resolves the Application per test *class* (from the `robolectric.properties`
+files merged down that class's package hierarchy), never per test method.
+
+The composable lane pins `application=android.app.Application` so an isolated composable never runs
+the consumer's `Application.onCreate()` — DI graphs, `BridgingManager`, Firebase and WorkManager
+routinely fail inside the sandbox, and a composable has no business needing them. That is the wrong
+default here, because **an Activity *is* the app**. Launched against the stub, a Hilt activity fails
+on contact:
+
+```
+java.lang.IllegalStateException: Hilt Activity must be attached to an @HiltAndroidApp Application.
+Did you forget to specify your Application's class name in your manifest's <application />'s
+android:name attribute?
+```
+
+so does a Koin one (`KoinApplication has not been started`), and so does one whose
+`AppComponentFactory` constructs it through DI (`Couldn't call constructor`). Before the lanes were
+split that was 39 of 45 activity-tour renders across the catalog fleet — no app using app-level DI
+could tour at all.
+
+So the app-tour lane's generated properties file omits `application=` entirely and lets Robolectric
+fall back to the manifest-declared class. The consumer's `Application.onCreate()` failing under
+Robolectric is now the failure mode, and it is **contained**: it fails this class, not the module's
+composable previews.
+
+Set `composePreview.appTourUseConsumerApplication = false` to put activities back on the stub —
+worth reaching for when the app's `onCreate()` cannot survive the sandbox *and* its activities
+render without one. `composePreview.useConsumerApplication = true` still moves **both** lanes onto
+the manifest Application.
+
+This lane is never sharded: a module has at most a handful of app-level previews, and the cost that
+matters is the Application init the class pays once per sandbox — which sharding would multiply
+rather than divide.
+
+## Limitations
+
 - **Standalone Gradle path only.** The daemon (`PreviewIndex` parses `kind` as a string, so
   manifests with app previews load fine) does not yet render these kinds interactively; a daemon
   `RenderEngine` branch + VS Code/MCP affordances (launch-with-intent options on the card) are the

@@ -1448,3 +1448,63 @@ test("a Wear catalog that declares no breakpoints still resolves through the def
     ],
   );
 });
+
+test("separate LTR and RTL annotations resolve to their own preview, not the first listed", () => {
+  // `variantIdentity` has carried `locale` since gutters started publishing physical edges, but
+  // nothing SCORED it — so one function with an LTR and an RTL `@Preview` resolved both images to
+  // whichever annotation came first, and an asymmetric gutter went out with its left and right
+  // edges swapped for one of them. A wrong crop, not a missing one.
+  const spec = {
+    system: "m3",
+    groups: [
+      {
+        components: [
+          {
+            componentId: "Button/Filled",
+            preview: "FilledButton",
+            // Both stickers come off the SAME function; the locale is a props variant, exactly the
+            // shape a font-scale fan-out takes, so the pick has to score it.
+            variants: [
+              { state: "default", props: { locale: "en" }, preview: "FilledButton" },
+              { state: "rtl", props: { locale: "ar-XB" }, preview: "FilledButton" },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const bundle = {
+    previews: [
+      {
+        id: "pkg.CatalogKt.FilledButton_en",
+        functionName: "FilledButton",
+        params: { locale: "en" },
+      },
+      {
+        // The underscore spelling a catalog actually carries, against a hyphenated request.
+        id: "pkg.CatalogKt.FilledButton_ar",
+        functionName: "FilledButton",
+        params: { locale: "ar_XB" },
+      },
+    ],
+  };
+  const manifest = {
+    system: "m3",
+    components: [
+      {
+        componentId: "Button/Filled",
+        images: [
+          { state: "default", props: { locale: "en" } },
+          { state: "rtl", props: { locale: "ar-XB" } },
+        ],
+      },
+    ],
+  };
+
+  bridgeLivePreviewIds(manifest, spec, bundle, new Set());
+
+  assert.deepEqual(mapped(manifest), {
+    default: "pkg.CatalogKt.FilledButton_en",
+    rtl: "pkg.CatalogKt.FilledButton_ar",
+  });
+});

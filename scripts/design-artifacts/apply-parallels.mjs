@@ -34,7 +34,20 @@
  *   The catalog spec the manifest was built from.
  * @returns {number} how many components had a `parallel` newly stamped.
  */
-export function applyParallels(manifest, spec) {
+/**
+ * `componentId -> parallel`, for every spec component that declares one.
+ *
+ * Exported because the manifest is stamped in two places and they must read the spec the same way.
+ * `applyParallels` runs over `manifest.components` while the manifest is being assembled; the
+ * DEFERRED records are attached later (`generate-design-catalog.mjs` builds them after this call),
+ * so they cannot be reached from here and are stamped at their own construction from this same map.
+ * Two hand-rolled readers would eventually disagree about the blank rule below, which is the only
+ * subtle part.
+ *
+ * @param {{groups?: Array<{components?: Array<{componentId: string, parallel?: string}>}>}} spec
+ * @returns {Map<string, string>}
+ */
+export function parallelIndex(spec) {
   const parallelByComponentId = new Map();
   for (const group of spec?.groups ?? []) {
     for (const component of group.components ?? []) {
@@ -48,6 +61,11 @@ export function applyParallels(manifest, spec) {
       if (parallel) parallelByComponentId.set(component.componentId, parallel);
     }
   }
+  return parallelByComponentId;
+}
+
+export function applyParallels(manifest, spec) {
+  const parallelByComponentId = parallelIndex(spec);
 
   let stamped = 0;
   for (const component of manifest?.components ?? []) {

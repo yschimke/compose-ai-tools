@@ -45,6 +45,7 @@ val INTERNAL_GROUP = "ee.schimke.composeai"
 val contracts =
   listOf(
     "daemon-core",
+    "daemon-protocol",
     "daemon-client",
     "preview-data-api",
     "render-session-api",

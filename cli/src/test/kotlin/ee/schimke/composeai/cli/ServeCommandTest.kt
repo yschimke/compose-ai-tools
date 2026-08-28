@@ -83,7 +83,7 @@ class ServeCommandTest {
    */
   @Suppress("UNCHECKED_CAST")
   private fun ServeCommand.backgroundWork(): ServeBackgroundWork {
-    val runner = ServeRunner(this)
+    val runner = ServeRunner(this, this)
     return (runner.javaClass
         .getDeclaredField("backgroundWork\$delegate")
         .apply { isAccessible = true }

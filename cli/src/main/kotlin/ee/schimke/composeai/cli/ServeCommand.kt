@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.bundle.TrustStore
+import ee.schimke.composeai.cli.serve.ServeBuildHost
 import ee.schimke.composeai.cli.serve.ServeDefaults
 import ee.schimke.composeai.cli.serve.ServeDiscovery
 import ee.schimke.composeai.cli.serve.ServeOptions
@@ -21,7 +22,7 @@ import java.io.File
  * serves the module's whole preview set, so switching previews is just navigation.
  */
 class ServeCommand(args: List<String>, override val browseProject: Boolean = false) :
-  Command(args), ServeOptions {
+  Command(args), ServeOptions, ServeBuildHost {
 
   override val lan: Boolean = "--lan" in args
 
@@ -1020,7 +1021,7 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
       printUsage()
       return
     }
-    ServeRunner(this).run()
+    ServeRunner(this, this).run()
   }
 
   // ---- the ServeOptions members that need something `:cli` has and the server must not ----
