@@ -30,14 +30,34 @@ compares a file against itself and always "passes".
 
 **A harness capture has the same oracle, and it is cheaper.** The captures the
 `vscode-preview-diff` bot compares are Playwright shots of committed static
-fixtures, so N runs cost seconds and need no JVM:
+fixtures, so N runs cost seconds and need no JVM. **Two harnesses write into that
+one baseline set**, and they do not share an invocation — find which one owns your
+capture (`git grep "<fixture>" -- '*/preview-harness/*'`) and use its own:
 
 ```
-cd preview-server/preview-harness      # or vscode-extension/preview-harness
+# preview-server/preview-harness — the `serve` web surfaces (serve-*, viewer-*).
+cd preview-server/preview-harness
 HARNESS_CHROMIUM=/path/to/chromium HARNESS_THEME=light \
   npx playwright test -c playwright.config.mjs pages-snapshot.spec.mjs -g "<fixture>"
 md5sum out/<capture>.light.png
 ```
+
+```
+# vscode-extension/preview-harness — the VS Code panel's own fixtures.
+# Run from `vscode-extension/`, not from inside the harness directory, and build
+# the webview bundle first: the fixtures load it, so a stale one moves pixels for
+# reasons no commit explains.
+cd vscode-extension
+node esbuild.webview.mjs
+HARNESS_CHROMIUM=/path/to/chromium HARNESS_FIXTURE=<fixture> HARNESS_THEME=light \
+  npx playwright test -c preview-harness/playwright.config.mjs snapshot.spec.mjs
+md5sum preview-harness/out/<capture>.light.png
+```
+
+The spec filenames differ (`pages-snapshot.spec.mjs` vs `snapshot.spec.mjs`), so
+the two commands are not interchangeable. `HARNESS_THEME` narrows to one theme in
+both; `HARNESS_FIXTURE` is the extension harness's own selector and is cleaner
+than `-g` there.
 
 There is no `--rerun` equivalent to remember: each invocation rewrites `out/`.
 
