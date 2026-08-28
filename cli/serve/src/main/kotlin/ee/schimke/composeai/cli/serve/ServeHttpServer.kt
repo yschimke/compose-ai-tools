@@ -17,6 +17,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.decodeURLQueryComponent
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.createApplicationPlugin
@@ -4600,9 +4601,29 @@ class ServeHttpServer(
     val base = url.substringBefore('?')
     val kept =
       url.substringAfter('?', "").split('&').filter {
-        it.isNotEmpty() && it.substringBefore('=') != CHROME_PARAM
+        it.isNotEmpty() && queryParamName(it) != CHROME_PARAM
       }
     return "$base?" + (kept + "$CHROME_PARAM=$mode").joinToString("&")
+  }
+
+  /**
+   * The DECODED name of a raw `k=v` query pair.
+   *
+   * Ktor decodes a parameter name before it reaches [io.ktor.http.Parameters], so `?%63hrome=x` is
+   * `chrome` to every read in this file — including the [interfaceMode] check that decides this URL
+   * carries an unrecognised pin. Comparing the raw text instead kept that pair and appended a
+   * second `chrome=`, and a reader taking the FIRST value read the invalid one, ignored it and fell
+   * back to their own mode: the wrong-surface failure the pin exists to prevent, restored by the
+   * replacement meant to close it.
+   *
+   * `plusIsSpace` matches how Ktor reads a query component. A name that is not valid
+   * percent-encoding cannot be what Ktor decoded to `chrome`, so it keeps its raw text and is
+   * preserved rather than dropped — this only ever removes a pair the server itself reads as the
+   * chrome pin.
+   */
+  private fun queryParamName(pair: String): String {
+    val raw = pair.substringBefore('=')
+    return runCatching { raw.decodeURLQueryComponent(plusIsSpace = true) }.getOrDefault(raw)
   }
 
   private fun catalogBundleHost(host: ServeHost): ServeBundleHost? =

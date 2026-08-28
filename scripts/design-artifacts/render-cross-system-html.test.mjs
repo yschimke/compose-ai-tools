@@ -560,3 +560,44 @@ test("no references and no stated absences leaves the kit column off", () => {
   assert.doesNotMatch(html, /col-d/);
   assert.doesNotMatch(html, /with a stated absence/);
 });
+
+test("a design column turned off in the spec is not handed back by a stated absence", () => {
+  // `compareWith.design: false` makes the generator omit `designRefById` entirely. An empty map is
+  // the DIFFERENT statement "the column is on and nothing resolved", which is what lets an absence
+  // carry the column — so the opt-out has to be spelled by the key's absence, not by an empty map.
+  const absencesOnly = {
+    ...catalog,
+    components: [
+      { ...catalog.components[0], noReference: "the kit retired this button" },
+      catalog.components[1],
+    ],
+  };
+  const html = renderCrossSystemHtml(absencesOnly, opts); // no designRefById at all
+  assert.doesNotMatch(html, /Design kit/);
+  assert.doesNotMatch(html, /col-d/);
+  assert.doesNotMatch(html, /with a stated absence/);
+});
+
+test("an absence-only column says it carries no reference, not that it carries one", () => {
+  // The explanatory note is the page's claim about what the leading column IS. Reusing the
+  // reference wording for a column that resolved nothing tells a reader a picture exists and was
+  // contributed by a `figma:` mapping — the opposite of the authored absence the column is showing.
+  const absencesOnly = {
+    ...catalog,
+    components: [
+      { ...catalog.components[0], noReference: "the kit retired this button" },
+      catalog.components[1],
+    ],
+  };
+  const html = renderCrossSystemHtml(absencesOnly, { ...opts, designRefById: new Map() });
+  assert.match(html, /column carries no reference on this page/);
+  assert.doesNotMatch(html, /is the published design reference BOTH/);
+
+  // …and the reference wording is still exactly what a page with real references says.
+  const withRefs = renderCrossSystemHtml(absencesOnly, {
+    ...opts,
+    designRefById: new Map([["Button/Filled", { url: "https://example.test/r.png" }]]),
+  });
+  assert.match(withRefs, /is the published design reference BOTH/);
+  assert.doesNotMatch(withRefs, /column carries no reference on this page/);
+});
