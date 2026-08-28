@@ -78,37 +78,65 @@ export function publishTransform(sourceWidth, sourceHeight, placement) {
 }
 
 /**
- * Move one box from the source raster's pixel space into the published raster's.
+ * A box intersected with the canvas it is drawn on, or null when it lies entirely outside it.
  *
- * Returned unchanged — the same object — when there is no transform, so a consumer can call this
- * unconditionally and a reference that was not rescaled keeps the very bytes it has today.
- *
- * Width and height are floored at 1: a box small enough to round to nothing under a reduction is
- * still a box somebody drew, and a zero-area rectangle is invisible rather than honest.
+ * Load-bearing rather than tidy: `placeRgba` crops an empty margin by placing the source at a
+ * NEGATIVE offset — the m3-catalog touch-target case puts a 218x126 export at `y: -21` — so a box
+ * spanning that margin transforms to a negative origin. Both `ServeAnnotationStore` and
+ * `ServeParityFindingStore` discard a box with a negative origin, so the annotation would vanish
+ * instead of moving. A partially cropped box is honestly the part of it that survived the crop;
+ * one whose every pixel was cropped away has nothing left to point at and is dropped.
  */
-export function transformBounds(bounds, transform) {
-  if (!transform || !bounds) return bounds;
-  const { scaleX, scaleY, offsetX = 0, offsetY = 0 } = transform;
-  return {
-    ...bounds,
-    x: Math.round(bounds.x * scaleX) + offsetX,
-    y: Math.round(bounds.y * scaleY) + offsetY,
-    width: Math.max(1, Math.round(bounds.width * scaleX)),
-    height: Math.max(1, Math.round(bounds.height * scaleY)),
-  };
+function clipToCanvas(box, canvas) {
+  if (!canvas || !(canvas.width > 0) || !(canvas.height > 0)) return box;
+  const x = Math.max(0, box.x);
+  const y = Math.max(0, box.y);
+  const right = Math.min(canvas.width, box.x + box.width);
+  const bottom = Math.min(canvas.height, box.y + box.height);
+  if (right <= x || bottom <= y) return null;
+  return { ...box, x, y, width: right - x, height: bottom - y };
 }
 
 /**
- * Move a reference's annotation layer into the published raster's pixel space.
+ * Move one box from the source raster's pixel space into the published raster's, clipped to
+ * `canvas` (the published raster's dimensions) when one is given.
+ *
+ * Returned unchanged — the same object — when there is no transform, so a consumer can call this
+ * unconditionally and a reference that was not rescaled keeps the very bytes it has today. Only a
+ * box this actually moved is clipped, for the same reason. Null when the move puts every pixel of
+ * it outside the canvas; see [clipToCanvas].
+ *
+ * Width and height are floored at 1 before the clip: a box small enough to round to nothing under a
+ * reduction is still a box somebody drew, and a zero-area rectangle is invisible rather than honest.
+ */
+export function transformBounds(bounds, transform, canvas = undefined) {
+  if (!transform || !bounds) return bounds;
+  const { scaleX, scaleY, offsetX = 0, offsetY = 0 } = transform;
+  return clipToCanvas(
+    {
+      ...bounds,
+      x: Math.round(bounds.x * scaleX) + offsetX,
+      y: Math.round(bounds.y * scaleY) + offsetY,
+      width: Math.max(1, Math.round(bounds.width * scaleX)),
+      height: Math.max(1, Math.round(bounds.height * scaleY)),
+    },
+    canvas,
+  );
+}
+
+/**
+ * Move a reference's annotation layer into the published raster's pixel space, clipped to `canvas`.
  *
  * The list is returned as it stands when nothing moved, and an annotation carrying no `bounds` is
- * passed through rather than given one.
+ * passed through rather than given one. An annotation whose box the crop removed entirely is
+ * dropped: it describes a region of the design that this reference does not publish, and a label
+ * with nowhere to sit is worse than a missing one.
  */
-export function transformAnnotations(annotations, transform) {
+export function transformAnnotations(annotations, transform, canvas = undefined) {
   if (!transform || !Array.isArray(annotations)) return annotations;
-  return annotations.map((annotation) =>
-    annotation?.bounds
-      ? { ...annotation, bounds: transformBounds(annotation.bounds, transform) }
-      : annotation,
-  );
+  return annotations.flatMap((annotation) => {
+    if (!annotation?.bounds) return [annotation];
+    const bounds = transformBounds(annotation.bounds, transform, canvas);
+    return bounds ? [{ ...annotation, bounds }] : [];
+  });
 }

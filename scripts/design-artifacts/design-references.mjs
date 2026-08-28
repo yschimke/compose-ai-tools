@@ -623,6 +623,11 @@ export function referenceManifest(records) {
  *
  * A reference the export did not move carries no `transform` and is simply absent, which is what
  * lets a consumer treat "no entry" as the identity rather than as missing information.
+ *
+ * Each entry carries the published raster's own dimensions as its `canvas`, so a consumer can clip
+ * what it moves. That is not decoration: a placement that crops an empty margin sits at a negative
+ * offset, and the server discards a box with a negative origin rather than drawing it outside the
+ * panel — so an unclipped box does not merely sit wrong, it disappears.
  */
 export function referenceTransforms(manifest) {
   const transforms = new Map();
@@ -632,7 +637,12 @@ export function referenceTransforms(manifest) {
     const { scaleX, scaleY } = transform;
     if (!Number.isFinite(scaleX) || !Number.isFinite(scaleY)) continue;
     if (!(scaleX > 0) || !(scaleY > 0)) continue;
-    if (reference.id) transforms.set(reference.id, transform);
+    if (!reference.id) continue;
+    const { width, height } = reference.raster;
+    transforms.set(reference.id, {
+      ...transform,
+      ...(width > 0 && height > 0 ? { canvas: { width, height } } : {}),
+    });
   }
   return transforms;
 }

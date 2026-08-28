@@ -126,17 +126,23 @@ function findingsFor(runFindings, code) {
  * references all published at their captured size emits byte-identical findings. An anchor on the
  * `actual` panel is left alone in every case: it was measured in the render's own pixels, which is
  * the frame the server serves.
+ *
+ * An anchor the placement cropped away entirely is DROPPED rather than published pointing at
+ * nothing, and a finding left with none loses the field: `ServeParityFindingStore` offers a finding
+ * with no anchors as prose and never as a control, which is the honest answer for a region this
+ * reference does not show. The candidate-side anchor of the same finding survives, so a `layout`
+ * finding keeps the half that can still be pointed at.
  */
 function rebaseAnchors(finding, transform) {
   if (!transform || !Array.isArray(finding?.anchors)) return finding;
-  return {
-    ...finding,
-    anchors: finding.anchors.map((anchor) =>
-      anchor?.side === "reference" && anchor.bounds
-        ? { ...anchor, bounds: transformBounds(anchor.bounds, transform) }
-        : anchor,
-    ),
-  };
+  const anchors = finding.anchors.flatMap((anchor) => {
+    if (anchor?.side !== "reference" || !anchor.bounds) return [anchor];
+    const bounds = transformBounds(anchor.bounds, transform, transform.canvas);
+    return bounds ? [{ ...anchor, bounds }] : [];
+  });
+  if (anchors.length > 0) return { ...finding, anchors };
+  const { anchors: dropped, ...rest } = finding;
+  return rest;
 }
 
 /** One set, with every finding's reference-side anchor moved onto the reference as published. */

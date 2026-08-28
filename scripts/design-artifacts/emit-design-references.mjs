@@ -608,7 +608,10 @@ for (const record of records) {
   const transform = publishTransform(captured.width, captured.height, placement);
   if (transform) {
     record.raster.transform = transform;
-    referenceTransforms.set(record.id, transform);
+    // The canvas travels alongside rather than inside the published field: `raster.width`/`height`
+    // already state it, and a box is clipped to it because `placeRgba` crops an empty margin by
+    // placing the source at a negative offset — see `clipToCanvas`.
+    referenceTransforms.set(record.id, { ...transform, canvas: target });
   }
 }
 
@@ -738,7 +741,7 @@ function writeReferenceAnnotations() {
   for (const [referenceId, transform] of referenceTransforms) {
     const layer = existing.references?.[referenceId];
     if (!Array.isArray(layer) || layer.length === 0) continue;
-    existing.references[referenceId] = transformAnnotations(layer, transform);
+    existing.references[referenceId] = transformAnnotations(layer, transform, transform.canvas);
     rebased++;
   }
   if (rebased > 0) {

@@ -163,3 +163,58 @@ test("passes an annotation layer straight through when nothing moved", () => {
   const layer = [{ kind: "layout", bounds: { x: 0, y: 0, width: 10, height: 10 } }];
   assert.equal(transformAnnotations(layer, null), layer);
 });
+
+test("clips a box the placement cropped rather than letting it be discarded", () => {
+  // `placeRgba` crops an empty margin by placing the source at a NEGATIVE offset — the m3-catalog
+  // touch-target case is `{ width: 218, height: 126, x: 0, y: -21 }`. A box spanning that margin
+  // transforms to a negative origin, and both `ServeAnnotationStore` and `ServeParityFindingStore`
+  // discard a box with one, so the annotation would vanish instead of moving.
+  const transform = { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: -21 };
+  const canvas = { width: 219, height: 84 };
+  assert.deepEqual(transformBounds({ x: 0, y: 0, width: 218, height: 126 }, transform, canvas), {
+    x: 0,
+    y: 0,
+    width: 218,
+    height: 84,
+  });
+});
+
+test("drops a box the placement cropped away entirely", () => {
+  // Nothing of it is published, so there is nowhere honest to draw it.
+  const transform = { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: -21 };
+  const gone = transformBounds({ x: 0, y: 0, width: 218, height: 20 }, transform, {
+    width: 219,
+    height: 84,
+  });
+  assert.equal(gone, null);
+});
+
+test("clips a box that runs off the far edge too", () => {
+  const clipped = transformBounds({ x: 90, y: 0, width: 40, height: 10 }, { scaleX: 2, scaleY: 2 }, {
+    width: 200,
+    height: 100,
+  });
+  assert.deepEqual(clipped, { x: 180, y: 0, width: 20, height: 20 });
+});
+
+test("clips nothing without a canvas to clip to", () => {
+  // The canvas is optional, and absent it the box is moved and left alone rather than guessed at.
+  assert.deepEqual(
+    transformBounds({ x: 0, y: 0, width: 10, height: 10 }, { scaleX: 1, scaleY: 1, offsetY: -21 }),
+    { x: 0, y: -21, width: 10, height: 10 },
+  );
+});
+
+test("drops an annotation whose box the crop removed, and keeps the rest", () => {
+  const layer = [
+    { kind: "layout", label: "in the margin", bounds: { x: 0, y: 0, width: 218, height: 20 } },
+    { kind: "layout", label: "on the button", bounds: { x: 0, y: 21, width: 218, height: 84 } },
+  ];
+  const moved = transformAnnotations(layer, { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: -21 }, {
+    width: 219,
+    height: 84,
+  });
+  assert.equal(moved.length, 1);
+  assert.equal(moved[0].label, "on the button");
+  assert.deepEqual(moved[0].bounds, { x: 0, y: 0, width: 218, height: 84 });
+});

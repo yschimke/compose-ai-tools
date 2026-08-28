@@ -326,3 +326,69 @@ test("a finding with no honest anchor is not given one", () => {
   const [finding] = document.previews["button-filled__ideal__default__light"][0].findings;
   assert.equal(finding.anchors, undefined);
 });
+
+test("drops a reference anchor the placement cropped away, keeping the candidate's", () => {
+  // A cropped-away anchor points at a region this reference does not publish; the server discards a
+  // negative-origin box anyway, so publishing one costs the finding its highlight silently.
+  const { document } = build({
+    runFindings: anchoredRun,
+    referenceTransforms: new Map([
+      [
+        "button-filled__ideal__default__light-0",
+        { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: -80, canvas: { width: 300, height: 210 } },
+      ],
+    ]),
+  });
+  const [finding] = document.previews["button-filled__ideal__default__light"][0].findings;
+  assert.equal(finding.anchors.length, 1);
+  assert.equal(finding.anchors[0].side, "actual");
+});
+
+test("a finding whose every anchor was cropped away carries no anchors at all", () => {
+  // Not an empty list: the server offers an unanchored finding as prose and never as a control.
+  const referenceOnly = {
+    schema: FINDINGS_SCHEMA,
+    previews: {
+      "ui/Button.kt#Filled": [
+        {
+          status: "fail",
+          findings: [
+            {
+              kind: "layout",
+              severity: "error",
+              message: "padding drifted",
+              anchors: [{ side: "reference", bounds: { x: 0, y: 0, width: 100, height: 40 } }],
+            },
+          ],
+        },
+      ],
+    },
+  };
+  const { document } = build({
+    runFindings: referenceOnly,
+    referenceTransforms: new Map([
+      [
+        "button-filled__ideal__default__light-0",
+        { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: -80, canvas: { width: 300, height: 210 } },
+      ],
+    ]),
+  });
+  const [finding] = document.previews["button-filled__ideal__default__light"][0].findings;
+  assert.equal("anchors" in finding, false);
+});
+
+test("clips a reference anchor that only partly survived the crop", () => {
+  const { document } = build({
+    runFindings: anchoredRun,
+    referenceTransforms: new Map([
+      [
+        "button-filled__ideal__default__light-0",
+        { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: -30, canvas: { width: 300, height: 210 } },
+      ],
+    ]),
+  });
+  const [finding] = document.previews["button-filled__ideal__default__light"][0].findings;
+  // Captured at y 20, height 40; the crop takes the 30 rows above the artwork, so the box loses
+  // its top 10 and the remaining 30 sit flush against the top of the published canvas.
+  assert.deepEqual(finding.anchors[0].bounds, { x: 10, y: 0, width: 100, height: 30 });
+});

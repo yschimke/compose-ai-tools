@@ -1062,6 +1062,27 @@ test("referenceTransforms indexes the transforms a published manifest carries", 
   assert.equal(transforms.has("card__ideal__light-0"), false);
 });
 
+test("referenceTransforms carries the published canvas so a consumer can clip", () => {
+  // A placement that cropped an empty margin sits at a negative offset, and the server discards a
+  // box with a negative origin — so an unclipped box does not sit wrong, it disappears.
+  const [entry] = referenceTransforms({
+    references: [
+      {
+        id: "a",
+        raster: { width: 219, height: 84, transform: { scaleX: 1, scaleY: 1, offsetY: -21 } },
+      },
+    ],
+  }).values();
+  assert.deepEqual(entry.canvas, { width: 219, height: 84 });
+});
+
+test("referenceTransforms omits a canvas the manifest does not state", () => {
+  const [entry] = referenceTransforms({
+    references: [{ id: "a", raster: { transform: { scaleX: 2, scaleY: 2 } } }],
+  }).values();
+  assert.equal("canvas" in entry, false);
+});
+
 test("referenceTransforms drops a factor that would move a box to nonsense", () => {
   // A wrong anchor is worse than an unmoved one: the reader has no way to tell it is wrong.
   const manifest = {
