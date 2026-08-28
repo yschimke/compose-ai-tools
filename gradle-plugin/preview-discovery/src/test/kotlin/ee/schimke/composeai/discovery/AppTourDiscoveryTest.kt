@@ -144,4 +144,39 @@ class AppTourDiscoveryTest {
     assertTrue(previews.isEmpty())
     assertEquals(1, warnings.size)
   }
+
+  @Test
+  fun `library-injected activities are dropped`() {
+    // A merged manifest carries every library's activities alongside the app's own. None of them
+    // are app screens; Firebase Auth's two headless trampolines in particular NPE on launch and
+    // used to land in the Confetti catalogs as permanently-broken cards.
+    val merged =
+      """
+      <?xml version="1.0" encoding="utf-8"?>
+      <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          package="com.example.app">
+          <application>
+              <activity android:name=".MainActivity" android:exported="true">
+                  <intent-filter>
+                      <action android:name="android.intent.action.MAIN" />
+                      <category android:name="android.intent.category.LAUNCHER" />
+                  </intent-filter>
+              </activity>
+              <activity android:name="androidx.compose.ui.tooling.PreviewActivity" />
+              <activity android:name="com.google.android.gms.common.api.GoogleApiActivity" />
+              <activity android:name="com.google.firebase.auth.internal.GenericIdpActivity" />
+              <activity android:name="com.google.firebase.auth.internal.RecaptchaActivity" />
+              <activity android:name="com.example.app.SettingsActivity" />
+          </application>
+      </manifest>
+      """
+        .trimIndent()
+
+    val activities = AppTourDiscovery.parseManifestActivities(merged.byteInputStream())
+
+    assertEquals(
+      listOf("com.example.app.MainActivity", "com.example.app.SettingsActivity"),
+      activities.map { it.className },
+    )
+  }
 }
