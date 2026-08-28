@@ -413,6 +413,44 @@ class ServeWebThumbCropTest {
   }
 
   @Test
+  fun `a section that two claims spell the same way takes the highest priority declared`() {
+    // Headings are operator text, not unique keys: two groups (or a group and the owner fallback)
+    // can spell one. Recording only the first claim's priority would strand a lifted group under a
+    // heading-mate that registered earlier with none.
+    fun system(id: String, repo: String, group: ServeWeb.HomeGroup?) =
+      ServeWeb.HomeSystem(
+        system = id,
+        title = id,
+        subtitle = null,
+        previewCount = 1,
+        trust = null,
+        sourceRepo = repo,
+        heroPreviewId = null,
+        group = group,
+      )
+
+    val unlifted = ServeWeb.HomeGroup(heading = "Design Systems", repos = setOf("someorg/legacy"))
+    val lifted =
+      ServeWeb.HomeGroup(
+        heading = "Design Systems",
+        repos = setOf("yschimke/m3-catalog"),
+        priority = 100,
+      )
+
+    val sections =
+      ServeWeb.homeSections(
+        listOf(
+          system("legacy", "someorg/legacy", unlifted),
+          system("jetnews", "yschimke/compose-samples", androidSamples),
+          system("m3-catalog", "yschimke/m3-catalog", lifted),
+        )
+      )
+
+    assertEquals(listOf("Design Systems", "android/compose-samples"), sections.map { it.heading })
+    assertEquals(listOf("legacy", "m3-catalog"), sections.first().systems.map { it.system })
+  }
+
+  @Test
   fun `Other stays pinned last however it is claimed, and cards keep list order`() {
     fun system(id: String, repo: String?, group: ServeWeb.HomeGroup?) =
       ServeWeb.HomeSystem(

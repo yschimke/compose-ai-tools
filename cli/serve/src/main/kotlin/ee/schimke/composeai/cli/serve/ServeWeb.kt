@@ -5384,7 +5384,8 @@ ${captureControlsHtml().prependIndent("          ")}
    * first-appearance (i.e. configured) order — so an operator orders the front page either by where
    * the catalogs sit in the list or, when that isn't enough, by saying so on the group
    * ([ServeCatalogsConfig.Group.priority]). A section whose group declares no priority, and one
-   * derived from a repo owner, sit at 0; "Other" is pinned last whatever it claims.
+   * derived from a repo owner, sit at 0; where two claims share a heading the section takes the
+   * highest of them; "Other" is pinned last whatever it claims.
    */
   internal fun homeSections(systems: List<HomeSystem>): List<HomeSection> {
     val grouped = LinkedHashMap<String, MutableList<HomeSystem>>()
@@ -5396,7 +5397,12 @@ ${captureControlsHtml().prependIndent("          ")}
       val heading = claimed?.heading ?: ownerHeading(s.sourceRepo)
       grouped.getOrPut(heading) { mutableListOf() } += s
       nouns.putIfAbsent(heading, claimed?.noun ?: ServeCatalogsConfig.DEFAULT_NOUN)
-      priorities.putIfAbsent(heading, claimed?.priority ?: 0)
+      // Sections merge on the HEADING, which is operator text and neither unique nor validated as
+      // such: two declared groups (or a group and an owner fallback) can spell the same one. So the
+      // merged section takes the highest priority any of its claims declares — recording only the
+      // first would leave a `priority: 100` group unlifted purely because a heading-mate with no
+      // priority happened to register earlier.
+      priorities.merge(heading, claimed?.priority ?: 0, ::maxOf)
     }
     val sections = grouped.map { (heading, list) ->
       HomeSection(heading, list, nouns.getValue(heading))
