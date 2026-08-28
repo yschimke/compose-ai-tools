@@ -1,0 +1,10 @@
+public final class ee/schimke/composeai/web/WebEscaping {
+	public static final field INSTANCE Lee/schimke/composeai/web/WebEscaping;
+	public final fun formatPercent (DI)Ljava/lang/String;
+	public static synthetic fun formatPercent$default (Lee/schimke/composeai/web/WebEscaping;DIILjava/lang/Object;)Ljava/lang/String;
+	public final fun htmlEscape (Ljava/lang/String;)Ljava/lang/String;
+	public final fun jsString (Ljava/lang/String;)Ljava/lang/String;
+	public final fun pngDimensions ([B)Lkotlin/Pair;
+	public final fun urlEncodeSegment (Ljava/lang/String;)Ljava/lang/String;
+}
+

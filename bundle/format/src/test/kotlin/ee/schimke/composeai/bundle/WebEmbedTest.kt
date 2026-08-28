@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli.serve
+package ee.schimke.composeai.bundle
 
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream

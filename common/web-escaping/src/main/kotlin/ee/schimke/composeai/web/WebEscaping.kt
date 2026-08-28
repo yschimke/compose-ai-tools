@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli.serve
+package ee.schimke.composeai.web
 
 /**
  * Tiny, dependency-free HTML / URL escaping helpers shared by the in-code web surfaces ([ServeWeb]
@@ -7,7 +7,7 @@ package ee.schimke.composeai.cli.serve
  * [urlEncodeSegment]) — into HTML attributes and URLs, so the same escaping has to be applied in
  * both places; promoting it here keeps a single implementation rather than two drifting copies.
  */
-internal object WebEscaping {
+public object WebEscaping {
 
   /**
    * A percentage as the viewer prints it: fixed decimals, locale-independent.
@@ -16,11 +16,11 @@ internal object WebEscaping {
    * match" on a page whose readout, computed in the browser by `toFixed`, says "99.7%". The two
    * numbers are the same comparison and must not be spelled differently.
    */
-  fun formatPercent(value: Double, decimals: Int = 1): String =
+  public fun formatPercent(value: Double, decimals: Int = 1): String =
     String.format(java.util.Locale.ROOT, "%.${decimals}f%%", value)
 
   /** Escape HTML-significant characters for safe interpolation into text or quoted attributes. */
-  fun htmlEscape(s: String): String =
+  public fun htmlEscape(s: String): String =
     buildString(s.length) {
       for (c in s) {
         when (c) {
@@ -39,7 +39,7 @@ internal object WebEscaping {
    * `<script>`: quotes / backslashes / newlines escaped, and `<` and `&` written as `\uXXXX` so the
    * literal can never close the script element or be read as markup by the HTML parser.
    */
-  fun jsString(s: String): String =
+  public fun jsString(s: String): String =
     buildString(s.length + 2) {
       append('"')
       for (c in s) {
@@ -66,7 +66,7 @@ internal object WebEscaping {
    * unreserved set becomes `%XX`. A preview id can contain `#`, `?`, `&`, or a space, any of which
    * would otherwise be parsed as URL structure rather than as part of the id.
    */
-  fun urlEncodeSegment(s: String): String =
+  public fun urlEncodeSegment(s: String): String =
     buildString(s.length) {
       for (b in s.toByteArray(Charsets.UTF_8)) {
         val c = (b.toInt() and 0xff)
@@ -80,7 +80,7 @@ internal object WebEscaping {
    * 4-byte height, big-endian). Returns `0 to 0` when the bytes aren't a PNG we can read, in which
    * case callers fall back to the image's intrinsic size at render time.
    */
-  fun pngDimensions(bytes: ByteArray): Pair<Int, Int> {
+  public fun pngDimensions(bytes: ByteArray): Pair<Int, Int> {
     // 8 (sig) + 4 (len) + 4 ("IHDR") + 4 (w) + 4 (h) = need at least 24 bytes.
     if (bytes.size < 24) return 0 to 0
     if (bytes[12] != 'I'.code.toByte() || bytes[13] != 'H'.code.toByte()) return 0 to 0

@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.bundle.WebEmbed
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.zip.ZipInputStream

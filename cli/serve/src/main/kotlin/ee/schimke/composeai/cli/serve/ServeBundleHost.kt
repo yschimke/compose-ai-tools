@@ -12,6 +12,7 @@ import ee.schimke.composeai.imagecrop.computeGutterCrop
 import ee.schimke.composeai.imagecrop.computeThumbCrop
 import ee.schimke.composeai.imagecrop.pngAlphaBounds
 import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.web.WebEscaping
 import java.io.File
 import kotlin.math.roundToInt
 import kotlinx.serialization.Serializable

@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.web.WebEscaping
+
 /**
  * The crawler-facing pair: `/robots.txt` and `/sitemap.xml`.
  *

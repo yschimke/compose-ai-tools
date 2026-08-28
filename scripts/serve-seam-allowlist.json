@@ -98,7 +98,8 @@
     "ee.schimke.composeai.io": "common-io",
     "ee.schimke.composeai.previewdata": "preview-data-api",
     "ee.schimke.composeai.render.session": "render-session-api",
-    "ee.schimke.composeai.render.session.subprocess": "render-session-subprocess"
+    "ee.schimke.composeai.render.session.subprocess": "render-session-subprocess",
+    "ee.schimke.composeai.web": "common-web-escaping"
   },
   "unpublishedContracts": {},
   "reflectiveDependencies": {
@@ -140,8 +141,7 @@
       "serve.ServeOptions",
       "serve.ServeRenderHost",
       "serve.ServeRunner",
-      "serve.SvgOutcome",
-      "serve.WebEmbed"
+      "serve.SvgOutcome"
     ]
   },
   "test": {
@@ -161,8 +161,7 @@
       "serve.ServeRenderHost",
       "serve.ServeRunner",
       "serve.ServeSessionRegistry",
-      "serve.ServeUrls",
-      "serve.WebEmbed"
+      "serve.ServeUrls"
     ]
   }
 }

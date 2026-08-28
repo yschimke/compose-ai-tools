@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.agentgrants.AgentGrantCapability
 import ee.schimke.composeai.agentgrants.AgentGrantScope
+import ee.schimke.composeai.web.WebEscaping
 import java.security.SecureRandom
 import java.util.Base64
 import javax.crypto.Mac
