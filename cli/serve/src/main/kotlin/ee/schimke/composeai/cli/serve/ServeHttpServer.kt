@@ -4524,19 +4524,36 @@ class ServeHttpServer(
    * A preview's own defect keeps the better route it already has wherever one exists: the viewer
    * and the focused comparison file against that exact preview.
    */
+  /**
+   * The page-scoped catalog report for this surface, or null when there is no catalog to file
+   * against.
+   *
+   * Nullable deliberately, and every caller's parameter already says so — *"Null (a plain module,
+   * or any caller that has nothing to file against) omits it entirely"*. The handlers passed it
+   * unconditionally, so a `compose-preview serve` on a PLAIN MODULE offered to file a bug about
+   * "this catalog": there is no catalog, `catalogBundleHost` is null, and
+   * [ServeIssueReport.repoFor] fell back to compose-ai-tools — the tool's own tracker named as the
+   * repo declaring a catalog the visitor does not have.
+   *
+   * The gate is whether a catalog EXISTS, not whether it names a repo. A catalog that declares
+   * neither source nor provenance still has something to report about, and the fallback is the
+   * right last resort for it — "better than nothing, and usually the same project". Gating on the
+   * repo instead would silently drop the tracker from every such catalog, which
+   * `ServeDesignPageRoutingTest` and `ServeHttpRoutingTest` both assert it must not.
+   */
   private fun RoutingContext.pageScopedReportIssue(
     renderHost: ServeHost,
     sessionId: String,
     subject: String,
-  ): ServeWeb.ReportIssue {
-    val bundleHost = catalogBundleHost(renderHost)
+  ): ServeWeb.ReportIssue? {
+    val bundleHost = catalogBundleHost(renderHost) ?: return null
     val context =
       ServeIssueReport.Context(
-        repo = ServeIssueReport.repoFor(bundleHost?.catalogSource, bundleHost?.provenance),
+        repo = ServeIssueReport.repoFor(bundleHost.catalogSource, bundleHost.provenance),
         system = sessionId,
-        catalog = bundleHost?.provenance?.let { "${it.repo}@${it.branch}" },
-        toolVersion = bundleHost?.provenance?.toolVersion,
-        pageUrl = ServeIssueReport.withoutToken(externalPageUrl()),
+        catalog = bundleHost.provenance?.let { "${it.repo}@${it.branch}" },
+        toolVersion = bundleHost.provenance?.toolVersion,
+        pageUrl = ServeIssueReport.withoutToken(pageUrlPinningChrome()),
         publicRender = isPublic,
       )
     return ServeWeb.ReportIssue(
@@ -4547,6 +4564,27 @@ class ServeHttpServer(
       login = githubAuth?.currentLogin(call),
       subject = subject,
     )
+  }
+
+  /**
+   * This page's URL with the presentation mode the request RESOLVED pinned onto it.
+   *
+   * A report link is read by someone who does not have the reporter's cookie. The mode is
+   * deliberately a property of the visitor rather than of each URL — the previous scheme appended
+   * `?chrome=` to every same-origin href and was removed because it "put a parameter nobody chose
+   * into every URL a visitor copied" — but `?chrome=` was kept for exactly this: *"a link may pin
+   * the presentation it was written for"*. Without it a Catalog-mode report opens the Dev landing
+   * for a triager whose own cookie says Dev, which is a different surface from the one reported.
+   *
+   * Both modes are pinned, not just Catalog: a Dev-mode report read by a Catalog-mode triager is
+   * the same failure mirrored. A URL that already carries `?chrome=` is left alone — it pinned
+   * itself, and that pin is what the request resolved anyway.
+   */
+  private fun RoutingContext.pageUrlPinningChrome(): String {
+    val url = externalPageUrl()
+    if (call.request.queryParameters[CHROME_PARAM] != null) return url
+    val mode = if (componentBrowserMode()) "catalog" else "dev"
+    return url + (if ('?' in url) "&" else "?") + "$CHROME_PARAM=$mode"
   }
 
   private fun catalogBundleHost(host: ServeHost): ServeBundleHost? =

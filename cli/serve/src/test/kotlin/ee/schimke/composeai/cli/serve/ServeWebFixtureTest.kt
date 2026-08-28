@@ -2554,6 +2554,11 @@ class ServeWebFixtureTest {
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         isPublic = true,
         version = version,
+        // `handleMotionIndex` passes a page-scoped report, so a fixture without one captures a page
+        // shape production never serves — the committed HTML had no `#cp-report` at all, and the
+        // Playwright motion snapshots were diffing a row short. Same subject the handler uses.
+        reportIssue =
+          fixturePageReportIssue("https://preview.coo.ee/compose-m3/motion", "this motion browser"),
       )
 
     val designPageIndex =
