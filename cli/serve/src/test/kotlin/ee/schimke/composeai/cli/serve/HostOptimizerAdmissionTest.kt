@@ -612,6 +612,73 @@ class HostOptimizerAdmissionTest {
     assertFalse(gate.snapshot().constrained)
   }
 
+  /**
+   * Load average per CPU is a queue depth, not a percentage.
+   *
+   * Both load thresholds were parsed as fractions and silently discarded every value over 1.0 —
+   * which is every value that matters on a host rendering flat out. Measured on preview.coo.ee
+   * while the optimizer worked: 1.03, 1.12 and 1.74 per CPU. The stop side therefore could not be
+   * lifted off its 0.85 default, so the gate tripped on the optimizer's own load and the operator's
+   * override vanished without a word.
+   */
+  @Test
+  fun `a load threshold above one is a setting, not a typo`() {
+    val stop = "composeai.serve.optimizerStopLoadPerCpu"
+    val resume = "composeai.serve.optimizerResumeLoadPerCpu"
+    val previousStop = System.getProperty(stop)
+    val previousResume = System.getProperty(resume)
+    try {
+      // The case the box actually needs: hold only once load passes two runnable tasks per core,
+      // and resume at one and a half. Neither is expressible as a fraction.
+      System.setProperty(stop, "2.5")
+      System.setProperty(resume, "1.5")
+      val tuned = OptimizerPressureThresholds.fromSystemProperties()
+      assertEquals(2.5, tuned.stopLoadPerCpu)
+      assertEquals(1.5, tuned.resumeLoadPerCpu)
+
+      // Still bounded — a typo is still a typo, just not at a ceiling every busy box exceeds.
+      System.setProperty(stop, "1000")
+      assertEquals(
+        OptimizerPressureThresholds().stopLoadPerCpu,
+        OptimizerPressureThresholds.fromSystemProperties().stopLoadPerCpu,
+      )
+
+      // Negative load is meaningless, so it falls back too.
+      System.setProperty(stop, "-1")
+      assertEquals(
+        OptimizerPressureThresholds().stopLoadPerCpu,
+        OptimizerPressureThresholds.fromSystemProperties().stopLoadPerCpu,
+      )
+    } finally {
+      if (previousStop == null) System.clearProperty(stop)
+      else System.setProperty(stop, previousStop)
+      if (previousResume == null) System.clearProperty(resume)
+      else System.setProperty(resume, previousResume)
+    }
+  }
+
+  /**
+   * The limbs that ARE fractions must stay fractions — the fix above must not widen CPU or memory,
+   * where a value over 1.0 really is a percentage someone forgot to divide.
+   */
+  @Test
+  fun `a cpu or memory threshold above one is still refused`() {
+    val cpu = "composeai.serve.optimizerStopCpuUtilization"
+    val previous = System.getProperty(cpu)
+    try {
+      System.setProperty(cpu, "96")
+      assertEquals(
+        OptimizerPressureThresholds().stopCpuUtilization,
+        OptimizerPressureThresholds.fromSystemProperties().stopCpuUtilization,
+        "96 means 96%, and obeying it as a ratio would disable the CPU limb entirely",
+      )
+      System.setProperty(cpu, "0.96")
+      assertEquals(0.96, OptimizerPressureThresholds.fromSystemProperties().stopCpuUtilization)
+    } finally {
+      if (previous == null) System.clearProperty(cpu) else System.setProperty(cpu, previous)
+    }
+  }
+
   @Test
   fun `thresholds fall back to defaults when system properties are absent or unparseable`() {
     val key = "composeai.serve.optimizerStopMemoryAvailableFraction"

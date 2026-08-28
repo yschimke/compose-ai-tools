@@ -168,6 +168,39 @@ point: that edit is drift from `main`.
 > docker compose exec preview cat /config/catalogs.json
 > ```
 
+### Warming the theme cache aggressively
+
+The pressure gate's defaults assume a box whose spare capacity belongs to visitors. While the cache
+is still filling, that trade is backwards: an empty cache means every theme a visitor picks is a
+cold render, so the fastest route to a *responsive* box is to let the optimizer have the machine for
+a few hours and then hand it back.
+
+```
+SERVE_JAVA_OPTS=-Dcomposeai.serve.themeOptimizationIdleMillis=10000 \
+  -Dcomposeai.serve.optimizerStopLoadPerCpu=3.0 \
+  -Dcomposeai.serve.optimizerResumeLoadPerCpu=2.0 \
+  -Dcomposeai.serve.optimizerStopCpuUtilization=0.98 \
+  -Dcomposeai.serve.optimizerResumeCpuUtilization=0.92
+```
+
+Read that as: start a pass after ten seconds of quiet rather than sixty, and only stand down when
+the box is genuinely saturated rather than merely busy.
+
+**Leave the memory thresholds alone.** CPU and load contention costs latency and recovers on its
+own; running out of memory kills render daemons and takes the catalog with them. `0.15` stop /
+`0.25` resume is the one limb where the conservative default is earning something.
+
+**The load thresholds are per-CPU load averages, not percentages.** One runnable task per core reads
+`1.0`, so a box rendering flat out sits *above* 1.0 — `3.0` means "three deep per core". Values
+above `1.0` were silently discarded before the fix that added this section, which is why raising
+this limb appeared to do nothing.
+
+Watch `themeOptimizer.pressure.reason` on `/status.json` to see which limb is actually holding:
+`load N per CPU`, `CPU N%`, `memory available N%`, or `host recovering` (a limb that tripped and has
+not yet fallen back to its resume side). Tune the one that is named; the others are not the problem.
+
+Undo it by removing the properties and restarting once the catalogs report converged.
+
 ### Regenerating a catalog's warmed theme renders
 
 Two admin routes for pixels you suspect are wrong for a reason no fingerprint sees — a base-image
@@ -204,9 +237,16 @@ are rare operator actions, and a drop takes a warm catalog cold across every one
 not a thing to make one click away from a page a wider audience can already see.
 
 What `/status` *does* show is when a catalog needs one: a row reading
-`themes optimized 10440/10440 · 10440 inherited, re-rendering` is warm everywhere and finished
-nowhere — every render came from a build that is no longer running, and the pass is replacing them.
-`/status.json` carries the same figure as `catalogList[].themeOptimization.dirty`.
+`themes optimized 10440/10440 · 10440 awaiting re-render` is warm everywhere and finished nowhere —
+every one of those renders is still queued for replacement, and until the pass gets to them the
+catalog is serving pixels it does not consider current. `/status.json` carries the same figure as
+`catalogList[].themeOptimization.dirty`.
+
+The row deliberately does not say where those pixels came from or what the pass is doing right now.
+Both are usually "another build" and "re-rendering", but `regenerate` marks *this* build's renders
+too, and the queue can be paused or waiting on admission — the count cannot tell you which, so it
+does not claim to. A `· N failed` beside it is the one to act on: those are targets the pass has
+given up re-rendering, and they stay on the old pixels until something changes.
 
 ### GitHub auth on `preview.coo.ee`
 
