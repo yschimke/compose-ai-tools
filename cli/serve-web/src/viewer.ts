@@ -330,6 +330,13 @@ var canRenderOverrides =
 // in a request URL, and only a sha shape can reach one.
 var pinnedAt = (root.getAttribute("data-pinned-at") || "").toLowerCase();
 if (!/^[0-9a-f]{7,40}$/.test(pinnedAt)) pinnedAt = "";
+// The delivery-branch publish this page was assembled from, which its frame URL is scoped to so a
+// refresh cannot pair this page's published typography, score and redline with the next publish's
+// pixels. Empty for a session with no delivery branch. Same shape rule as the pin: it reaches the
+// server as `gen=` and resolves through the same branch read, so a ref must not get through here
+// either.
+var generation = (root.getAttribute("data-generation") || "").toLowerCase();
+if (!/^[0-9a-f]{7,40}$/.test(generation)) generation = "";
 var previewId = root.getAttribute("data-preview-id") || "";
 // The session path prefix ("/<system>") when this viewer is served under a path — it sits at
 // "<base>/p/<id>", so stripping the trailing "/p/<id>" recovers the base ("" for the root
@@ -608,6 +615,9 @@ function query() {
     // page has every re-rendering control disabled, so the overrides below are empty in practice —
     // the pin is what this URL is for.
     if (pinnedAt) parts.push("at=" + encodeURIComponent(pinnedAt));
+    // Everything pushed from here on is an override of some kind, which is exactly what decides
+    // whether this URL may name a generation — see `rules.generationEmitted` below.
+    var beforeOverrides = parts.length;
     Object.keys(o).forEach(function (k) {
         parts.push(k + "=" + encodeURIComponent(o[k]));
     });
@@ -675,6 +685,18 @@ function query() {
     );
     if (serverPlayer)
         parts.push("rcPlayer=" + encodeURIComponent(serverPlayer));
+    // The cache generation, last, and only on the URL that is actually a published frame: every
+    // lane above omits itself while it sits at its default precisely so this URL stays on the baked
+    // snapshot, which makes "nothing was pushed" the same question as "is this the published
+    // frame".
+    if (
+        rules.generationEmitted(
+            generation,
+            pinnedAt,
+            parts.length > beforeOverrides,
+        )
+    )
+        parts.push("gen=" + encodeURIComponent(generation));
     return parts.join("&");
 }
 // "Full page (scroll)" appends `scroll=long` to both snapshot formats. The server routes SVG to

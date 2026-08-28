@@ -3210,6 +3210,7 @@ class ServeHttpServer(
           referencesFor = renderHost::designReferencesFor,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
           reportIssue = reportIssue,
+          generation = catalogGeneration(renderHost),
           // The whole index, unfiltered: the wall joins it to every row itself, which is a join it
           // has to do per row anyway and one this handler cannot do for it.
           parityIssues = renderHost.parityIssues()?.issues.orEmpty(),
@@ -3322,6 +3323,7 @@ class ServeHttpServer(
           displayTitle = catalogBundleHost(renderHost)?.title,
           hasReferenceFor = hasReference,
           parityIssues = issues,
+          generation = catalogGeneration(renderHost),
           // The catalog-wide acceptance walk, offered only to a catalog that publishes a
           // known-difference document. This is the walk's target set, and every field is spelled
           // the
@@ -3386,6 +3388,73 @@ class ServeHttpServer(
   }
 
   /**
+   * Refuse a request whose `gen=` is present but is not a commit sha.
+   *
+   * Same rule and same reason as [rejectMalformedPin]: a generation that isn't one resolves to "the
+   * page could not name its own publish", and the only honest answers to that are a 400 or a
+   * response that is explicitly uncacheable. A 400 is the one that shows up in a log.
+   */
+  private suspend fun RoutingContext.rejectMalformedGeneration(): Boolean {
+    val raw = call.request.queryParameters[ServeCacheGeneration.PARAM] ?: return false
+    if (ServeCacheGeneration.normalize(raw) != null) return false
+    call.respondText(
+      "'${ServeCacheGeneration.PARAM}' must be a commit sha (7-40 hex), not a branch or tag",
+      status = HttpStatusCode.BadRequest,
+    )
+    return true
+  }
+
+  /**
+   * The delivery-branch commit this session is serving — the generation every frame URL its pages
+   * write is scoped to ([ServeCacheGeneration]), or null when there is nothing to name.
+   *
+   * Null for the same sessions that get no revision surface: an uploaded bundle, a local project, a
+   * daemon-backed module. [ServeBundleHost.supportsPinnedRevisions] is the load-bearing half of the
+   * condition rather than a tidy-up — scoping a frame commits the asset lane to answering for an
+   * older generation out of the branch, and a host that cannot be pinned cannot do that, so a
+   * scoped URL from one would 404 the moment the catalog moved.
+   */
+  private fun catalogGeneration(renderHost: ServeHost): String? =
+    catalogBundleHost(renderHost)
+      ?.takeIf { it.supportsPinnedRevisions }
+      ?.provenance
+      ?.commit
+      ?.let(ServeCacheGeneration::normalize)
+
+  /**
+   * The generation a request names when it is **not** the one this host is serving, i.e. the page
+   * that wrote this URL is a publish behind.
+   *
+   * Null in every other case, which is the common one: no `gen=` at all (an unscoped link, a
+   * hand-typed URL, an unfurler), or a `gen=` naming exactly what is on disk. Both fall through to
+   * the ordinary lane; only the third case has to go to the branch.
+   *
+   * Returning the sha rather than a boolean is what lets the caller feed it straight into the pin
+   * path — reconciling a stale generation IS reading a published revision, and doing it through a
+   * second mechanism would be a second set of rules about what may be fetched from where.
+   */
+  /**
+   * Whether this request named the generation the host is serving — the case in which the URL is
+   * content-addressed and the response may say so.
+   *
+   * Deliberately not "`gen=` is absent or matches": an unscoped URL is a moving target, and giving
+   * it an `immutable` lifetime is precisely the drift this parameter exists to remove.
+   */
+  private fun RoutingContext.carriesCurrentGeneration(renderHost: ServeHost): Boolean {
+    val asked =
+      ServeCacheGeneration.normalize(call.request.queryParameters[ServeCacheGeneration.PARAM])
+        ?: return false
+    return asked == catalogGeneration(renderHost)
+  }
+
+  private fun RoutingContext.staleGeneration(renderHost: ServeHost): String? {
+    val asked =
+      ServeCacheGeneration.normalize(call.request.queryParameters[ServeCacheGeneration.PARAM])
+        ?: return null
+    return asked.takeIf { it != catalogGeneration(renderHost) }
+  }
+
+  /**
    * The revision state for a catalog page: the pin the request carries, and the delivery branch's
    * recent publishes to offer as destinations ([ServeWeb.CatalogRevisions]).
    *
@@ -3409,6 +3478,10 @@ class ServeHttpServer(
         ServeCatalogRevision.normalize(call.request.queryParameters[ServeCatalogRevision.PARAM]),
       revisions = if (previewId == null) host.revisions else availableRevisions(host, previewId),
       repo = host.provenance?.repo,
+      // The publish this page is being assembled FROM, which every frame on it is scoped to. It
+      // rides with the pin because they answer one question between them: a pinned page's frames
+      // take the pin, an unpinned page's take this ([ServeWeb.assetQuery]).
+      generation = catalogGeneration(renderHost),
     )
   }
 
@@ -3464,13 +3537,18 @@ class ServeHttpServer(
 
   /** Canonical, inert PNG for a design reference. Original HTML/Figma sources are never served. */
   private suspend fun RoutingContext.handleDesignReferenceAsset(sessionInPath: Boolean) {
-    if (rejectBadToken() || rejectMalformedPin()) return
+    if (rejectBadToken() || rejectMalformedPin() || rejectMalformedGeneration()) return
     val sessionId = selectedSessionId(sessionInPath)
     val referenceId = call.parameters["name"]?.removeSuffix(".png").orEmpty()
-    val pinnedCommit =
+    val requestedPin =
       ServeCatalogRevision.normalize(call.request.queryParameters[ServeCatalogRevision.PARAM])
     withLeasedSession(sessionId, onMissing = { call.respond(HttpStatusCode.NotFound) }) { renderHost
       ->
+      // A reference is republished with the catalog, so this lane reads the branch for the same two
+      // reasons the render lane does: an explicit `at=` pin, and a `gen=` naming a publish this
+      // host is no longer serving ([ServeCacheGeneration]). The second is what keeps a comparison
+      // page that a refresh overtook scoring its own generation's mock rather than today's.
+      val pinnedCommit = requestedPin ?: staleGeneration(renderHost)
       // A pinned comparison has to pin BOTH panels. A reference is republished with the catalog
       // like everything else, so leaving this lane on the tip would score today's mock against a
       // historical render — a comparison of two moments rather than of two sides.
@@ -3488,7 +3566,15 @@ class ServeHttpServer(
       if (bytes == null) {
         call.respond(HttpStatusCode.NotFound)
       } else {
-        markGeneration("design-reference", "private, max-age=300")
+        // A `gen=` that reached here names the generation on disk, so these bytes are what that URL
+        // will always answer with — content-addressed, and cacheable on the terms every other
+        // content-addressed lane uses. Without one the URL is a moving target and keeps the short
+        // private lifetime it always had.
+        markGeneration(
+          "design-reference",
+          if (carriesCurrentGeneration(renderHost)) prebakedImageCacheControl(isPublic)
+          else "private, max-age=300",
+        )
         call.respondBytes(bytes, ContentType.Image.PNG)
       }
     }
@@ -3708,10 +3794,24 @@ class ServeHttpServer(
           catalog = bundleHost?.provenance?.let { "${it.repo}@${it.branch}" },
           toolVersion = bundleHost?.provenance?.toolVersion,
           comparisonUrl = ServeIssueReport.withoutToken(externalPageUrl()),
+          // The frame this page drew, named as the page names it: an override-free, unpinned
+          // comparison carries the generation it was assembled from, so a report filed from here
+          // embeds the pixels the verdict above it was measured on rather than whatever the
+          // catalog publishes by the time someone opens the issue ([ServeCacheGeneration]).
           renderUrl =
             ServeIssueReport.withoutToken(
               "${externalOrigin()}$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.png" +
-                requestQuerySuffix()
+                if (
+                  overrideParams.isEmpty() &&
+                    ServeCatalogRevision.normalize(
+                      call.request.queryParameters[ServeCatalogRevision.PARAM]
+                    ) == null
+                )
+                  ServeCacheGeneration.scope(
+                    requestQuerySuffix(),
+                    catalogGeneration(renderHost),
+                  )
+                else requestQuerySuffix()
             ),
           publicRender = isPublic,
         )
@@ -3743,13 +3843,16 @@ class ServeHttpServer(
       // an override re-renders on any host, and `tagIndexForPreview` is the published static index
       // measured in CI over the baked render.
       //
-      // Necessary but NOT sufficient, and the gap is caching: an override-free baked
-      // `/render/<id>.png` is served `STATIC_RESOURCE_CACHE_CONTROL` while this index is
-      // `no-store`, so a client can pair previous-generation pixels with a freshly-fetched index.
-      // Closing it needs the image and the index to carry a shared generation — batch 05's
-      // coupling, which also moves the render lane's URL and caching contract. It matters because
-      // a tag selection persists the index's bounds as the acceptance baseline, so bounds from
-      // another frame survive into a record that later reports an unchanged element as moved.
+      // This used to be necessary but NOT sufficient, and the gap was caching: an override-free
+      // baked `/render/<id>.png` was served on a lifetime of its own while this index rode in the
+      // page, so a client could pair previous-generation pixels with a freshly-fetched index. That
+      // mattered because a tag selection persists the index's bounds as the acceptance baseline —
+      // bounds from another frame surviving into a record that later reports an unchanged element
+      // as moved.
+      //
+      // Closed by [ServeCacheGeneration] (issue #4695): this page's frame URLs name the publish the
+      // page was assembled from, so the frame beside this index is that publish's frame or the
+      // request fails. The condition below is now sufficient as well as necessary.
       val frameIsReplayedBaked =
         !pinned && overrideParams.isEmpty() && !renderHost.canApplyOverrides
       val tagIndex = renderHost.tagIndexForPreview(preview.id)
@@ -7171,8 +7274,15 @@ class ServeHttpServer(
       val wasmSameOrigin =
         catalogBundleHost(renderHost)?.let { it.trust is BundleVerifier.Verdict.Trusted } ?: false
       val origin = externalOrigin()
+      // A pinned page's render URL keeps only the pin; an unpinned one carries the page's own query
+      // plus the generation it was assembled from, so the frame the unfurl card and the issue
+      // report point at is the frame this page drew ([ServeCacheGeneration]). Not scoped under an
+      // override: the URL then names a render made to order, which is `no-store` and belongs to no
+      // publish.
       val imageQuerySuffix =
-        if (revisions.pinned == null) requestQuerySuffix() else pinnedRenderQuerySuffix()
+        if (revisions.pinned != null) pinnedRenderQuerySuffix()
+        else if (requestCarriesOverrides()) requestQuerySuffix()
+        else ServeCacheGeneration.scope(requestQuerySuffix(), catalogGeneration(renderHost))
       val imageUrl =
         "$origin$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.png$imageQuerySuffix"
       // PNG-header read, so the unfurl card carries the render's real size rather than making the
@@ -7488,7 +7598,7 @@ class ServeHttpServer(
    * carries `ir/` sidecars (each 404s where unavailable).
    */
   private suspend fun RoutingContext.handleRender(sessionInPath: Boolean) {
-    if (rejectBadToken() || rejectMalformedPin()) return
+    if (rejectBadToken() || rejectMalformedPin() || rejectMalformedGeneration()) return
     // An override or a daemon-only product turns this route from a replay into a **live render**,
     // which is what `live` means and what a `preview` grant was not given. The two other gates
     // learned this rule; this one is reached without them, so it has to state it itself.
@@ -7574,6 +7684,17 @@ class ServeHttpServer(
           return@withLeasedSession
         }
       }
+      // A product can be selected by *query* rather than by suffix: `?scroll=long` is a full-page
+      // capture, `?rcPlayer=cmp-jvm` is a different player's raster, and any override
+      // (`fontScale`, `device`, `knob.…`) asks for pixels rendered to order. None of those is a
+      // published byte. Hoisted ahead of the two revision lanes below because both need the answer
+      // — and reach opposite conclusions from it.
+      val onDemand =
+        requestCarriesOverrides() ||
+          call.request.queryParameters["scroll"] != null ||
+          call.request.queryParameters["rcPlayer"] != null ||
+          call.request.queryParameters["mode"] != null ||
+          ServeExplodedSvg.PARAMS.any { call.request.queryParameters[it] != null }
       // A **pinned** render (`?at=<sha>`): the bytes this preview had at that delivery-branch
       // commit, read from the branch rather than from the catalog on disk. This is what makes a
       // published URL a permalink (issue #3723) — see [ServeCatalogRevision].
@@ -7585,8 +7706,29 @@ class ServeHttpServer(
       // answer is a 404 rather than a fall-through to the current bytes — silently serving today's
       // render under a permalink is the exact failure this feature exists to prevent, and it would
       // be invisible to whoever followed the link.
-      val pinnedCommit =
+      val requestedPin =
         ServeCatalogRevision.normalize(call.request.queryParameters[ServeCatalogRevision.PARAM])
+      // The same lane answers a **stale generation** ([ServeCacheGeneration]): a page assembled one
+      // publish ago writes `gen=<that publish>` on the frames it draws, and the frame it needs is
+      // that publish's, not today's. Reconciled here rather than beside the pin because it IS a
+      // read of a published revision — a second mechanism would be a second set of rules about
+      // which trees may be fetched, and the two would eventually disagree. A `gen=` naming the
+      // generation on disk falls through, which is the ordinary browse: it changes nothing but the
+      // response's cache lifetime, decided further down.
+      //
+      // Where a pin **refuses** a request that also asks for a produced product, a generation steps
+      // aside for one — the raster is the only thing it reconciles. The difference is who wrote the
+      // parameter and what it claims. A pin is a person asking for a past publish, so a URL asking
+      // for both that and a live render is a contradiction worth naming. A generation is the
+      // server's own note about which page drew this frame, and every produced product — an
+      // override, a scroll capture, `.svg`, `.slots`, `.a11y`, `.annotations`, `.rc` — is served
+      // `no-store` and reflects no published bytes at all, so there is no pair for a cache to hold
+      // wrongly and nothing for the note to reconcile. Refusing there would break the one
+      // interaction this coupling must not cost: turning a knob on a page a refresh overtook.
+      val wantsProducedProduct =
+        onDemand || wantSvg || wantSlots || wantA11y || wantAnnotations || wantRcDoc
+      val pinnedCommit =
+        requestedPin ?: if (wantsProducedProduct) null else staleGeneration(renderHost)
       if (pinnedCommit != null) {
         // The non-raster products are made on demand by the daemon — an SVG export, a slot tree,
         // an a11y or annotation pass, a captured Remote Compose document. The branch publishes
@@ -7601,18 +7743,6 @@ class ServeHttpServer(
           )
           return@withLeasedSession
         }
-        // A product can also be selected by *query* rather than by suffix: `?scroll=long` is a
-        // full-page capture, `?rcPlayer=cmp-jvm` is a different player's raster, and any override
-        // (`fontScale`, `device`, `knob.…`) asks for pixels rendered to order. None of those is a
-        // published byte, so answering with the plain baked PNG would hand back a 200 that
-        // silently ignores half the URL — two links claiming different things returning identical
-        // pixels. Refusing names the conflict instead.
-        val onDemand =
-          requestCarriesOverrides() ||
-            call.request.queryParameters["scroll"] != null ||
-            call.request.queryParameters["rcPlayer"] != null ||
-            call.request.queryParameters["mode"] != null ||
-            ServeExplodedSvg.PARAMS.any { call.request.queryParameters[it] != null }
         if (onDemand) {
           call.respondText(
             "'${ServeCatalogRevision.PARAM}' pins the published render, which cannot be " +
@@ -7892,7 +8022,17 @@ class ServeHttpServer(
                       overrideParams.isEmpty() &&
                       isPublic
                   ) {
-                    STATIC_RESOURCE_CACHE_CONTROL
+                    // A frame URL that names its generation is content-addressed: these exact
+                    // bytes are what it answers with for as long as it resolves at all, because a
+                    // republish moves the page's generation and therefore the URL. That is what
+                    // lets it take the `immutable` lifetime the other content-addressed lanes take
+                    // — and, more to the point, what stops it outliving the page that drew it.
+                    //
+                    // An unscoped URL keeps the old short public lifetime. It is still the moving
+                    // target it always was; the fix for that is to have the page name a
+                    // generation, not to cache the ambiguity for longer.
+                    if (carriesCurrentGeneration(renderHost)) prebakedImageCacheControl(isPublic)
+                    else STATIC_RESOURCE_CACHE_CONTROL
                   } else {
                     DYNAMIC_RESOURCE_CACHE_CONTROL
                   },
