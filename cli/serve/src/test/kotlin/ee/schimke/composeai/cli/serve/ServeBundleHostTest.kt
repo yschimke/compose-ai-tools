@@ -3,7 +3,8 @@ package ee.schimke.composeai.cli.serve
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.imagecrop.ContentCrop
 import ee.schimke.composeai.imagecrop.CropOffset
-import ee.schimke.composeai.imagecrop.CropSize
+import ee.schimke.composeai.imagecrop.RenderSize
+import ee.schimke.composeai.imagecrop.WindowSize
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -584,8 +585,8 @@ class ServeBundleHostTest {
 
     assertEquals(
       ContentCrop(
-        window = CropSize(249, 126),
-        render = CropSize(271, 150),
+        window = WindowSize(249, 126),
+        render = RenderSize(271, 150),
         offset = CropOffset(-11, -11),
         clip = false,
         // The native box and the capped axis (height, for a gutter crop) ride along, so the page

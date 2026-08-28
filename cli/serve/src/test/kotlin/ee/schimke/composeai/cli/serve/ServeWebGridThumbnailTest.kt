@@ -2,7 +2,8 @@ package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.imagecrop.ContentCrop
 import ee.schimke.composeai.imagecrop.CropOffset
-import ee.schimke.composeai.imagecrop.CropSize
+import ee.schimke.composeai.imagecrop.RenderSize
+import ee.schimke.composeai.imagecrop.WindowSize
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -23,8 +24,8 @@ class ServeWebGridThumbnailTest {
 
   private val crop =
     ContentCrop(
-      window = CropSize(120, 48),
-      render = CropSize(454, 454),
+      window = WindowSize(120, 48),
+      render = RenderSize(454, 454),
       offset = CropOffset(-167, -203),
       nativeWindowW = 120,
       nativeCapAxis = 120,

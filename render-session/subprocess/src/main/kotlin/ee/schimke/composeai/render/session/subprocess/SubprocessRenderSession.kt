@@ -29,22 +29,33 @@ import okio.Path.Companion.toPath
 public object SubprocessRenderSessions : RenderSessionFactory {
   override val backendKind: RenderSessionBackend = RenderSessionBackend.Subprocess
 
-  // Private, not a published seam. This was a `public var` on a published singleton — a
-  // process-wide mutable global any consumer could swap — and nothing in the repository ever
-  // assigned it, here or in tests. A test hook nobody uses is not worth exporting from a contract
-  // module: the injectable seam that IS used is the `DaemonClientFactory` overload of `open`.
-  private val fileSystem: FileSystem = SystemFileSystem
-
   override fun open(config: RenderSessionConfig): RenderSession =
     open(config = config, factory = SubprocessDaemonClientFactory())
 
   /**
-   * Open a session, injecting a custom [DaemonClientFactory]. Test scaffolding pairs an in-memory
-   * factory with a fake daemon; production callers stick with the default factory in [open].
+   * Open a session, injecting a custom [DaemonClientFactory] and, optionally, the [FileSystem] the
+   * launch descriptor is read through. Test scaffolding pairs an in-memory factory with a fake
+   * daemon; production callers stick with the defaults.
+   *
+   * A defaulted PARAMETER rather than a property on this object. The `public var` this replaced was
+   * a process-wide mutable global any consumer could swap, and it deserved to go — but a private
+   * `val` left no seam at all, and `:common-io`'s rule for a stateless `object` that touches files
+   * is a defaulted `fileSystem` parameter (see `docs/AGENT_GUIDE.md` → Important constraints).
+   * Per-call injection has none of a global's problems: production behaviour is unchanged, and a
+   * test can hand in a `FakeFileSystem` without affecting any other caller.
    */
-  public fun open(config: RenderSessionConfig, factory: DaemonClientFactory): RenderSession {
+  public fun open(
+    config: RenderSessionConfig,
+    factory: DaemonClientFactory,
+    fileSystem: FileSystem = SystemFileSystem,
+  ): RenderSession {
     val descriptorFile = config.descriptorPath
-    if (!descriptorFile.isFile) {
+    val descriptorPath = descriptorFile.path.toPath()
+    // Through the injected filesystem, not `File.isFile`: an existence check that always reads the
+    // real disk would reject every path a `FakeFileSystem` holds, making the parameter above a seam
+    // in name only. `isRegularFile` keeps `isFile`'s exact meaning — a directory is still not a
+    // descriptor.
+    if (fileSystem.metadataOrNull(descriptorPath)?.isRegularFile != true) {
       throw RenderSessionException(
         "Daemon launch descriptor not found at ${descriptorFile.path}. " +
           "Run `:<modulePath>:composePreviewDaemonStart` to materialise it."
@@ -52,7 +63,7 @@ public object SubprocessRenderSessions : RenderSessionFactory {
     }
     val descriptor =
       try {
-        DaemonLaunchDescriptor.parse(fileSystem.read(descriptorFile.path.toPath()) { readUtf8() })
+        DaemonLaunchDescriptor.parse(fileSystem.read(descriptorPath) { readUtf8() })
       } catch (e: Exception) {
         throw RenderSessionException(
           "Daemon launch descriptor at ${descriptorFile.path} is unreadable: " +

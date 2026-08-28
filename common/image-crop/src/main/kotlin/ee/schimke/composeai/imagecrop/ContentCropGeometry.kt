@@ -22,8 +22,19 @@ import kotlin.math.roundToInt
  * [computeThumbCrop] returns `null` (no-op) for them — only the framed-in-a-canvas stickers get
  * cropped.
  */
-/** A width/height pair, in the crop's output pixels. */
-public data class CropSize(val w: Int, val h: Int)
+/**
+ * The clip window's size, in the crop's output pixels.
+ *
+ * A type of its own rather than a shared width/height pair, because the window and the render are
+ * the one transposable remainder: grouping the six loose `Int`s into three pairs made `w`/`h` and
+ * size/offset mix-ups impossible, but left `window` and `render` the SAME type — so a positional
+ * `ContentCrop(render, window, …)` still compiled, in the exact shape this contract is meant to
+ * rule out. Distinct types make that a compile error too.
+ */
+public data class WindowSize(val w: Int, val h: Int)
+
+/** The full render's size at the window's scale, in the crop's output pixels. See [WindowSize]. */
+public data class RenderSize(val w: Int, val h: Int)
 
 /**
  * Where the render sits under the clip window, in the crop's output pixels.
@@ -36,18 +47,19 @@ public data class CropOffset(val left: Int, val top: Int)
 /**
  * A clip window over a render, and the render's position under it.
  *
- * Grouped rather than flat, and that is the point: this carried six bare `Int`s in a row — window
+ * Typed rather than flat, and that is the point: this carried six bare `Int`s in a row — window
  * width and height, render width and height, and the two offsets — so any permutation of them
  * compiled. It is a published contract that an extracted preview server will build catalog pages
  * from, and a transposed pair there is a silently wrong crop rather than a build failure.
- * [CropSize] and [CropOffset] make the transposition a type error; the two dimensions left inside
- * each of them are in the conventional order and mean the same kind of thing.
+ * [WindowSize], [RenderSize] and [CropOffset] make every transposition between the three a type
+ * error; the two dimensions left inside each of them are in the conventional order and mean the
+ * same kind of thing.
  */
 public data class ContentCrop(
   /** Clip-window size — the component box scaled to fit [CAP]. */
-  val window: CropSize,
+  val window: WindowSize,
   /** The full render `<img>` size at the same scale; larger than the window, clipped by it. */
-  val render: CropSize,
+  val render: RenderSize,
   /** The shift that brings the component's top-left to the window origin. */
   val offset: CropOffset,
   /**
@@ -222,8 +234,8 @@ public fun computeGutterCrop(
   val scale = min(1.0, cap / boxH.toDouble())
   return ContentCrop(
     window =
-      CropSize(w = max(1, (boxW * scale).roundToInt()), h = max(1, (boxH * scale).roundToInt())),
-    render = CropSize(w = (renderW * scale).roundToInt(), h = (renderH * scale).roundToInt()),
+      WindowSize(w = max(1, (boxW * scale).roundToInt()), h = max(1, (boxH * scale).roundToInt())),
+    render = RenderSize(w = (renderW * scale).roundToInt(), h = (renderH * scale).roundToInt()),
     offset = CropOffset(left = (-left * scale).roundToInt(), top = (-top * scale).roundToInt()),
     clip = false,
     nativeWindowW = boxW,
@@ -247,8 +259,11 @@ public fun computeThumbCrop(
   val scale = min(1.0, cap / max(box.w, box.h).toDouble())
   return ContentCrop(
     window =
-      CropSize(w = max(1, (box.w * scale).roundToInt()), h = max(1, (box.h * scale).roundToInt())),
-    render = CropSize(w = (renderW * scale).roundToInt(), h = (renderH * scale).roundToInt()),
+      WindowSize(
+        w = max(1, (box.w * scale).roundToInt()),
+        h = max(1, (box.h * scale).roundToInt()),
+      ),
+    render = RenderSize(w = (renderW * scale).roundToInt(), h = (renderH * scale).roundToInt()),
     // The offset is the render's position under the clip window: negative of the box origin.
     offset = CropOffset(left = (-box.x * scale).roundToInt(), top = (-box.y * scale).roundToInt()),
     nativeWindowW = box.w,

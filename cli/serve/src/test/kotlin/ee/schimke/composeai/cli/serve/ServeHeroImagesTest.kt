@@ -5,7 +5,8 @@ import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamFrameParams
 import ee.schimke.composeai.imagecrop.ContentCrop
 import ee.schimke.composeai.imagecrop.CropOffset
-import ee.schimke.composeai.imagecrop.CropSize
+import ee.schimke.composeai.imagecrop.RenderSize
+import ee.schimke.composeai.imagecrop.WindowSize
 import java.awt.Color
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
@@ -109,8 +110,8 @@ class ServeHeroImagesTest {
       }
     val crop =
       ContentCrop(
-        window = CropSize(80, 40),
-        render = CropSize(400, 400),
+        window = WindowSize(80, 40),
+        render = RenderSize(400, 400),
         offset = CropOffset(-100, -150),
       )
     val hero = ServeHeroImages().bake(source, crop)!!
@@ -254,8 +255,8 @@ class ServeHeroImagesTest {
     // window has to keep framing both identically.
     val crop =
       ContentCrop(
-        window = CropSize(1000, 1000),
-        render = CropSize(2000, 2000),
+        window = WindowSize(1000, 1000),
+        render = RenderSize(2000, 2000),
         offset = CropOffset(-500, -500),
       )
     val baked = decode(ServeHeroImages().bakeGridThumb(uiPng(2000, 2000), crop)!!.bytes)
