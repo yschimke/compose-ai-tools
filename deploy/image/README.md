@@ -192,7 +192,9 @@ next rotation. A mistyped system is a `404`, not a silent success.
 called, and reporting that as success is the one failure mode a drop must not have. From
 `regenerate` it can also mean the request could not be made durable (a full or read-only cache
 volume) or that theme optimization is switched off on this box, so nothing would ever work the
-queue. In every case the answer carries `"queued": false` rather than a count.
+queue. Each route reports the refusal in its **own** field: `regenerate` answers `"queued": false`
+rather than a count, and `drop` answers `"dropped": false`. Retry logic reading the wrong one finds
+it absent and takes a refusal for a success.
 
 **Deliberately not buttons on `/status`.** That page authenticates with `SERVE_TOKEN`; these routes
 require `SERVE_ADMIN_TOKEN`, which is a different and much smaller audience. A button would have to

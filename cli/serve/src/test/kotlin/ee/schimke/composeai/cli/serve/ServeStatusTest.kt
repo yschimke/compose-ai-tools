@@ -622,26 +622,34 @@ class ServeStatusTest {
     assertTrue(converged.contains("themes optimized 8/8"), converged)
     assertFalse(converged.contains("inherited"), converged)
 
-    // Warm everywhere, but every render inherited from another build. Same `cached`, same
+    // Warm everywhere, but every render still awaiting replacement. Same `cached`, same
     // `fullyOptimized` — and it must not read the same.
     val inherited = rowFor(cached = 8, dirty = 8)
     assertTrue(
-      inherited.contains("themes optimized 8/8 · 8 inherited, re-rendering"),
-      "a fully warm but wholly inherited catalog must say so: $inherited",
+      inherited.contains("themes optimized 8/8 · 8 awaiting re-render"),
+      "a fully warm but wholly unreplaced catalog must say so: $inherited",
+    )
+    // Neutral about BOTH things the count cannot know. `regenerate` marks this build's own renders
+    // dirty, so the row must not call them inherited; and the pass may be paused or waiting on
+    // admission, so it must not claim to be re-rendering them right now.
+    assertFalse(
+      inherited.contains("inherited") || inherited.contains("re-rendering"),
+      "the row must not claim provenance or activity the dirty count cannot establish: $inherited",
     )
 
-    // Part way through: gaps left AND inherited renders still queued behind them.
+    // Part way through: gaps left AND queued renders still behind them.
     val partial = rowFor(cached = 5, dirty = 3)
     assertTrue(partial.contains("5/8 cached"), partial)
-    assertTrue(partial.contains("3 inherited, re-rendering"), partial)
+    assertTrue(partial.contains("3 awaiting re-render"), partial)
 
-    // A failure still wins the meter's tone — inherited is not an error, it is unfinished work.
+    // A failure still wins the meter's tone — a queued render is not an error, it is unfinished
+    // work.
     val broken = rowFor(cached = 5, dirty = 3, failed = 2)
     assertTrue(broken.contains("2 failed"), broken)
     assertTrue(broken.contains("cp-inline-meter-fill--warning"), broken)
     assertTrue(
       inherited.contains("cp-inline-meter-fill--secondary"),
-      "inherited reads as unfinished, not as failed or as done: $inherited",
+      "a queued catalog reads as unfinished, not as failed or as done: $inherited",
     )
   }
 
