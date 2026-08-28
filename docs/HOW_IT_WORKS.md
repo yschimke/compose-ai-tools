@@ -274,7 +274,7 @@ treated as enabled.)
 | `renderers/android/` | Android renderer — Robolectric harness |
 | `api/preview-annotations/` | Shared annotations consumed by samples (`@ScrollingPreview`, etc.) |
 | `cli/` | CLI — Tooling-API driver over `composePreviewDiscover` / `composePreviewRenderAll` |
-| `vscode-extension/` | VS Code extension that surfaces rendered previews in the editor |
+| `compose-preview-vscode/` | VS Code extension that surfaces rendered previews in the editor |
 | `samples/android/` | Android sample with colored box `@Preview` composables |
 | `samples/android-library/` | Android library variant — exercises AAR class-jar discovery |
 | `samples/android-screenshot-test/` | Co-existence with `com.android.compose.screenshot` |

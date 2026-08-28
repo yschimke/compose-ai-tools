@@ -77,7 +77,7 @@ ALLOWLIST = Path(__file__).resolve().parent / "daemon-launch-schema-allowlist.js
 
 WRITER = "gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonClasspathDescriptor.kt"
 JVM_READER = "daemon/protocol/src/main/kotlin/ee/schimke/composeai/daemon/protocol/DaemonLaunchDescriptor.kt"
-TS_READER = "vscode-extension/src/daemon/daemonProtocol.ts"
+TS_READER = "https://github.com/yschimke/compose-preview-vscode's `src/daemon/`daemonProtocol.ts"
 
 
 def read(rel: str) -> str:

@@ -8,7 +8,7 @@
     "schemaVersion": 15,
     "kotlinType": "ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload",
     "kotlinConst": "ComposeSemanticsProduct.SCHEMA_VERSION",
-    "fixture": "vscode-extension/preview-harness/fixtures/inspection-tree.json"
+    "fixture": "schema/fixtures/data-products/inspection-tree.json"
   },
   "definitions": {
     "ComposeSemanticsNode": {

@@ -36,7 +36,7 @@ class XrRenderServerIntegrationTest {
     val materials = XrCompositeBinary.resolveMaterials(binary!!)
     assumeTrue("xr-composite materials not found — skipping", materials != null)
 
-    val fixtureDir = File(repoRoot(), "vscode-extension/preview-harness/fixtures/spatial-scene")
+    val fixtureDir = File(repoRoot(), "schema/fixtures/spatial-scene")
     val scene = json.parseToJsonElement(File(fixtureDir, "scene.json").readText())
 
     XrRenderServer.start(binary, materials!!).use { server ->
@@ -63,7 +63,7 @@ class XrRenderServerIntegrationTest {
     val materials = XrCompositeBinary.resolveMaterials(binary!!)
     assumeTrue("xr-composite materials not found — skipping", materials != null)
 
-    val fixtureDir = File(repoRoot(), "vscode-extension/preview-harness/fixtures/spatial-scene")
+    val fixtureDir = File(repoRoot(), "schema/fixtures/spatial-scene")
     val scene = json.parseToJsonElement(File(fixtureDir, "scene.json").readText())
 
     // One process, two concurrent sessions of different sizes — frames must not cross.

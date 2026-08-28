@@ -3,7 +3,6 @@
     "docs/**",
     "site/**",
     "renders/**",
-    "vscode-extension/**",
     "preview-server/preview-harness/**",
     "**/*.md",
     "**/*.png",

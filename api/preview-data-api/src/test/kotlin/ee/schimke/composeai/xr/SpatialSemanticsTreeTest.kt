@@ -10,7 +10,7 @@ import kotlinx.serialization.json.Json
 
 /**
  * Locks the Kotlin [SpatialSemanticsTree] mirror to the committed contract fixture
- * (`vscode-extension/preview-harness/fixtures/spatial-semantics-tree/tree.json`) — the same
+ * (`schema/fixtures/spatial-semantics-tree/tree.json`) — the same
  * discipline [SpatialSceneTest] applies to `SpatialScene`. The TS mirror will read the same file;
  * if the wire shape changes on one side without the other, this fails.
  */
@@ -28,7 +28,7 @@ class SpatialSemanticsTreeTest {
 
   private fun fixtureTree(): SpatialSemanticsTree {
     val file =
-      File(repoRoot(), "vscode-extension/preview-harness/fixtures/spatial-semantics-tree/tree.json")
+      File(repoRoot(), "schema/fixtures/spatial-semantics-tree/tree.json")
     assertTrue(file.exists(), "contract fixture missing at ${file.path}")
     return json.decodeFromString(SpatialSemanticsTree.serializer(), file.readText())
   }

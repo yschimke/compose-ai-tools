@@ -5,11 +5,6 @@
 
 # Spatial-rich: rendered + harvested by `daemon/desktop` `SpatialRichFixtureGeneratorTest` (panel
 # PNGs, scene.json, semantics-tree.json), then wrapped by `spatial-semantics.gen.mjs`.
-vscode-extension/spatial-fixtures/spatial-rich/scene.json linguist-generated=true
-vscode-extension/spatial-fixtures/spatial-rich/semantics-tree.json linguist-generated=true
-vscode-extension/spatial-fixtures/spatial-rich/panels/*.png linguist-generated=true
 
 # Preview-harness scenario fixtures: each `<name>.json` is emitted by its `<name>.gen.mjs`. The lone
 # exception is `fonts-browser.json`, which is hand-authored — keep it reviewable.
-vscode-extension/preview-harness/fixtures/*.json linguist-generated=true
-vscode-extension/preview-harness/fixtures/fonts-browser.json linguist-generated=false

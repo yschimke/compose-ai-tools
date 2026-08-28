@@ -24,7 +24,7 @@ import {
 const RECORDED_MENU = JSON.parse(
     readFileSync(
         new URL(
-            "../../../vscode-extension/preview-harness/fixtures/menu-dropdown-annotations.recorded.json",
+            "./fixtures/menu-dropdown-annotations.recorded.json",
             import.meta.url,
         ),
         "utf8",

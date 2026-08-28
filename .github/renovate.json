@@ -180,17 +180,6 @@
       "enabled": false
     },
     {
-      "description": "VS Code API floor declarations — bumping these drops support for older editors, must be a manual decision.",
-      "matchFileNames": [
-        "vscode-extension/package.json"
-      ],
-      "matchDepNames": [
-        "vscode",
-        "@types/vscode"
-      ],
-      "enabled": false
-    },
-    {
       "description": "Gradle wrapper: hold at 9.7.0. Under 9.7.1 a second build invocation in one session can leave `:samples:cmp` without the renamed preview render: the `interactive-e-g` shard times out after discovery publishes the new id while duplicate save/refresh work repeatedly cancels `composePreviewCompile` (main run 32704936546). The test now serializes that edit through the production save queue, but the wrapper stays pinned until 9.7.1 is independently proven across the full E2E suite; do not turn a test-driver repair into an unverified build-tool upgrade.",
       "matchManagers": [
         "gradle-wrapper"

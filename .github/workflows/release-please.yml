@@ -294,7 +294,7 @@ jobs:
   # regeneration takes 31–38 minutes and it ran at the very tail of the release:
   # everything was already published and the Release un-drafted, while this run stayed
   # "in progress" throughout — and an in-progress run cannot be re-run, so a tolerated
-  # failure earlier in the release (`publish-design-map`, `publish-vscode-extension`)
+  # failure earlier in the release (`publish-design-map`)
   # had no retry path until the renders finished.
 
   # Create or reconcile the "next release" PR after a release fully publishes.

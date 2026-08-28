@@ -133,7 +133,7 @@ jobs:
           mkdir -p got && tar -xzf "$asset" -C got
           test -x got/xr-composite || { echo "::error::no executable binary in the published tarball"; ls -lR got; exit 1; }
           ls got/materials/*.filamat >/dev/null 2>&1 || { echo "::error::no compiled materials in the published tarball"; exit 1; }
-          scene="vscode-extension/preview-harness/fixtures/spatial-scene/scene.json"
+          scene="renderers/xr-composite/test/fixtures/spatial-scene/scene.json"
           xvfb-run -a -s "-screen 0 1600x1000x24" \
             got/xr-composite --scene "$scene" --out smoke-composite.png \
               --materials got/materials --width 1280 --height 800

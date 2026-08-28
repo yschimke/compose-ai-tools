@@ -6,13 +6,13 @@ external-consumer e2e — inside a locked-down cloud environment such as
 running the **custom** (allowlist) network policy. Everything here is
 about working around what that policy blocks; on a runner with open
 egress (the GitHub Actions setup in
-[`vscode-extension-e2e-external.yml`](../.github/workflows/vscode-extension-e2e-external.yml)),
+[`compose-preview-vscode-e2e-external.yml`](../.github/workflows/compose-preview-vscode-e2e-external.yml)),
 none of this is necessary.
 
 ## TL;DR
 
 ```bash
-vscode-extension/scripts/run-confetti-e2e.sh
+compose-preview-vscode/scripts/run-confetti-e2e.sh
 ```
 
 That provisions JDK 17, the Android SDK, and VSCodium; publishes the
@@ -28,7 +28,7 @@ The non-VS-Code suites need none of the workarounds and run as documented
 in [DEVELOPMENT.md](DEVELOPMENT.md):
 
 ```bash
-cd vscode-extension && npm ci && npm test   # 1426 unit tests, pure node
+cd compose-preview-vscode && npm ci && npm test   # 1426 unit tests, pure node
 ```
 
 ## What the allowlist network policy blocks
@@ -52,7 +52,7 @@ and the Playwright Chromium CDN. So three things break out of the box:
 
 ### 1. VS Code binary → VSCodium
 
-[`runTest.ts`](../vscode-extension/src/test/electron/runTest.ts) honours
+[`runTest.ts`](https://github.com/yschimke/compose-preview-vscode/blob/main/src/test/electron/runTest.ts) honours
 `VSCODE_TEST_EXECUTABLE`: when set, it skips `downloadAndUnzipVSCode()`
 and drives the given binary instead. Our extension and the fake
 gradle/kotlin stubs are side-loaded via `extensionDevelopmentPath`, so the
@@ -61,7 +61,7 @@ marketplace is never consulted — VSCodium runs the electron suites
 Code would.
 
 ```bash
-export VSCODE_TEST_EXECUTABLE="$(vscode-extension/scripts/setup-vscodium.sh)"
+export VSCODE_TEST_EXECUTABLE="$(compose-preview-vscode/scripts/setup-vscodium.sh)"
 ```
 
 Benign noise in the log: VSCodium probes its (blocked) extension gallery
@@ -151,7 +151,7 @@ does this for you.
 
 ```bash
 export JAVA_HOME="$(scripts/setup-cloud-jdk.sh)"
-export VSCODE_TEST_EXECUTABLE="$(vscode-extension/scripts/setup-vscodium.sh)"
+export VSCODE_TEST_EXECUTABLE="$(compose-preview-vscode/scripts/setup-vscodium.sh)"
 ANDROID_HOME=/opt/android-sdk scripts/install.sh --android-sdk     # SDK only; JDK already present
 
 # Publish the plugin under JDK 17 so Confetti's catalog SNAPSHOT resolves.
@@ -159,10 +159,10 @@ JAVA_HOME="$JAVA_HOME" ./gradlew publishToMavenLocal --no-daemon
 JAVA_HOME="$JAVA_HOME" ./gradlew -p gradle-plugin publishToMavenLocal --no-daemon
 
 # Clone + rewrite Confetti to point at the SNAPSHOT.
-WS="$(vscode-extension/scripts/setup-external-e2e.sh /tmp/compose-preview-external-e2e)"
+WS="$(compose-preview-vscode/scripts/setup-external-e2e.sh /tmp/compose-preview-external-e2e)"
 
 # Run the e2e on the system JDK 21 (render) with JDK 17 available for toolchains.
-cd vscode-extension
+cd compose-preview-vscode
 ( cd "$WS" && ./gradlew --stop || true )
 env -u JAVA_HOME PATH=/opt/node22/bin:/usr/bin:/bin \
   ANDROID_HOME=/opt/android-sdk \

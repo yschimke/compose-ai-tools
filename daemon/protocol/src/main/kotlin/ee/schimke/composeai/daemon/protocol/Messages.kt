@@ -26,7 +26,7 @@ import kotlinx.serialization.json.JsonElement
 // JSON shapes in that document; we lean on Kotlin/JSON name parity and only
 // use @SerialName when the JSON spelling diverges from idiomatic Kotlin.
 //
-// The TypeScript counterpart lives in vscode-extension/src/daemon/
+// The TypeScript counterpart lives in https://github.com/yschimke/compose-preview-vscode's `src/daemon/`
 // daemonProtocol.ts (Stream C, C1.1). Both suites round-trip the JSON
 // fixtures under docs/daemon/protocol-fixtures/ as a shared corpus —
 // see PROTOCOL.md § 9.
@@ -266,7 +266,7 @@ public data class KnownDevice(
 
 /**
  * One advertised data-product kind. Mirrors `DataProductCapability` in
- * `vscode-extension/src/daemon/daemonProtocol.ts`. See
+ * [`src/daemon/daemonProtocol.ts`](https://github.com/yschimke/compose-preview-vscode/blob/main/src/daemon/daemonProtocol.ts). See
  * [docs/daemon/DATA-PRODUCTS.md](../../../../../../../docs/daemon/DATA-PRODUCTS.md) § "The
  * primitive" for semantics — `transport` picks how the payload travels; `attachable` / `fetchable`
  * discriminate which surfaces support the kind; `requiresRerender = true` warns the client that a

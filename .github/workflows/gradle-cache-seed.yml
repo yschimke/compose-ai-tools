@@ -3,7 +3,7 @@ name: Gradle Cache Seed
 # Baseline writer of the BuildFetch remote build cache — the one that is
 # guaranteed to finish.
 #
-# Several workflows push now (ci.yml, integration.yml, vscode-extension-e2e.yml
+# Several workflows push now (ci.yml, integration.yml
 # on main), each contributing whatever it genuinely had to execute. That is the
 # bulk of the coverage, and it is deliberately opportunistic: those runs are
 # cancellable, so any individual one may push only part of its work.
@@ -90,7 +90,7 @@ jobs:
       - name: Seed plugin and Android renderer test tasks
         run: ./gradlew :gradle-plugin:test :renderer-android:testDebugUnitTest
 
-      # The render path the vscode-extension-e2e shards spend most of their
+      # The render path the extension's e2e shards used to spend most of their
       # wall time on. `missingRenders=warn` mirrors ci.yml's bundle job: one
       # stubborn preview should not throw away an otherwise complete seed.
       - name: Seed sample renders

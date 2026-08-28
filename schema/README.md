@@ -59,7 +59,7 @@ from `required` and their `type` includes `"null"` where applicable.
 1. its canonical `x-composeai.example` (hand-authored from the Kotlin type — see
    [`examples/`](examples/)), and
 2. every matching `{ kind, payload }` embedded in the committed
-   `vscode-extension/preview-harness/fixtures/*.json`.
+   `schema/fixtures/data-products/*.json`.
 
 ```sh
 node scripts/validate-report-schemas.mjs

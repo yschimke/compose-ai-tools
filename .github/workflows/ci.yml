@@ -961,52 +961,11 @@ jobs:
           echo "OK: baked $png ($(du -h "$png" | cut -f1)), referenced in previews.json"
       # Capture the 3D spatial webview fed by the REAL composePreviewRenderXr
       # output (scene.json + harvested compose-spatial-semantics.json + panel
-      # textures) — the true end-to-end spatial-view capture, as opposed to the
-      # committed `spatial-rich` proxy the vscode-preview-comment bot diffs. The
-      # generator + its shape are unit-tested (spatialXrRealGen.test.ts); this
-      # step exercises the live path and uploads the rendered PNG for inspection.
-      # Best-effort: a missing scene or a webview hiccup never fails this job.
-      - name: Capture spatial webview from the real XR render
-        if: always()
-        # Inspection-only artifact: a flaky npm ci / Chromium / snapshot must
-        # never fail the XR composite gate. `if: always()` only controls whether
-        # the step runs — `continue-on-error` is what keeps its failure non-fatal.
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -uo pipefail
-          base=samples/xr-spatial/build/compose-previews/renders
-          scene="$(find "$base" -name scene.json -print -quit 2>/dev/null || true)"
-          if [ -z "$scene" ]; then
-            echo "no scene.json under $base — skipping spatial webview capture"
-            exit 0
-          fi
-          renderdir="$(dirname "$scene")"
-          echo "Capturing spatial webview from $renderdir"
-          # Stage the real render's scene + textures where the harness static
-          # server resolves them (rooted at the extension dir → /spatial-fixtures/).
-          dest=vscode-extension/spatial-fixtures/spatial-xr-real
-          rm -rf "$dest" && mkdir -p "$dest"
-          cp "$renderdir"/*.png "$dest"/ 2>/dev/null || true
-          cp "$renderdir"/scene.json "$dest"/ 2>/dev/null || true
-          cp "$renderdir"/compose-spatial-semantics.json "$dest"/ 2>/dev/null || true
-          # Generate the harness fixture from the real render dir.
-          node vscode-extension/preview-harness/fixtures/spatial-xr-real.gen.mjs \
-            --render-dir "$renderdir" \
-            --texture-base /spatial-fixtures/spatial-xr-real/ \
-            > vscode-extension/preview-harness/fixtures/spatial-xr-real.json
-          # Render just this fixture under Chromium → preview-harness/out/.
-          ( cd vscode-extension
-            npm ci
-            npx playwright install --with-deps chromium
-            HARNESS_FIXTURE=spatial-xr-real npm run harness:snapshot )
-      - name: Upload spatial webview render
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: spatial-xr-real-render
-          path: vscode-extension/preview-harness/out/spatial-xr-real.*.png
-          if-no-files-found: warn
+      # The spatial webview capture that used to run here rendered the real XR scene
+      # through the VS Code extension's Playwright harness. The extension now lives in
+      # yschimke/compose-preview-vscode, which cannot build the XR renderer, so the
+      # capture has no home on either side and is gone rather than stubbed. The scene
+      # itself is still exercised below by `serve_smoke.py` against the native server.
       # Exercise the long-lived server path (--serve): initialize -> render -> xr/updatePanels over
       # JSON-RPC stdio, asserting streamFrame notifications arrive and a per-frame panel update
       # actually changes the rendered image. Reuses the dist/ binary + materials and the committed
@@ -1020,7 +979,7 @@ jobs:
           xvfb-run -a -s "-screen 0 2000x1400x24" \
             python3 renderers/xr-composite/test/serve_smoke.py \
               "$PWD/dist/xr-composite" "$PWD/dist/materials" \
-              "$PWD/vscode-extension/preview-harness/fixtures/spatial-scene"
+              "$PWD/renderers/xr-composite/test/fixtures/spatial-scene"
       # Exercise the JVM client (:renderer-xr-client) against the real native server: unit tests
       # plus the XR_COMPOSITE_BIN-gated XrRenderServerIntegrationTest, which spawns the dist binary
       # and asserts a per-frame panel update changes the image. Mirrors the python smoke from Kotlin.
@@ -1502,64 +1461,6 @@ jobs:
   # vscjava.vscode-gradle stub so our extensionDependency check passes, and
   # run the extension against a fixture workspace. xvfb is needed because
   # VS Code expects a display even in headless mode.
-  vscode-extension-tests:
-    name: VS Code Extension Tests
-    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      # Path filter at STEP level, not a trigger `paths:` filter: this is a
-      # required check, so a `paths:`-filtered workflow that didn't run would
-      # leave it stuck pending and block the merge. Instead the job always runs
-      # (so the required check always reports), and the npm steps below only
-      # execute when the PR touches the extension. The TS unit/integration tests
-      # can't be affected by anything outside `vscode-extension/`, so skipping
-      # them on unrelated PRs is safe. Pushes to main + the nightly run always
-      # execute the full suite.
-      - name: Detect vscode-extension changes
-        id: changes
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          MERGE_SHA: ${{ github.sha }}
-        run: |
-          set -uo pipefail
-          # Fail open: any problem computing the diff -> run the full suite.
-          git fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
-          if ! changed=$(git diff --name-only "$BASE_SHA" "$MERGE_SHA" 2>/dev/null); then
-            echo "::warning::Could not diff against base; running VS Code Extension Tests to be safe."
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if printf '%s\n' "$changed" | grep -qE '^vscode-extension/'; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No vscode-extension/** changes in this PR — skipping the npm build/test steps (this required check still reports)."
-          fi
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: ${{ github.event_name != 'pull_request' || steps.changes.outputs.run == 'true' }}
-        with:
-          node-version: 20
-      - name: Install dependencies
-        if: ${{ github.event_name != 'pull_request' || steps.changes.outputs.run == 'true' }}
-        working-directory: vscode-extension
-        run: npm ci
-      - name: Compile
-        if: ${{ github.event_name != 'pull_request' || steps.changes.outputs.run == 'true' }}
-        working-directory: vscode-extension
-        run: npm run compile
-      - name: Run unit tests
-        if: ${{ github.event_name != 'pull_request' || steps.changes.outputs.run == 'true' }}
-        working-directory: vscode-extension
-        run: npm test
-      - name: Run integration tests (xvfb)
-        if: ${{ github.event_name != 'pull_request' || steps.changes.outputs.run == 'true' }}
-        working-directory: vscode-extension
-        run: xvfb-run -a npm run test:electron
-
   serve-web-bundle:
     name: Serve Web Components
     if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}

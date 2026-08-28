@@ -100,7 +100,7 @@ Daemon-side, consulted on every `renderFinished`:
    (the start handler wipes the cached hash).
 
 Client side (`DaemonScheduler.handleRenderFinished` in
-`vscode-extension/src/daemon/daemonScheduler.ts`): `unchanged === true`
+[`src/daemon/daemonScheduler.ts`](https://github.com/yschimke/compose-preview-vscode/blob/main/src/daemon/daemonScheduler.ts)): `unchanged === true`
 short-circuits the disk read + base64 + `postMessage` hop, leaving the
 on-screen card untouched.
 

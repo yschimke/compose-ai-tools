@@ -182,7 +182,7 @@ The webview painter implements three rules:
 
 1. **Newest-wins queue.** Hold at most one pending frame; if a new one
    arrives before paint, drop the old. `StreamFrameQueue` /
-   `StreamClient` in `vscode-extension/src/daemon/streamClient.ts` are
+   `StreamClient` in [`src/daemon/streamClient.ts`](https://github.com/yschimke/compose-preview-vscode/blob/main/src/daemon/streamClient.ts) are
    the canonical implementations.
 2. **Decode out-of-band.** Surface the queued bytes through
    `createImageBitmap(blob)` so the visible canvas never tears down its
@@ -302,9 +302,9 @@ canvas painter; there is no opt-in setting and no fallback.
   watchers sharing one upstream stream.
 - `cli/serve-web` `catalogLiveElement.test.ts` — the card's scroll-out /
   backgrounded-tab throttle and its teardown.
-- `vscode-extension` `streamClient.test.ts` — newest-wins queue,
+- [compose-preview-vscode](https://github.com/yschimke/compose-preview-vscode) `streamClient.test.ts` — newest-wins queue,
   multi-stream demux, sink isolation, late-bind buffering.
-- `vscode-extension` `liveCommand.test.ts` — pins the LIVE-button →
+- [compose-preview-vscode](https://github.com/yschimke/compose-preview-vscode) `liveCommand.test.ts` — pins the LIVE-button →
   wire-command rule (every entry point posts the same shape).
 - `:daemon:core` `PngHeaderTest` — the frame-size probe, including the
   cases that must report "unknown" rather than a fabricated size.

@@ -10,7 +10,6 @@ on:
   push:
     branches: [main]
     paths:
-      - 'vscode-extension/**'
       - 'preview-server/preview-harness/**'
       # The serve fixture pages `<link>` the real viewer CSS/JS, which the harness server resolves
       # out of this directory — so a viewer change moves these captures. Only `format-compare.js`
@@ -33,7 +32,7 @@ concurrency:
   # and every later PR inherits their diff. There is no PR trigger here at
   # all — push-to-main and dispatch only — so cancelling can never be the
   # right call. The path filter keeps this rare, but "rare" still means a
-  # silently stale baseline when two `vscode-extension/**` merges land close
+  # silently stale baseline when two `preview-server/preview-harness/**` merges land close
   # together.
   cancel-in-progress: false
 

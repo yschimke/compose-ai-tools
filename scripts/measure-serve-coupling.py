@@ -98,7 +98,13 @@ SERVE_PATTERNS = (
     r"^vscode-extension/preview-harness/fixtures/pages/serve-",
 )
 
-# VS Code extension side — everything under vscode-extension/ that the serve
+# VS Code extension side. These `vscode-extension/` patterns are deliberately KEPT
+# after the extension moved to yschimke/compose-preview-vscode: this script classifies
+# COMMITS FROM HISTORY, and every commit before the split still carries those paths.
+# Removing the patterns would silently reclassify years of extension work as
+# unmatched and move every ratio this gate reports.
+#
+# Everything under vscode-extension/ that the serve
 # patterns above did not already claim.
 EXTENSION_PATTERNS = (r"^vscode-extension/",)
 

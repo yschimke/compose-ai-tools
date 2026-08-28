@@ -17,7 +17,7 @@ npm run verify      # typecheck + test + build + assert the bundle is committed
 
 ## Why Lit, and why the same setup as the VS Code extension
 
-`vscode-extension/src/webview` is already Lit 3 + esbuild + TypeScript, with
+[`src/webview`](https://github.com/yschimke/compose-preview-vscode/blob/main/src/webview) is already Lit 3 + esbuild + TypeScript, with
 mocha + happy-dom for unit tests and Playwright for visual capture. Reusing that
 stack here means one set of idioms, one decorator mode, one test runner, and
 the serve `preview-harness` (now at `preview-server/preview-harness`, split
@@ -117,7 +117,7 @@ against a moving fixture baseline:
    ```
 5. Confirm the pixels didn't move:
    ```
-   cd vscode-extension
+   cd compose-preview-vscode
    npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot
    ```
    Set `HARNESS_CHROMIUM` when the sandbox's Chromium build doesn't match the

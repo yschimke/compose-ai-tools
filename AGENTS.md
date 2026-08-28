@@ -84,8 +84,8 @@ CI's `format` job runs `./gradlew ktfmtCheckAll` and it is a hard gate —
 `ktfmtCheck` aborts on the first unformatted file. Before each commit touching
 `*.kt` / `*.kts`, run `./gradlew ktfmtFormat` (or
 `./gradlew :<module>:ktfmtFormatMain :<module>:ktfmtFormatTest` for the touched
-modules) and stage the result. For VS Code extension TypeScript, run
-`npm --prefix vscode-extension run format`. The round-trip through CI costs more
+modules) and stage the result. For the serve-web TypeScript, run
+`npm --prefix cli/serve-web run format`. The round-trip through CI costs more
 than running the formatter locally.
 
 <!-- invariant: pr-state-recheck -->
@@ -134,6 +134,7 @@ examples are in [`docs/AGENT_GUIDE.md` → PR workflow](docs/AGENT_GUIDE.md#pr-w
 | Invoking an agent from an issue or PR | [`docs/AGENT_INVOCATION.md`](docs/AGENT_INVOCATION.md) |
 | Which agent reads which file, and what it costs | [`docs/AGENT_ENTRYPOINTS.md`](docs/AGENT_ENTRYPOINTS.md) |
 | Consumer docs for the published plugin and CLI | [`yschimke/skills`](https://github.com/yschimke/skills) |
+| The VS Code extension (split out; consumes this repo's published plugin) | [`yschimke/compose-preview-vscode`](https://github.com/yschimke/compose-preview-vscode) |
 
 Claude Code sessions additionally get on-demand procedures under
 [`.claude/skills/`](.claude/skills/) — `steward` (driving a PR to green),

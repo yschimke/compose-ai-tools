@@ -17,7 +17,7 @@ underpins three deliverables:
 | **Interactive web viewer** (`web-player/index.html` + bundle) | the bundle + UI HTML | served from `web-player/` |
 | **Single-file standalone HTML** (one `.rc` baked in, no server needed) | `packaging/build-standalone.sh` | wraps esbuild + base64 |
 | **Static deck site** (directory of `.rc` + media → website) | `packaging/make_deck_site.py` | wraps the bundle + an index.html generator |
-| **VS Code extension** (`.vsix`) | `vscode-extension/` | `vscode-extension/build.sh` |
+| **VS Code extension** (`.vsix`) | `compose-preview-vscode/` | [`build.sh`](https://github.com/yschimke/compose-preview-vscode/blob/main/build.sh) |
 
 ## Quick start
 
@@ -38,8 +38,8 @@ open out.html
 (cd path/to/deck-dir/web && python3 -m http.server 8000)
 
 # Build the VS Code extension
-(cd vscode-extension && ./build.sh)
-code --install-extension vscode-extension/rc-viewer-0.1.0.vsix
+(cd compose-preview-vscode && ./build.sh)
+code --install-extension compose-preview-vscode/rc-viewer-0.1.0.vsix
 ```
 
 See [BUILDING.md](BUILDING.md) for the per-deliverable walk-through and
@@ -66,7 +66,7 @@ typescript/
 ├── packaging/           tools that wrap the bundle into shippable artefacts
 │   ├── build-standalone.sh
 │   └── make_deck_site.py
-└── vscode-extension/    VS Code custom editor for .rc / .rcd
+└── compose-preview-vscode/    VS Code custom editor for .rc / .rcd
     ├── package.json
     ├── src/
     └── build.sh

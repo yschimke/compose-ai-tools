@@ -93,7 +93,7 @@ The generated `index.html` includes:
 Builds a `.vsix` you can install via `code --install-extension`.
 
 ```sh
-cd vscode-extension
+cd compose-preview-vscode
 ./build.sh                                  # → rc-viewer-0.1.0.vsix
 code --install-extension rc-viewer-0.1.0.vsix
 ```
@@ -113,7 +113,7 @@ and adds the VS Code chrome around it.
 - **Bundle is stale** → `npm run bundle` again before re-running
   `make_deck_site.py` or testing the web viewer.
 - **VS Code extension won't load** → verify `media/rc-bundle.js` exists
-  (run `vscode-extension/build.sh` first).
+  (run [`build.sh`](https://github.com/yschimke/compose-preview-vscode/blob/main/build.sh) first).
 
 ---
 
@@ -121,6 +121,6 @@ and adds the VS Code chrome around it.
 
 ```sh
 rm -rf node_modules web-player/bundle.js
-rm -rf vscode-extension/{out,media/rc-bundle.js,media/rc2json-bundle.js,*.vsix}
+rm -rf compose-preview-vscode/{out,media/rc-bundle.js,media/rc2json-bundle.js,*.vsix}
 rm -f rc-player.html
 ```

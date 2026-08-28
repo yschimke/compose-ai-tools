@@ -8,7 +8,7 @@
     "schemaVersion": 2,
     "kotlinType": "ee.schimke.composeai.data.theme.ThemePayload",
     "kotlinConst": "Material3ThemeProduct.SCHEMA_VERSION",
-    "fixture": "vscode-extension/preview-harness/fixtures/theming.json"
+    "fixture": "schema/fixtures/data-products/theming.json"
   },
   "definitions": {
     "TypographyToken": {

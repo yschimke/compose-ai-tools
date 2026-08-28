@@ -12,7 +12,5 @@
 # container at runtime via compose `environment:`, so excluding it is safe.
 **/.env
 deploy/cloudrun/README.md
-vscode-extension/out/
-vscode-extension/.vscode-test/
 site/build/
 **/.DS_Store

@@ -24,43 +24,21 @@ runs:
         node-version: ${{ inputs.node-version }}
         cache: npm
         cache-dependency-path: |
-          vscode-extension/package-lock.json
           preview-server/preview-harness/package-lock.json
-
-    - name: Install extension dependencies
-      shell: bash
-      working-directory: vscode-extension
-      run: npm ci
-
-    # Playwright's bundled chromium isn't in the standard runner image; the
-    # `--with-deps` flag pulls the apt packages chromium needs (libnss3,
-    # libxkbcommon, etc.) on the ubuntu-latest base image. Without this the
-    # `chromium.launch()` in `snapshot.mjs` fails with a missing-shared-lib
-    # error before any fixture runs.
-    - name: Install Playwright browser
-      shell: bash
-      working-directory: vscode-extension
-      run: npx playwright install --with-deps chromium
-
-    - name: Capture harness snapshots
-      shell: bash
-      working-directory: vscode-extension
-      run: npm run harness:snapshot
-
-    # Wire-side contract — same Playwright loop as the snapshot,
-    # asserts each fixture's `expectedPosts` / `forbiddenPosts`
-    # match the actual `vscode.postMessage` calls. Failing here on
-    # a baseline run flags a regression that landed without a
-    # contract violation surfacing via the per-PR action.
-    - name: Run harness contract
-      shell: bash
-      working-directory: vscode-extension
-      run: npm run harness:contract
 
     - name: Install preview-server harness dependencies
       shell: bash
       working-directory: preview-server/preview-harness
       run: npm ci
+
+    # Playwright's bundled chromium isn't in the standard runner image; `--with-deps`
+    # pulls the apt packages it needs (libnss3, libxkbcommon, ...). This used to be
+    # installed by the extension's steps above, which is why it now lives here — the
+    # server harness always needed it and was quietly relying on a neighbour.
+    - name: Install Playwright browser
+      shell: bash
+      working-directory: preview-server/preview-harness
+      run: npx playwright install --with-deps chromium
 
     # The serve page captures. They used to run inside `harness:snapshot` above — 167 of that
     # command's 205 tests were these — and moved out with the harness. They still write
@@ -76,17 +54,17 @@ runs:
       working-directory: preview-server/preview-harness
       run: npm run harness:compare
 
-    # One diff surface, two producers. The diff script takes a single directory, and the capture
-    # names are unique across the two harnesses, so merging is enough — and it keeps the bot's
-    # comment a single table rather than two half-tables a reviewer has to read together.
-    - name: Merge harness captures
+    # One producer now that the VS Code panel's harness left with the extension
+    # (yschimke/compose-preview-vscode). The staging dir stays: the diff script takes a
+    # single directory, and keeping the shape means re-adding a producer is a copy line
+    # rather than a rewrite.
+    - name: Stage harness captures
       shell: bash
       run: |
         set -euo pipefail
         mkdir -p _harness_out
-        cp -a vscode-extension/preview-harness/out/. _harness_out/ 2>/dev/null || true
         cp -a preview-server/preview-harness/out/. _harness_out/ 2>/dev/null || true
-        echo "merged captures: $(ls _harness_out | wc -l)"
+        echo "staged captures: $(ls _harness_out | wc -l)"
 
     - name: Fetch prior baselines
       shell: bash

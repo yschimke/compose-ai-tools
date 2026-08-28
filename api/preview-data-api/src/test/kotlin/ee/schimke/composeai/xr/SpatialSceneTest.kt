@@ -10,7 +10,7 @@ import kotlinx.serialization.json.Json
 /**
  * Locks the Kotlin [SpatialScene] mirror to the contract the TypeScript consumer uses, by reading
  * the single committed fixture
- * (`vscode-extension/preview-harness/fixtures/spatial-scene/scene.json`) rather than a copy. If the
+ * (`schema/fixtures/spatial-scene/scene.json`) rather than a copy. If the
  * wire shape changes on one side without the other, this fails.
  */
 class SpatialSceneTest {
@@ -27,7 +27,7 @@ class SpatialSceneTest {
 
   private fun fixtureScene(): SpatialScene {
     val file =
-      File(repoRoot(), "vscode-extension/preview-harness/fixtures/spatial-scene/scene.json")
+      File(repoRoot(), "schema/fixtures/spatial-scene/scene.json")
     assertTrue(file.exists(), "contract fixture missing at ${file.path}")
     return json.decodeFromString(SpatialScene.serializer(), file.readText())
   }

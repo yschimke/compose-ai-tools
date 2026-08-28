@@ -179,7 +179,7 @@ export async function reapPrRuns({
     //
     // 1. A manual `workflow_dispatch` on a PR branch has no PR association,
     //    so the empty-association fallback below would otherwise sweep it up.
-    //    vscode-extension-e2e.yml exists partly to be run manually on any
+    //    xr-composite-release-smoke.yml exists partly to be run manually on any
     //    branch for regression work; killing someone's investigation run
     //    mid-flight would be a real cost for no queue benefit.
     // 2. Post-merge CI on the default branch is a `push` run, so this

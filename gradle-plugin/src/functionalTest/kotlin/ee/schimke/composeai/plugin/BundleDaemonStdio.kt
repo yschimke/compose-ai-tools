@@ -17,7 +17,7 @@ import kotlinx.serialization.json.put
  *
  * Mirrors the wire shape the VS Code extension's `DaemonClient` writes — `Content-Length`-framed
  * UTF-8 JSON over the daemon subprocess's stdin/stdout — kept here so the tests stay free of any
- * vscode-extension dependency. Reads are bounded by a wall-clock timeout (the blocking
+ * VS Code extension dependency. Reads are bounded by a wall-clock timeout (the blocking
  * [InputStream.read] runs on a daemon worker thread waited on via [java.util.concurrent.Future]) so
  * a wedged daemon surfaces as a deterministic failure rather than hanging the suite.
  */

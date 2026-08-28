@@ -13,7 +13,7 @@ import org.junit.rules.TemporaryFolder
  *
  * Three implementations must agree byte-for-byte: this one, the Gradle plugin's inlined copy
  * (`AndroidPreviewClasspath.composeAiHistoryDir` — the plugin can't depend on `:common-io`), and
- * the VS Code extension's TypeScript copy (`vscode-extension/src/historyPaths.ts`). The `GOLDEN_*`
+ * the VS Code extension's TypeScript copy ([`src/historyPaths.ts`](https://github.com/yschimke/compose-preview-vscode/blob/main/src/historyPaths.ts)). The `GOLDEN_*`
  * vectors below are duplicated verbatim in `historyPaths.test.ts`; changing either side alone makes
  * the daemon write to one directory and the panel read from another, which surfaces as a silently
  * empty history drawer rather than a crash. Change the layout only with both suites updated
@@ -23,7 +23,7 @@ class HistoryPathsTest {
 
   @get:Rule val tmp: TemporaryFolder = TemporaryFolder()
 
-  // ---- Golden vectors (mirrored in vscode-extension/src/test/historyPaths.test.ts) ----
+  // ---- Golden vectors (mirrored in https://github.com/yschimke/compose-preview-vscode's `src/test/historyPaths.test.ts`) ----
 
   @Test
   fun `workspace slug is a readable prefix plus a 12-hex digest`() {

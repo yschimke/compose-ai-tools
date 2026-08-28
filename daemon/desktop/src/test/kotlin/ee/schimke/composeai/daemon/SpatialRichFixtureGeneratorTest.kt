@@ -34,10 +34,10 @@ import org.junit.Test
  * rendered UI (no hand-authored boxes).
  *
  * Outputs go to `SPATIAL_FIXTURES_DIR=<dir>` when set (the manual regeneration path, pointed at
- * `vscode-extension/spatial-fixtures/spatial-rich`); otherwise a temp dir, so the normal CI test
+ * [`spatial-fixtures/spatial-rich`](https://github.com/yschimke/compose-preview-vscode/blob/main/spatial-fixtures/spatial-rich)); otherwise a temp dir, so the normal CI test
  * run still exercises render + harvest + serialization without writing into the source tree.
  *
- * SPATIAL_FIXTURES_DIR=$PWD/vscode-extension/spatial-fixtures/spatial-rich \ ./gradlew
+ * SPATIAL_FIXTURES_DIR=$PWD/../compose-preview-vscode/spatial-fixtures/spatial-rich \ ./gradlew
  * :daemon:desktop:test --tests '*SpatialRichFixtureGeneratorTest' --rerun-tasks
  */
 class SpatialRichFixtureGeneratorTest {
@@ -97,7 +97,7 @@ class SpatialRichFixtureGeneratorTest {
       )
 
     // `SPATIAL_FIXTURES_DIR` (env var — inherited by the forked test JVM, unlike a `-D` property)
-    // points at `vscode-extension/spatial-fixtures/spatial-rich` for manual regeneration; otherwise
+    // points at [`spatial-fixtures/spatial-rich`](https://github.com/yschimke/compose-preview-vscode/blob/main/spatial-fixtures/spatial-rich) for manual regeneration; otherwise
     // a
     // temp dir, so a normal CI run still exercises render + harvest without touching the source
     // tree.
