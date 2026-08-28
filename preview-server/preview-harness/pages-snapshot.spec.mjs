@@ -2849,6 +2849,60 @@ const FIXTURE_STATES = [
     },
   },
   {
+    // The parity verdict pointing at itself. The panel's prose is server-rendered, so it is in the
+    // default shot already; what is not is the answer to "where" — nothing is lit at rest, because
+    // a dozen findings' regions drawn at once over one frame answer that for none of them.
+    //
+    // Pinned rather than hovered, and that is the behaviour under test as much as it is a way to
+    // hold the shot still: a reader hovers a finding and then looks UP at the panels, by which
+    // point the pointer has left the row. If the highlight went with it the affordance would be
+    // useless on exactly the movement it exists for.
+    fixture: "serve-reference-compare",
+    suffix: "parity-verdict",
+    apply: async (page) => {
+      // States run in order against the SAME page, and `annotated` above leaves the redline on.
+      // Off again: this shot is about the finding's own regions, and the authored boxes over the
+      // same elements would make it impossible to tell which layer drew what.
+      for (const kind of ["layout", "typography", "theme"]) {
+        await page.uncheck(`[data-cp-annotation-kind="${kind}"]`);
+        await page.uncheck(`.cp-render-inspect[data-cp-inspect="${kind}"]`);
+      }
+      await page.evaluate(() =>
+        document.getElementById("cp-report")?.removeAttribute("open"),
+      );
+      const layout = page.locator('[data-cp-parity-finding="layout-0"]');
+      await layout.click();
+      await expect(layout).toHaveAttribute("aria-pressed", "true");
+      // Placed from each image's rendered size, so hold until the panels have laid out rather than
+      // racing the placeholder's load. Measured AFTER the pin, because an unlit region is
+      // `display: none` and every box would read as zero-width forever.
+      await page.waitForFunction(() => {
+        const box = document.querySelector(
+          ".cp-parity-anchor.cp-parity-anchor-active",
+        );
+        return box && box.getBoundingClientRect().width > 0;
+      });
+      // Both panels, from one row: the finding names a region on each side, which is what makes
+      // an offset readable rather than merely stated.
+      await expect(
+        page.locator(".cp-parity-anchor.cp-parity-anchor-active"),
+      ).toHaveCount(2);
+      // A second row pinned alongside it, so the shot also covers two findings held up against
+      // each other — and, in a different severity, that a box is coloured by the row that lit it.
+      await page.locator('[data-cp-parity-finding="tokens-0"]').click();
+      await expect(
+        page.locator(".cp-parity-anchor--error.cp-parity-anchor-active"),
+      ).toHaveCount(1);
+      // The prose-only finding never became a control: the server offers no `tabindex` where
+      // there is no geometry, and a hover affordance promising a highlight that cannot come is
+      // worse than plain text.
+      await expect(
+        page.locator(".cp-parity-finding--kind-contrast"),
+      ).not.toHaveAttribute("tabindex", "0");
+      await page.mouse.move(0, 0);
+    },
+  },
+  {
     // The exploded view's camera controls. The default shot proves the projection lands on the
     // stage; the sliders that shape it sit inside a closed `<details>`, so their layout — a
     // range and a live readout on one 240px row — is invisible to it and a regression there

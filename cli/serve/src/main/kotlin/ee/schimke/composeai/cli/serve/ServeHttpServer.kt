@@ -3808,6 +3808,14 @@ class ServeHttpServer(
             if (pinned) emptyList() else renderHost.annotationsForReference(reference.id),
           actualAnnotations =
             if (pinned) emptyList() else renderHost.annotationsForPreview(previewId),
+          // Withheld on a pin for the same reason the layers above are, and more sharply: a
+          // finding's anchors are bounds in the CURRENT render's pixel space, so drawing them over
+          // a historical frame would point at whatever happens to sit at those coordinates today
+          // and label it with a claim about a different render. The prose would be wrong too — a
+          // padding the catalog has since fixed would read as an open defect on the revision that
+          // still has it, which is the one page where that reading is least recoverable.
+          parityFindings =
+            if (pinned) emptyList() else renderHost.parityFindingsFor(previewId, reference.id),
           // Same rule as the authored layers above, for the same reason: the derived ones are
           // projected from TODAY's render, so drawing them over a pinned frame would label
           // historical pixels with the current semantics tree.
