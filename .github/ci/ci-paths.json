@@ -135,6 +135,7 @@
       "daemon/client/**",
       "api/preview-data-api/**",
       "common/io/**",
+      "common/image-crop/**",
       "render-session/**",
       "data/layoutinspector/core/**",
       "data/preview-overrides/core/**",
