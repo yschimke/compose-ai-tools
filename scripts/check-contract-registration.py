@@ -147,12 +147,20 @@ def path_matcher(root: pathlib.Path):
 # module when it selects the group for *every* one of these: a partial glob reads as coverage
 # without being it, and the paths it misses are classified by other groups, so the classifier
 # does not fail open — the probe is simply skipped.
+#
+# The last two are the reason this is not just a sample. A fixed list of five plausible paths can
+# be satisfied by five globs written to match exactly those five, which would pass this check
+# while no real source selects the job. The nonce segments are arbitrary and unguessable-by-
+# convention: nothing anyone would write into `ci-paths.json` on purpose matches them, so only a
+# genuine subtree glob can. They are constants rather than random so a failure is reproducible.
 REPRESENTATIVE = (
     "build.gradle.kts",
     "api/x.api",
     "src/main/kotlin/ee/schimke/composeai/X.kt",
     "src/main/java/ee/schimke/composeai/X.java",
     "src/test/kotlin/ee/schimke/composeai/XTest.kt",
+    "q7v3v9v1.kt",
+    "src/main/kotlin/q7v3v9v1/nested/deeper/Zq7v3.kts",
 )
 
 
