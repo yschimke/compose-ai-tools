@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.web.WebEscaping
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption

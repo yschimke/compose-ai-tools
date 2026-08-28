@@ -93,6 +93,49 @@ d="$tmp/backticked"; make_good "$d"
 printf 'Import it with `@AGENTS.md` at the top.\n' > "$d/CLAUDE.md"
 check "a backticked @AGENTS.md is not accepted as an import" 1 "$(run "$d")"
 
+# ...but a file that carries a REAL import and also explains itself is fine. The
+# check used to veto the whole file on any backticked mention, so a pointer that
+# documented its own mechanism — the normal shape for these files — failed the
+# gate with a live import sitting on line 1.
+d="$tmp/import-and-prose"; make_good "$d"
+printf '@AGENTS.md\n\nThe line above is an `@AGENTS.md` import, inlined at launch.\n' > "$d/CLAUDE.md"
+check "a real import survives prose that mentions it in backticks" 0 "$(run "$d")"
+
+# The case the file-wide veto could never see: an import inside a fenced block
+# matches the anchored regex exactly and is still inert.
+d="$tmp/fenced-import"; make_good "$d"
+printf 'Put this at the top of the file:\n\n```\n@AGENTS.md\n```\n' > "$d/CLAUDE.md"
+check "an @AGENTS.md inside a fence is not accepted as an import" 1 "$(run "$d")"
+
+# A literal ~~~ inside a backtick fence does NOT close it. Toggling on either
+# marker without remembering the opener re-opened the file mid-block, so the
+# `@AGENTS.md` on the next line — still fenced, still inert — certified as an
+# import.
+d="$tmp/mixed-fence"; make_good "$d"
+printf 'Example:\n\n```\n~~~\n@AGENTS.md\n```\n' > "$d/CLAUDE.md"
+check "a ~~~ inside a backtick fence does not re-open the file" 1 "$(run "$d")"
+
+# The import regex must keep its literal dots. `awk -v re=...` consumes C string
+# escapes, so `\.` arrives as a wildcard and a pointer that names no real file
+# passes the gate. The regex goes to grep -E and nowhere else.
+d="$tmp/wildcard-dots"; make_good "$d"
+printf '@xAGENTSymd\n' > "$d/CLAUDE.md"
+printf '@xAGENTSymd\n' > "$d/GEMINI.md"
+check "a pointer matching only via wildcarded dots is rejected" 1 "$(run "$d")"
+
+# CommonMark caps fence indentation at three spaces: at four, a same-delimiter
+# line is an indented code block — content — not a closer. Accepting unlimited
+# leading whitespace re-opened the document at that line and certified the still
+# fenced @AGENTS.md below it.
+d="$tmp/overindented-fence"; make_good "$d"
+printf '```\n    ```\n@AGENTS.md\n```\n' > "$d/CLAUDE.md"
+check "a four-space-indented fence marker does not close the block" 1 "$(run "$d")"
+
+# ...and three spaces still does, so the limit does not simply reject everything.
+d="$tmp/indented-fence-ok"; make_good "$d"
+printf '@AGENTS.md\n\n   ```\nfenced\n   ```\n' > "$d/CLAUDE.md"
+check "a three-space-indented fence still opens and closes" 0 "$(run "$d")"
+
 d="$tmp/no-copilot"; make_good "$d"; rm "$d/.github/copilot-instructions.md"
 check "missing copilot-instructions.md is rejected" 1 "$(run "$d")"
 

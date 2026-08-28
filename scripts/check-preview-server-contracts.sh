@@ -38,6 +38,7 @@ CONTRACT_PROJECTS=(
   ":render-session-subprocess"
   ":common-io"
   ":common-image-crop"
+  ":common-web-escaping"
   ":agent-grant-protocol"
   ":data-layoutinspector-core"
   ":data-preview-overrides-core"

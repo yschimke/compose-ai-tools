@@ -1,9 +1,9 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.bundle.BundleReader
+import ee.schimke.composeai.bundle.WebEmbed
 import ee.schimke.composeai.bundle.embedWebIntoZip
 import ee.schimke.composeai.bundle.resolveInBundleTarget
-import ee.schimke.composeai.cli.serve.WebEmbed
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File

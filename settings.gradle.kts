@@ -287,6 +287,13 @@ include(":common-image-crop")
 
 project(":common-image-crop").projectDir = file("common/image-crop")
 
+// HTML/JS/URL escaping and PNG header dimensions, shared by the server's pages and the bundle's
+// web-embed gallery. Extracted from `:cli:serve` so `WebEmbed` could move to `:bundle-format`
+// without dragging generic escaping into a format module — #3824 preparation.
+include(":common-web-escaping")
+
+project(":common-web-escaping").projectDir = file("common/web-escaping")
+
 // The scope/capability vocabulary, duration grammar and token fingerprint shared by the preview
 // server that mints agent grants and the `auth` client that asks for them. Extracted from
 // `:cli:serve` so the client half stops reaching into the server to parse its own `--ttl`.

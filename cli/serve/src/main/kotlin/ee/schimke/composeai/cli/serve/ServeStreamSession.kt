@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.web.WebEscaping
 import java.util.concurrent.atomic.AtomicLong
 
 /**

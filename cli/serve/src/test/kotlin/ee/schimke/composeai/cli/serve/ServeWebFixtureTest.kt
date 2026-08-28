@@ -13,6 +13,7 @@ import ee.schimke.composeai.designpages.PageImage
 import ee.schimke.composeai.designpages.PageNode
 import ee.schimke.composeai.designpages.PageNodeConfidence
 import ee.schimke.composeai.designpages.PageNodeLink
+import ee.schimke.composeai.web.WebEscaping
 import java.awt.Color
 import java.awt.GradientPaint
 import java.awt.RenderingHints

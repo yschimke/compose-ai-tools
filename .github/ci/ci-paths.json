@@ -142,6 +142,7 @@
       "api/preview-data-api/**",
       "common/io/**",
       "common/image-crop/**",
+      "common/web-escaping/**",
       "api/agent-grant-protocol/**",
       "render-session/**",
       "data/layoutinspector/core/**",

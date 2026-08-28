@@ -2907,6 +2907,9 @@ html:not(.cp-bg-transparent) #cp-reference-compare[data-cp-stage-clip] .cp-refer
   font-variant-numeric: tabular-nums; }
 .cp-parity-report { margin-left: auto; font-size: 0.74rem; }
 .cp-parity-hint { margin: 8px 0 0; color: var(--cp-fg-faint); font-size: 0.72rem; }
+/* A run that looked and found nothing. Worth a line rather than an absent panel: "checked, clean"
+   and "nobody ran this" are different facts, and only one of them is reassuring. */
+.cp-parity-clean { margin: 10px 0 0; color: var(--cp-fg-muted); font-size: 0.76rem; }
 .cp-parity-groups { display: grid; gap: 12px; margin-top: 12px; }
 .cp-parity-group h3 { display: flex; align-items: center; gap: 7px; margin: 0 0 6px;
   font-size: 0.72rem; color: var(--cp-fg-muted); text-transform: uppercase;

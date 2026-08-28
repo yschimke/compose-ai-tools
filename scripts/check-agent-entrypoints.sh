@@ -130,6 +130,60 @@ fi
 
 # ----------------------------------------------------------------- 4 + 5. entrypoints
 #
+# Print <file> with every fenced code block removed, so the import matcher below
+# sees only lines an agent would actually act on.
+#
+# The fence state tracks the OPENING delimiter, not just "a fence marker seen".
+# CommonMark closes a fence only on the same character, at least as long as the
+# opener, indented at most three spaces, with nothing after it. Each of those
+# three conditions has the same failure if dropped: a line that is fence CONTENT
+# reads as a close, the file re-opens, and the still-fenced `@AGENTS.md` on the
+# next line certifies as an import. An inert pointer certified as reachable is
+# the exact failure this gate exists to prevent, so it is worth the state.
+#
+# Three spaces, not "any indentation": at four a fence marker is an indented
+# code block, i.e. content. A leading TAB is four columns and so is over the
+# limit already, which is why only spaces are allowed here.
+strip_fenced_blocks() {
+  awk '
+    {
+      marker = ""
+      # Three optional spaces spelled out rather than {0,3}: mawk 1.3.4 panics
+      # compiling an interval next to this alternation ("values still on machine
+      # stack"), and this script has to run under whatever awk the host has.
+      if (match($0, /^ ? ? ?(`+|~+)/)) {
+        marker = substr($0, RSTART, RLENGTH)
+        gsub(/^ */, "", marker)
+      }
+      len = length(marker)
+      if (len >= 3) {
+        ch = substr(marker, 1, 1)
+        if (!fence) {
+          # An opener may carry an info string ("```sh"); a closer may not.
+          fence = 1; fence_ch = ch; fence_len = len
+          next
+        }
+        rest = substr($0, RSTART + RLENGTH)
+        if (ch == fence_ch && len >= fence_len && rest ~ /^[ \t]*$/) {
+          fence = 0
+          next
+        }
+      }
+      if (!fence) print
+    }
+  ' "$1"
+}
+
+# Does <file> carry a live <regex> import — one on its own line, outside every
+# fenced code block?
+#
+# The regex is handed to `grep -E`, never to `awk -v`: awk processes C string
+# escapes in a -v assignment, so `\.` arrives as a bare `.` — a wildcard — and
+# `@xAGENTSymd` would certify as an import. One ERE, one engine.
+import_line_outside_code() {
+  strip_fenced_blocks "$1" | grep -Eq "$2"
+}
+
 # check_import <label> <file> <regex> <human-readable mechanism>
 check_import() {
   local label="$1" file="$2" re="$3" mech="$4"
@@ -137,10 +191,20 @@ check_import() {
     fail "${label}: ${file} is missing — ${label} would resolve no repository instructions"
     return
   fi
-  # An import must be its own line and must not be inside a code span: Claude
-  # Code and Gemini CLI both skip backticked text, so `@AGENTS.md` in backticks
-  # is documentation, not an import.
-  if grep -Eq "$re" "$root/$file" && ! grep -Eq '`[^`]*@\.?/?AGENTS\.md' "$root/$file"; then
+  # An import must be its own line and must not be inside a code span or a fenced
+  # block: Claude Code and Gemini CLI both skip those, so `@AGENTS.md` in
+  # backticks is documentation, not an import.
+  #
+  # The check is per-LINE, deliberately. It used to be an anchored match for the
+  # import plus a FILE-WIDE veto on any backticked mention — which vetoed a
+  # perfectly good import the moment the same file explained itself, and a
+  # pointer file that documents its own mechanism is the normal case here. The
+  # veto was redundant as well as wrong: a line that is nothing but
+  # `@AGENTS.md` in a code span cannot match the anchored regex anyway.
+  #
+  # What it could never catch, and this does, is the import sitting inside a
+  # ``` fence. That line matches the anchored regex exactly and is still inert.
+  if import_line_outside_code "$root/$file" "$re"; then
     ok "${label}: ${file} reaches AGENTS.md (${mech})"
   else
     fail "${label}: ${file} does not import AGENTS.md (${mech}). A markdown link is NOT followed — the invariants would be invisible."

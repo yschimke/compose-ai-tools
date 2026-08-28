@@ -197,6 +197,57 @@ class ServeParityFindingStoreTest {
   }
 
   @Test
+  fun `a run that looked and found nothing keeps its verdict`() {
+    // `{"status":"pass","findings":[]}` is the natural shape of a clean run, and dropping it made
+    // the comparison indistinguishable from a catalog nobody ran a parity check against.
+    val json =
+      """{"schema":"compose-preview-parity-findings/v1","previews":{"p":[
+         {"referenceId":"a","status":"pass","findings":[]}]}}"""
+    val set = store(json).forComparison("p", "a").single()
+    assertEquals("pass", set.status)
+    assertTrue(set.findings.isEmpty())
+    // …but a set with neither findings nor a status says nothing at all, and still goes.
+    val silent =
+      """{"schema":"compose-preview-parity-findings/v1","previews":{"p":[{"findings":[]}]}}"""
+    assertTrue(store(silent).isEmpty)
+  }
+
+  @Test
+  fun `the page budget is spent per comparison, not across references a page never shows`() {
+    // Reference-scoped sets are mutually exclusive on screen. Charging them against one shared
+    // allowance let the first two boards exhaust it and left the third comparison blank, for a
+    // page that was never going to render the other two.
+    fun finding(index: Int) =
+      """{"kind":"layout","severity":"warn","message":"m$index","anchors":[
+         {"side":"actual","bounds":{"x":0,"y":0,"width":4,"height":4}}]}"""
+    fun set(reference: String) =
+      """{"referenceId":"$reference","findings":[${(1..200).joinToString(",") { finding(it) }}]}"""
+    val json =
+      """{"schema":"compose-preview-parity-findings/v1","previews":{"p":[
+         ${listOf("a", "b", "c").joinToString(",") { set(it) }}]}}"""
+    val loaded = store(json)
+    for (reference in listOf("a", "b", "c")) {
+      assertEquals(
+        200,
+        loaded.forComparison("p", reference).single().findings.size,
+        "board $reference keeps its own verdict",
+      )
+    }
+  }
+
+  @Test
+  fun `an anchor label is clamped, not carried whole into every page`() {
+    val json =
+      """{"schema":"compose-preview-parity-findings/v1","previews":{"p":[{"findings":[
+         {"kind":"layout","severity":"warn","message":"m","anchors":[
+           {"side":"actual","bounds":{"x":0,"y":0,"width":4,"height":4},
+            "label":"${"x".repeat(900)}"}]}]}]}}"""
+    val label = store(json).forPreview("p").single().findings.single().anchors.single().label
+    assertEquals(120, label?.length)
+    assertTrue(label!!.endsWith("…"))
+  }
+
+  @Test
   fun `one comparison cannot publish more than a page can hold`() {
     // Nested ceilings multiply — twenty sets of two hundred findings is four thousand rows and a
     // browser that stops responding while their boxes are placed. The aggregate is the one that
@@ -209,7 +260,7 @@ class ServeParityFindingStoreTest {
     val json =
       """{"schema":"compose-preview-parity-findings/v1","previews":{"p":[
          ${(1..20).joinToString(",") { set }}]}}"""
-    val findings = store(json).forPreview("p").flatMap { it.findings }
+    val findings = store(json).forComparison("p", "any").flatMap { it.findings }
     assertEquals(300, findings.size)
     assertEquals(600, findings.sumOf { it.anchors.size })
   }

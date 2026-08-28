@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.43.0](https://github.com/yschimke/compose-ai-tools/compare/v1.42.0...v1.43.0) (2026-08-28)
+
+
+### Features
+
+* **renderer:** render activity tours against the manifest Application ([#4662](https://github.com/yschimke/compose-ai-tools/issues/4662)) ([226f89c](https://github.com/yschimke/compose-ai-tools/commit/226f89c2bb601a3bd48f3b265a2316139587c93b))
+* **serve:** offer the compareWith sibling as a second source for the spec lane ([#4652](https://github.com/yschimke/compose-ai-tools/issues/4652)) ([9e09ef7](https://github.com/yschimke/compose-ai-tools/commit/9e09ef71762bb27404a63337b04ee8db0f4c0b63))
+* **serve:** put the parity verdict on the comparison, anchored to the frame ([#4664](https://github.com/yschimke/compose-ai-tools/issues/4664)) ([68a7707](https://github.com/yschimke/compose-ai-tools/commit/68a770796ea57e5b7f011d592251dcd38d847048))
+
+
+### Bug Fixes
+
+* **agents:** stop the entrypoint gate vetoing a live import, and unblock flake triage ([#4671](https://github.com/yschimke/compose-ai-tools/issues/4671)) ([bd54f0c](https://github.com/yschimke/compose-ai-tools/commit/bd54f0c17ce332bd6dab2e7721a778479b54ee26))
+* **bundle-format:** record appTourRobolectricPropertiesBody in the ABI dump ([#4673](https://github.com/yschimke/compose-ai-tools/issues/4673)) ([6205c9a](https://github.com/yschimke/compose-ai-tools/commit/6205c9a731bf9792916d953f048161416c8b056b))
+* **ci:** schedule the contract probe for agent-grant-protocol sources ([#4656](https://github.com/yschimke/compose-ai-tools/issues/4656)) ([789e9bd](https://github.com/yschimke/compose-ai-tools/commit/789e9bd953cd5c4a33a75dbcd8b1dae5fadae57d))
+* **cli:** stop doctor's probes following a captive portal's redirect ([#4667](https://github.com/yschimke/compose-ai-tools/issues/4667)) ([f07981d](https://github.com/yschimke/compose-ai-tools/commit/f07981d1a5f942f8637ed6ddddfd405d0173bcf4))
+* close three review findings left on merged PRs ([#4665](https://github.com/yschimke/compose-ai-tools/issues/4665)) ([80c9198](https://github.com/yschimke/compose-ai-tools/commit/80c91980b8ea82b6c588d26bded9b1df068c785a))
+* **deploy:** bound the branch probe and stop calling a raced catalog unpublished ([#4669](https://github.com/yschimke/compose-ai-tools/issues/4669)) ([d80ac0e](https://github.com/yschimke/compose-ai-tools/commit/d80ac0ef643e1158fa8fcf4b4e7aa8f9df786076))
+* **deploy:** read .env the way Compose does before advising a deletion ([#4649](https://github.com/yschimke/compose-ai-tools/issues/4649)) ([c97f73e](https://github.com/yschimke/compose-ai-tools/commit/c97f73e91094a6880673b29ee3584875046700b7))
+* **deploy:** size the live-seat budget from the CPU quota, not just nproc ([#4658](https://github.com/yschimke/compose-ai-tools/issues/4658)) ([55aa16e](https://github.com/yschimke/compose-ai-tools/commit/55aa16e77a9556f16347012a67995e92e5157769))
+* **design-artifacts:** resolve RTL previews by locale and stop guessing a gutter density ([#4668](https://github.com/yschimke/compose-ai-tools/issues/4668)) ([30a1920](https://github.com/yschimke/compose-ai-tools/commit/30a1920ec5c51f8369f308dddd328313f8e931c4))
+* **figma-svg:** drive the interaction a variant names before the capture ([#4655](https://github.com/yschimke/compose-ai-tools/issues/4655)) ([5d01e56](https://github.com/yschimke/compose-ai-tools/commit/5d01e566feba54b3f6e70e15d1948c8d4981cdc4))
+* **layout-inspector:** advertise v18 for the vector-path transform ([#4650](https://github.com/yschimke/compose-ai-tools/issues/4650)) ([e724f0e](https://github.com/yschimke/compose-ai-tools/commit/e724f0ed9da388437bf0baee9d60d27e201b91fa))
+* **renderer:** resolve previews whose parameters are all defaulted ([#4646](https://github.com/yschimke/compose-ai-tools/issues/4646)) ([6d3cc85](https://github.com/yschimke/compose-ai-tools/commit/6d3cc85e317a2ff340ab16ffb9a3c751fc8a49a1))
+* **serve:** budget the parity verdict per comparison, and keep what a clean run said ([#4672](https://github.com/yschimke/compose-ai-tools/issues/4672)) ([c66d1ea](https://github.com/yschimke/compose-ai-tools/commit/c66d1ead0988072169c05ff70f7d5e4da0a96470))
+* **serve:** dress the compare wall's rows only when they are shown ([#4660](https://github.com/yschimke/compose-ai-tools/issues/4660)) ([2eee945](https://github.com/yschimke/compose-ai-tools/commit/2eee94564f947267fb018315fc73f3d36dc4a2e4))
+* **serve:** make a catalog re-point atomic and its persistence retryable ([#4647](https://github.com/yschimke/compose-ai-tools/issues/4647)) ([31aa27d](https://github.com/yschimke/compose-ai-tools/commit/31aa27d54a77a54ee3a467ed3baa009567ac9653))
+
 ## [1.42.0](https://github.com/yschimke/compose-ai-tools/compare/v1.41.0...v1.42.0) (2026-08-28)
 
 
