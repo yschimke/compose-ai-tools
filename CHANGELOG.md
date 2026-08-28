@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.42.0](https://github.com/yschimke/compose-ai-tools/compare/v1.41.0...v1.42.0) (2026-08-28)
+
+
+### Features
+
+* **design-artifacts:** carry the cross-system pairing on the published manifest ([#4623](https://github.com/yschimke/compose-ai-tools/issues/4623)) ([939d004](https://github.com/yschimke/compose-ai-tools/commit/939d004c109700fe18f592e2dd0d2b6a2383fb4a))
+* **design-artifacts:** publish each component's cross-system parallel ([#4631](https://github.com/yschimke/compose-ai-tools/issues/4631)) ([f75e891](https://github.com/yschimke/compose-ai-tools/commit/f75e891f44d60651bfd689bb94a77ccf6dc3ce9d))
+* **serve:** publish the preview server so the CLI can depend on it across repos ([#4641](https://github.com/yschimke/compose-ai-tools/issues/4641)) ([7ce44a2](https://github.com/yschimke/compose-ai-tools/commit/7ce44a2a00c2f5d761f122422779427bd5c53200))
+* **serve:** seed the compare wall from the published scores, and name what is already filed ([#4643](https://github.com/yschimke/compose-ai-tools/issues/4643)) ([1598300](https://github.com/yschimke/compose-ai-tools/commit/15983002b63dfd387ee05314d2f0ef8ba92d5c81))
+
+
+### Bug Fixes
+
+* carry an ImageVector group's transform onto its paths instead of rastering the icon ([#4635](https://github.com/yschimke/compose-ai-tools/issues/4635)) ([20d9b51](https://github.com/yschimke/compose-ai-tools/commit/20d9b518cab9cf768cbbf6363349a131b741e6ef))
+* **ci:** key the backdrop opt-out on GIF, and run the image tests in CI ([#4622](https://github.com/yschimke/compose-ai-tools/issues/4622)) ([ebf5615](https://github.com/yschimke/compose-ai-tools/commit/ebf5615612b0cd5840f1251226cafac61c668f3a))
+* **ci:** schedule the contract probe for common/image-crop sources ([#4634](https://github.com/yschimke/compose-ai-tools/issues/4634)) ([d835007](https://github.com/yschimke/compose-ai-tools/commit/d8350076e004c3edc3fb4912a44e0d0a2c5d922d))
+* **cli:** stop doctor ticking a 404 as a reachable host ([#4632](https://github.com/yschimke/compose-ai-tools/issues/4632)) ([ff43baa](https://github.com/yschimke/compose-ai-tools/commit/ff43baaac7705183c0040679d7d0e1d448c76121))
+* **deploy:** derive the live-seat budget from cores as well as memory ([#4637](https://github.com/yschimke/compose-ai-tools/issues/4637)) ([463062e](https://github.com/yschimke/compose-ai-tools/commit/463062ece0b1de32721d65ca951dee865a55f0f9))
+* **deploy:** refuse a .env line continuation instead of serving 502 ([#4640](https://github.com/yschimke/compose-ai-tools/issues/4640)) ([951a8b3](https://github.com/yschimke/compose-ai-tools/commit/951a8b3aff5ee2e731b00aa75d31cf3336d1768f))
+* **design-artifacts:** stamp compareWith onto the written manifest, and refuse an empty id file ([#4629](https://github.com/yschimke/compose-ai-tools/issues/4629)) ([bae4a8e](https://github.com/yschimke/compose-ai-tools/commit/bae4a8e2b2c7c5f4e10295567fb4c7c413c15320))
+* **figma-svg:** carry the variant seed through the desktop preview router ([#4638](https://github.com/yschimke/compose-ai-tools/issues/4638)) ([c28b5ab](https://github.com/yschimke/compose-ai-tools/commit/c28b5ab8da2d26c12f41e092cfe4eaea4e4f0d20))
+* **serve:** key the theme cache on the render environment, not a sample ([#4636](https://github.com/yschimke/compose-ai-tools/issues/4636)) ([3a5e2f6](https://github.com/yschimke/compose-ai-tools/commit/3a5e2f6e1edd0ca145ac5acbbdc18e9c0eaa9da9))
+* **serve:** let the load thresholds hold a load average, not a fraction ([#4627](https://github.com/yschimke/compose-ai-tools/issues/4627)) ([c5455d2](https://github.com/yschimke/compose-ai-tools/commit/c5455d26a0e51222f9005f5521e5dfd74876f029))
+* **serve:** print the failure count on a fully warm catalog too ([#4626](https://github.com/yschimke/compose-ai-tools/issues/4626)) ([a4b85ae](https://github.com/yschimke/compose-ai-tools/commit/a4b85ae8a45d7ed456f62a579385d49112947891))
+* **serve:** take the generation lock before clearing the dirty boundary ([#4642](https://github.com/yschimke/compose-ai-tools/issues/4642)) ([bfcb551](https://github.com/yschimke/compose-ai-tools/commit/bfcb55170962bb2c8305a794db5a0fa004c07ac2))
+
 ## [1.41.0](https://github.com/yschimke/compose-ai-tools/compare/v1.40.0...v1.41.0) (2026-08-28)
 
 
