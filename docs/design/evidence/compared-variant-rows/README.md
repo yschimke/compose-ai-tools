@@ -30,9 +30,19 @@ Three differences, one per finding:
 node docs/design/evidence/compared-variant-rows/fixture.mjs /tmp/after.html
 ```
 
-Renders through this checkout's own `render-cross-system-html.mjs` — the import is resolved from
-`import.meta.url`, so the path above is the only thing that has to be right. For the before shot,
-`git worktree add /tmp/base origin/main` and run the copy of this file that lands there. Chromium screenshots the
+Renders through this checkout's own `render-cross-system-html.mjs` by default. The before shot runs
+**this same fixture** against a renderer pinned to the baseline commit — the fixture is the constant,
+the renderer is the variable:
+
+```
+git worktree add /tmp/base ab03de26d7
+CROSS_SYSTEM_RENDERER=/tmp/base/scripts/design-artifacts/render-cross-system-html.mjs   node docs/design/evidence/compared-variant-rows/fixture.mjs /tmp/before.html
+```
+
+Not by running the copy of the fixture that lands in that worktree: the fixture has itself been
+fixed since (it used to carry an absolute import), so the older copy reproduces nothing on any other
+checkout, and once this one reaches `main` the worktree's copy would render the *fixed* renderer and
+produce no before shot at all. Chromium screenshots the
 `<table>` element at `deviceScaleFactor: 2`.
 
 The sibling ("Wear Compose Material 3") column shows broken images in both shots: it bakes

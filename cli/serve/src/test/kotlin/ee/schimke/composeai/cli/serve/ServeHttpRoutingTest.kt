@@ -1831,6 +1831,50 @@ class ServeHttpRoutingTest {
   }
 
   @Test
+  fun `a percent-encoded chrome pin is replaced, not doubled`() {
+    // Ktor decodes a parameter NAME before it reaches `queryParameters`, so `?%63hrome=invalid` is
+    // `chrome` to every read in the server — including the check that decides this URL carries an
+    // unrecognised pin. Comparing the raw text when dropping it kept the pair and appended a second
+    // `chrome=`, and a reader taking the first value read the invalid one, ignored it and fell back
+    // to their own mode: the wrong-surface failure the pin exists to prevent, restored by the
+    // replacement meant to close it.
+    val (_, page) = get("/compose-m3?%63hrome=invalid")
+    val report = page.substringAfter("id=\"cp-report\"", "").substringBefore("</form>")
+    assertTrue(report.isNotEmpty(), "the catalog report row is present: $page")
+    assertTrue(
+      report.contains("chrome%3Ddev") || report.contains("chrome=dev"),
+      "the resolved mode is pinned: $report",
+    )
+    // Neither spelling of the stale pin survives — the encoded pair is what used to.
+    assertTrue(
+      !report.contains("%2563hrome") && !report.contains("%63hrome"),
+      "the encoded pin is dropped rather than carried alongside the new one: $report",
+    )
+    assertTrue(
+      !report.contains("chrome%3Dinvalid") && !report.contains("chrome=invalid"),
+      "and its value does not reach the report by any spelling: $report",
+    )
+  }
+
+  @Test
+  fun `a query name that is not this pin survives the replacement`() {
+    // The drop is scoped to what the server itself reads as the chrome pin. An unrelated parameter
+    // — encoded or not, and including one whose name is not valid percent-encoding — is carried
+    // through untouched, so replacing the pin never costs a report its other context.
+    val (_, page) = get("/compose-m3?locale=en-US&%7Anote=keep&chrome=invalid")
+    val report = page.substringAfter("id=\"cp-report\"", "").substringBefore("</form>")
+    assertTrue(report.isNotEmpty(), "the catalog report row is present: $page")
+    assertTrue(
+      report.contains("locale%3Den-US") || report.contains("locale=en-US"),
+      "an ordinary parameter is kept: $report",
+    )
+    assertTrue(
+      report.contains("note%3Dkeep") || report.contains("note=keep"),
+      "so is an encoded one that is not the pin: $report",
+    )
+  }
+
+  @Test
   fun `viewer unfurl metadata uses the external origin and preserves render overrides`() {
     val request =
       Request.Builder()

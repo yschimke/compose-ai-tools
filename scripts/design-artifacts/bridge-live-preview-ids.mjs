@@ -94,7 +94,18 @@ function uiModeIsNight(uiMode) {
  */
 function variantIdentity(preview) {
   const params = preview.params ?? {};
-  const suffixTheme = themeOfPreviewId(preview.id);
+  // The theme is read off the id BEFORE the reseed suffix. Discovery builds an `@OverrideVariant`
+  // id as `<base id>_VARIANT_<name>`, so the base's own `…_Light` / `…_Dark` segment is no longer
+  // the tail and `themeOfPreviewId` saw none — every reseed came back with an unknown theme. That
+  // cost nothing while a reseed could not be selected; it decides the wrong render the moment one
+  // can be. Stripped by the override's own NAME rather than by searching for the marker, which is
+  // a legal substring of a Kotlin function name.
+  const overrideName = preview.overrides?.name ?? null;
+  const reseedTag = overrideName ? `_VARIANT_${overrideName}` : null;
+  const id = String(preview.id ?? "");
+  const suffixTheme = themeOfPreviewId(
+    reseedTag && id.endsWith(reseedTag) ? id.slice(0, -reseedTag.length) : id,
+  );
   const night = uiModeIsNight(params.uiMode)
     ? true
     : suffixTheme
@@ -128,7 +139,28 @@ function variantIdentity(preview) {
     // buildable source exists. A baked-only catalog — which the public server serves read-only —
     // therefore never saw the flag and listed every second-tier cell in full.
     secondary: preview.overrides?.secondary === true,
+    // The `@OverrideVariant` this candidate reseeds, or null for a base capture. Read off the spec
+    // rather than the `_VARIANT_` id suffix, which is a legal substring of a Kotlin function name.
+    // [expandDeferredRecords] selects on it: a deferred record naming an override STATE must route
+    // to that reseed, not to the base annotation that happens to share its theme and size.
+    overrideName,
+    // The axis assignment a `@PreviewAxis` cell reseeds with, as an object. That cell is identified
+    // by its PROPS, not by a name: `applyVariantAxisProps` deliberately leaves `state` at its
+    // default for one, because structured props match a kit by property rather than by spelling.
+    // So a deferred record for such a cell names no state, and only these can tell it apart from
+    // the base annotation it shares every `@Preview` parameter with.
+    overrideProps: overridePropsOf(preview.overrides?.props),
   };
+}
+
+/** A variant spec's `[{key, value}]` props as a plain object; `null` when it declares none. */
+function overridePropsOf(props) {
+  if (!Array.isArray(props) || props.length === 0) return null;
+  const out = {};
+  for (const { key, value } of props) {
+    if (typeof key === "string" && key && typeof value === "string") out[key] = value;
+  }
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 /**
@@ -390,6 +422,56 @@ function sizeForCandidateOf(spec) {
  * that would 404. Two annotations that recover the SAME axes collapse to one record (the exporter
  * would have named them one path); first listed wins.
  */
+/**
+ * The reseeds a deferred record EXPLICITLY names, or null when it names none.
+ *
+ * `pickVariantId` scores theme, size and font scale. It has no opinion about an `@OverrideVariant`
+ * reseed, and a reseed shares its base's function and every one of those annotation parameters. So
+ * a record deferred for a mode scored the base and the reseed identically and took whichever came
+ * first: the base. The live-only card then rendered through the base annotation, showing the
+ * resting cell under the variant's name, and its per-preview declarations (`secondary` among them)
+ * were the base's too.
+ *
+ * A reseed identifies itself in one of two ways, and both have to be read:
+ *
+ *   - a hand-written `@OverrideVariant` has only a NAME, which the export writes as the record's
+ *     `state`;
+ *   - a `@PreviewAxis` cell has a structured assignment, which `applyVariantAxisProps` writes as
+ *     the record's `props` while deliberately leaving `state` at its default — the props are the
+ *     identity there, matching a kit by property rather than by spelling.
+ *
+ * Reading only the first would route every axis cell to its base, which is the same defect one
+ * spelling over. Null for a record that names neither, and null rather than an empty list when it
+ * names one this function has no reseed for: that is a spelling nothing can act on, and dropping
+ * the route would lose a card rather than mis-address one.
+ */
+function keyedCandidates(candidates, record) {
+  const state = record?.state;
+  const named = typeof state === "string" && state !== "" && state !== "default" ? state : null;
+  if (named) {
+    const byName = candidates.filter((c) => c.overrideName === named);
+    return byName.length > 0 ? byName : null;
+  }
+  const wanted = record?.props;
+  if (wanted && typeof wanted === "object") {
+    // Every axis the reseed declares must be the one this record asks for. A subset match, not an
+    // equality: the record may also carry a `fontScale` or a spec-authored prop from another axis.
+    const byProps = candidates.filter(
+      (c) =>
+        c.overrideProps &&
+        Object.entries(c.overrideProps).every(([k, v]) => String(wanted[k]) === String(v)),
+    );
+    if (byProps.length > 0) return byProps;
+  }
+  return null;
+}
+
+/** The base annotations, for a record naming no reseed; the whole list when a function is all reseeds. */
+function baseCandidates(candidates) {
+  const base = candidates.filter((c) => c.overrideName === null);
+  return base.length > 0 ? base : candidates;
+}
+
 export function expandDeferredRecords(deferred, spec, bundles) {
   const previewsByFn = previewsByFunction(bundles);
   const breakpointForSize = breakpointForSizeOf(spec);
@@ -403,8 +485,17 @@ export function expandDeferredRecords(deferred, spec, bundles) {
     }
     // Axes already known (a mode deferral), or a single-annotation function: one record, routed to
     // the annotation those axes select — exactly a baked sticker's resolution.
+    // What this record names, if anything. Read BEFORE the branch: an axis-keyed record with no
+    // theme falls into the expansion below, and expanding every candidate there emitted the base
+    // AND its reseed carrying the same `props` — one derived path with two conflicting `previewId`s.
+    // The expansion is for a record that names no axes at all; one that names a cell selects it.
+    const keyed = keyedCandidates(candidates, record);
     if (record?.theme || candidates.length === 1) {
-      const daemonId = pickVariantId(candidates, record ?? {}, breakpointForSize);
+      const daemonId = pickVariantId(
+        keyed ?? baseCandidates(candidates),
+        record ?? {},
+        breakpointForSize,
+      );
       out.push(daemonId ? { ...record, previewId: daemonId } : { ...record });
       continue;
     }
@@ -415,9 +506,10 @@ export function expandDeferredRecords(deferred, spec, bundles) {
     // annotation shares its unscaled sibling's theme and size, so the key below would call the two
     // one sticker and the large-text live-only route would never be published at all.
     const wantedScale = requestedFontScale(record?.props);
+    const expandable = keyed ?? candidates;
     const scaled =
-      wantedScale === null ? candidates : candidates.filter((c) => c.fontScale === wantedScale);
-    const pool = scaled.length > 0 ? scaled : candidates;
+      wantedScale === null ? expandable : expandable.filter((c) => c.fontScale === wantedScale);
+    const pool = scaled.length > 0 ? scaled : expandable;
     const seen = new Set();
     for (const candidate of pool) {
       const theme =
@@ -426,16 +518,38 @@ export function expandDeferredRecords(deferred, spec, bundles) {
       // Only a RECOVERED scale becomes props; a record that named its own keeps it verbatim, so the
       // spec's exact spelling ("1.5x", "2.0") is what reaches the path.
       const scale = wantedScale === null ? candidate.fontScale : null;
-      const key = [theme ?? "", size ?? "", scale ?? ""].join("\u0000");
+      // A reseed is its OWN cell, and the record has to say so in the axes `catalogImagePath` reads
+      // — otherwise the route it derives names the resting cell while rendering the variant, which
+      // is the mis-addressing this pass exists to stop, one path over. Its identity also joins the
+      // dedup key: a reseed shares its base's theme, size and scale, so keying on those alone
+      // collapsed the two and the component lost the card entirely.
+      //
+      // Props win over a name where the reseed has them, matching `applyVariantAxisProps`: the two
+      // describe the same cell, and stamping both would double-count it in the fold.
+      const cell = candidate.overrideProps
+        ? { props: candidate.overrideProps }
+        : candidate.overrideName
+          ? { state: candidate.overrideName }
+          : {};
+      const key = [
+        theme ?? "",
+        size ?? "",
+        scale ?? "",
+        candidate.overrideName ?? "",
+      ].join("\u0000");
       if (seen.has(key)) continue;
       seen.add(key);
+      const props = {
+        ...(record?.props ?? {}),
+        ...(cell.props ?? {}),
+        ...(scale != null ? { fontScale: formatFontScale(scale) } : {}),
+      };
       out.push({
         ...record,
         ...(theme ? { theme } : {}),
         ...(size ? { size } : {}),
-        ...(scale != null
-          ? { props: { ...(record?.props ?? {}), fontScale: formatFontScale(scale) } }
-          : {}),
+        ...(cell.state ? { state: cell.state } : {}),
+        ...(Object.keys(props).length > 0 ? { props } : {}),
         previewId: candidate.id,
       });
     }
