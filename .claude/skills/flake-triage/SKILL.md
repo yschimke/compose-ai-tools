@@ -28,6 +28,19 @@ md5sum run-*.png
 (including `.error.json` sidecars from a failed run), so a plain re-invocation
 compares a file against itself and always "passes".
 
+**A harness capture has the same oracle, and it is cheaper.** The captures the
+`vscode-preview-diff` bot compares are Playwright shots of committed static
+fixtures, so N runs cost seconds and need no JVM:
+
+```
+cd preview-server/preview-harness      # or vscode-extension/preview-harness
+HARNESS_CHROMIUM=/path/to/chromium HARNESS_THEME=light \
+  npx playwright test -c playwright.config.mjs pages-snapshot.spec.mjs -g "<fixture>"
+md5sum out/<capture>.light.png
+```
+
+There is no `--rerun` equivalent to remember: each invocation rewrites `out/`.
+
 Read the hashes:
 
 - **All identical** → the preview is deterministic at this commit. A diff against
@@ -52,6 +65,15 @@ Once you know it moves, find *what* moves:
   is the worked example: two same-commit renders differing across 2.99% / 7.97% /
   10.96% of the image depending on the pair, root-caused to panels freezing at
   unpinned points rather than at their labelled transition fractions.
+- **Animated images in a harness capture** — an APNG or GIF a spec swaps in plays
+  on its own clock, and `img.complete` says *decoded*, not *finished*. A shot held
+  only for the decode lands on an arbitrary frame.
+  [`docs/design/evidence/motion-index-playing-determinism/`](../../../docs/design/evidence/motion-index-playing-determinism/README.md)
+  is the worked example: eight same-commit runs, three distinct hashes, 0.11% of
+  the image moving in one 19-row band per card. Decode the stub's `acTL`/`fcTL`
+  chunks to learn its frame count and delays, then hold for rest — poll the
+  container's pixels until two reads spaced wider than one frame agree, rather
+  than hard-coding the duration.
 
 The usual sources, in rough order of frequency: an unpinned animation clock, a
 system-time variable, unseeded randomness, a network- or disk-loaded image, and
