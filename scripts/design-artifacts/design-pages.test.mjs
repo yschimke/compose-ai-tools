@@ -6,6 +6,7 @@ import {
   catalogOwnsNode,
   declaringClassOf,
   declaringClasses,
+  publishingDirectories,
   pageImageName,
   planDesignPages,
 } from "./design-pages.mjs";
@@ -861,6 +862,116 @@ test("catalogOwnsNode places a claim by its declaring file", () => {
     catalogOwnsNode({}, classes),
     true,
     "nothing to place ⇒ nothing proves it foreign",
+  );
+});
+
+test("a sibling module compiling the same class is not ours", () => {
+  // The class half of ownership cannot separate two modules: a discovery id is `classInfo.name` +
+  // `method.name` and names no module, while nothing stops `:app` and `:feature` each compiling an
+  // `ee/app/sections/Buttons.kt`. Without the module half the sibling's node reads as local, and
+  // the page then pairs our render with its code or drops one the reference join would have found.
+  const catalog = {
+    components: [
+      {
+        componentId: "Button/Filled",
+        sourceDirectory: "app",
+        sourceFile: "src/main/kotlin/app/sections/Buttons.kt",
+        images: [
+          {
+            path: "images/button-filled/ideal__default.png",
+            previewId: "app.sections.ButtonsKt.FilledButton",
+          },
+        ],
+      },
+    ],
+  };
+  const classes = declaringClasses(catalog);
+  const directories = publishingDirectories(catalog);
+  assert.deepEqual([...directories], ["app"]);
+
+  const ourNode = {
+    previewId: "app.sections.ButtonsKt.FilledButton",
+    code: "app/src/main/kotlin/app/sections/Buttons.kt#FilledButton",
+  };
+  const siblingNode = {
+    previewId: "app.sections.ButtonsKt.FilledButton",
+    code: "feature/src/main/kotlin/app/sections/Buttons.kt#FilledButton",
+  };
+
+  // Both nodes carry the SAME declaring class, so the class test alone says yes to both — which is
+  // what makes this a module question rather than a naming one.
+  assert.equal(catalogOwnsNode(ourNode, classes), true);
+  assert.equal(catalogOwnsNode(siblingNode, classes), true);
+
+  assert.equal(catalogOwnsNode(ourNode, classes, directories), true);
+  assert.equal(catalogOwnsNode(siblingNode, classes, directories), false);
+});
+
+test("ownership falls open when either side names no module", () => {
+  const withDir = {
+    components: [
+      {
+        componentId: "Button/Filled",
+        sourceDirectory: "app",
+        images: [{ previewId: "app.sections.ButtonsKt.FilledButton" }],
+      },
+    ],
+  };
+  const classes = declaringClasses(withDir);
+  const directories = publishingDirectories(withDir);
+
+  // A node with no code handle: nothing to place it in, so the class match stands alone.
+  assert.equal(
+    catalogOwnsNode({ previewId: "app.sections.ButtonsKt.FilledButton" }, classes, directories),
+    true,
+  );
+
+  // A bundle predating `sourceDirectory` stamps none, and every node keeps the old behaviour.
+  const legacy = {
+    components: [
+      {
+        componentId: "Button/Filled",
+        images: [{ previewId: "app.sections.ButtonsKt.FilledButton" }],
+      },
+    ],
+  };
+  assert.deepEqual([...publishingDirectories(legacy)], []);
+  assert.equal(
+    catalogOwnsNode(
+      {
+        previewId: "app.sections.ButtonsKt.FilledButton",
+        code: "feature/src/main/kotlin/app/sections/Buttons.kt#FilledButton",
+      },
+      declaringClasses(legacy),
+      publishingDirectories(legacy),
+    ),
+    true,
+  );
+});
+
+test("a root-project catalog owns by class alone", () => {
+  // `""` is the root project — a real answer meaning "already repository-relative". It cannot
+  // exclude any path, and a root project has no sibling module to be confused with.
+  const root = {
+    components: [
+      {
+        componentId: "Button/Filled",
+        sourceDirectory: "",
+        images: [{ previewId: "app.sections.ButtonsKt.FilledButton" }],
+      },
+    ],
+  };
+  assert.deepEqual([...publishingDirectories(root)], [""]);
+  assert.equal(
+    catalogOwnsNode(
+      {
+        previewId: "app.sections.ButtonsKt.FilledButton",
+        code: "anywhere/Buttons.kt#FilledButton",
+      },
+      declaringClasses(root),
+      publishingDirectories(root),
+    ),
+    true,
   );
 });
 

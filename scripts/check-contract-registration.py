@@ -30,6 +30,7 @@ import importlib.util
 import json
 import pathlib
 import re
+import subprocess
 import sys
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -143,16 +144,14 @@ def path_matcher(root: pathlib.Path):
     return module.glob_to_regex
 
 
-# What a change to a contract module can plausibly touch. A glob only counts as covering the
-# module when it selects the group for *every* one of these: a partial glob reads as coverage
-# without being it, and the paths it misses are classified by other groups, so the classifier
-# does not fail open — the probe is simply skipped.
+# Shapes a contract module can grow that do not exist in it yet. Real files (below) cannot speak
+# for a source set a module has not added, so these cover the forward-looking half: a module with
+# only Kotlin today whose group glob is `…/src/main/kotlin/**` still has to admit a future `.java`.
 #
-# The last two are the reason this is not just a sample. A fixed list of five plausible paths can
-# be satisfied by five globs written to match exactly those five, which would pass this check
-# while no real source selects the job. The nonce segments are arbitrary and unguessable-by-
-# convention: nothing anyone would write into `ci-paths.json` on purpose matches them, so only a
-# genuine subtree glob can. They are constants rather than random so a failure is reproducible.
+# They are a sample, and a sample alone is gameable — one literal glob per entry satisfies all of
+# them. The nonce segments raise the bar (nothing anyone would write into `ci-paths.json` on
+# purpose matches them) but do not clear it, which is why the real-file check below carries the
+# weight. Constants rather than random so a failure is reproducible.
 REPRESENTATIVE = (
     "build.gradle.kts",
     "api/x.api",
@@ -163,16 +162,54 @@ REPRESENTATIVE = (
     "src/main/kotlin/q7v3v9v1/nested/deeper/Zq7v3.kts",
 )
 
+# Tracked files that cannot change what a module compiles or publishes, so a group that does not
+# select them is not under-covering anything.
+NON_COMPILING = (".md",)
 
-def uncovered_paths(directory: str, globs: list[str], to_regex) -> list[str]:
-    """The representative paths under `directory` that no glob in the group selects."""
+# How many unselected real paths to name before summarising. A narrowed glob misses hundreds.
+MAX_REPORTED = 5
+
+
+def module_files(root: pathlib.Path, directory: str) -> list[str]:
+    """Every tracked file under `directory` that can change what the module builds.
+
+    This is the half of the check that a hand-written glob cannot satisfy by coincidence. The
+    representative list above is a fixed seven paths, so seven literal globs
+    (`daemon/core/q7v3v9v1.kt`, …) pass it while no real source selects the job — measured at
+    131 of `daemon/core`'s 132 tracked files left unselected. Asking the group about the files
+    that are actually there removes that gap: there is no set of literal globs short enough to
+    write and long enough to cover a module.
+    """
+    result = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "-z", "--", directory],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return []
+    return [f for f in result.stdout.split("\0") if f and not f.endswith(NON_COMPILING)]
+
+
+def uncovered_paths(root: pathlib.Path, directory: str, globs: list[str], to_regex) -> list[str]:
+    """Paths under `directory` that no glob in the group selects.
+
+    Both halves: the module's real tracked files, and the representative shapes it does not have
+    yet. A miss in either means a change to that path does not schedule the probe — it is
+    classified by some other group, so the classifier does not fail open and nothing goes red;
+    the gate is simply skipped, which is the silent failure this whole script exists to catch.
+    """
     patterns = [to_regex(g) for g in globs]
-    missed = []
-    for suffix in REPRESENTATIVE:
-        path = f"{directory}/{suffix}"
-        if not any(p.match(path) for p in patterns):
-            missed.append(path)
-    return missed
+    unselected = lambda path: not any(p.match(path) for p in patterns)  # noqa: E731
+
+    real = [f for f in module_files(root, directory) if unselected(f)]
+    synthetic = [f"{directory}/{s}" for s in REPRESENTATIVE if unselected(f"{directory}/{s}")]
+
+    if len(real) > MAX_REPORTED:
+        shown = real[:MAX_REPORTED]
+        shown.append(f"… and {len(real) - MAX_REPORTED} more tracked files under {directory}/")
+        real = shown
+    return real + synthetic
 
 
 def check(root: pathlib.Path = REPO) -> int:
@@ -249,7 +286,7 @@ def check(root: pathlib.Path = REPO) -> int:
 
     to_regex = path_matcher(root)
     for path, directory in sorted(resolved.items()):
-        missed = uncovered_paths(directory, globs, to_regex)
+        missed = uncovered_paths(root, directory, globs, to_regex)
         if missed:
             problems.append(
                 f"{CI_PATHS}: '{CI_GROUP}' does not select the contract probe for "

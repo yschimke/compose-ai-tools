@@ -114,6 +114,11 @@ object ContractSurface {
     val twoArg: String = WebEscaping.formatPercent(0.5, 2)
 
     // `ServeBundle` constructs a Preview by name, picks a mode, and reads `files` off the result.
+    //
+    // `files` and nothing else: `Output.previewCount` is deliberately NOT probed, though it sits
+    // right beside `files` on the same type. `BundleCommand` never reads it — it counts from the
+    // previews it passed in — so pinning it would fail this gate on a compatible removal, for a
+    // field serve does not write. Probing a whole type is the opposite of the rule above.
     val preview = WebEmbed.Preview(id = "id", label = "label", pngBytes = png, isCover = true)
     val mode: WebEmbed.InlineMode =
       if (oneArg.isEmpty()) WebEmbed.InlineMode.INLINE else WebEmbed.InlineMode.EXTERNAL
@@ -123,7 +128,6 @@ object ContractSurface {
 
     return twoArg.length +
       files.size +
-      out.previewCount +
       WebEmbed.SCRIPT_NAME.length +
       WebEmbed.INDEX_NAME.length
   }

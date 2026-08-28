@@ -41,7 +41,7 @@ class Coverage(unittest.TestCase):
         self.to_regex = mod.path_matcher(REPO)
 
     def missed(self, directory, globs):
-        return mod.uncovered_paths(directory, globs, self.to_regex)
+        return mod.uncovered_paths(REPO, directory, globs, self.to_regex)
 
     def test_a_subtree_glob_covers_its_directory(self):
         self.assertEqual(self.missed("common/image-crop", ["common/image-crop/**"]), [])
@@ -68,17 +68,53 @@ class Coverage(unittest.TestCase):
 
     def test_globs_crafted_for_the_sample_do_not_count(self):
         # Five globs written to match exactly the five plausible paths would satisfy a fixed
-        # sample while no real source selects the job. The nonce probes are what make this a
-        # subtree requirement rather than a sample.
+        # sample while no real source selects the job. The nonce probes catch this one.
         crafted = [f"daemon/core/{s}" for s in mod.REPRESENTATIVE[:5]]
         missed = self.missed("daemon/core", crafted)
-        self.assertEqual(len(missed), 2)
-        self.assertTrue(all("q7v3" in m for m in missed))
+        self.assertTrue(any("q7v3" in m for m in missed))
+
+    def test_globs_crafted_for_the_whole_sample_still_do_not_count(self):
+        # The nonces raise the bar; they do not clear it. One literal glob per representative
+        # path — nonces included — satisfies every synthetic probe, which is what made the
+        # sample a sample. The module's real files are what no craftable glob list can cover:
+        # `daemon/core` has 132 tracked files and this craft selects one of them.
+        crafted = [f"daemon/core/{s}" for s in mod.REPRESENTATIVE]
+        missed = self.missed("daemon/core", crafted)
+        self.assertFalse(
+            [m for m in missed if "q7v3" in m],
+            "the crafted globs do satisfy every synthetic probe — that is the point",
+        )
+        self.assertIn("daemon/core/api/core.api", missed)
+        self.assertTrue(any("more tracked files" in m for m in missed))
+
+    def test_a_narrowed_subtree_glob_is_caught_by_real_files(self):
+        # The realistic version of the same hole: a glob that looks like whole-module coverage
+        # but stops one directory short. No synthetic path catches this — `src/main/kotlin/**`
+        # matches every Kotlin representative — so the real `.api` and build files must.
+        missed = self.missed("daemon/core", ["daemon/core/src/main/kotlin/**"])
+        self.assertIn("daemon/core/api/core.api", missed)
 
     def test_a_trailing_slash_pattern_matches_nothing(self):
         # `glob_to_regex` compiles `daemon/core/` to an exact path, so it selects no file under
         # the module — the shape the previous version of this check accepted as coverage.
-        self.assertEqual(len(self.missed("daemon/core", ["daemon/core/"])), len(mod.REPRESENTATIVE))
+        missed = self.missed("daemon/core", ["daemon/core/"])
+        for suffix in mod.REPRESENTATIVE:
+            self.assertIn(f"daemon/core/{suffix}", missed)
+        self.assertIn("daemon/core/api/core.api", missed)
+
+    def test_documentation_alone_is_not_under_coverage(self):
+        # A `.md` under a module cannot change what it compiles, so a group that does not select
+        # it is not under-covering anything — otherwise every module README would be a failure.
+        self.assertEqual(
+            [f for f in mod.module_files(REPO, "daemon/core") if f.endswith(".md")], []
+        )
+
+    def test_module_files_falls_back_outside_a_repository(self):
+        # `git ls-files` fails outside a checkout. The synthetic half still applies there, so
+        # the check degrades to what it was rather than passing everything.
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        self.assertEqual(mod.module_files(tmp, "m"), [])
 
 
 class ModulePackages(unittest.TestCase):
