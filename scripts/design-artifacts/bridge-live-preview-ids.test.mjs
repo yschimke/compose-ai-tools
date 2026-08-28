@@ -1560,3 +1560,201 @@ test("a second-tier cell's tier is stamped in the same pass, so a baked-only cat
     [undefined, undefined, undefined],
   );
 });
+
+test("a deferred record naming an override state routes to that reseed, in its own theme", () => {
+  // `pickVariantId` scores theme, size and font scale — it has no opinion about a reseed, and a
+  // reseed shares its base's function and every one of those parameters. So a mode-deferred record
+  // naming both a theme and an override state scored the base and the reseed identically and took
+  // the base: the live-only card rendered the resting cell under the variant's name, and its
+  // per-preview declarations (`secondary` among them) were the base's too.
+  const spec = {
+    groups: [{ components: [{ componentId: "Progress/Segmented", preview: "SegmentedProgress" }] }],
+  };
+  const bundle = {
+    previews: [
+      { id: "SegmentedProgress_Light", functionName: "SegmentedProgress", params: { uiMode: "UI_MODE_NIGHT_NO" } },
+      { id: "SegmentedProgress_Dark", functionName: "SegmentedProgress", params: { uiMode: "UI_MODE_NIGHT_YES" } },
+      {
+        id: "SegmentedProgress_Light_VARIANT_segments-13",
+        functionName: "SegmentedProgress",
+        params: { uiMode: "UI_MODE_NIGHT_NO" },
+        overrides: { name: "segments-13", secondary: true },
+      },
+      {
+        id: "SegmentedProgress_Dark_VARIANT_segments-13",
+        functionName: "SegmentedProgress",
+        params: { uiMode: "UI_MODE_NIGHT_YES" },
+        overrides: { name: "segments-13", secondary: true },
+      },
+    ],
+  };
+  const route = (record) =>
+    expandDeferredRecords([{ preview: "SegmentedProgress", reason: "mode", ...record }], spec, [
+      bundle,
+    ]).map((r) => r.previewId);
+
+  // The reseed, and the right theme of it — the theme segment is no longer the id's tail, so it is
+  // read off the head before the `_VARIANT_` suffix.
+  assert.deepEqual(route({ theme: "dark", state: "segments-13" }), [
+    "SegmentedProgress_Dark_VARIANT_segments-13",
+  ]);
+  assert.deepEqual(route({ theme: "light", state: "segments-13" }), [
+    "SegmentedProgress_Light_VARIANT_segments-13",
+  ]);
+  // The mirror case: a base record must not be answered with a reseed.
+  assert.deepEqual(route({ theme: "dark", state: "default" }), ["SegmentedProgress_Dark"]);
+  assert.deepEqual(route({ theme: "light" }), ["SegmentedProgress_Light"]);
+});
+
+test("a deferred state with no reseed keeps its route rather than losing the card", () => {
+  // A state this function has no `@OverrideVariant` for is a spelling nothing can act on. Narrowing
+  // to nothing must fall back to the full list: mis-addressing one card is bad, dropping it is
+  // worse — a live-only card that resolves no preview is not registered at all.
+  const spec = { groups: [{ components: [{ componentId: "C", preview: "Card" }] }] };
+  const bundle = {
+    previews: [{ id: "Card_Light", functionName: "Card", params: { uiMode: "UI_MODE_NIGHT_NO" } }],
+  };
+  assert.deepEqual(
+    expandDeferredRecords(
+      [{ preview: "Card", reason: "mode", theme: "light", state: "no-such-variant" }],
+      spec,
+      [bundle],
+    ).map((r) => r.previewId),
+    ["Card_Light"],
+  );
+});
+
+test("a deferred axis cell is identified by its props, not by a state it does not carry", () => {
+  // `applyVariantAxisProps` leaves `state` at its default for a `@PreviewAxis` cell — the props ARE
+  // the identity there, matching a kit by property rather than by spelling. Reading only `state`
+  // routed every axis cell to the base annotation it shares every `@Preview` parameter with.
+  const spec = { groups: [{ components: [{ componentId: "B", preview: "Button" }] }] };
+  const preview = (id, night, overrides) => ({
+    id,
+    functionName: "Button",
+    params: { uiMode: night ? "UI_MODE_NIGHT_YES" : "UI_MODE_NIGHT_NO" },
+    ...(overrides ? { overrides } : {}),
+  });
+  const axisProps = [{ key: "size", value: "xl" }];
+  const bundle = {
+    previews: [
+      preview("Button_Light", false),
+      preview("Button_Dark", true),
+      preview("Button_Light_VARIANT_xl", false, { name: "xl", props: axisProps }),
+      preview("Button_Dark_VARIANT_xl", true, { name: "xl", props: axisProps }),
+    ],
+  };
+  const route = (record) =>
+    expandDeferredRecords([{ preview: "Button", reason: "mode", ...record }], spec, [bundle]).map(
+      (r) => r.previewId,
+    );
+
+  assert.deepEqual(route({ theme: "light", state: "default", props: { size: "xl" } }), [
+    "Button_Light_VARIANT_xl",
+  ]);
+  assert.deepEqual(route({ theme: "dark", props: { size: "xl" } }), ["Button_Dark_VARIANT_xl"]);
+  // Props that name no reseed still take the base rather than a wrong cell.
+  assert.deepEqual(route({ theme: "dark", props: { size: "no-such" } }), ["Button_Dark"]);
+  assert.deepEqual(route({ theme: "dark", state: "default" }), ["Button_Dark"]);
+});
+
+test("an entry-deferred component keeps a card per reseed, each addressed by its own cell", () => {
+  // The expansion exists to give a wholly deferred component the cards its baked sheet would have
+  // shown, reseeds included. The dedup key was theme/size/scale — which a reseed shares with its
+  // base — so the two collapsed and the cell was lost; and the record carried none of the reseed's
+  // axes, so `catalogImagePath` would derive a route naming the RESTING cell for it.
+  const spec = { groups: [{ components: [{ componentId: "B", preview: "Button" }] }] };
+  const preview = (id, night, overrides) => ({
+    id,
+    functionName: "Button",
+    params: { uiMode: night ? "UI_MODE_NIGHT_YES" : "UI_MODE_NIGHT_NO" },
+    ...(overrides ? { overrides } : {}),
+  });
+  const bundle = {
+    previews: [
+      preview("Button_Light", false),
+      preview("Button_Dark", true),
+      preview("Button_Light_VARIANT_pressed", false, { name: "pressed" }),
+      preview("Button_Dark_VARIANT_pressed", true, { name: "pressed" }),
+    ],
+  };
+  const records = expandDeferredRecords([{ preview: "Button", reason: "entry" }], spec, [bundle]);
+  assert.deepEqual(
+    records.map((r) => [r.previewId, r.theme, r.state ?? null]),
+    [
+      ["Button_Light", "light", null],
+      ["Button_Dark", "dark", null],
+      ["Button_Light_VARIANT_pressed", "light", "pressed"],
+      ["Button_Dark_VARIANT_pressed", "dark", "pressed"],
+    ],
+  );
+
+  // An axis reseed carries structured props instead of a state, the same way the fold writes it.
+  const axis = {
+    previews: [
+      preview("Button_Light", false),
+      preview("Button_Light_VARIANT_xl", false, {
+        name: "xl",
+        props: [{ key: "size", value: "xl" }],
+      }),
+    ],
+  };
+  assert.deepEqual(
+    expandDeferredRecords([{ preview: "Button", reason: "entry" }], spec, [axis]).map((r) => [
+      r.previewId,
+      r.state ?? null,
+      r.props ?? null,
+    ]),
+    [
+      ["Button_Light", null, null],
+      ["Button_Light_VARIANT_xl", null, { size: "xl" }],
+    ],
+  );
+});
+
+test("a keyed variant deferral selects its cell instead of expanding over every candidate", () => {
+  // A `priority: "deferred"` spec variant names its cell but no theme, so it lands in the expansion
+  // branch. Expanding every candidate there emitted the base AND its reseed carrying the same
+  // `props` — `catalogImagePath` derives one path from those axes, so the manifest got a single
+  // route with two conflicting `previewId`s. The expansion is for a record that names no axes at
+  // all; one that names a cell selects it.
+  const spec = { groups: [{ components: [{ componentId: "B", preview: "Button" }] }] };
+  const preview = (id, night, overrides) => ({
+    id,
+    functionName: "Button",
+    params: { uiMode: night ? "UI_MODE_NIGHT_YES" : "UI_MODE_NIGHT_NO" },
+    ...(overrides ? { overrides } : {}),
+  });
+  const axisProps = [{ key: "size", value: "xl" }];
+  const bundle = {
+    previews: [
+      preview("Button_Light", false),
+      preview("Button_Dark", true),
+      preview("Button_Light_VARIANT_xl", false, { name: "xl", props: axisProps }),
+      preview("Button_Dark_VARIANT_xl", true, { name: "xl", props: axisProps }),
+    ],
+  };
+  const expand = (record) =>
+    expandDeferredRecords([{ componentId: "B", preview: "Button", ...record }], spec, [bundle]);
+
+  assert.deepEqual(
+    expand({ reason: "variant", props: { size: "xl" } }).map((r) => r.previewId),
+    ["Button_Light_VARIANT_xl", "Button_Dark_VARIANT_xl"],
+  );
+
+  // The invariant underneath: no two records may share the axes a route is derived from, whichever
+  // deferral produced them — a duplicate there is one path claiming two different renders.
+  for (const record of [
+    { reason: "variant", props: { size: "xl" } },
+    { reason: "entry" },
+  ]) {
+    const routes = expand(record).map((r) =>
+      JSON.stringify([r.componentId, r.theme ?? null, r.state ?? null, r.size ?? null, r.props ?? null]),
+    );
+    assert.equal(
+      new Set(routes).size,
+      routes.length,
+      `two records share a derived route for ${JSON.stringify(record)}: ${routes.join(" | ")}`,
+    );
+  }
+});
