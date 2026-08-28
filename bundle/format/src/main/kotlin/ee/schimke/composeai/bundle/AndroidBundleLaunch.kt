@@ -126,15 +126,41 @@ public class AndroidBundleLaunch(
   }
 
   /**
+   * The app-tour lane's `robolectric.properties` body — [robolectricPropertiesBody] without the
+   * stub `application=` line.
+   *
+   * `kind=ACTIVITY` / `kind=APP_TOUR` previews render from `AppTourRobolectricRenderTest`, in the
+   * sibling package `ee.schimke.composeai.apptour`, because Robolectric resolves the Application
+   * per test CLASS. An Activity *is* the app: launched against the stub, every Hilt / Koin /
+   * `AppComponentFactory` activity fails on contact. Omitting `application=` here leaves it to the
+   * merged manifest, and the sibling package means nothing merges in from the renderer package's
+   * file to put the stub back.
+   *
+   * Unlike the Gradle path there is no `appTourUseConsumerApplication` to consult — a bundle
+   * carries no extension — so this always tracks that flag's default.
+   */
+  public fun appTourRobolectricPropertiesBody(): String = buildString {
+    appendLine("sdk=$sdkLevel")
+    appendLine("graphicsMode=NATIVE")
+    append("shadows=ee.schimke.composeai.renderer.ShadowFontsContractCompat")
+  }
+
+  /**
    * Materialise [robolectricPropertiesBody] at the classpath path Robolectric looks it up by —
-   * `<root>/ee/schimke/composeai/renderer/robolectric.properties` (the renderer test's package).
-   * Returns [root], which the caller prepends to the subprocess classpath so this config wins over
-   * any copy baked into the shipped renderer jar. Creates parent dirs as needed.
+   * `<root>/ee/schimke/composeai/renderer/robolectric.properties` (the renderer test's package) —
+   * and [appTourRobolectricPropertiesBody] beside it under `…/apptour`, since
+   * `AndroidRendererMainKt` runs both lanes and each resolves its own package's file. Returns
+   * [root], which the caller prepends to the subprocess classpath so this config wins over any copy
+   * baked into the shipped renderer jar. Creates parent dirs as needed.
    */
   public fun writeRobolectricConfig(root: File): File {
     val pkgDir = File(root, RENDERER_PKG_PATH).apply { mkdirs() }
     fileSystem.write(File(pkgDir, "robolectric.properties").path.toPath()) {
       writeUtf8(robolectricPropertiesBody() + "\n")
+    }
+    val appTourDir = File(root, APP_TOUR_PKG_PATH).apply { mkdirs() }
+    fileSystem.write(File(appTourDir, "robolectric.properties").path.toPath()) {
+      writeUtf8(appTourRobolectricPropertiesBody() + "\n")
     }
     return root
   }
@@ -152,6 +178,13 @@ public class AndroidBundleLaunch(
     public const val DEFAULT_SDK: Int = 35
 
     private const val RENDERER_PKG_PATH = "ee/schimke/composeai/renderer"
+
+    /**
+     * The app-tour render lane's package. A SIBLING of [RENDERER_PKG_PATH], never a child:
+     * Robolectric merges a parent package's `robolectric.properties` into a child's, so nesting it
+     * would inherit the stub `application=` line the composable lane pins.
+     */
+    private const val APP_TOUR_PKG_PATH = "ee/schimke/composeai/apptour"
 
     /** `-Dcomposeai.bundle.androidSdk=<n>` override for [DEFAULT_SDK]. */
     public fun sdkLevelFromSystemProperty(
