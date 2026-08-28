@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.46.2](https://github.com/yschimke/compose-ai-tools/compare/v1.46.1...v1.46.2) (2026-08-28)
+
+
+### Bug Fixes
+
+* **design-artifacts:** let a folded state fall through to the cell's props ([#4751](https://github.com/yschimke/compose-ai-tools/issues/4751)) ([e2cb56e](https://github.com/yschimke/compose-ai-tools/commit/e2cb56e956ce95ac4e0586123ce626658d08ce6a))
+* **design-artifacts:** only trust cached structure at the file's current revision ([#4755](https://github.com/yschimke/compose-ai-tools/issues/4755)) ([ac85fea](https://github.com/yschimke/compose-ai-tools/commit/ac85fea03fb95176482e94d5592222834e594bab))
+
+
+### Performance Improvements
+
+* **design-artifacts:** read reference structure from the parity cache ([#4754](https://github.com/yschimke/compose-ai-tools/issues/4754)) ([68ade43](https://github.com/yschimke/compose-ai-tools/commit/68ade434db9aa90d1e7a3e2c4cd1d192b414f72a))
+
 ## [1.46.1](https://github.com/yschimke/compose-ai-tools/compare/v1.46.0...v1.46.1) (2026-08-28)
 
 
