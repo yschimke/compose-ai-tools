@@ -94,7 +94,18 @@ function uiModeIsNight(uiMode) {
  */
 function variantIdentity(preview) {
   const params = preview.params ?? {};
-  const suffixTheme = themeOfPreviewId(preview.id);
+  // The theme is read off the id BEFORE the reseed suffix. Discovery builds an `@OverrideVariant`
+  // id as `<base id>_VARIANT_<name>`, so the base's own `…_Light` / `…_Dark` segment is no longer
+  // the tail and `themeOfPreviewId` saw none — every reseed came back with an unknown theme. That
+  // cost nothing while a reseed could not be selected; it decides the wrong render the moment one
+  // can be. Stripped by the override's own NAME rather than by searching for the marker, which is
+  // a legal substring of a Kotlin function name.
+  const overrideName = preview.overrides?.name ?? null;
+  const reseedTag = overrideName ? `_VARIANT_${overrideName}` : null;
+  const id = String(preview.id ?? "");
+  const suffixTheme = themeOfPreviewId(
+    reseedTag && id.endsWith(reseedTag) ? id.slice(0, -reseedTag.length) : id,
+  );
   const night = uiModeIsNight(params.uiMode)
     ? true
     : suffixTheme
@@ -128,6 +139,11 @@ function variantIdentity(preview) {
     // buildable source exists. A baked-only catalog — which the public server serves read-only —
     // therefore never saw the flag and listed every second-tier cell in full.
     secondary: preview.overrides?.secondary === true,
+    // The `@OverrideVariant` this candidate reseeds, or null for a base capture. Read off the spec
+    // rather than the `_VARIANT_` id suffix, which is a legal substring of a Kotlin function name.
+    // [expandDeferredRecords] selects on it: a deferred record naming an override STATE must route
+    // to that reseed, not to the base annotation that happens to share its theme and size.
+    overrideName,
   };
 }
 
@@ -390,13 +406,34 @@ function sizeForCandidateOf(spec) {
  * that would 404. Two annotations that recover the SAME axes collapse to one record (the exporter
  * would have named them one path); first listed wins.
  */
+/**
+ * Narrow a function's candidates to the annotation a deferred record's `state` names.
+ *
+ * `pickVariantId` scores theme, size and font scale — it has no opinion about an `@OverrideVariant`
+ * reseed, and a reseed shares its base's function and every one of those annotation parameters. So
+ * a record deferred for a mode, naming both a theme and an override state, scored the base and the
+ * reseed identically and took whichever came first: usually the base. The live-only card then
+ * rendered through the base annotation, showing the resting cell under the variant's name, and its
+ * per-preview declarations (`secondary` among them) were the base's too.
+ *
+ * A state that is absent or `"default"` names the base, so the reseeds are excluded for the mirror
+ * reason. Either way an empty narrowing falls back to the full list: a state this function has no
+ * reseed for is a spelling nothing can act on, and dropping the route entirely would lose a card
+ * rather than mis-address one.
+ */
+function overrideCandidates(candidates, state) {
+  const wanted = typeof state === "string" && state !== "" && state !== "default" ? state : null;
+  const narrowed = candidates.filter((c) => (c.overrideName ?? null) === wanted);
+  return narrowed.length > 0 ? narrowed : candidates;
+}
+
 export function expandDeferredRecords(deferred, spec, bundles) {
   const previewsByFn = previewsByFunction(bundles);
   const breakpointForSize = breakpointForSizeOf(spec);
   const sizeForCandidate = sizeForCandidateOf(spec);
   const out = [];
   for (const record of deferred ?? []) {
-    const candidates = previewsByFn.get(record?.preview) ?? [];
+    const candidates = overrideCandidates(previewsByFn.get(record?.preview) ?? [], record?.state);
     if (candidates.length === 0) {
       out.push({ ...record });
       continue;

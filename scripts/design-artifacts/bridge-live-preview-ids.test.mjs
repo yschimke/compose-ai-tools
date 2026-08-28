@@ -1560,3 +1560,66 @@ test("a second-tier cell's tier is stamped in the same pass, so a baked-only cat
     [undefined, undefined, undefined],
   );
 });
+
+test("a deferred record naming an override state routes to that reseed, in its own theme", () => {
+  // `pickVariantId` scores theme, size and font scale — it has no opinion about a reseed, and a
+  // reseed shares its base's function and every one of those parameters. So a mode-deferred record
+  // naming both a theme and an override state scored the base and the reseed identically and took
+  // the base: the live-only card rendered the resting cell under the variant's name, and its
+  // per-preview declarations (`secondary` among them) were the base's too.
+  const spec = {
+    groups: [{ components: [{ componentId: "Progress/Segmented", preview: "SegmentedProgress" }] }],
+  };
+  const bundle = {
+    previews: [
+      { id: "SegmentedProgress_Light", functionName: "SegmentedProgress", params: { uiMode: "UI_MODE_NIGHT_NO" } },
+      { id: "SegmentedProgress_Dark", functionName: "SegmentedProgress", params: { uiMode: "UI_MODE_NIGHT_YES" } },
+      {
+        id: "SegmentedProgress_Light_VARIANT_segments-13",
+        functionName: "SegmentedProgress",
+        params: { uiMode: "UI_MODE_NIGHT_NO" },
+        overrides: { name: "segments-13", secondary: true },
+      },
+      {
+        id: "SegmentedProgress_Dark_VARIANT_segments-13",
+        functionName: "SegmentedProgress",
+        params: { uiMode: "UI_MODE_NIGHT_YES" },
+        overrides: { name: "segments-13", secondary: true },
+      },
+    ],
+  };
+  const route = (record) =>
+    expandDeferredRecords([{ preview: "SegmentedProgress", reason: "mode", ...record }], spec, [
+      bundle,
+    ]).map((r) => r.previewId);
+
+  // The reseed, and the right theme of it — the theme segment is no longer the id's tail, so it is
+  // read off the head before the `_VARIANT_` suffix.
+  assert.deepEqual(route({ theme: "dark", state: "segments-13" }), [
+    "SegmentedProgress_Dark_VARIANT_segments-13",
+  ]);
+  assert.deepEqual(route({ theme: "light", state: "segments-13" }), [
+    "SegmentedProgress_Light_VARIANT_segments-13",
+  ]);
+  // The mirror case: a base record must not be answered with a reseed.
+  assert.deepEqual(route({ theme: "dark", state: "default" }), ["SegmentedProgress_Dark"]);
+  assert.deepEqual(route({ theme: "light" }), ["SegmentedProgress_Light"]);
+});
+
+test("a deferred state with no reseed keeps its route rather than losing the card", () => {
+  // A state this function has no `@OverrideVariant` for is a spelling nothing can act on. Narrowing
+  // to nothing must fall back to the full list: mis-addressing one card is bad, dropping it is
+  // worse — a live-only card that resolves no preview is not registered at all.
+  const spec = { groups: [{ components: [{ componentId: "C", preview: "Card" }] }] };
+  const bundle = {
+    previews: [{ id: "Card_Light", functionName: "Card", params: { uiMode: "UI_MODE_NIGHT_NO" } }],
+  };
+  assert.deepEqual(
+    expandDeferredRecords(
+      [{ preview: "Card", reason: "mode", theme: "light", state: "no-such-variant" }],
+      spec,
+      [bundle],
+    ).map((r) => r.previewId),
+    ["Card_Light"],
+  );
+});
