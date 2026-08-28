@@ -245,6 +245,26 @@ class ServeParityFindingStoreTest {
   }
 
   @Test
+  fun `a board the storage ceiling emptied never reads as a clean run`() {
+    // The same false-clean verdict as a rejected findings array, arriving one level up: five full
+    // boards exhaust the store's allowance, the sixth is trimmed to nothing, and its declared
+    // `pass` would print "Pass · No findings." over findings this build discarded.
+    fun finding(index: Int) = """{"kind":"layout","severity":"warn","message":"m$index"}"""
+    fun set(reference: String, status: String? = null) =
+      """{"referenceId":"$reference",${status?.let { "\"status\":\"$it\"," } ?: ""}
+         "findings":[${(1..200).joinToString(",") { finding(it) }}]}"""
+    val json =
+      """{"schema":"compose-preview-parity-findings/v1","previews":{"p":[
+         ${(1..5).joinToString(",") { set("r$it") }},
+         ${set("last", status = "pass")}]}}"""
+    val loaded = store(json)
+    // Five boards fit within the 1000-finding ceiling; the sixth is dropped whole rather than
+    // kept as a reassuring empty record.
+    assertTrue(loaded.forComparison("p", "last").isEmpty(), "the trimmed board is dropped")
+    assertEquals(200, loaded.forComparison("p", "r1").single().findings.size)
+  }
+
+  @Test
   fun `a real multi-board verdict passes the storage ceiling untouched`() {
     // The ceiling must not trim anything a genuine run publishes, or it would silently answer a
     // later comparison with less than its board said.

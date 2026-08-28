@@ -388,8 +388,6 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
           }
           .mapNotNull(::sanitizeSet)
       return spendBudget(kept, MAX_STORED_FINDINGS_PER_PREVIEW, MAX_STORED_ANCHORS_PER_PREVIEW)
-        // A set trimmed to nothing that never declared a status has stopped saying anything.
-        .filter { it.findings.isNotEmpty() || it.status != null }
         .takeIf { it.isNotEmpty() }
     }
 
@@ -516,7 +514,7 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
       ) {
         return sets
       }
-      return sets.map { set ->
+      return sets.mapNotNull { set ->
         val findings =
           set.findings.take(findingsLeft.coerceAtLeast(0)).map { finding ->
             val room = anchorsLeft.coerceAtLeast(0)
@@ -525,7 +523,12 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
             else finding.copy(anchors = finding.anchors.take(room))
           }
         findingsLeft -= findings.size
-        set.copy(findings = findings)
+        // A set this budget emptied is DROPPED, never trimmed to a status-only record. It reached
+        // here carrying findings, so its "Pass" would be printed over a report that exists and
+        // that this build then discarded — the same false-clean verdict a rejected findings array
+        // produces, arriving one level up. Only a set the producer wrote empty may say "Pass" with
+        // nothing under it, and such a set is empty before this runs rather than because of it.
+        if (findings.isEmpty() && set.findings.isNotEmpty()) null else set.copy(findings = findings)
       }
     }
 
