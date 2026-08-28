@@ -272,7 +272,7 @@ class RealTree(unittest.TestCase):
         # Pinned by name: this is the site the first cut of the check missed entirely.
         self.assertIn(
             (
-                "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt",
+                "cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt",
                 "DAEMON_LAUNCH_SCHEMA_VERSION",
             ),
             {(s["file"], s["symbol"]) for s in self.allowlist["schemaVersionSites"]},
@@ -314,7 +314,7 @@ class RealTree(unittest.TestCase):
         # Three writers, recorded per file because they genuinely differ: the plugin's two
         # pretty-print, serve writes compact.
         declared = self.allowlist["writerEncoders"]["declaredBy"]
-        self.assertIn("cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt", declared)
+        self.assertIn("cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt", declared)
         for rel, required in declared.items():
             call = mod.ENCODE_CALL.search(mod.stripped(rel))
             self.assertIsNotNone(call, rel)

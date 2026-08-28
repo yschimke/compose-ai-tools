@@ -1,7 +1,7 @@
 # Mobile layout — what a phone screen is spent on
 
 Committed evidence for the `@media (max-width: 640px)` changes in
-`cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/serve.css`.
+`cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/serve.css`.
 
 The complaint these answer: opening a catalog on a phone shows a screen of
 chrome and no components, and the component page shows a screen of controls and

@@ -235,6 +235,12 @@ includeBuild("gradle-plugin")
 
 include(":cli")
 
+// The preview server. #3824 preparation item 7: `serve` was a package inside `:cli`, and a package
+// has no boundary — the only thing stopping the server reaching into the CLI was a source scanner.
+// As a module it is a build fact, one-directional by construction (`:cli` depends on this), and
+// `checkServeModuleBoundary` in its build file fails if anyone wires the dependency back.
+include(":cli:serve")
+
 // The preview-bundle *format* — split out of `:cli` for issue #3824. Everything a reader of a
 // `.previewbundle` needs (well-known entry names, the manifest DTO, sidecar injectors,
 // deterministic zip helpers, the detached signature scheme, classpath hydration, Android

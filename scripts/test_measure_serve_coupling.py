@@ -64,6 +64,10 @@ class Sides(unittest.TestCase):
             "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeHost.kt",
             "cli/src/test/kotlin/ee/schimke/composeai/cli/serve/ServeHostTest.kt",
             "cli/src/main/resources/ee/schimke/composeai/cli/serve/viewer.css",
+            # Both resource layouts: the pre-module path above, which SERVE_PATTERNS keeps so
+            # historical commits still classify, and the module path the tree uses since
+            # #3824 item 7. Exercising only one leaves the other regex unasserted.
+            "cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/viewer.css",
             "cli/src/main/kotlin/ee/schimke/composeai/cli/ServeCommand.kt",
             "cli/serve-web/src/components/RcLanes.ts",
             "deploy/preview.coo.ee/service.yaml",

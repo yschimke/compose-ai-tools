@@ -43,7 +43,7 @@ test("the driver reads the viewer's own comparison asset, not a copy of it", () 
   // scoring must go dark rather than fall back to some other implementation of the same question.
   const asset = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
-    "../../cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js",
+    "../../cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js",
   );
   assert.ok(fs.existsSync(asset), `${asset} is where the scorer expects the viewer's asset`);
   const source = fs.readFileSync(asset, "utf8");

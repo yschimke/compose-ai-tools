@@ -7,7 +7,7 @@
     ".github/ci/serve-lanes-paths.json",
     ".github/ci/path-scope.py",
     ".github/workflows/serve-lanes-e2e.yml",
-    "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/**",
+    "cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/**",
     "cli/src/main/kotlin/ee/schimke/composeai/cli/ServeCommand.kt",
     "daemon/core/**",
     "render-session/**",

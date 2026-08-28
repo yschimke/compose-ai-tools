@@ -48,7 +48,7 @@ thumbnail, which are indented, and where the rule falls.
 ## Why the head and not the change point
 
 A run has two defensible anchors, and the manifest models both
-([`ManifestVersion.commit`](../../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/PreviewHistoryManifest.kt)
+([`ManifestVersion.commit`](../../../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/PreviewHistoryManifest.kt)
 versus its `sinceCommit`). The marker sits on the **newest** publish in each run, because a
 thumbnail is an anchor for the rows under it: at the head it reads "this look holds from here
 down", while at the publish that *introduced* the look it would sit at the bottom of the stretch it

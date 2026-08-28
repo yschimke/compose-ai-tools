@@ -18,7 +18,7 @@
 import { test, expect } from "@playwright/test";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { listThemes } from "./_themes.mjs";
 
 const harnessDir = dirname(fileURLToPath(import.meta.url));
@@ -29,6 +29,7 @@ const serveAssetsDir = resolve(
   "..",
   "..",
   "cli",
+  "serve",
   "src",
   "main",
   "resources",
@@ -39,6 +40,12 @@ const serveAssetsDir = resolve(
   "serve",
   "assets",
 );
+// A missing assets dir fails only inside a `route.fulfill({ path })`, which surfaces as ~90
+// unrelated-looking snapshot failures rather than "no such directory". Fail loudly instead, so a
+// future move of the serve module is a one-line error and not an afternoon.
+if (!existsSync(serveAssetsDir)) {
+  throw new Error(`serve assets not found at ${serveAssetsDir}`);
+}
 
 // The serve pages point `<img>` / their viewer JS at two image lanes with no
 // backend in the harness: the daemon's `/render/<id>.png` endpoint, and the

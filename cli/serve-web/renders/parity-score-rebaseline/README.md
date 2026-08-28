@@ -14,7 +14,7 @@ shooting this rather than describing it.
 ```sh
 node shoot.mjs after.png
 
-git show origin/main:cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js \
+git show origin/main:cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js \
   > before-asset.js
 node shoot.mjs before.png --before
 rm before-asset.js

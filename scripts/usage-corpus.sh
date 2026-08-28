@@ -56,7 +56,9 @@ rm -rf "$out"
 mkdir -p "$out"
 
 echo "==> generating snippets into $out"
-(cd "$here" && ./gradlew --quiet :cli:test --tests '*UsageSnippetCorpusTest*' \
+# `:cli:serve:test`: the corpus test moved with the serve sources (#3824 item 7), and Gradle
+# does not run a dependency project's tests transitively.
+(cd "$here" && ./gradlew --quiet :cli:serve:test --tests '*UsageSnippetCorpusTest*' \
   "-Dcomposeai.usageCorpus.repos=$spec" \
   -Dcomposeai.usageCorpus.out="$out" -Dcomposeai.usageCorpus.samples="$samples" \
   --rerun-tasks >/dev/null)

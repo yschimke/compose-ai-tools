@@ -53,7 +53,20 @@ def cli_root(source_set: str) -> Path:
 
 
 def serve_root(source_set: str) -> Path:
-    return cli_root(source_set) / "serve"
+    """Serve's sources, which are their own Gradle module since #3824 preparation item 7.
+
+    They keep the `ee.schimke.composeai.cli.serve` package — moving a module and renaming its
+    package are independent changes, and this repo has learned twice over that doing them together
+    makes the diff unreviewable (see docs/design/PREVIEW_SERVER_SPLIT.md). So the path moved and the
+    package did not, which is why this is a separate root rather than `cli_root(...) / "serve"`.
+
+    The `serve → cli` direction this file used to police is now a *build* fact:
+    `:cli:serve` cannot depend on `:cli` because `:cli` depends on it, and
+    `checkServeModuleBoundary` fails on the resolved classpath if one ever arrives transitively.
+    What is left for this scanner is the `cli → serve` direction, which the build permits and the
+    split still needs to shrink.
+    """
+    return REPO_ROOT / "cli/serve/src" / source_set / "kotlin/ee/schimke/composeai/cli/serve"
 
 
 IMPORT_RE = re.compile(

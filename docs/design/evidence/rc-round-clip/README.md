@@ -42,7 +42,7 @@ exactly what it scored before.
 ```sh
 node scripts/design-artifacts/rc-compare.mjs \
   --bundle bundle.png \
-  --player cli/src/main/resources/rc-player/bundle.js \
+  --player cli/serve/src/main/resources/rc-player/bundle.js \
   --out /tmp/rc-out --system remote-m3
 ```
 

@@ -23,7 +23,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const fixture = path.join(here, "fixture");
 const assets = path.resolve(
     here,
-    "../../../src/main/resources/ee/schimke/composeai/cli/serve/assets",
+    "../../../serve/src/main/resources/ee/schimke/composeai/cli/serve/assets",
 );
 const [, , out = "after.png", flag] = process.argv;
 const before = flag === "--before";

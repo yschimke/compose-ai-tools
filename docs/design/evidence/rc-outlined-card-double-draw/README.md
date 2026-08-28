@@ -70,7 +70,7 @@ git fetch https://github.com/yschimke/wear-m3-catalog.git design-artifacts/remot
 git show FETCH_HEAD:bundle/bundle.png > /tmp/remote-m3.png
 node scripts/design-artifacts/rc-compare.mjs \
   --bundle /tmp/remote-m3.png \
-  --player cli/src/main/resources/rc-player/bundle.js \
+  --player cli/serve/src/main/resources/rc-player/bundle.js \
   --out /tmp/rc-out --stage-embedded /tmp/rc-in
 #     → /tmp/rc-in/<id>.rc + /tmp/rc-in/manifest.json, which is what -Prc.embedded.input reads
 ```

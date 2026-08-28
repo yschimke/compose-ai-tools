@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "../..");
-const BUNDLE = path.join(ROOT, "cli/src/main/resources/rc-player/bundle.js");
+const BUNDLE = path.join(ROOT, "cli/serve/src/main/resources/rc-player/bundle.js");
 const FONT = path.join(ROOT, "samples/design-catalog-m3/src/main/resources/fonts/orbitron-400.ttf");
 const FAMILY_ID = 42;
 const TEXT_ID = 43;

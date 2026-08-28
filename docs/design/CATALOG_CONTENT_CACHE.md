@@ -259,7 +259,7 @@ Each ships independently and is provable on its own.
 
 | # | Change | Wins | Risk |
 | --- | --- | --- | --- |
-| **1 — landed** | `--catalog-cache-dir` + `--catalog-cache-max-bytes`; `.res-cache` and the executable bundles + splits moved into a content-addressed [`CatalogBlobPool`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/CatalogBlobPool.kt) | The largest byte win (100 MB-class bundles), and it survives *reloads* as well as restarts | Low — the sha verification already existed; only the path changed |
+| **1 — landed** | `--catalog-cache-dir` + `--catalog-cache-max-bytes`; `.res-cache` and the executable bundles + splits moved into a content-addressed [`CatalogBlobPool`](../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/CatalogBlobPool.kt) | The largest byte win (100 MB-class bundles), and it survives *reloads* as well as restarts | Low — the sha verification already existed; only the path changed |
 | **2 — landed** | Asset cache for commit-pinned reads, behind `fetchCatalogAsset`; `cached` counter on `branchFetch` | Manifests, lazy PNGs, motion, references, and the `?at=` lane stop re-fetching | Low — one funnel, one admission rule |
 | **3** | Generation snapshots + `current` pointer; adopt-then-converge boot; seed the refresher's head | The restart win: catalogs serve before any network | Medium — the adoption checks are where the care goes |
 | **4 — landed** | `DELETE /admin/catalog-cache`, `POST /<system>/refresh?force=1`, `catalogCache` status block | Operability, and the ability to tell a working cache from write amplification | Low |

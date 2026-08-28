@@ -96,7 +96,7 @@ class QualifiedReferences(unittest.TestCase):
 
     def test_forbidden_packages_are_caught_when_written_out(self):
         with TemporaryDirectory() as tmp:
-            root = Path(tmp) / "cli/src/main/kotlin/ee/schimke/composeai/cli/serve"
+            root = Path(tmp) / "cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve"
             root.mkdir(parents=True)
             (root / "A.kt").write_text(
                 "package ee.schimke.composeai.cli.serve\n\n"
@@ -172,7 +172,7 @@ class CommentAndStringStripping(unittest.TestCase):
     def test_the_real_escaping_file_stays_visible(self):
         path = (
             mod.REPO_ROOT
-            / "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/WebEscaping.kt"
+            / "cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/WebEscaping.kt"
         )
         if not path.is_file():
             self.skipTest("fixture file moved")
@@ -194,7 +194,7 @@ class CommentAndStringStripping(unittest.TestCase):
     def test_the_real_committed_file_is_not_swallowed(self):
         path = (
             mod.REPO_ROOT
-            / "cli/src/test/kotlin/ee/schimke/composeai/cli/serve/ServeHttpRoutingTest.kt"
+            / "cli/serve/src/test/kotlin/ee/schimke/composeai/cli/serve/ServeHttpRoutingTest.kt"
         )
         if not path.is_file():  # the file may be renamed by a later refactor
             self.skipTest("fixture file moved")
@@ -236,7 +236,7 @@ class StringInterpolation(unittest.TestCase):
 
     def test_a_forbidden_package_reached_through_interpolation_is_caught(self):
         with TemporaryDirectory() as tmp:
-            root = Path(tmp) / "cli/src/main/kotlin/ee/schimke/composeai/cli/serve"
+            root = Path(tmp) / "cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve"
             root.mkdir(parents=True)
             (root / "A.kt").write_text(
                 "package ee.schimke.composeai.cli.serve\n\n"

@@ -218,6 +218,11 @@ dependencies {
   // preparation item 7. `api` for source-compat with the existing in-package call sites.
   api(project(":bundle-coordinates"))
 
+  // The preview server, split out of this module for #3824 preparation item 7. `api` for
+  // source-compat: `ServeCommand.kt` and the bundle/auth commands reference serve types in-package
+  // today, and reducing that surface is the rest of item 7 rather than part of the move.
+  api(project(":cli:serve"))
+
   // Okio-based file IO (`SystemFileSystem` + suspend helpers) the CLI commands read/write through.
   implementation(project(":common-io"))
 
@@ -340,6 +345,12 @@ dependencies {
   // (e.g. RenderMatrixCellNamesTest's stale-cell clearing). okio itself is on the compile
   // classpath transitively via `common:io`; the fake ships separately.
   testImplementation(libs.okio.fakefilesystem)
+
+  // `FakeRenderSession`, shared with `:cli:serve`'s own tests. `BundleRenderKnobTest` drives
+  // `bundle render --knob` against a fake render session rather than spawning a daemon; the
+  // fixture lives with the server because that is what defines it, and a fixture configuration
+  // keeps it off both modules' runtime classpaths.
+  testImplementation(testFixtures(project(":cli:serve")))
   // Gradle TestKit drives a real Gradle build inside [InitScriptExclusiveContentReproducerTest] —
   // the only way to assert that the rendered init script doesn't trip Gradle 9.3+'s
   // `exclusiveContent`-vs-`buildscript.repositories` validation when the consumer's
@@ -509,20 +520,6 @@ tasks.register<Zip>("packageAndroidDaemon") {
 
 tasks.withType<Test>().configureEach {
   useJUnitPlatform()
-  // Catalog checkouts for the usage-snippet corpus (UsageSnippetCorpusTest). Absent by default, so
-  // the corpus is a no-op in a normal build; `scripts/usage-corpus.sh` supplies them. Forwarded
-  // rather than read from the environment so the paths show up in the build's own inputs.
-  // `repos` is one property carrying every checkout as `name=path,name=path`, rather than one
-  // forwarded key per catalog: a fixed key list silently ignores any checkout not named in it, so
-  // adding a third catalog would have produced an empty corpus and a passing run.
-  for (key in
-    listOf(
-      "composeai.usageCorpus.repos",
-      "composeai.usageCorpus.out",
-      "composeai.usageCorpus.samples",
-    )) {
-    providers.systemProperty(key).orNull?.let { systemProperty(key, it) }
-  }
 
   // The BTA jars, handed to `PsiParseSpikeTest` so its isolated-classloader check runs in an
   // ordinary `:cli:test`. It used to look for the *installed* `lib-bta/`, which `test` does not
@@ -648,10 +645,17 @@ tasks.register<CheckServeSeam>("checkServeSeam") {
   description = "Fails if the serve <-> cli symbol surface grows (or its allowlist goes stale)."
   group = "verification"
 
+  // BOTH trees: `:cli`'s own sources and the extracted server's. The checker reads the serve half
+  // from `cli/serve/src` since #3824 item 7, and declaring only `cli/src` here would leave this
+  // task up-to-date across any change confined to the server — the gate would silently stop
+  // running exactly where the coupling it polices lives.
   serveSources.from(
     fileTree(layout.projectDirectory.dir("src")) {
       include("*/kotlin/ee/schimke/composeai/cli/**/*.kt")
-    }
+    },
+    fileTree(project(":cli:serve").layout.projectDirectory.dir("src")) {
+      include("*/kotlin/ee/schimke/composeai/cli/**/*.kt")
+    },
   )
   allowlist.set(rootProject.layout.projectDirectory.file("scripts/serve-seam-allowlist.json"))
   checker.set(rootProject.layout.projectDirectory.file("scripts/check-serve-seam.py"))
@@ -659,6 +663,14 @@ tasks.register<CheckServeSeam>("checkServeSeam") {
 }
 
 tasks.named("check") { dependsOn("checkServeSeam") }
+
+// …and the server module's boundary check, which CI would otherwise never run. `:cli:build` (what
+// the Build CLI job invokes) does not execute a dependency project's `check` lifecycle, and the
+// module-test fan-out calls `:cli:serve:test`, not `:cli:serve:check` — so the task that proves
+// nothing forbidden reached the server's classpath was reachable only by someone typing it. A
+// boundary nothing runs is a comment. Verified with `./gradlew :cli:build --dry-run`, which now
+// lists `:cli:serve:checkServeModuleBoundary` and previously did not.
+tasks.named("check") { dependsOn(":cli:serve:checkServeModuleBoundary") }
 
 // The four representations of `daemon-launch.json`, checked against each other.
 //
@@ -756,35 +768,3 @@ val generateCliVersionResource =
   }
 
 sourceSets.main.get().resources.srcDir(generateCliVersionResource)
-
-// The typefaces the served viewer registers for its client-side Remote Compose lanes
-// (`ServeRcFonts`): without them the browser lane paints a document's generic families in whatever
-// the *viewer's* machine calls `sans-serif`, at different metrics and without the Medium weight,
-// while the baked PNG beside it used these files (issue #3480).
-//
-// STAGED, not committed a second time. The source is the one vendored directory the offline parity
-// harness reads (`scripts/design-artifacts/rc-fonts.mjs`'s `DEFAULT_FONTS_DIR`) and the snapshot
-// renderer rasterizes with, so "the viewer's faces" and "the faces parity is measured against"
-// cannot become different files. The named-family faces in that directory (Orbitron, Lobster Two)
-// are deliberately left out — the player fetches those itself through `WebFonts.ts`; only the four
-// behind the generic families need registering, and they are what `ServeRcFonts.FACES` declares
-// (`ServeRcFontsTest` fails when this list and that table disagree).
-val stageRcFontResources =
-  tasks.register<Sync>("stageRcFontResources") {
-    description =
-      "Stage the vendored generic-family faces the serve viewer registers for its RC lanes."
-    from(rootDir.resolve("samples/cmp-wasm-catalog/src/wasmJsMain/resources/fonts")) {
-      include(
-        "Roboto-Regular.ttf",
-        "Roboto-Medium.ttf",
-        "NotoSerif-Regular.ttf",
-        "DroidSansMono.ttf",
-        // The faces' own licence, so the jar carries it beside the bytes.
-        "LICENSE.txt",
-      )
-      into("rc-fonts")
-    }
-    into(layout.buildDirectory.dir("generated/rc-font-resources"))
-  }
-
-sourceSets.main.get().resources.srcDir(stageRcFontResources)

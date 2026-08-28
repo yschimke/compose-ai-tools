@@ -26,7 +26,7 @@ import { parseArgs } from "node:util";
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const OUT = join(
   REPO_ROOT,
-  "cli/src/main/resources/ee/schimke/composeai/cli/serve/google-fonts.txt",
+  "cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/google-fonts.txt",
 );
 /** Pinned to `main` — the tag export tracks the live catalog; `--check` in CI flags drift. */
 const SOURCE_URL =

@@ -2,7 +2,7 @@
     "name": "compose-preview-serve-web",
     "private": true,
     "version": "0.0.0",
-    "description": "Lit components for the `compose-preview serve` web surfaces. Built to a bundle committed under cli/src/main/resources/.../serve/assets/ so the Gradle build stays node-free.",
+    "description": "Lit components for the `compose-preview serve` web surfaces. Built to a bundle committed under cli/serve/src/main/resources/.../serve/assets/ so the Gradle build stays node-free.",
     "license": "Apache-2.0",
     "type": "module",
     "scripts": {

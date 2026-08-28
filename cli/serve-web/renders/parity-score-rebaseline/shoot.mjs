@@ -24,7 +24,7 @@ const asset = before
     ? path.join(here, "before-asset.js")
     : path.join(
           repo,
-          "cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js",
+          "cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js",
       );
 
 const PAIRS = [

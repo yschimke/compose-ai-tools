@@ -101,7 +101,7 @@ scroll semantics already expose, read after each measured render.
   height (the test rule forbids a second `setContent`) and grows the `h{n}dp` qualifier, then
   re-enters `render()` at the settled height so the always-on `ComposeFigmaSvgExtension` emits the
   SVG. Both measure off the unmerged semantics root.
-- **Preview server** — [`ServeRenderHost.renderScrollSvg`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeRenderHost.kt)
+- **Preview server** — [`ServeRenderHost.renderScrollSvg`](../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeRenderHost.kt)
   fetches `compose/figma-svg-long` (inlining any hybrid rasters, cached like the viewport SVG), and
   the HTTP server serves it at **`GET /render/<id>.svg?scroll=long`** (`full` / `page` accepted too)
   alongside the existing `.png` / `.svg` lanes.

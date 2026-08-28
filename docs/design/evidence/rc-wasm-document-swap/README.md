@@ -13,7 +13,7 @@ the catalog, so the only variable is the player and the driver.
 
 ```
 node rc-compare.mjs --bundle <published bundle.png> \
-  --player cli/src/main/resources/rc-player/bundle.js \
+  --player cli/serve/src/main/resources/rc-player/bundle.js \
   --out <out> --system remote-m3 --cmp-wasm <wasmDist> --require-cmp-wasm
 ```
 

@@ -3,7 +3,7 @@
  *
  * Run with `node --test scripts/design-artifacts/`.
  *
- * These exercise the built bundle (`cli/src/main/resources/rc-player/bundle.js`) in a real browser
+ * These exercise the built bundle (`cli/serve/src/main/resources/rc-player/bundle.js`) in a real browser
  * rather than the TypeScript source, because the bundle is the artifact that actually ships and the
  * behaviour under test is browser machinery — `@font-face` laziness, CSS font matching, the
  * `FontFace` registry — that has no meaningful pure-JS stand-in.
@@ -24,7 +24,7 @@ import { fileURLToPath } from "node:url";
 import { DEFAULT_FONTS_DIR } from "./rc-fonts.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const BUNDLE = path.resolve(HERE, "../../cli/src/main/resources/rc-player/bundle.js");
+const BUNDLE = path.resolve(HERE, "../../cli/serve/src/main/resources/rc-player/bundle.js");
 
 // A vendored face with unmistakably non-Roboto metrics, so "did the named family take effect?" is a
 // measurable question rather than a subjective one.

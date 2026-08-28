@@ -130,7 +130,7 @@ Two properties fall out of this split:
 | Live, daemon-backed streaming session | `cli/.../serve/ServeLiveSession.kt`, `ServeStreamSession.kt`, per-preview pool | **Shipped.** `compose-m3` (desktop) and `wear-m3` (Android) run live on `preview.coo.ee`. |
 | Interactive `input` protocol (click / pointer / rotary / key) | `docs/serve/SESSION-VIEWER-PROTOCOL.md` §`input`, `ServeStreamProtocol.parseClient` | **Shipped.** Dispatched into the live composition; snapshot lane ignores it. |
 | Expiring capability permalink (id = 128-bit `SecureRandom`, TTL, `private,no-store`) | `cli/.../serve/ServeDocStore.kt` | **Shipped.** The literal template for the preview-token store. |
-| Remote Compose document → browser playback | `--accept-docs`, `ServeDocFormats`, vendored `RcdPlayer` (`cli/src/main/resources/rc-player/`) | **Shipped.** RC-in-browser needs no server round-trip per interaction. |
+| Remote Compose document → browser playback | `--accept-docs`, `ServeDocFormats`, vendored `RcdPlayer` (`cli/serve/src/main/resources/rc-player/`) | **Shipped.** RC-in-browser needs no server round-trip per interaction. |
 | Live-seat admission budget (desktop = 1 permit, Android = 2) | `cli/.../serve/LiveSeatLimiter.kt` | **Shipped**, but sized for *trusted catalogs* — see [§6](#6-isolation-the-actual-hard-part). |
 
 ### 2.2 What is new
@@ -312,7 +312,7 @@ A stranger's classes are never hot-swapped into a shared, long-lived daemon;
 "one snippet per JVM" is the shape the code already had. What Phase 4 adds is
 the *containment around that child*, plus the evidence that it works.
 
-[`PlaygroundSandbox`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/PlaygroundSandbox.kt)
+[`PlaygroundSandbox`](../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/PlaygroundSandbox.kt)
 is a pure policy type that produces three things for each snippet JVM:
 
 | Requirement | How |
@@ -354,7 +354,7 @@ The `--public` refusal has *not* become "you passed `--playground-sandbox`, off
 you go". A profile name is a claim: `bwrap` on a kernel with user namespaces
 disabled, or a `custom:` wrapper with a typo in it, both claim everything and
 contain nothing. So at startup a `--public` host runs
-[`PlaygroundSandboxProbe`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/PlaygroundSandboxProbe.kt):
+[`PlaygroundSandboxProbe`](../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/PlaygroundSandboxProbe.kt):
 a throwaway JVM launched **through the same jail argv a snippet gets**, which
 measures and reports back
 
@@ -467,7 +467,7 @@ was a **resource** one. The Kotlin compiler is the least predictable thing on th
 request path: a pathological snippet can burn CPU and heap inside the host
 process, where `-Xmx` is the operator's and no wall clock applies.
 
-So with a sandbox configured, [`PlaygroundJailedCompiler`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/PlaygroundJailedCompiler.kt)
+So with a sandbox configured, [`PlaygroundJailedCompiler`](../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/PlaygroundJailedCompiler.kt)
 runs the compile in the **same jail** the render lanes use: the catalog classpath
 and the `lib-bta/` toolchain bound read-only, the snippet's work dir the one
 writable path, the sandbox's `-Xmx`/CPU caps applied, and a compile budget on
@@ -557,7 +557,7 @@ cold-fork range.
 ### 7.2 Optional stateful editing — use BTA incrementally, keep one-shot as the default
 
 The API is **BTA**, Kotlin's experimental **Build Tools API** (not BTS). The
-playground already uses it: [`PlaygroundBtaCompiler`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/PlaygroundBtaCompiler.kt)
+playground already uses it: [`PlaygroundBtaCompiler`](../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/PlaygroundBtaCompiler.kt)
 drives the same [`BtaCompileSession`](../../daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/bta/BtaCompileSession.kt)
 that backs the editor daemon. The default one-shot Run still does not retain BTA
 incremental state: it is staged into a fresh work directory, and a sandboxed Run
