@@ -108,6 +108,31 @@ class ServePageThemeTest {
   }
 
   /**
+   * A dark STAGE is not a dark-only catalog.
+   *
+   * `display.surface` is a stage colour in the spec schema, declared independently of what a
+   * catalog bakes: a non-Wear catalog can perfectly well publish a light/dark pair and ask for a
+   * dark ground under both. Suppressing its Light chip would leave `previewTheme` labelling the
+   * light render on screen as Dark, with no way back to it. Only a declared-dark catalog with no
+   * light render anywhere in the session is dark-only.
+   */
+  @Test
+  fun `a declared dark stage keeps the pair when the catalog bakes a light render`() {
+    val html =
+      ServeWeb.viewerPage(
+        previews[1],
+        token = "t",
+        basePath = "/compose-m3",
+        sessionId = "compose-m3",
+        siblings = previews,
+        declaredSurface = "dark",
+      )
+
+    assertFalse(html.contains("data-always-dark=\"1\""), html)
+    assertTrue(html.contains("data-theme-choice=\"light\""), html)
+  }
+
+  /**
    * A declaration can ADD an always-dark catalog; it cannot take one away from a Wear id.
    *
    * `SystemDisplay.normalizeOverrideParams` drops `uiMode` for a Wear/watch id unconditionally, on

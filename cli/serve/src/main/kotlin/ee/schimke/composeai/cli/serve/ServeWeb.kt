@@ -12118,8 +12118,18 @@ ${scriptTag("known-differences.js")}
     // moves the control and the URL while the server returns the same pixels. The control and the
     // request normalization have to agree about what has no day mode; until the normalization can
     // read a declaration (it is handed a system id and nothing else), the id keeps its veto.
+    //
+    // And the declaration's half is narrowed by what the catalog actually PUBLISHES, because
+    // `display.surface` is a stage colour in the spec schema and not a statement about modes: a
+    // catalog can perfectly well bake a light/dark pair and ask for a dark stage under both. Only a
+    // declared-dark catalog with **no light render anywhere in the session** is dark-only, which is
+    // `remote-m3` (every capture is one transparent dark-first document, and there is no `__light`
+    // twin to swap to). One that bakes a light variant keeps its pair, and keeps `previewTheme`'s
+    // label honest about the pixels on screen.
+    val hasLightRender = (siblings + preview).any { previewTheme(it, darkFirst = false) == "light" }
     val wearAlwaysDark =
-      viewerDarkFirst || SystemDisplay.isDarkFirst(basePath.trim('/').ifBlank { sessionId ?: "" })
+      SystemDisplay.isDarkFirst(basePath.trim('/').ifBlank { sessionId ?: "" }) ||
+        (viewerDarkFirst && !hasLightRender)
     val alwaysDarkAttr = if (wearAlwaysDark) " data-always-dark=\"1\"" else ""
     val irReplayAttr = if (irReplay) " data-ir-replay=\"1\"" else ""
     val replayThemesAttr = if (replayThemes) " data-replay-themes=\"1\"" else ""
