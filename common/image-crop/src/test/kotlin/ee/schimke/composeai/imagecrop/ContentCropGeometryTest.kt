@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli.serve
+package ee.schimke.composeai.imagecrop
 
 import java.awt.Color
 import java.awt.image.BufferedImage

@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.bundle.TrustStore
 import ee.schimke.composeai.cli.serve.CatalogBlobPool
 import ee.schimke.composeai.cli.serve.GitWorktrees
 import ee.schimke.composeai.cli.serve.PlaygroundBundleSource
@@ -29,7 +30,6 @@ import ee.schimke.composeai.cli.serve.ServeSites
 import ee.schimke.composeai.cli.serve.ServeStartupBundles
 import ee.schimke.composeai.cli.serve.ServeUrls
 import ee.schimke.composeai.cli.serve.ThemeCacheStore
-import ee.schimke.composeai.cli.serve.TrustStore
 import ee.schimke.composeai.previewdata.PreviewModule
 import java.io.File
 import okio.Path.Companion.toPath

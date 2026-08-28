@@ -50,6 +50,10 @@ val contracts =
     "render-session-api",
     "render-session-subprocess",
     "common-io",
+    // Content-crop geometry, extracted from `ServeThumbCrop.kt` during the ServeCommand split.
+    // Both halves need the same arithmetic — the server crops catalog thumbnails, `bundle split`
+    // crops the same renders — so it is a contract rather than a thing to keep two copies of.
+    "common-image-crop",
     "data-layoutinspector-core",
     "data-preview-overrides-core",
     "data-remotecompose-core",

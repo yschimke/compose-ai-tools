@@ -1,6 +1,9 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.bundle.BundleReader
+import ee.schimke.composeai.bundle.BundleVerifier
+import ee.schimke.composeai.bundle.TrustStore
+import ee.schimke.composeai.bundle.TrustedBranch
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream

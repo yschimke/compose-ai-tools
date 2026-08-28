@@ -280,6 +280,13 @@ include(":common-io")
 
 project(":common-io").projectDir = file("common/io")
 
+// Content-crop geometry shared by the preview server (catalog thumbnails) and the CLI
+// (`bundle split`). Extracted from `:cli:serve`'s `ServeThumbCrop.kt` so a CLI command does not
+// depend on the server for arithmetic — #3824 preparation.
+include(":common-image-crop")
+
+project(":common-image-crop").projectDir = file("common/image-crop")
+
 // Step B of the clean-API carve-out: the Gradle Tooling-API render pipeline that previously
 // lived inside `:cli`'s `Command` base class. Exposes a `GradlePreviewDriver` library so
 // external consumers (contrib scripting, third-party tooling) can render previews and read the
