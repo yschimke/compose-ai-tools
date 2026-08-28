@@ -32,7 +32,13 @@ function sidecarDeclarations(bundle, previewId, suffix) {
 function rendersRightToLeft(locale) {
   if (typeof locale !== "string" || locale.trim() === "") return false;
   try {
-    return new Intl.Locale(locale).textInfo?.direction === "rtl";
+    // `_` to `-` first. A catalog spells a locale the way the annotation did, and `ar_XB` / `ar_EG`
+    // are supported spellings — `Intl.Locale` throws on them, the catch below reads that as LTR,
+    // and an asymmetric gutter is then published with its left and right edges swapped. The
+    // renderer does not have this problem because `Pseudolocale.fromTag` and
+    // `LocaleDirection.isRtl` both normalise the separator before they look; this is the publisher
+    // agreeing with the pixels rather than with the string it was handed.
+    return new Intl.Locale(locale.trim().replace(/_/g, "-")).textInfo?.direction === "rtl";
   } catch {
     return false;
   }
@@ -57,7 +63,19 @@ function rendersRightToLeft(locale) {
  */
 export function captureGutterPx(gutter, { density, locale } = {}) {
   if (!gutter) return null;
-  const scale = Number.isFinite(density) && density > 0 ? density : 1;
+  // **No density, no record.** This converts dp to render pixels, and a render whose manifest
+  // leaves `density` null did not use 1x: the Android gutter path falls back to `2.0f`
+  // (`RobolectricRenderTest`) and the ordinary render spec to `DeviceDimensions.DEFAULT_DENSITY`,
+  // 2.625f. Publishing as though it were 1x subtracts a third to a half of the real margin, and a
+  // consumer cannot tell a wrong crop from a right one — it just draws the component at the wrong
+  // size, which is the complaint the gutter exists to answer.
+  //
+  // Guessing is not available either: the two backends fall back differently and this publisher
+  // does not reliably know which produced the PNG. So it declines. A preview with no density keeps
+  // the behaviour it had before gutters existed — the whole canvas, un-cropped — rather than a
+  // cropped one that is confidently off by 2x.
+  if (!(Number.isFinite(density) && density > 0)) return null;
+  const scale = density;
   const px = (dp) => Math.round(Math.max(0, Number(dp) || 0) * scale);
   const rtl = rendersRightToLeft(locale);
   const out = {
