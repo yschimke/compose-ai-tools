@@ -1362,6 +1362,42 @@ ${captureControlsHtml().prependIndent("          ")}
   data class CatalogSource(val repo: String, val ref: String, val module: String)
 
   /**
+   * One thing the spec lane can put on the stage beside the render.
+   *
+   * The lane's four views — Spec, Diff, Triptych, Slider — are instruments over *a pair of images*,
+   * and they do not care where the second image came from. So a second comparison is a second
+   * SOURCE for the existing lane rather than a mode of its own: the views, the single normalisation
+   * pass that keeps them in one pixel space, and the URL state all carry over untouched
+   * (issue #4621).
+   *
+   * Two kinds exist today and they answer different questions, which is why the lane names the one
+   * it is showing rather than implying they are interchangeable:
+   *
+   * * `kit` — the imported design reference. A SPECIFICATION: a static import, fixed at publish
+   *   time. "Does this match what the design says?"
+   * * `parallel` — the counterpart component in the `compareWith` sibling, served from this same
+   *   origin. ANOTHER IMPLEMENTATION'S RENDER, not a spec. "Do our two renditions agree?"
+   *
+   * [provenance] is the whole reason the second kind is safe to offer. The sibling's render was
+   * produced under its own theme, knobs and overrides — not the ones that produced the render it is
+   * being compared against — so the lane says so. An implied symmetry here is the detail most
+   * likely to make the feature quietly misleading.
+   *
+   * @property id the value the picker carries (`kit` / `parallel`); also the URL state's own token.
+   * @property label what the picker button reads, e.g. `Figma` or `wear-m3-catalog`.
+   * @property rasterUrl same-origin URL of the image to compare against; the viewer refuses any
+   *   other origin ([specRasterSrc]).
+   * @property provenance one line naming where this image came from, shown when the source is
+   *   selected. Empty for a source that needs no caveat.
+   */
+  data class SpecSource(
+    val id: String,
+    val label: String,
+    val rasterUrl: String,
+    val provenance: String = "",
+  )
+
+  /**
    * "2026-07-17T12:34:56.789Z" → "2026-07-17 12:34 UTC"; anything unparseable is shown verbatim.
    */
   private fun prettyDate(iso: String): String {
@@ -11682,6 +11718,18 @@ ${scriptTag("known-differences.js")}
      */
     designReference: DesignReference? = null,
     /**
+     * The counterpart component's render in the `compareWith` sibling system, when this catalog
+     * declares a pairing, the sibling is served on THIS host, and the counterpart has a render
+     * (issue #4621). Offered as a second SOURCE for the spec lane, not a second mode — see
+     * [SpecSource].
+     *
+     * Same origin as everything else the lane paints: the sibling is another catalog on this
+     * server, so its render is `/<sibling>/render/<id>.png` and needs no cross-repo fetch and no
+     * thumbnails baked at publish time. Null whenever any link of that chain is missing, which
+     * omits the picker and leaves the lane exactly as it was.
+     */
+    parallelSource: SpecSource? = null,
+    /**
      * Typography/layout facts captured from [designReference]'s own raster. The default Figma lane
      * draws these over the spec image; Diff/Triptych pair them with the current render and reduce
      * the legend to changed typography only.
@@ -12040,6 +12088,23 @@ ${scriptTag("known-differences.js")}
     // drawn, and the trailing link is the step out to the focused comparison page. Entering the
     // lane is [specChipHtml]'s job — a chip of its own on the bar, not an `<option>` inside the
     // renderer combo.
+    // Every source the lane can compare this render against, in the order the picker offers them.
+    // The kit reference leads: it is the specification, it is what the lane has always shown, and a
+    // catalog with no pairing has only this one — so the default pair never moves.
+    val specSources =
+      listOfNotNull(
+        if (specRasterUrl == null || specProviderLabel == null) null
+        else
+          SpecSource(
+            id = "kit",
+            label = specProviderLabel,
+            rasterUrl = specRasterUrl,
+            // No caveat to give: an imported reference is a static specification, and comparing
+            // this publish's render against this publish's spec is the comparison the lane is for.
+            provenance = "",
+          ),
+        parallelSource,
+      )
     val specSelector =
       if (specRasterUrl == null || specProviderLabel == null || specLabel == null) ""
       else {
@@ -12047,6 +12112,30 @@ ${scriptTag("known-differences.js")}
         // Hidden until the lane is entered: while a render is on the stage there is no pair to
         // compare, and a control that acts on nothing is worse than no control. `<cp-spec-compare>`
         // reveals it from openSpec() and hides it again on the way out.
+        // The SOURCE picker: which pair the four views are instruments over. Emitted only when
+        // there is a genuine choice — one source collapses it away entirely, so every catalog that
+        // declares no `compareWith` pairing keeps exactly the lane it had.
+        //
+        // Each button carries its own raster and label, server-built and server-escaped like every
+        // other URL the lane paints, so switching source never means reading a URL out of the DOM
+        // and handing it to an image (CodeQL's `js/xss-through-dom`, and the reason `data-spec-src`
+        // is set here rather than assembled in the browser).
+        val sourceButtons =
+          if (specSources.size < 2) ""
+          else
+            "<span class=\"cp-spec-sources\" id=\"cp-spec-sources\" role=\"group\" " +
+              "aria-label=\"Compare against\" hidden>" +
+              specSources.joinToString("") { source ->
+                "<button type=\"button\" class=\"cp-spec-source\" " +
+                  "data-cp-spec-source=\"${WebEscaping.htmlEscape(source.id)}\" " +
+                  "data-spec-src=\"${WebEscaping.htmlEscape(source.rasterUrl)}\" " +
+                  "data-spec-label=\"${WebEscaping.htmlEscape(source.label)}\" " +
+                  "data-spec-provenance=\"${WebEscaping.htmlEscape(source.provenance)}\" " +
+                  "aria-pressed=\"${source.id == specSources.first().id}\" " +
+                  "title=\"Compare this render against ${WebEscaping.htmlEscape(source.label)}\">" +
+                  "${WebEscaping.htmlEscape(source.label)}</button>"
+              } +
+              "</span>"
         val viewButtons =
           specViews.joinToString("") { (value, text) ->
             val (viewLabel, viewTip) = text
@@ -12055,8 +12144,12 @@ ${scriptTag("known-differences.js")}
               "title=\"${WebEscaping.htmlEscape(viewTip)}\">${WebEscaping.htmlEscape(viewLabel)}</button>"
           }
         "<span class=\"cp-spec-lane\" id=\"cp-spec-lane\" " +
+          // The FIRST source's raster and label stay on these two attributes, unchanged. They are
+          // what a single-source lane has always carried and what the backend badge still reads, so
+          // a catalog with no pairing produces byte-identical markup to before.
           "data-spec-src=\"${WebEscaping.htmlEscape(specRasterUrl)}\" " +
           "data-spec-label=\"${WebEscaping.htmlEscape(specProviderLabel)}\">" +
+          sourceButtons +
           "<span class=\"cp-spec-views\" id=\"cp-spec-views\" role=\"group\" " +
           "aria-label=\"Design comparison\" hidden>$viewButtons</span>" +
           "<span class=\"cp-spec-score\" id=\"cp-spec-score\" role=\"status\" " +

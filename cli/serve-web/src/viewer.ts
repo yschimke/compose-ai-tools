@@ -23,6 +23,13 @@ import {
 import { visibilityMessage } from "./live/session.js";
 import * as rules from "./viewer/rules.js";
 import { viewParam } from "./spec/views.js";
+import {
+    activeSource,
+    changesSource,
+    offersChoice,
+    sourceNote,
+    type SpecSource,
+} from "./spec/sources.js";
 import { type ApiDocLink, usableApiDocs } from "./viewer/apiDocs.js";
 import {
     effectiveUnseeded,
@@ -1855,7 +1862,43 @@ function wasmActive() {
 const specLane = may<HTMLElement>("cp-spec-lane");
 const specImg = may<HTMLImageElement>("cp-spec-img");
 const specToggle = may<HTMLInputElement>("cp-spec-toggle");
-var specSrc = specLane ? specLane.getAttribute("data-spec-src") || "" : "";
+// WHICH source the lane is comparing against. The four views are instruments over a pair of
+// images and do not care where the second one came from, so a second comparison is a second source
+// here rather than a mode of its own (issue #4621).
+//
+// The buttons are the source of truth, exactly as `motionOptions` is for the motion lane: a lane
+// with ONE source renders no picker at all and falls back to the carrier's own `data-spec-src`, so
+// there is one code path rather than a special case for the common catalog.
+const specSourceGroup = may<HTMLElement>("cp-spec-sources");
+var specSourceButtons: HTMLButtonElement[] = specSourceGroup
+    ? Array.prototype.slice.call(
+          specSourceGroup.querySelectorAll("[data-cp-spec-source]"),
+      )
+    : [];
+/** The picker as `spec/sources.ts` sees it: the markup read once, into plain descriptors. */
+function specSourceList(): SpecSource[] {
+    return specSourceButtons.map(function (button) {
+        return {
+            id: button.getAttribute("data-cp-spec-source") || "",
+            label: button.getAttribute("data-spec-label") || "",
+            src: button.getAttribute("data-spec-src") || "",
+            provenance: button.getAttribute("data-spec-provenance") || "",
+        };
+    });
+}
+function specPressedId(): string | null {
+    for (var i = 0; i < specSourceButtons.length; i++)
+        if (specSourceButtons[i].getAttribute("aria-pressed") === "true")
+            return specSourceButtons[i].getAttribute("data-cp-spec-source");
+    return null;
+}
+/** The picked source's raster, else the carrier's — the single-source lane's original behaviour. */
+function specSrcRaw(): string {
+    var active = activeSource(specSourceList(), specPressedId());
+    if (active) return active.src;
+    return specLane ? specLane.getAttribute("data-spec-src") || "" : "";
+}
+var specSrc = specSrcRaw();
 var specLoaded = false; // the raster is requested once, on the lane's first entry
 // Same treatment as the Wasm iframe's src (see wasmBaseSrc): the URL comes from a server-set
 // data- attribute, but it is resolved against our own origin and refused unless it stays on it,
@@ -1895,8 +1938,53 @@ function openSpec() {
         // of an origin-checked URL.
         specImg!.src = specRasterSrc();
     }
-    if (status) status.textContent = "";
+    // What this panel is, when it is not a specification. `openSpec` owns the status line and is the
+    // one path into the stage — including the source switch, which re-enters through here — so the
+    // note is stated at the end of entry rather than by the switch, which would have it cleared one
+    // line later.
+    if (status)
+        status.textContent = sourceNote(
+            activeSource(specSourceList(), specPressedId()),
+        );
+    // The picker is revealed with the lane, like the view group beside it: while a render is on the
+    // stage there is no pair to choose a source for.
+    if (specSourceGroup && offersChoice(specSourceList()))
+        specSourceGroup.hidden = false;
     if (window.cpSpecCompare) window.cpSpecCompare.open(specActualUrl());
+}
+/**
+ * Switch which source the lane compares against.
+ *
+ * Everything downstream is rebuilt rather than patched: the raster is re-requested (a new pair is a
+ * new image, and `specLoaded` is what guards the ONE request per source), and the comparison is
+ * re-opened so the normalisation pass runs again. Re-opening is what keeps diff/triptych/slider in
+ * one pixel space — the two sources can differ in scale, and a cached normalisation from the old
+ * pair would line the new one up against the wrong geometry.
+ */
+function pickSpecSource(button: HTMLButtonElement) {
+    if (!button) return;
+    var nextId = button.getAttribute("data-cp-spec-source") || "";
+    if (!changesSource(specSourceList(), specPressedId(), nextId)) return;
+    for (var i = 0; i < specSourceButtons.length; i++)
+        specSourceButtons[i].setAttribute(
+            "aria-pressed",
+            specSourceButtons[i] === button ? "true" : "false",
+        );
+    specSrc = specSrcRaw();
+    // The label follows the source, so the badge never names the panel it is no longer showing.
+    if (specLane) {
+        specLane.setAttribute(
+            "data-spec-label",
+            button.getAttribute("data-spec-label") || "",
+        );
+    }
+    if (!specImg) return;
+    specLoaded = false;
+    if (root.getAttribute("data-mode") !== "spec") return;
+    // Re-enter the lane on the new pair. `openSpec` owns the request and the compare handshake, so
+    // the switch has one path into the stage rather than a second copy of it.
+    specImg.hidden = false;
+    openSpec();
 }
 function closeSpec() {
     if (window.cpSpecCompare) window.cpSpecCompare.close();
@@ -1904,9 +1992,17 @@ function closeSpec() {
     if (root.getAttribute("data-mode") === "spec")
         root.setAttribute("data-mode", "snapshot");
     specImg.hidden = true;
+    if (specSourceGroup) specSourceGroup.hidden = true;
     img.style.removeProperty("display");
     img.hidden = false;
 }
+// One listener per button, bound once. The buttons are server-rendered and never replaced, so this
+// needs no delegation and no re-binding.
+specSourceButtons.forEach(function (button) {
+    button.addEventListener("click", function () {
+        pickSpecSource(button);
+    });
+});
 // ---- The Motion lane -------------------------------------------------------------------------
 // The recorded interaction for this preview, on the stage in place of the still.
 //

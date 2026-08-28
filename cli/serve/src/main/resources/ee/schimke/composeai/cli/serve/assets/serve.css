@@ -2281,6 +2281,25 @@ cp-history-menu { display: contents; }
 .cp-spec-view:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
 .cp-spec-view[aria-pressed="true"] { background: var(--md-sys-color-secondary-container);
   color: var(--md-sys-color-on-secondary-container); }
+/* WHICH pair the four views above are instruments over: the imported kit spec, or the counterpart
+   component in the `compareWith` sibling. The same segmented shape as the view group, because it is
+   the same kind of question — one mutually-exclusive choice — one level up: the source picks the
+   pair, the views pick how that pair is drawn. Emitted only when a catalog declares a pairing, so
+   most catalogs never render this at all. */
+.cp-spec-sources { display: inline-flex; align-items: stretch;
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-full); overflow: hidden; }
+.cp-spec-sources[hidden] { display: none; }
+.cp-spec-source { font: inherit; min-height: 32px; padding: 5px 12px; border: 0;
+  border-left: 1px solid var(--md-sys-color-outline-variant);
+  font-size: var(--md-sys-typescale-label-large-size);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
+  background: transparent; color: var(--md-sys-color-on-surface-variant); cursor: pointer;
+  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-spec-source:first-child { border-left: 0; }
+.cp-spec-source:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+.cp-spec-source[aria-pressed="true"] { background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container); }
 /* "93.4% match · 2.11% pixels differ" — the number the comparison exists to produce, beside the
    control that produced it rather than buried under the stage. */
 .cp-spec-score { font-size: 0.72rem; color: var(--cp-fg-muted); white-space: nowrap; }

@@ -4294,6 +4294,67 @@ class ServeHttpServer(
     return "/playground?catalog=${WebEscaping.urlEncodeSegment(system)}$token"
   }
 
+  /**
+   * The counterpart component's render in the `compareWith` sibling, as a second source for the
+   * viewer's spec lane (issue #4621).
+   *
+   * The pairing is carried in two halves and BOTH have to resolve, because half of it means
+   * nothing: the catalog's `compareWith` names the sibling SYSTEM, and the component's `parallel`
+   * names the counterpart COMPONENT in it. From there this walks to the sibling's own preview id,
+   * which is what a render URL needs.
+   *
+   * Every step is allowed to fail, and each failure simply means no second source — the lane then
+   * offers exactly what it offered before. The chain is long because it spans two catalogs, not
+   * because it is doing anything clever:
+   *
+   * 1. this catalog declares a `compareWith` system;
+   * 2. this preview belongs to a component that declares a `parallel`;
+   * 3. the sibling is served on THIS host (a pairing with a system we do not host is a fact about
+   *    the spec, not a link we can offer);
+   * 4. the sibling has a preview for that component id.
+   *
+   * [ServeSessionRegistry.peekHost], never `lease`: this is a metadata read while building a page,
+   * and standing a suspended sibling's daemon up to decide whether to draw a button would be a
+   * daemon per page view. A suspended sibling therefore offers no lane — fail-soft, like the rest
+   * of this surface.
+   */
+  private fun parallelSpecSource(host: ServeHost, preview: ServePreview): ServeWeb.SpecSource? {
+    val bundle = catalogBundleHost(host) ?: return null
+    val siblingSystem = bundle.compareWithSystem?.takeIf { it.isNotBlank() } ?: return null
+    val componentId = preview.componentId?.takeIf { it.isNotBlank() } ?: return null
+    val parallelId = bundle.parallelByComponentId[componentId] ?: return null
+    val siblingHost = sessions.peekHost(siblingSystem) ?: return null
+    // The sibling's OWN preview for that component. First match, like the design-reference lane
+    // above: a component with several previews has one canonical sticker and the manifest's order
+    // is the producer's.
+    val siblingPreview =
+      siblingHost.previews.firstOrNull { it.componentId == parallelId } ?: return null
+    val siblingBundle = catalogBundleHost(siblingHost)
+    val siblingLabel =
+      siblingBundle?.title?.takeIf { it.isNotBlank() }
+        ?: siblingHost.label.ifBlank { siblingSystem }
+    return ServeWeb.SpecSource(
+      id = "parallel",
+      label = siblingLabel,
+      // Same origin, no token: this is the sibling catalog's ordinary public render route on this
+      // very server, which is the whole reason the pairing is cheap to offer here and expensive
+      // anywhere else (a static compare page can only bake thumbnails at publish time).
+      rasterUrl =
+        "/" +
+          WebEscaping.urlEncodeSegment(siblingSystem) +
+          "/render/" +
+          WebEscaping.urlEncodeSegment(siblingPreview.id) +
+          ".png",
+      // The caveat that keeps the pair honest. Unlike the kit reference, this panel is another
+      // catalog's RENDER, produced under its own theme, knobs and overrides rather than the ones
+      // that produced the render beside it. Saying so is the difference between a comparison and an
+      // implied equivalence.
+      provenance =
+        "$siblingLabel's own render of ${siblingPreview.componentId ?: parallelId}, " +
+          "under that catalog's theme and knobs — not this page's.",
+    )
+  }
+
   private fun catalogBundleHost(host: ServeHost): ServeBundleHost? =
     when (host) {
       is ServeBundleHost -> host
@@ -7253,6 +7314,10 @@ class ServeHttpServer(
           // one canonical spec, and the manifest's order is the producer's own. Absent for every
           // catalog that publishes no references, which omits the lane entirely.
           designReference = renderHost.designReferencesFor(preview.id).firstOrNull(),
+          // …and the counterpart in the `compareWith` sibling, when this catalog declares a pairing
+          // and we host the other side of it. A second SOURCE for that same lane rather than a mode
+          // of its own, so the four views are unchanged (issue #4621).
+          parallelSource = parallelSpecSource(renderHost, preview),
           referenceAnnotations =
             if (revisions.pinned != null) emptyList()
             else

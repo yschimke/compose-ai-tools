@@ -1495,6 +1495,80 @@ class ServeWebTest {
   }
 
   @Test
+  fun `the spec lane offers the compareWith sibling as a second source`() {
+    // The cross-system pairing, reachable from the component page rather than only from the static
+    // `matches.html` (issue #4621). A SECOND SOURCE for the lane, not a second mode: the four views
+    // are untouched and the kit reference stays the default pair.
+    val preview = ServePreview(id = "remote.FilledRemoteButton", label = "filled")
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/remote-m3",
+        siblings = listOf(preview),
+        designReference =
+          DesignReference(
+            id = "button-filled",
+            previewId = preview.id,
+            label = "Button / Filled",
+            raster = DesignReferenceRaster(path = "references/button-filled.png"),
+            source = DesignReferenceSource(provider = "figma"),
+          ),
+        parallelSource =
+          ServeWeb.SpecSource(
+            id = "parallel",
+            label = "wear-m3-catalog",
+            rasterUrl = "/wear-m3-catalog/render/button-filled.png",
+            provenance = "wear-m3-catalog's own render, under that catalog's theme and knobs.",
+          ),
+      )
+    assertTrue(html.contains("id=\"cp-spec-sources\""), "the picker is offered: $html")
+    assertTrue(html.contains("data-cp-spec-source=\"kit\""), "the kit is a source")
+    assertTrue(html.contains("data-cp-spec-source=\"parallel\""), "the sibling is a source")
+    assertTrue(
+      html.contains("/wear-m3-catalog/render/button-filled.png"),
+      "the sibling's own render is same-origin on this server: $html",
+    )
+    assertTrue(
+      html.contains("under that catalog's theme and knobs"),
+      "the panel says whose render it is, rather than implying symmetry: $html",
+    )
+    // The kit leads, so the pair the lane opens on does not move for a paired catalog.
+    val kitAt = html.indexOf("data-cp-spec-source=\"kit\"")
+    val parallelAt = html.indexOf("data-cp-spec-source=\"parallel\"")
+    assertTrue(kitAt in 0 until parallelAt, "the imported spec is still the default pair")
+  }
+
+  @Test
+  fun `a catalog with no parallel keeps exactly the lane it had`() {
+    // Every catalog that declares no `compareWith` pairing — which is most of them. One source is
+    // not a picker with a single button; it is no picker, because a control that acts on nothing is
+    // worse than no control.
+    val preview = ServePreview(id = "plain.Button", label = "button")
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/compose-m3",
+        siblings = listOf(preview),
+        designReference =
+          DesignReference(
+            id = "button-primary",
+            previewId = preview.id,
+            label = "Button / Primary",
+            raster = DesignReferenceRaster(path = "references/button-primary.png"),
+            source = DesignReferenceSource(provider = "figma"),
+          ),
+      )
+    assertTrue(html.contains("id=\"cp-spec-lane\""), "the lane itself is unchanged")
+    assertFalse(html.contains("id=\"cp-spec-sources\""), "no picker for a single source: $html")
+    assertFalse(html.contains("data-cp-spec-source"), "and no source buttons at all")
+    // The carrier still describes the one source the way it always has, which is what the backend
+    // badge reads.
+    assertTrue(html.contains("data-spec-src=\"/compose-m3/reference/"), "the carrier is intact")
+  }
+
+  @Test
   fun `the viewer renders no figma link when the catalog names no spec`() {
     // The common case: a catalog with no references, or whose references are HTML/PNG exports.
     val preview = ServePreview(id = "plain.Button", label = "button")
