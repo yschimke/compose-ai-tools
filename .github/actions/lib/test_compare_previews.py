@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import shutil
 import tempfile
 import unittest
@@ -577,6 +578,33 @@ class ResourceSizeAwareToleranceTest(unittest.TestCase):
         )
 
 
+class PerceptualLibrariesTest(unittest.TestCase):
+    """The image classes in this file skip themselves when pixelmatch/Pillow are
+    missing, which is right locally and was silently wrong in CI.
+
+    On a bare `ubuntu-latest` runner neither is installed, so the `actions-tests`
+    job ran this suite with five classes skipped and reported OK — the tests that
+    decide what the diff bot reports had never executed there. A skip is invisible
+    in a green check, so nothing said so.
+
+    `ci.yml` now installs them. This is the guard that keeps it installed: the
+    skip stays a local convenience, and its cost in CI is a failure rather than a
+    quieter pass."""
+
+    def test_the_image_libraries_are_installed_in_ci(self):
+        if not os.environ.get("GITHUB_ACTIONS"):
+            self.skipTest("local run — the image classes may skip themselves")
+        try:
+            from pixelmatch.contrib.PIL import pixelmatch  # noqa: F401
+            from PIL import Image  # noqa: F401
+        except ImportError as exc:  # pragma: no cover - the failure is the point
+            self.fail(
+                "pixelmatch/Pillow missing in CI, so every image comparison in "
+                f"this file silently skips: {exc}. Restore the "
+                "'Install perceptual-diff libraries' step in ci.yml."
+            )
+
+
 class TransparentLightContentTest(unittest.TestCase):
     """Light content on transparency, which pixelmatch cannot see on its own.
 
@@ -705,6 +733,76 @@ class TransparentLightContentTest(unittest.TestCase):
             limit = cp._PERCEPTUAL_PIXEL_TOLERANCE
             self.assertTrue(cp._over_budget(a, b, limit))
             self.assertFalse(cp._over_budget(a, b, limit, backdrops=False))
+
+
+class AnimatedBackdropOptOutTest(unittest.TestCase):
+    """Which animated format opts out of the backdrops, and which must not.
+
+    GIF does, because its 1-bit alpha thresholds an anti-aliased edge into a
+    handful of flipping pixels per run and every one of those is a
+    maximum-contrast difference once composited. APNG does **not**, and keying
+    the opt-out on frame count rather than on format would have handed it the
+    GIF's exemption: `PreviewDiscovery` reaches for APNG precisely because it
+    carries full alpha where GIF's would churn, and `@InteractionPreview` writes
+    `.apng` by default — so an interaction capture is exactly the
+    light-on-transparency content the backdrops exist for.
+
+    Both fixtures are written here rather than committed: the point is the
+    container, and two frames of a white square on transparency say it exactly.
+    White on transparency is what cancels against pixelmatch's white blend, so
+    the pair is invisible without a backdrop in either format."""
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            from pixelmatch.contrib.PIL import pixelmatch  # noqa: F401
+            from PIL import Image  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("pixelmatch/Pillow not installed")
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+
+    def _frames(self, offset: int):
+        """Two frames of a white square on transparency, shifted by ``offset``."""
+        from PIL import Image, ImageDraw
+
+        out = []
+        for i in range(2):
+            frame = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+            x = 8 + offset + i * 4
+            ImageDraw.Draw(frame).rectangle([x, 8, x + 24, 32], fill=(255, 255, 255, 255))
+            out.append(frame)
+        return out
+
+    def _write(self, name: str, offset: int, **kwargs) -> Path:
+        frames = self._frames(offset)
+        path = self.tmp / name
+        frames[0].save(path, save_all=True, append_images=frames[1:], **kwargs)
+        return path
+
+    def test_apng_frames_take_the_backdrops(self):
+        a = self._write("a.apng", 0)
+        b = self._write("b.apng", 6)
+        from PIL import Image
+
+        with Image.open(a) as ia:
+            self.assertEqual(ia.format, "PNG")
+            self.assertGreater(ia.n_frames, 1)
+        self.assertTrue(cp._perceptually_changed(a, b))
+
+    def test_gif_frames_still_opt_out(self):
+        # The same moved square, in the container whose 1-bit alpha the per-frame
+        # budget is tuned around. Unchanged behaviour, asserted so that keying
+        # the opt-out on the format cannot quietly become keying it on nothing.
+        a = self._write("a.gif", 0, disposal=2, transparency=0)
+        b = self._write("b.gif", 6, disposal=2, transparency=0)
+        from PIL import Image
+
+        with Image.open(a) as ia:
+            self.assertEqual(ia.format, "GIF")
+        self.assertFalse(cp._perceptually_changed(a, b))
 
 
 class GenerateTest(unittest.TestCase):
