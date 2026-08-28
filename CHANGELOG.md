@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.45.0](https://github.com/yschimke/compose-ai-tools/compare/v1.44.0...v1.45.0) (2026-08-28)
+
+
+### Features
+
+* **catalog:** let a @CatalogVariant carry its own kit correspondence ([#4719](https://github.com/yschimke/compose-ai-tools/issues/4719)) ([2ed27c7](https://github.com/yschimke/compose-ai-tools/commit/2ed27c746c5fb5629171244bdf54bd64db6d45ca))
+* **design-artifacts:** pair compared variants on the cross-system page ([#4721](https://github.com/yschimke/compose-ai-tools/issues/4721)) ([e64b14e](https://github.com/yschimke/compose-ai-tools/commit/e64b14ec4d46c5539fe7092b063f02c9131600ed))
+
+
+### Bug Fixes
+
+* address post-merge review findings on [#4680](https://github.com/yschimke/compose-ai-tools/issues/4680), [#4688](https://github.com/yschimke/compose-ai-tools/issues/4688) and [#4702](https://github.com/yschimke/compose-ai-tools/issues/4702) ([#4709](https://github.com/yschimke/compose-ai-tools/issues/4709)) ([8966e62](https://github.com/yschimke/compose-ai-tools/commit/8966e6276b4827496785a2be9813ed0560e94dd6))
+* address post-merge review findings on [#4713](https://github.com/yschimke/compose-ai-tools/issues/4713) ([#4724](https://github.com/yschimke/compose-ai-tools/issues/4724)) ([270faeb](https://github.com/yschimke/compose-ai-tools/commit/270faeb112d09702bfb7a1c01ea7f611c223893f))
+* **bundle-format:** record the Manifest's new field in the ABI dump ([#4716](https://github.com/yschimke/compose-ai-tools/issues/4716)) ([0f5c801](https://github.com/yschimke/compose-ai-tools/commit/0f5c801bc146c31f3d76446b556c73f2a6207338))
+* **ci:** track the BTA types' published owner instead of hard-coding it ([#4718](https://github.com/yschimke/compose-ai-tools/issues/4718)) ([fcc11b3](https://github.com/yschimke/compose-ai-tools/commit/fcc11b3756e5a468445da3ffc68fd5d9188cfcf7))
+* **design-map:** namespace absence keys and name seedless variants ([#4725](https://github.com/yschimke/compose-ai-tools/issues/4725)) ([a24c9a5](https://github.com/yschimke/compose-ai-tools/commit/a24c9a58b997ee5c605f6e1a8ae0a084306491bc))
+* **design-map:** report a folded variant's stated absence ([#4722](https://github.com/yschimke/compose-ai-tools/issues/4722)) ([045dc7e](https://github.com/yschimke/compose-ai-tools/commit/045dc7e0ee56b6433ce8ef36484e71893b975439))
+* **parity:** publish reference-side bounds in the rescaled raster's space ([#4708](https://github.com/yschimke/compose-ai-tools/issues/4708)) ([6bf8172](https://github.com/yschimke/compose-ai-tools/commit/6bf8172b63e0d9081db3f1455aaff5c7ef394324))
+* **rc-player:** stop applying padding twice at density != 1 ([#4727](https://github.com/yschimke/compose-ai-tools/issues/4727)) ([d0bec30](https://github.com/yschimke/compose-ai-tools/commit/d0bec30a95a1a296ca07588aee25a8f8557263ea))
+* **rc-player:** stop doubling the rounded clip radius at density != 1 ([#4710](https://github.com/yschimke/compose-ai-tools/issues/4710)) ([94311bc](https://github.com/yschimke/compose-ai-tools/commit/94311bc8b8f917822a70f62563880815235af810))
+* **render-session:** publish Okio on the consumer compile classpath ([#4729](https://github.com/yschimke/compose-ai-tools/issues/4729)) ([c484604](https://github.com/yschimke/compose-ai-tools/commit/c484604080bb656706d0e6af5467bdbc8f10d24f))
+* **serve:** close the four ways a cache generation could still be ignored ([#4720](https://github.com/yschimke/compose-ai-tools/issues/4720)) ([e8b10a6](https://github.com/yschimke/compose-ai-tools/commit/e8b10a67aceaae080ffa2ac566a23e0169a4d5fa))
+* **serve:** give the page, its verdict and the rendered frame one cache generation ([#4714](https://github.com/yschimke/compose-ai-tools/issues/4714)) ([11e6d1f](https://github.com/yschimke/compose-ai-tools/commit/11e6d1f5ae90a8c61d74b43847fa5435f4741bf3))
+* **serve:** let every catalog surface file a catalog bug ([#4706](https://github.com/yschimke/compose-ai-tools/issues/4706)) ([0521fb7](https://github.com/yschimke/compose-ai-tools/commit/0521fb7b4d18123ac1a834ff00be360657cc259d))
+* **serve:** make the spec lane's sibling source a URL this caller can fetch ([#4711](https://github.com/yschimke/compose-ai-tools/issues/4711)) ([00e80c4](https://github.com/yschimke/compose-ai-tools/commit/00e80c4c9ccdf77f7c7d8a73938befc12342b5ac))
+* **serve:** stop a plain module offering a catalog report, and pin the mode ([#4728](https://github.com/yschimke/compose-ai-tools/issues/4728)) ([7f29aa7](https://github.com/yschimke/compose-ai-tools/commit/7f29aa780bece821dcf65f98f1bc8c5565f3662a))
+
 ## [1.44.0](https://github.com/yschimke/compose-ai-tools/compare/v1.43.1...v1.44.0) (2026-08-28)
 
 
