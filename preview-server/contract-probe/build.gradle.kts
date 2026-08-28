@@ -55,6 +55,9 @@ val contracts =
     // Both halves need the same arithmetic — the server crops catalog thumbnails, `bundle split`
     // crops the same renders — so it is a contract rather than a thing to keep two copies of.
     "common-image-crop",
+    // HTML/JS/URL escaping. `WebEmbed` moved to `:bundle-format` and the server's pages still
+    // share the same escaping, so it is a contract rather than a copy on each side.
+    "common-web-escaping",
     // The agent-grant vocabulary. Both ends of `--agent-grants` speak it — the server mints, the
     // CLI's `auth` asks — so it is a contract rather than a thing for the client to reach into the
     // server for.

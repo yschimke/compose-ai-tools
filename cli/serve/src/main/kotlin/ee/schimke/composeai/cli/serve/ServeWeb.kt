@@ -11,6 +11,7 @@ import ee.schimke.composeai.data.render.PreviewClip
 import ee.schimke.composeai.designpages.DesignPage
 import ee.schimke.composeai.designpages.PageNode
 import ee.schimke.composeai.imagecrop.ContentCrop
+import ee.schimke.composeai.web.WebEscaping
 import java.time.Instant
 import java.util.Locale
 import kotlinx.serialization.json.Json

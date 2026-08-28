@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.web.WebEscaping
+
 /**
  * **Historical permalinks**: pinning a served catalog page to one delivery-branch commit.
  *

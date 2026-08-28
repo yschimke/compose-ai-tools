@@ -1,5 +1,6 @@
-package ee.schimke.composeai.cli.serve
+package ee.schimke.composeai.bundle
 
+import ee.schimke.composeai.web.WebEscaping
 import java.util.Base64
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -41,10 +42,10 @@ import kotlinx.serialization.json.Json
  * under a stable key, and a gallery selects its bundle with `embed="<key>"` — the generated
  * `index.html` sets this. A single embed needs no attribute.
  */
-object WebEmbed {
+public object WebEmbed {
 
   /** A single preview baked into the embed. */
-  data class Preview(
+  public data class Preview(
     val id: String,
     /** Human-readable label (the preview's function name, falling back to its id). */
     val label: String,
@@ -55,7 +56,7 @@ object WebEmbed {
   )
 
   /** How the previews' PNG bytes are carried in the generated output. */
-  enum class InlineMode {
+  public enum class InlineMode {
     /** PNGs baked into the script as `data:` URIs — one self-contained `.js` file. */
     INLINE,
     /** PNGs written as `previews/<id>.png` and referenced by relative URL. */
@@ -63,10 +64,10 @@ object WebEmbed {
   }
 
   /** The generated file set, plus the cover dimensions for the caller's summary. */
-  data class Output(val files: Map<String, ByteArray>, val previewCount: Int)
+  public data class Output(val files: Map<String, ByteArray>, val previewCount: Int)
 
-  const val SCRIPT_NAME: String = "compose-preview-embed.js"
-  const val INDEX_NAME: String = "index.html"
+  public const val SCRIPT_NAME: String = "compose-preview-embed.js"
+  public const val INDEX_NAME: String = "index.html"
 
   /**
    * Build the web-embed file set. [title] heads the demo page and the gallery; [modulePath] is
@@ -74,7 +75,7 @@ object WebEmbed {
    * [InlineMode.EXTERNAL] the PNGs are emitted as separate `previews/<id>.png` files and referenced
    * by URL; the default [InlineMode.INLINE] bakes them into the script as `data:` URIs.
    */
-  fun generate(
+  public fun generate(
     title: String,
     modulePath: String,
     previews: List<Preview>,

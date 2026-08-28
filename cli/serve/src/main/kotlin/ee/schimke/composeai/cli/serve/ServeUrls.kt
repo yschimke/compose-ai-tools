@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.web.WebEscaping
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.security.MessageDigest

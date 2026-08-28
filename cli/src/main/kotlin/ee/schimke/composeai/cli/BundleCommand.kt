@@ -8,6 +8,7 @@ import ee.schimke.composeai.bundle.BUNDLE_PREVIEWS_DIR
 import ee.schimke.composeai.bundle.BUNDLE_SEMANTICS_SUFFIX
 import ee.schimke.composeai.bundle.BUNDLE_WEB_DIR
 import ee.schimke.composeai.bundle.BundleReader
+import ee.schimke.composeai.bundle.WebEmbed
 import ee.schimke.composeai.bundle.embedWebIntoZip
 import ee.schimke.composeai.bundle.expandZipBytesSafely
 import ee.schimke.composeai.bundle.injectFigmaRasterIntoBundle
@@ -21,7 +22,6 @@ import ee.schimke.composeai.cli.serve.RenderOutcome
 import ee.schimke.composeai.cli.serve.ServeBundleDaemon
 import ee.schimke.composeai.cli.serve.ServeRenderHost
 import ee.schimke.composeai.cli.serve.SvgOutcome
-import ee.schimke.composeai.cli.serve.WebEmbed
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import ee.schimke.composeai.io.SystemFileSystem

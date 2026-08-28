@@ -73,6 +73,7 @@ base { archivesName.set("compose-preview-serve") }
 // turning the gate on, is its own change.
 
 dependencies {
+  api(project(":common-web-escaping"))
   // Published wire-format DTOs and the bundle format. `api` because they appear in this module's
   // own signatures, which `:cli` reads.
   api(project(":preview-data-api"))

@@ -29,6 +29,7 @@ plugins {
 }
 
 dependencies {
+  api(project(":common-web-escaping"))
   // `api` so `:cli` keeps seeing Okio's `Path` / `FileSystem` transitively, as it did while these
   // files were its own sources.
   api(project(":common-io"))

@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.web.WebEscaping
 import java.util.Base64
 import kotlinx.serialization.Serializable
 
