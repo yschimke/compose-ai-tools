@@ -110,12 +110,19 @@ const heroSpan = (mode, cap) => {
 // Sizing it off the well's height through that ratio shrinks it to 196x65 for nothing; it already
 // fits the 196px well at its natural size.
 const LANDSCAPE = render(300, 100, 15);
-const vectorBleedSpan = () => {
+const vectorBleedSpan = (mode) => {
   const inner = `<img alt="" src="${LANDSCAPE}" style="width:110%;left:-5%;top:-15%">`;
+  // `before` pins what the `--bleed` / `--cp-thumb-cap:196px` rule produced here: the ratio it
+  // read is against the LARGEST EDGE (300/300 = 1), so the window came out min(300, 1 * 196) =
+  // 196px wide — 196x65 at this aspect. That number has to be in the picture, or the before/after
+  // pair shows the regression not happening rather than the regression.
+  const sizing =
+    mode === "before"
+      ? "width:196px"
+      : `--cp-crop-w-per-cap:${pct(300, 300 * 100)};--cp-crop-w-per-h:${pct(300, 100 * 100)};` +
+        `--cp-crop-max-w:300px`;
   return (
-    `<span class="cp-crop cp-crop--bleed" style="--cp-crop-w-per-cap:${pct(300, 300 * 100)};` +
-    `--cp-crop-w-per-h:${pct(300, 100 * 100)};--cp-crop-max-w:300px;` +
-    `aspect-ratio:300/100">${inner}</span>`
+    `<span class="cp-crop cp-crop--bleed" style="${sizing};aspect-ratio:300/100">${inner}</span>`
   );
 };
 
@@ -142,10 +149,10 @@ body { margin: 0; background: #fff; font-family: sans-serif; color: #222; }
       fitted to the row's 196px of content height</div></div>
   <div class="box">${heroCard(heroSpan(mode, cap))}
     <div class="cap">system-card hero, the cropped fallback &mdash; same row, same well</div></div>
-  <div class="box">${heroCard(vectorBleedSpan())}
+  <div class="box">${heroCard(vectorBleedSpan(mode))}
     <div class="cap">a VECTOR-derived bleed crop (landscape 300x100) in the same well &mdash;
-      <code>--bleed</code>, but a largest-edge cap ratio. Unchanged either side: it already fits
-      the 196px well, and sizing it off the height would shrink it to 196x65</div></div>
+      <code>--bleed</code>, but a largest-edge cap ratio. Before, the rule shrank it to 196x65 in
+      a well it already fitted; after, it keeps its natural 300x100</div></div>
 </div>`;
 
 mkdirSync(here, { recursive: true });

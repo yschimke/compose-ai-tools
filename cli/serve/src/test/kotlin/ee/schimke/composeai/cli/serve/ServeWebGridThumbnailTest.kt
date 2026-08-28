@@ -97,7 +97,7 @@ class ServeWebGridThumbnailTest {
     val html = page(thumbHash = { "abc123" }, thumbCrop = { crop })
     assertTrue(
       html.contains(
-        "class=\"cp-crop\" style=\"--cp-crop-w-per-cap:1;--cp-crop-max-w:120px;aspect-ratio:120/48\""
+        "class=\"cp-crop\" style=\"--cp-crop-w-per-cap:1;--cp-crop-w-per-h:2.5;--cp-crop-max-w:120px;aspect-ratio:120/48\""
       ),
       "clip window still sized to the component box",
     )
