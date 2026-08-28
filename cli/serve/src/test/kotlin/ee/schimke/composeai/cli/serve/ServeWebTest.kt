@@ -1890,4 +1890,135 @@ class ServeWebTest {
     assertFalse(html.contains("id=\"cp-report\""), html)
     assertFalse(html.contains("cp-compare-links"), html)
   }
+
+  /** [referenceFor], carrying the score the delivery branch bakes in at publish time. */
+  private fun scoredReferenceFor(previewId: String, percent: Double): DesignReference =
+    referenceFor(previewId)
+      .copy(
+        match =
+          DesignReferenceMatch(
+            percent = percent,
+            scoreVersion = ServeDesignReferenceStore.SCORE_VERSION,
+          )
+      )
+
+  @Test
+  fun `the reference wall is served worst first, on the scores the branch already measured`() {
+    // The order is the wall's whole argument, and it used to exist only AFTER the browser had
+    // decoded and scored two rasters per row — tens of seconds of catalog order on a real catalog,
+    // which is the one order that says nothing about which pair is wrong (issue #4624).
+    val previews =
+      listOf("good" to 98.5, "awful" to 41.0, "middling" to 84.25).map { (id, _) ->
+        ServePreview(id = id, label = id)
+      }
+    val scores = mapOf("good" to 98.5, "awful" to 41.0, "middling" to 84.25)
+    val html =
+      ServeWeb.comparisonPage(
+        "m3-catalog",
+        previews,
+        token = "t",
+        referencesFor = { id -> listOf(scoredReferenceFor(id, scores.getValue(id))) },
+      )
+    val labels = Regex("data-label=\"([^\"]+)\"").findAll(html).map { it.groupValues[1] }.toList()
+    assertEquals(listOf("awful", "middling", "good"), labels, "worst first: $html")
+    // And the numbers themselves ride along per variant, so `<cp-compare-wall>` can seed the score
+    // cell — and re-seed it from the OTHER theme's number when the visitor switches.
+    assertTrue(html.contains("data-match-neutral=\"41.00\""), html)
+  }
+
+  @Test
+  fun `a pair the branch never scored trails the ones it did`() {
+    // "Nobody has measured this yet" is not a finding. A catalog baked before the score producer
+    // existed carries none at all, and leading with them would serve its whole table under a banner
+    // of rows claiming to be the worst.
+    val previews = listOf("unscored", "scored").map { ServePreview(id = it, label = it) }
+    val html =
+      ServeWeb.comparisonPage(
+        "m3-catalog",
+        previews,
+        token = "t",
+        referencesFor = { id ->
+          if (id == "scored") listOf(scoredReferenceFor(id, 30.0)) else listOf(referenceFor(id))
+        },
+      )
+    val labels = Regex("data-label=\"([^\"]+)\"").findAll(html).map { it.groupValues[1] }.toList()
+    assertEquals(listOf("scored", "unscored"), labels, "a 30% pair still outranks silence: $html")
+  }
+
+  @Test
+  fun `the vector lanes keep catalog order rather than borrowing the design lane's`() {
+    // `svg` and `rc` publish no score of their own, and re-ordering their rows by a number about a
+    // different comparison is worse than the order the catalog chose.
+    val previews = listOf("alpha", "beta").map { ServePreview(id = it, label = it) }
+    val html =
+      ServeWeb.comparisonPage(
+        "m3-catalog",
+        previews,
+        token = "t",
+        hasSvgFor = { true },
+        referencesFor = { id -> listOf(scoredReferenceFor(id, if (id == "alpha") 99.0 else 12.0)) },
+      )
+    val labels = Regex("data-label=\"([^\"]+)\"").findAll(html).map { it.groupValues[1] }.toList()
+    assertEquals(listOf("alpha", "beta"), labels, html)
+  }
+
+  @Test
+  fun `the Bugs column names what is already filed, and offers a route to file more`() {
+    val preview = ServePreview(id = "button", label = "Button", componentId = "Button/Filled")
+    val html =
+      ServeWeb.comparisonPage(
+        "m3-catalog",
+        listOf(preview),
+        token = "t",
+        referencesFor = { listOf(referenceFor(it)) },
+        parityIssues =
+          listOf(
+            ParityIssue(
+              repository = "yschimke/m3-catalog",
+              number = 41,
+              title = "Verified after the token update",
+              url = "https://github.com/yschimke/m3-catalog/issues/41",
+              state = "closed",
+              component = "Button/Filled",
+            ),
+            ParityIssue(
+              repository = "yschimke/m3-catalog",
+              number = 40,
+              title = "Glyph colour is darker than the design token",
+              url = "https://github.com/yschimke/m3-catalog/issues/40",
+              state = "open",
+              previewIds = listOf("button"),
+            ),
+          ),
+      )
+    assertTrue(html.contains("<th class=\"cp-compare-bugs-head\">Bugs</th>"), html)
+    // Open before closed: the column is read for "does someone already know?", and a closed report
+    // answers that more weakly than an open one.
+    val cell = html.substringAfter("class=\"cp-compare-bugs\"").substringBefore("</td>")
+    assertTrue(cell.indexOf(">#40<") < cell.indexOf(">#41<"), cell)
+    assertTrue(cell.contains("cp-compare-bug--closed"), "the closed one says so: $cell")
+    // Matched on the component as well as on the preview id — an issue may name either.
+    assertTrue(cell.contains("/issues/41"), cell)
+    // "+ file" is offered on every row, including rows with nothing filed: an unfiled bad score is
+    // exactly what a reader is scanning this wall for. It lands on the focused comparison, which
+    // files a report naming that exact preview AND reference.
+    assertTrue(cell.contains("cp-compare-bug-new"), cell)
+    assertTrue(cell.contains("/compare/button?token=t&amp;reference=button"), cell)
+    // The numbers join the haystack, so `#40` narrows the wall to the rows a report names.
+    assertTrue(html.contains("data-hay=\"button button #40 #41\""), html)
+  }
+
+  @Test
+  fun `a catalog with no published issue index carries no Bugs column at all`() {
+    // With nothing to join, the column would be a row of bare "+ file" links — a route every
+    // reference row already has by opening its focused comparison.
+    val html =
+      ServeWeb.comparisonPage(
+        "m3-catalog",
+        listOf(ServePreview(id = "button", label = "Button")),
+        token = "t",
+        referencesFor = { listOf(referenceFor(it)) },
+      )
+    assertFalse(html.contains("cp-compare-bugs"), html)
+  }
 }

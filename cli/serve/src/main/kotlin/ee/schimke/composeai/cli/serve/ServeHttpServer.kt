@@ -3219,6 +3219,9 @@ class ServeHttpServer(
           referencesFor = renderHost::designReferencesFor,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
           reportIssue = reportIssue,
+          // The whole index, unfiltered: the wall joins it to every row itself, which is a join it
+          // has to do per row anyway and one this handler cannot do for it.
+          parityIssues = renderHost.parityIssues()?.issues.orEmpty(),
           version = SERVE_VERSION,
           displayTitle = catalogBundleHost(renderHost)?.title,
           // A top-level site's pages carry their session in the ORIGIN, so same-session links

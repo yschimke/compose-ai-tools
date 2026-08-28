@@ -1605,11 +1605,22 @@ class ServeWebFixtureTest {
                 raster =
                   DesignReferenceRaster("references/design-$id.png", width = 320, height = 160),
                 source = DesignReferenceSource(provider = "figma", revision = "fixture-42"),
+                // The score the delivery branch bakes into `references/index.json`, which the wall
+                // seeds its rows and its order from before the browser has measured anything. The
+                // fixture carries one so the published-score marking is diffed like any other
+                // pixel.
+                match =
+                  DesignReferenceMatch(
+                    percent = 82.4,
+                    changedPercent = 3.1,
+                    scoreVersion = ServeDesignReferenceStore.SCORE_VERSION,
+                  ),
               )
             )
           else emptyList()
         },
         reportIssue = fixtureWallReportIssue(),
+        parityIssues = parityIssues,
       )
     // The Remote Compose PLAYER WALL: the same compare page in `?format=rc`, backed by a catalog's
     // published `rc-compare` manifest instead of by an in-browser render. Only the rc format is
