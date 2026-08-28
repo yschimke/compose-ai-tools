@@ -1351,6 +1351,11 @@ jobs:
       # a diff and would quietly turn a tidy-up tool into a credential leak.
       - name: Run deploy .env redundancy tests
         run: ./deploy/image/test-env-redundant.sh
+      # The live-seat budget is derived at container start from memory AND cores. Getting it wrong
+      # is silent: too low and a large box runs a fraction of what it affords, too high and it
+      # spawns daemons it cannot feed. Neither shows up as an error, only as throughput.
+      - name: Run deploy live-seat derivation tests
+        run: ./deploy/image/test-derive-live-seats.sh
       # The agent-grant lane derives its own default (on where SERVE_GITHUB_AUTH_* gives it a human
       # to approve against, off otherwise), because both flat answers are wrong in opposite
       # directions: `1` fails startup on every box with no OAuth app, `0` ships the feature dead on

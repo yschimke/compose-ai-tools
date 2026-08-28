@@ -198,12 +198,16 @@ a box rendering flat out sits above that. The thresholds take the same units.
 | Knob | What it bounds | Default |
 | --- | --- | --- |
 | `PREVIEW_MEM_LIMIT` | Memory the whole container may use | `0` (unlimited) |
-| `SERVE_LIVE_SEATS` | Concurrent daemon *residency*, weighted (Android costs 2) | derived: `(mem_mb − 1024) / 1200`, clamped to `[2, 8]` |
+| `SERVE_LIVE_SEATS` | Concurrent daemon *residency*, weighted (Android costs 2) | derived: `min(memory, cores × 2)`, clamped to `[2, 32]` |
 | `SERVE_BACKGROUND_RENDERS` | Optimizer renders admitted at once | derived from seats, clamped to 3 |
 
-**Both derivations clamp**, so on a large box you are running a fraction of what the hardware
-affords unless you name a number. That is what these variables are for; the seat budget still bounds
-how many daemons those renders can occupy.
+The seat budget derives from **both** memory and cores — a permit buys a render daemon and a render
+is CPU-bound, so a RAM-rich, core-poor box must not derive a budget it cannot work. `cores × 2` is
+one Android daemon per core, Android being the heaviest backend at two permits each.
+
+**`SERVE_BACKGROUND_RENDERS` still clamps at 3**, though, so on a box deriving more than 8 seats the
+optimizer lane becomes the binding constraint even once the seats are right. Name it explicitly
+until that derivation scales too; `(seats − 2) / 2` is the arithmetic the seat budget can afford.
 
 Measure before choosing, because the container's own `free` reports the HOST's memory and will
 happily claim 60 GiB available inside a 3 GiB container:
