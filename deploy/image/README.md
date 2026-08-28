@@ -168,6 +168,69 @@ point: that edit is drift from `main`.
 > docker compose exec preview cat /config/catalogs.json
 > ```
 
+### Reading `/status.json` before you tune anything
+
+Four readings mislead if taken at face value. Each cost real debugging time on `preview.coo.ee`, so
+they are written down rather than rediscovered.
+
+**`pressure.reason` describes the HOLD, not the moment.** `host recovering` means a limb tripped at
+some point and the gate is now waiting out `optimizerResumeQuietMillis` (30s) of *continuous* calm
+before reopening — not that anything is over a threshold now. A box can read `memory available 81%`,
+`CPU 29%`, `load 0.42 per CPU` — every limb comfortably inside its resume side — and still be held.
+On a workload as bursty as rendering, the optimizer's own next burst re-trips a limb inside the
+recovery window, so the gate can stay shut almost permanently while every individual sample looks
+healthy. **If throughput is poor and the numbers look fine, this is why**, and
+`optimizerResumeQuietMillis` is the knob.
+
+**`daemons.running` counts sessions, not processes.** Thirteen "running" daemons on a box with four
+JVMs is normal. Multiply that by a per-daemon memory estimate and you will invent a memory crisis
+that does not exist. `docker compose exec preview ps -eo rss,comm --sort=-rss` is the honest answer.
+
+**`pressure.memoryAvailableFraction` is a spot sample, and it is spiky.** One low reading is not a
+trend — consecutive samples on this box have run 0.19, 0.34, 0.23, 0.48, 0.08, 0.81. Take two before
+believing one, and cross-check against `docker stats`.
+
+**`pressure.loadPerCpu` is a queue depth, not a percentage.** One runnable task per core reads `1.0`;
+a box rendering flat out sits above that. The thresholds take the same units.
+
+### Sizing the box
+
+| Knob | What it bounds | Default |
+| --- | --- | --- |
+| `PREVIEW_MEM_LIMIT` | Memory the whole container may use | `0` (unlimited) |
+| `SERVE_LIVE_SEATS` | Concurrent daemon *residency*, weighted (Android costs 2) | derived: `(mem_mb − 1024) / 1200`, clamped to `[2, 8]` |
+| `SERVE_BACKGROUND_RENDERS` | Optimizer renders admitted at once | derived from seats, clamped to 3 |
+
+**Both derivations clamp**, so on a large box you are running a fraction of what the hardware
+affords unless you name a number. That is what these variables are for; the seat budget still bounds
+how many daemons those renders can occupy.
+
+Measure before choosing, because the container's own `free` reports the HOST's memory and will
+happily claim 60 GiB available inside a 3 GiB container:
+
+```bash
+free -h; nproc                                                   # what the host has
+docker stats --no-stream --format \
+  'table {{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.CPUPerc}}'          # what the container uses
+docker compose exec preview ps -eo rss,comm --sort=-rss | head   # what is actually resident
+```
+
+### Tidying `.env`
+
+An `.env` accumulates lines faster than anyone removes them — a value copied from this README during
+setup, a knob turned once during an incident and turned back, a setting that later *became* the
+default. The file then reads as configuration when most of it is decoration, and the few lines that
+genuinely explain why this box differs from stock are buried.
+
+```bash
+./env-redundant.sh
+```
+
+Reports which entries restate a compose or entrypoint default and which are set but empty (the same
+as unset), then lists the keys that genuinely differ — **by name only**. It never prints a value:
+the file holds `SERVE_TOKEN`, `SERVE_ADMIN_TOKEN`, the GitHub OAuth secret and the deploy hook
+token, and the output is meant to be safe to paste into an issue or a chat.
+
 ### Warming the theme cache aggressively
 
 The pressure gate's defaults assume a box whose spare capacity belongs to visitors. While the cache
@@ -180,11 +243,20 @@ SERVE_JAVA_OPTS=-Dcomposeai.serve.themeOptimizationIdleMillis=10000 \
   -Dcomposeai.serve.optimizerStopLoadPerCpu=3.0 \
   -Dcomposeai.serve.optimizerResumeLoadPerCpu=2.0 \
   -Dcomposeai.serve.optimizerStopCpuUtilization=0.98 \
-  -Dcomposeai.serve.optimizerResumeCpuUtilization=0.92
+  -Dcomposeai.serve.optimizerResumeCpuUtilization=0.92 \
+  -Dcomposeai.serve.optimizerResumeQuietMillis=5000
 ```
 
-Read that as: start a pass after ten seconds of quiet rather than sixty, and only stand down when
-the box is genuinely saturated rather than merely busy.
+Read that as: start a pass after ten seconds of quiet rather than sixty, only stand down when the
+box is genuinely saturated rather than merely busy, and — the one that usually matters most — stop
+demanding half a minute of unbroken calm before coming back.
+
+**`optimizerResumeQuietMillis` is the knob people miss.** Rendering is bursty by nature, so a
+30-second recovery window is long enough for the optimizer's own next burst to re-trip whichever
+limb it just cleared. The gate then holds more or less permanently on a box whose every individual
+reading looks healthy — see *Reading `/status.json`* above for the signature. Measured on
+`preview.coo.ee`, gate-wait ran 5-35x the actual render time in that state, and roughly half of all
+turns had to be granted by the ten-minute forced-turn ceiling rather than by the gate opening.
 
 **Leave the memory thresholds alone.** CPU and load contention costs latency and recovers on its
 own; running out of memory kills render daemons and takes the catalog with them. `0.15` stop /

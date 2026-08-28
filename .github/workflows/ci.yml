@@ -1345,6 +1345,12 @@ jobs:
       # reintroduce that trap and would look entirely reasonable in a diff.
       - name: Run deploy JAVA_TOOL_OPTIONS append tests
         run: ./deploy/image/test-java-opts-append.sh
+      # env-redundant.sh reads a file holding SERVE_TOKEN, SERVE_ADMIN_TOKEN, the GitHub OAuth
+      # secret and the deploy hook token, and exists so its output can be pasted somewhere. A
+      # refactor that started echoing key=value for the active list would read as an improvement in
+      # a diff and would quietly turn a tidy-up tool into a credential leak.
+      - name: Run deploy .env redundancy tests
+        run: ./deploy/image/test-env-redundant.sh
       # The agent-grant lane derives its own default (on where SERVE_GITHUB_AUTH_* gives it a human
       # to approve against, off otherwise), because both flat answers are wrong in opposite
       # directions: `1` fails startup on every box with no OAuth app, `0` ships the feature dead on
