@@ -24,6 +24,7 @@ import org.gradle.process.CommandLineArgumentProvider
 plugins {
   id("composeai.base-conventions")
   id("composeai.jvm-conventions")
+  id("composeai.maven-publishing")
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.kotlin.serialization)
   // `FakeRenderSession` is scaffolding this module's own tests share with `:cli`'s
@@ -54,6 +55,22 @@ version =
 // `serve.jar` (the default from the project name) says nothing and could collide. Same naming as
 // `:cli`'s `compose-preview` and `:mcp`'s `compose-preview-mcp`.
 base { archivesName.set("compose-preview-serve") }
+
+// Published, because after #3824's repo split `:cli` cannot reach the server any other way.
+//
+// The seam register is down to 16 `:cli` -> serve crossings (`ServeCommand`'s four seam types plus
+// `bundle`, `auth` and the history commands), and every one of them is a compile-time dependency.
+// Once the two live in separate repositories the only way to satisfy them is a published artifact,
+// so an unpublished `:cli:serve` is the remaining hard blocker on the split regardless of how low
+// that number goes. Every project dependency this module has is already published, so nothing here
+// makes a POM that points at something nobody can resolve.
+//
+// Deliberately WITHOUT `explicitApi()`, unlike the contract modules (`:common-io`,
+// `:bundle-format`, `:common-image-crop`). Turning it on here reports 1,719 declarations needing an
+// explicit modifier — this is the server, not a contract, and marking all 1,719 `public` would
+// freeze an ABI nobody designed, which is the exact failure `explicitApi()` exists to prevent. The
+// surface worth designing is the 16 symbols `:cli` actually uses; narrowing to that, and only then
+// turning the gate on, is its own change.
 
 dependencies {
   // Published wire-format DTOs and the bundle format. `api` because they appear in this module's
@@ -361,3 +378,14 @@ val stageRcFontResources =
   }
 
 sourceSets.main.get().resources.srcDir(stageRcFontResources)
+
+composeAiMavenPublishing {
+  coordinates(
+    artifactId = "compose-preview-serve",
+    displayName = "Compose Preview — Preview Server",
+    description =
+      "The `compose-preview serve` preview server: catalog hosting, live render sessions, the " +
+        "playground and the viewer web surfaces, as a library the CLI drives through ServeOptions.",
+  )
+  inceptionYear.set("2026")
+}
