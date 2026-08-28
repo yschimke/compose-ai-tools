@@ -238,3 +238,91 @@ test("a code handle that only INHERITS from the run's map publishes nothing", ()
   });
   assert.equal(document, null);
 });
+
+// ---- Reference-side anchors -------------------------------------------------------------------
+//
+// A run's anchors are boxes in the space the design tool's adapter captured; the reference step
+// publishes that raster onto the sticker's canvas and records what it did. Applying it here is what
+// keeps a `layout` finding's two highlights over the same element on both panels (#4696).
+
+/** A layout finding anchored on BOTH panels, which is the case the offset is most misleading in. */
+const anchored = {
+  status: "fail",
+  findings: [
+    {
+      kind: "layout",
+      severity: "error",
+      message: "padding is 24 where the design asserts 16",
+      anchors: [
+        { side: "reference", bounds: { x: 10, y: 20, width: 100, height: 40 }, label: "Send" },
+        { side: "actual", bounds: { x: 12, y: 24, width: 96, height: 48 }, label: "Send" },
+      ],
+    },
+  ],
+};
+
+const anchoredRun = {
+  schema: FINDINGS_SCHEMA,
+  previews: { "ui/Button.kt#Filled": [anchored] },
+};
+
+test("moves a reference-side anchor onto the reference as it was published", () => {
+  const { document } = build({
+    runFindings: anchoredRun,
+    referenceTransforms: new Map([
+      ["button-filled__ideal__default__light-0", { scaleX: 2, scaleY: 2, offsetX: 0, offsetY: 30 }],
+    ]),
+  });
+  const [finding] = document.previews["button-filled__ideal__default__light"][0].findings;
+  assert.deepEqual(finding.anchors[0], {
+    side: "reference",
+    bounds: { x: 20, y: 70, width: 200, height: 80 },
+    label: "Send",
+  });
+});
+
+test("leaves the candidate-side anchor alone — it is already in the render's pixels", () => {
+  const { document } = build({
+    runFindings: anchoredRun,
+    referenceTransforms: new Map([
+      ["button-filled__ideal__default__light-0", { scaleX: 2, scaleY: 2, offsetX: 0, offsetY: 30 }],
+    ]),
+  });
+  const [finding] = document.previews["button-filled__ideal__default__light"][0].findings;
+  assert.deepEqual(finding.anchors[1], anchored.findings[0].anchors[1]);
+});
+
+test("only the reference the transform names is moved", () => {
+  // One code handle plans a record per sticker, and light and dark can be published through
+  // different transforms — a set scoped to one must not inherit the other's.
+  const { document } = build({
+    runFindings: anchoredRun,
+    referenceTransforms: new Map([
+      ["button-filled__ideal__default__light-0", { scaleX: 2, scaleY: 2, offsetX: 0, offsetY: 30 }],
+    ]),
+  });
+  const dark = document.previews["button-filled__ideal__default__dark"][0].findings[0];
+  assert.deepEqual(dark.anchors, anchored.findings[0].anchors);
+});
+
+test("publishes exactly what it publishes today when no reference was rescaled", () => {
+  // The acceptance the fix is held to: a reference the export did not move carries no transform,
+  // and its verdict has to come out byte-identical.
+  const before = build({ runFindings: anchoredRun }).document;
+  const after = build({ runFindings: anchoredRun, referenceTransforms: new Map() }).document;
+  assert.deepEqual(after, before);
+  assert.deepEqual(
+    before.previews["button-filled__ideal__default__light"][0].findings[0].anchors,
+    anchored.findings[0].anchors,
+  );
+});
+
+test("a finding with no honest anchor is not given one", () => {
+  const { document } = build({
+    referenceTransforms: new Map([
+      ["button-filled__ideal__default__light-0", { scaleX: 2, scaleY: 2, offsetX: 0, offsetY: 30 }],
+    ]),
+  });
+  const [finding] = document.previews["button-filled__ideal__default__light"][0].findings;
+  assert.equal(finding.anchors, undefined);
+});

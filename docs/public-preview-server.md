@@ -1666,6 +1666,19 @@ branch and rewrites it to a server-owned path. IDs and paths are contained, dupl
 discarded, and an optional SHA-256 is verified before the reference is advertised. A reference names
 one preview id — the mapping is never inferred.
 
+**A rescaled reference records what was done to it.** The publish step normalises every reference
+onto the sticker's canvas: a Figma node is exported at the renderer's density and centred, a raster
+within rounding distance is resampled, and genuinely different proportions are fitted and
+letterboxed. Reference-side *geometry* — an adapter's annotation boxes, a parity finding's anchor —
+is measured in the space the design tool captured, which is the space **before** that normalisation,
+so where the raster moved the two describe different pictures and a redline sits off the element it
+names. So a reference whose pixels this export moved carries a `raster.transform`
+(`{ "scaleX", "scaleY", "offsetX", "offsetY" }`) mapping a captured pixel onto the published one,
+and the steps that write the annotation and findings manifests carry their boxes through it. A
+reference published exactly as it arrived carries no `transform` at all: absent *is* the identity,
+and its manifests are byte-for-byte what they were before the field existed. `serve` ignores the
+field — by the time it reads a manifest, everything is already in one space.
+
 **The two sides are scored on their content box, not their canvas.** A reference and a preview are
 framed differently by construction: the preview carries whatever its `@Preview` scaffold added
 (`showBackground`'s opaque sheet, a `padding()` inset, a fixed-height container the content does not
@@ -1993,6 +2006,15 @@ the same `planDesignReferences` records that mint `references/index.json`, so on
 drift never prints under another board's panels; and the `reportUrl`, from the branch plus the
 `reportPath` the run's `run.json` records. A catalog with no parity branch publishes nothing and
 serves exactly as it did before the panel existed.
+
+It also *corrects* one thing on the way through. A reference-side anchor is a box in the space the
+design tool's adapter captured, and the reference step a few lines up in the same job may have
+resampled, reduced or letterboxed that raster onto the sticker's canvas — so the anchor and the
+picture it points into describe different pixel spaces. That is worst on exactly the `layout`
+findings that anchor on **both** panels so an offset can be seen rather than read. The transform the
+reference step recorded in `references/index.json` is read back here and applied to every
+`side: "reference"` anchor. Candidate-side anchors are never touched: they were measured in the
+render's own pixels, which is the frame the server serves.
 
 A finding with no anchors keeps its sentence and is never offered as a control — no `tabindex`, no
 pointer affordance — because a promise of a highlight that cannot come is worse than plain text.

@@ -11,6 +11,7 @@ import {
   planDesignReferences,
   referenceId,
   referenceManifest,
+  referenceTransforms,
   servePreviewId,
 } from "./design-references.mjs";
 
@@ -1029,4 +1030,52 @@ test("planDesignReferences refuses every id in an ambiguous bundle collision fam
   assert.deepEqual(exactAuthoredSuffix.records, []);
   assert.equal(exactAuthoredSuffix.warnings.length, 1);
   assert.match(exactAuthoredSuffix.warnings[0], /collision family cannot be reversed/);
+});
+
+// ---- referenceTransforms ----------------------------------------------------------------------
+//
+// The reference step records what it did to a raster's pixels so a LATER step can carry
+// reference-side geometry — a finding's anchor — into the same space (#4696).
+
+test("referenceTransforms indexes the transforms a published manifest carries", () => {
+  const manifest = {
+    schema: REFERENCES_SCHEMA,
+    references: [
+      {
+        id: "button__ideal__light-0",
+        raster: {
+          path: "references/button__ideal__light-0.png",
+          transform: { scaleX: 0.5, scaleY: 0.5, offsetX: 0, offsetY: 100 },
+        },
+      },
+      // Published exactly as it arrived: no transform, and so no entry — absent IS the identity.
+      { id: "card__ideal__light-0", raster: { path: "references/card__ideal__light-0.png" } },
+    ],
+  };
+  const transforms = referenceTransforms(manifest);
+  assert.deepEqual(transforms.get("button__ideal__light-0"), {
+    scaleX: 0.5,
+    scaleY: 0.5,
+    offsetX: 0,
+    offsetY: 100,
+  });
+  assert.equal(transforms.has("card__ideal__light-0"), false);
+});
+
+test("referenceTransforms drops a factor that would move a box to nonsense", () => {
+  // A wrong anchor is worse than an unmoved one: the reader has no way to tell it is wrong.
+  const manifest = {
+    references: [
+      { id: "a", raster: { transform: { scaleX: 0, scaleY: 1 } } },
+      { id: "b", raster: { transform: { scaleX: -2, scaleY: -2 } } },
+      { id: "c", raster: { transform: { scaleX: "2", scaleY: 2 } } },
+      { id: "d", raster: { transform: "2x" } },
+    ],
+  };
+  assert.equal(referenceTransforms(manifest).size, 0);
+});
+
+test("referenceTransforms is empty for a manifest that is not there", () => {
+  assert.equal(referenceTransforms(undefined).size, 0);
+  assert.equal(referenceTransforms({}).size, 0);
 });

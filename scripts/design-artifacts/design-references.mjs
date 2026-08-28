@@ -614,3 +614,25 @@ export function referenceManifest(records) {
       .map(({ origin, rastered, ...reference }) => reference),
   };
 }
+
+/**
+ * The publish transform each reference in a served manifest was rasterised through, keyed by
+ * reference id — the map a later publish step needs to carry reference-side geometry (a finding's
+ * anchor, an adapter's annotation layer) out of the space the design tool captured it in and onto
+ * the raster actually published (#4696).
+ *
+ * A reference the export did not move carries no `transform` and is simply absent, which is what
+ * lets a consumer treat "no entry" as the identity rather than as missing information.
+ */
+export function referenceTransforms(manifest) {
+  const transforms = new Map();
+  for (const reference of manifest?.references ?? []) {
+    const transform = reference?.raster?.transform;
+    if (!transform || typeof transform !== "object") continue;
+    const { scaleX, scaleY } = transform;
+    if (!Number.isFinite(scaleX) || !Number.isFinite(scaleY)) continue;
+    if (!(scaleX > 0) || !(scaleY > 0)) continue;
+    if (reference.id) transforms.set(reference.id, transform);
+  }
+  return transforms;
+}
