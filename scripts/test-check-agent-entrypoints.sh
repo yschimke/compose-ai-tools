@@ -93,6 +93,20 @@ d="$tmp/backticked"; make_good "$d"
 printf 'Import it with `@AGENTS.md` at the top.\n' > "$d/CLAUDE.md"
 check "a backticked @AGENTS.md is not accepted as an import" 1 "$(run "$d")"
 
+# ...but a file that carries a REAL import and also explains itself is fine. The
+# check used to veto the whole file on any backticked mention, so a pointer that
+# documented its own mechanism — the normal shape for these files — failed the
+# gate with a live import sitting on line 1.
+d="$tmp/import-and-prose"; make_good "$d"
+printf '@AGENTS.md\n\nThe line above is an `@AGENTS.md` import, inlined at launch.\n' > "$d/CLAUDE.md"
+check "a real import survives prose that mentions it in backticks" 0 "$(run "$d")"
+
+# The case the file-wide veto could never see: an import inside a fenced block
+# matches the anchored regex exactly and is still inert.
+d="$tmp/fenced-import"; make_good "$d"
+printf 'Put this at the top of the file:\n\n```\n@AGENTS.md\n```\n' > "$d/CLAUDE.md"
+check "an @AGENTS.md inside a fence is not accepted as an import" 1 "$(run "$d")"
+
 d="$tmp/no-copilot"; make_good "$d"; rm "$d/.github/copilot-instructions.md"
 check "missing copilot-instructions.md is rejected" 1 "$(run "$d")"
 

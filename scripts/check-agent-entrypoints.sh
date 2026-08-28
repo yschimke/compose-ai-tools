@@ -130,6 +130,19 @@ fi
 
 # ----------------------------------------------------------------- 4 + 5. entrypoints
 #
+# Does <file> carry a live <regex> import — one on its own line, outside every
+# fenced code block? Fences toggle on a line whose first non-space characters are
+# ``` or ~~~, which is how both CommonMark and every generator in this repo write
+# them.
+import_line_outside_code() {
+  awk -v re="$2" '
+    /^[[:space:]]*(```|~~~)/ { fence = 1 - fence; next }
+    fence { next }
+    $0 ~ re { found = 1 }
+    END { exit found ? 0 : 1 }
+  ' "$1"
+}
+
 # check_import <label> <file> <regex> <human-readable mechanism>
 check_import() {
   local label="$1" file="$2" re="$3" mech="$4"
@@ -137,10 +150,20 @@ check_import() {
     fail "${label}: ${file} is missing — ${label} would resolve no repository instructions"
     return
   fi
-  # An import must be its own line and must not be inside a code span: Claude
-  # Code and Gemini CLI both skip backticked text, so `@AGENTS.md` in backticks
-  # is documentation, not an import.
-  if grep -Eq "$re" "$root/$file" && ! grep -Eq '`[^`]*@\.?/?AGENTS\.md' "$root/$file"; then
+  # An import must be its own line and must not be inside a code span or a fenced
+  # block: Claude Code and Gemini CLI both skip those, so `@AGENTS.md` in
+  # backticks is documentation, not an import.
+  #
+  # The check is per-LINE, deliberately. It used to be an anchored match for the
+  # import plus a FILE-WIDE veto on any backticked mention — which vetoed a
+  # perfectly good import the moment the same file explained itself, and a
+  # pointer file that documents its own mechanism is the normal case here. The
+  # veto was redundant as well as wrong: a line that is nothing but
+  # `@AGENTS.md` in a code span cannot match the anchored regex anyway.
+  #
+  # What it could never catch, and this does, is the import sitting inside a
+  # ``` fence. That line matches the anchored regex exactly and is still inert.
+  if import_line_outside_code "$root/$file" "$re"; then
     ok "${label}: ${file} reaches AGENTS.md (${mech})"
   else
     fail "${label}: ${file} does not import AGENTS.md (${mech}). A markdown link is NOT followed — the invariants would be invisible."
