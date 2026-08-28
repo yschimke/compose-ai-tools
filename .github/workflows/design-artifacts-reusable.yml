@@ -1601,6 +1601,31 @@ jobs:
             --source-repo "$SOURCE_REPOSITORY" \
             --ref "$SOURCE_REF_NAME"
 
+      # The verdict behind the server's Design parity panel (`parity/findings.json`) — the a11y,
+      # i18n, token and layout findings a design-parity run concluded about each comparison, with
+      # each one anchored to the region it is about.
+      #
+      # Like the activity feed above, this has to happen HERE. The run publishes its findings to
+      # its own `design-parity/<system>` branch keyed by the ids a RUN knows — the compose preview
+      # id and the design-map code handle — and the compare page routes on neither. It routes on
+      # the catalog's sticker id, which is minted by the reference step a few lines up. This is the
+      # one job holding both halves.
+      #
+      # Runs after the reference step for exactly that reason: the same `planDesignReferences`
+      # records that mint `references/index.json` are what scope a verdict to the board its page
+      # shows. Fail-soft like its neighbours — no parity branch, no design map, or a component with
+      # no published reference each drop with a warning rather than costing the catalog its render,
+      # so this is safe to run for every catalog unconditionally.
+      - name: Publish design-parity findings
+        if: ${{ inputs.publish || inputs.upload-out }}
+        run: |
+          set -euo pipefail
+          node compose-ai-tools/scripts/design-artifacts/emit-parity-findings.mjs \
+            --out "$GITHUB_WORKSPACE/out" \
+            --repo "$GITHUB_WORKSPACE" \
+            --spec "$INPUT_SPEC" \
+            --source-repo "$SOURCE_REPOSITORY"
+
       # Design pages: whole specimen sheets of the design file, cached as SVG, with the node id of
       # every component on them linked back to the catalog component that implements it. Feeds the
       # preview server's `/<system>/pages/` surface (`ServeDesignPages.kt`).
@@ -1873,7 +1898,12 @@ jobs:
           GITHUB_TOKEN_INLINE="$GH_TOKEN" \
           MSG="chore(design-artifacts): regenerate ${SYSTEM} catalog ($(date -u +%F), ${SOURCE_SHA})" \
           SKIP_IF_UNCHANGED=1 \
-          CARRY_FORWARD_PATHS='parity/issues.json history.json' \
+          # `parity/findings.json` carries forward for the same reason `parity/issues.json` does:
+          # both are produced from something a fork or a token-less run cannot reach — a
+          # credentialled issue query there, a sibling branch fetch here — so a republish that
+          # could not read it would otherwise blank the panel rather than leave the last good
+          # verdict standing.
+          CARRY_FORWARD_PATHS='parity/issues.json parity/findings.json history.json' \
           REVISION_PREVIEW_INDEX=1 \
           GIT_AUTHOR_NAME="$INPUT_COMMIT_USER_NAME" \
           GIT_AUTHOR_EMAIL="$INPUT_COMMIT_USER_EMAIL" \
