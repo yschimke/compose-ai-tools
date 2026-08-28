@@ -2894,11 +2894,15 @@ public class JsonRpcServer(
       )
       return
     }
-    if (params.maxFps != null && params.maxFps <= 0) {
+    // Bound to a local rather than smart cast: `maxFps` is a public property of a class in
+    // `:daemon-protocol` now, and Kotlin does not smart cast across a module boundary — the other
+    // module is free to turn it into a custom getter without recompiling this one.
+    val maxFps = params.maxFps
+    if (maxFps != null && maxFps <= 0) {
       sendErrorResponse(
         id = req.id,
         code = ERR_INVALID_PARAMS,
-        message = "stream/start: maxFps must be positive when set, got ${params.maxFps}",
+        message = "stream/start: maxFps must be positive when set, got $maxFps",
       )
       return
     }

@@ -1,7 +1,6 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.daemon.history.GitRefHistorySource
-import ee.schimke.composeai.daemon.history.HistoryDataDelta
 import ee.schimke.composeai.daemon.history.HistoryDataDiff
 import ee.schimke.composeai.daemon.history.HistoryDiffArtifacts
 import ee.schimke.composeai.daemon.history.HistoryEntry
@@ -9,6 +8,7 @@ import ee.schimke.composeai.daemon.history.HistoryFilter
 import ee.schimke.composeai.daemon.history.HistoryImageDiff
 import ee.schimke.composeai.daemon.history.HistorySource
 import ee.schimke.composeai.daemon.history.LocalFsHistorySource
+import ee.schimke.composeai.daemon.protocol.HistoryDataDelta
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 import ee.schimke.composeai.data.layoutinspector.SemanticsDelta
 import ee.schimke.composeai.data.layoutinspector.SemanticsDiff

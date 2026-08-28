@@ -1,6 +1,5 @@
 package ee.schimke.composeai.daemon.protocol
 
-import ee.schimke.composeai.daemon.history.HistoryDataDelta
 import ee.schimke.composeai.data.layoutinspector.FigmaSvgBackgroundMode
 import ee.schimke.composeai.data.layoutinspector.SemanticsDelta
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue

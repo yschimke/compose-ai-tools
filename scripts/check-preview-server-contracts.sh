@@ -31,6 +31,7 @@ PROBE_VERSION="0.0.0-contract-probe-SNAPSHOT"
 # because a contract that isn't published simply won't resolve.
 CONTRACT_PROJECTS=(
   ":daemon:core"
+  ":daemon-protocol"
   ":daemon-client"
   ":preview-data-api"
   ":render-session-api"
