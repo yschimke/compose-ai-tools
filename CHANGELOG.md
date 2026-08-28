@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.44.0](https://github.com/yschimke/compose-ai-tools/compare/v1.43.1...v1.44.0) (2026-08-28)
+
+
+### Features
+
+* **design-artifacts:** publish the parity verdict into the catalog bundle ([#4699](https://github.com/yschimke/compose-ai-tools/issues/4699)) ([403a544](https://github.com/yschimke/compose-ai-tools/commit/403a5447f4e945444578dd8b5849e4db63ef390c))
+
+
+### Bug Fixes
+
+* **ci:** restore contract-probe import order, which is red on main ([#4693](https://github.com/yschimke/compose-ai-tools/issues/4693)) ([2f806d8](https://github.com/yschimke/compose-ai-tools/commit/2f806d83c2e0883dd7098960cca26990337e9219))
+* **ci:** restore ktfmt import order in ContractSurface.kt ([#4697](https://github.com/yschimke/compose-ai-tools/issues/4697)) ([9abb74c](https://github.com/yschimke/compose-ai-tools/commit/9abb74cc3479626d4886d7baa8905a6e23626cbf))
+* **design-artifacts:** carry the project directory and preview function, stop deriving them ([#4690](https://github.com/yschimke/compose-ai-tools/issues/4690)) ([2213140](https://github.com/yschimke/compose-ai-tools/commit/2213140c2baa985146654a4c8035a971cc374293))
+* **design-artifacts:** make the published parity verdict authoritative and safe to land ([#4702](https://github.com/yschimke/compose-ai-tools/issues/4702)) ([6fb2d65](https://github.com/yschimke/compose-ai-tools/commit/6fb2d659262ee38e08f5bedbc467413b964377a0))
+* **harness:** hold the motion-index playing shot until every card rests ([#4701](https://github.com/yschimke/compose-ai-tools/issues/4701)) ([4b98f67](https://github.com/yschimke/compose-ai-tools/commit/4b98f671703010dd2edcb9ad4d5dd6460fc1c8bb))
+* **serve:** size the hero well on the box's own height, not on a cap axis it may not own ([#4692](https://github.com/yschimke/compose-ai-tools/issues/4692)) ([7e2894f](https://github.com/yschimke/compose-ai-tools/commit/7e2894fb647b69f9bebc3c2b52050e29555633bd))
+
 ## [1.43.1](https://github.com/yschimke/compose-ai-tools/compare/v1.43.0...v1.43.1) (2026-08-28)
 
 
