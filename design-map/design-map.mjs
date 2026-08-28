@@ -426,7 +426,13 @@ export function variantAbsenceId(preview) {
   const axes = variantSeeds(preview)
     .map((seed) => `${seed.key}=${seed.raw}`)
     .join(" ");
-  return axes ? `${parent} [${axes}]` : parent;
+  // `state` and `props` are both optional, so a variant CAN declare `noReference` and name no axis
+  // at all. Falling back to the bare parent id then publishes "Button — <reason>" for a parent that
+  // may hold a perfectly good reference: it reads as a finding about the parent, and says nothing
+  // about which variant the reason belongs to. The function name is what distinguishes such a
+  // variant, so it stands in for the axes it did not give.
+  const label = axes || preview.functionName || captureIdentity(preview).subject;
+  return label ? `${parent} [${label}]` : parent;
 }
 
 function variantName(preview, seeds) {
@@ -553,8 +559,10 @@ export function projectDesignMap(previews, opts = {}) {
   /**
    * Stated absences, keyed by a COLLISION-SAFE identity and carrying the display label separately.
    *
-   * A component keys on its own id. A variant keys on its capture subject, which is per-composable
-   * and unique — never on its rendered label. The label is built by joining `key=value` pairs, and
+   * A component keys on its own id and a variant on its capture subject, each behind its own
+   * prefix. Both are free-form strings from different namespaces — a `@CatalogComponent(id = …)`
+   * may legally be spelled like a capture subject — so sharing one map without tagging the domain
+   * is the same collision one namespace over. Never keyed on the rendered label. The label is built by joining `key=value` pairs, and
    * discovery splits an annotation prop at its FIRST `=` only, so a value may legally contain both
    * a space and an `=`: `props = ["a=b c=d"]` is one prop, and renders identically to the two props
    * `a=b` and `c=d`. Keying on that string would silently drop one of two distinct absences — the
@@ -583,7 +591,7 @@ export function projectDesignMap(previews, opts = {}) {
     if (catalog.role === "VARIANT") {
       if (!catalog.noReference) continue; // silence under a parent is the parent's business
       const subject = captureIdentity(preview).subject;
-      statedAbsentIds.set(subject, {
+      statedAbsentIds.set(`subject:${subject}`, {
         label: variantAbsenceId(preview),
         reason: catalog.noReference,
       });
@@ -598,7 +606,7 @@ export function projectDesignMap(previews, opts = {}) {
     if (catalog.role !== "COMPONENT") continue;
     const id = catalog.componentId;
     if (catalog.noReference) {
-      statedAbsentIds.set(id, { label: id, reason: catalog.noReference });
+      statedAbsentIds.set(`component:${id}`, { label: id, reason: catalog.noReference });
       statedAbsentComponentIds.add(id);
     } else if (!statedAbsentIds.has(id)) unmappedIds.set(id, true);
   }

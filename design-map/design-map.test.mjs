@@ -236,6 +236,41 @@ test("a prop value containing its own key=value text does not collide with two p
   );
 });
 
+test("a seedless variant names itself, not its parent", () => {
+  // `state` and `props` are both optional, so a variant can declare `noReference` and name no axis.
+  // Falling back to the bare parent id published "Button - <reason>" for a parent that holds a
+  // perfectly good reference: a finding about the wrong thing, with no clue which variant meant it.
+  const { diagnostics } = projectDesignMap([
+    component("Button", { reference: ref("1:2") }),
+    catalogVariant("SpecialButton", "Button", { noReference: "the kit never drew this one" }),
+  ]);
+  assert.deepEqual(diagnostics.statedAbsent, [
+    { componentId: "Button [SpecialButton]", reason: "the kit never drew this one" },
+  ]);
+  // The parent keeps its reference and stays out of both buckets.
+  assert.deepEqual(diagnostics.unmapped, []);
+});
+
+test("a component id spelled like a capture subject does not collide with a variant", () => {
+  // Component ids are free-form, so one may legally be spelled like a capture subject. Sharing a
+  // map between the two namespaces without tagging the domain is the same collision one namespace
+  // over -- either reason overwriting the other, or an unexplained component skipping `unmapped`.
+  const subjectShaped = "com.example.CatalogKt.IconOnly";
+  const { diagnostics } = projectDesignMap([
+    component("Button", { reference: ref("1:2") }),
+    component(subjectShaped, { noReference: "component that is named like a subject" }),
+    catalogVariant("IconOnly", "Button", {
+      state: "icon-only",
+      noReference: "variant whose subject is that name",
+    }),
+  ]);
+  assert.equal(diagnostics.statedAbsent.length, 2);
+  assert.deepEqual(
+    diagnostics.statedAbsent.map((s) => s.reason).sort(),
+    ["component that is named like a subject", "variant whose subject is that name"],
+  );
+});
+
 test("a stated-absent variant's ambiguous modes are suppressed even when its parent has a reference", () => {
   // The ambiguity filter matches on componentId, which for a VARIANT is the PARENT's -- so a
   // variant's own stated absence could not suppress its own record, and a parent carrying a good
