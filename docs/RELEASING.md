@@ -12,9 +12,15 @@ In **Settings → Actions → General → Workflow permissions**, tick **"Allow 
 
 [release-please](https://github.com/googleapis/release-please) watches `main` for conventional-commit history and keeps a release PR up to date. Merging the PR is the only manual step.
 
-1. **Land conventional-commit PRs to `main`.** `fix:`, `feat:`, and `feat!:` / `BREAKING CHANGE` trigger a release. `chore:`, `docs:`, `ci:`, `refactor:`, and `test:` do not. To force a bump, run the `Release PR` workflow via `workflow_dispatch`, or set `"release-as": "0.3.4"` in `release-please-config.json`, let the release land, then revert that key in a follow-up PR.
+1. **Land conventional-commit PRs to `main`.** `fix:` and `feat:` trigger a release, and a `!` in the PR title (`feat!:`) cuts a major. `chore:`, `docs:`, `ci:`, `refactor:`, and `test:` do not. To force a bump with no releasable commit, set `"release-as": "0.3.4"` in `release-please-config.json`, let the release land, then revert that key in a follow-up PR — that is the **only** route.
 
-   > **A `Release-As:` footer does not work here.** release-please parses it from a commit's body, and this repo squash-merges with `squash_merge_commit_message=BLANK` — the squashed commit on `main` keeps the **PR title only**, so every body is discarded and the footer never arrives. Confirm with `git log --format='%b' -5 origin/main`, which prints nothing. Putting the footer in a branch commit, in the PR description, or in an empty commit all fail for the same reason (an empty commit additionally contributes no commit at all to a squash). The two routes above are the ones that survive.
+   > **Dispatching `Release PR` does not force a bump.** [`release-please.yml`](../.github/workflows/release-please.yml) declares `workflow_dispatch` with no inputs and runs the same release-please invocation, against the same config, that a push to `main` runs. It re-computes the answer; it cannot change it. Dispatch it to re-run a calculation that failed or raced — not to manufacture a release out of a history that warrants none, which just produces the same no-op however many times it is pressed.
+
+   > **A `BREAKING CHANGE:` footer does not reach release-please either**, for the reason below: it is a *body* footer, and the body is discarded. Only the `!` in the PR title survives the squash, so a breaking change has to be spelled `feat!:` / `fix!:` in the title. Writing `BREAKING CHANGE:` in the body and a plain `feat:` in the title yields a **minor** bump.
+
+   > **A `Release-As:` footer does not work here.** release-please parses it from a commit's body, and this repo squash-merges with `squash_merge_commit_message=BLANK` — the squashed commit on `main` keeps the **PR title only**, so every body a human writes is discarded and the footer never arrives. Putting it in a branch commit, in the PR description, or in an empty commit all fail for the same reason (an empty commit additionally contributes no commit at all to a squash). `release-as` is the one route that survives.
+   >
+   > `git log --format='%b' -5 origin/main` usually prints nothing, which is the quick confirmation — but do not read an empty `%b` as a rule. GitHub still *synthesizes* a body when the branch has distinct commit authors, crediting each as `Co-authored-by:` (`8f5fcce`, `f82b02a`, `5aacb786`). What BLANK discards is the body you wrote, not the metadata GitHub adds — which is exactly why the attribution gate cares who authored a branch commit. See [`docs/AGENTS.md` → Git conventions](AGENTS.md#git-conventions).
 
    > **PR titles are the commit headlines.** Squash-merge uses the PR title as the commit headline, which is what release-please parses. The [PR Title](../.github/workflows/pr-title.yml) workflow enforces conventional-commit format on every PR so mis-titled PRs can't silently skip a release (as PR #94 did before the 0.6.0 cut). If you _do_ ever end up with a non-conforming commit on `main`, push an empty conventional-commit marker with `git commit --allow-empty -m "feat(...)…"` and release-please will re-scan.
 
@@ -103,7 +109,7 @@ Removed alongside it: `bump-minor-pre-major` and `bump-patch-for-minor-pre-major
 |---|---|
 | `fix:` | patch |
 | `feat:` | minor |
-| `feat!:` / `BREAKING CHANGE` | **major** |
+| `feat!:` (the `!`, in the **PR title**) | **major** |
 
 So a PR titled `feat!:` now cuts **2.0.0**, not 1.0.1. Watch PR titles accordingly — this is the single most likely way to cut an unintended major.
 

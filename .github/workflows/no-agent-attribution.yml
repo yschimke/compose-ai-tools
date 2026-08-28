@@ -17,20 +17,24 @@ name: No Agent Attribution
 #
 # Why this lives at the PR layer (not just the local .githooks/commit-msg
 # hook): PRs are squash-merged, and GitHub builds the squash commit *message*
-# from the **PR title + PR body**, NOT the branch commit messages. A
-# `Co-authored-by:` trailer at the start of a line in the PR description
-# therefore becomes a real trailer on `main`, bypassing every local hook. So we
+# from the PR title and body rather than from the branch commit messages, so
+# neither local hook ever sees the text that becomes the commit. This repo also
+# sets `squash_merge_commit_message=BLANK`, which drops the body — so a
+# `Co-authored-by:` line in a PR description does not in fact reach `main` today.
+# It is scanned anyway, and deliberately: that is a repository *setting*, not
+# anything a diff can guarantee, and a merger can edit the message by hand. So we
 # scan the PR title, the PR body, and every commit message in the range — but
 # only at trailer position (start of line), so prose that merely *mentions* a
 # trailer (like this very PR) does not trip the gate.
 #
-# There is a SECOND path to a trailer on `main`, and it is the one that actually
-# bit us: GitHub's squash credits every distinct **commit author** of the branch
-# as a co-author. So a branch commit authored by an agent lands
-# `Co-authored-by: Claude <noreply@anthropic.com>` on `main` even when the PR
-# title and body are clean. That is how 5aacb786 got its trailer. The identity
-# check below is therefore not just about the branch — it is what keeps the
-# trailer off `main`, and the failure message says so.
+# The path that DOES reach `main`, and the one that actually bit us: GitHub's
+# squash credits every distinct **commit author** of the branch as a co-author,
+# writing that into the body BLANK would otherwise leave empty. So a branch commit
+# authored by an agent lands `Co-authored-by: Claude <noreply@anthropic.com>` on
+# `main` even when the PR title and body are clean. That is how 5aacb786 got its
+# trailer, and why 8f5fcce and f82b02a carry a bot one. The identity check below
+# is therefore not just about the branch — it is what keeps the trailer off
+# `main`, and the failure message says so.
 #
 # Untrusted text (title/body) is passed through env: and never interpolated
 # into the shell, per the repo zizmor policy.
