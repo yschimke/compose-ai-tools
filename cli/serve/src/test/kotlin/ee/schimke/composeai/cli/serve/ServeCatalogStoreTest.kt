@@ -3625,6 +3625,99 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `a wholly deferred component's pairing reaches the server's parallel lookup`() {
+    // The generator writes a wholly deferred component's `parallel` onto its DEFERRED record —
+    // such a component short-circuits before it ever reaches `components[]`, so that is the only
+    // copy of it in the manifest. Reading the lookup from `components` alone discarded it, and the
+    // deferred card was the one card that could not offer the sibling comparison source on a
+    // catalog that publishes `compareWith` precisely to have it.
+    val json =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "compareWith":{"system":"wear-m3-catalog"},
+       "liveBundle":{"path":"bundle/","file":"compose-m3-bundle.png"},
+       "components":[{"componentId":"Button/Filled","section":"Components","group":"Buttons",
+         "parallel":"Button/Filled",
+         "images":[
+           {"path":"images/button-filled/ideal__default__dark.png","state":"default","theme":"dark","previewId":"FilledButton_Dark"}]}],
+       "deferred":[
+         {"componentId":"Button/Filled","section":"Components","group":"Buttons","reason":"mode",
+          "path":"images/button-filled/ideal__default__light.png","state":"default","theme":"light",
+          "preview":"FilledButton","previewId":"FilledButton_Light",
+          "previewIds":["FilledButton_Light","FilledButton_Dark"]},
+         {"componentId":"Progress/Circular","section":"Components","group":"Progress",
+          "reason":"entry","parallel":"Progress/Circular",
+          "path":"images/progress-circular/ideal__default__light.png","state":"default","theme":"light",
+          "preview":"CircularProgress","previewId":"CircularProgress_Light",
+          "previewIds":["CircularProgress_Light"]}]}
+      """
+        .trimIndent()
+    var fronted: ServeHost? = null
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { trustedBranches },
+        fetch = deferredFetcher(json),
+        buildTrustedBundle = { _, _, _, _, bakedFallback, _ ->
+          fronted = bakedFallback()
+          true
+        },
+      )
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+
+    val host = fronted as ServeBundleHost
+    assertEquals("wear-m3-catalog", host.compareWithSystem)
+    assertEquals(
+      mapOf("Button/Filled" to "Button/Filled", "Progress/Circular" to "Progress/Circular"),
+      host.parallelByComponentId,
+      "the wholly deferred component's pairing is read off its deferred record",
+    )
+  }
+
+  @Test
+  fun `a component's own pairing outranks one inherited by its deferred variant record`() {
+    // A component that IS in `components[]` states its own pairing; a deferred VARIANT record
+    // sharing its id only inherits one. Components win, the same way the caption lookup resolves
+    // the mirror case.
+    val json =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "compareWith":{"system":"wear-m3-catalog"},
+       "liveBundle":{"path":"bundle/","file":"compose-m3-bundle.png"},
+       "components":[{"componentId":"Button/Filled","section":"Components","group":"Buttons",
+         "parallel":"Button/Authored",
+         "images":[
+           {"path":"images/button-filled/ideal__default__dark.png","state":"default","theme":"dark","previewId":"FilledButton_Dark"}]}],
+       "deferred":[
+         {"componentId":"Button/Filled","section":"Components","group":"Buttons","reason":"mode",
+          "parallel":"Button/Inherited",
+          "path":"images/button-filled/ideal__default__light.png","state":"default","theme":"light",
+          "preview":"FilledButton","previewId":"FilledButton_Light",
+          "previewIds":["FilledButton_Light","FilledButton_Dark"]}]}
+      """
+        .trimIndent()
+    var fronted: ServeHost? = null
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { trustedBranches },
+        fetch = deferredFetcher(json),
+        buildTrustedBundle = { _, _, _, _, bakedFallback, _ ->
+          fronted = bakedFallback()
+          true
+        },
+      )
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+
+    assertEquals(
+      mapOf("Button/Filled" to "Button/Authored"),
+      (fronted as ServeBundleHost).parallelByComponentId,
+    )
+  }
+
+  @Test
   fun `a baked-only session hides the deferred previews and records why`() {
     // Fail-soft (issue #2965 point 5): with no live lane there is nothing to render a deferred
     // preview from, so it is omitted rather than listed as a card whose every request 404s — and
