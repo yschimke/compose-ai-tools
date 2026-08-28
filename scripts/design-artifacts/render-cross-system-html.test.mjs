@@ -286,3 +286,36 @@ test("a sibling title fetched from another repo cannot inject markup into the su
   // The arrow span is ours and stays real markup.
   assert.match(html, /<span class="arrow">↔<\/span>/);
 });
+
+test("every paired row is anchored, and its component id links to itself", () => {
+  // The page a cross-system bug report wants to point at: it is the only one
+  // carrying the kit reference and both renditions of a cell side by side. Before
+  // this, the best a report could do was link the page and name the row.
+  const html = renderCrossSystemHtml(catalog, opts);
+
+  assert.match(html, /<tr class="crow" id="c-button-filled">/);
+  assert.match(html, /<a class="cid anchor" href="#c-button-filled">Button\/Filled<\/a>/);
+  // Same `c-<slug>` scheme renderIndexHtml uses, so one convention covers both pages.
+  assert.match(html, /<tr class="crow" id="c-button-icon">/);
+  // Sticky `thead th` would otherwise hide the row an anchor jumps to.
+  assert.match(html, /tr\.crow \{ scroll-margin-top:/);
+});
+
+test("an anchor cannot be smuggled out of a component id", () => {
+  // componentId reaches the id attribute AND an href. `slug` collapses everything
+  // non-alphanumeric, so the danger is a quote surviving into either — assert on
+  // the slug rather than trusting escaping alone.
+  const hostile = {
+    system: "remote-m3",
+    components: [{ componentId: 'Button/"><img src=x>', group: "Buttons", images: [] }],
+  };
+  const html = renderCrossSystemHtml(hostile, {
+    parallelById: { 'Button/"><img src=x>': "Button/Filled" },
+    otherComponents,
+    otherManifest,
+    otherSystem: "wear-m3-catalog",
+  });
+
+  assert.doesNotMatch(html, /<img src=x/);
+  assert.match(html, /id="c-button-img-src-x"/);
+});
