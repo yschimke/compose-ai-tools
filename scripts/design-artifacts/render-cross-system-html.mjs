@@ -195,6 +195,24 @@ function otherEmbed(pair, opts) {
  * design-map contributed it — worth showing, because a reader looking at a row where
  * only one implementation is mapped to the kit should be able to tell which.
  */
+/**
+ * The authored reason a row reaches no kit reference, or `""` when none was stated.
+ *
+ * A `noReference` is a finding, not a gap — "the kit exports no `Text=No` cell, so the honest
+ * reference is the sibling's own render" — and it is the one thing the kit column can publish for a
+ * row that has no picture to show.
+ */
+/**
+ * The `designRefById` a page shows the kit column from when nothing resolved but something was
+ * stated. Frozen-by-convention and never written to: `designEmbed` only reads it, and every lookup
+ * misses, which is the point — every cell falls to the stated-absence branch.
+ */
+const EMPTY_DESIGN_REFS = new Map();
+
+function statedAbsence(entry) {
+  return typeof entry?.noReference === "string" ? entry.noReference.trim() : "";
+}
+
 function designEmbed(pair, opts) {
   const ref = opts.designRefById?.get(pair.local.componentId);
   if (!ref?.url) {
@@ -204,7 +222,7 @@ function designEmbed(pair, opts) {
     // field exists to make. It reaches a variant row more often than a component one: the row a
     // variant flattens to never has a `designRefById` entry (the design map is keyed by component
     // id), so this branch is where a compared variant always lands.
-    const stated = typeof pair.local.noReference === "string" ? pair.local.noReference.trim() : "";
+    const stated = statedAbsence(pair.local);
     const missing = stated ? `no kit reference — ${esc(stated)}` : "no kit reference";
     const title = stated ? ` title="${esc(stated)}"` : "";
     return `<span class="pv-embed"><span class="pv-frame pv-frame--solid"><span class="pv-missing"${title}>${missing}</span></span></span>`;
@@ -341,7 +359,7 @@ export function renderCrossSystemHtml(catalog, opts = {}) {
   const otherIndexUrl = `https://htmlpreview.github.io/?https://github.com/${otherRepo}/blob/${otherBranch}/index.html`;
   const previewBase = opts.previewBase ?? DEFAULT_PREVIEW_BASE;
   const otherHeroById = heroIndex(opts.otherManifest);
-  const designRefById = opts.designRefById?.size ? opts.designRefById : null;
+  const kitRefs = opts.designRefById?.size ? opts.designRefById : null;
   const designTitle = opts.designTitle ?? "Design kit";
 
   const { paired, onlyLocal, onlyOther } = crossSystemMatches(
@@ -349,6 +367,15 @@ export function renderCrossSystemHtml(catalog, opts = {}) {
     opts.parallelById ?? {},
     opts.otherComponents ?? [],
   );
+
+  // Whether the kit column has anything to say — which is NOT the same question as whether any
+  // reference resolved. A catalog whose components all declare `noReference` passes an empty map,
+  // and gating the column on the map alone dropped the column, and with it every authored reason:
+  // the rationale showed up only when some unrelated component happened to contribute a reference.
+  // A stated absence is exactly the finding this column exists to publish, so it earns the column
+  // on its own.
+  const statedAbsences = paired.filter((p) => statedAbsence(p.local)).length;
+  const designRefById = kitRefs ?? (statedAbsences ? EMPTY_DESIGN_REFS : null);
 
   const rowOpts = {
     otherSystem,
@@ -361,8 +388,8 @@ export function renderCrossSystemHtml(catalog, opts = {}) {
   const anchors = rowAnchors(paired);
   const body = paired.map((p, i) => pairRow(p, rowOpts, anchors[i])).join("\n");
   const pairedReal = paired.filter((p) => rendersBothSides(p, rowOpts)).length;
-  const designed = designRefById
-    ? paired.filter((p) => designRefById.get(p.local.componentId)?.url).length
+  const designed = kitRefs
+    ? paired.filter((p) => kitRefs.get(p.local.componentId)?.url).length
     : 0;
 
   const onlyLocalList = onlyLocal.length
@@ -385,12 +412,16 @@ export function renderCrossSystemHtml(catalog, opts = {}) {
     // this one did not — which only became a hazard with the cross-repo form, where `otherTitle`
     // can come straight out of a FETCHED sibling `catalog.json` rather than a spec in this
     // checkout. The arrow span is ours and stays raw; the titles are data.
-    designRefById
+    kitRefs
       ? `${esc(title)} <span class="arrow">↔</span> ${esc(otherTitle)}, both against ${esc(designTitle)}`
       : `${esc(title)} <span class="arrow">↔</span> ${esc(otherTitle)}`,
     `${paired.length} paired`,
     `${pairedReal} rendered both sides`,
-    ...(designRefById ? [`${designed} against a kit reference`] : []),
+    // Counted off `kitRefs`, not the column: a column carried by stated absences alone would
+    // otherwise announce "0 against a kit reference", which reads as a failure rather than as the
+    // audited absence it is.
+    ...(kitRefs ? [`${designed} against a kit reference`] : []),
+    ...(statedAbsences ? [`${statedAbsences} with a stated absence`] : []),
   ];
 
   return `<!doctype html>

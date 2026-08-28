@@ -1,5 +1,9 @@
 import { writeFileSync } from "node:fs";
-import { renderCrossSystemHtml } from "/home/user/compose-ai-tools/scripts/design-artifacts/render-cross-system-html.mjs";
+// Resolved from this file rather than an absolute path, so the documented reproduction works in
+// any checkout. Point it at a worktree's copy for the "before" shot.
+const { renderCrossSystemHtml } = await import(
+  new URL("../../../../scripts/design-artifacts/render-cross-system-html.mjs", import.meta.url)
+);
 
 /** A flat coloured PNG-ish swatch as an inline SVG data URI, labelled so the pick is visible. */
 const swatch = (label, fill, w, h) =>
