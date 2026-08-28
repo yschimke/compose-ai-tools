@@ -134,6 +134,7 @@
       "serve.PreviewHistoryManifest",
       "serve.RenderFailureFrame",
       "serve.RenderOutcome",
+      "serve.ServeBuildHost",
       "serve.ServeBundleDaemon",
       "serve.ServeDefaults",
       "serve.ServeDiscovery",
