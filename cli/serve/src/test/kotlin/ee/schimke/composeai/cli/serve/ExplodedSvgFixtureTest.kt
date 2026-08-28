@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
  * [ExplodedSvgTest][ee.schimke.composeai.data.layoutinspector] asserts the structure — which
  * element lands on which plane, which resources survive. This asserts the **rendering**, and does
  * it the way the repo covers every other visual surface: by committing an artefact the
- * preview-harness screenshots and the `vscode-preview-diff` bot diffs on every PR.
+ * preview-harness screenshots and the `serve-preview-diff` bot diffs on every PR.
  *
  * The chain is:
  * 1. [LAYERED] — a committed layered SVG shaped exactly like a real `compose/figma-svg` export (a

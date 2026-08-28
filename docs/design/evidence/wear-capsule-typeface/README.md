@@ -48,7 +48,7 @@ installed in the container that captured it, so the browser falls back to its ow
 old and new fixture alike — the two PNGs differ by 32 bytes and are indistinguishable by eye. The
 change is in the SVG's *declared* `font-family`, which a viewer with the face available honours; the
 image above is here to show the capsule still renders correctly after the regeneration. The textual
-diff is the evidence, and CI's `vscode-preview-diff` bot renders this fixture on every PR.
+diff is the evidence, and CI's `serve-preview-diff` bot renders this fixture on every PR.
 
 Regenerate with:
 

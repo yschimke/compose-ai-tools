@@ -171,7 +171,7 @@ Distribution that already exists, in rough order of leverage:
   — the highest-value integration on this list and the one competitors don't have.
 - **MCP server** ([`mcp/`](../mcp)) — the agent integration, already published.
 - **VS Code / Cursor / Windsurf** extension.
-- **GitHub Actions** — `compose-preview.yml`, `vscode-preview-comment.yml`, `design-artifacts.yml`.
+- **GitHub Actions** — `compose-preview.yml`, `serve-preview-comment.yml`, `design-artifacts.yml`.
 
 **Worth building, in order:**
 

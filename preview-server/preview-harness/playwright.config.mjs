@@ -9,7 +9,7 @@
 //
 // **The `use` block below is pixel-load-bearing and must stay byte-equivalent to the extension's.**
 // Viewport and the two Chromium raster flags decide the captured pixels, and the baselines on the
-// `vscode-preview/main` branch were taken with these exact values. Change one and every capture
+// `serve-preview/main` branch were taken with these exact values. Change one and every capture
 // rebaselines — see the extension config's long note on why `--disable-partial-raster` and
 // `--disable-skia-runtime-opts` are in and why `--disable-lcd-text` is deliberately out.
 

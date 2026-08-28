@@ -1,8 +1,8 @@
-name: 'VS Code Preview Baselines'
+name: 'Serve Preview Baselines'
 description: >
   Render the VS Code panel's `preview-harness` fixtures (every fixture
   × dark/light theme) and push the resulting PNGs + baselines.json as
-  a new commit on the `vscode-preview/main` branch. Same model as the
+  a new commit on the `serve-preview/main` branch. Same model as the
   composable `compose-preview/main` baselines: the branch is browsable
   on GitHub (README with inline images) and serves as the "before"
   state for the per-PR diff comment. Old commit SHAs stay reachable so
@@ -11,7 +11,7 @@ description: >
 inputs:
   branch:
     description: 'Branch name for the baselines.'
-    default: 'vscode-preview/main'
+    default: 'serve-preview/main'
   node-version:
     description: 'Node.js version for the harness.'
     default: '20'
@@ -43,7 +43,7 @@ runs:
     # The serve page captures. They used to run inside `harness:snapshot` above — 167 of that
     # command's 205 tests were these — and moved out with the harness. They still write
     # `<name>.<theme>.png`, and both harnesses' `out/` dirs are merged below, so the baselines on
-    # `vscode-preview/main` keep matching by name and nothing needs rebaselining.
+    # `serve-preview/main` keep matching by name and nothing needs rebaselining.
     - name: Capture serve page snapshots
       shell: bash
       working-directory: preview-server/preview-harness
@@ -76,11 +76,11 @@ runs:
         # this, every push lands a no-op baseline commit when Chromium AA
         # jitter flips the bytes of an otherwise-unchanged capture. Absent
         # branch (first-ever run) falls back to a strict regenerate.
-        mkdir -p _vscode_prior
+        mkdir -p _serve_prior
         if git ls-remote --exit-code origin "$BASELINE_BRANCH" >/dev/null 2>&1; then
           git fetch --depth=1 --quiet origin "$BASELINE_BRANCH"
           git archive FETCH_HEAD renders 2>/dev/null \
-            | tar -x -C _vscode_prior/ 2>/dev/null || true
+            | tar -x -C _serve_prior/ 2>/dev/null || true
         fi
 
     - name: Install perceptual-diff dependencies
@@ -98,10 +98,10 @@ runs:
       env:
         ACTION_PATH: ${{ github.action_path }}
       run: |
-        python3 "$ACTION_PATH/../lib/vscode-preview-diff.py" generate \
+        python3 "$ACTION_PATH/../lib/serve-preview-diff.py" generate \
           _harness_out \
-          --prior-renders _vscode_prior/renders \
-          --output-dir _vscode_baselines
+          --prior-renders _serve_prior/renders \
+          --output-dir _serve_baselines
 
     - name: Push to baselines branch
       shell: bash
@@ -111,7 +111,7 @@ runs:
         GITHUB_TOKEN_INLINE: ${{ github.token }}
       run: |
         set -euo pipefail
-        cd _vscode_baselines
+        cd _serve_baselines
 
         git init -q
         git config user.name "github-actions[bot]"
@@ -136,7 +136,7 @@ runs:
           fi
         fi
 
-        MSG="Update vscode-preview baselines from ${GITHUB_SHA::8}"
+        MSG="Update serve-preview baselines from ${GITHUB_SHA::8}"
         if [ -n "$PARENT" ]; then
           COMMIT=$(git commit-tree "$TREE" -p "$PARENT" -m "$MSG")
         else

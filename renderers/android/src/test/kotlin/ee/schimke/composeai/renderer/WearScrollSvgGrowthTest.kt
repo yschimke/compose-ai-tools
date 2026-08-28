@@ -460,7 +460,7 @@ class WearScrollSvgGrowthTest {
     assertTrue("EdgeButton crescent as a raster", svg.contains("<image "))
 
     // Wire the capsule into the vscode preview-harness page-fixture lane so the CI visual-diff bot
-    // (`vscode-preview-diff`) screenshots + diffs it on every PR — the `?scroll=long` SVG surface
+    // (`serve-preview-diff`) screenshots + diffs it on every PR — the `?scroll=long` SVG surface
     // had
     // no committed capture path before. The harness stubs `/render/**`, so the fixture must be
     // self-contained: inline the one EdgeButton raster crop as a `data:` URI. The committed HTML is
@@ -491,7 +491,7 @@ class WearScrollSvgGrowthTest {
       committed.contains("/render/"),
     )
     // Drift guard: fail if the committed fixture no longer matches what the current assembler + SVG
-    // producer emit, so a renderer change can't leave `vscode-preview-diff` screenshotting a stale
+    // producer emit, so a renderer change can't leave `serve-preview-diff` screenshotting a stale
     // capsule. The inlined crescent's PNG bytes are normalised out — their pixels aren't
     // deterministic across environments (and the screenshot diff already covers them); everything
     // the

@@ -1,10 +1,10 @@
-name: 'VS Code Preview Comment'
+name: 'Serve Preview Comment'
 description: >
   Render the VS Code panel's `preview-harness` fixtures (every fixture
   × dark/light theme), compare against the baselines on
-  `vscode-preview/main`, and post a sticky before/after comment on the
+  `serve-preview/main`, and post a sticky before/after comment on the
   PR. Changed PNGs are appended as a new commit on the shared
-  `vscode-preview/pr` branch; the comment pins Before/After URLs to
+  `serve-preview/pr` branch; the comment pins Before/After URLs to
   commit SHAs so the images keep resolving after merge. Same model as
   the composable `preview-comment` action — see that action for the
   rationale on the appended-history / shared-PR-branch design.
@@ -12,10 +12,10 @@ description: >
 inputs:
   base-branch:
     description: 'Branch name for the baselines.'
-    default: 'vscode-preview/main'
+    default: 'serve-preview/main'
   head-branch:
     description: 'Shared branch that accumulates per-PR render commits.'
-    default: 'vscode-preview/pr'
+    default: 'serve-preview/pr'
   pr-number:
     description: 'Pull request number (auto-detected from context if omitted).'
     default: ''
@@ -57,7 +57,7 @@ runs:
     # The serve page captures. They used to run inside `harness:snapshot` above — 167 of that
     # command's 205 tests were these — and moved out with the harness. They still write
     # `<name>.<theme>.png`, and both harnesses' `out/` dirs are merged below, so the baselines on
-    # `vscode-preview/main` keep matching by name and nothing needs rebaselining.
+    # `serve-preview/main` keep matching by name and nothing needs rebaselining.
     - name: Capture serve page snapshots
       shell: bash
       working-directory: preview-server/preview-harness
@@ -83,14 +83,14 @@ runs:
       env:
         BASE_BRANCH: ${{ inputs.base-branch }}
       run: |
-        mkdir -p _vscode_baselines
+        mkdir -p _serve_baselines
         if git ls-remote --exit-code origin "$BASE_BRANCH" >/dev/null 2>&1; then
           git fetch origin "$BASE_BRANCH"
           git show "origin/${BASE_BRANCH}:baselines.json" \
-            > _vscode_baselines/baselines.json 2>/dev/null || true
+            > _serve_baselines/baselines.json 2>/dev/null || true
           # Extract the baseline `renders/` tree alongside `baselines.json`
           # so the pixelmatch-based perceptual filter in
-          # `vscode-preview-diff.py` has both PNGs to diff. Without this
+          # `serve-preview-diff.py` has both PNGs to diff. Without this
           # the harness's ±1-channel antialiased-edge jitter (Chromium
           # rasterisation is not bitwise-deterministic between runs) trips
           # the sha comparison and surfaces a fake "changed" row in every
@@ -98,7 +98,7 @@ runs:
           # untouched; failures (e.g. baseline branch has no `renders/`
           # tree yet) fall back to the strict-bytes path.
           git archive "origin/${BASE_BRANCH}" renders 2>/dev/null \
-            | tar -x -C _vscode_baselines/ 2>/dev/null || true
+            | tar -x -C _serve_baselines/ 2>/dev/null || true
         else
           echo "No $BASE_BRANCH branch yet — treating all captures as new."
         fi
@@ -130,18 +130,18 @@ runs:
         if [ -z "$BASE_SHA" ]; then
           BASE_SHA="$BASE_BRANCH"
         fi
-        echo "$BASE_SHA" > _vscode_base_sha
+        echo "$BASE_SHA" > _serve_base_sha
 
     - name: Copy changed captures
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
       run: |
-        python3 "$ACTION_PATH/../lib/vscode-preview-diff.py" copy-changed \
+        python3 "$ACTION_PATH/../lib/serve-preview-diff.py" copy-changed \
           _harness_out \
-          --baselines _vscode_baselines/baselines.json \
-          --baseline-renders _vscode_baselines/renders \
-          --output-dir _vscode_pr_renders
+          --baselines _serve_baselines/baselines.json \
+          --baseline-renders _serve_baselines/renders \
+          --output-dir _serve_pr_renders
 
     - name: Push PR captures
       shell: bash
@@ -155,14 +155,14 @@ runs:
         set -euo pipefail
         PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
 
-        if [ ! -d _vscode_pr_renders/renders ] || \
-           [ -z "$(ls -A _vscode_pr_renders/renders 2>/dev/null)" ]; then
+        if [ ! -d _serve_pr_renders/renders ] || \
+           [ -z "$(ls -A _serve_pr_renders/renders 2>/dev/null)" ]; then
           echo "No changed captures to push."
-          : > _vscode_head_sha
+          : > _serve_head_sha
           exit 0
         fi
 
-        cd _vscode_pr_renders
+        cd _serve_pr_renders
         git init -q
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -172,7 +172,7 @@ runs:
         git add -A
         TREE=$(git write-tree)
 
-        MSG="VS Code preview captures for PR #${PR_NUMBER} (${GITHUB_SHA::8})"
+        MSG="Serve preview captures for PR #${PR_NUMBER} (${GITHUB_SHA::8})"
 
         # Retry-on-race — different PRs push to the same shared branch and
         # second-to-push hits "non-fast-forward". Same retry shape as
@@ -189,7 +189,7 @@ runs:
             COMMIT=$(git commit-tree "$TREE" -m "$MSG")
           fi
           if git push --quiet origin "${COMMIT}:refs/heads/${HEAD_BRANCH}" 2>&1; then
-            echo "$COMMIT" > "$GITHUB_WORKSPACE/_vscode_head_sha"
+            echo "$COMMIT" > "$GITHUB_WORKSPACE/_serve_head_sha"
             exit 0
           fi
           if [ "$attempt" -ge 5 ]; then
@@ -211,21 +211,21 @@ runs:
         HEAD_BRANCH: ${{ inputs.head-branch }}
       run: |
         set -euo pipefail
-        BASE_REF=$(cat _vscode_base_sha)
-        HEAD_REF=$(cat _vscode_head_sha 2>/dev/null || true)
+        BASE_REF=$(cat _serve_base_sha)
+        HEAD_REF=$(cat _serve_head_sha 2>/dev/null || true)
         if [ -z "$HEAD_REF" ]; then
           HEAD_REF="$HEAD_BRANCH"
         fi
 
-        python3 "$ACTION_PATH/../lib/vscode-preview-diff.py" compare \
+        python3 "$ACTION_PATH/../lib/serve-preview-diff.py" compare \
           _harness_out \
-          --baselines _vscode_baselines/baselines.json \
-          --baseline-renders _vscode_baselines/renders \
+          --baselines _serve_baselines/baselines.json \
+          --baseline-renders _serve_baselines/renders \
           --repo "$REPO" \
           --base-ref "$BASE_REF" \
           --head-ref "$HEAD_REF" \
           --base-branch "$BASE_BRANCH" \
-          > _vscode_comment_body.md
+          > _serve_comment_body.md
 
     - name: Post or update PR comment
       shell: bash
@@ -238,8 +238,8 @@ runs:
       run: |
         set -euo pipefail
         PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
-        BODY=$(cat _vscode_comment_body.md)
-        MARKER="<!-- vscode-preview-diff -->"
+        BODY=$(cat _serve_comment_body.md)
+        MARKER="<!-- serve-preview-diff -->"
 
         # `gh` isn't available on this self-hosted env in some contexts, but
         # it's preinstalled on github-hosted ubuntu-latest where this action
@@ -250,10 +250,10 @@ runs:
           --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" \
           | head -1)
 
-        if grep -qF "No visual changes detected." _vscode_comment_body.md \
+        if grep -qF "No visual changes detected." _serve_comment_body.md \
            && [ "$COMMENT_ON_EMPTY_DIFF" != "true" ] \
            && [ -z "$COMMENT_ID" ]; then
-          echo "No vscode-preview diff and no existing comment — skipping (comment-on-empty-diff=false)."
+          echo "No serve-preview diff and no existing comment — skipping (comment-on-empty-diff=false)."
           exit 0
         fi
 
