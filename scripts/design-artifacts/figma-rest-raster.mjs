@@ -68,6 +68,8 @@ export class FigmaRestRasterizer {
   }) {
     this.token = token;
     this.cacheDir = cacheDir;
+    this.cacheIndex = undefined;
+    this.cacheCurrent = new Map();
     this.fetchImpl = fetchImpl;
     this.sleep = sleep;
     this.batchSize = batchSize;
@@ -110,6 +112,52 @@ export class FigmaRestRasterizer {
    * Node ids contain a colon (`1:42`); the cache spells directories with a dash
    * (`1-42`), the same way Figma's own URLs do.
    */
+  /** The file `version` the cache was imported at, or null. */
+  cacheVersion(fileKey) {
+    if (!this.cacheDir) return null;
+    if (this.cacheIndex === undefined) {
+      try {
+        this.cacheIndex = JSON.parse(
+          fs.readFileSync(path.join(this.cacheDir, "index.json"), "utf8"),
+        );
+      } catch {
+        this.cacheIndex = null;
+      }
+    }
+    return this.cacheIndex?.files?.[fileKey]?.version ?? null;
+  }
+
+  /**
+   * Whether the cache still describes the revision the images endpoint will
+   * render. Memoized per file: one request, however many nodes it covers.
+   *
+   * Anything unclear is a NO — no index, no version for the file, a request that
+   * failed. The cache is an optimisation here, so the safe answer when freshness
+   * cannot be established is to fetch structure live, exactly as before.
+   */
+  async cacheIsCurrent(fileKey) {
+    if (!this.cacheDir) return false;
+    const known = this.cacheCurrent.get(fileKey);
+    if (known !== undefined) return known;
+    let current = false;
+    const cached = this.cacheVersion(fileKey);
+    if (cached) {
+      try {
+        const response = await this.fetchWithRetry(
+          `https://api.figma.com/v1/files/${encodeURIComponent(fileKey)}?depth=1`,
+          { headers: this.headers() },
+          "figma file version",
+        );
+        const json = await response.json();
+        current = Boolean(json?.version) && String(json.version) === String(cached);
+      } catch {
+        current = false;
+      }
+    }
+    this.cacheCurrent.set(fileKey, current);
+    return current;
+  }
+
   nodeFromCache({ fileKey, nodeId }) {
     if (!this.cacheDir) return null;
     const file = path.join(this.cacheDir, fileKey, nodeId.replace(/:/g, "-"), "node.json");
@@ -153,14 +201,42 @@ export class FigmaRestRasterizer {
     for (const { parsed } of parsedRequests) {
       const key = this.nodeKey(parsed);
       if (this.nodes.has(key)) continue;
-      const cached = this.nodeFromCache(parsed);
-      if (cached) {
-        this.nodes.set(key, cached);
-        continue;
-      }
       const ids = missingByFile.get(parsed.fileKey) ?? new Set();
       ids.add(parsed.nodeId);
       missingByFile.set(parsed.fileKey, ids);
+    }
+
+    // Serve what the cache can — but only for a file whose revision it still
+    // describes. Structure and pixels have to come from the SAME revision: the
+    // images request below is unversioned and always renders the file as it is
+    // now, while the cache holds whatever the last import saw. Mixing them
+    // publishes annotations and finding anchors measured against one raster on
+    // top of a different one, which is worse than either being stale.
+    //
+    // The check is one request per FILE (`?depth=1` for its `version`), against
+    // ~one per 50 nodes it saves — the same version gate the import itself uses
+    // to make an unchanged kit cost a single request.
+    if (this.cacheDir) {
+      for (const [fileKey, ids] of [...missingByFile]) {
+        // Read from disk BEFORE paying for the revision check. A file listed in
+        // `index.json` whose requested nodes are not actually cached — a partial
+        // import, a node added to the map since — would otherwise cost a
+        // `?depth=1` request that cannot enable a single hit, turning a
+        // one-request miss into two. Worse under a 429: `fetchWithRetry` would
+        // spend its whole backoff budget on a question whose answer is moot.
+        const hits = new Map();
+        for (const nodeId of ids) {
+          const cached = this.nodeFromCache({ fileKey, nodeId });
+          if (cached) hits.set(nodeId, cached);
+        }
+        if (hits.size === 0) continue;
+        if (!(await this.cacheIsCurrent(fileKey))) continue;
+        for (const [nodeId, cached] of hits) {
+          this.nodes.set(`${fileKey}/${nodeId}`, cached);
+          ids.delete(nodeId);
+        }
+        if (ids.size === 0) missingByFile.delete(fileKey);
+      }
     }
 
     for (const [fileKey, ids] of missingByFile) {
