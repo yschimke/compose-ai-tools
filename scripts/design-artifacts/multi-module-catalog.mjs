@@ -23,7 +23,11 @@ export function bundleModulePath(bundle, fallback = ":unknown") {
  */
 export function bundleModuleDirectory(bundle) {
   const dir = bundle?.manifest?.moduleDirectory;
-  return typeof dir === "string" ? dir : "";
+  // `undefined` and `""` are DIFFERENT answers and a consumer must be able to tell them apart:
+  // `""` is the ROOT project, whose files are already repository-relative, while `undefined` is a
+  // bundle packed before the field existed and therefore an unknown directory. Collapsing the two
+  // made a root-project catalog look unknown and dropped every handle it could have published.
+  return typeof dir === "string" ? dir : undefined;
 }
 
 /** The candidate/spec join key. */
@@ -116,6 +120,11 @@ function namespaceAdditionalRecord(record, module, keyByFunction) {
       id: newId,
       functionName:
         keyByFunction.get(previewFunction(preview)) ?? previewFunction(preview),
+      // The name the SOURCE actually declares, kept beside the namespaced join key. Namespacing
+      // rewrites `functionName` to `:module::Foo` when two modules share a name, which is a catalog
+      // key and not a Kotlin identifier — a consumer that publishes it as a source anchor emits
+      // `File.kt#:feature::Foo`, which names nothing. The key joins; this states.
+      declaredFunctionName: previewFunction(preview),
       ...(Array.isArray(preview.captures)
         ? {
             captures: preview.captures.map((capture) =>

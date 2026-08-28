@@ -105,10 +105,13 @@ export function applySourceFiles(manifest, spec, sourceByFn) {
  * behave exactly as they did.
  */
 function stampIdentity(component, source) {
+  // A string, INCLUDING the empty one. `""` is the root project — a real, usable answer meaning
+  // "already repository-relative" — while `undefined` is a bundle that never recorded the field.
+  // Requiring a non-empty value stamped nothing for a root-project catalog, so its handles were
+  // dropped as if the directory were unknown.
   if (
     component.sourceDirectory === undefined &&
-    typeof source?.directory === "string" &&
-    source.directory.length > 0
+    typeof source?.directory === "string"
   ) {
     component.sourceDirectory = source.directory;
   }

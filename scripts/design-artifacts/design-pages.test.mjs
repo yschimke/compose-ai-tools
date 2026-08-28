@@ -1109,3 +1109,24 @@ test("a catalog published before the fields existed keeps its render, losing onl
     "but nothing is claimed about the source",
   );
 });
+
+test("the root project's empty directory is a usable answer, not a missing one", () => {
+  // The producer records `""` for a root-project catalog and the stamp must carry it: treating it
+  // as absent dropped every handle such a catalog could publish.
+  const root = {
+    components: [
+      {
+        ...parallelCatalog.components[0],
+        sourceDirectory: "",
+        sourceFile: "app/src/main/kotlin/app/Preview.kt",
+        sourceFunction: "Sticker",
+      },
+    ],
+  };
+  assert.equal(
+    onlyNode(
+      planDesignPages({ manifest: sharedImport, spec: {}, catalog: root }),
+    ).code,
+    "app/src/main/kotlin/app/Preview.kt#Sticker",
+  );
+});

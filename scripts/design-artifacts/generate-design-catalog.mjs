@@ -400,6 +400,10 @@ function sourceByFunction(bundle) {
   const directory = bundleModuleDirectory(bundle);
   for (const preview of bundle.previews ?? []) {
     const fn = preview.functionName ?? preview.id;
+    // What the SOURCE declares, which is not always the join key: `namespaceModuleRecords` rewrites
+    // a colliding `functionName` to `:module::Foo` so two modules can share a catalog, and that key
+    // is not a Kotlin identifier. `declaredFunctionName` survives the rewrite for exactly this.
+    const declared = preview.declaredFunctionName ?? fn;
     if (out.has(fn) && !prefer(preview.id)) continue;
     // `fn` is discovery's OWN function name, kept as a field rather than left to be re-parsed out
     // of a preview id: `buildVariantSuffix` appends an arbitrary `@Preview(name = …)` through
@@ -411,7 +415,7 @@ function sourceByFunction(bundle) {
         bodyLine: preview.bodyLine,
         module,
         directory,
-        functionName: fn,
+        functionName: declared,
       });
     else if (!out.has(fn))
       out.set(fn, {
@@ -419,7 +423,7 @@ function sourceByFunction(bundle) {
         bodyLine: undefined,
         module,
         directory,
-        functionName: fn,
+        functionName: declared,
       });
   }
   return out;
@@ -860,6 +864,13 @@ const { values } = parseArgs({
     renders: { type: "string" },
     out: { type: "string" },
     renderer: { type: "string" },
+    // The repo-relative directory of the Gradle BUILD the renders came from, for a monorepo whose
+    // samples are separate builds (compose-samples: `JetNews/`, `Jetcaster/`, each with its own
+    // `gradlew`). The plugin records a project's directory relative to ITS OWN `rootDir`, which in
+    // that layout is the sample's root and not the checkout — so `:app` records `app` while the
+    // repository path is `JetNews/app`. Only the caller knows the difference, so the caller says.
+    // Empty (the default, and every single-build repository) changes nothing.
+    "build-root": { type: "string" },
     // Base URL of the live preview server the catalog deep-links into (the
     // `livePreview` fields + README "Customise live" links). Falls back to
     // $PREVIEW_SERVER_BASE, then the public default.
@@ -1608,9 +1619,23 @@ if (values["publish-live-bundle"]) {
   // buildCatalog) from the bundle's discovery previews, so the preview server can link a
   // preview to its source on GitHub. No-op when discovery recorded no paths.
   const sourcesByFunction = new Map();
+  // Lift each project's build-root-relative directory to a REPOSITORY-relative one. The producer
+  // records what it can know (a directory under its own build root); this is the one place that
+  // knows where that build sits in the checkout.
+  const buildRoot = (values["build-root"] ?? "")
+    .trim()
+    .replace(/^\/+|\/+$/g, "");
+  const inRepo = (directory) => {
+    if (typeof directory !== "string") return undefined;
+    if (buildRoot === "") return directory;
+    return directory === "" ? buildRoot : `${buildRoot}/${directory}`;
+  };
   for (const renderBundle of allBundles) {
     for (const [fn, source] of sourceByFunction(renderBundle))
-      sourcesByFunction.set(fn, source);
+      sourcesByFunction.set(fn, {
+        ...source,
+        directory: inRepo(source.directory),
+      });
   }
   const stampedSources = applySourceFiles(manifest, spec, sourcesByFunction);
   if (stampedSources > 0) {
