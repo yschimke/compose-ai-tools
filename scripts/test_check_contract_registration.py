@@ -28,33 +28,48 @@ mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
 
 
-class Covered(unittest.TestCase):
-    def test_exact_glob_covers_its_directory(self):
-        self.assertTrue(mod.covered("common/image-crop", ["common/image-crop/**"]))
+class Coverage(unittest.TestCase):
+    """Coverage is decided by the CI classifier's own matcher, not by a pattern-shape guess.
 
-    def test_broader_glob_covers_a_nested_project(self):
-        # `render-session/**` legitimately covers api/ and subprocess/; demanding one entry
-        # per project would fail a correct file.
-        self.assertTrue(mod.covered("render-session/api", ["render-session/**"]))
-        self.assertTrue(mod.covered("render-session/subprocess", ["render-session/**"]))
+    Both earlier attempts were wrong in the same direction — they accepted a glob that reads as
+    whole-module coverage and is not. A prefix test accepted `daemon/core/**/*.kt`; the
+    trailing-slash allowance that replaced it accepted `daemon/core/`, which `glob_to_regex`
+    compiles to a pattern matching no file at all.
+    """
+
+    def setUp(self):
+        self.to_regex = mod.path_matcher(REPO)
+
+    def missed(self, directory, globs):
+        return mod.uncovered_paths(directory, globs, self.to_regex)
+
+    def test_a_subtree_glob_covers_its_directory(self):
+        self.assertEqual(self.missed("common/image-crop", ["common/image-crop/**"]), [])
+
+    def test_a_broader_glob_covers_a_nested_project(self):
+        # `render-session/**` legitimately covers api/ and subprocess/; demanding one entry per
+        # project would fail a correct file.
+        self.assertEqual(self.missed("render-session/api", ["render-session/**"]), [])
+        self.assertEqual(self.missed("render-session/subprocess", ["render-session/**"]), [])
 
     def test_a_sibling_prefix_does_not_count(self):
-        # `common/io` must not be satisfied by `common/image-crop/**`.
-        self.assertFalse(mod.covered("common/io", ["common/image-crop/**"]))
+        self.assertNotEqual(self.missed("common/io", ["common/image-crop/**"]), [])
 
     def test_a_partial_name_does_not_count(self):
-        # `bundle/format2` is not covered by `bundle/format/**`.
-        self.assertFalse(mod.covered("bundle/format2", ["bundle/format/**"]))
-
-    def test_a_selective_glob_is_not_whole_module_coverage(self):
-        # Same directory prefix, but a change to the module's build file or a Java source under
-        # it would not select the group — and other groups classify those paths, so the
-        # classifier does not fail open. A partial glob reads as coverage without being it.
-        self.assertFalse(mod.covered("daemon/core", ["daemon/core/**/*.kt"]))
-        self.assertTrue(mod.covered("daemon/core", ["daemon/core/**"]))
+        self.assertNotEqual(self.missed("bundle/format2", ["bundle/format/**"]), [])
 
     def test_no_globs_covers_nothing(self):
-        self.assertFalse(mod.covered("common/io", []))
+        self.assertNotEqual(self.missed("common/io", []), [])
+
+    def test_a_kotlin_only_glob_misses_the_build_file(self):
+        missed = self.missed("daemon/core", ["daemon/core/**/*.kt"])
+        self.assertIn("daemon/core/build.gradle.kts", missed)
+        self.assertIn("daemon/core/src/main/java/ee/schimke/composeai/X.java", missed)
+
+    def test_a_trailing_slash_pattern_matches_nothing(self):
+        # `glob_to_regex` compiles `daemon/core/` to an exact path, so it selects no file under
+        # the module — the shape the previous version of this check accepted as coverage.
+        self.assertEqual(len(self.missed("daemon/core", ["daemon/core/"])), len(mod.REPRESENTATIVE))
 
 
 class ModulePackages(unittest.TestCase):
@@ -87,6 +102,7 @@ class Omissions(unittest.TestCase):
             mod.CI_PATHS,
             mod.SETTINGS,
             mod.ALLOWLIST,
+            mod.PATH_SCOPE,
         ):
             dst = self.root / rel
             dst.parent.mkdir(parents=True, exist_ok=True)

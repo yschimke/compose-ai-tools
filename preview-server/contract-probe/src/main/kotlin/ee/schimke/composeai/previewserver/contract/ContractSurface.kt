@@ -1,6 +1,7 @@
 package ee.schimke.composeai.previewserver.contract
 
 import ee.schimke.composeai.bundle.BundleReader
+import ee.schimke.composeai.bundle.WebEmbed
 import ee.schimke.composeai.bundle.coordinates.CoordinateResolver
 import ee.schimke.composeai.daemon.protocol.DaemonLaunchDescriptor
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
@@ -18,6 +19,7 @@ import ee.schimke.composeai.imagecrop.ContentCrop
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.render.session.RenderSessionFactory
 import ee.schimke.composeai.render.session.subprocess.SubprocessRenderSessions
+import ee.schimke.composeai.web.WebEscaping
 import kotlin.reflect.KClass
 import okio.FileSystem
 
@@ -77,6 +79,31 @@ object ContractSurface {
    * consumers, not a privileged caller.
    */
   val renderSessions: RenderSessionFactory = SubprocessRenderSessions
+
+  /**
+   * The two web surfaces #4666 extracted.
+   *
+   * Bound as typed function references rather than as the objects themselves, and that distinction
+   * is the finding this block exists to answer. `val webEscaping: WebEscaping = WebEscaping` proves
+   * only that a public object of that name exists in the published jar; every member could be
+   * renamed, hidden or re-signed underneath it and this file would still compile. A `::member`
+   * reference with an explicit function type pins the name *and* the signature, so a parameter
+   * added or a return type changed fails here — which is the regression the probe is for.
+   *
+   * These are exactly the members serve calls, drawn from its real import set.
+   */
+  val htmlEscape: (String) -> String = WebEscaping::htmlEscape
+  val jsString: (String) -> String = WebEscaping::jsString
+  val urlEncodeSegment: (String) -> String = WebEscaping::urlEncodeSegment
+  val formatPercent: (Double, Int) -> String = WebEscaping::formatPercent
+  val pngDimensions: (ByteArray) -> Pair<Int, Int> = WebEscaping::pngDimensions
+
+  val webEmbedGenerate:
+    (String, String, List<WebEmbed.Preview>, WebEmbed.InlineMode) -> WebEmbed.Output =
+    WebEmbed::generate
+
+  val webEmbedScriptName: String = WebEmbed.SCRIPT_NAME
+  val webEmbedIndexName: String = WebEmbed.INDEX_NAME
 
   /** File IO. The server funnels reads/writes through `:common-io` like every other module. */
   val fileSystem: FileSystem = SystemFileSystem
