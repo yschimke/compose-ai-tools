@@ -168,6 +168,44 @@ point: that edit is drift from `main`.
 > docker compose exec preview cat /config/catalogs.json
 > ```
 
+### Regenerating a catalog's warmed theme renders
+
+Two admin routes for pixels you suspect are wrong for a reason no fingerprint sees — a base-image
+bump that changed the installed fonts being the case that motivated them.
+
+```bash
+# Mark this catalog's warmed renders for re-render. Nothing is deleted: every preview keeps
+# serving while the background pass replaces them. Answers {"queued": true, "entries": N}.
+curl -sX POST -H "X-Compose-Preview-Admin-Token: $SERVE_ADMIN_TOKEN" \
+  https://<host>/admin/catalogs/m3-catalog/theme-cache/regenerate
+
+# Take them instead. Every preview for that catalog goes cold at once and is re-rendered from
+# nothing — the cost `regenerate` exists to avoid, so this is the second choice of the two.
+curl -sX POST -H "X-Compose-Preview-Admin-Token: $SERVE_ADMIN_TOKEN" \
+  https://<host>/admin/catalogs/m3-catalog/theme-cache/drop
+```
+
+Both wake the catalog's optimizer, so the work starts with the response rather than waiting on the
+next rotation. A mistyped system is a `404`, not a silent success.
+
+**A `409` from either is "contended, retry"** — a render held the generation write lock as you
+called, and reporting that as success is the one failure mode a drop must not have. From
+`regenerate` it can also mean the request could not be made durable (a full or read-only cache
+volume) or that theme optimization is switched off on this box, so nothing would ever work the
+queue. In every case the answer carries `"queued": false` rather than a count.
+
+**Deliberately not buttons on `/status`.** That page authenticates with `SERVE_TOKEN`; these routes
+require `SERVE_ADMIN_TOKEN`, which is a different and much smaller audience. A button would have to
+bridge that gap, and every way of bridging it either puts the admin credential in a page that
+merely holding the serve token can read, or invents a second, weaker way into an admin route. These
+are rare operator actions, and a drop takes a warm catalog cold across every one of its renders —
+not a thing to make one click away from a page a wider audience can already see.
+
+What `/status` *does* show is when a catalog needs one: a row reading
+`themes optimized 10440/10440 · 10440 inherited, re-rendering` is warm everywhere and finished
+nowhere — every render came from a build that is no longer running, and the pass is replacing them.
+`/status.json` carries the same figure as `catalogList[].themeOptimization.dirty`.
+
 ### GitHub auth on `preview.coo.ee`
 
 To keep catalog browsing public while requiring GitHub sign-in for live sessions and playground,
