@@ -1,5 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { PNG } from "pngjs";
 
 import {
@@ -168,4 +171,87 @@ test("retries a rate-limited batch once and respects Retry-After", async () => {
   assert.equal(nodeAttempts, 2);
   assert.deepEqual(sleeps, [0]);
   assert.equal(raster.width, 1);
+});
+
+/** A design-parity reference cache holding structure for the given node ids. */
+function referenceCache(fileKey, nodeIds) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "reference-cache-"));
+  for (const nodeId of nodeIds) {
+    const entry = path.join(dir, fileKey, nodeId.replace(/:/g, "-"));
+    fs.mkdirSync(entry, { recursive: true });
+    fs.writeFileSync(
+      path.join(entry, "node.json"),
+      JSON.stringify({ document: { absoluteBoundingBox: { width: 10 } }, styles: {} }),
+    );
+  }
+  return dir;
+}
+
+test("reads node structure from a reference cache instead of the nodes endpoint", async () => {
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(url);
+    if (url.includes("/images/")) return json({ images: { "1:1": "https://cdn.test/1:1" } });
+    return new Response(onePixelPng(), { status: 200 });
+  };
+  const rasterizer = new FigmaRestRasterizer({
+    token: "token",
+    fetchImpl,
+    cacheDir: referenceCache("file", ["1:1"]),
+  });
+  const target = { width: 20, height: 20, density: 2.625 };
+
+  const raster = await rasterizer.rasterize("figma:file/1:1", target);
+
+  // The structure came off disk, so the rate-limited nodes endpoint is never asked.
+  assert.equal(calls.filter((url) => url.includes("/nodes?")).length, 0);
+  // Pixels still come from Figma's own renderer: the published `match` score is
+  // computed from them, so they are deliberately NOT taken from the cache's SVG.
+  assert.equal(calls.filter((url) => url.includes("/images/")).length, 1);
+  assert.deepEqual(raster.document, { absoluteBoundingBox: { width: 10 } });
+});
+
+test("falls through to the nodes endpoint when the cache misses", async () => {
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(url);
+    if (url.includes("/nodes?")) {
+      return json({ nodes: { "2:2": { document: { absoluteBoundingBox: { width: 10 } } } } });
+    }
+    if (url.includes("/images/")) return json({ images: { "2:2": "https://cdn.test/2:2" } });
+    return new Response(onePixelPng(), { status: 200 });
+  };
+  const rasterizer = new FigmaRestRasterizer({
+    token: "token",
+    fetchImpl,
+    // Holds a different node, so `2:2` is a miss.
+    cacheDir: referenceCache("file", ["1:1"]),
+  });
+
+  await rasterizer.rasterize("figma:file/2:2", { width: 20, height: 20, density: 2.625 });
+
+  // A miss is not fatal here — unlike the parity run, where the cache is
+  // authoritative. It just costs the request it would have cost anyway.
+  assert.equal(calls.filter((url) => url.includes("/nodes?")).length, 1);
+});
+
+test("ignores a cacheDir that does not exist", async () => {
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(url);
+    if (url.includes("/nodes?")) {
+      return json({ nodes: { "1:1": { document: { absoluteBoundingBox: { width: 10 } } } } });
+    }
+    if (url.includes("/images/")) return json({ images: { "1:1": "https://cdn.test/1:1" } });
+    return new Response(onePixelPng(), { status: 200 });
+  };
+  const rasterizer = new FigmaRestRasterizer({
+    token: "token",
+    fetchImpl,
+    cacheDir: "/nope/not/a/cache",
+  });
+
+  await rasterizer.rasterize("figma:file/1:1", { width: 20, height: 20, density: 2.625 });
+
+  assert.equal(calls.filter((url) => url.includes("/nodes?")).length, 1);
 });

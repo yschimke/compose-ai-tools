@@ -5,7 +5,7 @@
  *     node emit-design-references.mjs --out <bundle dir> --repo <repo root> \
  *       [--design-map design-map.json] [--spec catalog.spec.json] \
  *       [--reference-images <dir>] [--reference-backdrop '#000000'] \
- *       [--chromium <path>] [--strict]
+ *       [--reference-cache <dir>] [--chromium <path>] [--strict]
  *
  * `--out` is the staged bundle the workflow is about to force-push to `design-artifacts/<system>`;
  * this adds `references/index.json` plus one normalised PNG per reference and leaves the rest of it
@@ -89,6 +89,17 @@ const REPO = path.resolve(arg("repo", "."));
 const DESIGN_MAP = arg("design-map", "design-map.json");
 const SPEC = arg("spec", "catalog.spec.json");
 const REFERENCE_IMAGES = arg("reference-images");
+/**
+ * A design-parity reference cache checkout (`design-parity/reference`). Node
+ * STRUCTURE is read from it instead of `/v1/files/:key/nodes`; a miss just costs
+ * the request it would have cost anyway.
+ *
+ * Only the structure. The cache also holds a resolution-free `image.svg`, but
+ * the pixels here feed the `match` score baked into the manifest at publish, so
+ * swapping Figma's renderer for a local SVG raster would move every score in it.
+ * That is a decision, not a caching detail, so it is not taken here.
+ */
+const REFERENCE_CACHE = arg("reference-cache", process.env.DESIGN_REFERENCES_CACHE || "");
 const EXEC = arg("chromium", process.env.DESIGN_REFERENCES_CHROMIUM || undefined);
 const STRICT = process.argv.includes("--strict");
 const FIGMA_CONTENTS_ONLY = arg("figma-contents-only", "true") !== "false";
@@ -261,7 +272,11 @@ function referenceContentsOnly(record) {
 function figmaRasterizerFor(contentsOnly) {
   let rasterizer = figmaRasterizers.get(contentsOnly);
   if (!rasterizer) {
-    rasterizer = new FigmaRestRasterizer({ token: FIGMA_TOKEN, contentsOnly });
+    rasterizer = new FigmaRestRasterizer({
+      token: FIGMA_TOKEN,
+      contentsOnly,
+      ...(REFERENCE_CACHE ? { cacheDir: REFERENCE_CACHE } : {}),
+    });
     figmaRasterizers.set(contentsOnly, rasterizer);
   }
   return rasterizer;
