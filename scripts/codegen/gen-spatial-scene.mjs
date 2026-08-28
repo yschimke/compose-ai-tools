@@ -47,6 +47,24 @@ const BANNER = (relPath) => [
   `// Regenerate: node scripts/codegen/gen-spatial-scene.mjs (CI checks with --check).`,
 ];
 
+/**
+ * Banner for the TypeScript mirror, which lives in yschimke/compose-preview-vscode.
+ *
+ * It cannot share [BANNER]: the plain command writes only the Kotlin and C++ mirrors, and
+ * `--check` compares only those. A file carrying the generic banner would tell its reader
+ * to run a command that leaves it untouched, and claim a gate that does not cover it —
+ * the two things a generated-file header exists to get right.
+ */
+const TS_BANNER = () => [
+  `// GENERATED FILE — DO NOT EDIT.`,
+  `// Source of truth: schema/spatial-scene.schema.json, in yschimke/compose-ai-tools.`,
+  `// Regenerate from a checkout of that repository beside this one:`,
+  `//   node ../compose-ai-tools/scripts/codegen/gen-spatial-scene.mjs --emit-typescript \\`,
+  `//     > src/webview/shared/spatialScene.ts`,
+  `// NOT covered by that repo's --check gate: it cannot write into this repository. If the`,
+  `// schema changes there, this file goes stale silently until someone regenerates it.`,
+];
+
 // ---- schema helpers ----------------------------------------------------------------------------
 
 const refName = (s) => s.$ref ? s.$ref.replace("#/definitions/", "") : null;
@@ -216,7 +234,7 @@ function tsField(p) {
 
 function emitTypeScript() {
   const out = [];
-  out.push(...BANNER());
+  out.push(...TS_BANNER());
   out.push("");
   out.push(...block(schema.description).map(stripLeadingSlash));
   out.push(`export const ${VERSION_CONST} = ${VERSION_VALUE};`);

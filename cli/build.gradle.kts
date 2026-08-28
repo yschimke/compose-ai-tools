@@ -709,6 +709,16 @@ abstract class CheckDaemonLaunchSchema : DefaultTask() {
   @get:PathSensitive(PathSensitivity.RELATIVE)
   abstract val checker: RegularFileProperty
 
+  /**
+   * Path to a `compose-preview-vscode` checkout, when there is one.
+   *
+   * An `@Input` in its own right, not just a carrier for [representations]: moving the checkout, or
+   * gaining/losing one, changes what the checker covers even when no file's content differs. The
+   * checker skips its TypeScript half without a checkout, so a run with one and a run without one
+   * are not the same check and must not share an up-to-date stamp.
+   */
+  @get:Input @get:Optional abstract val vscodeRoot: Property<String>
+
   /** Nothing to produce — the file just lets Gradle skip the check when nothing moved. */
   @get:OutputFile abstract val stamp: RegularFileProperty
 
@@ -716,7 +726,12 @@ abstract class CheckDaemonLaunchSchema : DefaultTask() {
 
   @TaskAction
   fun checkSchema() {
-    execOps.exec { commandLine("python3", checker.get().asFile.absolutePath) }
+    execOps.exec {
+      commandLine("python3", checker.get().asFile.absolutePath)
+      // Passed explicitly rather than inherited, so what the checker sees is what Gradle
+      // fingerprinted above. An inherited value could differ from the declared input.
+      vscodeRoot.orNull?.let { environment("COMPOSE_PREVIEW_VSCODE_ROOT", it) }
+    }
     stamp.get().asFile.writeText("ok\n")
   }
 }
@@ -744,6 +759,33 @@ tasks.register<CheckDaemonLaunchSchema>("checkDaemonLaunchSchema") {
   // sandbox-count key is a literal in `JAVA_TOOL_OPTIONS`. Without this the same up-to-date hole
   // the source tree had would reopen for exactly the file that rule was added to cover.
   representations.from(repoRoot.file("deploy/image/Dockerfile"))
+
+  // The TypeScript reader — the only one that GATES on the schema version — lives in
+  // yschimke/compose-preview-vscode. The checker reads it from `COMPOSE_PREVIEW_VSCODE_ROOT`, else
+  // a sibling checkout, and walks that tree for unregistered mirrors just as it walks this one.
+  // Those files are inputs for the same reason the repo-wide tree above is: without them the first
+  // successful run stamps this task UP-TO-DATE and every later edit or pull of the external reader
+  // is invisible, so the cross-repo drift the gate exists to catch is exactly what it stops seeing.
+  //
+  // Resolved eagerly to a plain String at configuration time, deliberately. Doing it inside a
+  // `map {}` on the provider defers it to execution time, and the lambda then has to capture
+  // `rootProject` to build the file tree — which the configuration cache cannot serialize.
+  val vscodeRootPath: String? =
+    providers.environmentVariable("COMPOSE_PREVIEW_VSCODE_ROOT").orNull?.takeIf { it.isNotBlank() }
+      ?: repoRoot.asFile.parentFile
+        ?.resolve("compose-preview-vscode")
+        ?.takeIf { it.resolve("src/daemon/daemonProtocol.ts").isFile }
+        ?.absolutePath
+  if (vscodeRootPath != null) {
+    vscodeRoot.set(vscodeRootPath)
+    representations.from(
+      rootProject.fileTree(vscodeRootPath) {
+        include("**/*.ts")
+        exclude("**/build/**", "**/node_modules/**", "**/.git/**", "**/out/**", "**/dist/**")
+      }
+    )
+  }
+
   allowlist.set(repoRoot.file("scripts/daemon-launch-schema-allowlist.json"))
   checker.set(repoRoot.file("scripts/check-daemon-launch-schema.py"))
   stamp.set(layout.buildDirectory.file("check-daemon-launch-schema/ok.txt"))

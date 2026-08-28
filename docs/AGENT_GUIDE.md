@@ -83,7 +83,7 @@ CLI (install to `cli/build/install/compose-preview/bin/compose-preview`):
 
 VS Code extension:
 ```
-cd compose-preview-vscode && npm install && npm run compile && npm test
+cd ../compose-preview-vscode && npm install && npm run compile && npm test
 ```
 For live dev, open [compose-preview-vscode/](https://github.com/yschimke/compose-preview-vscode) in VS Code and press F5 — see [docs/DEVELOPMENT.md](DEVELOPMENT.md) for the three install modes and their tradeoffs.
 

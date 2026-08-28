@@ -10,7 +10,7 @@ There are three shipping artifacts, each with its own local install story:
 |----------|----------|--------------|
 | Gradle plugin (`ee.schimke.composeai.preview`) | `includeBuild` (in-repo, preferred) or `./gradlew :gradle-plugin:publishToMavenLocal` | `includeBuild("…/gradle-plugin")` or `mavenLocal()` in a consumer's `settings.gradle.kts` |
 | CLI (`compose-preview`) | `./gradlew :cli:installDist` | Symlink into `~/.local/bin` (or add to `$PATH`) |
-| VS Code extension | `cd compose-preview-vscode && npm install && npm run compile` | Extension Dev Host (F5), folder symlink, or `.vsix` |
+| VS Code extension | `cd ../compose-preview-vscode && npm install && npm run compile` | Extension Dev Host (F5), folder symlink, or `.vsix` |
 
 ## Prerequisites
 
@@ -136,7 +136,7 @@ launcher — the symlink does not need to be re-created.
 Install dev dependencies and compile TypeScript once:
 
 ```
-cd compose-preview-vscode
+cd ../compose-preview-vscode
 npm install
 npm run compile
 ```
@@ -196,7 +196,7 @@ The `package` script runs `vsce package --no-dependencies`, which requires
 
 ```
 ./gradlew check                   # gradle-plugin unit + functional tests, CLI tests
-cd compose-preview-vscode && npm test   # extension unit tests (mocha)
+cd ../compose-preview-vscode && npm test   # extension unit tests (mocha)
 ```
 
 ## Troubleshooting
