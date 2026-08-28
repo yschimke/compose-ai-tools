@@ -310,6 +310,7 @@ public final class ee/schimke/composeai/data/render/PreviewDeviceSpec {
 
 public final class ee/schimke/composeai/data/render/PreviewFilter {
 	public static final field ANCHOR Ljava/lang/String;
+	public static final field ID_EXCLUDE_FILE_PROPERTY Ljava/lang/String;
 	public static final field ID_EXCLUDE_PROPERTY Ljava/lang/String;
 	public static final field ID_FILTER_PROPERTY Ljava/lang/String;
 	public static final field INSTANCE Lee/schimke/composeai/data/render/PreviewFilter;
@@ -318,6 +319,8 @@ public final class ee/schimke/composeai/data/render/PreviewFilter {
 	public final fun excludeById (Ljava/util/List;Ljava/util/List;Lkotlin/jvm/functions/Function1;Z)Ljava/util/List;
 	public static synthetic fun excludeById$default (Lee/schimke/composeai/data/render/PreviewFilter;Ljava/util/List;Ljava/util/List;Lkotlin/jvm/functions/Function1;ZILjava/lang/Object;)Ljava/util/List;
 	public final fun fqName (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+	public final fun idExcludesFrom (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)Ljava/util/List;
+	public static synthetic fun idExcludesFrom$default (Lee/schimke/composeai/data/render/PreviewFilter;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Ljava/util/List;
 	public final fun keptRowIndices (Ljava/util/List;Ljava/util/List;)Ljava/util/List;
 	public final fun matches (Ljava/util/Collection;Ljava/lang/String;Ljava/lang/String;)Z
 	public final fun matchesId (Ljava/util/Collection;Ljava/lang/String;)Z

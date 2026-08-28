@@ -76,7 +76,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST = Path(__file__).resolve().parent / "daemon-launch-schema-allowlist.json"
 
 WRITER = "gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonClasspathDescriptor.kt"
-JVM_READER = "daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/DaemonLaunchDescriptor.kt"
+JVM_READER = "daemon/protocol/src/main/kotlin/ee/schimke/composeai/daemon/protocol/DaemonLaunchDescriptor.kt"
 TS_READER = "vscode-extension/src/daemon/daemonProtocol.ts"
 
 

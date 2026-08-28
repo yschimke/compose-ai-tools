@@ -47,7 +47,7 @@ public final class ee/schimke/composeai/daemon/client/DaemonClient : java/io/Clo
 }
 
 public abstract interface class ee/schimke/composeai/daemon/client/DaemonClientFactory {
-	public abstract fun spawn (Lee/schimke/composeai/daemon/client/WorkspaceId;Lee/schimke/composeai/daemon/DaemonLaunchDescriptor;)Lee/schimke/composeai/daemon/client/DaemonSpawn;
+	public abstract fun spawn (Lee/schimke/composeai/daemon/client/WorkspaceId;Lee/schimke/composeai/daemon/protocol/DaemonLaunchDescriptor;)Lee/schimke/composeai/daemon/client/DaemonSpawn;
 }
 
 public abstract interface class ee/schimke/composeai/daemon/client/DaemonSpawn {
@@ -79,7 +79,7 @@ public final class ee/schimke/composeai/daemon/client/DataProductWireException$C
 
 public final class ee/schimke/composeai/daemon/client/SubprocessDaemonClientFactory : ee/schimke/composeai/daemon/client/DaemonClientFactory {
 	public fun <init> ()V
-	public fun spawn (Lee/schimke/composeai/daemon/client/WorkspaceId;Lee/schimke/composeai/daemon/DaemonLaunchDescriptor;)Lee/schimke/composeai/daemon/client/DaemonSpawn;
+	public fun spawn (Lee/schimke/composeai/daemon/client/WorkspaceId;Lee/schimke/composeai/daemon/protocol/DaemonLaunchDescriptor;)Lee/schimke/composeai/daemon/client/DaemonSpawn;
 }
 
 public final class ee/schimke/composeai/daemon/client/WorkspaceId {
