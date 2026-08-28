@@ -657,6 +657,7 @@ can't hand one visitor's Catalog-mode HTML to a Dev-mode visitor.
 
 **What Catalog mode drops is the operational surface, not the Remote Compose facet.** The live
 stream, the full-page scroll capture, the accessibility overlay and the design annotations all go.
+**The catalog report stays** — see [Reporting what you can actually see](#reporting-what-you-can-actually-see).
 **Every player stays** — the browser pair (`js`, `cmp-wasm`) and the server-side ones (`java`,
 `cmp-android`, `cmp-jvm`) alike — and the page opens on the embedded player exactly as Dev does.
 
@@ -1545,6 +1546,24 @@ page URL with the lane its `?format=` selects, the catalog build and the tool ve
 the better route it already had: its reference opens the focused Reference / Diff / Actual page,
 whose report names that exact preview and reference. Before/after in
 [`docs/design/evidence/compare-wall-catalog-report`](design/evidence/compare-wall-catalog-report/README.md).
+
+**And so does every other catalog surface** ([#4704](https://github.com/yschimke/compose-ai-tools/issues/4704)).
+The wall's page-scoped report was the wall's alone, so the same hole stayed open on the surfaces a
+design reviewer actually spends their time on: the catalog **landing** grid, the **pages** index, a
+**design page**, and the **motion** browser. A report filed from a Figma sheet whose components draw
+the wrong thing went to the preview server, which does not own any of it. All four now carry the
+same page-scoped report — the page URL, the catalog build, the tool version, no `| Preview |` row —
+under the identity line, and the launcher's catalog half is offered on them by name. Before/after in
+[`docs/design/evidence/catalog-report-every-surface`](design/evidence/catalog-report-every-surface/README.md).
+
+The **Catalog mode** viewer and landing keep the catalog report too. That mode drops the developer
+affordances around it (the source link, the playground, the revision menu) and it carries neither
+the site footer nor the floating launcher — so with the report stripped as well, a visitor in the
+streamlined component browser had **nowhere at all** to say that a component draws the wrong thing.
+That is backwards: Catalog mode is the presentation a design reviewer is handed, and a reviewer is
+exactly who the catalog tracker is for. The report is the one affordance that stays; its row
+neighbours are still Dev-only, and it is the inline "report a catalog issue" disclosure rather than
+the launcher, which stays out of that mode with the rest of the site chrome.
 
 The footer entry stays where it was, renamed **report a server bug**, and the per-preview link is
 now **report a catalog issue**: both used to be called "report an issue" / "report a bug", a click

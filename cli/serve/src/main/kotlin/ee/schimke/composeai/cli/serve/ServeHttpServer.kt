@@ -3061,6 +3061,11 @@ class ServeHttpServer(
               catalogPlaygroundHref != null -> githubAuthStatus(ServeWeb.GatedLane.PLAYGROUND)
               else -> null
             },
+          // The catalog report on the page most visitors arrive on — what the floating launcher's
+          // catalog half points at in Dev, and the only reporting affordance Catalog mode has at
+          // all. Scoped to the page rather than to a card: the grid singles out no component, and a
+          // report naming one the reporter never picked would be worse than one naming the catalog.
+          reportIssue = pageScopedReportIssue(renderHost, selectedSessionId, "this catalog"),
         ),
         ContentType.Text.Html,
       )
@@ -3185,25 +3190,7 @@ class ServeHttpServer(
       // and the tool version, and drops the preview-shaped rows the way every other optional fact
       // is dropped. A row's own defect keeps the better route it already had: opening the focused
       // comparison, which files against that exact preview and reference.
-      val bundleHost = catalogBundleHost(renderHost)
-      val reportContext =
-        ServeIssueReport.Context(
-          repo = ServeIssueReport.repoFor(bundleHost?.catalogSource, bundleHost?.provenance),
-          system = sessionId,
-          catalog = bundleHost?.provenance?.let { "${it.repo}@${it.branch}" },
-          toolVersion = bundleHost?.provenance?.toolVersion,
-          pageUrl = ServeIssueReport.withoutToken(externalPageUrl()),
-          publicRender = isPublic,
-        )
-      val reportIssue =
-        ServeWeb.ReportIssue(
-          action = ServeIssueReport.action(reportContext.repo),
-          body = ServeIssueReport.body(reportContext),
-          bodyTemplate = ServeIssueReport.body(reportContext, renderPlaceholder = true),
-          repo = reportContext.repo,
-          login = githubAuth?.currentLogin(call),
-          subject = "these comparisons",
-        )
+      val reportIssue = pageScopedReportIssue(renderHost, sessionId, "these comparisons")
       call.respondText(
         ServeWeb.comparisonPage(
           moduleLabel = renderHost.label,
@@ -3544,6 +3531,7 @@ class ServeHttpServer(
           version = SERVE_VERSION,
           displayTitle = catalogBundleHost(renderHost)?.title,
           sessionInOrigin = siteSystem() != null,
+          reportIssue = pageScopedReportIssue(renderHost, sessionId, "this motion browser"),
         ),
         ContentType.Text.Html,
       )
@@ -3581,6 +3569,7 @@ class ServeHttpServer(
           // A top-level site's pages carry their session in the ORIGIN, so same-session links
           // drop the `?session=` the rooted legacy form would add. See [ServeSites].
           sessionInOrigin = siteSystem() != null,
+          reportIssue = pageScopedReportIssue(renderHost, sessionId, "these design pages"),
         ),
         ContentType.Text.Html,
       )
@@ -3646,6 +3635,7 @@ class ServeHttpServer(
           // A top-level site's pages carry their session in the ORIGIN, so same-session links
           // drop the `?session=` the rooted legacy form would add. See [ServeSites].
           sessionInOrigin = siteSystem() != null,
+          reportIssue = pageScopedReportIssue(renderHost, sessionId, "this design page"),
         ),
         ContentType.Text.Html,
       )
@@ -4376,6 +4366,48 @@ class ServeHttpServer(
       provenance =
         "$siblingLabel's own render of ${siblingPreview.componentId ?: parallelId}, " +
           "under that catalog's theme and knobs — not this page's.",
+    )
+  }
+
+  /**
+   * The **page-scoped** "report a catalog issue" for a surface that names no single preview.
+   *
+   * Every catalog page belongs to a catalog and can therefore be wrong in that catalog's own
+   * repository, but only the surfaces that draw one preview could say which one — so the landing
+   * grid, the pages index, a design page and the motion browser carried no `#cp-report` at all, the
+   * floating launcher's catalog half stayed hidden on them, and the SERVER tracker was the only
+   * route out of a page whose whole subject is someone else's design system
+   * ([#4704](https://github.com/yschimke/compose-ai-tools/issues/4704)). This is the report the
+   * comparison wall introduced for exactly that reason (#4289), lifted out of it: it names the
+   * **page** — its URL with the query it was served at, the catalog build and the tool version —
+   * and drops every preview-shaped row the way [ServeIssueReport.body] already drops any optional
+   * fact it wasn't given. [subject] is what the affordance calls what is wrong, in its own prose.
+   *
+   * A preview's own defect keeps the better route it already has wherever one exists: the viewer
+   * and the focused comparison file against that exact preview.
+   */
+  private fun RoutingContext.pageScopedReportIssue(
+    renderHost: ServeHost,
+    sessionId: String,
+    subject: String,
+  ): ServeWeb.ReportIssue {
+    val bundleHost = catalogBundleHost(renderHost)
+    val context =
+      ServeIssueReport.Context(
+        repo = ServeIssueReport.repoFor(bundleHost?.catalogSource, bundleHost?.provenance),
+        system = sessionId,
+        catalog = bundleHost?.provenance?.let { "${it.repo}@${it.branch}" },
+        toolVersion = bundleHost?.provenance?.toolVersion,
+        pageUrl = ServeIssueReport.withoutToken(externalPageUrl()),
+        publicRender = isPublic,
+      )
+    return ServeWeb.ReportIssue(
+      action = ServeIssueReport.action(context.repo),
+      body = ServeIssueReport.body(context),
+      bodyTemplate = ServeIssueReport.body(context, renderPlaceholder = true),
+      repo = context.repo,
+      login = githubAuth?.currentLogin(call),
+      subject = subject,
     )
   }
 

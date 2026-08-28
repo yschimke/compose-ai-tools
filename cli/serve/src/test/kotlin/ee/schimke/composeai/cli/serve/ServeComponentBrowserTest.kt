@@ -201,6 +201,45 @@ class ServeComponentBrowserTest {
     assertFalse(html.contains("class=\"cp-note\""))
   }
 
+  /**
+   * Catalog mode keeps the **catalog** report, though it drops every developer affordance beside
+   * it.
+   *
+   * This mode is the presentation a design reviewer is handed, and a reviewer noticing that a
+   * component draws the wrong thing is precisely who the report exists for. Stripping it with the
+   * source link and the playground left the floating launcher with no `#cp-report` to unhide its
+   * catalog half against, so the only route out of a wrong preview was the preview SERVER's tracker
+   * — which does not own the component (issue #4704).
+   */
+  @Test
+  fun `catalog mode keeps the catalog report beside the preview`() {
+    val report =
+      ServeWeb.ReportIssue(
+        action = "https://github.com/yschimke/wear-m3-catalog/issues/new",
+        body = "### Which preview",
+        bodyTemplate = "### Which preview",
+        repo = "yschimke/wear-m3-catalog",
+      )
+    val html =
+      ServeWeb.viewerPage(
+        preview = ServePreview("button-filled", "Filled button", componentId = "Button/Filled"),
+        token = token,
+        catalogTitle = "Wear Material 3",
+        componentBrowser = true,
+        sourceHref = "https://github.com/yschimke/wear-m3-catalog/blob/main/Button.kt",
+        playgroundHref = "/playground",
+        reportIssue = report,
+      )
+
+    assertTrue(
+      html.contains("id=\"cp-report\" data-cp-repo=\"yschimke/wear-m3-catalog\""),
+      "the launcher's catalog half has something to point at: $html",
+    )
+    // The developer affordances that share its row still go.
+    assertFalse(html.contains("cp-source-link"), html)
+    assertFalse(html.contains("playground</a>"), html)
+  }
+
   @Test
   fun `component page keeps the snapshot fallback when wasm is unavailable`() {
     val html =

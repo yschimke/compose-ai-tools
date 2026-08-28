@@ -248,6 +248,39 @@ class ServeDesignPageRoutingTest {
     assertEquals(200, get("/pages/shape.svg?session=m3-catalog").first)
   }
 
+  /**
+   * Both design-page surfaces file against the CATALOG, page-scoped.
+   *
+   * The floating launcher unhides its catalog half only on a page carrying `#cp-report`, so a
+   * design page — the surface whose entire subject is somebody's design file — offered the preview
+   * SERVER's tracker as its only route, which is where a report about the design ended up
+   * (issue #4704). Page-scoped, for the reason the comparison wall's is: a sheet shows every
+   * component on it and singles out none, so the report names the page rather than inventing a
+   * preview the reporter never picked.
+   */
+  @Test
+  fun `the pages index and a page both offer the catalog tracker`() {
+    val (_, _, index) = get("/m3-catalog/pages")
+    assertTrue(
+      index.contains("id=\"cp-report\"") &&
+        index.contains("data-cp-subject=\"these design pages\""),
+      index,
+    )
+    val (_, _, page) = get("/m3-catalog/pages/shape")
+    assertTrue(
+      page.contains("id=\"cp-report\"") && page.contains("data-cp-subject=\"this design page\""),
+      page,
+    )
+    // Page-scoped: the body names the page and no preview it cannot honestly single out.
+    assertTrue(page.contains("### Which page") && !page.contains("| Preview |"), page)
+    // …and the catalog landing, the surface most visitors arrive on, carries one too.
+    val (_, _, landing) = get("/m3-catalog/")
+    assertTrue(
+      landing.contains("id=\"cp-report\"") && landing.contains("data-cp-subject=\"this catalog\""),
+      landing,
+    )
+  }
+
   @Test
   fun `a catalog with no pages 404s the surface`() {
     assertEquals(404, get("/plain/pages").first)

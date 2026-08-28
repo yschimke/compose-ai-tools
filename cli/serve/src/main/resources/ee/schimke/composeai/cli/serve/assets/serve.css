@@ -2591,6 +2591,10 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
    title — so the panel is anchored to the row and stays on screen at every width — with the top
    margin the filter above it does not provide. */
 .cp-compare-links { margin: 10px 0 0; }
+/* The same row on the catalog surfaces that show no single preview — the landing grid, the pages
+   index, a design page, the motion browser. It sits under the page's summary line and above its
+   controls, so it needs a little air on both sides rather than the viewer's tight `0 0 8px`. */
+.cp-page-links { margin: 2px 0 14px; }
 .cp-compare-table-wrap { overflow-x: auto; margin-top: 14px; }
 .cp-compare-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
 .cp-compare-table th, .cp-compare-table td { padding: 10px 12px; text-align: left;
