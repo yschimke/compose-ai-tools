@@ -23,6 +23,11 @@
  * The same shape as `emit-parity-activity.mjs` next door, and for the same reason: the serve host
  * has no checkout and cannot read another branch.
  *
+ * It also runs after `emit-design-references.mjs`, and now depends on that ordering for a second
+ * reason: a finding's reference-side anchor is measured in the space the design tool captured, and
+ * the reference step publishes the raster onto the sticker's canvas. The transform it recorded in
+ * `references/index.json` is read here and applied to those anchors (#4696).
+ *
  * ## Failure posture
  *
  * Fail-soft, matching its neighbours and the server's own reader. No parity branch, an unreadable
@@ -35,7 +40,11 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 
 import { stripComments } from "./catalog-spec.mjs";
-import { planDesignReferences } from "./design-references.mjs";
+import {
+  REFERENCES_DIR,
+  planDesignReferences,
+  referenceTransforms,
+} from "./design-references.mjs";
 import {
   FINDINGS_DIR,
   FINDINGS_FILE,
@@ -176,10 +185,37 @@ if (!runManifest || !runFindings) {
 // already reported them; only the join's own drops are reported here.
 const { records } = planDesignReferences({ designMap, spec, catalog });
 
+/**
+ * What the reference step did to each reference's pixels, read back out of the manifest it just
+ * wrote a few steps up in the same job.
+ *
+ * A run's reference-side anchors are boxes in the space the design tool's adapter captured; a
+ * reference this export resampled, reduced or letterboxed is published in a different one, and the
+ * highlight then sits off the element the finding names (#4696). Read rather than recomputed
+ * because only the step that moved the pixels knows how far it moved them — the plan above says
+ * what a reference SHOULD be, not what the raster turned out to need.
+ *
+ * Absent or unreadable ⇒ an empty map, which is the identity: the same anchors this published
+ * before the transform existed, never a guessed one.
+ */
+let transforms = new Map();
+const referenceIndex = path.join(OUT, REFERENCES_DIR, "index.json");
+if (fs.existsSync(referenceIndex)) {
+  try {
+    transforms = referenceTransforms(readJson(referenceIndex));
+  } catch (error) {
+    warn(
+      `${REFERENCES_DIR}/index.json is not readable (${error.message}); anchors are published ` +
+        `in the space the run captured them in`,
+    );
+  }
+}
+
 const { document, warnings, mapped } = buildServedFindings({
   runManifest,
   runFindings,
   references: records,
+  referenceTransforms: transforms,
   repoSlug: SOURCE_REPO,
   branch: PARITY_BRANCH,
 });

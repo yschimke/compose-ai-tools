@@ -238,3 +238,157 @@ test("a code handle that only INHERITS from the run's map publishes nothing", ()
   });
   assert.equal(document, null);
 });
+
+// ---- Reference-side anchors -------------------------------------------------------------------
+//
+// A run's anchors are boxes in the space the design tool's adapter captured; the reference step
+// publishes that raster onto the sticker's canvas and records what it did. Applying it here is what
+// keeps a `layout` finding's two highlights over the same element on both panels (#4696).
+
+/** A layout finding anchored on BOTH panels, which is the case the offset is most misleading in. */
+const anchored = {
+  status: "fail",
+  findings: [
+    {
+      kind: "layout",
+      severity: "error",
+      message: "padding is 24 where the design asserts 16",
+      anchors: [
+        { side: "reference", bounds: { x: 10, y: 20, width: 100, height: 40 }, label: "Send" },
+        { side: "actual", bounds: { x: 12, y: 24, width: 96, height: 48 }, label: "Send" },
+      ],
+    },
+  ],
+};
+
+const anchoredRun = {
+  schema: FINDINGS_SCHEMA,
+  previews: { "ui/Button.kt#Filled": [anchored] },
+};
+
+test("moves a reference-side anchor onto the reference as it was published", () => {
+  const { document } = build({
+    runFindings: anchoredRun,
+    referenceTransforms: new Map([
+      ["button-filled__ideal__default__light-0", { scaleX: 2, scaleY: 2, offsetX: 0, offsetY: 30 }],
+    ]),
+  });
+  const [finding] = document.previews["button-filled__ideal__default__light"][0].findings;
+  assert.deepEqual(finding.anchors[0], {
+    side: "reference",
+    bounds: { x: 20, y: 70, width: 200, height: 80 },
+    label: "Send",
+  });
+});
+
+test("leaves the candidate-side anchor alone — it is already in the render's pixels", () => {
+  const { document } = build({
+    runFindings: anchoredRun,
+    referenceTransforms: new Map([
+      ["button-filled__ideal__default__light-0", { scaleX: 2, scaleY: 2, offsetX: 0, offsetY: 30 }],
+    ]),
+  });
+  const [finding] = document.previews["button-filled__ideal__default__light"][0].findings;
+  assert.deepEqual(finding.anchors[1], anchored.findings[0].anchors[1]);
+});
+
+test("only the reference the transform names is moved", () => {
+  // One code handle plans a record per sticker, and light and dark can be published through
+  // different transforms — a set scoped to one must not inherit the other's.
+  const { document } = build({
+    runFindings: anchoredRun,
+    referenceTransforms: new Map([
+      ["button-filled__ideal__default__light-0", { scaleX: 2, scaleY: 2, offsetX: 0, offsetY: 30 }],
+    ]),
+  });
+  const dark = document.previews["button-filled__ideal__default__dark"][0].findings[0];
+  assert.deepEqual(dark.anchors, anchored.findings[0].anchors);
+});
+
+test("publishes exactly what it publishes today when no reference was rescaled", () => {
+  // The acceptance the fix is held to: a reference the export did not move carries no transform,
+  // and its verdict has to come out byte-identical.
+  const before = build({ runFindings: anchoredRun }).document;
+  const after = build({ runFindings: anchoredRun, referenceTransforms: new Map() }).document;
+  assert.deepEqual(after, before);
+  assert.deepEqual(
+    before.previews["button-filled__ideal__default__light"][0].findings[0].anchors,
+    anchored.findings[0].anchors,
+  );
+});
+
+test("a finding with no honest anchor is not given one", () => {
+  const { document } = build({
+    referenceTransforms: new Map([
+      ["button-filled__ideal__default__light-0", { scaleX: 2, scaleY: 2, offsetX: 0, offsetY: 30 }],
+    ]),
+  });
+  const [finding] = document.previews["button-filled__ideal__default__light"][0].findings;
+  assert.equal(finding.anchors, undefined);
+});
+
+test("drops a reference anchor the placement cropped away, keeping the candidate's", () => {
+  // A cropped-away anchor points at a region this reference does not publish; the server discards a
+  // negative-origin box anyway, so publishing one costs the finding its highlight silently.
+  const { document } = build({
+    runFindings: anchoredRun,
+    referenceTransforms: new Map([
+      [
+        "button-filled__ideal__default__light-0",
+        { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: -80, canvas: { width: 300, height: 210 } },
+      ],
+    ]),
+  });
+  const [finding] = document.previews["button-filled__ideal__default__light"][0].findings;
+  assert.equal(finding.anchors.length, 1);
+  assert.equal(finding.anchors[0].side, "actual");
+});
+
+test("a finding whose every anchor was cropped away carries no anchors at all", () => {
+  // Not an empty list: the server offers an unanchored finding as prose and never as a control.
+  const referenceOnly = {
+    schema: FINDINGS_SCHEMA,
+    previews: {
+      "ui/Button.kt#Filled": [
+        {
+          status: "fail",
+          findings: [
+            {
+              kind: "layout",
+              severity: "error",
+              message: "padding drifted",
+              anchors: [{ side: "reference", bounds: { x: 0, y: 0, width: 100, height: 40 } }],
+            },
+          ],
+        },
+      ],
+    },
+  };
+  const { document } = build({
+    runFindings: referenceOnly,
+    referenceTransforms: new Map([
+      [
+        "button-filled__ideal__default__light-0",
+        { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: -80, canvas: { width: 300, height: 210 } },
+      ],
+    ]),
+  });
+  const [finding] = document.previews["button-filled__ideal__default__light"][0].findings;
+  assert.equal("anchors" in finding, false);
+});
+
+test("clips a reference anchor that only partly survived the crop", () => {
+  const { document } = build({
+    runFindings: anchoredRun,
+    referenceTransforms: new Map([
+      [
+        "button-filled__ideal__default__light-0",
+        { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: -30, canvas: { width: 300, height: 210 } },
+      ],
+    ]),
+  });
+  const [finding] = document.previews["button-filled__ideal__default__light"][0].findings;
+  // Captured at y 20, height 40; the crop takes the 30 rows above the artwork, so the box loses
+  // its top 10 and the remaining 30 sit flush against the top of the published canvas.
+  assert.deepEqual(finding.anchors[0].bounds, { x: 10, y: 0, width: 100, height: 30 });
+});

@@ -74,7 +74,7 @@ import { alphaBounds, fitRgba, isRoundingDelta, placeRgba, resampleRgba } from "
 import { applyBackdrop, parseBackdrop, stageOf } from "./reference-backdrop.mjs";
 import { scaleFinding, scaleMessage, scaleVerdict } from "./reference-scale.mjs";
 import { layoutFromNode } from "@design-parity/adapter-figma";
-import { scaleTree } from "./reference-layout.mjs";
+import { publishTransform, scaleTree, transformAnnotations } from "./reference-layout.mjs";
 import { withReferenceAnnotations } from "@design-parity/catalog-export";
 import { FigmaRestRasterizer, parseFigmaRef } from "./figma-rest-raster.mjs";
 import { openScorer } from "./design-reference-score.mjs";
@@ -419,6 +419,14 @@ let stagedScaleChecks = 0;
 const backdropTally = { disc: 0, frame: 0, skipped: 0 };
 /** Reference id -> a `{ layout }` shim; `referenceAnnotations` reads only that field. */
 const annotatedReferences = {};
+/**
+ * Reference id -> the transform this export applied to that reference's pixels.
+ *
+ * Only the rescaled ones appear. It is what carries geometry captured in the source raster's space
+ * — an adapter's annotation layer, and the reference-side anchors `emit-parity-findings.mjs` reads
+ * back out of `references/index.json` — onto the raster actually published (#4696).
+ */
+const referenceTransforms = new Map();
 if (FIGMA_TOKEN) {
   for (const contentsOnly of [true, false]) {
     const requests = records
@@ -453,6 +461,11 @@ for (const record of records) {
         density: referenceDensity(record),
       })
     : undefined;
+
+  // The raster as it arrived, before anything here moves it. Reference-side geometry captured by
+  // the design tool's adapter is measured in THESE pixels, so it is the space every published
+  // annotation box and finding anchor has to be carried out of.
+  const captured = { width: raster.width, height: raster.height };
 
   // Where the artwork ends up inside the published raster. Full-bleed unless it is placed/fitted.
   let placement = { width: target.width, height: target.height, x: 0, y: 0 };
@@ -587,6 +600,19 @@ for (const record of records) {
     ? scaleTree(capturedLayout, placement.width, placement.x, placement.y)
     : undefined;
   if (scaled) annotatedReferences[record.id] = { layout: scaled };
+
+  // What this export did to the pixels, published so the manifests that describe them can agree
+  // with them. Absent when nothing moved — a reference the placement left alone publishes exactly
+  // the record it publishes today, which is the whole of what a consumer reading no `transform`
+  // is entitled to assume.
+  const transform = publishTransform(captured.width, captured.height, placement);
+  if (transform) {
+    record.raster.transform = transform;
+    // The canvas travels alongside rather than inside the published field: `raster.width`/`height`
+    // already state it, and a box is clipped to it because `placeRgba` crops an empty margin by
+    // placing the source at a negative offset — see `clipToCanvas`.
+    referenceTransforms.set(record.id, { ...transform, canvas: target });
+  }
 }
 
 // The gate m3-catalog#180 asked for: 107 of that catalog's 536 references drew their component at
@@ -681,12 +707,23 @@ await scoreReferences();
  * and merges rather than overwriting — dropping the other half would trade one annotated column for
  * the other instead of getting both.
  *
+ * A reference layer already in that file was captured by somebody else — a repo whose own parity job
+ * wrote it with `withReferenceAnnotations` before this step ran — and its boxes are in the SOURCE
+ * raster's pixels. Where this export rescaled or letterboxed that raster the two describe different
+ * pictures, and a redline sits off the element it names (#4696). Each such layer is carried through
+ * the transform this run applied before the layers captured here are merged over it; the layers
+ * captured here are already in the published space, because [scaleTree] put them there.
+ *
+ * That rebase assumes what the workflow guarantees: this step runs ONCE against a freshly staged
+ * bundle. Run twice over the same `--out` and the layer it wrote the first time is read back as a
+ * captured one and moved again — while the raster, re-placed from its source each run, stays put.
+ *
  * Fail-soft like everything else here: an unreadable existing manifest is replaced rather than
  * fatal, and no captured geometry simply leaves the file alone. A reference lane is an enhancement
  * and must never cost a catalog its render.
  */
 function writeReferenceAnnotations() {
-  if (Object.keys(annotatedReferences).length === 0) return;
+  if (Object.keys(annotatedReferences).length === 0 && referenceTransforms.size === 0) return;
   const dir = path.join(OUT, "annotations");
   const file = path.join(dir, "index.json");
   let existing = { schema: "compose-preview-annotations/v1", previews: {}, references: {} };
@@ -699,6 +736,21 @@ function writeReferenceAnnotations() {
       warn(`annotations/index.json is unreadable (${error.message}); replacing it`);
     }
   }
+  // Rebase what was already there, then let this run's own layers land on top of it.
+  let rebased = 0;
+  for (const [referenceId, transform] of referenceTransforms) {
+    const layer = existing.references?.[referenceId];
+    if (!Array.isArray(layer) || layer.length === 0) continue;
+    existing.references[referenceId] = transformAnnotations(layer, transform, transform.canvas);
+    rebased++;
+  }
+  if (rebased > 0) {
+    console.log(
+      `design-references: moved ${rebased} pre-existing reference annotation layer(s) into the ` +
+        `published raster's pixel space`,
+    );
+  }
+
   const merged = withReferenceAnnotations(existing, annotatedReferences);
   const count = Object.keys(merged.references).length;
   if (count === 0) return;

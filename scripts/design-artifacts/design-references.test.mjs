@@ -11,6 +11,7 @@ import {
   planDesignReferences,
   referenceId,
   referenceManifest,
+  referenceTransforms,
   servePreviewId,
 } from "./design-references.mjs";
 
@@ -1029,4 +1030,73 @@ test("planDesignReferences refuses every id in an ambiguous bundle collision fam
   assert.deepEqual(exactAuthoredSuffix.records, []);
   assert.equal(exactAuthoredSuffix.warnings.length, 1);
   assert.match(exactAuthoredSuffix.warnings[0], /collision family cannot be reversed/);
+});
+
+// ---- referenceTransforms ----------------------------------------------------------------------
+//
+// The reference step records what it did to a raster's pixels so a LATER step can carry
+// reference-side geometry — a finding's anchor — into the same space (#4696).
+
+test("referenceTransforms indexes the transforms a published manifest carries", () => {
+  const manifest = {
+    schema: REFERENCES_SCHEMA,
+    references: [
+      {
+        id: "button__ideal__light-0",
+        raster: {
+          path: "references/button__ideal__light-0.png",
+          transform: { scaleX: 0.5, scaleY: 0.5, offsetX: 0, offsetY: 100 },
+        },
+      },
+      // Published exactly as it arrived: no transform, and so no entry — absent IS the identity.
+      { id: "card__ideal__light-0", raster: { path: "references/card__ideal__light-0.png" } },
+    ],
+  };
+  const transforms = referenceTransforms(manifest);
+  assert.deepEqual(transforms.get("button__ideal__light-0"), {
+    scaleX: 0.5,
+    scaleY: 0.5,
+    offsetX: 0,
+    offsetY: 100,
+  });
+  assert.equal(transforms.has("card__ideal__light-0"), false);
+});
+
+test("referenceTransforms carries the published canvas so a consumer can clip", () => {
+  // A placement that cropped an empty margin sits at a negative offset, and the server discards a
+  // box with a negative origin — so an unclipped box does not sit wrong, it disappears.
+  const [entry] = referenceTransforms({
+    references: [
+      {
+        id: "a",
+        raster: { width: 219, height: 84, transform: { scaleX: 1, scaleY: 1, offsetY: -21 } },
+      },
+    ],
+  }).values();
+  assert.deepEqual(entry.canvas, { width: 219, height: 84 });
+});
+
+test("referenceTransforms omits a canvas the manifest does not state", () => {
+  const [entry] = referenceTransforms({
+    references: [{ id: "a", raster: { transform: { scaleX: 2, scaleY: 2 } } }],
+  }).values();
+  assert.equal("canvas" in entry, false);
+});
+
+test("referenceTransforms drops a factor that would move a box to nonsense", () => {
+  // A wrong anchor is worse than an unmoved one: the reader has no way to tell it is wrong.
+  const manifest = {
+    references: [
+      { id: "a", raster: { transform: { scaleX: 0, scaleY: 1 } } },
+      { id: "b", raster: { transform: { scaleX: -2, scaleY: -2 } } },
+      { id: "c", raster: { transform: { scaleX: "2", scaleY: 2 } } },
+      { id: "d", raster: { transform: "2x" } },
+    ],
+  };
+  assert.equal(referenceTransforms(manifest).size, 0);
+});
+
+test("referenceTransforms is empty for a manifest that is not there", () => {
+  assert.equal(referenceTransforms(undefined).size, 0);
+  assert.equal(referenceTransforms({}).size, 0);
 });

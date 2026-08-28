@@ -24,9 +24,21 @@
  *   already records. Deliberately the repository blob URL rather than a third-party HTML renderer:
  *   the link is a promise about where the report lives, not about how it will look.
  *
+ * A third thing is CORRECTED on the way through. A finding's reference-side anchor is a box in the
+ * coordinate space the design tool's adapter captured, and `emit-design-references.mjs` publishes
+ * that reference onto the sticker's canvas — resampling, reducing or letterboxing it on the way.
+ * Where it did, the anchor and the raster describe different pictures and the highlight sits off the
+ * element the finding names, which is worst on exactly the `layout` findings that anchor on both
+ * panels so an offset can be SEEN (#4696). The reference step records what it did, per reference, in
+ * `references/index.json`; those transforms are applied here, at the point a set is scoped to the
+ * reference it is about. Candidate-side anchors are already in the render's own pixels — the frame
+ * the server serves — and are never touched.
+ *
  * Pure functions over already-parsed JSON — no I/O, no git, no network. The driver
  * (`emit-parity-findings.mjs`) reads the branch and writes the file.
  */
+
+import { transformBounds } from "./reference-layout.mjs";
 
 /** The schema the preview server validates before reading a manifest. */
 export const FINDINGS_SCHEMA = "compose-preview-parity-findings/v1";
@@ -107,10 +119,43 @@ function findingsFor(runFindings, code) {
  * enhancement, and a wrong verdict is worse than an absent one. An UNSTAMPED document is accepted,
  * because the first producer to ship this file predates the field.
  */
+/**
+ * One finding with its REFERENCE-side anchors moved into the published raster's pixel space.
+ *
+ * Returned as it stands when the export did not move that reference's pixels, so a catalog whose
+ * references all published at their captured size emits byte-identical findings. An anchor on the
+ * `actual` panel is left alone in every case: it was measured in the render's own pixels, which is
+ * the frame the server serves.
+ *
+ * An anchor the placement cropped away entirely is DROPPED rather than published pointing at
+ * nothing, and a finding left with none loses the field: `ServeParityFindingStore` offers a finding
+ * with no anchors as prose and never as a control, which is the honest answer for a region this
+ * reference does not show. The candidate-side anchor of the same finding survives, so a `layout`
+ * finding keeps the half that can still be pointed at.
+ */
+function rebaseAnchors(finding, transform) {
+  if (!transform || !Array.isArray(finding?.anchors)) return finding;
+  const anchors = finding.anchors.flatMap((anchor) => {
+    if (anchor?.side !== "reference" || !anchor.bounds) return [anchor];
+    const bounds = transformBounds(anchor.bounds, transform, transform.canvas);
+    return bounds ? [{ ...anchor, bounds }] : [];
+  });
+  if (anchors.length > 0) return { ...finding, anchors };
+  const { anchors: dropped, ...rest } = finding;
+  return rest;
+}
+
+/** One set, with every finding's reference-side anchor moved onto the reference as published. */
+function rebaseSet(set, transform) {
+  if (!transform || !Array.isArray(set?.findings)) return set;
+  return { ...set, findings: set.findings.map((finding) => rebaseAnchors(finding, transform)) };
+}
+
 export function buildServedFindings({
   runManifest,
   runFindings,
   references,
+  referenceTransforms,
   repoSlug,
   branch,
 }) {
@@ -172,8 +217,10 @@ export function buildServedFindings({
 
     const reportUrl = reportUrlFor({ repoSlug, branch, reportPath: entry.reportPath });
     for (const target of targets) {
+      // The reference is only known HERE, and so is the transform its raster was published through.
+      const transform = referenceTransforms?.get(target.referenceId);
       const scoped = sets.map(({ source, ...set }) => ({
-        ...set,
+        ...rebaseSet(set, transform),
         referenceId: target.referenceId,
         ...(reportUrl ? { reportUrl } : {}),
       }));
