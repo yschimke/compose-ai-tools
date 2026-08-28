@@ -930,6 +930,21 @@ class ServeCatalogStore(
             catalog.source
               ?.takeIf { it.repo.isNotBlank() && it.ref.isNotBlank() }
               ?.let { ServeWeb.CatalogSource(it.repo, it.ref, it.module) },
+          // The cross-system pairing, carried as the two halves it actually is. Both are read
+          // straight off `catalog.json`; a catalog that declares neither gets null + empty and the
+          // viewer's second comparison source is simply never offered.
+          compareWithSystem = catalog.compareWith?.system?.takeIf { it.isNotBlank() },
+          parallelByComponentId =
+            catalog.components
+              .mapNotNull { component ->
+                val id = component.componentId?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                val parallel =
+                  component.parallel?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                id to parallel
+              }
+              // First wins, like [previewAliasFor]: a catalog that somehow published a component id
+              // twice gets the producer's own order rather than a throw.
+              .toMap(),
           degradations = degradations,
           liveOnly = liveOnly,
           // Kept in step with [scheduleRcCompareFetch]'s own guard through the shared helper: a
@@ -2683,6 +2698,14 @@ class ServeCatalogStore(
      */
     val display: CatalogDisplay? = null,
     /**
+     * The sibling system this catalog is a parallel rendition of (`catalog.json`'s `compareWith`),
+     * written by `generate-design-catalog.mjs`. Names WHICH SYSTEM a component's
+     * [Component.parallel] counterpart lives in; the two are only useful together, since half a
+     * pairing resolves to nothing. Absent for a catalog that declares no cross-system pairing,
+     * which is most of them.
+     */
+    val compareWith: CatalogCompareWith? = null,
+    /**
      * The branch-relative W3C DTCG token file (`tokens.dtcg.json`) holding the system's resolved
      * `MaterialTheme` palette, written by `generate-design-catalog.mjs` for any catalog whose
      * render carried theme tokens. Read by [fetchWebThemeCss] to theme this system's web pages in
@@ -2781,6 +2804,18 @@ class ServeCatalogStore(
   @Serializable data class CatalogDisplay(val surface: String? = null, val hero: String? = null)
 
   /**
+   * `catalog.json`'s `compareWith`: the sibling system this catalog reproduces.
+   *
+   * Deliberately just the two fields a CONSUMER can act on. [system] is the sibling's slug, which
+   * is also its path on a server hosting both — so a preview server can resolve the counterpart's
+   * render without leaving its own origin. [repo] is carried only when the spec declared one (the
+   * common same-repo pairing declares none), and says where to look for a sibling this server does
+   * not host. The producer's own `spec` / `designTitle` / `design` fields are publish-time layout
+   * and never travel.
+   */
+  @Serializable data class CatalogCompareWith(val system: String = "", val repo: String? = null)
+
+  /**
    * `catalog.json` live bundle descriptor. Prefix partitions collision-safe daemon ids by module.
    */
   @Serializable
@@ -2799,6 +2834,13 @@ class ServeCatalogStore(
   private data class Component(
     val componentId: String? = null,
     val images: List<Image> = emptyList(),
+    /**
+     * The `componentId` of this component's counterpart in the [Catalog.compareWith] sibling
+     * (`@CatalogComponent(parallel = …)`). The other half of the pairing: `compareWith` says which
+     * system, this says which component in it. Null for a component with no declared counterpart,
+     * and for every catalog that declares no pairing at all.
+     */
+    val parallel: String? = null,
     /**
      * The one-line description the catalog authored for this component (`@CatalogComponent(caption
      * = …)`, or the spec entry that overrides it) — what the component is FOR, in the design
