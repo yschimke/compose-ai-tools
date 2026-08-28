@@ -7316,26 +7316,33 @@ ${captureControlsHtml().prependIndent("          ")}
               // read "themes optimized 10440/10440" while every one of those pixels came from a
               // renderer that is no longer running, which is precisely the thing an operator
               // checking this page needs to be told.
-              val inherited =
-                if (optimization.dirty > 0) " · ${optimization.dirty} inherited, re-rendering"
-                else ""
+              //
+              // Worded for what the count means rather than for the case that motivated it. An
+              // operator calling `regenerate` marks THIS build's renders dirty too, so "inherited"
+              // would be a false claim about where those pixels came from, and "re-rendering"
+              // asserts activity the pass may not have — the queue can be paused, or waiting on
+              // admission. Saying only that they are queued is true of both, and telling them
+              // apart would need the store to carry provenance per entry, which the timestamp
+              // boundary deliberately does not.
+              val queued =
+                if (optimization.dirty > 0) " · ${optimization.dirty} awaiting re-render" else ""
               val detail =
                 if (optimization.converged) {
                   "themes optimized ${optimization.cached}/${optimization.total}"
                 } else if (optimization.fullyOptimized) {
-                  "themes optimized ${optimization.cached}/${optimization.total}$inherited"
+                  "themes optimized ${optimization.cached}/${optimization.total}$queued"
                 } else {
                   "theme optimization ${optimization.state} · " +
                     "${optimization.cached}/${optimization.total} cached" +
                     (if (optimization.failed > 0) " · ${optimization.failed} failed" else "") +
-                    inherited
+                    queued
                 }
               "<div class=\"cp-muted\">${esc(detail)}</div>" +
                 inlineMeter(
                   detail,
                   optimization.cached.toLong(),
                   optimization.total.toLong(),
-                  // Inherited renders are not a failure — they are serving — but they are not
+                  // Queued renders are not a failure — they are serving — but they are not
                   // finished either, so the meter must not read the same as a converged catalog.
                   if (optimization.failed > 0) "warning"
                   else if (optimization.dirty > 0) "secondary" else "primary",
