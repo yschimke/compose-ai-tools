@@ -1,38 +1,12 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.bundle.TrustStore
-import ee.schimke.composeai.cli.serve.CatalogBlobPool
-import ee.schimke.composeai.cli.serve.GitWorktrees
-import ee.schimke.composeai.cli.serve.PlaygroundBundleSource
-import ee.schimke.composeai.cli.serve.PlaygroundCatalogTargets
-import ee.schimke.composeai.cli.serve.PlaygroundCompileService
-import ee.schimke.composeai.cli.serve.PlaygroundJailedCompiler
-import ee.schimke.composeai.cli.serve.PlaygroundPublicGate
-import ee.schimke.composeai.cli.serve.PlaygroundSandbox
-import ee.schimke.composeai.cli.serve.ServeAgentGrantCapability
-import ee.schimke.composeai.cli.serve.ServeAgentGrantScope
-import ee.schimke.composeai.cli.serve.ServeAgentGrantStore
-import ee.schimke.composeai.cli.serve.ServeAgentGrants
-import ee.schimke.composeai.cli.serve.ServeBackgroundWork
-import ee.schimke.composeai.cli.serve.ServeCatalogRefresher
-import ee.schimke.composeai.cli.serve.ServeCatalogStore
-import ee.schimke.composeai.cli.serve.ServeCatalogsConfig
-import ee.schimke.composeai.cli.serve.ServeCatalogsConfigFile
 import ee.schimke.composeai.cli.serve.ServeDefaults
 import ee.schimke.composeai.cli.serve.ServeDiscovery
-import ee.schimke.composeai.cli.serve.ServeDocFormats
-import ee.schimke.composeai.cli.serve.ServeDocStore
-import ee.schimke.composeai.cli.serve.ServeImageStore
 import ee.schimke.composeai.cli.serve.ServeOptions
-import ee.schimke.composeai.cli.serve.ServeProjectHistory
 import ee.schimke.composeai.cli.serve.ServeRunner
-import ee.schimke.composeai.cli.serve.ServeSites
-import ee.schimke.composeai.cli.serve.ServeStartupBundles
-import ee.schimke.composeai.cli.serve.ServeUrls
-import ee.schimke.composeai.cli.serve.ThemeCacheStore
 import ee.schimke.composeai.previewdata.PreviewModule
 import java.io.File
-import okio.Path.Companion.toPath
 
 /**
  * `compose-preview serve [--module M] [--id|--filter] [--host H] [--lan] [--port N] [--token T]`
@@ -53,8 +27,8 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
 
   override val host: String =
     when {
-      lan -> ServeUrls.ALL_INTERFACES
-      else -> args.flagValue("--host")?.takeIf { it.isNotBlank() } ?: ServeUrls.LOOPBACK
+      lan -> ServeDefaults.HOST_ALL_INTERFACES
+      else -> args.flagValue("--host")?.takeIf { it.isNotBlank() } ?: ServeDefaults.HOST_LOOPBACK
     }
 
   override val requestedPort: Int =
@@ -75,8 +49,8 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
    * Background renders admitted at once, server-wide, when the operator names it — otherwise
    * [ServeBackgroundWork.renderLaneFor] derives one from the seat budget.
    *
-   * The derivation clamps at [ServeBackgroundWork.MAX_DERIVED_CONCURRENT_RENDERS] (3), and that
-   * ceiling is reached at a seat budget of 8 — so on a box with more seats than that the lane stops
+   * The derivation clamps at [ServeDefaults.MAX_DERIVED_CONCURRENT_RENDERS] (3), and that ceiling
+   * is reached at a seat budget of 8 — so on a box with more seats than that the lane stops
    * widening while everything else does, and there was no way to say otherwise short of rebuilding
    * the image: `composeai.serve.backgroundRenders` is a system property, and the prebuilt image
    * bakes JAVA_TOOL_OPTIONS into its own ENV. Measured on preview.coo.ee, whose container is
@@ -113,7 +87,7 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
     if ("--no-history" in args) null
     else
       args.flagValue("--history-branch")?.trim()?.takeIf { it.isNotEmpty() }
-        ?: ServeProjectHistory.DEFAULT_BRANCH
+        ?: ServeDefaults.HISTORY_BRANCH
 
   /**
    * Opt in to local Gradle discovery + build. By default `serve` never runs Gradle: it hosts only
@@ -140,7 +114,7 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
 
   /**
    * Optional git repo root the trusted-catalog builder ([buildTrustedCatalogSource]) and its
-   * [GitWorktrees] use, instead of the served module's own project root ([findProjectRoot]). Lets a
+   * `GitWorktrees` use, instead of the served module's own project root ([findProjectRoot]). Lets a
    * module-less box (e.g. the prebuilt `deploy/image`) live-render a fetched catalog by pointing
    * this at a separate checkout of the catalog's `source.repo` (which the entrypoint clones). The
    * `source.repo == `[catalogRepo] and `--revisions-allow` gates are unchanged — this only moves
@@ -175,7 +149,7 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
 
   /**
    * Seconds between re-checks of each `--catalogs` branch's head commit; when it has moved, the
-   * catalog is re-fetched in place (no restart) — see [ServeCatalogRefresher]. Default
+   * catalog is re-fetched in place (no restart) — see `ServeCatalogRefresher`. Default
    * [ServeDefaults.DEFAULT_CATALOG_REFRESH_SECONDS]; `0` (or negative) disables polling
    * (boot-snapshot only, the pre-refresh behaviour). Wired from `SERVE_CATALOG_REFRESH` by the
    * image entrypoint.
@@ -201,20 +175,8 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
    */
   override val bundlesDir: String? = args.flagValue("--bundles")?.takeIf { it.isNotBlank() }
 
-  /**
-   * Serve one or more **fetched** preview bundles directly (`--bundle <url|path>` / `--bundle
-   * <name>=<url|path>`, repeatable) — no `--module`, no local project, no Gradle build. A URL is
-   * fetched at startup (operator-supplied, so no SSRF gate — same trust level as `--catalogs`); a
-   * local path is read as-is. Each becomes a `/<name>/` session. A bundle that verifies `Trusted`
-   * (Ed25519 signature, or fetched from a trusted branch origin) is served **live** from a render
-   * daemon when `--allow-render-trusted` is set (desktop bundles); otherwise it's served read-only
-   * as its baked PNGs. This is what lets a public server live-render any trusted bundle pulled from
-   * a GitHub branch without knowing the module upfront.
-   */
-  override val bundleSpecs: List<ServeStartupBundles.Spec> by lazy {
-    ServeStartupBundles.parse(args.flagValuesAll("--bundle"))
-  }
-
+  /** Raw repeatable `--bundle` values; the server parses them into startup specs. */
+  override val bundleFlags: List<String> = args.flagValuesAll("--bundle")
   /**
    * Shared/public mode ingestion: enable `POST /bundles/{name}` so clients can contribute bundles
    * at runtime — upload a zip, or pass `?url=` to a build-results artifact. Off by default;
@@ -254,7 +216,7 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
 
   /**
    * Document ingestion (`--accept-docs`): enable `GET /docs` + `POST /docs` so a client can hand
-   * the server one **known document** (a Remote Compose `.rc`, a Lottie JSON — [ServeDocFormats])
+   * the server one **known document** (a Remote Compose `.rc`, a Lottie JSON — `ServeDocFormats`)
    * and get back an **expiring permalink** (`/d/<id>`) that plays it in the browser. Off by
    * default.
    *
@@ -265,8 +227,7 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
 
   /** How long an ingested document's permalink lives (`--doc-ttl <seconds>`). */
   override val docTtlSeconds: Long =
-    args.flagValue("--doc-ttl")?.toLongOrNull()?.takeIf { it > 0 }
-      ?: ServeDocStore.DEFAULT_TTL_SECONDS
+    args.flagValue("--doc-ttl")?.toLongOrNull()?.takeIf { it > 0 } ?: ServeDefaults.DOC_TTL_SECONDS
 
   /**
    * SSRF allowlist for `POST /docs?url=`: hostnames the server may fetch a document from. Empty =
@@ -281,9 +242,9 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
    * resolving the CMP compile classpath from a catalog liveBundle. Takes either a local `.bundle`
    * path or — since issue #3212 — the id of a system this box already serves via `--catalogs`
    * (`--playground-bundle compose-m3`), which reuses that catalog's fetched, trust-verified bundle
-   * instead of a hand-placed copy that would silently go stale. See [PlaygroundBundleSource].
+   * instead of a hand-placed copy that would silently go stale. See `PlaygroundBundleSource`.
    *
-   * Under `--public` the lane still has to clear [PlaygroundPublicGate], which admits it either
+   * Under `--public` the lane still has to clear `PlaygroundPublicGate`, which admits it either
    * behind a verified sandbox or behind GitHub repo-access gating — the compile runs
    * **user-supplied code**, so one of the two must bound who supplies it. See
    * docs/design/PLAYGROUND.md §6.
@@ -328,7 +289,7 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
    */
   override val playgroundCatalogLimit: Int =
     args.flagValue("--playground-catalog-limit")?.toIntOrNull()?.takeIf { it > 0 }
-      ?: PlaygroundCatalogTargets.DEFAULT_LIMIT
+      ?: ServeDefaults.PLAYGROUND_CATALOG_LIMIT
 
   /**
    * `--playground-rate-limit <n>`: compiles per minute **per caller** (0 disables the limiter).
@@ -355,7 +316,7 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
 
   override val playgroundEditLeaseTtlSeconds: Long =
     args.flagValue("--playground-edit-lease-ttl")?.toLongOrNull()?.takeIf { it > 0 }
-      ?: PlaygroundCompileService.DEFAULT_EDIT_LEASE_TTL_MILLIS / 1000
+      ?: ServeDefaults.PLAYGROUND_EDIT_LEASE_TTL_MILLIS / 1000
 
   /**
    * `--trust-forwarded-for`: rate-limit an anonymous caller by the **last** `X-Forwarded-For` entry
@@ -383,13 +344,15 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
 
   override val playgroundSandboxMemoryMb: Int =
     args.flagValue("--playground-sandbox-memory-mb")?.toIntOrNull()
-      ?: PlaygroundSandbox.DEFAULT_MEMORY_MB
+      ?: ServeDefaults.PLAYGROUND_SANDBOX_MEMORY_MB
 
   override val playgroundSandboxCpus: Double =
-    args.flagValue("--playground-sandbox-cpus")?.toDoubleOrNull() ?: PlaygroundSandbox.DEFAULT_CPUS
+    args.flagValue("--playground-sandbox-cpus")?.toDoubleOrNull()
+      ?: ServeDefaults.PLAYGROUND_SANDBOX_CPUS
 
   override val playgroundSandboxPids: Int =
-    args.flagValue("--playground-sandbox-pids")?.toIntOrNull() ?: PlaygroundSandbox.DEFAULT_PIDS
+    args.flagValue("--playground-sandbox-pids")?.toIntOrNull()
+      ?: ServeDefaults.PLAYGROUND_SANDBOX_PIDS
 
   /**
    * `--playground-compile-slots <n>`: how many snippet compiles may hold a jailed JVM at once. The
@@ -398,12 +361,12 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
    */
   override val playgroundCompileSlots: Int =
     args.flagValue("--playground-compile-slots")?.toIntOrNull()?.takeIf { it > 0 }
-      ?: PlaygroundJailedCompiler.DEFAULT_COMPILE_SLOTS
+      ?: ServeDefaults.PLAYGROUND_COMPILE_SLOTS
 
   /** Hard wall-clock lifetime of one snippet JVM; the spawner kills it at the deadline. */
   override val playgroundSandboxTtlSeconds: Long =
     args.flagValue("--playground-sandbox-ttl")?.toLongOrNull()
-      ?: PlaygroundSandbox.DEFAULT_TTL_SECONDS
+      ?: ServeDefaults.PLAYGROUND_SANDBOX_TTL_SECONDS
 
   /**
    * `--playground-sandbox-ro <path>[,<path>…]`: extra host paths bound **read-only** into the jail.
@@ -464,39 +427,20 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
   /**
    * **Top-level sites** (`--sites m3.preview.coo.ee=m3-catalog,…`; also `catalogs.json`'s `sites`):
    * host names on which one already-served catalog is presented as the whole server — its landing
-   * at `/`, its links inside the custom domain, no front door and no neighbours. See [ServeSites];
+   * at `/`, its links inside the custom domain, no front door and no neighbours. See `ServeSites`;
    * it adds no catalog and no work, only a different reading of the same request.
    */
   override val sitesRaw: String? = args.flagValue("--sites")
 
-  /**
-   * The **catalog set as config** (`--catalogs-file <path>`; env `SERVE_CATALOGS_FILE` in the
-   * container profiles): a `catalogs.json` ([ServeCatalogsConfig]) listing every catalog to serve,
-   * where its delivery branch lives, whether it's on the front door, and which front-page section
-   * it's published under. Meant to live on a mounted volume — *outside* the image — so publishing a
-   * catalog is an operator config edit (or an admin-API call, which rewrites this same file) rather
-   * than an image rebuild.
-   *
-   * Composes with `--catalogs` / `--catalogs-unlisted` rather than replacing them: file entries
-   * come first (they carry the group declarations), then any flag entries the file didn't already
-   * name.
-   */
-  override val catalogsFile: ServeCatalogsConfigFile? =
-    args
-      .flagValue("--catalogs-file")
-      ?.takeIf { it.isNotBlank() }
-      ?.let { ServeCatalogsConfigFile(it.toPath()) }
+  /** Raw `--catalogs-file` path; the server opens it. */
+  override val catalogsFilePath: String? =
+    args.flagValue("--catalogs-file")?.takeIf { it.isNotBlank() }
 
   /** Durable feed cache; defaults beside catalogs.json on deployed boxes, temp for local serve. */
   override val catalogFeedCacheDir: File by lazy {
     val preferred =
       args.flagValue("--catalog-feed-cache")?.takeIf { it.isNotBlank() }?.let(::File)
-        ?: catalogsFile
-          ?.displayPath
-          ?.let(::File)
-          ?.absoluteFile
-          ?.parentFile
-          ?.resolve("catalog-feeds")
+        ?: catalogsFilePath?.let(::File)?.absoluteFile?.parentFile?.resolve("catalog-feeds")
     if (
       preferred != null && (preferred.isDirectory || preferred.mkdirs()) && preferred.canWrite()
     ) {
@@ -578,61 +522,12 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
    */
   override val agentGrants: Boolean = "--agent-grants" in args
 
-  /**
-   * The most privileged scope a grant on this box may carry (`--agent-grant-scopes`), defaulting to
-   * `preview,live`. `playground` is excluded from the default because it runs caller-supplied
-   * Kotlin here; opting into it is a typed decision.
-   */
-  override val agentGrantMaxScope: ServeAgentGrantScope =
-    args.flagValue("--agent-grant-scopes")?.let {
-      // The worst of this family to default silently: `--agent-grant-scopes preivew` is an operator
-      // narrowing the box to read-only, and the default it would fall back to is `preview,live`. A
-      // typo would have *widened* what every grant on the host may do, which is the opposite of the
-      // intent that made them type the flag.
-      ServeAgentGrantScope.parseHighest(it)
-        ?: throw IllegalArgumentException(
-          "--agent-grant-scopes '$it' is not a scope list — use preview, live, or playground"
-        )
-    } ?: ServeAgentGrantScope.DEFAULT_MAX
-
-  /**
-   * Longest grant this box will mint (`--agent-grant-max-ttl`, e.g. `2h`/`90m`/`3600`). Clamped to
-   * [ServeAgentGrantStore.HARD_MAX_GRANT_TTL_SECONDS] — beyond a day it is not temporary access any
-   * more, it is a credential nobody remembers issuing.
-   */
-  override val agentGrantMaxTtlSeconds: Long =
-    args
-      .flagValue("--agent-grant-max-ttl")
-      ?.let {
-        // A typo must not silently become the default. `--agent-grant-max-ttl 30m` mistyped is an
-        // operator asking for half an hour and getting eight — sixteen times the ceiling they
-        // meant, on the one setting that bounds how long a minted credential lives. The client's
-        // `--ttl` already fails loudly; so does this.
-        ServeAgentGrants.parseDurationSeconds(it)
-          ?: throw IllegalArgumentException(
-            "--agent-grant-max-ttl '$it' is not a duration — try 90m, 2h, or a number of seconds"
-          )
-      }
-      ?.coerceIn(60L, ServeAgentGrantStore.HARD_MAX_GRANT_TTL_SECONDS)
-      ?: ServeAgentGrantStore.DEFAULT_MAX_GRANT_TTL_SECONDS
-
-  /**
-   * The independent capabilities a grant on this box may carry (`--agent-grant-capabilities
-   * images`), defaulting to **none**.
-   *
-   * Deliberately its own flag rather than another name in `--agent-grant-scopes`: a capability is
-   * not a rung on that ladder ([ServeAgentGrantCapability]), and an operator raising the scope
-   * ceiling to `live` has said nothing about whether an agent may publish an image on their origin.
-   * Two decisions, two flags.
-   */
-  override val agentGrantCapabilities: Set<ServeAgentGrantCapability> =
-    args.flagValue("--agent-grant-capabilities")?.let {
-      // Throws on an unknown name, same as `--agent-grant-scopes`: a typo here would silently
-      // withhold a capability the operator believes they turned on, and they would go looking for
-      // the bug in the agent.
-      ServeAgentGrantCapability.parseAll(it)
-    } ?: emptySet()
-
+  /** Raw `--agent-grant-scopes`; the server parses it (an unknown scope throws there). */
+  override val agentGrantScopesFlag: String? = args.flagValue("--agent-grant-scopes")
+  /** Raw `--agent-grant-max-ttl` (e.g. `2h`/`90m`/`3600`); the server parses and clamps it. */
+  override val agentGrantMaxTtlFlag: String? = args.flagValue("--agent-grant-max-ttl")
+  /** Raw `--agent-grant-capabilities`; the server parses it (an unknown name throws there). */
+  override val agentGrantCapabilitiesFlag: String? = args.flagValue("--agent-grant-capabilities")
   /** How many grants may be live at once (`--agent-grant-max-active`). */
   override val agentGrantMaxActive: Int =
     args.flagValue("--agent-grant-max-active")?.let {
@@ -640,7 +535,7 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
         ?: throw IllegalArgumentException(
           "--agent-grant-max-active '$it' is not a positive whole number"
         )
-    } ?: ServeAgentGrantStore.DEFAULT_MAX_ACTIVE_GRANTS
+    } ?: ServeDefaults.AGENT_GRANT_MAX_ACTIVE
 
   /**
    * Per-address budget on the two ungated grant routes (`--agent-grant-rate-limit`, requests per
@@ -672,7 +567,7 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
   /** How long an uploaded image's link lives (`--image-ttl <seconds>`); default 7 days. */
   override val imageTtlSeconds: Long =
     args.flagValue("--image-ttl")?.toLongOrNull()?.takeIf { it > 0 }
-      ?: ServeImageStore.DEFAULT_TTL_SECONDS
+      ?: ServeDefaults.IMAGE_TTL_SECONDS
 
   /**
    * The repository an uploader must have access to (`--image-upload-repo <owner/repo>`), falling
@@ -699,111 +594,26 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
   override val optimizerCoordinationDirectory: File? by lazy {
     val explicit =
       args.flagValue("--theme-optimizer-coordination-dir")?.takeIf { it.isNotBlank() }?.let(::File)
-    explicit
-      ?: catalogsFile
-        ?.displayPath
-        ?.let(::File)
-        ?.absoluteFile
-        ?.parentFile
-        ?.resolve("optimizer-locks")
+    explicit ?: catalogsFilePath?.let(::File)?.absoluteFile?.parentFile?.resolve("optimizer-locks")
   }
 
-  /**
-   * Durable, content-addressed home for the heavy bytes a catalog load fetches — the executable
-   * `liveBundle`, its per-preview splits, and the externalised resource pool ([CatalogBlobPool]).
-   *
-   * **Unlike the theme cache, unset is not off.** A temp-directory pool is exactly what this server
-   * has always had — it is shared across systems and reloads and simply dies with the process — so
-   * falling back to one costs nothing that was not already being paid. What `none` buys is the
-   * ability to say "do not keep these bytes anywhere durable"; what a directory buys is that a
-   * rolled container stops re-downloading ~100 MB per live catalog.
-   *
-   * **There is deliberately no derived default.** The feed and theme caches land beside
-   * `catalogs.json`, which on the prebuilt image is the configuration volume — fine for a few MB of
-   * feed XML, wrong for a pool that may hold several GB of executable bundles. So an unset flag
-   * means the temp-dir pool this always had, a path means that path, and `none` forces the temp dir
-   * back (which is how a deployment overrides an environment default without unsetting it).
-   */
-  override val catalogBlobPool: CatalogBlobPool by lazy {
-    val requested = args.flagValue("--catalog-cache-dir")?.takeIf { it.isNotBlank() }
-    val maxBytes =
-      args.flagValue("--catalog-cache-max-bytes")?.toLongOrNull()?.takeIf { it > 0 }
-        ?: CatalogBlobPool.DEFAULT_MAX_BYTES
-    val preferred = requested?.takeIf { it != "none" }?.let(::File)
-    if (
-      preferred != null && (preferred.isDirectory || preferred.mkdirs()) && preferred.canWrite()
-    ) {
-      System.err.println(
-        "serve: catalog blob cache at $preferred (cap ${maxBytes / (1024 * 1024)} MB) — " +
-          "it survives only if that path outlives the process; in a container that means a " +
-          "mounted volume, since the writable layer goes with the container"
-      )
-      CatalogBlobPool(preferred, maxBytes = maxBytes, persistenceConfigured = true)
-    } else {
-      if (preferred != null) {
-        System.err.println("serve: catalog blob cache $preferred is not writable; using a temp dir")
-      }
-      val temp =
-        java.nio.file.Files.createTempDirectory("serve-catalog-blobs").toFile().also {
-          it.deleteOnExit()
-        }
-      System.err.println(
-        "serve: catalog blob cache is a temp dir — it will not survive a restart. " +
-          "Set --catalog-cache-dir (SERVE_CATALOG_CACHE_DIR) to a mounted volume to keep it."
-      )
-      // Not configured, and `/status.json` says so: a temp pool fills and serves within-process
-      // hits
-      // exactly like a real one, so without the flag a box that never configured a directory looks
-      // identical to a box whose cache is working.
-      CatalogBlobPool(temp, maxBytes = maxBytes, persistenceConfigured = false)
-    }
-  }
+  /** Raw `--catalog-cache-dir` (`none` disables persistence); the server resolves and opens it. */
+  override val catalogCacheDirFlag: String? =
+    args.flagValue("--catalog-cache-dir")?.takeIf { it.isNotBlank() }
 
-  /**
-   * Durable home for warmed theme renders (`--theme-cache-dir`), or null to keep the cache in
-   * memory only.
-   *
-   * Defaults beside `catalogs.json` exactly as the feed cache does, because that is the directory a
-   * deployment already mounts as a persistent volume — and persistence across container recreation
-   * is the entire point.
-   *
-   * **Unlike the feed cache, there is deliberately no temp-directory fallback.** A theme cache in
-   * `/tmp` would be written once, read never, and thrown away with the container: it would consume
-   * disk and render time to buy exactly nothing, while reporting itself as working. Where there is
-   * no durable location, the honest configuration is no disk tier at all.
-   */
-  override val themeCacheStore: ThemeCacheStore? by lazy {
-    val requested = args.flagValue("--theme-cache-dir")?.takeIf { it.isNotBlank() }
-    // `none` disables persistence outright, matching --trust-store's convention in this command.
-    // A sentinel is needed because *unset* cannot mean "off": the derived default lands beside
-    // --catalogs-file, which on the prebuilt image is the durable `preview_config` volume — so an
-    // untouched deployment would quietly fill its configuration volume with an 8 GB render cache.
-    if (requested == "none") return@lazy null
-    val explicit = requested?.let(::File)
-    val preferred =
-      explicit
-        ?: catalogsFile?.displayPath?.let(::File)?.absoluteFile?.parentFile?.resolve("theme-cache")
-        ?: return@lazy null
-    if (!(preferred.isDirectory || preferred.mkdirs()) || !preferred.canWrite()) {
-      System.err.println("serve: theme cache disabled — $preferred is not writable")
-      return@lazy null
-    }
-    val maxBytes =
-      args.flagValue("--theme-cache-max-bytes")?.toLongOrNull()?.takeIf { it > 0 }
-        ?: ThemeCacheStore.DEFAULT_MAX_BYTES
-    System.err.println("serve: theme cache at $preferred (cap ${maxBytes / (1024 * 1024)} MB)")
-    ThemeCacheStore(preferred, maxBytes = maxBytes).also { store ->
-      // Before anything opens a generation, so eviction can never race a live write. Renders
-      // survive a release now (see [ThemeCacheFingerprint]) and the load-time sample is what
-      // catches a renderer that moved — this is the lever for the case where the operator already
-      // knows it moved and would rather not wait to be told.
-      if ("--theme-cache-evict" in args) {
-        val evicted = store.evictAll()
-        System.err.println("serve: theme cache evicted on request — $evicted generation(s) removed")
-      }
-    }
-  }
+  /** Raw `--catalog-cache-max-bytes`; the server applies its own default when unset. */
+  override val catalogCacheMaxBytesFlag: Long? =
+    args.flagValue("--catalog-cache-max-bytes")?.toLongOrNull()?.takeIf { it > 0 }
+  /** Raw `--theme-cache-dir` (`none` disables); the server resolves, creates and opens it. */
+  override val themeCacheDirFlag: String? =
+    args.flagValue("--theme-cache-dir")?.takeIf { it.isNotBlank() }
 
+  /** Raw `--theme-cache-max-bytes`; the server applies its own default when unset. */
+  override val themeCacheMaxBytesFlag: Long? =
+    args.flagValue("--theme-cache-max-bytes")?.toLongOrNull()?.takeIf { it > 0 }
+
+  /** `--theme-cache-evict`: drop every cached generation once, at startup. */
+  override val themeCacheEvictRequested: Boolean = "--theme-cache-evict" in args
   /**
    * In-browser CMP tier (`--wasm-dir <system>=<dir>[,<system>=<dir>…]`): map a design system to the
    * assembled Wasm catalog app (`./gradlew :samples:cmp-wasm-catalog:wasmCatalogDist` →
@@ -838,15 +648,15 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
       }
 
   override val catalogRepo: String =
-    args.flagValue("--catalog-repo")?.takeIf { it.isNotBlank() } ?: ServeCatalogStore.DEFAULT_REPO
+    args.flagValue("--catalog-repo")?.takeIf { it.isNotBlank() } ?: ServeDefaults.CATALOG_REPO
 
   override val catalogBranchPrefix: String =
     args.flagValue("--catalog-branch-prefix")?.takeIf { it.isNotBlank() }
-      ?: ServeCatalogStore.DEFAULT_BRANCH_PREFIX
+      ?: ServeDefaults.CATALOG_BRANCH_PREFIX
 
   override val catalogMaxImages: Int =
     args.flagValue("--catalog-max-images")?.toIntOrNull()?.takeIf { it > 0 }
-      ?: ServeCatalogStore.DEFAULT_MAX_IMAGES
+      ?: ServeDefaults.CATALOG_MAX_IMAGES
 
   /**
    * `serve` is the one command that turns a `@PreviewParameter` fan-out into addressable row ids
@@ -958,7 +768,7 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
                           Longest grant this server will mint, e.g. 90m / 2h / 3600 (default 8h,
                           hard ceiling 24h). The approver picks the actual lifetime on the page.
         --agent-grant-max-active <n>
-                          Live grants allowed at once (default ${ServeAgentGrantStore.DEFAULT_MAX_ACTIVE_GRANTS}); a new one evicts the
+                          Live grants allowed at once (default ${ServeDefaults.AGENT_GRANT_MAX_ACTIVE}); a new one evicts the
                           nearest to expiry.
         --agent-grant-rate-limit <n>
                           Requests per minute per address on the two ungated grant routes (default
@@ -975,7 +785,7 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
         --history-branch <ref>
                           Project mode: the baseline delivery branch, as fetched in this checkout,
                           whose publishes the viewer's render-history strip is built from (default
-                          ${ServeProjectHistory.DEFAULT_BRANCH}; 'origin/<ref>' is tried too). Each
+                          ${ServeDefaults.HISTORY_BRANCH}; 'origin/<ref>' is tried too). Each
                           entry opens that version's render, served from the local object store.
                           A ref this clone can't resolve simply means no strip.
         --no-history      Don't compute the render-history strip from local git.
@@ -1028,7 +838,7 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
                           only: the server stores bytes and never renders them, so hosting an
                           anonymous document runs nothing. Off by default.
         --doc-ttl <seconds>
-                          How long a /d/<id> document link lives (default ${ServeDocStore.DEFAULT_TTL_SECONDS}s). The document is
+                          How long a /d/<id> document link lives (default ${ServeDefaults.DOC_TTL_SECONDS}s). The document is
                           held in memory and dropped when it expires.
         --accept-docs-from <host>[,<host>…]
                           SSRF allowlist for POST /docs?url=: hostnames the server may fetch a
@@ -1044,8 +854,8 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
                           Repository an uploader must have access to. Defaults to --github-auth-repo
                           when that is set; without either, --accept-images refuses to start.
         --image-ttl <seconds>
-                          How long a /i/<id> image link lives (default ${ServeImageStore.DEFAULT_TTL_SECONDS}s = 7 days). Held in
-                          memory and dropped when it expires; ${ServeImageStore.DEFAULT_MAX_IMAGES} images / ${ServeImageStore.DEFAULT_MAX_TOTAL_BYTES / (1024 * 1024)}MB max, the
+                          How long a /i/<id> image link lives (default ${ServeDefaults.IMAGE_TTL_SECONDS}s = 7 days). Held in
+                          memory and dropped when it expires; ${ServeDefaults.IMAGE_MAX_IMAGES} images / ${ServeDefaults.IMAGE_MAX_TOTAL_BYTES / (1024 * 1024)}MB max, the
                           oldest evicted first.
         --image-rate-limit <n>
                           Uploads per minute per GitHub account (default ${ServeDefaults.DEFAULT_IMAGE_RATE_LIMIT}). 0 disables the
@@ -1124,7 +934,7 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
                           Branch prefix for --catalogs (default design-artifacts/).
         --catalog-max-images <count>
                           Maximum baked previews loaded from one published catalog (default
-                          ${ServeCatalogStore.DEFAULT_MAX_IMAGES}). Images are fetched lazily; this
+                          ${ServeDefaults.CATALOG_MAX_IMAGES}). Images are fetched lazily; this
                           bounds registered preview metadata and routes, not eager image downloads.
         --catalog-refresh-interval <seconds>
                           Keep a running server fresh: re-check each --catalogs branch's head every
@@ -1151,7 +961,7 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
                           delivery commit populates nothing.
         --catalog-cache-max-bytes <n>
                           Ceiling for that store (default
-                          ${CatalogBlobPool.DEFAULT_MAX_BYTES / (1024L * 1024 * 1024)} GB).
+                          ${ServeDefaults.CATALOG_BLOB_POOL_MAX_BYTES / (1024L * 1024 * 1024)} GB).
                           Reclaimed oldest-first after the startup pass and after each later
                           catalog publication; blobs newer than an hour are spared so the replicas
                           that overlap during a rolling update cannot evict each other's.
@@ -1167,7 +977,7 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
                           or server build never reads the previous one's pixels.
         --theme-cache-max-bytes <n>
                           Ceiling for that store across every catalog (default
-                          ${ThemeCacheStore.DEFAULT_MAX_BYTES / (1024L * 1024 * 1024)} GB). Superseded
+                          ${ServeDefaults.THEME_CACHE_MAX_BYTES / (1024L * 1024 * 1024)} GB). Superseded
                           generations are reclaimed; generations still in use are never evicted, so
                           exceeding this is reported rather than acted on.
         --theme-cache-evict
@@ -1180,7 +990,7 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
         --background-renders <n>
                           Background (theme-optimizer) renders admitted at once, server-wide.
                           Defaults to a value derived from --live-seats, which clamps at
-                          ${ServeBackgroundWork.MAX_DERIVED_CONCURRENT_RENDERS} — a ceiling reached
+                          ${ServeDefaults.MAX_DERIVED_CONCURRENT_RENDERS} — a ceiling reached
                           at 8 seats, so a bigger box stops widening this lane while everything else
                           scales. Name it explicitly to go past that; the seat budget still bounds
                           how many daemons the renders can occupy.
