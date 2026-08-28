@@ -3474,17 +3474,6 @@
       "rendersDir": "xr-spatial",
       "sourceFile": "src/main/kotlin/com/example/samplexrspatial/SpatialPreviews.kt",
       "variant": "spec:width=1280,height=720,dpi=160"
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "com.example.sample.PreviewsKt.StaticPreview.png",
-      "findings": [],
-      "functionName": "StaticPreview",
-      "module": "sample-module",
-      "previewId": "com.example.sample.PreviewsKt.StaticPreview",
-      "rendersDir": "sample-module",
-      "sourceFile": "com/example/sample/Previews.kt",
-      "variant": ""
     }
   ]
 }

@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 284 preview(s) across 19 module(s) · 13 error(s) · 4 warning(s) · 30 info._
+_Auto-generated from `compose-preview/a11y/main`. 283 preview(s) across 18 module(s) · 13 error(s) · 4 warning(s) · 30 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -1522,14 +1522,6 @@ _No findings._
 ### `RemoteWidgetSquirclePreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/remotecompose/RemoteWidgetSquirclePreview_Remote_Widget_Squircle-2f39ed33.a11y.png" width="400" />
-
-_No findings._
-
-## sample-module
-
-### `StaticPreview`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/sample-module/com.example.sample.PreviewsKt.StaticPreview.png" width="400" />
 
 _No findings._
 
