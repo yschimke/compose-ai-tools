@@ -155,12 +155,21 @@ _HIGH_CONTRAST_PIXEL_TOLERANCE = 4
 # backdrop: mid-grey content cancels against it.
 #
 # An opaque pair skips this and compares exactly as it always did, so the cost is
-# paid only where it buys something. So does an animated GIF, deliberately: its
-# frames are 1-bit alpha, the per-frame budget below is tuned around an AA edge
-# that thresholds into a handful of flipping pixels per run, and on an opaque
-# backdrop every one of those flips becomes a maximum-contrast difference. The
-# GIF path has no demonstrated miss to weigh against that — the two motion
-# captures in the change these fixtures come from were both reported correctly.
+# paid only where it buys something. So does a **GIF**, deliberately: its frames
+# are 1-bit alpha, the per-frame budget below is tuned around an AA edge that
+# thresholds into a handful of flipping pixels per run, and on an opaque backdrop
+# every one of those flips becomes a maximum-contrast difference. That path has
+# no demonstrated miss to weigh against the flake risk — the two motion captures
+# in the change these fixtures come from were both reported correctly.
+#
+# GIF, not "animated". APNG is the other multi-frame format here and it is the
+# opposite case: `PreviewDiscovery` reaches for it precisely BECAUSE it carries
+# full alpha where "GIF's 1-bit alpha thresholds the anti-aliased edge into a
+# churn-prone hard boundary", and `@InteractionPreview` writes `.apng` by
+# default. So an APNG has no 1-bit churn to absorb and is exactly the
+# light-on-transparency content this backdrop pass exists for. Keying the opt-out
+# on frame count rather than on format would have carried the GIF's exemption
+# over to it and left the bug in place for every interaction capture.
 _COMPARE_BACKDROPS = ((0, 0, 0, 255), (255, 255, 255, 255))
 
 
@@ -207,18 +216,23 @@ def _perceptually_changed(
                 return True
             if prior_frames <= 1:
                 return _over_budget(prior, current, limit)
-            # Animated GIF: `Image.open` only exposes the first frame, so a
-            # frame-0-identical / tail-frame-jittering GIF (the transparent
+            # Animated: `Image.open` only exposes the first frame, so a
+            # frame-0-identical / tail-frame-jittering capture (the transparent
             # Lottie spin case, whose anti-aliased edge the 1-bit GIF alpha
             # thresholds into a handful of flipping pixels per run) would
             # otherwise always read as unchanged — masking real animation
             # edits too. Compare every frame with the same per-frame budget a
             # still render gets; changed if any single frame exceeds it.
+            #
+            # Read the format BEFORE iterating: a frame yielded by
+            # `ImageSequence.Iterator` carries no `.format`. Only GIF opts out
+            # of the backdrops — see `_COMPARE_BACKDROPS` for why APNG must not.
+            gif = "GIF" in (prior.format, current.format)
             for pf, cf in zip(
                 ImageSequence.Iterator(prior), ImageSequence.Iterator(current)
             ):
                 if _over_budget(
-                    pf.convert("RGBA"), cf.convert("RGBA"), limit, backdrops=False
+                    pf.convert("RGBA"), cf.convert("RGBA"), limit, backdrops=not gif
                 ):
                     return True
             return False
@@ -245,9 +259,9 @@ def _over_budget(prior, current, limit: int, *, backdrops: bool = True) -> bool:
 
     A transparent pair is compared once per backdrop in ``_COMPARE_BACKDROPS``
     and is changed if it is over budget on either — see that constant for why
-    pixelmatch cannot be handed these images directly, and why an animated GIF
-    passes ``backdrops=False`` to opt out. An opaque pair takes the single
-    comparison it always took either way.
+    pixelmatch cannot be handed these images directly, and why a GIF's frames
+    pass ``backdrops=False`` to opt out where an APNG's do not. An opaque pair
+    takes the single comparison it always took either way.
     """
     if backdrops and (_has_transparency(prior) or _has_transparency(current)):
         return any(

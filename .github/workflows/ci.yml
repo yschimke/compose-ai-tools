@@ -1215,6 +1215,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # The perceptual-diff libraries the image comparisons need. Without them
+      # `test_compare_previews.py` still exits 0 — it SKIPS every class that
+      # opens a PNG, which was five of them (the AA-flake filter, the
+      # high-contrast pass, the resource tolerance, the animated-frame walk, the
+      # transparent-backdrop pass). So the suite that decides what the diff bot
+      # reports was green here without ever running its own image logic. Pinned
+      # to what the production actions install, and NOT tolerant of a failed
+      # install the way those are: a fallback is right for a diff that can
+      # degrade to strict bytes, and wrong for the tests that prove the diff.
+      # `PerceptualLibrariesTest` fails the suite if this step is ever dropped.
+      - name: Install perceptual-diff libraries
+        run: python3 -m pip install --quiet 'pixelmatch==0.4.0' 'Pillow>=10'
       - name: Run compare-previews tests
         run: python3 .github/actions/lib/test_compare_previews.py -v
       - name: Run vscode-preview-diff tests
