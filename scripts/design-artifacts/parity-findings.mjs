@@ -17,7 +17,9 @@
  *
  * - **`referenceId`**, from the same `planDesignReferences` records that mint `references/index.json`.
  *   This is what stops one board's token drift printing under another board's panels on a preview
- *   that carries several references.
+ *   that carries several references. The run's own `source` stamp is what makes that resolvable at
+ *   all where one code handle was diffed against several sources — it is consumed here and dropped,
+ *   because once a set names a reference id the source it came from is already implied.
  * - **`reportUrl`**, from the branch the run published to plus the `reportPath` its `run.json`
  *   already records. Deliberately the repository blob URL rather than a third-party HTML renderer:
  *   the link is a promise about where the report lives, not about how it will look.
@@ -97,8 +99,18 @@ export function buildServedFindings({
   for (const entry of runManifest?.entries ?? []) {
     const code = entry?.code;
     if (!code) continue;
-    const sets = runFindings?.previews?.[code];
-    if (!Array.isArray(sets) || sets.length === 0) continue;
+    const all = runFindings?.previews?.[code];
+    if (!Array.isArray(all) || all.length === 0) continue;
+
+    // One code handle can be diffed against SEVERAL sources, and those results share a code handle
+    // and a candidate preview id — the run tells them apart only by the `source` it stamps on each
+    // set. Matching on it is what stops the Figma verdict being published under the Stitch board
+    // as well. An entry with no source, or sets from a producer old enough not to stamp one, falls
+    // back to every set: one source is the overwhelmingly common shape, and there the filter has
+    // nothing to choose between.
+    const bySource = all.filter((set) => set?.source === entry.source);
+    const sets = bySource.length > 0 ? bySource : all.filter((set) => !set?.source);
+    if (sets.length === 0) continue;
 
     const targets = byCode.get(code) ?? [];
     if (targets.length === 0) {
@@ -110,7 +122,7 @@ export function buildServedFindings({
 
     const reportUrl = reportUrlFor({ repoSlug, branch, reportPath: entry.reportPath });
     for (const target of targets) {
-      const scoped = sets.map((set) => ({
+      const scoped = sets.map(({ source, ...set }) => ({
         ...set,
         referenceId: target.referenceId,
         ...(reportUrl ? { reportUrl } : {}),

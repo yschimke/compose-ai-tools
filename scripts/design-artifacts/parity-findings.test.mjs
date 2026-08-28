@@ -98,6 +98,57 @@ test("the report link points at the branch the run published to", () => {
   );
 });
 
+test("a code handle diffed against two sources keeps its verdicts apart", () => {
+  // The run stamps `source` on each set precisely because these share a code handle and a
+  // candidate preview id; matching on it is what stops the Figma verdict being published under
+  // the Stitch board as well.
+  const { document } = build({
+    runManifest: {
+      entries: [
+        {
+          code: "ui/Button.kt#Filled",
+          source: "figma",
+          reportPath: "ui-Button-kt-Filled/report.html",
+        },
+        {
+          code: "ui/Button.kt#Filled",
+          source: "stitch",
+          reportPath: "ui-Button-kt-Filled-stitch/report.html",
+        },
+      ],
+    },
+    runFindings: {
+      previews: {
+        "ui/Button.kt#Filled": [
+          { ...set("figma says padding"), source: "figma" },
+          { ...set("stitch says radius"), source: "stitch" },
+        ],
+      },
+    },
+  });
+  const sets = document.previews["button-filled__ideal__default__light"];
+  // Two entries × one reference each, and each carries only its own source's finding.
+  assert.deepEqual(
+    sets.map((s) => s.findings[0].message),
+    ["figma says padding", "stitch says radius"],
+  );
+  // The stamp is consumed, not republished: a set naming a reference id already implies its source.
+  assert.equal(sets[0].source, undefined);
+  assert.match(sets[1].reportUrl, /ui-Button-kt-Filled-stitch/);
+});
+
+test("a producer that stamps no source still publishes", () => {
+  // One source is the overwhelmingly common shape, and there the filter has nothing to choose
+  // between — an unstamped set must not be dropped for failing to name what it was measured against.
+  const { document } = build({
+    runManifest: { entries: [{ code: "ui/Button.kt#Filled", source: "figma" }] },
+  });
+  assert.equal(
+    document.previews["button-filled__ideal__default__light"][0].findings[0].message,
+    "padding drifted",
+  );
+});
+
 test("a component with no published reference is reported, not published", () => {
   // Its verdict has nowhere to be shown: no reference means no comparison page.
   const { document, warnings } = build({
