@@ -532,3 +532,31 @@ test("a variant's stated reason is escaped, never injected as markup", () => {
   assert.doesNotMatch(html, /<img src=x/);
   assert.match(html, /&lt;img src=x/);
 });
+
+test("a catalog with only stated absences still gets the kit column", () => {
+  // The driver passes an empty `designRefById` when nothing resolved, which used to normalise to
+  // null and drop the column entirely — so the authored reasons showed up only when some unrelated
+  // component happened to contribute a reference, as every other test here does.
+  const absencesOnly = {
+    ...catalog,
+    components: [
+      { ...catalog.components[0], noReference: "the kit retired this button" },
+      catalog.components[1],
+    ],
+  };
+  const html = renderCrossSystemHtml(absencesOnly, { ...opts, designRefById: new Map() });
+
+  assert.match(html, /<th scope="col">Design kit<\/th>/);
+  assert.match(html, /no kit reference — the kit retired this button/);
+  // Counted honestly: no reference resolved, so the page does not claim a three-way comparison.
+  assert.match(html, /1 with a stated absence/);
+  assert.doesNotMatch(html, /against a kit reference/);
+  assert.doesNotMatch(html, /both against Design kit/);
+});
+
+test("no references and no stated absences leaves the kit column off", () => {
+  const html = renderCrossSystemHtml(catalog, { ...opts, designRefById: new Map() });
+  assert.doesNotMatch(html, /Design kit/);
+  assert.doesNotMatch(html, /col-d/);
+  assert.doesNotMatch(html, /with a stated absence/);
+});

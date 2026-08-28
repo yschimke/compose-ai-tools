@@ -30,8 +30,9 @@ Three differences, one per finding:
 node docs/design/evidence/compared-variant-rows/fixture.mjs /tmp/after.html
 ```
 
-Renders through the working tree's `render-cross-system-html.mjs`; check out `origin/main`
-in a worktree and point the import at it for the before shot. Chromium screenshots the
+Renders through this checkout's own `render-cross-system-html.mjs` — the import is resolved from
+`import.meta.url`, so the path above is the only thing that has to be right. For the before shot,
+`git worktree add /tmp/base origin/main` and run the copy of this file that lands there. Chromium screenshots the
 `<table>` element at `deviceScaleFactor: 2`.
 
 The sibling ("Wear Compose Material 3") column shows broken images in both shots: it bakes
