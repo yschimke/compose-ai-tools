@@ -330,7 +330,16 @@ jobs:
           TEST_TASKS: ${{ github.event_name == 'pull_request' && needs.module-test-scope.outputs.tasks || 'full' }}
         run: |
           if [ "$TEST_TASKS" = full ]; then
-            ./gradlew test --continue \
+            # `checkKotlinAbi` unqualified, so Gradle runs it in every project that HAS it — the
+            # 24 modules with `abiValidation()` — and simply does not match the rest. The scoped
+            # branch below gets the same gate per affected project from the resolver.
+            #
+            # It belongs on this branch too, not just that one: `full` is what every non-PR event
+            # uses (push to main, the nightly cron) and what a PR touching a global path such as
+            # `gradle/libs.versions.toml` resolves to. Without it, an ABI-changing edit that also
+            # trips a global path skips the gate entirely — which is how the gate ends up existing
+            # without running, the exact failure this was added to stop.
+            ./gradlew test checkKotlinAbi --continue \
               -x :samples:android:test \
               -x :samples:android-alpha:test \
               -x :samples:android-library:test \
