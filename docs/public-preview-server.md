@@ -3523,6 +3523,10 @@ read. On `preview.coo.ee` that put the reference design systems below the sample
 two orders are now separate: the catalog list still orders the cards **inside** a section, the
 group's `priority` orders the **sections**.
 
+| Before — first-appearance order | After — `"priority": 100` |
+|---|---|
+| ![The front page opening on android/compose-samples](images/serve-home-section-order-before.png) | ![The front page opening on Design Systems](images/serve-home-section-order-after.png) |
+
 Only declared groups carry one. A card that falls back to its source repo's owner heading sits at
 the default `0`, and `Other` — the unattributed bucket — stays pinned last whatever any priority
 says. `GET /admin/groups` reports each section's `priority`, and re-POSTing a group with a changed
