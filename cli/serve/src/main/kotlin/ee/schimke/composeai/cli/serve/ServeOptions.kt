@@ -590,13 +590,10 @@ public interface ServeOptions {
    */
   public val browseProject: Boolean
 
-  // ---- the two rules that need the raw `args`, bound on the `:cli` side ----
+  // ---- the one rule that needs the raw `args`, bound on the `:cli` side ----
   //
-  // `args` is the one thing that must not cross: a server that can read the command line is a
-  // server that still has a CLI in it. Both rules below need it, so both are bound where it lives.
-
-  /** The init-script arguments to add for [projectRoot], if any. */
-  public fun autoInjectInitScriptArgs(projectRoot: File): List<String>
+  // `args` is the thing that must not cross: a server that can read the command line is a server
+  // that still has a CLI in it. This rule needs it, so it is bound where `args` lives.
 
   /** The shared preview-id selector rule, so `serve` and the other commands agree on a match. */
   public fun previewIdMatchesRequest(
@@ -607,47 +604,6 @@ public interface ServeOptions {
     className: String? = null,
     functionName: String? = null,
   ): Boolean
-
-  // ---- the build side, expressed without a single Gradle type ----
-  //
-  // Six of the server's members need Gradle work done: discovery, a daemon start, a worktree
-  // build. The obvious seam — hand the server `Command.withGradle`/`runGradle` — is the one that
-  // must not be taken: both expose `GradleConnection`, which lives in `:gradle-preview-driver`
-  // behind `api("org.gradle:gradle-tooling-api")`. Putting either on this interface would drop the
-  // Gradle Tooling API onto the preview server's floor, which is exactly the dependency #4599
-  // removed and exactly what stops the server being separable.
-  //
-  // So the seam is the *operations*, not the connection. Every type below is already on the
-  // server's floor: `File`, `String`, and `PreviewModule` / `PreviewManifest` from
-  // `:preview-data-api`. The Tooling API stays on the `:cli` side of the boundary, where the build
-  // actually happens.
-
-  // Named apart from `Command`'s protected `findProjectRoot` / `variantGradleArgs` /
-  // `gradleArgsWithForce` on purpose: `ServeCommand` inherits both sets, and a public interface
-  // member cannot implement a protected one of the same name. The rename is what lets the command
-  // satisfy the contract by *delegating* to its own base class rather than re-exposing it.
-
-  /** The Gradle project root for this invocation, or null when there is no `gradlew` above us. */
-  public fun gradleProjectRoot(): File?
-
-  /** `-PcomposePreview.variant=…`, if `--variant` was given. */
-  public fun gradleVariantArgs(): List<String>
-
-  /** The build arguments this invocation implies, including `--force` and data extensions. */
-  public fun gradleBuildArgs(extra: List<String> = emptyList()): List<String>
-
-  /** Every Gradle project in the build that declares previews. */
-  public fun gradleProjects(): List<PreviewModule>
-
-  /** Run [tasks] in the project's Gradle build; true when the build succeeded. */
-  public fun runGradleTasks(
-    vararg tasks: String,
-    arguments: List<String> = emptyList(),
-    silenceStdout: Boolean = false,
-  ): Boolean
-
-  /** Discover and build the selected modules so their manifests exist on disk. */
-  public fun discoverAndBuild(silenceStdout: Boolean): ServeDiscovery
 }
 
 /**

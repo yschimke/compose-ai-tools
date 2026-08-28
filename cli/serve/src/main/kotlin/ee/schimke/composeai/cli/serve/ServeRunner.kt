@@ -29,17 +29,20 @@ import okio.Path.Companion.toPath
 /**
  * `compose-preview serve`, from the first port bind to the last shutdown hook.
  *
- * This is the body that used to live in `:cli`'s `ServeCommand`. It reaches its configuration and
- * its build through [ServeOptions] — `by options`, so every flag reads exactly as it did when it
- * was a private val on the command — and it never sees `args`, `--help`, the usage text, or a
- * Gradle type.
+ * This is the body that used to live in `:cli`'s `ServeCommand`. It reaches its configuration
+ * through [ServeOptions] and its build through [ServeBuildHost] — `by options`, so every flag reads
+ * exactly as it did when it was a private val on the command — and it never sees `args`, `--help`,
+ * the usage text, or a Gradle type.
  *
  * The point is not tidiness. While this code sat in `:cli`, the module boundary #4599 drew was true
  * of every serve file *except* the one that starts the server, and the seam register carried 92
  * symbols for this file alone. A preview server you cannot start without the CLI is not separable,
  * whatever the build files say.
  */
-public class ServeRunner(private val options: ServeOptions) : ServeOptions by options {
+public class ServeRunner(
+  private val options: ServeOptions,
+  private val build: ServeBuildHost,
+) : ServeOptions by options, ServeBuildHost by build {
 
   private val catalogBlobPool: CatalogBlobPool by lazy {
     val requested = catalogCacheDirFlag
