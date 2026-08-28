@@ -264,6 +264,24 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
      * the row count.
      */
     private const val MAX_ANCHORS_PER_PREVIEW = 600
+
+    /**
+     * What one preview may KEEP, across every reference it publishes a verdict for.
+     *
+     * A second budget, because it bounds a different thing. The page allowance above has to be
+     * spent at READ time — reference-scoped sets are mutually exclusive on screen, so charging them
+     * against one allowance at load blanks boards a page was never going to show together — and
+     * that leaves the store itself unbounded. The store is not free: it is held in memory by
+     * `ServeBundleHost` and reserialized into the staging tree by `ServeCatalogStore`, so the
+     * nested ceilings alone let one preview keep four thousand findings and a hundred and sixty
+     * thousand anchors no page can ever reach.
+     *
+     * Deliberately far above the page budget: several boards' worth of a real verdict passes
+     * untouched, since which of them a reader asks for is not known here. This bounds disk and
+     * heap, not what anyone reads.
+     */
+    private const val MAX_STORED_FINDINGS_PER_PREVIEW = 1000
+    private const val MAX_STORED_ANCHORS_PER_PREVIEW = 2000
     private const val MAX_DETAIL_KEYS = 24
     private const val MAX_MESSAGE = 400
 
@@ -369,7 +387,8 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
             runCatching { JSON.decodeFromJsonElement<RawSet>(element) }.getOrNull()
           }
           .mapNotNull(::sanitizeSet)
-      return kept.takeIf { it.isNotEmpty() }
+      return spendBudget(kept, MAX_STORED_FINDINGS_PER_PREVIEW, MAX_STORED_ANCHORS_PER_PREVIEW)
+        .takeIf { it.isNotEmpty() }
     }
 
     private fun sanitizeSet(raw: RawSet): ParityFindingSet? {
@@ -401,7 +420,13 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
       // run that looked and found nothing is a different fact from a catalog nobody ran, and only
       // the first can say "Pass". Dropping it made the two indistinguishable on the page. With
       // neither findings nor a status there is nothing to say, and the set goes.
-      if (findings.isEmpty() && status == null) return null
+      // …but only when the producer's array was ALSO empty. A set whose findings were all
+      // rejected here — a message this reader could not use, a kind it does not know — has a
+      // report behind it that this build cannot show, and printing "Pass · No findings." over it
+      // would turn a manifest we failed to read into a reassuring clean verdict. That is the one
+      // direction this panel must never fail in: silence says "unknown", a green chip says
+      // "checked".
+      if (findings.isEmpty() && (status == null || raw.findings.isNotEmpty())) return null
       return ParityFindingSet(
         referenceId = referenceId,
         status = status,
@@ -471,9 +496,17 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
      * severity-ordered within a set before this runs, so what survives is the worst of what was
      * published rather than whatever happened to be written first.
      */
-    private fun spendPageBudget(sets: List<ParityFindingSet>): List<ParityFindingSet> {
-      var findingsLeft = MAX_FINDINGS_PER_PREVIEW
-      var anchorsLeft = MAX_ANCHORS_PER_PREVIEW
+    private fun spendPageBudget(sets: List<ParityFindingSet>): List<ParityFindingSet> =
+      spendBudget(sets, MAX_FINDINGS_PER_PREVIEW, MAX_ANCHORS_PER_PREVIEW)
+
+    /** Hold a list of sets to a finding and anchor allowance, worst-severity-first. */
+    private fun spendBudget(
+      sets: List<ParityFindingSet>,
+      maxFindings: Int,
+      maxAnchors: Int,
+    ): List<ParityFindingSet> {
+      var findingsLeft = maxFindings
+      var anchorsLeft = maxAnchors
       // Nothing to spend against: the common shape, and worth not rebuilding every set for.
       if (
         sets.sumOf { it.findings.size } <= findingsLeft &&
@@ -481,7 +514,7 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
       ) {
         return sets
       }
-      return sets.map { set ->
+      return sets.mapNotNull { set ->
         val findings =
           set.findings.take(findingsLeft.coerceAtLeast(0)).map { finding ->
             val room = anchorsLeft.coerceAtLeast(0)
@@ -490,7 +523,12 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
             else finding.copy(anchors = finding.anchors.take(room))
           }
         findingsLeft -= findings.size
-        set.copy(findings = findings)
+        // A set this budget emptied is DROPPED, never trimmed to a status-only record. It reached
+        // here carrying findings, so its "Pass" would be printed over a report that exists and
+        // that this build then discarded — the same false-clean verdict a rejected findings array
+        // produces, arriving one level up. Only a set the producer wrote empty may say "Pass" with
+        // nothing under it, and such a set is empty before this runs rather than because of it.
+        if (findings.isEmpty() && set.findings.isNotEmpty()) null else set.copy(findings = findings)
       }
     }
 
