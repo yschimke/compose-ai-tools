@@ -294,10 +294,45 @@ fi
 # see LiveSeatLimiter), so one heavy catalog can't hog a flat seat count and starve the cheap CMP
 # lanes. An over-budget viewer is refused (WS 1013) rather than OOM-ing the box.
 #
-# When SERVE_LIVE_SEATS is unset we AUTO-DERIVE the budget from the container's memory limit so a
-# bigger box scales up on its own (no compose edit, no rebuild): reserve ~1 GB for the serve host +
-# OS, budget ~1.2 GB of headroom per permit, and clamp to [2, 8]. The floor of 2 means even the
-# reference 4 GB box always runs at least two cheap CMP sessions concurrently (4 GB → 2; 8 GB → 5).
+# The seat arithmetic, kept as a function so `test-derive-live-seats.sh` can exercise it with
+# synthetic values instead of faking /proc/meminfo and /sys/fs/cgroup.
+SEATS_PER_CPU=2
+SEATS_FLOOR=2
+SEATS_CEILING=32
+derive_live_seats() {
+  local eff_mb="$1" cpus="$2" mem_seats cpu_seats seats
+  mem_seats=${SEATS_FLOOR}
+  (( eff_mb > 0 )) && mem_seats=$(( (eff_mb - 1024) / 1200 ))
+  # An unknown core count must not derive zero seats. Falling back to the memory figure keeps the
+  # old behaviour exactly, which is the right answer when half the inputs are missing.
+  if (( cpus > 0 )); then
+    cpu_seats=$(( cpus * SEATS_PER_CPU ))
+  else
+    cpu_seats=${mem_seats}
+  fi
+  seats=$(( mem_seats < cpu_seats ? mem_seats : cpu_seats ))
+  (( seats < SEATS_FLOOR )) && seats=${SEATS_FLOOR}
+  (( seats > SEATS_CEILING )) && seats=${SEATS_CEILING}
+  echo "${seats}"
+}
+
+# When SERVE_LIVE_SEATS is unset we AUTO-DERIVE the budget from the box: reserve ~1 GB for the serve
+# host + OS, budget ~1.2 GB of headroom per permit, and take the SMALLER of what memory affords and
+# what the CPUs afford.
+#
+# **Memory alone was the wrong input.** A permit buys a render daemon, and a render is CPU-bound —
+# so a box with plenty of RAM and few cores derived a budget it could not actually work, while the
+# [2, 8] clamp meant a large box stopped scaling entirely. Measured on preview.coo.ee (48 GiB
+# limit, 8 cores): memory afforded 40 permits, the clamp allowed 8, and the box ran a fifth of what
+# its cores could have driven.
+#
+# `SEATS_PER_CPU` of 2 is one Android daemon per core, since Android costs two permits and is the
+# heaviest backend. A render is not purely on-CPU — it waits on daemon startup and I/O — so one
+# renderable slot per core would leave cores idle, and much more than two would thrash them.
+#
+# The floor of 2 keeps the reference 4 GB box running two cheap CMP sessions concurrently. The
+# ceiling is now 32 rather than 8: still a bound (a runaway derivation should not spawn daemons
+# without limit) but one a real box reaches rather than one every serious box exceeds.
 # Set SERVE_LIVE_SEATS explicitly to override, or 0 for unbounded.
 if [[ -z "${SERVE_LIVE_SEATS:-}" ]]; then
   # Detect the cgroup memory limit (v2 then v1), capped by physical RAM so an "unlimited" sentinel
@@ -325,14 +360,10 @@ if [[ -z "${SERVE_LIVE_SEATS:-}" ]]; then
   else
     eff_mb=${mem_total_mb}
   fi
-  seats=2
-  if (( eff_mb > 0 )); then
-    seats=$(( (eff_mb - 1024) / 1200 ))
-    (( seats < 2 )) && seats=2
-    (( seats > 8 )) && seats=8
-  fi
-  SERVE_LIVE_SEATS="${seats}"
-  echo "entrypoint: auto live-seat budget ${SERVE_LIVE_SEATS} (effective mem ${eff_mb} MB)" >&2
+  cpus=$(nproc 2>/dev/null || echo 0)
+  SERVE_LIVE_SEATS="$(derive_live_seats "${eff_mb}" "${cpus}")"
+  echo "entrypoint: auto live-seat budget ${SERVE_LIVE_SEATS}" \
+    "(effective mem ${eff_mb} MB, ${cpus} cpus)" >&2
 fi
 [[ -n "${SERVE_LIVE_SEATS}" ]] && args+=(--live-seats "${SERVE_LIVE_SEATS}")
 # Background (theme-optimizer) renders admitted at once, server-wide. Unset leaves the server's own
