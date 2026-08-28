@@ -36,16 +36,28 @@ object AppTourDiscovery {
    * of the *app* — not previewable entry points, not tour material — so they're dropped at parse
    * time.
    *
-   * `com.google.` subsumes the narrower `com.google.android.` this list used to carry, so that
-   * Firebase Auth's `GenericIdpActivity` and `RecaptchaActivity` — headless trampolines that NPE
-   * inside `onResume` the moment they are launched off a real device — stop reaching the catalog as
-   * broken cards, as they did in both Confetti catalogs.
+   * `com.google.firebase.` earns its place from Firebase Auth's `GenericIdpActivity` and
+   * `RecaptchaActivity` — headless trampolines that NPE inside `onResume` the moment they are
+   * launched off a real device, and did so in both Confetti catalogs.
    *
-   * The list stays evidence-led rather than pre-emptive: every prefix is also a way to silently
-   * drop an app's own screen, so an SDK earns one once it has been seen producing a dead card.
+   * Each entry is a **library** namespace, never a whole vendor one. The bare `com.google.` prefix
+   * that would cover both Google entries at once is exactly the mistake to avoid: an app is free to
+   * own that namespace — Now in Android ships as `com.google.samples.apps.nowinandroid` — and the
+   * shorter prefix would classify every one of its screens as library-injected, leaving its catalog
+   * with no activities at all.
+   *
+   * So the list stays evidence-led rather than pre-emptive, and narrow rather than convenient:
+   * every prefix here is also a way to silently drop an app's own screen, so a library earns one
+   * once it has been seen producing a dead card.
    */
   private val LIBRARY_ACTIVITY_PREFIXES =
-    listOf("android.", "androidx.", "com.android.", "com.google.")
+    listOf(
+      "android.",
+      "androidx.",
+      "com.android.",
+      "com.google.android.",
+      "com.google.firebase.",
+    )
 
   private val xmlFactory: XMLInputFactory =
     XMLInputFactory.newFactory().apply {
@@ -278,7 +290,9 @@ object AppTourDiscovery {
   /** Parses one tour spec file. Returns `null` (best-effort) when unreadable or not a tour. */
   fun parseTourSpec(file: File): TourSpec? = runCatching {
     TOUR_JSON.decodeFromString(TourSpec.serializer(), file.readText())
-  }.getOrNull()?.takeIf { it.steps.isNotEmpty() || it.start != null }
+  }
+    .getOrNull()
+    ?.takeIf { it.steps.isNotEmpty() || it.start != null }
 
   /**
    * Turns committed tour spec files into one synthetic [PreviewKind.APP_TOUR] preview each. Every
