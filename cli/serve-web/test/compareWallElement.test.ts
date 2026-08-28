@@ -98,20 +98,27 @@ function stubScorer(
     return state;
 }
 
-/** One row, carrying the `<kind>-<variant>` artifacts the server writes. */
-const rowHtml = (name: string, have: string[]) => `
+/**
+ * One row, carrying the `<kind>-<variant>` artifacts the server writes.
+ *
+ * [attrs] is written verbatim, for the row attributes whose value is not a URL — the published
+ * `data-match-<variant>` score, above all.
+ */
+const rowHtml = (name: string, have: string[], attrs = "") => `
   <tr class="cp-compare-row" data-label="${name}" data-hay="${name.toLowerCase()}"
       data-preview-ids="com.example.${name}Preview"
-      ${have.map((h) => `data-${h}="/a/${name}-${h}"`).join(" ")}>
+      ${have.map((h) => `data-${h}="/a/${name}-${h}"`).join(" ")} ${attrs}>
     <td><img class="cp-compare-png" alt=""></td>
     <td class="cp-compare-diff-cell"><canvas class="cp-compare-diff"></canvas></td>
     <td><img class="cp-compare-vector" alt=""><canvas class="cp-compare-rc" hidden></canvas></td>
     <td><span class="cp-compare-score"></span></td>
+    <td class="cp-compare-bugs"><a class="cp-compare-bug-new" href="/p/${name}#cp-report"
+        data-bug-fallback="/p/${name}#cp-report">+ file</a></td>
   </tr>`;
 
 async function mount(
     options: {
-        rows?: Array<{ name: string; have: string[] }>;
+        rows?: Array<{ name: string; have: string[]; attrs?: string }>;
         available?: string;
         search?: string;
         lanes?: boolean;
@@ -132,7 +139,7 @@ async function mount(
         <button data-compare-theme="dark">Dark</button>
         <input id="cp-compare-search" value="${options.search ?? ""}">
         <span id="cp-compare-count"></span>
-        <div id="cp-compare-formats"><table><tbody>${rows.map((r) => rowHtml(r.name, r.have)).join("")}</tbody></table></div>
+        <div id="cp-compare-formats"><table><tbody>${rows.map((r) => rowHtml(r.name, r.have, r.attrs)).join("")}</tbody></table></div>
         <p id="cp-compare-empty" hidden></p>
         ${options.lanes ? '<div id="cp-rc-lanes"></div>' : ""}
       </div>`;
@@ -885,6 +892,198 @@ describe("<cp-compare-wall>", () => {
             "cp-compare-diff-cell",
             "cp-compare-target-cell",
         ]);
+    });
+
+    it("paints every row's pictures before it has scored any of them", async () => {
+        // The picture sources used to be assigned INSIDE the serial scoring chain, so a wall drew
+        // one row's two panels per completed comparison and showed nothing but labels until then —
+        // tens of seconds on a real catalog. Nothing about pointing an `<img>` at a URL needs the
+        // scorer (issue #4624).
+        stubScorer(
+            { "/a/Button-svg-light": 90, "/a/Card-svg-light": 90 },
+            { hold: true },
+        );
+        await mount();
+        await flush();
+        const painted = rowsOf().map(
+            (row) =>
+                row.querySelector<HTMLImageElement>(".cp-compare-png")?.src ??
+                "",
+        );
+        assert.equal(painted.length, 2);
+        assert.ok(
+            painted.every((src) => src.includes("png-light")),
+            `every row points at its render while the first is still scoring: ${painted}`,
+        );
+    });
+
+    it("shows the published score before it has measured anything", async () => {
+        // The wall used to open on a column of "waiting…" and stay there for as long as it took to
+        // decode and score two rasters per row. The delivery branch already measured every one of
+        // these pairs with this same scorer, so the number exists before the page is served.
+        window.history.replaceState(null, "", "/compare?format=reference");
+        const scorer = stubScorer(
+            { "/a/Button-reference-light": 62 },
+            { holdReference: true },
+        );
+        await mount({
+            available: 'data-has-reference="1"',
+            rows: [
+                {
+                    name: "Button",
+                    have: ["png-light", "reference-light"],
+                    attrs: 'data-match-light="61.80"',
+                },
+            ],
+        });
+        await flush();
+        assert.equal(scoreTextOf("Button"), "61.8%");
+        const score = document.querySelector(
+            '[data-label="Button"] .cp-compare-score',
+        )!;
+        assert.equal(score.getAttribute("data-score-source"), "published");
+        assert.ok(score.className.includes("cp-compare-score--bad"));
+
+        // …and the browser's own measurement replaces it, which is the whole point of still
+        // taking one.
+        scorer.settle();
+        await settle();
+        assert.equal(scoreTextOf("Button"), "62.0%");
+        assert.equal(score.getAttribute("data-score-source"), null);
+    });
+
+    it("orders the wall on the published scores before a single row is measured", async () => {
+        window.history.replaceState(null, "", "/compare?format=reference");
+        stubScorer(
+            {
+                "/a/Button-reference-light": 95,
+                "/a/Card-reference-light": 40,
+            },
+            { holdReference: true },
+        );
+        await mount({
+            available: 'data-has-reference="1"',
+            rows: [
+                {
+                    name: "Button",
+                    have: ["png-light", "reference-light"],
+                    attrs: 'data-match-light="95"',
+                },
+                {
+                    name: "Card",
+                    have: ["png-light", "reference-light"],
+                    attrs: 'data-match-light="40"',
+                },
+            ],
+        });
+        await flush();
+        assert.deepEqual(
+            rowsOf().map((r) => r.getAttribute("data-label")),
+            ["Card", "Button"],
+        );
+    });
+
+    it("leaves a row with no published score where the server put it", async () => {
+        // "Nobody has measured this yet" is not a finding, and must not lead the wall the way an
+        // unmeasurable row does — a catalog baked before the producer existed carries none at all.
+        window.history.replaceState(null, "", "/compare?format=reference");
+        stubScorer({}, { holdReference: true });
+        await mount({
+            available: 'data-has-reference="1"',
+            rows: [
+                {
+                    name: "Button",
+                    have: ["png-light", "reference-light"],
+                    attrs: 'data-match-light="70"',
+                },
+                { name: "Card", have: ["png-light", "reference-light"] },
+            ],
+        });
+        await flush();
+        assert.deepEqual(
+            rowsOf().map((r) => r.getAttribute("data-label")),
+            ["Button", "Card"],
+        );
+        assert.equal(
+            document
+                .querySelector<HTMLElement>('[data-label="Card"]')!
+                .hasAttribute("data-score"),
+            false,
+            "nothing to seed it with",
+        );
+    });
+
+    it("does not seed the vector lanes from a score about another comparison", async () => {
+        // `data-match-light` sits on the same row the SVG lane scores, and describes a render
+        // against an independently-drawn design. Seeding SVG from it would state a number about a
+        // comparison that lane is not making.
+        stubScorer({ "/a/Button-svg-light": 88 }, { hold: true });
+        await mount({
+            rows: [
+                {
+                    name: "Button",
+                    have: ["png-light", "svg-light", "reference-light"],
+                    attrs: 'data-match-light="12"',
+                },
+            ],
+        });
+        await flush();
+        assert.equal(scoreTextOf("Button"), "comparing…");
+    });
+
+    it("keeps a published score when this browser cannot measure the pair", async () => {
+        // A throw here is a fact about this browser, not about the pair: the delivery branch scored
+        // it with this very scorer. Falling to "unavailable" would lose a real number and sort the
+        // row to the top as though nobody had ever measured it.
+        window.history.replaceState(null, "", "/compare?format=reference");
+        (window as Record<string, unknown>).ComposePreviewCompare = undefined;
+        await mount({
+            available: 'data-has-reference="1"',
+            rows: [
+                {
+                    name: "Button",
+                    have: ["png-light", "reference-light"],
+                    attrs: 'data-match-light="88.5"',
+                },
+            ],
+        });
+        await settle();
+        assert.equal(scoreTextOf("Button"), "88.5%");
+    });
+
+    it("points '+ file' at the pair the row is actually showing", async () => {
+        stubScorer({ "/a/Button-reference-light": 80 });
+        await mount({
+            available: 'data-has-svg="1" data-has-reference="1"',
+            rows: [
+                {
+                    name: "Button",
+                    have: [
+                        "png-light",
+                        "svg-light",
+                        "reference-light",
+                        "reference-detail-light",
+                    ],
+                },
+            ],
+        });
+        await settle();
+        const link = () =>
+            document.querySelector<HTMLAnchorElement>(
+                '[data-label="Button"] .cp-compare-bug-new',
+            )!;
+        // The SVG lane focuses no pair, so the report is the viewer's own.
+        assert.ok(link().getAttribute("href")?.endsWith("/p/Button#cp-report"));
+
+        document
+            .querySelector<HTMLElement>('[data-compare-format="reference"]')!
+            .click();
+        await settle();
+        assert.ok(
+            link()
+                .getAttribute("href")
+                ?.endsWith("/a/Button-reference-detail-light"),
+        );
     });
 
     it("stays inert on a page that is not the compare wall", async () => {

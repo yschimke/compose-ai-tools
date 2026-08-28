@@ -30,7 +30,9 @@ import { specLeadsColumns, targetHeadLabel } from "../compare/columns.js";
 import { initialState, poppedState, type WallState } from "../compare/state.js";
 import { GEOMETRY_REPORT_THRESHOLD } from "../compare/thresholds.js";
 import {
+    bakedScoreOf,
     byWorstFirst,
+    byWorstKnownFirst,
     countLabel,
     keepRow,
     scoreOf,
@@ -273,9 +275,21 @@ export class CompareWall extends LitElement {
             return;
         }
 
-        for (const row of this.rows) row.removeAttribute("data-score");
+        // Everything that does not need the scorer, done for every row before the scorer is asked
+        // for anything: the pictures, the grounds, the links and the published scores. See
+        // {@link dressRow}.
+        const dressed = new Set(this.rows.filter((row) => this.dressRow(row)));
         this.applySearch();
+        for (const row of this.rows) if (!dressed.has(row)) row.hidden = true;
         const visible = this.rows.filter((row) => !row.hidden);
+        // Ordered on the published numbers BEFORE anything is measured. The server already served
+        // the reference lane in this order, so on first load this is a no-op; it earns its keep on
+        // every lane and theme switch after that, where the served order is about another pairing
+        // entirely and the rows would otherwise sit in it for the length of the whole chain below.
+        visible.sort((a, b) =>
+            byWorstKnownFirst(this.bakedScore(a), this.bakedScore(b)),
+        );
+        for (const row of visible) this.body?.appendChild(row);
 
         // Serial, not parallel: each row decodes two full frames and scores them, and a wall of
         // thirty racing each other is what made this page unusable on a laptop.
@@ -326,6 +340,55 @@ export class CompareWall extends LitElement {
         }
     }
 
+    /**
+     * The score the delivery branch published for the pair this row is CURRENTLY showing, if any.
+     *
+     * Reference lane only, and that gate is load-bearing rather than an optimisation: the published
+     * number describes a render against an independently-drawn design, and `data-match-light` sits
+     * on the same row the SVG lane is scoring. Ungated, switching to SVG would seed and order that
+     * lane by numbers about a comparison it is not making.
+     */
+    private bakedScore(row: HTMLElement): number | null {
+        if (this.state.format !== "reference") return null;
+        const variant = variantFor(
+            this.sourcesOf(row),
+            "reference",
+            this.state.theme,
+        );
+        if (!variant) return null;
+        return bakedScoreOf(row.getAttribute(`data-match-${variant}`));
+    }
+
+    /**
+     * Put the published score on a row before anything is measured.
+     *
+     * The wall used to open on a column of "waiting…" and stay there for as long as it took to
+     * decode and score two rasters per row — tens of seconds on a real catalog — with the rows in
+     * catalog order the whole time, which is the one order that says nothing about which of them is
+     * wrong. The delivery branch already measured every one of these pairs with this same scorer
+     * (`design-reference-score.mjs`), so the number exists; carrying it here makes the wall
+     * readable and correctly ordered at first paint, and turns the in-browser pass into the
+     * refinement it always was (issue #4624).
+     *
+     * The band is the live one's band, because it is the live one's number. What differs is
+     * `data-score-source`, which says where it came from — for the dotted rule in `serve.css`, for
+     * the failure path in {@link scoreRow}, and so a test can tell a seeded row from a measured one.
+     */
+    private seedScore(row: HTMLElement, score: HTMLElement): void {
+        const baked = this.bakedScore(row);
+        if (baked === null) {
+            row.removeAttribute("data-score");
+            score.removeAttribute("data-score-source");
+            return;
+        }
+        row.setAttribute("data-score", String(baked));
+        score.textContent = `${baked.toFixed(1)}%`;
+        score.className = `cp-compare-score cp-compare-score--${grade(baked)}`;
+        score.setAttribute("data-score-source", "published");
+        score.title =
+            "Measured when this catalog was published — re-measured here as the row loads";
+    }
+
     private applySearch(): void {
         const query = this.search?.value ?? "";
         if (this.lanesActive()) {
@@ -362,16 +425,21 @@ export class CompareWall extends LitElement {
 
     // ---- one row -------------------------------------------------------------
 
-    private async scoreRow(row: HTMLElement, runId: number): Promise<void> {
-        // Nothing below may touch the row unless this chain is still the current one. Bumping
-        // `sequence` on a lane switch stops an abandoned run's RESULTS from landing, but the chain
-        // itself keeps walking its remaining rows — and everything between here and the awaited
-        // measurement writes to the row on the way past: the vector's src, the score cell's
-        // "comparing…", the blanked delta map. A stale chain arriving behind a finished one
-        // therefore wiped rows the visitor was already reading and left them that way, because the
-        // guard further down then discarded the very measurement that would have filled them back
-        // in. Checked here, an abandoned chain costs one comparison per remaining row and no paint.
-        if (runId !== this.sequence) return;
+    /**
+     * Everything a row shows that is known WITHOUT measuring anything: the pair it is pointing at,
+     * the ground it sits on, the published score, and where its links go.
+     *
+     * Split out of {@link scoreRow} and run synchronously over every row before the measuring chain
+     * starts, because it used to ride INSIDE that chain — which walks the rows one at a time, each
+     * one decoding and scoring two full frames. So a wall of thirty rows did not merely take tens of
+     * seconds to finish scoring; it took tens of seconds to finish drawing, painting one row's two
+     * pictures per completed comparison and showing nothing but labels until then. None of this
+     * needs the scorer, and none of it needed to wait for it (issue #4624).
+     *
+     * False for a row this format cannot pair, or one whose markup is missing a part — the caller
+     * drops it rather than scoring the wrong two pictures.
+     */
+    private dressRow(row: HTMLElement): boolean {
         const sources = this.sourcesOf(row);
         const variant = variantFor(
             sources,
@@ -389,11 +457,8 @@ export class CompareWall extends LitElement {
         // started returning the diff, and the rc lane would have scored an empty frame.
         const canvas = row.querySelector<HTMLCanvasElement>(".cp-compare-rc");
         const diff = row.querySelector<HTMLCanvasElement>(".cp-compare-diff");
-        if (!pngUrl || !candidateUrl || !score || !png || !vector || !canvas) {
-            row.hidden = true;
-            return;
-        }
-        row.hidden = false;
+        if (!pngUrl || !candidateUrl || !score || !png || !vector || !canvas)
+            return false;
         row.setAttribute(
             "data-bg-theme",
             rowTheme(
@@ -404,13 +469,27 @@ export class CompareWall extends LitElement {
         );
         png.src = pngUrl;
         png.alt = `${row.getAttribute("data-label")} rendered PNG`;
-        score.textContent = "comparing…";
-        score.className = "cp-compare-score";
+        this.seedScore(row, score);
 
         const format = this.state.format;
         const detail = () => {
             location.href = sources("reference-detail", variant);
         };
+        // The Bugs column's "+ file" follows the pair the row is showing, exactly as the pictures
+        // do: the focused Reference / Diff / Actual page files a report naming that preview AND
+        // that reference, so a link left pointing at the light comparison would file the wrong one
+        // from the dark lane. Off the reference lane there is no focused pair to name, and it falls
+        // back to the viewer's own report.
+        const report = row.querySelector<HTMLAnchorElement>(
+            ".cp-compare-bug-new",
+        );
+        if (report) {
+            const focused =
+                format === "reference"
+                    ? sources("reference-detail", variant)
+                    : "";
+            report.href = focused || report.dataset.bugFallback || report.href;
+        }
         if (format === "svg" || format === "reference") {
             vector.hidden = false;
             canvas.hidden = true;
@@ -438,6 +517,38 @@ export class CompareWall extends LitElement {
                 format === "reference" ? "Open Reference / Diff / Actual" : "";
             diff.onclick = format === "reference" ? detail : null;
         }
+        return true;
+    }
+
+    private async scoreRow(row: HTMLElement, runId: number): Promise<void> {
+        // Nothing below may touch the row unless this chain is still the current one. Bumping
+        // `sequence` on a lane switch stops an abandoned run's RESULTS from landing, but the chain
+        // itself keeps walking its remaining rows — and it writes to the row on the way past: the
+        // score cell's "comparing…", and the result. A stale chain arriving behind a finished one
+        // therefore wiped rows the visitor was already reading and left them that way, because the
+        // guard further down then discarded the very measurement that would have filled them back
+        // in. Checked here, an abandoned chain costs one comparison per remaining row and no paint.
+        if (runId !== this.sequence) return;
+        const sources = this.sourcesOf(row);
+        const variant = variantFor(
+            sources,
+            this.state.format,
+            this.state.theme,
+        );
+        const pngUrl = sources("png", variant);
+        const candidateUrl = sources(this.state.format, variant);
+        const score = row.querySelector<HTMLElement>(".cp-compare-score");
+        const canvas = row.querySelector<HTMLCanvasElement>(".cp-compare-rc");
+        const diff = row.querySelector<HTMLCanvasElement>(".cp-compare-diff");
+        if (!pngUrl || !candidateUrl || !score || !canvas) return;
+        // A row that arrived with a published score keeps showing it while this one is taken.
+        // Blanking it to "comparing…" would spend the very thing carrying it is for: the wall is
+        // legible and ordered before this chain — which walks the rows one at a time — reaches it.
+        if (!row.hasAttribute("data-score")) {
+            score.textContent = "comparing…";
+            score.className = "cp-compare-score";
+        }
+        const format = this.state.format;
 
         try {
             const measured = await this.measure(
@@ -458,6 +569,10 @@ export class CompareWall extends LitElement {
             row.setAttribute("data-score", String(measured.percent));
             score.textContent = `${measured.percent.toFixed(1)}%`;
             score.className = `cp-compare-score cp-compare-score--${grade(measured.percent)}`;
+            // Measured here now, so the published marking and the note that went with it go — the
+            // geometry tooltip below is written over a cleared title rather than over that note.
+            score.removeAttribute("data-score-source");
+            score.title = "";
             if (typeof measured.geometry === "number") {
                 row.setAttribute(
                     "data-geometry-delta",
@@ -472,6 +587,12 @@ export class CompareWall extends LitElement {
             }
         } catch {
             if (runId !== this.sequence) return;
+            // A PUBLISHED score outlives a failed measurement. The delivery branch scored this
+            // exact pair with this exact scorer, so a throw here is a fact about this browser — a
+            // fetch that failed, a canvas it would not give us — and not about the pair. Replacing
+            // a real number with "unavailable" would lose it and sort the row to the top as though
+            // nobody had ever measured it.
+            if (score.getAttribute("data-score-source") === "published") return;
             // `-1` rather than dropping the row: an unmeasurable pair sorts to the top, because it
             // is the one nobody is looking at.
             row.setAttribute("data-score", "-1");

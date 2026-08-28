@@ -14,7 +14,9 @@ import {
 } from "../src/compare/pairing.js";
 import { initialState, poppedState, themeOf } from "../src/compare/state.js";
 import {
+    bakedScoreOf,
     byWorstFirst,
+    byWorstKnownFirst,
     countLabel,
     keepRow,
     scoreOf,
@@ -381,5 +383,43 @@ describe("initialState with an unusable default", () => {
             available: { svg: false, rc: true, reference: true },
         });
         assert.equal(state.format, "rc");
+    });
+});
+
+describe("bakedScoreOf", () => {
+    it("reads a published score off the row", () => {
+        assert.equal(bakedScoreOf("61.80"), 61.8);
+        assert.equal(bakedScoreOf("0"), 0);
+    });
+
+    it("answers null — not the unmeasurable sentinel — where there is none", () => {
+        // The two absences are opposites. `-1` means "this browser tried and could not", and leads
+        // the wall; a missing published score means only that the delivery branch had nothing to
+        // say, and a row nobody has measured yet is not a finding.
+        assert.equal(bakedScoreOf(null), null);
+        assert.equal(bakedScoreOf(""), null);
+        assert.equal(bakedScoreOf("Infinity"), null);
+        assert.equal(scoreOf(null), -1);
+    });
+});
+
+describe("byWorstKnownFirst", () => {
+    it("leads with the worst published score", () => {
+        assert.equal(byWorstKnownFirst(40, 95) < 0, true);
+        assert.equal(byWorstKnownFirst(95, 40) > 0, true);
+    });
+
+    it("leaves the unscored rows behind the scored ones, in served order", () => {
+        assert.equal(byWorstKnownFirst(null, 95) > 0, true);
+        assert.equal(byWorstKnownFirst(95, null) < 0, true);
+        assert.equal(byWorstKnownFirst(null, null), 0);
+    });
+
+    it("differs from the measured order exactly where it must", () => {
+        // Once measured, an unmeasurable row LEADS (`-1`). Before measuring, an unpublished one
+        // trails. Same wall, two questions, and swapping the two would either bury the pairs the
+        // catalog already knows are broken or open on a page of rows claiming to be the worst.
+        assert.equal(byWorstFirst(-1, 40) < 0, true);
+        assert.equal(byWorstKnownFirst(null, 40) > 0, true);
     });
 });

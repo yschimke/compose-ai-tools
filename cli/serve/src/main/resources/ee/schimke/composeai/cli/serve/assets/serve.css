@@ -2576,6 +2576,27 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
 .cp-compare-score--warn { color: light-dark(#8a5300, #e6b067); }
 .cp-compare-score--bad { color: light-dark(#8a1c1c, #ef9292); }
 .cp-compare-score--na { color: var(--cp-fg-faint); }
+/* A score the DELIVERY BRANCH measured, standing in until this browser has measured it itself. It
+   keeps its band — it is the same number from the same scorer — and says how it got here with a
+   dotted rule rather than with a word, because the column is 88px wide and the distinction only
+   matters to a reader who is already asking why a number appeared before the pictures did. */
+.cp-compare-score[data-score-source="published"] {
+  text-decoration: underline dotted currentColor 1px; text-underline-offset: 3px; }
+/* The Bugs column: what is already filed against this row, and the way to file more.
+   STACKED rather than run along the row, and that is a width decision, not a style one: this table
+   already carries three picture panels, and a row with four issues laid out horizontally would push
+   `Match` — the column the wall is sorted by and read for — past the scroll edge at 1024px. One
+   pill per line makes the column as wide as its widest pill and no wider; the rows are 220px tall
+   already, so the extra lines cost nothing. */
+.cp-compare-bugs { text-align: right; }
+.cp-compare-bug, .cp-compare-bug-new { display: block; width: fit-content; margin: 4px 0 0 auto;
+  padding: 1px 6px; white-space: nowrap;
+  border-radius: 999px; font-size: .72rem; font-variant-numeric: tabular-nums;
+  text-decoration: none; border: 1px solid var(--cp-border); }
+.cp-compare-bug { color: light-dark(#8a1c1c, #ef9292); }
+.cp-compare-bug--closed { color: var(--cp-fg-faint); }
+.cp-compare-bug-new { color: var(--cp-fg-muted); border-style: dashed; }
+.cp-compare-bug:hover, .cp-compare-bug-new:hover { border-color: currentColor; }
 /* The comparison column's header names its lane in the DOM, not in a `::after`. It used to be a
    `font-size: 0` `<th>` with three `content:` rules keyed off `data-format` — which worked, but
    could only ever say the generic "Design reference", because CSS has no way to reach the catalog's
@@ -2600,6 +2621,11 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
    for the row fitting — at 1024px the untouched 260px panels push `Match` past the scroll edge, and
    a triage wall whose verdict is off-screen is the one regression this column could cause. */
 #cp-compare[data-format="reference"] .cp-compare-shot { width: min(200px, 22vw); min-width: 120px; }
+/* …and the Bugs column is a fourth thing competing for the same row, so it pays for itself out of
+   the same budget rather than out of `Match`. Only where the column exists: a catalog with no
+   published issue index has nothing to make room for. */
+#cp-compare[data-format="reference"][data-has-bugs="1"] .cp-compare-shot {
+  width: min(184px, 20vw); }
 
 /* The Remote Compose player wall: one column per player, every render published by the offline
    rc-compare run. A diff appears *inside* a player's column once a reference column is picked. */

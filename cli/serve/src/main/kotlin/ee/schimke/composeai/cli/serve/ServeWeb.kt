@@ -1268,6 +1268,66 @@ ${captureControlsHtml().prependIndent("          ")}
   }
 
   /**
+   * The issues one **comparison row** carries — any naming one of its preview [ids], or its
+   * component.
+   *
+   * Matched over the row's whole id set rather than over the one variant it is serving, because a
+   * row IS the variants: an issue filed from the dark page is about the same two pictures the light
+   * lane is showing, and joining on the served variant alone would hide it from the reader who
+   * switched theme. The folded-out siblings ride along for the same reason they ride along in the
+   * filter — they have no row of their own to carry their reports.
+   *
+   * Open before closed, then newest first: the column is read for "does someone already know?", and
+   * a closed report answers that more weakly than an open one.
+   */
+  private fun issuesForRow(
+    issues: List<ParityIssue>,
+    ids: List<String>,
+    componentId: String?,
+  ): List<ParityIssue> {
+    if (issues.isEmpty()) return emptyList()
+    val wanted = ids.toSet()
+    return issues
+      .filter { issue ->
+        issue.previewIds.any { it in wanted } ||
+          (componentId != null && issue.component == componentId)
+      }
+      .sortedWith(compareBy({ it.state != "open" }, { -it.number }))
+  }
+
+  /**
+   * The wall's **Bugs** cell: what is already filed against this row, and one link to file more.
+   *
+   * The numbers are links out to GitHub and nothing else — a title in the column would push the
+   * pictures off a wall that already carries three of them, and it is on the tooltip where a reader
+   * who wants it can get it without the table reflowing.
+   *
+   * "+ file" is always offered, including on a row with nothing filed, because that row is the
+   * point: a bad score with no issue against it is the one a reader is scanning for. [detailHref]
+   * is the focused comparison for the served pair — the report that names the exact preview AND
+   * reference — and [fallbackHref] the viewer's own report, for a row with no reference to focus.
+   */
+  private fun compareBugsCellHtml(
+    issues: List<ParityIssue>,
+    detailHref: String?,
+    fallbackHref: String,
+  ): String {
+    val links =
+      issues.joinToString("") { issue ->
+        val closed = if (issue.state == "closed") " cp-compare-bug--closed" else ""
+        val tip = "${issue.state} · #${issue.number} ${issue.title}"
+        "<a class=\"cp-compare-bug$closed\" href=\"${WebEscaping.htmlEscape(issue.url)}\" " +
+          "rel=\"noopener\" title=\"${WebEscaping.htmlEscape(tip)}\">#${issue.number}</a>"
+      }
+    val file =
+      "<a class=\"cp-compare-bug-new\" " +
+        "href=\"${WebEscaping.htmlEscape(detailHref ?: fallbackHref)}\" " +
+        "data-bug-fallback=\"${WebEscaping.htmlEscape(fallbackHref)}\" " +
+        "title=\"Report what is wrong with this comparison\">+&#8202;file</a>"
+    return "\n            <td class=\"cp-compare-bugs\">$links$file</td>"
+  }
+
+  /**
    * Provenance of a served design-system catalog: the trusted GitHub [repo]/[branch] it was fetched
    * from, when it was [generatedAt] (ISO-8601), and the [toolVersion]
    * (compose-ai-tools) + [designParityVersion] that produced it. Threaded from [ServeCatalogStore]
@@ -8896,6 +8956,20 @@ ${captureControlsHtml().prependIndent("          ")}
      */
     reportIssue: ReportIssue? = null,
     /**
+     * The catalog's published GitHub issues (`parity/issues.json`), which the wall joins to its
+     * rows as the **Bugs** column.
+     *
+     * A row's score says how far the render is from its design; it cannot say whether anyone
+     * already knows. Those are different questions and a triager needs both at once — a 61% row
+     * with an open issue against it is somebody's work in progress, and a 61% row with nothing
+     * against it is the one to open. The dashboard and the viewer already join this index; the wall
+     * is where a reader is actually scanning for what to file (issue #4624).
+     *
+     * Empty (a session whose catalog publishes no index, or a plain local module) simply drops the
+     * column.
+     */
+    parityIssues: List<ParityIssue> = emptyList(),
+    /**
      * Running server version (`SERVE_VERSION`), shown in the minimal footer. Null omits the build
      * span.
      */
@@ -9006,19 +9080,59 @@ ${captureControlsHtml().prependIndent("          ")}
       return " data-$kind-$theme=\"${WebEscaping.htmlEscape(path(preview, if (kind == "png") "png" else if (kind == "svg") "svg" else "rc"))}\""
     }
 
-    fun referenceAttrs(theme: String, preview: ServePreview?): String {
-      val reference = preview?.let { referencesFor(it.id).firstOrNull() } ?: return ""
-      val raster = "$basePath/reference/${WebEscaping.urlEncodeSegment(reference.id)}.png$q"
+    /**
+     * The score the delivery branch already measured for one pair, when it carries one.
+     *
+     * `design-reference-score.mjs` bakes it into `references/index.json` at publish time by driving
+     * the wall's own scorer, and [ServeDesignReferenceStore] drops it unless it names this build's
+     * kernel — so a number that survives to here is the number this page would compute. Null for a
+     * catalog published before the producer existed, or by a run with no browser to score with.
+     */
+    fun bakedPercent(preview: ServePreview?): Double? = preview?.let {
+      referencesFor(it.id).firstOrNull()?.match?.percent
+    }
+
+    /**
+     * The baked score of the pair this row is SERVED showing — the one `variantFor` resolves for
+     * the page's own theme, which is the catalog's theme and then `neutral`.
+     *
+     * This is what the served row order is taken on. It cannot follow the visitor into another
+     * theme (the document is written once), and it does not have to: `<cp-compare-wall>` re-seeds
+     * and re-sorts from the per-variant attributes whenever the lane or theme changes.
+     */
+    fun servedReferencePercent(card: GridCard): Double? {
+      val themed = if (darkFirst) card.dark else card.light
+      val variant =
+        listOfNotNull(themed, card.neutral).firstOrNull { referencesFor(it.id).isNotEmpty() }
+      return bakedPercent(variant)
+    }
+
+    /** The focused Reference / Diff / Actual page for one pair. */
+    fun detailHref(preview: ServePreview, reference: DesignReference): String {
       val detailQuery =
         linkQuery(token, linkSessionId, basePath, isPublic).let { query ->
           listOf(query, "reference=${WebEscaping.urlEncodeSegment(reference.id)}")
             .filter { it.isNotEmpty() }
             .joinToString("&")
         }
-      val detail =
-        "$basePath/compare/${WebEscaping.urlEncodeSegment(preview.id)}${querySuffix(detailQuery)}"
+      return "$basePath/compare/${WebEscaping.urlEncodeSegment(preview.id)}${querySuffix(detailQuery)}"
+    }
+
+    fun referenceAttrs(theme: String, preview: ServePreview?): String {
+      val reference = preview?.let { referencesFor(it.id).firstOrNull() } ?: return ""
+      val raster = "$basePath/reference/${WebEscaping.urlEncodeSegment(reference.id)}.png$q"
+      val detail = detailHref(preview, reference)
+      // The published score rides along with the pair it describes, per variant, because the pair
+      // is per variant: a row's light and dark references are two independently-exported drawings
+      // and two independently-measured numbers. `<cp-compare-wall>` reads the one matching the
+      // variant it resolved, so switching theme cannot leave the other theme's number standing.
+      val match =
+        reference.match
+          ?.let { " data-match-$theme=\"${String.format(Locale.ROOT, "%.2f", it.percent)}\"" }
+          .orEmpty()
       return " data-reference-$theme=\"${WebEscaping.htmlEscape(raster)}\"" +
-        " data-reference-detail-$theme=\"${WebEscaping.htmlEscape(detail)}\""
+        " data-reference-detail-$theme=\"${WebEscaping.htmlEscape(detail)}\"" +
+        match
     }
 
     val shownCards = cards.filter { card ->
@@ -9039,8 +9153,33 @@ ${captureControlsHtml().prependIndent("          ")}
     // The genuinely folded-out siblings still have to select something, so each is aliased onto
     // exactly ONE row — the first row of its comparison card — rather than onto all of them.
     val aliasesClaimed = mutableSetOf<String>()
+    // The **Bugs** column stands or falls with the catalog's published issue index: with no index
+    // there is nothing to join and the column would be a row of bare "+ file" links, which is a
+    // route every row already has through its reference. A catalog that publishes one gets the
+    // column on every row, INCLUDING the rows with nothing filed — an unfiled bad score is exactly
+    // what a reader is scanning this wall for, and a blank cell there would read as "no route from
+    // here" rather than as "nobody has reported this yet".
+    val showBugs = parityIssues.isNotEmpty()
+    // **Served worst-first**, on the numbers the delivery branch already measured.
+    //
+    // The wall's order is the wall's whole argument — the rows that are wrong have to be the ones
+    // on screen without scrolling — and until now that order only existed AFTER the browser had
+    // decoded and scored two rasters per row, which on a catalog the size of m3-catalog is tens of
+    // seconds of the page sitting in catalog order looking like nothing is wrong. The published
+    // scores answer the same question at serve time, so the document leaves here in the order it
+    // will settle into and the client's measurement becomes a refinement rather than the first
+    // draft (issue #4624).
+    //
+    // Only the reference lane: `svg` and `rc` publish no score of their own, and re-ordering their
+    // rows by a number about a different comparison would be worse than catalog order. A row with
+    // no published score sorts AFTER the scored ones rather than leading like an unmeasurable row
+    // does — "not scored yet" is not a finding, and a catalog published before the producer existed
+    // would otherwise serve its whole table under a banner of rows claiming to be the worst.
+    val orderedCards =
+      if (defaultFormat != "reference") shownCards
+      else shownCards.sortedBy { servedReferencePercent(it) ?: Double.MAX_VALUE }
     val rows =
-      shownCards.joinToString("\n") { card ->
+      orderedCards.joinToString("\n") { card ->
         val variants = listOfNotNull(card.light, card.dark, card.neutral)
         val current = if (darkFirst) card.dark ?: card.default else card.default
         val component = componentKey(current)
@@ -9057,7 +9196,31 @@ ${captureControlsHtml().prependIndent("          ")}
             previewIdsByCard[cardKey].orEmpty().filterNot { it in rowPreviewIds }
           else emptyList()
         val ids = (variants.map { it.id } + folded).distinct().joinToString(" ")
-        val hay = (label + " " + ids).lowercase()
+        // Every issue the catalog's index names against any of this row's previews, or against the
+        // component itself. Matched on the row's WHOLE id set rather than on `current` alone: an
+        // issue is filed from one theme's page and the row shows both, so joining on the served
+        // variant would hide a dark-lane report from the reader looking at the light lane.
+        val bugs = issuesForRow(parityIssues, variants.map { it.id } + folded, current.componentId)
+        // Where "+ file" lands at rest: the focused Reference / Diff / Actual page for the pair
+        // this row is SERVED showing, which files a report naming that exact preview and reference.
+        // `<cp-compare-wall>` re-points it at the pair it resolves whenever the lane or theme
+        // changes; the viewer's own report is the fallback, and the whole of it on a row with no
+        // reference to focus on.
+        val servedDetail =
+          listOfNotNull(if (darkFirst) card.dark else card.light, card.neutral)
+            .firstNotNullOfOrNull { preview ->
+              referencesFor(preview.id).firstOrNull()?.let { detailHref(preview, it) }
+            }
+        val bugCell =
+          if (showBugs) compareBugsCellHtml(bugs, servedDetail, "$viewer#cp-report") else ""
+        // The issue numbers join the haystack, so `#4624` narrows the wall to the rows a report
+        // names — the reverse of the join above, and the way back from an issue to the pictures it
+        // is about.
+        val hay =
+          (listOf(label, ids) + bugs.map { "#${it.number}" })
+            .filter { it.isNotEmpty() }
+            .joinToString(" ")
+            .lowercase()
         val pngAttrs =
           attrs("png", "light", card.light) { true } +
             attrs("png", "dark", card.dark) { true } +
@@ -9096,7 +9259,7 @@ ${captureControlsHtml().prependIndent("          ")}
             else "<span class=\"cp-compare-variant\">${WebEscaping.htmlEscape(variant)}</span>"
           }</a></th>
             $pictureCells
-            <td class="cp-compare-score">waiting…</td>
+            <td class="cp-compare-score">waiting…</td>$bugCell
           </tr>
           """
           .trimIndent()
@@ -9163,7 +9326,9 @@ ${captureControlsHtml().prependIndent("          ")}
         """
         <div class="cp-compare-table-wrap">
           <table class="cp-compare-table">
-            <thead><tr><th>Preview</th>$pictureHeads<th>Match</th></tr></thead>
+            <thead><tr><th>Preview</th>$pictureHeads<th>Match</th>${
+          if (showBugs) "<th class=\"cp-compare-bugs-head\">Bugs</th>" else ""
+        }</tr></thead>
             <tbody>$rows</tbody>
           </table>
         </div>
@@ -9188,6 +9353,10 @@ ${captureControlsHtml().prependIndent("          ")}
         "data-has-svg=\"${if (hasSvg) "1" else "0"}\" data-has-rc=\"${if (hasRc) "1" else "0"}\" " +
         "data-has-reference=\"${if (hasReference) "1" else "0"}\" " +
         "data-reference-label=\"${WebEscaping.htmlEscape(referenceToolLabel)}\"" +
+        // The Bugs column is a fourth thing competing for the reference lane's row width, so
+        // `serve.css` has to know it is there to pay for it out of the panels rather than out of
+        // `Match`.
+        (if (showBugs) " data-has-bugs=\"1\"" else "") +
         (if (rcLanes != null) " data-rc-lanes=\"1\"" else "")
 
     return document(
