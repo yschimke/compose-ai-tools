@@ -165,6 +165,37 @@ test("separates a stated absence from nobody having looked", () => {
   assert.deepEqual(diagnostics.unmapped, ["Forgotten"]);
 });
 
+test("a folded variant's stated absence is reported under the variant, not its parent", () => {
+  // Scanning components alone meant folding a render under a parent silently dropped its stated
+  // absence: a catalog could lose an audit signal by restructuring, which is what `statedAbsent`
+  // exists to prevent. The parent keeps its own reference and stays out of the report.
+  const { diagnostics } = projectDesignMap([
+    component("Button", { reference: ref("1:2") }),
+    catalogVariant("ButtonIconOnly", "Button", {
+      state: "icon-only",
+      noReference: "the kit exports no Text=No cell for this set",
+    }),
+  ]);
+  assert.deepEqual(diagnostics.statedAbsent, [
+    {
+      componentId: "Button [icon-only]",
+      reason: "the kit exports no Text=No cell for this set",
+    },
+  ]);
+  assert.deepEqual(diagnostics.unmapped, []);
+});
+
+test("a variant that says nothing about the kit is not reported as unmapped", () => {
+  // Silence under a parent is the parent's business: an ordinary state variant has never had a
+  // reference and reporting one per fold would drown the signal it is meant to carry.
+  const { diagnostics } = projectDesignMap([
+    component("Button", { reference: ref("1:2") }),
+    catalogVariant("ButtonPressed", "Button", { state: "pressed" }),
+  ]);
+  assert.deepEqual(diagnostics.statedAbsent, []);
+  assert.deepEqual(diagnostics.unmapped, []);
+});
+
 test("entries are sorted by code handle, so the file is diffable", () => {
   const { map } = projectDesignMap([
     component("Zebra", { reference: ref("1:2") }),

@@ -408,6 +408,19 @@ export function variantSeeds(preview) {
 }
 
 /** The name a variant render goes by, for a report and for the design-map `state` slot. */
+/**
+ * How a folded variant names itself in the reference diagnostics: `<parentId> [<variant>]`.
+ *
+ * Not the bare `componentId` — that is the PARENT's id for a VARIANT role, so reporting a variant's
+ * stated absence under it would read as a finding about a parent that may carry a perfectly good
+ * reference. Reuses [variantName] so the label matches what the variant is called everywhere else.
+ */
+export function variantAbsenceId(preview) {
+  const label = variantName(preview, variantSeeds(preview));
+  const parent = preview.catalog?.componentId ?? "(unnamed)";
+  return label ? `${parent} [${label}]` : parent;
+}
+
 function variantName(preview, seeds) {
   const catalog = preview.catalog;
   const cell = preview.overrides?.name;
@@ -532,8 +545,24 @@ export function projectDesignMap(previews, opts = {}) {
   const statedAbsentIds = new Map();
   for (const preview of previews) {
     const catalog = preview.catalog;
-    if (!catalog || catalog.role !== "COMPONENT" || catalog.reference) continue;
+    if (!catalog || catalog.reference) continue;
     if (isVariantCapture(preview)) continue;
+    // A `@CatalogVariant` can now state its own kit correspondence, so its absence is reported
+    // like a component's. Scanning components alone meant folding a render under a parent silently
+    // dropped its stated absence from this accounting — a catalog could lose an audit signal by
+    // restructuring, which is exactly what `statedAbsent` exists to prevent. `--strict` counts a
+    // variant's stated absence the same as a component's: someone looked, and wrote down what they
+    // found, wherever the render sits.
+    //
+    // Keyed by the variant's own label, not its parent's id (`componentId` is the PARENT for a
+    // VARIANT), or a folded variant's reason would be reported against a parent that may have a
+    // perfectly good reference of its own.
+    if (catalog.role === "VARIANT") {
+      if (!catalog.noReference) continue; // silence under a parent is the parent's business
+      statedAbsentIds.set(variantAbsenceId(preview), catalog.noReference);
+      continue;
+    }
+    if (catalog.role !== "COMPONENT") continue;
     const id = catalog.componentId;
     if (catalog.noReference) statedAbsentIds.set(id, catalog.noReference);
     else if (!statedAbsentIds.has(id)) unmappedIds.set(id, true);
