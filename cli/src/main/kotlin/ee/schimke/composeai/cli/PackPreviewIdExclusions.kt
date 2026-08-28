@@ -67,18 +67,32 @@ internal object PackPreviewIdExclusions {
       ?.let { java.io.File(it) }
 
   /**
-   * The patterns in [file], one per line, blanks dropped.
+   * The ids in [file], one per line, blanks dropped. Never empty.
    *
-   * An unreadable file throws rather than yielding an empty list: an exclusion set that silently
-   * became "exclude nothing" renders the whole sheet and reports success, which is exactly the
-   * quiet failure this path exists to prevent.
+   * An unreadable file throws rather than yielding an empty list, and so does a file that is
+   * present but carries no ids. Both would otherwise become "no selection", and for BOTH flags that
+   * reads as *everything* rather than nothing:
+   *
+   * * `--id-file` — an empty list leaves `-PbundlePreviewIds` unset, and `bundle pack` then packs
+   *   the whole catalog. A generated shard file that came out empty would silently pack every
+   *   preview instead of its slice, on every shard.
+   * * `--exclude-preview-id-file` — an empty list excludes nothing, so the whole sheet renders.
+   *
+   * Either way the run reports success while having done the opposite of what the file asked. A
+   * caller with legitimately nothing to select should not pass the flag; that is what the `[ -s …
+   * ]` / non-zero-count guards on the calling side already express.
    */
   fun linesOf(file: java.io.File): List<String> {
     check(file.isFile) {
-      "--exclude-preview-id-file '${file.path}' is not a readable file. Refusing to fall back to " +
-        "an empty exclusion list, which would render every preview and look like success."
+      "'${file.path}' is not a readable file. Refusing to fall back to an empty selection, which " +
+        "would act on every preview and look like success."
     }
-    return file.readLines().map(String::trim).filter(String::isNotEmpty)
+    val lines = file.readLines().map(String::trim).filter(String::isNotEmpty)
+    check(lines.isNotEmpty()) {
+      "'${file.path}' contains no preview ids. Refusing to fall back to an empty selection, which " +
+        "would act on every preview and look like success. Omit the flag instead."
+    }
+    return lines
   }
 
   /**

@@ -297,4 +297,32 @@ class PackPreviewIdExclusionsTest {
         .exceptionOrNull()
     assertEquals(true, e is IllegalStateException)
   }
+
+  // --- an empty file is not "no selection" ------------------------------------------------------
+
+  /**
+   * The trap: for BOTH flags an empty list reads as *everything*, not nothing. `--id-file` leaves
+   * `-PbundlePreviewIds` unset and `bundle pack` packs the whole catalog; an empty exclusion list
+   * excludes nothing and the whole sheet renders. A generated shard file that came out empty would
+   * silently do the opposite of what it asked, on every shard, and report success.
+   */
+  @Test
+  fun `a present but empty file is refused rather than read as no selection`() {
+    for (content in listOf("", "\n", "   \n\t\n   ")) {
+      val f = fileWith(emptyList()).apply { writeText(content) }
+      val e = kotlin.runCatching { PackPreviewIdExclusions.linesOf(f) }.exceptionOrNull()
+      assertEquals(
+        true,
+        e is IllegalStateException,
+        "expected a throw for ${content.length} blank char(s)",
+      )
+      assertEquals(true, e!!.message!!.contains("contains no preview ids"))
+    }
+  }
+
+  @Test
+  fun `a file with one id among blank lines is still a selection`() {
+    val f = fileWith(listOf("", "   ", commaBearingIds[0], ""))
+    assertEquals(listOf(commaBearingIds[0]), PackPreviewIdExclusions.linesOf(f))
+  }
 }
