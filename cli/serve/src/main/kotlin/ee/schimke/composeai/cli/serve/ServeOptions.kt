@@ -150,16 +150,12 @@ public interface ServeOptions {
   public val bundlesDir: String?
 
   /**
-   * Serve one or more **fetched** preview bundles directly (`--bundle <url|path>` / `--bundle
-   * <name>=<url|path>`, repeatable) — no `--module`, no local project, no Gradle build. A URL is
-   * fetched at startup (operator-supplied, so no SSRF gate — same trust level as `--catalogs`); a
-   * local path is read as-is. Each becomes a `/<name>/` session. A bundle that verifies `Trusted`
-   * (Ed25519 signature, or fetched from a trusted branch origin) is served **live** from a render
-   * daemon when `--allow-render-trusted` is set (desktop bundles); otherwise it's served read-only
-   * as its baked PNGs. This is what lets a public server live-render any trusted bundle pulled from
-   * a GitHub branch without knowing the module upfront.
+   * Raw repeatable `--bundle` values, unparsed.
+   *
+   * `ServeStartupBundles.Spec` is the server's shape for a bundle to preload; the CLI's job ends at
+   * collecting the strings.
    */
-  public val bundleSpecs: List<ServeStartupBundles.Spec>
+  public val bundleFlags: List<String>
 
   /**
    * Shared/public mode ingestion: enable `POST /bundles/{name}` so clients can contribute bundles
@@ -385,18 +381,12 @@ public interface ServeOptions {
   public val sitesRaw: String?
 
   /**
-   * The **catalog set as config** (`--catalogs-file <path>`; env `SERVE_CATALOGS_FILE` in the
-   * container profiles): a `catalogs.json` ([ServeCatalogsConfig]) listing every catalog to serve,
-   * where its delivery branch lives, whether it's on the front door, and which front-page section
-   * it's published under. Meant to live on a mounted volume — *outside* the image — so publishing a
-   * catalog is an operator config edit (or an admin-API call, which rewrites this same file) rather
-   * than an image rebuild.
+   * Raw `--catalogs-file` path, unopened.
    *
-   * Composes with `--catalogs` / `--catalogs-unlisted` rather than replacing them: file entries
-   * come first (they carry the group declarations), then any flag entries the file didn't already
-   * name.
+   * The CLI knows a path was given; `ServeCatalogsConfigFile` — what that file means, and how it is
+   * read and rewritten — is the server's.
    */
-  public val catalogsFile: ServeCatalogsConfigFile?
+  public val catalogsFilePath: String?
 
   /** Durable feed cache; defaults beside catalogs.json on deployed boxes, temp for local serve. */
   public val catalogFeedCacheDir: File
@@ -453,31 +443,28 @@ public interface ServeOptions {
   public val agentGrants: Boolean
 
   /**
-   * The most privileged scope a grant on this box may carry (`--agent-grant-scopes`), defaulting to
-   * `preview,live`. `playground` is excluded from the default because it runs caller-supplied
-   * Kotlin here; opting into it is a typed decision.
-   */
-  public val agentGrantMaxScope: ServeAgentGrantScope
-
-  /**
-   * Longest grant this box will mint (`--agent-grant-max-ttl`, e.g. `2h`/`90m`/`3600`). Clamped to
-   * [ServeAgentGrantStore.HARD_MAX_GRANT_TTL_SECONDS] — beyond a day it is not temporary access any
-   * more, it is a credential nobody remembers issuing.
-   */
-  public val agentGrantMaxTtlSeconds: Long
-
-  /**
-   * The independent capabilities a grant on this box may carry (`--agent-grant-capabilities
-   * images`), defaulting to **none**.
+   * Raw `--agent-grant-scopes`, unparsed.
    *
-   * Deliberately its own flag rather than another name in `--agent-grant-scopes`: a capability is
-   * not a rung on that ladder ([ServeAgentGrantCapability]), and an operator raising the scope
-   * ceiling to `live` has said nothing about whether an agent may publish an image on their origin.
-   * Two decisions, two flags.
+   * Deliberately a string: what a scope name means, and which of them is highest, is server policy.
    */
-  public val agentGrantCapabilities: Set<ServeAgentGrantCapability>
+  public val agentGrantScopesFlag: String?
 
-  /** How many grants may be live at once (`--agent-grant-max-active`). */
+  /**
+   * Raw `--agent-grant-max-ttl`, unparsed.
+   *
+   * The duration grammar and the hard ceiling are both server policy, so both live on that side.
+   */
+  public val agentGrantMaxTtlFlag: String?
+
+  /**
+   * Raw `--agent-grant-capabilities`, unparsed.
+   *
+   * The CLI reads the flag; the server decides what the names mean. A capability list is a server
+   * policy, and parsing it here would put `ServeAgentGrantCapability` on the CLI's classpath for
+   * the sake of a string split.
+   */
+  public val agentGrantCapabilitiesFlag: String?
+
   public val agentGrantMaxActive: Int
 
   /**
@@ -526,37 +513,32 @@ public interface ServeOptions {
   public val optimizerCoordinationDirectory: File?
 
   /**
-   * Durable, content-addressed home for the heavy bytes a catalog load fetches — the executable
-   * `liveBundle`, its per-preview splits, and the externalised resource pool ([CatalogBlobPool]).
+   * Raw `--catalog-cache-dir`, or `none` to disable persistence. Unresolved.
    *
-   * **Unlike the theme cache, unset is not off.** A temp-directory pool is exactly what this server
-   * has always had — it is shared across systems and reloads and simply dies with the process — so
-   * falling back to one costs nothing that was not already being paid. What `none` buys is the
-   * ability to say "do not keep these bytes anywhere durable"; what a directory buys is that a
-   * rolled container stops re-downloading ~100 MB per live catalog.
-   *
-   * **There is deliberately no derived default.** The feed and theme caches land beside
-   * `catalogs.json`, which on the prebuilt image is the configuration volume — fine for a few MB of
-   * feed XML, wrong for a pool that may hold several GB of executable bundles. So an unset flag
-   * means the temp-dir pool this always had, a path means that path, and `none` forces the temp dir
-   * back (which is how a deployment overrides an environment default without unsetting it).
+   * As with the theme cache, everything the old val did — creating the directory, testing it for
+   * writability, printing the operator line about container volumes, falling back to a temp dir —
+   * is server startup and now happens there.
    */
-  public val catalogBlobPool: CatalogBlobPool
+  public val catalogCacheDirFlag: String?
+
+  /** Raw `--catalog-cache-max-bytes`; null means "use the server's default". */
+  public val catalogCacheMaxBytesFlag: Long?
 
   /**
-   * Durable home for warmed theme renders (`--theme-cache-dir`), or null to keep the cache in
-   * memory only.
+   * Raw `--theme-cache-dir`, or `none` to disable. Unresolved.
    *
-   * Defaults beside `catalogs.json` exactly as the feed cache does, because that is the directory a
-   * deployment already mounts as a persistent volume — and persistence across container recreation
-   * is the entire point.
-   *
-   * **Unlike the feed cache, there is deliberately no temp-directory fallback.** A theme cache in
-   * `/tmp` would be written once, read never, and thrown away with the container: it would consume
-   * disk and render time to buy exactly nothing, while reporting itself as working. Where there is
-   * no durable location, the honest configuration is no disk tier at all.
+   * Everything the old `themeCacheStore` val did — deriving the default location beside
+   * `--catalogs-file`, creating the directory, testing it for writability, printing the operator
+   * line, opening the store and running its first eviction — is server startup, and it now happens
+   * in the server. The CLI's share is the two strings.
    */
-  public val themeCacheStore: ThemeCacheStore?
+  public val themeCacheDirFlag: String?
+
+  /** Raw `--theme-cache-max-bytes`; null means "use the server's default". */
+  public val themeCacheMaxBytesFlag: Long?
+
+  /** `--theme-cache-evict`: drop every cached generation once, at startup. */
+  public val themeCacheEvictRequested: Boolean
 
   /**
    * In-browser CMP tier (`--wasm-dir <system>=<dir>[,<system>=<dir>…]`): map a design system to the

@@ -38,6 +38,118 @@ import okio.Path.Companion.toPath
  */
 public class ServeRunner(private val options: ServeOptions) : ServeOptions by options {
 
+  private val catalogBlobPool: CatalogBlobPool by lazy {
+    val requested = catalogCacheDirFlag
+    val maxBytes = catalogCacheMaxBytesFlag ?: CatalogBlobPool.DEFAULT_MAX_BYTES
+    val preferred = requested?.takeIf { it != "none" }?.let(::File)
+    if (
+      preferred != null && (preferred.isDirectory || preferred.mkdirs()) && preferred.canWrite()
+    ) {
+      System.err.println(
+        "serve: catalog blob cache at $preferred (cap ${maxBytes / (1024 * 1024)} MB) — " +
+          "it survives only if that path outlives the process; in a container that means a " +
+          "mounted volume, since the writable layer goes with the container"
+      )
+      CatalogBlobPool(preferred, maxBytes = maxBytes, persistenceConfigured = true)
+    } else {
+      if (preferred != null) {
+        System.err.println("serve: catalog blob cache $preferred is not writable; using a temp dir")
+      }
+      val temp =
+        java.nio.file.Files.createTempDirectory("serve-catalog-blobs").toFile().also {
+          it.deleteOnExit()
+        }
+      System.err.println(
+        "serve: catalog blob cache is a temp dir — it will not survive a restart. " +
+          "Set --catalog-cache-dir (SERVE_CATALOG_CACHE_DIR) to a mounted volume to keep it."
+      )
+      // Not configured, and `/status.json` says so: a temp pool fills and serves within-process
+      // hits
+      // exactly like a real one, so without the flag a box that never configured a directory looks
+      // identical to a box whose cache is working.
+      CatalogBlobPool(temp, maxBytes = maxBytes, persistenceConfigured = false)
+    }
+  }
+
+  private val themeCacheStore: ThemeCacheStore? by lazy {
+    val requested = themeCacheDirFlag
+    // `none` disables persistence outright, matching --trust-store's convention in this command.
+    // A sentinel is needed because *unset* cannot mean "off": the derived default lands beside
+    // --catalogs-file, which on the prebuilt image is the durable `preview_config` volume — so an
+    // untouched deployment would quietly fill its configuration volume with an 8 GB render cache.
+    if (requested == "none") return@lazy null
+    val explicit = requested?.let(::File)
+    val preferred =
+      explicit
+        ?: catalogsFilePath?.let(::File)?.absoluteFile?.parentFile?.resolve("theme-cache")
+        ?: return@lazy null
+    if (!(preferred.isDirectory || preferred.mkdirs()) || !preferred.canWrite()) {
+      System.err.println("serve: theme cache disabled — $preferred is not writable")
+      return@lazy null
+    }
+    val maxBytes = themeCacheMaxBytesFlag ?: ThemeCacheStore.DEFAULT_MAX_BYTES
+    System.err.println("serve: theme cache at $preferred (cap ${maxBytes / (1024 * 1024)} MB)")
+    ThemeCacheStore(preferred, maxBytes = maxBytes).also { store ->
+      // Before anything opens a generation, so eviction can never race a live write. Renders
+      // survive a release now (see [ThemeCacheFingerprint]) and the load-time sample is what
+      // catches a renderer that moved — this is the lever for the case where the operator already
+      // knows it moved and would rather not wait to be told.
+      if (themeCacheEvictRequested) {
+        val evicted = store.evictAll()
+        System.err.println("serve: theme cache evicted on request — $evicted generation(s) removed")
+      }
+    }
+  }
+
+  private val bundleSpecs: List<ServeStartupBundles.Spec> by lazy {
+    ServeStartupBundles.parse(bundleFlags)
+  }
+
+  private val catalogsFile: ServeCatalogsConfigFile? = catalogsFilePath?.let {
+    ServeCatalogsConfigFile(it.toPath())
+  }
+
+  private val agentGrantMaxTtlSeconds: Long =
+    agentGrantMaxTtlFlag
+      ?.let {
+        // A typo must not silently become the default. `--agent-grant-max-ttl 30m` mistyped is an
+        // operator asking for half an hour and getting eight — sixteen times the ceiling they
+        // meant, on the one setting that bounds how long a minted credential lives. The client's
+        // `--ttl` already fails loudly; so does this.
+        ServeAgentGrants.parseDurationSeconds(it)
+          ?: throw IllegalArgumentException(
+            "--agent-grant-max-ttl '$it' is not a duration — try 90m, 2h, or a number of seconds"
+          )
+      }
+      ?.coerceIn(60L, ServeDefaults.AGENT_GRANT_HARD_MAX_TTL_SECONDS)
+      ?: ServeDefaults.AGENT_GRANT_MAX_TTL_SECONDS
+
+  private val agentGrantMaxScope: ServeAgentGrantScope =
+    agentGrantScopesFlag?.let {
+      // The worst of this family to default silently: `--agent-grant-scopes preivew` is an operator
+      // narrowing the box to read-only, and the default it would fall back to is `preview,live`. A
+      // typo would have *widened* what every grant on the host may do, which is the opposite of the
+      // intent that made them type the flag.
+      ServeAgentGrantScope.parseHighest(it)
+        ?: throw IllegalArgumentException(
+          "--agent-grant-scopes '$it' is not a scope list — use preview, live, or playground"
+        )
+    } ?: ServeAgentGrantScope.DEFAULT_MAX
+
+  // ---- flag values the server parses for itself ----
+  //
+  // Each of these arrived as a raw string from the CLI. Parsing them here rather than there is what
+  // keeps `ServeAgentGrantCapability`, `ServeAgentGrantScope`, `ServeStartupBundles.Spec` and the
+  // two cache stores off `:cli`'s classpath: the command reads flags, the server decides what they
+  // mean. The operator-facing error messages are unchanged and still fire during startup.
+  private val agentGrantCapabilities: Set<ServeAgentGrantCapability> =
+    agentGrantCapabilitiesFlag?.let {
+      // Throws on an unknown name, same as `--agent-grant-scopes`: a typo here would silently
+      // withhold a capability the operator believes they turned on, and they would go looking for
+      // the bug in the agent.
+      ServeAgentGrantCapability.parseAll(it)
+    } ?: emptySet()
+
   /**
    * The one live-seat budget for this server, shared by the HTTP stream lane and by every catalog
    * daemon pool. Built here rather than inside [ServeHttpServer] so the pools — which are
