@@ -1215,6 +1215,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # The perceptual-diff libraries the image comparisons need. Without them
+      # `test_compare_previews.py` still exits 0 — it SKIPS every class that
+      # opens a PNG, which was five of them (the AA-flake filter, the
+      # high-contrast pass, the resource tolerance, the animated-frame walk, the
+      # transparent-backdrop pass). So the suite that decides what the diff bot
+      # reports was green here without ever running its own image logic. Pinned
+      # to what the production actions install, and NOT tolerant of a failed
+      # install the way those are: a fallback is right for a diff that can
+      # degrade to strict bytes, and wrong for the tests that prove the diff.
+      # `PerceptualLibrariesTest` fails the suite if this step is ever dropped.
+      - name: Install perceptual-diff libraries
+        run: python3 -m pip install --quiet 'pixelmatch==0.4.0' 'Pillow>=10'
       - name: Run compare-previews tests
         run: python3 .github/actions/lib/test_compare_previews.py -v
       - name: Run vscode-preview-diff tests
@@ -1340,6 +1352,13 @@ jobs:
       # breaks unrelated deployments on their next roll or quietly disables the lane — both silent.
       - name: Run deploy agent-grant default tests
         run: ./deploy/image/test-agent-grants-default.sh
+      # The image lane derives its default from its own gating repository, and both halves are
+      # silent when wrong: too narrow and an operator who named SERVE_IMAGE_UPLOAD_REPO gets a box
+      # that 404s POST /images with nothing logged, too wide (keying on SERVE_GITHUB_AUTH_*, whose
+      # repo this image defaults to yschimke/compose-ai-tools) and every adopter's box grows an
+      # upload lane gated by our collaborators rather than theirs.
+      - name: Run deploy image-lane default tests
+        run: ./deploy/image/test-image-lane-default.sh
       # The version-control config overlay is opt-in, so nothing exercises it on the way to a
       # release — a wrong source path or mount target is found on a box, after a restart, serving a
       # stale catalog set. Every failure mode is silent: a missing source makes Docker create an

@@ -2823,7 +2823,7 @@ On the deployed image set `SERVE_ACCEPT_DOCS=1` (plus optional `SERVE_DOC_TTL`,
 ## Uploading a preview image (`--accept-images`)
 
 An agent that just changed a composable has the pixels — a rendered PNG on local disk — and one
-problem left: [this repo's PR rule](../CLAUDE.md) says the before/after must be **embedded and
+problem left: [this repo's PR rule](../AGENTS.md#pr-workflow) says the before/after must be **embedded and
 viewable inline** in the pull-request body, and `![](file:///tmp/before.png)` is not a URL GitHub can
 fetch. `compose-preview share-preview` solves that with a gist or a pushed capture branch, both of
 which need credentials a hosted agent session often doesn't have (`gh`, or push rights on the repo).
@@ -3032,8 +3032,14 @@ content-sniffed, so an upload must *be* one of these and a mislabelled file is r
 SVG is deliberately absent: it is an image to a human and a scriptable document to a browser, so
 serving one would hand an uploader active content on this origin.
 
-On the deployed image set `SERVE_ACCEPT_IMAGES=1` (plus `SERVE_IMAGE_UPLOAD_REPO`, optional
-`SERVE_IMAGE_TTL` / `SERVE_IMAGE_RATE_LIMIT`); it's off by default.
+On the deployed image, naming the gating repository is what turns the lane on:
+`SERVE_IMAGE_UPLOAD_REPO=<owner>/<repo>` (optional `SERVE_IMAGE_TTL` / `SERVE_IMAGE_RATE_LIMIT`).
+`SERVE_ACCEPT_IMAGES` is derived from it — that variable exists for nothing but this lane, so a box
+where it is set and `POST /images` still 404s is nobody's intent — and an explicit `0` (shut with
+the repository named) or `1` (insist without one, and get the server's own refusal) still wins. The
+derivation does not key on `SERVE_GITHUB_AUTH_*`, whose repo the image defaults to
+`yschimke/compose-ai-tools`: that would gate an adopter's upload lane on someone else's
+collaborators. See [deploy/image/README.md](../deploy/image/README.md#image-lane-on-previewcooee).
 
 ## Granting an agent temporary access (`--agent-grants`)
 
@@ -3506,6 +3512,32 @@ samples, fetched from preview branches in the `yschimke/compose-samples` fork, a
 `android/compose-samples`). So serving a third-party catalog under the id `compose-m3` can't make it
 read as an official design system.
 
+#### Which sections come first
+
+`"priority": 100` on a **group** moves its section up the front page — highest first, ties in
+first-appearance order, default `0`:
+
+```json
+{ "id": "design-systems", "heading": "Design Systems", "noun": "design system(s)",
+  "priority": 100 }
+```
+
+Section order used to be positional only: sections came out in the order the catalog list first
+reached them, so lifting a section meant reordering the catalogs under it — and a catalog published
+through the admin API is *appended*, which dragged its whole section to the bottom however the file
+read. On `preview.coo.ee` that put the reference design systems below the sample apps (#4601). The
+two orders are now separate: the catalog list still orders the cards **inside** a section, the
+group's `priority` orders the **sections**.
+
+| Before — first-appearance order | After — `"priority": 100` |
+|---|---|
+| ![The front page opening on android/compose-samples](images/serve-home-section-order-before.png) | ![The front page opening on Design Systems](images/serve-home-section-order-after.png) |
+
+Only declared groups carry one. A card that falls back to its source repo's owner heading sits at
+the default `0`, and `Other` — the unattributed bucket — stays pinned last whatever any priority
+says. `GET /admin/groups` reports each section's `priority`, and re-POSTing a group with a changed
+one converges it in place (see below), so a live box can be reordered without a restart.
+
 ### Image seed vs deployment config
 
 Two different things, kept in two different places on purpose:
@@ -3568,10 +3600,12 @@ malformed entries are `400` and re-publishing a served catalog is `409`.
 | Route | Does |
 |---|---|
 | `GET /admin/groups` | the sections a catalog entry may claim |
-| `POST /admin/groups` | define a section, or restyle one that exists — `{"id","heading","noun"}` |
+| `POST /admin/groups` | define a section, or restyle one that exists — `{"id","heading","noun","priority"}` |
 | `DELETE /admin/groups/<id>` | delete it; its catalogs fall back to their owner heading |
 
-Defining a section also **re-resolves the claims of catalogs already registered**. That matters
+Re-posting a group that already exists with a changed `heading`, `noun` or `priority` updates it in
+place; an identical one is `409`. Defining a section also **re-resolves the claims of catalogs
+already registered**. That matters
 because a catalog's placement is resolved once, at registration, into a snapshot — so without this,
 defining a section after its catalogs were published would collect nothing, and the cards would sit
 under the owner fallback until a restart.

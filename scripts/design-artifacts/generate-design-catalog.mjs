@@ -76,6 +76,7 @@ import { renderFailuresFromBundles } from "./render-failures.mjs";
 import { renderCompareHtml } from "./render-compare-html.mjs";
 import { renderCrossSystemHtml } from "./render-cross-system-html.mjs";
 import {
+  manifestCompareWith,
   normalizeCompareWith,
   primaryReferencesByComponentId,
 } from "./cross-system-compare.mjs";
@@ -758,6 +759,13 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
     // carried through onto catalog.json so the preview server reads them instead
     // of inferring — see catalog.spec.schema.json `display`.
     ...(spec.display ? { display: spec.display } : {}),
+    // The cross-system pairing, for a consumer of the published catalog. Each component already
+    // carries `parallel` (its counterpart's componentId) on the wire, but not which SYSTEM that id
+    // belongs to — so a preview server serving both catalogs could not resolve the pair. This is
+    // the missing half; see `manifestCompareWith` for why it is narrower than the spec field.
+    ...(manifestCompareWith(spec.compareWith)
+      ? { compareWith: manifestCompareWith(spec.compareWith) }
+      : {}),
   };
 
   // `opts.themes` is forwarded explicitly: this join is a VENDORED copy of the published
@@ -1515,6 +1523,14 @@ if (values["publish-live-bundle"]) {
   // `@design-parity/catalog-export` predates `display` in `toCatalogManifest`; once a release
   // carrying it lands and the dep is bumped, `buildCatalog` writes it and this can be dropped.
   if (spec.display) manifest.display = spec.display;
+  // Same post-process, same reason, and NOT optional: `toCatalogManifest` allow-lists the fields it
+  // knows, so `compareWith` set on `buildCatalog`'s meta above is dropped on the way out and the
+  // field never reaches `catalog.json` — the published manifest looks exactly as it did before and
+  // nothing says otherwise. Setting it in both places is deliberate: the meta is where it belongs
+  // once the pinned exporter learns the field, this stamp is what makes it real today, and the two
+  // agreeing is what lets the stamp be deleted rather than hunted for.
+  const publishedCompareWith = manifestCompareWith(spec.compareWith);
+  if (publishedCompareWith) manifest.compareWith = publishedCompareWith;
   if (webRender) manifest.webRender = webRender;
   if (liveBundle) manifest.liveBundle = liveBundle;
   if (liveBundles.length > 0) manifest.liveBundles = liveBundles;

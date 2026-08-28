@@ -4987,12 +4987,14 @@ ${captureControlsHtml().prependIndent("          ")}
 
   /**
    * A front-page section a catalog may be published under: the [heading] shown, its count [noun],
-   * and the [repos] whose bytes are allowed to appear under it.
+   * the [repos] whose bytes are allowed to appear under it, and its section-order [priority]
+   * ([ServeCatalogsConfig.Group.priority], highest first).
    */
   data class HomeGroup(
     val heading: String,
     val noun: String = ServeCatalogsConfig.DEFAULT_NOUN,
     val repos: Set<String> = emptySet(),
+    val priority: Int = 0,
   )
 
   /**
@@ -5378,25 +5380,40 @@ ${captureControlsHtml().prependIndent("          ")}
    *
    * A catalog whose claim doesn't hold — or that declares no group at all — falls back to its
    * source repo's **owner** section, and one with no provenance at all to "Other": unattributed,
-   * never promoted. Sections come out in first-appearance (i.e. configured) order, so the operator
-   * controls the front page's running order, with "Other" pinned last.
+   * never promoted.
+   *
+   * Sections come out by their group's [HomeGroup.priority] (highest first), then in
+   * first-appearance (i.e. configured) order — so an operator orders the front page either by where
+   * the catalogs sit in the list or, when that isn't enough, by saying so on the group
+   * ([ServeCatalogsConfig.Group.priority]). A section whose group declares no priority, and one
+   * derived from a repo owner, sit at 0; where two claims share a heading the section takes the
+   * highest of them; "Other" is pinned last whatever it claims.
    */
   internal fun homeSections(systems: List<HomeSystem>): List<HomeSection> {
     val grouped = LinkedHashMap<String, MutableList<HomeSystem>>()
     val nouns = LinkedHashMap<String, String>()
+    val priorities = LinkedHashMap<String, Int>()
     for (s in systems) {
       // The claim only holds when the bytes came from a repo the operator named for this entry.
       val claimed = s.group?.takeIf { g -> s.sourceRepo != null && s.sourceRepo in g.repos }
       val heading = claimed?.heading ?: ownerHeading(s.sourceRepo)
       grouped.getOrPut(heading) { mutableListOf() } += s
       nouns.putIfAbsent(heading, claimed?.noun ?: ServeCatalogsConfig.DEFAULT_NOUN)
+      // Sections merge on the HEADING, which is operator text and neither unique nor validated as
+      // such: two declared groups (or a group and an owner fallback) can spell the same one. So the
+      // merged section takes the highest priority any of its claims declares — recording only the
+      // first would leave a `priority: 100` group unlifted purely because a heading-mate with no
+      // priority happened to register earlier.
+      priorities.merge(heading, claimed?.priority ?: 0, ::maxOf)
     }
     val sections = grouped.map { (heading, list) ->
       HomeSection(heading, list, nouns.getValue(heading))
     }
+    // sortedByDescending is stable, so equal priorities keep their first-appearance order.
+    val ordered = sections.sortedByDescending { priorities.getValue(it.heading) }
     // "Other" is the unattributed bucket, so it reads last regardless of when it first appeared.
-    return sections.filterNot { it.heading == OTHER_HEADING } +
-      sections.filter { it.heading == OTHER_HEADING }
+    return ordered.filterNot { it.heading == OTHER_HEADING } +
+      ordered.filter { it.heading == OTHER_HEADING }
   }
 
   /** The heading an ungrouped catalog falls back to: its repo owner's, else the "Other" bucket. */
@@ -7294,20 +7311,49 @@ ${captureControlsHtml().prependIndent("          ")}
           val loadError = c.loadError?.let { "<div class=\"cp-muted\">${esc(it)}</div>" } ?: ""
           val themeOptimization =
             c.themeOptimization?.let { optimization ->
+              // Dirty renders are the case this row used to report as finished. They are warm and
+              // served, so `cached` counts them and `fullyOptimized` is true — but they were
+              // written by a DIFFERENT build, and the pass is still working through re-rendering
+              // them. A catalog that has adopted its predecessor's whole cache would otherwise
+              // read "themes optimized 10440/10440" while every one of those pixels came from a
+              // renderer that is no longer running, which is precisely the thing an operator
+              // checking this page needs to be told.
+              //
+              // Worded for what the count means rather than for the case that motivated it. An
+              // operator calling `regenerate` marks THIS build's renders dirty too, so "inherited"
+              // would be a false claim about where those pixels came from, and "re-rendering"
+              // asserts activity the pass may not have — the queue can be paused, or waiting on
+              // admission. Saying only that they are queued is true of both, and telling them
+              // apart would need the store to carry provenance per entry, which the timestamp
+              // boundary deliberately does not.
+              val queued =
+                if (optimization.dirty > 0) " · ${optimization.dirty} awaiting re-render" else ""
+              val failed = if (optimization.failed > 0) " · ${optimization.failed} failed" else ""
               val detail =
-                if (optimization.fullyOptimized) {
+                if (optimization.converged) {
                   "themes optimized ${optimization.cached}/${optimization.total}"
+                } else if (optimization.fullyOptimized) {
+                  // `failed` belongs here too, and this is the branch that needs it most. A
+                  // fully-warm catalog whose dirty re-renders keep failing is exactly the state the
+                  // dirty failure count was added to make visible: every target is cached, so
+                  // nothing else on the row moves, and without this the only signal was the meter's
+                  // colour.
+                  "themes optimized ${optimization.cached}/${optimization.total}$failed$queued"
                 } else {
                   "theme optimization ${optimization.state} · " +
                     "${optimization.cached}/${optimization.total} cached" +
-                    if (optimization.failed > 0) " · ${optimization.failed} failed" else ""
+                    failed +
+                    queued
                 }
               "<div class=\"cp-muted\">${esc(detail)}</div>" +
                 inlineMeter(
                   detail,
                   optimization.cached.toLong(),
                   optimization.total.toLong(),
-                  if (optimization.failed > 0) "warning" else "primary",
+                  // Queued renders are not a failure — they are serving — but they are not
+                  // finished either, so the meter must not read the same as a converged catalog.
+                  if (optimization.failed > 0) "warning"
+                  else if (optimization.dirty > 0) "secondary" else "primary",
                 )
             } ?: ""
           val renderCache =

@@ -3117,22 +3117,26 @@ class ServeWebFixtureTest {
             healthHref = "#recent-daemon-failures",
             summary =
               listOf(
+                // Both cards are derived from the catalog list by production
+                // `ServeStatusSnapshot.toView()`, so they have to move with it: the `wear-m3` entry
+                // below adds a fifth catalog and its 30 previews. A fixture whose summary disagrees
+                // with its own table is a golden screenshot of a state the server cannot produce.
                 ServeWeb.Stat(
                   "Catalogs",
-                  "4/4 loaded",
+                  "5/5 loaded",
                   ServeWeb.Meter(
-                    total = 4,
-                    segments = listOf(ServeWeb.MeterSegment("loaded", 4, "primary")),
+                    total = 5,
+                    segments = listOf(ServeWeb.MeterSegment("loaded", 5, "primary")),
                   ),
                 ),
                 ServeWeb.Stat(
                   "Published catalog renders",
-                  "76 rendered · 1 failed · 0 deferred",
+                  "106 rendered · 1 failed · 0 deferred",
                   ServeWeb.Meter(
-                    total = 77,
+                    total = 107,
                     segments =
                       listOf(
-                        ServeWeb.MeterSegment("rendered", 76, "primary"),
+                        ServeWeb.MeterSegment("rendered", 106, "primary"),
                         ServeWeb.MeterSegment("failed", 1, "warning"),
                       ),
                   ),
@@ -3226,6 +3230,47 @@ class ServeWebFixtureTest {
                     CatalogRenderCacheSnapshot(
                       entries = 1448,
                       bytes = 13L * 1024 * 1024,
+                      maxBytes = 128L * 1024 * 1024,
+                      evictions = 0,
+                    ),
+                ),
+                // A catalog part way through replacing another build's renders, with some of them
+                // refusing to re-render. Every other catalog here is converged, so without this
+                // entry the whole dirty/failed half of the optimization row — the wording, the
+                // failure count and the meter's tone — was rendered by no fixture and therefore
+                // diffed by nothing, which is how a status row can change unnoticed.
+                ServeWeb.StatusCatalog(
+                  id = "wear-m3",
+                  title = "Wear Material 3",
+                  listed = true,
+                  trust = "branch:yschimke/wear-m3-catalog@design-artifacts/wear-m3",
+                  previews = 30,
+                  live = true,
+                  running = true,
+                  degradation = null,
+                  provenance =
+                    provenance.copy(
+                      repo = "yschimke/wear-m3-catalog",
+                      branch = "design-artifacts/wear-m3",
+                    ),
+                  themeOptimization =
+                    ThemeOptimizationSnapshot(
+                      state = "degraded",
+                      total = 240,
+                      cached = 232,
+                      remaining = 8,
+                      // Non-zero only because a *dirty* entry can now be counted: these are cached,
+                      // so the old "not cached" rule reported this catalog as having no failures.
+                      failed = 3,
+                      cachedBytes = 11_403_264,
+                      fullyOptimized = false,
+                      dirty = 24,
+                      startedAtEpochMillis = 1_721_209_800_000,
+                    ),
+                  renderCache =
+                    CatalogRenderCacheSnapshot(
+                      entries = 240,
+                      bytes = 4L * 1024 * 1024,
                       maxBytes = 128L * 1024 * 1024,
                       evictions = 0,
                     ),

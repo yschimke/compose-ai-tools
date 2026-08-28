@@ -89,8 +89,10 @@ data class OptimizerPressureThresholds(
     fun fromSystemProperties(): OptimizerPressureThresholds {
       val defaults = OptimizerPressureThresholds()
       return OptimizerPressureThresholds(
-        stopLoadPerCpu = fraction("optimizerStopLoadPerCpu") ?: defaults.stopLoadPerCpu,
-        resumeLoadPerCpu = fraction("optimizerResumeLoadPerCpu") ?: defaults.resumeLoadPerCpu,
+        // `ratio`, NOT `fraction`. Load average per CPU is not bounded by 1.0 — it is a queue
+        // depth, and a host rendering flat out sits well above one runnable task per core.
+        stopLoadPerCpu = ratio("optimizerStopLoadPerCpu") ?: defaults.stopLoadPerCpu,
+        resumeLoadPerCpu = ratio("optimizerResumeLoadPerCpu") ?: defaults.resumeLoadPerCpu,
         stopCpuUtilization = fraction("optimizerStopCpuUtilization") ?: defaults.stopCpuUtilization,
         resumeCpuUtilization =
           fraction("optimizerResumeCpuUtilization") ?: defaults.resumeCpuUtilization,
@@ -115,6 +117,31 @@ data class OptimizerPressureThresholds(
     /** A ratio in `0.0..1.0`; anything outside that is a typo, so ignore it rather than obey it. */
     private fun fraction(name: String): Double? =
       System.getProperty("composeai.serve.$name")?.toDoubleOrNull()?.takeIf { it in 0.0..1.0 }
+
+    /**
+     * A load average per CPU, which is a **queue depth and not a fraction**: one runnable task per
+     * core reads 1.0, and a host deliberately rendering flat out sits above that.
+     *
+     * These two thresholds were parsed by [fraction] and silently lost every value over 1.0. On
+     * preview.coo.ee, whose load while the optimizer works measures 1.03 to 1.74 per CPU, that made
+     * the load limb impossible to relax: the stop side could not be raised past its 0.85 default,
+     * so the gate tripped on the optimizer's own rendering and the override an operator wrote was
+     * dropped without a word. Failing closed is right for a typo in a percentage; it is wrong for a
+     * number whose legitimate range simply is not `0..1`.
+     *
+     * Still bounded, because a typo is still a typo — but at a ceiling no real box reaches rather
+     * than at one every busy box exceeds. Above it, the default stands, as before.
+     */
+    private fun ratio(name: String): Double? =
+      System.getProperty("composeai.serve.$name")?.toDoubleOrNull()?.takeIf {
+        it in 0.0..MAX_LOAD_PER_CPU
+      }
+
+    /**
+     * Ceiling for a load-per-CPU threshold. A box whose load average is 64x its core count is not a
+     * box an operator is tuning; it is one that has already fallen over.
+     */
+    private const val MAX_LOAD_PER_CPU = 64.0
 
     /** Zero is meaningful (sample every call, never hold), so only negatives are rejected. */
     private fun millis(name: String): Long? =

@@ -246,7 +246,9 @@ internal object CliFlagValidation {
         commandBase +
           setOf(
             "--embed-deps",
+            "--id-file",
             "--exclude-preview-id",
+            "--exclude-preview-id-file",
             "--exclude-preview-row",
             "--ext",
             "--external-images",

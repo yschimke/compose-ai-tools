@@ -166,6 +166,51 @@ class ThemeCachePersistenceTest {
     )
   }
 
+  /**
+   * The status row counts a dirty render the pass cannot replace.
+   *
+   * `failed` counted only keys that are not cached, which is right while a gap is a gap: a key that
+   * failed and has since rendered is no longer a failure. A **dirty** key breaks that equivalence,
+   * because it is cached on purpose — serving another build's pixels is what the dirty model buys —
+   * so a re-render failing over and over was counted as zero, and the one row that exists to say a
+   * warm catalog is not really finished could never say it.
+   */
+  @Test
+  fun `a dirty render the pass cannot regenerate is counted as failed`() {
+    val root = tempDir()
+    val fp = "fp-dirty-failed"
+    val first = assertNotNull(store(root).open("m3-catalog", fp, inputs(fp)))
+    first.put("preview|dark", ByteArray(8) { 1 })
+
+    ageRenders(root, "m3-catalog", fp, byMillis = 10_000)
+    val next =
+      assertNotNull(store(root).open("m3-catalog", fp, inputs(fp).copy(toolVersion = "1.15.0")))
+    val cache = CatalogThemeCache(persistence = next)
+    cache.configureTargets(listOf("preview|dark"))
+
+    assertTrue(cache.contains("preview|dark"), "the inherited render still serves")
+    assertEquals(1, cache.snapshot().dirty, "and it is queued for regeneration")
+
+    cache.markFailed("preview|dark", "the daemon refused the re-render")
+
+    assertEquals(
+      1,
+      cache.snapshot().failed,
+      "a dirty entry the pass cannot regenerate is a failure, even though it is still cached",
+    )
+
+    // The other half of the rule, which the fix must not cost: once the entry really is this
+    // build's work, a later failure against it is not a gap in the generation.
+    cache.put("preview|dark", ByteArray(8) { 2 })
+    assertEquals(0, cache.snapshot().dirty, "regenerating clears the mark")
+    cache.markFailed("preview|dark", "a later, transient refusal")
+    assertEquals(
+      0,
+      cache.snapshot().failed,
+      "a clean cached render that failed afterwards is not a missing target",
+    )
+  }
+
   @Test
   fun `a failed sample drops the dirty renders and keeps the ones this build made`() {
     val root = tempDir()

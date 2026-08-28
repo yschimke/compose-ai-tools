@@ -38,7 +38,82 @@ internal object PackPreviewIdExclusions {
    * command line can narrow an inherited environment.
    */
   fun fromArgs(args: List<String>, env: (String) -> String? = System::getenv): List<String> =
-    patternsFor(args, "--exclude-preview-id", ENV_VAR, env)
+    fileFromArgs(args)?.let(::linesOf) ?: patternsFor(args, "--exclude-preview-id", ENV_VAR, env)
+
+  /** The Gradle property carrying a PATH to a newline-delimited exclusion list. */
+  const val FILE_GRADLE_PROPERTY = "composePreview.idExcludeFile"
+
+  /**
+   * `--exclude-preview-id-file <path>`, the delimiter-free form of `--exclude-preview-id`.
+   *
+   * A preview id may contain a comma — `@Preview(widthDp = …, heightDp = …)` mints
+   * `…CustomShapeRemoteButton_width=227dp, height=100dp, dpi=320` — so the comma-separated flag
+   * cannot carry one. Joining and re-splitting shatters each id into fragments, and because a plain
+   * pattern matches on **substring**, a fragment like `dpi=320` matches every preview in the
+   * module: a list deferring 47 of 58 previews excluded all 58 and the render died with "nothing
+   * would render". One pattern per line has no such ambiguity, because a line break cannot occur
+   * inside an id.
+   *
+   * Returns the file, not its contents, because both consumers need it: the semantics capture reads
+   * the lines here, and the render is handed the PATH (via [FILE_GRADLE_PROPERTY]) so nothing
+   * re-joins them downstream.
+   */
+  fun fileFromArgs(args: List<String>): java.io.File? =
+    args
+      .flagValuesAll("--exclude-preview-id-file")
+      .lastOrNull()
+      ?.trim()
+      ?.takeIf(String::isNotEmpty)
+      ?.let { java.io.File(it) }
+
+  /**
+   * The ids in [file], one per line, blanks dropped. Never empty.
+   *
+   * An unreadable file throws rather than yielding an empty list, and so does a file that is
+   * present but carries no ids. Both would otherwise become "no selection", and for BOTH flags that
+   * reads as *everything* rather than nothing:
+   *
+   * * `--id-file` — an empty list leaves `-PbundlePreviewIds` unset, and `bundle pack` then packs
+   *   the whole catalog. A generated shard file that came out empty would silently pack every
+   *   preview instead of its slice, on every shard.
+   * * `--exclude-preview-id-file` — an empty list excludes nothing, so the whole sheet renders.
+   *
+   * Either way the run reports success while having done the opposite of what the file asked. A
+   * caller with legitimately nothing to select should not pass the flag; that is what the `[ -s …
+   * ]` / non-zero-count guards on the calling side already express.
+   */
+  fun linesOf(file: java.io.File): List<String> {
+    check(file.isFile) {
+      "'${file.path}' is not a readable file. Refusing to fall back to an empty selection, which " +
+        "would act on every preview and look like success."
+    }
+    val lines = file.readLines().map(String::trim).filter(String::isNotEmpty)
+    check(lines.isNotEmpty()) {
+      "'${file.path}' contains no preview ids. Refusing to fall back to an empty selection, which " +
+        "would act on every preview and look like success. Omit the flag instead."
+    }
+    return lines
+  }
+
+  /**
+   * `bundle pack --id-file <path>`: the previews to PACK, one per line.
+   *
+   * The include-side twin of [fileFromArgs], and needed for the same reason. `--id` comma-splits
+   * every value, so an id containing a comma — `@Preview(widthDp = …, heightDp = …)` mints
+   * `…AppCardRemote_width=227dp,height=200dp,dpi=320` — is shattered into three.
+   * `composePreviewRender` survives that because it matches ids by SUBSTRING, so the fragments
+   * still select something; `composePreviewBundle` matches EXACTLY and fails with `preview id not
+   * found: …AppCardRemote_width=227dp`, naming the first fragment. Escaping does not help:
+   * `encodePreviewId` protects commas on the Gradle transport, but by then the id is already in
+   * pieces.
+   *
+   * A line break cannot occur inside an id, so a file has no such ambiguity. When present it
+   * REPLACES `--id` rather than adding to it.
+   */
+  fun idFileFromArgs(args: List<String>): java.io.File? =
+    args.flagValuesAll("--id-file").lastOrNull()?.trim()?.takeIf(String::isNotEmpty)?.let {
+      java.io.File(it)
+    }
 
   /** The Gradle property carrying `@PreviewParameter` **row** label exclusions. */
   const val ROW_GRADLE_PROPERTY = "composePreview.rowExclude"

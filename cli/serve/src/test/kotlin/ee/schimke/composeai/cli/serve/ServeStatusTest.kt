@@ -561,6 +561,109 @@ class ServeStatusTest {
     assertFalse(html.contains("<div class=\"cp-muted\">same-session-x</div>"), html)
   }
 
+  /**
+   * A catalog can be warm everywhere and finished nowhere.
+   *
+   * `cached` counts dirty renders and `fullyOptimized` is true for them, because they ARE served —
+   * that is the whole point of the dirty model. But they were written by a different build and the
+   * pass is still replacing them. Reporting "themes optimized 10440/10440" for a catalog whose
+   * every pixel came from a renderer that is no longer running is the one thing an operator reading
+   * this row must not be told.
+   */
+  @Test
+  fun `a catalog holding another build's renders does not read as optimized`() {
+    fun rowFor(cached: Int, dirty: Int, failed: Int = 0): String =
+      ServeWeb.statusPage(
+        token = "unused",
+        view =
+          ServeWeb.StatusView(
+            version = "test",
+            public = true,
+            nowMillis = Instant.parse("2026-08-18T12:00:00Z").toEpochMilli(),
+            overallOk = true,
+            summary = emptyList(),
+            config = emptyList(),
+            catalogs =
+              listOf(
+                ServeWeb.StatusCatalog(
+                  id = "m3-catalog",
+                  title = "Material 3",
+                  listed = true,
+                  trust = "unverified",
+                  previews = 4,
+                  live = true,
+                  running = true,
+                  degradation = null,
+                  provenance =
+                    ServeWeb.CatalogProvenance(
+                      repo = "example/m3-catalog",
+                      branch = "published",
+                      generatedAt = "2026-08-18T10:00:00Z",
+                    ),
+                  themeOptimization =
+                    ThemeOptimizationSnapshot(
+                      state = "complete",
+                      total = 8,
+                      cached = cached,
+                      remaining = 8 - cached,
+                      failed = failed,
+                      cachedBytes = 0,
+                      dirty = dirty,
+                      fullyOptimized = cached == 8,
+                    ),
+                )
+              ),
+            servers = emptyList(),
+            failures = emptyList(),
+          ),
+      )
+
+    // Converged: every target warm AND produced by the renderer that is running.
+    val converged = rowFor(cached = 8, dirty = 0)
+    assertTrue(converged.contains("themes optimized 8/8"), converged)
+    assertFalse(converged.contains("inherited"), converged)
+
+    // Warm everywhere, but every render still awaiting replacement. Same `cached`, same
+    // `fullyOptimized` — and it must not read the same.
+    val inherited = rowFor(cached = 8, dirty = 8)
+    assertTrue(
+      inherited.contains("themes optimized 8/8 · 8 awaiting re-render"),
+      "a fully warm but wholly unreplaced catalog must say so: $inherited",
+    )
+    // Neutral about BOTH things the count cannot know. `regenerate` marks this build's own renders
+    // dirty, so the row must not call them inherited; and the pass may be paused or waiting on
+    // admission, so it must not claim to be re-rendering them right now.
+    assertFalse(
+      inherited.contains("inherited") || inherited.contains("re-rendering"),
+      "the row must not claim provenance or activity the dirty count cannot establish: $inherited",
+    )
+
+    // Part way through: gaps left AND queued renders still behind them.
+    val partial = rowFor(cached = 5, dirty = 3)
+    assertTrue(partial.contains("5/8 cached"), partial)
+    assertTrue(partial.contains("3 awaiting re-render"), partial)
+
+    // Every target cached AND some of them failing to regenerate. This is the state the dirty
+    // failure count exists for — nothing else on the row moves, because `cached` is already at
+    // `total` — so the branch that renders a fully-warm catalog has to print the count too. It did
+    // not, and the meter's colour was the only signal.
+    val warmAndFailing = rowFor(cached = 8, dirty = 8, failed = 2)
+    assertTrue(
+      warmAndFailing.contains("themes optimized 8/8 · 2 failed · 8 awaiting re-render"),
+      "a fully warm catalog whose re-renders are failing must say so in words: $warmAndFailing",
+    )
+
+    // A failure still wins the meter's tone — a queued render is not an error, it is unfinished
+    // work.
+    val broken = rowFor(cached = 5, dirty = 3, failed = 2)
+    assertTrue(broken.contains("2 failed"), broken)
+    assertTrue(broken.contains("cp-inline-meter-fill--warning"), broken)
+    assertTrue(
+      inherited.contains("cp-inline-meter-fill--secondary"),
+      "a queued catalog reads as unfinished, not as failed or as done: $inherited",
+    )
+  }
+
   @Test
   fun `status distinguishes published render failures from an empty catalog`() {
     server =

@@ -68,6 +68,32 @@ class ServeCatalogsConfigTest {
   }
 
   @Test
+  fun `group priority defaults to zero and survives a round trip`() {
+    val config =
+      ServeCatalogsConfig.parse(
+        """
+        {
+          "groups": [
+            { "id": "design-systems", "heading": "Design Systems", "priority": 100 },
+            { "id": "android-samples", "heading": "android/compose-samples" }
+          ],
+          "catalogs": [ { "system": "m3-catalog", "group": "design-systems" } ]
+        }
+        """
+          .trimIndent()
+      )
+
+    assertEquals(listOf(100, 0), config.groups.map { it.priority })
+    assertEquals(emptyList(), config.problems())
+    // The admin API rewrites this file, so a section order an operator declared has to survive it.
+    assertEquals(
+      listOf(100, 0),
+      ServeCatalogsConfig.parse(ServeCatalogsConfig.encode(config)).groups.map { it.priority },
+    )
+    assertEquals(100, config.groupFor(config.catalogs.single())?.priority)
+  }
+
+  @Test
   fun `unknown keys are ignored so a newer config still boots an older server`() {
     val config =
       ServeCatalogsConfig.parse(

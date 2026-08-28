@@ -259,4 +259,91 @@ class PreviewFilterTest {
     // Unanchored keeps its documented substring behaviour.
     assertTrue(PreviewFilter.matchesId(listOf("Foo_Light"), "Foo_Light_VARIANT_off"))
   }
+
+  // --- idExcludesFrom: the delimiter-free exclusion file (see ID_EXCLUDE_FILE_PROPERTY) ---
+
+  private fun props(vararg pairs: Pair<String, String>): (String) -> String? {
+    val m = pairs.toMap()
+    return { m[it] }
+  }
+
+  @Test
+  fun `with no file property, falls back to the comma-separated property`() {
+    assertEquals(
+      listOf("Foo", "Bar"),
+      PreviewFilter.idExcludesFrom(read = props(PreviewFilter.ID_EXCLUDE_PROPERTY to "Foo, Bar")),
+    )
+  }
+
+  @Test
+  fun `a file carries an id containing commas intact, and wins over the joined property`() {
+    val ids =
+      listOf(
+        "ee.schimke.CatalogPreviewsKt.CustomShapeRemoteButton_width=227dp, height=100dp, dpi=320",
+        "ee.schimke.CatalogPreviewsKt.NamedLabelRemoteButton_width=227dp, height=100dp, dpi=320",
+      )
+    assertEquals(
+      ids,
+      PreviewFilter.idExcludesFrom(
+        read =
+          props(
+            PreviewFilter.ID_EXCLUDE_FILE_PROPERTY to "/excludes.txt",
+            PreviewFilter.ID_EXCLUDE_PROPERTY to "ignored",
+          ),
+        readFile = { path -> if (path == "/excludes.txt") ids else null },
+      ),
+    )
+  }
+
+  /**
+   * The live failure this guards: joined and re-split, `dpi=320` becomes a pattern of its own, and
+   * a plain pattern matches on SUBSTRING — so it excludes every preview in the module.
+   */
+  @Test
+  fun `the joined form shatters such ids into a pattern that excludes everything`() {
+    val ids =
+      listOf(
+        "ee.schimke.CatalogPreviewsKt.CustomShapeRemoteButton_width=227dp, height=100dp, dpi=320",
+        "ee.schimke.CatalogPreviewsKt.KeepMe_width=227dp, height=100dp, dpi=320",
+      )
+    val shattered =
+      PreviewFilter.idExcludesFrom(
+        read = props(PreviewFilter.ID_EXCLUDE_PROPERTY to ids.joinToString(","))
+      )
+    assertTrue(shattered.contains("dpi=320"))
+    assertFailsWith<IllegalStateException> {
+      PreviewFilter.excludeById(items = ids, excludes = shattered, id = { it })
+    }
+
+    // The file form removes only the id it names.
+    val fromFile =
+      PreviewFilter.idExcludesFrom(
+        read = props(PreviewFilter.ID_EXCLUDE_FILE_PROPERTY to "/x"),
+        readFile = { listOf(ids[0]) },
+      )
+    assertEquals(listOf(ids[1]), PreviewFilter.excludeById(ids, fromFile, id = { it }))
+  }
+
+  @Test
+  fun `blank lines are dropped and entries trimmed`() {
+    assertEquals(
+      listOf("Foo", "Bar"),
+      PreviewFilter.idExcludesFrom(
+        read = props(PreviewFilter.ID_EXCLUDE_FILE_PROPERTY to "/x"),
+        readFile = { listOf("  Foo ", "", "   ", "Bar") },
+      ),
+    )
+  }
+
+  @Test
+  fun `an unreadable file fails loudly rather than excluding nothing`() {
+    val e =
+      assertFailsWith<IllegalStateException> {
+        PreviewFilter.idExcludesFrom(
+          read = props(PreviewFilter.ID_EXCLUDE_FILE_PROPERTY to "/missing"),
+          readFile = { null },
+        )
+      }
+    assertTrue(e.message!!.contains("not a readable file"))
+  }
 }

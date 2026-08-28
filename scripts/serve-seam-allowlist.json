@@ -154,6 +154,7 @@
       "serve.PreviewHistoryManifest",
       "serve.ServeAgentGrantScope",
       "serve.ServeAgentGrantStore",
+      "serve.ServeBackgroundWork",
       "serve.ServeBundleHost",
       "serve.ServeCatalogStore",
       "serve.ServeHttpServer",
@@ -162,6 +163,7 @@
       "serve.ServeParameterRows",
       "serve.ServePreview",
       "serve.ServeRenderHost",
+      "serve.ServeRunner",
       "serve.ServeSessionRegistry",
       "serve.ServeUrls",
       "serve.WebEmbed"

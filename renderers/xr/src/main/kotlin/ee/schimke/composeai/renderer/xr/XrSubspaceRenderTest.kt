@@ -74,7 +74,7 @@ public class XrSubspaceRenderTest(private val preview: XrManifestReader.XrPrevie
         items = XrManifestReader.xrPreviews(File(manifest)),
         nameFilters = PreviewFilter.patternsFrom(PreviewFilter.NAME_FILTER_PROPERTY),
         idFilters = PreviewFilter.patternsFrom(PreviewFilter.ID_FILTER_PROPERTY),
-        idExcludes = PreviewFilter.patternsFrom(PreviewFilter.ID_EXCLUDE_PROPERTY),
+        idExcludes = PreviewFilter.idExcludesFrom(),
         functionName = { it.functionName },
         className = { it.className },
         id = { it.id },

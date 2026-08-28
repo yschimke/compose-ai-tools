@@ -1,8 +1,9 @@
 /**
- * Unit tests for the two joins behind the cross-system compare page: widening `compareWith` to its
- * object form (so a sibling can live in another repository), and inverting a published
- * `references/index.json` onto componentId (so the page can carry a design column beside the two
- * implementations).
+ * Unit tests for the joins behind a catalog's cross-system pairing: widening `compareWith` to its
+ * object form (so a sibling can live in another repository), inverting a published
+ * `references/index.json` onto componentId (so the compare page can carry a design column beside
+ * the two implementations), and narrowing `compareWith` to the shape the published manifest
+ * carries (so a preview server can resolve a component's `parallel` counterpart).
  *
  * Run with `node --test scripts/design-artifacts/`.
  */
@@ -10,6 +11,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  manifestCompareWith,
   normalizeCompareWith,
   primaryReferencesByComponentId,
 } from "./cross-system-compare.mjs";
@@ -121,4 +123,50 @@ test("an empty object-form system is rejected as hard as an empty string", () =>
   assert.equal(normalizeCompareWith({ system: "" }), null);
   assert.equal(normalizeCompareWith({ system: "   " }), null);
   assert.equal(normalizeCompareWith("   "), null);
+});
+
+// --- manifestCompareWith: what reaches a consumer of the published catalog (issue #4621) -------
+
+test("a same-repo pairing publishes the sibling slug alone", () => {
+  // The common shape, and the one remote-catalog uses: a sibling in this repo, declared as a bare
+  // string or as an object with no `repo`. A consumer serving both catalogs resolves the sibling
+  // by slug, so that is all it needs.
+  assert.deepEqual(manifestCompareWith("wear-m3-catalog"), { system: "wear-m3-catalog" });
+  assert.deepEqual(manifestCompareWith({ system: "wear-m3-catalog" }), {
+    system: "wear-m3-catalog",
+  });
+});
+
+test("a cross-repo pairing publishes the repo too", () => {
+  assert.deepEqual(manifestCompareWith({ system: "wear-m3-catalog", repo: "yschimke/other" }), {
+    system: "wear-m3-catalog",
+    repo: "yschimke/other",
+  });
+});
+
+test("publish-time-only fields do not reach the manifest", () => {
+  // `spec` is a path in the PRODUCING checkout and is meaningless to a reader of the manifest;
+  // `designTitle` and `design` are `matches.html`'s presentation. Publishing them would invite a
+  // consumer to depend on the build-time layout of a repository it cannot see.
+  const published = manifestCompareWith({
+    system: "wear-m3-catalog",
+    spec: "../catalog.spec.json",
+    designTitle: "M3 Wear OS kit",
+    design: false,
+  });
+  assert.deepEqual(published, { system: "wear-m3-catalog" });
+});
+
+test("no pairing, or an unusable one, publishes nothing", () => {
+  // Same rejections as normalizeCompareWith — a blank system must not travel, or a consumer would
+  // resolve a sibling at the empty slug and fetch a catalog that cannot exist.
+  for (const input of [null, undefined, "", "   ", { system: "" }, { system: "   " }, 42]) {
+    assert.equal(manifestCompareWith(input), null, `expected null for ${JSON.stringify(input)}`);
+  }
+});
+
+test("the slug is trimmed, so it is usable as a path segment", () => {
+  assert.deepEqual(manifestCompareWith({ system: "  wear-m3-catalog  " }), {
+    system: "wear-m3-catalog",
+  });
 });

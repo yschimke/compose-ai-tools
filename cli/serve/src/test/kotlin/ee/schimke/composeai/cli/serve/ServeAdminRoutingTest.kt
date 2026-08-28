@@ -484,6 +484,36 @@ class ServeAdminRoutingTest {
   }
 
   @Test
+  fun `a group priority is reported and converges on an already-published catalog`() {
+    send(
+      "/admin/groups",
+      method = "POST",
+      body = """{"id":"ds4","heading":"Design Systems","noun":"x"}""",
+    )
+    send(
+      "/admin/catalogs",
+      method = "POST",
+      body = """{"system":"ordered","repo":"someorg/ordered","group":"ds4"}""",
+    )
+    assertEquals(0, tracker.configFor("ordered")?.group?.priority)
+
+    // Re-posting the section with an order is how a reconcile lifts it on a live box: the change
+    // has to reach catalogs that were registered under the old priority, not just the config file.
+    assertEquals(
+      200,
+      send(
+          "/admin/groups",
+          method = "POST",
+          body = """{"id":"ds4","heading":"Design Systems","noun":"x","priority":100}""",
+        )
+        .first,
+    )
+
+    assertEquals(100, tracker.configFor("ordered")?.group?.priority)
+    assertTrue(send("/admin/groups").second.contains("\"priority\":100"))
+  }
+
+  @Test
   fun `a malformed group is refused`() {
     assertEquals(
       400,

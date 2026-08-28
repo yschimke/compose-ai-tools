@@ -30,7 +30,9 @@ internal object CliFlags {
       "--module",
       "--filter",
       "--id",
+      "--id-file",
       "--exclude-preview-id",
+      "--exclude-preview-id-file",
       "--exclude-preview-row",
       "--output",
       // The short alias, classified for the same reason as its long form: it consumes the next
