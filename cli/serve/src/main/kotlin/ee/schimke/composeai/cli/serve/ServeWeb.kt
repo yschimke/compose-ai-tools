@@ -11155,6 +11155,11 @@ $cards
       themeCss = themeCss,
       // The bar names the catalog you are in, from the same heading the page shows.
       siteName = heading,
+      // The sheet is the content, and it is a wide one — the design file drew it thousands of
+      // pixels across. Holding it inside the chrome's reading column wasted the better half of a
+      // wide display and left every specimen sub-pixel, which is the whole complaint in issue
+      // #4750. The stage takes the width it is given, so giving it the viewport is the fix.
+      wide = true,
       body =
         """
         <div id="cp-design-page">
@@ -14164,6 +14169,15 @@ ${scriptTag("known-differences.js")}
      * that belongs to no published catalog. See [siteFooter].
      */
     changelogHref: String = "",
+    /**
+     * Let the page's chrome span the whole viewport instead of the 1440px reading column. For a
+     * surface whose subject is a WIDE IMAGE — a design page's specimen sheet, drawn thousands of
+     * pixels across — the column is not a reading aid, it is a crop: on a 2560px display the sheet
+     * lands in little over half the glass and every specimen on it is sub-pixel (issue #4750). A
+     * page of prose still wants the column, so this is opt-in per surface rather than a change to
+     * `.cp-main`.
+     */
+    wide: Boolean = false,
   ): String {
     val unfurlHtml =
       if (unfurl == null) ""
@@ -14264,6 +14278,14 @@ ${scriptTag("known-differences.js")}
         "\n        " +
           """<script>(function(){var key="$INTERFACE_MODE_COOKIE";document.querySelectorAll("[data-cp-interface-mode]").forEach(function(b){b.addEventListener("click",function(){var mode=b.getAttribute("data-cp-interface-mode");if(mode!=="catalog"&&mode!=="dev")return;try{document.cookie=key+"="+mode+"$INTERFACE_MODE_COOKIE_ATTRS"+(location.protocol==="https:"?"; secure":"");}catch(e){}var u=new URL(location.href);u.searchParams.delete("chrome");if(document.cookie.indexOf(key+"="+mode)<0)u.searchParams.set("chrome",mode);var q=u.searchParams.toString();location.assign(u.pathname+(q?"?"+q:"")+u.hash);});});})();</script>"""
       else ""
+    // The body's own classes, in one place now that two independent surfaces set one. Kept as a
+    // single `class` attribute rather than two, so the existing
+    // `contains("class=\"cp-component-browser\"")` assertions still describe the component
+    // browser's own markup — nothing else sets both.
+    val bodyClasses =
+      listOfNotNull("cp-component-browser".takeIf { componentBrowser }, "cp-wide".takeIf { wide })
+    val bodyClassAttr =
+      if (bodyClasses.isEmpty()) "" else " class=\"${bodyClasses.joinToString(" ")}\""
     // `serve-chrome.js` is emitted as the first thing in <body>, ahead of every surface's own
     // scripts, because they read the globals it installs: the component bundle's Transparent
     // toggle wires Back through the URL-state global as it upgrades, and three of the legacy
@@ -14286,7 +14308,7 @@ ${ServeSiteIcon.linkTags().prependIndent("        ")}
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
         ${pageThemeScript(themeStorageKey, declaredThemes)}
       </head>
-      <body${if (componentBrowser) " class=\"cp-component-browser\"" else ""}>
+      <body${bodyClassAttr}>
         ${scriptTag("serve-chrome.js")}
         ${siteHeader(navSuffix, headerAction, headerBreadcrumb, siteName, componentBrowser, interfaceModeControl, themeStorageKey.isNotBlank() && interfaceModeControl)}
         <main class="cp-main">

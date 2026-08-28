@@ -200,6 +200,12 @@ a:hover { text-decoration: underline; }
 input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
 .cp-main, .cp-site-header, .cp-site-footer { width: 100%; max-width: 1440px;
   margin-left: auto; margin-right: auto; }
+/* A surface whose subject is one wide image opts out of the reading column (`<body class="cp-wide">`
+   — today the design pages). 1440px is a measure for TEXT; for a Figma specimen sheet drawn
+   thousands of pixels across it is a crop, and on a 2560px display it left the sheet in a little
+   over half the glass with every specimen on it sub-pixel (issue #4750). The chrome comes with it,
+   so the header, the sheet and the footer keep one shared left edge. */
+.cp-wide .cp-main, .cp-wide .cp-site-header, .cp-wide .cp-site-footer { max-width: none; }
 /* The page's top app bar. M3's small top app bar is a plain surface with a title on the left and
    trailing actions on the right — no rule beneath it; separation comes from the surface, not from
    a line, so the keyline is gone and the bar simply sits on the page's own colour. */
