@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+
 import { PNG } from "pngjs";
 
 /** `figma:<fileKey>/<nodeId>` -> `{ fileKey, nodeId }`, or null. */
@@ -48,8 +51,23 @@ export class FigmaRestRasterizer {
     batchSize = 50,
     maxAttempts = 5,
     contentsOnly = true,
+    /**
+     * A design-parity reference cache checkout (the `design-parity/reference`
+     * branch). When set, node STRUCTURE is read from `<fileKey>/<nodeId>/node.json`
+     * instead of `/v1/files/:key/nodes`, which is the same JSON that endpoint
+     * returns — the import wrote it from exactly that response.
+     *
+     * Images are deliberately NOT read from it. The cache holds a
+     * resolution-free `image.svg`, but this rasterizer needs a PNG at a density
+     * derived per record, and the published `match` score is computed from these
+     * very pixels. Rasterising the SVG locally would move every score in the
+     * manifest, so pixels stay on Figma's own renderer until that is a decision
+     * somebody makes deliberately.
+     */
+    cacheDir = "",
   }) {
     this.token = token;
+    this.cacheDir = cacheDir;
     this.fetchImpl = fetchImpl;
     this.sleep = sleep;
     this.batchSize = batchSize;
@@ -78,6 +96,28 @@ export class FigmaRestRasterizer {
 
   nodeKey({ fileKey, nodeId }) {
     return `${fileKey}/${nodeId}`;
+  }
+
+  /**
+   * The cached structure for a node, or null for a miss.
+   *
+   * A miss is not an error and never fatal: the node simply falls through to the
+   * API below, exactly as it did before a cache existed. That keeps a partial or
+   * absent cache a matter of how many requests this run makes, never of what it
+   * can publish — the opposite of the parity run, where the cache is
+   * authoritative and a miss is reported.
+   *
+   * Node ids contain a colon (`1:42`); the cache spells directories with a dash
+   * (`1-42`), the same way Figma's own URLs do.
+   */
+  nodeFromCache({ fileKey, nodeId }) {
+    if (!this.cacheDir) return null;
+    const file = path.join(this.cacheDir, fileKey, nodeId.replace(/:/g, "-"), "node.json");
+    try {
+      return JSON.parse(fs.readFileSync(file, "utf8"));
+    } catch {
+      return null;
+    }
   }
 
   scaleFor(parsed, target) {
@@ -113,6 +153,11 @@ export class FigmaRestRasterizer {
     for (const { parsed } of parsedRequests) {
       const key = this.nodeKey(parsed);
       if (this.nodes.has(key)) continue;
+      const cached = this.nodeFromCache(parsed);
+      if (cached) {
+        this.nodes.set(key, cached);
+        continue;
+      }
       const ids = missingByFile.get(parsed.fileKey) ?? new Set();
       ids.add(parsed.nodeId);
       missingByFile.set(parsed.fileKey, ids);

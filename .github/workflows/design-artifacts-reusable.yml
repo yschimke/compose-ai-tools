@@ -199,6 +199,27 @@ on:
         required: false
         type: boolean
         default: true
+      reference-cache-branch:
+        description: >
+          Branch holding the design-parity reference cache (`design-parity/reference`, maintained by
+          design-parity-import-reusable.yml). When set, the reference lane reads each node's
+          STRUCTURE from it instead of asking `/v1/files/:key/nodes`, which is the same JSON that
+          endpoint returns — the import wrote it from exactly that response.
+
+          Worth setting because this lane runs on every push while the kit moves rarely, and the
+          Figma limiter is per TOKEN: it is shared with the parity runs, the import, and the sibling
+          catalog. This lane was the last one still spending it unguarded.
+
+          PIXELS ARE UNAFFECTED. The cache also holds a resolution-free `image.svg`, but the exports
+          here are PNG at a per-record density and the `match` score baked into the manifest is
+          computed from those pixels — rasterising the SVG locally would move every score. So images
+          keep coming from Figma's own renderer, and this input only removes the structure calls.
+
+          A miss is not an error: the node falls through to the API exactly as it did before, so an
+          absent or partial cache costs requests, never coverage.
+        required: false
+        type: string
+        default: ''
       reference-backdrop:
         description: >
           Publish each design reference on the ground its sticker was drawn on, as a hex colour
@@ -1512,6 +1533,33 @@ jobs:
       #
       # Fail-soft on purpose: an unrenderable reference is dropped with a warning
       # rather than costing the catalog its render.
+      # The design-parity reference cache, if the caller maintains one. Cloned
+      # rather than fetched through the API for the same reason the parity
+      # workflow does it: the branch IS the cache, so `git` is the transport and
+      # no Figma credential is involved.
+      #
+      # Best-effort by design. A branch that does not exist (never bootstrapped,
+      # or pruned) leaves the dir unset and the lane fetches structure live, as
+      # it always has. That is the opposite of the parity run, where the cache is
+      # authoritative and a miss is a reported gap — here it is only ever a
+      # question of how many requests this run makes.
+      - name: Fetch the design reference cache
+        id: refcache
+        if: ${{ (inputs.publish || inputs.upload-out) && inputs.reference-cache-branch != '' }}
+        env:
+          BRANCH: ${{ inputs.reference-cache-branch }}
+          CACHE_DIR: ${{ runner.temp }}/design-reference-cache
+        run: |
+          set -euo pipefail
+          repo="https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git"
+          if git clone -q --depth 1 --branch "$BRANCH" "$repo" "$CACHE_DIR" 2>/dev/null; then
+            rm -rf "$CACHE_DIR/.git"
+            echo "dir=${CACHE_DIR}" >> "$GITHUB_OUTPUT"
+            echo "Reference cache from ${BRANCH}: $(du -sh "$CACHE_DIR" | cut -f1)."
+          else
+            echo "::notice title=No reference cache::'${BRANCH}' does not exist yet, so node structure will be fetched live. Run the design-parity import workflow to build it."
+          fi
+
       - name: Publish design references
         if: ${{ inputs.publish || inputs.upload-out }}
         env:
@@ -1522,6 +1570,7 @@ jobs:
           FIGMA_TOKEN: ${{ secrets.figma_token }}
           FIGMA_CONTENTS_ONLY: ${{ inputs.figma-contents-only }}
           REFERENCE_BACKDROP: ${{ inputs.reference-backdrop }}
+          REFERENCE_CACHE: ${{ steps.refcache.outputs.dir }}
         run: |
           set -euo pipefail
           if [ ! -f "design-map.json" ]; then
@@ -1553,6 +1602,18 @@ jobs:
           # catalog would have published with no input at all — stale against the caller's intent,
           # never wrong — and a reference lane must not cost a catalog its render.
           emitter=compose-ai-tools/scripts/design-artifacts/emit-design-references.mjs
+          # Same shape, same reason: an EXTERNAL caller runs the release-pinned
+          # driver, so a freshly merged flag reaches it only when the next
+          # release moves design-artifacts-driver-pin.txt. Silence here would
+          # look exactly like a cache that is working.
+          if [ -n "${REFERENCE_CACHE:-}" ] && ! grep -q 'reference-cache' "$emitter"; then
+            echo "::warning title=Driver too old for reference-cache::This run's export driver \
+          predates the --reference-cache flag, so the cache was ignored and node structure was \
+          fetched live. References published are unchanged — this costs requests, not coverage. \
+          External callers run the driver pinned in \
+          compose-ai-tools/.github/design-artifacts-driver-pin.txt; it reaches them when the next \
+          release moves that pin."
+          fi
           if [ -n "$REFERENCE_BACKDROP" ] && ! grep -q 'reference-backdrop' "$emitter"; then
             echo "::warning title=Driver too old for reference-backdrop::This run's export driver \
           predates the --reference-backdrop flag, so '$REFERENCE_BACKDROP' was ignored and the \
@@ -1567,7 +1628,8 @@ jobs:
             --repo "$GITHUB_WORKSPACE" \
             --spec "$INPUT_SPEC" \
             --figma-contents-only "$FIGMA_CONTENTS_ONLY" \
-            --reference-backdrop "$REFERENCE_BACKDROP"
+            --reference-backdrop "$REFERENCE_BACKDROP" \
+            --reference-cache "${REFERENCE_CACHE:-}"
 
       # The design-parity dashboard's feed (`parity/activity.json`) — recent
       # commits, recent Figma versions/comments, and the mapping gaps behind
