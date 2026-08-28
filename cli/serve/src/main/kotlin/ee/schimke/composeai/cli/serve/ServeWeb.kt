@@ -1232,6 +1232,30 @@ ${captureControlsHtml().prependIndent("          ")}
       "</form></div></details>"
   }
 
+  /**
+   * The same affordance as a **row of its own**, for a page-scoped report on a surface that carries
+   * no per-preview provenance line to hang it off.
+   *
+   * A catalog page that shows no single preview — the landing grid, a design page, the pages index,
+   * the motion browser — still belongs to a catalog, and something on it can still be wrong in that
+   * catalog's own repository. Without a `#cp-report` anywhere in the markup the floating launcher
+   * has nothing to point at, so its catalog half stays hidden and the server tracker is the only
+   * route out of the page (issue #4704). The report those surfaces file is the page-scoped one the
+   * comparison wall introduced: it names the page rather than inventing a preview the visitor never
+   * picked.
+   *
+   * Reuses `.cp-preview-links` wholesale, and not only for the styling: `.cp-report`'s panel is
+   * anchored to that row rather than to its own toggle, which is what keeps it on screen at every
+   * width (see the comment block in `serve.css`). [extraClass] is the surface's own spacing hook.
+   *
+   * Null — a surface with nothing sensible to file against — renders nothing at all.
+   */
+  private fun pageReportRowHtml(report: ReportIssue?, extraClass: String = ""): String {
+    val html = reportIssueHtml(report).takeIf { it.isNotBlank() } ?: return ""
+    val cls = if (extraClass.isBlank()) "cp-preview-links" else "cp-preview-links $extraClass"
+    return "\n          <div class=\"$cls\">$html\n          </div>"
+  }
+
   /** Render catalog-published GitHub issues. Every href has already been rebuilt by the store. */
   private fun parityIssueRowsHtml(issues: List<ParityIssue>): String {
     if (issues.isEmpty()) return ""
@@ -8468,6 +8492,13 @@ ${captureControlsHtml().prependIndent("          ")}
      * page's RSS alternate. Empty when the server runs with the feed lane off. See [siteFooter].
      */
     changelogHref: String = "",
+    /**
+     * The page-scoped "report a catalog issue" for this surface, built by the caller from the
+     * session's catalog source/provenance via [ServeIssueReport]. It names the PAGE rather than a
+     * preview, because this one shows no single preview to name — see [pageReportRowHtml]. Null (a
+     * plain module, or any caller that has nothing to file against) omits it entirely.
+     */
+    reportIssue: ReportIssue? = null,
   ): String {
     @Suppress("NAME_SHADOWING") val designPages = if (componentBrowser) emptyList() else designPages
     @Suppress("NAME_SHADOWING")
@@ -9085,6 +9116,11 @@ ${captureControlsHtml().prependIndent("          ")}
         "${compactTrustBadge(trust)}</h1>$catalogId</div>$subLine" +
         (if (togglesOnTitleRow) headToggles else "") +
         "</div>"
+    // The landing's page-scoped catalog report, under the identity row: this page shows a grid of
+    // components and singles out none, so — like the comparison wall — the report it files names
+    // the page. It is what gives the floating launcher a catalog half to offer on the surface most
+    // visitors arrive on, in Catalog mode as much as in Dev (issue #4704).
+    val reportRow = pageReportRowHtml(reportIssue, "cp-page-links")
     val tools =
       (searchBox + if (togglesOnTitleRow) "" else headToggles)
         .takeIf { it.isNotBlank() }
@@ -9107,7 +9143,7 @@ ${captureControlsHtml().prependIndent("          ")}
       headerAction = if (componentBrowser) "" else githubAuthControl(githubAuth),
       body =
         """
-        $titleRow
+        $titleRow$reportRow
         ${degradeBanner(degradations)}$renderFailureSummary$tools$navAndGrid$emptyState$filterScript$liveScript$downloadAction
         <!-- Finishes the phone shape of this page's chrome: the tree sidebar's filter field moves
              into the sticky toolbar beside the Theme and `⋯` menus already there, and back out
@@ -9562,15 +9598,9 @@ ${captureControlsHtml().prependIndent("          ")}
     val rcLanes = rcCompare?.let {
       rcLanesSection(it, previews, previewIdsByCard, token, linkSessionId, basePath, isPublic)
     }
-    // Reuses the viewer's provenance row wholesale, and not only for the styling: `.cp-report`'s
-    // panel is anchored to `.cp-preview-links` rather than to its own toggle, which is what keeps
-    // it on screen at every width (see the comment block in `serve.css`).
-    val reportRow =
-      reportIssueHtml(reportIssue)
-        .takeIf { it.isNotBlank() }
-        ?.let {
-          "\n          <div class=\"cp-preview-links cp-compare-links\">$it\n          </div>"
-        } ?: ""
+    // The wall's page-scoped catalog report, in a provenance row of its own — see
+    // [pageReportRowHtml] for why it borrows the viewer's row rather than styling a new one.
+    val reportRow = pageReportRowHtml(reportIssue, "cp-compare-links")
     val rootAttrs =
       "data-default-format=\"$defaultFormat\" data-default-theme=\"${if (darkFirst) "dark" else "light"}\" " +
         "data-theme-key=\"${WebEscaping.htmlEscape(themeStorageKey(sessionId, basePath))}\" " +
@@ -10296,6 +10326,13 @@ ${scriptTag("known-differences.js")}
      * page's RSS alternate. Empty when the server runs with the feed lane off. See [siteFooter].
      */
     changelogHref: String = "",
+    /**
+     * The page-scoped "report a catalog issue" for this surface, built by the caller from the
+     * session's catalog source/provenance via [ServeIssueReport]. It names the PAGE rather than a
+     * preview, because this one shows no single preview to name — see [pageReportRowHtml]. Null (a
+     * plain module, or any caller that has nothing to file against) omits it entirely.
+     */
+    reportIssue: ReportIssue? = null,
   ): String {
     // The session id links may carry. Null on a rooted site (and for the default session): the
     // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
@@ -10343,7 +10380,7 @@ ${scriptTag("known-differences.js")}
         """
         <h1 class="cp-head cp-catalog-head">Pages${compactTrustBadge(trust)}</h1>
         <p class="cp-sub">Whole pages of the design file, with each component on them linked back
-        to the code that implements it.</p>
+        to the code that implements it.</p>${pageReportRowHtml(reportIssue, "cp-page-links")}
         <div class="cp-page-cards">
         $cards
         </div>
@@ -10422,6 +10459,13 @@ ${scriptTag("known-differences.js")}
      * page's RSS alternate. Empty when the server runs with the feed lane off. See [siteFooter].
      */
     changelogHref: String = "",
+    /**
+     * The page-scoped "report a catalog issue" for this surface, built by the caller from the
+     * session's catalog source/provenance via [ServeIssueReport]. It names the PAGE rather than a
+     * preview, because this one shows no single preview to name — see [pageReportRowHtml]. Null (a
+     * plain module, or any caller that has nothing to file against) omits it entirely.
+     */
+    reportIssue: ReportIssue? = null,
   ): String {
     val linkSessionId = if (sessionInOrigin) null else sessionId
     val query = linkQuery(token, linkSessionId, basePath, isPublic)
@@ -10729,7 +10773,9 @@ $cards
         <p class="cp-sub">Every recorded interaction and animation this catalog publishes, grouped
         by component and set side by side — so a transition that is shaped differently from its
         neighbours is visible without opening each component in turn.
-        $captureCount $captureWord across $componentCount $componentWord.</p>
+        $captureCount $captureWord across $componentCount $componentWord.</p>${
+          pageReportRowHtml(reportIssue, "cp-page-links")
+        }
         <div class="cp-motion-toolbar">
           <button type="button" id="cp-motion-all" class="cp-action-chip cp-motion-all"
             aria-pressed="false" aria-controls="cp-motion-index">Play all</button>$themeControl
@@ -10851,6 +10897,13 @@ $cards
      * page's RSS alternate. Empty when the server runs with the feed lane off. See [siteFooter].
      */
     changelogHref: String = "",
+    /**
+     * The page-scoped "report a catalog issue" for this surface, built by the caller from the
+     * session's catalog source/provenance via [ServeIssueReport]. It names the PAGE rather than a
+     * preview, because this one shows no single preview to name — see [pageReportRowHtml]. Null (a
+     * plain module, or any caller that has nothing to file against) omits it entirely.
+     */
+    reportIssue: ReportIssue? = null,
   ): String {
     // The session id links may carry. Null on a rooted site (and for the default session): the
     // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
@@ -11017,7 +11070,9 @@ $cards
         """
         <div id="cp-design-page">
           <h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(page.name)}${compactTrustBadge(trust)}</h1>
-          <p class="cp-sub">${WebEscaping.htmlEscape(coverageText)}$figmaLink</p>
+          <p class="cp-sub">${WebEscaping.htmlEscape(coverageText)}$figmaLink</p>${
+          pageReportRowHtml(reportIssue, "cp-page-links")
+        }
           <div class="cp-page-controls">
             <div class="cp-page-lane" role="radiogroup" aria-label="What the sheet shows">
               <label><input type="radio" name="cp-page-lane" value="code" data-cp-page-lane checked>
@@ -12027,7 +12082,12 @@ ${scriptTag("known-differences.js")}
     @Suppress("NAME_SHADOWING")
     val designReference = designReference?.takeUnless { componentBrowser }
     @Suppress("NAME_SHADOWING") val sourceHref = sourceHref?.takeUnless { componentBrowser }
-    @Suppress("NAME_SHADOWING") val reportIssue = reportIssue?.takeUnless { componentBrowser }
+    // Deliberately NOT stripped in Catalog mode, unlike the developer affordances around it. That
+    // mode is the streamlined component browser — the presentation a design reviewer is handed —
+    // and a reviewer noticing that a component draws the wrong thing is exactly who this report is
+    // for. It is also the ONLY reporting affordance that mode can have: Catalog mode carries no
+    // site footer and no floating launcher, so with this stripped too a visitor looking at a wrong
+    // render had nowhere at all to say so (issue #4704).
     @Suppress("NAME_SHADOWING") val figmaSpec = figmaSpec?.takeUnless { componentBrowser }
     @Suppress("NAME_SHADOWING") val playgroundHref = playgroundHref?.takeUnless { componentBrowser }
     @Suppress("NAME_SHADOWING")
@@ -13629,17 +13689,21 @@ ${scriptTag("known-differences.js")}
     // links between the heading and the renderer controls is four lines of chrome between the
     // visitor and the render. It now rides directly above the export bar, where the other
     // "take this away with you" affordances (the PNG and SVG links) already live.
+    //
+    // Emitted in Catalog mode too, though every OTHER entry in it is a developer affordance that
+    // mode drops: each of those is null by the time it gets here, so what is left is the catalog
+    // report alone — and the row omits itself entirely when that is null as well. Dropping the row
+    // wholesale is what left the streamlined browser with no way to report a wrong render at all,
+    // its site footer and floating launcher both being gone too (issue #4704).
     val previewLinks =
-      if (componentBrowser) ""
-      else
-        previewLinksHtml(
-          sourceHref,
-          preview.sourceFile,
-          reportIssue,
-          figmaSpec,
-          playgroundHref,
-          executableBundleHref,
-        )
+      previewLinksHtml(
+        sourceHref,
+        preview.sourceFile,
+        reportIssue,
+        figmaSpec,
+        playgroundHref,
+        executableBundleHref,
+      )
     // Every disclosure the page has, in one group, at the end of the identity row: the component
     // list, the state/variant axes, the theme chips, the overrides drawer. They were scattered —
     // two on the viewer bar, two implicit in rows that were simply always open — which is why the

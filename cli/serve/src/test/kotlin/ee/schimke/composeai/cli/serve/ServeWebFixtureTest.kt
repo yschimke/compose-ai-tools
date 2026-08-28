@@ -146,14 +146,24 @@ class ServeWebFixtureTest {
    * every component and singles out none (issue #4289). No preview, no render, no reference: the
    * golden pins the shape a report filed from the wall actually has.
    */
-  private fun fixtureWallReportIssue(): ServeWeb.ReportIssue {
+  private fun fixtureWallReportIssue(): ServeWeb.ReportIssue =
+    fixturePageReportIssue(
+      "https://preview.coo.ee/compose-m3/compare?format=reference",
+      "these comparisons",
+    )
+
+  /**
+   * The page-scoped catalog report every catalog surface that names no single preview now carries
+   * (issue #4704) — the wall, the landing, the pages index, a design page, the motion browser.
+   */
+  private fun fixturePageReportIssue(pageUrl: String, subject: String): ServeWeb.ReportIssue {
     val context =
       ServeIssueReport.Context(
         repo = "yschimke/compose-ai-tools",
         system = "compose-m3",
         catalog = "yschimke/compose-ai-tools@design-artifacts/compose-m3",
         toolVersion = provenance.toolVersion,
-        pageUrl = "https://preview.coo.ee/compose-m3/compare?format=reference",
+        pageUrl = pageUrl,
         publicRender = true,
       )
     return ServeWeb.ReportIssue(
@@ -162,7 +172,7 @@ class ServeWebFixtureTest {
       bodyTemplate = ServeIssueReport.body(context, renderPlaceholder = true),
       repo = context.repo,
       login = "yschimke",
-      subject = "these comparisons",
+      subject = subject,
     )
   }
 
@@ -2346,6 +2356,11 @@ class ServeWebFixtureTest {
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         isPublic = true,
         version = version,
+        reportIssue =
+          fixturePageReportIssue(
+            "https://preview.coo.ee/compose-m3/pages/foundations",
+            "this design page",
+          ),
       )
 
     // A node with code behind it is an ANCHOR, not a button or a bare div. That is what makes
@@ -2550,6 +2565,8 @@ class ServeWebFixtureTest {
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         isPublic = true,
         version = version,
+        reportIssue =
+          fixturePageReportIssue("https://preview.coo.ee/compose-m3/pages", "these design pages"),
       )
 
     // The same themed catalog served LIVE by a session whose app declares `@ThemeCatalog` themes:
@@ -2901,6 +2918,9 @@ class ServeWebFixtureTest {
         declaredThemes = listOf(ServeTheme("Light", "com.example.LightThemeCatalog")),
         canRenderThemeFor = { true },
         componentBrowser = true,
+        // Catalog mode keeps the catalog tracker: this is the presentation a design reviewer is
+        // handed, and a reviewer is who a "this draws the wrong thing" report comes from (#4704).
+        reportIssue = fixturePageReportIssue("https://preview.coo.ee/compose-m3/", "this catalog"),
       )
     val componentBrowserHome =
       ServeWeb.homeIndexPage(
@@ -2931,6 +2951,13 @@ class ServeWebFixtureTest {
         // if the poller is actually on the page it shoots.
         presenceUrl = "/compose-m3/api/presence",
         componentBrowser = true,
+        // …and so does the component page, which is where a wrong render is actually noticed.
+        reportIssue =
+          fixtureReportIssue(
+            "button-filled-pressed",
+            "Filled button",
+            "ui/buttons/FilledButton.kt",
+          ),
       )
     // Catalog mode on a **Remote Compose** preview — the one page where the browser players are
     // still on offer there.
