@@ -132,20 +132,45 @@ fun RemoteOverridablePreview(
   val context = LocalContext.current
 
   val displayMetrics = context.resources.displayMetrics
-  // Capture in `Dp` density behavior, not the 3-arg default (`Legacy`). Legacy serialises the
-  // dp-typed size modifiers (`size(dp)`, `heightIn(dp)` / `buttonSizeModifier`) inconsistently, so
-  // a
-  // player can't reproduce the generation-density render — Material3 button/card fills and the
-  // circular-progress indicator come out ~1/density too small. `Dp` keeps those dimensions in dp so
-  // a player can scale them by the generation density. That density is written into the header
-  // below (the alpha writer records DOC_WIDTH/HEIGHT in px and the density *behavior*, but not the
-  // density value itself), which the rc-player consumes to scale the dp modifiers back to px.
+  // Capture in `Legacy` density behavior, which is the only value that describes what
+  // `remote-creation-compose` actually writes.
+  //
+  // The header is a single global flag, but the document it describes is MIXED, and the creation
+  // library's choice does not follow the flag — a document captured under `Dp` and one captured
+  // under `Pixels` are byte-identical. What it writes is fixed:
+  //
+  //   padding / spacedBy gaps / border width / clip radii   PIXELS (`RemoteDp.toPx()` at capture)
+  //   heightIn / widthIn                                    DP     (relies on core to scale)
+  //   height / width                                        EXACT_DP, self-describing
+  //
+  // And remote-core's `updateVariables` applies a DIFFERENT predicate per op:
+  //
+  //   PaddingModifierOperation          scales when behavior == DP
+  //   DimensionInModifierOperation      scales when behavior != PIXELS
+  //   RoundedClipRectModifierOperation  never scales
+  //
+  // So no single flag is right for every op, and only `Legacy` is right for every op *as the
+  // library writes them*: padding is left alone (it is already px) and `heightIn` is scaled (it is
+  // dp). `Dp` — what this used to declare — asserts that padding is dp, so core multiplied
+  // already-scaled pixels a second time. That is one bug, and it surfaced three times: the
+  // outlined card's border (wear-m3-catalog#89, via this player's matching assumption in
+  // `ClipModifier`), the compact button's height (#90), and `RemoteButtonGroup`'s 4dp gap rendering
+  // at 8dp.
+  //
+  // The comment this replaces rejected `Legacy` because "Material3 button/card fills and the
+  // circular-progress indicator come out ~1/density too small". That does not reproduce: measured
+  // across the 57-sticker `remote-catalog` sheet, `Legacy` renders 56 byte-identical to `Dp` and
+  // fixes the 57th. The original symptom was a player-side bug, not a serialisation one.
+  //
+  // `DOC_DENSITY_AT_GENERATION` is still stamped below: the alpha writer records DOC_WIDTH/HEIGHT
+  // in px and the behavior but not the density value, and the player needs it to resolve the
+  // dp-typed dimensions.
   val displayInfo =
     RemoteCreationDisplayInfo(
       displayMetrics.widthPixels,
       displayMetrics.heightPixels,
       displayMetrics.densityDpi,
-      densityBehavior = RemoteDensityBehavior.Dp,
+      densityBehavior = RemoteDensityBehavior.Legacy,
     )
   // Same capture pattern as upstream `RemotePreview` — `runBlocking` inside `remember` so the
   // document materialises once per (profile, content) pair without re-capturing across
