@@ -135,23 +135,49 @@ function rendersBothSides(pair, opts) {
 }
 
 /**
+ * One anchor per row, in row order, each unique on the page.
+ *
+ * `slug` is lossy on purpose — it collapses every run of non-alphanumerics to a
+ * single `-` — so two component ids that differ only in punctuation land on the
+ * same string: `Button/A+B` and `Button/A B` are both `button-a-b`. Deriving the
+ * anchor per row therefore emitted a duplicate `id`, and the second row became
+ * unaddressable: both self-links, and any bug report quoting either, resolve to
+ * the first. Unaddressable is the one thing this anchor exists to prevent.
+ *
+ * A colliding anchor takes a `-2`, `-3`, … suffix, and the suffix keeps counting
+ * past an id that genuinely slugs to the suffixed form. Stable across builds:
+ * `paired` is ordered, so the same input yields the same anchors and a link
+ * published today still lands tomorrow.
+ */
+function rowAnchors(pairs) {
+  const used = new Set();
+  return pairs.map((pair) => {
+    const base = `c-${slug(pair.local.componentId ?? "(unnamed)")}`;
+    let anchor = base;
+    for (let n = 2; used.has(anchor); n++) anchor = `${base}-${n}`;
+    used.add(anchor);
+    return anchor;
+  });
+}
+
+/**
  * One `<tr>` per pairing. Both renders are baked static thumbnails that link to
  * the live server; nothing is resolved at view time.
  *
- * The row is ANCHORED, `id="c-<slug>"`, and its component id is a self-link — the
- * same `c-<slug>` scheme `renderIndexHtml` already uses, so one convention covers
- * both pages. This is the page a cross-system bug report wants to point at: it is
+ * The row is ANCHORED and its component id is a self-link, on the `c-<slug>` scheme
+ * `renderIndexHtml` already uses so one convention covers both pages. The anchor is
+ * handed in rather than derived here, because uniqueness is a property of the whole
+ * table — see [rowAnchors]. This is the page a cross-system bug report wants to point at: it is
  * the only one carrying the kit reference and both renditions of a cell side by
  * side, which is the whole argument such a report makes. Without a per-row anchor
  * the best a report could do was link the page and name the row, so three
  * upstream issues in yschimke/wear-m3-catalog (#89, #90, #91) had to commit a
  * composed triptych image apiece instead.
  */
-function pairRow(pair, opts) {
+function pairRow(pair, opts, anchor) {
   const { local, parallelId, other } = pair;
   const id = local.componentId ?? "(unnamed)";
   const group = local.group ?? "Components";
-  const anchor = `c-${slug(id)}`;
   const design = opts.designRefById ? `<td class="col-d">${designEmbed(pair, opts)}</td>` : "";
   return `<tr class="crow" id="${esc(anchor)}">
   <th scope="row" class="rowhead"><a class="cid anchor" href="#${esc(anchor)}">${esc(id)}</a><span class="grp">${esc(group)}</span></th>
@@ -236,7 +262,8 @@ export function renderCrossSystemHtml(catalog, opts = {}) {
     previewBase,
     designRefById,
   };
-  const body = paired.map((p) => pairRow(p, rowOpts)).join("\n");
+  const anchors = rowAnchors(paired);
+  const body = paired.map((p, i) => pairRow(p, rowOpts, anchors[i])).join("\n");
   const pairedReal = paired.filter((p) => rendersBothSides(p, rowOpts)).length;
   const designed = designRefById
     ? paired.filter((p) => designRefById.get(p.local.componentId)?.url).length
@@ -289,14 +316,30 @@ export function renderCrossSystemHtml(catalog, opts = {}) {
   header.top code { background:var(--panel); padding:1px 6px; border-radius:5px; }
   main { padding:8px clamp(16px,4vw,40px) 64px; }
   table { border-collapse:collapse; width:100%; }
+  /* line-height is pinned, not inherited: the row offset below is arithmetic on these
+     exact numbers, and a heading whose height nobody can compute is a header rows hide
+     under. */
   thead th { position:sticky; top:0; background:var(--bg); text-align:left; font-size:12px; color:var(--muted);
-    padding:10px 12px; border-bottom:1px solid var(--line); z-index:1; }
+    line-height:1.35; padding:10px 12px; border-bottom:1px solid var(--line); z-index:1; }
   tbody tr.crow { border-bottom:1px solid var(--line); }
   th.rowhead { text-align:left; font-weight:600; padding:12px; vertical-align:middle; width:22%; }
   th.rowhead .cid { display:block; word-break:break-word; }
   /* scroll-margin-top because thead th is sticky: without it a row jumped to from
-     its #c-slug anchor lands underneath the header and reads as the wrong row. */
-  tr.crow { scroll-margin-top:44px; }
+     its #c-slug anchor lands underneath the header and reads as the wrong row.
+
+     Derived, not guessed. It used to be a flat 44px — the height of a ONE-LINE
+     heading — and a heading wraps: the design-reference column's "M3 Wear OS Apps
+     Design Kit" does it at a narrow viewport, and the row then lands back under the
+     header, which is the failure this margin exists to prevent. So the reserve is
+     three heading lines, spelled as the arithmetic that produces it:
+     3 lines x 1.35 x 12px, + 10px padding top and bottom, + the 1px border.
+
+     Overshooting is free and undershooting is not — too much margin leaves a little
+     empty space above the row, too little hides the row — so this reserves more than
+     any current heading needs, on purpose. The page carries no script -- the
+     "fully static" test pins that -- so measuring the header at view time is not on
+     the table; keep these numbers in step with thead th above if either moves. */
+  tr.crow { scroll-margin-top:calc(3 * 1.35 * 12px + 21px); }
   a.anchor { color:inherit; text-decoration:none; }
   a.anchor:hover, a.anchor:focus-visible { text-decoration:underline; }
   a.anchor::after { content:" #"; color:var(--muted); opacity:0; }

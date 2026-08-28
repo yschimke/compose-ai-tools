@@ -301,6 +301,50 @@ test("every paired row is anchored, and its component id links to itself", () =>
   assert.match(html, /tr\.crow \{ scroll-margin-top:/);
 });
 
+test("the row offset reserves a wrapped heading, derived from the header's own metrics", () => {
+  // A flat 44px is the height of a ONE-LINE heading, and headings wrap — the
+  // design-reference column's "M3 Wear OS Apps Design Kit" does it at a narrow
+  // viewport, putting the row back under the header the offset exists to clear. The
+  // page carries no script (see the fully-static test), so the reserve is arithmetic
+  // on the header's own type metrics rather than a measurement; both halves are
+  // pinned here so neither can move without the other.
+  const html = renderCrossSystemHtml(catalog, opts);
+
+  assert.match(html, /thead th \{[^}]*line-height:1\.35;/);
+  assert.match(html, /tr\.crow \{ scroll-margin-top:calc\(3 \* 1\.35 \* 12px \+ 21px\); \}/);
+  // 3 heading lines + 10px padding top and bottom + the 1px border ≈ 70px, against
+  // the 44px one line needs. Overshooting leaves a little space above the row;
+  // undershooting hides it — so this deliberately reserves more than any current
+  // heading uses.
+  assert.doesNotMatch(html, /scroll-margin-top:44px/);
+});
+
+test("two component ids that slug the same still get their own anchor", () => {
+  // `slug` collapses every run of non-alphanumerics to one `-`, so `Button/A+B` and
+  // `Button/A B` are both `button-a-b`. Deriving the anchor per row emitted a
+  // duplicate id and made the second row unaddressable: its self-link, and any bug
+  // report quoting it, resolved to the first — the one thing a per-row anchor exists
+  // to prevent.
+  const colliding = {
+    system: "remote-m3",
+    components: [
+      { componentId: "Button/A+B", group: "Buttons", images: [] },
+      { componentId: "Button/A B", group: "Buttons", images: [] },
+    ],
+  };
+  const html = renderCrossSystemHtml(colliding, {
+    ...opts,
+    parallelById: { "Button/A+B": "Button/Filled", "Button/A B": "Button/Icon" },
+  });
+
+  assert.match(html, /<tr class="crow" id="c-button-a-b">/);
+  assert.match(html, /<tr class="crow" id="c-button-a-b-2">/);
+  // ...and each row's self-link points at its OWN row, not at the first one.
+  assert.match(html, /href="#c-button-a-b">Button\/A\+B</);
+  assert.match(html, /href="#c-button-a-b-2">Button\/A B</);
+  assert.equal(html.match(/id="c-button-a-b"/g).length, 1);
+});
+
 test("an anchor cannot be smuggled out of a component id", () => {
   // componentId reaches the id attribute AND an href. `slug` collapses everything
   // non-alphanumeric, so the danger is a quote surviving into either — assert on
