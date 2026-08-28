@@ -12104,14 +12104,22 @@ ${scriptTag("known-differences.js")}
     // being meaningless there, an old light choice within the Wear catalog must not turn into a
     // confetti-wear live render.
     //
-    // Resolved through [isDarkFirstSystem] — the catalog's DECLARED `display.surface` first, the
-    // Wear/watch id heuristic only as the fallback — rather than the heuristic alone, which is the
-    // same signal the stage under the pixels already uses ([viewerDarkFirst]). Splitting them let
-    // a dark-only catalog whose id doesn't read as Wear (`remote-m3`: `modes: ["dark"]`,
-    // `display.surface: "dark"`, every document carrying explicit dark-first Material colours) draw
-    // its stickers on the dark stage while still offering a Light chip that nothing behind it can
-    // honour — wear-m3-catalog#99.
-    val wearAlwaysDark = viewerDarkFirst
+    // The DECLARED `display.surface` now counts too, not just the Wear/watch id heuristic. Reading
+    // the heuristic alone let a dark-only catalog whose id doesn't read as Wear (`remote-m3`:
+    // `modes: ["dark"]`, `display.surface: "dark"`, every document carrying explicit dark-first
+    // Material colours) draw its stickers on the dark stage — which goes through the
+    // declaration-first [isDarkFirstSystem] — while still offering a Light chip that nothing behind
+    // it could honour (wear-m3-catalog#99).
+    //
+    // It is `||`, not the resolved [viewerDarkFirst] alone, and that asymmetry is deliberate: a
+    // declaration can add an always-dark catalog, never take one away. [normalizeOverrideParams]
+    // drops `uiMode` for a Wear id **unconditionally**, on every render and socket lane, so a Wear
+    // catalog declaring `display.surface: "light"` would otherwise get an enabled Light choice that
+    // moves the control and the URL while the server returns the same pixels. The control and the
+    // request normalization have to agree about what has no day mode; until the normalization can
+    // read a declaration (it is handed a system id and nothing else), the id keeps its veto.
+    val wearAlwaysDark =
+      viewerDarkFirst || SystemDisplay.isDarkFirst(basePath.trim('/').ifBlank { sessionId ?: "" })
     val alwaysDarkAttr = if (wearAlwaysDark) " data-always-dark=\"1\"" else ""
     val irReplayAttr = if (irReplay) " data-ir-replay=\"1\"" else ""
     val replayThemesAttr = if (replayThemes) " data-replay-themes=\"1\"" else ""

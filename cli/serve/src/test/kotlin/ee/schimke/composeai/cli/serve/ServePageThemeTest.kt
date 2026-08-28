@@ -107,6 +107,40 @@ class ServePageThemeTest {
     assertTrue(unstated.contains("data-theme-choice=\"light\""), unstated)
   }
 
+  /**
+   * A declaration can ADD an always-dark catalog; it cannot take one away from a Wear id.
+   *
+   * `SystemDisplay.normalizeOverrideParams` drops `uiMode` for a Wear/watch id unconditionally, on
+   * every render and socket lane, and it is handed a system id with no declaration to read. So a
+   * Wear catalog declaring `display.surface: "light"` must not sprout an enabled Light choice: it
+   * would move the control and the URL while the server returned the same pixels.
+   */
+  @Test
+  fun `a Wear id keeps its veto over a declared light surface`() {
+    val wearLight =
+      ServeWeb.viewerPage(
+        ServePreview("button__ideal__default__light", "Button", theme = "light"),
+        token = "t",
+        basePath = "/confetti-wear",
+        sessionId = "confetti-wear",
+        declaredSurface = "light",
+      )
+
+    assertTrue(wearLight.contains("data-always-dark=\"1\""), wearLight)
+    assertFalse(
+      wearLight.contains("data-theme-choice=\"light\""),
+      "the render lane drops uiMode for a Wear id, so the control must not offer Light: $wearLight",
+    )
+    assertTrue(
+      ServeWeb.SystemDisplay.normalizeOverrideParams(
+          "confetti-wear",
+          mapOf("uiMode" to "light"),
+        )
+        .isEmpty(),
+      "the premise of the assertion above",
+    )
+  }
+
   @Test
   fun `the resolved scheme is pinned before first paint, not after the page loads`() {
     // Deferring this to the shell bundle would paint the page in the wrong mode and correct it a
