@@ -68,7 +68,7 @@ caller in this repository is `:rc-player-profile`'s `main`.
 ```
 
 It runs headless: `ImageComposeScene` rasterizes through skiko's software path with no `DISPLAY`
-(see [AGENTS.md](../AGENTS.md)). Output lands in `rc-player/profile/build/profile/`:
+(see [AGENT_GUIDE.md](../AGENT_GUIDE.md)). Output lands in `rc-player/profile/build/profile/`:
 
 - `profile.md` — the tables reproduced below.
 - `<scenario>.json` — Chrome Trace Event timelines, openable at

@@ -6,4 +6,4 @@ context. A plain markdown link would not be followed, which is exactly what this
 file used to do.
 
 Nothing else belongs here. Repository rules live in `AGENTS.md`; architecture,
-commands and constraints live in [`docs/AGENTS.md`](docs/AGENTS.md).
+commands and constraints live in [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md).

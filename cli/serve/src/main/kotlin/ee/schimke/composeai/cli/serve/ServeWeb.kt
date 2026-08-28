@@ -5314,9 +5314,22 @@ ${captureControlsHtml().prependIndent("          ")}
     // baked in here). Only the width is set, so `aspect-ratio` still derives the height and the box
     // scales rather than squashing. A hand-assembled crop carries no native size; it keeps the
     // fixed-px window.
+    //
+    // `--cp-crop-w-per-h` is the same relationship against the box's own HEIGHT, and it is a
+    // separate number because `natCapAxis` is not always the height: `computeGutterCrop` caps on
+    // height, `computeThumbCrop` on the largest edge. `clip` does not tell them apart either —
+    // `ServeBundleHost` clears it on a vector crop over a guttered render, so `--bleed` marks the
+    // overflow behaviour and says nothing about the axis. A well that is a fixed HEIGHT rather
+    // than a member of the grid — the front door's 220px hero row — has to size against the
+    // height whichever function drew the box, and this is what lets it.
+    //
+    // Derived rather than plumbed: the window's aspect ratio is `boxW/boxH` at every scale, so the
+    // native height is `natBoxW * boxH / boxW`. That keeps `ContentCrop`'s published shape alone.
+    val natBoxH = if (crop.boxW > 0) (crop.natBoxW.toLong() * crop.boxH / crop.boxW).toInt() else 0
     val sizing =
       if (crop.natBoxW > 0 && crop.natCapAxis > 0) {
         "--cp-crop-w-per-cap:${cropRatio(crop.natBoxW, crop.natCapAxis)};" +
+          (if (natBoxH > 0) "--cp-crop-w-per-h:${cropRatio(crop.natBoxW, natBoxH)};" else "") +
           "--cp-crop-max-w:${crop.natBoxW}px"
       } else {
         "width:${crop.boxW}px"

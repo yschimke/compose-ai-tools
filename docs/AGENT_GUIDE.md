@@ -1,4 +1,4 @@
-# Contributor guide (docs/AGENTS.md)
+# Contributor guide
 
 Deep guidance for agents and humans working on this repository: architecture,
 commands, state seams, the load-bearing constraints, and the rationale behind the
@@ -8,6 +8,16 @@ rules.
 always-loaded file every agent reads. This file cites it rather than restating it,
 because a rule stated in two places drifts, and the agent follows whichever it read
 last. If the two ever disagree, root `AGENTS.md` wins.
+
+> **Why this is not called `AGENTS.md`.** It used to be. `AGENTS.md` is a reserved
+> filename: Codex CLI walks from the repository root down to the working directory
+> and loads every one it finds, so a session started in `docs/` — or anywhere below
+> it — inlined this file into its first-turn instructions and blew the 32 KiB
+> `project_doc_max_bytes` budget, silently truncated, on every turn. At 70-odd KiB
+> that is most of a contributor guide arriving as a truncated slab in place of the
+> rules. The name is what caused it, so the name is what changed; the gate in
+> [`scripts/check-agent-entrypoints.sh`](../scripts/check-agent-entrypoints.sh)
+> now fails if a nested `AGENTS.md` reappears anywhere in the tree.
 
 ## What this project is
 

@@ -2,7 +2,7 @@
 
 End-to-end view of how a `@Preview` composable becomes a PNG. For the
 contributor-oriented architecture map (which class lives where, why each
-backend made the choices it made), see [AGENTS.md](AGENTS.md#architecture).
+backend made the choices it made), see [AGENT_GUIDE.md](AGENT_GUIDE.md#architecture).
 
 ## Discovery
 
@@ -304,5 +304,5 @@ not run on pull requests — PRs run a single cheap integration cell
 (`wear-os-samples (ComposeStarter)`) and everything else in that workflow
 lands on `main`. The
 project's own build toolchain (what contributors use) is documented in
-[`AGENTS.md`](AGENTS.md) and is intentionally much newer than the
+[`AGENT_GUIDE.md`](AGENT_GUIDE.md) and is intentionally much newer than the
 consumer floor.

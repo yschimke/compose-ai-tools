@@ -1488,11 +1488,16 @@ cp-parity-scores { display: contents; }
    height would overflow the well by 12px each way, and in the narrow block would push the window
    UP from 200px to 220px: a bigger mismatch than the one being fixed.
 
-   `--bleed` only. `ServeWeb` emits that class for `!crop.clip`, the capture-gutter window, and it
-   is the one crop whose published `--cp-crop-w-per-cap` is box width per 1px of HEIGHT, because
-   `computeGutterCrop` caps on height. A content crop's ratio is against its LARGEST EDGE, so
-   handing it a height would shrink a landscape window that never threatened the row at all. */
-.cp-syslist .cp-crop--bleed { --cp-thumb-cap: 196px; }
+   Sized against `--cp-crop-w-per-h`, not `--cp-thumb-cap`. This well is a fixed HEIGHT rather
+   than a member of the grid, and `--cp-thumb-cap` resolves against `natCapAxis`, which is the
+   height for a `computeGutterCrop` box and the LARGEST EDGE for a `computeThumbCrop` one. Nor
+   does `--bleed` tell them apart, which is what an earlier pass at this got wrong:
+   `ServeBundleHost` clears `clip` on a vector crop over a guttered render, so a landscape
+   300x100 window carries `--bleed` with a largest-edge ratio and would have been shrunk from
+   240x80 to 196x65 for nothing. `--cp-crop-w-per-h` is the width per 1px of the box's own
+   height, so this caps the height at 196 whichever function drew the box. */
+.cp-syslist .cp-crop {
+  width: min(var(--cp-crop-max-w, 100%), calc(var(--cp-crop-w-per-h, var(--cp-crop-w-per-cap, 9999)) * 196px)); }
 /* A front-door card is a poster, not a table row: the meta block gets its own padding, the title
    and the library coordinate sit on separate rhythms, and the count line is divided off so a
    three-line coordinate can't run straight into it. */

@@ -10,7 +10,7 @@
 #   Copilot       .github/copilot-instructions.md, and root AGENTS.md natively
 #
 # None of them follows an ordinary markdown link. So a rule that lives only
-# behind `See [docs/AGENTS.md](docs/AGENTS.md)` is invisible to every one of
+# behind `See [docs/AGENT_GUIDE.md](docs/AGENT_GUIDE.md)` is invisible to every one of
 # them, and the failure is silent: the agent does not deviate visibly, it just
 # goes red on a gate it never saw. That is the failure mode this script exists to
 # make loud, on the PR, before it reaches an agent.
@@ -126,6 +126,39 @@ if [ -f "$CANON" ]; then
   else
     ok "no invariant anchors outside AGENTS.md"
   fi
+fi
+
+# ------------------------------------------------- 3b. no NESTED AGENTS.md anywhere
+#
+# `AGENTS.md` is a reserved filename, and the root one is not the only one Codex
+# reads: it walks from the repository root down to the working directory and loads
+# every `AGENTS.md` on the way. So a file with that name in `docs/` is a real
+# entrypoint for any session started there or below — subject to the same 32 KiB
+# budget checked above, and silently truncated past it.
+#
+# That is not hypothetical: `docs/AGENTS.md` was the contributor guide, at 70-odd
+# KiB, so a Codex session opened in `docs/` inlined a truncated slab of it into
+# every turn. It is now `docs/AGENT_GUIDE.md`, which no agent loads by name, and
+# this check is what keeps the name from coming back. A deep doc belongs under any
+# name but this one.
+nested=""
+if git -C "$root" rev-parse --git-dir >/dev/null 2>&1; then
+  # `:(glob)**/AGENTS.md` matches the BASENAME, the way the `find` fallback below does.
+  # A bare `*AGENTS.md` pathspec is a suffix match, so it would also flag a document
+  # merely ENDING in that name — `docs/MYAGENTS.md` — which Codex does not treat
+  # specially and which this gate has no business failing.
+  nested="$(git -C "$root" ls-files -- ':(glob)**/AGENTS.md' 2>/dev/null | grep -v '^AGENTS\.md$')"
+else
+  nested="$(find "$root" -name 'AGENTS.md' -not -path '*/.git/*' 2>/dev/null \
+            | sed "s|^$root/||" | grep -v '^AGENTS\.md$')"
+fi
+if [ -n "$nested" ]; then
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    fail "nested AGENTS.md: ${f} — Codex loads every AGENTS.md from the root down to its working directory, so this is an entrypoint for any session started at or below its directory, against the same ${CODEX_PROJECT_DOC_MAX_BYTES}-byte budget. Rename it (docs/AGENT_GUIDE.md is the precedent)"
+  done <<< "$nested"
+else
+  ok "no AGENTS.md outside the repository root"
 fi
 
 # ----------------------------------------------------------------- 4 + 5. entrypoints
@@ -251,7 +284,7 @@ if [ "$report" = 1 ]; then
   emit "Gemini CLI"  GEMINI.md AGENTS.md
   emit "Copilot"     .github/copilot-instructions.md AGENTS.md
   printf '\n~TOKENS is bytes/4, the usual rough estimate. Loaded every turn.\n'
-  printf 'docs/AGENTS.md (%s bytes) is read on demand and is not in this table.\n' "$( [ -f "$root/docs/AGENTS.md" ] && bytes_of "$root/docs/AGENTS.md" || echo 0 )"
+  printf 'docs/AGENT_GUIDE.md (%s bytes) is read on demand and is not in this table.\n' "$( [ -f "$root/docs/AGENT_GUIDE.md" ] && bytes_of "$root/docs/AGENT_GUIDE.md" || echo 0 )"
 fi
 
 printf '\n'

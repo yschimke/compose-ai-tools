@@ -87,7 +87,8 @@ visibly short beside the prebaked hero next to it. Only cropped fallback heroes 
 which is why it survived the #4544 fix.
 
 ```css
-.cp-syslist .cp-crop--bleed { --cp-thumb-cap: 196px; }
+.cp-syslist .cp-crop {
+  width: min(var(--cp-crop-max-w, 100%), calc(var(--cp-crop-w-per-h, var(--cp-crop-w-per-cap, 9999)) * 196px)); }
 ```
 
 **196px, not the row's 220px.** `.cp-imgwrap` carries 12px of padding under the border-box `*`
@@ -95,10 +96,15 @@ rule, so the row has 196px of *content* height — which is exactly what the pre
 The row height would overflow the well by 12px each way, and in the narrow block would push the
 window up from 200px to 220px: a bigger mismatch than the one being fixed.
 
-**`--bleed` only.** `ServeWeb` emits that class for `!crop.clip` — the capture-gutter window, and
-the one crop whose published `--cp-crop-w-per-cap` is box width per 1px of *height*, because
-`computeGutterCrop` caps on height. A content crop's ratio is against its largest edge, so handing
-it a height would shrink a landscape window that never threatened the row.
+**`--cp-crop-w-per-h`, not `--cp-thumb-cap`.** This well is a fixed *height* rather than a member
+of the grid, and `--cp-thumb-cap` resolves against `natCapAxis` — the height for a
+`computeGutterCrop` box, the **largest edge** for a `computeThumbCrop` one. Nor does `--bleed`
+separate them, which an earlier pass at this got wrong: `ServeBundleHost` clears `clip` on a vector
+crop over a guttered render, so a landscape 300×100 window carries `--bleed` with a largest-edge
+ratio and was shrunk from 240×80 to **196×65** for nothing. `--cp-crop-w-per-h` is the width per
+1px of the box's own height, published beside the cap ratio, so this caps the height at 196
+whichever function drew the box. The two ratios are the same number for a gutter crop and differ
+for a content one; the fourth figure below is the case that separates them.
 
 | before | after |
 | --- | --- |
@@ -133,11 +139,13 @@ has never declared Playwright.
 It prints the measured sizes it screenshots, which is the assertion in picture form:
 
 ```
-before narrow  plain 267x200  window 320x240  hero 454x196  hero-window 267x200
-before desktop plain 320x240  window 320x240  hero 454x196  hero-window 320x240
-after  narrow  plain 267x200  window 267x200  hero 454x196  hero-window 261x196
-after  desktop plain 320x240  window 320x240  hero 454x196  hero-window 261x196
+before narrow  plain 267x200  window 320x240  hero 454x196  hero-window 267x200  vector-window 300x100
+before desktop plain 320x240  window 320x240  hero 454x196  hero-window 320x240  vector-window 300x100
+after  narrow  plain 267x200  window 267x200  hero 454x196  hero-window 261x196  vector-window 300x100
+after  desktop plain 320x240  window 320x240  hero 454x196  hero-window 261x196  vector-window 300x100
 ```
 
 `hero` is the prebaked hero, unchanged throughout — which is the point: it is the cropped one that
-moves onto it.
+moves onto it. `vector-window` is unchanged for the opposite reason: it already fits the 196px
+well, and the rule must leave it alone. Under the `--bleed` / `--cp-thumb-cap` spelling this
+replaces, it read **196x65**.

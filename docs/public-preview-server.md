@@ -386,7 +386,7 @@ link actually arrives.
 > declared value set. `previewOverrideChoice` is part of the *published* authoring surface, so the
 > guidance for someone applying the plugin to their own project belongs in the
 > [`compose-preview` skill](https://github.com/yschimke/skills/tree/main/skills/compose-preview),
-> not here. See [AGENTS.md](AGENTS.md) on the two doc trees.
+> not here. See [AGENT_GUIDE.md](AGENT_GUIDE.md) on the two doc trees.
 
 ## Historical permalinks: `?at=<sha>`
 
@@ -1963,6 +1963,18 @@ panels; clicking pins it, so the highlight survives the reader's eye moving from
 the frame, and two findings can be held up against each other. Nothing is lit at rest: a dozen
 findings' regions drawn at once over one frame answer "where is this one" for none of them.
 
+**Where the file comes from.** A design-parity run publishes its findings to its own
+`design-parity/<system>` branch, keyed by the ids a *run* knows — the fully-qualified compose
+preview id and the design-map code handle. The compare page routes on neither: it routes on the
+catalog's sticker id, minted at publish. So `emit-parity-findings.mjs` does the join in the
+publishing job, which is the only place holding both the run's output and the catalog it will be
+shown against — the same reason `parity/activity.json` is a publish step rather than a server
+feature. On the way through it fills in the two fields a run cannot know: the `referenceId`, from
+the same `planDesignReferences` records that mint `references/index.json`, so one board's token
+drift never prints under another board's panels; and the `reportUrl`, from the branch plus the
+`reportPath` the run's `run.json` records. A catalog with no parity branch publishes nothing and
+serves exactly as it did before the panel existed.
+
 A finding with no anchors keeps its sentence and is never offered as a control — no `tabindex`, no
 pointer affordance — because a promise of a highlight that cannot come is worse than plain text.
 Everything is fail-soft in the same way the reference and annotation manifests are: an unreadable
@@ -2908,7 +2920,7 @@ curl -sS -H "Authorization: Bearer $(gh auth token)" \
   `markdown` is the finished embed line, so a caller never has to assemble it. That removes the
   assembly mistakes, not the ``![alt](`url`)`` backtick form itself — those backticks are usually
   injected in transit rather than authored, and the [`PR Body Syntax`](../.github/workflows/pr-body-syntax.yml)
-  workflow is what strips them from a PR description (see [AGENTS.md](AGENTS.md), which covers what
+  workflow is what strips them from a PR description (see [AGENT_GUIDE.md](AGENT_GUIDE.md), which covers what
   that net does and does not reach). `?name=` is a display label and the alt text — never a path,
   never the format decision.
 - **`GET /i/<id>.png`** — the image itself, with `X-Content-Type-Options: nosniff` and a

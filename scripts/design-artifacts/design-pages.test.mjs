@@ -6,10 +6,8 @@ import {
   catalogOwnsNode,
   declaringClassOf,
   declaringClasses,
-  moduleDirectory,
   pageImageName,
   planDesignPages,
-  previewFunctionOf,
 } from "./design-pages.mjs";
 
 /** A catalog whose stickers carry the discovery preview ids a design-map entry would name. */
@@ -616,6 +614,11 @@ const parallelCatalog = {
       reference: "figma:FILE/35239:93092",
       sourceFile: "src/main/kotlin/app/remote/RemotePreviews.kt",
       sourceModule: ":remote-catalog",
+      // Carried by the producer, not derived here: the directory because `projectDir` may remap a
+      // logical path anywhere, the function because an arbitrary `@Preview(name = …)` makes a
+      // preview id unsplittable.
+      sourceDirectory: "remote-catalog",
+      sourceFunction: "FilledRemoteButton",
       images: [
         {
           path: "images/button-filled/ideal__default.png",
@@ -797,29 +800,15 @@ test("a node with no declared previewId keeps its claim, as it always did", () =
 
 // ---- The joins themselves ---------------------------------------------------------------------
 
-test("moduleDirectory derives a project's directory, and declines what it cannot", () => {
-  assert.equal(moduleDirectory(":remote-catalog"), "remote-catalog");
-  assert.equal(moduleDirectory(":a:b"), "a/b");
-  // Falls back to the catalog's own module when a component records none.
-  assert.equal(moduleDirectory(undefined, ":catalog"), "catalog");
-  assert.equal(moduleDirectory("", ":catalog"), "catalog");
-  // The ROOT project is a real answer, not a refusal: its sourceFile is already repo-relative, so
-  // the prefix is empty and the handle is published bare. Conflating this with "cannot derive"
-  // dropped every rewritable node of a root-project catalog.
-  assert.equal(moduleDirectory(":"), "");
-  // A settings.gradle.kts may remap a project's directory and no published catalog records that, so
-  // anything not plainly derivable returns null and the caller drops the claim.
-  assert.equal(moduleDirectory("catalog"), null);
-  assert.equal(moduleDirectory(undefined, undefined), null);
-});
-
 test("a root-project catalog publishes its bare, already-repo-relative sourceFile", () => {
+  // The root project's carried directory is the empty string — a real answer, not a missing one.
   const rootCatalog = {
     source: { module: ":" },
     components: [
       {
         ...parallelCatalog.components[0],
         sourceModule: ":",
+        sourceDirectory: "",
         sourceFile: "app/src/main/kotlin/app/remote/RemotePreviews.kt",
       },
     ],
@@ -873,21 +862,6 @@ test("catalogOwnsNode places a claim by its declaring file", () => {
     true,
     "nothing to place ⇒ nothing proves it foreign",
   );
-});
-
-test("previewFunctionOf strips the axis and variant suffixes discovery appends", () => {
-  assert.equal(
-    previewFunctionOf(parallelCatalog.components[0]),
-    "FilledRemoteButton",
-  );
-  assert.equal(
-    previewFunctionOf({
-      images: [{ previewId: "a.b.CKt.Sticker_VARIANT_disabled" }],
-    }),
-    "Sticker",
-  );
-  assert.equal(previewFunctionOf({ images: [] }), null);
-  assert.equal(previewFunctionOf({}), null);
 });
 
 // ---- Review findings on the shared-import fix (#4680) ------------------------------------------
@@ -1013,19 +987,6 @@ test("a rewritten node drops the owner's provenance rather than wearing it", () 
   assert.equal(kept.cell, true);
 });
 
-test("previewFunctionOf keeps an underscore that belongs to the function name", () => {
-  // `Filled_Button_Light` truncated at the first underscore publishes `#Filled` — a handle naming
-  // no function at all. Only a recognised axis or variant suffix is stripped.
-  const fnFor = (previewId) => previewFunctionOf({ images: [{ previewId }] });
-  assert.equal(fnFor("app.PreviewsKt.Filled_Button_Light"), "Filled_Button");
-  assert.equal(fnFor("app.PreviewsKt.Filled_Button"), "Filled_Button");
-  assert.equal(fnFor("app.PreviewsKt.Sticker_width_227dp_dpi_320"), "Sticker");
-  assert.equal(fnFor("app.PreviewsKt.Sticker_VARIANT_disabled"), "Sticker");
-  // Unrecognised suffixes survive whole: too long still points at the right file, truncated points
-  // nowhere.
-  assert.equal(fnFor("app.PreviewsKt.Odd_Name_Here"), "Odd_Name_Here");
-});
-
 test("a dotted @Preview name does not split the declaring class", () => {
   // `sanitizeForPath` deliberately keeps dots so an id stays lossless, so `@Preview(name = "Phone.v2")`
   // ends `…FooKt.Render_Phone.v2`. Splitting at the last dot put two variants of ONE function in
@@ -1057,5 +1018,115 @@ test("a dotted @Preview name does not split the declaring class", () => {
   assert.equal(
     catalogOwnsNode({ previewId: "pkg.FooKt.Render_Tablet.v3" }, classes),
     true,
+  );
+});
+
+// ---- The producer carries what cannot be derived (wear-m3-catalog#98 follow-up) ----------------
+
+test("a remapped project directory is published as recorded, not as derived", () => {
+  // `project(":bundle-format").projectDir = file("bundle/format")`. This repository remaps 100
+  // projects and NOT ONE derives correctly from its Gradle path, so the directory is carried.
+  const remapped = {
+    source: { module: ":bundle-format" },
+    components: [
+      {
+        ...parallelCatalog.components[0],
+        sourceModule: ":bundle-format",
+        sourceDirectory: "bundle/format",
+        sourceFile: "src/main/kotlin/app/Preview.kt",
+        sourceFunction: "Sticker",
+      },
+    ],
+  };
+  const result = planDesignPages({
+    manifest: sharedImport,
+    spec: {},
+    catalog: remapped,
+  });
+  assert.equal(
+    onlyNode(result).code,
+    "bundle/format/src/main/kotlin/app/Preview.kt#Sticker",
+  );
+});
+
+test("a carried function name survives what no id parse could recover", () => {
+  // `@Preview(name = "Large Round")` and `name = "Phone.v2"` reach the id through `sanitizeForPath`,
+  // which passes spaces and dots verbatim — the id does not split back into function and label.
+  for (const fn of ["Filled_Button", "Render", "A_B_C"]) {
+    const catalog = {
+      components: [
+        {
+          ...parallelCatalog.components[0],
+          sourceFunction: fn,
+          images: [
+            {
+              path: "images/button-filled/ideal__default.png",
+              previewId: `app.remote.RemotePreviewsKt.${fn}_Large Round`,
+            },
+          ],
+        },
+      ],
+    };
+    assert.equal(
+      onlyNode(planDesignPages({ manifest: sharedImport, spec: {}, catalog }))
+        .code,
+      `remote-catalog/src/main/kotlin/app/remote/RemotePreviews.kt#${fn}`,
+    );
+  }
+});
+
+test("a catalog published before the fields existed keeps its render, losing only the label", () => {
+  // The migration case, and the reason the render does not hang off the code handle: a reference
+  // match is an identity, so the sticker stands even when nothing can be said about its source.
+  const older = {
+    components: [
+      {
+        componentId: "Button/Filled",
+        reference: "figma:FILE/35239:93092",
+        sourceFile: "src/main/kotlin/app/remote/RemotePreviews.kt",
+        sourceModule: ":remote-catalog",
+        images: [
+          {
+            path: "images/button-filled/ideal__default.png",
+            previewId: "app.remote.RemotePreviewsKt.FilledRemoteButton",
+          },
+        ],
+      },
+    ],
+  };
+  const node = onlyNode(
+    planDesignPages({ manifest: sharedImport, spec: {}, catalog: older }),
+  );
+  assert.equal(node.link, "manifest", "the pairing is still established");
+  assert.equal(
+    node.previewId,
+    "button-filled__ideal__default",
+    "and still scores",
+  );
+  assert.equal(
+    "code" in node,
+    false,
+    "but nothing is claimed about the source",
+  );
+});
+
+test("the root project's empty directory is a usable answer, not a missing one", () => {
+  // The producer records `""` for a root-project catalog and the stamp must carry it: treating it
+  // as absent dropped every handle such a catalog could publish.
+  const root = {
+    components: [
+      {
+        ...parallelCatalog.components[0],
+        sourceDirectory: "",
+        sourceFile: "app/src/main/kotlin/app/Preview.kt",
+        sourceFunction: "Sticker",
+      },
+    ],
+  };
+  assert.equal(
+    onlyNode(
+      planDesignPages({ manifest: sharedImport, spec: {}, catalog: root }),
+    ).code,
+    "app/src/main/kotlin/app/Preview.kt#Sticker",
   );
 });

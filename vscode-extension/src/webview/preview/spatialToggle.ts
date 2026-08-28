@@ -5,7 +5,7 @@
 // A self-contained controller in the spirit of the panel's other per-concern
 // controllers (FilterController, FocusController, …) so `main.ts` only has to
 // construct it and forward the `setSpatialScene` message — no parallel
-// module-level state (see docs/AGENTS.md "State seams").
+// module-level state (see docs/AGENT_GUIDE.md "State seams").
 //
 // The viewer bundle is loaded only on the first switch to 3D: panels that never
 // receive a `SpatialScene` never pay the ~560 KB parse cost, and the toggle

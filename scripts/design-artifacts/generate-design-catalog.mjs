@@ -45,10 +45,17 @@ import {
 import { buildCatalog, writeCatalog } from "@design-parity/catalog-export";
 
 import { foldVariants, variantLabel } from "./catalog-variants.mjs";
-import { foldMotion, motionArtifactsFor, motionPreviewFor } from "./catalog-motion.mjs";
+import {
+  foldMotion,
+  motionArtifactsFor,
+  motionPreviewFor,
+} from "./catalog-motion.mjs";
 import { publishMotionArtifacts } from "./catalog-motion-publish.mjs";
 import { checkMotionCarried } from "./motion-carried.mjs";
-import { unclaimedMotionPreviews, unclaimedMotionWarning } from "./unclaimed-motion.mjs";
+import {
+  unclaimedMotionPreviews,
+  unclaimedMotionWarning,
+} from "./unclaimed-motion.mjs";
 import {
   DEFERRED,
   deferralPlan,
@@ -112,13 +119,26 @@ import {
 // CI warnings and fatal diagnostics should be visible as workflow annotations,
 // not buried among catalog-generation milestones. Keep local output unchanged.
 if (process.env.GITHUB_ACTIONS === "true") {
-  const annotate = (level, title, sink) => (...parts) => {
-    const escape = (value) =>
-      String(value).replaceAll("%", "%25").replaceAll("\r", "%0D").replaceAll("\n", "%0A");
-    sink(`::${level} title=${escape(title)}::${escape(parts.join(" "))}`);
-  };
-  console.warn = annotate("warning", "Design artifact warning", console.warn.bind(console));
-  console.error = annotate("error", "Design artifact failure", console.error.bind(console));
+  const annotate =
+    (level, title, sink) =>
+    (...parts) => {
+      const escape = (value) =>
+        String(value)
+          .replaceAll("%", "%25")
+          .replaceAll("\r", "%0D")
+          .replaceAll("\n", "%0A");
+      sink(`::${level} title=${escape(title)}::${escape(parts.join(" "))}`);
+    };
+  console.warn = annotate(
+    "warning",
+    "Design artifact warning",
+    console.warn.bind(console),
+  );
+  console.error = annotate(
+    "error",
+    "Design artifact failure",
+    console.error.bind(console),
+  );
 }
 import { exportsNoSticker } from "./capture-mode.mjs";
 import {
@@ -155,6 +175,7 @@ import {
 } from "./completeness-exemptions.mjs";
 import {
   additionalBundleLiveConflict,
+  bundleModuleDirectory,
   bundleModulePath,
   claimedComponentIds,
   claimedPreviewFunctions,
@@ -273,9 +294,14 @@ async function loadCandidates(path, breakpoints) {
   // rather than by whether a hand-typed name coincides with the kit's naming. Props win over state
   // for such a cell (stamping both would double-count one render), so the axis pass runs first and
   // the state pass skips any image it claimed.
-  const axisProps = applyVariantAxisProps(candidates, overridesByPreviewId(candidateBundle));
+  const axisProps = applyVariantAxisProps(
+    candidates,
+    overridesByPreviewId(candidateBundle),
+  );
   if (axisProps.stamped > 0) {
-    console.log(`[${basename(path)}] stamped @PreviewAxis props on ${axisProps.stamped} image(s)`);
+    console.log(
+      `[${basename(path)}] stamped @PreviewAxis props on ${axisProps.stamped} image(s)`,
+    );
   }
   for (const candidate of candidates) {
     const state = variantStateFromId(candidate.previewId ?? candidate.id);
@@ -309,7 +335,10 @@ async function loadCandidates(path, breakpoints) {
   // class, where it is indistinguishable from the sibling expansion that DID match — the collapse
   // that otherwise surfaces much later as an overwritten sticker or a duplicate-axis failure. Say so
   // here, while the fix (one more `breakpoints` entry) is still obvious.
-  const undeclaredDevices = undeclaredBreakpointDevices(candidateBundle.previews, breakpoints);
+  const undeclaredDevices = undeclaredBreakpointDevices(
+    candidateBundle.previews,
+    breakpoints,
+  );
   if (undeclaredDevices.length > 0) {
     console.warn(
       `[${basename(path)}] ${undeclaredDevices.length} @Preview device id(s) match no declared ` +
@@ -365,13 +394,37 @@ function sourceByFunction(bundle) {
   const out = new Map();
   const prefer = (id) => /(_|\b)light$/i.test(id);
   const module = bundleModulePath(bundle);
+  // The physical directory the bundle recorded, carried beside the logical path. A consumer that
+  // needs a REPOSITORY path — the design-page surface joining this to `sourceFile` — cannot derive
+  // it from `module`, so the producer hands it over instead of leaving it to be guessed.
+  const directory = bundleModuleDirectory(bundle);
   for (const preview of bundle.previews ?? []) {
     const fn = preview.functionName ?? preview.id;
+    // What the SOURCE declares, which is not always the join key: `namespaceModuleRecords` rewrites
+    // a colliding `functionName` to `:module::Foo` so two modules can share a catalog, and that key
+    // is not a Kotlin identifier. `declaredFunctionName` survives the rewrite for exactly this.
+    const declared = preview.declaredFunctionName ?? fn;
     if (out.has(fn) && !prefer(preview.id)) continue;
+    // `fn` is discovery's OWN function name, kept as a field rather than left to be re-parsed out
+    // of a preview id: `buildVariantSuffix` appends an arbitrary `@Preview(name = …)` through
+    // `sanitizeForPath`, which passes spaces and dots verbatim, so the id is not losslessly
+    // splittable back into function and label.
     if (preview.sourceFile)
-      out.set(fn, { sourceFile: preview.sourceFile, bodyLine: preview.bodyLine, module });
+      out.set(fn, {
+        sourceFile: preview.sourceFile,
+        bodyLine: preview.bodyLine,
+        module,
+        directory,
+        functionName: declared,
+      });
     else if (!out.has(fn))
-      out.set(fn, { sourceFile: undefined, bodyLine: undefined, module });
+      out.set(fn, {
+        sourceFile: undefined,
+        bodyLine: undefined,
+        module,
+        directory,
+        functionName: declared,
+      });
   }
   return out;
 }
@@ -547,7 +600,9 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
             componentId: specComponent.componentId,
             group: group.name,
             ...(group.section !== undefined ? { section: group.section } : {}),
-            ...(specComponent.caption !== undefined ? { caption: specComponent.caption } : {}),
+            ...(specComponent.caption !== undefined
+              ? { caption: specComponent.caption }
+              : {}),
             preview: specComponent.preview,
             reason: "entry",
           });
@@ -561,7 +616,9 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
           if (exportsNoSticker(variant)) {
             // Same label shape `foldVariants` uses for the required path, from the same helper, so a
             // reader can't tell from the report which lane the entry took.
-            noSticker.push(`${specComponent.componentId} [${variantLabel(variant)}]`);
+            noSticker.push(
+              `${specComponent.componentId} [${variantLabel(variant)}]`,
+            );
             continue;
           }
           deferred.push({
@@ -579,7 +636,8 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
       }
       // Fold only the REQUIRED variants; each deferred one is recorded live-only instead of being
       // looked up (and then reported missing) below.
-      const { component, deferredVariants } = splitDeferredVariants(specComponent);
+      const { component, deferredVariants } =
+        splitDeferredVariants(specComponent);
       for (const variant of deferredVariants) {
         deferred.push({
           componentId: component.componentId,
@@ -605,7 +663,10 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
       // `@Preview` function and still be separate cards with their own ids and captions — the
       // alternative being to split the function in the module (see catalog-select.mjs).
       const select = selectOf(component);
-      const { images: selected, missing: unselected } = selectComponentImages(component, candidate);
+      const { images: selected, missing: unselected } = selectComponentImages(
+        component,
+        candidate,
+      );
       if (unselected) {
         missing.push(unselected);
         continue;
@@ -628,7 +689,10 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
       // dropped from the baked set (so no PNG is written and the Figma/static kit stays lean) and
       // recorded live-only. Only stickers that NAME a theme are eligible, so every component keeps
       // its untagged primary render.
-      const { baked, deferred: deferredImages } = splitDeferredImages(ideal, spec);
+      const { baked, deferred: deferredImages } = splitDeferredImages(
+        ideal,
+        spec,
+      );
       for (const image of deferredImages) {
         deferred.push({
           componentId: component.componentId,
@@ -658,7 +722,9 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
       const seenAxes = new Set(
         [...deferredImages, ...baked]
           .filter((image) => image.theme)
-          .map((image) => deferralAxisKey(image.theme, image.state, image.props, image.size)),
+          .map((image) =>
+            deferralAxisKey(image.theme, image.state, image.props, image.size),
+          ),
       );
       // A `select`ed entry covers ONE breakpoint of its function, so its deferred-mode record has to
       // name that size — otherwise the sibling entry selecting the other breakpoint dedupes against
@@ -674,10 +740,17 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
       ];
       for (const source of modeSources) {
         if (!source.preview) continue;
-        for (const previewId of opts.previewIdsByFunction?.get(source.preview) ?? []) {
+        for (const previewId of opts.previewIdsByFunction?.get(
+          source.preview,
+        ) ?? []) {
           const mode = modeOfPreviewId(previewId, spec.modes);
           if (!mode || modePriority(spec, mode) !== DEFERRED) continue;
-          const key = deferralAxisKey(mode, source.state, source.props, source.size);
+          const key = deferralAxisKey(
+            mode,
+            source.state,
+            source.props,
+            source.size,
+          );
           if (seenAxes.has(key)) continue;
           seenAxes.add(key);
           deferred.push({
@@ -774,7 +847,14 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
   // is silently dropped here unless it is threaded through by hand. Missing it published a catalog
   // with no `themes[]` while the run logged that it was publishing them.
   const catalog = buildCatalog(meta, sources, opts.themeTokens, opts.themes);
-  return { catalog, missing, noSticker, withoutSemantics, deferred, motionByComponentId };
+  return {
+    catalog,
+    missing,
+    noSticker,
+    withoutSemantics,
+    deferred,
+    motionByComponentId,
+  };
 }
 // --- end vendored join --------------------------------------------------------
 
@@ -784,6 +864,13 @@ const { values } = parseArgs({
     renders: { type: "string" },
     out: { type: "string" },
     renderer: { type: "string" },
+    // The repo-relative directory of the Gradle BUILD the renders came from, for a monorepo whose
+    // samples are separate builds (compose-samples: `JetNews/`, `Jetcaster/`, each with its own
+    // `gradlew`). The plugin records a project's directory relative to ITS OWN `rootDir`, which in
+    // that layout is the sample's root and not the checkout — so `:app` records `app` while the
+    // repository path is `JetNews/app`. Only the caller knows the difference, so the caller says.
+    // Empty (the default, and every single-build repository) changes nothing.
+    "build-root": { type: "string" },
     // Base URL of the live preview server the catalog deep-links into (the
     // `livePreview` fields + README "Customise live" links). Falls back to
     // $PREVIEW_SERVER_BASE, then the public default.
@@ -979,9 +1066,16 @@ const allBundles = [bundle, extraBundle, ...additionalBundles].filter(Boolean);
 // `candidates` above — so its `@CatalogComponent` must reach the inventory as well,
 // or the component would render but never enter `spec.groups`. Primary previews come
 // first, so a component present in both dedupes to the primary's annotation.
-const inventoryPreviews = allBundles.flatMap((renderBundle) => renderBundle.previews ?? []);
-const { groups: annotationGroups, orphanVariants, withoutBreakpoints } =
-  inventoryFromPreviews(inventoryPreviews, { breakpoints: catalogBreakpoints(spec) });
+const inventoryPreviews = allBundles.flatMap(
+  (renderBundle) => renderBundle.previews ?? [],
+);
+const {
+  groups: annotationGroups,
+  orphanVariants,
+  withoutBreakpoints,
+} = inventoryFromPreviews(inventoryPreviews, {
+  breakpoints: catalogBreakpoints(spec),
+});
 if (withoutBreakpoints.length > 0) {
   // `perBreakpoint` asked for a card per breakpoint but no render resolved to one — an undeclared
   // device, or a catalog with no `breakpoints` table at all. The component is kept WHOLE rather
@@ -1007,7 +1101,10 @@ if (annotationGroups.length > 0) {
     0,
   );
   spec.groups = mergeCatalogGroups(annotationGroups, spec.groups ?? []);
-  const mergedCount = spec.groups.reduce((n, g) => n + (g.components?.length ?? 0), 0);
+  const mergedCount = spec.groups.reduce(
+    (n, g) => n + (g.components?.length ?? 0),
+    0,
+  );
   console.log(
     `[${spec.system}] merged annotation inventory: ${annotationGroups.reduce((n, g) => n + g.components.length, 0)} ` +
       `annotated component(s) + ${specComponentCount} spec component(s) → ${mergedCount} total`,
@@ -1026,7 +1123,10 @@ if (values["generate-fallbacks"]) {
   );
   if (fallbackGroups.length > 0) {
     spec.groups = [...(spec.groups ?? []), ...fallbackGroups];
-    const count = fallbackGroups.reduce((n, group) => n + group.components.length, 0);
+    const count = fallbackGroups.reduce(
+      (n, group) => n + group.components.length,
+      0,
+    );
     console.log(
       `[${spec.system}] generated ${count} fallback component(s) across ` +
         `${fallbackGroups.length} module/preview group(s)`,
@@ -1058,7 +1158,9 @@ spec.groups = applyGroupOrder(spec.groups, spec.groupOrder);
 
 const renderFailures = renderFailuresFromBundles(allBundles, spec);
 if (renderFailures.length > 0) {
-  const signatures = new Set(renderFailures.map((f) => `${f.errorClass}\u0000${f.message}`));
+  const signatures = new Set(
+    renderFailures.map((f) => `${f.errorClass}\u0000${f.message}`),
+  );
   console.warn(
     `[${spec.system}] ${renderFailures.length} failed render(s), ${signatures.size} distinct ` +
       `error signature(s) — recorded in catalog.json`,
@@ -1147,7 +1249,11 @@ function designParityVersion() {
 // which a `--allow-render-trusted` box builds). Refuse here rather than publish a thinner catalog
 // than the spec describes. Mirrored (leniently, since it can't know the publish flags) by
 // `validateSpec`'s `liveBundle` option in the build-free pre-flight.
-if (specDefersAnything(spec) && !values["publish-live-bundle"] && !values["source-module"]) {
+if (
+  specDefersAnything(spec) &&
+  !values["publish-live-bundle"] &&
+  !values["source-module"]
+) {
   console.error(
     `[${spec.system}] this spec defers coverage (\`priority: "deferred"\` / \`modePriority\`) but ` +
       `neither --publish-live-bundle nor --source-module was passed — the deferred entries would ` +
@@ -1168,24 +1274,30 @@ if (specDefersAnything(spec)) {
   );
 }
 
-const { catalog, missing, noSticker, withoutSemantics, deferred, motionByComponentId } =
-  catalogFromCandidates(candidates, spec, {
-    ...(values.renderer ? { renderer: values.renderer } : {}),
-    ...(designParityVersion() ? { designParity: designParityVersion() } : {}),
-    ...(themeTokens ? { themeTokens } : {}),
-    ...(declaredThemes.length > 0 ? { themes: declaredThemes } : {}),
-    // Every daemon preview id per function, from the bundles' FULL preview lists — including the
-    // deferred palettes whose render was skipped (#2966), which is how their live-only coverage still
-    // gets declared even though no image of them exists to fold.
-    previewIdsByFunction: daemonPreviewIdsByFunction(allBundles),
-    // The same fan-outs with their render parameters. A separately named motion function may
-    // declare annotations in a different order, so theme inheritance joins by axis identity rather
-    // than zipping the two id arrays.
-    previewCellsByFunction: daemonPreviewCellsByFunction(allBundles),
-    // Motion artifacts are read from every catalog module. Keep the legacy extra-render supplement
-    // out: it fills in stills the primary could not produce and does not own motion captures.
-    motionBundle: [bundle, ...additionalBundles],
-  });
+const {
+  catalog,
+  missing,
+  noSticker,
+  withoutSemantics,
+  deferred,
+  motionByComponentId,
+} = catalogFromCandidates(candidates, spec, {
+  ...(values.renderer ? { renderer: values.renderer } : {}),
+  ...(designParityVersion() ? { designParity: designParityVersion() } : {}),
+  ...(themeTokens ? { themeTokens } : {}),
+  ...(declaredThemes.length > 0 ? { themes: declaredThemes } : {}),
+  // Every daemon preview id per function, from the bundles' FULL preview lists — including the
+  // deferred palettes whose render was skipped (#2966), which is how their live-only coverage still
+  // gets declared even though no image of them exists to fold.
+  previewIdsByFunction: daemonPreviewIdsByFunction(allBundles),
+  // The same fan-outs with their render parameters. A separately named motion function may
+  // declare annotations in a different order, so theme inheritance joins by axis identity rather
+  // than zipping the two id arrays.
+  previewCellsByFunction: daemonPreviewCellsByFunction(allBundles),
+  // Motion artifacts are read from every catalog module. Keep the legacy extra-render supplement
+  // out: it fills in stills the primary could not produce and does not own motion captures.
+  motionBundle: [bundle, ...additionalBundles],
+});
 
 // Completeness gate: `bundle pack --with-semantics` is best-effort and exits 0
 // even when the daemon never started or captured zero semantics. For a scheduled
@@ -1477,8 +1589,15 @@ if (values["publish-live-bundle"]) {
     const dest = join(outPath, path, file);
     await mkdir(dirname(dest), { recursive: true });
     await cp(record.renderPath, dest);
-    liveBundles.push({ path, file, module, previewIdPrefix: moduleIdentityPrefix(module) });
-    console.log(`[${spec.system}] carried module live bundle ${module} → ${path}${file}`);
+    liveBundles.push({
+      path,
+      file,
+      module,
+      previewIdPrefix: moduleIdentityPrefix(module),
+    });
+    console.log(
+      `[${spec.system}] carried module live bundle ${module} → ${path}${file}`,
+    );
   }
 }
 
@@ -1500,8 +1619,23 @@ if (values["publish-live-bundle"]) {
   // buildCatalog) from the bundle's discovery previews, so the preview server can link a
   // preview to its source on GitHub. No-op when discovery recorded no paths.
   const sourcesByFunction = new Map();
+  // Lift each project's build-root-relative directory to a REPOSITORY-relative one. The producer
+  // records what it can know (a directory under its own build root); this is the one place that
+  // knows where that build sits in the checkout.
+  const buildRoot = (values["build-root"] ?? "")
+    .trim()
+    .replace(/^\/+|\/+$/g, "");
+  const inRepo = (directory) => {
+    if (typeof directory !== "string") return undefined;
+    if (buildRoot === "") return directory;
+    return directory === "" ? buildRoot : `${buildRoot}/${directory}`;
+  };
   for (const renderBundle of allBundles) {
-    for (const [fn, source] of sourceByFunction(renderBundle)) sourcesByFunction.set(fn, source);
+    for (const [fn, source] of sourceByFunction(renderBundle))
+      sourcesByFunction.set(fn, {
+        ...source,
+        directory: inRepo(source.directory),
+      });
   }
   const stampedSources = applySourceFiles(manifest, spec, sourcesByFunction);
   if (stampedSources > 0) {
@@ -1603,10 +1737,14 @@ if (values["publish-live-bundle"]) {
           : {}),
         ...(ids.length > 0 ? { previewIds: ids } : {}),
         // Never clobber a record that already carries one, matching `applyParallels`.
-        ...(parallel !== undefined && record.parallel === undefined ? { parallel } : {}),
+        ...(parallel !== undefined && record.parallel === undefined
+          ? { parallel }
+          : {}),
       };
     });
-    const addressable = manifest.deferred.filter((r) => r.path && r.previewId).length;
+    const addressable = manifest.deferred.filter(
+      (r) => r.path && r.previewId,
+    ).length;
     console.log(
       `[${spec.system}] ${addressable}/${manifest.deferred.length} deferred record(s) carry a ` +
         `route + daemon preview id (the live-only lane a trusted serve host registers them under)`,
@@ -1632,12 +1770,7 @@ if (values["publish-live-bundle"]) {
     // Both bundles: an `--extra-renders`-only component's previews live solely in the
     // supplement, so passing just the primary left every one of its images with no
     // `previewId` — no live lane for it, and no per-variant figma-svg.
-    bridgeLivePreviewIds(
-      manifest,
-      spec,
-      allBundles,
-      overriddenFunctions,
-    );
+    bridgeLivePreviewIds(manifest, spec, allBundles, overriddenFunctions);
     // The shared live daemon opens only the primary bundle. An extra-only image renders through a
     // per-preview supplement bundle that stays closed until first render, so the browse surface
     // cannot discover its authored knobs / focus / gesture controls from the daemon. Record those
@@ -1755,7 +1888,8 @@ if (values["publish-live-bundle"]) {
 // PNG-only. Extra wins on a name clash, matching the candidate fold above.
 const layoutByFn = new Map();
 for (const renderBundle of allBundles) {
-  for (const [fn, value] of layoutByFunction(renderBundle)) layoutByFn.set(fn, value);
+  for (const [fn, value] of layoutByFunction(renderBundle))
+    layoutByFn.set(fn, value);
 }
 const fnByComponentId = new Map(
   spec.groups.flatMap((g) =>
@@ -2058,7 +2192,11 @@ if (compare) {
     // below and skips the compare page with a warning, which is the loud outcome that error wants.
     const otherSpecPath = compare.spec
       ? resolve(dirname(specPath), compare.spec)
-      : join(dirname(dirname(specPath)), `design-catalog-${compare.system}`, "catalog.spec.json");
+      : join(
+          dirname(dirname(specPath)),
+          `design-catalog-${compare.system}`,
+          "catalog.spec.json",
+        );
     const otherSpec = compare.spec
       ? JSON.parse(await readFile(otherSpecPath, "utf8"))
       : await readJsonBestEffort(otherSpecPath);
@@ -2081,7 +2219,9 @@ if (compare) {
     // pixels stay current — only a brand-new sibling component waits a run.
     const otherRepo = compare.repo ?? repo;
     const otherBranchBase = `https://raw.githubusercontent.com/${otherRepo}/design-artifacts/${compare.system}/`;
-    const otherManifest = await fetchJsonBestEffort(`${otherBranchBase}catalog.json`);
+    const otherManifest = await fetchJsonBestEffort(
+      `${otherBranchBase}catalog.json`,
+    );
     if (otherManifest) {
       console.log(
         `[${spec.system}] resolved ${otherManifest.components?.length ?? 0} sibling render(s) ` +
@@ -2159,7 +2299,9 @@ if (compare) {
         if (image?.path) publishedPreviewIds.add(servePreviewId(image.path));
     const designRefById = new Map();
     if (compare.design !== false) {
-      const sibling = await fetchJsonBestEffort(`${otherBranchBase}references/index.json`);
+      const sibling = await fetchJsonBestEffort(
+        `${otherBranchBase}references/index.json`,
+      );
       const local = await fetchJsonBestEffort(
         `https://raw.githubusercontent.com/${repo}/design-artifacts/${spec.system}/references/index.json`,
       );
@@ -2201,7 +2343,10 @@ if (compare) {
         // `meta` object rather than nesting it — so the fetched fallback reads `.title`. The `.meta`
         // arm is for a reader handed the nested in-memory shape; both are cheap and only one is
         // ever populated.
-        otherTitle: otherSpec?.title ?? otherManifest?.title ?? otherManifest?.meta?.title,
+        otherTitle:
+          otherSpec?.title ??
+          otherManifest?.title ??
+          otherManifest?.meta?.title,
         repo,
         otherRepo,
         designRefById,
@@ -2212,7 +2357,11 @@ if (compare) {
     );
     crossSystem = {
       system: compare.system,
-      title: otherSpec?.title ?? otherManifest?.title ?? otherManifest?.meta?.title ?? compare.system,
+      title:
+        otherSpec?.title ??
+        otherManifest?.title ??
+        otherManifest?.meta?.title ??
+        compare.system,
     };
     console.log(`[${spec.system}] matches → ${matchesPath}`);
   } catch (err) {
@@ -2296,7 +2445,9 @@ if (figmaVariantGapCount) {
 // manifest carries the flattened `images[]` with the `previewId` the stamp pass bridged on — see
 // its declaration above. Against `catalog.components` this check iterates nothing and reports
 // nothing, whatever the export actually emitted, which is the one way a checker can fail worst.
-const variantRenderMismatches = mismatchedVariantRenders(indexManifest.components);
+const variantRenderMismatches = mismatchedVariantRenders(
+  indexManifest.components,
+);
 if (variantRenderMismatches.length) {
   const shown = describeMismatchedRenders(variantRenderMismatches).slice(0, 8);
   const more =

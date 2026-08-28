@@ -27,7 +27,7 @@ import javax.imageio.metadata.IIOMetadataNode
  * recording surface ships GIF as a real encoder rather than a test-only artifact.
  *
  * **`ImageIO` boundary.** GIF read/write goes through `javax.imageio`, one of the sanctioned
- * `java.io.File` boundaries (see docs/AGENTS.md "File/IO goes through Okio … except a hard
+ * `java.io.File` boundaries (see docs/AGENT_GUIDE.md "File/IO goes through Okio … except a hard
  * third-party boundary"). The encoder keeps `File` local to those calls.
  */
 public object GifEncoder {

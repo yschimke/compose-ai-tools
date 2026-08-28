@@ -50,6 +50,16 @@ make_good() { # make_good <dir>
 
 run() { "$CHECK" --root "$1" >/dev/null 2>&1; echo $?; }
 
+# The nested-AGENTS.md check has TWO implementations — `git ls-files` when the root
+# is a repository, `find` otherwise — and CI always takes the first. A fixture built
+# with mkdir/printf is not a repository, so it silently exercises only the fallback:
+# the first version of the MYAGENTS.md case below passed against the very pathspec
+# bug it was written for. Stage the tree so `ls-files` sees it.
+git_fixture() { # git_fixture <dir>
+  git -C "$1" init -q 2>/dev/null || return 1
+  git -C "$1" add -A 2>/dev/null || return 1
+}
+
 # ---------------------------------------------------------------- must pass
 good="$tmp/good"; make_good "$good"
 check "a complete tree passes" 0 "$(run "$good")"
@@ -75,7 +85,7 @@ printf '<!-- invariant: branch-prefix -->\n' >> "$d/AGENTS.md"
 check "an invariant anchored twice is rejected" 1 "$(run "$d")"
 
 d="$tmp/stray-anchor"; make_good "$d"; mkdir -p "$d/docs"
-printf '<!-- invariant: branch-prefix -->\nsecond copy of the rule.\n' > "$d/docs/AGENTS.md"
+printf '<!-- invariant: branch-prefix -->\nsecond copy of the rule.\n' > "$d/docs/AGENT_GUIDE.md"
 check "an invariant anchor outside AGENTS.md is rejected" 1 "$(run "$d")"
 
 # The whole point: a markdown link is not an import for any of these agents.
@@ -148,6 +158,31 @@ check "a three-space-indented fence opens, hiding the import inside it" 1 "$(run
 d="$tmp/indented-closer"; make_good "$d"
 printf 'Example:\n\n   ```\nfenced\n   ```\n\n@AGENTS.md\n' > "$d/CLAUDE.md"
 check "a three-space-indented fence closes, so the import after it is live" 0 "$(run "$d")"
+
+# A nested AGENTS.md is a second entrypoint, not a second document: Codex loads
+# every one from the root down to its working directory, so one in `docs/` is
+# inlined into any session started there — under the same 32 KiB budget, silently
+# truncated past it. `docs/AGENTS.md` really was the 70 KiB contributor guide.
+d="$tmp/nested-agents"; make_good "$d"; mkdir -p "$d/docs"
+printf '# Contributor guide\n\nlong architecture notes.\n' > "$d/docs/AGENTS.md"
+git_fixture "$d"
+check "a nested AGENTS.md is rejected, whatever its size" 1 "$(run "$d")"
+
+# ...and the same file under any other name is fine, which is the whole remedy.
+d="$tmp/nested-renamed"; make_good "$d"; mkdir -p "$d/docs"
+printf '# Contributor guide\n\nlong architecture notes.\n' > "$d/docs/AGENT_GUIDE.md"
+check "the same guide under another name is fine" 0 "$(run "$d")"
+
+# ...and a document whose basename merely ENDS in AGENTS.md is not one. Codex does
+# not treat `MYAGENTS.md` specially, so a suffix pathspec here would fail the gate
+# on an ordinary doc.
+d="$tmp/suffix-not-basename"; make_good "$d"; mkdir -p "$d/docs"
+printf '# My notes\n\nnot an entrypoint.\n' > "$d/docs/MYAGENTS.md"
+# A REPOSITORY fixture on purpose: this is the `git ls-files` pathspec under test,
+# and the `find` fallback matches by basename already, so a non-repo tree would pass
+# whatever the pathspec said.
+git_fixture "$d"
+check "a file merely ending in AGENTS.md is not a nested entrypoint" 0 "$(run "$d")"
 
 d="$tmp/no-copilot"; make_good "$d"; rm "$d/.github/copilot-instructions.md"
 check "missing copilot-instructions.md is rejected" 1 "$(run "$d")"

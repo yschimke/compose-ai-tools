@@ -267,7 +267,7 @@ project(":bundle-coordinates").projectDir = file("bundle/coordinates")
 // Published wire-format DTOs (`PreviewResult`, `PreviewManifest`, the v1 a11y mirror types, …).
 // Lives outside `:cli` so external consumers (contrib scripting, future MCP integrations,
 // third-party tooling) can pull just the data shapes without dragging in `:cli`'s Gradle Tooling
-// API + scripting closure. Step A of the clean-API carve-out — issue #1084 / docs/AGENTS.md
+// API + scripting closure. Step A of the clean-API carve-out — issue #1084 / docs/AGENT_GUIDE.md
 // "Built-in scripts" / clean-API discussion.
 include(":preview-data-api")
 

@@ -14,7 +14,8 @@ plugins {
 // only place in the repo that registers one.
 //
 // It runs headless. `ImageComposeScene` rasterizes through skiko's software path with no `DISPLAY`
-// (see docs/AGENTS.md), which is what lets `./gradlew :rc-player-profile:rcPlayerProfile` produce a
+// (see docs/AGENT_GUIDE.md), which is what lets `./gradlew :rc-player-profile:rcPlayerProfile`
+// produce a
 // real profile in CI and in an agent sandbox rather than only on a developer's desktop.
 
 dependencies {
