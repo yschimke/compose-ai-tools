@@ -138,6 +138,7 @@
       "scripts/check-preview-server-contracts.sh",
       "daemon/core/**",
       "daemon/protocol/**",
+      "daemon/devices/**",
       "daemon/client/**",
       "api/preview-data-api/**",
       "common/io/**",

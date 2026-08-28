@@ -20,7 +20,7 @@ class DeviceDimensionsCatalogDriftTest {
     val daemon =
       readCatalog(
         repoRoot.resolve(
-          "daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/devices/DeviceDimensions.kt"
+          "daemon/devices/src/main/kotlin/ee/schimke/composeai/daemon/devices/DeviceDimensions.kt"
         )
       )
 
@@ -54,7 +54,7 @@ class DeviceDimensionsCatalogDriftTest {
     val daemon =
       specTerms(
         repoRoot.resolve(
-          "daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/devices/DeviceDimensions.kt"
+          "daemon/devices/src/main/kotlin/ee/schimke/composeai/daemon/devices/DeviceDimensions.kt"
         )
       )
 

@@ -29,6 +29,11 @@ dependencies {
   // compile ABI. The package did not move; only the module boundary around it did.
   api(project(":daemon-protocol"))
 
+  // The device catalog, split out for #3824. `api` for the same reason as the protocol: this
+  // module's own surface names `DeviceDimensions`, and every existing consumer of
+  // `ee.schimke.composeai.daemon.devices.*` reaches it through here. The package did not move.
+  api(project(":daemon-devices"))
+
   api(project(":data-render-core"))
 
   // Semantics-tree models + structural differ (issue #1785). `api`, not `implementation`: the

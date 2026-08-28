@@ -1658,45 +1658,6 @@ public final class ee/schimke/composeai/daemon/bta/DiagnosticCollector : org/jet
 	public fun warn (Ljava/lang/String;Ljava/lang/Throwable;)V
 }
 
-public final class ee/schimke/composeai/daemon/devices/DeviceDimensions {
-	public static final field DEFAULT_DENSITY F
-	public static final field INSTANCE Lee/schimke/composeai/daemon/devices/DeviceDimensions;
-	public final fun getDEFAULT ()Lee/schimke/composeai/daemon/devices/DeviceDimensions$DeviceSpec;
-	public final fun getDEFAULT_WEAR ()Lee/schimke/composeai/daemon/devices/DeviceDimensions$DeviceSpec;
-	public final fun getKNOWN_DEVICE_IDS ()Ljava/util/Set;
-	public final fun resolve (Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;)Lee/schimke/composeai/daemon/devices/DeviceDimensions$DeviceSpec;
-	public static synthetic fun resolve$default (Lee/schimke/composeai/daemon/devices/DeviceDimensions;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;ILjava/lang/Object;)Lee/schimke/composeai/daemon/devices/DeviceDimensions$DeviceSpec;
-}
-
-public final class ee/schimke/composeai/daemon/devices/DeviceDimensions$DeviceSpec {
-	public fun <init> (IIFZ)V
-	public synthetic fun <init> (IIFZILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun component1 ()I
-	public final fun component2 ()I
-	public final fun component3 ()F
-	public final fun component4 ()Z
-	public final fun copy (IIFZ)Lee/schimke/composeai/daemon/devices/DeviceDimensions$DeviceSpec;
-	public static synthetic fun copy$default (Lee/schimke/composeai/daemon/devices/DeviceDimensions$DeviceSpec;IIFZILjava/lang/Object;)Lee/schimke/composeai/daemon/devices/DeviceDimensions$DeviceSpec;
-	public fun equals (Ljava/lang/Object;)Z
-	public final fun getDensity ()F
-	public final fun getHeightDp ()I
-	public final fun getWidthDp ()I
-	public fun hashCode ()I
-	public final fun isRound ()Z
-	public fun toString ()Ljava/lang/String;
-}
-
-public final class ee/schimke/composeai/daemon/devices/DeviceDimensionsKt {
-	public static final fun frameDpOverriddenBy (Lee/schimke/composeai/daemon/devices/DeviceDimensions$DeviceSpec;Ljava/lang/Integer;Ljava/lang/Integer;)Lkotlin/Pair;
-}
-
-public final class ee/schimke/composeai/daemon/devices/FrameOrientation {
-	public static final field INSTANCE Lee/schimke/composeai/daemon/devices/FrameOrientation;
-	public final fun orientedPx (IILee/schimke/composeai/daemon/protocol/Orientation;)Lkotlin/Pair;
-	public final fun orientedPx (IILjava/lang/String;)Lkotlin/Pair;
-	public final fun parse (Ljava/lang/String;)Lee/schimke/composeai/daemon/protocol/Orientation;
-}
-
 public final class ee/schimke/composeai/daemon/forensics/ClassloaderForensics {
 	public static final field INSTANCE Lee/schimke/composeai/daemon/forensics/ClassloaderForensics;
 	public final fun capture (Ljava/util/List;Lee/schimke/composeai/daemon/forensics/RobolectricConfigSnapshot;Ljava/lang/String;Ljava/io/File;)V

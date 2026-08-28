@@ -170,7 +170,8 @@ wider, and that two of the entries drag things a server should not carry.
 | Contract | Status |
 | --- | --- |
 | `daemon-protocol` | published — **split out of `daemon-core`**, see below |
-| `daemon-core` (`devices`, `bta`) | published; carries a leak (below) |
+| `daemon-devices` | published — **split out of `daemon-core`** |
+| `daemon-core` (`bta`) | published; carries a leak (below) |
 | `preview-data-api` (`designpages`) | published |
 | `render-session-api` | published |
 | `render-session-subprocess` | published; carries a leak (below) |
@@ -221,18 +222,20 @@ Measured on the ABI dumps: `daemon-core` 7,317 lines → 2,479, with `daemon-pro
 package did not move (`ee.schimke.composeai.daemon.protocol` is unchanged) and `:daemon:core`
 exposes the new module as `api`, so no consumer needed an import change.
 
-What is left of serve's coupling to `daemon-core` is now four imports, in two groups that want
-different answers:
+What is left of serve's coupling to `daemon-core` is **two imports**, and they are the ones the
+module graph cannot decide on its own:
 
-- `DeviceDimensions` and `frameDpOverriddenBy` — a device catalog and the dp-override arithmetic
-  over it. Pure table plus arithmetic, no IO, and both ends have to agree on it: serve builds the
-  device menu from the same catalog the backend resolves against. The same shape as
-  `data-pseudolocale-core`, and a contract by the same reasoning.
 - `BtaCompileSession` and `DiagnosticCollector` — the playground's in-process Kotlin compile.
   This is behaviour, not a shape, and it is genuine coupling rather than an accident of module
   layout: a preview server that offers a playground really does need a compiler. Whether an
   extracted server keeps the playground, or reaches a compile service, is a product question and
   not one the module graph can answer.
+
+`DeviceDimensions` and `frameDpOverriddenBy` were the second group and are now
+`:daemon-devices` — a pure table plus arithmetic, no IO, which both ends have to agree on because
+serve builds its device menu from the catalog the backend resolves against. Not in
+`:daemon-protocol`, because that module holds shapes and `resolve` computes a result; the
+precedent is `data-pseudolocale-core`. The package did not move, so nothing downstream changed.
 
 `DaemonLaunchDescriptor` was the third group and is now in `:daemon-protocol` — it is the
 `daemon-launch.json` file shape, written by the gradle plugin and read by the daemon JVM, the CLI

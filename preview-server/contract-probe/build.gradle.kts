@@ -46,6 +46,7 @@ val contracts =
   listOf(
     "daemon-core",
     "daemon-protocol",
+    "daemon-devices",
     "daemon-client",
     "preview-data-api",
     "render-session-api",

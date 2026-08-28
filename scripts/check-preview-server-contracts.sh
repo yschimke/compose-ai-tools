@@ -32,6 +32,7 @@ PROBE_VERSION="0.0.0-contract-probe-SNAPSHOT"
 CONTRACT_PROJECTS=(
   ":daemon:core"
   ":daemon-protocol"
+  ":daemon-devices"
   ":daemon-client"
   ":preview-data-api"
   ":render-session-api"
