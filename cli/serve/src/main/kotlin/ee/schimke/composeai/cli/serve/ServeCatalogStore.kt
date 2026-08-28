@@ -934,17 +934,30 @@ class ServeCatalogStore(
           // straight off `catalog.json`; a catalog that declares neither gets null + empty and the
           // viewer's second comparison source is simply never offered.
           compareWithSystem = catalog.compareWith?.system?.takeIf { it.isNotBlank() },
+          // Read from BOTH lists, components last so they win — the same shape as
+          // [captionByComponentId] and for the same reason. A wholly deferred component never
+          // reaches `components[]`, and the export writes its pairing onto the deferred record
+          // instead; reading only `components` discarded it and left the deferred card unable to
+          // offer the sibling source. That also covers its deferred *variant* records, which
+          // inherit the entry's pairing.
           parallelByComponentId =
-            catalog.components
-              .mapNotNull { component ->
-                val id = component.componentId?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-                val parallel =
-                  component.parallel?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-                id to parallel
+            buildMap {
+              catalog.deferred.forEach { deferred ->
+                val id = deferred.componentId?.takeIf { it.isNotBlank() } ?: return@forEach
+                val parallel = deferred.parallel?.takeIf { it.isNotBlank() } ?: return@forEach
+                // First wins among the deferred records themselves, like [previewAliasFor]: a
+                // catalog that somehow listed a component id twice gets the producer's own order
+                // rather than a throw.
+                putIfAbsent(id, parallel)
               }
-              // First wins, like [previewAliasFor]: a catalog that somehow published a component id
-              // twice gets the producer's own order rather than a throw.
-              .toMap(),
+              catalog.components.forEach { component ->
+                val id = component.componentId?.takeIf { it.isNotBlank() } ?: return@forEach
+                val parallel = component.parallel?.takeIf { it.isNotBlank() } ?: return@forEach
+                // `put`, not `putIfAbsent`: a component that IS in `components[]` states its own
+                // pairing, and a deferred *variant* record sharing its id only inherits one.
+                put(id, parallel)
+              }
+            },
           degradations = degradations,
           liveOnly = liveOnly,
           // Kept in step with [scheduleRcCompareFetch]'s own guard through the shared helper: a
@@ -2777,6 +2790,14 @@ class ServeCatalogStore(
     val props: JsonObject? = null,
     /** The declared breakpoint this live-only record renders at — see [Image.size]. */
     val size: String? = null,
+    /**
+     * The counterpart component in the `compareWith` sibling, for the same reason [caption] is
+     * here: a **wholly** deferred component short-circuits before it reaches `components[]`, so
+     * this is the only copy of its pairing in the manifest. Without it the deferred card is the one
+     * card that cannot offer the sibling comparison source, on a catalog that publishes
+     * `compareWith` precisely to have it.
+     */
+    val parallel: String? = null,
     /** Why it was deferred (`entry` / `variant` / `mode`) — carried for diagnostics. */
     val reason: String? = null,
     /**

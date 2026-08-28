@@ -270,18 +270,53 @@ class PackPreviewIdExclusionsTest {
    * The live failure: `--id` comma-splits, so the first fragment is what `composePreviewBundle`
    * reports as `preview id not found`. Pinned so the shattering is a documented behaviour of the
    * flag rather than a surprise.
+   *
+   * Through [PackPreviewIdExclusions.selectedIds] — the selection `bundle pack` actually makes.
+   * This test used to rebuild `args.drop(2).flatMap { it.split(',') }` by hand, which would keep
+   * passing if the real parsing stopped splitting, changed its trimming, or lost the file's
+   * precedence over the flag: a regression test that cannot see the code it guards.
    */
   @Test
   fun `--id shatters a comma-bearing id into its fragments`() {
-    val shattered =
-      listOf("pack", "--id", commaBearingIds[0]).let { args ->
-        args.drop(2).flatMap { it.split(',') }.map(String::trim)
-      }
+    val shattered = PackPreviewIdExclusions.selectedIds(listOf("pack", "--id", commaBearingIds[0]))
     assertEquals(3, shattered.size)
     assertEquals(
       "ee.schimke.wearm3catalog.remote.CatalogPreviewsKt.CustomShapeRemoteButton_width=227dp",
       shattered[0],
     )
+  }
+
+  @Test
+  fun `an id file survives the comma that shatters --id, and outranks it`() {
+    // The two halves the hand-rolled version could not reach: the file keeps a comma-bearing id
+    // whole, and having both forms is not a merge — the file wins, because it is the one that
+    // survives a comma.
+    val file = fileWith(commaBearingIds)
+    assertEquals(
+      commaBearingIds,
+      PackPreviewIdExclusions.selectedIds(listOf("pack", "--id-file", file.path)),
+    )
+    assertEquals(
+      commaBearingIds,
+      PackPreviewIdExclusions.selectedIds(
+        listOf("pack", "--id", "SomethingElse", "--id-file", file.path)
+      ),
+    )
+  }
+
+  @Test
+  fun `repeated --id flags accumulate, and blanks are dropped`() {
+    assertEquals(
+      listOf("Alpha", "Beta", "Gamma"),
+      PackPreviewIdExclusions.selectedIds(
+        listOf("pack", "--id", " Alpha , Beta ", "--id", "", "--id", "Gamma")
+      ),
+    )
+  }
+
+  @Test
+  fun `no selector at all selects nothing, which the caller reads as every preview`() {
+    assertEquals(emptyList(), PackPreviewIdExclusions.selectedIds(listOf("pack", "--out", "x.zip")))
   }
 
   @Test

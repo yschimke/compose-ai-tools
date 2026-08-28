@@ -277,13 +277,7 @@ private class PackSubcommand(private val args: List<String>) {
   private val verbose: Boolean = "--verbose" in args || "-v" in args
   private val progress: Boolean = verbose || "--progress" in args
   private val timeout: String? = args.flagValue("--timeout")
-  private val ids: List<String> =
-    PackPreviewIdExclusions.idFileFromArgs(args)?.let(PackPreviewIdExclusions::linesOf)
-      ?: args
-        .flagValuesAll("--id")
-        .flatMap { it.split(',') }
-        .map { it.trim() }
-        .filter { it.isNotEmpty() }
+  private val ids: List<String> = PackPreviewIdExclusions.selectedIds(args)
 
   /**
    * `--exclude-preview-id` patterns (issue #2966) — the previews this pack must NOT render or
