@@ -1758,3 +1758,71 @@ test("a keyed variant deferral selects its cell instead of expanding over every 
     );
   }
 });
+
+test("a folded state that names no reseed still lets the record's props name the cell", () => {
+  // A `state` is not always an override on THIS function. A `@CatalogVariant` render folds under
+  // its parent carrying the fold's own axis as the state (`wave`), and may hold a `@PreviewAxis`
+  // matrix of its own on top — so the record legitimately carries both, and only the props name the
+  // cell. Returning on an empty name match read the fold's name, found no reseed called `wave`, and
+  // routed the record to the base without ever trying them.
+  const spec = { groups: [{ components: [{ componentId: "P/Circular", preview: "Wave" }] }] };
+  const preview = (id, night, overrides) => ({
+    id,
+    functionName: "Wave",
+    params: { uiMode: night ? "UI_MODE_NIGHT_YES" : "UI_MODE_NIGHT_NO" },
+    ...(overrides ? { overrides } : {}),
+  });
+  const cell = [{ key: "progress", value: "full" }];
+  const bundle = {
+    previews: [
+      preview("Wave_Light", false),
+      preview("Wave_Dark", true),
+      preview("Wave_Light_VARIANT_full", false, { name: "full", props: cell }),
+      preview("Wave_Dark_VARIANT_full", true, { name: "full", props: cell }),
+    ],
+  };
+  const route = (record) =>
+    expandDeferredRecords(
+      [{ componentId: "P/Circular", preview: "Wave", reason: "mode", ...record }],
+      spec,
+      [bundle],
+    ).map((r) => r.previewId);
+
+  assert.deepEqual(route({ theme: "light", state: "wave", props: { progress: "full" } }), [
+    "Wave_Light_VARIANT_full",
+  ]);
+  // The fold's state alone still names no cell on this function, so the base is right.
+  assert.deepEqual(route({ theme: "light", state: "wave" }), ["Wave_Light"]);
+});
+
+test("a props match requires the record to name the axis, not merely to stringify equal", () => {
+  // `@PreviewAxis` permits the literal string value "undefined", and `String(wanted[k])` renders a
+  // MISSING key as exactly that — so a record naming an unrelated axis matched such a reseed and
+  // rendered its cell instead of the base.
+  const spec = { groups: [{ components: [{ componentId: "B", preview: "Wave" }] }] };
+  const preview = (id, overrides) => ({
+    id,
+    functionName: "Wave",
+    params: { uiMode: "UI_MODE_NIGHT_NO" },
+    ...(overrides ? { overrides } : {}),
+  });
+  const bundle = {
+    previews: [
+      preview("Wave_Light"),
+      preview("Wave_Light_VARIANT_odd", {
+        name: "odd",
+        props: [{ key: "size", value: "undefined" }],
+      }),
+    ],
+  };
+  const route = (props) =>
+    expandDeferredRecords(
+      [{ componentId: "B", preview: "Wave", reason: "mode", theme: "light", props }],
+      spec,
+      [bundle],
+    ).map((r) => r.previewId);
+
+  assert.deepEqual(route({ content: "icon" }), ["Wave_Light"]);
+  // …and the record that really does name that axis still selects the reseed.
+  assert.deepEqual(route({ size: "undefined" }), ["Wave_Light_VARIANT_odd"]);
+});

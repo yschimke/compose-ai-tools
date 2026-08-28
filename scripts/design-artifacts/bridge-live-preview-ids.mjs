@@ -450,16 +450,29 @@ function keyedCandidates(candidates, record) {
   const named = typeof state === "string" && state !== "" && state !== "default" ? state : null;
   if (named) {
     const byName = candidates.filter((c) => c.overrideName === named);
-    return byName.length > 0 ? byName : null;
+    if (byName.length > 0) return byName;
+    // Deliberately NOT a return: a `state` is not always an override on THIS function. A
+    // `@CatalogVariant` render folds under its parent carrying the fold's own axis as the state
+    // (`wave`), and may hold a `@PreviewAxis` matrix of its own on top — so a record legitimately
+    // carries both, and only the props name the cell. Returning here read the fold's name, found no
+    // reseed called `wave`, and routed the record to the base without ever trying them.
   }
   const wanted = record?.props;
   if (wanted && typeof wanted === "object") {
-    // Every axis the reseed declares must be the one this record asks for. A subset match, not an
+    // Every axis the reseed declares must be one this record asks for. A subset match, not an
     // equality: the record may also carry a `fontScale` or a spec-authored prop from another axis.
+    //
+    // The key must be PRESENT, not merely stringify equal. `@PreviewAxis` permits the literal
+    // string value `"undefined"`, and `String(wanted[k])` renders a missing key as exactly that —
+    // so a record naming an unrelated axis matched such a reseed and rendered its cell instead of
+    // the base.
     const byProps = candidates.filter(
       (c) =>
         c.overrideProps &&
-        Object.entries(c.overrideProps).every(([k, v]) => String(wanted[k]) === String(v)),
+        Object.entries(c.overrideProps).every(
+          ([k, v]) =>
+            Object.prototype.hasOwnProperty.call(wanted, k) && String(wanted[k]) === String(v),
+        ),
     );
     if (byProps.length > 0) return byProps;
   }
