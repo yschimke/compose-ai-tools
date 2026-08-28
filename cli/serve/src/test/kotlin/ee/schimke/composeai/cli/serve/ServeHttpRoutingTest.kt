@@ -1729,6 +1729,56 @@ class ServeHttpRoutingTest {
   }
 
   @Test
+  fun `a plain module's landing offers no catalog tracker`() {
+    // `burst` is a plain `ServeHost`, not a `ServeBundleHost`, so `catalogBundleHost` is null and
+    // there is no catalog to file anything against. The page-scoped report was built
+    // unconditionally, and `repoFor` falls back to compose-ai-tools when a session names neither
+    // source nor provenance — so this module's visitor was offered a form naming the TOOL's own
+    // tracker as the repo that declares "this catalog", for a catalog that does not exist. Every
+    // caller's parameter documents the opposite: "Null (a plain module, or any caller that has
+    // nothing to file against) omits it entirely."
+    //
+    // `/burst` rather than `/`: this server registers several sessions, so `/` is the FRONT DOOR
+    // and carries no catalog report either way — an assertion there passes whatever the handler
+    // does, which is how the first version of this test managed to hold against the bug.
+    //
+    // Only the catalog half is asserted absent. The floating launcher's SERVER half legitimately
+    // points at this repository — a preview server bug is ours — and is not what this removes.
+    val (code, landing) = get("/burst")
+    assertEquals(200, code, "the plain module's landing is served: $landing")
+    assertTrue(
+      !landing.contains("id=\"cp-report\""),
+      "a plain module's landing carries no catalog report row: $landing",
+    )
+    assertTrue(
+      !landing.contains("data-cp-subject=\"this catalog\""),
+      "and nothing claims a catalog it does not have: $landing",
+    )
+  }
+
+  @Test
+  fun `a page-scoped report pins the presentation mode it was filed from`() {
+    // The report link is read by a triager who does not have the reporter's cookie. Mode is
+    // deliberately a property of the visitor rather than of each URL, but `?chrome=` was kept
+    // precisely as a permalink — "a link may pin the presentation it was written for". Without it a
+    // Catalog-mode report opens the Dev surface for a Dev-mode triager, which is not the page that
+    // was reported.
+    val (_, dev) = get("/compose-m3")
+    assertTrue(dev.contains("chrome%3Ddev") || dev.contains("chrome=dev"), "Dev pins dev: $dev")
+
+    val (_, catalog) = get("/compose-m3?chrome=catalog")
+    assertTrue(
+      catalog.contains("chrome%3Dcatalog") || catalog.contains("chrome=catalog"),
+      "Catalog mode pins catalog: $catalog",
+    )
+    // A URL that already pinned itself is left alone rather than pinned twice.
+    assertTrue(
+      !catalog.contains("chrome%3Dcatalog%26chrome") && !catalog.contains("chrome=catalog&chrome"),
+      "the pin is not appended to a URL that already carries one: $catalog",
+    )
+  }
+
+  @Test
   fun `viewer unfurl metadata uses the external origin and preserves render overrides`() {
     val request =
       Request.Builder()
