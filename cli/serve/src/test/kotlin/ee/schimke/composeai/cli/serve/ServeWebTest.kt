@@ -1530,7 +1530,7 @@ class ServeWebTest {
       "the sibling's own render is same-origin on this server: $html",
     )
     assertTrue(
-      html.contains("under that catalog's theme and knobs"),
+      html.contains("under that catalog&#39;s theme and knobs"),
       "the panel says whose render it is, rather than implying symmetry: $html",
     )
     // The kit leads, so the pair the lane opens on does not move for a paired catalog.
