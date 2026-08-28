@@ -83,27 +83,49 @@ object ContractSurface {
   /**
    * The two web surfaces #4666 extracted.
    *
-   * Bound as typed function references rather than as the objects themselves, and that distinction
-   * is the finding this block exists to answer. `val webEscaping: WebEscaping = WebEscaping` proves
-   * only that a public object of that name exists in the published jar; every member could be
-   * renamed, hidden or re-signed underneath it and this file would still compile. A `::member`
-   * reference with an explicit function type pins the name *and* the signature, so a parameter
-   * added or a return type changed fails here — which is the regression the probe is for.
+   * Written as expressions serve actually evaluates, not as types it mentions, and each widening of
+   * this block came from a reviewer finding the previous form too weak — worth recording, because
+   * the same mistake is available to the next person adding a contract here:
    *
-   * These are exactly the members serve calls, drawn from its real import set.
+   * - `val webEscaping: WebEscaping = WebEscaping` proves only that a public object of that name
+   *   exists. Every member under it could be renamed and this still compiles.
+   * - A typed `::member` reference fixes that for the name and the signature — but a *call* has a
+   *   shape a reference does not. `formatPercent(x)` relies on the second parameter having a
+   *   default; a `(Double, Int) -> String` reference survives that default being removed, while
+   *   serve's one-argument call sites do not.
+   * - Naming `Preview`, `InlineMode` and `Output` in a function type checks that the types exist.
+   *   It does not check that `Preview`'s constructor still takes those parameters, that `INLINE`
+   *   and `EXTERNAL` are still spelled that way, or that `Output.files` is still there.
+   *
+   * So the rule for this block: compile what serve writes. `serveWebCalls` is never invoked — the
+   * compiler checking it is the entire point.
    */
   val htmlEscape: (String) -> String = WebEscaping::htmlEscape
   val jsString: (String) -> String = WebEscaping::jsString
   val urlEncodeSegment: (String) -> String = WebEscaping::urlEncodeSegment
-  val formatPercent: (Double, Int) -> String = WebEscaping::formatPercent
   val pngDimensions: (ByteArray) -> Pair<Int, Int> = WebEscaping::pngDimensions
 
-  val webEmbedGenerate:
-    (String, String, List<WebEmbed.Preview>, WebEmbed.InlineMode) -> WebEmbed.Output =
-    WebEmbed::generate
+  @Suppress("unused")
+  private fun serveWebCalls(png: ByteArray): Int {
+    // `ServeWeb` calls formatPercent both ways; the one-argument form is the one a removed
+    // default would break.
+    val oneArg: String = WebEscaping.formatPercent(0.5)
+    val twoArg: String = WebEscaping.formatPercent(0.5, 2)
 
-  val webEmbedScriptName: String = WebEmbed.SCRIPT_NAME
-  val webEmbedIndexName: String = WebEmbed.INDEX_NAME
+    // `ServeBundle` constructs a Preview by name, picks a mode, and reads `files` off the result.
+    val preview = WebEmbed.Preview(id = "id", label = "label", pngBytes = png, isCover = true)
+    val mode: WebEmbed.InlineMode =
+      if (oneArg.isEmpty()) WebEmbed.InlineMode.INLINE else WebEmbed.InlineMode.EXTERNAL
+    val out: WebEmbed.Output =
+      WebEmbed.generate(title = "t", modulePath = ":m", previews = listOf(preview), mode = mode)
+    val files: Map<String, ByteArray> = out.files
+
+    return twoArg.length +
+      files.size +
+      out.previewCount +
+      WebEmbed.SCRIPT_NAME.length +
+      WebEmbed.INDEX_NAME.length
+  }
 
   /** File IO. The server funnels reads/writes through `:common-io` like every other module. */
   val fileSystem: FileSystem = SystemFileSystem
