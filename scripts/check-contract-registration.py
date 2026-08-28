@@ -13,7 +13,11 @@ four fail *silently* when you forget one:
      the probe job. Miss it and the gate simply does not run for changes to the new
      module: green CI, no coverage.
   4. `contractPackages` in scripts/serve-seam-allowlist.json — the package -> artifact
-     mapping the seam checker uses to tell a contract from a leak.
+     mapping the seam checker uses to tell a contract from a leak. The seam checker only
+     ever asks whether a package serve *currently imports* is covered, so it cannot see a
+     missing entry for a module serve has not reached yet, and it never looks at the
+     values at all: a mapping naming an artifact that nothing publishes, or naming the
+     wrong one, passes it. This script checks the entries themselves.
 
 (3) has been forgotten twice in a row — once for `common-image-crop` (#4634) and once
 for `agent-grant-protocol` (#4656), each caught by a human after the fact. This makes
@@ -33,6 +37,7 @@ PROBE = "preview-server/contract-probe/build.gradle.kts"
 SHELL = "scripts/check-preview-server-contracts.sh"
 CI_PATHS = ".github/ci/ci-paths.json"
 SETTINGS = "settings.gradle.kts"
+ALLOWLIST = "scripts/serve-seam-allowlist.json"
 CI_GROUP = "preview_server_contracts"
 
 
@@ -76,6 +81,44 @@ def ci_group(root: pathlib.Path) -> list[str]:
     return groups[CI_GROUP]
 
 
+def contract_packages(root: pathlib.Path) -> dict[str, str]:
+    """The package -> artifact id mapping the seam checker reads."""
+    return json.loads((root / ALLOWLIST).read_text()).get("contractPackages", {})
+
+
+def module_packages(root: pathlib.Path, directory: str) -> set[str]:
+    """Every package declared in a module's main source set."""
+    packages: set[str] = set()
+    for source in (root / directory / "src" / "main").rglob("*.kt"):
+        match = re.search(r"^package\s+([\w.]+)", source.read_text(), re.M)
+        if match:
+            packages.add(match.group(1))
+    return packages
+
+
+def package_roots(packages: set[str]) -> list[str]:
+    """The shallowest packages in a module — the ones worth a mapping entry.
+
+    `…render.session` and `…render.session.subprocess` live in different modules, so a root
+    is not simply the common prefix: it is any package with no ancestor in the same module.
+    """
+    return sorted(p for p in packages if not any(p != q and p.startswith(q + ".") for q in packages))
+
+
+def mapping_for(package: str, mapping: dict[str, str]) -> tuple[str | None, str | None]:
+    """The most specific entry covering `package`, as (key, artifact id).
+
+    Longest match wins, mirroring nothing in the seam checker on purpose: the seam checker
+    only asks *whether* some prefix covers a package, so `…daemon.client` silently reads as
+    `…daemon` there. Resolving the same way the reader would is what exposes that.
+    """
+    candidates = [k for k in mapping if package == k or package.startswith(k + ".")]
+    if not candidates:
+        return None, None
+    key = max(candidates, key=len)
+    return key, mapping[key]
+
+
 def covered(directory: str, globs: list[str]) -> bool:
     """True when some glob in the CI group schedules the probe for `directory`.
 
@@ -94,6 +137,7 @@ def check(root: pathlib.Path = REPO) -> int:
     contracts = probe_contracts(root)
     projects = shell_projects(root)
     globs = ci_group(root)
+    mapping = contract_packages(root)
     problems: list[str] = []
 
     resolved = {p: project_dir(root, p) for p in projects}
@@ -111,6 +155,33 @@ def check(root: pathlib.Path = REPO) -> int:
         problems.append(f"{PROBE}: '{missing}' is published by {SHELL} but not in `contracts`")
     for missing in sorted(set(contracts) - named):
         problems.append(f"{SHELL}: '{missing}' is in `contracts` but no project publishes it")
+
+    for artifact in sorted(set(mapping.values()) - named):
+        keys = sorted(k for k, a in mapping.items() if a == artifact)
+        problems.append(
+            f"{ALLOWLIST}: `contractPackages` maps {', '.join(keys)} to '{artifact}', which no "
+            f"project in {SHELL} publishes — the seam checker would credit those imports to a "
+            "contract that does not exist"
+        )
+
+    for path, directory in sorted(resolved.items()):
+        artifact = ids[path]
+        if artifact is None:
+            continue
+        for package in package_roots(module_packages(root, directory)):
+            key, mapped = mapping_for(package, mapping)
+            if mapped is None:
+                problems.append(
+                    f"{ALLOWLIST}: `contractPackages` has no entry for '{package}' ({path}), so "
+                    "the seam checker cannot tell that package apart from a leak once serve "
+                    "imports it"
+                )
+            elif mapped != artifact:
+                problems.append(
+                    f"{ALLOWLIST}: `contractPackages` resolves '{package}' ({path}) to "
+                    f"'{mapped}' via the '{key}' entry, but that package ships in '{artifact}' — "
+                    f"add an explicit '{package}': '{artifact}' entry"
+                )
 
     for path, directory in sorted(resolved.items()):
         if not covered(directory, globs):
@@ -132,7 +203,7 @@ def check(root: pathlib.Path = REPO) -> int:
 
     print(
         f"check-contract-registration: OK — {len(contracts)} contract(s), "
-        f"published, resolved and scheduled"
+        f"published, resolved, scheduled and mapped"
     )
     return 0
 

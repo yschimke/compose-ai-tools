@@ -4,9 +4,16 @@
 The interesting cases are the two omissions that actually happened — a contract absent
 from `ci-paths.json` (#4634, #4656) — because those are the ones that fail silently:
 CI stays green and the probe simply never runs for the new module.
+
+The `contractPackages` cases are here for the same reason. The seam checker only asks
+whether a package serve *already imports* is covered, so a missing or wrong entry for a
+module serve has not reached yet is invisible to it; and it never reads the values, so an
+entry naming an artifact nothing publishes is invisible to everything.
 """
 
+import contextlib
 import importlib.util
+import io
 import json
 import pathlib
 import shutil
@@ -60,6 +67,7 @@ class Omissions(unittest.TestCase):
             mod.SHELL,
             mod.CI_PATHS,
             mod.SETTINGS,
+            mod.ALLOWLIST,
         ):
             dst = self.root / rel
             dst.parent.mkdir(parents=True, exist_ok=True)
@@ -72,6 +80,13 @@ class Omissions(unittest.TestCase):
                 dst = self.root / d / "build.gradle.kts"
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy(src, dst)
+            # One stub per declared package instead of the real sources: the checker only
+            # reads `package` lines, and copying every module's main source set to run a
+            # regex over it would make the fixture cost more than the gate it tests.
+            for i, package in enumerate(mod.package_roots(mod.module_packages(REPO, d))):
+                stub = self.root / d / "src" / "main" / "kotlin" / f"Stub{i}.kt"
+                stub.parent.mkdir(parents=True, exist_ok=True)
+                stub.write_text(f"package {package}\n")
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
@@ -98,6 +113,41 @@ class Omissions(unittest.TestCase):
         p = self.root / mod.SHELL
         p.write_text(p.read_text().replace('  ":common-image-crop"\n', "", 1))
         self.assertEqual(mod.check(self.root), 1)
+
+    def _rewrite_allowlist(self, edit):
+        p = self.root / mod.ALLOWLIST
+        data = json.loads(p.read_text())
+        edit(data["contractPackages"])
+        p.write_text(json.dumps(data, indent=2) + "\n")
+
+    def _failure(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = mod.check(self.root)
+        self.assertEqual(code, 1)
+        return buf.getvalue()
+
+    def test_missing_from_contract_packages_fails(self):
+        # The case the seam checker cannot see: serve does not import this package today, so
+        # nothing else would notice the mapping had gone.
+        self._rewrite_allowlist(lambda m: m.pop("ee.schimke.composeai.data.pseudolocale"))
+        self.assertIn("has no entry for 'ee.schimke.composeai.data.pseudolocale'", self._failure())
+
+    def test_contract_package_naming_an_unpublished_artifact_fails(self):
+        self._rewrite_allowlist(
+            lambda m: m.__setitem__("ee.schimke.composeai.imagecrop", "common-image-kropp")
+        )
+        self.assertIn("which no project in", self._failure())
+
+    def test_contract_package_naming_the_wrong_contract_fails(self):
+        # A parent entry swallowing a child module's package — `…daemon.client` reading as
+        # `…daemon` — is coverage without correctness: the seam checker is satisfied while the
+        # register credits the imports to the wrong artifact.
+        self._rewrite_allowlist(lambda m: m.pop("ee.schimke.composeai.daemon.client"))
+        self.assertIn(
+            "resolves 'ee.schimke.composeai.daemon.client' (:daemon-client) to 'daemon-core'",
+            self._failure(),
+        )
 
 
 if __name__ == "__main__":
