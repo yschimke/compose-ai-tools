@@ -13,7 +13,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { crossSystemMatches, renderCrossSystemHtml } from "./render-cross-system-html.mjs";
+import {
+  comparableEntries,
+  crossSystemMatches,
+  renderCrossSystemHtml,
+  variantDiscriminator,
+} from "./render-cross-system-html.mjs";
 
 const png = (path, extra = {}) => ({
   path,
@@ -362,4 +367,97 @@ test("an anchor cannot be smuggled out of a component id", () => {
 
   assert.doesNotMatch(html, /<img src=x/);
   assert.match(html, /id="c-button-img-src-x"/);
+});
+
+// --- compared variants -------------------------------------------------------
+//
+// A variant is paired in its own right rather than through its parent. Before this, walking
+// `components` alone meant folding a render under a parent silently dropped it from this page,
+// which made "component or variant?" a question about parity coverage instead of structure.
+
+const withVariants = {
+  system: "remote-m3",
+  title: "Remote Compose Material 3",
+  components: [
+    {
+      componentId: "Button/Compact",
+      group: "Buttons",
+      caption: "Compact button.",
+      images: [
+        png("images/button-compact/ideal__default.png"),
+        png("images/button-compact/ideal__default__content-icon-only.png", {
+          props: { content: "icon-only" },
+        }),
+      ],
+      variants: [
+        {
+          preview: "CompactIconOnly",
+          props: { content: "icon-only" },
+          parallel: "Button/Compact",
+          caption: "Icon-only compact button.",
+        },
+        { preview: "CompactPressed", state: "pressed" },
+      ],
+    },
+  ],
+};
+
+test("comparableEntries emits a row per compared variant, after its parent", () => {
+  const rows = comparableEntries(withVariants.components);
+  assert.deepEqual(
+    rows.map((r) => r.componentId),
+    ["Button/Compact", "Button/Compact \u00b7 content=icon-only"],
+  );
+  // The variant that declares no parallel has nothing to pair against and stays folded.
+  assert.equal(rows.length, 2);
+});
+
+test("comparableEntries gives a variant row its parent's group and its own parallel", () => {
+  const [, variantRow] = comparableEntries(withVariants.components);
+  assert.equal(variantRow.group, "Buttons");
+  assert.equal(variantRow.parallel, "Button/Compact");
+  assert.equal(variantRow.variantOf, "Button/Compact");
+  assert.equal(variantRow.caption, "Icon-only compact button.");
+  // It must not carry the nested list on, or the next walk would expand it again.
+  assert.equal(variantRow.variants, undefined);
+});
+
+test("crossSystemMatches prefers an entry's own parallel over the id map", () => {
+  // The map is keyed by component id, and a variant has no entry in it -- so a variant would be
+  // reported unpaired if the map were the only source.
+  const rows = comparableEntries(withVariants.components);
+  const { paired, onlyLocal } = crossSystemMatches(rows, {}, [
+    { componentId: "Button/Compact", group: "Buttons" },
+  ]);
+  assert.equal(paired.length, 1);
+  assert.equal(paired[0].local.componentId, "Button/Compact \u00b7 content=icon-only");
+  assert.deepEqual(
+    onlyLocal.map((c) => c.componentId),
+    ["Button/Compact"],
+  );
+});
+
+test("a variant row bakes the variant's own render, not the parent's hero", () => {
+  const html = renderCrossSystemHtml(withVariants, {
+    parallelById: {},
+    otherSystem: "wear-m3",
+    otherComponents: [{ componentId: "Button/Compact", group: "Buttons" }],
+  });
+  // The row exists, anchored by its own id...
+  assert.ok(html.includes('id="c-button-compact-content-icon-only"'));
+  // ...and shows the props-tagged PNG rather than the default one.
+  assert.ok(html.includes("images/button-compact/ideal__default__content-icon-only.png"));
+});
+
+test("variantDiscriminator names a variant by state, else props, else its preview", () => {
+  assert.equal(variantDiscriminator({ state: "pressed" }), "pressed");
+  assert.equal(variantDiscriminator({ props: { content: "icon-only" } }), "content=icon-only");
+  assert.equal(variantDiscriminator({ theme: "dark" }), "dark");
+  assert.equal(variantDiscriminator({ preview: "SomeRender" }), "SomeRender");
+  assert.equal(variantDiscriminator({}), "variant");
+});
+
+test("comparableEntries is a no-op for a catalog with no variants", () => {
+  const plain = [{ componentId: "Card", group: "Containment", images: [] }];
+  assert.deepEqual(comparableEntries(plain), plain);
 });

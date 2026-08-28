@@ -62,6 +62,36 @@ export function heroImageOf(component, sel = {}) {
 }
 
 /**
+ * The image a *variant* of [component] is showing, picked out of the parent's folded `images[]`.
+ *
+ * `catalog-variants.mjs` folds every variant render onto its parent, re-tagged with that variant's
+ * `state` / `props` / `theme`. So the pixels are already there — what this does is pick them back
+ * out, by matching the same tags the fold wrote. Without it a variant row on the compare page would
+ * show the parent's default render and quietly compare the wrong picture.
+ *
+ * Returns `undefined` when nothing matches, which the caller shows as "not rendered yet" rather
+ * than falling back to the parent's hero: a wrong thumbnail is worse than an honest gap here.
+ *
+ * @param {object} component a manifest component ({ images: [...] })
+ * @param {{state?: string, props?: Record<string, unknown>, theme?: string}} variant
+ */
+export function variantImageOf(component, variant) {
+  const pool = idealImages(component);
+  const chooseFrom = (pool.length ? pool : (component?.images ?? [])).filter((image) => {
+    // A variant's `state` replaces the image's; absent, the fold leaves the default in place.
+    if ((image.state ?? "default") !== (variant?.state ?? "default")) return false;
+    if (variant?.theme !== undefined && image.theme !== variant.theme) return false;
+    const want = variant?.props ?? {};
+    const have = image.props ?? {};
+    // The fold MERGES a props variant onto the image's props, so the image may carry more than the
+    // variant named. Every named axis must match; extras are allowed.
+    return Object.keys(want).every((key) => String(have[key]) === String(want[key]));
+  });
+  if (!chooseFrom.length) return undefined;
+  return [...chooseFrom].sort((a, b) => (b.width ?? 0) - (a.width ?? 0))[0];
+}
+
+/**
  * Render one preview embed.
  *
  * @param {object} opts

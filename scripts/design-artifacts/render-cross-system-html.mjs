@@ -40,14 +40,80 @@
  */
 
 import { slug } from "./render-wireframe-svg.mjs";
-import { esc, heroImageOf, previewEmbed, previewEmbedStyles } from "./render-preview-embed.mjs";
+import {
+  esc,
+  heroImageOf,
+  previewEmbed,
+  previewEmbedStyles,
+  variantImageOf,
+} from "./render-preview-embed.mjs";
 import { DEFAULT_PREVIEW_BASE, livePreviewUrl } from "./live-preview.mjs";
+
+/**
+ * The rows a catalog offers for comparison: every component, plus every **compared variant** of
+ * one, flattened into a single list in reading order (a variant directly after its parent).
+ *
+ * A variant is compared in its own right rather than through its parent — `Button/Compact-IconOnly`
+ * and `Button/Compact` are different renders that can diverge from the kit independently. Walking
+ * `components` alone made "is this a component or a variant?" a question about parity coverage, and
+ * pushed catalogs to declare variants as top-level components to keep them on this page.
+ *
+ * Only variants carrying a `parallel` appear: those are the ones with a counterpart to pair
+ * against. `apply-variant-parity.mjs` is what puts them on the manifest in the first place.
+ *
+ * Each variant row borrows its parent's `group` (it belongs in the same section) and takes an id of
+ * `<parentId> · <discriminator>`, so the row is nameable, anchorable and visibly a variant of
+ * something. `variantOf` and `variant` are carried through for the renderer.
+ *
+ * @param {object[]} components the local manifest's `components`
+ * @returns {object[]} rows shaped like components, each variant row also carrying
+ *   `{ variantOf, variant }`
+ */
+export function comparableEntries(components) {
+  const rows = [];
+  for (const component of components ?? []) {
+    rows.push(component);
+    for (const variant of component.variants ?? []) {
+      if (!variant?.parallel) continue;
+      rows.push({
+        ...component,
+        componentId: `${component.componentId} \u00b7 ${variantDiscriminator(variant)}`,
+        caption: variant.caption ?? component.caption,
+        parallel: variant.parallel,
+        reference: variant.reference,
+        referenceSet: variant.referenceSet,
+        noReference: variant.noReference,
+        variants: undefined,
+        variantOf: component.componentId,
+        variant,
+      });
+    }
+  }
+  return rows;
+}
+
+/**
+ * How a variant row names itself after its parent: the `state` when it has one, else its `props`
+ * as `key=value`, else the preview function name so the row is never anonymous.
+ */
+export function variantDiscriminator(variant) {
+  if (variant?.state) return variant.state;
+  const props = variant?.props ?? {};
+  const keys = Object.keys(props);
+  if (keys.length) return keys.map((k) => `${k}=${props[k]}`).join(" ");
+  if (variant?.theme) return variant.theme;
+  return variant?.preview ?? "variant";
+}
 
 /**
  * Split the local catalog against the other system's components using the authored
  * `parallel` map (this-system componentId → other-system componentId).
  *
- * @param {object[]} localComponents the local manifest's `components`
+ * An entry may also carry its own `parallel`, which wins over the map: that is how a compared
+ * variant is paired, since the map is keyed by component id and a variant has no entry in it.
+ *
+ * @param {object[]} localComponents the local manifest's `components`, or the flattened rows from
+ *   {@link comparableEntries}
  * @param {Record<string,string>} parallelById componentId → parallel componentId
  * @param {object[]} otherComponents the other system's spec components ({componentId, group, caption})
  * @returns {{paired: object[], onlyLocal: object[], onlyOther: object[]}}
@@ -62,7 +128,7 @@ export function crossSystemMatches(localComponents, parallelById, otherComponent
   const paired = [];
   const onlyLocal = [];
   for (const local of localComponents ?? []) {
-    const parallelId = parallelById?.[local.componentId];
+    const parallelId = local.parallel || parallelById?.[local.componentId];
     if (!parallelId) {
       onlyLocal.push(local);
       continue;
@@ -75,9 +141,17 @@ export function crossSystemMatches(localComponents, parallelById, otherComponent
   return { paired, onlyLocal, onlyOther };
 }
 
-/** The this-system thumbnail: baked relative PNG, links to its own live preview. */
+/**
+ * The this-system thumbnail: baked relative PNG, links to its own live preview.
+ *
+ * A variant row shows the variant's own render — picked back out of the parent's folded `images[]`
+ * by the tags the fold wrote — never the parent's hero. Showing the hero would put the wrong
+ * picture in a row whose whole purpose is comparing that variant.
+ */
 function localEmbed(component) {
-  const hero = heroImageOf(component);
+  const hero = component.variant
+    ? variantImageOf(component, component.variant)
+    : heroImageOf(component);
   const id = component.componentId ?? "(unnamed)";
   if (!hero?.path) return previewEmbed({ fallback: "no render", frame: "solid" });
   return previewEmbed({ imageUrl: hero.path, liveUrl: hero.livePreview, alt: id, title: id });
@@ -129,7 +203,10 @@ function designEmbed(pair, opts) {
 
 /** True when both sides carry a rendered thumbnail (the pair fully renders). */
 function rendersBothSides(pair, opts) {
-  const localOk = Boolean(heroImageOf(pair.local)?.path);
+  const localOk = Boolean(
+    (pair.local.variant ? variantImageOf(pair.local, pair.local.variant) : heroImageOf(pair.local))
+      ?.path,
+  );
   const otherOk = Boolean(pair.other && opts.otherHeroById?.get(pair.parallelId)?.path);
   return localOk && otherOk;
 }
@@ -227,7 +304,9 @@ function heroIndex(manifest) {
  * @returns {string} a self-contained matches.html
  */
 export function renderCrossSystemHtml(catalog, opts = {}) {
-  const components = catalog.components ?? [];
+  // Components AND their compared variants: a variant is paired in its own right, so the page
+  // walks the flattened rows rather than `components` alone. See `comparableEntries`.
+  const components = comparableEntries(catalog.components ?? []);
   const meta = catalog.meta ?? catalog;
   const system = meta.system ?? "catalog";
   const title = meta.title ?? system;
