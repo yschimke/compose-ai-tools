@@ -1623,3 +1623,91 @@ test("a deferred state with no reseed keeps its route rather than losing the car
     ["Card_Light"],
   );
 });
+
+test("a deferred axis cell is identified by its props, not by a state it does not carry", () => {
+  // `applyVariantAxisProps` leaves `state` at its default for a `@PreviewAxis` cell — the props ARE
+  // the identity there, matching a kit by property rather than by spelling. Reading only `state`
+  // routed every axis cell to the base annotation it shares every `@Preview` parameter with.
+  const spec = { groups: [{ components: [{ componentId: "B", preview: "Button" }] }] };
+  const preview = (id, night, overrides) => ({
+    id,
+    functionName: "Button",
+    params: { uiMode: night ? "UI_MODE_NIGHT_YES" : "UI_MODE_NIGHT_NO" },
+    ...(overrides ? { overrides } : {}),
+  });
+  const axisProps = [{ key: "size", value: "xl" }];
+  const bundle = {
+    previews: [
+      preview("Button_Light", false),
+      preview("Button_Dark", true),
+      preview("Button_Light_VARIANT_xl", false, { name: "xl", props: axisProps }),
+      preview("Button_Dark_VARIANT_xl", true, { name: "xl", props: axisProps }),
+    ],
+  };
+  const route = (record) =>
+    expandDeferredRecords([{ preview: "Button", reason: "mode", ...record }], spec, [bundle]).map(
+      (r) => r.previewId,
+    );
+
+  assert.deepEqual(route({ theme: "light", state: "default", props: { size: "xl" } }), [
+    "Button_Light_VARIANT_xl",
+  ]);
+  assert.deepEqual(route({ theme: "dark", props: { size: "xl" } }), ["Button_Dark_VARIANT_xl"]);
+  // Props that name no reseed still take the base rather than a wrong cell.
+  assert.deepEqual(route({ theme: "dark", props: { size: "no-such" } }), ["Button_Dark"]);
+  assert.deepEqual(route({ theme: "dark", state: "default" }), ["Button_Dark"]);
+});
+
+test("an entry-deferred component keeps a card per reseed, each addressed by its own cell", () => {
+  // The expansion exists to give a wholly deferred component the cards its baked sheet would have
+  // shown, reseeds included. The dedup key was theme/size/scale — which a reseed shares with its
+  // base — so the two collapsed and the cell was lost; and the record carried none of the reseed's
+  // axes, so `catalogImagePath` would derive a route naming the RESTING cell for it.
+  const spec = { groups: [{ components: [{ componentId: "B", preview: "Button" }] }] };
+  const preview = (id, night, overrides) => ({
+    id,
+    functionName: "Button",
+    params: { uiMode: night ? "UI_MODE_NIGHT_YES" : "UI_MODE_NIGHT_NO" },
+    ...(overrides ? { overrides } : {}),
+  });
+  const bundle = {
+    previews: [
+      preview("Button_Light", false),
+      preview("Button_Dark", true),
+      preview("Button_Light_VARIANT_pressed", false, { name: "pressed" }),
+      preview("Button_Dark_VARIANT_pressed", true, { name: "pressed" }),
+    ],
+  };
+  const records = expandDeferredRecords([{ preview: "Button", reason: "entry" }], spec, [bundle]);
+  assert.deepEqual(
+    records.map((r) => [r.previewId, r.theme, r.state ?? null]),
+    [
+      ["Button_Light", "light", null],
+      ["Button_Dark", "dark", null],
+      ["Button_Light_VARIANT_pressed", "light", "pressed"],
+      ["Button_Dark_VARIANT_pressed", "dark", "pressed"],
+    ],
+  );
+
+  // An axis reseed carries structured props instead of a state, the same way the fold writes it.
+  const axis = {
+    previews: [
+      preview("Button_Light", false),
+      preview("Button_Light_VARIANT_xl", false, {
+        name: "xl",
+        props: [{ key: "size", value: "xl" }],
+      }),
+    ],
+  };
+  assert.deepEqual(
+    expandDeferredRecords([{ preview: "Button", reason: "entry" }], spec, [axis]).map((r) => [
+      r.previewId,
+      r.state ?? null,
+      r.props ?? null,
+    ]),
+    [
+      ["Button_Light", null, null],
+      ["Button_Light_VARIANT_xl", null, { size: "xl" }],
+    ],
+  );
+});
