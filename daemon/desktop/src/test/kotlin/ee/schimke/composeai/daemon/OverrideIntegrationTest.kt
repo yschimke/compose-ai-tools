@@ -89,6 +89,77 @@ class OverrideIntegrationTest {
     }
   }
 
+  /**
+   * The same guarantee as [discoveredOverrideVariantKeepsItsOwnFigmaSvgAndState], through the lane
+   * a **production** desktop daemon actually takes.
+   *
+   * The gradle plugin sets `composeai.harness.previewsManifest` unconditionally for CMP / desktop
+   * modules (the "harness" prefix is historical — see `ComposePreviewTasks.kt`), so `DaemonMain`
+   * mounts [PreviewManifestRouter] rather than the `previewIndexBackedSpecResolver` the sibling
+   * test drives. The router forwards a `previewId=<id>` payload and nothing else, so until it
+   * learned to carry the manifest entry's `@OverrideVariant` seed, every variant of every
+   * desktop-rendered catalog exported its BASE state — a disabled button drawn as the enabled
+   * container, a `size=l` cell drawn small — beside a correct PNG, because the PNG comes from the
+   * standalone renderer, which seeds the controller itself (issue #3616's desktop half;
+   * yschimke/m3-catalog#201).
+   */
+  @Test
+  fun routedOverrideVariantKeepsItsOwnFigmaSvgAndState() {
+    val outputDir = tempFolder.newFolder("renders-routed-override-variant")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val baseId = "FilledButton_Light"
+    val variantId = "FilledButton_Light_VARIANT_disabled"
+    fun entry(id: String, overrides: OverrideVariantSpec? = null) =
+      PreviewManifestEntry(
+        id = id,
+        className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+        functionName = "OverridableSquare",
+        widthPx = 32,
+        heightPx = 32,
+        density = 1.0f,
+        outputBaseName = id,
+        overrides = overrides,
+      )
+    val host =
+      PreviewManifestRouter(
+        manifest =
+          PreviewManifest(
+            previews =
+              listOf(
+                entry(baseId),
+                entry(
+                  variantId,
+                  OverrideVariantSpec(
+                    name = "disabled",
+                    seeds =
+                      listOf(
+                        OverrideSeed(key = "fill", kind = OverrideSeedKind.COLOR, raw = "#FF42A5F5")
+                      ),
+                  ),
+                ),
+              )
+          ),
+        engine =
+          RenderEngine(
+            previewOverrideExtensions =
+              PreviewOverrideExtensions(listOf(PreviewOverridesPreviewOverrideExtension()))
+          ),
+      )
+    host.start()
+    try {
+      host.submit(RenderRequest.Render(payload = "previewId=$baseId"), timeoutMs = 30_000)
+      host.submit(RenderRequest.Render(payload = "previewId=$variantId"), timeoutMs = 30_000)
+      val dataDir = outputDir.parentFile!!.resolve("data")
+      val baseSvg = dataDir.resolve(baseId).resolve("compose-figma.svg").readText()
+      val variantSvg = dataDir.resolve(variantId).resolve("compose-figma.svg").readText()
+      assertTrue("base SVG must retain the author-default red fill", baseSvg.contains("#EF5350"))
+      assertTrue("variant SVG must carry its baked blue fill", variantSvg.contains("#42A5F5"))
+      assertNotEquals("base and variant SVGs must not collide", baseSvg, variantSvg)
+    } finally {
+      host.shutdown()
+    }
+  }
+
   @Test
   fun widthPxOverrideChangesRenderedDimensions() {
     val outputDir = tempFolder.newFolder("renders-width")
