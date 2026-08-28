@@ -135,17 +135,25 @@ fi
 #
 # The fence state tracks the OPENING delimiter, not just "a fence marker seen".
 # CommonMark closes a fence only on the same character, at least as long as the
-# opener, with nothing after it — so a literal ~~~ line inside a ``` block is
-# content, and treating it as a close would re-open the file to the `@AGENTS.md`
-# on the next line. An inert pointer certified as reachable is the exact failure
-# this gate exists to prevent, so it is worth the extra state.
+# opener, indented at most three spaces, with nothing after it. Each of those
+# three conditions has the same failure if dropped: a line that is fence CONTENT
+# reads as a close, the file re-opens, and the still-fenced `@AGENTS.md` on the
+# next line certifies as an import. An inert pointer certified as reachable is
+# the exact failure this gate exists to prevent, so it is worth the state.
+#
+# Three spaces, not "any indentation": at four a fence marker is an indented
+# code block, i.e. content. A leading TAB is four columns and so is over the
+# limit already, which is why only spaces are allowed here.
 strip_fenced_blocks() {
   awk '
     {
       marker = ""
-      if (match($0, /^[ \t]*(`+|~+)/)) {
+      # Three optional spaces spelled out rather than {0,3}: mawk 1.3.4 panics
+      # compiling an interval next to this alternation ("values still on machine
+      # stack"), and this script has to run under whatever awk the host has.
+      if (match($0, /^ ? ? ?(`+|~+)/)) {
         marker = substr($0, RSTART, RLENGTH)
-        gsub(/^[ \t]*/, "", marker)
+        gsub(/^ */, "", marker)
       }
       len = length(marker)
       if (len >= 3) {
