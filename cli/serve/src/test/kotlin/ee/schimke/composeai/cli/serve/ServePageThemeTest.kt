@@ -66,6 +66,47 @@ class ServePageThemeTest {
     assertTrue(themes.first { it.name == "Coral" }.mode == "dark")
   }
 
+  /**
+   * A catalog that DECLARES a dark stage offers no Light chip, whatever its id reads like —
+   * yschimke/wear-m3-catalog#99.
+   *
+   * The viewer used to decide this from the system id alone (`SystemDisplay.isDarkFirst`) while the
+   * stage under the pixels went through the declaration-first `resolveDarkFirst`. `remote-m3` —
+   * dark-only Remote Compose documents, `display.surface: "dark"`, an id with no `wear`/`watch`
+   * token in it — landed between the two: dark stage, and a Light chip on top of it that no lane
+   * behind the page could honour, because every document carries explicit dark-first colours.
+   */
+  @Test
+  fun `a catalog declaring a dark surface offers no day-night choice`() {
+    val darkOnly =
+      ServeWeb.viewerPage(
+        ServePreview("appcard__ideal__default__compact", "AppCard"),
+        token = "t",
+        basePath = "/remote-m3",
+        sessionId = "remote-m3",
+        declaredSurface = "dark",
+      )
+
+    assertTrue(darkOnly.contains("data-always-dark=\"1\""), darkOnly)
+    assertFalse(
+      darkOnly.contains("data-theme-choice=\"light\""),
+      "a declared-dark catalog must not offer a Light chip: $darkOnly",
+    )
+
+    // …and a catalog that declares nothing, on an id that reads like neither a watch nor a dark
+    // surface, keeps the pair it always had.
+    val unstated =
+      ServeWeb.viewerPage(
+        ServePreview("button__ideal__default__light", "Button", theme = "light"),
+        token = "t",
+        basePath = "/compose-m3",
+        sessionId = "compose-m3",
+      )
+
+    assertFalse(unstated.contains("data-always-dark=\"1\""), unstated)
+    assertTrue(unstated.contains("data-theme-choice=\"light\""), unstated)
+  }
+
   @Test
   fun `the resolved scheme is pinned before first paint, not after the page loads`() {
     // Deferring this to the shell bundle would paint the page in the wrong mode and correct it a

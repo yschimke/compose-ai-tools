@@ -11836,7 +11836,9 @@ ${scriptTag("known-differences.js")}
     siblings: List<ServePreview> = emptyList(),
     /**
      * The catalog's declared stage surface (`catalog.json`'s `display.surface`) — decides whether
-     * an unthemed preview's stage backs on dark. Null ⇒ the system-name dark-first heuristic.
+     * an unthemed preview's stage backs on dark, and with it whether the page offers a day/night
+     * choice at all (a declared-dark catalog does not). Null ⇒ the system-name dark-first
+     * heuristic.
      */
     declaredSurface: String? = null,
     /**
@@ -12095,16 +12097,24 @@ ${scriptTag("known-differences.js")}
     val label = WebEscaping.htmlEscape(displayName)
     val idText = WebEscaping.htmlEscape(preview.id)
     val modes = preview.modes.joinToString(",") { it.wire }
-    // Wear OS is an always-dark surface. Do not expose the generic day/night override: besides
-    // being meaningless for Wear, an old light choice within the Wear catalog must not turn into a
-    // confetti-wear live render.
-    val wearAlwaysDark = SystemDisplay.isDarkFirst(basePath.trim('/').ifBlank { sessionId ?: "" })
-    val alwaysDarkAttr = if (wearAlwaysDark) " data-always-dark=\"1\"" else ""
-    val irReplayAttr = if (irReplay) " data-ir-replay=\"1\"" else ""
-    val replayThemesAttr = if (replayThemes) " data-replay-themes=\"1\"" else ""
     // The baked fallback shown before any override is chosen. The unified Theme selector displays
     // this choice without sending a redundant uiMode override on first load.
     val viewerDarkFirst = isDarkFirstSystem(basePath, sessionId, declaredSurface)
+    // A dark-first surface has no day mode. Do not expose the generic day/night override: besides
+    // being meaningless there, an old light choice within the Wear catalog must not turn into a
+    // confetti-wear live render.
+    //
+    // Resolved through [isDarkFirstSystem] — the catalog's DECLARED `display.surface` first, the
+    // Wear/watch id heuristic only as the fallback — rather than the heuristic alone, which is the
+    // same signal the stage under the pixels already uses ([viewerDarkFirst]). Splitting them let
+    // a dark-only catalog whose id doesn't read as Wear (`remote-m3`: `modes: ["dark"]`,
+    // `display.surface: "dark"`, every document carrying explicit dark-first Material colours) draw
+    // its stickers on the dark stage while still offering a Light chip that nothing behind it can
+    // honour — wear-m3-catalog#99.
+    val wearAlwaysDark = viewerDarkFirst
+    val alwaysDarkAttr = if (wearAlwaysDark) " data-always-dark=\"1\"" else ""
+    val irReplayAttr = if (irReplay) " data-ir-replay=\"1\"" else ""
+    val replayThemesAttr = if (replayThemes) " data-replay-themes=\"1\"" else ""
     val viewerTheme = previewTheme(preview, viewerDarkFirst)
     // The Wasm tier is opt-in via a toggle (like "Live (stream)"), so the always-works PNG snapshot
     // stays the default. Both the iframe and the toggle are omitted entirely when no Wasm app backs
