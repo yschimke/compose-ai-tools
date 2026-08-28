@@ -131,10 +131,23 @@ d="$tmp/overindented-fence"; make_good "$d"
 printf '```\n    ```\n@AGENTS.md\n```\n' > "$d/CLAUDE.md"
 check "a four-space-indented fence marker does not close the block" 1 "$(run "$d")"
 
-# ...and three spaces still does, so the limit does not simply reject everything.
-d="$tmp/indented-fence-ok"; make_good "$d"
-printf '@AGENTS.md\n\n   ```\nfenced\n   ```\n' > "$d/CLAUDE.md"
-check "a three-space-indented fence still opens and closes" 0 "$(run "$d")"
+# ...and three spaces still open and close one. Both cases below are shaped so that
+# RECOGNISING the indented marker is what decides the exit status — an earlier
+# version put a live `@AGENTS.md` on line 1 and then checked for exit 0, which the
+# first line already guaranteed, so it would have passed with every trace of
+# optional-space handling deleted.
+#
+# Opener: the file's ONLY `@AGENTS.md` is inside a three-space-indented fence. Miss
+# the opener and the line is unfenced, reads as a live import, and the gate passes.
+d="$tmp/indented-opener"; make_good "$d"
+printf 'Put this at the top:\n\n   ```\n@AGENTS.md\n   ```\n' > "$d/CLAUDE.md"
+check "a three-space-indented fence opens, hiding the import inside it" 1 "$(run "$d")"
+
+# Closer: the import is AFTER a three-space-indented closing fence. Miss the closer
+# and the rest of the file stays fenced, the import is invisible, and the gate fails.
+d="$tmp/indented-closer"; make_good "$d"
+printf 'Example:\n\n   ```\nfenced\n   ```\n\n@AGENTS.md\n' > "$d/CLAUDE.md"
+check "a three-space-indented fence closes, so the import after it is live" 0 "$(run "$d")"
 
 d="$tmp/no-copilot"; make_good "$d"; rm "$d/.github/copilot-instructions.md"
 check "missing copilot-instructions.md is rejected" 1 "$(run "$d")"
