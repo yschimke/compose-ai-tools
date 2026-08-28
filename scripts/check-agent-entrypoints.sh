@@ -130,6 +130,52 @@ fi
 
 # ----------------------------------------------------------------- 4 + 5. entrypoints
 #
+# Print <file> with every fenced code block removed, so the import matcher below
+# sees only lines an agent would actually act on.
+#
+# The fence state tracks the OPENING delimiter, not just "a fence marker seen".
+# CommonMark closes a fence only on the same character, at least as long as the
+# opener, with nothing after it — so a literal ~~~ line inside a ``` block is
+# content, and treating it as a close would re-open the file to the `@AGENTS.md`
+# on the next line. An inert pointer certified as reachable is the exact failure
+# this gate exists to prevent, so it is worth the extra state.
+strip_fenced_blocks() {
+  awk '
+    {
+      marker = ""
+      if (match($0, /^[ \t]*(`+|~+)/)) {
+        marker = substr($0, RSTART, RLENGTH)
+        gsub(/^[ \t]*/, "", marker)
+      }
+      len = length(marker)
+      if (len >= 3) {
+        ch = substr(marker, 1, 1)
+        if (!fence) {
+          # An opener may carry an info string ("```sh"); a closer may not.
+          fence = 1; fence_ch = ch; fence_len = len
+          next
+        }
+        rest = substr($0, RSTART + RLENGTH)
+        if (ch == fence_ch && len >= fence_len && rest ~ /^[ \t]*$/) {
+          fence = 0
+          next
+        }
+      }
+      if (!fence) print
+    }
+  ' "$1"
+}
+
+# Does <file> carry a live <regex> import — one on its own line, outside every
+# fenced code block?
+#
+# The regex is handed to `grep -E`, never to `awk -v`: awk processes C string
+# escapes in a -v assignment, so `\.` arrives as a bare `.` — a wildcard — and
+# `@xAGENTSymd` would certify as an import. One ERE, one engine.
+import_line_outside_code() {
+  strip_fenced_blocks "$1" | grep -Eq "$2"
+}
+
 # check_import <label> <file> <regex> <human-readable mechanism>
 check_import() {
   local label="$1" file="$2" re="$3" mech="$4"
@@ -137,10 +183,20 @@ check_import() {
     fail "${label}: ${file} is missing — ${label} would resolve no repository instructions"
     return
   fi
-  # An import must be its own line and must not be inside a code span: Claude
-  # Code and Gemini CLI both skip backticked text, so `@AGENTS.md` in backticks
-  # is documentation, not an import.
-  if grep -Eq "$re" "$root/$file" && ! grep -Eq '`[^`]*@\.?/?AGENTS\.md' "$root/$file"; then
+  # An import must be its own line and must not be inside a code span or a fenced
+  # block: Claude Code and Gemini CLI both skip those, so `@AGENTS.md` in
+  # backticks is documentation, not an import.
+  #
+  # The check is per-LINE, deliberately. It used to be an anchored match for the
+  # import plus a FILE-WIDE veto on any backticked mention — which vetoed a
+  # perfectly good import the moment the same file explained itself, and a
+  # pointer file that documents its own mechanism is the normal case here. The
+  # veto was redundant as well as wrong: a line that is nothing but
+  # `@AGENTS.md` in a code span cannot match the anchored regex anyway.
+  #
+  # What it could never catch, and this does, is the import sitting inside a
+  # ``` fence. That line matches the anchored regex exactly and is still inert.
+  if import_line_outside_code "$root/$file" "$re"; then
     ok "${label}: ${file} reaches AGENTS.md (${mech})"
   else
     fail "${label}: ${file} does not import AGENTS.md (${mech}). A markdown link is NOT followed — the invariants would be invisible."

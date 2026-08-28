@@ -52,8 +52,11 @@ so they cannot disagree: the local [`commit-msg`](.githooks/commit-msg) hook, th
 local [`pre-push`](.githooks/pre-push) hook (which catches amended, rebased,
 cherry-picked or pre-hook commits `commit-msg` never saw), and the
 [`No Agent Attribution`](.github/workflows/no-agent-attribution.yml) CI gate.
-Install the hooks with [`scripts/install-git-hooks.sh`](scripts/install-git-hooks.sh);
-the `SessionStart` hook already does. `--no-verify` bypasses the local hooks; CI
+Install the hooks with [`scripts/install-git-hooks.sh`](scripts/install-git-hooks.sh).
+Claude Code's `SessionStart` hook runs it for you; **every other agent has to run
+it itself** — that hook lives in `.claude/settings.json` and never fires in a
+Codex, Gemini or Copilot session, so those clones have no local check at all
+until someone runs the script. `--no-verify` bypasses the local hooks; CI
 still won't. Why the PR body matters and how a trailer reached `main` anyway:
 [`docs/AGENTS.md` → Git conventions](docs/AGENTS.md#git-conventions).
 
