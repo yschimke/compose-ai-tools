@@ -894,7 +894,7 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
         --host <addr>     Bind address (default 127.0.0.1 — loopback only).
         --lan             Bind all interfaces (0.0.0.0) so other devices on your network can
                           connect. Prints the token-gated network URL and a security warning.
-        --port <n>        Preferred port (default $ServeDefaults.DEFAULT_PORT; auto-picks the next free one).
+        --port <n>        Preferred port (default ${ServeDefaults.DEFAULT_PORT}; auto-picks the next free one).
         --token <value>   Use a fixed token instead of a freshly generated one (stable links).
         --public          Serve every route WITHOUT a token (open). For a deployed public preview
                           server — browsing published catalogs / uploaded bundles is the point. Safe
@@ -962,7 +962,7 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
                           nearest to expiry.
         --agent-grant-rate-limit <n>
                           Requests per minute per address on the two ungated grant routes (default
-                          $ServeDefaults.DEFAULT_AGENT_GRANT_RATE_LIMIT; 0 disables the budget entirely).
+                          ${ServeDefaults.DEFAULT_AGENT_GRANT_RATE_LIMIT}; 0 disables the budget entirely).
         --export <path>   Don't serve: render every preview once and write a portable bundle (a
                           self-contained web gallery + PNGs) to <path>. A '.zip' path writes a zip;
                           any other path writes a directory. The live server also offers this at
@@ -1232,7 +1232,11 @@ class ServeCommand(args: List<String>, override val browseProject: Boolean = fal
     className: String?,
     functionName: String?,
   ): Boolean =
-    previewIdMatchesRequest(
+    // Fully qualified on purpose. Unqualified, this resolves to the override it is inside — the
+    // parameter names are identical, so it out-ranks the package-level function — and every call
+    // recurses until the stack goes. `:cli:test` was green with the bug in place because nothing
+    // exercised the Gradle-backed serve path; the first real `serve --module` would have died.
+    ee.schimke.composeai.cli.previewIdMatchesRequest(
       id,
       exactId = exactId,
       filter = filter,
