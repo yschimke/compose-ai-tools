@@ -139,6 +139,7 @@
       "daemon/core/**",
       "daemon/protocol/**",
       "daemon/devices/**",
+      "daemon/bta/**",
       "daemon/client/**",
       "api/preview-data-api/**",
       "common/io/**",

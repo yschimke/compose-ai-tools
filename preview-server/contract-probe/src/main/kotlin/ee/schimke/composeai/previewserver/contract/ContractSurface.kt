@@ -3,6 +3,8 @@ package ee.schimke.composeai.previewserver.contract
 import ee.schimke.composeai.bundle.BundleReader
 import ee.schimke.composeai.bundle.WebEmbed
 import ee.schimke.composeai.bundle.coordinates.CoordinateResolver
+import ee.schimke.composeai.daemon.bta.BtaCompileSession
+import ee.schimke.composeai.daemon.bta.DiagnosticCollector
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.devices.frameDpOverriddenBy
 import ee.schimke.composeai.daemon.protocol.DaemonLaunchDescriptor
@@ -143,6 +145,36 @@ object ContractSurface {
     val resolved: DeviceDimensions.DeviceSpec = DeviceDimensions.resolve("pixel_5")
     val (w, h) = resolved.frameDpOverriddenBy(widthDp, heightDp)
     return resolved.isRound && w > 0 && h > 0
+  }
+
+  /**
+   * The playground's in-process compile, `:daemon-bta` since #3824.
+   *
+   * The one entry in this file that is behaviour rather than a shape, and the only one whose
+   * presence here is a product decision: an extracted server that offers a playground compiles
+   * snippets, so it needs a compiler. Written as the calls `PlaygroundBtaCompiler` makes, for the
+   * reason the web surfaces above are — naming the classes would not notice `compile` losing a
+   * parameter or `errors` being renamed.
+   */
+  @Suppress("unused")
+  private fun playgroundCompileCalls(
+    implJars: List<java.nio.file.Path>,
+    icDir: java.nio.file.Path,
+    sources: List<java.nio.file.Path>,
+    classpath: List<java.nio.file.Path>,
+    outputDir: java.nio.file.Path,
+  ): Int {
+    val session =
+      BtaCompileSession(implClasspath = implJars, icWorkingDir = icDir, moduleName = "m")
+    val collector = DiagnosticCollector()
+    session.compile(
+      sources = sources,
+      compileClasspath = classpath,
+      outputDir = outputDir,
+      compilerPlugins = emptyList(),
+      diagnosticListener = collector,
+    )
+    return collector.errors.size
   }
 
   /** File IO. The server funnels reads/writes through `:common-io` like every other module. */

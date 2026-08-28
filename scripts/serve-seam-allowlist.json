@@ -84,7 +84,7 @@
     "ee.schimke.composeai.bundle": "bundle-format",
     "ee.schimke.composeai.bundle.coordinates": "bundle-coordinates",
     "ee.schimke.composeai.daemon": "daemon-core",
-    "ee.schimke.composeai.daemon.bta": "daemon-core",
+    "ee.schimke.composeai.daemon.bta": "daemon-bta",
     "ee.schimke.composeai.daemon.client": "daemon-client",
     "ee.schimke.composeai.daemon.devices": "daemon-devices",
     "ee.schimke.composeai.daemon.protocol": "daemon-protocol",
