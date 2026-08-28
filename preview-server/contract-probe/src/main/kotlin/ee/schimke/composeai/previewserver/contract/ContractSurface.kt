@@ -126,10 +126,7 @@ object ContractSurface {
       WebEmbed.generate(title = "t", modulePath = ":m", previews = listOf(preview), mode = mode)
     val files: Map<String, ByteArray> = out.files
 
-    return twoArg.length +
-      files.size +
-      WebEmbed.SCRIPT_NAME.length +
-      WebEmbed.INDEX_NAME.length
+    return twoArg.length + files.size + WebEmbed.SCRIPT_NAME.length + WebEmbed.INDEX_NAME.length
   }
 
   /**
