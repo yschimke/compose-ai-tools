@@ -86,11 +86,43 @@ const heroSpan = (mode, cap) => {
   const inner =
     `<img alt="" src="${GUTTERED}" style="width:${pct(IMG_W, BOX_W)}%;` +
     `left:${pct(LEFT, BOX_W)}%;top:${pct(TOP, BOX_H)}%">`;
-  const pinned = mode === "before" ? `--cp-thumb-cap:${cap}px;` : "";
+  // `before` pins the cap the grid used to hand this well; `after` publishes what the server
+  // publishes now. `--cp-crop-w-per-h` is the width per 1px of the box's own height (400/300),
+  // which for THIS gutter crop equals `--cp-crop-w-per-cap` — the point of the variable is the
+  // vector-derived case where they differ, which the syslist rule must not confuse.
+  // `before` pins the WIDTH the grid's cap used to produce here (cap x 4/3), because the rule no
+  // longer reads `--cp-thumb-cap` at all — that is the change. `after` publishes what the server
+  // publishes: `--cp-crop-w-per-h`, the width per 1px of the box's own height.
+  const sizing =
+    mode === "before"
+      ? `width:${Math.round((cap * 4) / 3)}px`
+      : `--cp-crop-w-per-cap:${pct(400, 300 * 100)};--cp-crop-w-per-h:${pct(400, 300 * 100)};` +
+        `--cp-crop-max-w:400px`;
   return (
-    `<span class="cp-crop cp-crop--bleed" style="${pinned}` +
-    `--cp-crop-w-per-cap:${pct(400, 300 * 100)};--cp-crop-max-w:400px;` +
+    `<span class="cp-crop cp-crop--bleed" style="${sizing};` +
     `aspect-ratio:${BOX_W}/${BOX_H}">${inner}</span>`
+  );
+};
+
+// The case that makes `--cp-crop-w-per-h` necessary rather than tidy: `ServeBundleHost` clears
+// `clip` on a vector crop over a guttered render, so this landscape 300x100 window carries
+// `--bleed` while its `--cp-crop-w-per-cap` is against the LARGEST EDGE (300), not the height.
+// Sizing it off the well's height through that ratio shrinks it to 196x65 for nothing; it already
+// fits the 196px well at its natural size.
+const LANDSCAPE = render(300, 100, 15);
+const vectorBleedSpan = (mode) => {
+  const inner = `<img alt="" src="${LANDSCAPE}" style="width:110%;left:-5%;top:-15%">`;
+  // `before` pins what the `--bleed` / `--cp-thumb-cap:196px` rule produced here: the ratio it
+  // read is against the LARGEST EDGE (300/300 = 1), so the window came out min(300, 1 * 196) =
+  // 196px wide — 196x65 at this aspect. That number has to be in the picture, or the before/after
+  // pair shows the regression not happening rather than the regression.
+  const sizing =
+    mode === "before"
+      ? "width:196px"
+      : `--cp-crop-w-per-cap:${pct(300, 300 * 100)};--cp-crop-w-per-h:${pct(300, 100 * 100)};` +
+        `--cp-crop-max-w:300px`;
+  return (
+    `<span class="cp-crop cp-crop--bleed" style="${sizing};aspect-ratio:300/100">${inner}</span>`
   );
 };
 
@@ -117,6 +149,10 @@ body { margin: 0; background: #fff; font-family: sans-serif; color: #222; }
       fitted to the row's 196px of content height</div></div>
   <div class="box">${heroCard(heroSpan(mode, cap))}
     <div class="cap">system-card hero, the cropped fallback &mdash; same row, same well</div></div>
+  <div class="box">${heroCard(vectorBleedSpan(mode))}
+    <div class="cap">a VECTOR-derived bleed crop (landscape 300x100) in the same well &mdash;
+      <code>--bleed</code>, but a largest-edge cap ratio. Before, the rule shrank it to 196x65 in
+      a well it already fitted; after, it keeps its natural 300x100</div></div>
 </div>`;
 
 mkdirSync(here, { recursive: true });
@@ -141,6 +177,7 @@ for (const mode of ["before", "after"]) {
       "window", await size(".cp-crop"),
       "hero", await size(".cp-syslist .cp-imgwrap > img"),
       "hero-window", await size(".cp-syslist .cp-crop"),
+      "vector-window", await size(".box:last-child .cp-crop"),
     );
     await p.screenshot({ path: join(here, `${name}-${mode}.png`), fullPage: true });
     await p.close();
