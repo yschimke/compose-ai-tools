@@ -3734,11 +3734,24 @@ class ServeHttpServer(
    * generation (a refresh restages them), so it caches like the baked PNGs do.
    */
   private suspend fun RoutingContext.handleRcCompareAsset(sessionInPath: Boolean) {
-    if (rejectBadToken()) return
+    if (rejectBadToken() || rejectMalformedGeneration()) return
     val sessionId = selectedSessionId(sessionInPath)
     val name = "${call.parameters["lane"].orEmpty()}/${call.parameters["name"].orEmpty()}"
     withLeasedSession(sessionId, onMissing = { call.respond(HttpStatusCode.NotFound) }) { renderHost
       ->
+      // The catalog restages these on refresh and keeps only the current staging, so a wall from an
+      // earlier publish has no answer here — and today's raster under that publish's printed
+      // mismatch percentage is a confident number about two pictures that were never compared.
+      // Refusing lets the page reload instead ([ServeCacheGeneration]).
+      val stale = staleGeneration(renderHost)
+      if (stale != null) {
+        call.respondText(
+          "this catalog has restaged its player comparison since " +
+            "'${ServeCacheGeneration.PARAM}=${ServeCacheGeneration.short(stale)}' — reload the page",
+          status = HttpStatusCode.Conflict,
+        )
+        return@withLeasedSession
+      }
       val bytes = renderHost.rcCompareImage(name)
       if (bytes == null) {
         call.respond(HttpStatusCode.NotFound)
@@ -3844,15 +3857,18 @@ class ServeHttpServer(
       // measured in CI over the baked render.
       //
       // This used to be necessary but NOT sufficient, and the gap was caching: an override-free
-      // baked `/render/<id>.png` was served on a lifetime of its own while this index rode in the
-      // page, so a client could pair previous-generation pixels with a freshly-fetched index. That
-      // mattered because a tag selection persists the index's bounds as the acceptance baseline —
-      // bounds from another frame surviving into a record that later reports an unchanged element
-      // as moved.
+      // baked `/render/<id>.png` was served on a lifetime of its own while this index was fetched
+      // separately, so a client could pair one generation's pixels with another generation's
+      // bounds. That matters because a tag selection persists the index's bounds as the acceptance
+      // baseline — bounds from another frame surviving into a record that later reports an
+      // unchanged element as moved.
       //
-      // Closed by [ServeCacheGeneration] (issue #4695): this page's frame URLs name the publish the
-      // page was assembled from, so the frame beside this index is that publish's frame or the
-      // request fails. The condition below is now sufficient as well as necessary.
+      // Closed by [ServeCacheGeneration] (issue #4695), and it took BOTH halves. The frame URL and
+      // this page's `/tags/<id>` URL are scoped to the same publish, the frame lane answers for
+      // that publish out of the delivery branch, and the tag lane — which can only ever describe
+      // today's render — refuses a generation the catalog has moved on from rather than answering
+      // with bounds measured on a different frame. So the pair on screen is one publish or the
+      // picker fails closed. The condition below is now sufficient as well as necessary.
       val frameIsReplayedBaked =
         !pinned && overrideParams.isEmpty() && !renderHost.canApplyOverrides
       val tagIndex = renderHost.tagIndexForPreview(preview.id)
@@ -6514,15 +6530,37 @@ class ServeHttpServer(
    * [ServeHost.tagIndexForPreview] to their baked host — so an override-bearing or pinned frame is
    * a different render than the one these bounds were measured on. Tag-derived selection therefore
    * has to be gated on the frame being the baked one ([ServeWeb.ReferenceComparison.tagSelection],
-   * decided by the page that knows which frame it is showing), and the element gates in batch 05
-   * need a shared render generation before they can read this at all. Recording bounds from another
-   * frame into an acceptance is worse than having no element gate: it reports an element that never
-   * moved as moved, with a plausible explanation attached.
+   * decided by the page that knows which frame it is showing). Recording bounds from another frame
+   * into an acceptance is worse than having no element gate: it reports an element that never moved
+   * as moved, with a plausible explanation attached.
+   *
+   * That gate is now paired with a **generation** one ([ServeCacheGeneration]): a caller may name
+   * the publish it is asking about, and this route refuses one the catalog has moved on from rather
+   * than answering with today's bounds. It cannot answer for an older publish — the index is read
+   * from the catalog on disk and the branch publishes no per-revision copy — so refusing is the
+   * whole of what it can honestly do, and it is enough: the pair is one publish or there is no
+   * pair.
    */
   private suspend fun RoutingContext.handleTagIndex(sessionInPath: Boolean) {
-    if (rejectBadToken()) return
+    if (rejectBadToken() || rejectMalformedGeneration()) return
     val requested = call.parameters["name"].orEmpty()
     withLeasedSession(selectedSessionId(sessionInPath)) { renderHost ->
+      // A comparison page scopes this URL to the publish it was assembled from, and this index is
+      // measured over that publish's baked render. Once the catalog has moved on there is no
+      // answer for the frame the caller is looking at — only today's bounds — and handing those
+      // back is worse than handing back nothing: a selection made from them is persisted as an
+      // acceptance baseline and later reports an element that never moved as moved. Refusing lets
+      // the picker fail closed and the page reload ([ServeCacheGeneration]).
+      val stale = staleGeneration(renderHost)
+      if (stale != null) {
+        call.respondText(
+          "this catalog has moved on from " +
+            "'${ServeCacheGeneration.PARAM}=${ServeCacheGeneration.short(stale)}'; the published " +
+            "tag index describes the current render, not that one — reload the page",
+          status = HttpStatusCode.Conflict,
+        )
+        return@withLeasedSession
+      }
       // Verbatim wins over the alias, so a preview whose id really ends in `.json` keeps its own
       // index instead of being answered with another preview's.
       val previewId =
@@ -7279,6 +7317,11 @@ class ServeHttpServer(
       // report point at is the frame this page drew ([ServeCacheGeneration]). Not scoped under an
       // override: the URL then names a render made to order, which is `no-store` and belongs to no
       // publish.
+      //
+      // `requestQuerySuffix()` is the page's RAW query, so this URL also inherits whatever page
+      // state the visitor's link carried. That is deliberate for an override — the card should show
+      // what they are looking at — and harmless for the rest, because the raster lane reads none of
+      // it and its own generation test is scoped to the parameters that actually change pixels.
       val imageQuerySuffix =
         if (revisions.pinned != null) pinnedRenderQuerySuffix()
         else if (requestCarriesOverrides()) requestQuerySuffix()
@@ -7663,6 +7706,14 @@ class ServeHttpServer(
       // normal way. Those params ride on the same URL by design (the grid appends `themeProvider=`
       // to the card's `src` when the visitor picks a theme), so this check is what keeps a themed
       // render from being answered with an unthemed thumbnail.
+      //
+      // A **stale generation** leaves the lane for the same reason a pin does, and it has to be
+      // asked here rather than inside [plainThumbRequest]: the thumbnail is downscaled from the
+      // catalog on disk, so it is by definition this generation's, and the fast path sits ahead of
+      // the routing that would otherwise fetch the named publish's bytes. Answering would be the
+      // worst shape available — a 200, `immutable`, from a generation the URL says it is not
+      // (#4714 review). A `gen=` naming the generation on disk is no obstacle at all and stays on
+      // the fast path, which is what keeps a scoped card cheap.
       val thumbHash = call.request.queryParameters[ServeHeroImages.THUMB_PARAM]
       if (
         thumbHash != null &&
@@ -7671,7 +7722,8 @@ class ServeHttpServer(
           !wantA11y &&
           !wantAnnotations &&
           !wantRcDoc &&
-          plainThumbRequest()
+          plainThumbRequest() &&
+          staleGeneration(renderHost) == null
       ) {
         val thumb =
           heroImages.gridThumbFor(
@@ -7685,10 +7737,12 @@ class ServeHttpServer(
         }
       }
       // A product can be selected by *query* rather than by suffix: `?scroll=long` is a full-page
-      // capture, `?rcPlayer=cmp-jvm` is a different player's raster, and any override
-      // (`fontScale`, `device`, `knob.…`) asks for pixels rendered to order. None of those is a
-      // published byte. Hoisted ahead of the two revision lanes below because both need the answer
-      // — and reach opposite conclusions from it.
+      // capture, `?rcPlayer=cmp-jvm` is a different player's raster, `mode=` presents the SVG
+      // export, and any override (`fontScale`, `device`, `knob.…`) asks for pixels rendered to
+      // order. None of those is a published byte, so a **pin** naming one of them is a URL claiming
+      // two contradictory things and is refused below. The generation lane asks a narrower version
+      // of the same question ([madeToOrder]) and reaches the opposite conclusion; both are stated
+      // where they are decided rather than shared, because they are not the same rule.
       val onDemand =
         requestCarriesOverrides() ||
           call.request.queryParameters["scroll"] != null ||
@@ -7716,19 +7770,44 @@ class ServeHttpServer(
       // generation on disk falls through, which is the ordinary browse: it changes nothing but the
       // response's cache lifetime, decided further down.
       //
-      // Where a pin **refuses** a request that also asks for a produced product, a generation steps
-      // aside for one — the raster is the only thing it reconciles. The difference is who wrote the
-      // parameter and what it claims. A pin is a person asking for a past publish, so a URL asking
-      // for both that and a live render is a contradiction worth naming. A generation is the
-      // server's own note about which page drew this frame, and every produced product — an
-      // override, a scroll capture, `.svg`, `.slots`, `.a11y`, `.annotations`, `.rc` — is served
-      // `no-store` and reflects no published bytes at all, so there is no pair for a cache to hold
-      // wrongly and nothing for the note to reconcile. Refusing there would break the one
-      // interaction this coupling must not cost: turning a knob on a page a refresh overtook.
-      val wantsProducedProduct =
-        onDemand || wantSvg || wantSlots || wantA11y || wantAnnotations || wantRcDoc
-      val pinnedCommit =
-        requestedPin ?: if (wantsProducedProduct) null else staleGeneration(renderHost)
+      // Exactly one thing makes a stale generation step aside: a render **made to order**. An
+      // override, a scroll capture, a player selection, an exploded projection — the visitor asked
+      // for pixels that reflect no published bytes at all, the response is `no-store`, and there is
+      // no pair for a cache to hold wrongly. Refusing there would break the one interaction this
+      // coupling must not cost: turning a knob on a page a refresh overtook.
+      //
+      // Deliberately NARROWER than the pin's [onDemand] in one place, and the difference is
+      // load-bearing: `mode=` selects a presentation of the SVG export and does nothing whatever on
+      // the raster lane, while it is ordinary page state that a viewer's shared link carries and
+      // that the frame URL inherits. Reading it as "made to order" here would opt the commonest
+      // shared link straight back out of the coupling, with a 200 and no sign of it.
+      val madeToOrder =
+        requestCarriesOverrides() ||
+          call.request.queryParameters["scroll"] != null ||
+          call.request.queryParameters["rcPlayer"] != null ||
+          (wantSvg && call.request.queryParameters["mode"] != null) ||
+          ServeExplodedSvg.PARAMS.any { call.request.queryParameters[it] != null }
+      val staleGeneration = if (madeToOrder) null else staleGeneration(renderHost)
+      // A stale generation on a **non-raster product** refuses, exactly as a pin does. These are
+      // the products whose whole purpose is to *describe* the frame — a semantics tree, an a11y
+      // pass, the typography and layout annotations the redline draws and an element selection
+      // records as an acceptance baseline — and the server can only describe today's. Answering
+      // would hand a page from one publish a measurement of another's, which is the corruption this
+      // parameter exists to prevent, arriving through the one door it left open: stepping aside
+      // here was silently the same bug pointing the other way (#4714 review).
+      if (
+        staleGeneration != null &&
+          (wantSvg || wantSlots || wantA11y || wantAnnotations || wantRcDoc)
+      ) {
+        call.respondText(
+          "only the baked render is published per generation; this catalog has moved on from " +
+            "'${ServeCacheGeneration.PARAM}=${ServeCacheGeneration.short(staleGeneration)}', so " +
+            "there is no answer for that frame — reload the page",
+          status = HttpStatusCode.Conflict,
+        )
+        return@withLeasedSession
+      }
+      val pinnedCommit = requestedPin ?: staleGeneration
       if (pinnedCommit != null) {
         // The non-raster products are made on demand by the daemon — an SVG export, a slot tree,
         // an a11y or annotation pass, a captured Remote Compose document. The branch publishes

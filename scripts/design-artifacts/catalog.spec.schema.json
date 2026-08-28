@@ -265,6 +265,27 @@
           "type": "string",
           "enum": ["light", "dark"],
           "description": "Pairs a separate-function theme render onto this component so it folds into one …__light/…__dark swap card — use when a screen's light and dark renders are two @Preview functions (e.g. FooScreen + FooScreenDark) rather than one multipreview. The dark render must set uiMode = UI_MODE_NIGHT_YES so its pixels are actually dark; this tag makes the pairing authoritative."
+        },
+        "parallel": {
+          "type": "string",
+          "description": "Optional componentId of the counterpart in the `compareWith` sibling system, paired side-by-side on the cross-system compare page. A variant is compared in its own right rather than through its parent, so folding a render under one does not cost it its pairing. Several variants of one parent may name the same counterpart: the sibling system often draws one component where this one draws a family."
+        },
+        "reference": {
+          "type": "string",
+          "description": "Optional seed-kit handle (Figma node etc.) for this variant's own cell."
+        },
+        "referenceSet": {
+          "type": "string",
+          "description": "Optional handle of the component family `reference` is one variant of; as on a component."
+        },
+        "noReference": {
+          "type": "string",
+          "description": "Optional REASON there is no `reference`, for when the absence is a finding rather than a gap. This carries more weight on a variant than on a component: mapping a variant onto its parent's base kit cell would score it against the wrong picture, so the kit exporting no such cell is a statement a reader needs and cannot infer from a blank field."
+        },
+        "referenceContentsOnly": {
+          "type": "boolean",
+          "default": true,
+          "description": "As on a component: whether a Figma export contains only `reference`'s own content."
         }
       }
     }

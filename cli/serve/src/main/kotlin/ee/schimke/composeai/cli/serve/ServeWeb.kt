@@ -9643,7 +9643,16 @@ ${captureControlsHtml().prependIndent("          ")}
         """
           .trimIndent()
     val rcLanes = rcCompare?.let {
-      rcLanesSection(it, previews, previewIdsByCard, token, linkSessionId, basePath, isPublic)
+      rcLanesSection(
+        it,
+        previews,
+        previewIdsByCard,
+        token,
+        linkSessionId,
+        basePath,
+        isPublic,
+        generation,
+      )
     }
     // The wall's page-scoped catalog report, in a provenance row of its own — see
     // [pageReportRowHtml] for why it borrows the viewer's row rather than styling a new one.
@@ -9737,12 +9746,19 @@ ${captureControlsHtml().prependIndent("          ")}
     linkSessionId: String?,
     basePath: String,
     isPublic: Boolean,
+    /** The wall's cache generation, scoping the staged rasters. See [ServeCacheGeneration]. */
+    generation: String?,
   ): String? {
     if (manifest.lanes.isEmpty() || manifest.rows.isEmpty()) return null
     val q = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
+    // These rasters are published per catalog generation and restaged by a refresh, and the
+    // mismatch percentages beside them are baked into this HTML. Scoping them is what stops a
+    // cached wall showing one publish's scores against the next publish's player images (#4714
+    // review) — the same claim the primary render/reference pair makes, about a different pair.
+    val assetQ = ServeCacheGeneration.scope(q, generation)
     val previewsById = previews.associateBy { it.id }
     fun asset(name: String): String =
-      if (name.isEmpty()) "" else "$basePath/${ServeRcCompare.DIRECTORY}/$name$q"
+      if (name.isEmpty()) "" else "$basePath/${ServeRcCompare.DIRECTORY}/$name$assetQ"
 
     // Worst-match first on the worst-scoring player, so a preview only one player gets wrong still
     // sorts to the top; rows nothing scored sink, then alphabetical. Mirrors the published page.
@@ -10165,11 +10181,16 @@ ${if (annotationsSelectable) "          data-cp-selectable=\"1\"\n" else ""}    
     // The element selector. A dragged region needs nothing from the server — it is read off the
     // displayed pixels — so the control is offered on every focused comparison; the tag picker only
     // appears where the index describes the frame being shown. See [tagIndexUrl].
+    // Generation-scoped like the frame it describes. The index is measured over the baked render,
+    // and clicking one of its entries persists its bounds as an acceptance baseline — so an index
+    // fetched from a publish other than the one on screen is precisely the record corruption this
+    // page's coupling exists to prevent. Scoping it means the lane can refuse a stale one instead
+    // of answering with today's bounds (#4714 review).
     val tagIndexUrl =
       if (!tagIndexAvailable) null
       else
         "$basePath/tags/${WebEscaping.urlEncodeSegment(preview.id)}" +
-          querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
+          assetQuery(querySuffix(linkQuery(token, linkSessionId, basePath, isPublic)), revisions)
     val tagAttr = tagIndexUrl?.let { " data-cp-tags=\"${WebEscaping.htmlEscape(it)}\"" }.orEmpty()
     val tagNote =
       tagSelectionNote
@@ -12158,8 +12179,15 @@ ${scriptTag("known-differences.js")}
     @Suppress("NAME_SHADOWING") val historyRepo = historyRepo?.takeUnless { componentBrowser }
     @Suppress("NAME_SHADOWING")
     val historyInlineJson = historyInlineJson?.takeUnless { componentBrowser }
+    // Catalog mode hides the revision *control* — a component browser embedded in someone else's
+    // docs has no business offering a publish history. It must not drop the page's **generation**
+    // with it: that is not a control, it is which publish this HTML was assembled from, and losing
+    // it leaves the browser-built stage URL unscoped while the server-built Open Graph and
+    // issue-report URLs beside it still name the generation (#4714 review). Same page, two
+    // publishes.
     @Suppress("NAME_SHADOWING")
-    val revisions = if (componentBrowser) CatalogRevisions.NONE else revisions
+    val revisions =
+      if (componentBrowser) CatalogRevisions(generation = revisions.generation) else revisions
     @Suppress("NAME_SHADOWING")
     val parityIssues = if (componentBrowser) emptyList() else parityIssues
     @Suppress("NAME_SHADOWING")

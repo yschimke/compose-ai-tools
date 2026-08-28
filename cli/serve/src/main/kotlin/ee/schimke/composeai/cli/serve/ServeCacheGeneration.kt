@@ -58,6 +58,9 @@ object ServeCacheGeneration {
    */
   fun normalize(raw: String?): String? = ServeCatalogRevision.normalize(raw)
 
+  /** The generation as it appears in a refusal message — the same short form a pin banner shows. */
+  fun short(commit: String): String = ServeCatalogRevision.short(commit)
+
   /**
    * Append [PARAM] to an already-built asset [link], or return it untouched.
    *

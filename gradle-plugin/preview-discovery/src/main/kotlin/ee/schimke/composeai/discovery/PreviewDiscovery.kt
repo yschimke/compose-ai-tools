@@ -1191,6 +1191,14 @@ object PreviewDiscovery {
           props = annStringArray(variant, "props").mapNotNull(::parseCatalogProp),
           kitAxis = annStringOrNull(variant, "kitAxis"),
           kitValue = annStringOrNull(variant, "kitValue"),
+          // Kit correspondence, read exactly as the component branch below reads it. A variant is
+          // compared in its own right rather than through its parent, so nesting a render under one
+          // must not cost it its parallel or its reference.
+          reference = annStringOrNull(variant, "reference"),
+          referenceSet = annStringOrNull(variant, "referenceSet"),
+          noReference = annStringOrNull(variant, "noReference"),
+          referenceContentsOnly = annBoolean(variant, "referenceContentsOnly", default = true),
+          parallel = annStringOrNull(variant, "parallel"),
         )
       }
     val component = annotations.firstOrNull { it.name == CATALOG_COMPONENT_FQN } ?: return null

@@ -223,6 +223,37 @@ annotation class CatalogVariant(
   val kitAxis: String = "",
   /** Design-kit value this variant maps to; empty keeps downstream value matching. */
   val kitValue: String = "",
+  /**
+   * Component id of this variant's counterpart in the `compareWith` sibling system — the same field
+   * [CatalogComponent.parallel] carries, and read the same way.
+   *
+   * A variant is compared in its own right, not through its parent. `Button/Compact-IconOnly` and
+   * `Button/Compact` are different renders and can diverge from the kit independently, so folding
+   * the first under the second must not stop the compare page pairing it. Leave it empty and the
+   * variant simply has no counterpart, exactly like a component that declares none.
+   *
+   * Several variants of one parent may name the same [parallel]: the sibling system often draws one
+   * component where this one draws a family, and each of them is legitimately compared against it.
+   */
+  val parallel: String = "",
+  /** Seed-kit handle for this variant's own cell, when the kit publishes one. */
+  val reference: String = "",
+  /**
+   * Handle of the component **family** [reference] is one variant of; see
+   * [CatalogComponent.referenceSet].
+   */
+  val referenceSet: String = "",
+  /**
+   * Why there is no [reference], when the absence is a finding rather than a gap.
+   *
+   * This carries more weight on a variant than on a component. A variant that maps onto its
+   * parent's base kit cell would be scored against the wrong picture — "the kit exports no
+   * `Text=No` cell, so the honest reference is the sibling's own render" is a statement a reader
+   * needs and cannot infer from a blank field.
+   */
+  val noReference: String = "",
+  /** Whether a Figma export contains only [reference]'s own content; see [CatalogComponent]. */
+  val referenceContentsOnly: Boolean = true,
 )
 
 /**

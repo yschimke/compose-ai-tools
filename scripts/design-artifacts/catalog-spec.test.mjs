@@ -531,6 +531,72 @@ test("validateSpec rejects a PNG-less preview referenced from a variant", () => 
   assert.ok(errors[0].includes("variants[0]"));
 });
 
+test("validateSpec accepts a variant's own kit correspondence fields", () => {
+  const spec = {
+    system: "s",
+    title: "T",
+    groups: [
+      {
+        name: "Buttons",
+        components: [
+          {
+            componentId: "Button/Compact",
+            preview: "CompactButton",
+            variants: [
+              {
+                preview: "CompactIconOnly",
+                props: { content: "icon-only" },
+                parallel: "Button/Compact",
+                noReference: "The kit exports no `Text=No` cell.",
+              },
+              {
+                preview: "CompactTextOnly",
+                props: { content: "text-only" },
+                parallel: "Button/Compact",
+                reference: "figma:FILE/1:2",
+                referenceSet: "figma:FILE/1:1",
+                referenceContentsOnly: false,
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const { errors } = validateSpec(spec, {
+    knownPreviews: ["CompactButton", "CompactIconOnly", "CompactTextOnly"],
+  });
+  assert.deepEqual(errors, []);
+});
+
+test("validateSpec rejects a non-string parallel on a variant", () => {
+  const spec = {
+    system: "s",
+    title: "T",
+    groups: [
+      {
+        name: "Buttons",
+        components: [
+          {
+            componentId: "Button/Compact",
+            preview: "CompactButton",
+            variants: [
+              { preview: "CompactIconOnly", state: "icon-only", parallel: 7 },
+              { preview: "CompactTextOnly", state: "text-only", referenceContentsOnly: "no" },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const { errors } = validateSpec(spec, {
+    knownPreviews: ["CompactButton", "CompactIconOnly", "CompactTextOnly"],
+  });
+  assert.equal(errors.length, 2);
+  assert.ok(errors[0].includes("variants[0].parallel must be a string"));
+  assert.ok(errors[1].includes("variants[1].referenceContentsOnly must be a boolean"));
+});
+
 test('validateSpec accepts a PNG-less preview declared `capture: "none"`', () => {
   const spec = {
     system: "s",
