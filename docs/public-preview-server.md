@@ -1553,7 +1553,8 @@ design reviewer actually spends their time on: the catalog **landing** grid, the
 **design page**, and the **motion** browser. A report filed from a Figma sheet whose components draw
 the wrong thing went to the preview server, which does not own any of it. All four now carry the
 same page-scoped report — the page URL, the catalog build, the tool version, no `| Preview |` row —
-under the identity line, and the launcher's catalog half is offered on them by name.
+under the identity line, and the launcher's catalog half is offered on them by name. Before/after in
+[`docs/design/evidence/catalog-report-every-surface`](design/evidence/catalog-report-every-surface/README.md).
 
 The **Catalog mode** viewer and landing keep the catalog report too. That mode drops the developer
 affordances around it (the source link, the playground, the revision menu) and it carries neither
