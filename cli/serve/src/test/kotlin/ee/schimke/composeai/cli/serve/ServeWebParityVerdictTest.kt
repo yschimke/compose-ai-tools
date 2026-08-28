@@ -140,6 +140,39 @@ class ServeWebParityVerdictTest {
   }
 
   @Test
+  fun `a clean run says so rather than looking like a catalog nobody checked`() {
+    val html = page(listOf(ParityFindingSet(status = "pass", findings = emptyList())))
+    assertTrue("cp-parity-verdict" in html, html)
+    assertTrue("cp-parity-status--pass" in html, html)
+    assertTrue("No findings." in html, html)
+    // No empty groups container behind it.
+    assertFalse("cp-parity-groups" in html, html)
+  }
+
+  @Test
+  fun `a finding that names a token prints it even with no numeric delta`() {
+    val html =
+      page(
+        listOf(
+          ParityFindingSet(
+            findings =
+              listOf(
+                finding(
+                  "token",
+                  severity = "info",
+                  message = "radius: candidate resolved no radius tokens",
+                  detail = mapOf("token" to "shape.corner", "unverified" to "true"),
+                )
+              )
+          )
+        )
+      )
+    // The spec token IS the finding's subject; the delta row is optional metadata around it.
+    assertTrue("shape.corner" in html, html)
+    assertFalse("expected" in html, html)
+  }
+
+  @Test
   fun `a verdict with no geometry gets the panel without the invitation`() {
     val html = page(listOf(ParityFindingSet(findings = listOf(finding("a11y")))))
     assertTrue("cp-parity-verdict" in html, html)

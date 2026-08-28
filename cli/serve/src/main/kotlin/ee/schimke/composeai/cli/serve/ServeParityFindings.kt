@@ -227,9 +227,17 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
   /**
    * The sets that describe the comparison on screen: those naming [referenceId], plus the unscoped
    * ones that describe the render whichever reference it is being read against.
+   *
+   * The page budgets are spent HERE, not at load, because they describe a page and only this
+   * selection is one. Reference-scoped sets are mutually exclusive on screen — a preview with three
+   * boards shows one of them at a time — so charging them against a shared allowance let the first
+   * two exhaust it and left the third comparison with no verdict at all, for a page that was never
+   * going to render the other two.
    */
   fun forComparison(previewId: String, referenceId: String): List<ParityFindingSet> =
-    forPreview(previewId).filter { it.referenceId == null || it.referenceId == referenceId }
+    spendPageBudget(
+      forPreview(previewId).filter { it.referenceId == null || it.referenceId == referenceId }
+    )
 
   companion object {
     private const val MAX_PREVIEWS = 5000
@@ -258,6 +266,9 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
     private const val MAX_ANCHORS_PER_PREVIEW = 600
     private const val MAX_DETAIL_KEYS = 24
     private const val MAX_MESSAGE = 400
+
+    /** An anchor caption names an element; anything longer is not a name. */
+    private const val MAX_LABEL = 120
     private const val MAX_DETAIL_VALUE = 200
     private val STATUSES = setOf("pass", "warn", "fail")
     private val ID = Regex("[^\\p{Cc}]{1,300}")
@@ -347,34 +358,21 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
     }
 
     /**
-     * One preview's sets, held to what a single comparison may show and draw.
-     *
-     * Trimmed rather than dropped: the budget is exhausted in the order the producer wrote, and a
-     * verdict past it has already said far more than a reader will get through. Findings are
-     * severity-ordered within a set before the trim, so what survives is the worst of what was
-     * published rather than whatever happened to be written first.
+     * One preview's sets, each validated on its own. The page budgets are spent in [forComparison],
+     * which is the only place that knows what one page will show.
      */
     private fun sanitizePreview(sets: JsonArray): List<ParityFindingSet>? {
-      var findingBudget = MAX_FINDINGS_PER_PREVIEW
-      var anchorBudget = MAX_ANCHORS_PER_PREVIEW
-      val kept = mutableListOf<ParityFindingSet>()
-      for (element in sets.take(MAX_SETS_PER_PREVIEW)) {
-        if (findingBudget <= 0) break
-        val set =
-          runCatching { JSON.decodeFromJsonElement<RawSet>(element) }.getOrNull() ?: continue
-        val sanitized = sanitizeSet(set, findingBudget, anchorBudget) ?: continue
-        findingBudget -= sanitized.findings.size
-        anchorBudget -= sanitized.findings.sumOf { it.anchors.size }
-        kept += sanitized
-      }
+      val kept =
+        sets
+          .take(MAX_SETS_PER_PREVIEW)
+          .mapNotNull { element ->
+            runCatching { JSON.decodeFromJsonElement<RawSet>(element) }.getOrNull()
+          }
+          .mapNotNull(::sanitizeSet)
       return kept.takeIf { it.isNotEmpty() }
     }
 
-    private fun sanitizeSet(
-      raw: RawSet,
-      findingBudget: Int,
-      anchorBudget: Int,
-    ): ParityFindingSet? {
+    private fun sanitizeSet(raw: RawSet): ParityFindingSet? {
       // A supplied id that does not validate is NOT the same as an absent one, and treating it as
       // one is the worst reading available: `forComparison` takes null as "describes the render
       // whichever reference it is read against", so a producer's malformed scope would print this
@@ -390,7 +388,6 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
             text
           }
         }
-      var anchorsLeft = anchorBudget
       val findings =
         raw.findings
           .take(MAX_FINDINGS_PER_SET)
@@ -399,17 +396,15 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
           }
           .mapNotNull(::sanitizeFinding)
           .sortedBy { ParityFindingSeverity.rank(it.severity) }
-          .take(findingBudget.coerceAtLeast(0))
-          .map { finding ->
-            val room = anchorsLeft.coerceAtLeast(0)
-            anchorsLeft -= finding.anchors.size.coerceAtMost(room)
-            if (finding.anchors.size <= room) finding
-            else finding.copy(anchors = finding.anchors.take(room))
-          }
-      if (findings.isEmpty()) return null
+      val status = raw.status?.trim()?.lowercase()?.takeIf(STATUSES::contains)
+      // A set with no findings is KEPT when it declares a status, and it is not an empty record: a
+      // run that looked and found nothing is a different fact from a catalog nobody ran, and only
+      // the first can say "Pass". Dropping it made the two indistinguishable on the page. With
+      // neither findings nor a status there is nothing to say, and the set goes.
+      if (findings.isEmpty() && status == null) return null
       return ParityFindingSet(
         referenceId = referenceId,
-        status = raw.status?.trim()?.lowercase()?.takeIf(STATUSES::contains),
+        status = status,
         // Only an absolute https link, and only as a link: this string is written by another
         // repository and lands in an `href`, so a `javascript:` or a protocol-relative host would
         // be a stored redirect out of the catalog on a page the reader trusts.
@@ -441,7 +436,17 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
           raw.anchors
             .take(MAX_ANCHORS_PER_FINDING)
             .mapNotNull { runCatching { JSON.decodeFromJsonElement<ParityAnchor>(it) }.getOrNull() }
-            .filter(::isUsable),
+            .filter(::isUsable)
+            // Clamped like a message and a detail value, and for a sharper reason than either:
+            // this string is serialized into every comparison page AND drawn by the client as a
+            // `white-space: nowrap` caption, so an unbounded one is both a multi-megabyte response
+            // and a label wider than the screen it is meant to annotate.
+            .map { anchor ->
+              anchor.copy(
+                label =
+                  anchor.label?.trim()?.takeIf { it.isNotEmpty() }?.let { clamp(it, MAX_LABEL) }
+              )
+            },
       )
     }
 
@@ -456,6 +461,37 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
       val primitive = value as? JsonPrimitive ?: return null
       if (primitive is JsonNull) return null
       return clamp(primitive.content.trim(), MAX_DETAIL_VALUE).takeIf { it.isNotEmpty() }
+    }
+
+    /**
+     * Hold one comparison's sets to what a page can show and draw, worst-severity-first.
+     *
+     * Trimmed rather than dropped: the budget is spent in the order the producer wrote, and a
+     * verdict past it has already said far more than a reader will get through. Findings are
+     * severity-ordered within a set before this runs, so what survives is the worst of what was
+     * published rather than whatever happened to be written first.
+     */
+    private fun spendPageBudget(sets: List<ParityFindingSet>): List<ParityFindingSet> {
+      var findingsLeft = MAX_FINDINGS_PER_PREVIEW
+      var anchorsLeft = MAX_ANCHORS_PER_PREVIEW
+      // Nothing to spend against: the common shape, and worth not rebuilding every set for.
+      if (
+        sets.sumOf { it.findings.size } <= findingsLeft &&
+          sets.sumOf { set -> set.findings.sumOf { it.anchors.size } } <= anchorsLeft
+      ) {
+        return sets
+      }
+      return sets.map { set ->
+        val findings =
+          set.findings.take(findingsLeft.coerceAtLeast(0)).map { finding ->
+            val room = anchorsLeft.coerceAtLeast(0)
+            anchorsLeft -= finding.anchors.size.coerceAtMost(room)
+            if (finding.anchors.size <= room) finding
+            else finding.copy(anchors = finding.anchors.take(room))
+          }
+        findingsLeft -= findings.size
+        set.copy(findings = findings)
+      }
     }
 
     /**

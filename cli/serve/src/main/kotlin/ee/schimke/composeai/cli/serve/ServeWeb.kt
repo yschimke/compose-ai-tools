@@ -1284,7 +1284,10 @@ ${captureControlsHtml().prependIndent("          ")}
    */
   private fun parityVerdictHtml(sets: List<ParityFindingSet>): String {
     val findings = sets.flatMap { it.findings }
-    if (findings.isEmpty()) return ""
+    // A run that looked and found nothing still has something to say, and it is not the same fact
+    // as a catalog nobody ran: only the first can print "Pass". So a set survives on its declared
+    // status alone, and renders as the head with no groups under it.
+    if (findings.isEmpty() && sets.none { it.status != null }) return ""
     // Worst declared status wins. A run that declared none at all is read off its own findings,
     // which is the same rule the producing engine applies and keeps a hand-written manifest honest.
     val declared = sets.mapNotNull { it.status }
@@ -1359,9 +1362,8 @@ ${captureControlsHtml().prependIndent("          ")}
         report +
         "\n  </div>" +
         hint +
-        "\n  <div class=\"cp-parity-groups\">\n" +
-        groups.joinToString("\n") +
-        "\n  </div>"
+        (if (groups.isEmpty()) "\n  <p class=\"cp-parity-clean\">No findings.</p>"
+        else "\n  <div class=\"cp-parity-groups\">\n" + groups.joinToString("\n") + "\n  </div>")
     val payload =
       if (anchors.isEmpty()) ""
       else
@@ -1390,8 +1392,13 @@ ${captureControlsHtml().prependIndent("          ")}
     val expected = finding.detail["expected"]
     val actual = finding.detail["actual"]
     val token = finding.detail["token"] ?: finding.detail["property"]
+    // The token is printed whenever the finding names one — a spec token IS the finding's subject,
+    // and a check reporting "radius: candidate resolved none" carries the identity with no numeric
+    // delta. Gating the row on expected/actual dropped that identity from the page while the
+    // sanitizer had faithfully kept it, and the `rest` filter below excludes the key too, so it
+    // reached nowhere at all.
     val delta =
-      if (expected == null && actual == null) ""
+      if (expected == null && actual == null && token == null) ""
       else
         "<span class=\"cp-parity-delta\">" +
           (token?.let { "<code>${WebEscaping.htmlEscape(it)}</code>" } ?: "") +
