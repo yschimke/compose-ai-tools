@@ -853,7 +853,12 @@ public object FigmaLayeredSvg {
           """ $it stroke-width="${fmt(p.strokeWidth.toDouble())}"$cap$join"""
         } ?: ""
       } else ""
-    return """<path d="${escapeAttr(p.pathData)}" $fill$fillRule$stroke/>"""
+    // The group transform goes on the `<path>` itself rather than being baked into `d`: an
+    // `ImageVector` group's translate/rotate/scale is exactly an SVG transform list, and stamping
+    // it here keeps the captured path data byte-identical to the geometry the vector declares —
+    // which is what makes an icon's paths still legible (and editable) in a design tool.
+    val transform = p.transform?.let { """ transform="${escapeAttr(it)}"""" } ?: ""
+    return """<path d="${escapeAttr(p.pathData)}"$transform $fill$fillRule$stroke/>"""
   }
 
   private fun opacityAttr(opacity: Double): String =

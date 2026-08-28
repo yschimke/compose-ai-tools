@@ -2,8 +2,12 @@ package ee.schimke.composeai.renderer
 
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.InternalComposeApi
@@ -15,6 +19,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.PathData
+import androidx.compose.ui.graphics.vector.group
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.node.RootForTest
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -157,6 +163,67 @@ class FigmaSvgVectorIconRenderTest {
       }
       .build()
 
+  // The m3-catalog star: the same geometry placed by a `group` that translates and scales it, the
+  // shape `ImageVector.Builder.addGroup` produces when artwork is exported from a design tool with
+  // its own origin. Before yschimke/m3-catalog#200 the transform failed the whole icon to raster,
+  // and the crop came out of the composited frame — so a disabled button's translucent container
+  // was baked into the icon's square and drawn over itself.
+  private val groupedStar: ImageVector =
+    ImageVector.Builder(
+        name = "GroupedStar",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+      )
+      .apply {
+        group(translationX = 2f, translationY = 2f, scaleX = 0.5f, scaleY = 0.5f) {
+          path(fill = SolidColor(Color.White)) {
+            moveTo(12f, 2f)
+            lineTo(15.1f, 8.3f)
+            lineTo(22f, 9.3f)
+            lineTo(17f, 14.1f)
+            lineTo(18.2f, 21f)
+            lineTo(12f, 17.8f)
+            lineTo(5.8f, 21f)
+            lineTo(7f, 14.1f)
+            lineTo(2f, 9.3f)
+            lineTo(8.9f, 8.3f)
+            close()
+          }
+        }
+      }
+      .build()
+
+  // The same star behind a group that *clips* it. A clip has no transform form, so this one must
+  // still raster rather than emit the geometry the mask hides.
+  private val clippedStar: ImageVector =
+    ImageVector.Builder(
+        name = "ClippedStar",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+      )
+      .apply {
+        val leftHalf = PathData {
+          moveTo(0f, 0f)
+          lineTo(12f, 0f)
+          lineTo(12f, 24f)
+          lineTo(0f, 24f)
+          close()
+        }
+        group(clipPathData = leftHalf) {
+          path(fill = SolidColor(Color.White)) {
+            moveTo(12f, 2f)
+            lineTo(22f, 9.3f)
+            lineTo(2f, 9.3f)
+            close()
+          }
+        }
+      }
+      .build()
+
   @Before
   fun setUp() {
     rootDir = Files.createTempDirectory("figma-svg-vector-icon").toFile()
@@ -215,6 +282,51 @@ class FigmaSvgVectorIconRenderTest {
   }
 
   @Test
+  fun `an icon whose group transforms its paths vectorises with the transform on the path`() {
+    val svg = renderIconSvg("icon-grouped") { Icon(groupedStar, "Star", Modifier.size(48.dp)) }
+
+    // The regression this fixes is not "the icon looks wrong" — it is that rastering it at all
+    // crops the *composited* frame, so whatever the icon sits on is baked into its square and then
+    // drawn over the real thing (yschimke/m3-catalog#200: a disabled button's 10%-black container
+    // showed as a darker box behind the glyph).
+    assertTrue("a group-transformed icon vectorises:\n$svg", svg.contains("<path "))
+    assertFalse("no <image> raster crop for it:\n$svg", svg.contains("<image "))
+    assertTrue(
+      "the group's placement rides on the path:\n$svg",
+      svg.contains("""transform="translate(2 2) scale(0.5 0.5)""""),
+    )
+  }
+
+  @Test
+  fun `a disabled button's grouped icon keeps its container out of the export`() {
+    // yschimke/m3-catalog#200 end to end. A raster crop is taken from the *composited* frame, so
+    // the icon's square carried the button's own container with it; the export then drew that
+    // square over the container it had already emitted as a `<rect>`. Opaque containers hid the
+    // double-draw, a disabled button's translucent one did not — the icon sat in a visibly darker
+    // box. Vectorising the icon removes the crop, and with it the box.
+    val svg =
+      renderIconSvg("icon-disabled-button", qualifiers = "w240dp-h96dp-mdpi") {
+        ElevatedButton(onClick = {}, enabled = false) {
+          Icon(groupedStar, null, Modifier.size(18.dp))
+          Spacer(Modifier.width(8.dp))
+          Text("Label")
+        }
+      }
+    File("build/figma-svg-vector-icon").mkdirs()
+    File("build/figma-svg-vector-icon/icon-disabled-button.svg").writeText(svg)
+
+    assertTrue("the icon vectorises inside the button:\n$svg", svg.contains("<path "))
+    assertFalse("nothing is cropped out of the composited frame:\n$svg", svg.contains("<image "))
+  }
+
+  @Test
+  fun `an icon whose group clips its paths still rasters`() {
+    val svg = renderIconSvg("icon-clipped") { Icon(clippedStar, "Star", Modifier.size(48.dp)) }
+    assertTrue("a clipping group still rasters:\n$svg", svg.contains("<image "))
+    assertFalse("no unclipped geometry is emitted:\n$svg", svg.contains("<path "))
+  }
+
+  @Test
   fun `an icon with a gradient path rasters instead of dropping the path`() {
     val svg = renderIconSvg("icon-gradient") { Image(gradientVector, null, Modifier.size(48.dp)) }
     // The gradient fill can't be represented as a flat colour, so the whole graphic falls back to a
@@ -256,8 +368,12 @@ class FigmaSvgVectorIconRenderTest {
    * then runs the production capture + **hybrid** figma-svg export (a frame PNG is passed) and
    * returns the SVG string.
    */
-  private fun renderIconSvg(previewId: String, content: @Composable () -> Unit): String {
-    RuntimeEnvironment.setQualifiers("w96dp-h96dp-mdpi")
+  private fun renderIconSvg(
+    previewId: String,
+    qualifiers: String = "w96dp-h96dp-mdpi",
+    content: @Composable () -> Unit,
+  ): String {
+    RuntimeEnvironment.setQualifiers(qualifiers)
     @Suppress("DEPRECATION") val rule = createAndroidComposeRule<ComponentActivity>()
     var svg = ""
     val statement =

@@ -890,9 +890,10 @@ public final class ee/schimke/composeai/data/layoutinspector/FigmaSvgVector {
 }
 
 public final class ee/schimke/composeai/data/layoutinspector/FigmaSvgVectorPath {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;FLjava/lang/String;FFLjava/lang/String;Ljava/lang/String;Z)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;FLjava/lang/String;FFLjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;FLjava/lang/String;FFLjava/lang/String;Ljava/lang/String;ZLjava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;FLjava/lang/String;FFLjava/lang/String;Ljava/lang/String;ZLjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
+	public final fun component10 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()F
 	public final fun component4 ()Ljava/lang/String;
@@ -901,8 +902,8 @@ public final class ee/schimke/composeai/data/layoutinspector/FigmaSvgVectorPath 
 	public final fun component7 ()Ljava/lang/String;
 	public final fun component8 ()Ljava/lang/String;
 	public final fun component9 ()Z
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;FLjava/lang/String;FFLjava/lang/String;Ljava/lang/String;Z)Lee/schimke/composeai/data/layoutinspector/FigmaSvgVectorPath;
-	public static synthetic fun copy$default (Lee/schimke/composeai/data/layoutinspector/FigmaSvgVectorPath;Ljava/lang/String;Ljava/lang/String;FLjava/lang/String;FFLjava/lang/String;Ljava/lang/String;ZILjava/lang/Object;)Lee/schimke/composeai/data/layoutinspector/FigmaSvgVectorPath;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;FLjava/lang/String;FFLjava/lang/String;Ljava/lang/String;ZLjava/lang/String;)Lee/schimke/composeai/data/layoutinspector/FigmaSvgVectorPath;
+	public static synthetic fun copy$default (Lee/schimke/composeai/data/layoutinspector/FigmaSvgVectorPath;Ljava/lang/String;Ljava/lang/String;FLjava/lang/String;FFLjava/lang/String;Ljava/lang/String;ZLjava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/data/layoutinspector/FigmaSvgVectorPath;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getEvenOdd ()Z
 	public final fun getFillAlpha ()F
@@ -913,6 +914,7 @@ public final class ee/schimke/composeai/data/layoutinspector/FigmaSvgVectorPath 
 	public final fun getStrokeCap ()Ljava/lang/String;
 	public final fun getStrokeJoin ()Ljava/lang/String;
 	public final fun getStrokeWidth ()F
+	public final fun getTransform ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -1385,9 +1387,10 @@ public final class ee/schimke/composeai/data/layoutinspector/LayoutInspectorVect
 
 public final class ee/schimke/composeai/data/layoutinspector/LayoutInspectorVectorPath {
 	public static final field Companion Lee/schimke/composeai/data/layoutinspector/LayoutInspectorVectorPath$Companion;
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;FLjava/lang/String;FFLjava/lang/String;Ljava/lang/String;Z)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;FLjava/lang/String;FFLjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;FLjava/lang/String;FFLjava/lang/String;Ljava/lang/String;ZLjava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;FLjava/lang/String;FFLjava/lang/String;Ljava/lang/String;ZLjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
+	public final fun component10 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()F
 	public final fun component4 ()Ljava/lang/String;
@@ -1396,8 +1399,8 @@ public final class ee/schimke/composeai/data/layoutinspector/LayoutInspectorVect
 	public final fun component7 ()Ljava/lang/String;
 	public final fun component8 ()Ljava/lang/String;
 	public final fun component9 ()Z
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;FLjava/lang/String;FFLjava/lang/String;Ljava/lang/String;Z)Lee/schimke/composeai/data/layoutinspector/LayoutInspectorVectorPath;
-	public static synthetic fun copy$default (Lee/schimke/composeai/data/layoutinspector/LayoutInspectorVectorPath;Ljava/lang/String;Ljava/lang/String;FLjava/lang/String;FFLjava/lang/String;Ljava/lang/String;ZILjava/lang/Object;)Lee/schimke/composeai/data/layoutinspector/LayoutInspectorVectorPath;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;FLjava/lang/String;FFLjava/lang/String;Ljava/lang/String;ZLjava/lang/String;)Lee/schimke/composeai/data/layoutinspector/LayoutInspectorVectorPath;
+	public static synthetic fun copy$default (Lee/schimke/composeai/data/layoutinspector/LayoutInspectorVectorPath;Ljava/lang/String;Ljava/lang/String;FLjava/lang/String;FFLjava/lang/String;Ljava/lang/String;ZLjava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/data/layoutinspector/LayoutInspectorVectorPath;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getEvenOdd ()Z
 	public final fun getFillAlpha ()F
@@ -1408,6 +1411,7 @@ public final class ee/schimke/composeai/data/layoutinspector/LayoutInspectorVect
 	public final fun getStrokeCap ()Ljava/lang/String;
 	public final fun getStrokeJoin ()Ljava/lang/String;
 	public final fun getStrokeWidth ()F
+	public final fun getTransform ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }

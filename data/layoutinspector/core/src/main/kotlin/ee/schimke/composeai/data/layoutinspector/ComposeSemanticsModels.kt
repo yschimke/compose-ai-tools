@@ -965,6 +965,18 @@ public data class LayoutInspectorVectorPath(
   val strokeJoin: String? = null,
   /** True when the fill uses the even-odd winding rule (SVG `fill-rule="evenodd"`). */
   val evenOdd: Boolean = false,
+  /**
+   * The SVG transform list placing this path inside the vector's viewport — the composed
+   * translate/rotate/scale of every `ImageVector` group above it (`"translate(2 2)"`,
+   * `"translate(12 12) rotate(45) scale(0.5 0.5)"`). Null for a path no group transforms, which is
+   * the overwhelmingly common case.
+   *
+   * Carried per path rather than as a group tree because [LayoutInspectorVectorGraphic] is a flat
+   * path list: the walk that flattens the groups composes their matrices as it descends, and each
+   * path keeps the one that applies to it. Emitted verbatim onto the `<path>`, so it composes
+   * inside the placement group the export already wraps the icon in.
+   */
+  val transform: String? = null,
 )
 
 /**

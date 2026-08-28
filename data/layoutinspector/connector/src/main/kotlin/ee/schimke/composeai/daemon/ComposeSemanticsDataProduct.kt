@@ -1767,8 +1767,10 @@ internal object ComposeLayoutInspector {
    * - a path with a gradient/brush paint (no resolvable solid colour) is dropped, and a graphic
    *   left with no paintable path → null (matching the vector-vs-raster rule the export already
    *   follows),
-   * - a group carrying a non-identity transform (translate/scale/rotate/clip) → null, so a
-   *   transformed icon rasters rather than emitting misplaced geometry (kept minimal on purpose).
+   * - a group carrying a *clip* → null, so an icon that masks its own geometry rasters rather than
+   *   emitting the parts it hides. A group's translate/scale/rotate is kept: it composes onto the
+   *   paths beneath it as an SVG `transform`, so a transformed icon stays a vector
+   *   (yschimke/m3-catalog#200).
    *
    * Why reflection here rather than the [DrawCaptureExtractor] recorder that vectorises imperative
    * chrome (`Slider`/`Checkbox`/progress): those controls issue `drawPath`/`drawCircle`/… straight
@@ -1988,15 +1990,26 @@ internal object ComposeLayoutInspector {
       }
 
     /**
-     * Walks a `VNode` tree collecting `PathComponent`s. Returns false when a group carries a
-     * non-identity transform — the caller then drops to raster rather than emit misplaced paths.
+     * Walks a `VNode` tree collecting `PathComponent`s, carrying the composed SVG transform of the
+     * groups above each one. Returns false when a group clips — a clip has no transform form, and
+     * emitting the unclipped geometry would draw what the icon hides — and the caller then drops to
+     * raster.
+     *
+     * [transform] is the enclosing groups' transform list, or null at the root. Group transforms
+     * concatenate in document order, which is exactly how SVG composes a transform list, so a
+     * nested group appends to its parent's rather than replacing it.
      */
-    private fun collect(vnode: Any, out: MutableList<LayoutInspectorVectorPath>): Boolean {
+    private fun collect(
+      vnode: Any,
+      out: MutableList<LayoutInspectorVectorPath>,
+      transform: String? = null,
+    ): Boolean {
       when (vnode.javaClass.simpleName) {
         "GroupComponent" -> {
-          if (!isIdentityGroup(vnode)) return false
+          if (isClippingGroup(vnode)) return false
+          val nested = concatTransforms(transform, groupTransform(vnode))
           val children = field(vnode, "children") as? List<*> ?: return true
-          for (child in children) if (child != null && !collect(child, out)) return false
+          for (child in children) if (child != null && !collect(child, out, nested)) return false
           return true
         }
         "PathComponent" -> {
@@ -2009,7 +2022,9 @@ internal object ComposeLayoutInspector {
           // A path that draws nothing (blank geometry / no paint) is skipped. (#2504 / #2505
           // review.)
           if (hasUnrepresentablePaint(vnode)) return false
-          pathOf(vnode)?.let(out::add)
+          pathOf(vnode)?.let {
+            out.add(if (transform == null) it else it.copy(transform = transform))
+          }
           return true
         }
         else -> return true
@@ -2031,18 +2046,52 @@ internal object ComposeLayoutInspector {
       return unrepresentable("fill") || unrepresentable("stroke")
     }
 
-    private fun isIdentityGroup(g: Any): Boolean {
-      fun v(name: String, id: Float) = (floatField(g, name)?.toFloat() ?: id) == id
+    /**
+     * True when a group masks its children with `clipPathData`. Unlike the placement transform
+     * below there is no attribute to carry that onto the paths, so a clipping group still fails the
+     * whole icon to raster rather than emit geometry the render never showed.
+     */
+    private fun isClippingGroup(g: Any): Boolean {
       val clip = runCatching { field(g, "clipPathData") as? List<*> }.getOrNull()
-      return v("translationX", 0f) &&
-        v("translationY", 0f) &&
-        v("scaleX", 1f) &&
-        v("scaleY", 1f) &&
-        v("rotation", 0f) &&
-        v("pivotX", 0f) &&
-        v("pivotY", 0f) &&
-        (clip == null || clip.isEmpty())
+      return clip != null && clip.isNotEmpty()
     }
+
+    /**
+     * A `GroupComponent`'s placement as an SVG transform list, or null when it places its children
+     * where they already are.
+     *
+     * The order mirrors the matrix `GroupComponent` builds — translate by the offset *and* the
+     * pivot, turn, scale, then translate the pivot back — so the emitted list is the same mapping
+     * Compose applied, not an approximation of it. Identity steps are dropped so the common
+     * `addGroup(translationX = 2f, translationY = 2f)` reads as a plain `translate(2 2)`.
+     */
+    private fun groupTransform(g: Any): String? {
+      fun v(name: String, identity: Float) = floatField(g, name)?.toFloat() ?: identity
+      val translationX = v("translationX", 0f)
+      val translationY = v("translationY", 0f)
+      val scaleX = v("scaleX", 1f)
+      val scaleY = v("scaleY", 1f)
+      val rotation = v("rotation", 0f)
+      val pivotX = v("pivotX", 0f)
+      val pivotY = v("pivotY", 0f)
+      val steps = buildList {
+        val originX = translationX + pivotX
+        val originY = translationY + pivotY
+        if (originX != 0f || originY != 0f) add("translate(${num(originX)} ${num(originY)})")
+        if (rotation != 0f) add("rotate(${num(rotation)})")
+        if (scaleX != 1f || scaleY != 1f) add("scale(${num(scaleX)} ${num(scaleY)})")
+        if (pivotX != 0f || pivotY != 0f) add("translate(${num(-pivotX)} ${num(-pivotY)})")
+      }
+      return steps.takeIf { it.isNotEmpty() }?.joinToString(" ")
+    }
+
+    /** The two transform lists applied in order (outer first), or whichever one is present. */
+    private fun concatTransforms(outer: String?, inner: String?): String? =
+      when {
+        outer == null -> inner
+        inner == null -> outer
+        else -> "$outer $inner"
+      }
 
     private fun pathOf(p: Any): LayoutInspectorVectorPath? {
       val nodes = field(p, "pathData") as? List<*> ?: return null
