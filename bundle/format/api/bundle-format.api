@@ -6,6 +6,7 @@ public final class ee/schimke/composeai/bundle/AndroidBundleLaunch {
 	public fun <init> ()V
 	public fun <init> (IZLokio/FileSystem;Ljava/lang/String;)V
 	public synthetic fun <init> (IZLokio/FileSystem;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun appTourRobolectricPropertiesBody ()Ljava/lang/String;
 	public final fun getSdkLevel ()I
 	public final fun jvmArgs ()Ljava/util/List;
 	public final fun robolectricPropertiesBody ()Ljava/lang/String;
