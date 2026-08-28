@@ -9,7 +9,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { esc, heroImageOf, previewEmbed, previewEmbedStyles } from "./render-preview-embed.mjs";
+import {
+  esc,
+  heroImageOf,
+  previewEmbed,
+  previewEmbedStyles,
+  variantImageOf,
+} from "./render-preview-embed.mjs";
 
 test("an embed with an image and a live URL is a clickable, baked thumbnail", () => {
   const html = previewEmbed({
@@ -97,4 +103,41 @@ test("heroImageOf returns undefined for a component with no images", () => {
 
 test("esc escapes the five HTML-significant characters", () => {
   assert.equal(esc(`<a href="x" data='y'>&`), "&lt;a href=&quot;x&quot; data=&#39;y&#39;&gt;&amp;");
+});
+
+test("a variant selected by size alone gets that render, not the parent's widest", () => {
+  // `select` names a top-level image axis. Without matching it, a variant declaring nothing else
+  // had no discriminating axis at all: every default-state image qualified and the sort handed
+  // back the widest — the large render, shown under the small variant's name.
+  const component = {
+    images: [
+      png({ path: "images/home/ideal__default__large.png", size: "largeRound", width: 240 }),
+      png({ path: "images/home/ideal__default__small.png", size: "smallRound", width: 192 }),
+    ],
+  };
+  assert.equal(
+    variantImageOf(component, { select: { size: "smallRound" } })?.path,
+    "images/home/ideal__default__small.png",
+  );
+  assert.equal(
+    variantImageOf(component, { select: { size: "largeRound" } })?.path,
+    "images/home/ideal__default__large.png",
+  );
+});
+
+test("a select axis narrows within another axis rather than replacing it", () => {
+  const component = {
+    images: [
+      png({ path: "images/home/ideal__pressed__large.png", state: "pressed", size: "large", width: 240 }),
+      png({ path: "images/home/ideal__pressed__small.png", state: "pressed", size: "small", width: 192 }),
+      png({ path: "images/home/ideal__default__small.png", size: "small", width: 192 }),
+    ],
+  };
+  assert.equal(
+    variantImageOf(component, { state: "pressed", select: { size: "small" } })?.path,
+    "images/home/ideal__pressed__small.png",
+  );
+  // An image carrying no value for the selected axis never matches — a selector is a positive
+  // statement, and an untagged image is the one whose axis could not be resolved.
+  assert.equal(variantImageOf(component, { select: { size: "compact" } }), undefined);
 });

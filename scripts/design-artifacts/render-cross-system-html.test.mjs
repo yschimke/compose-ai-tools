@@ -449,7 +449,7 @@ test("a variant row bakes the variant's own render, not the parent's hero", () =
   assert.ok(html.includes("images/button-compact/ideal__default__content-icon-only.png"));
 });
 
-test("variantDiscriminator names a variant by state, else props, else its preview", () => {
+test("variantDiscriminator names a single-axis variant by that axis, else its preview", () => {
   assert.equal(variantDiscriminator({ state: "pressed" }), "pressed");
   assert.equal(variantDiscriminator({ props: { content: "icon-only" } }), "content=icon-only");
   assert.equal(variantDiscriminator({ theme: "dark" }), "dark");
@@ -460,4 +460,75 @@ test("variantDiscriminator names a variant by state, else props, else its previe
 test("comparableEntries is a no-op for a catalog with no variants", () => {
   const plain = [{ componentId: "Card", group: "Containment", images: [] }];
   assert.deepEqual(comparableEntries(plain), plain);
+});
+
+test("variantDiscriminator names a variant by every axis it declares, not the first", () => {
+  // Two variants of one parent sharing a state and differing by props both read `Parent · pressed`
+  // when the discriminator returns on `state`: the anchor allocator kept the hidden ids unique, but
+  // a reader comparing the rows — or quoting one in a finding — had nothing to tell them apart.
+  assert.equal(
+    variantDiscriminator({ state: "pressed", props: { size: "small" } }),
+    "pressed, size=small",
+  );
+  assert.notEqual(
+    variantDiscriminator({ state: "pressed", props: { size: "small" } }),
+    variantDiscriminator({ state: "pressed", props: { size: "large" } }),
+  );
+  assert.equal(variantDiscriminator({ state: "pressed", theme: "dark" }), "pressed, dark");
+  assert.equal(variantDiscriminator({ select: { size: "smallRound" } }), "size=smallRound");
+});
+
+test("a variant row publishes its authored reason for having no kit reference", () => {
+  // A `noReference` is a finding — "the kit exports no Text=No cell" — and the generic cell
+  // published it as the same thing as an unaudited gap, which is the one distinction it makes.
+  const withVariant = {
+    ...catalog,
+    components: [
+      {
+        ...catalog.components[0],
+        variants: [
+          {
+            preview: "ButtonTextless",
+            state: "textless",
+            parallel: "Button/Filled",
+            noReference: "the kit exports no Text=No cell",
+          },
+        ],
+      },
+      ...catalog.components.slice(1),
+    ],
+  };
+  const html = renderCrossSystemHtml(withVariant, {
+    ...opts,
+    designRefById: new Map([["Button/Filled", { url: "https://example.test/r.png" }]]),
+  });
+
+  assert.match(html, /no kit reference — the kit exports no Text=No cell/);
+  // The unexplained row beside it still reads as the plain gap it is.
+  assert.match(html, /class="pv-missing">no kit reference</);
+});
+
+test("a variant's stated reason is escaped, never injected as markup", () => {
+  const withVariant = {
+    ...catalog,
+    components: [
+      {
+        ...catalog.components[0],
+        variants: [
+          {
+            preview: "P",
+            state: "x",
+            parallel: "Button/Filled",
+            noReference: '<img src=x onerror="alert(1)">',
+          },
+        ],
+      },
+    ],
+  };
+  const html = renderCrossSystemHtml(withVariant, {
+    ...opts,
+    designRefById: new Map([["Button/Filled", { url: "https://example.test/r.png" }]]),
+  });
+  assert.doesNotMatch(html, /<img src=x/);
+  assert.match(html, /&lt;img src=x/);
 });

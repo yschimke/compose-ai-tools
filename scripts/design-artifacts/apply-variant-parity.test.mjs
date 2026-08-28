@@ -84,8 +84,10 @@ test("carries the variant's identity alongside its correspondence", () => {
       referenceContentsOnly: false,
       reference: "figma:FILE/1:2",
       referenceSet: "figma:FILE/1:1",
-      // render-time fields the manifest has no use for: the render already happened.
+      // `select` steers the render AND identifies it — it is how the compare page picks this
+      // variant's thumbnail back out of the parent's folded images — so it is carried.
       select: { size: "compact" },
+      // render-time fields the manifest has no use for: the render already happened.
       capture: "static",
       priority: 3,
     }),
@@ -94,10 +96,27 @@ test("carries the variant's identity alongside its correspondence", () => {
       props: { style: "outlined" },
       theme: "dark",
       caption: "Outlined treatment.",
+      select: { size: "compact" },
       referenceContentsOnly: false,
       reference: "figma:FILE/1:2",
       referenceSet: "figma:FILE/1:1",
     },
+  );
+});
+
+test("an empty select is no selection, and is not carried as an axis", () => {
+  // `selectOf` treats `{}` as "selects nothing" everywhere else; carrying it would make an empty
+  // object read downstream as an axis every image must satisfy.
+  assert.deepEqual(comparedVariant({ preview: "P", select: {}, parallel: "Other/P" }), {
+    preview: "P",
+    parallel: "Other/P",
+  });
+});
+
+test("a variant distinguished by select alone still reaches the manifest with its axis", () => {
+  assert.deepEqual(
+    comparedVariant({ preview: "Home", select: { size: "smallRound" }, parallel: "Other/Home" }),
+    { preview: "Home", select: { size: "smallRound" }, parallel: "Other/Home" },
   );
 });
 

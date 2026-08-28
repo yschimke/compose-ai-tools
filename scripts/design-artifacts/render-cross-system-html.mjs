@@ -39,6 +39,7 @@
  * render-wireframe-svg's `slug` for the only-here / only-there buckets.
  */
 
+import { variantLabel } from "./catalog-variants.mjs";
 import { slug } from "./render-wireframe-svg.mjs";
 import {
   esc,
@@ -93,16 +94,23 @@ export function comparableEntries(components) {
 }
 
 /**
- * How a variant row names itself after its parent: the `state` when it has one, else its `props`
- * as `key=value`, else the preview function name so the row is never anonymous.
+ * How a variant row names itself after its parent: EVERY axis it declares, in the order the fold
+ * writes them — state, `key=value` props, theme, selection — else the preview function name so the
+ * row is never anonymous.
+ *
+ * Every axis, not the first one that answers. Returning on `state` alone gave two variants of one
+ * parent that share a state and differ by props or theme the same visible label: `state=pressed
+ * props={size: small}` and `state=pressed props={size: large}` both read `Parent · pressed`. The
+ * anchor allocator kept the hidden HTML ids unique, so the page stayed navigable — but a reader
+ * comparing the two rows, or quoting one in a finding, had nothing to tell them apart.
+ *
+ * {@link variantLabel} is the same accounting the fold's missing-render report uses, and shared for
+ * that reason: two spellings of "what distinguishes this variant" drift, and the drift lands in the
+ * one place a reader is trying to match a row against a report.
  */
 export function variantDiscriminator(variant) {
-  if (variant?.state) return variant.state;
-  const props = variant?.props ?? {};
-  const keys = Object.keys(props);
-  if (keys.length) return keys.map((k) => `${k}=${props[k]}`).join(" ");
-  if (variant?.theme) return variant.theme;
-  return variant?.preview ?? "variant";
+  if (!variant) return "variant";
+  return variantLabel(variant) || "variant";
 }
 
 /**
@@ -190,7 +198,16 @@ function otherEmbed(pair, opts) {
 function designEmbed(pair, opts) {
   const ref = opts.designRefById?.get(pair.local.componentId);
   if (!ref?.url) {
-    return `<span class="pv-embed"><span class="pv-frame pv-frame--solid"><span class="pv-missing">no kit reference</span></span></span>`;
+    // A `noReference` is an authored finding — "the kit exports no `Text=No` cell, so the honest
+    // reference is the sibling's own render" — and printing the generic cell over it published a
+    // deliberate absence and an unaudited gap as the same thing, which is the one distinction the
+    // field exists to make. It reaches a variant row more often than a component one: the row a
+    // variant flattens to never has a `designRefById` entry (the design map is keyed by component
+    // id), so this branch is where a compared variant always lands.
+    const stated = typeof pair.local.noReference === "string" ? pair.local.noReference.trim() : "";
+    const missing = stated ? `no kit reference — ${esc(stated)}` : "no kit reference";
+    const title = stated ? ` title="${esc(stated)}"` : "";
+    return `<span class="pv-embed"><span class="pv-frame pv-frame--solid"><span class="pv-missing"${title}>${missing}</span></span></span>`;
   }
   const title = ref.uri ? `${ref.from ?? "design"} — ${ref.uri}` : (ref.from ?? "design");
   return previewEmbed({
