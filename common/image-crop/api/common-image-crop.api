@@ -16,23 +16,23 @@ public final class ee/schimke/composeai/imagecrop/ContentBox {
 }
 
 public final class ee/schimke/composeai/imagecrop/ContentCrop {
-	public fun <init> (Lee/schimke/composeai/imagecrop/CropSize;Lee/schimke/composeai/imagecrop/CropSize;Lee/schimke/composeai/imagecrop/CropOffset;ZII)V
-	public synthetic fun <init> (Lee/schimke/composeai/imagecrop/CropSize;Lee/schimke/composeai/imagecrop/CropSize;Lee/schimke/composeai/imagecrop/CropOffset;ZIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun component1 ()Lee/schimke/composeai/imagecrop/CropSize;
-	public final fun component2 ()Lee/schimke/composeai/imagecrop/CropSize;
+	public fun <init> (Lee/schimke/composeai/imagecrop/WindowSize;Lee/schimke/composeai/imagecrop/RenderSize;Lee/schimke/composeai/imagecrop/CropOffset;ZII)V
+	public synthetic fun <init> (Lee/schimke/composeai/imagecrop/WindowSize;Lee/schimke/composeai/imagecrop/RenderSize;Lee/schimke/composeai/imagecrop/CropOffset;ZIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lee/schimke/composeai/imagecrop/WindowSize;
+	public final fun component2 ()Lee/schimke/composeai/imagecrop/RenderSize;
 	public final fun component3 ()Lee/schimke/composeai/imagecrop/CropOffset;
 	public final fun component4 ()Z
 	public final fun component5 ()I
 	public final fun component6 ()I
-	public final fun copy (Lee/schimke/composeai/imagecrop/CropSize;Lee/schimke/composeai/imagecrop/CropSize;Lee/schimke/composeai/imagecrop/CropOffset;ZII)Lee/schimke/composeai/imagecrop/ContentCrop;
-	public static synthetic fun copy$default (Lee/schimke/composeai/imagecrop/ContentCrop;Lee/schimke/composeai/imagecrop/CropSize;Lee/schimke/composeai/imagecrop/CropSize;Lee/schimke/composeai/imagecrop/CropOffset;ZIIILjava/lang/Object;)Lee/schimke/composeai/imagecrop/ContentCrop;
+	public final fun copy (Lee/schimke/composeai/imagecrop/WindowSize;Lee/schimke/composeai/imagecrop/RenderSize;Lee/schimke/composeai/imagecrop/CropOffset;ZII)Lee/schimke/composeai/imagecrop/ContentCrop;
+	public static synthetic fun copy$default (Lee/schimke/composeai/imagecrop/ContentCrop;Lee/schimke/composeai/imagecrop/WindowSize;Lee/schimke/composeai/imagecrop/RenderSize;Lee/schimke/composeai/imagecrop/CropOffset;ZIIILjava/lang/Object;)Lee/schimke/composeai/imagecrop/ContentCrop;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getClip ()Z
 	public final fun getNativeCapAxis ()I
 	public final fun getNativeWindowW ()I
 	public final fun getOffset ()Lee/schimke/composeai/imagecrop/CropOffset;
-	public final fun getRender ()Lee/schimke/composeai/imagecrop/CropSize;
-	public final fun getWindow ()Lee/schimke/composeai/imagecrop/CropSize;
+	public final fun getRender ()Lee/schimke/composeai/imagecrop/RenderSize;
+	public final fun getWindow ()Lee/schimke/composeai/imagecrop/WindowSize;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -63,12 +63,25 @@ public final class ee/schimke/composeai/imagecrop/CropOffset {
 	public fun toString ()Ljava/lang/String;
 }
 
-public final class ee/schimke/composeai/imagecrop/CropSize {
+public final class ee/schimke/composeai/imagecrop/RenderSize {
 	public fun <init> (II)V
 	public final fun component1 ()I
 	public final fun component2 ()I
-	public final fun copy (II)Lee/schimke/composeai/imagecrop/CropSize;
-	public static synthetic fun copy$default (Lee/schimke/composeai/imagecrop/CropSize;IIILjava/lang/Object;)Lee/schimke/composeai/imagecrop/CropSize;
+	public final fun copy (II)Lee/schimke/composeai/imagecrop/RenderSize;
+	public static synthetic fun copy$default (Lee/schimke/composeai/imagecrop/RenderSize;IIILjava/lang/Object;)Lee/schimke/composeai/imagecrop/RenderSize;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getH ()I
+	public final fun getW ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/imagecrop/WindowSize {
+	public fun <init> (II)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun copy (II)Lee/schimke/composeai/imagecrop/WindowSize;
+	public static synthetic fun copy$default (Lee/schimke/composeai/imagecrop/WindowSize;IIILjava/lang/Object;)Lee/schimke/composeai/imagecrop/WindowSize;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getH ()I
 	public final fun getW ()I

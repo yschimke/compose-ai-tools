@@ -23,13 +23,13 @@ public object Pseudolocalizer {
    * Pseudolocalised text plus the input-to-output index map needed to remap span ranges over the
    * original [input] onto the transformed [text].
    *
-   * `indexMap[i]` is the output position corresponding to input position `i`, with size
+   * [indexAt] gives the output position corresponding to an input position, and [size] is
    * `input.length + 1` so a span's `endExclusive` index can be looked up unambiguously
-   * (`indexMap[input.length]` is the position immediately after the last input character — before
+   * (`indexAt(input.length)` is the position immediately after the last input character — before
    * any trailing accent padding / closing bracket).
    *
    * Callers consume this when the input came from a `Spanned`/`SpannedString`: walk the original
-   * spans, look up start/end through `indexMap`, and re-attach to a `SpannableStringBuilder` built
+   * spans, look up start/end through [indexAt], and re-attach to a `SpannableStringBuilder` built
    * from [text]. Without that, calling `toString()` on the styled `CharSequence` strips the spans
    * before transformation and any preview using bold / annotation / URLSpan resources would render
    * unstyled — see `PseudolocaleResources` in `:data-pseudolocale-connector`.
