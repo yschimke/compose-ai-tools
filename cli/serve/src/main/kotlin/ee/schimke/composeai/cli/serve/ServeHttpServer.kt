@@ -4321,18 +4321,29 @@ class ServeHttpServer(
    * offers exactly what it offered before. The chain is long because it spans two catalogs, not
    * because it is doing anything clever:
    *
-   * 1. this catalog declares a `compareWith` system;
-   * 2. this preview belongs to a component that declares a `parallel`;
-   * 3. the sibling is served on THIS host (a pairing with a system we do not host is a fact about
+   * 1. this hostname serves the whole box rather than ONE catalog — a top-level site ([ServeSites])
+   *    answers a neighbour's `/{system}/…` with its own 404 on purpose, so a sibling reachable from
+   *    `m3.example.test` is precisely what a site exists not to be;
+   * 2. this catalog declares a `compareWith` system;
+   * 3. this preview belongs to a component that declares a `parallel`;
+   * 4. the sibling is served on THIS host (a pairing with a system we do not host is a fact about
    *    the spec, not a link we can offer);
-   * 4. the sibling has a preview for that component id.
+   * 5. the sibling has a preview for that component id.
    *
    * [ServeSessionRegistry.peekHost], never `lease`: this is a metadata read while building a page,
    * and standing a suspended sibling's daemon up to decide whether to draw a button would be a
    * daemon per page view. A suspended sibling therefore offers no lane — fail-soft, like the rest
    * of this surface.
    */
-  private fun parallelSpecSource(host: ServeHost, preview: ServePreview): ServeWeb.SpecSource? {
+  private fun RoutingContext.parallelSpecSource(
+    host: ServeHost,
+    preview: ServePreview,
+  ): ServeWeb.SpecSource? {
+    // One catalog per hostname: on a site host the interceptor above answers `/{system}/…` for any
+    // system but this one with the site's own 404, so the sibling's render is unreachable from this
+    // page however well the pairing resolves. Offering the source anyway would put a button on the
+    // stage whose only possible outcome is "the design spec could not be loaded".
+    if (siteSystem() != null) return null
     val bundle = catalogBundleHost(host) ?: return null
     val siblingSystem = bundle.compareWithSystem?.takeIf { it.isNotBlank() } ?: return null
     val componentId = preview.componentId?.takeIf { it.isNotBlank() } ?: return null
@@ -4350,15 +4361,23 @@ class ServeHttpServer(
     return ServeWeb.SpecSource(
       id = "parallel",
       label = siblingLabel,
-      // Same origin, no token: this is the sibling catalog's ordinary public render route on this
-      // very server, which is the whole reason the pairing is cheap to offer here and expensive
-      // anywhere else (a static compare page can only bake thumbnails at publish time).
+      // Same origin: this is the sibling catalog's ordinary render route on this very server,
+      // which is the whole reason the pairing is cheap to offer here and expensive anywhere else
+      // (a static compare page can only bake thumbnails at publish time), and is what satisfies
+      // the lane's own same-origin guard in `viewer.ts` `specRasterSrc()`.
       rasterUrl =
         "/" +
           WebEscaping.urlEncodeSegment(siblingSystem) +
           "/render/" +
           WebEscaping.urlEncodeSegment(siblingPreview.id) +
-          ".png",
+          ".png" +
+          // …but the same credential every other URL on this page carries. `/render/` is
+          // token-gated like the rest of the box, so a bare path meets `rejectBadToken`'s own
+          // 404 on every server that is not `--public` — which is every local `serve` and every
+          // private deployment. `linkToken`, not the server's own: a caller holding an agent
+          // grant gets pages wired with THEIR token, and this raster must not be the one link
+          // that leaks the operator's.
+          if (isPublic) "" else "?token=" + WebEscaping.urlEncodeSegment(linkToken()),
       // The caveat that keeps the pair honest. Unlike the kit reference, this panel is another
       // catalog's RENDER, produced under its own theme, knobs and overrides rather than the ones
       // that produced the render beside it. Saying so is the difference between a comparison and an
