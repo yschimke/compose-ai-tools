@@ -172,7 +172,7 @@ drift silently:
 | Where | Resolver | Tests |
 |---|---|---|
 | CLI | [`cli/…/VersionPin.kt`](../cli/src/main/kotlin/ee/schimke/composeai/cli/VersionPin.kt) | [`VersionPinTest.kt`](../cli/src/test/kotlin/ee/schimke/composeai/cli/VersionPinTest.kt) |
-| VS Code extension | [`vscode-extension/src/versionPin.ts`](../vscode-extension/src/versionPin.ts) | [`versionPin.test.ts`](../vscode-extension/src/test/versionPin.test.ts) |
+| VS Code extension | [`src/versionPin.ts`](https://github.com/yschimke/compose-preview-vscode/blob/main/src/versionPin.ts) | [`versionPin.test.ts`](https://github.com/yschimke/compose-preview-vscode/blob/main/src/test/versionPin.test.ts) |
 | `install` action | [`resolve-version.py`](../.github/actions/install/resolve-version.py) | [`test_resolve_version.py`](../.github/actions/install/test_resolve_version.py) |
 | `apply` action | [`check-skew.py`](../.github/actions/apply/check-skew.py) (`pin_from_properties`) | [`test_check_skew.py`](../.github/actions/apply/test_check_skew.py) |
 

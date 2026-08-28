@@ -220,7 +220,7 @@ recovery path for Maven Central and the GitHub Release assets, but for npm the r
 the run → "Re-run failed jobs"). The step skips a version already on npm, so it is idempotent.
 
 The package's committed version is a placeholder (`0.0.0`); the release job stamps the tag onto it,
-exactly as `build-vscode-extension` does for the extension, so nothing in the tree needs bumping.
+exactly as `build-compose-preview-vscode` does for the extension, so nothing in the tree needs bumping.
 
 Marketplace publishes are idempotent on re-runs: if the version is already published (e.g. on a `workflow_dispatch` retry for an existing tag), the step logs the "already published" message and exits 0 rather than failing.
 

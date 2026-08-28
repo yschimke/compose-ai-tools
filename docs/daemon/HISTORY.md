@@ -52,7 +52,7 @@ directory is configured.
 Three implementations compute this layout and must agree byte-for-byte:
 `common/io`'s `composeAiHistoryDir` (what the daemon writes through), an
 inlined copy in the Gradle plugin (which passes
-`-Dcomposeai.daemon.historyDir`), and `vscode-extension/src/historyPaths.ts`
+`-Dcomposeai.daemon.historyDir`), and [`src/historyPaths.ts`](https://github.com/yschimke/compose-preview-vscode/blob/main/src/historyPaths.ts)
 (which reads it back for the panel's FS fallback). Drift doesn't crash —
 it silently empties the history drawer. Shared golden vectors live in
 `HistoryPathsTest.kt` and `historyPaths.test.ts`.

@@ -62,7 +62,7 @@
       "why": "The source of truth. `DaemonLaunchBuilder` stamps it into every descriptor it writes, and it participates in `DaemonBootstrapTask`'s up-to-date fingerprint."
     },
     {
-      "file": "vscode-extension/src/daemon/daemonProtocol.ts",
+      "file": "src/daemon/daemonProtocol.ts",
       "symbol": "DAEMON_DESCRIPTOR_SCHEMA_VERSION",
       "role": "reader",
       "why": "The only reader that gates on the version: `daemonProcess.ts` refuses a descriptor whose `schemaVersion` differs. Cannot import the Kotlin constant, so this copy is unavoidable \u2014 which is exactly why it needs checking."

@@ -294,7 +294,7 @@ Active selection (click, hover, file scope change). Subset of the most recent `s
 }
 ```
 
-The client is the source of truth for file events (the extension already runs the watcher per [extension.ts](../../vscode-extension/src/extension.ts)). The daemon does **not** run its own watcher in v1.
+The client is the source of truth for file events (the extension already runs the watcher per [extension.ts](https://github.com/yschimke/compose-preview-vscode/blob/main/src/extension.ts)). The daemon does **not** run its own watcher in v1.
 
 `kind` is a hint, not authoritative — the daemon still classifies internally:
 
@@ -793,4 +793,4 @@ Emitted after each NON-EMPTY prune pass. Empty (no-op) passes produce no notific
 
 ## 9. Test coverage
 
-Stream B owns Kotlin unit tests for message serialisation under [daemon/android/src/test/...](../../). Stream C owns TypeScript unit tests under [vscode-extension/src/daemon/](../../vscode-extension/src/daemon/). A shared golden-message corpus lives in [`docs/daemon/protocol-fixtures/`](protocol-fixtures/) (one JSON file per message kind) and is consumed by both test suites. Adding a new message ⇒ add the fixture in the same PR.
+Stream B owns Kotlin unit tests for message serialisation under [daemon/android/src/test/...](../../). Stream C owns TypeScript unit tests under [compose-preview-vscode/src/daemon/](https://github.com/yschimke/compose-preview-vscode/blob/main/src/daemon/). A shared golden-message corpus lives in [`docs/daemon/protocol-fixtures/`](protocol-fixtures/) (one JSON file per message kind) and is consumed by both test suites. Adding a new message ⇒ add the fixture in the same PR.

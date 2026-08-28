@@ -117,7 +117,7 @@ gradle-plugin/                       ADDITIVE ONLY (one helper extraction)
     DaemonExtension.kt               composePreview.daemon { … }
     DaemonClasspathDescriptor.kt     Serialises the JVM launch spec
 
-vscode-extension/                    ADDITIVE ONLY (one router shim)
+compose-preview-vscode/                    ADDITIVE ONLY (one router shim)
   src/daemon/
     daemonClient.ts                  JSON-RPC over stdio
     daemonProcess.ts                 Spawn/respawn/health

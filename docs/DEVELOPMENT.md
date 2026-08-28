@@ -10,7 +10,7 @@ There are three shipping artifacts, each with its own local install story:
 |----------|----------|--------------|
 | Gradle plugin (`ee.schimke.composeai.preview`) | `includeBuild` (in-repo, preferred) or `./gradlew :gradle-plugin:publishToMavenLocal` | `includeBuild("…/gradle-plugin")` or `mavenLocal()` in a consumer's `settings.gradle.kts` |
 | CLI (`compose-preview`) | `./gradlew :cli:installDist` | Symlink into `~/.local/bin` (or add to `$PATH`) |
-| VS Code extension | `cd vscode-extension && npm install && npm run compile` | Extension Dev Host (F5), folder symlink, or `.vsix` |
+| VS Code extension | `cd compose-preview-vscode && npm install && npm run compile` | Extension Dev Host (F5), folder symlink, or `.vsix` |
 
 ## Prerequisites
 
@@ -136,7 +136,7 @@ launcher — the symlink does not need to be re-created.
 Install dev dependencies and compile TypeScript once:
 
 ```
-cd vscode-extension
+cd compose-preview-vscode
 npm install
 npm run compile
 ```
@@ -146,7 +146,7 @@ work:
 
 ### Option 1 — Extension Development Host (recommended while coding)
 
-1. Open [vscode-extension/](../vscode-extension/) as its own VS Code window.
+1. Open [compose-preview-vscode/](https://github.com/yschimke/compose-preview-vscode) as its own VS Code window.
 2. Press `F5` (or Run → Start Debugging).
 3. A second VS Code window opens with the extension loaded against the
    **repo root** — both [samples/android/](../samples/android/) and
@@ -155,7 +155,7 @@ work:
    TypeScript, press `Ctrl+Shift+F5` to reload.
 
 The launch config lives at
-[vscode-extension/.vscode/launch.json](../vscode-extension/.vscode/launch.json)
+[compose-preview-vscode/.vscode/launch.json](https://github.com/yschimke/compose-preview-vscode/blob/main/.vscode/launch.json)
 with four variants: repo root (default), samples/cmp only, samples/android only,
 and an empty host. Pick from the Run & Debug dropdown before pressing F5.
 
@@ -196,7 +196,7 @@ The `package` script runs `vsce package --no-dependencies`, which requires
 
 ```
 ./gradlew check                   # gradle-plugin unit + functional tests, CLI tests
-cd vscode-extension && npm test   # extension unit tests (mocha)
+cd compose-preview-vscode && npm test   # extension unit tests (mocha)
 ```
 
 ## Troubleshooting

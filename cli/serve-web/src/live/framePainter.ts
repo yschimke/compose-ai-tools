@@ -11,7 +11,7 @@
 //
 // The daemon's own protocol already carries what is needed to stop this: `seq` is monotonic per
 // stream. The VS Code client has enforced these rules since `composestream/1` shipped
-// (`vscode-extension/src/daemon/streamClient.ts`, and `docs/daemon/STREAMING.md` § "Client model");
+// (the extension's [`src/daemon/streamClient.ts`](https://github.com/yschimke/compose-preview-vscode/blob/main/src/daemon/streamClient.ts), and `docs/daemon/STREAMING.md` § "Client model");
 // this is the same discipline for the serve wire, whose frame envelope is `ServeStreamProtocol`'s
 // `{type:"frame", seq, codec, dataBase64}` rather than the daemon's `streamFrame`.
 //

@@ -25,9 +25,19 @@ const cfg = schema["x-codegen"];
 const VERSION_CONST = cfg["version-const"];
 const VERSION_VALUE = defs[cfg.root].properties.version.default;
 
+// The TypeScript mirror used to be emitted here too, into
+// `vscode-extension/src/webview/shared/spatialScene.ts`. The extension now lives in
+// yschimke/compose-preview-vscode and this script cannot write into it, so that target
+// is gone rather than left pointing at a path `--check` would report as missing on
+// every run.
+//
+// The extension still carries a committed mirror. What keeps it honest from the other
+// side is its `Protocol Fixtures` workflow, which vendors `schema/spatial-scene.schema.json`
+// from this repo at the release it pins and fails on any difference — so a schema change
+// here surfaces there as a red check the next time the pin moves, rather than as a mirror
+// that silently describes an older contract.
 const OUTPUTS = {
   kotlin: "api/preview-data-api/src/main/kotlin/ee/schimke/composeai/xr/SpatialScene.kt",
-  typescript: "vscode-extension/src/webview/shared/spatialScene.ts",
   cpp: "renderers/xr-composite/src/spatial_scene.hpp",
 };
 
@@ -335,9 +345,21 @@ function emitCpp() {
 
 // ---- driver ------------------------------------------------------------------------------------
 
+// `--emit-typescript` prints the TypeScript mirror to stdout instead of writing any
+// file. The mirror's destination is in yschimke/compose-preview-vscode, which this
+// script cannot write to, and dropping the emitter outright would have made that
+// repo's copy unregenerable — a generated file with no generator is exactly the kind
+// of thing that drifts. From an extension checkout:
+//
+//   node ../compose-ai-tools/scripts/codegen/gen-spatial-scene.mjs --emit-typescript \
+//     > src/webview/shared/spatialScene.ts
+if (process.argv.includes("--emit-typescript")) {
+  process.stdout.write(emitTypeScript());
+  process.exit(0);
+}
+
 const generated = {
   [OUTPUTS.kotlin]: emitKotlin(),
-  [OUTPUTS.typescript]: emitTypeScript(),
   [OUTPUTS.cpp]: emitCpp(),
 };
 

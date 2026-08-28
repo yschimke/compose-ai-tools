@@ -1,9 +1,9 @@
 // Static file server for the preview-server harness: serves this directory's fixture pages and
 // the serve viewer's own CSS/JS so a capture exercises the real assets.
 //
-// A copy of `vscode-extension/preview-harness/_server.mjs`, rooted here instead of at the
+// A copy of [`preview-harness/_server.mjs`](https://github.com/yschimke/compose-preview-vscode/blob/main/preview-harness/_server.mjs), rooted here instead of at the
 // extension. Copied rather than shared for the same reason as `_themes.mjs`: this directory
-// travels to the preview-server repo, and importing across `vscode-extension/` would be a new
+// travels to the preview-server repo, and importing across `compose-preview-vscode/` would be a new
 // cross-boundary dependency. The two servers answer to different roots and different fixtures;
 // what they share is 100 lines of MIME table and `createServer` boilerplate, which is a cheaper
 // duplicate than a coupling the split has to unpick later.

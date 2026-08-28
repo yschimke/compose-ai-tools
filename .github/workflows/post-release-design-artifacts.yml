@@ -13,7 +13,7 @@ name: Post-release design artifacts
 # PR run stayed "in progress" for another half hour afterwards.
 # That is not free — a run that is still going cannot be re-run ("Re-run failed
 # jobs" answers 403 `This workflow is already running`), so a tolerated failure
-# earlier in the release (`publish-design-map`, `publish-vscode-extension`) could
+# earlier in the release (`publish-design-map`) could
 # not be retried until the renders finished. Splitting it into its own run leaves
 # the release run finishing when the release does.
 #

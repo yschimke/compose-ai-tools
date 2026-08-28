@@ -56,12 +56,6 @@ class DecideSkip(unittest.TestCase):
             decide(["docs/x.md", "samples/cmp-wasm-catalog/src/main/App.kt"]), "false"
         )
 
-    def test_vscode_only(self):
-        self.assertEqual(
-            decide(["vscode-extension/src/preview.ts", "vscode-extension/package.json"]),
-            "false",
-        )
-
     def test_scripts_only(self):
         self.assertEqual(decide(["scripts/design-artifacts/compare_page.py"]), "false")
 

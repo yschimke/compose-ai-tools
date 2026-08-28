@@ -24,7 +24,7 @@
 //   node scripts/compare-audit.mjs run --dir .audit-mirror --format reference \
 //     --patch cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js
 //
-// Requires `playwright` on NODE_PATH (the vscode-extension dev dependency, or a standalone install).
+// Requires `playwright` on NODE_PATH (the preview-server harness dev dependency, or a standalone install).
 
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";

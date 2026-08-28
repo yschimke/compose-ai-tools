@@ -40,40 +40,19 @@ runs:
         node-version: ${{ inputs.node-version }}
         cache: npm
         cache-dependency-path: |
-          vscode-extension/package-lock.json
           preview-server/preview-harness/package-lock.json
-
-    - name: Install extension dependencies
-      shell: bash
-      working-directory: vscode-extension
-      run: npm ci
-
-    - name: Install Playwright browser
-      shell: bash
-      working-directory: vscode-extension
-      run: npx playwright install --with-deps chromium
-
-    - name: Capture harness snapshots
-      shell: bash
-      working-directory: vscode-extension
-      run: npm run harness:snapshot
-
-    # Wire-side contract for the bundle UI flow — asserts each
-    # fixture's `expectedPosts` / `forbiddenPosts` match the actual
-    # `vscode.postMessage` calls the fixture's actions produced.
-    # Same Playwright loop as `harness:snapshot`, no extra setup.
-    # Catches regressions where (e.g.) activating the Accessibility
-    # chip stops posting `setDataExtensionEnabled` for a default-ON
-    # kind — a visual diff alone wouldn't surface that.
-    - name: Run harness contract
-      shell: bash
-      working-directory: vscode-extension
-      run: npm run harness:contract
 
     - name: Install preview-server harness dependencies
       shell: bash
       working-directory: preview-server/preview-harness
       run: npm ci
+
+    # Was installed by the extension's steps above until the extension moved to
+    # yschimke/compose-preview-vscode; the server harness always needed it.
+    - name: Install Playwright browser
+      shell: bash
+      working-directory: preview-server/preview-harness
+      run: npx playwright install --with-deps chromium
 
     # The serve page captures. They used to run inside `harness:snapshot` above — 167 of that
     # command's 205 tests were these — and moved out with the harness. They still write
@@ -89,17 +68,15 @@ runs:
       working-directory: preview-server/preview-harness
       run: npm run harness:compare
 
-    # One diff surface, two producers. The diff script takes a single directory, and the capture
-    # names are unique across the two harnesses, so merging is enough — and it keeps the bot's
-    # comment a single table rather than two half-tables a reviewer has to read together.
-    - name: Merge harness captures
+    # One producer now that the panel's harness left with the extension. The staging
+    # dir stays so re-adding a producer is a copy line rather than a rewrite.
+    - name: Stage harness captures
       shell: bash
       run: |
         set -euo pipefail
         mkdir -p _harness_out
-        cp -a vscode-extension/preview-harness/out/. _harness_out/ 2>/dev/null || true
         cp -a preview-server/preview-harness/out/. _harness_out/ 2>/dev/null || true
-        echo "merged captures: $(ls _harness_out | wc -l)"
+        echo "staged captures: $(ls _harness_out | wc -l)"
 
     - name: Fetch baselines
       shell: bash

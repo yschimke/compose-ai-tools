@@ -2,7 +2,7 @@
 // viewer's pages) and `format-compare-scorer.spec.mjs` (the viewer's compare scorer, run in a real
 // browser).
 //
-// These specs used to run under `vscode-extension/preview-harness/playwright.config.mjs`, which is
+// These specs used to run under [`preview-harness/playwright.config.mjs`](https://github.com/yschimke/compose-preview-vscode/blob/main/preview-harness/playwright.config.mjs), which is
 // how 167 of that config's 205 tests came to be serve's. The lane configs beside this one
 // (`serve-lanes`, `playground`, `bundle-upload`) already had their own configs because they need a
 // running server; these two did not, because they only need a browser and a static file server.

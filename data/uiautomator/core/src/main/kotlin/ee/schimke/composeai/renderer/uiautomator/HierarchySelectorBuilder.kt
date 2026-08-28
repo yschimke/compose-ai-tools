@@ -67,9 +67,9 @@ public object HierarchySelectorBuilder {
 
   /**
    * Build a Kotlin-source selector snippet for [node]. Mirror of `buildSelectorSnippet` in
-   * `vscode-extension/src/webview/preview/uiaSelector.ts`. Stable, copy-paste-friendly format —
-   * `By.testTag("...")` / `By.text("...")` / `By.desc("...")`, optionally chained with
-   * `.hasParent(By.testTag("..."))`.
+   * [`src/webview/preview/uiaSelector.ts`](https://github.com/yschimke/compose-preview-vscode/blob/main/src/webview/preview/uiaSelector.ts).
+   * Stable, copy-paste-friendly format — `By.testTag("...")` / `By.text("...")` / `By.desc("...")`,
+   * optionally chained with `.hasParent(By.testTag("..."))`.
    */
   public fun buildSelectorSnippet(
     node: UiAutomatorHierarchyNode,

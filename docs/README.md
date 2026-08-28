@@ -51,7 +51,8 @@ this index as the map of everything else.
 - [AGENT_ENTRYPOINTS.md](AGENT_ENTRYPOINTS.md) — **measurement**: which instruction file each agent (Claude Code, Codex, Gemini, Copilot) actually resolves, why none of them follows a markdown link, what the old layout cost the three non-Claude agents, and the CI gate that keeps every CI-enforced invariant reachable from all four.
 - [PR_REVIEW_WORKFLOW.md](PR_REVIEW_WORKFLOW.md) — preview-gated AI PR review.
 - [TOKEN_USAGE.md](TOKEN_USAGE.md) — token-budget reference for agent recipes.
-- [CLOUD-TESTING.md](CLOUD-TESTING.md) — testing the extension in a cloud sandbox.
+- Testing the extension in a cloud sandbox — moved with the extension to
+  [`docs/CLOUD-TESTING.md`](https://github.com/yschimke/compose-preview-vscode/blob/main/docs/CLOUD-TESTING.md) in compose-preview-vscode.
 
 ## Daemon
 

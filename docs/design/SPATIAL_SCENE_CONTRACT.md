@@ -5,8 +5,8 @@ recovers a Compose-XR subspace layout and renders each panel's 2D content to a P
 **consumer** — the VS Code webview's WebGL 3D spatial-layout viewer. Both sides build to this shape so
 they can be developed in parallel and meet here.
 
-- **Source of truth:** [`schema/spatial-scene.schema.json`](../../schema/spatial-scene.schema.json) — the Kotlin ([`SpatialScene.kt`](../../api/preview-data-api/src/main/kotlin/ee/schimke/composeai/xr/SpatialScene.kt)), TypeScript ([`spatialScene.ts`](../../vscode-extension/src/webview/shared/spatialScene.ts)), and native C++ ([`spatial_scene.hpp`](../../renderers/xr-composite/src/spatial_scene.hpp)) mirrors are **generated** from it by [`scripts/codegen/gen-spatial-scene.mjs`](../../scripts/codegen/gen-spatial-scene.mjs) (CI gate: `--check`). Edit the schema, not the mirrors.
-- **Sample fixture:** [`vscode-extension/preview-harness/fixtures/spatial-scene/`](../../vscode-extension/preview-harness/fixtures/spatial-scene/) (`scene.json` + `top.png` / `bottom.png`)
+- **Source of truth:** [`schema/spatial-scene.schema.json`](../../schema/spatial-scene.schema.json) — the Kotlin ([`SpatialScene.kt`](../../api/preview-data-api/src/main/kotlin/ee/schimke/composeai/xr/SpatialScene.kt)), TypeScript ([`spatialScene.ts`](https://github.com/yschimke/compose-preview-vscode/blob/main/src/webview/shared/spatialScene.ts)), and native C++ ([`spatial_scene.hpp`](../../renderers/xr-composite/src/spatial_scene.hpp)) mirrors are **generated** from it by [`scripts/codegen/gen-spatial-scene.mjs`](../../scripts/codegen/gen-spatial-scene.mjs) (CI gate: `--check`). Edit the schema, not the mirrors.
+- **Sample fixture:** [`preview-harness/fixtures/spatial-scene/`](https://github.com/yschimke/compose-preview-vscode/blob/main/preview-harness/fixtures/spatial-scene/) (`scene.json` + `top.png` / `bottom.png`)
 - **Background:** how poses are recovered offline — see the `SubspaceSceneRecorder` KDoc (`:renderer-xr`).
 - **Still-image consumer:** [`renderers/xr-composite`](../../renderers/xr-composite/README.md) — the `xr-composite` native tool that bakes this scene to a composite PNG, headless/GPU-free.
 
@@ -112,7 +112,7 @@ the producer stays in sync.
 ### Consumer (implemented)
 
 The WebGL viewer now lives in
-[`vscode-extension/src/webview/spatial/`](../../vscode-extension/src/webview/spatial/README.md) — a
+[`src/webview/spatial/`](https://github.com/yschimke/compose-preview-vscode/blob/main/src/webview/spatial/README.md) — a
 three.js `<spatial-view>` element (textured quads, orbit/pan/zoom, grid + axes, labels,
 click-to-focus) bundled separately as `media/webview/spatial.js`, mounted behind the panel's 2D ⇄ 3D
 toggle (`SpatialToggleController`). The host hands it a scene via the `setSpatialScene`

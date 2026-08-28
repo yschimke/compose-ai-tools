@@ -28,11 +28,11 @@ download isn't present. `HARNESS_THEME=dark` narrows the captures.
 
 ## Why it lives here
 
-It used to sit in `vscode-extension/preview-harness/`, which made it look like the VS Code
+It used to sit in [`preview-harness/`](https://github.com/yschimke/compose-preview-vscode/blob/main/preview-harness/), which made it look like the VS Code
 extension's. It never was: these specs drive the server's web surfaces. The measurement in
 [#3824](https://github.com/yschimke/compose-ai-tools/issues/3824) put that misfiling at 28% of the
 apparent traffic across the serve boundary, and counted from the other side it was worse — of 72
-PRs touching `vscode-extension/`, 60 touched only this harness. `harness:snapshot` ran 205 tests,
+PRs touching `compose-preview-vscode/`, 60 touched only this harness. `harness:snapshot` ran 205 tests,
 **167 of them these**.
 
 Two consequences worth knowing:
@@ -43,14 +43,14 @@ Two consequences worth knowing:
   merge is safe and the baselines did not need regenerating when this moved.
 - **Both must render on the same Chromium.** They share a baseline set, so a Playwright version skew
   between the two `package.json`s would move pixels for reasons no PR explains. Keep the
-  `@playwright/test` range here and in `vscode-extension/package.json` in step.
+  `@playwright/test` range here and in [`package.json`](https://github.com/yschimke/compose-preview-vscode/blob/main/package.json) in step.
 
 `playwright.config.mjs` explains which settings are pixel-load-bearing. Change viewport or the
 Chromium raster flags and every capture rebaselines.
 
 ## What stayed behind
 
-`vscode-extension/preview-harness/` keeps the panel's own webview fixtures, `snapshot.spec.mjs`,
+[`preview-harness/`](https://github.com/yschimke/compose-preview-vscode/blob/main/preview-harness/) keeps the panel's own webview fixtures, `snapshot.spec.mjs`,
 `contract.spec.mjs` and their helpers. The only thing this directory borrowed from it was a
 four-line `listThemes()`, now copied into `_themes.mjs` — see that file for why it is a copy rather
 than an import.

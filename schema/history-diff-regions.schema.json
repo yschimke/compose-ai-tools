@@ -8,7 +8,7 @@
     "schemaVersion": 1,
     "kotlinType": "ee.schimke.composeai.data.history.HistoryDiffPayload",
     "kotlinConst": "HistoryDiffRegionsProduct.SCHEMA_VERSION",
-    "fixture": "vscode-extension/preview-harness/fixtures/history-diff.json"
+    "fixture": "schema/fixtures/data-products/history-diff.json"
   },
   "definitions": {
     "HistoryDiffAverageDelta": {

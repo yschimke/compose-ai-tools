@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const schemaDir = join(repoRoot, "schema");
-const fixturesDir = join(repoRoot, "vscode-extension", "preview-harness", "fixtures");
+const fixturesDir = join(repoRoot, "schema", "fixtures", "data-products");
 
 // ---- draft-07 subset validator --------------------------------------------
 

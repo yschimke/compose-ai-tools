@@ -355,7 +355,7 @@ than `check`, the enforcement that actually runs on a PR is `test_check_daemon_l
 the `Actions Script Tests` job — which is why `ci-paths.json` scopes that job to `**/*.kt`. A
 repo-wide claim is only worth as much as the trigger that runs it.
 
-The TypeScript side is scoped to `vscode-extension/src/daemon/**` rather than `**/*.ts`, and that
+The TypeScript side is scoped to [`src/daemon/**`](https://github.com/yschimke/compose-preview-vscode/blob/main/src/daemon/**) rather than `**/*.ts`, and that
 is a deliberate limitation rather than an oversight: `test_path_scope.py` pins the rule that a
 VS Code-only change skips every Gradle CI group, and a blanket `**/*.ts` broke it. A new mirror in
 some other TypeScript file would therefore be caught on `main` rather than on the PR. Widening the
@@ -475,10 +475,10 @@ From #3824's follow-up investigation, with what has landed marked.
 10. **Move the serve Playwright fixtures into an independently installable, independently captured
     harness.** — *done.* They now live in `preview-server/preview-harness/` with their own
     `package.json`, `playwright.config.mjs`, static server and `_themes.mjs`; nothing in the
-    directory imports across `vscode-extension/`.
+    directory imports across `compose-preview-vscode/`.
 
     The misfiling was larger than #3824's estimate of 28% of cross-boundary traffic. Counted from
-    the extension's side: of 72 PRs touching `vscode-extension/` in the trailing 300, **60 touched
+    the extension's side: of 72 PRs touching `compose-preview-vscode/` in the trailing 300, **60 touched
     only this harness** and 11 only the extension's own source. And `harness:snapshot` collected
     **205 tests, 167 of them serve's** — the extension's flagship visual-diff job was 81% somebody
     else's.

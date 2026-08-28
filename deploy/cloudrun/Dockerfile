@@ -15,7 +15,8 @@
 #
 # The repo toolchain is pinned to JDK 17 (gradle/gradle-daemon-jvm.properties), so
 # we base on Temurin 17 — Gradle's toolchain auto-detection then finds a matching
-# JDK with none of the JDK-17-vs-21 gymnastics docs/CLOUD-TESTING.md describes.
+# JDK with none of the JDK-17-vs-21 gymnastics compose-preview-vscode's
+# docs/CLOUD-TESTING.md describes.
 
 # ---------------------------------------------------------------------------
 # Stage 0: base — JDK plus the native libraries Skiko needs to render.

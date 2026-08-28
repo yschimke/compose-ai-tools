@@ -41,25 +41,8 @@ Thumbs.db
 # Local properties
 local.properties
 
-# Node / VS Code extension
+# Node
 node_modules/
-vscode-extension/out/
-vscode-extension/.vscode-test/
-vscode-extension/media/webview/
-vscode-extension/preview-harness/out/
-vscode-extension/spatial-fixtures/out/
-vscode-extension/preview-harness/test-results/
-# Playwright writes here when run from `vscode-extension/` rather than from the
-# harness directory — the sibling entries above only cover the latter, so two
-# failure artifacts were committed and then outlived the failure by months,
-# answering codebase greps with phantom hits from a run nobody remembers.
-vscode-extension/test-results/
-# Live XR spatial capture — generated in CI (render-xr-composite) from the real
-# composePreviewRenderXr output; never committed (the committed proxy is spatial-rich).
-vscode-extension/preview-harness/fixtures/spatial-xr-real.json
-vscode-extension/spatial-fixtures/spatial-xr-real/
-vscode-extension/preview-harness/playwright-report/
-vscode-extension/preview-harness/.last-run.json
 
 # The preview-server harness (the serve page captures + the lane/playground/bundle-upload specs),
 # moved out of the extension's harness. Same artifacts, new home.
@@ -69,7 +52,6 @@ preview-server/preview-harness/test-results/
 preview-server/preview-harness/test-results-serve-lanes/
 preview-server/preview-harness/playwright-report/
 preview-server/preview-harness/.last-run.json
-vscode-extension/src/version.generated.ts
 *.vsix
 
 # Python (for .github/actions/lib/ scripts and their tests)
@@ -89,3 +71,6 @@ site/vendor/
 # for checkouts that still carry a pre-#3407 `<moduleDir>/.compose-preview-history/`, which the
 # daemon keeps using when present. Ignore at any depth.
 .compose-preview-history/
+
+# CI checks the extension out here so the cross-repo daemon-launch schema check is real.
+.compose-preview-vscode/

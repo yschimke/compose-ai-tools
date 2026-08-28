@@ -7,7 +7,7 @@
 // `import "./setup.js"` above its component imports, and mocha's file-at-a-time
 // ordering does the rest.
 //
-// Same registrator and version as `vscode-extension`, so the two test suites
+// Same registrator and version as yschimke/compose-preview-vscode, so the two test suites
 // can't drift onto different DOM semantics.
 
 import { GlobalRegistrator } from "@happy-dom/global-registrator";

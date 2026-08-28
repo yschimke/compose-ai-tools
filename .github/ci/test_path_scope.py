@@ -24,7 +24,7 @@ class PathScopeTest(unittest.TestCase):
 
     def test_unions_matching_groups(self):
         self.assertEqual(
-            mod.decide(["cli/src/Main.kt", "vscode-extension/src/main.ts"], self.config),
+            mod.decide(["cli/src/Main.kt", "cli/serve-web/src/main.ts"], self.config),
             {"jvm": True, "js": True},
         )
 
@@ -54,38 +54,27 @@ class RepositoryConfigsTest(unittest.TestCase):
     def load(self, name):
         return json.loads((HERE / name).read_text())
 
-    def test_vscode_only_selects_javascript_codeql(self):
+    def test_typescript_only_selects_javascript_codeql(self):
         result = mod.decide(
-            ["vscode-extension/src/extension.ts"], self.load("codeql-paths.json")
+            ["cli/serve-web/src/live/framePainter.ts"], self.load("codeql-paths.json")
         )
         self.assertEqual(
             result,
             {"java_kotlin": False, "javascript_typescript": True, "actions": False},
         )
 
-    def test_vscode_only_skips_gradle_ci_groups(self):
-        # Named for what it protects: no group that costs a JDK, a Gradle daemon or a runner
-        # minute should wake for a VS Code-only change.
-        #
-        # `actions_tests` is deliberately excluded from that claim. It is pure-stdlib Python with
-        # no JDK and no Gradle, and it carries the repo-wide checks — `check-serve-seam.py` and
-        # `check-daemon-launch-schema.py` — whose whole value is scanning files nobody enumerated.
-        # Scoping it to `**/*.kt` and `**/*.ts` is what makes those claims true on a PR rather than
-        # only on `main`; the assertion used to read `not any(...)`, which conflated "skips the
-        # expensive groups" with "skips everything" and quietly capped that coverage.
-        result = mod.decide(
-            ["vscode-extension/src/extension.ts"], self.load("ci-paths.json")
-        )
-        gradle_groups = {k: v for k, v in result.items() if k != "actions_tests"}
-        self.assertFalse(
-            any(gradle_groups.values()),
-            f"a VS Code-only change woke a Gradle CI group: {gradle_groups}",
-        )
-        self.assertTrue(
-            result["actions_tests"],
-            "actions_tests must run on a TypeScript change so the repo-wide mirror discovery in "
-            "check-daemon-launch-schema.py executes on the PR that introduces a mirror",
-        )
+    # `test_vscode_only_skips_gradle_ci_groups` lived here. It asserted that a
+    # TypeScript-only change wakes no group costing a JDK, a Gradle daemon or a runner
+    # minute — a real property, protecting a real cost, while `vscode-extension/**` was
+    # the repo's TypeScript and was on every ignorePaths list.
+    #
+    # It is gone rather than repointed because the extension took its subject with it
+    # (yschimke/compose-preview-vscode). The only TypeScript left here is
+    # `cli/serve-web/**`, which lives *inside* `cli/` and so correctly wakes `build_cli`
+    # and `module_unit_tests`. Repointing the test at it would have asserted the
+    # opposite of the truth and passed only by weakening the claim to nothing.
+    #
+    # If a TypeScript surface outside the Gradle module tree returns, restore this.
 
     def test_driver_pin_bump_runs_only_the_actions_validator(self):
         # The export-driver pin bump is opened unattended after every release and

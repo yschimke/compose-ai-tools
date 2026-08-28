@@ -87,7 +87,7 @@ jobs:
   publish-gradle-plugin:
     # Gate the irreversible Maven Central publish on every core application build. The bundle viewer
     # remains buildable from source, but its per-OS packages are no longer core release artifacts.
-    needs: [build-applications, build-vscode-extension]
+    needs: [build-applications]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -140,7 +140,7 @@ jobs:
   # `:gradle-plugin` (a composite build). Same posture otherwise: gated on every build job, because
   # Central will not overwrite a published version.
   publish-player-stack:
-    needs: [build-applications, build-vscode-extension]
+    needs: [build-applications]
     runs-on: macos-15
     permissions:
       contents: read
@@ -243,7 +243,7 @@ jobs:
     # Re-enable by deleting this one `if:`, once the link is proven to complete in CI. A literal
     # rather than a flag because a job-level `if:` cannot read the `env` context.
     if: ${{ false }}
-    needs: [build-applications, build-vscode-extension]
+    needs: [build-applications]
     runs-on: macos-15
     permissions:
       contents: write
@@ -381,46 +381,6 @@ jobs:
             mcp/build/distributions/compose-preview-mcp-*.tar.gz
           retention-days: 1
 
-  build-vscode-extension:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ env.TAG_NAME }}
-          persist-credentials: false
-      # Do not cache `npm` here: release builds produce artifacts that get
-      # published, and a poisoned cache from an unrelated branch/run could
-      # influence the installed dependency tree (zizmor: cache-poisoning).
-      # `npm ci` on a clean runner is fast enough for a once-per-release job.
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 20
-          package-manager-cache: false
-      - name: Install dependencies
-        working-directory: vscode-extension
-        run: npm ci
-      - name: Derive plugin version from tag
-        # Strip leading `v` from TAG_NAME, e.g. v0.1.0 → 0.1.0. $PLUGIN_VERSION
-        # is inherited by every subsequent step in this job — both the
-        # `npm version` set below and the VSIX build, which threads
-        # PLUGIN_VERSION through `scripts/generate-version.mjs` to bake the
-        # release coordinate into the auto-inject init script.
-        run: echo "PLUGIN_VERSION=${TAG_NAME#v}" >> "$GITHUB_ENV"
-      - name: Set version
-        working-directory: vscode-extension
-        # Read tag from $TAG_NAME (from env, not templated into the script) so
-        # the tag name — attacker-influenceable through git or the dispatch
-        # input — can't inject arguments into `npm version`.
-        run: npm version --no-git-tag-version --allow-same-version "${TAG_NAME#v}"
-      - name: Build VSIX
-        working-directory: vscode-extension
-        run: npm run package
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: vscode-extension
-          path: vscode-extension/*.vsix
-          retention-days: 1
-
   # Native xr-composite binaries shipped on each GitHub Release — one per desktop
   # platform, each a `.tar.gz` of the binary + compiled materials. Built against
   # the pinned Filament SDK via the shared `build-xr-composite` composite action
@@ -482,72 +442,6 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  # Publish the prebuilt VSIX to both marketplaces. Runs alongside the
-  # `release` job (not gating it) so a marketplace outage can't block the
-  # `.vsix` landing on the GitHub Release. On workflow_dispatch re-runs for
-  # an existing tag, "version already published" is treated as success so
-  # reruns are idempotent. Secrets (VSCE_PAT, OVSX_PAT) are scoped per-step.
-  publish-vscode-extension:
-    needs: build-vscode-extension
-    runs-on: ubuntu-latest
-    # Non-fatal: a VSCE/Open VSX outage must not fail the workflow run. The two
-    # publish steps already treat "already published" as success (idempotent
-    # reruns), but a genuine marketplace outage still exits 1 — and since the
-    # release is now drafted and `finalize-release` gates on this whole reusable
-    # run succeeding, a failure here would skip finalization and strand the
-    # release as a draft on the old version. The VSIX is attached to the GitHub
-    # Release as a fallback, so tolerate the failure (it shows as a tolerated
-    # job) and let the asset/Maven gates decide whether to publish.
-    continue-on-error: true
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: vscode-extension
-          path: dist
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 20
-          package-manager-cache: false
-      - name: Publish to VS Code Marketplace
-        env:
-          # vsce reads VSCE_PAT from env — keeps the token out of argv/logs.
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: |
-          set -o pipefail
-          vsix=$(ls dist/*.vsix)
-          echo "Publishing $vsix to VS Code Marketplace"
-          if ! output=$(npx --yes @vscode/vsce@^3 publish --packagePath "$vsix" 2>&1); then
-            printf '%s\n' "$output"
-            if printf '%s' "$output" | grep -qiE "already.*published|already exists"; then
-              echo "Version already on VS Code Marketplace — treating as success."
-              exit 0
-            fi
-            exit 1
-          fi
-          printf '%s\n' "$output"
-      - name: Publish to Open VSX
-        # Run even if the Marketplace step failed — the two registries are
-        # independent, so a PAT/outage on one shouldn't block the other.
-        if: ${{ !cancelled() }}
-        env:
-          # ovsx reads OVSX_PAT from env.
-          OVSX_PAT: ${{ secrets.OVSX_PAT }}
-        run: |
-          set -o pipefail
-          vsix=$(ls dist/*.vsix)
-          echo "Publishing $vsix to Open VSX"
-          if ! output=$(npx --yes ovsx@^0.10 publish "$vsix" 2>&1); then
-            printf '%s\n' "$output"
-            if printf '%s' "$output" | grep -qiE "already.*published|already exists"; then
-              echo "Version already on Open VSX — treating as success."
-              exit 0
-            fi
-            exit 1
-          fi
-          printf '%s\n' "$output"
-
   # `@yschimke/compose-design-map` — the design-map projection (`design-map/`), published to npm so
   # a downstream catalog repo can `npx` it at a pinned version.
   #
@@ -563,7 +457,8 @@ jobs:
   # `npx --yes @yschimke/compose-design-map@X.Y.Z` a one-line step in someone else's CI.
   publish-design-map:
     runs-on: ubuntu-latest
-    # Same posture as `publish-vscode-extension`: a registry outage must not strand the drafted
+    # Same posture the extension's publish job used before it moved out: a registry
+    # outage must not strand the drafted
     # release, since `finalize-release` gates on this whole run succeeding. Unlike the VSIX there is
     # no GitHub Release asset to fall back on, so a tolerated failure here means the version simply
     # is not on npm — recover by RE-RUNNING THIS FAILED JOB in the original `release-please.yml`
@@ -599,7 +494,7 @@ jobs:
       - name: Set version from the tag
         working-directory: design-map
         # The committed version is a placeholder (0.0.0); the tag is the release coordinate, the
-        # same arrangement `build-vscode-extension` uses. Read from $TAG_NAME in the env rather
+        # same arrangement the other build jobs use. Read from $TAG_NAME in the env rather
         # than templating it, so a tag name can't inject arguments into `npm version`.
         run: npm version --no-git-tag-version --allow-same-version "${TAG_NAME#v}"
       - name: Publish
@@ -638,7 +533,7 @@ jobs:
   # out of the Gradle build is the constraint that made the CLI vendor a prebuilt JS player in the
   # first place (docs/design/RC_CMP_WASM_PLAYER.md), and it still holds.
   publish-wasm-player:
-    needs: [build-applications, build-vscode-extension]
+    needs: [build-applications]
     runs-on: ubuntu-latest
     continue-on-error: true
     permissions:
@@ -720,7 +615,7 @@ jobs:
     # independently, so decoupling here doesn't weaken the irreversible-publish safety gate.
     # (xr-composite is in `release`'s needs but deliberately NOT in `publish-gradle-plugin`'s — the
     # native binaries are GitHub Release assets, not Maven artifacts.)
-    needs: [build-applications, build-vscode-extension, build-xr-composite]
+    needs: [build-applications, build-xr-composite]
     runs-on: ubuntu-latest
     permissions:
       contents: write   # update the release, upload assets
@@ -755,14 +650,12 @@ jobs:
             gh release upload "$TAG_NAME" \
               --clobber \
               artifacts/*.zip \
-              artifacts/*.tar.gz \
-              artifacts/*.vsix
+              artifacts/*.tar.gz
           else
             echo "Release $TAG_NAME does not exist — creating."
             gh release create "$TAG_NAME" \
               --title "compose-ai-tools ${TAG_NAME#v}" \
               --generate-notes \
               artifacts/*.zip \
-              artifacts/*.tar.gz \
-              artifacts/*.vsix
+              artifacts/*.tar.gz
           fi
