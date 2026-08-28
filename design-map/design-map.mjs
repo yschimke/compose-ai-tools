@@ -550,9 +550,21 @@ export function projectDesignMap(previews, opts = {}) {
    * however many captures it publishes.
    */
   const unmappedIds = new Map();
+  /**
+   * Stated absences, keyed by a COLLISION-SAFE identity and carrying the display label separately.
+   *
+   * A component keys on its own id. A variant keys on its capture subject, which is per-composable
+   * and unique — never on its rendered label. The label is built by joining `key=value` pairs, and
+   * discovery splits an annotation prop at its FIRST `=` only, so a value may legally contain both
+   * a space and an `=`: `props = ["a=b c=d"]` is one prop, and renders identically to the two props
+   * `a=b` and `c=d`. Keying on that string would silently drop one of two distinct absences — the
+   * same data loss this diagnostic exists to prevent, one level subtler.
+   */
   const statedAbsentIds = new Map();
   /** Capture subjects whose absence is stated — a variant is named by subject, not by component. */
   const referencelessSubjects = new Set();
+  /** Component ids whose absence is stated, for the componentId-keyed ambiguity filter below. */
+  const statedAbsentComponentIds = new Set();
   for (const preview of previews) {
     const catalog = preview.catalog;
     if (!catalog || catalog.reference) continue;
@@ -564,39 +576,52 @@ export function projectDesignMap(previews, opts = {}) {
     // variant's stated absence the same as a component's: someone looked, and wrote down what they
     // found, wherever the render sits.
     //
-    // Keyed by the variant's own label, not its parent's id (`componentId` is the PARENT for a
-    // VARIANT), or a folded variant's reason would be reported against a parent that may have a
-    // perfectly good reference of its own.
+    // Reported under the variant's own label, not its parent's id (`componentId` is the PARENT for
+    // a VARIANT), or a folded variant's reason would be reported against a parent that may have a
+    // perfectly good reference of its own. The label is for reading; the KEY is the capture
+    // subject, which cannot collide — see the map's own note above.
     if (catalog.role === "VARIANT") {
       if (!catalog.noReference) continue; // silence under a parent is the parent's business
-      statedAbsentIds.set(variantAbsenceId(preview), catalog.noReference);
+      const subject = captureIdentity(preview).subject;
+      statedAbsentIds.set(subject, {
+        label: variantAbsenceId(preview),
+        reason: catalog.noReference,
+      });
       // The ambiguity filter below matches on componentId, which for a VARIANT is the PARENT's --
       // so a variant's own stated absence could not suppress its own ambiguous-mode record, and a
       // parent carrying a good reference left it unsuppressed. `--strict --allow-stated-absence`
       // then failed on precisely the case that flag exists to accept. A variant render has its own
       // capture subject, so record that instead of trying to name it by component.
-      referencelessSubjects.add(captureIdentity(preview).subject);
+      referencelessSubjects.add(subject);
       continue;
     }
     if (catalog.role !== "COMPONENT") continue;
     const id = catalog.componentId;
-    if (catalog.noReference) statedAbsentIds.set(id, catalog.noReference);
-    else if (!statedAbsentIds.has(id)) unmappedIds.set(id, true);
+    if (catalog.noReference) {
+      statedAbsentIds.set(id, { label: id, reason: catalog.noReference });
+      statedAbsentComponentIds.add(id);
+    } else if (!statedAbsentIds.has(id)) unmappedIds.set(id, true);
   }
   /** Components carrying neither a reference nor a stated reason for its absence. */
-  const unmapped = [...unmappedIds.keys()].filter((id) => !statedAbsentIds.has(id));
+  const unmapped = [...unmappedIds.keys()].filter((id) => !statedAbsentComponentIds.has(id));
   /**
    * Components whose reference is absent for a STATED reason. Reported apart from `unmapped`
    * because they are the opposite situation: someone looked, and what they found is that the kit
    * has nothing live to point at. Rolling the two together is what made a retired pattern read as
    * neglect.
    */
-  const statedAbsent = [...statedAbsentIds].map(([componentId, reason]) => ({
-    componentId,
+  const statedAbsent = [...statedAbsentIds.values()].map(({ label, reason }) => ({
+    componentId: label,
     reason,
   }));
-  /** Every component that reaches no reference, however its absence was spelled. */
-  const referencelessIds = new Set([...unmapped, ...statedAbsentIds.keys()]);
+  /**
+   * Every COMPONENT that reaches no reference, however its absence was spelled — the set the
+   * ambiguity filter tests `componentIds` against. A variant's key is a capture subject rather than
+   * a component id, so it is deliberately absent here and suppressed through
+   * [referencelessSubjects] instead; putting subjects in this set would only add entries no
+   * componentId can ever equal.
+   */
+  const referencelessIds = new Set([...unmapped, ...statedAbsentComponentIds]);
 
   for (const preview of previews) {
     const catalog = preview.catalog;

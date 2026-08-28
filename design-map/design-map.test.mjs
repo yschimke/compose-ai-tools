@@ -210,6 +210,32 @@ test("two variants sharing a state but differing in props keep both absences", (
   );
 });
 
+test("a prop value containing its own key=value text does not collide with two props", () => {
+  // Discovery splits an annotation prop at its FIRST `=` only, so `props = ["a=b c=d"]` is ONE
+  // prop whose value is `b c=d`. Joined for display it is indistinguishable from the two props
+  // `a=b` and `c=d`. The label is therefore not safe as a Map key -- these two variants must both
+  // survive, which they only do because the key is the capture subject.
+  const { diagnostics } = projectDesignMap([
+    component("Button", { reference: ref("1:2") }),
+    catalogVariant("OneProp", "Button", {
+      props: [{ key: "a", value: "b c=d" }],
+      noReference: "one prop whose value looks like two",
+    }),
+    catalogVariant("TwoProps", "Button", {
+      props: [
+        { key: "a", value: "b" },
+        { key: "c", value: "d" },
+      ],
+      noReference: "genuinely two props",
+    }),
+  ]);
+  assert.equal(diagnostics.statedAbsent.length, 2);
+  assert.deepEqual(
+    diagnostics.statedAbsent.map((s) => s.reason).sort(),
+    ["genuinely two props", "one prop whose value looks like two"],
+  );
+});
+
 test("a stated-absent variant's ambiguous modes are suppressed even when its parent has a reference", () => {
   // The ambiguity filter matches on componentId, which for a VARIANT is the PARENT's -- so a
   // variant's own stated absence could not suppress its own record, and a parent carrying a good
