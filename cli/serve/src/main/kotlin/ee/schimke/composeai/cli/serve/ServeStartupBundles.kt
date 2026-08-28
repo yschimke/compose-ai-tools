@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.bundle.BundleVerifier
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.net.URI

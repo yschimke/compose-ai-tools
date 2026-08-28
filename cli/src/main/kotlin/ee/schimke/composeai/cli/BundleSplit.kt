@@ -8,11 +8,11 @@ import ee.schimke.composeai.bundle.BUNDLE_PREVIEWS_DIR
 import ee.schimke.composeai.bundle.BUNDLE_SEMANTICS_SUFFIX
 import ee.schimke.composeai.bundle.BundleReader
 import ee.schimke.composeai.bundle.ZIP_DOS_EPOCH_MS
-import ee.schimke.composeai.cli.serve.clampTo
-import ee.schimke.composeai.cli.serve.contentBoxFillsRender
-import ee.schimke.composeai.cli.serve.pngAlphaBounds
-import ee.schimke.composeai.cli.serve.svgContentBox
-import ee.schimke.composeai.cli.serve.union
+import ee.schimke.composeai.imagecrop.clampTo
+import ee.schimke.composeai.imagecrop.contentBoxFillsRender
+import ee.schimke.composeai.imagecrop.pngAlphaBounds
+import ee.schimke.composeai.imagecrop.svgContentBox
+import ee.schimke.composeai.imagecrop.union
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream

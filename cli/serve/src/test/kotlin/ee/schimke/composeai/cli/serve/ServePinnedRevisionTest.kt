@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.bundle.TrustStore
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File

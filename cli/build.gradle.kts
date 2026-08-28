@@ -199,6 +199,7 @@ dependencies {
   // `:data-a11y-core` used for the D2.2 extraction. External consumers (contrib scripting,
   // third-party tooling) pull `:preview-data-api` directly, not transitively through `:cli`.
   api(project(":preview-data-api"))
+  implementation(project(":common-image-crop"))
 
   // Gradle Tooling-API render pipeline + the `GradleConnection` / `PreviewModule` /
   // `CapturedTestFailure` / `TerminalProgress` plumbing the CLI used to host inline. `api` again

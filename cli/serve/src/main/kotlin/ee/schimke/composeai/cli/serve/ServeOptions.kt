@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.bundle.TrustStore
 import ee.schimke.composeai.previewdata.PreviewManifest
 import ee.schimke.composeai.previewdata.PreviewModule
 import java.io.File

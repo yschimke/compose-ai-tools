@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.bundle.BundleVerifier
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
@@ -7,6 +8,7 @@ import ee.schimke.composeai.data.layoutinspector.ExplodedSvg
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
 import ee.schimke.composeai.designpages.DesignPage
+import ee.schimke.composeai.imagecrop.ContentCrop
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod

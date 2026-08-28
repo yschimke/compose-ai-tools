@@ -59,6 +59,7 @@ dependencies {
   // Published wire-format DTOs and the bundle format. `api` because they appear in this module's
   // own signatures, which `:cli` reads.
   api(project(":preview-data-api"))
+  implementation(project(":common-image-crop"))
   api(project(":bundle-format"))
   api(project(":bundle-coordinates"))
   api(project(":daemon:core"))

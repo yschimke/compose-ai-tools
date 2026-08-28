@@ -1,11 +1,16 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.bundle.BundleVerifier
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamFrameParams
 import ee.schimke.composeai.data.overrides.PreviewOverridesPayload
 import ee.schimke.composeai.data.pseudolocale.LocaleDirection
 import ee.schimke.composeai.data.pseudolocale.Pseudolocale
+import ee.schimke.composeai.imagecrop.ContentCrop
+import ee.schimke.composeai.imagecrop.computeGutterCrop
+import ee.schimke.composeai.imagecrop.computeThumbCrop
+import ee.schimke.composeai.imagecrop.pngAlphaBounds
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlin.math.roundToInt

@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli.serve
+package ee.schimke.composeai.imagecrop
 
 import java.io.ByteArrayInputStream
 import javax.imageio.ImageIO
@@ -22,7 +22,7 @@ import kotlin.math.roundToInt
  * [computeThumbCrop] returns `null` (no-op) for them — only the framed-in-a-canvas stickers get
  * cropped.
  */
-data class ContentCrop(
+public data class ContentCrop(
   /** Clip-window size (px) — the component box scaled to fit [CAP]. */
   val boxW: Int,
   val boxH: Int,
@@ -71,14 +71,14 @@ private val VIEWBOX_RE = Regex("""viewBox="0 0 (\d+(?:\.\d+)?) (\d+(?:\.\d+)?)""
  * [computeThumbCrop] adds the display scaling on top, while the bundle PNG crop
  * ([ee.schimke.composeai.cli] `bundle split`) uses it at full resolution.
  */
-data class SvgContentBox(val x: Int, val y: Int, val w: Int, val h: Int)
+public data class SvgContentBox(val x: Int, val y: Int, val w: Int, val h: Int)
 
 /**
  * Parse a figma-svg's content box (root `viewBox` size + `translate` origin) in render pixels, or
  * `null` when the svg carries no parseable `viewBox`. A missing `translate` places the box at the
  * origin.
  */
-fun svgContentBox(svgText: String): SvgContentBox? {
+public fun svgContentBox(svgText: String): SvgContentBox? {
   val vb = VIEWBOX_RE.find(svgText) ?: return null
   val w = vb.groupValues[1].toDouble()
   val h = vb.groupValues[2].toDouble()
@@ -95,11 +95,11 @@ fun svgContentBox(svgText: String): SvgContentBox? {
  * canvas) — the shared "within 10% on both axes" no-op guard. Consumers that read a pre-cropped PNG
  * then find their box ≈ the image and no-op via this same test.
  */
-fun contentBoxFillsRender(box: SvgContentBox, renderW: Int, renderH: Int): Boolean =
+public fun contentBoxFillsRender(box: SvgContentBox, renderW: Int, renderH: Int): Boolean =
   box.w >= renderW * 0.9 && box.h >= renderH * 0.9
 
 /** The smallest box covering both [this] and [other]. */
-fun SvgContentBox.union(other: SvgContentBox): SvgContentBox {
+public fun SvgContentBox.union(other: SvgContentBox): SvgContentBox {
   val x1 = min(x, other.x)
   val y1 = min(y, other.y)
   val x2 = max(x + w, other.x + other.w)
@@ -108,7 +108,7 @@ fun SvgContentBox.union(other: SvgContentBox): SvgContentBox {
 }
 
 /** Clamp [this] to a [renderW]×[renderH] canvas (origin ≥ 0, extent within bounds). */
-fun SvgContentBox.clampTo(renderW: Int, renderH: Int): SvgContentBox {
+public fun SvgContentBox.clampTo(renderW: Int, renderH: Int): SvgContentBox {
   val nx = x.coerceIn(0, renderW)
   val ny = y.coerceIn(0, renderH)
   return SvgContentBox(nx, ny, max(1, min(x + w, renderW) - nx), max(1, min(y + h, renderH) - ny))
@@ -122,7 +122,7 @@ fun SvgContentBox.clampTo(renderW: Int, renderH: Int): SvgContentBox {
  * (see [computeThumbCrop]) guarantees the crop never clips real pixels, self-correcting per variant
  * without needing a per-variant figma-svg.
  */
-fun pngAlphaBounds(pngBytes: ByteArray, threshold: Int = 16): SvgContentBox? {
+public fun pngAlphaBounds(pngBytes: ByteArray, threshold: Int = 16): SvgContentBox? {
   val img = runCatching { ImageIO.read(ByteArrayInputStream(pngBytes)) }.getOrNull() ?: return null
   val w = img.width
   val h = img.height
@@ -170,7 +170,7 @@ fun pngAlphaBounds(pngBytes: ByteArray, threshold: Int = 16): SvgContentBox? {
  * The edges are PHYSICAL — whoever published the record resolved the annotation's leading/trailing
  * against the direction the render was composed in, so there is no direction left to guess at here.
  */
-fun computeGutterCrop(
+public fun computeGutterCrop(
   gutterLeft: Int,
   gutterTop: Int,
   gutterRight: Int,
@@ -211,7 +211,7 @@ fun computeGutterCrop(
   )
 }
 
-fun computeThumbCrop(
+public fun computeThumbCrop(
   svgText: String,
   renderW: Int,
   renderH: Int,

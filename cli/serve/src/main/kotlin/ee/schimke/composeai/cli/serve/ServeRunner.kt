@@ -2,6 +2,8 @@ package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.bundle.AndroidBundleLaunch
 import ee.schimke.composeai.bundle.BundleReader
+import ee.schimke.composeai.bundle.BundleVerifier
+import ee.schimke.composeai.bundle.TrustStore
 import ee.schimke.composeai.bundle.locateBundleSidecarJars
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.previewdata.PreviewInfo

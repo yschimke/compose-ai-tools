@@ -93,6 +93,7 @@
     "ee.schimke.composeai.data.render": "data-render-core",
     "ee.schimke.composeai.data.theme": "data-theme-core",
     "ee.schimke.composeai.designpages": "preview-data-api",
+    "ee.schimke.composeai.imagecrop": "common-image-crop",
     "ee.schimke.composeai.io": "common-io",
     "ee.schimke.composeai.previewdata": "preview-data-api",
     "ee.schimke.composeai.render.session": "render-session-api",
@@ -128,7 +129,6 @@
   "main": {
     "cliInternalsUsedByServe": [],
     "serveInternalsUsedByCli": [
-      "serve.BundleVerifier",
       "serve.CatalogBlobPool",
       "serve.GitWorktrees",
       "serve.PlaygroundBundleSource",
@@ -165,19 +165,12 @@
       "serve.ServeUrls",
       "serve.SvgOutcome",
       "serve.ThemeCacheStore",
-      "serve.TrustStore",
-      "serve.WebEmbed",
-      "serve.clampTo",
-      "serve.contentBoxFillsRender",
-      "serve.pngAlphaBounds",
-      "serve.svgContentBox",
-      "serve.union"
+      "serve.WebEmbed"
     ]
   },
   "test": {
     "cliInternalsUsedByServe": [],
     "serveInternalsUsedByCli": [
-      "serve.BundleVerifier",
       "serve.FakeRenderSession",
       "serve.PreviewHistoryManifest",
       "serve.ServeAgentGrantScope",
@@ -192,10 +185,6 @@
       "serve.ServeRenderHost",
       "serve.ServeSessionRegistry",
       "serve.ServeUrls",
-      "serve.TrustStore",
-      "serve.TrustedBranch",
-      "serve.TrustedIdentity",
-      "serve.TrustedKey",
       "serve.WebEmbed"
     ]
   }

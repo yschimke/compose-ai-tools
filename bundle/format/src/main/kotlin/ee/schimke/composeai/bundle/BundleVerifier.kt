@@ -1,6 +1,5 @@
-package ee.schimke.composeai.cli.serve
+package ee.schimke.composeai.bundle
 
-import ee.schimke.composeai.bundle.BundleSigning
 import java.io.File
 
 /**
@@ -13,28 +12,28 @@ import java.io.File
  * Verification is fail-closed: anything the store can't positively attribute is
  * [Verdict.Unverified].
  */
-object BundleVerifier {
+public object BundleVerifier {
 
   /** Where the server obtained the bundle, when it fetched it itself (vs. a client upload). */
-  data class Origin(val repo: String, val branch: String)
+  public data class Origin(val repo: String, val branch: String)
 
-  sealed interface Verdict {
+  public sealed interface Verdict {
     /** At least one trust basis matched. [bases] lists every basis that did, strongest first. */
-    data class Trusted(val bases: List<Basis>) : Verdict {
-      val primary: Basis
+    public data class Trusted(val bases: List<Basis>) : Verdict {
+      public val primary: Basis
         get() = bases.first()
     }
 
     /** No basis matched. [reason] is a short human-readable explanation. */
-    data class Unverified(val reason: String) : Verdict
+    public data class Unverified(val reason: String) : Verdict
   }
 
-  sealed interface Basis {
+  public sealed interface Basis {
     /** A pinned Ed25519 key signed the canonical digest and verified. The strongest basis. */
-    data class Signature(val keyId: String, val producer: String?) : Basis
+    public data class Signature(val keyId: String, val producer: String?) : Basis
 
     /** The server fetched the bundle from a trusted branch (origin/TLS trust). */
-    data class Branch(val repo: String, val branch: String) : Basis
+    public data class Branch(val repo: String, val branch: String) : Basis
 
     /**
      * Supplementary CI-provenance context recorded **only alongside a cryptographically-verified
@@ -46,11 +45,11 @@ object BundleVerifier {
      * then this basis only annotates a signature a pinned key already verified, so it expands the
      * displayed provenance but never the trust decision.
      */
-    data class Provenance(val identity: String, val type: String) : Basis
+    public data class Provenance(val identity: String, val type: String) : Basis
   }
 
   /** Verify a bundle file. [origin] is non-null only when the server fetched it itself. */
-  fun verify(bundle: File, trust: TrustStore, origin: Origin? = null): Verdict =
+  public fun verify(bundle: File, trust: TrustStore, origin: Origin? = null): Verdict =
     verifyCore(
       BundleSigning.canonicalDigest(bundle),
       BundleSigning.readSignatures(bundle)?.signatures.orEmpty(),
@@ -63,7 +62,7 @@ object BundleVerifier {
    * a file. Accepts either a plain zip or a PNG+ZIP polyglot ([BundleSigning.zipBytesOf]
    * normalizes).
    */
-  fun verify(rawBundleBytes: ByteArray, trust: TrustStore, origin: Origin? = null): Verdict {
+  public fun verify(rawBundleBytes: ByteArray, trust: TrustStore, origin: Origin? = null): Verdict {
     val zip = BundleSigning.zipBytesOf(rawBundleBytes)
     return verifyCore(
       BundleSigning.canonicalDigest(zip),
@@ -76,7 +75,7 @@ object BundleVerifier {
   /**
    * Short one-line label for logs / API / UI badge, e.g. `signature:ci`, `branch`, `unverified`.
    */
-  fun summary(verdict: Verdict): String =
+  public fun summary(verdict: Verdict): String =
     when (verdict) {
       is Verdict.Trusted ->
         when (val b = verdict.primary) {
