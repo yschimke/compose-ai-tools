@@ -66,6 +66,106 @@ class ServePageThemeTest {
     assertTrue(themes.first { it.name == "Coral" }.mode == "dark")
   }
 
+  /**
+   * A catalog that DECLARES a dark stage offers no Light chip, whatever its id reads like —
+   * yschimke/wear-m3-catalog#99.
+   *
+   * The viewer used to decide this from the system id alone (`SystemDisplay.isDarkFirst`) while the
+   * stage under the pixels went through the declaration-first `resolveDarkFirst`. `remote-m3` —
+   * dark-only Remote Compose documents, `display.surface: "dark"`, an id with no `wear`/`watch`
+   * token in it — landed between the two: dark stage, and a Light chip on top of it that no lane
+   * behind the page could honour, because every document carries explicit dark-first colours.
+   */
+  @Test
+  fun `a catalog declaring a dark surface offers no day-night choice`() {
+    val darkOnly =
+      ServeWeb.viewerPage(
+        ServePreview("appcard__ideal__default__compact", "AppCard"),
+        token = "t",
+        basePath = "/remote-m3",
+        sessionId = "remote-m3",
+        declaredSurface = "dark",
+      )
+
+    assertTrue(darkOnly.contains("data-always-dark=\"1\""), darkOnly)
+    assertFalse(
+      darkOnly.contains("data-theme-choice=\"light\""),
+      "a declared-dark catalog must not offer a Light chip: $darkOnly",
+    )
+
+    // …and a catalog that declares nothing, on an id that reads like neither a watch nor a dark
+    // surface, keeps the pair it always had.
+    val unstated =
+      ServeWeb.viewerPage(
+        ServePreview("button__ideal__default__light", "Button", theme = "light"),
+        token = "t",
+        basePath = "/compose-m3",
+        sessionId = "compose-m3",
+      )
+
+    assertFalse(unstated.contains("data-always-dark=\"1\""), unstated)
+    assertTrue(unstated.contains("data-theme-choice=\"light\""), unstated)
+  }
+
+  /**
+   * A dark STAGE is not a dark-only catalog.
+   *
+   * `display.surface` is a stage colour in the spec schema, declared independently of what a
+   * catalog bakes: a non-Wear catalog can perfectly well publish a light/dark pair and ask for a
+   * dark ground under both. Suppressing its Light chip would leave `previewTheme` labelling the
+   * light render on screen as Dark, with no way back to it. Only a declared-dark catalog with no
+   * light render anywhere in the session is dark-only.
+   */
+  @Test
+  fun `a declared dark stage keeps the pair when the catalog bakes a light render`() {
+    val html =
+      ServeWeb.viewerPage(
+        previews[1],
+        token = "t",
+        basePath = "/compose-m3",
+        sessionId = "compose-m3",
+        siblings = previews,
+        declaredSurface = "dark",
+      )
+
+    assertFalse(html.contains("data-always-dark=\"1\""), html)
+    assertTrue(html.contains("data-theme-choice=\"light\""), html)
+  }
+
+  /**
+   * A declaration can ADD an always-dark catalog; it cannot take one away from a Wear id.
+   *
+   * `SystemDisplay.normalizeOverrideParams` drops `uiMode` for a Wear/watch id unconditionally, on
+   * every render and socket lane, and it is handed a system id with no declaration to read. So a
+   * Wear catalog declaring `display.surface: "light"` must not sprout an enabled Light choice: it
+   * would move the control and the URL while the server returned the same pixels.
+   */
+  @Test
+  fun `a Wear id keeps its veto over a declared light surface`() {
+    val wearLight =
+      ServeWeb.viewerPage(
+        ServePreview("button__ideal__default__light", "Button", theme = "light"),
+        token = "t",
+        basePath = "/confetti-wear",
+        sessionId = "confetti-wear",
+        declaredSurface = "light",
+      )
+
+    assertTrue(wearLight.contains("data-always-dark=\"1\""), wearLight)
+    assertFalse(
+      wearLight.contains("data-theme-choice=\"light\""),
+      "the render lane drops uiMode for a Wear id, so the control must not offer Light: $wearLight",
+    )
+    assertTrue(
+      ServeWeb.SystemDisplay.normalizeOverrideParams(
+          "confetti-wear",
+          mapOf("uiMode" to "light"),
+        )
+        .isEmpty(),
+      "the premise of the assertion above",
+    )
+  }
+
   @Test
   fun `the resolved scheme is pinned before first paint, not after the page loads`() {
     // Deferring this to the shell bundle would paint the page in the wrong mode and correct it a
