@@ -795,6 +795,7 @@ class ServeCatalogStore(
     writeTagIndex(base, staging)
     writeParityActivity(base, staging)
     writeParityIssues(base, staging)
+    writeParityFindings(base, staging)
     writeDesignPages(base, staging)
     writeKnownDifferences(base, staging)
 
@@ -2517,6 +2518,34 @@ class ServeCatalogStore(
     val dir = File(staging, ParityIssues.DIRECTORY)
     dir.mkdirs()
     File(dir, ParityIssues.FILE).writeText(json.encodeToString(ParityIssues.serializer(), issues))
+  }
+
+  /**
+   * Stage the catalog's parity verdict (`parity/findings.json`).
+   *
+   * Shaped like [writeParityIssues]: a manifest with no assets, validated here and re-serialized so
+   * the staged tree holds what the reader would have kept rather than what the branch said. A
+   * catalog that publishes none, or one whose manifest cannot survive validation, simply serves its
+   * comparisons without a verdict panel.
+   *
+   * Easy to forget and silent when it is: [ServeBundleHost] reads the staged directory, so a
+   * manifest nothing fetches is a manifest the host correctly reports as absent — the panel would
+   * be dark on every published catalog, which is the one environment the feature exists for, with
+   * no error anywhere to say why.
+   */
+  private fun writeParityFindings(base: String, staging: File) {
+    val bytes =
+      runCatching {
+        fetchCatalogAsset("$base${ParityFindings.DIRECTORY}/${ParityFindings.FILE}")
+      }
+        .getOrNull() ?: return
+    val findings =
+      runCatching { ServeParityFindingStore.sanitizeDocument(bytes.decodeToString()) }.getOrNull()
+        ?: return
+    val dir = File(staging, ParityFindings.DIRECTORY)
+    dir.mkdirs()
+    File(dir, ParityFindings.FILE)
+      .writeText(json.encodeToString(ParityFindings.serializer(), findings))
   }
 
   /**

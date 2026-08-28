@@ -3811,6 +3811,29 @@ class ServeHttpServer(
             if (pinned) emptyList() else renderHost.annotationsForReference(reference.id),
           actualAnnotations =
             if (pinned) emptyList() else renderHost.annotationsForPreview(previewId),
+          // Withheld on a pin for the same reason the layers above are, and more sharply: a
+          // finding's anchors are bounds in the PUBLISHED render's pixel space, so drawing them
+          // over a historical frame would point at whatever happens to sit at those coordinates
+          // today and label it with a claim about a different render. The prose would be wrong too
+          // — a padding the catalog has since fixed would read as an open defect on the revision
+          // that still has it, which is the one page where that reading is least recoverable.
+          //
+          // …and withheld under an OVERRIDE, which the annotation layers above are not. A knob, a
+          // font scale, a locale or a theme re-renders the Actual panel, and this verdict was
+          // measured on the frame the catalog published: the boxes would land beside the elements
+          // they name, and the sentences would assert a padding nobody is looking at. The redline
+          // survives an override because it is a reading aid that degrades to being slightly out
+          // of date; a verdict is a CLAIM, and a claim about pixels that are not on screen is
+          // simply false.
+          //
+          // Deliberately NOT `frameIsReplayedBaked`, which also excludes every host that renders
+          // per request: an override-free browse of a daemon-backed catalog draws the same
+          // component at the same size, so gating on that would take the panel away from every
+          // live catalog to buy nothing. The hazard is a frame the VIEWER moved, and these two
+          // conditions are exactly that.
+          parityFindings =
+            if (pinned || overrideParams.isNotEmpty()) emptyList()
+            else renderHost.parityFindingsFor(previewId, reference.id),
           // Same rule as the authored layers above, for the same reason: the derived ones are
           // projected from TODAY's render, so drawing them over a pinned frame would label
           // historical pixels with the current semantics tree.

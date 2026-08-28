@@ -278,6 +278,14 @@ class ServeBundleHost(
 
   override fun parityIssues(): ParityIssues? = parityIssues
 
+  // Same read-once rule as the feeds around it: a published verdict describes the catalog this
+  // host was built from, so re-reading it per request could only ever pair a newer verdict with an
+  // older inventory.
+  private val parityFindings = ServeParityFindingStore.load(bundleDir, fileSystem)
+
+  override fun parityFindingsFor(previewId: String, referenceId: String): List<ParityFindingSet> =
+    parityFindings.forComparison(previewId, referenceId)
+
   // Read once at load, like the feeds above — and for a sharper reason than saving a file read.
   //
   // A catalog refresh swaps the staged directory over `bundleDir` and only *then* finishes its

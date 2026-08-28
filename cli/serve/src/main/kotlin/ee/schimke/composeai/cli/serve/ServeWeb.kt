@@ -1262,6 +1262,170 @@ ${captureControlsHtml().prependIndent("          ")}
     return "<span class=\"cp-issue-badge\" title=\"${WebEscaping.htmlEscape(title)}\">${WebEscaping.htmlEscape(label)} issue${if (issues.size == 1) "" else "s"}</span>"
   }
 
+  /**
+   * The parity **verdict** panel: what a parity run concluded about this comparison, grouped the
+   * way the run itself reports — accessibility and i18n first, then tokens, then layout, then the
+   * pixels (docs/PRINCIPLES.md's order in `yschimke/design-parity`, and the order a reader can act
+   * on).
+   *
+   * Server-rendered, deliberately. Everything else this page draws over its panels is built in the
+   * browser from a payload, because it is geometry and geometry is useless without script. A
+   * finding is a SENTENCE — "this label truncates in German", "padding is 24 where the spec says
+   * 12" — and a sentence that appears only after a bundle has downloaded and upgraded cannot be
+   * quoted into a bug, found with the browser's own search, or read at all by anything that does
+   * not run script. So the prose is HTML and only the anchors travel as data.
+   *
+   * The anchor payload rides INSIDE the section, immediately after the rows it keys. Two reasons,
+   * and the second is load-bearing: the ids are minted here and the payload is keyed by them, so
+   * keeping them adjacent is the only arrangement in which they cannot be built out of step — and
+   * `<cp-reference-compare>` installs the moment the parser reaches ITS tag, which is further down
+   * the page. A payload emitted after that tag, as the acceptance context is, does not exist yet
+   * when the element looks for it, and the highlights silently never wire up.
+   */
+  private fun parityVerdictHtml(sets: List<ParityFindingSet>): String {
+    val findings = sets.flatMap { it.findings }
+    if (findings.isEmpty()) return ""
+    // Worst declared status wins. A run that declared none at all is read off its own findings,
+    // which is the same rule the producing engine applies and keeps a hand-written manifest honest.
+    val declared = sets.mapNotNull { it.status }
+    val status =
+      when {
+        "fail" in declared -> "fail"
+        "warn" in declared -> "warn"
+        declared.isNotEmpty() -> "pass"
+        findings.any { it.severity == ParityFindingSeverity.ERROR } -> "fail"
+        findings.any { it.severity == ParityFindingSeverity.WARN } -> "warn"
+        else -> "pass"
+      }
+    val tally =
+      listOf(
+          ParityFindingSeverity.ERROR to "error",
+          ParityFindingSeverity.WARN to "warning",
+          ParityFindingSeverity.INFO to "note",
+        )
+        .mapNotNull { (severity, noun) ->
+          findings
+            .count { it.severity == severity }
+            .takeIf { it > 0 }
+            ?.let { "$it $noun${if (it == 1) "" else "s"}" }
+        }
+        .joinToString(" · ")
+    val anchors = LinkedHashMap<String, List<ParityAnchor>>()
+    val groups =
+      ParityFindingGroup.entries.mapNotNull { group ->
+        val rows = findings.filter { ParityFindingGroup.of(it.kind) == group }
+        if (rows.isEmpty()) return@mapNotNull null
+        val items = rows.mapIndexed { index, finding ->
+          val id = "${group.id}-$index"
+          if (finding.anchors.isNotEmpty()) anchors[id] = finding.anchors
+          parityFindingRowHtml(id, finding)
+        }
+        "    <section class=\"cp-parity-group\" data-cp-parity-group=\"${group.id}\">\n" +
+          "      <h3>${WebEscaping.htmlEscape(group.title)}" +
+          "<span class=\"cp-parity-count\">${rows.size}</span></h3>\n" +
+          "      <ul class=\"cp-parity-list\">\n        " +
+          items.joinToString("\n        ") +
+          "\n      </ul>\n    </section>"
+      }
+    // Only claimed when something on the page can actually respond to a pointer. A catalog whose
+    // producer publishes findings with no geometry gets the same panel without the instruction to
+    // hover, rather than an invitation that does nothing.
+    val hint =
+      if (anchors.isEmpty()) ""
+      else
+        "\n  <p class=\"cp-parity-hint\">Hover a finding to light the region it describes on " +
+          "both panels; click to keep it lit.</p>"
+    val report =
+      sets
+        .firstNotNullOfOrNull { it.reportUrl }
+        ?.let {
+          "<a class=\"cp-parity-report\" href=\"${WebEscaping.htmlEscape(it)}\" " +
+            "rel=\"noopener\">Full parity report</a>"
+        }
+        .orEmpty()
+    // Carries its own leading newline and is written without `trimIndent()`, like every other
+    // interpolated block on this page: trimming runs AFTER interpolation, so a nested block's own
+    // indentation would drag the page's with it, and an empty one on its own template line would
+    // leave a blank line on every catalog that publishes no verdict.
+    val section =
+      "\n<section class=\"cp-parity-verdict\" id=\"cp-parity-verdict\"" +
+        " aria-labelledby=\"cp-parity-verdict-title\">\n" +
+        "  <div class=\"cp-parity-verdict-head\">\n" +
+        "    <h2 id=\"cp-parity-verdict-title\">Design parity</h2>\n" +
+        "    <span class=\"cp-parity-status cp-parity-status--$status\">" +
+        status.replaceFirstChar { it.uppercase() } +
+        "</span>\n" +
+        "    <span class=\"cp-parity-tally\">${WebEscaping.htmlEscape(tally)}</span>" +
+        report +
+        "\n  </div>" +
+        hint +
+        "\n  <div class=\"cp-parity-groups\">\n" +
+        groups.joinToString("\n") +
+        "\n  </div>"
+    val payload =
+      if (anchors.isEmpty()) ""
+      else
+        "\n  <script type=\"application/json\" id=\"cp-parity-anchors\">" +
+          encodeParityAnchorPayload(ParityAnchorPayload(anchors)) +
+          "</script>"
+    return section + payload + "\n</section>"
+  }
+
+  /**
+   * One finding row.
+   *
+   * A row carries its anchor id when it HAS somewhere to point, and nothing else — no `tabindex`,
+   * no `role`, no `aria-pressed`. Those are added by `<cp-reference-compare>` once it has parsed
+   * the payload and actually built the boxes, because only then is the row a control.
+   *
+   * The server cannot know that. Script may be disabled, blocked by a policy, or simply fail to
+   * load, and on any of those the page still renders — that is the point of putting the prose in
+   * the document. Announcing every anchored row as a pressed-state button up front would hand a
+   * screen-reader or keyboard user a tab stop that does nothing when they reach it, on the one page
+   * whose no-script behaviour was the reason to render it server-side at all. The same is true of a
+   * payload keyed to a row the panels cannot place: the client drops the id, and a row that never
+   * became a control never looked like one.
+   */
+  private fun parityFindingRowHtml(id: String, finding: ParityFinding): String {
+    val expected = finding.detail["expected"]
+    val actual = finding.detail["actual"]
+    val token = finding.detail["token"] ?: finding.detail["property"]
+    val delta =
+      if (expected == null && actual == null) ""
+      else
+        "<span class=\"cp-parity-delta\">" +
+          (token?.let { "<code>${WebEscaping.htmlEscape(it)}</code>" } ?: "") +
+          (expected?.let {
+            "<span class=\"cp-parity-expected\">expected ${WebEscaping.htmlEscape(it)}</span>"
+          } ?: "") +
+          (actual?.let {
+            "<span class=\"cp-parity-actual\">actual ${WebEscaping.htmlEscape(it)}</span>"
+          } ?: "") +
+          "</span>"
+    // Every remaining key, as the row's title. A producer's structured payload is transported in
+    // full rather than narrowed to the two keys this page formats, so a check that reports a
+    // contrast ratio or a measured touch target is still readable here.
+    val rest =
+      finding.detail
+        .filterKeys { it != "expected" && it != "actual" && it != "token" && it != "property" }
+        .entries
+        .joinToString(" · ") { (key, value) -> "$key $value" }
+    val title = if (rest.isEmpty()) "" else " title=\"${WebEscaping.htmlEscape(rest)}\""
+    val anchored = finding.anchors.isNotEmpty()
+    val interactive = if (!anchored) "" else " data-cp-parity-finding=\"$id\""
+    val where =
+      if (!anchored) ""
+      else
+        "<span class=\"cp-parity-where\">${finding.anchors.size} region" +
+          "${if (finding.anchors.size == 1) "" else "s"}</span>"
+    return "<li class=\"cp-parity-finding cp-parity-finding--${finding.severity}" +
+      " cp-parity-finding--kind-${finding.kind}\"$interactive$title>" +
+      "<span class=\"cp-parity-sev\">${WebEscaping.htmlEscape(finding.severity)}</span>" +
+      "<span class=\"cp-parity-body\"><span class=\"cp-parity-msg\">" +
+      WebEscaping.htmlEscape(finding.message) +
+      "</span>$delta</span>$where</li>"
+  }
+
   private fun issuesForPreview(
     issues: List<ParityIssue>,
     preview: ServePreview,
@@ -9646,6 +9810,12 @@ $rows
     referenceAnnotations: List<DesignAnnotation> = emptyList(),
     actualAnnotations: List<DesignAnnotation> = emptyList(),
     /**
+     * The parity run's verdict for this exact (preview, reference) pair, as the catalog published
+     * it in `parity/findings.json`. Empty ⇒ the page renders exactly as it did before the manifest
+     * existed, which is every catalog whose producer does not write one.
+     */
+    parityFindings: List<ParityFindingSet> = emptyList(),
+    /**
      * Whether the host can project the **derived** layers — typography, theme and layout read off
      * the render's own semantics tree — for this preview, i.e. answer `/render/<id>.annotations`.
      *
@@ -10024,6 +10194,7 @@ ${scriptTag("known-differences.js")}
           .trimIndent()
       }
     val report = reportIssueHtml(reportIssue)
+    val parityVerdict = parityVerdictHtml(parityFindings)
     return document(
       changelogHref = changelogHref,
       title = "${reference.label} — design comparison",
@@ -10055,7 +10226,7 @@ ${scriptTag("known-differences.js")}
           </div>
           $annotationControls
           $derivedControls
-          <p class="cp-reference-result" role="status">comparing…</p>$acceptanceBand
+          <p class="cp-reference-result" role="status">comparing…</p>$acceptanceBand$parityVerdict
           $selectionControls$report
           <label class="cp-overlay-control">Overlay <input class="cp-overlay-range" type="range" min="0" max="100" value="50"><span>50%</span></label>
           <div class="cp-reference-overlay"><img src="$raster" alt=""><img src="$actual" alt=""></div>

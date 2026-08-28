@@ -1946,6 +1946,83 @@ class ServeWebFixtureTest {
                 ),
             ),
           ),
+        // The parity run's own verdict for this pair — the half that is prose rather than pixels,
+        // and the reason this page can now say WHY two frames differ. One finding per category a
+        // reader acts on, and the anchors deliberately reuse the same boxes the redline above
+        // annotates: a golden in which the highlight and the spec box describe different regions
+        // would hide exactly the drift the shared placement exists to prevent.
+        parityFindings =
+          listOf(
+            ParityFindingSet(
+              referenceId = comparisonReferences.first().id,
+              status = "fail",
+              reportUrl =
+                "https://github.com/yschimke/compose-ai-tools/blob/design-parity/compose-m3/" +
+                  "button-filled/report.html",
+              findings =
+                listOf(
+                  ParityFinding(
+                    kind = ParityFindingKind.TOKEN,
+                    severity = ParityFindingSeverity.ERROR,
+                    message = "spacing.padding: 24 vs spec 16 (Δ8)",
+                    detail =
+                      mapOf(
+                        "token" to "spacing.padding",
+                        "expected" to "16",
+                        "actual" to "24",
+                      ),
+                    anchors =
+                      listOf(
+                        ParityAnchor(
+                          side = "actual",
+                          bounds = AnnotationBounds(x = 12, y = 12, width = 196, height = 48),
+                          label = "Button",
+                        )
+                      ),
+                  ),
+                  ParityFinding(
+                    kind = ParityFindingKind.I18N,
+                    severity = ParityFindingSeverity.WARN,
+                    message =
+                      "\"Send\" risks truncation when localized: ≈154dp expanded vs 131dp " +
+                        "available.",
+                    anchors =
+                      listOf(
+                        ParityAnchor(
+                          side = "actual",
+                          bounds = AnnotationBounds(x = 46, y = 26, width = 128, height = 20),
+                          label = "Label",
+                        )
+                      ),
+                  ),
+                  ParityFinding(
+                    kind = ParityFindingKind.LAYOUT,
+                    severity = ParityFindingSeverity.WARN,
+                    message = "layout \"Send\": offset (1, -12), size Δ(41, 3) vs reference",
+                    anchors =
+                      listOf(
+                        ParityAnchor(
+                          side = "reference",
+                          bounds = AnnotationBounds(x = 46, y = 26, width = 128, height = 20),
+                        ),
+                        ParityAnchor(
+                          side = "actual",
+                          bounds = AnnotationBounds(x = 46, y = 26, width = 128, height = 20),
+                        ),
+                      ),
+                  ),
+                  // The prose-only case, in the same golden: a finding with no geometry keeps its
+                  // sentence and is not offered as a control.
+                  ParityFinding(
+                    kind = ParityFindingKind.CONTRAST,
+                    severity = ParityFindingSeverity.INFO,
+                    message =
+                      "label on container: 4.9:1 — passes AA for 14sp text, below AAA (7:1).",
+                    detail = mapOf("ratio" to "4.9", "required" to "4.5"),
+                  ),
+                ),
+            )
+          ),
         parityIssues = parityIssues,
       )
     // The same comparison, PINNED to an older publish (issue #3723) — the state a shared permalink

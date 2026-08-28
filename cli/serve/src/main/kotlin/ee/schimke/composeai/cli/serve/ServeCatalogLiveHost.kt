@@ -223,6 +223,9 @@ class ServeCatalogLiveHost(
 
   override fun parityIssues(): ParityIssues? = baked.parityIssues()
 
+  override fun parityFindingsFor(previewId: String, referenceId: String): List<ParityFindingSet> =
+    baked.parityFindingsFor(previewId, referenceId)
+
   // The known differences ride the baked staging dir, like the tag index and the two feeds above:
   // they are catalog data, not render output, so a live lane has nothing different to say about
   // them.
