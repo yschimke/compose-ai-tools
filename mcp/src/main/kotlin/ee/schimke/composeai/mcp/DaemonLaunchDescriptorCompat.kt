@@ -3,8 +3,8 @@ package ee.schimke.composeai.mcp
 /**
  * Source-compatibility shim for the move of `DaemonLaunchDescriptor` to `:daemon:core`
  * (`ee.schimke.composeai.daemon`), so an external consumer that imports the old name keeps
- * compiling across the upgrade. See [ee.schimke.composeai.daemon.DaemonLaunchDescriptor] for why it
- * moved.
+ * compiling across the upgrade. See [ee.schimke.composeai.daemon.protocol.DaemonLaunchDescriptor]
+ * for why it moved.
  *
  * **What this does not preserve: binary compatibility.** A typealias resolves to the new class at
  * compile time, so `DaemonClientFactory.spawn`'s JVM signature now names
@@ -22,10 +22,10 @@ package ee.schimke.composeai.mcp
  * Remove in the next major.
  */
 @Deprecated(
-  "Moved to the published daemon-core contract; import ee.schimke.composeai.daemon.DaemonLaunchDescriptor.",
+  "Moved to the published daemon-core contract; import ee.schimke.composeai.daemon.protocol.DaemonLaunchDescriptor.",
   ReplaceWith(
     "DaemonLaunchDescriptor",
-    "ee.schimke.composeai.daemon.DaemonLaunchDescriptor",
+    "ee.schimke.composeai.daemon.protocol.DaemonLaunchDescriptor",
   ),
 )
-typealias DaemonLaunchDescriptor = ee.schimke.composeai.daemon.DaemonLaunchDescriptor
+typealias DaemonLaunchDescriptor = ee.schimke.composeai.daemon.protocol.DaemonLaunchDescriptor

@@ -1,6 +1,6 @@
 package ee.schimke.composeai.daemon.client
 
-import ee.schimke.composeai.daemon.DaemonLaunchDescriptor
+import ee.schimke.composeai.daemon.protocol.DaemonLaunchDescriptor
 import ee.schimke.composeai.io.classpathArgFile
 import java.io.File
 import java.util.concurrent.TimeUnit

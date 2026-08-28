@@ -109,7 +109,7 @@
   },
   "mirroredConstants": {
     "SANDBOX_COUNT_PROP": {
-      "declaredBy": "daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/DaemonLaunchDescriptor.kt",
+      "declaredBy": "daemon/protocol/src/main/kotlin/ee/schimke/composeai/daemon/protocol/DaemonLaunchDescriptor.kt",
       "mirroredBy": [
         "daemon/android/src/main/kotlin/ee/schimke/composeai/daemon/DaemonMain.kt",
         "daemon/android/src/main/kotlin/ee/schimke/composeai/daemon/pool/SandboxProcessPool.kt"

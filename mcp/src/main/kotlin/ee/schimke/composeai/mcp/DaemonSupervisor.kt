@@ -1,11 +1,11 @@
 package ee.schimke.composeai.mcp
 
-import ee.schimke.composeai.daemon.DaemonLaunchDescriptor
 import ee.schimke.composeai.daemon.client.DaemonClient
 import ee.schimke.composeai.daemon.client.DaemonClientFactory
 import ee.schimke.composeai.daemon.client.DaemonSpawn
 import ee.schimke.composeai.daemon.client.WorkspaceId
 import ee.schimke.composeai.daemon.protocol.BackendKind
+import ee.schimke.composeai.daemon.protocol.DaemonLaunchDescriptor
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File

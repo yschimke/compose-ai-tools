@@ -272,7 +272,7 @@ class RepositoryConfigsTest(unittest.TestCase):
         # this job is the only thing that notices when a contract module stops resolving for it.
         # A change to a contract must reach it (issue #3824).
         for changed in (
-            "daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/DaemonLaunchDescriptor.kt",
+            "daemon/protocol/src/main/kotlin/ee/schimke/composeai/daemon/protocol/DaemonLaunchDescriptor.kt",
             "render-session/subprocess/build.gradle.kts",
             "preview-server/contract-probe/build.gradle.kts",
             "scripts/check-preview-server-contracts.sh",

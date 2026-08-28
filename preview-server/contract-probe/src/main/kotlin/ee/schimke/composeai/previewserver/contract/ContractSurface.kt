@@ -2,7 +2,7 @@ package ee.schimke.composeai.previewserver.contract
 
 import ee.schimke.composeai.bundle.BundleReader
 import ee.schimke.composeai.bundle.coordinates.CoordinateResolver
-import ee.schimke.composeai.daemon.DaemonLaunchDescriptor
+import ee.schimke.composeai.daemon.protocol.DaemonLaunchDescriptor
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec

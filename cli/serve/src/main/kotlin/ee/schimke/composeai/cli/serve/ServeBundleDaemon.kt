@@ -8,7 +8,7 @@ import ee.schimke.composeai.bundle.coordinates.CoordinateResolver
 import ee.schimke.composeai.bundle.extractBundleClassesAndManifest
 import ee.schimke.composeai.bundle.extractBundleIrArtifacts
 import ee.schimke.composeai.bundle.locateBundleSidecarJars
-import ee.schimke.composeai.daemon.DaemonLaunchDescriptor
+import ee.schimke.composeai.daemon.protocol.DaemonLaunchDescriptor
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.io.composeAiCacheDir
 import ee.schimke.composeai.previewdata.PreviewManifest

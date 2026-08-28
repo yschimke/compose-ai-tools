@@ -1,7 +1,6 @@
 package ee.schimke.composeai.mcp
 
 import com.google.common.truth.Truth.assertThat
-import ee.schimke.composeai.daemon.DaemonLaunchDescriptor
 import ee.schimke.composeai.daemon.JsonRpcServer
 import ee.schimke.composeai.daemon.RenderHost
 import ee.schimke.composeai.daemon.RenderRequest
@@ -11,6 +10,7 @@ import ee.schimke.composeai.daemon.client.DaemonClientFactory
 import ee.schimke.composeai.daemon.client.DaemonSpawn
 import ee.schimke.composeai.daemon.client.WorkspaceId
 import ee.schimke.composeai.daemon.protocol.BackendKind
+import ee.schimke.composeai.daemon.protocol.DaemonLaunchDescriptor
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
