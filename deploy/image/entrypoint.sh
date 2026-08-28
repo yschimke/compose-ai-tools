@@ -316,6 +316,49 @@ derive_live_seats() {
   echo "${seats}"
 }
 
+# The CPU budget this container may actually use.
+#
+# `nproc` does not answer that. It reports the processors *visible* to this process — the affinity
+# mask — so a container constrained with `docker --cpus 2` (or any equivalent CFS quota) that has
+# not also had its cpuset narrowed reports the host's core count. On a 16-core host that derived up
+# to the 32-seat ceiling for a container entitled to two CPUs' worth of work, which is the same
+# class of mistake as sizing from memory alone: a budget the box cannot work.
+#
+# So read the quota the way the memory path already reads its limit, and take the tighter of the
+# two. cgroup v2 puts `<quota|max> <period>` in one file; v1 splits it across two, with `-1` for
+# unlimited. Anything unreadable or non-numeric — including the literal `max` — leaves the visible
+# count as the answer, which is the pre-existing behaviour and the right one when the input is
+# missing rather than permissive.
+#
+# The file paths are parameters so the tests can drive both cgroup versions without a container.
+effective_cpus() {
+  local visible="${1:-0}" quota="" period="" quota_cpus=0
+  local v2="${CPU_MAX_FILE:-/sys/fs/cgroup/cpu.max}"
+  local v1_quota="${CPU_QUOTA_FILE:-/sys/fs/cgroup/cpu/cpu.cfs_quota_us}"
+  local v1_period="${CPU_PERIOD_FILE:-/sys/fs/cgroup/cpu/cpu.cfs_period_us}"
+  if [[ -r "${v2}" ]]; then
+    read -r quota period < "${v2}" 2>/dev/null || true
+  elif [[ -r "${v1_quota}" && -r "${v1_period}" ]]; then
+    quota="$(cat "${v1_quota}" 2>/dev/null || true)"
+    period="$(cat "${v1_period}" 2>/dev/null || true)"
+  fi
+  if [[ "${quota}" =~ ^[0-9]+$ && "${period}" =~ ^[0-9]+$ ]] && (( period > 0 )); then
+    # Rounded DOWN, then floored at 1. Down because this figure exists to BOUND the budget and the
+    # smaller answer is the safe one; floored at 1 because a sub-single-CPU quota is still a
+    # container that renders, and 0 would read as "unknown" and be ignored entirely. The seat floor
+    # in `derive_live_seats` is what actually decides the low end.
+    quota_cpus=$(( quota / period ))
+    (( quota_cpus < 1 )) && quota_cpus=1
+  fi
+  if (( quota_cpus > 0 && visible > 0 && quota_cpus < visible )); then
+    echo "${quota_cpus}"
+  elif (( quota_cpus > 0 && visible <= 0 )); then
+    echo "${quota_cpus}"
+  else
+    echo "${visible}"
+  fi
+}
+
 # When SERVE_LIVE_SEATS is unset we AUTO-DERIVE the budget from the box: reserve ~1 GB for the serve
 # host + OS, budget ~1.2 GB of headroom per permit, and take the SMALLER of what memory affords and
 # what the CPUs afford.
@@ -360,10 +403,14 @@ if [[ -z "${SERVE_LIVE_SEATS:-}" ]]; then
   else
     eff_mb=${mem_total_mb}
   fi
-  cpus=$(nproc 2>/dev/null || echo 0)
+  visible_cpus=$(nproc 2>/dev/null || echo 0)
+  # The quota, not just the affinity mask — see [effective_cpus].
+  cpus="$(effective_cpus "${visible_cpus}")"
   SERVE_LIVE_SEATS="$(derive_live_seats "${eff_mb}" "${cpus}")"
+  quota_note=""
+  (( cpus < visible_cpus )) && quota_note=" quota-limited from ${visible_cpus}"
   echo "entrypoint: auto live-seat budget ${SERVE_LIVE_SEATS}" \
-    "(effective mem ${eff_mb} MB, ${cpus} cpus)" >&2
+    "(effective mem ${eff_mb} MB, ${cpus} cpus${quota_note})" >&2
 fi
 [[ -n "${SERVE_LIVE_SEATS}" ]] && args+=(--live-seats "${SERVE_LIVE_SEATS}")
 # Background (theme-optimizer) renders admitted at once, server-wide. Unset leaves the server's own
