@@ -3032,8 +3032,14 @@ content-sniffed, so an upload must *be* one of these and a mislabelled file is r
 SVG is deliberately absent: it is an image to a human and a scriptable document to a browser, so
 serving one would hand an uploader active content on this origin.
 
-On the deployed image set `SERVE_ACCEPT_IMAGES=1` (plus `SERVE_IMAGE_UPLOAD_REPO`, optional
-`SERVE_IMAGE_TTL` / `SERVE_IMAGE_RATE_LIMIT`); it's off by default.
+On the deployed image, naming the gating repository is what turns the lane on:
+`SERVE_IMAGE_UPLOAD_REPO=<owner>/<repo>` (optional `SERVE_IMAGE_TTL` / `SERVE_IMAGE_RATE_LIMIT`).
+`SERVE_ACCEPT_IMAGES` is derived from it — that variable exists for nothing but this lane, so a box
+where it is set and `POST /images` still 404s is nobody's intent — and an explicit `0` (shut with
+the repository named) or `1` (insist without one, and get the server's own refusal) still wins. The
+derivation does not key on `SERVE_GITHUB_AUTH_*`, whose repo the image defaults to
+`yschimke/compose-ai-tools`: that would gate an adopter's upload lane on someone else's
+collaborators. See [deploy/image/README.md](../deploy/image/README.md#image-lane-on-previewcooee).
 
 ## Granting an agent temporary access (`--agent-grants`)
 

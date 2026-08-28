@@ -266,6 +266,46 @@ unavailable. Once resolved it is **pinned for the life of the process**: a later
 does not move it, because live snippet JVMs hold those jars open. Restart the container to compile
 against a newer catalog ABI.
 
+### Image lane on `preview.coo.ee`
+
+`POST /images` lets an agent that just rendered a preview hand the PNG to this box and get back an
+embeddable `/i/<id>.png` for a pull-request body — the mechanism
+[`share-preview --mechanism serve`](../../docs/public-preview-server.md#uploading-a-preview-image---accept-images)
+uses when it has neither `gh` nor push rights. Uploading is **never anonymous, on a `--public` box
+too**: the caller presents `Authorization: Bearer <github-token>` and GitHub itself is asked whether
+that account has access to the gating repository. Reading is open by design — GitHub's image proxy
+fetches an embedded image anonymously, so the unguessable 128-bit id is the whole grant.
+
+Turning it on is naming that repository:
+
+```bash
+SERVE_IMAGE_UPLOAD_REPO=yschimke/compose-ai-tools
+# optional: SERVE_IMAGE_TTL=604800 (7d default) · SERVE_IMAGE_RATE_LIMIT=60 (uploads/min/account)
+```
+
+`SERVE_ACCEPT_IMAGES` is derived from it (`entrypoint.sh`, guarded by
+[`test-image-lane-default.sh`](test-image-lane-default.sh)), because that variable exists for
+nothing but this lane — naming it and still getting a 404 from `POST /images` is nobody's intent,
+and the miss is silent at both ends. Set `SERVE_ACCEPT_IMAGES=0` to keep the lane shut with the
+repository named, or `=1` without one to get the server's own startup refusal.
+
+The derivation deliberately does **not** key on GitHub auth being configured, the way
+`SERVE_AGENT_GRANTS` does. The gating repository falls back to `SERVE_GITHUB_AUTH_REPO`, which this
+image defaults to `yschimke/compose-ai-tools` for the playground — so keying on auth would open an
+upload lane on every adopter's box gated by *our* collaborators rather than theirs. An operator who
+wants that fallback still gets it by naming the repository explicitly.
+
+Verify after a roll — the row on `/status`, and the refusal an unauthenticated caller gets, which is
+the same route answering rather than a 404:
+
+```bash
+curl -s https://preview.coo.ee/status.json | jq '.config | {acceptImages, imageUploadRepository}'
+curl -sS -o /dev/null -w '%{http_code}\n' -X POST --data-binary @render.png \
+  'https://preview.coo.ee/images?name=after.png'                       # 401 — lane is up, no credential
+curl -sS -H "Authorization: Bearer $(gh auth token)" --data-binary @render.png \
+  'https://preview.coo.ee/images?name=after.png'                       # 201 + the markdown to paste
+```
+
 ### Widening the background render lane (`SERVE_BACKGROUND_RENDERS`)
 
 The theme optimizer's renders run in their own server-wide lane, so a visitor's render is never
