@@ -132,9 +132,21 @@ public class AndroidBundleLaunch(
    * `kind=ACTIVITY` / `kind=APP_TOUR` previews render from `AppTourRobolectricRenderTest`, in the
    * sibling package `ee.schimke.composeai.apptour`, because Robolectric resolves the Application
    * per test CLASS. An Activity *is* the app: launched against the stub, every Hilt / Koin /
-   * `AppComponentFactory` activity fails on contact. Omitting `application=` here leaves it to the
-   * merged manifest, and the sibling package means nothing merges in from the renderer package's
-   * file to put the stub back.
+   * `AppComponentFactory` activity fails on contact. Not pinning one here hands the choice to
+   * whatever manifest Robolectric resolves, and the sibling package means nothing merges in from
+   * the renderer package's file to put the stub back.
+   *
+   * **What that resolves to on this path, today: the platform default.** The one-shot bundle render
+   * ([BundleRenderer]'s `renderAndroid`) packs no merged manifest — it never extracts
+   * `android/AndroidManifest.xml` nor calls [AndroidBundleResources.writeTestConfig], which are
+   * wired for the **daemon** lane only (see this class's header on what is still Phase 2). So a
+   * bundle whose app declares `android:name` does not get that Application here; Robolectric falls
+   * back to its own default manifest, where `<application>` names none. Packing the manifest for
+   * this lane — and keeping the Application class in `BundlePreviewTask`'s minimized `app.jar`,
+   * which is seeded from preview class names — is the follow-up that would close it.
+   *
+   * The line is still absent rather than pinned, because pinning the stub would make that gap
+   * permanent: once the manifest is packed, this lane starts honouring it with no further change.
    *
    * Unlike the Gradle path there is no `appTourUseConsumerApplication` to consult — a bundle
    * carries no extension — so this always tracks that flag's default.
