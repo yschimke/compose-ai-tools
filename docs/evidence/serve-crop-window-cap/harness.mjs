@@ -111,8 +111,10 @@ body { margin: 0; background: #fff; font-family: sans-serif; color: #222; }
     <div class="cap">plain sibling &mdash; a gutter-less 400x300 capture</div></div>
   <div class="box"><div class="cp-imgwrap">${windowSpan(mode)}</div>
     <div class="cap">same component, captured with a 20px gutter, shown through the clip window</div></div>
-  <div class="box">${heroCard(`<img alt="" src="${PLAIN}">`)}
-    <div class="cap">system-card hero, prebaked &mdash; fills its fixed 220px row</div></div>
+  <div class="box">${heroCard(`<img alt="" src="${GUTTERED}">`)}
+    <div class="cap">system-card hero, prebaked &mdash; the WHOLE guttered canvas, which is what
+      <code>ServeHeroImages.bake</code> keeps for a gutter crop (<code>crop?.takeIf { it.clip }</code>),
+      fitted to the row's 196px of content height</div></div>
   <div class="box">${heroCard(heroSpan(mode, cap))}
     <div class="cap">system-card hero, the cropped fallback &mdash; same row, same well</div></div>
 </div>`;

@@ -87,15 +87,28 @@ visibly short beside the prebaked hero next to it. Only cropped fallback heroes 
 which is why it survived the #4544 fix.
 
 ```css
-.cp-syslist .cp-crop { --cp-thumb-cap: 220px; }
+.cp-syslist .cp-crop--bleed { --cp-thumb-cap: 196px; }
 ```
+
+**196px, not the row's 220px.** `.cp-imgwrap` carries 12px of padding under the border-box `*`
+rule, so the row has 196px of *content* height — which is exactly what the prebaked hero measures.
+The row height would overflow the well by 12px each way, and in the narrow block would push the
+window up from 200px to 220px: a bigger mismatch than the one being fixed.
+
+**`--bleed` only.** `ServeWeb` emits that class for `!crop.clip` — the capture-gutter window, and
+the one crop whose published `--cp-crop-w-per-cap` is box width per 1px of *height*, because
+`computeGutterCrop` caps on height. A content crop's ratio is against its largest edge, so handing
+it a height would shrink a landscape window that never threatened the row.
 
 | before | after |
 | --- | --- |
 | ![Narrow before](narrow-before.png) | ![Narrow after](narrow-after.png) |
 
-The third and fourth figures in each shot are the two heroes. Before, the cropped one is 267×200
-in a 220px row; after, it is 293×220 — the row exactly, at both widths.
+The third and fourth figures in each shot are the two heroes, and both now come off the same
+guttered source: `ServeHeroImages.bake` keeps the whole canvas for a gutter crop
+(`crop?.takeIf { it.clip }`), so the prebaked path shows the gutter rather than a close crop.
+Before, the cropped one is 267×200 in a well with 196px of content height; after, it is 261×196 —
+the well exactly, at both widths.
 
 ## Reproducing
 
@@ -122,8 +135,8 @@ It prints the measured sizes it screenshots, which is the assertion in picture f
 ```
 before narrow  plain 267x200  window 320x240  hero 454x196  hero-window 267x200
 before desktop plain 320x240  window 320x240  hero 454x196  hero-window 320x240
-after  narrow  plain 267x200  window 267x200  hero 454x196  hero-window 293x220
-after  desktop plain 320x240  window 320x240  hero 454x196  hero-window 293x220
+after  narrow  plain 267x200  window 267x200  hero 454x196  hero-window 261x196
+after  desktop plain 320x240  window 320x240  hero 454x196  hero-window 261x196
 ```
 
 `hero` is the prebaked hero, unchanged throughout — which is the point: it is the cropped one that

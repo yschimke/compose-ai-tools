@@ -216,9 +216,22 @@ class ServeWebThumbCropTest {
     // number in a row that is not the grid's — 240px at desktop, overflowing, and 200px in the
     // narrow block, visibly short beside the prebaked hero beside it. Pinned here, next to the two
     // caps it has to agree with, because these three drifting apart is the whole bug.
+    //
+    // 196px rather than 220px, and both halves are load-bearing:
+    //  - the row's CONTENT height, since `.cp-imgwrap` carries 12px of padding under the
+    //    border-box `*` rule; the row height itself would overflow the well by 12px each way and,
+    //    in the narrow block, would push the window UP from 200px;
+    //  - `--bleed` only, the capture-gutter window, because that is the one crop whose published
+    //    `--cp-crop-w-per-cap` is width per 1px of HEIGHT. A content crop's ratio is against its
+    //    largest edge, so a height handed to it shrinks a landscape window for nothing.
     assertTrue(
-      css.contains(".cp-syslist .cp-crop { --cp-thumb-cap: 220px; }"),
-      "a system-card hero window tracks its 220px row, not the grid cap",
+      css.contains(".cp-syslist .cp-crop--bleed { --cp-thumb-cap: 196px; }"),
+      "a system-card gutter window tracks its row's content height, not the grid cap",
+    )
+    // The padding that makes it 196 rather than 220 — if this moves, so must the cap above.
+    assertTrue(
+      css.contains("background: var(--cp-surface); padding: 12px; }"),
+      "the image well's padding, which the hero cap is derived from",
     )
   }
 
