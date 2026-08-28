@@ -174,6 +174,7 @@ function pickVariantId(candidates, image, breakpointForSize) {
   const wantDevice = wantBreakpoint.device ?? null;
   const wantWidth = wantBreakpoint.widthDp ?? null;
   const wantFontScale = requestedFontScale(image.props);
+  const wantLocale = normalizedLocale(image.props?.locale);
   let best;
   let bestConstraint = -Infinity;
   let bestPreference = -Infinity;
@@ -222,6 +223,20 @@ function pickVariantId(candidates, image, breakpointForSize) {
     } else {
       preference += candidate.fontScale === null ? 1 : -1;
     }
+    // The LOCALE, in the same two tiers and for the same reason. `variantIdentity` has carried it
+    // since gutters started publishing physical edges, but nothing scored it — so one function with
+    // separate LTR and RTL `@Preview` annotations resolved BOTH images to whichever appears first,
+    // and an asymmetric gutter was published with its left and right edges swapped for one of them.
+    // That is a wrong crop rather than a missing one, which is the worse of the two.
+    //
+    // Compared normalised, because a catalog spells a locale the way its annotation did and `ar_XB`
+    // and `ar-XB` are the same render — the same normalisation `rendersRightToLeft` applies before
+    // it asks about direction.
+    if (wantLocale !== null) {
+      constraint += normalizedLocale(candidate.locale) === wantLocale ? 2 : -2;
+    } else {
+      preference += candidate.locale === null ? 1 : -1;
+    }
     if (
       constraint > bestConstraint ||
       (constraint === bestConstraint && preference > bestPreference)
@@ -246,6 +261,20 @@ function requestedFontScale(props) {
     typeof raw === "number" ? raw : Number.parseFloat(String(raw).replace(/x$/i, ""));
   if (!Number.isFinite(value) || value === 1) return null;
   return value;
+}
+
+/**
+ * A locale tag reduced to what makes two of them the same render: trimmed, `_` separators turned
+ * into `-`, and lower-cased. Null for anything that is not a non-empty string, so an image stating
+ * no locale constrains nothing.
+ *
+ * The renderer normalises the same way (`Pseudolocale.fromTag`, `LocaleDirection.isRtl`), and a
+ * comparison that did not would rank `ar_XB` and `ar-XB` as different annotations.
+ */
+function normalizedLocale(locale) {
+  if (typeof locale !== "string") return null;
+  const trimmed = locale.trim();
+  return trimmed === "" ? null : trimmed.replace(/_/g, "-").toLowerCase();
 }
 
 /**

@@ -290,12 +290,68 @@ test("records no gutter for a preview that declares none, or declares an empty o
   assert.equal(declarations.get("Zeroed"), undefined);
 });
 
-test("falls back to 1x when a manifest states no density, rather than inventing one", () => {
+test("publishes no gutter when a manifest states no density, rather than assuming 1x", () => {
+  // This replaces a test that pinned the 1x fallback as "not inventing one". It is: a render whose
+  // manifest leaves `density` null did not use 1x. The Android gutter path falls back to `2.0f`
+  // (`RobolectricRenderTest`) and the ordinary render spec to `DeviceDimensions.DEFAULT_DENSITY`,
+  // 2.625f — so publishing dp values as pixels subtracted a third to a half of the real margin, and
+  // a consumer cannot tell a wrong crop from a right one. It just draws the component at the wrong
+  // size, which is what the gutter exists to fix.
+  //
+  // Guessing is not available: the two backends fall back differently and this publisher does not
+  // reliably know which produced the PNG. Declining leaves the preview with the behaviour it had
+  // before gutters existed — the whole canvas, un-cropped — which is recoverable in a way a
+  // confidently-wrong crop is not.
   const bundle = {
     previews: [{ id: "Densityless", params: { captureGutter: { start: 4, top: 4, end: 4, bottom: 5 } } }],
     entries: {},
   };
-  assert.deepEqual(declarationsByPreviewId(bundle).get("Densityless"), {
-    previewParams: { captureGutter: { left: 4, top: 4, right: 4, bottom: 5 } },
+  assert.equal(declarationsByPreviewId(bundle).get("Densityless"), undefined);
+});
+
+test("publishes the gutter as soon as a density is stated", () => {
+  // The other side of the refusal above: it is about the missing input, not about the feature.
+  const bundle = {
+    previews: [
+      {
+        id: "Dense",
+        params: { density: 2, captureGutter: { start: 4, top: 4, end: 4, bottom: 5 } },
+      },
+    ],
+    entries: {},
+  };
+  assert.deepEqual(declarationsByPreviewId(bundle).get("Dense"), {
+    previewParams: { captureGutter: { left: 8, top: 8, right: 8, bottom: 10 } },
+  });
+});
+
+test("an underscore-separated RTL locale still swaps the physical edges", () => {
+  // `ar_XB` and `ar_EG` are supported spellings — a catalog spells a locale the way its annotation
+  // did. `Intl.Locale` throws on the underscore form, the catch read that as LTR, and the gutter
+  // was published with its left and right edges the wrong way round. The renderer has no such
+  // problem: `Pseudolocale.fromTag` and `LocaleDirection.isRtl` normalise the separator first.
+  const asymmetric = { start: 4, top: 4, end: 12, bottom: 5 };
+  for (const tag of ["ar-XB", "ar_XB", "ar_EG", "AR_eg"]) {
+    const bundle = {
+      previews: [
+        { id: "Rtl", params: { density: 1, locale: tag, captureGutter: asymmetric } },
+      ],
+      entries: {},
+    };
+    assert.deepEqual(
+      declarationsByPreviewId(bundle).get("Rtl"),
+      { previewParams: { captureGutter: { left: 12, top: 4, right: 4, bottom: 5 } } },
+      `${tag} renders right-to-left, so start (4) is the RIGHT margin`,
+    );
+  }
+  // …and the LTR spelling of the same pseudolocale is untouched.
+  const ltr = {
+    previews: [
+      { id: "Ltr", params: { density: 1, locale: "en_XA", captureGutter: asymmetric } },
+    ],
+    entries: {},
+  };
+  assert.deepEqual(declarationsByPreviewId(ltr).get("Ltr"), {
+    previewParams: { captureGutter: { left: 4, top: 4, right: 12, bottom: 5 } },
   });
 });
