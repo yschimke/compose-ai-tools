@@ -39,6 +39,22 @@ class ServeCatalogAdmin(
    * by default — a server with no sites is unaffected.
    */
   private val sites: ServeSiteRegistry = ServeSiteRegistry.empty(),
+  /**
+   * The server's catalog-registration monitor, so a re-point's **load and its provenance record**
+   * are one critical section rather than two.
+   *
+   * [load] already takes this lock internally; passing the same object here makes the wider section
+   * a reentrant nesting rather than a second lock with its own ordering. Defaulted to a private
+   * object for the tests and for any caller whose `load` takes no lock — there the swap serialises
+   * against nothing, which is exactly what it did before.
+   *
+   * What it closes: the branch refresher captures each entry's repo when it snapshots the tracker,
+   * then blocks on this monitor. With the load inside the lock and the [CatalogLoadTracker.repoint]
+   * outside it, the refresher could acquire the lock in between, see a tracker still naming the OLD
+   * repo, and reload it over the new registration — leaving the old repo's host serving while the
+   * provenance and `catalogs.json` both said the new one.
+   */
+  private val registrationLock: Any = Any(),
   /** Group table for resolving [ServeCatalogsConfig.Entry.group]; seeded from the config file. */
   groups: List<ServeCatalogsConfig.Group> = emptyList(),
   private val onLog: (String) -> Unit = { System.err.println(it) },
@@ -203,23 +219,46 @@ class ServeCatalogAdmin(
       // could not: `unregister` refuses those outright to keep a hostname from being stranded, and
       // a swap never strands one because the system never stops existing.
       if (current.repo != repo) {
-        val failure = runCatching {
-          load(entry.system, repo)
-        }
-          .getOrElse { it.message ?: "load failed" }
+        // ONE critical section, not two. The load takes this same monitor internally, so this is a
+        // reentrant nesting whose only effect is to hold it across the provenance record as well —
+        // and that is the whole fix: with `repoint` outside the lock, the branch refresher (which
+        // captured this system's repo when it snapshotted the tracker, then queued on the monitor)
+        // could get in between, still see the OLD repo in the tracker, and reload it straight over
+        // the new registration. The old repo's host would then be serving while the provenance and
+        // `catalogs.json` both named the new one. The refresher declines a stale capture too — see
+        // `ServeRunner.buildCatalogRefresher` — because either side alone leaves a window.
+        val failure =
+          synchronized(registrationLock) {
+            val loadFailure = runCatching {
+              load(entry.system, repo)
+            }
+              .getOrElse { it.message ?: "load failed" }
+            if (loadFailure == null) {
+              tracker.repoint(entry.system, repo = repo, branch = "$branchPrefix${entry.system}")
+              tracker.relist(
+                entry.system,
+                listed = entry.listed,
+                group = resolved,
+                loadPriority = entry.loadPriority,
+              )
+            }
+            loadFailure
+          }
         if (failure != null) {
+          // What the old catalog is actually doing, not what it is configured to do. `configFor`
+          // answers for a pending entry and for one whose initial load failed exactly as it does
+          // for a live one, so "still serving" was the reassuring half of a two-part answer that
+          // could be wrong — reconciliation during startup, or a persistent startup fetch failure,
+          // reaches here with nothing behind the old configuration at all.
+          val serving = tracker.stateFor(entry.system)?.available == true
+          val held =
+            if (serving) "still serving ${current.repo}"
+            else "kept the ${current.repo} configuration, which is not currently serving"
           return Result.Failed(
             entry.system,
-            "could not re-point '${entry.system}' to $repo, still serving ${current.repo}: $failure",
+            "could not re-point '${entry.system}' to $repo, $held: $failure",
           )
         }
-        tracker.repoint(entry.system, repo = repo, branch = "$branchPrefix${entry.system}")
-        tracker.relist(
-          entry.system,
-          listed = entry.listed,
-          group = resolved,
-          loadPriority = entry.loadPriority,
-        )
         onLog("serve: catalog ${entry.system} re-pointed ${current.repo} -> $repo via admin API")
         return Result.Ok(entry.system, persist { it.withEntry(entry.copy(repo = repo)) })
       }
@@ -228,7 +267,25 @@ class ServeCatalogAdmin(
           current.listed == entry.listed &&
           current.loadPriority == entry.loadPriority
       ) {
-        return Result.Conflict("catalog '${entry.system}' is already published")
+        // Everything the runtime tracks already matches — but the FILE may not, and this branch
+        // used to be the dead end that guaranteed it never would. A swap whose runtime half
+        // succeeded and whose `persist` failed transiently answers Ok-with-warning, leaving the
+        // tracker on the new repo and `catalogs.json` on the old one (or without the entry at all,
+        // after a retire-first caller). Every later POST of the same desired entry then arrives
+        // here, matches on every tracked field, and returns 409 before attempting persistence. The
+        // reconcile can never repair the file, and the next restart reverts or drops the catalog.
+        //
+        // So a mismatch between the file and what is running is a repair, not a conflict: persist
+        // and report it. In the ordinary steady state the file already agrees and this is the same
+        // 409 it always was.
+        if (persistedRepoMatches(entry.system, repo)) {
+          return Result.Conflict("catalog '${entry.system}' is already published")
+        }
+        onLog(
+          "serve: catalog ${entry.system} is running from $repo but the config file disagreed" +
+            " — rewriting it"
+        )
+        return Result.Ok(entry.system, persist { it.withEntry(entry.copy(repo = repo)) })
       }
       tracker.relist(
         entry.system,
@@ -288,6 +345,26 @@ class ServeCatalogAdmin(
       group = homeGroup(entry, repo, declaredGroups),
       loadPriority = entry.loadPriority,
     )
+
+  /**
+   * Whether the on-disk config already records [system] as coming from [repo].
+   *
+   * The question the unchanged-repo branch has to ask before answering 409, so a runtime swap whose
+   * persistence failed has somewhere to be retried from. True when there is no config file at all:
+   * registrations are then runtime-only by configuration and there is nothing that could disagree.
+   *
+   * A file that cannot be read answers **false**, so the caller attempts the write. That write will
+   * fail too and come back as a persistence warning naming the reason — which is a better answer
+   * than a 409 claiming the catalog is already published from a document nobody can parse.
+   */
+  private fun persistedRepoMatches(system: String, repo: String): Boolean {
+    val file = configFile ?: return true
+    return runCatching {
+        val persisted = file.load().catalogs.firstOrNull { it.system == system } ?: return false
+        (persisted.repo?.takeIf { it.isNotBlank() } ?: defaultRepo) == repo
+      }
+      .getOrDefault(false)
+  }
 
   /**
    * Apply [mutate] to the on-disk config. Returns null on success (or when no config file is
