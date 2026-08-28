@@ -1523,6 +1523,14 @@ if (values["publish-live-bundle"]) {
   // `@design-parity/catalog-export` predates `display` in `toCatalogManifest`; once a release
   // carrying it lands and the dep is bumped, `buildCatalog` writes it and this can be dropped.
   if (spec.display) manifest.display = spec.display;
+  // Same post-process, same reason, and NOT optional: `toCatalogManifest` allow-lists the fields it
+  // knows, so `compareWith` set on `buildCatalog`'s meta above is dropped on the way out and the
+  // field never reaches `catalog.json` — the published manifest looks exactly as it did before and
+  // nothing says otherwise. Setting it in both places is deliberate: the meta is where it belongs
+  // once the pinned exporter learns the field, this stamp is what makes it real today, and the two
+  // agreeing is what lets the stamp be deleted rather than hunted for.
+  const publishedCompareWith = manifestCompareWith(spec.compareWith);
+  if (publishedCompareWith) manifest.compareWith = publishedCompareWith;
   if (webRender) manifest.webRender = webRender;
   if (liveBundle) manifest.liveBundle = liveBundle;
   if (liveBundles.length > 0) manifest.liveBundles = liveBundles;
