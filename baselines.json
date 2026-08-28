@@ -1060,38 +1060,38 @@
     "serve-motion-index-motion-index-dark-take.dark.png": {
       "fixture": "serve-motion-index-motion-index-dark-take",
       "theme": "dark",
-      "sha256": "27a37ea55071625662b4aead7092bad609ed4c6aef1750784cba8ac9800757f7",
-      "size": 136719
+      "sha256": "98182ffdab659bb3f391fdc04e74d6b8955b40401a1a5a4262c48b8dcf21d1bf",
+      "size": 139328
     },
     "serve-motion-index-motion-index-dark-take.light.png": {
       "fixture": "serve-motion-index-motion-index-dark-take",
       "theme": "light",
-      "sha256": "27a37ea55071625662b4aead7092bad609ed4c6aef1750784cba8ac9800757f7",
-      "size": 136719
+      "sha256": "98182ffdab659bb3f391fdc04e74d6b8955b40401a1a5a4262c48b8dcf21d1bf",
+      "size": 139328
     },
     "serve-motion-index-motion-index-playing.dark.png": {
       "fixture": "serve-motion-index-motion-index-playing",
       "theme": "dark",
-      "sha256": "20a76de0926410bf568bd9cdf7b6adc1823821d80c339eebd9044b33f6039735",
-      "size": 121454
+      "sha256": "6e788d0a878860240097efc7c9e513056e2c9037e92903b3eadfa3c4309a7103",
+      "size": 124250
     },
     "serve-motion-index-motion-index-playing.light.png": {
       "fixture": "serve-motion-index-motion-index-playing",
       "theme": "light",
-      "sha256": "fe6c274d03d112ff98e1a6e2eea507dacc298dd295fa1d044e268b4ec4f0b2da",
-      "size": 119291
+      "sha256": "2d8cbd817a2421c2d699fddcab4c4c104c4f2681de0261672531608497cac3ee",
+      "size": 122092
     },
     "serve-motion-index.dark.png": {
       "fixture": "serve-motion-index",
       "theme": "dark",
-      "sha256": "76e4d0feb913e0edb1d7c59add249cd5401aef4b6ccdc47d50625dc4732a3351",
-      "size": 136750
+      "sha256": "2ba09ba34f1d2a030793e94c9287d17ceca67acc4a0b6c10bb0debbb6104a98c",
+      "size": 139365
     },
     "serve-motion-index.light.png": {
       "fixture": "serve-motion-index",
       "theme": "light",
-      "sha256": "ae431cd6c7132f2309d5b122aeea47cdd66af9f10ee3f61ef2afbddc59f39eb4",
-      "size": 134885
+      "sha256": "fc597525f65cad389b070b739015ae0636ddf029b30f6f3681e1b88b1054f661",
+      "size": 137445
     },
     "serve-notfound.dark.png": {
       "fixture": "serve-notfound",
