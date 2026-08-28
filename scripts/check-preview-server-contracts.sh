@@ -33,6 +33,7 @@ CONTRACT_PROJECTS=(
   ":daemon:core"
   ":daemon-protocol"
   ":daemon-devices"
+  ":daemon-bta"
   ":daemon-client"
   ":preview-data-api"
   ":render-session-api"

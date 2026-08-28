@@ -171,7 +171,7 @@ wider, and that two of the entries drag things a server should not carry.
 | --- | --- |
 | `daemon-protocol` | published — **split out of `daemon-core`**, see below |
 | `daemon-devices` | published — **split out of `daemon-core`** |
-| `daemon-core` (`bta`) | published; carries a leak (below) |
+| `daemon-bta` | published — **split out of `daemon-core`**, the last one |
 | `preview-data-api` (`designpages`) | published |
 | `render-session-api` | published |
 | `render-session-subprocess` | published; carries a leak (below) |
@@ -222,14 +222,19 @@ Measured on the ABI dumps: `daemon-core` 7,317 lines → 2,479, with `daemon-pro
 package did not move (`ee.schimke.composeai.daemon.protocol` is unchanged) and `:daemon:core`
 exposes the new module as `api`, so no consumer needed an import change.
 
-What is left of serve's coupling to `daemon-core` is **two imports**, and they are the ones the
-module graph cannot decide on its own:
+**Serve's coupling to `daemon-core` is now zero.** The last two imports were `BtaCompileSession`
+and `DiagnosticCollector` — the playground's in-process Kotlin compile. That was behaviour rather than a shape, so no
+rule about wire formats could place it: a preview server that offers a playground compiles the
+snippets it is given, and needs a compiler to do it. The decision — recorded here because the
+module graph could not make it — is that an extracted server **keeps the playground**, so the
+compile session is published as `:daemon-bta` rather than dropped or moved behind a network call.
 
-- `BtaCompileSession` and `DiagnosticCollector` — the playground's in-process Kotlin compile.
-  This is behaviour, not a shape, and it is genuine coupling rather than an accident of module
-  layout: a preview server that offers a playground really does need a compiler. Whether an
-  extracted server keeps the playground, or reaches a compile service, is a product question and
-  not one the module graph can answer.
+Publishing it publishes a dependency: `DiagnosticCollector` implements the Kotlin Build Tools API's
+`KotlinLogger` and `BtaCompileSession.compile` takes one, so an extracted server compiles against
+the BTA. That was already true and simply unstated — and understated, because `:daemon:core`
+declared the BTA as `implementation` while exposing its types publicly, which left a consumer able
+to name `BtaCompileSession` and then unable to resolve the `KotlinLogger` its method wanted. It is
+`api` in `:daemon-bta`.
 
 `DeviceDimensions` and `frameDpOverriddenBy` were the second group and are now
 `:daemon-devices` — a pure table plus arithmetic, no IO, which both ends have to agree on because

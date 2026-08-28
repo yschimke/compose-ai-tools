@@ -558,7 +558,7 @@ cold-fork range.
 
 The API is **BTA**, Kotlin's experimental **Build Tools API** (not BTS). The
 playground already uses it: [`PlaygroundBtaCompiler`](../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/PlaygroundBtaCompiler.kt)
-drives the same [`BtaCompileSession`](../../daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/bta/BtaCompileSession.kt)
+drives the same [`BtaCompileSession`](../../daemon/bta/src/main/kotlin/ee/schimke/composeai/daemon/bta/BtaCompileSession.kt)
 that backs the editor daemon. The default one-shot Run still does not retain BTA
 incremental state: it is staged into a fresh work directory, and a sandboxed Run
 starts a fresh compiler JVM. The explicit lease added below supplies the previous

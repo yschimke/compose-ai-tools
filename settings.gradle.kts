@@ -506,6 +506,13 @@ include(":daemon-devices")
 
 project(":daemon-devices").projectDir = file("daemon/devices")
 
+// In-process Kotlin compile, split out of `:daemon:core` for #3824 — the last of serve's imports
+// from that module, and the one that is genuine behavioural coupling rather than a misfiled shape.
+// Flat project name for the same reason as above.
+include(":daemon-bta")
+
+project(":daemon-bta").projectDir = file("daemon/bta")
+
 // Per-product data-product modules — each `data/<product>/` carries a `core` (generic Android /
 // Compose / AndroidX-test code, published) and a `connector` (daemon glue, unpublished) module.
 // See docs/daemon/DATA-PRODUCTS.md § "Module split (D2.2)".

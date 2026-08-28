@@ -34,6 +34,11 @@ dependencies {
   // `ee.schimke.composeai.daemon.devices.*` reaches it through here. The package did not move.
   api(project(":daemon-devices"))
 
+  // In-process Kotlin compile, split out for #3824. `api` because `JsonRpcServer`'s constructor
+  // takes a `BtaCompileService`, so the type is on this module's compile ABI, and because every
+  // existing consumer of `ee.schimke.composeai.daemon.bta.*` reaches it through here.
+  api(project(":daemon-bta"))
+
   api(project(":data-render-core"))
 
   // Semantics-tree models + structural differ (issue #1785). `api`, not `implementation`: the
