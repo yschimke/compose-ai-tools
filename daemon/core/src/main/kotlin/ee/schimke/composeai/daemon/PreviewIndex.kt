@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.data.overrides.OverrideVariantInteraction
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.locks.ReentrantReadWriteLock
@@ -436,6 +437,26 @@ internal constructor(
 
   /** A previewId resolved by [rowResolved]: the entry, and the `@PreviewParameter` row it named. */
   public data class Resolved(val info: PreviewInfoDto, val row: String?)
+
+  /**
+   * The **hover** target index a synthetic `_VARIANT_hovered` preview asks its render host to move
+   * a mouse onto, or null for every other preview.
+   *
+   * Hover is the one `@OverrideVariant` interaction with no in-composition half. Focus and press
+   * ride `RenderSpec.overrides.focus` — `FocusOverrideExtension` has to flip
+   * `LocalInputModeManager` from inside composition or the indication never draws — but a hover is
+   * pure positional input, so it is the render host that owns it end to end. That leaves the intent
+   * with nowhere on the wire to travel, and the engine reads it off the index here instead, exactly
+   * as [staticScrollFor] does for `@ScrollingPreview(END)`.
+   *
+   * Row-aware for the same reason [scrollCaptureFor] is: a `@PreviewParameter` row carries its
+   * base's variant.
+   */
+  public fun staticHoverFor(previewId: String): Int? {
+    val spec = rowResolved(previewId)?.info?.overrides ?: return null
+    if (spec.interaction != OverrideVariantInteraction.Hovered) return null
+    return spec.interactionIndex.coerceAtLeast(0)
+  }
 
   /**
    * Issue #1528 — resolves the [ScrollCaptureDto] for a given `(previewId, renderMode)` pair so the

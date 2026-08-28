@@ -508,11 +508,7 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
   // `@OverrideVariant` baked seed for a synthetic variant preview → the base override layer. A live
   // per-render `renderNow.overrides` is layered OVER this by `DesktopHost.specFromPreviewIdPayload`
   // (`layeredOver`), so live wins per key and the baked seed applies even with zero live overrides.
-  val bakedOverrides =
-    info.overrides
-      ?.toNamedOverrides()
-      ?.takeIf { it.isNotEmpty() }
-      ?.let { ee.schimke.composeai.daemon.protocol.PreviewOverrides(namedOverrides = it) }
+  val bakedOverrides = info.overrides?.toPreviewOverrides()
   val defaults =
     RenderSpec(
       previewId = info.id,

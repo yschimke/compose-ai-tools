@@ -13,8 +13,12 @@ import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
@@ -101,7 +105,22 @@ private fun ScrollAxis.toProductAxis(): ProductScrollAxis =
     ScrollAxis.HORIZONTAL -> ProductScrollAxis.HORIZONTAL
   }
 
-private fun driveHover(rule: AndroidComposeTestRule<*, ComponentActivity>, targetIndex: Int) {
+/**
+ * `@OverrideVariant(interaction = Hovered)` — move a mouse onto the [targetIndex]-th interactive
+ * node and let its state layer settle. Returns whether a target was found.
+ *
+ * Public because the **daemon** needs the same drive (issue #4639), and calls this rather than
+ * growing a second copy: a copy is what would let the two lanes disagree about which node index 0
+ * names, and the whole point of an index is that both lanes resolve it the same way.
+ *
+ * A hover is positional input with no in-composition half at all — no input-mode flip, no manager
+ * to walk — so unlike focus it never had a `renderNow.overrides` field, and only the render host
+ * can synthesise it. See [driveFocusPreview] for the other two.
+ */
+public fun driveHoverPreview(
+  rule: AndroidComposeTestRule<*, ComponentActivity>,
+  targetIndex: Int,
+): Boolean {
   val targets = rule.onAllNodes(interactiveNodeMatcher()).fetchSemanticsNodes()
   val target = targets.getOrNull(targetIndex)
   if (target == null) {
@@ -109,7 +128,7 @@ private fun driveHover(rule: AndroidComposeTestRule<*, ComponentActivity>, targe
       "@OverrideVariant hover: no interactive node at index $targetIndex; " +
         "capturing the undriven state."
     )
-    return
+    return false
   }
   val bounds = target.boundsInRoot
   val x = bounds.center.x
@@ -139,7 +158,69 @@ private fun driveHover(rule: AndroidComposeTestRule<*, ComponentActivity>, targe
   }
   org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
     .idleFor(java.time.Duration.ofMillis(FocusController.SETTLE_MS))
+  return true
 }
+
+/**
+ * `@OverrideVariant(interaction = Focused | Pressed)` — put focus on the [tabIndex]-th focusable
+ * node and, for a pressed variant, hold a pointer down on it. Returns whether focus landed.
+ *
+ * **Why the host does this and not `FocusOverrideExtension`.** The connector's `LaunchedEffect`
+ * walk (`moveFocus(Enter)` then N × `Next`) is the documented daemon path for
+ * `renderNow.overrides.focus`, and it does not land inside a daemon render on either backend — the
+ * probe for issue #4639 found the target node reporting `Focused=false` after forty frames on
+ * desktop, and the android daemon renders the resting state too. A `FocusRequester` on the same
+ * node in the same scene lands immediately, so what fails is the traversal, not focus itself. This
+ * addresses the node instead: `requestFocus()` on the index, which is a public semantics action and
+ * cannot be defeated by whatever leaves the root focus node inactive.
+ *
+ * The extension is still required and still installed — it provides `LocalInputModeManager` in
+ * keyboard mode, without which `Focusability.SystemDefined` refuses focus outright and the
+ * indication never draws. Only the *targeting* moves out here.
+ *
+ * The press is a touch down that is never released: releasing it would end the press before the
+ * capture and catch the ripple mid-retreat, and the held state is the one a "pressed" sticker
+ * exists to show. Touch rather than mouse because a mouse press also raises
+ * `HoverInteraction.Enter`. Both choices match `:renderer-desktop`'s `renderFocusPreview`.
+ */
+public fun driveFocusPreview(
+  rule: AndroidComposeTestRule<*, ComponentActivity>,
+  tabIndex: Int,
+  pressed: Boolean,
+): Boolean {
+  val focusables = rule.onAllNodes(focusableNodeMatcher()).fetchSemanticsNodes()
+  if (tabIndex !in focusables.indices) {
+    System.err.println(
+      "@OverrideVariant focus: no focusable node at index $tabIndex; capturing the undriven state."
+    )
+    return false
+  }
+  rule.onAllNodes(focusableNodeMatcher())[tabIndex].requestFocus()
+  rule.waitForIdle()
+  org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
+    .idleFor(java.time.Duration.ofMillis(FocusController.SETTLE_MS))
+  // Verify rather than assume: a component can refuse focus, and publishing a "focused" sticker of
+  // one that declined is the plausible-but-wrong picture this change exists to remove.
+  if (rule.onAllNodes(isFocused()).fetchSemanticsNodes().isEmpty()) {
+    System.err.println(
+      "@OverrideVariant focus: nothing took focus at index $tabIndex; capturing the undriven state."
+    )
+    return false
+  }
+  if (pressed) {
+    rule.onAllNodes(isFocused()).onFirst().performTouchInput { down(center) }
+    rule.waitForIdle()
+    org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
+      .idleFor(java.time.Duration.ofMillis(FocusController.SETTLE_MS))
+  }
+  return true
+}
+
+/** The `tabIndex` addressing space: every node that can take focus, in traversal order. */
+private fun focusableNodeMatcher() =
+  SemanticsMatcher("can take focus") { node ->
+    node.config.getOrNull(SemanticsActions.RequestFocus) != null
+  }
 
 private fun interactiveNodeMatcher() =
   SemanticsMatcher("has an interactive action") { node ->
@@ -1870,7 +1951,7 @@ abstract class RobolectricRenderTestBase(
             // it would combine Hovered and Pressed, and focusing merely to find the target would
             // combine Hovered and Focused.
             capture?.hover?.let { hover ->
-              driveHover(rule, hover.targetIndex)
+              driveHoverPreview(rule, hover.targetIndex)
               rule.mainClock.advanceTimeBy(FocusController.SETTLE_MS)
               currentTime += FocusController.SETTLE_MS
             }

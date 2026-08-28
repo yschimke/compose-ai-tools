@@ -2,8 +2,14 @@ package ee.schimke.composeai.daemon
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -1686,3 +1692,41 @@ fun TimedRevealPreview() {
 
 /** When [TimedRevealPreview]'s square lands, in milliseconds of composition time. */
 const val TIMED_REVEAL_DELAY_MS: Long = 200L
+
+/**
+ * A clickable square that paints its own **interaction state**: red at rest, blue hovered, green
+ * pressed.
+ *
+ * The fixture for `@OverrideVariant(interaction = …)` on the daemon lane. It reads
+ * `collectIsHoveredAsState` / `collectIsPressedAsState` off the interaction source it hands
+ * `Modifier.clickable`, so the colour flips only when a **real** pointer event reaches that source
+ * — the harness has to actually deliver the hover or the press. That is the distinction issue #3672
+ * drew: a fixture that emitted into the interaction source itself would report a state layer
+ * whether or not the component could receive the state, and would pass against a renderer that
+ * drives nothing.
+ *
+ * A colour rather than a Material state layer because the assertion is about *whether* the state
+ * arrived, and an 8%-alpha overlay in an exported vector is a much weaker signal than a fill that
+ * changed outright. Pinned by [OverrideIntegrationTest.interactionVariantsExportTheStateTheyName].
+ */
+@Composable
+fun InteractionStateSquare() {
+  val interactionSource = remember { MutableInteractionSource() }
+  val hovered by interactionSource.collectIsHoveredAsState()
+  val pressed by interactionSource.collectIsPressedAsState()
+  val focused by interactionSource.collectIsFocusedAsState()
+  val fill =
+    when {
+      pressed -> Color(0xFF66BB6A)
+      hovered -> Color(0xFF42A5F5)
+      focused -> Color(0xFFFFA726)
+      else -> Color(0xFFEF5350)
+    }
+  Box(
+    modifier =
+      Modifier.fillMaxSize().background(fill).hoverable(interactionSource).clickable(
+        interactionSource = interactionSource,
+        indication = null,
+      ) {}
+  )
+}

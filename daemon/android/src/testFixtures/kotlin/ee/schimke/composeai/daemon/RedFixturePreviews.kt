@@ -11,6 +11,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -221,6 +226,40 @@ fun OverridableSquare() {
     ee.schimke.composeai.overrides.previewOverrideColor("fill", default = Color(0xFFEF5350))
   ee.schimke.composeai.overrides.previewOverrideString("label", default = "hi")
   Box(modifier = Modifier.fillMaxSize().background(fill))
+}
+
+/**
+ * A clickable square that paints its own **interaction state**: red at rest, blue hovered, orange
+ * focused, green pressed. Android twin of `:daemon:desktop`'s fixture of the same name.
+ *
+ * The colours come off the interaction source it hands `Modifier.clickable`, so each one appears
+ * only when a **real** event reaches that source — a mouse hover dispatched by the render host, or
+ * a focus walk the connector's `FocusOverrideExtension` performed. A fixture that emitted into the
+ * source itself would report every state whether or not the harness drove one, which is the
+ * distinction issue #3672 drew and the reason this fixture is worth having at all.
+ *
+ * Pinned by [OverrideIntegrationTest.interactionVariantsRenderTheStateTheyName].
+ */
+@Composable
+fun InteractionStateSquare() {
+  val interactionSource = remember { MutableInteractionSource() }
+  val hovered by interactionSource.collectIsHoveredAsState()
+  val pressed by interactionSource.collectIsPressedAsState()
+  val focused by interactionSource.collectIsFocusedAsState()
+  val fill =
+    when {
+      pressed -> Color(0xFF66BB6A)
+      hovered -> Color(0xFF42A5F5)
+      focused -> Color(0xFFFFA726)
+      else -> Color(0xFFEF5350)
+    }
+  Box(
+    modifier =
+      Modifier.fillMaxSize().background(fill).hoverable(interactionSource).clickable(
+        interactionSource = interactionSource,
+        indication = null,
+      ) {}
+  )
 }
 
 @Composable

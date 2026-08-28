@@ -512,11 +512,8 @@ data class PreviewManifestEntry(
     val showBackground = showBackground ?: p?.showBackground ?: true
     val backgroundColor = backgroundColor ?: p?.backgroundColor ?: 0L
     val wrapperClassName = p?.wrapperClassName
-    val bakedOverrides =
-      overrides
-        ?.toNamedOverrides()
-        ?.takeIf { it.isNotEmpty() }
-        ?.let { PreviewOverrides(namedOverrides = it) }
+    // Seeds AND the harness interaction, in one shared translation — see `toPreviewOverrides`.
+    val bakedOverrides = overrides?.toPreviewOverrides()
     return ResolvedRenderParams(
       widthPx = resolvedWidthPx,
       heightPx = resolvedHeightPx,
