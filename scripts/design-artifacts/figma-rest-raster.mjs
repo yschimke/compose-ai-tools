@@ -218,10 +218,20 @@ export class FigmaRestRasterizer {
     // to make an unchanged kit cost a single request.
     if (this.cacheDir) {
       for (const [fileKey, ids] of [...missingByFile]) {
-        if (!(await this.cacheIsCurrent(fileKey))) continue;
-        for (const nodeId of [...ids]) {
+        // Read from disk BEFORE paying for the revision check. A file listed in
+        // `index.json` whose requested nodes are not actually cached — a partial
+        // import, a node added to the map since — would otherwise cost a
+        // `?depth=1` request that cannot enable a single hit, turning a
+        // one-request miss into two. Worse under a 429: `fetchWithRetry` would
+        // spend its whole backoff budget on a question whose answer is moot.
+        const hits = new Map();
+        for (const nodeId of ids) {
           const cached = this.nodeFromCache({ fileKey, nodeId });
-          if (!cached) continue;
+          if (cached) hits.set(nodeId, cached);
+        }
+        if (hits.size === 0) continue;
+        if (!(await this.cacheIsCurrent(fileKey))) continue;
+        for (const [nodeId, cached] of hits) {
           this.nodes.set(`${fileKey}/${nodeId}`, cached);
           ids.delete(nodeId);
         }

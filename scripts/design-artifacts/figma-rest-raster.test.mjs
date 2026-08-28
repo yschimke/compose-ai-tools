@@ -282,6 +282,9 @@ test("falls through to the nodes endpoint when the cache misses", async () => {
   // A miss is not fatal here — unlike the parity run, where the cache is
   // authoritative. It just costs the request it would have cost anyway.
   assert.equal(calls.filter((url) => url.includes("/nodes?")).length, 1);
+  // And ONLY that request: the revision check is skipped when nothing on disk
+  // could satisfy the batch, so a miss stays one request rather than two.
+  assert.equal(calls.filter((url) => url.includes("?depth=1")).length, 0);
 });
 
 test("ignores a cacheDir that does not exist", async () => {
