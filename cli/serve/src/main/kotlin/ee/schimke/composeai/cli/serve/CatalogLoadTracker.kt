@@ -161,6 +161,32 @@ class CatalogLoadTracker(
   /** The configured entry for [system], or null when it isn't served here. */
   fun configFor(system: String): Config? = states[system]?.config
 
+  /**
+   * The full tracked state for [system] — configuration **and** whether anything is actually
+   * serving it — or null when it isn't served here.
+   *
+   * [configFor] answers only half the question, and a caller that reports on a catalog needs the
+   * other half: a pending entry and one whose initial load failed both have a configuration, and
+   * neither has a session behind it. Describing either as "still serving" is reassuring and wrong.
+   */
+  fun stateFor(system: String): State? = states[system]
+
+  /**
+   * Whether a background pass queued for [system] against [repo] is still about the catalog it was
+   * queued for.
+   *
+   * The branch refresher captures each entry's repo when it snapshots this tracker, and can then
+   * sit on the server's registration monitor for the whole of an admin re-point. "Does the system
+   * still exist" was the only test it made afterwards, and it is not enough: reloading the captured
+   * OLD repo puts the old repo's host back in front of the new registration, and the provenance and
+   * `catalogs.json` then both name a repository the served bytes did not come from.
+   *
+   * Asked of the tracker rather than compared at the call site because the tracker is where the
+   * answer lives and where [ServeCatalogAdmin] writes it — under the same monitor the caller is
+   * holding when it asks.
+   */
+  fun stillPointsAt(system: String, repo: String): Boolean = configFor(system)?.repo == repo
+
   /** First currently usable catalog in configured order, or null while every catalog is pending. */
   fun firstAvailableSystem(): String? = snapshot().firstOrNull { it.available }?.config?.system
 

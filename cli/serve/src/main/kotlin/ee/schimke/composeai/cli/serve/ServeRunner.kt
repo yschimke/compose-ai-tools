@@ -2927,6 +2927,9 @@ public class ServeRunner(private val options: ServeOptions) : ServeOptions by op
       branchPrefix = catalogBranchPrefix,
       configFile = catalogsFile,
       groups = catalogsConfig.groups,
+      // The same monitor `load` takes below, so a re-point holds it across the provenance record
+      // too — see the parameter's doc for the interleaving that closes.
+      registrationLock = catalogRegistrationLock,
       load = { system, repo ->
         backgroundWork.whileLoadingCatalog {
           synchronized(catalogRegistrationLock) {
@@ -2993,7 +2996,18 @@ public class ServeRunner(private val options: ServeOptions) : ServeOptions by op
       reload = { system, repo ->
         val result = backgroundWork.whileLoadingCatalog {
           synchronized(catalogRegistrationLock) {
-            if (loads.configFor(system) == null) return@synchronized null
+            // Both halves of "is this pass still about the catalog it was queued for". The system
+            // still existing was the only test, and it is not enough: a pass captures each entry's
+            // repo when it snapshots the tracker, and can then sit on this monitor for the whole of
+            // an admin re-point. Reloading the captured OLD repo afterwards would put the old
+            // repo's host back in front of the new registration, with the provenance and
+            // `catalogs.json` both naming the new one — a catalog served from a repository it had
+            // left, reporting that it had left it.
+            //
+            // Declining is the right answer rather than reloading the CURRENT repo: the admin has
+            // just fetched it, so there is nothing to refresh, and the next ordinary pass picks up
+            // the new provenance from the tracker anyway.
+            if (!loads.stillPointsAt(system, repo)) return@synchronized null
             val result = store.load(system, sourceRepo = repo)
             loads.record(result)
             result
