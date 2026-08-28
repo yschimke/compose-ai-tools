@@ -179,4 +179,38 @@ class AppTourDiscoveryTest {
       activities.map { it.className },
     )
   }
+
+  @Test
+  fun `an app that owns a library-adjacent namespace keeps its own activities`() {
+    // The exclusion list matches by prefix, so it has to name LIBRARY namespaces, never whole
+    // vendor ones. Now in Android really does ship as `com.google.samples.apps.nowinandroid`: a
+    // bare `com.google.` prefix would classify every one of its screens as library-injected and
+    // leave its catalog with no activities at all, while still dropping the Firebase trampolines
+    // sitting one package over.
+    val merged =
+      """
+      <?xml version="1.0" encoding="utf-8"?>
+      <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          package="com.google.samples.apps.nowinandroid">
+          <application>
+              <activity android:name=".MainActivity" android:exported="true">
+                  <intent-filter>
+                      <action android:name="android.intent.action.MAIN" />
+                      <category android:name="android.intent.category.LAUNCHER" />
+                  </intent-filter>
+              </activity>
+              <activity android:name="com.google.firebase.auth.internal.RecaptchaActivity" />
+              <activity android:name="com.google.android.gms.common.api.GoogleApiActivity" />
+          </application>
+      </manifest>
+      """
+        .trimIndent()
+
+    val activities = AppTourDiscovery.parseManifestActivities(merged.byteInputStream())
+
+    assertEquals(
+      listOf("com.google.samples.apps.nowinandroid.MainActivity"),
+      activities.map { it.className },
+    )
+  }
 }

@@ -265,6 +265,82 @@ class GenerateRobolectricPropertiesTaskTest {
     assertThat(body).doesNotContain("application=")
   }
 
+  /**
+   * The app-tour lane's own file: `ee/schimke/composeai/apptour/robolectric.properties`. It is a
+   * SIBLING package of `…renderer`, not a child, so Robolectric merges nothing into it from the
+   * composable lane — which is the whole reason omitting `application=` here means "use the
+   * manifest" rather than "inherit the stub".
+   */
+  private fun generateAppTour(
+    useConsumerApplication: Boolean,
+    appTourUseConsumerApplication: Boolean,
+  ): String {
+    val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
+    val task =
+      project.tasks
+        .register(
+          "composePreviewGenerateRobolectricProperties",
+          GenerateRobolectricPropertiesTask::class.java,
+        )
+        .get()
+    task.useConsumerApplication.set(useConsumerApplication)
+    task.appTourUseConsumerApplication.set(appTourUseConsumerApplication)
+    task.consumerCompileSdk.set(36)
+    task.defaultSdk.set(GenerateRobolectricPropertiesTask.DEFAULT_SDK)
+    task.buildJavaMajor.set(21)
+    task.outputDir.set(
+      tmp.newFolder("apptour-out-$useConsumerApplication-$appTourUseConsumerApplication")
+    )
+    task.generate()
+    return task.outputDir
+      .get()
+      .asFile
+      .resolve("ee/schimke/composeai/apptour/robolectric.properties")
+      .readText()
+  }
+
+  @Test
+  fun `app-tour lane leaves the Application to the manifest by default`() {
+    // An Activity IS the app: launched against the stub, every Hilt / Koin / AppComponentFactory
+    // activity fails on contact. No `application=` line means Robolectric falls back to the
+    // manifest-declared class.
+    val body = generateAppTour(useConsumerApplication = false, appTourUseConsumerApplication = true)
+    assertThat(body.lines().none { it.startsWith("application=") }).isTrue()
+  }
+
+  @Test
+  fun `app-tour lane can be put back on the stub`() {
+    val body =
+      generateAppTour(useConsumerApplication = false, appTourUseConsumerApplication = false)
+    assertThat(body.lines()).contains("application=android.app.Application")
+  }
+
+  @Test
+  fun `useConsumerApplication true keeps the app-tour lane on the manifest`() {
+    // The module-wide opt-in must not be undone by the app-tour flag: if composable previews are
+    // already running the consumer's Application, activities certainly should be.
+    val body = generateAppTour(useConsumerApplication = true, appTourUseConsumerApplication = false)
+    assertThat(body.lines().none { it.startsWith("application=") }).isTrue()
+  }
+
+  @Test
+  fun `app-tour lane pins the same sdk graphics and shadows as the composable lane`() {
+    // A module must not render its activities at a different API level, or without the font / coil
+    // / paused-clock shadows, than its composables.
+    val appTour =
+      generateAppTour(useConsumerApplication = false, appTourUseConsumerApplication = true)
+    val composable = generate(useConsumerApplication = false, override = null, compileSdk = 36)
+    val carried = { body: String ->
+      body.lines().filter {
+        it.startsWith("sdk=") ||
+          it.startsWith("graphicsMode=") ||
+          it.startsWith("shadows=") ||
+          it.startsWith("instrumentedPackages=")
+      }
+    }
+    assertThat(carried(appTour)).isEqualTo(carried(composable))
+  }
+
   private fun generateDaemon(useConsumerApplication: Boolean): String {
     val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
     val task =
@@ -275,6 +351,7 @@ class GenerateRobolectricPropertiesTaskTest {
         )
         .get()
     task.useConsumerApplication.set(useConsumerApplication)
+    task.appTourUseConsumerApplication.set(true)
     task.consumerCompileSdk.set(36)
     task.defaultSdk.set(GenerateRobolectricPropertiesTask.DEFAULT_SDK)
     task.buildJavaMajor.set(21)
@@ -305,6 +382,7 @@ class GenerateRobolectricPropertiesTaskTest {
         )
         .get()
     task.useConsumerApplication.set(useConsumerApplication)
+    task.appTourUseConsumerApplication.set(true)
     if (override != null) task.sdkOverride.set(override)
     if (compileSdk != null) task.consumerCompileSdk.set(compileSdk)
     if (maxSupportedSdkOverride != null) task.maxSupportedSdkOverride.set(maxSupportedSdkOverride)

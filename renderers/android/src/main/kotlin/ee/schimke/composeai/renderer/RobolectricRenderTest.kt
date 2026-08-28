@@ -251,8 +251,46 @@ private val overridesSidecarJson = Json { encodeDefaults = true }
 object PreviewManifestLoader {
   private val json = Json { ignoreUnknownKeys = true }
 
+  /**
+   * Which half of the manifest a render class claims.
+   *
+   * The two lanes exist because they need different Robolectric *Applications*, and Robolectric
+   * settles that per test class (through the `robolectric.properties` merged from the class's own
+   * package), never per test method:
+   * - [COMPOSABLE] hosts an isolated composable, which has no business running the consumer's
+   *   `Application.onCreate()` — DI graphs, Firebase, WorkManager and friends routinely fail inside
+   *   the sandbox, so that lane renders under a stub `android.app.Application`.
+   * - [APP] launches the consumer's real Activity, which *is* the app. Denying it the
+   *   manifest-declared Application is denying it the thing it was written against: a Hilt Activity
+   *   greets the stub with "Hilt Activity must be attached to an @HiltAndroidApp Application", and
+   *   before this split every activity tour in every DI-using app in the fleet failed exactly
+   *   there.
+   *
+   * Splitting the manifest by lane is what lets each class carry its own Application without the
+   * other paying for it — a module's composable previews keep the stub even when its tours need the
+   * real thing. `ee.schimke.composeai.apptour` is deliberately NOT a subpackage of this one:
+   * Robolectric merges properties down the package hierarchy, so a nested package would inherit
+   * this lane's `application=` line and have to override it.
+   */
+  enum class Lane {
+    /** Everything that is not an app-level preview — the historical, and still default, lane. */
+    COMPOSABLE,
+    /** [PreviewKind.ACTIVITY] and [PreviewKind.APP_TOUR] — the previews that launch an Activity. */
+    APP;
+
+    internal fun claims(kind: PreviewKind): Boolean {
+      val app = kind == PreviewKind.ACTIVITY || kind == PreviewKind.APP_TOUR
+      return if (this == APP) app else !app
+    }
+  }
+
   @JvmStatic
-  fun loadShard(shardIndex: Int, shardCount: Int): List<Array<Any>> {
+  @JvmOverloads
+  fun loadShard(
+    shardIndex: Int,
+    shardCount: Int,
+    lane: Lane = Lane.COMPOSABLE,
+  ): List<Array<Any>> {
     require(shardCount >= 1) { "shardCount must be >= 1" }
     require(shardIndex in 0 until shardCount) { "shardIndex must be in [0, $shardCount)" }
     val manifestPath = System.getProperty("composeai.render.manifest") ?: return emptyList()
@@ -299,7 +337,12 @@ object PreviewManifestLoader {
     val expandedByEntry =
       selected
         .filter {
-          it.params.kind != PreviewKind.XR_SUBSPACE &&
+          // The lane split runs alongside the three always-dropped kinds, and for the same reason:
+          // an entry this class will not render must never reach `strategyFor`. It stays in
+          // `allEntries` below, so the stale-fan-out sweep still expects the other lane's outputs
+          // and neither class deletes the other's PNGs.
+          lane.claims(it.params.kind) &&
+            it.params.kind != PreviewKind.XR_SUBSPACE &&
             it.params.kind != PreviewKind.LOTTIE &&
             it.params.kind != PreviewKind.SVG
         }

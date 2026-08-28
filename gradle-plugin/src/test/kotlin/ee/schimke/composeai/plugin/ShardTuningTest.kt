@@ -219,6 +219,52 @@ class ShardTuningTest {
   }
 
   @Test
+  fun `perPreviewRowCosts excludes app-level previews`() {
+    // ACTIVITY / APP_TOUR previews render from `AppTourRobolectricRenderTest`, a lane of its own
+    // that is never sharded. Counting them here would size the shards for rows they are never
+    // given — an activity-heavy module (Home Assistant declares 18) would spin up idle forks.
+    //
+    // The APP_TOUR entry also carries a data product whose OWN "kind" is a product id, which is why
+    // the exclusion anchors on the two app-level names rather than on "the first kind in the
+    // entry".
+    val manifest =
+      """
+      {
+        "schemaVersion": 1,
+        "previews": [
+          {
+            "id": "com.example.Static",
+            "functionName": "Static",
+            "className": "com.example.PreviewsKt",
+            "params": { "kind": "COMPOSE" },
+            "captures": [ { "renderOutput": "s.png", "cost": 1.0 } ]
+          },
+          {
+            "id": "activity__MainActivity",
+            "functionName": "MainActivity",
+            "className": "com.example.MainActivity",
+            "params": { "kind": "ACTIVITY" },
+            "captures": [ { "renderOutput": "activity__MainActivity.png", "cost": 12.0 } ]
+          },
+          {
+            "id": "apptour__getting-started",
+            "functionName": "MainActivity",
+            "className": "com.example.MainActivity",
+            "params": { "kind": "APP_TOUR" },
+            "captures": [ { "renderOutput": "t0.png", "cost": 12.0 } ],
+            "dataProducts": [ { "kind": "render/scroll/gif", "output": "t.gif", "cost": 40.0 } ]
+          }
+        ]
+      }
+      """
+        .trimIndent()
+
+    val rows = ShardTuning.perPreviewRowCosts(manifest)
+    assertThat(rows).hasSize(1)
+    assertThat(rows[0]).isWithin(1e-6).of(1.0)
+  }
+
+  @Test
   fun `perPreviewRowCosts prices captures without a cost field at 1_0`() {
     // Pre-0.8.0 manifest: no "cost" fields. Each capture is priced at 1.0, so a
     // two-capture preview is one row of cost 2.0.

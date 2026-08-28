@@ -57,4 +57,12 @@ class DefaultedComposableLookupTest {
   fun `reports a miss for a name that is not there`() {
     assertNull(findDefaultedComposableMethod(fixtures, "noSuchPreviewFixture"))
   }
+
+  @Test
+  fun `refuses to guess between two fully-defaulted overloads of one name`() {
+    // Both overloads are invocable with no arguments and the manifest records only the function
+    // name, so picking by arity would render a real component — plausibly, and the wrong one. A
+    // catalog quietly showing the wrong card is worse than one showing an error.
+    assertNull(findDefaultedComposableMethod(fixtures, "ambiguousOverloadFixture"))
+  }
 }

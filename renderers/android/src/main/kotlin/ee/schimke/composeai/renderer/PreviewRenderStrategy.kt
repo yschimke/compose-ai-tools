@@ -197,16 +197,49 @@ private fun resolveNoArgComposableMethod(clazz: Class<*>, functionName: String):
     ?.let {
       return it
     }
-  return findDefaultedComposableMethod(clazz, functionName)
-    ?: throw NoSuchMethodException("${clazz.name}.$functionName")
+  findDefaultedComposableMethod(clazz, functionName)?.let {
+    return it
+  }
+  // Name the ambiguous case rather than reporting a bare miss: "there are two of these and I can't
+  // tell which you meant" sends the reader somewhere very different from "I can't find it".
+  val candidates =
+    clazz.declaredMethods
+      .filter { it.name == functionName }
+      .mapNotNull { method ->
+        method.asComposableMethod()?.takeIf { method.hasComposableDefaults() }
+      }
+  throw NoSuchMethodException(
+    if (candidates.size > 1) {
+      val signatures = candidates.joinToString { m ->
+        m.parameterTypes.joinToString(prefix = "(", postfix = ")") { it.simpleName }
+      }
+      "${clazz.name}.$functionName is ambiguous — ${candidates.size} fully-defaulted composable " +
+        "overloads of that name are all invocable with no arguments: $signatures. The preview " +
+        "manifest records the function name only, so the renderer cannot tell which one carries " +
+        "the @Preview. Give the preview a distinct name, or annotate a zero-parameter wrapper."
+    } else {
+      "${clazz.name}.$functionName"
+    }
+  )
 }
 
 /**
- * The `declaredMethods` scan behind [resolveNoArgComposableMethod]: the named composable overloads
- * that can be invoked with no arguments because every real parameter is defaulted. Prefers the
- * fewest real parameters — a defaulted preview and a fully-applied sibling overload of the same
- * name both qualify, and the one with less to default is the closer match to "call it with
- * nothing".
+ * The `declaredMethods` scan behind [resolveNoArgComposableMethod]: the named composable overload
+ * that can be invoked with no arguments because every real parameter is defaulted.
+ *
+ * Deliberately refuses to guess between several. A manifest entry carries only the class and the
+ * function NAME — discovery records no JVM descriptor — so when a class declares two composable
+ * overloads of one name that are both fully defaulted, nothing here can tell which one carried the
+ * `@Preview`. Picking by arity would render a real component, plausibly, and the wrong one; a
+ * catalog quietly showing the wrong card is worse than one showing an error, so this returns null
+ * and lets the caller report the miss.
+ *
+ * Reading the annotation off the method would settle it, and can't: `@Preview` is declared
+ * `AnnotationRetention.BINARY`, so it lands in `RuntimeInvisibleAnnotations` and reflection cannot
+ * see it. Settling it properly means threading the descriptor from discovery through the manifest.
+ * That is worth doing if this is ever hit in practice — the shape is rare enough to be nearly
+ * unusable in Kotlin source (with both overloads fully defaulted, every call site is ambiguous),
+ * which is why it stays a diagnosed refusal rather than a wire-format change.
  */
 internal fun findDefaultedComposableMethod(
   clazz: Class<*>,
@@ -216,8 +249,8 @@ internal fun findDefaultedComposableMethod(
     .asSequence()
     .filter { it.name == functionName }
     .mapNotNull { method -> method.asComposableMethod()?.takeIf { method.hasComposableDefaults() } }
-    .sortedBy { it.parameterCount }
-    .firstOrNull()
+    .toList()
+    .singleOrNull()
 
 /**
  * Whether this compiled composable carries a defaults mask — i.e. the source function declared
