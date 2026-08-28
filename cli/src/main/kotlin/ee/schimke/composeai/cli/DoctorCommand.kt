@@ -1446,7 +1446,16 @@ class DoctorCommand(
   private fun checkNetworkReach() {
     NETWORK_HOSTS.forEach { probe ->
       val (code, headers) = headPlain(probe.url)
-      addCheck(networkCheck(probe, code, headers["error"], inClaudeCloud))
+      addCheck(
+        networkCheck(
+          probe,
+          code,
+          headers["error"],
+          inClaudeCloud,
+          // Header lookup is case-insensitive at the source; Ktor lowercases nothing, so try both.
+          redirectTarget = headers["Location"] ?: headers["location"],
+        )
+      )
     }
   }
 
@@ -1458,7 +1467,11 @@ class DoctorCommand(
    */
   internal fun headPlain(url: String): Pair<Int, Map<String, String>> =
     try {
-      httpProbeClient().use { client ->
+      // NOT following redirects. A captive portal or filtering proxy that redirects to a 200 login
+      // page is the case these probes exist to catch, and following it reports that page's status
+      // as the host's — "reachable (HTTP 200)" for an endpoint that never answered. The 3xx and its
+      // `Location` reach [networkCheck] instead, which names it for what it is.
+      httpProbeClient(followRedirects = false).use { client ->
         runBlocking {
           val response = client.head(url) { header("User-Agent", USER_AGENT) }
           val headers = response.headers.entries().associate { (k, v) -> k to v.joinToString(", ") }
@@ -1475,8 +1488,18 @@ class DoctorCommand(
    * path, and `use {}` tears the connection pool down immediately. Mirrors the Ktor/OkHttp client
    * the rest of the CLI already uses (see [BundleSource]).
    */
-  private fun httpProbeClient(): HttpClient =
+  private fun httpProbeClient(followRedirects: Boolean = true): HttpClient =
     HttpClient(OkHttp) {
+      // Off for the reachability probes, on for the version check — which reads the FINAL url of
+      // `releases/latest` and exists to be redirected. Set on the Ktor config and on the engine,
+      // because either one left following would hide the case the caller is asking about.
+      this.followRedirects = followRedirects
+      engine {
+        config {
+          followRedirects(followRedirects)
+          followSslRedirects(followRedirects)
+        }
+      }
       install(HttpTimeout) {
         connectTimeoutMillis = 3_000
         requestTimeoutMillis = 3_000
@@ -1665,6 +1688,8 @@ class DoctorCommand(
       code: Int,
       error: String?,
       inClaudeCloud: Boolean,
+      /** The `Location` a 3xx pointed at, when there was one — named in the detail. */
+      redirectTarget: String? = null,
     ): DoctorCheck {
       val id = "env.network.${probe.id}"
       val expectedNote = probe.expected[code]
@@ -1697,13 +1722,41 @@ class DoctorCommand(
           remediation = remediation,
         )
       }
+      // What THIS url answers with when egress is healthy, read off the probe rather than assumed.
+      // `fonts.gstatic.com` documents a 404 on `/` — it serves versioned asset paths only — so
+      // telling its operator "returns 2xx when egress is healthy" contradicted the probe's own
+      // configuration, in the one message they have to reason from.
+      val healthy =
+        (listOf("2xx") + probe.expected.keys.sorted().map { "HTTP $it" }).let {
+          if (it.size == 1) it.single() else it.dropLast(1).joinToString(", ") + " or " + it.last()
+        }
+      // A REDIRECT is its own diagnosis. The probes do not follow them (see [headPlain]) precisely
+      // so this case stays visible: a captive portal or filtering proxy that redirects to a 200
+      // login page would otherwise be followed to that page and reported as the host answering
+      // healthily, which is the opposite of the truth.
+      if (code in 300..399) {
+        val target = redirectTarget?.takeIf { it.isNotBlank() }
+        return DoctorCheck(
+          id = id,
+          category = "env",
+          status = "warning",
+          message = "${probe.host} redirected (HTTP $code) instead of answering",
+          detail =
+            "${probe.purpose}. ${probe.url} answers $healthy when egress is healthy; a redirect" +
+              (target?.let { " to $it" } ?: "") +
+              " is a captive portal or filtering proxy answering on the host's behalf. The probe" +
+              " does not follow it, because the page at the other end can be a 200 that proves" +
+              " nothing about ${probe.host}.",
+          remediation = remediation,
+        )
+      }
       return DoctorCheck(
         id = id,
         category = "env",
         status = "warning",
         message = "${probe.host} answered HTTP $code, not a success",
         detail =
-          "${probe.purpose}. ${probe.url} returns 2xx when egress is healthy; a $code usually means a proxy or sandbox answered instead of the host.",
+          "${probe.purpose}. ${probe.url} answers $healthy when egress is healthy; a $code usually means a proxy or sandbox answered instead of the host.",
         remediation = remediation,
       )
     }

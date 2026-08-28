@@ -55,6 +55,42 @@ class DoctorNetworkProbeTest {
     assertEquals(404, code)
   }
 
+  /**
+   * A captive portal's shape: `/` redirects to a login page that answers 200.
+   *
+   * Following it reports the LOGIN PAGE's status as the probed host's, so an endpoint that never
+   * answered reads as `reachable (HTTP 200)` — the exact opposite of the truth, from the check
+   * whose whole job is to notice that egress is intercepted.
+   */
+  private fun startPortal(): String {
+    val s = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+    s.createContext("/login") { exchange ->
+      exchange.sendResponseHeaders(200, -1)
+      exchange.close()
+    }
+    s.createContext("/") { exchange ->
+      exchange.responseHeaders.add("Location", "/login")
+      exchange.sendResponseHeaders(302, -1)
+      exchange.close()
+    }
+    s.start()
+    server = s
+    return "http://127.0.0.1:${s.address.port}/"
+  }
+
+  @Test
+  fun `a redirect is reported, not followed to whatever answers at the other end`() {
+    val url = startPortal()
+
+    val (code, headers) = DoctorCommand(emptyList()).headPlain(url)
+
+    assertEquals(302, code, "the probe stops at the redirect rather than reporting the login page")
+    assertTrue(
+      headers.entries.any { (k, v) -> k.equals("Location", ignoreCase = true) && v == "/login" },
+      "the redirect target is carried through for the check to name: $headers",
+    )
+  }
+
   @Test
   fun `an unreachable host returns -1 and an error, never throws`() {
     // Nothing is listening on port 1 — the connection is refused fast, well inside the 3s timeout.
@@ -107,6 +143,38 @@ class DoctorNetworkCheckTest {
     assertEquals("warning", check.status)
     assertTrue("proxy or sandbox" in (check.detail ?: ""), check.detail.orEmpty())
     assertTrue("Custom" in (check.remediation?.summary ?: ""), check.remediation?.summary.orEmpty())
+  }
+
+  @Test
+  fun `a redirect is named as an interception, with where it pointed`() {
+    val check =
+      DoctorCommand.networkCheck(
+        gstatic,
+        302,
+        null,
+        inClaudeCloud = false,
+        redirectTarget = "http://portal.example/login",
+      )
+
+    assertEquals("warning", check.status)
+    assertTrue("redirected" in check.message, check.message)
+    assertTrue("reachable" !in check.message, check.message)
+    assertTrue("portal.example/login" in (check.detail ?: ""), check.detail.orEmpty())
+    assertTrue("captive portal" in (check.detail ?: ""), check.detail.orEmpty())
+  }
+
+  @Test
+  fun `the healthy-response wording follows the probe, not a blanket 2xx`() {
+    // `fonts.gstatic.com` documents a 404 on `/` — it serves versioned asset paths only — so
+    // telling its operator the url "returns 2xx when egress is healthy" contradicted the probe's
+    // own configuration, in the one message they have to reason from.
+    val intercepted = DoctorCommand.networkCheck(gstatic, 403, null, inClaudeCloud = false)
+    assertTrue("2xx or HTTP 404" in (intercepted.detail ?: ""), intercepted.detail.orEmpty())
+
+    // A probe with no documented exception still says plain 2xx.
+    val plain = DoctorCommand.networkCheck(googleapis, 403, null, inClaudeCloud = false)
+    assertTrue("answers 2xx when egress is healthy" in (plain.detail ?: ""), plain.detail.orEmpty())
+    assertTrue("404" !in (plain.detail ?: ""), plain.detail.orEmpty())
   }
 
   @Test
