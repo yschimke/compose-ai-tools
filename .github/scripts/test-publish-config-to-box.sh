@@ -415,6 +415,177 @@ stranded=$(PATH="${shim}:${PATH}" BASE_URL=https://example.invalid ADMIN_TOKEN=t
 printf '%s' "${stranded}" | grep -q 'it is currently unpublished' ||
   fail "a retire that could not be re-published must be a loud error:\n${stranded}"
 
+# 10f. The retire succeeded, the re-post came back 409 — and the live registration says the box is
+#      already serving the repository we were moving TO. Something else (a concurrent reconcile, an
+#      operator) registered it between our DELETE and our POST. The move happened; calling that an
+#      outage fails the standalone publish workflow for a race that converged.
+race_curl() {
+  # $1 = the repo the SECOND and later listings report. The first still reports the old one, so the
+  # move is detected exactly as it would be in the field.
+  cat > "${shim}/curl" <<SH
+#!/usr/bin/env bash
+method=GET
+for a in "\$@"; do
+  case "\$a" in
+    POST) method=POST ;;
+    DELETE) method=DELETE ;;
+  esac
+done
+if [[ "\$method" == GET ]]; then
+  for a in "\$@"; do
+    case "\$a" in
+      */admin/catalogs)
+        n=0
+        [[ -f "${tmp}/gets" ]] && n=\$(cat "${tmp}/gets")
+        echo \$((n + 1)) > "${tmp}/gets"
+        if [[ "\$n" == 0 ]]; then
+          printf '%s' '{"catalogs":[{"system":"compose-m3","repo":"yschimke/old-home","branch":"design-artifacts/compose-m3","listed":true,"state":"loaded"}]}'
+        else
+          printf '%s' '{"catalogs":[{"system":"compose-m3","repo":"$1","branch":"design-artifacts/compose-m3","listed":true,"state":"loaded"}]}'
+        fi
+        exit 0 ;;
+    esac
+  done
+  exit 0
+fi
+if [[ "\$method" == DELETE ]]; then printf 'ok\n200'; exit 0; fi
+for a in "\$@"; do
+  case "\$a" in
+    *compose-m3*) printf "catalog 'compose-m3' is already registered\n409"; exit 0 ;;
+  esac
+done
+printf 'ok\n200'
+SH
+  chmod +x "${shim}/curl"
+  rm -f "${tmp}/gets"
+}
+
+race_curl yschimke/compose-ai-tools
+git_stub present
+
+raced=$(PATH="${shim}:${PATH}" BASE_URL=https://example.invalid ADMIN_TOKEN=t \
+  TRUST_FILE="${tmp}/producers.json" CATALOGS_FILE="${tmp}/catalogs.json" \
+  bash "${UNDER_TEST}" 2>&1)
+raced_status=$?
+
+printf '%s' "${raced}" | grep -q 'it is currently unpublished' &&
+  fail "a 409 whose live registration matches the declared repo is not an outage:\n${raced}"
+printf '%s' "${raced}" | grep -q 'catalog compose-m3: re-registered from yschimke/compose-ai-tools by a concurrent publish' ||
+  fail "a converged race must be reported as converged:\n${raced}"
+[[ "${raced_status}" == 0 ]] ||
+  fail "a converged race must not fail the publish (exit ${raced_status}):\n${raced}"
+
+# 10g. The same race, but whatever re-registered the catalog pointed it somewhere ELSE. That is a
+#      real problem and must stay loud — just not under the word "unpublished", which would send an
+#      operator looking for a catalog that is right there.
+race_curl yschimke/somewhere-else
+git_stub present
+
+hijacked=$(PATH="${shim}:${PATH}" BASE_URL=https://example.invalid ADMIN_TOKEN=t \
+  TRUST_FILE="${tmp}/producers.json" CATALOGS_FILE="${tmp}/catalogs.json" \
+  bash "${UNDER_TEST}" 2>&1)
+hijacked_status=$?
+
+printf '%s' "${hijacked}" | grep -q '::error::catalog compose-m3 was retired from yschimke/old-home and is now registered from yschimke/somewhere-else' ||
+  fail "a race onto the wrong repo must name that repo:\n${hijacked}"
+printf '%s' "${hijacked}" | grep -q 'it is currently unpublished' &&
+  fail "a catalog the server reports registered must not be called unpublished:\n${hijacked}"
+[[ "${hijacked_status}" != 0 ]] ||
+  fail "a race onto the wrong repo must fail the publish:\n${hijacked}"
+
+# 10h. An entry that declares NO repo for a catalog the box already serves. The POST resolves the
+#      omitted field to the server's own --catalog-repo default, 409s on the mismatch, and `post`
+#      logs that as "already present" — so the old repository keeps serving and the run reads green.
+#      This reconcile cannot see the box's default, so it requires the repo to be declared.
+cat > "${tmp}/catalogs-norepo.json" <<'JSON'
+{
+  "catalogs": [{ "system": "compose-m3", "listed": true }]
+}
+JSON
+cat > "${shim}/curl" <<'SH'
+#!/usr/bin/env bash
+method=GET
+for a in "$@"; do
+  case "$a" in
+    POST) method=POST ;;
+    DELETE) method=DELETE ;;
+  esac
+done
+if [[ "$method" == GET ]]; then
+  for a in "$@"; do
+    case "$a" in
+      */admin/catalogs)
+        printf '%s' '{"catalogs":[{"system":"compose-m3","repo":"yschimke/old-home","branch":"design-artifacts/compose-m3","listed":true,"state":"loaded"}]}'
+        exit 0 ;;
+    esac
+  done
+  exit 0
+fi
+printf 'ok\n200'
+SH
+chmod +x "${shim}/curl"
+
+norepo=$(PATH="${shim}:${PATH}" BASE_URL=https://example.invalid ADMIN_TOKEN=t \
+  TRUST_FILE="${tmp}/producers.json" CATALOGS_FILE="${tmp}/catalogs-norepo.json" \
+  bash "${UNDER_TEST}" 2>&1)
+norepo_status=$?
+
+printf '%s' "${norepo}" | grep -q '::error::catalog compose-m3: no repo declared' ||
+  fail "an undeclarable move must be an error, not a warning:\n${norepo}"
+[[ "${norepo_status}" != 0 ]] ||
+  fail "an undeclarable move must fail the publish:\n${norepo}"
+
+# 10i. The replacement-branch probe is BOUNDED. `git ls-remote` has no timeout of its own, so a
+#      connection GitHub accepts and then stalls would hold the whole reconcile — every remaining
+#      catalog and every site — until the workflow's own limit killed it. A stall must instead take
+#      the same path as any other unreachable remote: report it, and retire nothing.
+cat > "${shim}/curl" <<'SH'
+#!/usr/bin/env bash
+method=GET
+for a in "$@"; do
+  case "$a" in
+    POST) method=POST ;;
+    DELETE) method=DELETE ;;
+  esac
+done
+if [[ "$method" == GET ]]; then
+  for a in "$@"; do
+    case "$a" in
+      */admin/catalogs)
+        printf '%s' '{"catalogs":[{"system":"compose-m3","repo":"yschimke/old-home","branch":"design-artifacts/compose-m3","listed":true,"state":"loaded"}]}'
+        exit 0 ;;
+    esac
+  done
+  exit 0
+fi
+printf 'ok\n200'
+SH
+chmod +x "${shim}/curl"
+cat > "${shim}/git" <<'SH'
+#!/usr/bin/env bash
+if [[ "$1" == ls-remote ]]; then
+  sleep 30
+  exit 0
+fi
+exec /usr/bin/git "$@"
+SH
+chmod +x "${shim}/git"
+
+started=$(date +%s)
+stalled=$(PATH="${shim}:${PATH}" BASE_URL=https://example.invalid ADMIN_TOKEN=t \
+  LS_REMOTE_TIMEOUT_SECONDS=1 \
+  TRUST_FILE="${tmp}/producers.json" CATALOGS_FILE="${tmp}/catalogs.json" \
+  bash "${UNDER_TEST}" 2>&1)
+elapsed=$(($(date +%s) - started))
+
+printf '%s' "${stalled}" | grep -q 'could not reach github.com' ||
+  fail "a stalled probe must report the remote as unreachable:\n${stalled}"
+printf '%s' "${stalled}" | grep -q 'retired the stale registration' &&
+  fail "a stalled probe must retire nothing:\n${stalled}"
+# Three catalogs, one of which probes: without the bound this sleeps 30s per probe.
+[[ "${elapsed}" -lt 20 ]] ||
+  fail "the probe is not bounded — the run took ${elapsed}s with a 1s timeout"
+
 rm -f "${shim}/git"
 
 if [[ "${failures}" -gt 0 ]]; then

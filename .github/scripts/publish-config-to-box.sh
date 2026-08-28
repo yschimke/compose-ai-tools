@@ -41,6 +41,17 @@ CATALOGS_FILE="${CATALOGS_FILE:-${DEPLOY_CONFIG_DIR}/catalogs.json}"
 TRUST_FILE="${TRUST_FILE:-${DEPLOY_CONFIG_DIR}/producers.json}"
 ADMIN_TOKEN_HEADER="X-Compose-Preview-Admin-Token"
 
+# How long the replacement-branch probe below may take. Injectable so the self-test can drive the
+# stall path in a second instead of thirty; nothing else should set it. `timeout` is coreutils and
+# present on every runner this executes on — on a host without it the probe runs unbounded, which
+# is the behaviour that existed before this line.
+LS_REMOTE_TIMEOUT_SECONDS="${LS_REMOTE_TIMEOUT_SECONDS:-30}"
+if command -v timeout > /dev/null 2>&1; then
+  LS_REMOTE=(timeout "${LS_REMOTE_TIMEOUT_SECONDS}" git ls-remote)
+else
+  LS_REMOTE=(git ls-remote)
+fi
+
 DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
 
@@ -239,12 +250,37 @@ box_field_for() {
 # where it was. This is the cheap half of closing that window: refuse to retire anything until the
 # replacement branch is known to exist. It does not prove the box can load it, which is why the
 # caller still shouts if the re-post fails.
+#
+# BOUNDED, because `git ls-remote` has no timeout of its own and this is a synchronous call in the
+# middle of the reconcile. A connection GitHub accepts and then stalls would hold the entire run —
+# every remaining catalog, every site — until the job's own five-minute limit killed it
+# (.github/workflows/publish-preview-config.yml), which is a far worse outcome than the error path
+# this probe exists to take. Every HTTP call around it already carries `-m 30`; so does this.
+# `timeout` exits 124, which is non-zero like any other failure, so a stall lands on the same
+# `return 2` and is reported as "could not reach github.com" rather than "no such branch".
+#
+# GIT_TERMINAL_PROMPT=0 closes the second way this hangs: a repository that 404s to an
+# unauthenticated fetch makes git ASK for a username, and a runner has no one to answer.
 delivery_branch_exists() {
   local repo="$1" branch="$2" heads
   [[ -n "${repo}" && -n "${branch}" ]] || return 1
-  heads=$(git ls-remote --heads "https://github.com/${repo}.git" "refs/heads/${branch}" 2>/dev/null) ||
+  heads=$(GIT_TERMINAL_PROMPT=0 "${LS_REMOTE[@]}" --heads \
+    "https://github.com/${repo}.git" "refs/heads/${branch}" 2>/dev/null) ||
     return 2
   [[ -n "${heads}" ]]
+}
+
+# The box's registration for one system read FRESH, rather than from the startup snapshot — used
+# only to tell a lost catalog from a raced one, where a stale answer is the whole problem. Prints
+# the repo, or fails if the listing cannot be read.
+live_repo_for() {
+  local system="$1" latest
+  latest=$(curl -sS -m 30 -H "${ADMIN_TOKEN_HEADER}: ${ADMIN_TOKEN}" \
+    "${BASE_URL}/admin/catalogs" 2>/dev/null) || return 1
+  [[ -n "${latest}" ]] || return 1
+  printf '%s' "${latest}" |
+    jq -er --arg s "${system}" \
+      '.catalogs // [] | map(select(.system == $s)) | .[0].repo // ""' 2>/dev/null
 }
 
 echo "Reconciling catalogs from ${CATALOGS_FILE#"${REPO_ROOT}/"}"
@@ -256,9 +292,17 @@ while IFS= read -r entry; do
   moved=0
   if [[ -n "${current_repo}" && -z "${declared_repo}" ]]; then
     # No `repo` here means "the box's own --catalog-repo default", which this file cannot see. The
-    # POST would resolve it, find a mismatch, 409, and be logged as success. Say so rather than
-    # letting that read green; every entry in this repository's config names its repo explicitly.
-    echo "::warning::catalog ${system}: no repo declared, so a move away from ${current_repo} cannot be detected here — declare the repo explicitly."
+    # POST resolves it, finds a mismatch, 409s, and `post` logs that as "already present" — so a
+    # catalog that should have moved to the default keeps serving ${current_repo} and the run ends
+    # green. A warning was not enough: nobody reads a warning in a passing job, which is the whole
+    # reason this script counts rejections at all.
+    #
+    # So this reconcile REQUIRES an explicit repo for any catalog the box already serves, which is
+    # the cheaper half of Codex's two options — comparing against the server's resolved default
+    # would mean reading a flag this file has no route to. Every entry in this repository's config
+    # names its repo, so the requirement costs nothing and the failure is loud.
+    rejected=$((rejected + 1))
+    echo "::error::catalog ${system}: no repo declared, so a move away from ${current_repo} cannot be detected here — declare the repo explicitly in ${CATALOGS_FILE#"${REPO_ROOT}/"}."
   elif [[ -n "${current_repo}" && "${current_repo}" != "${declared_repo}" ]]; then
     echo "  catalog ${system}: repo moved ${current_repo} -> ${declared_repo}"
     # The branch name does not depend on the repo — it is `<branchPrefix><system>` either way — so
@@ -289,11 +333,34 @@ while IFS= read -r entry; do
     fi
   }
   if [[ "${moved}" == 1 && "${last_post}" != ok ]]; then
-    # The retire succeeded and the re-publish did not, so this catalog is now published NOWHERE —
-    # `register` drops the entry it added when the fetch fails. Never let that end up in a green
-    # log: it is the one outcome an operator has to act on immediately.
-    rejected=$((rejected + 1))
-    echo "::error::catalog ${system} was retired from ${current_repo} but could not be re-published from ${declared_repo} — it is currently unpublished. Re-run this workflow once ${declared_repo} serves ${target_branch}, or re-post the old entry to restore it."
+    # The retire succeeded and the re-publish did not. Usually that means the catalog is published
+    # NOWHERE — `register` drops the entry it added when the fetch fails — and that is the one
+    # outcome an operator has to act on immediately, so it must never end in a green log.
+    #
+    # But a 409 says the opposite of "nowhere": the server has a registration under this id. It can
+    # only have arrived between our DELETE and our POST — a concurrent reconcile, or an operator
+    # registering it by hand — and if it came from the repository we were moving TO, the move
+    # happened and there is nothing to report. Declaring an outage there is a false alarm that
+    # fails the standalone publish workflow for a race that converged.
+    #
+    # So read the live registration back before saying anything. Only the `present` case can be
+    # rescued; anything else genuinely lost the catalog.
+    raced_repo=""
+    if [[ "${last_post}" == present ]]; then
+      raced_repo=$(live_repo_for "${system}") || raced_repo=""
+    fi
+    if [[ -n "${raced_repo}" && "${raced_repo}" == "${declared_repo}" ]]; then
+      echo "  catalog ${system}: re-registered from ${declared_repo} by a concurrent publish — the move stands"
+    elif [[ -n "${raced_repo}" ]]; then
+      rejected=$((rejected + 1))
+      echo "::error::catalog ${system} was retired from ${current_repo} and is now registered from ${raced_repo}, not the declared ${declared_repo} — something else re-registered it mid-publish. Re-run this workflow, and check who else is publishing to this box."
+    elif [[ "${last_post}" == present ]]; then
+      rejected=$((rejected + 1))
+      echo "::error::catalog ${system} was retired from ${current_repo} and the re-publish came back 409, but the live registration could not be read back — it is registered as SOMETHING, and possibly not ${declared_repo}. Check /admin/catalogs on the box."
+    else
+      rejected=$((rejected + 1))
+      echo "::error::catalog ${system} was retired from ${current_repo} but could not be re-published from ${declared_repo} — it is currently unpublished. Re-run this workflow once ${declared_repo} serves ${target_branch}, or re-post the old entry to restore it."
+    fi
   fi
 done < <(jq -c '.catalogs // [] | .[]' "${CATALOGS_FILE}")
 
