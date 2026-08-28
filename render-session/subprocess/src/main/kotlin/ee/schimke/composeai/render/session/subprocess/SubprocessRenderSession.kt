@@ -29,7 +29,11 @@ import okio.Path.Companion.toPath
 public object SubprocessRenderSessions : RenderSessionFactory {
   override val backendKind: RenderSessionBackend = RenderSessionBackend.Subprocess
 
-  public var fileSystem: FileSystem = SystemFileSystem
+  // Private, not a published seam. This was a `public var` on a published singleton — a
+  // process-wide mutable global any consumer could swap — and nothing in the repository ever
+  // assigned it, here or in tests. A test hook nobody uses is not worth exporting from a contract
+  // module: the injectable seam that IS used is the `DaemonClientFactory` overload of `open`.
+  private val fileSystem: FileSystem = SystemFileSystem
 
   override fun open(config: RenderSessionConfig): RenderSession =
     open(config = config, factory = SubprocessDaemonClientFactory())

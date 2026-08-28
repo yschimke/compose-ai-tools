@@ -5322,9 +5322,9 @@ ${captureControlsHtml().prependIndent("          ")}
     // stays auto (the img keeps the render's aspect); `left` %s resolve against the box width,
     // `top`
     // against its aspect-ratio height.
-    val w = cropPct(crop.imgW, crop.boxW)
-    val l = cropPct(crop.left, crop.boxW)
-    val t = cropPct(crop.top, crop.boxH)
+    val w = cropPct(crop.render.w, crop.window.w)
+    val l = cropPct(crop.offset.left, crop.window.w)
+    val t = cropPct(crop.offset.top, crop.window.h)
     val cropped =
       "<img$extraImgAttrs alt=\"$alt\" src=\"$src\" style=\"width:${w}%;left:${l}%;top:${t}%\">"
     // A gutter window does not hide its overflow: the pixels outside the box are the component's
@@ -5349,16 +5349,19 @@ ${captureControlsHtml().prependIndent("          ")}
     //
     // Derived rather than plumbed: the window's aspect ratio is `boxW/boxH` at every scale, so the
     // native height is `natBoxW * boxH / boxW`. That keeps `ContentCrop`'s published shape alone.
-    val natBoxH = if (crop.boxW > 0) (crop.natBoxW.toLong() * crop.boxH / crop.boxW).toInt() else 0
+    val natBoxH =
+      if (crop.window.w > 0) (crop.nativeWindowW.toLong() * crop.window.h / crop.window.w).toInt()
+      else 0
     val sizing =
-      if (crop.natBoxW > 0 && crop.natCapAxis > 0) {
-        "--cp-crop-w-per-cap:${cropRatio(crop.natBoxW, crop.natCapAxis)};" +
-          (if (natBoxH > 0) "--cp-crop-w-per-h:${cropRatio(crop.natBoxW, natBoxH)};" else "") +
-          "--cp-crop-max-w:${crop.natBoxW}px"
+      if (crop.nativeWindowW > 0 && crop.nativeCapAxis > 0) {
+        "--cp-crop-w-per-cap:${cropRatio(crop.nativeWindowW, crop.nativeCapAxis)};" +
+          (if (natBoxH > 0) "--cp-crop-w-per-h:${cropRatio(crop.nativeWindowW, natBoxH)};"
+          else "") +
+          "--cp-crop-max-w:${crop.nativeWindowW}px"
       } else {
-        "width:${crop.boxW}px"
+        "width:${crop.window.w}px"
       }
-    return "<span class=\"$cls\" style=\"$sizing;aspect-ratio:${crop.boxW}/${crop.boxH}\">$cropped</span>"
+    return "<span class=\"$cls\" style=\"$sizing;aspect-ratio:${crop.window.w}/${crop.window.h}\">$cropped</span>"
   }
 
   /**

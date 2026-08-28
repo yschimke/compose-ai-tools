@@ -4,6 +4,8 @@ import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamFrameParams
 import ee.schimke.composeai.imagecrop.ContentCrop
+import ee.schimke.composeai.imagecrop.CropOffset
+import ee.schimke.composeai.imagecrop.CropSize
 import java.awt.Color
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
@@ -105,7 +107,12 @@ class ServeHeroImagesTest {
         g.fillRect(100, 150, 80, 40)
         g.dispose()
       }
-    val crop = ContentCrop(boxW = 80, boxH = 40, imgW = 400, imgH = 400, left = -100, top = -150)
+    val crop =
+      ContentCrop(
+        window = CropSize(80, 40),
+        render = CropSize(400, 400),
+        offset = CropOffset(-100, -150),
+      )
     val hero = ServeHeroImages().bake(source, crop)!!
     assertEquals(80, hero.cssWidth, "laid out at the component box, not the canvas")
     assertEquals(40, hero.cssHeight)
@@ -246,7 +253,11 @@ class ServeHeroImagesTest {
     // at a full, uncropped render the moment the visitor picks a declared theme — the page's clip
     // window has to keep framing both identically.
     val crop =
-      ContentCrop(boxW = 1000, boxH = 1000, imgW = 2000, imgH = 2000, left = -500, top = -500)
+      ContentCrop(
+        window = CropSize(1000, 1000),
+        render = CropSize(2000, 2000),
+        offset = CropOffset(-500, -500),
+      )
     val baked = decode(ServeHeroImages().bakeGridThumb(uiPng(2000, 2000), crop)!!.bytes)
     // The visible region — not the canvas — is what lands at the cap, so the cropped component is
     // as crisp as an uncropped one; the canvas around it rides along at the same scale.

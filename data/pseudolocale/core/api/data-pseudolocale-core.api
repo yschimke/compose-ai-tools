@@ -28,8 +28,8 @@ public final class ee/schimke/composeai/data/pseudolocale/Pseudolocalizer {
 }
 
 public final class ee/schimke/composeai/data/pseudolocale/Pseudolocalizer$TransformResult {
-	public fun <init> (Ljava/lang/String;[I)V
-	public final fun getIndexMap ()[I
+	public final fun getSize ()I
 	public final fun getText ()Ljava/lang/String;
+	public final fun indexAt (I)I
 }
 

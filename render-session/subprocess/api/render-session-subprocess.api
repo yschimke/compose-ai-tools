@@ -40,11 +40,9 @@ public final class ee/schimke/composeai/render/session/subprocess/SubprocessRend
 	public static final field INSTANCE Lee/schimke/composeai/render/session/subprocess/SubprocessRenderSessions;
 	public final fun descriptorFile (Ljava/io/File;Ljava/lang/String;)Ljava/io/File;
 	public fun getBackendKind ()Lee/schimke/composeai/render/session/RenderSessionBackend;
-	public final fun getFileSystem ()Lokio/FileSystem;
 	public fun open (Lee/schimke/composeai/render/session/RenderSessionConfig;)Lee/schimke/composeai/render/session/RenderSession;
 	public final fun open (Lee/schimke/composeai/render/session/RenderSessionConfig;Lee/schimke/composeai/daemon/client/DaemonClientFactory;)Lee/schimke/composeai/render/session/RenderSession;
 	public final fun openBundleDaemon-w3P_Jxs (Ljava/util/List;Ljava/io/File;Ljava/io/File;Ljava/io/File;Ljava/lang/String;JLjava/util/List;Ljava/util/Map;Ljava/util/List;Ljava/util/List;Ljava/lang/Long;Lee/schimke/composeai/daemon/client/DaemonClientFactory;)Lee/schimke/composeai/render/session/RenderSession;
 	public static synthetic fun openBundleDaemon-w3P_Jxs$default (Lee/schimke/composeai/render/session/subprocess/SubprocessRenderSessions;Ljava/util/List;Ljava/io/File;Ljava/io/File;Ljava/io/File;Ljava/lang/String;JLjava/util/List;Ljava/util/Map;Ljava/util/List;Ljava/util/List;Ljava/lang/Long;Lee/schimke/composeai/daemon/client/DaemonClientFactory;ILjava/lang/Object;)Lee/schimke/composeai/render/session/RenderSession;
-	public final fun setFileSystem (Lokio/FileSystem;)V
 }
 

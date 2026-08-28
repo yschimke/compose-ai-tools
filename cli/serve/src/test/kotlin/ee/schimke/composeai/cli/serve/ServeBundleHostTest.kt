@@ -2,6 +2,8 @@ package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.imagecrop.ContentCrop
+import ee.schimke.composeai.imagecrop.CropOffset
+import ee.schimke.composeai.imagecrop.CropSize
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -582,17 +584,14 @@ class ServeBundleHostTest {
 
     assertEquals(
       ContentCrop(
-        boxW = 249,
-        boxH = 126,
-        imgW = 271,
-        imgH = 150,
-        left = -11,
-        top = -11,
+        window = CropSize(249, 126),
+        render = CropSize(271, 150),
+        offset = CropOffset(-11, -11),
         clip = false,
         // The native box and the capped axis (height, for a gutter crop) ride along, so the page
         // can re-derive the window's width for a narrower viewport's cap (#4544).
-        natBoxW = 249,
-        natCapAxis = 126,
+        nativeWindowW = 249,
+        nativeCapAxis = 126,
       ),
       crop,
     )
@@ -637,11 +636,11 @@ class ServeBundleHostTest {
 
     val crop = ServeBundleHost(dir, label = "b").contentCrop("sticker__ideal__rtl")
 
-    assertEquals(184, crop?.boxW) // 200 - 4 - 12, whichever way round
-    assertEquals(94, crop?.boxH)
+    assertEquals(184, crop?.window?.w) // 200 - 4 - 12, whichever way round
+    assertEquals(94, crop?.window?.h)
     // …but the render is offset by the RIGHT-hand 12, not by the declared `start`.
-    assertEquals(-12, crop?.left)
-    assertEquals(-1, crop?.top)
+    assertEquals(-12, crop?.offset?.left)
+    assertEquals(-1, crop?.offset?.top)
   }
 
   @Test
@@ -664,7 +663,7 @@ class ServeBundleHostTest {
 
     val host = ServeBundleHost(dir, label = "b", figmaDir = figma)
     val first = host.contentCrop("sticker__ideal__default")
-    assertEquals(192, first?.boxW)
+    assertEquals(192, first?.window?.w)
 
     // The vector lands: its box (not the gutter's) now decides, which could not happen if the
     // first answer had been cached.
@@ -674,8 +673,8 @@ class ServeBundleHostTest {
     // The vector's own box, NOT unioned with the render's drawn extent: on a guttered render that
     // extent includes the shadow the gutter reserved room for, and unioning it would grow the
     // window past the component and draw it smaller than its siblings. It bleeds instead.
-    assertEquals(40, second?.boxW)
-    assertEquals(20, second?.boxH)
+    assertEquals(40, second?.window?.w)
+    assertEquals(20, second?.window?.h)
     assertEquals(false, second?.clip)
   }
 }
