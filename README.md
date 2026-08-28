@@ -747,6 +747,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-reference-compare-element-selected/dark](renders/serve-reference-compare-element-selected.dark.png) |
 | `light` | ![serve-reference-compare-element-selected/light](renders/serve-reference-compare-element-selected.light.png) |
 
+## serve-reference-compare-parity-verdict
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-reference-compare-parity-verdict/dark](renders/serve-reference-compare-parity-verdict.dark.png) |
+| `light` | ![serve-reference-compare-parity-verdict/light](renders/serve-reference-compare-parity-verdict.light.png) |
+
 ## serve-reference-compare-pinned
 
 | Theme | Capture |
