@@ -51,6 +51,7 @@ import androidx.compose.remote.core.operations.layout.managers.RowLayout
 import androidx.compose.remote.core.operations.layout.modifiers.DimensionConstraintsModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.DimensionModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.HostNamedActionOperation
+import androidx.compose.remote.core.operations.layout.modifiers.PaddingModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.ScrollModifierOperation
 
 /*
@@ -1695,6 +1696,30 @@ private val dimensionMValueField =
 
 internal fun dimensionRawValue(op: DimensionModifierOperation): Float =
   dimensionMValueField.getFloat(op)
+
+// 9b. PaddingModifier Reflection
+//
+// `getLeft()`..`getBottom()` return the `…Value` fields, which `updateVariables` writes by scaling
+// the source by the display density. The source is ALREADY in pixels, so the resolved field is
+// density-squared and unusable. Read the source instead — the same reason `dimensionRawValue`
+// reads `mValue` rather than the core-flattened `getValue()`.
+private val paddingLeftField =
+  PaddingModifierOperation::class.java.getDeclaredField("mLeft").apply { isAccessible = true }
+private val paddingTopField =
+  PaddingModifierOperation::class.java.getDeclaredField("mTop").apply { isAccessible = true }
+private val paddingRightField =
+  PaddingModifierOperation::class.java.getDeclaredField("mRight").apply { isAccessible = true }
+private val paddingBottomField =
+  PaddingModifierOperation::class.java.getDeclaredField("mBottom").apply { isAccessible = true }
+
+/** The four raw (source) padding edges, in pixels, before `updateVariables` re-scales them. */
+internal fun paddingRawEdges(op: PaddingModifierOperation): FloatArray =
+  floatArrayOf(
+    paddingLeftField.getFloat(op),
+    paddingTopField.getFloat(op),
+    paddingRightField.getFloat(op),
+    paddingBottomField.getFloat(op),
+  )
 
 // 10. CollapsiblePriority Reflection
 private val sortWithPrioritiesMethod =
