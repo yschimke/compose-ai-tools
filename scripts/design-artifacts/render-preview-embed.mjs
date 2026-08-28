@@ -23,6 +23,8 @@
  * comparison grid and a roomy single-component hero.
  */
 
+import { selectOf } from "./catalog-select.mjs";
+
 /** Minimal HTML-escape for text/attributes interpolated into the page. */
 export function esc(s) {
   return String(s ?? "").replace(
@@ -78,6 +80,13 @@ export function heroImageOf(component, sel = {}) {
 export function variantImageOf(component, variant) {
   const pool = idealImages(component);
   const chooseFrom = (pool.length ? pool : (component?.images ?? [])).filter((image) => {
+    // A `select` names a TOP-LEVEL image axis (`size`) rather than a folded tag, and it can be the
+    // only axis a variant declares — `{ select: { size: "small" } }` with no state, props or theme
+    // is a legal entry. Matched here so such a variant has something to discriminate on at all:
+    // without it every default-state image qualified and the sort below handed back the widest, so
+    // the row showed the large render under the small variant's name.
+    const select = selectOf(variant) ?? {};
+    if (Object.entries(select).some(([axis, want]) => image?.[axis] !== want)) return false;
     // A variant's `state` replaces the image's; absent, the fold leaves the default in place.
     if ((image.state ?? "default") !== (variant?.state ?? "default")) return false;
     if (variant?.theme !== undefined && image.theme !== variant.theme) return false;

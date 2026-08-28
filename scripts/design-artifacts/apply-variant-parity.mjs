@@ -32,14 +32,24 @@
  * would hide a spec typo behind an absent field instead.
  */
 
+import { selectOf } from "./catalog-select.mjs";
+
 /** The four fields that make a variant worth carrying into the manifest. */
 const PARITY_FIELDS = ["parallel", "reference", "referenceSet", "noReference"];
 
 /**
  * The subset of a spec variant the manifest carries: its identity (`preview`, and whichever of
- * `state` / `props` distinguishes it) plus its kit correspondence. Deliberately not the whole spec
- * variant — `select`, `capture` and `priority` steer the render, and the render has already
- * happened by the time this runs.
+ * `state` / `props` / `theme` / `select` distinguishes it) plus its kit correspondence.
+ * Deliberately not the whole spec variant — `capture` and `priority` steer the render, and the
+ * render has already happened by the time this runs.
+ *
+ * `select` was dropped for that same reason and should not have been: it steers the render AND
+ * identifies it. A variant may be distinguished by `select` ALONE — `{ select: { size: "small" } }`
+ * with no state, props or theme is a legal and useful entry — and the compare page picks a
+ * variant's thumbnail back out of its parent's folded `images[]` by matching the axes carried here.
+ * With none to match on, every default-state image qualified and the widest won: the large render,
+ * captioned as the small variant. Carried as the spec spells it, so `selectImages` and
+ * `imageHasVariantAxes` read it the same way downstream as they do upstream.
  *
  * @param {object} variant a spec variant
  * @returns {object|null} the manifest form, or null when it declares no kit correspondence
@@ -59,6 +69,9 @@ export function comparedVariant(variant) {
   if (variant.state !== undefined) out.state = variant.state;
   if (variant.props !== undefined) out.props = variant.props;
   if (variant.theme !== undefined) out.theme = variant.theme;
+  // `selectOf` rather than a bare presence test: `select: {}` is "no selection" everywhere else,
+  // and carrying it would make an empty object read as an axis the images must satisfy.
+  if (selectOf(variant)) out.select = variant.select;
   if (variant.caption !== undefined) out.caption = variant.caption;
   if (variant.referenceContentsOnly === false) out.referenceContentsOnly = false;
   return { ...out, ...carried };
