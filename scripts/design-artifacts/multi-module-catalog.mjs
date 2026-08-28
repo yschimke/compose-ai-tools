@@ -13,6 +13,19 @@ export function bundleModulePath(bundle, fallback = ":unknown") {
   return bundle?.manifest?.modulePath ?? bundle?.manifest?.module ?? fallback;
 }
 
+/**
+ * The producing project's directory relative to the repository root, as the BUNDLE recorded it.
+ *
+ * Never derived from [bundleModulePath]: a Gradle path is a logical name and `projectDir` may map
+ * it anywhere — this repository remaps 100 projects and not one derives correctly (`:bundle-format`
+ * lives at `bundle/format`). Empty for the root project, and empty for a bundle packed before the
+ * plugin recorded it, which a consumer must treat as "unknown" rather than as the root.
+ */
+export function bundleModuleDirectory(bundle) {
+  const dir = bundle?.manifest?.moduleDirectory;
+  return typeof dir === "string" ? dir : "";
+}
+
 /** The candidate/spec join key. */
 function candidateFunction(candidate) {
   return candidate?.functionName ?? candidate?.componentId;
@@ -43,7 +56,8 @@ function rewriteArtifactPath(path, oldId, newId) {
   const leaf = path.slice(slash + 1);
   if (!leaf.startsWith(oldId)) return path;
   const suffix = leaf.slice(oldId.length);
-  if (suffix !== "" && !suffix.startsWith(".") && !suffix.startsWith("_")) return path;
+  if (suffix !== "" && !suffix.startsWith(".") && !suffix.startsWith("_"))
+    return path;
   return `${path.slice(0, slash + 1)}${newId}${suffix}`;
 }
 
@@ -67,10 +81,15 @@ function rewriteJsonEntry(entries, name, transform) {
 function namespaceAdditionalRecord(record, module, keyByFunction) {
   const prefix = moduleIdentityPrefix(module);
   const manifest = record.bundle?.manifest ?? {};
-  const entryIds = manifest.previewIds ?? (record.bundle?.previews ?? []).map((p) => p.id);
+  const entryIds =
+    manifest.previewIds ?? (record.bundle?.previews ?? []).map((p) => p.id);
   const rawIds = manifest.rawPreviewIds ?? entryIds;
-  const entryIdMap = new Map(entryIds.map((id) => [id, modulePreviewId(module, id)]));
-  const rawIdMap = new Map(rawIds.map((id) => [id, modulePreviewId(module, id)]));
+  const entryIdMap = new Map(
+    entryIds.map((id) => [id, modulePreviewId(module, id)]),
+  );
+  const rawIdMap = new Map(
+    rawIds.map((id) => [id, modulePreviewId(module, id)]),
+  );
   const anyIdMap = new Map([...entryIdMap, ...rawIdMap]);
   const rewriteId = (id) => anyIdMap.get(id) ?? id;
   const artifactPathMap = new Map();
@@ -95,47 +114,62 @@ function namespaceAdditionalRecord(record, module, keyByFunction) {
     return {
       ...preview,
       id: newId,
-      functionName: keyByFunction.get(previewFunction(preview)) ?? previewFunction(preview),
+      functionName:
+        keyByFunction.get(previewFunction(preview)) ?? previewFunction(preview),
       ...(Array.isArray(preview.captures)
-        ? { captures: preview.captures.map((capture) => rewriteCapture(capture, oldId, newId)) }
+        ? {
+            captures: preview.captures.map((capture) =>
+              rewriteCapture(capture, oldId, newId),
+            ),
+          }
         : {}),
     };
   });
   const candidates = (record.candidates ?? []).map((candidate) => ({
     ...candidate,
     functionName:
-      keyByFunction.get(candidateFunction(candidate)) ?? candidateFunction(candidate),
+      keyByFunction.get(candidateFunction(candidate)) ??
+      candidateFunction(candidate),
     module,
-    ...(candidate.previewId ? { previewId: rewriteId(candidate.previewId) } : {}),
+    ...(candidate.previewId
+      ? { previewId: rewriteId(candidate.previewId) }
+      : {}),
     ...(Array.isArray(candidate.images)
       ? {
           images: candidate.images.map((image) => ({
             ...image,
-            ...(image.previewId ? { previewId: rewriteId(image.previewId) } : {}),
+            ...(image.previewId
+              ? { previewId: rewriteId(image.previewId) }
+              : {}),
           })),
         }
       : {}),
   }));
 
   const entries = {};
-  const orderedEntryIds = [...entryIdMap.keys()].sort((a, b) => b.length - a.length);
+  const orderedEntryIds = [...entryIdMap.keys()].sort(
+    (a, b) => b.length - a.length,
+  );
   for (const [path, bytes] of Object.entries(record.bundle?.entries ?? {})) {
     let rewritten = artifactPathMap.get(path) ?? path;
     if (path.startsWith("previews/")) {
       const rest = path.slice("previews/".length);
       const oldId = orderedEntryIds.find(
-        (id) => rest === id || rest.startsWith(`${id}.`) || rest.startsWith(`${id}_`),
+        (id) =>
+          rest === id || rest.startsWith(`${id}.`) || rest.startsWith(`${id}_`),
       );
-      if (oldId) rewritten = `previews/${entryIdMap.get(oldId)}${rest.slice(oldId.length)}`;
+      if (oldId)
+        rewritten = `previews/${entryIdMap.get(oldId)}${rest.slice(oldId.length)}`;
     }
     entries[rewritten] = bytes;
   }
   rewriteJsonEntry(entries, "previews.json", (value) => {
-    const list = Array.isArray(value) ? value : value.previews ?? [];
+    const list = Array.isArray(value) ? value : (value.previews ?? []);
     const rewritten = list.map((preview) => ({
       ...preview,
       id: rewriteId(preview.id),
-      functionName: keyByFunction.get(previewFunction(preview)) ?? previewFunction(preview),
+      functionName:
+        keyByFunction.get(previewFunction(preview)) ?? previewFunction(preview),
     }));
     return Array.isArray(value) ? rewritten : { ...value, previews: rewritten };
   });
@@ -145,7 +179,11 @@ function namespaceAdditionalRecord(record, module, keyByFunction) {
       ? { previewIds: value.previewIds.map((id) => entryIdMap.get(id) ?? id) }
       : {}),
     ...(Array.isArray(value.rawPreviewIds)
-      ? { rawPreviewIds: value.rawPreviewIds.map((id) => rawIdMap.get(id) ?? id) }
+      ? {
+          rawPreviewIds: value.rawPreviewIds.map(
+            (id) => rawIdMap.get(id) ?? id,
+          ),
+        }
       : {}),
   }));
 
@@ -160,10 +198,18 @@ function namespaceAdditionalRecord(record, module, keyByFunction) {
       manifest: {
         ...manifest,
         ...(Array.isArray(manifest.previewIds)
-          ? { previewIds: manifest.previewIds.map((id) => entryIdMap.get(id) ?? id) }
+          ? {
+              previewIds: manifest.previewIds.map(
+                (id) => entryIdMap.get(id) ?? id,
+              ),
+            }
           : {}),
         ...(Array.isArray(manifest.rawPreviewIds)
-          ? { rawPreviewIds: manifest.rawPreviewIds.map((id) => rawIdMap.get(id) ?? id) }
+          ? {
+              rawPreviewIds: manifest.rawPreviewIds.map(
+                (id) => rawIdMap.get(id) ?? id,
+              ),
+            }
           : {}),
       },
     },
@@ -207,15 +253,18 @@ export function namespaceModuleRecords(primary, additional = []) {
         if (!owner) claimed.set(fn, module);
       }
     }
-    if (record !== ordered[0]) return namespaceAdditionalRecord(record, module, keyByFunction);
+    if (record !== ordered[0])
+      return namespaceAdditionalRecord(record, module, keyByFunction);
     const previews = (record.bundle?.previews ?? []).map((preview) => ({
       ...preview,
-      functionName: keyByFunction.get(previewFunction(preview)) ?? previewFunction(preview),
+      functionName:
+        keyByFunction.get(previewFunction(preview)) ?? previewFunction(preview),
     }));
     const candidates = (record.candidates ?? []).map((candidate) => ({
       ...candidate,
       functionName:
-        keyByFunction.get(candidateFunction(candidate)) ?? candidateFunction(candidate),
+        keyByFunction.get(candidateFunction(candidate)) ??
+        candidateFunction(candidate),
       module,
     }));
     return {
@@ -230,13 +279,15 @@ export function namespaceModuleRecords(primary, additional = []) {
 /** Preview functions already represented by the effective authored/annotation inventory. */
 export function claimedPreviewFunctions(groups) {
   return new Set(
-    (groups ?? []).flatMap((group) =>
-      (group.components ?? []).flatMap((component) => [
-        component.preview,
-        component.motionPreview,
-        ...(component.variants ?? []).map((variant) => variant.preview),
-      ]),
-    ).filter(Boolean),
+    (groups ?? [])
+      .flatMap((group) =>
+        (group.components ?? []).flatMap((component) => [
+          component.preview,
+          component.motionPreview,
+          ...(component.variants ?? []).map((variant) => variant.preview),
+        ]),
+      )
+      .filter(Boolean),
   );
 }
 
@@ -244,7 +295,9 @@ export function claimedPreviewFunctions(groups) {
 export function claimedComponentIds(groups) {
   return new Set(
     (groups ?? []).flatMap((group) =>
-      (group.components ?? []).map((component) => component.componentId).filter(Boolean),
+      (group.components ?? [])
+        .map((component) => component.componentId)
+        .filter(Boolean),
     ),
   );
 }
@@ -261,7 +314,9 @@ export function combinedBundleMap(bundles, mapBundle) {
 /** Additional bundles cannot share a single buildable source module. Live publication is supported. */
 export function additionalBundleLiveConflict(values) {
   if (!(values?.["additional-renders"]?.length > 0)) return null;
-  const conflicts = [values["source-module"] && "--source-module"].filter(Boolean);
+  const conflicts = [values["source-module"] && "--source-module"].filter(
+    Boolean,
+  );
   return conflicts.length > 0 ? conflicts : null;
 }
 
@@ -294,7 +349,13 @@ export function generatedFallbackGroups(
     const seen = new Set();
     for (const candidate of record.candidates ?? []) {
       const fn = candidateFunction(candidate);
-      if (!fn || claimed.has(fn) || seen.has(fn) || !(candidate.images?.length > 0)) continue;
+      if (
+        !fn ||
+        claimed.has(fn) ||
+        seen.has(fn) ||
+        !(candidate.images?.length > 0)
+      )
+        continue;
       seen.add(fn);
       const preview = previewByFunction.get(fn);
       const name = preview?.params?.group?.trim() || "Previews";

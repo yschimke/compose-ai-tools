@@ -202,6 +202,20 @@ abstract class BundlePreviewTask : DefaultTask() {
   @get:Internal abstract val moduleProjectDir: DirectoryProperty
 
   /**
+   * The producing project's directory relative to the repository root — `bundle/format` for
+   * `:bundle-format`, empty for the root project.
+   *
+   * An `@Input` string rather than a path, because it is CARRIED CONTENT: it lands in the manifest
+   * as [BundleManifest.moduleDirectory] and a consumer joins it to a component's module-relative
+   * `sourceFile` to build a repository path. Distinct from [moduleProjectDir], which is an absolute
+   * resolution base and deliberately untracked.
+   *
+   * Recorded rather than derived downstream because [modulePath] is a LOGICAL name that
+   * `project(":x").projectDir = file("a/b")` may point anywhere; only Gradle knows which.
+   */
+  @get:Input @get:Optional abstract val moduleDirectory: Property<String>
+
+  /**
    * (v6 Android) The consumer module's **configured** build directory — where
    * [MergedResourceOwnership] looks for AGP's resource-merge blame files. Wired from
    * `project.layout.buildDirectory` rather than assumed to be `<moduleProjectDir>/build`, because a
@@ -528,6 +542,9 @@ abstract class BundlePreviewTask : DefaultTask() {
         coverPreviewId = coverId,
         classpath = classpathEntries,
         modulePath = modulePath.get(),
+        // Slash-separated regardless of the packing host, so a bundle packed on Windows reads the
+        // same as one packed on CI.
+        moduleDirectory = moduleDirectory.getOrElse("").replace('\\', '/'),
         producedBy = producedBy.get(),
         producer = PRODUCER_GRADLE,
         resolution = classpath.resolution,

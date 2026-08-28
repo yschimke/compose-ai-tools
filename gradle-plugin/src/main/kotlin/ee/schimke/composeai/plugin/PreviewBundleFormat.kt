@@ -173,6 +173,19 @@ data class BundleManifest(
   val classpath: List<ClasspathEntry>,
   /** Source Gradle path that produced the bundle, e.g. `:samples:cmp`. */
   val modulePath: String,
+  /**
+   * The producing project's directory, RELATIVE TO THE REPOSITORY ROOT — `bundle/format` for
+   * `:bundle-format`. Empty for the root project, and empty on a bundle packed before the field
+   * existed.
+   *
+   * Recorded rather than derived because [modulePath] is a LOGICAL name and the two need not agree:
+   * `project(":bundle-format").projectDir = file("bundle/format")` is legal, common, and invisible
+   * to every consumer downstream. This repository remaps 100 projects that way and not one of them
+   * derives correctly from its Gradle path, so a consumer joining [modulePath] to a component's
+   * module-relative `sourceFile` builds a repository path that resolves nowhere. Only Gradle knows
+   * the answer, so Gradle is what writes it down.
+   */
+  val moduleDirectory: String = "",
   /** `BUNDLE_VERSION`-shaped identifier of the producer for diagnostics. */
   val producedBy: String,
   /**

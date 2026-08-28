@@ -354,6 +354,13 @@ public object BundleReader {
     val rawPreviewIds: List<String> = emptyList(),
     val classpath: List<ClasspathEntry>,
     val modulePath: String,
+    /**
+     * The producing project's directory relative to the repository root (`bundle/format` for
+     * `:bundle-format`). Empty for the root project and for any bundle packed before the field
+     * existed — [modulePath] is a LOGICAL name that `projectDir` may remap, so this cannot be
+     * derived from it.
+     */
+    val moduleDirectory: String = "",
     val producedBy: String,
     /** v3+: producing build system (`gradle`|`amper`|`bazel`). Defaults for v2 bundles. */
     val producer: String = "gradle",
