@@ -409,16 +409,24 @@ export function variantSeeds(preview) {
 
 /** The name a variant render goes by, for a report and for the design-map `state` slot. */
 /**
- * How a folded variant names itself in the reference diagnostics: `<parentId> [<variant>]`.
+ * How a folded variant names itself in the reference diagnostics: `<parentId> [<axis>=<value> …]`.
  *
  * Not the bare `componentId` — that is the PARENT's id for a VARIANT role, so reporting a variant's
  * stated absence under it would read as a finding about a parent that may carry a perfectly good
- * reference. Reuses [variantName] so the label matches what the variant is called everywhere else.
+ * reference.
+ *
+ * Not [variantName] either, though that is what the variant is called elsewhere: it narrows to the
+ * `state` alone whenever there is one, so two variants of a parent sharing a state and differing
+ * only in `props` produce the SAME name. These labels are map keys, so a collision silently drops
+ * one of the two stated absences — losing exactly the record this diagnostic exists to keep. The
+ * full seed vector is what distinguishes them, so the label is built from that.
  */
 export function variantAbsenceId(preview) {
-  const label = variantName(preview, variantSeeds(preview));
   const parent = preview.catalog?.componentId ?? "(unnamed)";
-  return label ? `${parent} [${label}]` : parent;
+  const axes = variantSeeds(preview)
+    .map((seed) => `${seed.key}=${seed.raw}`)
+    .join(" ");
+  return axes ? `${parent} [${axes}]` : parent;
 }
 
 function variantName(preview, seeds) {
@@ -543,6 +551,8 @@ export function projectDesignMap(previews, opts = {}) {
    */
   const unmappedIds = new Map();
   const statedAbsentIds = new Map();
+  /** Capture subjects whose absence is stated — a variant is named by subject, not by component. */
+  const referencelessSubjects = new Set();
   for (const preview of previews) {
     const catalog = preview.catalog;
     if (!catalog || catalog.reference) continue;
@@ -560,6 +570,12 @@ export function projectDesignMap(previews, opts = {}) {
     if (catalog.role === "VARIANT") {
       if (!catalog.noReference) continue; // silence under a parent is the parent's business
       statedAbsentIds.set(variantAbsenceId(preview), catalog.noReference);
+      // The ambiguity filter below matches on componentId, which for a VARIANT is the PARENT's --
+      // so a variant's own stated absence could not suppress its own ambiguous-mode record, and a
+      // parent carrying a good reference left it unsuppressed. `--strict --allow-stated-absence`
+      // then failed on precisely the case that flag exists to accept. A variant render has its own
+      // capture subject, so record that instead of trying to name it by component.
+      referencelessSubjects.add(captureIdentity(preview).subject);
       continue;
     }
     if (catalog.role !== "COMPONENT") continue;
@@ -643,7 +659,9 @@ export function projectDesignMap(previews, opts = {}) {
       // absence already reported above, and under --strict it would be a second, unfixable failure
       // for the same component.
       ambiguousMode: selection.ambiguous.filter(
-        (a) => !a.componentIds.length || a.componentIds.some((id) => !referencelessIds.has(id)),
+        (a) =>
+          !referencelessSubjects.has(a.subject) &&
+          (!a.componentIds.length || a.componentIds.some((id) => !referencelessIds.has(id))),
       ),
       variantRenders: declarations.reduce((n, d) => n + d.renders.length, 0),
       withSet: components.filter((c) => c.refSet).length,

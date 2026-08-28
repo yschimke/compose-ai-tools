@@ -178,11 +178,64 @@ test("a folded variant's stated absence is reported under the variant, not its p
   ]);
   assert.deepEqual(diagnostics.statedAbsent, [
     {
-      componentId: "Button [icon-only]",
+      componentId: "Button [state=icon-only]",
       reason: "the kit exports no Text=No cell for this set",
     },
   ]);
   assert.deepEqual(diagnostics.unmapped, []);
+});
+
+test("two variants sharing a state but differing in props keep both absences", () => {
+  // The label is a Map key. `variantName` narrows to the state alone whenever there is one, so
+  // building the label from it collided these two and silently dropped one of the reasons --
+  // losing exactly the record this diagnostic exists to keep. The full seed vector distinguishes
+  // them.
+  const { diagnostics } = projectDesignMap([
+    component("Button", { reference: ref("1:2") }),
+    catalogVariant("ButtonDisabledIcon", "Button", {
+      state: "disabled",
+      props: [{ key: "content", value: "icon-only" }],
+      noReference: "no disabled icon-only cell",
+    }),
+    catalogVariant("ButtonDisabledText", "Button", {
+      state: "disabled",
+      props: [{ key: "content", value: "text-only" }],
+      noReference: "no disabled text-only cell",
+    }),
+  ]);
+  assert.equal(diagnostics.statedAbsent.length, 2);
+  assert.deepEqual(
+    diagnostics.statedAbsent.map((s) => s.reason).sort(),
+    ["no disabled icon-only cell", "no disabled text-only cell"],
+  );
+});
+
+test("a stated-absent variant's ambiguous modes are suppressed even when its parent has a reference", () => {
+  // The ambiguity filter matches on componentId, which for a VARIANT is the PARENT's -- so a
+  // variant's own stated absence could not suppress its own record, and a parent carrying a good
+  // reference left it standing. `--strict --allow-stated-absence` then failed on precisely the
+  // case that flag exists to accept. A variant render has its own capture subject.
+  const dark = {
+    ...catalogVariant("ButtonIconOnly", "Button", {
+      state: "icon-only",
+      noReference: "the kit exports no Text=No cell",
+    }),
+    id: "com.example.CatalogKt.ButtonIconOnly_Dark",
+  };
+  const coral = {
+    ...catalogVariant("ButtonIconOnly", "Button", {
+      state: "icon-only",
+      noReference: "the kit exports no Text=No cell",
+    }),
+    id: "com.example.CatalogKt.ButtonIconOnly_Coral",
+  };
+  const { diagnostics } = projectDesignMap([
+    component("Button", { reference: ref("1:2") }),
+    dark,
+    coral,
+  ]);
+  assert.equal(diagnostics.statedAbsent.length, 1);
+  assert.deepEqual(diagnostics.ambiguousMode, []);
 });
 
 test("a variant that says nothing about the kit is not reported as unmapped", () => {
