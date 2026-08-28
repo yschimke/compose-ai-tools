@@ -18,7 +18,6 @@
 
 package ee.schimke.composeai.rcembedded.player.modifier
 
-import androidx.compose.remote.core.CoreDocument
 import androidx.compose.remote.core.operations.layout.modifiers.ClipRectModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.RoundedClipRectModifierOperation
 import androidx.compose.runtime.Composable
@@ -34,7 +33,6 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
-import ee.schimke.composeai.rcembedded.player.LocalCoreDocument
 import ee.schimke.composeai.rcembedded.player.readDataReflection
 import ee.schimke.composeai.rcembedded.player.state.rememberRemoteFloatAsState
 import kotlin.math.min
@@ -54,14 +52,12 @@ internal fun Modifier.roundedClipRect(
   hoistPastDrawContent: Boolean = false,
 ): Modifier {
   val data = op.readDataReflection()
-  val behavior = LocalCoreDocument.current.densityBehavior
   val shape =
     RemoteRoundedClipShape(
       topStart = rememberRemoteFloatAsState(data.x1Value),
       topEnd = rememberRemoteFloatAsState(data.y1Value),
       bottomEnd = rememberRemoteFloatAsState(data.y2Value),
       bottomStart = rememberRemoteFloatAsState(data.x2Value),
-      densityBehavior = behavior,
     )
 
   // remote-core applies the rounded clip to the component's complete paint output, so the clip has
@@ -90,7 +86,6 @@ internal data class RemoteRoundedClipShape(
   val topEnd: State<Float>,
   val bottomEnd: State<Float>,
   val bottomStart: State<Float>,
-  val densityBehavior: Int,
 ) : Shape {
   override fun createOutline(
     size: Size,
@@ -99,8 +94,7 @@ internal data class RemoteRoundedClipShape(
   ): Outline {
     val minDimension = size.minDimension
     val fallback = minDimension / 2f
-    fun radius(corner: State<Float>) =
-      corner.value.resolveRadius(fallback, minDimension, densityBehavior, density.density)
+    fun radius(corner: State<Float>) = corner.value.resolveRadius(fallback, minDimension)
     val topStartRadius = radius(topStart)
     val topEndRadius = radius(topEnd)
     val bottomEndRadius = radius(bottomEnd)
@@ -145,20 +139,34 @@ private fun roundedRectRadiusScale(
   )
 }
 
-internal fun Float.resolveRadius(
-  fallback: Float,
-  minDimension: Float,
-  densityBehavior: Int,
-  density: Float,
-): Float {
+/**
+ * Resolves one corner of a `RoundedClipRectModifierOperation` to a **pixel** radius.
+ *
+ * The corner arrives already scaled. remote-core's `updateVariables` folds the display density into
+ * `mX1..mY2` before the player ever reads them, so a 26dp corner is `26` at density 1.0 and `52` at
+ * density 2.0 — measured, at both densities, off a real document. There is no density behavior
+ * branch here for the same reason there is none in the pixel behaviors: the value is in pixels
+ * whatever the document declares.
+ *
+ * This used to multiply by density under [CoreDocument.DENSITY_BEHAVIOR_DP], on the belief that
+ * remote-core scaled DP-mode corners only at paint time. It does not, and the extra multiply
+ * **doubled every rounded clip** at density 2.0 — a 26dp card corner clipped as 52dp.
+ *
+ * It hid in plain sight because [roundedRectRadiusScale] rescues the common case: on a stadium or a
+ * circle the doubled radius exceeds half the box and gets clamped straight back to the shape it
+ * should have been, which is why every button on the Wear catalog looked right. Only a shape whose
+ * corner is genuinely smaller than half its box keeps the doubling — and there it eats the corners
+ * off whatever the component draws inside the clip. `RemoteOutlinedCard` drew its border as two
+ * hairlines for exactly this reason
+ * ([wear-m3-catalog#89](https://github.com/yschimke/wear-m3-catalog/issues/89)); the path handed to
+ * `drawPath` measured a complete 1168px rounded-rect contour, and the clip removed the rest of it.
+ *
+ * At density 1.0 the multiply was a no-op, so nothing ever caught it.
+ */
+internal fun Float.resolveRadius(fallback: Float, minDimension: Float): Float {
   if (!isFinite()) return fallback
 
   // Percent corners can briefly arrive as 0..1 fractions before the component-size expression
-  // settles. RoundRect normalizes an oversized result, so this remains safe under DP scaling.
-  val resolved = if (this > 0f && this <= 1f) this * minDimension else this
-
-  // Match remote-core's RoundedClipRectModifierOperation.paint exactly: updateVariables first
-  // resolves literals and NaN-backed variables into mX1..mY2, then DP behavior scales every
-  // resolved corner. Legacy and pixel behavior both pass the resolved value through unchanged.
-  return if (densityBehavior == CoreDocument.DENSITY_BEHAVIOR_DP) resolved * density else resolved
+  // settles. RoundRect normalizes an oversized result, so this remains safe.
+  return if (this > 0f && this <= 1f) this * minDimension else this
 }
