@@ -406,6 +406,19 @@ class CatalogThemeCache(
   }
 
   /**
+   * Whether a background pass exists that could refill this cache.
+   *
+   * The same question [markPersistedDirty] answers with `-1`, asked by a caller that has already
+   * done its work and only needs to know whether waking anything would achieve something. With
+   * `-Dcomposeai.serve.themeOptimization=false` the startup configures [persistableKeys] and
+   * deliberately leaves [targetKeys] empty: renders still persist, but there is no pass with a
+   * queue to work, so a wake buys nothing and costs a resumed host, a possible Android daemon cold
+   * start and a live seat.
+   */
+  val hasOptimizationTargets: Boolean
+    get() = targetKeys.isNotEmpty()
+
+  /**
    * Mark every persisted render for this catalog dirty, and report how many.
    *
    * The operator's "regenerate this catalog", for pixels suspected wrong by something no

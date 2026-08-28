@@ -1133,7 +1133,17 @@ class ServeHttpServer(
             // already exited — so without this the 200 advertises a rewarming that waits on the
             // capacity-limited resume rotation, or on a visitor's heartbeat, before it starts. The
             // drop is the more urgent of the two, not the less: every preview is cold now.
-            if (dropped) withContext(Dispatchers.IO) { sessions.wakeOptimizer(system) }
+            //
+            // And exactly as the regenerate route does, only when there is a pass to wake.
+            // `-Dcomposeai.serve.themeOptimization=false` leaves the catalog with no optimization
+            // targets, and regenerate declines the whole action on that (`markPersistedDirty`
+            // answers -1, so `queued > 0` is false). The drop still succeeds — throwing the bytes
+            // away needs no pass — but the wake behind it would resume a suspended host and carry
+            // `keepLiveWarm` on into `scheduleWarm`, cold-starting an Android daemon and taking a
+            // live seat for a refill that cannot happen.
+            if (dropped && cache.hasOptimizationTargets) {
+              withContext(Dispatchers.IO) { sessions.wakeOptimizer(system) }
+            }
             call.response.headers.append(HttpHeaders.CacheControl, "no-store")
             call.respondText(
               Json.encodeToString(

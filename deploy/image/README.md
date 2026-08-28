@@ -291,7 +291,10 @@ curl -sX POST -H "X-Compose-Preview-Admin-Token: $SERVE_ADMIN_TOKEN" \
 ```
 
 Both wake the catalog's optimizer, so the work starts with the response rather than waiting on the
-next rotation. A mistyped system is a `404`, not a silent success.
+next rotation — and both skip the wake when theme optimization is switched off on this box, because
+there is then no pass with a queue to work and resuming a suspended host would cold-start a daemon
+and spend a live seat on a refill that cannot happen. A mistyped system is a `404`, not a silent
+success.
 
 **A `409` from either is "contended, retry"** — a render held the generation write lock as you
 called, and reporting that as success is the one failure mode a drop must not have. From
