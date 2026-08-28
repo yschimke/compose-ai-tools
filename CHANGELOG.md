@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.40.0](https://github.com/yschimke/compose-ai-tools/compare/v1.39.0...v1.40.0) (2026-08-28)
+
+
+### Features
+
+* **cli:** carry preview-id exclusions in a file, so an id may contain a comma ([#4602](https://github.com/yschimke/compose-ai-tools/issues/4602)) ([906fedb](https://github.com/yschimke/compose-ai-tools/commit/906fedbcb1f174330227351ab52919c1d30e343f))
+* **serve:** order front-page sections by a group priority ([#4603](https://github.com/yschimke/compose-ai-tools/issues/4603)) ([0ce61b5](https://github.com/yschimke/compose-ai-tools/commit/0ce61b5e94364687a14d6fc20a224e0c81085b4f))
+
 ## [1.39.0](https://github.com/yschimke/compose-ai-tools/compare/v1.38.0...v1.39.0) (2026-08-27)
 
 
