@@ -163,8 +163,12 @@ const runFindings = parse(RUN_FINDINGS_FILE);
 if (!runManifest || !runFindings) {
   // A run that found nothing publishes no `findings.json` at all, which is the common and correct
   // case for a catalog at parity — not a warning.
+  //
+  // `skipped` separates that from the other way to arrive here: `parse` warned because the file IS
+  // there and is not readable JSON. Absent is normal and exits 0 even under `--strict`; unreadable
+  // is exactly what a caller who asked for the panel to be gated wants to hear about.
   console.log(`parity-findings: ${PARITY_BRANCH} publishes no findings — nothing to publish`);
-  process.exit(0);
+  process.exit(STRICT && skipped > 0 ? 1 : 0);
 }
 
 // The same planner that mints `references/index.json`, so a verdict is keyed to exactly the

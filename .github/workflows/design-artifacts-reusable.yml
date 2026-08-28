@@ -1620,7 +1620,19 @@ jobs:
         if: ${{ inputs.publish || inputs.upload-out }}
         run: |
           set -euo pipefail
-          node compose-ai-tools/scripts/design-artifacts/emit-parity-findings.mjs \
+          # The emitter comes from the export-driver checkout, which for an external caller is the
+          # immutable release commit in .github/design-artifacts-driver-pin.txt — a revision that
+          # predates any file this workflow adds. Invoking it unconditionally would abort every
+          # external run with MODULE_NOT_FOUND the moment this lands, and go on doing it until the
+          # next release moves the pin. Same hazard push-history.sh guards against below, and the
+          # same answer: a catalog that cannot publish a verdict panel this run is not a failed
+          # render. compose-ai-tools' own runs execute the commit the run is on and never see this.
+          emitter=compose-ai-tools/scripts/design-artifacts/emit-parity-findings.mjs
+          if [ ! -f "$emitter" ]; then
+            echo "::notice::parity findings: the pinned export driver has no emit-parity-findings.mjs; skipping the verdict panel. It publishes once the driver pin advances."
+            exit 0
+          fi
+          node "$emitter" \
             --out "$GITHUB_WORKSPACE/out" \
             --repo "$GITHUB_WORKSPACE" \
             --spec "$INPUT_SPEC" \
@@ -1887,6 +1899,18 @@ jobs:
           # same problem with a different answer: REVISION_PREVIEW_INDEX rolls it
           # forward rather than merely preserving it.)
           #
+          # `parity/findings.json` is deliberately NOT on that list, even though it
+          # sits beside `parity/issues.json` on the branch. This job generates it,
+          # a few steps up, and `tree_for_parent` restores a carried path from the
+          # parent UNCONDITIONALLY — so listing it would freeze the panel at its
+          # first published value: every later verdict discarded, and a catalog that
+          # has since reached parity still serving the failures it fixed. The lane
+          # that cannot be read is not a reason to carry it either. Only a publishing
+          # run reaches this step, and a publishing run is the calling repo's own,
+          # with a token and a normal checkout, so the sibling-branch fetch behind
+          # the verdict does not fail there; the fail-soft paths in the emitter are
+          # for `upload-out` runs, which push nothing at all.
+          #
           # Identity goes through git's own GIT_AUTHOR_*/GIT_COMMITTER_* env vars
           # rather than a helper-specific input, because push-branch.sh comes from
           # the `driver-ref` checkout — which a caller may pin to a revision older
@@ -1898,12 +1922,7 @@ jobs:
           GITHUB_TOKEN_INLINE="$GH_TOKEN" \
           MSG="chore(design-artifacts): regenerate ${SYSTEM} catalog ($(date -u +%F), ${SOURCE_SHA})" \
           SKIP_IF_UNCHANGED=1 \
-          # `parity/findings.json` carries forward for the same reason `parity/issues.json` does:
-          # both are produced from something a fork or a token-less run cannot reach — a
-          # credentialled issue query there, a sibling branch fetch here — so a republish that
-          # could not read it would otherwise blank the panel rather than leave the last good
-          # verdict standing.
-          CARRY_FORWARD_PATHS='parity/issues.json parity/findings.json history.json' \
+          CARRY_FORWARD_PATHS='parity/issues.json history.json' \
           REVISION_PREVIEW_INDEX=1 \
           GIT_AUTHOR_NAME="$INPUT_COMMIT_USER_NAME" \
           GIT_AUTHOR_EMAIL="$INPUT_COMMIT_USER_EMAIL" \
