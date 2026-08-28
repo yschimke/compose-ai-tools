@@ -319,11 +319,14 @@ services:
     # Container memory limit. Default UNBOUNDED (0 = no cgroup cap) so the box's full RAM is
     # available and the live-seat budget auto-sizes to it: the entrypoint reads the container's
     # memory limit and, finding none, falls back to physical RAM (~1 GB reserved for the host,
-    # ~1.2 GB per live-seat permit, clamped [2, 8]). So a bigger dedicated box scales on its own —
-    # redeploy and it uses the whole machine, no compose edit. Admission control (the live-seat
-    # budget + the per-render concurrency limiter) is the memory guard here, not a hard cgroup kill.
-    # Set PREVIEW_MEM_LIMIT in .env (e.g. `PREVIEW_MEM_LIMIT=4g`) to cap it on a shared host, which
-    # also lowers the derived seat budget to match.
+    # ~1.2 GB per live-seat permit). It sizes from CPU as well and takes the smaller of the two —
+    # 2 permits per core, from the cgroup CPU quota where one is set rather than from `nproc`,
+    # which reports the host's cores inside a `--cpus`-constrained container. Clamped [2, 32].
+    # So a bigger dedicated box scales on its own — redeploy and it uses the whole machine, no
+    # compose edit. Admission control (the live-seat budget + the per-render concurrency limiter)
+    # is the memory guard here, not a hard cgroup kill. Set PREVIEW_MEM_LIMIT in .env (e.g.
+    # `PREVIEW_MEM_LIMIT=4g`) to cap it on a shared host, which also lowers the derived seat budget
+    # to match; `cpus:` (or `--cpus`) now lowers it too.
     mem_limit: "${PREVIEW_MEM_LIMIT:-0}"
     # Readiness gate for the rolling update. docker-rollout (driven by the `rollout`
     # service) waits for a freshly-started replica to report `healthy` BEFORE it
