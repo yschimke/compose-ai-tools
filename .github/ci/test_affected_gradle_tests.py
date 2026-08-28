@@ -21,7 +21,14 @@ class AffectedGradleTestsTest(unittest.TestCase):
         (self.root / "app").mkdir()
         self.projects = [
             {"path": ":", "dir": str(self.root), "dependencies": [], "hasTestTask": False},
-            {"path": ":core", "dir": str(self.root / "core"), "dependencies": [], "hasTestTask": True},
+            {
+                "path": ":core",
+                "dir": str(self.root / "core"),
+                "dependencies": [],
+                "hasTestTask": True,
+                # A published module: `abiValidation()` gives it `checkKotlinAbi`.
+                "hasAbiCheck": True,
+            },
             {"path": ":app", "dir": str(self.root / "app"), "dependencies": [":core"], "hasTestTask": True},
         ]
         self.config = {"ignorePaths": ["docs/**"], "globalPaths": ["gradle/**"]}
@@ -30,10 +37,24 @@ class AffectedGradleTestsTest(unittest.TestCase):
         self.temp.cleanup()
 
     def test_changed_project_includes_dependent_tests(self):
+        # `:core` publishes an ABI, so a change to it runs the ABI gate as well as the tests.
+        # `:app` does not, and must NOT be handed a task it has no such thing as — naming one
+        # fails the whole Gradle invocation rather than that single task.
         self.assertEqual(
             mod.resolve(["core/src/Core.kt"], self.config, self.projects, self.root),
-            ":app:test :core:test",
+            ":app:test :core:checkKotlinAbi :core:test",
         )
+
+    def test_abi_gate_runs_for_the_module_whose_sources_changed(self):
+        # The regression this exists for: a module wires `checkKotlinAbi` into `check`, CI runs
+        # `test`, and `test` does not imply `check` — so the dump goes stale and lands on main.
+        # Three did in one day (#4673, #4685, #4716) before this resolver named the task.
+        tasks = mod.resolve(["core/src/Core.kt"], self.config, self.projects, self.root).split()
+        self.assertIn(":core:checkKotlinAbi", tasks)
+
+    def test_a_project_without_abi_validation_is_never_given_the_task(self):
+        tasks = mod.resolve(["app/src/App.kt"], self.config, self.projects, self.root).split()
+        self.assertEqual(tasks, [":app:test"])
 
     def test_docs_only_skips(self):
         self.assertEqual(mod.resolve(["docs/x.md"], self.config, self.projects, self.root), "none")
