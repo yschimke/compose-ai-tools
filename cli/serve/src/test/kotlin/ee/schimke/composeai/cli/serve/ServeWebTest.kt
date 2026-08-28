@@ -163,6 +163,61 @@ class ServeWebTest {
       ),
     )
 
+  // An exhaustively drawn kit set: two cells a reader browses by, and one of the eighty-eight that
+  // exist to be compared against a kit node rather than navigated to.
+  private val exhaustive =
+    listOf(
+      ServePreview("progress__ideal__default", "Progress", state = "default"),
+      ServePreview("progress__ideal__disabled", "Progress", state = "disabled"),
+      ServePreview(
+        "progress__ideal__segments-13-small-stroke",
+        "Progress",
+        state = "segments-13-small-stroke",
+        secondary = true,
+      ),
+    )
+
+  @Test
+  fun `a second-tier cell stays out of the component subtree`() {
+    val html =
+      ServeWeb.viewerPage(
+        exhaustive[0],
+        token = "t",
+        basePath = "/wear-m3-catalog",
+        siblings = exhaustive,
+      )
+    val nav = html.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
+
+    assertTrue(nav.contains("/p/progress__ideal__disabled"), "a primary cell is still listed")
+    assertFalse(
+      nav.contains("segments-13-small-stroke"),
+      "the exhaustive cell is not a row a reader has to scroll past",
+    )
+  }
+
+  @Test
+  fun `a second-tier cell reached by its own link still says where it is`() {
+    // The whole point of the tier is that the render stays addressable — a kit page links straight
+    // to it — so the page it lands on has to be a page, tree and all, not a dead end.
+    val html =
+      ServeWeb.viewerPage(
+        exhaustive[2],
+        token = "t",
+        basePath = "/wear-m3-catalog",
+        siblings = exhaustive,
+      )
+    val nav = html.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
+
+    assertTrue(
+      nav.contains("progress__ideal__segments-13-small-stroke"),
+      "the render on screen is a row of its own tree",
+    )
+    assertTrue(
+      nav.contains("/p/progress__ideal__disabled"),
+      "and the primary cells are still the way back",
+    )
+  }
+
   @Test
   fun `the state switcher reaches untagged siblings from the primary-lane default`() {
     val current = mixedTagging[0] // default, light

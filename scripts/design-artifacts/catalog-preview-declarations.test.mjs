@@ -36,6 +36,24 @@ test("reads authored declarations and detected features from a preview bundle", 
   });
 });
 
+test("carries a second-tier cell's tier onto its image", () => {
+  // `secondary` says how prominently to LIST the cell, so the browse surface has to know it from
+  // catalog.json — before any daemon is opened, exactly as `fixedTheme` does.
+  const bundle = {
+    previews: [
+      {
+        id: "SegmentedProgress_VARIANT_segments-13",
+        overrides: { name: "segments-13", secondary: true },
+      },
+      { id: "SegmentedProgress_VARIANT_disabled", overrides: { name: "disabled" } },
+    ],
+  };
+
+  const byId = declarationsByPreviewId(bundle);
+  assert.deepEqual(byId.get("SegmentedProgress_VARIANT_segments-13"), { secondary: true });
+  assert.equal(byId.has("SegmentedProgress_VARIANT_disabled"), false);
+});
+
 test("stamps supplement-only image declarations by bridged daemon id", () => {
   const manifest = {
     components: [

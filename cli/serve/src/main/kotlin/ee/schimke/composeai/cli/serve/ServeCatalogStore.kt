@@ -625,7 +625,8 @@ class ServeCatalogStore(
             image.remoteComposeKnobs.isNotEmpty() ||
             image.supportsFocus ||
             image.supportsGestures ||
-            image.fixedTheme
+            image.fixedTheme ||
+            image.secondary
         ) {
           variants[id] =
             VariantMeta(
@@ -639,6 +640,7 @@ class ServeCatalogStore(
               supportsFocus = image.supportsFocus,
               supportsGestures = image.supportsGestures,
               fixedTheme = image.fixedTheme,
+              secondary = image.secondary,
               motion = motion,
               section = planned.section,
               group = planned.group,
@@ -3020,6 +3022,13 @@ class ServeCatalogStore(
      */
     val fixedTheme: Boolean = false,
     /**
+     * Whether this render is a **second-tier** variant cell — `@OverrideVariant(secondary = true)`,
+     * lifted onto the image by the publisher. It renders, it is addressable and it pairs with its
+     * design-kit node like any other cell; what it is kept out of is the browse surface's variant
+     * tree. See [VariantMeta.secondary].
+     */
+    val secondary: Boolean = false,
+    /**
      * This render's `@Preview` ground and device frame, lifted from the bundle's `previews.json` at
      * export time. See [PreviewParamsMeta] for why a published catalog cannot recover them
      * otherwise.
@@ -3156,6 +3165,17 @@ class ServeCatalogStore(
     val supportsGestures: Boolean = false,
     /** Discovery-time `@FixedTheme` — see [Image.fixedTheme]. */
     val fixedTheme: Boolean = false,
+    /**
+     * Whether this render is a **second-tier** variant cell: listed nowhere in the component's
+     * variant tree, but rendered, addressable by its own URL and paired with its design-kit node
+     * like any other cell. From `@OverrideVariant(secondary = true)`, through the publisher's
+     * per-preview declarations.
+     *
+     * It exists for the catalog that draws a kit set exhaustively: a 90-cell component is 90 real
+     * comparisons and one unusable menu, and the axes that were already second-tier (theme,
+     * breakpoint, font scale, locale) are second-tier for exactly this reason.
+     */
+    val secondary: Boolean = false,
     /**
      * Animated captures this preview can offer instead of its still. Empty for the overwhelming
      * majority of previews; a viewer shows the still exactly as before and surfaces these only as

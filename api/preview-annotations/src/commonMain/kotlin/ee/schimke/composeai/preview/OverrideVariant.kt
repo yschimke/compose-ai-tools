@@ -90,6 +90,37 @@ package ee.schimke.composeai.preview
  * Resolution walks the whole meta-annotation closure, so an annotation class that is itself tagged
  * with another one contributes both sets.
  *
+ * ## When a matrix is bigger than a menu
+ *
+ * [secondary] drops a cell out of the component's variant TREE while changing nothing else about
+ * it: it renders, it bakes, it keeps its `_VARIANT_<name>` URL, and it pairs with its design-kit
+ * node exactly as a primary cell does. What it loses is a row in the navigation — the tree and the
+ * viewer's subtree list the primary cells only, and a secondary one is reached by its link (from a
+ * kit page, a design-map pairing, a search result, or the sheet's own "browse all").
+ *
+ * The tiering is not new: theme, breakpoint, font scale and locale have always been secondary, on
+ * the ground that they are a different *rendering* of the same thing rather than a different thing
+ * to look at, and listing them multiplies every row by a matrix nobody navigates by. What is new is
+ * that a state cell can say the same about itself. A catalog that draws a kit set exhaustively
+ * needs it: `wear-m3-catalog`'s segmented progress indicator is 90 cells — 14 segment counts by two
+ * stroke widths by four progress values by disabled — every one of them a real kit node worth
+ * comparing, and none of them something a reader browses to by name.
+ *
+ * ```
+ * @OverrideVariant(
+ *   name = "segments-13-small-stroke-overflow",
+ *   ints = ["segmentCount=13"],
+ *   strings = ["stroke=small"],
+ *   floats = ["progress=1.4"],
+ *   kitProps = ["Segments=13", "Stroke Width=Small", "Progress=Overflow"],
+ *   secondary = true,
+ * )
+ * ```
+ *
+ * Reach for it when the cells exist for a comparison rather than for a reader, and leave it alone
+ * for the handful a reviewer actually looks for (`disabled`, `pressed`, `icon`). It is not a way to
+ * hide a render that does not work: an unwanted cell should not be authored at all.
+ *
  * ## Design-kit correspondence
  *
  * [kitAxis] names the design-kit variant property that the seeded knob represents when its name is
@@ -201,6 +232,15 @@ annotation class OverrideVariant(
    * discovery warning and the cell keeps `kitProps`.
    */
   val kitProps: Array<String> = [],
+  /**
+   * Whether this cell is **second-tier**: rendered, addressable and paired with its kit node as
+   * usual, but left out of the component's variant tree and the viewer's subtree.
+   *
+   * For a matrix that exists to be compared rather than to be browsed — see **When a matrix is
+   * bigger than a menu** above. Defaults to false, which is every cell written before the field
+   * existed.
+   */
+  val secondary: Boolean = false,
 )
 
 /** Harness-driven state for an addressable [OverrideVariant]. */

@@ -2178,6 +2178,40 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `a second-tier image reaches the browse surface as one`() {
+    // Like `fixedTheme`, this has to ride a variants-manifest entry of its own: an exhaustive
+    // matrix cell declares no knobs and detects no features, and if the flag did not carry it the
+    // browse surface would list all ninety of them in the component's tree.
+    val declared =
+      """
+      {"schema":"design-parity-catalog/v1","system":"meshcore","components":[
+        {"componentId":"Progress","images":[{
+          "path":"images/progress/ideal__segments-13.png",
+          "previewId":"progress__ideal__segments-13",
+          "state":"segments-13",
+          "secondary":true
+        }]}]}
+      """
+        .trimIndent()
+    val fetch: (String) -> ByteArray? = { url ->
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> declared.toByteArray()
+        url.endsWith(".png") -> png()
+        else -> null
+      }
+    }
+
+    assertTrue(
+      store(TrustStore.EMPTY, fetch = fetch).load("meshcore") is ServeCatalogStore.Result.Ok
+    )
+
+    val preview = registered.getValue("meshcore").previews.single()
+    assertTrue(preview.secondary)
+    // The cell keeps everything else a cell has — it is listed differently, not served differently.
+    assertEquals("segments-13", preview.state)
+  }
+
+  @Test
   fun `catalog props preserve arbitrary JSON values through the variants manifest`() {
     val flexibleProps =
       """
