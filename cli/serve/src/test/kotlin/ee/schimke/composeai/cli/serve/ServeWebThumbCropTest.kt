@@ -373,6 +373,83 @@ class ServeWebThumbCropTest {
   }
 
   @Test
+  fun `a group priority lifts its section above the ones the catalog list reaches first`() {
+    // The ordering the front page had before #4601: sections came out in first-appearance order,
+    // so a design system registered after the samples (an admin publish is appended) read last.
+    fun system(id: String, repo: String, group: ServeWeb.HomeGroup?) =
+      ServeWeb.HomeSystem(
+        system = id,
+        title = id,
+        subtitle = null,
+        previewCount = 1,
+        trust = null,
+        sourceRepo = repo,
+        heroPreviewId = null,
+        group = group,
+      )
+
+    val systems =
+      listOf(
+        system("jetnews", "yschimke/compose-samples", androidSamples),
+        system("confetti-wear", "joreilly/Confetti", null),
+        system("m3-catalog", "yschimke/compose-ai-tools", designSystems),
+      )
+
+    assertEquals(
+      listOf("android/compose-samples", "joreilly repositories", "Design Systems"),
+      ServeWeb.homeSections(systems).map { it.heading },
+      "with no priority declared, order is still where the catalog list first reaches a section",
+    )
+
+    val lifted = systems.map {
+      if (it.group == designSystems) it.copy(group = designSystems.copy(priority = 100)) else it
+    }
+
+    assertEquals(
+      listOf("Design Systems", "android/compose-samples", "joreilly repositories"),
+      ServeWeb.homeSections(lifted).map { it.heading },
+      "a declared priority orders the sections; the rest keep first-appearance order",
+    )
+  }
+
+  @Test
+  fun `Other stays pinned last however it is claimed, and cards keep list order`() {
+    fun system(id: String, repo: String?, group: ServeWeb.HomeGroup?) =
+      ServeWeb.HomeSystem(
+        system = id,
+        title = id,
+        subtitle = null,
+        previewCount = 1,
+        trust = null,
+        sourceRepo = repo,
+        heroPreviewId = null,
+        group = group,
+      )
+
+    val sections =
+      ServeWeb.homeSections(
+        listOf(
+          // No provenance: falls into Other, and a priority on the claim it can't satisfy must
+          // not promote it out of the unattributed bucket.
+          system("mystery", null, designSystems.copy(priority = 500)),
+          system(
+            "wear-m3-catalog",
+            "yschimke/compose-ai-tools",
+            designSystems.copy(priority = 100),
+          ),
+          system("m3-catalog", "yschimke/compose-ai-tools", designSystems.copy(priority = 100)),
+        )
+      )
+
+    assertEquals(listOf("Design Systems", "Other"), sections.map { it.heading })
+    assertEquals(
+      listOf("wear-m3-catalog", "m3-catalog"),
+      sections.first().systems.map { it.system },
+      "priority orders sections only — inside one, the configured catalog order still decides",
+    )
+  }
+
+  @Test
   fun `a section heading from config is escaped, never injected into the page`() {
     val system =
       ServeWeb.HomeSystem(

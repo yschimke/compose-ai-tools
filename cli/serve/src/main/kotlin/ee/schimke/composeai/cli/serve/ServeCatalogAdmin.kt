@@ -328,6 +328,7 @@ class ServeCatalogAdmin(
         heading = group.heading,
         noun = group.noun,
         repos = (entry.attributionRepos + repo).toSet(),
+        priority = group.priority,
       )
     }
   }
