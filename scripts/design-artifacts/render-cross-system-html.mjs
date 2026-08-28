@@ -137,14 +137,24 @@ function rendersBothSides(pair, opts) {
 /**
  * One `<tr>` per pairing. Both renders are baked static thumbnails that link to
  * the live server; nothing is resolved at view time.
+ *
+ * The row is ANCHORED, `id="c-<slug>"`, and its component id is a self-link — the
+ * same `c-<slug>` scheme `renderIndexHtml` already uses, so one convention covers
+ * both pages. This is the page a cross-system bug report wants to point at: it is
+ * the only one carrying the kit reference and both renditions of a cell side by
+ * side, which is the whole argument such a report makes. Without a per-row anchor
+ * the best a report could do was link the page and name the row, so three
+ * upstream issues in yschimke/wear-m3-catalog (#89, #90, #91) had to commit a
+ * composed triptych image apiece instead.
  */
 function pairRow(pair, opts) {
   const { local, parallelId, other } = pair;
   const id = local.componentId ?? "(unnamed)";
   const group = local.group ?? "Components";
+  const anchor = `c-${slug(id)}`;
   const design = opts.designRefById ? `<td class="col-d">${designEmbed(pair, opts)}</td>` : "";
-  return `<tr class="crow">
-  <th scope="row" class="rowhead"><span class="cid">${esc(id)}</span><span class="grp">${esc(group)}</span></th>
+  return `<tr class="crow" id="${esc(anchor)}">
+  <th scope="row" class="rowhead"><a class="cid anchor" href="#${esc(anchor)}">${esc(id)}</a><span class="grp">${esc(group)}</span></th>
   ${design}<td class="col-a">${localEmbed(local)}</td>
   <td class="col-b">${otherEmbed(pair, opts)}</td>
   <td class="rel"><code>${esc(parallelId)}</code>${other ? "" : `<span class="badge" title="the parallel isn't in the ${esc(opts.otherSystem)} catalog yet">unpaired</span>`}</td>
@@ -284,6 +294,14 @@ export function renderCrossSystemHtml(catalog, opts = {}) {
   tbody tr.crow { border-bottom:1px solid var(--line); }
   th.rowhead { text-align:left; font-weight:600; padding:12px; vertical-align:middle; width:22%; }
   th.rowhead .cid { display:block; word-break:break-word; }
+  /* scroll-margin-top because thead th is sticky: without it a row jumped to from
+     its #c-slug anchor lands underneath the header and reads as the wrong row. */
+  tr.crow { scroll-margin-top:44px; }
+  a.anchor { color:inherit; text-decoration:none; }
+  a.anchor:hover, a.anchor:focus-visible { text-decoration:underline; }
+  a.anchor::after { content:" #"; color:var(--muted); opacity:0; }
+  tr.crow:hover a.anchor::after, a.anchor:focus-visible::after { opacity:1; }
+  tr.crow:target { outline:2px solid var(--accent); outline-offset:-2px; }
   th.rowhead .grp { display:block; margin-top:3px; font-weight:400; font-size:11px; color:var(--muted); }
   td { padding:10px 12px; vertical-align:middle; }
 ${previewEmbedStyles({ accent: "var(--link)", muted: "var(--muted)" })}
