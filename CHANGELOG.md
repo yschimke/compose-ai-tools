@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.46.0](https://github.com/yschimke/compose-ai-tools/compare/v1.45.0...v1.46.0) (2026-08-28)
+
+
+### Features
+
+* **serve:** let a variant cell declare itself second-tier ([#4734](https://github.com/yschimke/compose-ai-tools/issues/4734)) ([ab1839a](https://github.com/yschimke/compose-ai-tools/commit/ab1839abebcbf12e81831b6fb9fe1a116aeaa0ca))
+
+
+### Bug Fixes
+
+* **design-artifacts:** pair a compared variant by its own axes, and publish its stated absence ([#4740](https://github.com/yschimke/compose-ai-tools/issues/4740)) ([39c7b7d](https://github.com/yschimke/compose-ai-tools/commit/39c7b7d8949ed77013a86aefaac581d552011c03))
+* **design-map:** read a variant's own kit correspondence, and its marker exactly ([#4737](https://github.com/yschimke/compose-ai-tools/issues/4737)) ([ab03de2](https://github.com/yschimke/compose-ai-tools/commit/ab03de26d71f7729d95f0affc3ab42a2c350870d))
+* **remotecompose:** declare the density behavior the capture actually writes ([#4731](https://github.com/yschimke/compose-ai-tools/issues/4731)) ([f5780da](https://github.com/yschimke/compose-ai-tools/commit/f5780da30428ceeb7be12cff460f91881251b6ab))
+* **serve:** mark catalogs explicitly, and replace an unrecognised chrome pin ([#4733](https://github.com/yschimke/compose-ai-tools/issues/4733)) ([9944030](https://github.com/yschimke/compose-ai-tools/commit/9944030cd6e24c10be122159e873777c2577539e))
+
 ## [1.45.0](https://github.com/yschimke/compose-ai-tools/compare/v1.44.0...v1.45.0) (2026-08-28)
 
 
