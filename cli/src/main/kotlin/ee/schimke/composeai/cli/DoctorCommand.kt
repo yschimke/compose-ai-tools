@@ -25,8 +25,10 @@ import okio.Path.Companion.toPath
  * **Environment** (always runs, safe outside a Gradle project):
  * - Java 17+ on PATH
  * - HEAD probes of Google-controlled hosts required by Android / downloadable-font render paths
- *   (`maven.google.com`, `dl.google.com`, `fonts.googleapis.com`, `fonts.gstatic.com`). Warnings
- *   only; set `COMPOSE_PREVIEW_DOCTOR_SKIP_NETWORK=1` to skip.
+ *   (`maven.google.com`, `dl.google.com`, `fonts.googleapis.com`, `fonts.gstatic.com`). Each probe
+ *   passes only on the response its URL gives with healthy egress — a 2xx, or the documented 404 on
+ *   `fonts.gstatic.com/`; an intercepting proxy's 403/407 is a warning, not a tick. Warnings only;
+ *   set `COMPOSE_PREVIEW_DOCTOR_SKIP_NETWORK=1` to skip.
  * - `env.desktop-natives` — only when the project has a CMP Desktop module: resolves skiko's four
  *   native dependencies the way the *render JVM's* loader would, catching the
  *   `UnsatisfiedLinkError: libGL.so.1: cannot open shared object file` class of failure before a
@@ -1437,50 +1439,22 @@ class DoctorCommand(
   /**
    * Probe Google-controlled hosts that the Android render path and Compose's downloadable-fonts
    * integration depend on at build + render time. Each host becomes one `env.network.<id>` check;
-   * an unreachable host is a warning (it only matters for specific consumers) and points at the
-   * Claude Code on-the-web Custom-allowlist docs, since this is the most common place the checks
-   * fail.
+   * anything short of "the real host answered the way it answers this path" is a warning (it only
+   * matters for specific consumers) and points at the Claude Code on-the-web Custom-allowlist docs,
+   * since this is the most common place the checks fail. [networkCheck] holds the classification.
    */
   private fun checkNetworkReach() {
     NETWORK_HOSTS.forEach { probe ->
       val (code, headers) = headPlain(probe.url)
-      val id = "env.network.${probe.id}"
-      val check =
-        if (code > 0) {
-          DoctorCheck(
-            id = id,
-            category = "env",
-            status = "ok",
-            message = "${probe.host} reachable (HTTP $code)",
-          )
-        } else {
-          val summary =
-            if (inClaudeCloud) {
-              "Claude Code cloud session detected — switch the session's network level from Trusted to **Custom**, keep 'include Trusted defaults' on, and add `${probe.host}` (plus the other three Google hosts probed here) to the allowlist."
-            } else {
-              "Allow ${probe.host} in your sandbox / proxy configuration. In Claude Code cloud sessions this means switching network access to Custom and adding the host (keep 'include Trusted defaults' on)."
-            }
-          DoctorCheck(
-            id = id,
-            category = "env",
-            status = "warning",
-            message = "${probe.host} unreachable",
-            detail = "${probe.purpose}. Error: ${headers["error"] ?: "unknown"}.",
-            remediation =
-              DoctorRemediation(
-                summary = summary,
-                docs = "https://code.claude.com/docs/en/claude-code-on-the-web#network-access",
-              ),
-          )
-        }
-      addCheck(check)
+      addCheck(networkCheck(probe, code, headers["error"], inClaudeCloud))
     }
   }
 
   /**
    * HEAD [url] and return its status code + response headers, or `-1 to {error}` when the host is
    * unreachable (never throws). A non-2xx is still a real response — its code comes back unchanged
-   * so [checkNetworkReach] reports "reachable (HTTP 404)" rather than a failure.
+   * for [networkCheck] to judge, since only that layer knows which codes the probed path answers
+   * with when egress is healthy.
    */
   internal fun headPlain(url: String): Pair<Int, Map<String, String>> =
     try {
@@ -1614,11 +1588,18 @@ class DoctorCommand(
 
     private val SKIP_DIRS = setOf("build", "node_modules", "out", "dist", ".gradle")
 
-    private data class NetworkHost(
+    internal data class NetworkHost(
       val id: String,
       val host: String,
       val url: String,
       val purpose: String,
+      /**
+       * Non-2xx statuses this exact URL answers with when egress is healthy, mapped to the note
+       * that explains why. Only `fonts.gstatic.com` needs one: it serves versioned asset paths
+       * only, so a 404 on `/` *is* the real host answering. Every other non-2xx is treated as an
+       * interception — see [networkCheck].
+       */
+      val expected: Map<Int, String> = emptyMap(),
     )
 
     /**
@@ -1626,7 +1607,7 @@ class DoctorCommand(
      * Code's default Trusted allowlist — they only resolve in Custom mode or in environments with
      * broader egress.
      */
-    private val NETWORK_HOSTS =
+    internal val NETWORK_HOSTS =
       listOf(
         NetworkHost(
           id = "maven-google",
@@ -1643,7 +1624,10 @@ class DoctorCommand(
         NetworkHost(
           id = "fonts-googleapis",
           host = "fonts.googleapis.com",
-          url = "https://fonts.googleapis.com/",
+          // A real CSS2 query, not `/` — the same shape the render path requests (see
+          // `GoogleFonts.buildRangeCssUrl`), and a path that answers 200. `/` is a 404 even with
+          // full egress, which tells us nothing about whether fonts will actually resolve.
+          url = "https://fonts.googleapis.com/css2?family=Roboto:wght@400&display=swap",
           purpose =
             "Google Fonts API — used by androidx.compose.ui:ui-text-google-fonts at render time",
         ),
@@ -1652,8 +1636,77 @@ class DoctorCommand(
           host = "fonts.gstatic.com",
           url = "https://fonts.gstatic.com/",
           purpose = "Google Fonts static asset host — downloadable-font binaries",
+          // No stable 200 path exists here: font binaries live behind versioned, churn-prone URLs
+          // (`/s/roboto/v47/…`), so pinning one trades a confusing tick for a false alarm the day
+          // Google reissues the family. `/` 404s from the real host, and that 404 is the signal.
+          expected =
+            mapOf(
+              404 to "the host only serves versioned font paths, so `/` 404s when egress works"
+            ),
         ),
       )
+
+    /**
+     * Turn one probe result into its `env.network.<id>` check.
+     *
+     * Three outcomes, because "we got bytes back" is not the same as "this host works":
+     * - **2xx**, or a status [NetworkHost.expected] documents for that exact URL → `ok`. The
+     *   expected case carries its reason in the message, so a 404 never reads as a bare tick.
+     * - **Any other status** → `warning`. A sandbox, captive portal or filtering proxy answers on
+     *   the host's behalf with a 403/407/502, and reporting that as "reachable (HTTP 403)" hid the
+     *   exact egress failure doctor exists to surface.
+     * - **No response at all** ([code] <= 0) → `warning`, carrying the transport error.
+     *
+     * Both warnings share the allowlist remediation: an intercepted response and a refused
+     * connection have the same fix.
+     */
+    internal fun networkCheck(
+      probe: NetworkHost,
+      code: Int,
+      error: String?,
+      inClaudeCloud: Boolean,
+    ): DoctorCheck {
+      val id = "env.network.${probe.id}"
+      val expectedNote = probe.expected[code]
+      if (code in 200..299 || expectedNote != null) {
+        val why = expectedNote?.let { " — $it" }.orEmpty()
+        return DoctorCheck(
+          id = id,
+          category = "env",
+          status = "ok",
+          message = "${probe.host} reachable (HTTP $code$why)",
+        )
+      }
+      val remediation =
+        DoctorRemediation(
+          summary =
+            if (inClaudeCloud) {
+              "Claude Code cloud session detected — switch the session's network level from Trusted to **Custom**, keep 'include Trusted defaults' on, and add `${probe.host}` (plus the other three Google hosts probed here) to the allowlist."
+            } else {
+              "Allow ${probe.host} in your sandbox / proxy configuration. In Claude Code cloud sessions this means switching network access to Custom and adding the host (keep 'include Trusted defaults' on)."
+            },
+          docs = "https://code.claude.com/docs/en/claude-code-on-the-web#network-access",
+        )
+      if (code <= 0) {
+        return DoctorCheck(
+          id = id,
+          category = "env",
+          status = "warning",
+          message = "${probe.host} unreachable",
+          detail = "${probe.purpose}. Error: ${error ?: "unknown"}.",
+          remediation = remediation,
+        )
+      }
+      return DoctorCheck(
+        id = id,
+        category = "env",
+        status = "warning",
+        message = "${probe.host} answered HTTP $code, not a success",
+        detail =
+          "${probe.purpose}. ${probe.url} returns 2xx when egress is healthy; a $code usually means a proxy or sandbox answered instead of the host.",
+        remediation = remediation,
+      )
+    }
 
     private val JSON = Json {
       prettyPrint = true
