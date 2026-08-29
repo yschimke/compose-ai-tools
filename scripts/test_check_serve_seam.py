@@ -461,40 +461,18 @@ class MappingOwnership(unittest.TestCase):
 
 
 class ContractCoverage(unittest.TestCase):
-    """The probe's coordinate list is hand-maintained; serve's imports are not (PR #4512 review).
+    """`contractPackages` is hand-maintained; serve's imports are not (PR #4512 review).
 
     Nothing tied the two together, so serve could start importing a new published module and the
-    probe would resolve the same coordinates and pass while the extracted server's dependency floor
-    had grown. These assertions are that tie.
+    register would go on describing the old floor. These assertions are that tie. The contract
+    probe used to check the same thing from the other side; it went with the extraction, which
+    leaves these the only assertions on it.
     """
 
-    def probe_contracts(self):
-        kts = (
-            mod.REPO_ROOT / "preview-server/contract-probe/build.gradle.kts"
-        ).read_text(encoding="utf-8")
-        # Strip `//` comments before looking for the list's closing paren. The entries are
-        # commented, and a comment containing a `)` — an issue reference, a parenthetical — used to
-        # end the block early. That does not fail loudly: it silently drops every contract after
-        # the comment, so the coverage assertions below pass over a truncated list. Comments cannot
-        # contain a quoted coordinate that matters, so removing them first is safe.
-        kts = re.sub(r"//[^\n]*", "", kts)
-        block = kts.split("val contracts =", 1)[1].split(")", 1)[0]
-        return set(re.findall(r'"([a-z0-9-]+)"', block))
 
     def test_every_package_serve_imports_is_accounted_for(self):
         self.assertEqual(mod.unmapped_contract_packages(mod.load_allowlist()), {})
 
-    def test_every_mapped_module_is_a_probe_contract_or_a_recorded_blocker(self):
-        allowlist = mod.load_allowlist()
-        contracts = self.probe_contracts()
-        unpublished = set(allowlist.get("unpublishedContracts", {}))
-        for package, module in allowlist["contractPackages"].items():
-            with self.subTest(package=package):
-                self.assertTrue(
-                    module in contracts or module in unpublished,
-                    f"{package} maps to {module}, which is neither in the probe's `contracts` "
-                    "nor recorded in `unpublishedContracts`",
-                )
 
     def test_package_of_strips_the_type(self):
         self.assertEqual(

@@ -108,57 +108,8 @@ class RepositoryConfigsTest(unittest.TestCase):
             {"desktop_fake": False, "desktop_real": False, "android_real": True},
         )
 
-    def test_playground_harness_runs_only_playground_lane(self):
-        result = mod.decide(
-            ["preview-server/preview-harness/playground.spec.mjs"],
-            self.load("serve-lanes-paths.json"),
-        )
-        self.assertEqual(
-            result,
-            {"desktop": False, "android": False, "bundle": False, "playground": True},
-        )
 
-    def test_bundle_upload_harness_runs_only_bundle_lane(self):
-        result = mod.decide(
-            ["preview-server/preview-harness/bundle-upload.spec.mjs"],
-            self.load("serve-lanes-paths.json"),
-        )
-        self.assertEqual(
-            result,
-            {"desktop": False, "android": False, "bundle": True, "playground": False},
-        )
 
-    def test_serve_harness_manifests_survive_an_ignore_of_the_harness_tree(self):
-        # Every lane job runs `npm ci` and then its `harness:*` script out of the serve harness's
-        # own manifest, so a Playwright bump or a renamed lane script lands entirely in these two
-        # files, which match none of the per-lane globs.
-        #
-        # Today they still run every lane without being listed, because `decide` fails open on an
-        # unrecognised path — so asserting that on the config as it stands would pass with the
-        # globalPaths entries removed, and guard nothing. What the entries actually buy is
-        # survival of an ignore: `ci-paths.json` legitimately carries
-        # `preview-server/preview-harness/**` in its ignorePaths (harness edits skip the Gradle
-        # CI), and mirroring that here would take these manifests off fail-open and select no lane
-        # at all. globalPaths is checked before ignorePaths, so the entries hold. Pin that.
-        config = self.load("serve-lanes-paths.json")
-        config["ignorePaths"] = [
-            *config.get("ignorePaths", []),
-            "preview-server/preview-harness/**",
-        ]
-        for changed in (
-            "preview-server/preview-harness/package.json",
-            "preview-server/preview-harness/package-lock.json",
-        ):
-            with self.subTest(changed=changed):
-                self.assertEqual(
-                    mod.decide([changed], config),
-                    {
-                        "desktop": True,
-                        "android": True,
-                        "bundle": True,
-                        "playground": True,
-                    },
-                )
 
     @staticmethod
     def missing_literal_paths(config):
@@ -174,25 +125,6 @@ class RepositoryConfigsTest(unittest.TestCase):
             literal += [e for e in entries if not any(c in e for c in "*?[")]
         return literal, sorted({p for p in literal if not (root / p).exists()})
 
-    def test_every_literal_path_in_the_serve_lane_config_exists(self):
-        """A renamed file silently stops selecting its lane (PR #4587 review).
-
-        The lane config pins two Robolectric bundle sources by exact path rather than by glob,
-        because they are the only files outside `serve` that the Android and playground lanes
-        depend on. An exact path is a fact about the tree that nothing checked: when
-        `AndroidBundleLaunch.kt` moved modules, and again when it changed package directory, the
-        entries kept matching nothing at all. That does not fail — it just quietly stops waking
-        the lanes on exactly the changes they exist to cover. Both mistakes were made here, one
-        PR apart.
-        """
-        literal, missing = self.missing_literal_paths(self.load("serve-lanes-paths.json"))
-        self.assertTrue(literal, "no literal paths in serve-lanes-paths.json to check")
-        self.assertEqual(
-            missing,
-            [],
-            "serve-lanes-paths.json names path(s) that do not exist; a moved or renamed file "
-            "stops selecting its lane silently: " + ", ".join(missing),
-        )
 
     def test_the_missing_path_guard_actually_fires(self):
         """The guard above must fail on a stale path, or it guards nothing.
@@ -210,27 +142,6 @@ class RepositoryConfigsTest(unittest.TestCase):
         self.assertEqual(sorted(literal), sorted([real, stale]), "glob was not skipped")
         self.assertEqual(missing, [stale])
 
-    def test_the_workflow_and_the_lane_config_pin_the_same_bundle_sources(self):
-        """Two files carry these paths; only one of them is JSON anything can validate.
-
-        `serve-lanes-e2e.yml`'s own `paths:` filters decide whether the workflow runs at all, and
-        `serve-lanes-paths.json` decides which lanes it then selects. A path fixed in one and not
-        the other is worse than a path wrong in both: the workflow starts and picks no lane.
-        """
-        import re as _re
-
-        root = HERE.parents[1]
-        workflow = (root / ".github/workflows/serve-lanes-e2e.yml").read_text()
-        in_workflow = set(_re.findall(r'"(bundle/format/\S+?\.kt)"', workflow))
-        config = self.load("serve-lanes-paths.json")
-        in_config = {
-            e
-            for value in config.values()
-            for e in (value if isinstance(value, list) else sum(value.values(), []))
-            if e.startswith("bundle/format/") and e.endswith(".kt")
-        }
-        self.assertTrue(in_config, "lane config pins no bundle-format sources")
-        self.assertEqual(in_workflow, in_config)
 
     def test_wasm_distribution_resources_run_the_rc_player_jobs(self):
         # `wasmPlayerDist` syncs these two paths straight into the shipped player (see
@@ -256,80 +167,10 @@ class RepositoryConfigsTest(unittest.TestCase):
         self.assertFalse(result["rc_player_tests"])
 
 
-    def test_contract_module_change_runs_the_preview_server_probe(self):
-        # `preview-server/` is a separate Gradle build that nothing in the root build includes, so
-        # this job is the only thing that notices when a contract module stops resolving for it.
-        # A change to a contract must reach it (issue #3824).
-        for changed in (
-            # The contract modules moved to compose-preview-contracts, so a change to one no
-            # longer arrives as a path here — it arrives as a bump to the pin that says which
-            # version this build resolves. That is what must schedule the probe now.
-            "gradle/libs.versions.toml",
-            "render-session/subprocess/build.gradle.kts",
-            "preview-server/contract-probe/build.gradle.kts",
-            "scripts/check-preview-server-contracts.sh",
-        ):
-            with self.subTest(changed=changed):
-                result = mod.decide([changed], self.load("ci-paths.json"))
-                self.assertTrue(result["preview_server_contracts"])
-
-    def test_unrelated_change_skips_the_preview_server_probe(self):
-        result = mod.decide(
-            ["samples/android/src/main/kotlin/App.kt"], self.load("ci-paths.json")
-        )
-        self.assertFalse(result["preview_server_contracts"])
 
 
-    def test_every_contract_project_reaches_the_probe_job(self):
-        """Three lists name the contracts; nothing tied the third to the other two (PR #4512).
 
-        `contracts` in the probe's build file and `CONTRACT_PROJECTS` in the driver script are
-        checked against each other by the build itself — an unpublished contract simply fails to
-        resolve. The CI path group is not: adding a contract without a path covering its source
-        means a later PR touching only that module skips `preview-server-contracts`, the sole job
-        that publishes it and resolves it from the separate build.
 
-        Asks the real classifier rather than re-implementing glob matching, so a covering pattern
-        like `render-session/**` counts for `:render-session-api` exactly as CI would treat it.
-        """
-        import re as _re
-
-        config = self.load("ci-paths.json")
-        root = HERE.parents[1]
-        script = (root / "scripts/check-preview-server-contracts.sh").read_text()
-        block = script.split("CONTRACT_PROJECTS=(", 1)[1].split(")", 1)[0]
-        projects = _re.findall(r'"(:[^"]+)"', block)
-        self.assertTrue(projects, "could not parse CONTRACT_PROJECTS")
-
-        settings = (root / "settings.gradle.kts").read_text()
-        unreachable = []
-        for project in projects:
-            remap = _re.search(
-                _re.escape(f'project("{project}").projectDir = file("') + r'([^"]+)"', settings
-            )
-            directory = remap.group(1) if remap else project.lstrip(":").replace(":", "/")
-            changed = f"{directory}/src/main/kotlin/Probe.kt"
-            if not mod.decide([changed], config)["preview_server_contracts"]:
-                unreachable.append(f"{project} ({directory})")
-        self.assertEqual(
-            unreachable,
-            [],
-            "contract project(s) whose sources do not schedule preview-server-contracts: "
-            + ", ".join(unreachable),
-        )
-
-    def test_a_contract_added_without_a_path_is_caught(self):
-        """The guard above must actually fail when the group is missing a contract."""
-        config = self.load("ci-paths.json")
-        stripped = json.loads(json.dumps(config))
-        stripped["groups"]["preview_server_contracts"] = [
-            p for p in stripped["groups"]["preview_server_contracts"] if "daemon/core" not in p
-        ]
-        self.assertFalse(
-            mod.decide(
-                ["daemon/core/src/main/kotlin/Probe.kt"], stripped
-            )["preview_server_contracts"]
-        )
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -262,33 +262,10 @@ jobs:
       contents: write        # upload the readiness marker to the published release
       pull-requests: write   # post the "artifacts on Maven Central" milestone on the release PR
 
-  # Publish the prebuilt preview-host image as soon as the release tag exists.
-  # It builds the CLI tarball, Android daemon, and local Maven tree directly from
-  # that tag, so it can run IN PARALLEL with release.yml and never waits for the
-  # draft GitHub Release, Maven Central publish, or the readiness marker.
-  #
-  # This is deliberately best-effort: preview.coo.ee must not be able to block the
-  # core CLI/Maven/GitHub release. A failed image job remains visible, while the
-  # called workflow tolerates it and the independent release/finalize chain keeps
-  # going. Manual preview-host-image dispatch remains the repair path.
-  preview-host-image:
-    needs: release-please
-    if: ${{ !cancelled() && needs.release-please.outputs.release_created == 'true' }}
-    uses: ./.github/workflows/preview-host-image.yml
-    with:
-      cli_version: ${{ needs.release-please.outputs.tag_name }}
-      build_from_source: true
-      non_blocking: true
-    secrets:
-      DEPLOY_HOOK_TOKEN: ${{ secrets.DEPLOY_HOOK_TOKEN }}
-      SERVE_ADMIN_TOKEN: ${{ secrets.SERVE_ADMIN_TOKEN }}
-      SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-      SIGNING_KEY_ID: ${{ secrets.SIGNING_KEY_ID }}
-      SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
-    permissions:
-      contents: read
-      packages: write
-      pull-requests: write   # post the "server deployed" milestone on the release PR
+  # The preview-host image is no longer built here. The preview server moved to
+  # yschimke/compose-preview-server, which publishes
+  # `ghcr.io/yschimke/compose-preview-host` from its own release workflow — one publisher for one
+  # GHCR package, which is what that package's Actions write access is now scoped to.
 
   # The design-artifacts/<system> delivery branches are regenerated for the newly
   # released runtime by `post-release-design-artifacts.yml`, which picks this run up

@@ -330,12 +330,15 @@ EXTERNAL_RE = re.compile(r"(?<![\w.])(ee\.schimke\.composeai\.[A-Za-z0-9_.]+)")
 def external_packages() -> dict[str, set[str]]:
     """Every non-`cli` `ee.schimke.composeai` package serve reaches for, and where.
 
-    This is the other half of the contract probe. `preview-server/contract-probe` compiles against
-    a hand-maintained list of coordinates, and a hand-maintained list cannot notice that serve has
-    started importing a *new* published module — the probe would resolve the same ten coordinates
-    and pass while the extracted server's dependency floor had grown underneath it. Reading the
-    packages straight out of serve's sources closes that loop: a new one fails here, naming the
-    module that has to be added to the probe.
+    `contractPackages` in the allowlist is hand-maintained, and a hand-maintained list cannot
+    notice that serve has started importing a *new* published module. Reading the packages
+    straight out of serve's sources closes that loop: a new one fails here, naming the module
+    that has to be recorded.
+
+    This used to be checked twice — the contract probe under `preview-server/` compiled against
+    the same coordinates, so a floor that grew failed there too. The probe went with the
+    extraction (the server is yschimke/compose-preview-server now, resolving those coordinates
+    from a repository for real), which leaves this the only place the floor is watched.
     """
     found: dict[str, set[str]] = {}
     for source_set in SOURCE_SETS:
@@ -474,17 +477,17 @@ def check(write: bool, allow_growth: bool) -> int:
     unmapped = unmapped_contract_packages(allowlist)
     if unmapped:
         failures.append(
-            "\nserve imports a package that no contract in the preview-server probe accounts "
-            "for. The extracted server's dependency floor has grown:\n"
+            "\nserve imports a package no entry in `contractPackages` accounts for. The "
+            "server's dependency floor has grown:\n"
             + "".join(
                 f"    {package}\n" + "".join(f"        {f}\n" for f in sorted(files))
                 for package, files in sorted(unmapped.items())
             )
-            + "  Add the module that publishes it to `contracts` in\n"
-            "  preview-server/contract-probe/build.gradle.kts, name it in `contractPackages` in\n"
+            + "  Name the module that publishes it in `contractPackages` in\n"
             "  scripts/serve-seam-allowlist.json, and say in the PR why the server needs it.\n"
-            "  If it is NOT publishable, that is a split blocker — record it under\n"
-            "  `unpublishedContracts` and in docs/design/PREVIEW_SERVER_SPLIT.md."
+            "  It must be PUBLISHED: the server is yschimke/compose-preview-server now, and it\n"
+            "  resolves everything by coordinate from a repository, so a package that only\n"
+            "  exists as a project here cannot follow serve when it moves."
         )
 
     stars = wildcard_imports()

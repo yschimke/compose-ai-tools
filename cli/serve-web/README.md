@@ -120,13 +120,20 @@ Keep the Kotlin/custom-element boundary reviewable and preserve the fixture net:
    ```
    UPDATE_SERVE_WEB_FIXTURES=true ./gradlew :cli:test --tests '*ServeWebFixtureTest*'
    ```
-5. Confirm the pixels didn't move:
+5. Confirm the pixels didn't move. The harness that captures these pages moved to
+   [yschimke/compose-preview-server](https://github.com/yschimke/compose-preview-server),
+   so run it from a checkout of that repository against the fixtures regenerated in
+   step 4:
    ```
-   cd preview-server/preview-harness
-   npm run harness:pages
+   cd ../../../compose-preview-server/preview-harness   # or wherever it is cloned
+   npm ci && npm run harness:pages
    ```
    Set `HARNESS_CHROMIUM` when the sandbox's Chromium build doesn't match the
    pinned Playwright (`/opt/pw-browsers/chromium-*/chrome-linux/chrome`).
+
+   The fixtures themselves are still committed here
+   (`preview-server/preview-harness/fixtures/`) because `ServeWebFixtureTest`
+   asserts them; only the Playwright runner left.
 
    These captures are deterministic (#3837): two runs of the same tree produce
    byte-identical PNGs for all 196. So a capture that moves is a real change —
