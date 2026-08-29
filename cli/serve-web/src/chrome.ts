@@ -2,8 +2,9 @@
 //
 // What EVERY serve page needs, and nothing else: the URL-state global and the Page theme setting.
 // `ServeWeb.document` emits this unconditionally — the front door and `/status` included — so it
-// must stay small and must carry no Vue. Neither module here is a custom element, which is the
-// whole reason this is a second bundle rather than more of `main.ts`.
+// must stay small and must carry no Vue. The report classification element is the one controller
+// here: catalog report forms occur on both component and index pages, so their always-present shell
+// owns that wiring rather than making every surface entry repeat it.
 //
 // Order matters, and this file is where it is stated: `installUrlState` publishes
 // `window.cpUrlState` at evaluation, and the component bundle plus `format-compare.js`,
@@ -18,6 +19,7 @@ import {
     installBugReportLink,
 } from "./chrome/bugReport.js";
 import { installReportLauncher } from "./chrome/reportLauncher.js";
+import "./components/ReportClassification.js";
 
 installUrlState();
 installPageTheme();

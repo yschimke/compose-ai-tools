@@ -16,7 +16,7 @@
 // The judgements — what counts as a finding, how a cell reads, what order the table is in, what
 // the summary sentence says — live in `parity/findings.ts` as a table of cases.
 
-import { h, type VNode } from "vue";
+import { h, type VNode } from "../vue.js";
 import { customElement } from "../controllerElement.js";
 import { VueElement } from "../vueElement.js";
 import { whenParsed } from "../dom/whenParsed.js";

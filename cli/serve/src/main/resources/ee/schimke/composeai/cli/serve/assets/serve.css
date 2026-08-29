@@ -1133,11 +1133,11 @@ html.cp-js.cp-multi-section .cp-section-head { display: block; }
   background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
 .cp-state-btn[aria-current="page"] { background: var(--md-sys-color-secondary-container);
   border-color: transparent; color: var(--md-sys-color-on-secondary-container); font-weight: 500; }
-/* `<cp-bg-toggle>` (serve-components.js) renders the Transparent button into its own light DOM.
+/* `<cp-bg-toggle>` (the catalog/viewer component bundle) renders the Transparent button into light DOM.
    `display: contents` drops the wrapper out of layout entirely, so the .cp-bg-btn inside stays the
    toolbar's own flex item and the upgraded control lays out exactly as the bare button did. */
 cp-bg-toggle { display: contents; }
-/* The controller elements (serve-components.js): each only wires behaviour onto markup the server
+/* The controller elements (surface component bundles): each only wires behaviour onto markup the server
    already rendered — remembered fold state, the phone's toolbar reflow, the viewer's drawers — and
    none of them has anything to draw. An autonomous custom element defaults to `display: inline`,
    so without this each would sit in its page's flow as an empty inline box. */

@@ -16,7 +16,7 @@
 // `viewer/historyModel.ts` (which of them are worth showing). What is left here is fetching and
 // rendering.
 
-import { h, type VNode } from "vue";
+import { h, type VNode } from "../vue.js";
 import { customElement } from "../controllerElement.js";
 import { VueElement } from "../vueElement.js";
 import { whenParsed } from "../dom/whenParsed.js";

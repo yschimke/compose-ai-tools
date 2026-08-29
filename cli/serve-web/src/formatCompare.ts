@@ -1,7 +1,7 @@
 // Entry point for `assets/format-compare.js` — the comparison primitives, as a global.
 //
 // A global rather than an import because of who calls it. Four serve surfaces reach it from
-// elements in `serve-components.js`, and TWO consumers live outside the browser entirely and drive
+// elements in the surface component bundles, and TWO consumers live outside the browser and drive
 // the built asset by path:
 //
 //   - `scripts/design-artifacts/design-reference-score.mjs` bakes the reference score at publish

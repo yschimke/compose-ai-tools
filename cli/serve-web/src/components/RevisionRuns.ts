@@ -18,7 +18,7 @@
 // Nothing is fetched until the disclosure is opened, and the result is kept for the life of the
 // page.
 
-import { h, type VNode } from "vue";
+import { h, type VNode } from "../vue.js";
 import { customElement } from "../controllerElement.js";
 import { VueElement } from "../vueElement.js";
 import { whenParsed } from "../dom/whenParsed.js";

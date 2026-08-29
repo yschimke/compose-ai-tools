@@ -968,7 +968,7 @@ function specAtBaseline() {
         img.getAttribute("data-cp-src"),
     );
 }
-// The inline theme bootstrap publishes the initial value before serve-components.js upgrades
+// The inline theme bootstrap publishes the initial value before viewer-components.js upgrades
 // the spec element. Keep both the stage attribute and the installed element current from here on:
 // the attribute serves reconnects, while the push updates the existing install immediately.
 function syncSpecBaseline() {
@@ -4166,7 +4166,7 @@ if (wasmToggle) {
             wasmFrame!.contentWindow.postMessage(wasmOverridePatch(), "*");
         }
     });
-    // The page's Transparent toggle (owned by <cp-bg-toggle> in serve-components.js, which flips
+    // The page's Transparent toggle (owned by <cp-bg-toggle> in viewer-components.js, which flips
     // `cp-bg-transparent` on <html>) changes what the stage paints — and the app mirrors that
     // backdrop, so it has to hear about it. Watching the class beats reaching across to that
     // script's click handler: the stage also changes with the render theme, and both land here.

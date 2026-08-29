@@ -84,11 +84,13 @@ class ServeRcFontsTest {
       )
     assertTrue(withDoc.contains(ServeRcFonts.linkTag()), withDoc)
     // Declaring the faces is only half of it — they also have to be *loaded* before canvas paints,
-    // which is `window.cpRcFonts` in the component bundle (`cli/serve-web/src/rcFonts.ts`, tested
+    // which is `window.cpRcFonts` in the viewer bundle (`cli/serve-web/src/rcFonts.ts`, tested
     // in `cli/serve-web/test/rcFonts.test.ts`). The viewer already loads that bundle for its
     // elements, so what this pins is that the page carrying a document carries the loader at all.
     assertTrue(
-      withDoc.contains("""<script src="${ServeWebAssets.href("serve-components.js")}"></script>"""),
+      withDoc.contains(
+        """<script src="${ServeWebAssets.href("viewer-components.js")}"></script>"""
+      ),
       withDoc,
     )
 

@@ -22,7 +22,7 @@
 // lifecycle signal this workflow exists to produce.
 
 import { ControllerElement, customElement } from "../controllerElement.js";
-import { Fragment, h, render, type VNode, type VNodeChild } from "vue";
+import { Fragment, h, render, type VNode, type VNodeChild } from "../vue.js";
 import {
     evaluateComparison,
     type AcceptanceReport,

@@ -1,4 +1,4 @@
-// Bundles the serve web components to a single IIFE committed under the CLI's
+// Bundles the serve web assets to IIFEs committed under the CLI's
 // resources, where `ServeWebAssets` picks it up like any other static asset.
 //
 // Committed output, not a Gradle-driven build. `:cli` is a plain Kotlin/JVM
@@ -10,12 +10,11 @@
 // fails if the committed bundle has drifted from source, so "committed" can't
 // quietly become "stale".
 //
-// ONE component bundle, deliberately, where the legacy assets are per-page. Vue's
-// renderer is shared by every markup-owning element, so one bundle
-// costs less than the selective loading would save, and it lets components import
-// each other. The heavy per-page scripts that selective loading actually exists
-// for — `codemirror.js` (11 k lines, playground only), `format-compare.js`,
-// `viewer.js` — stay exactly where they are and keep their own script tags.
+// Vue itself is one cacheable runtime and the controls are split by server surface. All entries
+// stay classic scripts: Kotlin pages intentionally interleave synchronous inline bootstraps with
+// generated assets, and converting only some of that chain to deferred modules would change when
+// custom elements upgrade. `vue-runtime.js` therefore publishes the tiny `window.cpVue` façade
+// synchronously; each surface bundle consumes it without bundling a second renderer.
 
 import { build, context } from "esbuild";
 import { fileURLToPath } from "node:url";
@@ -43,11 +42,12 @@ const assets = (name) =>
         name,
     );
 
-// THREE bundles, for one reason: they are loaded from different places and cost
-// different amounts.
+// These bundles are loaded from different places and cost different amounts.
 //
-// `serve-components.js` carries the Vue elements and DOM controllers and is emitted by the
-// surfaces that actually contain their tags.
+// `vue-runtime.js` is emitted immediately before exactly one surface component bundle. The
+// catalog, compare, design, parity and viewer entries carry only the elements that can occur on
+// that surface. This keeps Vue cacheable across navigations and removes both sources of waste from
+// the old all-components bundle: unrelated controls and a second Vue copy in known differences.
 //
 // `serve-chrome.js` carries what EVERY page needs — the URL-state global and the
 // Page theme setting — so the page shell emits it unconditionally, on the front
@@ -83,18 +83,24 @@ const assets = (name) =>
 // contract's whole reference implementation — the document ladder, five gates, a dependency-free
 // PNG reader and the separated-plane scorer, shared verbatim with `scripts/design-artifacts/` so the
 // browser and the offline driver cannot disagree about what an acceptance means. Folding it into
-// `serve-components.js` would put all of that on the catalog grid and the design pages; folding it
+// a surface component bundle would put all of that on the catalog grid and design pages; folding it
 // into `format-compare.js` would charge that file's four external consumers for a surface none of
 // them uses.
 //
 // `viewer.js` is generated for the same reason and on the same terms: same path,
-// same script tag, same position after `serve-components.js` and
+// same script tag, same position after `viewer-components.js` and
 // `format-compare.js`. It stays its own bundle because only the viewer page
 // carries it and it is by far the largest of these — folding 3,000 lines of lane
-// machinery into `serve-components.js` would put it on the catalog grid, the
+// machinery into a component bundle would put it on the catalog grid, the
 // compare wall and the design pages, none of which have a stage to drive.
 const BUNDLES = [
-    { entry: "src/main.ts", out: "serve-components.js" },
+    { entry: "src/vueRuntime.ts", out: "vue-runtime.js" },
+    { entry: "src/catalog.ts", out: "catalog-components.js" },
+    { entry: "src/compare.ts", out: "compare-components.js" },
+    { entry: "src/design.ts", out: "design-components.js" },
+    { entry: "src/parity.ts", out: "parity-components.js" },
+    { entry: "src/viewerComponents.ts", out: "viewer-components.js" },
+    { entry: "src/remoteCompose.ts", out: "remote-compose.js" },
     { entry: "src/chrome.ts", out: "serve-chrome.js" },
     { entry: "src/keyboardNavigation.ts", out: "keyboard-navigation.js" },
     { entry: "src/reportCapture.ts", out: "report-capture.js" },

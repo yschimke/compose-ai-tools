@@ -125,14 +125,22 @@ class ServeUrlStateTest {
   // not have caught once the source became a bundle.
 
   @Test
-  fun `both the grid and the viewer load the shared component bundle`() {
-    val tag = """<script src="${ServeWebAssets.href("serve-components.js")}"></script>"""
-    assertTrue(landing().contains(tag), "the grid must load serve-components.js")
-    val preview = ServePreview("plain.Button", "button")
+  fun `the grid and viewer share Vue but load only their surface controls`() {
+    val runtime = """<script src="${ServeWebAssets.href("vue-runtime.js")}"></script>"""
+    val catalog = """<script src="${ServeWebAssets.href("catalog-components.js")}"></script>"""
+    val viewer = """<script src="${ServeWebAssets.href("viewer-components.js")}"></script>"""
     assertTrue(
-      ServeWeb.viewerPage(preview, token = "t", siblings = listOf(preview)).contains(tag),
-      "the viewer carries the same Transparent toggle, so it loads the same bundle",
+      landing().contains(runtime) && landing().contains(catalog),
+      "the grid loads catalog controls",
     )
+    assertFalse(landing().contains(viewer), "the grid must not pay for viewer controls")
+    val preview = ServePreview("plain.Button", "button")
+    val html = ServeWeb.viewerPage(preview, token = "t", siblings = listOf(preview))
+    assertTrue(
+      html.contains(runtime) && html.contains(viewer),
+      "the viewer shares the runtime and loads viewer controls",
+    )
+    assertFalse(html.contains(catalog), "the viewer must not pay for catalog controls")
   }
 
   @Test

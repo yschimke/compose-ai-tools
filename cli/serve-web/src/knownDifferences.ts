@@ -1,9 +1,9 @@
 // Entry point for `assets/known-differences.js` — the acceptance band, and the engine behind it.
 //
-// Its own bundle, emitted only by the focused comparison, for the reason `codemirror.js` and
-// `viewer.js` have theirs: it is by far the heaviest thing on any page that carries it. The engine
+// Its own bundle, emitted only by focused comparison and parity-audit pages, for the reason
+// `codemirror.js` and `viewer.js` have theirs: it is heavy and optional. The engine
 // is the contract's whole reference implementation — the document ladder, five gates, a PNG reader
-// and a scorer — and folding it into `serve-components.js` would put all of that on the catalog
+// and a scorer — and folding it into a surface bundle would put all of that on the catalog
 // grid, the compare wall and the design pages, none of which evaluate an acceptance.
 //
 // It is deliberately NOT part of `format-compare.js` either, even though both are about comparing

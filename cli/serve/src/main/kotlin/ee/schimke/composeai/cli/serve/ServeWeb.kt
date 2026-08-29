@@ -185,6 +185,10 @@ object ServeWeb {
 
   private fun scriptTag(name: String): String = "<script src=\"${assetHref(name)}\"></script>"
 
+  /** One Vue runtime followed synchronously by the controls for this server surface. */
+  private fun componentScriptTags(surface: String): String =
+    scriptTag("vue-runtime.js") + "\n" + scriptTag("$surface-components.js")
+
   private fun viewCountHtml(views: Long): String =
     if (views <= 0) "" else "<div class=\"cp-engage\">${formatViews(views)}</div>"
 
@@ -3625,7 +3629,7 @@ ${captureControlsHtml().prependIndent("          ")}
    * pre-paint script in [document] already restores the choice on every page, so the viewer was
    * simply missing the control rather than the behaviour.
    *
-   * The button itself is rendered by the `<cp-bg-toggle>` Vue element in `serve-components.js`
+   * The button itself is rendered by the `<cp-bg-toggle>` Vue element in the surface bundle
    * (source: `cli/serve-web/src/components/BgToggle.ts`), not here — one source of truth for markup
    * a JS-only control owns. `serve.css` gives the element `display: contents`, so the button stays
    * the toolbar's own flex item and lays out exactly as the bare button did.
@@ -7305,11 +7309,10 @@ ${captureControlsHtml().prependIndent("          ")}
     val isRemoteComposeDoc = doc.formatId == ServeDocFormats.REMOTE_COMPOSE.id
     // Only the Remote Compose lane paints into a canvas the vendored faces matter for; the Lottie
     // player draws SVG and its page is byte-identical to before.
-    // `window.cpRcFonts` ships in the component bundle now, so an `.rc` permalink loads the bundle
-    // where it used to load `rc-fonts.js`. Emitted BEFORE the inline player script, which reads
-    // the global as it starts the lane.
+    // An `.rc` permalink loads only the font preloader. Emitted BEFORE the inline player script,
+    // which reads the global as it starts the lane; this page has no Vue controls.
     val rcFontsScript =
-      if (isRemoteComposeDoc) scriptTag("serve-components.js") + "\n        " else ""
+      if (isRemoteComposeDoc) scriptTag("remote-compose.js") + "\n        " else ""
     return document(
       title = "${doc.name} — compose-preview",
       unfurlDescription = "A shared ${doc.formatLabel} document, played back in your browser.",
@@ -9133,7 +9136,7 @@ ${captureControlsHtml().prependIndent("          ")}
       else orderedCards.joinToString(", ", "[", "]") { WebEscaping.jsString(themeBase(it)) }
     val filterScript =
       if (hasPreviews)
-        "\n${scriptTag("serve-components.js")}\n<script>${catalogFilterScript(
+        "\n${componentScriptTags("catalog")}\n<script>${catalogFilterScript(
           hasThemes,
           hasTabs,
           hasGroups,
@@ -9898,7 +9901,7 @@ ${captureControlsHtml().prependIndent("          ")}
              `format-compare.js` for tidiness only — the element reads
              `window.ComposePreviewCompare` when it scores rather than when it upgrades, so no
              script order can silence it. -->
-        ${scriptTag("serve-components.js")}
+        ${componentScriptTags("compare")}
         ${scriptTag("format-compare.js")}
         <cp-compare-wall></cp-compare-wall>
         """
@@ -10543,7 +10546,7 @@ ${scriptTag("known-differences.js")}
              primitives it publishes on `window.ComposePreviewCompare`, and the element reads that
              handle when it scores rather than when it upgrades, so the two tags may be in either
              order. -->
-        ${scriptTag("serve-components.js")}
+        ${componentScriptTags("compare")}
         ${scriptTag("format-compare.js")}
         <cp-reference-compare></cp-reference-compare>$acceptanceScript
         """
@@ -11378,7 +11381,7 @@ $cards
              (`<cp-page-zoom>`) — both in the Vue bundle. `<cp-design-page>` reads
              `window.ComposePreviewCompare` when the diff lane is entered rather than when it
              upgrades, so it does not depend on following the script below. -->
-        ${scriptTag("serve-components.js")}
+        ${componentScriptTags("design")}
         ${scriptTag("format-compare.js")}
         <cp-design-page></cp-design-page>
         """
@@ -11886,7 +11889,7 @@ ${scriptTag("known-differences.js")}
       if (dashboard.comparisons.any { it.referenceId != null })
         append(scriptTag("format-compare.js"))
       if (dashboard.feed.isNotEmpty() || dashboard.comparisons.any { it.referenceId != null })
-        append(scriptTag("serve-components.js"))
+        append(componentScriptTags("parity"))
     }
 
     // Provenance for the page itself: this is snapshotted data, and saying so is the difference
@@ -14113,7 +14116,7 @@ ${scriptTag("known-differences.js")}
       <!-- Resolve a deep-linked or remembered theme and publish the design-score baseline before
            the component bundle upgrades the comparison control. -->
       <script>${viewerThemeStickyScript(themeStorageKey(sessionId, basePath))}</script>
-      ${scriptTag("serve-components.js")}
+      ${componentScriptTags("viewer")}
       <!-- The viewer's drawers, the phone row order, the theme toggle's value and the component
            filter. Renders nothing; `serve.css` hides the tag. -->
       <cp-viewer-drawers></cp-viewer-drawers>

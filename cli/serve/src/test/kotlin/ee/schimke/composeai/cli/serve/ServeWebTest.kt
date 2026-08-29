@@ -1544,10 +1544,12 @@ class ServeWebTest {
     // link can paint the baked verdict while the parser waits for the later scripts.
     val tag = html.indexOf("<cp-spec-compare>")
     val baseline = html.indexOf("root.setAttribute(\"data-spec-baseline\"")
-    val components = html.indexOf("serve-components.js")
+    val runtime = html.indexOf("vue-runtime.js")
+    val components = html.indexOf("viewer-components.js")
     val formatCompare = html.indexOf("format-compare.js")
     val viewer = html.indexOf("/viewer.js")
     assertTrue(tag in 1 until components, "the tag is parsed before the bundle upgrades it")
+    assertTrue(runtime in 1 until components, "Vue loads once before the viewer controls")
     assertTrue(
       baseline in (tag + 1) until components,
       "the inline theme bootstrap publishes the baseline before the component upgrades",

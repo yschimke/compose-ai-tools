@@ -5,9 +5,9 @@ instead of hand-rolled IIFEs in `assets/*.js`.
 
 Built to committed bundles under
 `cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/`, which
-`ServeWebAssets` serves like the other static assets. `serve-components.js` is
-the shared custom-element bundle; page-sized and optional surfaces retain
-separate entry points.
+`ServeWebAssets` serves like the other static assets. `vue-runtime.js` is the
+shared renderer; catalog, compare, design, parity and viewer controls have
+page-sized entry points.
 
 ```
 npm install
@@ -88,20 +88,21 @@ The cost of a committed artifact is that it can go stale silently. `npm run
 verify` rebuilds and fails if the committed bytes differ from a fresh build of
 `src/`; CI runs it, so "committed" cannot quietly become "stale".
 
-## Current bundle trade-off
+## Bundle strategy
 
 `ServeWebAssets` loads page-sized scripts selectively — `viewer.js` only on the
 viewer and `known-differences.js` only where acceptance data is evaluated.
 
-`serve-components.js` is still loaded whole. Vue's renderer is shared by every
-markup-owning element in that entry point, but an absent custom element still
-costs download and parse bytes. `known-differences.js` is a separate entry point
-and currently contains its own Vue runtime, so a page using both pays for that
-runtime twice.
+`vue-runtime.js` publishes the small `window.cpVue` façade once, synchronously,
+and every surface entry imports `vue.ts` rather than Vue itself. That preserves
+the classic-script load order of the server-rendered pages while making the
+renderer cacheable across navigation. A source check fails if another entry
+imports Vue values, and `check-bundle-budgets.mjs` pins the gzip cost of each
+representative page rather than just individual files.
 
-Keep new page-sized controllers out of `main.ts`. The next bundle change should
-introduce measured, surface-specific entries with a shared Vue runtime rather
-than adding another independently bundled Vue entry.
+Put a new component in the narrowest existing surface entry. If it appears on
+several surfaces, importing the small component in each is preferable to making
+unrelated pages share a growing catch-all bundle.
 
 ## Changing a component
 
@@ -339,8 +340,8 @@ questions about the same number.
 
 ## The bundles, and which one a thing belongs in
 
-`serve-components.js` carries the Vue elements and DOM controllers and is emitted by the surfaces
-whose markup contains their tags. `serve-chrome.js` carries what *every* page
+`vue-runtime.js` carries Vue once. The `*-components.js` entries carry only the
+elements and controllers that surface can render. `serve-chrome.js` carries what *every* page
 needs — `window.cpUrlState` and the Page theme setting — and the shell
 (`ServeWeb.document`) emits it unconditionally, as the first thing in `<body>`.
 `format-compare.js` carries the comparison scorer and is emitted only by the
@@ -352,9 +353,14 @@ lopsided enough that one bundle could not serve all three:
 
 | | raw | gzip |
 | --- | --- | --- |
-| `serve-components.js` | 189 kB | 61 kB |
+| `vue-runtime.js` | 52 kB | 21 kB |
+| `catalog-components.js` | 17 kB | 6 kB |
+| `compare-components.js` | 66 kB | 20 kB |
+| `design-components.js` | 44 kB | 14 kB |
+| `parity-components.js` | 8 kB | 3 kB |
+| `viewer-components.js` | 59 kB | 18 kB |
 | `viewer.js` | 57 kB | 18 kB |
-| `known-differences.js` | 104 kB | 39 kB |
+| `known-differences.js` | 53 kB | 18 kB |
 | `format-compare.js` | 9 kB | 4 kB |
 | `serve-chrome.js` | 8 kB | 3 kB |
 
@@ -370,13 +376,13 @@ it on every page carrying a Vue element. Keeping the filename is what lets the
 two out-of-browser consumers go on loading it by path.
 
 It also settles load order in one place. `window.cpUrlState` has to exist before
-the component bundle — `backgroundChoice.ts` reads it as `<cp-bg-toggle>`
+the surface bundle — `backgroundChoice.ts` reads it as `<cp-bg-toggle>`
 upgrades — and before `format-compare.js`,
 which read it at their own IIFE time. One shell tag ahead of everything replaces
 four per-surface `url-state.js` tags that each had to be kept in the right
 place.
 
-**So: a custom element goes in `main.ts`. A global, or anything the page shell
+**So: a custom element goes in its surface entry. A global, or anything the page shell
 needs on every surface, goes in `chrome.ts` — and stays free of Vue, or the
 front door pays for it.** If a chrome module ever does need an element, that is
 the moment to ask whether it is really chrome.

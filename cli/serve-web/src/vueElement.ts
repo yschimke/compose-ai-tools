@@ -1,4 +1,4 @@
-import { render, type VNode } from "vue";
+import { render, type VNode } from "./vue.js";
 import { ControllerElement } from "./controllerElement.js";
 
 /**
