@@ -35,6 +35,7 @@ data class ClientConfig(
   val token: String?,
   val initialPreview: String?,
   val initialLive: Boolean,
+  val initialComposer: Boolean,
 ) {
   fun query(extra: Map<String, String> = emptyMap()): String {
     val values = buildMap {
@@ -58,6 +59,7 @@ data class ClientConfig(
         token = params["token"]?.takeIf { it.isNotBlank() },
         initialPreview = params["preview"]?.takeIf { it.isNotBlank() },
         initialLive = params["live"] == "1" || params["live"] == "true",
+        initialComposer = params["compose"] == "1" || params["compose"] == "true",
       )
     }
   }
@@ -146,6 +148,17 @@ class BrowserPreviewClient(private val config: ClientConfig) {
       config.session?.let { put("session", it) }
       config.token?.let { put("token", it) }
       previewId?.let { put("preview", it) }
+    }
+    replaceBrowserQuery(
+      query.entries.joinToString("&") { "${encodeComponent(it.key)}=${encodeComponent(it.value)}" }
+    )
+  }
+
+  fun replaceComposerLocation() {
+    val query = buildMap {
+      config.session?.let { put("session", it) }
+      config.token?.let { put("token", it) }
+      put("compose", "1")
     }
     replaceBrowserQuery(
       query.entries.joinToString("&") { "${encodeComponent(it.key)}=${encodeComponent(it.value)}" }
