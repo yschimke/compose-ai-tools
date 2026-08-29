@@ -14,18 +14,33 @@ import { fileURLToPath } from "node:url";
 import {
     canonicalBounds,
     canonicalElement,
+    canonicalOverrides,
+    fillLocators,
     fillSelection,
+    locatorBlock,
     selectionLines,
     usableBounds,
+    variantOf,
+    LOCATORS_PLACEHOLDER,
     type Bounds,
 } from "../src/report/locator.js";
 
 interface FixtureCase {
     name: string;
-    writer: {
-        element?: string;
-        bounds?: Bounds & { space: string };
-    } | null;
+    writer:
+        | ({
+              repository: string;
+              system: string;
+              componentId: string;
+              previewId: string;
+              referenceId: string;
+              variant: string;
+              overrides?: Record<string, string>;
+              revision?: string;
+              element?: string;
+              bounds?: Bounds & { space: string };
+          } & Record<string, unknown>)
+        | null;
     block: string;
 }
 
@@ -251,6 +266,89 @@ describe("fillSelection", () => {
                 "```",
                 "",
             ].join("\n"),
+        );
+    });
+});
+
+// The WHOLE block, not just the selection lines the rest of this file is about.
+//
+// The comparison wall's multi-row picker writes blocks the server never saw — which comparisons a
+// report names is decided by ticking rows after the page was served — so this module is a third
+// engine on the same contract, beside `ServeIssueReport.locatorBlock` and `parity-issues.mjs`. It
+// is pinned to the same fixture as both, over every case the fixture says a writer emits, because a
+// block that differs from the Kotlin writer's by one byte is a second canonical form for the same
+// comparison and the whole reason the format is canonical is that there is only one.
+describe("locator block writer", () => {
+    for (const fixture of FIXTURE.cases.filter((entry) => entry.writer)) {
+        it(`writes the fixture's \`${fixture.name}\` block byte for byte`, () => {
+            const writer = fixture.writer!;
+            assert.equal(
+                locatorBlock({
+                    repository: writer.repository,
+                    system: writer.system,
+                    componentId: writer.componentId,
+                    previewId: writer.previewId,
+                    referenceId: writer.referenceId,
+                    variant: writer.variant,
+                    overrides: writer.overrides,
+                    revision: writer.revision,
+                    element: writer.element,
+                    bounds: writer.bounds,
+                }),
+                fixture.block,
+            );
+        });
+    }
+
+    // The default comparator orders by UTF-16 code unit, which puts an astral key before a BMP one
+    // above U+D800 — the opposite of the canonical order the Kotlin writer produces. This case is
+    // the only thing that catches a plain `.sort()` here.
+    it("orders override keys by code point, not by code unit", () => {
+        assert.equal(
+            canonicalOverrides({ "\u{1F600}a": "2", "！b": "1" }),
+            '{"！b":"1","\u{1F600}a":"2"}',
+        );
+    });
+
+    it("writes no overrides as an empty object, which is what the wall's rows carry", () => {
+        assert.equal(canonicalOverrides(), "{}");
+        assert.equal(canonicalOverrides({}), "{}");
+    });
+
+    // Ported from `ServeIssueReport.variantFor`, and the reason it is ported rather than emitted per
+    // row: the value is the preview id's own tail.
+    it("derives the variant from the preview id", () => {
+        assert.equal(
+            variantOf("iconbutton-tonal__ideal__default__light"),
+            "ideal/default/light",
+        );
+        assert.equal(variantOf("IconButton"), "");
+    });
+});
+
+describe("filling a pickable report's locators", () => {
+    // As the server writes it: the placeholder is a line of its own, newline-terminated, with no
+    // blank line committed ahead of it.
+    const template = `### Which page\n\n| | |\n${LOCATORS_PLACEHOLDER}\n`;
+
+    // Nothing ticked has to reproduce the page-scoped body the server writes on its own — that is
+    // what a visitor with JavaScript off files, and the two must not be different reports.
+    it("removes the placeholder line entirely when nothing is picked", () => {
+        assert.equal(fillLocators(template, []), "### Which page\n\n| | |\n");
+    });
+
+    it("separates the blocks from the body above them", () => {
+        const one = "```fence\nfield: value\n```\n";
+        assert.equal(
+            fillLocators(template, [one, one]),
+            `### Which page\n\n| | |\n\n${one}${one}`,
+        );
+    });
+
+    it("leaves a template with no placeholder alone", () => {
+        assert.equal(
+            fillLocators("### Which page\n", ["x"]),
+            "### Which page\n",
         );
     });
 });

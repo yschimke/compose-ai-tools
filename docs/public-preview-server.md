@@ -2672,6 +2672,15 @@ Open the focused **Reference / Diff / Actual** page for the preview
 prefilled body carries a fenced ```compose-parity-locator/v1``` block naming the repository, system,
 component, preview id, reference id, variant and any active overrides.
 
+**Several comparisons in one issue.** On the comparison wall's reference lane each row carries a
+checkbox beside its name. Tick the rows and the wall's own report — "report a catalog issue", at the
+top of the page — grows one locator block per ticked row, so the umbrella issue reaches the Bugs
+column of every row it names instead of none of them. One block per **component**: the producer
+refuses a body naming a component, a preview or a reference twice, and refuses the whole body, so
+the wall disables a second variant of a component you have already picked rather than letting you
+file an issue that would silently index nowhere. Ticking nothing files exactly the page-scoped
+report the wall filed before.
+
 **Leave the block alone.** It is the issue's machine-readable identity, and it is what the index
 below joins on: an issue whose fence has been edited, reformatted or deleted is skipped when the
 index is regenerated, so it silently stops appearing on the component's page. Everything a human

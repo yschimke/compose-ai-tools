@@ -1,5 +1,5 @@
 {
-  "$comment": "Shared wire fixture for the compose-parity-locator/v1 block. Two engines read it: cli ServeIssueReportTest, which asserts ServeIssueReport.locatorBlock emits `block` byte for byte from `writer`, and scripts/design-artifacts/parity-issues.test.mjs, which asserts parseLocator(block) yields `parse`. Neither side can move the contract without failing the other's test. Cases with no `writer` are shapes no writer emits and the producer must refuse.",
+  "$comment": "Shared wire fixture for the compose-parity-locator/v1 block. Three engines read it: cli ServeIssueReportTest, which asserts ServeIssueReport.locatorBlock emits `block` byte for byte from `writer`; cli/serve-web test/reportLocator.test.ts, which asserts the browser writer behind the comparison wall's multi-row picker emits the same bytes from the same `writer` (it has to write blocks the server never saw, because which comparisons a report names is chosen by ticking rows after the page was served); and scripts/design-artifacts/parity-issues.test.mjs, which asserts parseLocator(block) yields `parse`. Neither side can move the contract without failing the other's test. Cases with no `writer` are shapes no writer emits and the producer must refuse.",
   "schema": "compose-parity-locator/v1",
   "cases": [
     {

@@ -1092,6 +1092,17 @@ ${captureControlsHtml().prependIndent("          ")}
     val repo: String,
     val login: String? = null,
     val subject: String = "this preview",
+    /**
+     * The design system id a browser-written locator has to name, when this page can write one.
+     *
+     * Non-null is what turns the comparison wall's row pickers on: it says the template carries
+     * [ServeIssueReport.LOCATORS_PLACEHOLDER] and that the two page-level facts a locator needs
+     * beyond the row itself — this and [locatorRevision] — are on the page for the script to read.
+     * Null everywhere else, and the pickers stay hidden there.
+     */
+    val locatorSystem: String? = null,
+    /** Delivery provenance as `owner/repo@branch`, the locator's `revision:` line. */
+    val locatorRevision: String? = null,
   )
 
   /**
@@ -1238,8 +1249,19 @@ ${captureControlsHtml().prependIndent("          ")}
     // says a report goes. `data-cp-subject` is there for the same reason and answers the other half
     // of the offer — what the report is about — so the wall's launcher says "these comparisons"
     // rather than claiming a preview on a page that shows every one of them.
+    // The two page-level halves of a locator the picker writes per row. Emitted only where the
+    // template has a `{{locators}}` line to fill (see [ReportIssue.locatorSystem]), so their
+    // presence is also the signal that turns the wall's row pickers on — one attribute the script
+    // reads rather than a second flag that could disagree with the template.
+    val locatorFacts =
+      (r.locatorSystem
+        ?.takeIf { it.isNotBlank() }
+        ?.let { " data-cp-locator-system=\"${WebEscaping.htmlEscape(it)}\"" } ?: "") +
+        (r.locatorRevision
+          ?.takeIf { it.isNotBlank() }
+          ?.let { " data-cp-locator-revision=\"${WebEscaping.htmlEscape(it)}\"" } ?: "")
     return "\n      <details class=\"cp-report\" id=\"cp-report\" data-cp-repo=\"$repo\"" +
-      " data-cp-subject=\"$subject\">" +
+      " data-cp-subject=\"$subject\"$locatorFacts>" +
       "<summary class=\"cp-report-link\" title=\"$tip\">" +
       "$GITHUB_ICON report a catalog issue</summary>" +
       "\n        <div class=\"cp-report-panel\">" +
@@ -9629,6 +9651,22 @@ ${captureControlsHtml().prependIndent("          ")}
             }
         val bugCell =
           if (showBugs) compareBugsCellHtml(bugs, servedDetail, "$viewer#cp-report") else ""
+        // The row's component identity, which a locator has to name and the wall's picker cannot
+        // derive: `ServeIssueReport.componentIdFor` reads the catalog's own id where there is one
+        // and falls back to a route id parsed out of the preview id, and reproducing that fallback
+        // in the browser would be a second implementation of a rule with one right answer.
+        val componentIdAttr =
+          " data-component-id=\"${WebEscaping.htmlEscape(ServeIssueReport.componentIdFor(current))}\""
+        // The multi-row picker, next to the row's own name because that is what it selects. Emitted
+        // on every row and hidden by `serve.css` until `<cp-compare-wall>` marks the wall pickable
+        // — the tick does nothing without a script to turn it into a locator, and a checkbox that
+        // silently does nothing is worse than no checkbox. Rows the current lane cannot pair are
+        // disabled from there for the same reason.
+        val pickCell =
+          "<label class=\"cp-compare-pick\">" +
+            "<input type=\"checkbox\" class=\"cp-compare-pick-input\" " +
+            "aria-label=\"Include ${WebEscaping.htmlEscape(label)} in one report\">" +
+            "</label>"
         // The issue numbers join the haystack, so `#4624` narrows the wall to the rows a report
         // names — the reverse of the join above, and the way back from an issue to the pictures it
         // is about. Their TITLES join it too, and follow from the pill showing them: a filter box
@@ -9671,8 +9709,8 @@ ${captureControlsHtml().prependIndent("          ")}
             .joinToString("")
         """
           <tr class="cp-compare-row" data-label="${WebEscaping.htmlEscape(label)}"
-            data-hay="${WebEscaping.htmlEscape(hay)}" data-preview-ids="${WebEscaping.htmlEscape(ids)}"$pngAttrs$svgAttrs$rcAttrs$referenceAttrs$declaredBgAttrs>
-            <th scope="row"><a href="$viewer">${WebEscaping.htmlEscape(component)}${
+            data-hay="${WebEscaping.htmlEscape(hay)}" data-preview-ids="${WebEscaping.htmlEscape(ids)}"$componentIdAttr$pngAttrs$svgAttrs$rcAttrs$referenceAttrs$declaredBgAttrs>
+            <th scope="row">$pickCell<a href="$viewer">${WebEscaping.htmlEscape(component)}${
             if (variant.isEmpty()) ""
             else "<span class=\"cp-compare-variant\">${WebEscaping.htmlEscape(variant)}</span>"
           }</a></th>
@@ -9768,6 +9806,16 @@ ${captureControlsHtml().prependIndent("          ")}
     // The wall's page-scoped catalog report, in a provenance row of its own — see
     // [pageReportRowHtml] for why it borrows the viewer's row rather than styling a new one.
     val reportRow = pageReportRowHtml(reportIssue, "cp-compare-links")
+    // What the row pickers have selected, said out loud above the report they feed.
+    //
+    // A live region rather than a count on the button: the report itself is a disclosure the reader
+    // may not have open, and "these comparisons" in its note would otherwise be the only thing on
+    // the page claiming to know what is about to be filed. Server-rendered `hidden` and unhidden by
+    // `<cp-compare-wall>`, like every other control here that means nothing without a script.
+    val pickedBar =
+      "\n          <p id=\"cp-compare-picked\" class=\"cp-compare-picked\" role=\"status\" hidden>" +
+        "<span class=\"cp-compare-picked-text\"></span>" +
+        "<button type=\"button\" class=\"cp-compare-picked-clear\">clear</button></p>"
     val rootAttrs =
       "data-default-format=\"$defaultFormat\" data-default-theme=\"${if (darkFirst) "dark" else "light"}\" " +
         "data-theme-key=\"${WebEscaping.htmlEscape(themeStorageKey(sessionId, basePath))}\" " +
@@ -9814,7 +9862,7 @@ ${captureControlsHtml().prependIndent("          ")}
           <div class="cp-searchbar cp-compare-searchbar">
             <input id="cp-compare-search" class="cp-search" type="search" placeholder="Filter comparisons…" aria-label="Filter comparisons">
             <span id="cp-compare-count" class="cp-count" role="status"></span>
-          </div>$reportRow
+          </div>$pickedBar$reportRow
           <div id="cp-compare-formats">$empty</div>
           ${rcLanes.orEmpty()}
         </div>

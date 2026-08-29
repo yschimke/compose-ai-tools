@@ -121,3 +121,129 @@ export function fillSelection(template: string, selection: Selection): string {
     lines.splice(at, 1, ...(filled ? filled.split("\n").slice(0, -1) : []));
     return lines.join("\n");
 }
+
+// ---- the whole block, for a report the server could not write ---------------------------------
+//
+// Everything above fills in a block `ServeIssueReport` already wrote. What follows writes one from
+// nothing, and exists for a single caller: the comparison wall's multi-row picker, where which
+// comparisons the report names is decided by ticking rows after the page was served. The server
+// cannot write those blocks and the browser therefore has to — so this is a third engine on
+// `compose-parity-locator/v1`, pinned to the same shared fixture as the Kotlin writer and the
+// JavaScript producer (`test/reportLocator.test.ts`).
+
+/** The fence both delimiters carry. Kept in step with `ServeIssueReport.LOCATOR_FENCE`. */
+export const LOCATOR_FENCE = "compose-parity-locator/v1";
+
+/** The placeholder line a pickable page's template carries. `ServeIssueReport.LOCATORS_PLACEHOLDER`. */
+export const LOCATORS_PLACEHOLDER = "{{locators}}";
+
+/** One comparison, as the block names it. */
+export interface Locator {
+    repository: string;
+    system: string;
+    componentId: string;
+    previewId: string;
+    referenceId: string;
+    variant: string;
+    overrides?: Record<string, string>;
+    revision?: string | null;
+    element?: string;
+    bounds?: Bounds;
+}
+
+/**
+ * Compare two strings by CODE POINT, which is not what `Array.prototype.sort` does.
+ *
+ * The default comparator orders by UTF-16 code unit, so an astral key (`😀`, a surrogate pair
+ * starting at U+D83D) sorts *before* a BMP key above U+D800 (`！`, U+FF01) — the opposite of the
+ * canonical order, which the Kotlin writer produces with an explicit code-point comparator. Two
+ * writers disagreeing about that produce two byte-different blocks for one comparison, which is
+ * exactly what "canonical" exists to stop. The shared fixture's `astral-override-keys` case is this
+ * function's reason to exist and the thing that catches its absence.
+ */
+function compareCodePoints(a: string, b: string): number {
+    const left = [...a];
+    const right = [...b];
+    const shared = Math.min(left.length, right.length);
+    for (let i = 0; i < shared; i++) {
+        const one = left[i].codePointAt(0) ?? 0;
+        const two = right[i].codePointAt(0) ?? 0;
+        if (one !== two) return one - two;
+    }
+    return left.length - right.length;
+}
+
+/** Overrides as canonical JSON: code-point key order, and `{}` when there are none. */
+export function canonicalOverrides(
+    overrides: Record<string, string> = {},
+): string {
+    const keys = Object.keys(overrides).sort(compareCodePoints);
+    return `{${keys
+        .map(
+            (key) => `${JSON.stringify(key)}:${JSON.stringify(overrides[key])}`,
+        )
+        .join(",")}}`;
+}
+
+/**
+ * The block for one comparison, newline-terminated, byte for byte what
+ * `ServeIssueReport.locatorBlock` writes for the same fields.
+ *
+ * Field ORDER is part of the format, not a style: the block is compared without being parsed, so a
+ * reordered one is a different record for the same comparison.
+ */
+export function locatorBlock(locator: Locator): string {
+    let out = "```" + LOCATOR_FENCE + "\n";
+    out += `repository: ${locator.repository}\n`;
+    out += `system: ${locator.system}\n`;
+    out += `component: ${locator.componentId}\n`;
+    out += `preview: ${locator.previewId}\n`;
+    out += `reference: ${locator.referenceId}\n`;
+    out += `variant: ${locator.variant}\n`;
+    out += `overrides: ${canonicalOverrides(locator.overrides)}\n`;
+    out += selectionLines({
+        element: locator.element,
+        bounds: locator.bounds,
+    });
+    if (locator.revision) out += `revision: ${locator.revision}\n`;
+    out += "```\n";
+    return out;
+}
+
+/**
+ * The axis segments a preview id already encodes, which is the `variant:` line.
+ *
+ * Ported from `ServeIssueReport.variantFor`, and deliberately the same one-liner: the value is the
+ * preview id's own tail with its separator swapped, so there is nothing here to get subtly right
+ * beyond not inventing a second rule for it.
+ */
+export function variantOf(previewId: string): string {
+    const at = previewId.indexOf("__");
+    return at < 0
+        ? ""
+        : previewId
+              .slice(at + 2)
+              .split("__")
+              .join("/");
+}
+
+/**
+ * [template] with its `{{locators}}` line replaced by [blocks], or removed when there are none.
+ *
+ * Whole-line matching and whole-line consumption, exactly as [fillSelection] does it and for the
+ * same reason: the line has to equal the placeholder, so a locator value that merely ends with the
+ * placeholder text cannot be rewritten instead. Removing the line reproduces byte for byte the body
+ * a server with nothing to fill writes on its own, which is what a report filed with no rows ticked
+ * must be.
+ */
+export function fillLocators(template: string, blocks: string[]): string {
+    const lines = template.split("\n");
+    const at = lines.indexOf(LOCATORS_PLACEHOLDER);
+    if (at < 0) return template;
+    // A blank line ahead of the first fence, written HERE rather than by the server: the server's
+    // own line has no separator before it, so that a body with nothing ticked is the body it writes
+    // without this placeholder at all.
+    const filled = blocks.length ? "\n" + blocks.join("") : "";
+    lines.splice(at, 1, ...(filled ? filled.split("\n").slice(0, -1) : []));
+    return lines.join("\n");
+}

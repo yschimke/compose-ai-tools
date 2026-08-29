@@ -15,9 +15,9 @@
 // navigation sink. That is what keeps the report a GET form rather than a CodeQL finding; see
 // `ServeIssueReport.action`.
 
-import { fillReport } from "../annotate/report.js";
+import { fillReport, needsRender } from "../annotate/report.js";
 import { withClassification } from "./classification.js";
-import { fillSelection, type Selection } from "./locator.js";
+import { fillLocators, fillSelection, type Selection } from "./locator.js";
 
 /** What the page knows so far. Every field is independently optional. */
 export interface ReportInputs {
@@ -35,6 +35,15 @@ export interface ReportInputs {
      * keeps the rule that exactly one thing writes the field.
      */
     classification?: string;
+    /**
+     * One `compose-parity-locator/v1` block per comparison the reader ticked on the wall.
+     *
+     * The fifth producer, and the only one that adds identity rather than detail: a page-scoped
+     * report names no preview until somebody picks some, and these are what turn it into an
+     * umbrella issue the catalog's index can join to rows. Empty — the state this starts in — fills
+     * the template's placeholder with nothing, reproducing the body the server wrote.
+     */
+    locators?: string[];
 }
 
 export class ReportBody {
@@ -75,18 +84,25 @@ export class ReportBody {
 
     private write(): void {
         const { input, template } = this;
+        if (!input || !template) return;
         // No render URL yet means the page has not finished parsing its own panels. The server's
         // body is already in the field and is correct; there is nothing to improve on — and the
-        // template's `{{render}}` would be filed verbatim, which is worse than waiting.
-        if (!input || !template || !this.state.render) return;
+        // template's `{{render}}` would be filed verbatim, which is worse than waiting. Asked of
+        // the template rather than assumed, because the comparison wall's page-scoped report names
+        // no render at all and would otherwise never be composable — so a picked set of rows could
+        // never reach the body.
+        if (needsRender(template) && !this.state.render) return;
         input.value = withClassification(
-            fillSelection(
-                fillReport(
-                    template,
-                    this.state.render,
-                    this.state.scores ?? null,
+            fillLocators(
+                fillSelection(
+                    fillReport(
+                        template,
+                        this.state.render ?? "",
+                        this.state.scores ?? null,
+                    ),
+                    this.state.selection ?? {},
                 ),
-                this.state.selection ?? {},
+                this.state.locators ?? [],
             ),
             this.state.classification ?? "",
         );

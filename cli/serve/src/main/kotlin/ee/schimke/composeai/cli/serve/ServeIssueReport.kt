@@ -74,6 +74,25 @@ internal object ServeIssueReport {
    */
   const val CLASSIFICATION_UNSTATED: String = "as labelled on this issue"
 
+  /**
+   * Stand-in for locator blocks the SERVER cannot write, because which comparisons they name is
+   * chosen after the page is served.
+   *
+   * The comparison wall's own report is page-scoped: it names the page and the lane, and carries no
+   * locator, because a wall singles out no preview. That is still true of the page — but not of a
+   * reader who has ticked four rows, and an umbrella issue naming several components is a shape
+   * this format already has (`locatorsFromBody` returns a list, and the producer emits a row per
+   * block). So the wall's template carries this line and `<cp-compare-wall>` fills it with one
+   * block per ticked row, using the same writer this object exposes, ported to `report/locator.ts`
+   * and pinned to the same shared fixture.
+   *
+   * Occupies a whole LINE and is substituted with its newline, so a report filed with nothing
+   * ticked reproduces byte for byte the page-scoped body the server writes on its own — which is
+   * also what a visitor with JavaScript off files, since the ticking is the part that needs a
+   * browser.
+   */
+  const val LOCATORS_PLACEHOLDER: String = "{{locators}}"
+
   const val LOCATOR_FENCE: String = "compose-parity-locator/v1"
 
   /** The only plane `v1` accepts for [Bounds]; see that type and D1. */
@@ -256,6 +275,7 @@ internal object ServeIssueReport {
     ctx: Context,
     renderPlaceholder: Boolean = false,
     selectionPlaceholder: Boolean = false,
+    locatorsPlaceholder: Boolean = false,
   ): String {
     val rows = buildList {
       ctx.system?.trim()?.takeIf { it.isNotEmpty() }?.let { add("| Design system | `$it` |") }
@@ -330,6 +350,11 @@ internal object ServeIssueReport {
       if (links.isNotEmpty()) append("\n\n").append(links.joinToString(" · "))
       append("\n")
       locator(ctx)?.let { append("\n").append(locatorBlock(it, selectionPlaceholder)) }
+      // No leading blank line of its own: the placeholder is a line the filler either replaces
+      // (writing its own separator ahead of the blocks) or deletes outright, and a blank line the
+      // server had already committed to would survive the deletion and leave a body that is not the
+      // one it writes without this parameter.
+      if (locatorsPlaceholder) append(LOCATORS_PLACEHOLDER).append("\n")
     }
   }
 

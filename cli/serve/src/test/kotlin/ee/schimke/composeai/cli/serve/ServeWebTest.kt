@@ -2215,6 +2215,64 @@ class ServeWebTest {
   }
 
   @Test
+  fun `the wall offers a picker per row, and the facts a browser needs to write its locator`() {
+    val preview =
+      ServePreview(
+        id = "button__ideal__default__light",
+        label = "Button",
+        componentId = "Button/Filled",
+      )
+    val html =
+      ServeWeb.comparisonPage(
+        "m3-catalog",
+        listOf(preview),
+        token = "t",
+        referencesFor = { listOf(referenceFor(it)) },
+        reportIssue =
+          ServeWeb.ReportIssue(
+            action = "https://github.com/o/r/issues/new",
+            body = "### Which page",
+            bodyTemplate = "### Which page\n${ServeIssueReport.LOCATORS_PLACEHOLDER}\n",
+            repo = "o/r",
+            subject = "these comparisons",
+            locatorSystem = "m3-catalog",
+            locatorRevision = "o/r@design-artifacts/m3-catalog",
+          ),
+      )
+    // The two page-level halves of a locator, which no row can know. Their presence is also the
+    // switch: `<cp-compare-wall>` shows the row checkboxes only where it can turn a tick into a
+    // block, and a wall with no report to file leaves them hidden.
+    assertTrue(html.contains("data-cp-locator-system=\"m3-catalog\""), html)
+    assertTrue(
+      html.contains("data-cp-locator-revision=\"o/r@design-artifacts/m3-catalog\""),
+      html,
+    )
+    // The row's own half: the component identity the locator names, taken from the catalog rather
+    // than re-derived in the browser from the preview id.
+    assertTrue(html.contains("data-component-id=\"Button/Filled\""), html)
+    // The picker itself, beside the row's name — server-rendered on every row and hidden by CSS
+    // until the wall marks itself pickable, because a tick means nothing without the script.
+    assertTrue(html.contains("<input type=\"checkbox\" class=\"cp-compare-pick-input\""), html)
+    assertTrue(html.contains("id=\"cp-compare-picked\""), html)
+  }
+
+  @Test
+  fun `a page report names no locator until a page can pick one`() {
+    // The placeholder is a line the browser either fills or deletes. On a page with nothing to fill
+    // it — every page-scoped report but the wall's — it would be filed verbatim, so it is not
+    // written at all, and the body a visitor with JS off files is unchanged either way.
+    val context = ServeIssueReport.Context(repo = "yschimke/m3-catalog", system = "m3-catalog")
+    val plain = ServeIssueReport.body(context, renderPlaceholder = true)
+    assertFalse(plain.contains(ServeIssueReport.LOCATORS_PLACEHOLDER), plain)
+    val pickable =
+      ServeIssueReport.body(context, renderPlaceholder = true, locatorsPlaceholder = true)
+    assertTrue(pickable.contains("\n${ServeIssueReport.LOCATORS_PLACEHOLDER}\n"), pickable)
+    // Deleting the placeholder LINE has to reproduce the other body byte for byte — that is what a
+    // report filed with nothing ticked must be, and what a visitor with no script files.
+    assertEquals(plain, pickable.replace("${ServeIssueReport.LOCATORS_PLACEHOLDER}\n", ""))
+  }
+
+  @Test
   fun `a catalog with no published issue index carries no Bugs column at all`() {
     // With nothing to join, the column would be a row of bare "+ file" links — a route every
     // reference row already has by opening its focused comparison.
