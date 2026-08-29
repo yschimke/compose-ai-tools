@@ -1414,8 +1414,8 @@
     "serve-viewer-history-menu-open.light.png": {
       "fixture": "serve-viewer-history-menu-open",
       "theme": "light",
-      "sha256": "0e2945b4cbf449ce5cd22fd53780a2a903cba18151c93632bc7a29dd5b967293",
-      "size": 86599
+      "sha256": "cfcb5bd8cc6874b68ebd842ed843601d1e13a6c06ebd65f381e33ab90c5a0357",
+      "size": 66614
     },
     "serve-viewer-history.dark.png": {
       "fixture": "serve-viewer-history",
