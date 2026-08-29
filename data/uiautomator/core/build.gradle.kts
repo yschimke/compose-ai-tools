@@ -23,7 +23,7 @@ dependencies {
   // `DataProductKey` for the typed `uia/hierarchy` product key (#874). Carried in this module
   // so the producer in `:data-uiautomator-hierarchy-android` and the connector both reference
   // the same key; mirrors `:data-a11y-core`'s exposure of `AccessibilityDataProducts.Hierarchy`.
-  api(project(":data-render-core"))
+  api(libs.composeai.data.render.core)
 
   // Selector JSON wire format — needed so the matcher can travel across the daemon bridge
   // (DispatchUiAutomator envelope, see docs/daemon/INTERACTIVE-ANDROID.md) and the MCP

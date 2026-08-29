@@ -34,7 +34,7 @@ dependencies {
   implementation(libs.androidx.tracing.kmp)
   implementation(libs.androidx.tracing.wire)
 
-  implementation(project(":common-io"))
+  implementation(libs.composeai.common.io)
   implementation(libs.okio)
 
   testImplementation(libs.junit)

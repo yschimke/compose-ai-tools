@@ -7,7 +7,7 @@ plugins {
 }
 
 dependencies {
-  api(project(":data-render-core"))
+  api(libs.composeai.data.render.core)
   api(libs.jetbrains.compose.runtime)
   api(libs.jetbrains.compose.ui)
 

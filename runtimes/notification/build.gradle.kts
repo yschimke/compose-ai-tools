@@ -25,7 +25,7 @@ android {
 }
 
 dependencies {
-  implementation(project(":common-io"))
+  implementation(libs.composeai.common.io)
   // Compose deps mirror `:renderer-android`'s `compileOnly` model — the consumer module brings
   // its own Compose BOM, and we compile against the older `compose-bom-compat` so emitted
   // bytecode runs unchanged against newer consumer Compose versions. See

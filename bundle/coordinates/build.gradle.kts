@@ -23,7 +23,7 @@ dependencies {
   api(project(":bundle-format"))
 
   // Okio file IO for the cache probes and the downloaded-jar writes.
-  api(project(":common-io"))
+  api(libs.composeai.common.io)
 
   // HTTP fetch for coordinates absent from the local caches. `implementation`: a caller resolves
   // coordinates, it does not speak ktor.

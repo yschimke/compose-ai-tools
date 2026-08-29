@@ -28,7 +28,7 @@ plugins {
 dependencies {
   // Wire-shape (declaration + product kind) and, transitively, `PreviewOverrideValue`. `api` so a
   // consumer test or the connector can refer to them without a second dependency.
-  api(project(":data-preview-overrides-core"))
+  api(libs.composeai.data.preview.overrides.core)
 
   // Compose runtime (`@Composable`, `compositionLocalOf`, `SideEffect`) + UI (`Color`, `toArgb`,
   // `Dp`).

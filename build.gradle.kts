@@ -84,15 +84,11 @@ val androidFunctionalTestPublishTargets =
   listOf(
     ":renderer-android",
     ":data-a11y-core",
-    ":data-render-core",
     ":data-render-compose",
     // The `@InteractionPreview` script expansion + APNG encoder, shared with the desktop renderer.
     ":data-motion-core",
     ":data-scroll-core",
     ":data-scroll-android",
-    // The renderer + data modules read/write files through Okio's `:common-io` (its file-IO
-    // foundation), so it's part of the closure the synthetic project must resolve from mavenLocal.
-    ":common-io",
     // Downloadable-font resolution, an `api` dep of `:renderer-android` — so it is in the published
     // metadata the synthetic consumer resolves, and the development version exists nowhere but
     // mavenLocal.
@@ -159,7 +155,6 @@ tasks.register("functionalTestWithAndroid") {
 val bundleRenderFunctionalTestPublishTargets =
   listOf(
     ":renderer-desktop",
-    ":data-render-core",
     ":data-render-compose",
     ":data-motion-core",
     ":data-scroll-core",
@@ -172,13 +167,9 @@ val bundleRenderFunctionalTestPublishTargets =
     ":data-focus-core",
     ":daemon:core",
     ":renderer-xr-client",
-    ":data-layoutinspector-core",
-    ":data-theme-core",
-    ":data-preview-overrides-core",
     ":data-preview-overrides-runtime",
     ":lottie-preview-runtime",
     ":svg-preview-runtime",
-    ":common-io",
   )
 
 tasks.register("functionalTestWithBundleRender") {

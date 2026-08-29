@@ -49,7 +49,7 @@ dependencies {
   implementation(libs.kotlinx.serialization.json)
   implementation(libs.mcp.kotlin.sdk.server)
   // Okio-based file IO (`SystemFileSystem`) for descriptor reads + PNG/video byte reads.
-  implementation(project(":common-io"))
+  implementation(libs.composeai.common.io)
   // `:daemon:core` and `:render-session-api` are advertised as `api` because `:mcp` exposes
   // their types on its public surface (e.g. `SupervisedDaemon.session: RenderSession`,
   // `DaemonClasspathDescriptor`, the protocol message types reused by
@@ -62,7 +62,7 @@ dependencies {
   // `DaemonSupervisor` takes a `DaemonClientFactory`.
   api(project(":daemon-client"))
   // Semantics diff engine + payload model for the `diff_semantics` tool (issue #1785).
-  implementation(project(":data-layoutinspector-core"))
+  implementation(libs.composeai.data.layoutinspector.core)
 
   testImplementation(libs.junit)
   testImplementation(libs.truth)

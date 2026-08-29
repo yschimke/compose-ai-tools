@@ -21,8 +21,8 @@ plugins {
 android { namespace = "ee.schimke.composeai.data.a11y.core" }
 
 dependencies {
-  implementation(project(":common-io"))
-  api(project(":data-render-core"))
+  implementation(libs.composeai.common.io)
+  api(libs.composeai.data.render.core)
   api(libs.kotlinx.serialization.json)
 
   // ATF (`accessibility-test-framework`) — directly referenced by `AccessibilityChecker.kt`.

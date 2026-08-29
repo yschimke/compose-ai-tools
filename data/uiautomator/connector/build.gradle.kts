@@ -23,7 +23,7 @@ plugins {
 android { namespace = "ee.schimke.composeai.data.uiautomator.connector" }
 
 dependencies {
-  implementation(project(":common-io"))
+  implementation(libs.composeai.common.io)
   // Typed payload + `UiAutomatorDataProducts.Hierarchy` key — the producer/registry below
   // serialise / advertise this kind. Re-exported via `api` so `:daemon:android` can refer to
   // `UiAutomatorHierarchyPayload` without adding a second `project` dep.
@@ -34,7 +34,7 @@ dependencies {
   api(project(":daemon:core"))
 
   // `RecordingScriptEventDescriptor` + `DataExtensionDescriptor` types.
-  api(project(":data-render-core"))
+  api(libs.composeai.data.render.core)
 
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.serialization.json)

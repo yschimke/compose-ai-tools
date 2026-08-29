@@ -28,7 +28,7 @@ plugins {
 dependencies {
   // Okio-backed `SystemFileSystem` — `FocusOverlayDesktop` re-reads and rewrites the captured PNG
   // through it, the same seam `:data-focus-connector`'s Android overlay writes through.
-  implementation(project(":common-io"))
+  implementation(libs.composeai.common.io)
   // Wire-shape (`FocusOverride` / `FocusDirection`) — re-exported so consumers (`:daemon:desktop`)
   // can refer to the model types without a second project dep.
   api(project(":data-focus-core"))

@@ -136,27 +136,19 @@
       "preview-server/gradle.properties",
       "scripts/check-preview-server-contracts.sh",
       "daemon/core/**",
-      "daemon/protocol/**",
-      "daemon/devices/**",
-      "daemon/bta/**",
       "daemon/client/**",
       "api/preview-data-api/**",
-      "common/io/**",
       "common/image-crop/**",
       "common/web-escaping/**",
-      "api/agent-grant-protocol/**",
       "render-session/**",
-      "data/layoutinspector/core/**",
-      "data/preview-overrides/core/**",
       "data/remotecompose/core/**",
-      "data/theme/core/**",
-      "data/render/core/**",
       "data/pseudolocale/core/**",
       "bundle/format/**",
       "bundle/coordinates/**",
       "mcp/**",
       "renderers/xr-client/**",
-      "cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/**"
+      "cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/**",
+      "gradle/libs.versions.toml"
     ]
   }
 }

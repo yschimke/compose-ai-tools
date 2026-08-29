@@ -261,7 +261,10 @@ class RepositoryConfigsTest(unittest.TestCase):
         # this job is the only thing that notices when a contract module stops resolving for it.
         # A change to a contract must reach it (issue #3824).
         for changed in (
-            "daemon/protocol/src/main/kotlin/ee/schimke/composeai/daemon/protocol/DaemonLaunchDescriptor.kt",
+            # The contract modules moved to compose-preview-contracts, so a change to one no
+            # longer arrives as a path here — it arrives as a bump to the pin that says which
+            # version this build resolves. That is what must schedule the probe now.
+            "gradle/libs.versions.toml",
             "render-session/subprocess/build.gradle.kts",
             "preview-server/contract-probe/build.gradle.kts",
             "scripts/check-preview-server-contracts.sh",

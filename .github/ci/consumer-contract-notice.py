@@ -65,31 +65,11 @@ SURFACES: list[dict] = [
         },
     },
     {
-        "name": "Wire protocol types",
-        "patterns": ["daemon/protocol/src/main/**"],
-        "why": (
-            "The `@Serializable` request/response/notification shapes. NOTE: "
-            f"{CONTRACTS} currently holds its own copy of this module rather than consuming "
-            "one — until the cutover, the two can genuinely diverge, and only this notice "
-            "says so."
-        ),
-        "consumers": {
-            CONTRACTS: (
-                "publishes `ee.schimke.composeai:daemon-protocol` from its own copy of this "
-                "module. Port the change there, or the published contract stops describing "
-                "what this repository's daemon actually speaks."
-            ),
-            EXT: (
-                "hand-maintains the TypeScript counterpart in `src/daemon/daemonProtocol.ts`. "
-                "A field added here needs adding there; `checkDaemonLaunchSchema` covers only "
-                "the launch descriptor, not the whole protocol."
-            ),
-        },
-    },
-    {
         "name": "Device catalog",
+        # `daemon/devices/**` was here too, until that module moved to
+        # compose-preview-contracts. What is left is this repository's copy — the plugin's — which
+        # is exactly the half a drift test on the other side compares against.
         "patterns": [
-            "daemon/devices/src/main/**",
             "gradle-plugin/preview-discovery/src/main/kotlin/ee/schimke/composeai/discovery/DeviceDimensions.kt",
         ],
         "why": (
@@ -107,9 +87,10 @@ SURFACES: list[dict] = [
     },
     {
         "name": "Daemon launch descriptor",
+        # The `DaemonLaunchDescriptor.kt` pattern was here too, until `daemon/protocol` moved to
+        # compose-preview-contracts. The builder that writes the descriptor is still here.
         "patterns": [
             "gradle-plugin/daemon-launch-builder/src/main/**",
-            "daemon/protocol/src/main/kotlin/ee/schimke/composeai/daemon/protocol/DaemonLaunchDescriptor.kt",
         ],
         "why": (
             "Three copies of the schema, and the TypeScript one is the only reader that "
@@ -135,22 +116,6 @@ SURFACES: list[dict] = [
                 "mirrors, because this repository cannot write into that one. Regenerate it "
                 "there with `gen-spatial-scene.mjs --emit-typescript`."
             ),
-        },
-    },
-    {
-        "name": "Agent-grant vocabulary",
-        "patterns": ["api/agent-grant-protocol/src/main/**"],
-        "why": "Both ends of `--agent-grants` speak it: the server mints, the client asks.",
-        "consumers": {
-            CONTRACTS: "publishes `agent-grant-protocol` from its own copy; port the change.",
-        },
-    },
-    {
-        "name": "Build Tools API result shapes",
-        "patterns": ["daemon/bta/src/main/**"],
-        "why": "`CompileErrorDetail` and `SourceChangeSet` cross the wire.",
-        "consumers": {
-            CONTRACTS: "publishes `daemon-bta` from its own copy; port the change.",
         },
     },
 ]

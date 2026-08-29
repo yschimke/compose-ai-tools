@@ -37,6 +37,15 @@ requires_ts_checkout = unittest.skipIf(
     "no compose-preview-vscode checkout (set COMPOSE_PREVIEW_VSCODE_ROOT)",
 )
 
+# Same again for the JVM reader, which moved to yschimke/compose-preview-contracts. The checker
+# itself skips the JVM half without a checkout; these tests reach past `check()` into
+# `kotlin_data_class` / `emitted_shape` / `kotlin_consts` directly, so the guard has to be
+# repeated here or the documented standalone run ends in IsADirectoryError rather than a skip.
+requires_contracts_checkout = unittest.skipIf(
+    mod._contracts_root is None,
+    "no compose-preview-contracts checkout (set COMPOSE_PREVIEW_CONTRACTS_ROOT)",
+)
+
 class SplitParams(unittest.TestCase):
     def test_a_generic_type_argument_comma_is_not_a_separator(self):
         # The regression that motivated the splitter: `Map<String, String>` was truncated to
@@ -250,6 +259,7 @@ class RealTree(unittest.TestCase):
                 f"discovery missed {site['file']}:{site['symbol']}",
             )
 
+    @requires_contracts_checkout
     def test_each_reader_only_field_carries_a_default(self):
         jvm = mod.kotlin_data_class(mod.JVM_READER, "DaemonLaunchDescriptor")
         for field in self.allowlist["readerOnlyFields"]["jvm"]:
@@ -257,6 +267,7 @@ class RealTree(unittest.TestCase):
             self.assertTrue(jvm[field][1], f"{field} must default — the plugin never writes it")
 
     @requires_ts_checkout
+    @requires_contracts_checkout
     def test_each_writer_only_field_really_is_absent_from_the_readers_it_claims(self):
         readers = {
             "jvm": mod.kotlin_data_class(mod.JVM_READER, "DaemonLaunchDescriptor"),
@@ -315,6 +326,7 @@ class RealTree(unittest.TestCase):
             self.assertIn("file", spec, alias)
             self.assertIn((spec["file"], alias), set(mod.discover_version_stamps()), alias)
 
+    @requires_contracts_checkout
     def test_the_writer_version_has_an_immutable_recorded_fingerprint(self):
         writer = mod.kotlin_data_class(mod.WRITER, "DaemonClasspathDescriptor")
         version = mod.kotlin_consts(mod.WRITER)["DAEMON_DESCRIPTOR_SCHEMA_VERSION"]
@@ -333,6 +345,7 @@ class RealTree(unittest.TestCase):
             call = mod.ENCODE_CALL.search(mod.stripped(rel))
             self.assertIsNotNone(call, rel)
 
+    @requires_contracts_checkout
     def test_the_fingerprint_covers_fields_only_serve_emits(self):
         # `jailCommand` / `hardTtlSeconds` are on the wire but absent from the plugin's DTO.
         writer = mod.kotlin_data_class(mod.WRITER, "DaemonClasspathDescriptor")
@@ -413,6 +426,7 @@ class RealTree(unittest.TestCase):
             )
         )
 
+    @requires_contracts_checkout
     def test_mirrored_constants_are_declared_where_the_register_says(self):
         for name, spec in self.allowlist["mirroredConstants"].items():
             self.assertIn(name, mod.kotlin_consts(spec["declaredBy"]))

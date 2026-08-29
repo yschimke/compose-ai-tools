@@ -48,7 +48,7 @@ animation state, and a redacted snapshot summary.
 ## Payload shape
 
 `TestFailureDataProduct` in
-[`:data-render-core`](https://github.com/yschimke/compose-ai-tools/tree/main/data/render/core).
+[`:data-render-core`](https://github.com/yschimke/compose-preview-contracts/tree/main/data/render/core).
 
 ```jsonc
 // test/failure

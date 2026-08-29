@@ -224,6 +224,29 @@ class Omissions(unittest.TestCase):
         p.write_text(p.read_text().replace('    "common-image-crop",\n', "", 1))
         self.assertEqual(mod.check(self.root), 1)
 
+    def test_an_external_contract_needs_no_local_publisher(self):
+        # The cutover case, and the reason `published` is not simply `named`: nine contracts are
+        # published by yschimke/compose-preview-contracts, so no project here publishes them and
+        # the baseline must still pass. `test_baseline_copy_passes` covers that in aggregate; this
+        # pins the specific reason, so a change that drops `externalContracts` from the check
+        # fails here with a name rather than somewhere vague.
+        external = mod.probe_external_contracts(self.root)
+        self.assertIn("daemon-protocol", external)
+        self.assertNotIn(":daemon-protocol", mod.shell_projects(self.root))
+        self.assertEqual(mod.check(self.root), 0)
+
+    def test_a_contract_published_on_both_sides_fails(self):
+        # Two repositories cannot own one coordinate. A module listed in `externalContracts` while
+        # a project here still publishes it means whichever releases second collides with or
+        # replaces the other's artifact — the hazard the contracts repository's publish guard
+        # existed to prevent before the cutover.
+        p = self.root / mod.PROBE
+        text = p.read_text()
+        marker = "val externalContracts =\n  setOf(\n"
+        assert marker in text
+        p.write_text(text.replace(marker, marker + '    "common-image-crop",\n', 1))
+        self.assertIn("cannot own one coordinate", self._failure())
+
     def test_missing_from_publish_list_fails(self):
         p = self.root / mod.SHELL
         p.write_text(p.read_text().replace('  ":common-image-crop"\n', "", 1))
@@ -252,7 +275,7 @@ class Omissions(unittest.TestCase):
         self._rewrite_allowlist(
             lambda m: m.__setitem__("ee.schimke.composeai.imagecrop", "common-image-kropp")
         )
-        self.assertIn("which no project in", self._failure())
+        self.assertIn("which nothing publishes", self._failure())
 
     def test_a_nested_package_mapped_to_the_wrong_contract_fails(self):
         # The per-module check below only reaches a module's *root* packages, so a nested entry

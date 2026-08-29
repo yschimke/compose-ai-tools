@@ -27,31 +27,31 @@ dependencies {
   // dispatches protocol requests — and every existing consumer of
   // `ee.schimke.composeai.daemon.protocol.*` reaches them through this module, so they stay on its
   // compile ABI. The package did not move; only the module boundary around it did.
-  api(project(":daemon-protocol"))
+  api(libs.composeai.daemon.protocol)
 
   // The device catalog, split out for #3824. `api` for the same reason as the protocol: this
   // module's own surface names `DeviceDimensions`, and every existing consumer of
   // `ee.schimke.composeai.daemon.devices.*` reaches it through here. The package did not move.
-  api(project(":daemon-devices"))
+  api(libs.composeai.daemon.devices)
 
   // In-process Kotlin compile, split out for #3824. `api` because `JsonRpcServer`'s constructor
   // takes a `BtaCompileService`, so the type is on this module's compile ABI, and because every
   // existing consumer of `ee.schimke.composeai.daemon.bta.*` reaches it through here.
-  api(project(":daemon-bta"))
+  api(libs.composeai.daemon.bta)
 
-  api(project(":data-render-core"))
+  api(libs.composeai.data.render.core)
 
   // Semantics-tree models + structural differ (issue #1785). `api`, not `implementation`: the
   // published `HistoryDiffResult.semanticsDelta` field is a `SemanticsDelta`, so the type is part
   // of this module's compile ABI. Pure-JVM core module (no Compose/Android) — safe on the
   // renderer-agnostic daemon classpath.
-  api(project(":data-layoutinspector-core"))
+  api(libs.composeai.data.layoutinspector.core)
 
   // Theme-token models + structural differ (issue #1873). `api`, not `implementation`: the
   // published `HistoryDataDelta.theme` field is a `ThemeDelta`, so the type is part of this
   // module's compile ABI. Pure-JVM core module (no Compose/Android) — safe on the
   // renderer-agnostic daemon classpath, same as `:data-layoutinspector-core`.
-  api(project(":data-theme-core"))
+  api(libs.composeai.data.theme.core)
 
   // `PreviewOverrideValue` (the plain-Compose named-override value type) lives in the published
   // `:data-preview-overrides-core` so the runtime/producer/MCP clients depend on the override
@@ -61,12 +61,12 @@ dependencies {
   // ABI
   // → `api`, not `implementation`. Pure-JVM (kotlinx-serialization only), safe on the daemon
   // classpath; the module has no dependency back on `:daemon:core`, so no cycle.
-  api(project(":data-preview-overrides-core"))
+  api(libs.composeai.data.preview.overrides.core)
 
   // Okio-based file IO (`SystemFileSystem`) for data-product reads, history sidecars, bundle IR
   // replay, and forensics dumps. `implementation` — Okio stays an internal detail; daemon/core's
   // public surface keeps its java.io.File signatures.
-  implementation(project(":common-io"))
+  implementation(libs.composeai.common.io)
 
   // Protocol message types are @Serializable. Exposed as `api` so downstream
   // daemon modules (e.g. :daemon:android) get

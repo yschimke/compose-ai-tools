@@ -52,6 +52,24 @@ def probe_contracts(root: pathlib.Path) -> list[str]:
     return re.findall(r'^\s*"([A-Za-z0-9._-]+)",?\s*$', text[start:end], re.M)
 
 
+def probe_external_contracts(root: pathlib.Path) -> set[str]:
+    """The contracts published by yschimke/compose-preview-contracts, not by this repository.
+
+    Read from the probe build rather than listed again here: it already has to name them to
+    resolve them at the right version, and a second copy is a thing that can disagree.
+
+    They are still contracts — `contracts` lists them, `contractPackages` maps them — but the
+    checks that ask "which local project publishes this" cannot apply, because none does. What is
+    lost with them is the source-level half: a mapping entry for an external contract cannot be
+    verified against the packages its sources declare, since the sources are in another
+    repository. That check belongs to the contracts repository now.
+    """
+    text = (root / PROBE).read_text()
+    start = text.index("val externalContracts =")
+    end = text.index("\n  )", start)
+    return set(re.findall(r'^\s*"([A-Za-z0-9._-]+)",?\s*$', text[start:end], re.M))
+
+
 def shell_projects(root: pathlib.Path) -> list[str]:
     """The Gradle paths the probe script publishes before resolving them."""
     text = (root / SHELL).read_text()
@@ -260,17 +278,31 @@ def check(root: pathlib.Path = REPO) -> int:
         )
 
     named = {a for a in ids.values() if a}
+    external = probe_external_contracts(root)
+
+    # A contract is real if SOME repository publishes it. Before the cutover that was always this
+    # one, so `named` alone was the test; now `externalContracts` names the rest.
+    published = named | external
+
     for missing in sorted(named - set(contracts)):
         problems.append(f"{PROBE}: '{missing}' is published by {SHELL} but not in `contracts`")
-    for missing in sorted(set(contracts) - named):
-        problems.append(f"{SHELL}: '{missing}' is in `contracts` but no project publishes it")
+    for missing in sorted(set(contracts) - published):
+        problems.append(
+            f"{SHELL}: '{missing}' is in `contracts` but nothing publishes it — no project here, "
+            f"and it is not listed in `externalContracts` in {PROBE} either"
+        )
+    for stale in sorted(external & named):
+        problems.append(
+            f"{PROBE}: '{stale}' is in `externalContracts` but a project in {SHELL} still "
+            "publishes it. Two repositories cannot own one coordinate — drop it from one side."
+        )
 
-    for artifact in sorted(set(mapping.values()) - named):
+    for artifact in sorted(set(mapping.values()) - published):
         keys = sorted(k for k, a in mapping.items() if a == artifact)
         problems.append(
-            f"{ALLOWLIST}: `contractPackages` maps {', '.join(keys)} to '{artifact}', which no "
-            f"project in {SHELL} publishes — the seam checker would credit those imports to a "
-            "contract that does not exist"
+            f"{ALLOWLIST}: `contractPackages` maps {', '.join(keys)} to '{artifact}', which "
+            "nothing publishes — the seam checker would credit those imports to a contract that "
+            "does not exist"
         )
 
     # Every mapping key names a package; the artifact it names must be the one that ships it.

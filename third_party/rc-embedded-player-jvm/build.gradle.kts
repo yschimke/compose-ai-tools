@@ -229,7 +229,7 @@ dependencies {
   // the Remote Compose interpretation; this connector turns the resulting ordinary CMP scene's
   // slot tables + semantics into the same layered SVG the desktop preview daemon emits.
   implementation(project(":data-layoutinspector-connector"))
-  implementation(project(":data-layoutinspector-core"))
+  implementation(libs.composeai.data.layoutinspector.core)
 
   // Downloadable fonts for the jvm text seams (`GoogleFontTypefaceResolver`). Android resolves a
   // `google:` family through `FontsContractCompat`; off Android there is no provider, so the face

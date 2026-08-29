@@ -44,7 +44,7 @@ plus a back-pointer to which nodes consumed each token.
 ## Payload shape
 
 `ThemePayload`, `ResolvedThemeTokens`, `TypographyToken` in
-[`:data-theme-core`](https://github.com/yschimke/compose-ai-tools/tree/main/data/theme/core).
+[`:data-theme-core`](https://github.com/yschimke/compose-preview-contracts/tree/main/data/theme/core).
 
 ```jsonc
 // compose/theme

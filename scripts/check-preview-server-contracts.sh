@@ -26,27 +26,22 @@ cd "$(dirname "$0")/.."
 # signatory.
 PROBE_VERSION="0.0.0-contract-probe-SNAPSHOT"
 
-# Kept in sync with `contracts` in preview-server/contract-probe/build.gradle.kts. Listed as Gradle
-# paths here and as artifact coordinates there; `checkContractSurface` fails if the two disagree,
-# because a contract that isn't published simply won't resolve.
+# The contracts this repository still BUILDS, and so can publish under the probe version.
+#
+# Nine others — daemon-protocol, daemon-devices, daemon-bta, agent-grant-protocol, the four
+# data-*-core modules and common-io — are not here any more: they moved to
+# yschimke/compose-preview-contracts and resolve from Maven Central. They are still contracts, and
+# `contracts` in preview-server/contract-probe/build.gradle.kts still lists them; they just are not
+# ours to publish. `checkContractSurface` fails if the two lists disagree.
 CONTRACT_PROJECTS=(
   ":daemon:core"
-  ":daemon-protocol"
-  ":daemon-devices"
-  ":daemon-bta"
   ":daemon-client"
   ":preview-data-api"
   ":render-session-api"
   ":render-session-subprocess"
-  ":common-io"
   ":common-image-crop"
   ":common-web-escaping"
-  ":agent-grant-protocol"
-  ":data-layoutinspector-core"
-  ":data-preview-overrides-core"
   ":data-remotecompose-core"
-  ":data-theme-core"
-  ":data-render-core"
   ":data-pseudolocale-core"
   ":bundle-format"
   ":bundle-coordinates"
@@ -85,7 +80,20 @@ if [[ "$skip_publish" == "0" ]]; then
   PLUGIN_VERSION="$PROBE_VERSION" ./gradlew --console=plain "${publish_tasks[@]}"
 fi
 
+# The nine contracts that moved out resolve at their released version, not the probe version. Read
+# it from the version catalog so the pin has exactly one home: the catalog is what the main build
+# compiles against, and a second copy here could disagree with it silently.
+EXTERNAL_CONTRACTS_VERSION="$(
+  sed -n 's/^composeai-contracts = "\(.*\)"$/\1/p' gradle/libs.versions.toml
+)"
+if [[ -z "$EXTERNAL_CONTRACTS_VERSION" ]]; then
+  echo "could not read composeai-contracts from gradle/libs.versions.toml" >&2
+  exit 1
+fi
+
 echo "==> building preview-server against the published contracts"
+echo "    local contracts at $PROBE_VERSION, external contracts at $EXTERNAL_CONTRACTS_VERSION"
 ./gradlew --console=plain -p preview-server \
   -Pcomposeai.contractVersion="$PROBE_VERSION" \
+  -Pcomposeai.externalContractsVersion="$EXTERNAL_CONTRACTS_VERSION" \
   check ktfmtCheck

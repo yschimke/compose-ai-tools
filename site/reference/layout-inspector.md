@@ -50,7 +50,7 @@ question here is layout structure or stable test selectors.
 
 `LayoutInspectorPayload`, `LayoutInspectorNode`,
 `ComposeSemanticsPayload`, `ComposeSemanticsNode` in
-[`:data-layoutinspector-core`](https://github.com/yschimke/compose-ai-tools/tree/main/data/layoutinspector/core).
+[`:data-layoutinspector-core`](https://github.com/yschimke/compose-preview-contracts/tree/main/data/layoutinspector/core).
 
 ```jsonc
 // layout/inspector

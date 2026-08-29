@@ -273,13 +273,6 @@ include(":preview-data-api")
 
 project(":preview-data-api").projectDir = file("api/preview-data-api")
 
-// Okio-based file/IO foundation. Every non-Gradle production module funnels file reads/writes
-// through `:common-io`'s suspend helpers (Dispatchers.IO + Okio FileSystem) instead of
-// `java.io.File`. Published because most consumers are themselves published.
-include(":common-io")
-
-project(":common-io").projectDir = file("common/io")
-
 // Content-crop geometry shared by the preview server (catalog thumbnails) and the CLI
 // (`bundle split`). Extracted from `:cli:serve`'s `ServeThumbCrop.kt` so a CLI command does not
 // depend on the server for arithmetic — #3824 preparation.
@@ -293,13 +286,6 @@ project(":common-image-crop").projectDir = file("common/image-crop")
 include(":common-web-escaping")
 
 project(":common-web-escaping").projectDir = file("common/web-escaping")
-
-// The scope/capability vocabulary, duration grammar and token fingerprint shared by the preview
-// server that mints agent grants and the `auth` client that asks for them. Extracted from
-// `:cli:serve` so the client half stops reaching into the server to parse its own `--ttl`.
-include(":agent-grant-protocol")
-
-project(":agent-grant-protocol").projectDir = file("api/agent-grant-protocol")
 
 // Step B of the clean-API carve-out: the Gradle Tooling-API render pipeline that previously
 // lived inside `:cli`'s `Command` base class. Exposes a `GradlePreviewDriver` library so
@@ -491,27 +477,7 @@ project(":renderer-xr-client").projectDir = file("renderers/xr-client")
 
 include(":daemon:core")
 
-// The daemon's wire protocol, split out of `:daemon:core` for #3824. `:daemon:core` is the daemon
-// implementation and the preview server needs only the shapes; while they shared a module, an
-// extracted server's dependency floor was the whole daemon. Flat project name for the same reason
-// as the data-product modules above — a nested `:daemon:protocol` would resolve by leaf name.
-include(":daemon-protocol")
 
-project(":daemon-protocol").projectDir = file("daemon/protocol")
-
-// The device catalog, split out of `:daemon:core` for #3824. Serve resolves the same table the
-// backend renders against; while it lived in the daemon implementation, naming a screen size cost
-// an extracted server the whole daemon. Flat project name for the same reason as above.
-include(":daemon-devices")
-
-project(":daemon-devices").projectDir = file("daemon/devices")
-
-// In-process Kotlin compile, split out of `:daemon:core` for #3824 — the last of serve's imports
-// from that module, and the one that is genuine behavioural coupling rather than a misfiled shape.
-// Flat project name for the same reason as above.
-include(":daemon-bta")
-
-project(":daemon-bta").projectDir = file("daemon/bta")
 
 // Per-product data-product modules — each `data/<product>/` carries a `core` (generic Android /
 // Compose / AndroidX-test code, published) and a `connector` (daemon glue, unpublished) module.
@@ -557,10 +523,6 @@ include(":data-fonts-google")
 
 project(":data-fonts-google").projectDir = file("data/fonts/google")
 
-include(":data-render-core")
-
-project(":data-render-core").projectDir = file("data/render/core")
-
 include(":data-render-compose")
 
 project(":data-render-compose").projectDir = file("data/render/compose")
@@ -597,10 +559,6 @@ include(":data-layoutinspector-connector")
 
 project(":data-layoutinspector-connector").projectDir = file("data/layoutinspector/connector")
 
-include(":data-layoutinspector-core")
-
-project(":data-layoutinspector-core").projectDir = file("data/layoutinspector/core")
-
 include(":data-resources-connector")
 
 project(":data-resources-connector").projectDir = file("data/resources/connector")
@@ -616,10 +574,6 @@ project(":data-strings-connector").projectDir = file("data/strings/connector")
 include(":data-strings-core")
 
 project(":data-strings-core").projectDir = file("data/strings/core")
-
-include(":data-theme-core")
-
-project(":data-theme-core").projectDir = file("data/theme/core")
 
 include(":data-theme-connector")
 
@@ -770,14 +724,6 @@ project(":data-remotecompose-core").projectDir = file("data/remotecompose/core")
 include(":data-remotecompose-connector")
 
 project(":data-remotecompose-connector").projectDir = file("data/remotecompose/connector")
-
-// Plain-Compose named overrides — opt-in author-declared editable knobs (`previewOverride*`). Unlike
-// Remote Compose this needs no alpha runtime, so the runtime + connector are portable Compose
-// Multiplatform JVM modules consumed by both daemon backends. `core` carries the wire-shape; `runtime`
-// is the consumer-facing lookup API; `connector` seeds values + produces the `compose/overrides` data.
-include(":data-preview-overrides-core")
-
-project(":data-preview-overrides-core").projectDir = file("data/preview-overrides/core")
 
 include(":data-preview-overrides-runtime")
 

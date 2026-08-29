@@ -35,7 +35,7 @@ dependencies {
   // be referenced from `RobolectricHost`'s `previewOverrideExtensions` list without a second
   // project dep on the consumer.
   api(project(":daemon:core"))
-  api(project(":data-render-core"))
+  api(libs.composeai.data.render.core)
   api(project(":data-render-compose"))
 
   // Foundation widgets (`Box`, `Column`, `Row`, `BasicText`) for the band composable. Compiled

@@ -47,7 +47,7 @@ background.
 ## Payload shape
 
 `PerfettoTraceDataProducer`, `RenderTraceDataProduct` in
-[`:data-render-core`](https://github.com/yschimke/compose-ai-tools/tree/main/data/render/core).
+[`:data-render-core`](https://github.com/yschimke/compose-preview-contracts/tree/main/data/render/core).
 
 ```jsonc
 // render/trace
