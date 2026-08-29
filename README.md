@@ -354,6 +354,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-landing-grouped/dark](renders/serve-landing-grouped.dark.png) |
 | `light` | ![serve-landing-grouped/light](renders/serve-landing-grouped.light.png) |
 
+## serve-landing-grouped-mixed-preview-heights
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-grouped-mixed-preview-heights/dark](renders/serve-landing-grouped-mixed-preview-heights.dark.png) |
+| `light` | ![serve-landing-grouped-mixed-preview-heights/light](renders/serve-landing-grouped-mixed-preview-heights.light.png) |
+
 ## serve-landing-grouped-pages-filtered
 
 | Theme | Capture |
