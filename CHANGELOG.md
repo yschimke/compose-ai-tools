@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.53.1](https://github.com/yschimke/compose-ai-tools/compare/v1.53.0...v1.53.1) (2026-08-29)
+
+
+### Bug Fixes
+
+* **serve-wasm:** read a colour override's argb, not a value it never has ([#4824](https://github.com/yschimke/compose-ai-tools/issues/4824)) ([6588de9](https://github.com/yschimke/compose-ai-tools/commit/6588de9280c78014000eae74779a33fa462745ac))
+* **serve:** close the bug-report capture flow's dead ends ([#4823](https://github.com/yschimke/compose-ai-tools/issues/4823)) ([a921011](https://github.com/yschimke/compose-ai-tools/commit/a921011efa6cae8d0e037254564736ef3759f894))
+
 ## [1.53.0](https://github.com/yschimke/compose-ai-tools/compare/v1.52.0...v1.53.0) (2026-08-29)
 
 
