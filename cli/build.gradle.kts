@@ -803,7 +803,8 @@ tasks.register<CheckDaemonLaunchSchema>("checkDaemonLaunchSchema") {
       ?: repoRoot.asFile.parentFile
         ?.resolve("compose-preview-contracts")
         ?.takeIf {
-          it.resolve(
+          it
+            .resolve(
               "daemon/protocol/src/main/kotlin/ee/schimke/composeai/daemon/protocol/DaemonLaunchDescriptor.kt"
             )
             .isFile
