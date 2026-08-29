@@ -1,9 +1,9 @@
 // `:samples:cmp-wasm-catalog` — the **in-browser CMP tier** of the public
 // preview server (Workstream C / model 1).
 //
-// A Compose Multiplatform `wasmJs` app that holds the M3 catalog component
-// composables in `commonMain` (CMP `material3`, no Android `@Preview` tooling)
-// and mounts the one named by the `?id=` query parameter via `ComposeViewport`.
+// A Compose Multiplatform `wasmJs` app that consumes the shared M3 catalog app
+// (`:samples:design-catalog-m3-shared`, CMP `material3`, no Android `@Preview`
+// tooling) and mounts the component named by `?id=` via `ComposeViewport`.
 // It renders the *published* design catalogs (`design-artifacts/<system>`)
 // client-side, in the browser sandbox, with no server round-trip — so even an
 // unverified session is safe to run (execution is client-side, not on our box).
@@ -11,9 +11,8 @@
 // Deliberately thin: only the multiplatform compose runtime + `material3`, so
 // `wasmJsBrowserDistribution` produces the smallest skiko-backed bundle. The
 // Android design-catalog modules can't compile to `wasmJs` (Android-only
-// `@Preview` / `Configuration` / `wear.compose`), so the M3 component set is
-// re-authored here against the CMP `material3` artifact — same components, same
-// ids the catalog uses, a plain id→composable registry instead of `@Preview`.
+// `@Preview` / `Configuration` / `wear.compose`), so the shared module exposes
+// the same components through a plain id→composable registry instead.
 plugins {
   id("composeai.base-conventions")
   // Apply KGP-multiplatform + the compose-compiler plugin by id (no version):

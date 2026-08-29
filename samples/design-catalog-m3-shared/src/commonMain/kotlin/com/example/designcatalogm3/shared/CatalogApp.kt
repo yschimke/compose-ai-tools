@@ -1,4 +1,4 @@
-package com.example.cmpwasmcatalog
+package com.example.designcatalogm3.shared
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -32,25 +32,6 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import com.example.designcatalogm3.shared.CATALOG_COLORS_KNOB
-import com.example.designcatalogm3.shared.CATALOG_FONTS_KNOB
-import com.example.designcatalogm3.shared.CATALOG_FONT_GOOGLE_SANS_FLEX
-import com.example.designcatalogm3.shared.CATALOG_FONT_KNOB
-import com.example.designcatalogm3.shared.CATALOG_FONT_ROBOTO_FLEX
-import com.example.designcatalogm3.shared.CATALOG_PALETTE_M3
-import com.example.designcatalogm3.shared.CATALOG_SHAPES_KNOB
-import com.example.designcatalogm3.shared.CATALOG_TYPOGRAPHY_KNOB
-import com.example.designcatalogm3.shared.CatalogComponent
-import com.example.designcatalogm3.shared.LocalGenericFonts
-import com.example.designcatalogm3.shared.LocalNamedFonts
-import com.example.designcatalogm3.shared.catalogApplyFontFamilies
-import com.example.designcatalogm3.shared.catalogApplyTypography
-import com.example.designcatalogm3.shared.catalogColorScheme
-import com.example.designcatalogm3.shared.catalogComponentIds
-import com.example.designcatalogm3.shared.catalogOverrideString
-import com.example.designcatalogm3.shared.catalogShapes
-import com.example.designcatalogm3.shared.catalogTypography
-import com.example.designcatalogm3.shared.parseCatalogFontFamilies
 
 /**
  * Mounts one catalog component by id inside the M3 theme, centred on the surface. `dark` flips the

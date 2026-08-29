@@ -1,5 +1,5 @@
 // `:samples:design-catalog-m3-shared` — the **single source of truth** for the
-// Compose Material 3 catalog's component set, shared by two surfaces:
+// Compose Material 3 catalog's component set, shared by three surfaces:
 //
 //  * `:samples:design-catalog-m3` (JVM/desktop) authors the `@Preview` sticker
 //    sheet against these composables and is the module the `compose-preview`
@@ -8,6 +8,9 @@
 //    live re-render all come from there.
 //  * `:samples:cmp-wasm-catalog` (wasmJs) mounts these same composables in the
 //    browser sandbox for the in-browser "Run in browser (Wasm)" tier.
+//  * `:cli:serve-wasm` compiles the same catalog app into the preview UI itself,
+//    so compose-m3 cards and detail views render in-process with no iframe or
+//    preview-server render round trip.
 //
 // Before this module the two surfaces re-authored the M3 component set twice
 // (the Android catalog's `@Preview` stickers vs. the wasm module's id→composable

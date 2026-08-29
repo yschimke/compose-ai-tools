@@ -76,6 +76,7 @@ data class PreviewSummary(
   val modes: List<String>,
   val liveOnly: Boolean,
   val views: Long,
+  val nativeTarget: NativeCatalogTarget?,
 )
 
 data class LiveFrame(
@@ -100,6 +101,7 @@ class BrowserPreviewClient(private val config: ClientConfig) {
 
   suspend fun catalog(): Catalog {
     val root = json.parseToJsonElement(fetchText("/api/previews${config.suffix()}")).jsonObject
+    val module = root.string("module") ?: config.session ?: "Preview server"
     val previews =
       root["previews"]?.jsonArray.orEmpty().mapNotNull { value ->
         val item = value as? JsonObject ?: return@mapNotNull null
@@ -110,10 +112,16 @@ class BrowserPreviewClient(private val config: ClientConfig) {
           modes = item["modes"]?.jsonArray.orEmpty().mapNotNull { it.jsonPrimitive.contentOrNull },
           liveOnly = item["liveOnly"]?.jsonPrimitive?.booleanOrNull ?: false,
           views = item["views"]?.jsonPrimitive?.longOrNull ?: 0,
+          nativeTarget =
+            nativeCatalogTarget(
+              system = config.session ?: module,
+              previewId = id,
+              knobSeeds = item.overrideSeeds(),
+            ),
         )
       }
     return Catalog(
-      module = root.string("module") ?: config.session ?: "Preview server",
+      module = module,
       trust = root.string("trust"),
       degradations =
         root["degradations"]?.jsonArray.orEmpty().mapNotNull {
@@ -211,6 +219,23 @@ class BrowserPreviewClient(private val config: ClientConfig) {
 
   private fun JsonObject.int(key: String): Int? =
     this[key]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+
+  private fun JsonObject.overrideSeeds(): Map<String, String> =
+    this["overrides"]
+      ?.jsonArray
+      .orEmpty()
+      .mapNotNull { value ->
+        val declaration = value as? JsonObject ?: return@mapNotNull null
+        val key = declaration.string("key")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        val index = declaration.int("index")
+        val encoded =
+          ((declaration["current"] ?: declaration["default"]) as? JsonObject)
+            ?.get("value")
+            ?.jsonPrimitive
+            ?.contentOrNull ?: return@mapNotNull null
+        (if (index == null) key else "$key[$index]") to encoded
+      }
+      .toMap()
 }
 
 internal fun parseQuery(search: String): Map<String, String> {
