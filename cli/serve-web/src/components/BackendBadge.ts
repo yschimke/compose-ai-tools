@@ -30,7 +30,7 @@
 // apply to the host unchanged, with no `display: contents` wrapper to reason
 // about.
 
-import { createTextVNode, type VNode } from "vue";
+import { createTextVNode, type VNode } from "../vue.js";
 import { customElement } from "../controllerElement.js";
 import { VueElement } from "../vueElement.js";
 

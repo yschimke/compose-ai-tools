@@ -27,7 +27,13 @@ const assets = resolve(
     "serve/src/main/resources/ee/schimke/composeai/cli/serve/assets",
 );
 const tracked = [
-    "serve-components.js",
+    "vue-runtime.js",
+    "catalog-components.js",
+    "compare-components.js",
+    "design-components.js",
+    "parity-components.js",
+    "viewer-components.js",
+    "remote-compose.js",
     "serve-chrome.js",
     "keyboard-navigation.js",
     "report-capture.js",
@@ -67,6 +73,23 @@ const litSources = sourceFiles.filter((path) => {
 if (litSources.length) {
     console.error(
         `Lit must not be imported by serve-web source:\n${litSources
+            .map((path) => relative(packageRoot, path))
+            .join("\n")}`,
+    );
+    process.exit(1);
+}
+
+// `vue-runtime.ts` is the only emitted entry allowed to import Vue values. `vue.ts` imports only
+// erased types; every component reaches the shared page-global façade. This makes a second runtime
+// a build-time failure rather than a performance regression visible only in a network trace.
+const duplicateVueSources = sourceFiles.filter((path) => {
+    if (path.endsWith("/vueRuntime.ts")) return false;
+    const source = readFileSync(path, "utf8");
+    return /import\s+(?!type\b)[\s\S]*?from\s*["']vue["']/.test(source);
+});
+if (duplicateVueSources.length) {
+    console.error(
+        `Only vueRuntime.ts may import Vue values:\n${duplicateVueSources
             .map((path) => relative(packageRoot, path))
             .join("\n")}`,
     );

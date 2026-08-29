@@ -29,7 +29,7 @@
 // selected (so Escape unwinds the selection before the zoom) and writes
 // `--cp-page-zoom` on the stage for the stylesheet to counter-scale the marks by.
 
-import { Fragment, h, type VNode } from "vue";
+import { Fragment, h, type VNode } from "../vue.js";
 import { customElement } from "../controllerElement.js";
 import { VueElement } from "../vueElement.js";
 import {

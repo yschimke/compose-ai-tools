@@ -20,7 +20,7 @@
 //     per-comparison answer, and it stays on the comparison page where the pixels are.
 
 import { ControllerElement, customElement } from "../controllerElement.js";
-import { Fragment, h, render, type VNode, type VNodeChild } from "vue";
+import { Fragment, h, render, type VNode, type VNodeChild } from "../vue.js";
 import { walkCatalog, type AcceptanceReport } from "../parity/acceptance.js";
 import type { Catalog } from "../parity/engine.js";
 import { whenParsed } from "../dom/whenParsed.js";

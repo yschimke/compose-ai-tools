@@ -2229,29 +2229,47 @@ class ServeHttpRoutingTest {
 
   @Test
   fun `serve web assets are versioned and conditionally cacheable`() {
-    val asset = ServeWebAssets.load("viewer.js") ?: error("viewer asset missing")
-    val versionedPath = "/assets/serve/${asset.version}/viewer.js"
-    val etag: String
-    val req = Request.Builder().url("http://127.0.0.1:${server.port}$versionedPath").build()
-    client.newCall(req).execute().use { r ->
-      assertEquals(200, r.code)
-      assertEquals("text/javascript", r.body.contentType()?.let { "${it.type}/${it.subtype}" })
-      assertEquals("public, max-age=31536000, immutable", r.header("Cache-Control"))
-      etag = r.header("ETag") ?: ""
-      assertEquals(asset.etag, etag)
+    val scripts =
+      listOf(
+        "vue-runtime.js",
+        "catalog-components.js",
+        "compare-components.js",
+        "design-components.js",
+        "parity-components.js",
+        "viewer-components.js",
+        "remote-compose.js",
+        "known-differences.js",
+        "viewer.js",
+      )
+    scripts.forEach { name ->
+      val asset = ServeWebAssets.load(name) ?: error("$name missing")
+      val versionedPath = "/assets/serve/${asset.version}/$name"
+      val req = Request.Builder().url("http://127.0.0.1:${server.port}$versionedPath").build()
+      client.newCall(req).execute().use { r ->
+        assertEquals(200, r.code, name)
+        assertEquals(
+          "text/javascript",
+          r.body.contentType()?.let { "${it.type}/${it.subtype}" },
+          name,
+        )
+        assertEquals("public, max-age=31536000, immutable", r.header("Cache-Control"), name)
+        assertEquals(asset.etag, r.header("ETag"), name)
+      }
     }
 
+    val asset = ServeWebAssets.load("vue-runtime.js") ?: error("Vue runtime missing")
+    val versionedPath = "/assets/serve/${asset.version}/vue-runtime.js"
     val conditional =
       Request.Builder()
         .url("http://127.0.0.1:${server.port}$versionedPath")
-        .header("If-None-Match", etag)
+        .header("If-None-Match", asset.etag)
         .build()
     client.newCall(conditional).execute().use { r -> assertEquals(304, r.code) }
 
     client
       .newCall(
         Request.Builder()
-          .url("http://127.0.0.1:${server.port}/assets/serve/stale/viewer.js")
+          .url("http://127.0.0.1:${server.port}/assets/serve/stale/vue-runtime.js")
           .build()
       )
       .execute()
@@ -2259,7 +2277,7 @@ class ServeHttpRoutingTest {
 
     client
       .newCall(
-        Request.Builder().url("http://127.0.0.1:${server.port}/assets/serve/viewer.js").build()
+        Request.Builder().url("http://127.0.0.1:${server.port}/assets/serve/vue-runtime.js").build()
       )
       .execute()
       .use { r ->

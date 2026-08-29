@@ -1,20 +1,11 @@
-// happy-dom global registration, imported first by every test file.
+// Shared test helpers, imported first by every test file.
 //
-// Custom-element registration needs `window`/`document`/`customElements` at *module evaluation* time —
-// `@customElement` calls `customElements.define` as a side effect of importing
-// the component — so the DOM has to exist before the component module is
-// imported, not merely before the test runs. Each test file therefore does
-// `import "./setup.js"` above its component imports, and mocha's file-at-a-time
-// ordering does the rest.
+// `test/preload.ts` installs happy-dom and the shared Vue runtime before Mocha links any test.
+// Custom-element registration then has `window`/`document`/`customElements` at module evaluation
+// time, while this module remains the common reset/flush/storage utility.
 //
 // Same registrator and version as yschimke/compose-preview-vscode, so the two test suites
 // can't drift onto different DOM semantics.
-
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
-
-if (!globalThis.document) {
-    GlobalRegistrator.register({ url: "https://preview.example/catalog/" });
-}
 
 /** Reset the document and the `<html>` classes between tests. */
 export function resetDom(): void {

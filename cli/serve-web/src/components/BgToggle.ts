@@ -25,7 +25,7 @@
 // toolbar's flex item and the upgraded control lays out exactly as the bare
 // button did.
 
-import { h, type VNode } from "vue";
+import { h, type VNode } from "../vue.js";
 import { customElement } from "../controllerElement.js";
 import { VueElement } from "../vueElement.js";
 import {

@@ -518,7 +518,13 @@ const SERVE_ASSETS = [
   ["codemirror.css", "text/css"],
   ["playground.css", "text/css"],
   ["serve-chrome.js", "text/javascript"],
-  ["serve-components.js", "text/javascript"],
+  ["vue-runtime.js", "text/javascript"],
+  ["catalog-components.js", "text/javascript"],
+  ["compare-components.js", "text/javascript"],
+  ["design-components.js", "text/javascript"],
+  ["parity-components.js", "text/javascript"],
+  ["viewer-components.js", "text/javascript"],
+  ["remote-compose.js", "text/javascript"],
   ["codemirror.js", "text/javascript"],
   ["viewer.js", "text/javascript"],
   ["format-compare.js", "text/javascript"],
@@ -527,6 +533,58 @@ const SERVE_ASSETS = [
   // capture controls rather than a panel with the block still `hidden`.
   ["report-capture.js", "text/javascript"],
 ];
+
+// Fail before Chromium starts if a generated page contains a custom-element tag without the
+// surface entry that defines it, or if a page pays for Vue more than once. Shared elements name
+// each valid home; the report classifier is shell-owned and deliberately does not require Vue.
+const COMPONENT_ASSETS = {
+  "cp-bg-toggle": ["catalog-components.js", "viewer-components.js"],
+  "cp-catalog-live": ["catalog-components.js"],
+  "cp-catalog-toolbar": ["catalog-components.js"],
+  "cp-compare-wall": ["compare-components.js"],
+  "cp-element-selection": ["compare-components.js", "viewer-components.js"],
+  "cp-inspect-layers": [
+    "compare-components.js",
+    "design-components.js",
+    "viewer-components.js",
+  ],
+  "cp-rc-lanes": ["compare-components.js"],
+  "cp-reference-compare": ["compare-components.js"],
+  "cp-design-page": ["design-components.js"],
+  "cp-page-zoom": ["design-components.js"],
+  "cp-parity-lanes": ["parity-components.js"],
+  "cp-parity-scores": ["parity-components.js"],
+  "cp-backend-badge": ["viewer-components.js"],
+  "cp-group-memory": ["viewer-components.js"],
+  "cp-history-menu": ["viewer-components.js"],
+  "cp-revision-runs": ["viewer-components.js"],
+  "cp-spec-compare": ["viewer-components.js"],
+  "cp-viewer-drawers": ["viewer-components.js"],
+  "cp-acceptance": ["known-differences.js"],
+  "cp-acceptance-audit": ["known-differences.js"],
+  "cp-report-classification": ["serve-chrome.js"],
+};
+for (const file of readdirSync(pagesDir).filter((name) =>
+  name.endsWith(".html"),
+)) {
+  const html = readFileSync(resolve(pagesDir, file), "utf8");
+  let needsVue = false;
+  for (const [tag, assets] of Object.entries(COMPONENT_ASSETS)) {
+    if (!html.includes(`<${tag}`)) continue;
+    if (!assets.some((asset) => html.includes(asset))) {
+      throw new Error(`${file}: <${tag}> requires ${assets.join(" or ")}`);
+    }
+    if (!assets.includes("serve-chrome.js")) needsVue = true;
+  }
+  if (needsVue) {
+    const runtimeCount = html.match(/vue-runtime\.js/g)?.length ?? 0;
+    if (runtimeCount !== 1) {
+      throw new Error(
+        `${file}: expected one Vue runtime, found ${runtimeCount}`,
+      );
+    }
+  }
+}
 
 // Runtime *states* of a page fixture that the committed HTML can't express on its own, captured as
 // extra shots so they're diffed on every PR like any other fixture. Each entry names a base
@@ -937,7 +995,9 @@ const FIXTURE_STATES = [
       // Runs after `reference-lane`, which is the only lane that pairs a design reference and so
       // the only one whose rows can be picked at all. Asserted rather than assumed: reordered
       // states would otherwise leave this shooting an SVG lane with the pickers hidden.
-      await expect(page.locator(".cp-compare-table[data-picking='on']")).toHaveCount(1);
+      await expect(
+        page.locator(".cp-compare-table[data-picking='on']"),
+      ).toHaveCount(1);
       await page.click(".cp-compare-row:not([hidden]) .cp-compare-pick-input");
       await page.waitForSelector("#cp-compare-picked:not([hidden])");
       // The body the form would submit, asserted here because this is the only layer that runs the
@@ -947,9 +1007,9 @@ const FIXTURE_STATES = [
         .poll(() =>
           page.evaluate(
             () =>
-              document.querySelector("#cp-report-body")?.value.includes(
-                "```compose-parity-locator/v1",
-              ) ?? false,
+              document
+                .querySelector("#cp-report-body")
+                ?.value.includes("```compose-parity-locator/v1") ?? false,
           ),
         )
         .toBe(true);

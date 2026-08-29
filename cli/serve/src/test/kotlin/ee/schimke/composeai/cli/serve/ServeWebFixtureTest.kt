@@ -4306,9 +4306,9 @@ class ServeWebFixtureTest {
     // the real link or row kept its placeholder. These strings are therefore the contract between
     // the two files, and a change on either side has to move both.
     assertTrue(
-      assetText("serve-components.js").contains(".value=") &&
-        assetText("serve-components.js").contains("](" + "{{render}})") &&
-        assetText("serve-components.js").contains("| Raw comparison | `{{rawScores}}` |"),
+      assetText("compare-components.js").contains(".value=") &&
+        assetText("compare-components.js").contains("](" + "{{render}})") &&
+        assetText("compare-components.js").contains("| Raw comparison | `{{rawScores}}` |"),
       "the components bundle substitutes the report input value after comparison",
     )
     val referencedState =

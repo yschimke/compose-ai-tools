@@ -14,6 +14,13 @@ class ServeWebAssetsTest {
       listOf(
         "serve.css",
         "serve-chrome.js",
+        "vue-runtime.js",
+        "catalog-components.js",
+        "compare-components.js",
+        "design-components.js",
+        "parity-components.js",
+        "viewer-components.js",
+        "remote-compose.js",
         "viewer.js",
         "format-compare.js",
         "keyboard-navigation.js",
@@ -43,11 +50,12 @@ class ServeWebAssetsTest {
       html.contains("""<script src="${ServeWebAssets.href("serve-chrome.js")}"></script>"""),
       html,
     )
-    // The provenance badge is a Vue element in `serve-components.js` now, so what the page owes it
-    // is the bundle plus the tag — its behaviour is covered by
+    // The provenance badge is a Vue element in `viewer-components.js`, so what the page owes it is
+    // the shared runtime, the surface bundle and the tag — its behaviour is covered by
     // `cli/serve-web/test/backendBadge.test.ts`.
     assertTrue(
-      html.contains("""<script src="${ServeWebAssets.href("serve-components.js")}"></script>"""),
+      html.contains("""<script src="${ServeWebAssets.href("vue-runtime.js")}"></script>""") &&
+        html.contains("""<script src="${ServeWebAssets.href("viewer-components.js")}"></script>"""),
       html,
     )
     assertTrue(html.contains("<cp-backend-badge "), html)
