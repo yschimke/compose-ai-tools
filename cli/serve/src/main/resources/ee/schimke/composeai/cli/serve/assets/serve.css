@@ -540,6 +540,20 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
   font-size: var(--md-sys-typescale-label-medium-size);
   font-family: var(--md-sys-typescale-mono-font); }
 .cp-shot-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.cp-markup { grid-column: 1 / -1; display: grid; gap: 8px; margin-top: 6px; padding-top: 10px;
+  border-top: 1px solid var(--cp-border); }
+.cp-markup-tools, .cp-markup-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.cp-markup-tool[aria-pressed="true"] { color: var(--md-sys-color-on-primary);
+  border-color: var(--md-sys-color-primary); background: var(--md-sys-color-primary); }
+.cp-markup-colour { width: 36px; height: 32px; padding: 2px; cursor: pointer;
+  border: 1px solid var(--cp-border); border-radius: var(--md-sys-shape-corner-small);
+  background: transparent; }
+.cp-markup-text { min-width: 120px; min-height: 32px; box-sizing: border-box; padding: 5px 9px;
+  font: inherit; color: var(--cp-fg); border: 1px solid var(--cp-border);
+  border-radius: var(--md-sys-shape-corner-small); background: var(--md-sys-color-surface); }
+.cp-markup-canvas { display: block; width: auto; height: auto; max-width: 100%; max-height: 65vh;
+  cursor: crosshair; touch-action: none; border: 1px solid var(--cp-border);
+  border-radius: var(--md-sys-shape-corner-small); background: #fff; }
 .cp-shots { display: grid; gap: 10px; margin: 0 0 20px; }
 .cp-shots .cp-shot-list { max-width: 640px; }
 .cp-shots-empty { margin: 0; }

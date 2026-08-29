@@ -1,10 +1,8 @@
 // Where a capture lives between the page it was taken on and the report it is pasted into.
 //
-// The problem this exists for is narrow and unavoidable. GitHub's new-issue form takes a prefilled
-// *body* and nothing else — there is no way to prefill an attachment — so the only route from a
-// screenshot to an issue is the visitor's own clipboard. And a screenshot of the page a bug is
-// about has to be taken ON that page, while the report is written a navigation later on
-// `/report-bug`. Something has to carry the pixels across that navigation.
+// A screenshot of the page a bug is about has to be taken ON that page, while the report is written
+// a navigation later on `/report-bug`. Something has to carry the pixels across that navigation,
+// both for automatic hosting and for the clipboard fallback when hosting is unavailable.
 //
 // `sessionStorage`, not `localStorage`: this is scratch state belonging to one reporting gesture in
 // one tab, and it is a picture of whatever the reporter happened to have on screen — which on a
@@ -45,6 +43,9 @@ export interface Capture {
      * is treated as "cannot vouch for it" — the Copy button still sends it, the hand-off does not.
      */
     page?: string;
+    /** Expiring, anonymous read URL returned by this host's image lane. Cleared whenever markup
+     *  changes the pixels, so a filed report can never point at the pre-edit picture. */
+    uploadedUrl?: string;
 }
 
 /** The `sessionStorage` key. Namespaced like every other key this server sets. */
@@ -110,8 +111,22 @@ function isCapture(value: unknown): value is Capture {
         typeof c.width === "number" &&
         typeof c.height === "number" &&
         (c.markdown === undefined || typeof c.markdown === "string") &&
-        (c.page === undefined || typeof c.page === "string")
+        (c.page === undefined || typeof c.page === "string") &&
+        (c.uploadedUrl === undefined || safeUploadUrl(c.uploadedUrl))
     );
+}
+
+function safeUploadUrl(value: unknown): value is string {
+    if (typeof value !== "string") return false;
+    try {
+        const url = new URL(value);
+        return (
+            (url.protocol === "https:" || url.protocol === "http:") &&
+            /^\/i\/[A-Za-z0-9_-]+\.[A-Za-z0-9]+$/.test(url.pathname)
+        );
+    } catch {
+        return false;
+    }
 }
 
 /**
@@ -160,6 +175,19 @@ export function removeCapture(store: Storage | null, id: string): Capture[] {
     return writeCaptures(
         store,
         readCaptures(store).filter((c) => c.id !== id),
+    );
+}
+
+/** Replace one capture without disturbing its place in the newest-first eviction order. */
+export function replaceCapture(
+    store: Storage | null,
+    capture: Capture,
+): Capture[] {
+    return writeCaptures(
+        store,
+        readCaptures(store).map((item) =>
+            item.id === capture.id ? capture : item,
+        ),
     );
 }
 

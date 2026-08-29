@@ -1,10 +1,6 @@
-// The last few centimetres of a screenshot's journey into a GitHub issue.
-//
-// GitHub's new-issue form prefills from a URL and a URL has no attachment field, so a captured
-// picture reaches the issue by exactly one route: the reporter's clipboard, pasted into GitHub's
-// own editor. `report/ui.ts` therefore re-copies the newest capture inside the `submit` handler of
-// whichever report form was pressed (issue #4334) — the last instant this tab controls, and a real
-// user gesture, which is what the clipboard write needs to be authorised.
+// The last few centimetres of a screenshot's journey into a GitHub issue. The normal path hosts
+// the capture and embeds its URL in the prefilled body; the fallback re-copies it inside the submit
+// gesture so browsers permit the clipboard write and an intervening copy cannot replace it.
 //
 // None of that is visible by looking at the running feature: a hand-off that silently never fires
 // looks exactly like one that fired, right up until the paste produces whatever the reporter
@@ -82,7 +78,7 @@ function stubBrowser(captures: Capture[]): void {
 }
 
 /** `/report-bug` as `ServeWeb.bugReportPage` emits it, minus the diagnostics. */
-function reportPage(): void {
+function reportPage(canUpload = false): void {
     reporting();
     document.documentElement.removeAttribute("data-cp-capture-ready");
     document.body.innerHTML = `
@@ -92,7 +88,8 @@ function reportPage(): void {
         <input type="hidden" name="body" id="cp-bug-body" value="report">
         <button type="submit" class="cp-bug-submit">Open a prefilled issue</button>
       </form>
-      <div class="cp-shots" data-cp-capture-src="/assets/serve/abc/report-capture.js">
+      <div class="cp-shots" data-cp-capture-src="/assets/serve/abc/report-capture.js"
+        data-cp-image-upload="${canUpload}">
         <p class="cp-sub cp-shots-empty">No captures came across.</p>
         <ul class="cp-shot-list"></ul>
         <p class="cp-shot-note" role="status"></p>
@@ -241,6 +238,97 @@ describe("handing a capture to the clipboard as the issue is opened", () => {
         await settled();
         assert.equal(written.length, 1);
         assert.match(note(), /on the clipboard/);
+    });
+});
+
+describe("hosting captures in the prefilled issue body", () => {
+    beforeEach(resetDom);
+
+    it("uploads on the report page and embeds the returned image instead of requiring a paste", async () => {
+        stubBrowser([capture("shot-1", "Whole view")]);
+        Object.defineProperty(globalThis, "fetch", {
+            configurable: true,
+            value: (url: string) =>
+                String(url).startsWith("data:")
+                    ? Promise.resolve({
+                          blob: () => Promise.resolve(new Blob(["png"])),
+                      })
+                    : Promise.resolve({
+                          ok: true,
+                          json: () =>
+                              Promise.resolve({
+                                  url: "https://preview.example/i/bug_shot.png",
+                              }),
+                      }),
+        });
+        reportPage(true);
+        installCapture();
+        await settled();
+        await settled();
+        const body = document.querySelector<HTMLInputElement>("#cp-bug-body")!;
+        assert.match(
+            body.value,
+            /!\[Whole view\]\(https:\/\/preview\.example\/i\/bug_shot\.png\)/,
+        );
+        assert.match(note(), /uploaded/);
+        submitReport();
+        await settled();
+        assert.equal(written.length, 0, "a hosted capture is not copied again");
+        assert.match(note(), /embedded/);
+    });
+
+    it("offers the markup editor on every captured image", () => {
+        stubBrowser([capture("shot-1", "Region")]);
+        reportPage();
+        installCapture();
+        const button = Array.from(
+            document.querySelectorAll<HTMLButtonElement>(".cp-shot-action"),
+        ).find((item) => item.textContent === "Mark up")!;
+        assert.ok(button);
+        button.click();
+        assert.deepEqual(
+            Array.from(
+                document.querySelectorAll<HTMLButtonElement>(".cp-markup-tool"),
+            ).map((item) => item.textContent),
+            ["Box", "Arrow", "Pen", "Text"],
+        );
+        assert.ok(document.querySelector(".cp-markup-canvas"));
+    });
+
+    it("does not let a stale upload restore a capture removed while it was in flight", async () => {
+        stubBrowser([capture("shot-1", "Whole view")]);
+        let finishUpload!: (value: unknown) => void;
+        const response = new Promise((resolve) => (finishUpload = resolve));
+        Object.defineProperty(globalThis, "fetch", {
+            configurable: true,
+            value: (url: string) =>
+                String(url).startsWith("data:")
+                    ? Promise.resolve({
+                          blob: () => Promise.resolve(new Blob(["png"])),
+                      })
+                    : response,
+        });
+        reportPage(true);
+        installCapture();
+        await settled();
+        const remove = Array.from(
+            document.querySelectorAll<HTMLButtonElement>(".cp-shot-action"),
+        ).find((item) => item.textContent === "Remove")!;
+        remove.click();
+        finishUpload({
+            ok: true,
+            json: () =>
+                Promise.resolve({
+                    url: "https://preview.example/i/stale.png",
+                }),
+        });
+        await settled();
+        await settled();
+        assert.equal(document.querySelectorAll(".cp-shot-item").length, 0);
+        assert.doesNotMatch(
+            document.querySelector<HTMLInputElement>("#cp-bug-body")!.value,
+            /stale\.png/,
+        );
     });
 });
 

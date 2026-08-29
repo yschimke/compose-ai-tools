@@ -33,6 +33,7 @@ import {
     nextId,
     readCaptures,
     removeCapture,
+    replaceCapture,
     writeCaptures,
 } from "../src/report/store.js";
 
@@ -307,6 +308,20 @@ describe("the pile that survives the navigation to /report-bug", () => {
         assert.deepEqual(
             readCaptures(store).map((c) => c.id),
             ["b"],
+        );
+    });
+
+    it("replaces edited pixels in place and clears no neighbouring capture", () => {
+        const store = storage();
+        addCapture(store, shot("a"));
+        addCapture(store, shot("b"));
+        replaceCapture(store, { ...shot("a"), label: "Marked up" });
+        assert.deepEqual(
+            readCaptures(store).map((capture) => [capture.id, capture.label]),
+            [
+                ["a", "Marked up"],
+                ["b", "Region b"],
+            ],
         );
     });
 

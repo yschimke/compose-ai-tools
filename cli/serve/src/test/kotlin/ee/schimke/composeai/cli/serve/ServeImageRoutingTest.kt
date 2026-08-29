@@ -82,6 +82,24 @@ class ServeImageRoutingTest {
       .also { it.start() }
   }
 
+  /** The browser path: no bearer, but a repository-matched OAuth session resolved by the host. */
+  private val browserServer: ServeHttpServer by lazy {
+    ServeHttpServer(
+        host = "127.0.0.1",
+        requestedPort = 0,
+        token = "unused-in-public",
+        sessions = ServeSessionRegistry(open = { null }),
+        defaultSessionId = "none",
+        isPublic = true,
+        imageStore = ServeImageStore(ttlSeconds = 60, clock = { now }),
+        imageUploadAuth = FakeAuth(),
+        imageBrowserLogin = { _, repository ->
+          "browser-user".takeIf { repository == "yschimke/compose-ai-tools" }
+        },
+      )
+      .also { it.start() }
+  }
+
   /** A second host with no image lane — the routes must not exist there at all. */
   private val plainServer: ServeHttpServer by lazy {
     ServeHttpServer(
@@ -136,6 +154,7 @@ class ServeImageRoutingTest {
   @AfterTest
   fun stop() {
     runCatching { server.stop() }
+    runCatching { browserServer.stop() }
     runCatching { plainServer.stop() }
     runCatching { meteredServer.stop() }
     runCatching { sprayServer.stop() }
@@ -203,6 +222,15 @@ class ServeImageRoutingTest {
       assertTrue(body.contains("yschimke/compose-ai-tools"), body)
     }
     assertEquals(before, imageStore.occupancy().count)
+  }
+
+  @Test
+  fun `a repository-matched browser session can upload without exposing its oauth token`() {
+    upload(bearer = null, port = browserServer.port).use { response ->
+      assertEquals(201, response.code)
+      val accepted = Json.parseToJsonElement(response.body.string()).jsonObject
+      assertEquals("browser-user", accepted["uploadedBy"]!!.jsonPrimitive.content)
+    }
   }
 
   @Test

@@ -298,6 +298,17 @@ class ServeHttpServer(
    */
   private val githubAuth: ServeGithubAuth? = null,
   /**
+   * Resolve a browser session into an image-uploader login for [ServeImageUploadAuth.repository].
+   *
+   * The headless image lane still accepts a GitHub bearer token. This second admission path is for
+   * the bug-report page, whose capture bundle has a signed OAuth cookie but deliberately never has
+   * the OAuth token that produced it. [ServeRunner] wires this only when the cookie proves access
+   * to the EXACT repository the image lane gates on; a public browsing session or a cookie for a
+   * different repository therefore buys no hosting. Kept as a function so the HTTP boundary can be
+   * tested without manufacturing a signed OAuth cookie.
+   */
+  private val imageBrowserLogin: ((ApplicationCall, String) -> String?)? = null,
+  /**
    * When non-null, enables **agent access grants**: `POST /agent-access/request` opens a request,
    * `GET /agent-access/{id}` is the human approval page, and `POST /agent-access/poll` hands the
    * minted bearer to the agent that asked. Supplied by `--agent-grants`. See
@@ -2467,6 +2478,21 @@ class ServeHttpServer(
       val permit = acquireImagePermit(granted.budgetKey) ?: return
       try {
         acceptImageUpload(store, granted.login)
+      } finally {
+        permit.release()
+      }
+      return
+    }
+    // A bug report is filed by a browser, which holds the signed OAuth session rather than the
+    // short-lived GitHub credential used during sign-in. Admit that already-verified identity only
+    // through the repository-matching resolver the runner supplied. This is deliberately before
+    // the anonymous verification budget: no GitHub round-trip is made and the caller is already a
+    // stable identity, so charging its IP first would halve a one-upload budget just as the grant
+    // path above would.
+    imageBrowserLogin?.invoke(call, auth.repository)?.let { login ->
+      val permit = acquireImagePermit("browser:$login") ?: return
+      try {
+        acceptImageUpload(store, login)
       } finally {
         permit.release()
       }
@@ -5237,6 +5263,7 @@ class ServeHttpServer(
         themeCss = skin.second,
         themeStorageKey = skin.third,
         navSuffix = if (isPublic) "" else "?token=${WebEscaping.urlEncodeSegment(linkToken())}",
+        canUploadCaptures = imageStore != null && imageBrowserLogin != null,
       ),
       ContentType.Text.Html,
     )

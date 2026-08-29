@@ -170,13 +170,13 @@
       </form>
 
       <p class="cp-status-sec">Add a screenshot</p>
-      <p class="cp-sub">A picture cannot ride along with the report: GitHub&rsquo;s new-issue form
-        prefills from a URL, and a URL carries a body, not an attachment. An image becomes one by
-        being <strong>pasted</strong> into the issue, which is what uploads it to GitHub&rsquo;s own
-        storage — and is why it keeps showing what you saw even after this server changes. So
-        pressing the button above puts your newest capture back on the clipboard: the report opens
-        with a Screenshot section waiting, and you paste into it.</p>
-      <div class="cp-shots" data-cp-capture-src="/assets/serve/fixture/report-capture.js">
+      <p class="cp-sub">Captured images are uploaded to this preview server and embedded in the
+        report automatically. Use <strong>Mark up</strong> to add boxes, arrows, pen marks, or text
+        before opening the issue. The hosted link follows this server&rsquo;s image-retention window.
+        If this server does not accept the upload, pressing the button above puts the newest
+        capture on the clipboard instead; paste it into the Screenshot section.</p>
+      <div class="cp-shots" data-cp-capture-src="/assets/serve/fixture/report-capture.js"
+  data-cp-image-upload="false">
   <p class="cp-sub cp-shots-empty">No captures came across from the page you reported. Take
     one there with the &ldquo;Report a problem&rdquo; button, or paste an ordinary screenshot
     straight into the issue.</p>
