@@ -3,7 +3,6 @@
     "docs/**",
     "site/**",
     "renders/**",
-    "preview-server/preview-harness/**",
     "**/*.md",
     "**/*.png",
     "**/*.jpg",
@@ -116,10 +115,6 @@
       "scripts/check-daemon-launch-schema.py",
       "scripts/daemon-launch-schema-allowlist.json",
       "scripts/test_check_daemon_launch_schema.py",
-      "scripts/check-contract-registration.py",
-      "scripts/test_check_contract_registration.py",
-      "scripts/check-preview-server-contracts.sh",
-      "preview-server/contract-probe/build.gradle.kts",
       "settings.gradle.kts",
       "**/*.kt",
       "**/*.ts",
@@ -131,27 +126,6 @@
       "scripts/design-artifacts/**",
       "cli/serve/src/main/resources/rc-player/**",
       ".github/actions/lib/**"
-    ],
-    "preview_server_contracts": [
-      "preview-server/contract-probe/**",
-      "preview-server/settings.gradle.kts",
-      "preview-server/build.gradle.kts",
-      "preview-server/gradle.properties",
-      "scripts/check-preview-server-contracts.sh",
-      "daemon/core/**",
-      "daemon/client/**",
-      "api/preview-data-api/**",
-      "common/image-crop/**",
-      "common/web-escaping/**",
-      "render-session/**",
-      "data/remotecompose/core/**",
-      "data/pseudolocale/core/**",
-      "bundle/format/**",
-      "bundle/coordinates/**",
-      "mcp/**",
-      "renderers/xr-client/**",
-      "cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/**",
-      "gradle/libs.versions.toml"
     ]
   }
 }

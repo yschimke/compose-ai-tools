@@ -1,5 +1,19 @@
 # Preparing `compose-preview serve` for extraction
 
+> **Historical design record — the extraction happened.** The server now lives in
+> [yschimke/compose-preview-server](https://github.com/yschimke/compose-preview-server) and ships as
+> `ee.schimke.composeai:compose-preview-serve` from there, first released as **2.0.0**.
+>
+> The two instruments this document describes are therefore in different states. The **contract
+> probe** (`preview-server/`) and the **serve Playwright harness** did their job and were removed
+> from this repository — the probe existed to prove the dependency floor was publishable before the
+> move, and a published 2.0.0 is that proof. The **serve <-> cli seam ratchet**
+> (`scripts/check-serve-seam.py`) is still here and still meaningful, because `cli/serve` has not
+> moved yet: `browse`, `bundle render` and `history manifest` still reach into server types, and
+> untangling those is the remaining work.
+>
+> Everything below is preserved as written, in the tense it was written in.
+
 Issue [#3824](https://github.com/yschimke/compose-ai-tools/issues/3824) asks whether the preview
 server should live in its own repository, measures the coupling, and answers: **not yet, and here is
 what to do meanwhile.** This document is the "meanwhile" — what the preparation is, what has landed,

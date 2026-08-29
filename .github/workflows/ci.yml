@@ -76,7 +76,6 @@ jobs:
       build_cli: ${{ steps.scope.outputs.build_cli }}
       spatial_scene: ${{ steps.scope.outputs.spatial_scene }}
       actions_tests: ${{ steps.scope.outputs.actions_tests }}
-      preview_server_contracts: ${{ steps.scope.outputs.preview_server_contracts }}
       design_artifacts: ${{ steps.scope.outputs.design_artifacts }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1083,36 +1082,6 @@ jobs:
           path: samples/xr-spatial/build/compose-previews/renders/**/composite.png
           if-no-files-found: warn
 
-  # The preview server's dependency floor, compiled against PUBLISHED artifacts.
-  #
-  # `preview-server/` is a separate Gradle build that is deliberately not included in the root
-  # `settings.gradle.kts`, so nothing but this job proves it still resolves. It publishes the
-  # contract modules to Maven Local under a fixed probe version and builds against them — the same
-  # shape the split itself would have. A contract that stops being publishable, or a contract module
-  # that grows a dependency an extracted server has no business carrying, fails here months before
-  # anyone attempts the extraction. See docs/design/PREVIEW_SERVER_SPLIT.md.
-  preview-server-contracts:
-    name: Preview Server Contracts
-    needs: changes
-    if: ${{ needs.changes.outputs.preview_server_contracts == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-      - uses: ./.github/actions/buildfetch-cache
-        with:
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
-          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
-      # Also run in Actions Tests, which is scheduled by the four registration files. Here it is
-      # scheduled by the contract *modules* instead, so moving or adding a package inside one is
-      # checked against `contractPackages` without listing those sources in a fifth place.
-      - name: Check contract registration
-        run: python3 scripts/check-contract-registration.py
-      - name: Publish contracts and build the preview-server build against them
-        run: scripts/check-preview-server-contracts.sh
-
   spatial-scene-codegen:
     name: SpatialScene codegen up to date
     needs: changes
@@ -1336,8 +1305,6 @@ jobs:
         run: python3 -m pip install --quiet 'pixelmatch==0.4.0' 'Pillow>=10'
       - name: Run compare-previews tests
         run: python3 .github/actions/lib/test_compare_previews.py -v
-      - name: Run serve-preview-diff tests
-        run: python3 .github/actions/lib/test_serve_preview_diff.py -v
       - name: Run a11y-report tests
         run: python3 .github/actions/lib/test_a11y_report.py -v
       - name: Run notification-previews tests
@@ -1365,14 +1332,6 @@ jobs:
         run: python3 scripts/test_check_serve_seam.py -v
       - name: Run serve coupling measurement tests
         run: python3 scripts/test_measure_serve_coupling.py -v
-      # A preview-server contract is registered in four hand-maintained places, and three of
-      # them fail silently when one is forgotten — most sharply `ci-paths.json`, where a missing
-      # entry means the contract probe is never scheduled for the new module. That was forgotten
-      # twice in a row (#4634, #4656), each time caught by a human reading a diff.
-      - name: Run contract registration tests
-        run: python3 scripts/test_check_contract_registration.py -v
-      - name: Check contract registration
-        run: python3 scripts/check-contract-registration.py
       # `daemon-launch.json` is written by the gradle plugin and read by the daemon JVM, the CLI
       # doctor and the VS Code extension, each with its own copy of the shape and of the schema
       # version. Two of those copies carry a comment asking a human to keep them in sync; this is

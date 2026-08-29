@@ -128,12 +128,16 @@ jobs:
 
           case "$target" in
             previews) target="compose-preview" ;;
+            # `serve` was an alias until the preview server was split out
+            # (yschimke/compose-preview-server), which now owns the serve pages
+            # and their visual harness. Retired rather than repointed, for the
+            # same reason `vscode` was: it would re-run something in a repository
+            # that no longer contains the surface.
             # `vscode` was the alias for this until the extension was split out
             # (yschimke/compose-preview-vscode). It is retired rather than repointed:
             # this pipeline captures serve pages now, so `/rerun vscode` would have
             # re-run something the typist did not mean, in a repository that no longer
             # contains the extension at all.
-            serve)    target="serve-preview-comment" ;;
           esac
 
           HEAD_SHA=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')

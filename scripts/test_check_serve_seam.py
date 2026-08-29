@@ -468,33 +468,10 @@ class ContractCoverage(unittest.TestCase):
     had grown. These assertions are that tie.
     """
 
-    def probe_contracts(self):
-        kts = (
-            mod.REPO_ROOT / "preview-server/contract-probe/build.gradle.kts"
-        ).read_text(encoding="utf-8")
-        # Strip `//` comments before looking for the list's closing paren. The entries are
-        # commented, and a comment containing a `)` — an issue reference, a parenthetical — used to
-        # end the block early. That does not fail loudly: it silently drops every contract after
-        # the comment, so the coverage assertions below pass over a truncated list. Comments cannot
-        # contain a quoted coordinate that matters, so removing them first is safe.
-        kts = re.sub(r"//[^\n]*", "", kts)
-        block = kts.split("val contracts =", 1)[1].split(")", 1)[0]
-        return set(re.findall(r'"([a-z0-9-]+)"', block))
 
     def test_every_package_serve_imports_is_accounted_for(self):
         self.assertEqual(mod.unmapped_contract_packages(mod.load_allowlist()), {})
 
-    def test_every_mapped_module_is_a_probe_contract_or_a_recorded_blocker(self):
-        allowlist = mod.load_allowlist()
-        contracts = self.probe_contracts()
-        unpublished = set(allowlist.get("unpublishedContracts", {}))
-        for package, module in allowlist["contractPackages"].items():
-            with self.subTest(package=package):
-                self.assertTrue(
-                    module in contracts or module in unpublished,
-                    f"{package} maps to {module}, which is neither in the probe's `contracts` "
-                    "nor recorded in `unpublishedContracts`",
-                )
 
     def test_package_of_strips_the_type(self):
         self.assertEqual(
