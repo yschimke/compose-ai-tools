@@ -461,11 +461,12 @@ class MappingOwnership(unittest.TestCase):
 
 
 class ContractCoverage(unittest.TestCase):
-    """The probe's coordinate list is hand-maintained; serve's imports are not (PR #4512 review).
+    """`contractPackages` is hand-maintained; serve's imports are not (PR #4512 review).
 
     Nothing tied the two together, so serve could start importing a new published module and the
-    probe would resolve the same coordinates and pass while the extracted server's dependency floor
-    had grown. These assertions are that tie.
+    register would go on describing the old floor. These assertions are that tie. The contract
+    probe used to check the same thing from the other side; it went with the extraction, which
+    leaves these the only assertions on it.
     """
 
 

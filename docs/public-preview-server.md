@@ -4017,10 +4017,10 @@ than the image seed, because that box runs *that deployment's* set; an adopter m
 
 `preview.coo.ee` **runs the prebuilt [`deploy/image`](../deploy/image)** — a `docker pull` of the
 released `compose-preview-host` image on an **8 GB host**, no build. The **whole deploy chain is
-automatic**: cutting a CLI release starts the host image build immediately from the release tag
-(release-please invokes
-[`preview-host-image.yml`](../.github/workflows/preview-host-image.yml) via `workflow_call`, in
-parallel with the core release, tagging that version **and** `:latest`), and the box's zero-downtime
+automatic**, and it is driven from
+[yschimke/compose-preview-server](https://github.com/yschimke/compose-preview-server) now, not from
+this repository: cutting a **server** release there starts the host image build immediately from
+that tag (its `preview-host-image.yml`, tagging that version **and** `:latest`), and the box's zero-downtime
 **`rollout`** service rolls the
 `preview` container onto the new image (`caddy` is rolled separately by **Watchtower**) — no manual
 step.
@@ -4037,12 +4037,10 @@ built and roll onto the *old* image. It's gated by a `DEPLOY_HOOK_TOKEN` (fail-c
 can only trigger a rollout *check* of the already-configured tag — see
 [`deploy/image` README → Instant roll on publish](../deploy/image/README.md#instant-roll-on-publish-webhook--skips-the-poll-wait).
 
-> **Why the *Publish preview-host image* Actions list can look stale.** Because that publish runs as
-> a **reusable-workflow call** from the release job, its runs appear *inside the release-please run*,
-> **not** as standalone *Publish preview-host image* runs — so that workflow's run list shows only the
-> occasional manual `workflow_dispatch`, and can read as "hasn't built since <months ago>" even though
-> **every release rebuilds the image**. To confirm which build is deployed, check the release-please
-> run, the GHCR `:latest` digest, or [`GET /version`](#endpoints) — not the preview-host-image run list.
+> **Where to look when diagnosing a rollout.** The image build is a job of
+> compose-preview-server's own release run, so it does not appear in this repository's Actions at
+> all — a release here rebuilds nothing. To confirm which build is deployed, check that
+> repository's release run, the GHCR `:latest` digest, or [`GET /version`](#endpoints).
 
 The two delivery paths move on **different clocks**: a **daemon/CLI change** reaches the box when it
 rolls onto a new release image (now near-instant via the publish webhook, else within one `rollout`

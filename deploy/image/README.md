@@ -39,13 +39,14 @@ release to propagate through Maven Central.
 
 The [`preview-host-image.yml`](https://github.com/yschimke/compose-preview-server/blob/main/.github/workflows/preview-host-image.yml)
 workflow in **yschimke/compose-preview-server** builds and pushes to GHCR — that
-repository owns the server and this image now. The automatic path starts as soon as the
-release tag exists and builds its inputs directly from that tag, in parallel
-with the core release. Trigger it either way:
+repository owns the server and this image now. The automatic path starts as soon as
+that repository's release tag exists and builds its inputs directly from it.
+Trigger it either way, **in compose-preview-server, not here**:
 
-- **On a CLI release** (`v*` tag) — automatic; bundles that version + tags `latest`.
-- **Manually** — Actions → *Publish preview-host image* → run with a `cli_version`
-  (e.g. `0.16.33`).
+- **On a server release** (`v*` tag there) — automatic; bundles that version + tags `latest`.
+- **Manually** — its Actions → *Publish preview-host image* → run with `server_version`
+  (e.g. `2.0.0`) and `tools_version`, the compose-ai-tools release supplying the
+  Android daemon (e.g. `1.53.0`).
 
 First publish makes the GHCR package; set it **public** (Packages → settings) if
 you want hosts to pull without auth.
