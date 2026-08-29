@@ -376,8 +376,9 @@ done < <(jq -c '.catalogs // [] | .[]' "${CATALOGS_FILE}")
 #
 # What this still does NOT do is make the name reachable: DNS must point at the box, and the edge
 # must match the hostname and hold a certificate for it. The caddy container derives that from this
-# same file (deploy/image/caddy-entrypoint.sh), so it needs a caddy restart and no hand-maintained
-# env var — but a brand-new hostname is not live the instant this script prints "applied".
+# same file (compose-preview-server's deploy/image/caddy-entrypoint.sh), so it needs a caddy restart
+# and no hand-maintained env var — but a brand-new hostname is not live the instant this script
+# prints "applied".
 echo "Reconciling top-level sites from ${CATALOGS_FILE#"${REPO_ROOT}/"}"
 while IFS= read -r site; do
   [[ -n "${site}" ]] || continue
