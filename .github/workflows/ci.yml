@@ -637,9 +637,15 @@ jobs:
       # Sticky comment, same shape as the serve-preview-diff one: find our marker, PATCH it if it
       # exists (no reviewer notification on a re-push), post it if it does not. Skipped for forks,
       # whose GITHUB_TOKEN cannot write — the log and the job summary still carry the report.
+      # `!cancelled()`, not `always()`. A fast-follow push cancels the in-flight run through this
+      # workflow's concurrency group, and under `always()` this step still fired on the corpse:
+      # the base-player build died mid-flight, `compare` never ran, and the PR got a "parity
+      # moved" comment describing a comparison that had not happened. `!cancelled()` keeps the
+      # step for real outcomes and drops it for superseded runs, whose successor posts the
+      # verdict a moment later anyway.
       - name: Comment the parity report on the PR
         if: >-
-          ${{ always() && steps.corpus.outputs.available == 'true'
+          ${{ !cancelled() && steps.corpus.outputs.available == 'true'
               && github.event_name == 'pull_request'
               && github.event.pull_request.head.repo.full_name == github.repository }}
         continue-on-error: true
@@ -651,11 +657,18 @@ jobs:
         run: |
           set -euo pipefail
           MARKER="<!-- rc-cmp-wasm-parity -->"
-          if [ "$OUTCOME" = "success" ]; then
-            HEADLINE="✅ No CMP/Wasm parity regression against the pull request base."
-          else
-            HEADLINE="⚠️ CMP/Wasm parity moved against the pull request base. This check does not block merging — read the rows below and decide."
-          fi
+          # Three outcomes, not two. `compare` is `skipped` when an earlier step in this job failed
+          # — the corpus fetch, either player build, either render — and in that case the parity
+          # verdict is unknown, not adverse. Saying "parity moved" there sends a reviewer hunting a
+          # regression that was never measured; the old two-branch form did exactly that.
+          case "$OUTCOME" in
+            success)
+              HEADLINE="✅ No CMP/Wasm parity regression against the pull request base." ;;
+            skipped)
+              HEADLINE="🚧 CMP/Wasm parity could not be measured — a step before the comparison failed, so this is not a verdict on the diff. See the job log." ;;
+            *)
+              HEADLINE="⚠️ CMP/Wasm parity moved against the pull request base. This check does not block merging — read the rows below and decide." ;;
+          esac
           {
             echo "$MARKER"
             echo "### Remote Compose CMP/Wasm parity"
