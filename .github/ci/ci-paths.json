@@ -93,8 +93,13 @@
     ],
     "spatial_scene": [
       "schema/spatial-scene.schema.json",
+      "schema/xr-render-service.schema.json",
       "api/preview-data-api/src/**",
-      "scripts/codegen/gen-spatial-scene.mjs"
+      "scripts/codegen/gen-spatial-scene.mjs",
+      "scripts/codegen/gen-xr-render-service.mjs",
+      "renderers/xr-composite/src/**",
+      "renderers/xr-composite/test/**",
+      "renderers/xr-client/src/**"
     ],
     "actions_tests": [
       ".github/actions/**",

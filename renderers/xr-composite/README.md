@@ -10,8 +10,11 @@ It runs two ways: **one-shot** (`--scene` → one PNG → exit) and a long-lived
 **server** (`--serve`) that speaks JSON-RPC over stdio, holds one Filament engine
 across frames, and streams rendered frames back as panels are updated per-frame —
 the first increment of the daemon-fronted native XR render server (the daemon spawns and
-multiplexes this process; the protocol lives in daemon/core's `protocol/Messages.kt`, the
-"XR render service" section).
+multiplexes this process). The protocol is defined by
+[`schema/xr-render-service.schema.json`](../../schema/xr-render-service.schema.json), which
+generates the method/parameter/error vocabulary used by this tool
+([`src/xr_render_service.hpp`](src/xr_render_service.hpp)), its JVM client (`:renderer-xr-client`)
+and the [serve smoke harness](test/serve_smoke.py) — so the three cannot drift.
 The `SpatialScene` types it parses are generated from
 [`schema/spatial-scene.schema.json`](../../schema/spatial-scene.schema.json) (see
 [`spatial_scene.hpp`](src/spatial_scene.hpp)).

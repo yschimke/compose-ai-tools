@@ -17,6 +17,9 @@ import os
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import xr_render_service as svc  # noqa: E402  (generated mirror; see schema/xr-render-service.schema.json)
+
 
 def main() -> int:
     binary, materials, scene_dir = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -53,44 +56,57 @@ def main() -> int:
             m = read_msg()
             if m is None:
                 raise SystemExit("server closed stdout before responding")
-            if m.get("method") == "streamFrame":
+            if m.get("method") == svc.NOTIFICATION_STREAM_FRAME:
                 p = m["params"]
                 assert p["encoding"] == "png" and p["data"], "streamFrame missing png data"
-                frames.append((p["seq"], p["data"], p.get("sessionId")))
+                frames.append(
+                    (p[svc.PARAM_SEQ], p[svc.PARAM_DATA], p.get(svc.PARAM_SESSION_ID))
+                )
             elif m.get("id") == want:
                 return m
 
-    send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"frameStreamId": "fs1"}})
+    send({"jsonrpc": "2.0", "id": 1, "method": svc.METHOD_INITIALIZE,
+          "params": {svc.PARAM_FRAME_STREAM_ID: "fs1"}})
     caps = pump_until_id(1)["result"]["capabilities"]
-    assert caps.get("render") and caps.get("updatePanels") and caps.get("streamFrame"), caps
+    assert (
+        caps.get(svc.CAPABILITY_RENDER)
+        and caps.get(svc.CAPABILITY_UPDATE_PANELS)
+        and caps.get(svc.CAPABILITY_STREAM_FRAME)
+    ), caps
     assert caps.get("multiSession"), f"expected multiSession capability: {caps}"
 
     # Default-session flow (back-compat: no sessionId).
-    send({"jsonrpc": "2.0", "id": 2, "method": "render",
-          "params": {"scene": scene, "sceneDir": scene_dir}})
+    send({"jsonrpc": "2.0", "id": 2, "method": svc.METHOD_RENDER,
+          "params": {svc.PARAM_SCENE: scene, svc.PARAM_SCENE_DIR: scene_dir}})
     assert pump_until_id(2)["result"]["ok"], "render did not ack ok"
 
-    send({"jsonrpc": "2.0", "id": 3, "method": "xr/updatePanels",
-          "params": {"panels": [
+    send({"jsonrpc": "2.0", "id": 3, "method": svc.METHOD_UPDATE_PANELS,
+          "params": {svc.PARAM_PANELS: [
               {"id": scene["panels"][0]["id"],
                "poseInRoot": {"translation": {"x": 120, "y": 160, "z": 0},
                               "rotation": {"x": 0, "y": 0, "z": 0, "w": 1}}}]}})
     assert pump_until_id(3)["result"]["ok"], "updatePanels did not ack ok"
 
     # Multi-session: two named sessions sharing one process / engine.
-    send({"jsonrpc": "2.0", "id": 4, "method": "render",
-          "params": {"sessionId": "a", "scene": scene, "sceneDir": scene_dir}})
-    assert pump_until_id(4)["result"].get("sessionId") == "a", "session a render missing sessionId"
-    send({"jsonrpc": "2.0", "id": 5, "method": "render",
-          "params": {"sessionId": "b", "scene": scene, "sceneDir": scene_dir}})
-    assert pump_until_id(5)["result"].get("sessionId") == "b", "session b render missing sessionId"
+    send({"jsonrpc": "2.0", "id": 4, "method": svc.METHOD_RENDER,
+          "params": {svc.PARAM_SESSION_ID: "a", svc.PARAM_SCENE: scene,
+                     svc.PARAM_SCENE_DIR: scene_dir}})
+    assert pump_until_id(4)["result"].get(svc.RESULT_SESSION_ID) == "a", \
+        "session a render missing sessionId"
+    send({"jsonrpc": "2.0", "id": 5, "method": svc.METHOD_RENDER,
+          "params": {svc.PARAM_SESSION_ID: "b", svc.PARAM_SCENE: scene,
+                     svc.PARAM_SCENE_DIR: scene_dir}})
+    assert pump_until_id(5)["result"].get(svc.RESULT_SESSION_ID) == "b", \
+        "session b render missing sessionId"
 
-    send({"jsonrpc": "2.0", "id": 6, "method": "xr/stop", "params": {"sessionId": "a"}})
-    assert pump_until_id(6)["result"]["ok"], "xr/stop a did not ack"
-    send({"jsonrpc": "2.0", "id": 7, "method": "xr/stop", "params": {"sessionId": "b"}})
-    assert pump_until_id(7)["result"]["ok"], "xr/stop b did not ack"
+    send({"jsonrpc": "2.0", "id": 6, "method": svc.METHOD_STOP,
+          "params": {svc.PARAM_SESSION_ID: "a"}})
+    assert pump_until_id(6)["result"][svc.RESULT_OK], "xr/stop a did not ack"
+    send({"jsonrpc": "2.0", "id": 7, "method": svc.METHOD_STOP,
+          "params": {svc.PARAM_SESSION_ID: "b"}})
+    assert pump_until_id(7)["result"][svc.RESULT_OK], "xr/stop b did not ack"
 
-    send({"jsonrpc": "2.0", "method": "exit"})
+    send({"jsonrpc": "2.0", "method": svc.METHOD_EXIT})
     proc.wait(timeout=15)
 
     assert len(frames) >= 4, f"expected >=4 streamFrames, got {len(frames)}"

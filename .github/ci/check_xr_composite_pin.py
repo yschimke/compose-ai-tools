@@ -16,6 +16,18 @@ built artifact — see NON_SHIPPING), the same diff must change the `xr-composit
 Exits non-zero with a fix hint on violation. `--print-pin` just prints the pin, which is how
 `xr-composite-release.yml` checks that it publishes the version consumers actually ask for.
 
+A change that provably cannot alter the built binary's behaviour — a rename, a refactor, replacing
+a literal with a constant of the same value — has nothing to publish, and bumping the pin for it
+would name a release nobody cuts, which 404s into the same silent skip. Such a change opts out by
+stating a reason: put a line
+
+    XR-Release: none - <why this cannot change the binary>
+
+in the pull request body. CI passes it in via `XR_RELEASE_OVERRIDE` and the gate prints it. The
+reason is mandatory and lands in the PR record, so the opt-out is reviewable rather than a flag
+anyone can pass. It is deliberately not a path allowlist: widening NON_SHIPPING would hide the
+next real change to those same files.
+
 Changed paths come from `git diff` against `--base` by default (what a contributor wants locally)
 or, with `--changed -`, from stdin — the shape CI uses, since a PR runner has only a shallow
 checkout and the base SHA is what the event carries. Unlike the informational consumer-contract
@@ -26,6 +38,7 @@ which is the silent pass this gate exists to prevent.
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -43,6 +56,20 @@ NON_SHIPPING = (
 )
 
 PIN_RE = re.compile(r'^\s*xr-composite\s*=\s*"([^"]+)"', re.MULTILINE)
+
+# `XR-Release: none - <reason>`, anywhere in the PR body. The reason is required: a bare
+# `XR-Release: none` does not match, so the opt-out cannot be taken without saying why.
+OVERRIDE_RE = re.compile(
+    r"^\s*XR-Release:\s*none\s*[-\u2014:]\s*(\S.*?)\s*$", re.MULTILINE | re.IGNORECASE
+)
+
+
+def override_reason(body: str | None) -> str | None:
+    """The stated reason for shipping a compositor change without a release, or None."""
+    if not body:
+        return None
+    m = OVERRIDE_RE.search(body)
+    return m.group(1) if m else None
 
 
 def pin_from(text: str) -> str | None:
@@ -116,6 +143,11 @@ def main() -> int:
         metavar="FILE",
         help="read changed paths from FILE ('-' for stdin) instead of asking git",
     )
+    ap.add_argument(
+        "--override-body",
+        help="text to scan for an `XR-Release: none - <reason>` opt-out "
+        "(default: the XR_RELEASE_OVERRIDE environment variable)",
+    )
     args = ap.parse_args()
 
     if args.print_pin:
@@ -129,6 +161,14 @@ def main() -> int:
         paths = changed_paths(args.base)
     touched = shipping_changes(paths)
     if not touched:
+        return 0
+
+    body = args.override_body if args.override_body is not None else os.environ.get(
+        "XR_RELEASE_OVERRIDE"
+    )
+    reason = override_reason(body)
+    if reason:
+        print(f"ok: compositor changed with a stated no-release reason - {reason}")
         return 0
 
     before, after = pin_at(args.base), current_pin()
@@ -149,7 +189,10 @@ def main() -> int:
         f"a composite.\n"
         f"  Fix: bump `xr-composite` in {CATALOG} to the release you will publish the new binaries "
         f"to, then run the `xr-composite release` workflow for that version once this lands. "
-        f"Docs-only or test-only changes under {WATCHED} are exempt and do not reach this error.",
+        f"Docs-only or test-only changes under {WATCHED} are exempt and do not reach this error.\n"
+        f"  If this change cannot alter the built binary (a rename, a refactor, a literal replaced "
+        f"by an equal constant), say so in the PR body instead:\n"
+        f"    XR-Release: none - <why this cannot change the binary>",
         file=sys.stderr,
     )
     return 1

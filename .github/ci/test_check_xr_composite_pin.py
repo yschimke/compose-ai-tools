@@ -103,6 +103,31 @@ class PinMoved(unittest.TestCase):
         self.assertTrue(gate.pin_moved(None, "1.47.0"))
 
 
+class OverrideReason(unittest.TestCase):
+    def test_a_stated_reason_is_extracted(self):
+        body = "Some summary.\n\nXR-Release: none - literals replaced by equal constants\n"
+        self.assertEqual(
+            gate.override_reason(body), "literals replaced by equal constants"
+        )
+
+    def test_an_em_dash_or_colon_separator_works(self):
+        self.assertEqual(gate.override_reason("XR-Release: none \u2014 pure rename"), "pure rename")
+        self.assertEqual(gate.override_reason("XR-Release: none: pure rename"), "pure rename")
+
+    def test_a_bare_opt_out_without_a_reason_does_not_match(self):
+        # The whole point of the escape hatch is that it costs a sentence someone must justify.
+        self.assertIsNone(gate.override_reason("XR-Release: none"))
+        self.assertIsNone(gate.override_reason("XR-Release: none -   "))
+
+    def test_unrelated_bodies_do_not_match(self):
+        self.assertIsNone(gate.override_reason(""))
+        self.assertIsNone(gate.override_reason(None))
+        self.assertIsNone(gate.override_reason("We should cut an xr release for this."))
+
+    def test_case_insensitive_and_indented(self):
+        self.assertEqual(gate.override_reason("  xr-release: NONE - regen only"), "regen only")
+
+
 class RepositoryState(unittest.TestCase):
     def test_the_checked_in_catalog_declares_a_pin(self):
         # The gate, the CLI resource and the plugin resource all read this one entry; losing it
