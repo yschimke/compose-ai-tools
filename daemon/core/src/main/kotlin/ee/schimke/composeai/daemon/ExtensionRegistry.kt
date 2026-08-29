@@ -1,11 +1,11 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.protocol.DataExtensionDescriptor
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
+import ee.schimke.composeai.daemon.protocol.PreviewExtensionDescriptor
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.render.PreviewContext
-import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
-import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
 import kotlin.concurrent.write

@@ -1,7 +1,7 @@
 package ee.schimke.composeai.daemon
 
-import ee.schimke.composeai.data.layoutinspector.FigmaSvgBackgroundMode
-import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
+import ee.schimke.composeai.daemon.protocol.DataExtensionDescriptor
+import ee.schimke.composeai.daemon.protocol.FigmaSvgBackgroundMode
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
 import ee.schimke.composeai.io.composeAiCacheDir
 import java.io.File

@@ -4,7 +4,7 @@ import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductExtra
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
-import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
+import ee.schimke.composeai.daemon.protocol.SamplingPolicy
 import java.io.File
 import kotlinx.serialization.json.JsonElement
 

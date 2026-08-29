@@ -1,9 +1,9 @@
 package ee.schimke.composeai.renderer
 
+import ee.schimke.composeai.daemon.protocol.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.CommonDataProducts
 import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
 import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
-import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.DataProductKey
 import ee.schimke.composeai.data.render.extensions.ExtensionPostCaptureContext

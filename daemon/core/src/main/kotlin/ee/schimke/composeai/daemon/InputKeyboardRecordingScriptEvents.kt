@@ -1,8 +1,8 @@
 package ee.schimke.composeai.daemon
 
-import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
-import ee.schimke.composeai.data.render.extensions.DataExtensionId
-import ee.schimke.composeai.data.render.extensions.RecordingScriptEventDescriptor
+import ee.schimke.composeai.daemon.protocol.DataExtensionDescriptor
+import ee.schimke.composeai.daemon.protocol.DataExtensionId
+import ee.schimke.composeai.daemon.protocol.RecordingScriptEventDescriptor
 
 /**
  * Keyboard `record_preview` script events. One descriptor — `input.keyboard` — advertising

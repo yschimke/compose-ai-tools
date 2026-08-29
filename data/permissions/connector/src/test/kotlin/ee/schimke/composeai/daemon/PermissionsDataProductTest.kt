@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.protocol.DataExtensionId
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.daemon.protocol.KeyboardOverride
 import ee.schimke.composeai.daemon.protocol.PermissionGrantStateOverride
@@ -8,7 +9,6 @@ import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.permissions.Material3PermissionsProduct
 import ee.schimke.composeai.data.permissions.PermissionsPayload
 import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
-import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.compose.AroundComposableHook
 import ee.schimke.composeai.data.render.extensions.compose.hasAroundComposableHook

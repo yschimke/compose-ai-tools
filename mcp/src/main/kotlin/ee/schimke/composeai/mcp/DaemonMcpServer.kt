@@ -12,12 +12,14 @@ import ee.schimke.composeai.daemon.protocol.LauncherWidgetOverride
 import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PermissionsOverride
+import ee.schimke.composeai.daemon.protocol.PreviewExtensionDescriptor
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus
 import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
 import ee.schimke.composeai.daemon.protocol.RenderTier
+import ee.schimke.composeai.daemon.protocol.SemanticsDelta
 import ee.schimke.composeai.daemon.protocol.SemanticsInputTarget
 import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.daemon.protocol.WallpaperOverride
@@ -25,13 +27,11 @@ import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
 import ee.schimke.composeai.data.layoutinspector.SemanticsBounds
-import ee.schimke.composeai.data.layoutinspector.SemanticsDelta
 import ee.schimke.composeai.data.layoutinspector.SemanticsDiff
 import ee.schimke.composeai.data.layoutinspector.SemanticsTarget
 import ee.schimke.composeai.data.layoutinspector.SemanticsTargets
 import ee.schimke.composeai.data.layoutinspector.TargetResolution
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionCommandCatalog
-import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.mcp.protocol.CallToolResult
 import ee.schimke.composeai.mcp.protocol.ContentBlock
@@ -3218,8 +3218,7 @@ class DaemonMcpServer(
                   daemon.dataExtensionDescriptors.forEach { extension ->
                     add(
                       json.encodeToJsonElement(
-                        ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
-                          .serializer(),
+                        ee.schimke.composeai.daemon.protocol.DataExtensionDescriptor.serializer(),
                         extension,
                       )
                     )

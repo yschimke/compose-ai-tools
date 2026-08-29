@@ -1,8 +1,8 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.protocol.DataExtensionDescriptor
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.RenderTrace
-import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
 import java.util.concurrent.atomic.AtomicLong
 
 /**

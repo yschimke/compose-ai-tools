@@ -24,10 +24,12 @@ import ee.schimke.composeai.daemon.bridge.DaemonHostBridge
 import ee.schimke.composeai.daemon.bridge.InteractiveCommand
 import ee.schimke.composeai.daemon.bridge.SandboxSlot
 import ee.schimke.composeai.daemon.pool.SandboxProcessPool
+import ee.schimke.composeai.daemon.protocol.DataExtensionDescriptor
 import ee.schimke.composeai.daemon.protocol.SemanticsInputTarget
 import ee.schimke.composeai.daemon.protocol.SemanticsTargetCandidate
 import ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedCode
 import ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedReason
+import ee.schimke.composeai.daemon.protocol.TypographyToken
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
 import ee.schimke.composeai.data.layoutinspector.SemanticsTarget
 import ee.schimke.composeai.data.layoutinspector.SemanticsTargets
@@ -36,7 +38,6 @@ import ee.schimke.composeai.data.render.LinkBufferComposer
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.PreviewDeviceContext
 import ee.schimke.composeai.data.render.PreviewDeviceSpec
-import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
 import ee.schimke.composeai.data.render.extensions.compose.ComposeDataExtensionPipeline
 import ee.schimke.composeai.data.render.extensions.compose.RecordingExtensionCompositionSink
@@ -44,7 +45,6 @@ import ee.schimke.composeai.data.render.extensions.loadIrReplayClass
 import ee.schimke.composeai.data.theme.ResolvedThemeTokens
 import ee.schimke.composeai.data.theme.ThemeConsumer
 import ee.schimke.composeai.data.theme.ThemePayload
-import ee.schimke.composeai.data.theme.TypographyToken
 import ee.schimke.composeai.io.composeAiCacheDir
 import java.io.File
 import java.util.concurrent.CountDownLatch

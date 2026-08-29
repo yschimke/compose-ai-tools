@@ -14937,16 +14937,17 @@ ${ServeSiteIcon.linkTags().prependIndent("        ")}
    */
   private fun knobKind(type: String): String = ServeOverrides.knobKind(type)
 
-  /** Human text for a [ee.schimke.composeai.data.overrides.PreviewOverrideValue] in the viewer. */
+  /** Human text for a [ee.schimke.composeai.daemon.protocol.PreviewOverrideValue] in the viewer. */
   private fun overrideValueText(
-    v: ee.schimke.composeai.data.overrides.PreviewOverrideValue
+    v: ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
   ): String =
     when (v) {
-      is ee.schimke.composeai.data.overrides.PreviewOverrideValue.StringValue -> v.value
-      is ee.schimke.composeai.data.overrides.PreviewOverrideValue.IntValue -> v.value.toString()
-      is ee.schimke.composeai.data.overrides.PreviewOverrideValue.FloatValue -> v.value.toString()
-      is ee.schimke.composeai.data.overrides.PreviewOverrideValue.BooleanValue -> v.value.toString()
-      is ee.schimke.composeai.data.overrides.PreviewOverrideValue.ColorValue -> v.argb
+      is ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.StringValue -> v.value
+      is ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.IntValue -> v.value.toString()
+      is ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.FloatValue -> v.value.toString()
+      is ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.BooleanValue ->
+        v.value.toString()
+      is ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.ColorValue -> v.argb
     }
 
   /**

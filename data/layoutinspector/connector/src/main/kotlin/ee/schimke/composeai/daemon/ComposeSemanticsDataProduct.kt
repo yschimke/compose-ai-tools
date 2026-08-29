@@ -31,6 +31,7 @@ import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.daemon.protocol.RecordingProbeNode
+import ee.schimke.composeai.daemon.protocol.SamplingPolicy
 import ee.schimke.composeai.data.fonts.SystemFontFamilies
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorCurvedText
@@ -41,7 +42,6 @@ import ee.schimke.composeai.data.layoutinspector.LayoutInspectorVectorPath
 import ee.schimke.composeai.data.layoutinspector.SemanticsRefs
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.compose.ExtensionSlotTables
-import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import java.lang.reflect.Method

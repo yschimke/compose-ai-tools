@@ -1,6 +1,6 @@
 package ee.schimke.composeai.daemon
 
-import ee.schimke.composeai.data.overrides.PreviewOverrideValue
+import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 
 /**
  * Wire codec for the `previewOverride*` knob seeds a held (interactive / live) Android session

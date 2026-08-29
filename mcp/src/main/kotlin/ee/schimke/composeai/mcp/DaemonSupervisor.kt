@@ -249,8 +249,7 @@ class DaemonSupervisor(
       // updated public capability lists which we cache below so the MCP catalogue surfaces them
       // without a follow-up `extensions/list` round-trip.
       val initialDataProducts: List<DataProductCapability>
-      val initialDataExtensions:
-        List<ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor>
+      val initialDataExtensions: List<ee.schimke.composeai.daemon.protocol.DataExtensionDescriptor>
       if (defaultExtensions.isNotEmpty()) {
         val enableResult = spawn.client.extensionsEnable(defaultExtensions)
         if (enableResult.unknown.isNotEmpty()) {
@@ -422,8 +421,7 @@ class SupervisedDaemon(val workspaceId: WorkspaceId, val modulePath: String) {
     internal set
 
   @Volatile
-  var dataExtensionDescriptors:
-    List<ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor> =
+  var dataExtensionDescriptors: List<ee.schimke.composeai.daemon.protocol.DataExtensionDescriptor> =
     emptyList()
     internal set
 

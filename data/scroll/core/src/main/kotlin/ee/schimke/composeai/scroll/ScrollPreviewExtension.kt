@@ -1,11 +1,11 @@
 package ee.schimke.composeai.scroll
 
-import ee.schimke.composeai.data.render.pipeline.PipelineCapability
-import ee.schimke.composeai.data.render.pipeline.PipelineStepTrait
-import ee.schimke.composeai.data.render.pipeline.PreviewExtensionCliCommand
-import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
-import ee.schimke.composeai.data.render.pipeline.PreviewExtensionUsageMode
-import ee.schimke.composeai.data.render.pipeline.PreviewPipelineStep
+import ee.schimke.composeai.daemon.protocol.PipelineCapability
+import ee.schimke.composeai.daemon.protocol.PipelineStepTrait
+import ee.schimke.composeai.daemon.protocol.PreviewExtensionCliCommand
+import ee.schimke.composeai.daemon.protocol.PreviewExtensionDescriptor
+import ee.schimke.composeai.daemon.protocol.PreviewExtensionUsageMode
+import ee.schimke.composeai.daemon.protocol.PreviewPipelineStep
 
 /**
  * Pipeline metadata for the scroll preview extension.
