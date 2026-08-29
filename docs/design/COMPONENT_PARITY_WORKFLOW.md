@@ -228,7 +228,8 @@ already writes stays as-is — the block is *additional*, and the two are genera
 so they cannot disagree.
 
 **Labels stay low-cardinality**, exactly as the epic specifies: `area:{spec,component,preview,
-renderer,comparison}` and `parity:{regression,known-difference,verification-needed}`. No label per
+renderer,comparison}` and `parity:{regression,known-difference,verification-needed,upstream,
+catalog}`. No label per
 component — component identity lives in the locator block.
 
 ### Which fields may be blank, and which may be absent

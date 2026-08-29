@@ -1248,6 +1248,7 @@ ${captureControlsHtml().prependIndent("          ")}
       "<label class=\"cp-report-summary\">Summary" +
       "<input class=\"cp-report-summary-input\" type=\"text\" name=\"title\" required" +
       " autocomplete=\"off\" placeholder=\"Briefly describe what is wrong\"></label>" +
+      reportClassificationHtml() +
       "<input type=\"hidden\" name=\"body\" id=\"cp-report-body\"" +
       " value=\"${WebEscaping.htmlEscape(r.body)}\"" +
       " data-report-template=\"${WebEscaping.htmlEscape(r.bodyTemplate)}\">" +
@@ -1258,6 +1259,78 @@ ${captureControlsHtml().prependIndent("          ")}
       "what you were looking at, which build, the links — is filled in for you on GitHub.</span>" +
       "</form></div></details>"
   }
+
+  /**
+   * One `parity:` label the reporter picks for themselves: is this **upstream**, is it **this
+   * catalog**, or does somebody still have to work that out?
+   *
+   * It is the first question asked of every difference on a parity wall and the one the reporter is
+   * best placed to answer — they are looking at the two pictures. Asked here, it arrives with the
+   * issue; asked later, it is a triager reconstructing a comparison from a screenshot. The three
+   * answers are deliberately the whole vocabulary: "upstream" and "this catalog" are the two places
+   * a fix can live, and the third exists so that *not knowing* is a first-class answer rather than
+   * a reason to guess. It is the default, because a report filed without a thought about this is an
+   * unclassified one, and saying so is more useful than a confident wrong label.
+   *
+   * **Why a `<select name="labels">` rather than something the page assembles.** GitHub's new-issue
+   * form reads `labels` straight from the query, so the browser's own control is the whole
+   * transport: no script, no hidden field to keep in step, and a reporter with JavaScript off files
+   * exactly the same labelled issue as everybody else. The values extend the `parity:` vocabulary
+   * the catalog's issue index already speaks (`parity-issues.mjs`, [ServeParityIssuesStore]), so a
+   * classification made here comes back on `parity/issues.json` rather than dying in the label
+   * list.
+   *
+   * The body says it too. The server writes the line pointing at the label
+   * ([ServeIssueReport.CLASSIFICATION_PREFIX]) and `<cp-report-classification>` rewrites it with
+   * the chosen answer in prose, so a triager reading the issue does not have to look at the label
+   * list — and a repository that has no such label to apply still gets the answer.
+   */
+  private fun reportClassificationHtml(): String =
+    "<cp-report-classification class=\"cp-report-class\">" +
+      "<label class=\"cp-report-class-label\">Where does it belong?" +
+      "<select class=\"cp-report-class-input\" name=\"labels\">" +
+      REPORT_CLASSIFICATIONS.joinToString("") { (value, label, sentence) ->
+        val selected = if (value == REPORT_CLASSIFICATION_DEFAULT) " selected" else ""
+        "<option value=\"${WebEscaping.htmlEscape(value)}\"" +
+          " data-cp-sentence=\"${WebEscaping.htmlEscape(sentence)}\"$selected>" +
+          WebEscaping.htmlEscape(label) +
+          "</option>"
+      } +
+      "</select></label>" +
+      "<span class=\"cp-report-class-note\">Applied as a <code>parity:</code> label, so the " +
+      "catalog&rsquo;s issue index can tell a difference that is ours from one that is not. " +
+      "Leave it on <em>needs investigating</em> if you are not sure — that is what it is for." +
+      "</span></cp-report-classification>"
+
+  /**
+   * The three answers, as `label value` → visible text → the sentence the issue body states.
+   *
+   * `verification-needed` is the existing `parity:` value for "somebody has to look at this", so
+   * the third answer reuses it rather than minting a synonym beside it. The other two are new and
+   * are added to the vocabulary at both ends of the round trip — the producer
+   * (`scripts/design-artifacts/parity-issues.mjs`) and the reader ([ServeParityIssuesStore]) —
+   * since a value only one end knows is a label the index silently drops.
+   */
+  private val REPORT_CLASSIFICATIONS =
+    listOf(
+      Triple(
+        "parity:upstream",
+        "Upstream — not this catalog",
+        "Upstream: the framework or design system this catalog is built on, not the catalog itself.",
+      ),
+      Triple(
+        "parity:catalog",
+        "A catalog bug — this repository",
+        "A catalog bug: the code in this repository draws it wrongly.",
+      ),
+      Triple(
+        "parity:verification-needed",
+        "Needs investigating — not sure yet",
+        "Needs investigating: the reporter could not tell whether this is ours or upstream.",
+      ),
+    )
+
+  private const val REPORT_CLASSIFICATION_DEFAULT = "parity:verification-needed"
 
   /**
    * The same affordance as a **row of its own**, for a page-scoped report on a surface that carries
@@ -1524,9 +1597,17 @@ ${captureControlsHtml().prependIndent("          ")}
   /**
    * The wall's **Bugs** cell: what is already filed against this row, and one link to file more.
    *
-   * The numbers are links out to GitHub and nothing else — a title in the column would push the
-   * pictures off a wall that already carries three of them, and it is on the tooltip where a reader
-   * who wants it can get it without the table reflowing.
+   * The pill carries the issue's **title** beside its number. It used to be the number alone, with
+   * the title on the tooltip, and that was a width decision — a wall already carrying three picture
+   * panels cannot afford a column that grows with whatever someone typed into GitHub. What it cost
+   * was the column's whole purpose: "does someone already know?" is not answered by `#77`, so every
+   * row with a number on it had to be hovered, or opened, before the reader learned whether the
+   * filed issue was even about the difference they were looking at.
+   *
+   * The width promise is kept in CSS instead of by omission: the title is one line, ellipsised at
+   * the column's cap, and dropped entirely below the width the pictures need (see `serve.css`). The
+   * tooltip still carries state, number and the untruncated title, so nothing that was reachable
+   * before has moved out of reach.
    *
    * "+ file" is always offered, including on a row with nothing filed, because that row is the
    * point: a bad score with no issue against it is the one a reader is scanning for. [detailHref]
@@ -1541,9 +1622,19 @@ ${captureControlsHtml().prependIndent("          ")}
     val links =
       issues.joinToString("") { issue ->
         val closed = if (issue.state == "closed") " cp-compare-bug--closed" else ""
-        val tip = "${issue.state} · #${issue.number} ${issue.title}"
+        val title = issue.title.trim()
+        // An untitled issue cannot happen through the index — `parity-issues.mjs` refuses one — but
+        // the pill is rendered from catalog-published data, so the empty case renders the number
+        // alone rather than a stray separator and an empty span.
+        val tip =
+          if (title.isEmpty()) "${issue.state} · #${issue.number}"
+          else "${issue.state} · #${issue.number} $title"
+        val titleHtml =
+          if (title.isEmpty()) ""
+          else "<span class=\"cp-compare-bug-title\">${WebEscaping.htmlEscape(title)}</span>"
         "<a class=\"cp-compare-bug$closed\" href=\"${WebEscaping.htmlEscape(issue.url)}\" " +
-          "rel=\"noopener\" title=\"${WebEscaping.htmlEscape(tip)}\">#${issue.number}</a>"
+          "rel=\"noopener\" title=\"${WebEscaping.htmlEscape(tip)}\">" +
+          "<span class=\"cp-compare-bug-num\">#${issue.number}</span>$titleHtml</a>"
       }
     val file =
       "<a class=\"cp-compare-bug-new\" " +
@@ -9540,9 +9631,11 @@ ${captureControlsHtml().prependIndent("          ")}
           if (showBugs) compareBugsCellHtml(bugs, servedDetail, "$viewer#cp-report") else ""
         // The issue numbers join the haystack, so `#4624` narrows the wall to the rows a report
         // names — the reverse of the join above, and the way back from an issue to the pictures it
-        // is about.
+        // is about. Their TITLES join it too, and follow from the pill showing them: a filter box
+        // over a table has to match what the table says, or typing a phrase the reader can see in
+        // front of them empties the wall.
         val hay =
-          (listOf(label, ids) + bugs.map { "#${it.number}" })
+          (listOf(label, ids) + bugs.flatMap { listOf("#${it.number}", it.title.trim()) })
             .filter { it.isNotEmpty() }
             .joinToString(" ")
             .lowercase()

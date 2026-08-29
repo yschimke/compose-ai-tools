@@ -16,6 +16,7 @@
 // `ServeIssueReport.action`.
 
 import { fillReport } from "../annotate/report.js";
+import { withClassification } from "./classification.js";
 import { fillSelection, type Selection } from "./locator.js";
 
 /** What the page knows so far. Every field is independently optional. */
@@ -25,6 +26,15 @@ export interface ReportInputs {
     /** The scorer's sentence, or null while it has not produced one. */
     scores?: string | null;
     selection?: Selection;
+    /**
+     * The classification sentence `<cp-report-classification>` last wrote, if any.
+     *
+     * A fourth producer, and here for the reason the other three are: this writer composes the body
+     * from the template every time any of them reports in, so a classification applied to the
+     * field directly would be silently undone by the next score or selection. Passing it through
+     * keeps the rule that exactly one thing writes the field.
+     */
+    classification?: string;
 }
 
 export class ReportBody {
@@ -46,6 +56,11 @@ export class ReportBody {
     attach(input: HTMLInputElement | null): boolean {
         const template = input?.getAttribute("data-report-template");
         if (!input || !template) return false;
+        // Re-attaching the SAME field is not a different comparison, so it keeps what has been
+        // learned. Two elements claim the field on the focused comparison now — the comparison
+        // itself and the classification control — and whichever ran second would otherwise reset
+        // the other's contribution the moment it arrived.
+        if (input === this.input) return true;
         this.input = input;
         this.template = template;
         this.state = { scores: null, selection: {} };
@@ -61,11 +76,19 @@ export class ReportBody {
     private write(): void {
         const { input, template } = this;
         // No render URL yet means the page has not finished parsing its own panels. The server's
-        // body is already in the field and is correct; there is nothing to improve on.
+        // body is already in the field and is correct; there is nothing to improve on — and the
+        // template's `{{render}}` would be filed verbatim, which is worse than waiting.
         if (!input || !template || !this.state.render) return;
-        input.value = fillSelection(
-            fillReport(template, this.state.render, this.state.scores ?? null),
-            this.state.selection ?? {},
+        input.value = withClassification(
+            fillSelection(
+                fillReport(
+                    template,
+                    this.state.render,
+                    this.state.scores ?? null,
+                ),
+                this.state.selection ?? {},
+            ),
+            this.state.classification ?? "",
         );
     }
 }

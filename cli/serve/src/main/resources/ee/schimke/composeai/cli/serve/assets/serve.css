@@ -665,6 +665,19 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
   padding: 8px 12px; font: inherit; border: 1px solid var(--cp-border);
   border-radius: var(--md-sys-shape-corner-small);
   background: var(--md-sys-color-surface-container-low); color: inherit; }
+/* "Where does it belong?" — the `parity:` label the reporter picks. Laid out exactly like the
+   Summary above it, because it is the same kind of thing: a question the form asks, answered before
+   the issue opens. `<cp-report-classification>` is a plain grid container rather than an inline
+   custom element, which browsers default unknown tags to — without this the label and its note
+   would run together on one line and the select would inherit the run. */
+.cp-report-class { display: grid; gap: 6px; width: 100%; }
+.cp-report-class-label { display: grid; gap: 6px; width: 100%; font-weight: 500; }
+.cp-report-class-input { width: 100%; min-height: 40px; box-sizing: border-box;
+  padding: 8px 12px; font: inherit; border: 1px solid var(--cp-border);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container-low); color: inherit; }
+.cp-report-class-note { font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line); color: var(--cp-fg-muted); }
 .cp-report-submit { display: inline-flex; align-items: center; gap: 8px; font: inherit;
   font-size: var(--md-sys-typescale-label-large-size);
   letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
@@ -2637,16 +2650,36 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
    already carries three picture panels, and a row with four issues laid out horizontally would push
    `Match` — the column the wall is sorted by and read for — past the scroll edge at 1024px. One
    pill per line makes the column as wide as its widest pill and no wider; the rows are 220px tall
-   already, so the extra lines cost nothing. */
+   already, so the extra lines cost nothing.
+
+   The pill now carries the issue TITLE beside its number, which is the fact the column is actually
+   read for — `#77` alone cannot tell a reader whether the thing already filed is the difference
+   they are looking at. Everything below exists to let it do that without taking the width back:
+   the title is capped at the column's `max-width`, ellipsised on one line rather than wrapped (a
+   wrapped title would set the row's height from text on a wall whose rows are pictures), and it
+   drops out entirely at the width where the pictures start to lose. The tooltip is unchanged and
+   still holds the untruncated title, so the ellipsis hides nothing that was reachable before. */
 .cp-compare-bugs { text-align: right; }
 .cp-compare-bug, .cp-compare-bug-new { display: block; width: fit-content; margin: 4px 0 0 auto;
   padding: 1px 6px; white-space: nowrap;
   border-radius: 999px; font-size: .72rem; font-variant-numeric: tabular-nums;
   text-decoration: none; border: 1px solid var(--cp-border); }
-.cp-compare-bug { color: light-dark(#8a1c1c, #ef9292); }
+.cp-compare-bug { color: light-dark(#8a1c1c, #ef9292);
+  display: flex; gap: .45em; align-items: baseline; max-width: 26ch; }
+.cp-compare-bug-num { flex: none; }
+/* `min-width: 0` is what makes the ellipsis work at all: a flex item's automatic minimum size is
+   its content, so without this the title refuses to shrink and the pill overflows the cap instead
+   of truncating. Muted against the number, which is the part that is a link you might quote. */
+.cp-compare-bug-title { min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  color: var(--cp-fg-muted); font-variant-numeric: normal; }
 .cp-compare-bug--closed { color: var(--cp-fg-faint); }
+.cp-compare-bug--closed .cp-compare-bug-title { color: inherit; }
 .cp-compare-bug-new { color: var(--cp-fg-muted); border-style: dashed; }
 .cp-compare-bug:hover, .cp-compare-bug-new:hover { border-color: currentColor; }
+/* Below this the three picture panels are what the wall is for, and 26ch of prose beside them is
+   what pushes `Match` past the scroll edge — the exact failure the stacked layout above exists to
+   avoid. The pill falls back to the number it was, tooltip and all. */
+@media (max-width: 1100px) { .cp-compare-bug-title { display: none; } }
 /* The comparison column's header names its lane in the DOM, not in a `::after`. It used to be a
    `font-size: 0` `<th>` with three `content:` rules keyed off `data-format` — which worked, but
    could only ever say the generic "Design reference", because CSS has no way to reach the catalog's

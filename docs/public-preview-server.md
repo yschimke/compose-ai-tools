@@ -2694,7 +2694,16 @@ Two small label vocabularies, both low-cardinality on purpose:
 | `area:comparison` | the comparison or its scoring is wrong |
 | `parity:regression` | it used to match and no longer does |
 | `parity:known-difference` | tolerated, with an acceptance (step 3) |
-| `parity:verification-needed` | a fix landed; the comparison has not confirmed it |
+| `parity:verification-needed` | nobody has established yet whose it is, or a fix landed and the comparison has not confirmed it |
+| `parity:upstream` | the framework or design system the catalog builds on, not the catalog |
+| `parity:catalog` | the catalog's own code draws it wrongly |
+
+The last three are also the report form's own question — **"Where does it belong?"**, beside the
+Summary field. Whatever is chosen there rides to GitHub as the `labels` parameter, so the label is
+applied as the issue is opened, and the body's `**Where it belongs:**` line says the same thing in
+prose for a repository that has no such label to apply. It defaults to `parity:verification-needed`,
+which is the honest answer when the reporter cannot tell — the point of asking on the comparison is
+that the person looking at both pictures is best placed to say, not that they must guess.
 
 Labels are **enrichment, not identity** — they are read when present and ignored when absent. There
 is deliberately **no label per component**: that is what the locator is for, and a few hundred

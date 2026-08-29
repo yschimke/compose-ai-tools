@@ -33,6 +33,17 @@ test("buildIssueIndex canonicalises URLs, labels, and preserves closed rows", ()
   assert.equal(index.issues[0].area, "component");
 });
 
+// The report form's "Where does it belong?" control files these two, so an index that did not know
+// them would drop the classification the reporter took the trouble to make — silently, since an
+// unknown `parity:` value is simply not a match. `ServeParityIssuesStore.PARITY` is the same list at
+// the reading end.
+test("the parity vocabulary carries the answers the report form offers", () => {
+  for (const value of ["upstream", "catalog", "verification-needed"]) {
+    const index = buildIssueIndex([{ html_url: "https://github.com/yschimke/m3-catalog/issues/40", title: "Glyph colour", body, state: "open", labels: [{ name: `parity:${value}` }] }], { generatedAt: "2026-08-15T10:00:00Z" });
+    assert.equal(index.issues[0].parity, value);
+  }
+});
+
 test("canonicalIssueUrl rejects non-GitHub and mismatched shapes", () => {
   assert.equal(canonicalIssueUrl("javascript:alert(1)"), null);
   assert.equal(canonicalIssueUrl("https://github.com/o/r/pull/2"), null);
