@@ -241,6 +241,11 @@ include(":cli")
 // `checkServeModuleBoundary` in its build file fails if anyone wires the dependency back.
 include(":cli:serve")
 
+// Experimental Compose/Wasm client for the preview server. It is deliberately a sibling of
+// `:cli:serve-web`: the existing frontend can continue its Lit -> Vue migration while this app
+// exercises the server's public JSON/render/WebSocket contracts as an independent client.
+include(":cli:serve-wasm")
+
 // The preview-bundle *format* — split out of `:cli` for issue #3824. Everything a reader of a
 // `.previewbundle` needs (well-known entry names, the manifest DTO, sidecar injectors,
 // deterministic zip helpers, the detached signature scheme, classpath hydration, Android
