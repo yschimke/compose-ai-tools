@@ -106,11 +106,21 @@ const TEMPLATE = [
     "{{locators}}",
 ].join("\n");
 
-function row(name: string, component: string, reference: string): string {
+function row(
+    name: string,
+    component: string,
+    reference: string,
+    dark = false,
+): string {
+    const darkAttrs = dark
+        ? `data-png-dark="/render/${name}-dark.png"
+           data-reference-dark="/reference/${reference}-dark.png"
+           data-reference-detail-dark="/compare/${name}-dark?reference=${reference}-dark"`
+        : "";
     return `
       <tr class="cp-compare-row" data-label="${name}" data-hay="${name.toLowerCase()}"
           data-preview-ids="${name}" data-component-id="${component}"
-          data-png-light="/render/${name}.png"
+          data-png-light="/render/${name}.png" ${darkAttrs}
           ${reference ? `data-reference-light="/reference/${reference}.png"` : ""}
           ${reference ? `data-reference-detail-light="/compare/${name}?reference=${reference}"` : ""}>
         <th scope="row"><label class="cp-compare-pick"><input type="checkbox" class="cp-compare-pick-input"></label><a href="/p/${name}">${name}</a></th>
@@ -118,11 +128,6 @@ function row(name: string, component: string, reference: string): string {
         <td class="cp-compare-diff-cell"><canvas class="cp-compare-diff"></canvas></td>
         <td class="cp-compare-target-cell"><img class="cp-compare-vector" alt=""><canvas class="cp-compare-rc" hidden></canvas></td>
         <td class="cp-compare-score"></td>
-        <td class="cp-compare-bugs"><a class="cp-compare-bug-new" href="${
-            reference
-                ? `/compare/${name}?reference=${reference}`
-                : `/p/${name}#cp-report`
-        }" data-bug-fallback="/p/${name}#cp-report">+ file</a></td>
       </tr>`;
 }
 
@@ -225,6 +230,42 @@ describe("the wall's multi-row picker", () => {
             box("ButtonDark").disabled,
             false,
             "unticking gives the sibling back",
+        );
+    });
+
+    // The rows above carry NO Bugs cell, which is what a catalog whose index publishes no issues
+    // serves (`showBugs`). The locator is read from the row's own `data-reference-detail-<variant>`
+    // rather than from the "+ file" anchor that lives in that cell, so picking works on exactly the
+    // catalogs filing their first report — it did not when the anchor was the source.
+    it("does not need the optional Bugs column to pick a row", async () => {
+        await wall(row("Button", "Button/Ideal", "design-button"));
+        assert.equal(document.querySelector(".cp-compare-bug-new"), null);
+        await tick("Button");
+        assert.ok(bodyValue().includes("component: Button/Ideal"), bodyValue());
+    });
+
+    // A row picked, then filtered away, then looked at in the other theme: it is never re-dressed,
+    // so anything read off rendered markup would still name the previous theme's pair.
+    it("follows the theme even for a picked row the filter has hidden", async () => {
+        await wall(
+            row("Button", "Button/Ideal", "design-button", true) +
+                row("Card", "Card/Ideal", "design-card"),
+        );
+        await tick("Button");
+        assert.ok(bodyValue().includes("preview: Button"), bodyValue());
+        const search =
+            document.querySelector<HTMLInputElement>("#cp-compare-search")!;
+        search.value = "card";
+        search.dispatchEvent(new Event("input"));
+        await flush();
+        document
+            .querySelector<HTMLElement>("[data-compare-theme='dark']")!
+            .click();
+        for (let i = 0; i < 6; i++) await flush();
+        assert.ok(bodyValue().includes("preview: Button-dark"), bodyValue());
+        assert.ok(
+            bodyValue().includes("reference: design-button-dark"),
+            bodyValue(),
         );
     });
 

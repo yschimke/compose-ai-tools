@@ -41,7 +41,7 @@ function form(template?: string): HTMLInputElement {
         <cp-report-classification>
           <select name="labels">
             <option value="parity:upstream" data-cp-sentence="${UPSTREAM}">Upstream</option>
-            <option value="parity:verification-needed" data-cp-sentence="${TRIAGE}" selected>Not sure</option>
+            <option value="" data-cp-sentence="${TRIAGE}" selected>Not sure</option>
           </select>
         </cp-report-classification>
         <input type="hidden" name="body" id="cp-report-body" value="${body()}"${

@@ -21,6 +21,8 @@ import {
     type ServeFrame,
 } from "./live/framePainter.js";
 import { visibilityMessage } from "./live/session.js";
+// The one writer of the report form's hidden `body`. See {@link refreshReportLink}.
+import { reportBody } from "./report/body.js";
 import * as rules from "./viewer/rules.js";
 import { viewParam } from "./spec/views.js";
 import {
@@ -1016,21 +1018,29 @@ function refreshLinks(skipUrlSync?: boolean) {
 }
 // Keep the "report an issue" report pointed at what is on screen. The server filled the form's
 // hidden `body` for the settings the page was served at (so this works with JS off); the
-// template it carries has the render URL as a `{{render}}` placeholder, which we swap for the
+// template it carries has the render URL as a `{{render}}` placeholder, which is swapped for the
 // live /render URL so a report filed after fiddling with the knobs shows the render that
 // prompted it. The token is stripped for the same reason the server strips it: an issue body is
 // public, a session token is a capability.
 //
-// Note this writes an INPUT VALUE, never an href: the affordance is a GET form whose action is a
+// Handed to [reportBody] rather than written here, which is the whole point of that module: the
+// field has ONE writer and several producers, and this used to be a second writer assigning
+// `body.value` from the template directly. That was harmless while the render URL was the only
+// thing anyone put in the body. It stopped being harmless the moment `<cp-report-classification>`
+// started writing a line too — every knob, device or theme change on this page calls through here,
+// so a reporter's "upstream" or "catalog" answer was reverted to the generic default by the next
+// control they touched, with the select still showing the answer that had just been dropped.
+//
+// Note this reaches an INPUT VALUE, never an href: the affordance is a GET form whose action is a
 // server-rendered literal, so no page-derived string ever reaches a navigation sink. The browser
-// does the query encoding on submit, which is why the substituted URL goes in raw here.
+// does the query encoding on submit, which is why the substituted URL goes in raw.
 function refreshReportLink() {
     var body = may<HTMLInputElement>("cp-report-body");
     if (!body) return;
-    var tpl = body.getAttribute("data-report-template");
     var field = may<HTMLInputElement>("cp-url-png");
-    if (!tpl || !field || !field.value) return;
-    body.value = tpl.replace("{{render}}", stripToken(field.value));
+    if (!field || !field.value) return;
+    if (!reportBody.attach(body)) return;
+    reportBody.set({ render: stripToken(field.value) });
 }
 function stripToken(url: string) {
     var cut = url.indexOf("?");

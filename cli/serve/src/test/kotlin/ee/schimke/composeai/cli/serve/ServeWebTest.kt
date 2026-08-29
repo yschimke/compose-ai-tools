@@ -1193,26 +1193,59 @@ class ServeWebTest {
             body = "### What's wrong",
             bodyTemplate = "### What's wrong",
             repo = "o/r",
+            classify = true,
           ),
       )
     // `name="labels"` is the whole transport: GitHub's new-issue form reads it straight from the
     // query, so the answer reaches the filed issue with the browser's own control and no script.
     assertTrue(html.contains("<select class=\"cp-report-class-input\" name=\"labels\">"), html)
-    // The three answers, in the `parity:` vocabulary the catalog's own issue index speaks — a value
-    // outside it comes back from `parity/issues.json` as no classification at all.
-    for (value in listOf("parity:upstream", "parity:catalog", "parity:verification-needed")) {
+    // The two answers that carry one, in the `parity:` vocabulary the catalog's own issue index
+    // speaks — a value outside it comes back from `parity/issues.json` as no classification at all.
+    for (value in listOf("parity:upstream", "parity:catalog")) {
       assertTrue(html.contains("<option value=\"$value\""), "$value offered: $html")
     }
-    // Not knowing is the default, and a first-class answer: a report filed without a thought about
-    // this is an unclassified one, and saying so beats a confident wrong label.
+    // Not knowing is the default, and it labels NOTHING. `parity:verification-needed` already
+    // meant "a fix landed, unconfirmed", and attaching any parity label to every report by default
+    // made the producer warn "labelled as parity work but carries no locator block" for reports
+    // filed exactly as designed.
+    assertTrue(
+      html.contains("<option value=\"\" data-cp-sentence=\"Needs investigating"),
+      html,
+    )
     assertTrue(
       html.contains("whether this is ours or upstream.\" selected>Needs investigating"),
       html,
     )
+    assertFalse(html.contains("parity:verification-needed"), html)
     // Every option carries the sentence `<cp-report-classification>` writes into the body, so the
     // issue states the answer in prose as well — for the reader, and for a repository that has no
     // such label to apply.
     assertTrue(html.contains("data-cp-sentence=\"Upstream: the framework"), html)
+  }
+
+  @Test
+  fun `a page-scoped report is not asked where it belongs`() {
+    // A design page, the pages index and the motion browser file a report about a PAGE: there is no
+    // comparison there for "upstream or ours" to be a question about, the answer could never be
+    // joined to anything, and those pages do not all load the bundle that keeps the body in step
+    // with the control. Offering it there would only look like it worked.
+    val preview = ServePreview(id = "plain.Button", label = "button")
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/compose-m3",
+        siblings = listOf(preview),
+        reportIssue =
+          ServeWeb.ReportIssue(
+            action = "https://github.com/o/r/issues/new",
+            body = "### Which page",
+            bodyTemplate = "### Which page",
+            repo = "o/r",
+          ),
+      )
+    assertTrue(html.contains("<form class=\"cp-report-form\""), "the report itself is offered")
+    assertFalse(html.contains("cp-report-classification"), html)
   }
 
   @Test

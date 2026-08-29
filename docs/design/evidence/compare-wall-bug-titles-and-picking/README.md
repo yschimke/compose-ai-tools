@@ -10,8 +10,10 @@ you that something was filed, and could file one more thing, but neither half sa
   locator, so an umbrella issue filed from it reached the Bugs column of none of the rows it was
   about. Ticking rows gives it one `compose-parity-locator/v1` block each.
 
-The report form also gained a third question — **Where does it belong?** — filed as a `parity:`
-label and restated in the issue body.
+The report form also gained a third question — **Where does it belong?** — offered on the viewer,
+the focused comparison and the wall. Upstream and catalog file a `parity:` label and are restated in
+the issue body; the default, "not sure yet", labels nothing, so an unclassified report stays
+unclassified instead of claiming a triage state nobody reached.
 
 Every shot is the committed page fixture, production CSS and JS, captured through the page harness:
 

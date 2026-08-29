@@ -189,6 +189,7 @@ class ServeWebFixtureTest {
       repo = context.repo,
       login = "yschimke",
       subject = subject,
+      classify = pickable,
       locatorSystem = if (pickable) context.system else null,
       locatorRevision = if (pickable) context.catalog else null,
     )
@@ -251,6 +252,9 @@ class ServeWebFixtureTest {
             ),
           repo = ctx.repo,
           login = "yschimke",
+          // Both preview surfaces ask where the difference belongs; only the generic page reports
+          // do not. See [ServeWeb.ReportIssue.classify].
+          classify = true,
         )
       }
 
@@ -7413,20 +7417,28 @@ class ServeWebFixtureTest {
     )
     // The prefilled "report an issue" link follows the on-screen overrides, and never carries the
     // session token into a body destined for a public issue.
+    //
+    // The substitution itself is no longer spelled here. `{{render}}` used to be replaced inline by
+    // this function, which made it a SECOND writer of the report field — harmless while the render
+    // URL was the only thing anyone put in the body, and not harmless once
+    // `<cp-report-classification>` started writing a line too: every knob, device or theme change
+    // goes through here, so a reporter's answer was reverted by the next control they touched. It
+    // hands the render to `report/body.ts` instead, which is the one writer.
     assertTrue(
       viewerSource().contains("function refreshReportLink()") &&
-        viewerSource().contains("{{render}}") &&
-        viewerSource().contains("stripToken("),
+        viewerSourceFlat().contains("reportBody.set({ render: stripToken(field.value) })"),
       "the report body is re-substituted at the current render, token stripped",
     )
-    // …by writing an INPUT VALUE, never an href. The affordance is a GET form whose action is a
-    // server-rendered literal, so no page-derived string can reach a navigation sink.
+    // …and still reaches an INPUT VALUE, never an href. The affordance is a GET form whose action
+    // is a server-rendered literal, so no page-derived string can reach a navigation sink — which
+    // is now a property of the single writer (`ReportBody.write` assigns `input.value`) as well as
+    // of this function.
     val refreshReportLinkSource =
       viewerSource()
         .substringAfter("function refreshReportLink()")
         .substringBefore("function stripToken(")
     assertTrue(
-      refreshReportLinkSource.contains("body.value = tpl.replace(") &&
+      refreshReportLinkSource.contains("reportBody.set({") &&
         !refreshReportLinkSource.contains(".href = "),
       "the report prefill goes into a form input, not a navigation sink",
     )

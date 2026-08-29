@@ -308,19 +308,30 @@ export class CompareWall extends LitElement {
     /**
      * The locator a row would contribute right now, or null if it would contribute none.
      *
-     * Read from the row's own "+ file" href — the one {@link dressRow} has already re-pointed at
-     * the pair this row is SHOWING — so the picked set follows the lane and the theme without a
-     * second copy of the pairing rules to keep in step.
+     * Resolved from the row's OWN `data-reference-detail-<variant>` at the lane and theme the wall
+     * is currently showing — the same attribute {@link dressRow} points "+ file" at, read the same
+     * way, so the picked set follows the lane without a second copy of the pairing rules.
+     *
+     * Read from the attribute rather than from that anchor's `href`, which is what this did first
+     * and which was wrong twice over. The anchor lives in the **Bugs** cell, and that cell is
+     * omitted entirely for a catalog whose index publishes no issues (`showBugs`) — so picking was
+     * dead exactly on the catalogs filing their first report. And the anchor is only re-pointed
+     * when a row is DRESSED, which {@link applySearch} does only for rows the filter keeps: a row
+     * picked, then filtered away, then looked at in the other theme kept the previous theme's pair
+     * and would have filed a comparison the wall was no longer making. The attributes are on every
+     * row, always, and carry every variant, so neither depends on anything having been rendered.
      */
     private locatorFor(row: HTMLElement) {
         const facts = this.pickFacts;
         if (!facts) return null;
-        const report = row.querySelector<HTMLAnchorElement>(
-            ".cp-compare-bug-new",
+        const sources = this.sourcesOf(row);
+        const variant = variantFor(
+            sources,
+            this.state.format,
+            this.state.theme,
         );
-        const detail = report?.getAttribute("href") ?? "";
         return locatorForRow(
-            detail,
+            variant ? sources("reference-detail", variant) : "",
             location.href,
             row.getAttribute("data-component-id") ?? "",
             facts,
@@ -443,6 +454,12 @@ export class CompareWall extends LitElement {
         if (this.lanesPane) this.lanesPane.hidden = !this.lanesActive();
         if (this.formatsPane) this.formatsPane.hidden = this.lanesActive();
         if (this.lanesActive()) {
+            // Explicitly, before the early return, because the path that normally recomputes the
+            // picks is the one this branch skips: {@link applySearch} hands the query to the player
+            // wall and returns without walking the table. A catalog with a published player wall
+            // would otherwise leave a ticked row's locator sitting in a form the reader can still
+            // submit, filing reference comparisons the page has stopped showing.
+            this.syncPicks();
             this.applySearch();
             return;
         }

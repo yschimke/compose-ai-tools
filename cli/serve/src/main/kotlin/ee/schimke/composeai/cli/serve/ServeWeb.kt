@@ -1093,6 +1093,18 @@ ${captureControlsHtml().prependIndent("          ")}
     val login: String? = null,
     val subject: String = "this preview",
     /**
+     * Whether to ask "where does it belong?" — true where a `parity:` answer is about something.
+     *
+     * The preview surfaces (the viewer, the focused comparison) and the comparison wall, and
+     * nothing else. A design page, the pages index, the motion browser and the landing grid all
+     * file a report about a *page*: there is no comparison there for "upstream or ours" to be a
+     * question about, and — the practical half — those pages do not all load `serve-components.js`,
+     * so `<cp-report-classification>` would never upgrade there and the body would keep saying the
+     * generic line while the select showed an answer. Both reasons point the same way, so the
+     * control is offered where it means something and omitted where it would only look like it did.
+     */
+    val classify: Boolean = false,
+    /**
      * The design system id a browser-written locator has to name, when this page can write one.
      *
      * Non-null is what turns the comparison wall's row pickers on: it says the template carries
@@ -1253,6 +1265,7 @@ ${captureControlsHtml().prependIndent("          ")}
     // template has a `{{locators}}` line to fill (see [ReportIssue.locatorSystem]), so their
     // presence is also the signal that turns the wall's row pickers on — one attribute the script
     // reads rather than a second flag that could disagree with the template.
+    val classification = if (r.classify) reportClassificationHtml() else ""
     val locatorFacts =
       (r.locatorSystem
         ?.takeIf { it.isNotBlank() }
@@ -1270,7 +1283,7 @@ ${captureControlsHtml().prependIndent("          ")}
       "<label class=\"cp-report-summary\">Summary" +
       "<input class=\"cp-report-summary-input\" type=\"text\" name=\"title\" required" +
       " autocomplete=\"off\" placeholder=\"Briefly describe what is wrong\"></label>" +
-      reportClassificationHtml() +
+      classification +
       "<input type=\"hidden\" name=\"body\" id=\"cp-report-body\"" +
       " value=\"${WebEscaping.htmlEscape(r.body)}\"" +
       " data-report-template=\"${WebEscaping.htmlEscape(r.bodyTemplate)}\">" +
@@ -1319,19 +1332,21 @@ ${captureControlsHtml().prependIndent("          ")}
           "</option>"
       } +
       "</select></label>" +
-      "<span class=\"cp-report-class-note\">Applied as a <code>parity:</code> label, so the " +
-      "catalog&rsquo;s issue index can tell a difference that is ours from one that is not. " +
-      "Leave it on <em>needs investigating</em> if you are not sure — that is what it is for." +
-      "</span></cp-report-classification>"
+      "<span class=\"cp-report-class-note\">Upstream and catalog are applied as a " +
+      "<code>parity:</code> label, so the catalog&rsquo;s issue index can tell a difference that " +
+      "is ours from one that is not. <em>Needs investigating</em> labels nothing — not knowing is " +
+      "an answer, and leaving it there beats a confident wrong label.</span>" +
+      "</cp-report-classification>"
 
   /**
    * The three answers, as `label value` → visible text → the sentence the issue body states.
    *
-   * `verification-needed` is the existing `parity:` value for "somebody has to look at this", so
-   * the third answer reuses it rather than minting a synonym beside it. The other two are new and
-   * are added to the vocabulary at both ends of the round trip — the producer
+   * Only two of the three carry a label. `upstream` and `catalog` are new values, added to the
+   * vocabulary at both ends of the round trip — the producer
    * (`scripts/design-artifacts/parity-issues.mjs`) and the reader ([ServeParityIssuesStore]) —
-   * since a value only one end knows is a label the index silently drops.
+   * since a value only one end knows is a label the index silently drops. The third labels nothing
+   * at all; see [REPORT_CLASSIFICATION_DEFAULT] for why "not sure" is an empty value rather than
+   * the `parity:verification-needed` it started as.
    */
   private val REPORT_CLASSIFICATIONS =
     listOf(
@@ -1346,13 +1361,24 @@ ${captureControlsHtml().prependIndent("          ")}
         "A catalog bug: the code in this repository draws it wrongly.",
       ),
       Triple(
-        "parity:verification-needed",
+        "",
         "Needs investigating — not sure yet",
         "Needs investigating: the reporter could not tell whether this is ours or upstream.",
       ),
     )
 
-  private const val REPORT_CLASSIFICATION_DEFAULT = "parity:verification-needed"
+  /**
+   * The default answer, which applies **no label**.
+   *
+   * It carried `parity:verification-needed` first, and that was wrong twice over. The value already
+   * meant something specific — "a fix landed; the comparison has not confirmed it" — which is a
+   * triage state somebody reaches, not the state every report starts in; and attaching it to every
+   * report by default made `parity-issues.mjs` warn "labelled as parity work but carries no locator
+   * block" for reports filed exactly as designed, which is the one place that warning had to stay
+   * meaningful. The absence of a classification IS the unclassified state, so the default says so
+   * in the body and leaves the label list alone. GitHub ignores an empty `labels=`.
+   */
+  private const val REPORT_CLASSIFICATION_DEFAULT = ""
 
   /**
    * The same affordance as a **row of its own**, for a page-scoped report on a surface that carries

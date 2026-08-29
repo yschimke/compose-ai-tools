@@ -3846,6 +3846,10 @@ class ServeHttpServer(
             ),
           repo = reportContext.repo,
           login = githubAuth?.currentLogin(call),
+          // The focused comparison is the page the classification is most about: both pictures are
+          // on screen, so the reporter is the person best placed to say which side the difference
+          // lives on.
+          classify = true,
         )
       val revisions = catalogRevisions(renderHost, preview.id)
       val pinned = revisions.pinned != null
@@ -4587,6 +4591,8 @@ class ServeHttpServer(
       repo = context.repo,
       login = githubAuth?.currentLogin(call),
       subject = subject,
+      // Only the wall, which is the only page-scoped report that can name comparisons at all.
+      classify = pickable,
       locatorSystem = if (pickable) context.system else null,
       locatorRevision = if (pickable) context.catalog else null,
     )
@@ -7491,6 +7497,12 @@ class ServeHttpServer(
           bodyTemplate = ServeIssueReport.body(reportContext, renderPlaceholder = true),
           repo = reportContext.repo,
           login = githubAuth?.currentLogin(call),
+          // The viewer is where someone actually notices a button rendering wrongly, and "is this
+          // ours or upstream" is the same question about it. This report names no design reference
+          // and so carries no locator — see [ServeIssueReport.locator] — which is exactly why the
+          // default answer labels nothing: a `parity:` label on an unindexable report is the case
+          // `parity-issues.mjs` warns about, and it should only be there when somebody meant it.
+          classify = true,
         )
       val liveAuthPrompt =
         githubAuth
