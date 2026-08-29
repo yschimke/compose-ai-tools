@@ -228,6 +228,6 @@ and every shared link sells the OSS tool.
 ## See also
 
 - [public-preview-server.md](public-preview-server.md) — what the server does today.
-- [`deploy/image`](../deploy/image/README.md) — the prebuilt host image and rollout chain.
+- [`deploy/image`](https://github.com/yschimke/compose-preview-server/blob/main/deploy/image/README.md) — the prebuilt host image and rollout chain.
 - [`deploy/vps`](../deploy/vps/README.md), [`deploy/oracle`](../deploy/oracle/README.md),
   [`deploy/cloudrun`](../deploy/cloudrun/README.md) — the three cost profiles.

@@ -313,10 +313,10 @@ class ThemeCachePersistenceTest {
   /**
    * The rollout case, which a timestamp comparison alone gets wrong.
    *
-   * `deploy/image` rolls out zero-downtime: the outgoing replica keeps serving — and keeps
-   * rendering into this same directory — while the incoming one boots. A render it writes after the
-   * new build set its boundary carries a LATER timestamp, so a bare `now` boundary files an
-   * old-build render as current, and the sample cannot catch it either because the sample only
+   * The prebuilt preview-server image rolls out zero-downtime: the outgoing replica keeps serving —
+   * and keeps rendering into this same directory — while the incoming one boots. A render it writes
+   * after the new build set its boundary carries a LATER timestamp, so a bare `now` boundary files
+   * an old-build render as current, and the sample cannot catch it either because the sample only
    * examines what was present at open.
    */
   @Test

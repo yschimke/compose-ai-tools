@@ -101,10 +101,10 @@ public interface ServeOptions {
   /**
    * Optional git repo root the trusted-catalog builder ([buildTrustedCatalogSource]) and its
    * [GitWorktrees] use, instead of the served module's own project root ([findProjectRoot]). Lets a
-   * module-less box (e.g. the prebuilt `deploy/image`) live-render a fetched catalog by pointing
-   * this at a separate checkout of the catalog's `source.repo` (which the entrypoint clones). The
-   * `source.repo == `[catalogRepo] and `--revisions-allow` gates are unchanged — this only moves
-   * the worktree root. Off ⇒ the served module's project root, as before.
+   * module-less box (e.g. the prebuilt preview-server image) live-render a fetched catalog by
+   * pointing this at a separate checkout of the catalog's `source.repo` (which the entrypoint
+   * clones). The `source.repo == `[catalogRepo] and `--revisions-allow` gates are unchanged — this
+   * only moves the worktree root. Off ⇒ the served module's project root, as before.
    */
   public val catalogSourceRoot: File?
 

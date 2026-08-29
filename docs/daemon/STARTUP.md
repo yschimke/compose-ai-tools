@@ -20,9 +20,10 @@ resolver, at run time, into the Maven local repo —
 `~/.m2/repository/org/robolectric/android-all-instrumented/{ver}/`. Not
 `~/.cache/robolectric`, and not via Gradle: no Gradle dependency
 declares it, so neither a Gradle cache nor the BuildFetch remote cache
-covers it. `deploy/image/Dockerfile` prefetches that exact coordinate
-into the image layer, and the integration matrix restores the same
-directory from an Actions cache, both for this reason.
+covers it. compose-preview-server's [`deploy/image/Dockerfile`](https://github.com/yschimke/compose-preview-server/blob/main/deploy/image/Dockerfile)
+prefetches that exact coordinate into the image layer, and the
+integration matrix restores the same directory from an Actions cache,
+both for this reason.
 
 ## Where the time goes
 

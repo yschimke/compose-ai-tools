@@ -771,8 +771,11 @@ tasks.register<CheckDaemonLaunchSchema>("checkDaemonLaunchSchema") {
   // SKIP the checker itself applies. Eagerly to a String for the configuration-cache reason given
   // below.
   val serverDockerfilePath: String? =
-    providers.environmentVariable("COMPOSE_PREVIEW_SERVER_ROOT").orNull?.takeIf { it.isNotBlank() }
-      ?.let { java.io.File(it, "deploy/image/Dockerfile") }
+    providers
+      .environmentVariable("COMPOSE_PREVIEW_SERVER_ROOT")
+      .orNull
+      ?.takeIf { it.isNotBlank() }
+      ?.let { File(it, "deploy/image/Dockerfile") }
       ?.takeIf { it.isFile }
       ?.absolutePath
       ?: repoRoot.asFile.parentFile

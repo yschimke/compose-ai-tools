@@ -30,9 +30,9 @@ import ee.schimke.composeai.preview.TypographyCatalog
  *   fonts.google.com's `ofl/robotoflex`).
  * * **Google Sans Flex** — the Material 3 Expressive brand face. It is in no license directory of
  *   the [google/fonts](https://github.com/google/fonts) corpus, but the **CSS2 endpoint serves it**
- *   (see `deploy/image/README.md`, which bakes it into the image font cache for the same reason),
- *   so it resolves through the same downloadable path as every other family here rather than
- *   degrading to the platform sans as it did before.
+ *   (see compose-preview-server's `deploy/image/README.md`, which bakes it into the image font
+ *   cache for the same reason), so it resolves through the same downloadable path as every other
+ *   family here rather than degrading to the platform sans as it did before.
  * * **Lobster Two** — a deliberately distinctive display face, so a font override is unmistakable.
  * * **JetBrains Mono** / **Inter** — the pair Confetti Wear's KotlinConf identity is built from
  *   (mono titles, Inter body; see `design/STYLE_GUIDE.md` in joreilly/Confetti). Declared here as
