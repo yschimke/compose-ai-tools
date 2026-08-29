@@ -312,7 +312,12 @@ class RemoteComposeOverrideExtension(private val seed: RemoteComposeOverride? = 
     // because this controller's named-value map is also written back by user code's
     // `setNamedValue` during composition — re-applying the seed every pass would clobber those.
     // See the class KDoc.
-    remember(seed) { RemoteComposeController.set(seed) }
+    remember(seed) {
+      RemoteComposeController.set(seed)
+      // A remember calculation must return a value. Returning the key preserves the required
+      // composition-time seed application without introducing any additional state.
+      seed
+    }
     DisposableEffect(seed) {
       // Clear declarations at render start (mirrors PreviewOverridesOverrideExtension): a held
       // session re-rendering with a shrunk knob set must not carry stale controls. A
