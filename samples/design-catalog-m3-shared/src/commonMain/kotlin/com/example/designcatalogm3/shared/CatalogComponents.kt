@@ -55,6 +55,8 @@ import com.example.designcatalogm3.shared.generated.resources.slot_headline
 import com.example.designcatalogm3.shared.generated.resources.slot_supporting
 import com.example.designcatalogm3.shared.generated.resources.textfield_label
 import ee.schimke.composeai.preview.slots.PreviewSlot
+import ee.schimke.composeai.preview.slots.PreviewSlotConstraints
+import ee.schimke.composeai.preview.slots.PreviewSlotSizing
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -163,16 +165,40 @@ fun CatalogComponent(id: String) {
     "card-slots" ->
       ElevatedCard {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-          PreviewSlot("leadingIcon", Modifier.size(40.dp)) {
+          PreviewSlot(
+            "leadingIcon",
+            Modifier.size(40.dp),
+            constraints =
+              PreviewSlotConstraints(
+                horizontal = PreviewSlotSizing.Fixed,
+                vertical = PreviewSlotSizing.Fixed,
+              ),
+          ) {
             Box(
               Modifier.size(40.dp).background(catalogOverrideColor("iconColor", Color(0xFF6750A4)))
             )
           }
           Column(Modifier.padding(start = 12.dp)) {
-            PreviewSlot("headline", Modifier.size(140.dp, 20.dp)) {
+            PreviewSlot(
+              "headline",
+              Modifier.width(140.dp),
+              constraints =
+                PreviewSlotConstraints(
+                  horizontal = PreviewSlotSizing.Fixed,
+                  vertical = PreviewSlotSizing.Hug,
+                ),
+            ) {
               Text(catalogOverrideString("headline", stringResource(Res.string.slot_headline)))
             }
-            PreviewSlot("supporting", Modifier.size(140.dp, 16.dp)) {
+            PreviewSlot(
+              "supporting",
+              Modifier.width(140.dp),
+              constraints =
+                PreviewSlotConstraints(
+                  horizontal = PreviewSlotSizing.Fixed,
+                  vertical = PreviewSlotSizing.Hug,
+                ),
+            ) {
               Text(catalogOverrideString("supporting", stringResource(Res.string.slot_supporting)))
             }
           }

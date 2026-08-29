@@ -1,5 +1,7 @@
 package ee.schimke.composeai.servewasm
 
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -31,6 +33,49 @@ class UiComposerTest {
     assertEquals(0, composerDropIndex(40f, centers))
     assertEquals(1, composerDropIndex(150f, centers))
     assertEquals(3, composerDropIndex(340f, centers))
+  }
+
+  @Test
+  fun `component can move from the canvas into a named slot`() {
+    val target = ComposerSlotTarget(hostKey = 4, slotName = "content")
+    val host = ComposerItem(4, "card-slots")
+    val moving = ComposerItem(5, "button-filled")
+
+    val nested =
+      putComposerItemInSlot(removeComposerItem(listOf(host, moving), moving.key), target, moving)
+
+    assertEquals(listOf(4), nested.map { it.key })
+    assertEquals(moving, nested.single().slots["content"])
+    assertEquals(2, composerItemCount(nested))
+    assertEquals(moving, composerItemByKey(nested, moving.key))
+  }
+
+  @Test
+  fun `clearing a slot preserves its host`() {
+    val host =
+      ComposerItem(
+        4,
+        "card-slots",
+        slots = mapOf("content" to ComposerItem(5, "button-filled")),
+      )
+
+    val cleared = putComposerSlots(listOf(host), host.key, emptyMap())
+
+    assertTrue(cleared.single().slots.isEmpty())
+  }
+
+  @Test
+  fun `smallest overlapping slot wins hit testing`() {
+    val outer = ComposerSlotTarget(1, "outer")
+    val inner = ComposerSlotTarget(2, "inner")
+
+    assertEquals(
+      inner,
+      composerSlotAt(
+        Offset(50f, 50f),
+        mapOf(outer to Rect(0f, 0f, 100f, 100f), inner to Rect(25f, 25f, 75f, 75f)),
+      ),
+    )
   }
 
   @Test

@@ -35,11 +35,13 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -51,14 +53,25 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.example.designcatalogm3.shared.CatalogComponent
 import com.example.designcatalogm3.shared.LocalWasmCatalogKnobs
 import com.example.designcatalogm3.shared.catalogComponentIds
 import com.example.designcatalogm3.shared.catalogTypography
+import ee.schimke.composeai.preview.slots.LocalPreviewSlotHost
+import ee.schimke.composeai.preview.slots.PreviewSlotHost
+import ee.schimke.composeai.preview.slots.PreviewSlotInfo
+import ee.schimke.composeai.preview.slots.PreviewSlotSizing
 import kotlin.math.roundToInt
 
-internal data class ComposerItem(val key: Int, val componentId: String)
+internal data class ComposerItem(
+  val key: Int,
+  val componentId: String,
+  val slots: Map<String, ComposerItem> = emptyMap(),
+)
+
+internal data class ComposerSlotTarget(val hostKey: Int, val slotName: String)
 
 private data class ComposerDrag(
   val componentId: String,
@@ -84,13 +97,82 @@ internal fun moveComposerItem(
 internal fun composerDropIndex(y: Float, itemCenters: List<Float>): Int =
   itemCenters.indexOfFirst { y < it }.takeIf { it >= 0 } ?: itemCenters.size
 
+internal fun composerItemByKey(items: List<ComposerItem>, key: Int): ComposerItem? =
+  items.firstNotNullOfOrNull { item ->
+    if (item.key == key) item else composerItemByKey(item.slots.values.toList(), key)
+  }
+
+internal fun removeComposerItem(items: List<ComposerItem>, key: Int): List<ComposerItem> =
+  items.mapNotNull { item ->
+    when {
+      item.key == key -> null
+      else ->
+        item.copy(
+          slots =
+            item.slots
+              .mapNotNull { (name, child) ->
+                if (child.key == key) null
+                else name to removeComposerItem(listOf(child), key).single()
+              }
+              .toMap()
+        )
+    }
+  }
+
+internal fun putComposerItemInSlot(
+  items: List<ComposerItem>,
+  target: ComposerSlotTarget,
+  child: ComposerItem,
+): List<ComposerItem> = items.map { item ->
+  when {
+    item.key == target.hostKey -> item.copy(slots = item.slots + (target.slotName to child))
+    else ->
+      item.copy(
+        slots =
+          item.slots.mapValues { (_, nested) ->
+            putComposerItemInSlot(listOf(nested), target, child).single()
+          }
+      )
+  }
+}
+
+internal fun putComposerSlots(
+  items: List<ComposerItem>,
+  hostKey: Int,
+  slots: Map<String, ComposerItem>,
+): List<ComposerItem> = items.map { item ->
+  when {
+    item.key == hostKey -> item.copy(slots = slots)
+    else ->
+      item.copy(
+        slots =
+          item.slots.mapValues { (_, child) ->
+            putComposerSlots(listOf(child), hostKey, slots).single()
+          }
+      )
+  }
+}
+
+internal fun composerSlotAt(
+  position: Offset,
+  bounds: Map<ComposerSlotTarget, Rect>,
+): ComposerSlotTarget? =
+  bounds
+    .filterValues { it.contains(position) }
+    .minByOrNull { (_, rect) -> rect.width * rect.height }
+    ?.key
+
+internal fun composerItemCount(items: List<ComposerItem>): Int = items.sumOf { item ->
+  1 + composerItemCount(item.slots.values.toList())
+}
+
 @Composable
 internal fun UiComposer(compact: Boolean) {
   var items by remember {
     mutableStateOf(
       listOf(
         ComposerItem(0, "text-maxlines-truncated"),
-        ComposerItem(1, "textfield-filled"),
+        ComposerItem(1, "card-slots"),
         ComposerItem(2, "switch-on"),
         ComposerItem(3, "button-filled"),
       )
@@ -105,6 +187,8 @@ internal fun UiComposer(compact: Boolean) {
   var composerBounds by remember { mutableStateOf(Rect.Zero) }
   var canvasBounds by remember { mutableStateOf(Rect.Zero) }
   val itemBounds = remember { mutableMapOf<Int, Rect>() }
+  val slotBounds = remember { mutableMapOf<ComposerSlotTarget, Rect>() }
+  val slotInfos = remember { mutableStateMapOf<ComposerSlotTarget, PreviewSlotInfo>() }
   var drag by remember { mutableStateOf<ComposerDrag?>(null) }
 
   fun add(componentId: String, index: Int = items.size) {
@@ -115,6 +199,21 @@ internal fun UiComposer(compact: Boolean) {
 
   fun finishDrag() {
     val dropped = drag ?: return
+    val slotTarget = composerSlotAt(dropped.position, slotBounds)
+    if (slotTarget != null && composerItemByKey(items, slotTarget.hostKey) != null) {
+      val sourceItem = dropped.sourceKey?.let { composerItemByKey(items, it) }
+      val wouldCreateCycle =
+        sourceItem?.let { composerItemByKey(listOf(it), slotTarget.hostKey) } != null
+      if (!wouldCreateCycle) {
+        val child = sourceItem ?: ComposerItem(nextKey++, dropped.componentId)
+        val withoutSource =
+          dropped.sourceKey?.let { sourceKey -> removeComposerItem(items, sourceKey) } ?: items
+        items = putComposerItemInSlot(withoutSource, slotTarget, child)
+        selectedKey = slotTarget.hostKey
+      }
+      drag = null
+      return
+    }
     if (canvasBounds.contains(dropped.position)) {
       val centers = items.mapNotNull { itemBounds[it.key]?.center?.y }
       val target = composerDropIndex(dropped.position.y, centers)
@@ -160,6 +259,9 @@ internal fun UiComposer(compact: Boolean) {
           onSelect = { selectedKey = it },
           onBounds = { canvasBounds = it },
           onItemBounds = { key, bounds -> itemBounds[key] = bounds },
+          onSlotBounds = { target, bounds -> slotBounds[target] = bounds },
+          onSlotDiscovered = { target, info -> slotInfos[target] = info },
+          hoveredSlot = drag?.position?.let { composerSlotAt(it, slotBounds) },
           onDragStart = startDrag,
           onDrag = updateDrag,
           onDragEnd = ::finishDrag,
@@ -179,6 +281,13 @@ internal fun UiComposer(compact: Boolean) {
           onItems = { items = it },
           onSelect = { selectedKey = it },
           onDuplicate = { id -> add(id, items.indexOfFirst { it.key == selectedKey } + 1) },
+          slotInfos = slotInfos,
+          onClearSlot = { target ->
+            items =
+              composerItemByKey(items, target.hostKey)?.let { host ->
+                putComposerSlots(items, host.key, host.slots - target.slotName)
+              } ?: items
+          },
         )
       }
     } else {
@@ -205,6 +314,9 @@ internal fun UiComposer(compact: Boolean) {
           onSelect = { selectedKey = it },
           onBounds = { canvasBounds = it },
           onItemBounds = { key, bounds -> itemBounds[key] = bounds },
+          onSlotBounds = { target, bounds -> slotBounds[target] = bounds },
+          onSlotDiscovered = { target, info -> slotInfos[target] = info },
+          hoveredSlot = drag?.position?.let { composerSlotAt(it, slotBounds) },
           onDragStart = startDrag,
           onDrag = updateDrag,
           onDragEnd = ::finishDrag,
@@ -228,6 +340,13 @@ internal fun UiComposer(compact: Boolean) {
           onItems = { items = it },
           onSelect = { selectedKey = it },
           onDuplicate = { id -> add(id, items.indexOfFirst { it.key == selectedKey } + 1) },
+          slotInfos = slotInfos,
+          onClearSlot = { target ->
+            items =
+              composerItemByKey(items, target.hostKey)?.let { host ->
+                putComposerSlots(items, host.key, host.slots - target.slotName)
+              } ?: items
+          },
         )
       }
     }
@@ -341,6 +460,9 @@ private fun ComposerCanvas(
   onSelect: (Int) -> Unit,
   onBounds: (Rect) -> Unit,
   onItemBounds: (Int, Rect) -> Unit,
+  onSlotBounds: (ComposerSlotTarget, Rect) -> Unit,
+  onSlotDiscovered: (ComposerSlotTarget, PreviewSlotInfo) -> Unit,
+  hoveredSlot: ComposerSlotTarget?,
   onDragStart: (String, Int?, Offset) -> Unit,
   onDrag: (Offset) -> Unit,
   onDragEnd: () -> Unit,
@@ -391,7 +513,13 @@ private fun ComposerCanvas(
             items.forEach { item ->
               if (previewMode) {
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
-                  CatalogComponent(item.componentId)
+                  ComposerCatalogItem(
+                    item = item,
+                    previewMode = true,
+                    hoveredSlot = hoveredSlot,
+                    onSlotBounds = onSlotBounds,
+                    onSlotDiscovered = onSlotDiscovered,
+                  )
                 }
               } else {
                 EditableCanvasItem(
@@ -402,6 +530,9 @@ private fun ComposerCanvas(
                   onDragStart = onDragStart,
                   onDrag = onDrag,
                   onDragEnd = onDragEnd,
+                  hoveredSlot = hoveredSlot,
+                  onSlotBounds = onSlotBounds,
+                  onSlotDiscovered = onSlotDiscovered,
                 )
               }
             }
@@ -421,6 +552,9 @@ private fun EditableCanvasItem(
   onDragStart: (String, Int?, Offset) -> Unit,
   onDrag: (Offset) -> Unit,
   onDragEnd: () -> Unit,
+  hoveredSlot: ComposerSlotTarget?,
+  onSlotBounds: (ComposerSlotTarget, Rect) -> Unit,
+  onSlotDiscovered: (ComposerSlotTarget, PreviewSlotInfo) -> Unit,
 ) {
   var bounds by remember { mutableStateOf(Rect.Zero) }
   Row(
@@ -459,8 +593,146 @@ private fun EditableCanvasItem(
       Modifier.weight(1f).padding(10.dp).clickable(onClick = onSelect),
       contentAlignment = Alignment.CenterStart,
     ) {
-      CatalogComponent(item.componentId)
+      ComposerCatalogItem(
+        item = item,
+        previewMode = false,
+        hoveredSlot = hoveredSlot,
+        onSlotBounds = onSlotBounds,
+        onSlotDiscovered = onSlotDiscovered,
+      )
     }
+  }
+}
+
+@Composable
+private fun ComposerCatalogItem(
+  item: ComposerItem,
+  previewMode: Boolean,
+  hoveredSlot: ComposerSlotTarget?,
+  onSlotBounds: (ComposerSlotTarget, Rect) -> Unit,
+  onSlotDiscovered: (ComposerSlotTarget, PreviewSlotInfo) -> Unit,
+) {
+  val slotHost =
+    object : PreviewSlotHost {
+      override fun onPositioned(slot: PreviewSlotInfo, bounds: Rect) {
+        val target = ComposerSlotTarget(item.key, slot.name)
+        onSlotDiscovered(target, slot)
+        onSlotBounds(target, bounds)
+      }
+
+      @Composable
+      override fun Content(slot: PreviewSlotInfo, defaultContent: @Composable () -> Unit) {
+        val child = item.slots[slot.name]
+        if (previewMode) {
+          if (child == null) {
+            defaultContent()
+          } else {
+            SlotChild(
+              child = child,
+              slot = slot,
+              previewMode = true,
+              hoveredSlot = hoveredSlot,
+              onSlotBounds = onSlotBounds,
+              onSlotDiscovered = onSlotDiscovered,
+            )
+          }
+        } else {
+          val target = ComposerSlotTarget(item.key, slot.name)
+          val hovered = hoveredSlot == target
+          SlotEditor(
+            child = child,
+            slot = slot,
+            hovered = hovered,
+            previewMode = false,
+            hoveredSlot = hoveredSlot,
+            onSlotBounds = onSlotBounds,
+            onSlotDiscovered = onSlotDiscovered,
+          )
+        }
+      }
+    }
+  CompositionLocalProvider(LocalPreviewSlotHost provides slotHost) {
+    CatalogComponent(item.componentId)
+  }
+}
+
+@Composable
+private fun SlotEditor(
+  child: ComposerItem?,
+  slot: PreviewSlotInfo,
+  hovered: Boolean,
+  previewMode: Boolean,
+  hoveredSlot: ComposerSlotTarget?,
+  onSlotBounds: (ComposerSlotTarget, Rect) -> Unit,
+  onSlotDiscovered: (ComposerSlotTarget, PreviewSlotInfo) -> Unit,
+) {
+  val emptyHeight = if (slot.constraints.vertical == PreviewSlotSizing.Fixed) 16.dp else 32.dp
+  Box(
+    Modifier.fillMaxWidth()
+      .then(if (child == null) Modifier.height(emptyHeight) else Modifier)
+      .clipToBounds()
+      .background(
+        if (hovered) MaterialTheme.colorScheme.primary.copy(alpha = .28f)
+        else MaterialTheme.colorScheme.primary.copy(alpha = .10f)
+      )
+      .border(
+        1.dp,
+        if (hovered) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+      )
+      .padding(
+        start = slot.constraints.padding.startDp.dp,
+        top = slot.constraints.padding.topDp.dp,
+        end = slot.constraints.padding.endDp.dp,
+        bottom = slot.constraints.padding.bottomDp.dp,
+      ),
+    contentAlignment = Alignment.CenterStart,
+  ) {
+    if (child == null) {
+      Text(
+        slot.name,
+        Modifier.padding(horizontal = 3.dp),
+        fontSize = 8.sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        color = MaterialTheme.colorScheme.primary,
+      )
+    } else {
+      SlotChild(
+        child = child,
+        slot = slot,
+        previewMode = previewMode,
+        hoveredSlot = hoveredSlot,
+        onSlotBounds = onSlotBounds,
+        onSlotDiscovered = onSlotDiscovered,
+      )
+    }
+  }
+}
+
+@Composable
+private fun SlotChild(
+  child: ComposerItem,
+  slot: PreviewSlotInfo,
+  previewMode: Boolean,
+  hoveredSlot: ComposerSlotTarget?,
+  onSlotBounds: (ComposerSlotTarget, Rect) -> Unit,
+  onSlotDiscovered: (ComposerSlotTarget, PreviewSlotInfo) -> Unit,
+) {
+  Box(
+    Modifier.then(
+        if (slot.constraints.horizontal == PreviewSlotSizing.Fill) Modifier.fillMaxWidth()
+        else Modifier
+      )
+      .clipToBounds(),
+    contentAlignment = Alignment.CenterStart,
+  ) {
+    ComposerCatalogItem(
+      item = child,
+      previewMode = previewMode,
+      hoveredSlot = hoveredSlot,
+      onSlotBounds = onSlotBounds,
+      onSlotDiscovered = onSlotDiscovered,
+    )
   }
 }
 
@@ -491,9 +763,20 @@ private fun ComposerInspector(
   onItems: (List<ComposerItem>) -> Unit,
   onSelect: (Int?) -> Unit,
   onDuplicate: (String) -> Unit,
+  slotInfos: Map<ComposerSlotTarget, PreviewSlotInfo>,
+  onClearSlot: (ComposerSlotTarget) -> Unit,
 ) {
   val selectedIndex = items.indexOfFirst { it.key == selectedKey }
   val selected = items.getOrNull(selectedIndex)
+  val selectedSlots =
+    selected
+      ?.let { host ->
+        slotInfos
+          .filterKeys { target -> target.hostKey == host.key }
+          .toList()
+          .sortedBy { it.first.slotName }
+      }
+      .orEmpty()
   Column(
     modifier.background(Color(0xFF15181D)).padding(18.dp).verticalScroll(rememberScrollState()),
     verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -520,6 +803,40 @@ private fun ComposerInspector(
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.secondary,
       )
+      if (selectedSlots.isNotEmpty()) {
+        Text("Slots", style = MaterialTheme.typography.labelLarge)
+        selectedSlots.forEach { (target, info) ->
+          val child = selected.slots[target.slotName]
+          Column(
+            Modifier.fillMaxWidth()
+              .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
+              .padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+          ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              Column(Modifier.weight(1f)) {
+                Text(info.name, style = MaterialTheme.typography.bodySmall)
+                Text(
+                  "${info.constraints.horizontal.name.lowercase()} × " +
+                    info.constraints.vertical.name.lowercase(),
+                  style = MaterialTheme.typography.labelSmall,
+                  color = MaterialTheme.colorScheme.secondary,
+                )
+              }
+              if (child != null) {
+                OutlinedButton(onClick = { onClearSlot(target) }) { Text("Clear") }
+              }
+            }
+            Text(
+              child?.let { componentLabel(it.componentId) } ?: "Drop a component here",
+              style = MaterialTheme.typography.labelSmall,
+              color =
+                if (child == null) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.secondary,
+            )
+          }
+        }
+      }
       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(
           onClick = { onItems(moveComposerItem(items, selectedIndex, selectedIndex - 1)) },
@@ -552,7 +869,7 @@ private fun ComposerInspector(
       }
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-    Text("${items.size} components", style = MaterialTheme.typography.labelLarge)
+    Text("${composerItemCount(items)} components", style = MaterialTheme.typography.labelLarge)
     Text(
       "Rendered natively by Compose Multiplatform in this browser.",
       style = MaterialTheme.typography.bodySmall,
