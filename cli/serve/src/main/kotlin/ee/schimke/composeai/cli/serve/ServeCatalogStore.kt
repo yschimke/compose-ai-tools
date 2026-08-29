@@ -434,7 +434,7 @@ class ServeCatalogStore(
     // have no index and deliberately fail open; the pinned catalog remains authoritative on click.
     val revisionPreviewIds = runCatching {
       ServeRevisionPreviewIndex.parse(fetchCatalogAsset(base + ServeRevisionPreviewIndex.FILE_NAME))
-        ?.previewsByCommit()
+        ?.previewsByCommit(deliveryCommit.orEmpty())
     }
       .getOrNull()
 

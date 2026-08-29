@@ -882,9 +882,11 @@ class ServeBundleHost(
   fun pinnedCatalogIsAuthoritative(commit: String): Boolean =
     pinnedManifest?.forCommit(commit)?.catalogRead == true
 
-  /** Null means this branch or revision predates the generation-time index, so menus fail open. */
+  /** Null means this branch predates the generation-time index, so menus fail open. */
   fun revisionContainsPreview(commit: String, previewId: String): Boolean? =
-    ServeCatalogRevision.normalize(commit)?.let { revisionPreviewIds?.get(it)?.contains(previewId) }
+    revisionPreviewIds?.let { index ->
+      ServeCatalogRevision.normalize(commit)?.let { index[it]?.contains(previewId) ?: false }
+    }
 
   /**
    * The delivery-branch publishes in which [previewId]'s render actually changed, or null when the

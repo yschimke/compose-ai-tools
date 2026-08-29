@@ -13,13 +13,15 @@ data class ServeRevisionPreviewIndex(
   @Serializable data class Entry(val commit: String = "", val previews: List<String> = emptyList())
 
   /** Null means this branch predates the index, so callers must fail open. */
-  fun previewsByCommit(): Map<String, Set<String>>? {
+  fun previewsByCommit(currentCommit: String): Map<String, Set<String>>? {
     if (schema != SCHEMA) return null
-    return revisions
-      .mapNotNull { entry ->
-        ServeCatalogRevision.normalize(entry.commit)?.let { it to entry.previews.toSet() }
+    val tip = ServeCatalogRevision.normalize(currentCommit) ?: return null
+    return buildMap {
+      put(tip, current.toSet())
+      revisions.forEach { entry ->
+        ServeCatalogRevision.normalize(entry.commit)?.let { put(it, entry.previews.toSet()) }
       }
-      .toMap()
+    }
   }
 
   companion object {
