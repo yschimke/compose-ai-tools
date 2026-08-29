@@ -1153,6 +1153,18 @@
       "sha256": "037beafb9f1b66fdbe0445c4c625ae90e35e5d46c3dd6f84198f1e20554fc72d",
       "size": 146945
     },
+    "serve-report-bug-compare.dark.png": {
+      "fixture": "serve-report-bug-compare",
+      "theme": "dark",
+      "sha256": "935fa9a1fe39e9b04914a3c7d71935736b82bbaa3d941a10ee7e0aa17dbb38b2",
+      "size": 230200
+    },
+    "serve-report-bug-compare.light.png": {
+      "fixture": "serve-report-bug-compare",
+      "theme": "light",
+      "sha256": "575d4ea87042bafd279949f2118698ec4bd83a499f49123867e265ba373ec688",
+      "size": 225292
+    },
     "serve-report-bug-site.dark.png": {
       "fixture": "serve-report-bug-site",
       "theme": "dark",
